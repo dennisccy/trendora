@@ -1,0 +1,195 @@
+"""Idempotent first-boot seed load.
+
+Populates the reference tables (sectors, stocks, etfs, themes, theme_members) from
+`config.yaml` — keeping config the single source for the universe/themes — and loads the
+committed frozen price fixture into `daily_prices` via the deterministic `SeedProvider`.
+A `data_provider_runs` row records the load. Idempotent: if prices already exist the load is
+a no-op, and reference inserts are guarded by existing rows, so restarting never duplicates.
+
+(The `industries` reference table is created but not populated this iteration — industry-group
+scoring lands in iter-2; industry ETFs are still loaded into `etfs` with kind='industry'.)
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+from sqlalchemy import func, insert, select
+from sqlalchemy.engine import Engine
+from sqlmodel import Session
+
+from app.config import Config, load_config
+from app.data_providers.base import ProviderUnavailableError
+from app.data_providers.seed_provider import SeedProvider
+from app.models import (
+    DailyPrice,
+    DataProviderRun,
+    ETF,
+    Sector,
+    Stock,
+    Theme,
+    ThemeMember,
+)
+
+# seed_loader.py -> app -> backend
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_SEED_DIR = BACKEND_DIR / "data" / "seed"
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def all_seed_symbols(config: Config) -> list[str]:
+    """Every symbol that should have a committed price fixture (stocks + ETFs + ^VIX),
+    de-duplicated and order-preserving."""
+    symbols: list[str] = []
+    symbols += list(config.universe.symbols)
+    symbols += list(config.etfs.index)
+    symbols += list(config.etfs.sector.keys())
+    symbols += list(config.etfs.industry)
+    symbols += list(config.etfs.volatility)
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for sym in symbols:
+        if sym not in seen:
+            seen.add(sym)
+            ordered.append(sym)
+    return ordered
+
+
+def load_reference_data(session: Session, config: Config) -> None:
+    """Insert sectors / stocks / etfs / themes / theme_members from config (idempotent)."""
+    sector_id_by_name: dict[str, int] = {}
+    for etf_ticker, sector_name in config.etfs.sector.items():
+        existing = session.exec(select(Sector).where(Sector.etf_ticker == etf_ticker)).first()
+        if existing is None:
+            sector = Sector(name=sector_name, etf_ticker=etf_ticker)
+            session.add(sector)
+            session.flush()
+            sector_id_by_name[sector_name] = sector.id
+        else:
+            sector_id_by_name[sector_name] = existing[0].id if isinstance(existing, tuple) else existing.id
+
+    stock_id_by_ticker: dict[str, int] = {}
+    for ticker in config.universe.symbols:
+        row = session.exec(select(Stock).where(Stock.ticker == ticker)).first()
+        if row is None:
+            stock = Stock(ticker=ticker, name=ticker, is_common=True, active=True)
+            session.add(stock)
+            session.flush()
+            stock_id_by_ticker[ticker] = stock.id
+        else:
+            stock_id_by_ticker[ticker] = (row[0] if isinstance(row, tuple) else row).id
+
+    def add_etf(ticker: str, kind: str, tracks_sector_id: Optional[int] = None) -> None:
+        if session.exec(select(ETF).where(ETF.ticker == ticker)).first() is None:
+            session.add(ETF(ticker=ticker, name=ticker, kind=kind, tracks_sector_id=tracks_sector_id))
+
+    for ticker in config.etfs.index:
+        add_etf(ticker, "index")
+    for ticker, sector_name in config.etfs.sector.items():
+        add_etf(ticker, "sector", sector_id_by_name.get(sector_name))
+    for ticker in config.etfs.industry:
+        add_etf(ticker, "industry")
+    for ticker in config.etfs.volatility:
+        add_etf(ticker, "volatility")
+
+    for slug, members in config.themes.items():
+        theme = session.exec(select(Theme).where(Theme.slug == slug)).first()
+        if theme is None:
+            theme = Theme(slug=slug, name=slug.replace("_", " ").title())
+            session.add(theme)
+            session.flush()
+        else:
+            theme = theme[0] if isinstance(theme, tuple) else theme
+        for ticker in members:
+            stock_id = stock_id_by_ticker.get(ticker)
+            if stock_id is None:
+                continue
+            already = session.exec(
+                select(ThemeMember).where(
+                    ThemeMember.theme_id == theme.id, ThemeMember.stock_id == stock_id
+                )
+            ).first()
+            if already is None:
+                session.add(ThemeMember(theme_id=theme.id, stock_id=stock_id))
+
+    session.commit()
+
+
+def load_prices(session: Session, config: Config, seed_dir: Path) -> tuple[int, int]:
+    """Bulk-load every symbol's committed bars into daily_prices. Returns (ok, failed)."""
+    provider = SeedProvider(seed_dir)
+    symbols_ok = 0
+    symbols_failed = 0
+    for symbol in all_seed_symbols(config):
+        try:
+            bars = provider.get_daily(symbol)
+        except ProviderUnavailableError:
+            symbols_failed += 1
+            continue
+        if not bars:
+            symbols_failed += 1
+            continue
+        rows = [
+            {
+                "symbol": symbol,
+                "date": bar.date,
+                "open": bar.open,
+                "high": bar.high,
+                "low": bar.low,
+                "close": bar.close,
+                "volume": bar.volume,
+            }
+            for bar in bars
+        ]
+        session.execute(insert(DailyPrice.__table__), rows)
+        symbols_ok += 1
+    session.commit()
+    return symbols_ok, symbols_failed
+
+
+def _price_count(session: Session) -> int:
+    return int(session.scalar(select(func.count()).select_from(DailyPrice)) or 0)
+
+
+def load_seed(
+    engine: Engine,
+    config: Optional[Config] = None,
+    seed_dir: Optional[str | Path] = None,
+    *,
+    force: bool = False,
+) -> dict:
+    """Load the seed if the DB has no prices (idempotent). Returns a summary dict."""
+    config = config or load_config()
+    seed_dir = Path(seed_dir) if seed_dir else DEFAULT_SEED_DIR
+    with Session(engine) as session:
+        existing = _price_count(session)
+        if existing and not force:
+            return {"loaded": False, "reason": "already populated", "price_rows": existing}
+
+        started = _utcnow()
+        load_reference_data(session, config)
+        symbols_ok, symbols_failed = load_prices(session, config, seed_dir)
+        status = "ok" if symbols_failed == 0 else ("failed" if symbols_ok == 0 else "partial")
+        session.add(
+            DataProviderRun(
+                provider=config.provider,
+                started_at=started,
+                finished_at=_utcnow(),
+                symbols_ok=symbols_ok,
+                symbols_failed=symbols_failed,
+                status=status,
+                message=f"seed load: {symbols_ok} symbols ok, {symbols_failed} failed",
+            )
+        )
+        session.commit()
+        return {
+            "loaded": True,
+            "symbols_ok": symbols_ok,
+            "symbols_failed": symbols_failed,
+            "status": status,
+            "price_rows": _price_count(session),
+        }

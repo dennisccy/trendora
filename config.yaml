@@ -1,0 +1,284 @@
+# Trendora — single source of ALL tunables (NO magic numbers in calculation code).
+# Read ONLY via apps/backend/app/config.py :: load_config(). Adding a scoring literal
+# in code instead of here is an anti-goal violation.
+#
+# iter-1 CONSUMES: provider, database, universe (+filters), etfs, themes, buckets.
+# The scoring / regime / decision_rules / walk_forward sections below are SCAFFOLDED
+# (real config, not code) but are NOT wired/consumed until iter-2+. They are illustrative
+# defaults to be tuned against the walk-forward evidence; do not treat them as final.
+
+# ----------------------------------------------------------------------------------------
+# Data provider (DEFAULT = offline committed seed; "stooq" is reserved for a future
+# config-selected live request-path provider — NOT implemented this iteration).
+provider: seed            # seed | stooq
+
+# ----------------------------------------------------------------------------------------
+# Datastore. Engine URL from config so SQLite -> Postgres is a config-only switch.
+# A RELATIVE sqlite path is resolved against the repository root by app/db.py, so it
+# is correct regardless of the process working directory.
+database:
+  url: "sqlite:///apps/backend/data/trendora.db"
+
+# ----------------------------------------------------------------------------------------
+# Stock universe: ~120 liquid US common stocks spanning the example themes. The filter
+# rules are recorded here (applied where data allows in later iterations).
+universe:
+  filters:
+    min_market_cap: 2000000000     # $2B
+    min_dollar_vol: 50000000       # $50M average daily dollar volume
+    min_price: 10                  # $10 minimum share price
+  symbols:
+    # AI / data-centre / semis
+    - NVDA
+    - AMD
+    - AVGO
+    - MRVL
+    - ANET
+    - DELL
+    - SMCI
+    - VRT
+    - MU
+    - MSFT
+    - AMZN
+    - GOOGL
+    - META
+    - ORCL
+    - PLTR
+    - CIEN
+    - WDC
+    - STX
+    - LRCX
+    - AMAT
+    - KLAC
+    - TXN
+    - ADI
+    - NXPI
+    - "ON"      # quoted — YAML parses bare ON as boolean true
+    - MCHP
+    - QCOM
+    - INTC
+    - TSM
+    - ASML
+    - ARM
+    - TER
+    - ENTG
+    - COHR
+    - MPWR
+    - SWKS
+    - QRVO
+    - GFS
+    # software / cloud / cybersecurity
+    - CRWD
+    - PANW
+    - ZS
+    - FTNT
+    - S
+    - NET
+    - OKTA
+    - QLYS
+    - TENB
+    - RPD
+    - VRNS
+    - NOW
+    - CRM
+    - ADBE
+    - INTU
+    - WDAY
+    - TEAM
+    - HUBS
+    - SNOW
+    - DDOG
+    - MDB
+    - SHOP
+    # nuclear / uranium / power-grid / electrification
+    - CEG
+    - VST
+    - NRG
+    - CCJ
+    - LEU
+    - UEC
+    - DNN
+    - ETN
+    - PWR
+    - GEV
+    - NVT
+    - POWL
+    - HUBB
+    - AMSC
+    - EMR
+    - PH
+    # defence
+    - LMT
+    - RTX
+    - NOC
+    - GD
+    - LHX
+    - HII
+    - LDOS
+    - AXON
+    - BA
+    - KTOS
+    # homebuilders
+    - DHI
+    - LEN
+    - PHM
+    - NVR
+    - TOL
+    - KBH
+    - MTH
+    - TPH
+    - BLDR
+    # crypto-equities
+    - COIN
+    - MSTR
+    - MARA
+    - RIOT
+    - CLSK
+    - HOOD
+    # GLP-1 / pharma / medtech
+    - LLY
+    - NVO
+    - VKTX
+    - AMGN
+    - PFE
+    - REGN
+    - ISRG
+    # mega-cap / broad leaders
+    - AAPL
+    - TSLA
+    - NFLX
+    - COST
+    - V
+    - MA
+    - JPM
+    - XOM
+    - BKNG
+    - UBER
+    - WMT
+    - HD
+    - GS
+    - ABNB
+
+# ----------------------------------------------------------------------------------------
+# ETFs + the volatility index. Loaded into reference tables + daily_prices.
+etfs:
+  index:                  # broad-market reference (SPY is the RS benchmark)
+    - SPY
+    - QQQ
+    - IWM
+    - RSP
+  sector:                 # the 11 GICS sector SPDRs -> sector name (single source for `sectors`)
+    XLK: Technology
+    XLF: Financials
+    XLE: Energy
+    XLV: Health Care
+    XLI: Industrials
+    XLY: Consumer Discretionary
+    XLP: Consumer Staples
+    XLU: Utilities
+    XLB: Materials
+    XLRE: Real Estate
+    XLC: Communication Services
+  industry:               # industry-group ETFs (used for industry leadership in iter-2+)
+    - SMH
+    - SOXX
+    - IGV
+    - CIBR
+    - HACK
+    - SKYY
+    - BOTZ
+    - ROBO
+    - URA
+    - URNM
+    - ITA
+    - XAR
+    - XHB
+    - ITB
+    - KRE
+    - KBE
+    - XBI
+    - IBB
+    - BKCH
+    - WGMI
+  volatility:             # CBOE Volatility Index (regime input in iter-2+)
+    - "^VIX"
+
+# ----------------------------------------------------------------------------------------
+# Themes: manually-defined, many-to-many (a stock may appear in several). Price-confirmed,
+# NOT news-driven. Every member ticker MUST also be present in universe.symbols.
+themes:
+  ai_data_centre: [NVDA, AMD, AVGO, MRVL, ANET, DELL, SMCI, VRT, MU, MSFT, AMZN, GOOGL, ORCL, META, PLTR, CIEN]
+  semiconductors: [NVDA, AMD, AVGO, MRVL, MU, WDC, STX, LRCX, AMAT, KLAC, TXN, ADI, NXPI, "ON", MCHP, QCOM, INTC, TSM, ASML, ARM, TER, ENTG, COHR, MPWR, SWKS, QRVO, GFS]
+  cybersecurity: [CRWD, PANW, ZS, FTNT, S, NET, OKTA, QLYS, TENB, RPD, VRNS]
+  software_cloud: [MSFT, ORCL, NOW, CRM, ADBE, INTU, WDAY, TEAM, HUBS, SNOW, DDOG, MDB, SHOP, NET, PLTR]
+  nuclear_uranium: [CEG, VST, NRG, CCJ, LEU, UEC, DNN]
+  power_grid: [ETN, PWR, GEV, VRT, NVT, POWL, HUBB, AMSC, EMR, PH]
+  defense: [LMT, RTX, NOC, GD, LHX, HII, LDOS, AXON, BA, KTOS]
+  homebuilders: [DHI, LEN, PHM, NVR, TOL, KBH, MTH, TPH, BLDR]
+  crypto_equities: [COIN, MSTR, MARA, RIOT, CLSK, HOOD]
+  glp1_pharma: [LLY, NVO, VKTX, AMGN, PFE, REGN, ISRG]
+  megacap_leaders: [AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, AVGO, NFLX, COST, V, MA, JPM, XOM, BKNG, UBER, WMT, HD, GS, ABNB]
+
+# ----------------------------------------------------------------------------------------
+# A-E bucket edges (lower bound of each bucket; E is everything below D). One bucket()
+# function uses these everywhere. Consumed when scoring lands (iter-3); listed now to lock
+# the contract.
+buckets:
+  A: 90
+  B: 80
+  C: 70
+  D: 60
+
+# ========================================================================================
+# SCAFFOLDED — NOT consumed/wired this iteration. Present so the no-magic-numbers contract
+# is established from day one; weights/cutoffs are hypotheses to be tuned, not final truth.
+# ========================================================================================
+scores:
+  leadership:
+    weights:
+      rs_spy_1m: 0.15
+      rs_spy_3m: 0.20
+      rs_sector: 0.15
+      rs_theme: 0.10
+      ma_stack: 0.20
+      high_proximity: 0.10
+      up_down_vol: 0.10
+  entry_quality:
+    weights:
+      dist_rising_20: 0.25
+      contraction: 0.20
+      support_nearby: 0.15
+      structure: 0.20
+      reward_risk: 0.20
+  risk:
+    weights:
+      extension: 0.20
+      atr_pct: 0.15
+      liquidity: 0.10
+      regime: 0.15
+      sector_strength: 0.10
+      gap_climax: 0.15
+      below_ma: 0.10
+      rs_deterioration: 0.05
+
+regime:
+  vix_threshold: 20
+  weights:
+    index_ma_stack: 0.35
+    breadth_above_50dma: 0.25
+    breadth_above_200dma: 0.25
+    new_high_low: 0.15
+  labels: [Strong risk-on, Risk-on, Narrow leadership, Choppy, Defensive, Risk-off]
+
+decision_rules:
+  theme_floor: 70
+  actionable: { leadership: 80, entry: 70, risk: 60 }
+  extended: { leadership: 85, entry: 50 }
+  watch: { leadership: 75 }
+  avoid_risk: 80
+
+walk_forward:
+  history_years: 2
+  asof_cadence: weekly
+  horizons: [1, 5, 10, 20, 60]
+  min_sample: 30

@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Dense, dark analytical workstation palette (project-template DESIGN SYSTEM).
+   The ONLY place raw hex values live; every component references the tokens below. */
+:root {
+  --bg: #0a0e14;
+  --surface: #111722;
+  --surface-2: #18202d;
+  --border: #232c3b;
+  --border-strong: #303d52;
+  --accent: #4fd1c5; /* teal */
+  --pos: #34d399; /* green — strength / positive */
+  --neg: #f87171; /* red — risk / negative */
+  --warn: #fbbf24; /* amber — stale / caution / low sample */
+  --text: #e6edf3;
+  --text-muted: #8b98a9;
+  --text-faint: #5b6677;
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* ALL numeric values use monospace tabular figures so columns align (DESIGN SYSTEM). */
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
