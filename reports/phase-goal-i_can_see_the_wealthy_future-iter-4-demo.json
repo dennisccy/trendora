@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future-iter-4",
+  "base_url": "http://localhost:3836",
+  "iteration": 4,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Stock Leaderboard",
+      "narration": "We start on the Stock Leaderboard, where every scanned stock is ranked and each row shows its Leadership, Entry Quality, and Risk scores alongside a setup status and a plain-language reason.",
+      "point_out": "The ranked table of stocks — every row carries three scores, a setup badge, and a short reason.",
+      "journey": "J-02",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "Stock Leaderboard" }
+    },
+    {
+      "n": 2,
+      "title": "Open NVDA's full research view",
+      "narration": "Clicking the NVDA row opens its detail page — the complete per-stock research view. Right at the top we can see which themes NVDA belongs to and the concrete price level where the trade idea would be wrong.",
+      "point_out": "The clickable theme chips (such as Semiconductors) and the invalidation note in plain language — “Invalid below the 50-DMA at $…” — with a real dollar level, not a placeholder.",
+      "journey": "J-05",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "NVDA" } },
+      "expect": { "text": "Invalid below the 50-DMA at" }
+    },
+    {
+      "n": 3,
+      "title": "Study the price and moving-average chart",
+      "narration": "Scrolling to the price chart, we can read NVDA's daily candles with the 20-, 50-, 150-, and 200-day moving averages drawn on top and a volume histogram pinned along the bottom.",
+      "point_out": "Green and red candles, four coloured moving-average lines (each starting after a warm-up gap), the volume bars below them, and a legend mapping every colour to its period.",
+      "journey": "J-05",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "Candles (up / down)" } },
+      "expect": { "text": "bars · as of" }
+    },
+    {
+      "n": 4,
+      "title": "Read the three explainable scores",
+      "narration": "Further down, the three scores each show an A-to-E grade, a value out of 100, and the named components behind it — so no score is ever shown as a bare number. These values are the same ones we saw on the leaderboard.",
+      "point_out": "The Leadership, Entry Quality, and Risk cards — each with a bucket grade, a 0-to-100 value, and a component breakdown of the reasons.",
+      "journey": "J-05",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "How strong the stock is" } },
+      "expect": { "text": "Entry Quality" }
+    },
+    {
+      "n": 5,
+      "title": "Jump from a theme chip to the Themes leaderboard",
+      "narration": "The theme chips are live links. Clicking the Semiconductors chip takes us straight to the Themes leaderboard to explore that whole group.",
+      "point_out": "The browser navigates to the Themes leaderboard, where Semiconductors is ranked among the tracked themes.",
+      "journey": "J-05",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Semiconductors" } },
+      "expect": { "text": "Semiconductors" }
+    },
+    {
+      "n": 6,
+      "title": "An honest state for an unknown ticker",
+      "narration": "Finally, asking for a ticker that isn't in the scanned universe shows an honest amber notice instead of inventing data, with a link back to the leaderboard.",
+      "point_out": "The amber “Unknown ticker” card — no chart and no fabricated numbers, just a clear message and a way back to the leaderboard.",
+      "journey": "J-05",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/NOTREAL" },
+      "expect": { "text": "Unknown ticker" }
+    }
+  ]
+}

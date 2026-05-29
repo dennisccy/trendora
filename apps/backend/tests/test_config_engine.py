@@ -98,6 +98,7 @@ VALID = {
         "extended": {"leadership": 85, "entry": 50},
         "watch": {"leadership": 75},
         "avoid_risk": 80,
+        "invalidation": {"ma_period": 50},
     },
     "stock_sectors": {"AAA": "Technology", "BBB": "Technology"},
 }
@@ -289,6 +290,27 @@ def test_missing_decision_rules_section_raises(tmp_path):
 def test_decision_rules_missing_actionable_cutoff_raises(tmp_path):
     data = copy.deepcopy(VALID)
     del data["decision_rules"]["actionable"]["risk"]  # required cutoff key
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+# --- iter-4: decision_rules.invalidation ---------------------------------------------------
+def test_real_config_exposes_invalidation_ma_period():
+    cfg = load_config()
+    assert cfg.decision_rules.invalidation.ma_period == 50
+    assert cfg.decision_rules.invalidation.ma_period in cfg.indicators.ma_periods
+
+
+def test_missing_invalidation_block_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    del data["decision_rules"]["invalidation"]
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_invalidation_ma_period_outside_ma_periods_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    data["decision_rules"]["invalidation"]["ma_period"] = 7  # not one of indicators.ma_periods
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))
 

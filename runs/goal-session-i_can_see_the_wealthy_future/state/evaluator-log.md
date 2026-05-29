@@ -137,3 +137,50 @@ invalidation note ("below 50-DMA at $X"), built on the now-canonical three-score
 `/api/stocks/{ticker}`. Needs a charting library (Lightweight-Charts/Recharts) + a backend bars/MA series
 endpoint -> net-new surface across both tiers. Orchestrator should also fix the two recurring process gaps
 (emit the audit handoff; keep `next dev` up for the dedicated browser-qa step).
+
+## Iteration 4 — goal-i_can_see_the_wealthy_future-iter-4
+
+**Date:** 2026-05-30T03:30:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: **J-05** (full Stock Detail — populated price+MA chart + volume + theme chips + concrete invalidation note + 3 explainable score cards), reconciled from the on-disk QA PNGs I viewed directly
+- Newly failing: none
+- Regressed: none (J-01–J-04 hold; **J-06 re-proven at the contract level this iter** via unit list==detail guard incl. the new fields + coherence byte-identical)
+- Anti-goal violations: none
+
+**Reasoning:** iter-4 delivered J-05. Verified directly from on-disk QA evidence (viewed, not summarized):
+`TC-10-stock-detail-NVDA.png` shows the completed `/stocks/NVDA` page — a POPULATED candlestick chart
+("Price & moving averages") with MA overlay lines + a legend + a volume histogram; theme chips
+(AI Data Centre / Semiconductors / Megacap Leaders); a concrete INVALIDATION note ("Invalid below the
+50-DMA at $198.73" per QA + backend live smoke); and the three score cards (Leadership E/47.48, Entry
+Quality D/66.24, Risk E/33.79) each with >=3 named components. `TC-11-unknown-ticker.png` shows the
+honest "Unknown ticker" state (no chart, no fabrication). Backend: new canonical
+`GET /api/stocks/{ticker}/bars` (no-lookahead `bars_asof`, `ma` keyed by every
+`config.indicators.ma_periods` via `sma_series`, 404/503 honest); `invalidation`+`themes` computed once
+in `score_stocks` and carried on the SHARED row so list==detail stays byte-identical (J-06).
+Single-source proven end-to-end (`invalidation.level` 198.734 == `ma["50"][-1]`). 126/126 pytest,
+COHERENCE-PASS, frontend builds; `models.py` git-diff empty, no order path, no secrets (re-verified by my
+own `git diff`/greps). Not GOAL_ACHIEVED (J-07–J-11 unbuilt by design); not REGRESSION; not STALLED ->
+**CONTINUE**.
+
+**Evaluation-integrity note (disclosure):** an earlier pass of this evaluation ran during a transient
+tool-output outage in which calls were *queued* (not failed) and a Read of the two evidence PNGs
+spuriously returned "files do not exist" — which nearly drove a wrong `partial` cap on J-05. When the
+harness recovered the calls flushed, confirming the PNGs are present (`ls`/Glob) and the chart is painted
+(viewed directly). This entry, eval.md, journey-history.json and lessons.md all reflect the corrected
+finding (J-05 passing). The demo-narrator's Playwright soft-notes ("invalidation"/"Unknown ticker" text
+not found; click timeouts) are capture-timing artifacts of the non-gating showcase runner (frames at
+00:13, after QA's 00:07 evidence), not defects.
+
+**Process gaps (non-blocking, recurring):** (1) Dedicated browser-qa SKIP/PASS flap recurred a **4th**
+time (SKIPPED on HTTP 000), but QA mode-2 self-healed and **persisted** the evidence — so no vacuum this
+time; the structural fix (browser-qa must own/self-heal its frontend) is still owed. (2) **Audit handoff
+missing a 4th time** at full depth (only dev + frontend handoffs exist), despite iter-4's explicit DoD.
+
+**Next-step recommendation:** iter-5 at **full** depth — J-07 + J-08: scanner snapshots + Scanner Runs
+list/detail with append-only immutability (`models.py` gains `scanner_run` + result rows — first real
+test of the Snapshots-immutable critical anti-goal; seed a Risk-Off historical run + >=1 earlier run to
+light up J-07 as a journey and the no-lookahead walk-forward groundwork). Fold in the two recurring
+fixes: make the dedicated browser-qa own/self-heal its frontend (end the 4x flap), and emit the audit
+handoff.

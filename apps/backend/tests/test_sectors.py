@@ -103,6 +103,7 @@ _SYNTH_CFG = {
         "extended": {"leadership": 85, "entry": 50},
         "watch": {"leadership": 75},
         "avoid_risk": 80,
+        "invalidation": {"ma_period": 10},  # must be one of this synthetic config's ma_periods [5, 10]
     },
     "stock_sectors": {"AAA": "Technology", "BBB": "Financials"},
 }

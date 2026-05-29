@@ -31,6 +31,13 @@ from app.engine.prices import bars_asof, closes
 RS_1M, RS_3M, BREADTH, MA_PART = "rs_spy_1m", "rs_spy_3m", "breadth", "ma_participation"
 
 
+def theme_name(slug: str) -> str:
+    """Display name for a theme slug — the SINGLE naming derivation, shared by `score_themes`
+    (theme rows) and `score_stocks` (per-stock theme-membership chips) so a theme reads identically
+    on the Themes leaderboard and on a Stock Detail chip."""
+    return slug.replace("_", " ").title()
+
+
 def total_return(series: list[float], window: int) -> Optional[float]:
     """Multiplicative total return over `window` bars (e.g. 1.05 = +5%). NA if fewer than
     `window`+1 bars or the base price is zero (never fabricated)."""
@@ -143,7 +150,7 @@ def score_themes(session: Session, asof: date_cls, config: Optional[Config] = No
         info = display[slug]
         rows.append({
             "slug": slug,
-            "name": slug.replace("_", " ").title(),
+            "name": theme_name(slug),
             "score": score,
             "bucket": to_bucket(score, cfg),
             "members": info["members"],

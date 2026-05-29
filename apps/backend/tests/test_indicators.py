@@ -27,6 +27,33 @@ def test_sma_rejects_nonpositive_period():
         ind.sma([1, 2, 3], 0)
 
 
+# --- sma_series ----------------------------------------------------------------------------
+def test_sma_series_warmup_na_then_rolling():
+    # period 3: first two indices lack enough history (NA), then the rolling SMA.
+    assert ind.sma_series([1, 2, 3, 4, 5], 3) == [None, None, 2.0, 3.0, 4.0]
+    # period 5: only the last index has a full window.
+    assert ind.sma_series([1, 2, 3, 4, 5], 5) == [None, None, None, None, 3.0]
+
+
+def test_sma_series_aligned_to_input_length():
+    values = [10, 20, 30, 40]
+    assert len(ind.sma_series(values, 2)) == len(values)
+    assert ind.sma_series([], 3) == []
+
+
+def test_sma_series_last_equals_sma_invariant():
+    # the headline single-source invariant: the series' final element is exactly `sma`
+    # for every period — one MA definition feeds the chart overlay, invalidation and scoring.
+    values = [3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0, 5.0]
+    for period in range(1, len(values) + 1):
+        assert ind.sma_series(values, period)[-1] == ind.sma(values, period)
+
+
+def test_sma_series_rejects_nonpositive_period():
+    with pytest.raises(ValueError):
+        ind.sma_series([1, 2, 3], 0)
+
+
 # --- rs_vs ---------------------------------------------------------------------------------
 def test_rs_vs_exact():
     # series +50% over 1 bar, benchmark flat -> RS 1.5

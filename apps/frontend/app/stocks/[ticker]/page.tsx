@@ -7,10 +7,19 @@ import { AlertTriangle, ArrowLeft, SearchX } from "lucide-react";
 
 import { ComponentBreakdown } from "@/components/component-breakdown";
 import { PageHeading } from "@/components/page-heading";
+import { PriceChart } from "@/components/price-chart";
 import { ScoreBadge } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { fetchStock, type ScoreBlock, type StockDetailResponse } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import {
+  fetchStock,
+  fetchStockBars,
+  type BarsResponse,
+  type ScoreBlock,
+  type StockDetailResponse,
+  type StockRow,
+} from "@/lib/api";
 
 type State =
   | { kind: "loading" }
@@ -120,6 +129,12 @@ function StockDetailBody({ data }: { data: StockDetailResponse }) {
         </CardContent>
       </Card>
 
+      {/* theme membership + concrete invalidation level (server-computed, rendered verbatim) */}
+      <ThemeAndInvalidationCard row={row} />
+
+      {/* price + moving-average candle chart with volume (server MA series — never recomputed) */}
+      <StockChartPanel ticker={row.ticker} />
+
       {/* three independent scores */}
       <div className="grid gap-4 lg:grid-cols-3">
         <ScoreCard title="Leadership" caption="How strong the stock is (higher = stronger)" block={row.leadership} />
@@ -135,13 +150,100 @@ function StockDetailBody({ data }: { data: StockDetailResponse }) {
           invert
         />
       </div>
-
-      <p className="text-xs text-text-faint">
-        A price + moving-average chart, theme-membership chips, and a concrete invalidation level
-        arrive in the next iteration. iter-3’s detail page exists to prove the scores are identical
-        to the leaderboard (single source of truth).
-      </p>
     </div>
+  );
+}
+
+function ThemeAndInvalidationCard({ row }: { row: StockRow }) {
+  const naInvalidation = row.invalidation.level == null;
+  return (
+    <Card>
+      <CardContent className="grid gap-4 p-5 md:grid-cols-2">
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-wide text-text-faint">Themes</p>
+          {row.themes.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {row.themes.map((theme) => (
+                <Link
+                  key={theme.slug}
+                  href="/themes"
+                  className="rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                >
+                  <Badge variant="accent" className="hover:bg-surface active:bg-bg">
+                    {theme.name}
+                  </Badge>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-text-muted">Not a member of any tracked theme.</p>
+          )}
+        </div>
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-wide text-text-faint">Invalidation</p>
+          <p className={cn("text-sm", naInvalidation ? "text-warn" : "text-text-muted")}>
+            {row.invalidation.note}
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+type ChartState =
+  | { kind: "loading" }
+  | { kind: "ok"; data: BarsResponse }
+  | { kind: "empty" }
+  | { kind: "error" };
+
+function StockChartPanel({ ticker }: { ticker: string }) {
+  const [state, setState] = useState<ChartState>({ kind: "loading" });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ kind: "loading" });
+    fetchStockBars(ticker, controller.signal)
+      .then((data) => setState(data.bars.length > 0 ? { kind: "ok", data } : { kind: "empty" }))
+      .catch(() => {
+        if (!controller.signal.aborted) setState({ kind: "error" });
+      });
+    return () => controller.abort();
+  }, [ticker]);
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardTitle>Price &amp; moving averages</CardTitle>
+        {state.kind === "ok" ? (
+          <span className="num text-xs text-text-faint">
+            {state.data.bars.length} bars · as of {state.data.asof_date}
+          </span>
+        ) : null}
+      </CardHeader>
+      <CardContent>
+        {state.kind === "loading" ? (
+          <div className="h-80 w-full animate-pulse rounded bg-surface-2" />
+        ) : null}
+        {state.kind === "ok" ? <PriceChart bars={state.data.bars} ma={state.data.ma} /> : null}
+        {state.kind === "empty" ? (
+          <div className="flex h-80 items-center justify-center text-sm text-text-muted">
+            No price history is available for {ticker}.
+          </div>
+        ) : null}
+        {state.kind === "error" ? (
+          <div className="flex h-80 items-center gap-3 rounded border border-warn bg-surface p-5 text-sm text-warn">
+            <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
+            <div>
+              <p className="font-medium">Chart unavailable</p>
+              <p className="text-text-muted">
+                The price series could not load from the API. Nothing is fabricated — the scores
+                above are unaffected; confirm the backend is running and reload.
+              </p>
+            </div>
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 }
 

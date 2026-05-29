@@ -54,3 +54,24 @@ full depth — 2nd time, iter-2 + iter-3.)
 **Applies to:** the browser-qa-agent / orchestrator harness itself (make browser-qa self-heal its frontend
 instead of SKIP-on-down); any future iter verified through the browser — trust the PNGs on disk, not a lone
 verdict; and the full-depth pipeline (confirm the audit handoff is actually emitted).
+
+## iter-4 — 2026-05-30T03:30:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Two compounding traps. (1) The browser-qa SKIP/PASS flap recurred a **4th** time (dedicated
+browser-qa SKIPPED on HTTP 000), but QA mode-2 self-healed and **persisted** TC-10/TC-11 to the evidence
+dir, so reconciling J-05 from the on-disk PNGs worked and J-05 passed — the iters-1–3 standing lesson held.
+(2) The *real* surprise was an evaluator-side trap: during a transient tool-output outage the Read of those
+two PNGs spuriously returned **"files do not exist"**, which nearly drove a wrong `partial` cap on a journey
+whose evidence was actually present (the calls were being *queued*, not failed, and flushed later showing the
+files + the populated chart). Lesson: under a flaky/queuing harness a **negative existence result is not
+trustworthy** — re-confirm with `ls`/Glob/re-read before letting "missing evidence" lower a verdict; and a
+Write that returns no confirmation may still have landed (don't blind-retry appends; an overwrite Write can
+also be rejected with "file modified since read" if another queued op touched the file first). Also: don't
+let the demo-narrator's Playwright soft-notes ("text not found", click timeouts) override the QA evidence —
+they are capture-timing artifacts of the non-gating showcase runner. (Audit handoff now missing **4**
+full-depth iters running.)
+**Applies to:** the goal-evaluator's own process on any flaky-tool run (re-verify negative file-existence
+before acting; verify writes landed without double-appending); any canvas/chart-rendered journey
+(Lightweight-Charts) — trust the QA evidence PNG over demo soft-notes; and the full-depth pipeline
+(browser-qa must own/self-heal its frontend; the audit step must emit its handoff).

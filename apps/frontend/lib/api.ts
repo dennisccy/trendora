@@ -119,6 +119,24 @@ export interface StockSetup {
   reason: string;
 }
 
+/** One theme the stock belongs to (the reverse of config.themes). `name` is the backend's shared
+ *  derivation — the SAME label shown on the Themes leaderboard (no client-side renaming). */
+export interface ThemeChip {
+  slug: string;
+  name: string;
+}
+
+/** The server-computed invalidation level (iter-4): the price below which the long thesis is wrong.
+ *  `level` is the canonical N-DMA (or null on short history) and `note` is built server-side — the UI
+ *  renders `note` VERBATIM and never assembles the "$X" string (single source of truth). */
+export interface Invalidation {
+  basis: string; // e.g. "50-DMA"
+  ma_period: number;
+  level: number | null; // canonical sma over the config invalidation MA period; null = NA
+  price: number | null; // latest close (as-of); null when no history
+  note: string; // human sentence, rendered verbatim
+}
+
 export interface StockRow {
   ticker: string;
   name: string;
@@ -127,6 +145,8 @@ export interface StockRow {
   entry_quality: ScoreBlock;
   risk: ScoreBlock; // higher score = MORE dangerous (colour-graded by danger direction)
   setup: StockSetup;
+  themes: ThemeChip[]; // every theme whose member list contains this ticker (config order)
+  invalidation: Invalidation;
   rank: number;
 }
 
@@ -151,6 +171,33 @@ export async function fetchStocks(signal?: AbortSignal): Promise<StocksResponse>
 /** GET /api/stocks/{ticker} — the SAME row the leaderboard serves (single source → J-06). */
 export async function fetchStock(ticker: string, signal?: AbortSignal): Promise<StockDetailResponse> {
   return getJSON<StockDetailResponse>(`/api/stocks/${encodeURIComponent(ticker)}`, signal);
+}
+
+// --- stock price/MA/volume series for the detail chart (iter-4) -----------------------------
+/** One ascending OHLCV bar (date <= as-of; no lookahead — the backend reads only `bars_asof`). */
+export interface PriceBar {
+  date: string; // ISO date (YYYY-MM-DD)
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+/** GET /api/stocks/{ticker}/bars payload. `ma` is keyed by each config MA period ("20","50",…) →
+ *  a rolling moving-average series aligned 1:1 with `bars` (a number, or null for the warm-up gap).
+ *  The chart PLOTS this server series — it never computes a moving average from the close array. */
+export interface BarsResponse {
+  asof_date: string;
+  ticker: string;
+  bars: PriceBar[];
+  ma: Record<string, (number | null)[]>;
+}
+
+/** Canonical price/MA/volume series source: GET /api/stocks/{ticker}/bars. Throws on non-200 so the
+ *  chart renders an explicit unavailable state (404 unknown ticker / 503 no data) — never fabricated. */
+export async function fetchStockBars(ticker: string, signal?: AbortSignal): Promise<BarsResponse> {
+  return getJSON<BarsResponse>(`/api/stocks/${encodeURIComponent(ticker)}/bars`, signal);
 }
 
 // --- themes (iter-3) -----------------------------------------------------------------------

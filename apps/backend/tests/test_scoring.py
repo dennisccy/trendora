@@ -13,9 +13,11 @@ from sqlmodel import Session, select
 
 from app.config import load_config
 from app.engine.buckets import to_bucket
-from app.engine.prices import latest_data_date
+from app.engine.indicators import sma
+from app.engine.prices import bars_asof, closes, latest_data_date
 from app.engine.scoring import score_stocks
 from app.engine.setups import ALL_STATUSES
+from app.engine.themes import theme_name
 from app.models import DailyPrice
 
 SCORE_KEYS = ("leadership", "entry_quality", "risk")
@@ -118,6 +120,73 @@ def test_score_stocks_is_deterministic(loaded_engine):
         first = score_stocks(session, asof, cfg)
         second = score_stocks(session, asof, cfg)
     assert first == second
+
+
+def test_invalidation_level_is_canonical_sma_and_note_built_server_side(loaded_engine):
+    """iter-4: each row carries a structured `invalidation` whose `level` is EXACTLY the canonical
+    `sma(closes_asof, config invalidation ma_period)` — the same 50-DMA that ends the /bars chart
+    series and feeds the scoring extension/support components (single source). The human note is
+    built in the backend (rendered verbatim by the UI), never assembled client-side."""
+    cfg = load_config()
+    inv_period = cfg.decision_rules.invalidation.ma_period
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        result = score_stocks(session, asof, cfg)
+        nvda_closes = closes(bars_asof(session, "NVDA", asof))
+    expected_level = sma(nvda_closes, inv_period)
+    assert expected_level is not None  # NVDA has ample history at the latest date
+
+    nvda = _row(result["rows"], "NVDA")
+    inv = nvda["invalidation"]
+    assert inv["ma_period"] == inv_period
+    assert inv["basis"] == f"{inv_period}-DMA"
+    assert inv["level"] == expected_level                 # canonical MA — no second computation
+    assert inv["price"] == nvda_closes[-1]                # latest close (as-of)
+    assert inv["note"] == f"Invalid below the {inv_period}-DMA at ${expected_level:.2f}"
+
+
+def test_invalidation_na_on_short_history_is_honest_never_fabricated(loaded_engine):
+    """At the earliest as-of date no stock has `ma_period` bars yet, so the invalidation level is
+    NA: `level is None` with an honest note and no fabricated price-derived number."""
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        dates = list(session.exec(select(DailyPrice.date).distinct().order_by(DailyPrice.date)).all())
+        earliest = score_stocks(session, dates[0], cfg)
+
+    na_rows = [r for r in earliest["rows"] if r["invalidation"]["level"] is None]
+    assert na_rows  # nobody has a full 50-bar window on day one
+    for row in na_rows:
+        assert row["invalidation"]["note"] == "Invalidation level NA — insufficient history"
+        assert row["invalidation"]["ma_period"] == cfg.decision_rules.invalidation.ma_period
+
+
+def test_themes_are_the_reverse_of_config_themes(loaded_engine):
+    """iter-4: each row carries `themes` = every config theme whose member list contains the ticker,
+    in config order, named via the SHARED `theme_name` derivation (no second theme→name mapping)."""
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        result = score_stocks(session, asof, cfg)
+
+    for row in result["rows"]:
+        expected = [slug for slug, members in cfg.themes.items() if row["ticker"] in members]
+        assert [t["slug"] for t in row["themes"]] == expected            # reverse map, config order
+        assert all(t["name"] == theme_name(t["slug"]) for t in row["themes"])  # shared naming
+    # NVDA is a member of exactly these themes (multi-theme membership renders multiple chips)
+    nvda = _row(result["rows"], "NVDA")
+    assert [t["slug"] for t in nvda["themes"]] == ["ai_data_centre", "semiconductors", "megacap_leaders"]
+
+
+def test_invalidation_and_themes_ride_on_the_shared_row_for_list_and_detail(loaded_engine):
+    """Both new fields live on the single `score_stocks` row, so the list and detail paths carry
+    them identically (J-06 single source — proven byte-identical at the API layer in test_api_engine)."""
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        rows = score_stocks(session, asof, cfg)["rows"]
+    for row in rows:
+        assert set(row["invalidation"]) == {"basis", "ma_period", "level", "price", "note"}
+        assert isinstance(row["themes"], list)
 
 
 def test_asof_bounds_the_computation_no_lookahead(loaded_engine):

@@ -40,7 +40,7 @@ from app.engine.prices import bars_asof, closes, highs, lows, volumes
 from app.engine.regime import score_regime
 from app.engine.sectors import score_sectors
 from app.engine.setups import classify_setup
-from app.engine.themes import basket_return, total_return
+from app.engine.themes import basket_return, theme_name, total_return
 from app.models import Sector, Stock
 
 # Risk components normalized directly from a canonical score (not cross-sectionally peer-ranked).
@@ -200,6 +200,19 @@ def _build_score(
     return {"score": score, "components": components}
 
 
+def _invalidation(basis: str, ma_period: int, level: Optional[float], price: Optional[float]) -> dict:
+    """The per-stock invalidation level (where the long thesis is wrong), built ONCE here so the
+    human note ships from the backend verbatim (single source — the UI never assembles the "$X"
+    string). `level` is the canonical `sma(closes_asof, ma_period)` — the SAME 50-DMA value that
+    ends the `/bars` chart series and feeds the scoring extension/support components. Short history
+    yields an honest NA note and `level: None`, never a fabricated price (anti-goal: No fabricated data)."""
+    if level is None:
+        note = "Invalidation level NA — insufficient history"
+    else:
+        note = f"Invalid below the {basis} at ${level:.2f}"
+    return {"basis": basis, "ma_period": ma_period, "level": level, "price": price, "note": note}
+
+
 def _enriched_reason(base_reason: str, leadership_components: list[dict]) -> str:
     """Append the stock's top leadership driver to the setup reason (reason ← top component + status)."""
     available = [c for c in leadership_components if c["available"]]
@@ -216,6 +229,9 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
     cfg = config or get_config()
     benchmark = cfg.etfs.index[0]  # SPY
     spy_closes = closes(bars_asof(session, benchmark, asof))
+    # invalidation MA basis from config (one of indicators.ma_periods) — no literal in calc code
+    inv_period = cfg.decision_rules.invalidation.ma_period
+    inv_basis = f"{inv_period}-DMA"
 
     # canonical macro context — computed ONCE here, never recomputed per stock (single source)
     regime = score_regime(session, asof, cfg)
@@ -248,6 +264,13 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
     for slug, members in cfg.themes.items():
         for ticker in members:
             primary_theme.setdefault(ticker, slug)
+
+    # ALL theme memberships per ticker, in config order — the chips on each stock's row. This is
+    # the REVERSE of the SAME `config.themes` map `score_themes` ranks (no second theme definition).
+    themes_by_ticker: dict[str, list[str]] = {}
+    for slug, members in cfg.themes.items():
+        for member in members:
+            themes_by_ticker.setdefault(member, []).append(slug)
 
     # pass 1: oriented raw components per stock
     raws_by_ticker: dict[str, dict] = {}
@@ -291,6 +314,16 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
         )
         setup["reason"] = _enriched_reason(setup["reason"], leadership["components"])
 
+        # invalidation level: the canonical `sma` over the config invalidation period, read through
+        # the same no-lookahead `bars_asof` accessor (the level == the chart's MA-series endpoint).
+        inv_closes = closes(bars_asof(session, ticker, asof))
+        invalidation = _invalidation(
+            inv_basis, inv_period,
+            ind.sma(inv_closes, inv_period),
+            inv_closes[-1] if inv_closes else None,
+        )
+        themes = [{"slug": slug, "name": theme_name(slug)} for slug in themes_by_ticker.get(ticker, [])]
+
         rows.append({
             "ticker": ticker,
             "name": ticker,
@@ -299,6 +332,8 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
             "entry_quality": entry_quality,
             "risk": risk,
             "setup": setup,
+            "themes": themes,
+            "invalidation": invalidation,
             "rank": None,
         })
 

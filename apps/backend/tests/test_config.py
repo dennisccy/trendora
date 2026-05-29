@@ -89,6 +89,7 @@ MINIMAL_VALID = {
         "extended": {"leadership": 85, "entry": 50},
         "watch": {"leadership": 75},
         "avoid_risk": 80,
+        "invalidation": {"ma_period": 50},
     },
     "stock_sectors": {"AAA": "Technology", "BBB": "Technology"},
 }

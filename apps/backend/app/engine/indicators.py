@@ -26,6 +26,17 @@ def sma(values: Sequence[float], period: int) -> Optional[float]:
     return sum(window) / period
 
 
+def sma_series(values: Sequence[float], period: int) -> list[Optional[float]]:
+    """Rolling simple moving average aligned 1:1 with `values`: element `i` is the SMA of the
+    `period` values ending at `i`, or NA (`None`) for the warm-up prefix with fewer than `period`
+    prior values. Built by reusing `sma` over each prefix, so there is ONE MA definition and the
+    invariant `sma_series(values, p)[-1] == sma(values, p)` holds by construction (single source:
+    the chart overlay, the invalidation level and the scoring MA components never disagree)."""
+    if period <= 0:
+        raise ValueError(f"sma_series period must be positive, got {period}")
+    return [sma(values[: i + 1], period) for i in range(len(values))]
+
+
 def rs_vs(series: Sequence[float], benchmark: Sequence[float], window: int) -> Optional[float]:
     """Relative strength = series total return / benchmark total return over `window` bars.
 

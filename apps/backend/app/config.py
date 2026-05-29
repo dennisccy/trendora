@@ -249,16 +249,27 @@ class WatchCutoffs(BaseModel):
     leadership: float
 
 
+class InvalidationCfg(BaseModel):
+    """Which moving average defines the per-stock invalidation level (iter-4). `ma_period` MUST
+    be one of `indicators.ma_periods` (validated on `Config`) so the invalidation MA is the SAME
+    canonical `sma` that draws the chart overlay and feeds scoring — never a second MA basis."""
+
+    model_config = ConfigDict(extra="allow")
+    ma_period: int
+
+
 class DecisionRulesCfg(BaseModel):
-    """Setup-classification cutoffs consumed by `app.engine.setups.classify_setup` (iter-3).
-    The required cutoff keys must be present; pydantic raises if any is missing. Additional
-    forward-looking keys (e.g. `theme_floor`) ride along via extra='allow'."""
+    """Setup-classification cutoffs consumed by `app.engine.setups.classify_setup` (iter-3) plus
+    the invalidation MA basis consumed by `app.engine.scoring.score_stocks` (iter-4). The required
+    keys must be present; pydantic raises if any is missing. Additional forward-looking keys (e.g.
+    `theme_floor`) ride along via extra='allow'."""
 
     model_config = ConfigDict(extra="allow")
     actionable: ActionableCutoffs
     extended: ExtendedCutoffs
     watch: WatchCutoffs
     avoid_risk: float
+    invalidation: InvalidationCfg
 
 
 class DatabaseCfg(BaseModel):
@@ -315,6 +326,18 @@ class Config(BaseModel):
         bad = sorted(f"{t}={s}" for t, s in self.stock_sectors.items() if s not in valid)
         if bad:
             raise ValueError(f"stock_sectors values must be one of {sorted(valid)}; invalid: {bad}")
+        return self
+
+    @model_validator(mode="after")
+    def _invalidation_ma_period_is_an_indicator_period(self) -> "Config":
+        """The invalidation MA basis must be one of the configured `indicators.ma_periods`, so the
+        invalidation level reuses an already-charted canonical MA (single source — no second MA)."""
+        period = self.decision_rules.invalidation.ma_period
+        if period not in self.indicators.ma_periods:
+            raise ValueError(
+                f"decision_rules.invalidation.ma_period ({period}) must be one of "
+                f"indicators.ma_periods ({self.indicators.ma_periods})"
+            )
         return self
 
 

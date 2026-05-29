@@ -477,6 +477,7 @@ decision_rules:
   extended: { leadership: 85, entry: 50 }
   watch: { leadership: 75 }
   avoid_risk: 80
+  invalidation: { ma_period: 50 }   # iter-4: the DMA that defines the invalidation level; MUST be one of indicators.ma_periods
 
 walk_forward:
   history_years: 2

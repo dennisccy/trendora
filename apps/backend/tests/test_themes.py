@@ -106,6 +106,7 @@ _SYNTH_CFG = {
     "decision_rules": {
         "theme_floor": 70, "actionable": {"leadership": 80, "entry": 70, "risk": 60},
         "extended": {"leadership": 85, "entry": 50}, "watch": {"leadership": 75}, "avoid_risk": 80,
+        "invalidation": {"ma_period": 10},  # must be one of this synthetic config's ma_periods [5, 10]
     },
     "stock_sectors": {"AAA": "Technology", "BBB": "Technology", "CCC": "Technology", "DDD": "Technology"},
 }
