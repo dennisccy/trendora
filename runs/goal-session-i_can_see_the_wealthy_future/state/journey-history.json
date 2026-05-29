@@ -4,10 +4,11 @@
       "id": "J-01",
       "name": "Daily dashboard at a glance",
       "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-1",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-2",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-evidence/TC-14-health-badge.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-2-evidence/TC-16-dashboard.png",
+      "note": "Partially advanced (by spec): regime label+score, universe-relative breadth, data-as-of, and Top Sectors (reads /api/sectors) are real and verified; candidate counts + Top Themes are honest 'pending' placeholders. Full acceptance (3 candidate counts + >=3 scored Top Themes) lands in iter-3. Still failing is expected here, not a regression."
     },
     "J-02": {
       "id": "J-02",
@@ -30,11 +31,12 @@
     "J-04": {
       "id": "J-04",
       "name": "Sector / industry Leaderboard",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-1",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-2",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-2",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-qa.md"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-2-evidence/TC-15-sectors.png",
+      "note": "Verified directly from on-disk Chrome MCP evidence: 31 sector/industry ETFs ranked by Sector Score (non-increasing 93.67->7.17); top row SOXX bucket A, RS-vs-SPY +45.49%, dist-from-52w-high -0.11%, trend 'Strong uptrend'; SPY excluded as benchmark; per-row component breakdown (TC-15-sectors-expanded.png). Meets every J-04 acceptance clause."
     },
     "J-05": {
       "id": "J-05",
@@ -101,5 +103,5 @@
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-05-29T17:04:13Z"
+  "updated_at": "2026-05-29T19:10:15Z"
 }

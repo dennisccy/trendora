@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import health
+from app.api import dashboard, health, sectors
 from app.config import load_config
 from app.db import create_db_and_tables, get_engine
 from app.seed_loader import load_seed
@@ -44,3 +44,5 @@ app.add_middleware(
 )
 
 app.include_router(health.router, prefix="/api")
+app.include_router(sectors.router, prefix="/api")
+app.include_router(dashboard.router, prefix="/api")

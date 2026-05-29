@@ -3,9 +3,10 @@
 # in code instead of here is an anti-goal violation.
 #
 # iter-1 CONSUMES: provider, database, universe (+filters), etfs, themes, buckets.
-# The scoring / regime / decision_rules / walk_forward sections below are SCAFFOLDED
-# (real config, not code) but are NOT wired/consumed until iter-2+. They are illustrative
-# defaults to be tuned against the walk-forward evidence; do not treat them as final.
+# iter-2 ALSO CONSUMES: indicators, sectors, regime (weights + vix_threshold + label_edges).
+# The scoring / decision_rules / walk_forward sections below remain SCAFFOLDED (real config,
+# not code) but are NOT wired/consumed until iter-3+. All values are illustrative defaults to
+# be tuned against the walk-forward evidence; do not treat them as final.
 
 # ----------------------------------------------------------------------------------------
 # Data provider (DEFAULT = offline committed seed; "stooq" is reserved for a future
@@ -229,6 +230,40 @@ buckets:
   C: 70
   D: 60
 
+# ----------------------------------------------------------------------------------------
+# iter-2 CONSUMED — indicator periods/windows. EVERY period the indicator/regime/sector math
+# uses comes from here (anti-goal: No magic numbers). Values are illustrative; tune later.
+indicators:
+  ma_periods: [20, 50, 150, 200]    # moving-average lengths (trading days)
+  rs_windows:                        # relative-strength lookbacks (trading days)
+    "1m": 21
+    "3m": 63
+    "6m": 126
+  atr_period: 14                     # Average True Range window
+  high_window_52w: 252               # 52-week-high window (~1 trading year)
+  vol_avg_period: 50                 # volume-trend window (recent vs prior `period` bars)
+  min_history_bars: 200              # below this a symbol's long-window components report NA
+  breadth_short_ma: 50               # universe-breadth short DMA (% of stocks above their 50-DMA)
+  breadth_long_ma: 200               # universe-breadth long DMA  (% of stocks above their 200-DMA)
+
+# ----------------------------------------------------------------------------------------
+# iter-2 CONSUMED — Sector/industry leadership. Component weights (must cover every component
+# and sum ~1.0) + trend-label cutoffs (Sector Score -> trend label). All from config.
+sectors:
+  weights:
+    rs_spy_1m: 0.20
+    rs_spy_3m: 0.25
+    rs_spy_6m: 0.20
+    ma_stack: 0.15
+    dist_from_high: 0.10
+    vol_trend: 0.10
+  trend_edges:                       # score >= min -> label; descending; lowest min MUST be 0
+    - { min: 70, label: "Strong uptrend" }
+    - { min: 55, label: "Uptrend" }
+    - { min: 45, label: "Neutral" }
+    - { min: 30, label: "Pullback" }
+    - { min: 0,  label: "Downtrend" }
+
 # ========================================================================================
 # SCAFFOLDED — NOT consumed/wired this iteration. Present so the no-magic-numbers contract
 # is established from day one; weights/cutoffs are hypotheses to be tuned, not final truth.
@@ -261,7 +296,7 @@ scores:
       below_ma: 0.10
       rs_deterioration: 0.05
 
-regime:
+regime:                              # iter-2 CONSUMED (weights + vix_threshold + label_edges)
   vix_threshold: 20
   weights:
     index_ma_stack: 0.35
@@ -269,6 +304,13 @@ regime:
     breadth_above_200dma: 0.25
     new_high_low: 0.15
   labels: [Strong risk-on, Risk-on, Narrow leadership, Choppy, Defensive, Risk-off]
+  label_edges:                       # score >= min -> label; descending; must cover 0..100
+    - { min: 80, label: "Strong risk-on" }
+    - { min: 65, label: "Risk-on" }
+    - { min: 55, label: "Narrow leadership" }
+    - { min: 45, label: "Choppy" }
+    - { min: 30, label: "Defensive" }
+    - { min: 0,  label: "Risk-off" }
 
 decision_rules:
   theme_floor: 70

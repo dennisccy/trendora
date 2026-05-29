@@ -22,3 +22,19 @@ pivot that *preserves* the No-secrets anti-goal is the right call, not scope dri
 and stable before trusting a SKIP/PASS — inspect the evidence dir); any iter that depends on a specific
 named external data source (confirm it is still free/no-key before relying on it, and a key-avoiding
 pivot is acceptable and must be documented in handoff + meta provenance).
+
+## iter-2 — 2026-05-29T19:10:15Z
+
+**Verdict:** CONTINUE
+**Lesson:** The coherence-auditor caught a *future*-duplicate risk that is invisible today: iter-2 computes
+market breadth once in `app.engine.regime:score_regime` and serves it from the canonical `/api/dashboard`
+(single source, no violation now), but the blueprint Data Contract registers "market breadth %" under
+`app.engine.scanner:summarize_run` — which does not exist until iter-5. If iter-5 builds `summarize_run` to
+recompute breadth from setup statuses, it silently creates the exact two-sources-for-one-number the
+single-source gate forbids. A WARN about an unbuilt module is a real liability, not noise — reconcile the
+contract attribution *before* the second module lands. (Also: the `next dev`/QA browser-qa SKIP-vs-PASS flap
+recurred a 2nd time — the iter-1 lesson still applies; consider hardening frontend supervision.)
+**Applies to:** any iter that builds `app.engine.scanner` / `summarize_run` or otherwise touches breadth,
+new-high/low, or any value the blueprint attributes to a not-yet-built module — make the new module *read*
+the existing canonical source, never recompute; and any iter relying on browser evidence (verify the
+managed frontend is up and inspect the evidence dir, do not trust a lone SKIP/PASS).

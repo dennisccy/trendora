@@ -74,3 +74,9 @@ a score, bucket, or return. Module paths under `apps/backend/app/`.
 | Watchlist entry (date-added, reason, current score/setup, price-since-added, invalidation) | reuses stored `scanner_results` (current score/setup) + `app.engine.indicators` (price-since-added) | `GET /api/watchlist` (`POST` add, `DELETE` remove) | persisted in DB (survives restart, J-11); current score/setup READ the canonical stored values — no second computation. |
 
 Health probe: `GET /api/health` → `{"status":"ok", ...}` (no canonical value).
+
+### Iteration serving notes (additive; no nav/source change)
+
+- **Module home:** the `app.engine.*` computing modules above live under **`apps/backend/app/engine/`** (reconciles the design doc's flat `app/<module>/` with this contract's `app.engine.*` — resolved in iter-2 when the first engine modules were created).
+- **iter-2 (Regime + Sectors) serving model:** the Market Regime score+label and the Sector/industry scores are computed **on-request, deterministically** from the frozen seed via an as-of accessor (`bars_asof`, date ≤ d) and served by their canonical endpoints (`/api/dashboard`, `/api/sectors`). **Persistence** of these values into the append-only snapshot tables (`scanner_runs`, `sector_scores`) and the "scan ran at" run timestamp arrive with the scanner in **iter-5**; until then the displayed "Data as-of <date>" is the latest seed date. Single-source-of-truth still holds: one computing module + one serving endpoint per value, deterministic output.
+- **Dashboard ↔ Sectors:** the Dashboard's "Top Sectors" list **reads the canonical `GET /api/sectors`** (frontend slices the top N) — it does NOT recompute or re-serve the sector score from a second path.

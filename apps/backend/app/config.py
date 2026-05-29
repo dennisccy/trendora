@@ -59,6 +59,114 @@ class BucketsCfg(BaseModel):
         return self
 
 
+class LabelEdge(BaseModel):
+    """One (min-score -> label) cutoff: a score `>= min` maps to `label`."""
+
+    model_config = ConfigDict(extra="allow")
+    min: float
+    label: str
+
+
+# Validation parameters (NOT scoring tunables — these live in config.py, never the engine).
+_WEIGHT_SUM_TOLERANCE = 0.01
+_SCORE_MAX = 100
+_SCORE_MIN = 0
+SECTOR_WEIGHT_KEYS = {"rs_spy_1m", "rs_spy_3m", "rs_spy_6m", "ma_stack", "dist_from_high", "vol_trend"}
+REQUIRED_RS_WINDOWS = {"1m", "3m", "6m"}
+
+
+def _validate_edges_descending_and_cover_zero(edges: list[LabelEdge], field: str) -> None:
+    """Edges must be strictly descending by `min` and cover the full 0..100 score range
+    (lowest `min` == 0, highest `min` <= 100). Anything else is a coverage gap -> reject."""
+    mins = [e.min for e in edges]
+    if len(set(mins)) != len(mins) or mins != sorted(mins, reverse=True):
+        raise ValueError(f"{field} must be ordered by strictly descending `min`")
+    if mins[-1] != _SCORE_MIN:
+        raise ValueError(f"{field} must cover down to {_SCORE_MIN} (lowest `min` must be 0)")
+    if mins[0] > _SCORE_MAX:
+        raise ValueError(f"{field} top `min` must be <= {_SCORE_MAX}")
+
+
+class IndicatorsCfg(BaseModel):
+    """Indicator periods/windows (trading days). Every period the engine math uses is here."""
+
+    model_config = ConfigDict(extra="allow")
+    ma_periods: list[int] = Field(min_length=1)
+    rs_windows: dict[str, int] = Field(min_length=1)
+    atr_period: int
+    high_window_52w: int
+    vol_avg_period: int
+    min_history_bars: int
+    breadth_short_ma: int
+    breadth_long_ma: int
+
+    @model_validator(mode="after")
+    def _validate(self) -> "IndicatorsCfg":
+        if any(p <= 0 for p in self.ma_periods):
+            raise ValueError("indicators.ma_periods must all be positive")
+        missing = REQUIRED_RS_WINDOWS - set(self.rs_windows)
+        if missing:
+            raise ValueError(f"indicators.rs_windows missing required keys: {sorted(missing)}")
+        if any(w <= 0 for w in self.rs_windows.values()):
+            raise ValueError("indicators.rs_windows values must be positive")
+        scalars = {
+            "atr_period": self.atr_period,
+            "high_window_52w": self.high_window_52w,
+            "vol_avg_period": self.vol_avg_period,
+            "min_history_bars": self.min_history_bars,
+            "breadth_short_ma": self.breadth_short_ma,
+            "breadth_long_ma": self.breadth_long_ma,
+        }
+        nonpositive = sorted(k for k, v in scalars.items() if v <= 0)
+        if nonpositive:
+            raise ValueError(f"indicators values must be positive: {nonpositive}")
+        return self
+
+
+class SectorsCfg(BaseModel):
+    """Sector/industry leadership: component weights (cover every component, sum ~1.0) +
+    trend-label cutoffs (Sector Score -> trend label)."""
+
+    model_config = ConfigDict(extra="allow")
+    weights: dict[str, float] = Field(min_length=1)
+    trend_edges: list[LabelEdge] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "SectorsCfg":
+        missing = SECTOR_WEIGHT_KEYS - set(self.weights)
+        if missing:
+            raise ValueError(f"sectors.weights missing components: {sorted(missing)}")
+        total = sum(self.weights.values())
+        if abs(total - 1.0) > _WEIGHT_SUM_TOLERANCE:
+            raise ValueError(f"sectors.weights must sum to ~1.0, got {total}")
+        _validate_edges_descending_and_cover_zero(self.trend_edges, "sectors.trend_edges")
+        return self
+
+
+class RegimeCfg(BaseModel):
+    """Market Regime: component weights (sum ~1.0) + VIX gate threshold + score->label edges."""
+
+    model_config = ConfigDict(extra="allow")
+    vix_threshold: float
+    weights: dict[str, float] = Field(min_length=1)
+    labels: list[str] = Field(min_length=1)
+    label_edges: list[LabelEdge] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "RegimeCfg":
+        if self.vix_threshold <= 0:
+            raise ValueError("regime.vix_threshold must be positive")
+        total = sum(self.weights.values())
+        if abs(total - 1.0) > _WEIGHT_SUM_TOLERANCE:
+            raise ValueError(f"regime.weights must sum to ~1.0, got {total}")
+        labelset = set(self.labels)
+        unknown = [e.label for e in self.label_edges if e.label not in labelset]
+        if unknown:
+            raise ValueError(f"regime.label_edges reference unknown labels: {unknown}")
+        _validate_edges_descending_and_cover_zero(self.label_edges, "regime.label_edges")
+        return self
+
+
 class DatabaseCfg(BaseModel):
     model_config = ConfigDict(extra="allow")
     url: str = Field(min_length=1)
@@ -76,6 +184,9 @@ class Config(BaseModel):
     etfs: ETFsCfg
     themes: dict[str, list[str]] = Field(min_length=1)
     buckets: BucketsCfg
+    indicators: IndicatorsCfg
+    sectors: SectorsCfg
+    regime: RegimeCfg
 
     @field_validator("themes")
     @classmethod

@@ -58,3 +58,42 @@ distance-from-52w) via an as-of accessor (date ≤ d, no-lookahead groundwork), 
 wire the scaffolded `regime`/`scoring` config sections. Lights up **J-04** + the regime/top-sectors
 parts of **J-01**. This is the first live test of the *Single source of truth* anti-goal (each canonical
 value computed once, served from one endpoint) — reconcile `app.engine.*` vs `app/<module>/` naming.
+
+## Iteration 2 — goal-i_can_see_the_wealthy_future-iter-2
+
+**Date:** 2026-05-29T19:10:15Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: **J-04** (Sector / industry Leaderboard)
+- Newly failing: none
+- Regressed: none (nothing was previously passing; J-01 staying `failing` is by design — partial advance only)
+- Anti-goal violations: none
+
+**Reasoning:** The first canonical values shipped as planned and I verified J-04 directly from on-disk
+Chrome MCP evidence (TC-15-sectors.png / -expanded.png), not a summary: 31 sector/industry ETFs ranked by
+Sector Score (93.67→7.17 non-increasing), top row SOXX bucket A with RS-vs-SPY +45.49% / dist-52w -0.11% /
+"Strong uptrend", SPY excluded as benchmark, per-row component breakdown — every J-04 acceptance clause met.
+J-01 partially advanced (regime label+score 74.32, universe-relative breadth, data-as-of, Top Sectors that
+read the same `/api/sectors` as the leaderboard) with honest "pending" placeholders for candidate counts +
+Top Themes, so it correctly stays `failing`. Anti-goals all hold (I re-ran the greps): no order/execution
+path, no secrets in authored source, `NA=None` short-history (no fabrication), `models.py` unchanged + no
+snapshot persistence (immutability surface untouched, deferred to iter-5), and single-source verified — one
+`to_bucket`/`score_regime`/`score_sectors`, dashboard Top Sectors == leaderboard, frontend recomputes
+nothing. Coherence is **COHERENCE-WARN** (no FAIL) → no veto, no consolidation-only CONTINUE. One journey
+newly passing + tractable work remaining → CONTINUE.
+
+**Discrepancies noted (non-blocking):** (1) browser-qa flap recurred (2nd time) — dedicated browser-qa
+report SKIPPED (managed `next dev` 3835 down at its check) while QA mode-2 PASSed with the 5 evidence PNGs
+present on disk (mtimes 19:54–19:59, after the 19:33 dev handoff); reconciled by viewing the screenshots
+myself, per the iter-1 lesson. (2) No audit handoff was produced despite full depth; evaluation did not
+depend on it (verified from git diff + greps + screenshots + coherence.md). Both flagged for the orchestrator.
+
+**Next-step recommendation:** iter-3 at **full** depth — per-stock Leadership/Entry Quality/Risk scores
+(explainable, A–E via the existing `to_bucket`), theme scoring, the Stock + Theme Leaderboards (**J-02**,
+**J-03**), score consistency across pages (**J-06** — the harder live test of *Single source of truth*), and
+real candidate counts + Top Themes to finish and flip **J-01** green. Fold in the cheap consolidation
+tidy-ups now: amend the blueprint Data Contract so "market breadth %" canonical compute =
+`app.engine.regime:score_regime` / serve `/api/dashboard` (iter-5 `summarize_run` must READ, not recompute);
+register net-new-high/low under the regime row; and promote the shared score→label-via-edges helper out of
+`regime.py` so `sectors.py` stops importing the private `_label_for` (review NOTE).

@@ -23,6 +23,46 @@ MINIMAL_VALID = {
     },
     "themes": {"t1": ["AAA", "BBB"]},
     "buckets": {"A": 90, "B": 80, "C": 70, "D": 60},
+    # iter-2 made these sections required + validated (see test_config_engine.py for the
+    # validation-failure cases); a minimal *valid* config must now include them.
+    "indicators": {
+        "ma_periods": [20, 50, 150, 200],
+        "rs_windows": {"1m": 21, "3m": 63, "6m": 126},
+        "atr_period": 14,
+        "high_window_52w": 252,
+        "vol_avg_period": 50,
+        "min_history_bars": 200,
+        "breadth_short_ma": 50,
+        "breadth_long_ma": 200,
+    },
+    "sectors": {
+        "weights": {
+            "rs_spy_1m": 0.20,
+            "rs_spy_3m": 0.25,
+            "rs_spy_6m": 0.20,
+            "ma_stack": 0.15,
+            "dist_from_high": 0.10,
+            "vol_trend": 0.10,
+        },
+        "trend_edges": [
+            {"min": 70, "label": "Strong uptrend"},
+            {"min": 0, "label": "Downtrend"},
+        ],
+    },
+    "regime": {
+        "vix_threshold": 20,
+        "weights": {
+            "index_ma_stack": 0.35,
+            "breadth_above_50dma": 0.25,
+            "breadth_above_200dma": 0.25,
+            "new_high_low": 0.15,
+        },
+        "labels": ["Strong risk-on", "Risk-on", "Narrow leadership", "Choppy", "Defensive", "Risk-off"],
+        "label_edges": [
+            {"min": 80, "label": "Strong risk-on"},
+            {"min": 0, "label": "Risk-off"},
+        ],
+    },
 }
 
 
