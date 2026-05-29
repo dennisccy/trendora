@@ -1,0 +1,105 @@
+{
+  "journeys": {
+    "J-01": {
+      "id": "J-01",
+      "name": "Daily dashboard at a glance",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-0-evidence/precondition-check.txt"
+    },
+    "J-02": {
+      "id": "J-02",
+      "name": "Stock Leaderboard with working filters",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-0-evidence/precondition-check.txt"
+    },
+    "J-03": {
+      "id": "J-03",
+      "name": "Theme Leaderboard",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-0-evidence/precondition-check.txt"
+    },
+    "J-04": {
+      "id": "J-04",
+      "name": "Sector / industry Leaderboard",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-0-evidence/precondition-check.txt"
+    },
+    "J-05": {
+      "id": "J-05",
+      "name": "Stock Detail with explainable scores",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-0-evidence/precondition-check.txt"
+    },
+    "J-06": {
+      "id": "J-06",
+      "name": "Score consistency across pages (coherence)",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-0-evidence/precondition-check.txt"
+    },
+    "J-07": {
+      "id": "J-07",
+      "name": "Risk-Off regime suppresses Actionable",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-0-evidence/precondition-check.txt"
+    },
+    "J-08": {
+      "id": "J-08",
+      "name": "Immutable scanner-run history",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-0-evidence/precondition-check.txt"
+    },
+    "J-09": {
+      "id": "J-09",
+      "name": "System Health forward-tested evidence",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-0-evidence/precondition-check.txt"
+    },
+    "J-10": {
+      "id": "J-10",
+      "name": "Control-group honesty (selection vs sector beta)",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-0-evidence/precondition-check.txt"
+    },
+    "J-11": {
+      "id": "J-11",
+      "name": "Watchlist with persistence",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-0-evidence/precondition-check.txt"
+    }
+  },
+  "anti_goal_violations": [],
+  "updated_at": "2026-05-29T14:47:24Z"
+}
