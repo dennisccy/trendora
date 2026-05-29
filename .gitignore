@@ -1,0 +1,76 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dependency directories
+node_modules/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional npm/eslint/stylelint cache
+.npm
+.eslintcache
+.stylelintcache
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn
+.yarn-integrity
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/sdks
+!.yarn/versions
+
+# dotenv environment variable files
+.env
+.env.*
+!.env.example
+
+# Build output
+dist
+build
+
+# Vite
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Next (shim is harmless; ignore any real next build output)
+.next
+
+# Python / backend
+__pycache__/
+*.py[codz]
+*.so
+.venv
+venv
+env/
+ENV/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+*.egg-info/
+.cache/
+
+# Data / db
+*.db
+*.db-journal
+.data/
+
+# IDE
+.vscode-test
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+nul
