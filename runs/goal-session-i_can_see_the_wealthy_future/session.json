@@ -1,7 +1,7 @@
 {
   "session_id": "i_can_see_the_wealthy_future",
   "started_at": "2026-05-29T14:30:28.149766Z",
-  "current_iter": 3,
+  "current_iter": 4,
   "cli": "claude",
   "halt_config": {
     "max_iterations": 30,
@@ -14,5 +14,9 @@
   "auto_release": false,
   "push_per_iter": true,
   "push_branch": "goal/i_can_see_the_wealthy_future",
-  "updated_at": "2026-05-29T19:17:34.769528Z"
+  "updated_at": "2026-05-29T21:57:43.510782Z",
+  "finished_at": "2026-05-29T21:10:51.869658Z",
+  "total_iterations": 3,
+  "wall_time_seconds": 19776,
+  "quota_pause_count": 0
 }

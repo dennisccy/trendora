@@ -97,3 +97,43 @@ tidy-ups now: amend the blueprint Data Contract so "market breadth %" canonical 
 `app.engine.regime:score_regime` / serve `/api/dashboard` (iter-5 `summarize_run` must READ, not recompute);
 register net-new-high/low under the regime row; and promote the shared score→label-via-edges helper out of
 `regime.py` so `sectors.py` stops importing the private `_label_for` (review NOTE).
+
+## Iteration 3 — goal-i_can_see_the_wealthy_future-iter-3
+
+**Date:** 2026-05-29T21:48:48Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: **J-01** (dashboard completed), **J-02** (Stock Leaderboard + filters), **J-03** (Theme Leaderboard), **J-06** (score consistency / single-source) — four in one iteration
+- Newly failing: none
+- Regressed: none (J-04 held green through the `labels.py` extraction)
+- Anti-goal violations: none
+
+**Reasoning:** The per-entity scoring spine landed as planned and I verified all five claimed-passing
+journeys directly from the on-disk Chrome MCP PNGs (not summaries), because the browser-qa SKIP-vs-PASS
+flap recurred a **third** time. TC-13 dashboard: regime Risk-on 74.32, candidate counts 0/8/1 (each a
+number), 5 scored Top Sectors + 5 scored Top Themes, breadth 65.57% universe-relative, as-of 2026-05-28
+(**J-01** ok). TC-10: 122 ranked rows w/ 3 bucketed scores + setup + reason; Health Care filter -> 7/122;
+Actionable -> honest 0/122 empty-state (acceptance allows it) (**J-02** ok). TC-12: 11 themes non-increasing
+A/100->E/3, top theme +28.38%/+61.22%/100% breadth/Strong uptrend, expandable members+breakdown (**J-03**
+ok). TC-11: NVDA detail L E/47.48 EQ D/66.24 R E/33.79 — byte-identical to the list row (QA TC-02) and
+guaranteed by construction (`/api/stocks/{ticker}` filters the same `score_stocks` result; coherence Part
+A + list==detail unit guard) (**J-06** ok). TC-14: sectors ranked unchanged (**J-04** held). Anti-goals
+all hold: `models.py` git-clean (immutability deferred), COHERENCE-PASS (both iter-2 WARN notes closed),
+Risk-off->zero-Actionable exhaustively unit-tested, no-magic CALC_FILES extended, NA shown not fabricated,
+no order path, no secrets. Four journeys newly passing + tractable work remaining -> CONTINUE. Not
+GOAL_ACHIEVED: six journeys (J-05, J-07–J-11) remain unbuilt by design.
+
+**Process gaps noted (non-blocking, for the orchestrator):** (1) **Audit handoff missing again** (3rd
+time — also iter-2) despite full depth; evaluation did not depend on it. (2) **Browser-qa SKIP-vs-PASS
+flap recurred a 3rd time** — dedicated browser-qa SKIPPED (frontend HTTP 000 on :3835 & :3836 at its
+probe) while QA mode-2 started its own `next dev`, ran all 5 cases, and saved 9 PNGs (mtimes 22:07–22:35).
+The iter-3 spec explicitly asked the orchestrator to harden `next dev` supervision; it did not take.
+Reconciled by viewing the PNGs directly.
+
+**Next-step recommendation:** iter-4 at **full** depth — **J-05** (full Stock Detail): price + MA candle
+chart, volume series, theme-membership chips, and a **computed** (single-source, not FE-derived)
+invalidation note ("below 50-DMA at $X"), built on the now-canonical three-score record and
+`/api/stocks/{ticker}`. Needs a charting library (Lightweight-Charts/Recharts) + a backend bars/MA series
+endpoint -> net-new surface across both tiers. Orchestrator should also fix the two recurring process gaps
+(emit the audit handoff; keep `next dev` up for the dedicated browser-qa step).

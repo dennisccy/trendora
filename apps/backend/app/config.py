@@ -74,6 +74,31 @@ _SCORE_MIN = 0
 SECTOR_WEIGHT_KEYS = {"rs_spy_1m", "rs_spy_3m", "rs_spy_6m", "ma_stack", "dist_from_high", "vol_trend"}
 REQUIRED_RS_WINDOWS = {"1m", "3m", "6m"}
 
+# iter-3 per-stock score component key sets — the scoring engine blends exactly these named
+# components per score, so config.scores.* MUST cover each set (completeness) and sum ~1.0.
+LEADERSHIP_WEIGHT_KEYS = {
+    "rs_spy_1m", "rs_spy_3m", "rs_sector", "rs_theme", "ma_stack", "high_proximity", "up_down_vol",
+}
+ENTRY_QUALITY_WEIGHT_KEYS = {
+    "dist_rising_20", "contraction", "support_nearby", "structure", "reward_risk",
+}
+RISK_WEIGHT_KEYS = {
+    "extension", "atr_pct", "liquidity", "regime", "sector_strength", "gap_climax",
+    "below_ma", "rs_deterioration",
+}
+THEME_SCORE_WEIGHT_KEYS = {"rs_spy_1m", "rs_spy_3m", "breadth", "ma_participation"}
+
+
+def _require_complete_weights(weights: dict[str, float], expected: set[str], field: str) -> None:
+    """A score's weights must cover its expected component set and sum ~1.0 (anti-goal: every
+    weight present in config, none invented in code)."""
+    missing = expected - set(weights)
+    if missing:
+        raise ValueError(f"{field} missing components: {sorted(missing)}")
+    total = sum(weights.values())
+    if abs(total - 1.0) > _WEIGHT_SUM_TOLERANCE:
+        raise ValueError(f"{field} must sum to ~1.0, got {total}")
+
 
 def _validate_edges_descending_and_cover_zero(edges: list[LabelEdge], field: str) -> None:
     """Edges must be strictly descending by `min` and cover the full 0..100 score range
@@ -167,6 +192,75 @@ class RegimeCfg(BaseModel):
         return self
 
 
+class WeightBlock(BaseModel):
+    """One score's component weights (e.g. `scores.leadership`)."""
+
+    model_config = ConfigDict(extra="allow")
+    weights: dict[str, float] = Field(min_length=1)
+
+
+class ScoresCfg(BaseModel):
+    """Per-stock score weights consumed by `app.engine.scoring` (iter-3). Each of the three
+    independent scores blends a complete, config-defined set of named components summing ~1.0."""
+
+    model_config = ConfigDict(extra="allow")
+    leadership: WeightBlock
+    entry_quality: WeightBlock
+    risk: WeightBlock
+
+    @model_validator(mode="after")
+    def _validate(self) -> "ScoresCfg":
+        _require_complete_weights(self.leadership.weights, LEADERSHIP_WEIGHT_KEYS, "scores.leadership.weights")
+        _require_complete_weights(self.entry_quality.weights, ENTRY_QUALITY_WEIGHT_KEYS, "scores.entry_quality.weights")
+        _require_complete_weights(self.risk.weights, RISK_WEIGHT_KEYS, "scores.risk.weights")
+        return self
+
+
+class ThemeScoresCfg(BaseModel):
+    """Theme leadership: component weights (cover every component, sum ~1.0) + trend-label
+    cutoffs (Theme Score -> trend label). Consumed by `app.engine.themes` (iter-3)."""
+
+    model_config = ConfigDict(extra="allow")
+    weights: dict[str, float] = Field(min_length=1)
+    trend_edges: list[LabelEdge] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "ThemeScoresCfg":
+        _require_complete_weights(self.weights, THEME_SCORE_WEIGHT_KEYS, "theme_scores.weights")
+        _validate_edges_descending_and_cover_zero(self.trend_edges, "theme_scores.trend_edges")
+        return self
+
+
+class ActionableCutoffs(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    leadership: float
+    entry: float
+    risk: float
+
+
+class ExtendedCutoffs(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    leadership: float
+    entry: float
+
+
+class WatchCutoffs(BaseModel):
+    model_config = ConfigDict(extra="allow")
+    leadership: float
+
+
+class DecisionRulesCfg(BaseModel):
+    """Setup-classification cutoffs consumed by `app.engine.setups.classify_setup` (iter-3).
+    The required cutoff keys must be present; pydantic raises if any is missing. Additional
+    forward-looking keys (e.g. `theme_floor`) ride along via extra='allow'."""
+
+    model_config = ConfigDict(extra="allow")
+    actionable: ActionableCutoffs
+    extended: ExtendedCutoffs
+    watch: WatchCutoffs
+    avoid_risk: float
+
+
 class DatabaseCfg(BaseModel):
     model_config = ConfigDict(extra="allow")
     url: str = Field(min_length=1)
@@ -187,6 +281,10 @@ class Config(BaseModel):
     indicators: IndicatorsCfg
     sectors: SectorsCfg
     regime: RegimeCfg
+    scores: ScoresCfg
+    theme_scores: ThemeScoresCfg
+    decision_rules: DecisionRulesCfg
+    stock_sectors: dict[str, str] = Field(min_length=1)
 
     @field_validator("themes")
     @classmethod
@@ -202,6 +300,21 @@ class Config(BaseModel):
         missing = sorted({t for members in self.themes.values() for t in members if t not in universe})
         if missing:
             raise ValueError(f"theme members not present in universe.symbols: {missing}")
+        return self
+
+    @model_validator(mode="after")
+    def _stock_sectors_cover_universe(self) -> "Config":
+        """Every universe symbol must map to a sector, and each mapped sector name must be one
+        of the etfs.sector names (so scoring can resolve a stock's sector ETF). Reference data,
+        validated like the universe/theme lists — never a silent default."""
+        universe = set(self.universe.symbols)
+        missing = sorted(universe - set(self.stock_sectors))
+        if missing:
+            raise ValueError(f"stock_sectors missing universe symbols: {missing}")
+        valid = set(self.etfs.sector.values())
+        bad = sorted(f"{t}={s}" for t, s in self.stock_sectors.items() if s not in valid)
+        if bad:
+            raise ValueError(f"stock_sectors values must be one of {sorted(valid)}; invalid: {bad}")
         return self
 
 

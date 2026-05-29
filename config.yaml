@@ -221,6 +221,145 @@ themes:
   megacap_leaders: [AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, AVGO, NFLX, COST, V, MA, JPM, XOM, BKNG, UBER, WMT, HD, GS, ABNB]
 
 # ----------------------------------------------------------------------------------------
+# Stock -> GICS sector REFERENCE DATA (factual classification, like the universe list and
+# theme defs — NOT a scoring magic number). Every universe.symbols entry MUST be present and
+# its value MUST be one of the etfs.sector names above (validated in config.py). Used by
+# seed_loader to set Stock.sector_id, and by scoring.py for the `rs_sector` / `sector_strength`
+# components (a stock is compared to its own sector ETF). Edge crypto-miner / multi-sector
+# names use their primary GICS classification.
+stock_sectors:
+  # AI / data-centre / semis
+  NVDA: Technology
+  AMD: Technology
+  AVGO: Technology
+  MRVL: Technology
+  ANET: Technology
+  DELL: Technology
+  SMCI: Technology
+  VRT: Industrials
+  MU: Technology
+  MSFT: Technology
+  AMZN: Consumer Discretionary
+  GOOGL: Communication Services
+  META: Communication Services
+  ORCL: Technology
+  PLTR: Technology
+  CIEN: Technology
+  WDC: Technology
+  STX: Technology
+  LRCX: Technology
+  AMAT: Technology
+  KLAC: Technology
+  TXN: Technology
+  ADI: Technology
+  NXPI: Technology
+  "ON": Technology
+  MCHP: Technology
+  QCOM: Technology
+  INTC: Technology
+  TSM: Technology
+  ASML: Technology
+  ARM: Technology
+  TER: Technology
+  ENTG: Technology
+  COHR: Technology
+  MPWR: Technology
+  SWKS: Technology
+  QRVO: Technology
+  GFS: Technology
+  # software / cloud / cybersecurity
+  CRWD: Technology
+  PANW: Technology
+  ZS: Technology
+  FTNT: Technology
+  S: Technology
+  NET: Technology
+  OKTA: Technology
+  QLYS: Technology
+  TENB: Technology
+  RPD: Technology
+  VRNS: Technology
+  NOW: Technology
+  CRM: Technology
+  ADBE: Technology
+  INTU: Technology
+  WDAY: Technology
+  TEAM: Technology
+  HUBS: Technology
+  SNOW: Technology
+  DDOG: Technology
+  MDB: Technology
+  SHOP: Technology
+  # nuclear / uranium / power-grid / electrification
+  CEG: Utilities
+  VST: Utilities
+  NRG: Utilities
+  CCJ: Energy
+  LEU: Energy
+  UEC: Energy
+  DNN: Energy
+  ETN: Industrials
+  PWR: Industrials
+  GEV: Industrials
+  NVT: Industrials
+  POWL: Industrials
+  HUBB: Industrials
+  AMSC: Industrials
+  EMR: Industrials
+  PH: Industrials
+  # defence
+  LMT: Industrials
+  RTX: Industrials
+  NOC: Industrials
+  GD: Industrials
+  LHX: Industrials
+  HII: Industrials
+  LDOS: Industrials
+  AXON: Industrials
+  BA: Industrials
+  KTOS: Industrials
+  # homebuilders
+  DHI: Consumer Discretionary
+  LEN: Consumer Discretionary
+  PHM: Consumer Discretionary
+  NVR: Consumer Discretionary
+  TOL: Consumer Discretionary
+  KBH: Consumer Discretionary
+  MTH: Consumer Discretionary
+  TPH: Consumer Discretionary
+  BLDR: Industrials
+  # crypto-equities (primary GICS; pure miners -> Financials, MSTR is a software co)
+  COIN: Financials
+  MSTR: Technology
+  MARA: Financials
+  RIOT: Financials
+  CLSK: Financials
+  HOOD: Financials
+  # GLP-1 / pharma / medtech
+  LLY: Health Care
+  NVO: Health Care
+  VKTX: Health Care
+  AMGN: Health Care
+  PFE: Health Care
+  REGN: Health Care
+  ISRG: Health Care
+  # mega-cap / broad leaders
+  AAPL: Technology
+  TSLA: Consumer Discretionary
+  NFLX: Communication Services
+  COST: Consumer Staples
+  V: Financials
+  MA: Financials
+  JPM: Financials
+  XOM: Energy
+  BKNG: Consumer Discretionary
+  UBER: Industrials
+  WMT: Consumer Staples
+  HD: Consumer Discretionary
+  GS: Financials
+  ABNB: Consumer Discretionary
+
+# ----------------------------------------------------------------------------------------
 # A-E bucket edges (lower bound of each bucket; E is everything below D). One bucket()
 # function uses these everywhere. Consumed when scoring lands (iter-3); listed now to lock
 # the contract.
@@ -264,9 +403,29 @@ sectors:
     - { min: 30, label: "Pullback" }
     - { min: 0,  label: "Downtrend" }
 
+# ----------------------------------------------------------------------------------------
+# iter-3 CONSUMED — Theme leadership. Component weights (cover every theme-score component and
+# sum ~1.0) + trend-label cutoffs (Theme Score -> trend label). Price-confirmed, NOT news.
+# Components: basket RS vs SPY over 1m/3m, member breadth above the 50-DMA, and mean member
+# MA-stack participation. All from config (anti-goal: No magic numbers).
+theme_scores:
+  weights:
+    rs_spy_1m: 0.25        # equal-weight basket 1m return vs SPY 1m
+    rs_spy_3m: 0.30        # equal-weight basket 3m return vs SPY 3m
+    breadth: 0.25          # share of members above their 50-DMA (universe-relative)
+    ma_participation: 0.20 # mean member MA-stack fraction
+  trend_edges:             # score >= min -> label; descending; lowest min MUST be 0
+    - { min: 70, label: "Strong uptrend" }
+    - { min: 55, label: "Uptrend" }
+    - { min: 45, label: "Neutral" }
+    - { min: 30, label: "Pullback" }
+    - { min: 0,  label: "Downtrend" }
+
 # ========================================================================================
-# SCAFFOLDED — NOT consumed/wired this iteration. Present so the no-magic-numbers contract
-# is established from day one; weights/cutoffs are hypotheses to be tuned, not final truth.
+# iter-3 CONSUMED — the per-stock score weights + decision rules below are now wired and
+# validated (scoring.py / setups.py). Weights/cutoffs remain illustrative hypotheses to be
+# tuned against the walk-forward evidence; the no-magic-numbers contract keeps them in config.
+# walk_forward stays SCAFFOLDED (consumed in iter-6).
 # ========================================================================================
 scores:
   leadership:

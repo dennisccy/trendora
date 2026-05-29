@@ -22,22 +22,14 @@ from typing import Optional
 
 from sqlmodel import Session
 
-from app.config import Config, LabelEdge, get_config
+from app.config import Config, get_config
 from app.engine import indicators as ind
+from app.engine.labels import label_for
 from app.engine.prices import bars_asof, closes
 
 
 def _pct(fraction: Optional[float]) -> Optional[float]:
     return round(fraction * 100, 2) if fraction is not None else None
-
-
-def _label_for(score: float, edges: list[LabelEdge]) -> str:
-    """First edge (descending by min) whose `min` the score reaches. Edges cover 0 so a label
-    is always found; the final fallback is the lowest edge."""
-    for edge in edges:
-        if score >= edge.min:
-            return edge.label
-    return edges[-1].label
 
 
 def _index_ma_stack(session: Session, asof: date_cls, cfg: Config) -> Optional[float]:
@@ -129,7 +121,7 @@ def score_regime(session: Session, asof: date_cls, config: Optional[Config] = No
     vix_elevated = vix_close is not None and vix_close > vix_threshold
 
     score = max(0, min(100, round(base_score * vix_factor, 2)))
-    label = _label_for(score, cfg.regime.label_edges)
+    label = label_for(score, cfg.regime.label_edges)
 
     components = []
     for name, value, weight in inputs:

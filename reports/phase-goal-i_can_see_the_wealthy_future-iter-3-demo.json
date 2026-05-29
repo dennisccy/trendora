@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future-iter-3",
+  "base_url": "http://localhost:3836",
+  "iteration": 3,
+  "default_timeout_ms": 9000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Your daily market snapshot",
+      "narration": "We start on the Dashboard, Trendora's at-a-glance view of the market today. It shows the overall market regime, how many stocks are worth acting on right now, and the strongest sectors and themes.",
+      "point_out": "The Candidate Counts and Top Themes cards are now filled with real numbers — the old 'pending' placeholders are gone, so the daily snapshot is finally complete.",
+      "journey": "J-01",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Candidate Counts" }
+    },
+    {
+      "n": 2,
+      "title": "The Stock Leaderboard",
+      "narration": "Next we open the Stock Leaderboard, where every stock is ranked by Leadership and carries three independent A-to-E scores: Leadership, Entry Quality, and Risk, alongside a setup status and a plain-language reason.",
+      "point_out": "The Sector and Setup dropdowns and the visible / total count at the top let you narrow the table down to a single sector or setup status.",
+      "journey": "J-02",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "Entry Quality" }
+    },
+    {
+      "n": 3,
+      "title": "Open NVDA's stock detail",
+      "narration": "Clicking a ticker opens that stock's detail page. Here are NVDA's three scores shown as full cards, each with its raw value out of 100 and the named components behind it.",
+      "point_out": "These three scores are identical to NVDA's row on the leaderboard — each score is computed once and read everywhere, so two pages can never disagree.",
+      "journey": "J-06",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "NVDA" } },
+      "expect": { "text": "Back to leaderboard" }
+    },
+    {
+      "n": 4,
+      "title": "The Theme Leaderboard",
+      "narration": "Now to the Theme Leaderboard, which ranks market themes by a price-confirmed Theme Score. Each row shows the one-month and three-month basket return, member breadth, and a trend label.",
+      "point_out": "Themes are ranked purely on price action, not news, and the top row carries the highest Theme Score.",
+      "journey": "J-03",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/themes" },
+      "expect": { "text": "Theme Score" }
+    },
+    {
+      "n": 5,
+      "title": "Expand a theme to see its members",
+      "narration": "Clicking any theme row expands it to reveal the member tickers and the component breakdown behind its score.",
+      "point_out": "The member chips and the named-component breakdown appear right under the row — every score stays fully explainable.",
+      "journey": "J-03",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "css": "tbody tr" } },
+      "expect": { "text": "Members" }
+    },
+    {
+      "n": 6,
+      "title": "Sectors still rank as before",
+      "narration": "Finally we revisit the Sector Leaderboard from the earlier iteration to confirm it still works exactly as it did.",
+      "point_out": "Sectors are still ranked by Sector Score with the same buckets and labels — this iteration's behind-the-scenes refactor changed nothing a user sees here.",
+      "journey": "J-04",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/sectors" },
+      "expect": { "text": "Sector Score" }
+    }
+  ]
+}

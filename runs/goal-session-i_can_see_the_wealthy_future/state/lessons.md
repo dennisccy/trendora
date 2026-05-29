@@ -38,3 +38,19 @@ recurred a 2nd time — the iter-1 lesson still applies; consider hardening fron
 new-high/low, or any value the blueprint attributes to a not-yet-built module — make the new module *read*
 the existing canonical source, never recompute; and any iter relying on browser evidence (verify the
 managed frontend is up and inspect the evidence dir, do not trust a lone SKIP/PASS).
+
+## iter-3 — 2026-05-29T21:48:48Z
+
+**Verdict:** CONTINUE
+**Lesson:** The browser-qa SKIP-vs-PASS flap recurred a **3rd** consecutive time — and this time the iter-3
+spec had *explicitly instructed the orchestrator to harden `next dev` supervision*, yet the dedicated
+browser-qa still probed a dead frontend (HTTP 000) and SKIPPED all 23 cases while QA mode-2 independently
+started its own `next dev`, ran the 5 browser cases, and saved 9 PNGs. A spec-level note to "keep the server
+up" demonstrably does NOT fix this; the fix must be structural — the dedicated browser-qa agent should
+*ensure/own* its frontend (start it if down, like QA mode-2 does) rather than precondition-skip, or the two
+browser steps should share one managed server. Until then, evidence lives only in QA's PNGs, so always
+reconcile from the on-disk evidence dir. (Also recurring: the **audit handoff was again not produced** at
+full depth — 2nd time, iter-2 + iter-3.)
+**Applies to:** the browser-qa-agent / orchestrator harness itself (make browser-qa self-heal its frontend
+instead of SKIP-on-down); any future iter verified through the browser — trust the PNGs on disk, not a lone
+verdict; and the full-depth pipeline (confirm the audit handoff is actually emitted).

@@ -73,7 +73,7 @@ export async function fetchSectors(signal?: AbortSignal): Promise<SectorsRespons
   return getJSON<SectorsResponse>("/api/sectors", signal);
 }
 
-// --- dashboard (iter-2) --------------------------------------------------------------------
+// --- dashboard (iter-2 + iter-3 candidate counts) ------------------------------------------
 export interface NewHighLow {
   new_highs: number;
   new_lows: number;
@@ -96,11 +96,86 @@ export interface DashboardResponse {
     label: string; // "universe-relative"
   };
   asof_date: string;
-  candidate_counts: Record<string, number> | null; // null = pending (iter-3)
-  top_themes: unknown[] | null; // null = pending (iter-3)
+  // iter-3: real counts of the canonical per-stock setup statuses (keyed by status name).
+  candidate_counts: Record<string, number>;
 }
 
-/** Canonical Market Regime source: GET /api/dashboard. */
+/** Canonical Market Regime + candidate-counts source: GET /api/dashboard. */
 export async function fetchDashboard(signal?: AbortSignal): Promise<DashboardResponse> {
   return getJSON<DashboardResponse>("/api/dashboard", signal);
+}
+
+// --- stocks (iter-3) -----------------------------------------------------------------------
+/** One of the three independent scores: 0-100 + its A-E bucket + named component breakdown.
+ *  Re-formatted only — never computed client-side (the backend is the single source of truth). */
+export interface ScoreBlock {
+  score: number;
+  bucket: string; // A | B | C | D | E
+  components: ScoreComponent[];
+}
+
+export interface StockSetup {
+  status: string; // Actionable | Pullback-watch | Breakout-watch | Extended | Avoid | Risk-off-watchlist
+  reason: string;
+}
+
+export interface StockRow {
+  ticker: string;
+  name: string;
+  sector: string; // GICS sector name (one of the 11 sector ETF names)
+  leadership: ScoreBlock;
+  entry_quality: ScoreBlock;
+  risk: ScoreBlock; // higher score = MORE dangerous (colour-graded by danger direction)
+  setup: StockSetup;
+  rank: number;
+}
+
+export interface StocksResponse {
+  asof_date: string;
+  benchmark: string; // SPY
+  rows: StockRow[];
+}
+
+export interface StockDetailResponse {
+  asof_date: string;
+  benchmark: string;
+  row: StockRow;
+}
+
+/** Canonical per-stock scores source: GET /api/stocks (list). Filters/sorting on this list are
+ *  pure client-side re-display — no score/bucket is recomputed. */
+export async function fetchStocks(signal?: AbortSignal): Promise<StocksResponse> {
+  return getJSON<StocksResponse>("/api/stocks", signal);
+}
+
+/** GET /api/stocks/{ticker} — the SAME row the leaderboard serves (single source → J-06). */
+export async function fetchStock(ticker: string, signal?: AbortSignal): Promise<StockDetailResponse> {
+  return getJSON<StockDetailResponse>(`/api/stocks/${encodeURIComponent(ticker)}`, signal);
+}
+
+// --- themes (iter-3) -----------------------------------------------------------------------
+export interface ThemeRow {
+  slug: string;
+  name: string;
+  score: number;
+  bucket: string;
+  members: string[];
+  return_1m: number | null; // % equal-weight basket return
+  return_3m: number | null;
+  breadth_pct: number | null; // % members above their 50-DMA
+  breadth_label: string; // "universe-relative"
+  trend_label: string;
+  components: ScoreComponent[];
+  rank: number;
+}
+
+export interface ThemesResponse {
+  asof_date: string;
+  rows: ThemeRow[];
+}
+
+/** Canonical Theme Score source: GET /api/themes. The Dashboard's Top Themes slice this same
+ *  response (top N) — there is no second computation/source for the theme score. */
+export async function fetchThemes(signal?: AbortSignal): Promise<ThemesResponse> {
+  return getJSON<ThemesResponse>("/api/themes", signal);
 }

@@ -15,12 +15,18 @@ import tokenize
 from pathlib import Path
 
 ENGINE_DIR = Path(__file__).resolve().parents[1] / "app" / "engine"
-CALC_FILES = ["indicators.py", "regime.py", "sectors.py", "buckets.py"]
+CALC_FILES = [
+    "indicators.py", "regime.py", "sectors.py", "buckets.py",
+    # iter-3 calc modules — every weight/cutoff/period must come from config, never a literal.
+    "scoring.py", "themes.py", "setups.py", "labels.py", "normalize.py",
+]
 
 # The union of every NUMERIC tunable currently in config.yaml (periods, windows, bucket edges,
-# regime + sector cutoffs, vix threshold). None of these may be hard-coded in calc code.
+# regime/sector cutoffs, vix threshold, and the iter-3 decision-rule / theme-score cutoffs).
+# None of these may be hard-coded in calc code. (85 = decision_rules.extended.leadership, new in
+# iter-3; the other theme_scores/decision_rules integers reuse values already in this set.)
 FORBIDDEN_INT_LITERALS = {
-    14, 20, 21, 30, 45, 50, 55, 60, 63, 65, 70, 75, 80, 90, 126, 150, 200, 252,
+    14, 20, 21, 30, 45, 50, 55, 60, 63, 65, 70, 75, 80, 85, 90, 126, 150, 200, 252,
 }
 
 

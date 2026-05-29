@@ -71,6 +71,35 @@ VALID = {
             {"min": 0, "label": "Risk-off"},
         ],
     },
+    "scores": {
+        "leadership": {"weights": {
+            "rs_spy_1m": 0.15, "rs_spy_3m": 0.20, "rs_sector": 0.15, "rs_theme": 0.10,
+            "ma_stack": 0.20, "high_proximity": 0.10, "up_down_vol": 0.10,
+        }},
+        "entry_quality": {"weights": {
+            "dist_rising_20": 0.25, "contraction": 0.20, "support_nearby": 0.15,
+            "structure": 0.20, "reward_risk": 0.20,
+        }},
+        "risk": {"weights": {
+            "extension": 0.20, "atr_pct": 0.15, "liquidity": 0.10, "regime": 0.15,
+            "sector_strength": 0.10, "gap_climax": 0.15, "below_ma": 0.10, "rs_deterioration": 0.05,
+        }},
+    },
+    "theme_scores": {
+        "weights": {"rs_spy_1m": 0.25, "rs_spy_3m": 0.30, "breadth": 0.25, "ma_participation": 0.20},
+        "trend_edges": [
+            {"min": 70, "label": "Strong uptrend"},
+            {"min": 0, "label": "Downtrend"},
+        ],
+    },
+    "decision_rules": {
+        "theme_floor": 70,
+        "actionable": {"leadership": 80, "entry": 70, "risk": 60},
+        "extended": {"leadership": 85, "entry": 50},
+        "watch": {"leadership": 75},
+        "avoid_risk": 80,
+    },
+    "stock_sectors": {"AAA": "Technology", "BBB": "Technology"},
 }
 
 
@@ -186,5 +215,94 @@ def test_label_edges_not_descending_raises(tmp_path):
 def test_regime_weights_not_summing_to_one_raises(tmp_path):
     data = copy.deepcopy(VALID)
     data["regime"]["weights"]["new_high_low"] = 0.99
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+# --- iter-3: scores (leadership / entry_quality / risk) -----------------------------------
+def test_real_config_exposes_typed_score_sections():
+    cfg = load_config()
+    assert abs(sum(cfg.scores.leadership.weights.values()) - 1.0) < 0.01
+    assert abs(sum(cfg.scores.entry_quality.weights.values()) - 1.0) < 0.01
+    assert abs(sum(cfg.scores.risk.weights.values()) - 1.0) < 0.01
+    assert abs(sum(cfg.theme_scores.weights.values()) - 1.0) < 0.01
+    # decision-rule cutoffs are present + typed
+    assert cfg.decision_rules.actionable.leadership == 80
+    assert cfg.decision_rules.extended.leadership == 85
+    assert cfg.decision_rules.avoid_risk == 80
+    # every universe symbol maps to a valid sector name
+    assert set(cfg.stock_sectors) >= set(cfg.universe.symbols)
+    assert set(cfg.stock_sectors.values()) <= set(cfg.etfs.sector.values())
+
+
+def test_missing_scores_section_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    del data["scores"]
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_scores_leadership_missing_component_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    del data["scores"]["leadership"]["weights"]["rs_sector"]
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_scores_risk_weights_not_summing_to_one_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    data["scores"]["risk"]["weights"]["extension"] = 0.99  # now sum is way over 1.0
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+# --- iter-3: theme_scores ------------------------------------------------------------------
+def test_missing_theme_scores_section_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    del data["theme_scores"]
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_theme_scores_missing_component_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    del data["theme_scores"]["weights"]["breadth"]
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_theme_scores_trend_edges_not_covering_zero_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    data["theme_scores"]["trend_edges"] = [{"min": 50, "label": "Up"}]  # lowest min != 0
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+# --- iter-3: decision_rules ----------------------------------------------------------------
+def test_missing_decision_rules_section_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    del data["decision_rules"]
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_decision_rules_missing_actionable_cutoff_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    del data["decision_rules"]["actionable"]["risk"]  # required cutoff key
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+# --- iter-3: stock_sectors reference data --------------------------------------------------
+def test_stock_sectors_missing_symbol_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    del data["stock_sectors"]["BBB"]  # universe symbol no longer covered
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_stock_sectors_unknown_sector_name_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    data["stock_sectors"]["AAA"] = "Bananas"  # not one of the etfs.sector names
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))

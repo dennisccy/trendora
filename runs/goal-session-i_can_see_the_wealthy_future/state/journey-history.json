@@ -3,67 +3,72 @@
     "J-01": {
       "id": "J-01",
       "name": "Daily dashboard at a glance",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-2",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-2-evidence/TC-16-dashboard.png",
-      "note": "Partially advanced (by spec): regime label+score, universe-relative breadth, data-as-of, and Top Sectors (reads /api/sectors) are real and verified; candidate counts + Top Themes are honest 'pending' placeholders. Full acceptance (3 candidate counts + >=3 scored Top Themes) lands in iter-3. Still failing is expected here, not a regression."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-3-evidence/TC-13-dashboard.png",
+      "note": "Completed this iteration: regime Risk-on 74.32/100, three candidate counts (Actionable 0 / Breakout-watch 8 / Pullback-watch 1) each a number, 5 scored Top Sectors AND 5 scored Top Themes (Semiconductors 100.00 -> Power Grid 64.00), breadth 65.57% labelled universe-relative, Data as-of 2026-05-28. All acceptance clauses met (TC-13)."
     },
     "J-02": {
       "id": "J-02",
       "name": "Stock Leaderboard with working filters",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-1",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-evidence/TC-12-stocks.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-3-evidence/TC-10-leaderboard.png",
+      "note": "122 ranked rows, each with three bucketed scores + setup badge + non-empty reason. Sector=Health Care narrows to 7/122 (TC-10-sector-filter.png); Setup=Actionable shows honest empty-state 0/122 'No stock is currently Actionable' (TC-10-actionable-filter.png) which the acceptance criterion explicitly allows. Populated-filter path (Breakout-watch) also captured (TC-10-setup-filter-breakout.png)."
     },
     "J-03": {
       "id": "J-03",
       "name": "Theme Leaderboard",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-1",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-qa.md"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-3-evidence/TC-12-themes.png",
+      "note": "11 themes ranked non-increasing by Theme Score (Semiconductors A/100.00 -> Nuclear Uranium E/3.00). Top theme shows 1M +28.38%, 3M +61.22%, breadth 100%, trend 'Strong uptrend'; expandable row reveals member-ticker chips + component breakdown (TC-12-theme-breakdown.png). 'breadth is universe-relative' label present."
     },
     "J-04": {
       "id": "J-04",
       "name": "Sector / industry Leaderboard",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-2",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-2",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-2-evidence/TC-15-sectors.png",
-      "note": "Verified directly from on-disk Chrome MCP evidence: 31 sector/industry ETFs ranked by Sector Score (non-increasing 93.67->7.17); top row SOXX bucket A, RS-vs-SPY +45.49%, dist-from-52w-high -0.11%, trend 'Strong uptrend'; SPY excluded as benchmark; per-row component breakdown (TC-15-sectors-expanded.png). Meets every J-04 acceptance clause."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-3-evidence/TC-14-sectors.png",
+      "note": "Required-still-passing: held green through the labels.py extraction. TC-14 shows ranked sector/industry table with scores, A-E buckets, RS-vs-SPY, distance-from-52w, and trend labels intact; top rows (SOXX/WGMI/SMH) match the dashboard Top Sectors. No regression."
     },
     "J-05": {
       "id": "J-05",
       "name": "Stock Detail with explainable scores",
       "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-1",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-3",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-evidence/TC-12-stocks.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-3-evidence/TC-11-detail.png",
+      "note": "Not targeted this iter (iter-4). iter-3's detail page is scores+components only (proves J-06); it still lacks the price+MA candle chart, volume series, theme-membership chips, and the concrete invalidation note that J-05 requires. Failing by design."
     },
     "J-06": {
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-1",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "runs/goal-session-i_can_see_the_wealthy_future/iter-1/coherence.md"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-3-evidence/TC-11-detail.png",
+      "note": "The iteration's headline single-source risk, met by construction. NVDA detail shows Leadership E/47.48, Entry Quality D/66.24, Risk E/33.79 (TC-11), byte-identical to the /api/stocks list row (QA TC-02). /api/stocks/{ticker} filters the SAME score_stocks result (coherence Part A) + test_api_engine.py list==detail guard. COHERENCE-PASS."
     },
     "J-07": {
       "id": "J-07",
       "name": "Risk-Off regime suppresses Actionable",
       "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-1",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-3",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-qa.md"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-qa.md",
+      "note": "The Risk-off => zero-Actionable GATE is implemented and exhaustively unit-tested this iter (test_setups.py: gates_actionable_to_zero + holds_across_all_score_combinations). The browser JOURNEY (open a historical Risk-Off run and confirm zero Actionable) still needs the scanner-runs history (iter-5), so the journey stays failing by design."
     },
     "J-08": {
       "id": "J-08",
@@ -72,7 +77,8 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-1",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-qa.md"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-qa.md",
+      "note": "Not targeted (iter-5). models.py intentionally unchanged this iter; no snapshot persistence yet."
     },
     "J-09": {
       "id": "J-09",
@@ -81,7 +87,8 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-1",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-qa.md"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-qa.md",
+      "note": "Not targeted (iters 6-7)."
     },
     "J-10": {
       "id": "J-10",
@@ -90,7 +97,8 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-1",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-qa.md"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-qa.md",
+      "note": "Not targeted (iters 6-7)."
     },
     "J-11": {
       "id": "J-11",
@@ -99,9 +107,10 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-1",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-qa.md"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-qa.md",
+      "note": "Not targeted (iter-7)."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-05-29T19:10:15Z"
+  "updated_at": "2026-05-29T21:48:48Z"
 }

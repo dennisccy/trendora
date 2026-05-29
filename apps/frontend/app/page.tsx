@@ -12,13 +12,20 @@ import { cn } from "@/lib/utils";
 import {
   fetchDashboard,
   fetchSectors,
+  fetchThemes,
   type DashboardResponse,
   type SectorsResponse,
+  type ThemesResponse,
 } from "@/lib/api";
 
 type State =
   | { kind: "loading" }
-  | { kind: "ok"; dashboard: DashboardResponse; sectors: SectorsResponse | null }
+  | {
+      kind: "ok";
+      dashboard: DashboardResponse;
+      sectors: SectorsResponse | null;
+      themes: ThemesResponse | null;
+    }
   | { kind: "error" };
 
 function regimeVariant(label: string): "ok" | "warn" | "danger" | "default" {
@@ -36,16 +43,23 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    // Dashboard (regime) is critical; sectors feeds Top Sectors and may fail independently.
+    // Dashboard (regime + candidate counts) is critical; Top Sectors and Top Themes read their
+    // own canonical endpoints (/api/sectors, /api/themes) and may fail independently.
     fetchDashboard(controller.signal)
       .then(async (dashboard) => {
         let sectors: SectorsResponse | null = null;
+        let themes: ThemesResponse | null = null;
         try {
           sectors = await fetchSectors(controller.signal);
         } catch {
           sectors = null;
         }
-        setState({ kind: "ok", dashboard, sectors });
+        try {
+          themes = await fetchThemes(controller.signal);
+        } catch {
+          themes = null;
+        }
+        setState({ kind: "ok", dashboard, sectors, themes });
       })
       .catch(() => {
         if (!controller.signal.aborted) setState({ kind: "error" });
@@ -80,7 +94,9 @@ export default function DashboardPage() {
         </Card>
       ) : null}
 
-      {state.kind === "ok" ? <DashboardBody dashboard={state.dashboard} sectors={state.sectors} /> : null}
+      {state.kind === "ok" ? (
+        <DashboardBody dashboard={state.dashboard} sectors={state.sectors} themes={state.themes} />
+      ) : null}
     </div>
   );
 }
@@ -88,12 +104,15 @@ export default function DashboardPage() {
 function DashboardBody({
   dashboard,
   sectors,
+  themes,
 }: {
   dashboard: DashboardResponse;
   sectors: SectorsResponse | null;
+  themes: ThemesResponse | null;
 }) {
   const { regime, breadth } = dashboard;
   const topSectors = sectors ? sectors.rows.slice(0, 5) : [];
+  const topThemes = themes ? themes.rows.slice(0, 5) : [];
 
   return (
     <div className="space-y-4">
@@ -160,13 +179,67 @@ function DashboardBody({
           </CardContent>
         </Card>
 
-        <PendingCard
-          title="Candidate Counts"
-          rows={["Actionable", "Breakout-watch", "Pullback-watch"]}
-        />
-        <PendingCard title="Top Themes" rows={["Theme leadership"]} />
+        <CandidateCountsCard counts={dashboard.candidate_counts} />
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Top Themes</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {themes === null ? (
+              <p className="text-sm text-neg">Theme data unavailable — backend not reachable.</p>
+            ) : topThemes.length === 0 ? (
+              <p className="text-sm text-text-muted">No ranked themes for this date.</p>
+            ) : (
+              <ul className="space-y-2">
+                {topThemes.map((row) => (
+                  <li key={row.slug} className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-2">
+                      <span className="num text-text-faint">{row.rank}</span>
+                      <span className="font-semibold text-text">{row.name}</span>
+                      <span className="text-xs text-text-muted">{row.trend_label}</span>
+                    </span>
+                    <ScoreBadge bucket={row.bucket} score={row.score} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
+  );
+}
+
+/** The three candidate counts (# Actionable / Breakout-watch / Pullback-watch) — counted once on
+ *  the backend from the canonical setup statuses, only re-formatted here (never recomputed). */
+function CandidateCountsCard({ counts }: { counts: Record<string, number> }) {
+  const rows: { label: string; key: string; accent: boolean }[] = [
+    { label: "Actionable", key: "Actionable", accent: true },
+    { label: "Breakout-watch", key: "Breakout-watch", accent: false },
+    { label: "Pullback-watch", key: "Pullback-watch", accent: false },
+  ];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Candidate Counts</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-1.5">
+          {rows.map(({ label, key, accent }) => (
+            <li key={key} className="flex items-center justify-between text-sm">
+              <span className="text-text-muted">{label}</span>
+              <span className={cn("num text-lg font-semibold", accent ? "text-pos" : "text-text")}>
+                {counts[key] ?? 0}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-xs text-text-faint">
+          Counts of the canonical per-stock setup statuses (zero Actionable in a Risk-off regime).
+        </p>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -177,29 +250,6 @@ function MetricCard({ title, value, caption }: { title: string; value: string; c
         <p className="text-xs uppercase tracking-wide text-text-faint">{title}</p>
         <p className="num text-2xl font-semibold text-text">{value}</p>
         <Badge variant="warn" className="text-xs">{caption}</Badge>
-      </CardContent>
-    </Card>
-  );
-}
-
-/** Honest placeholder for capabilities that land in a later iteration — never a fabricated 0. */
-function PendingCard({ title, rows }: { title: string; rows: string[] }) {
-  return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle>{title}</CardTitle>
-        <Badge variant="warn">pending</Badge>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        <ul className="space-y-1.5">
-          {rows.map((label) => (
-            <li key={label} className="flex items-center justify-between text-sm">
-              <span className="text-text-muted">{label}</span>
-              <span className="num text-text-faint">—</span>
-            </li>
-          ))}
-        </ul>
-        <p className="text-xs text-text-faint">Arriving in a later iteration (per-stock &amp; theme scoring).</p>
       </CardContent>
     </Card>
   );

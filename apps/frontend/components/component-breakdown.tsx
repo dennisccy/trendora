@@ -15,6 +15,27 @@ const LABELS: Record<string, string> = {
   breadth_above_200dma: "Breadth > 200-DMA",
   new_high_low: "Net new highs",
   vix_gate: "VIX gate",
+  // iter-3 — per-stock score components (leadership / entry quality / risk)
+  rs_sector: "RS vs sector",
+  rs_theme: "RS vs theme",
+  high_proximity: "Proximity to 52w high",
+  up_down_vol: "Volume trend",
+  dist_rising_20: "Proximity to 20-DMA",
+  contraction: "Volatility contraction",
+  support_nearby: "Proximity to 50-DMA",
+  structure: "Trend structure",
+  reward_risk: "Reward / risk room",
+  extension: "Extension above 50-DMA",
+  atr_pct: "ATR %",
+  liquidity: "Liquidity (low = risk)",
+  regime: "Market regime",
+  sector_strength: "Sector strength",
+  gap_climax: "Earnings gap / climax",
+  below_ma: "Below moving averages",
+  rs_deterioration: "RS deterioration",
+  // iter-3 — theme score components
+  breadth: "Member breadth > 50-DMA",
+  ma_participation: "MA-stack participation",
 };
 
 function prettyName(name: string): string {

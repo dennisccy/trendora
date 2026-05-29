@@ -9,8 +9,9 @@ from __future__ import annotations
 from sqlmodel import Session
 
 from app.config import load_config
+from app.engine.labels import label_for
 from app.engine.prices import latest_data_date
-from app.engine.regime import _label_for, score_regime
+from app.engine.regime import score_regime
 
 
 def test_score_regime_shape_and_ranges(loaded_engine):
@@ -34,15 +35,15 @@ def test_score_regime_shape_and_ranges(loaded_engine):
 
 def test_label_edges_boundary_mapping():
     edges = load_config().regime.label_edges  # 80/65/55/45/30/0
-    assert _label_for(80, edges) == "Strong risk-on"
-    assert _label_for(79.99, edges) == "Risk-on"
-    assert _label_for(65, edges) == "Risk-on"
-    assert _label_for(64, edges) == "Narrow leadership"
-    assert _label_for(55, edges) == "Narrow leadership"
-    assert _label_for(45, edges) == "Choppy"
-    assert _label_for(30, edges) == "Defensive"
-    assert _label_for(29, edges) == "Risk-off"
-    assert _label_for(0, edges) == "Risk-off"
+    assert label_for(80, edges) == "Strong risk-on"
+    assert label_for(79.99, edges) == "Risk-on"
+    assert label_for(65, edges) == "Risk-on"
+    assert label_for(64, edges) == "Narrow leadership"
+    assert label_for(55, edges) == "Narrow leadership"
+    assert label_for(45, edges) == "Choppy"
+    assert label_for(30, edges) == "Defensive"
+    assert label_for(29, edges) == "Risk-off"
+    assert label_for(0, edges) == "Risk-off"
 
 
 def test_score_regime_is_deterministic(loaded_engine):

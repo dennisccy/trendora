@@ -23,7 +23,7 @@ from sqlmodel import Session
 from app.config import Config, get_config
 from app.engine import indicators as ind
 from app.engine.buckets import to_bucket
-from app.engine.regime import _label_for
+from app.engine.labels import label_for
 from app.engine.prices import bars_asof, closes, volumes
 
 # component key -> the human ordering is given by config.sectors.weights; these are the six
@@ -124,7 +124,7 @@ def score_sectors(session: Session, asof: date_cls, config: Optional[Config] = N
             "bucket": to_bucket(score, cfg),
             "rs_vs_spy": round((rs3 - 1) * 100, 2) if rs3 is not None else None,
             "dist_from_52w_high_pct": round(dist, 2) if dist is not None else None,
-            "trend_label": _label_for(score, cfg.sectors.trend_edges),
+            "trend_label": label_for(score, cfg.sectors.trend_edges),
             "components": components,
             "rank": None,
         })

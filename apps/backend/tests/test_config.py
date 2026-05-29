@@ -63,6 +63,34 @@ MINIMAL_VALID = {
             {"min": 0, "label": "Risk-off"},
         ],
     },
+    # iter-3 made these sections required + validated (see test_config_engine.py for the
+    # validation-failure cases); a minimal *valid* config must now include them.
+    "scores": {
+        "leadership": {"weights": {
+            "rs_spy_1m": 0.15, "rs_spy_3m": 0.20, "rs_sector": 0.15, "rs_theme": 0.10,
+            "ma_stack": 0.20, "high_proximity": 0.10, "up_down_vol": 0.10,
+        }},
+        "entry_quality": {"weights": {
+            "dist_rising_20": 0.25, "contraction": 0.20, "support_nearby": 0.15,
+            "structure": 0.20, "reward_risk": 0.20,
+        }},
+        "risk": {"weights": {
+            "extension": 0.20, "atr_pct": 0.15, "liquidity": 0.10, "regime": 0.15,
+            "sector_strength": 0.10, "gap_climax": 0.15, "below_ma": 0.10, "rs_deterioration": 0.05,
+        }},
+    },
+    "theme_scores": {
+        "weights": {"rs_spy_1m": 0.25, "rs_spy_3m": 0.30, "breadth": 0.25, "ma_participation": 0.20},
+        "trend_edges": [{"min": 70, "label": "Strong uptrend"}, {"min": 0, "label": "Downtrend"}],
+    },
+    "decision_rules": {
+        "theme_floor": 70,
+        "actionable": {"leadership": 80, "entry": 70, "risk": 60},
+        "extended": {"leadership": 85, "entry": 50},
+        "watch": {"leadership": 75},
+        "avoid_risk": 80,
+    },
+    "stock_sectors": {"AAA": "Technology", "BBB": "Technology"},
 }
 
 

@@ -3,8 +3,9 @@
 Populates the reference tables (sectors, stocks, etfs, themes, theme_members) from
 `config.yaml` — keeping config the single source for the universe/themes — and loads the
 committed frozen price fixture into `daily_prices` via the deterministic `SeedProvider`.
-A `data_provider_runs` row records the load. Idempotent: if prices already exist the load is
-a no-op, and reference inserts are guarded by existing rows, so restarting never duplicates.
+A `data_provider_runs` row records the load. Idempotent: the price load is a no-op once prices
+exist; reference data (incl. the `Stock.sector_id` backfill) is ensured every boot via guarded
+upserts, so restarting never duplicates.
 
 (The `industries` reference table is created but not populated this iteration — industry-group
 scoring lands in iter-2; industry ETFs are still loaded into `etfs` with kind='industry'.)
@@ -61,30 +62,35 @@ def all_seed_symbols(config: Config) -> list[str]:
 
 def load_reference_data(session: Session, config: Config) -> None:
     """Insert sectors / stocks / etfs / themes / theme_members from config (idempotent)."""
+    # session.scalar(select(Model)) returns the model instance (or None) directly — unlike
+    # session.exec(...).first(), which yields a SQLAlchemy Row that the prior tuple-guard didn't
+    # unwrap (latent on fresh DBs; surfaced once reference data is ensured on a populated DB).
     sector_id_by_name: dict[str, int] = {}
     for etf_ticker, sector_name in config.etfs.sector.items():
-        existing = session.exec(select(Sector).where(Sector.etf_ticker == etf_ticker)).first()
-        if existing is None:
+        sector = session.scalar(select(Sector).where(Sector.etf_ticker == etf_ticker))
+        if sector is None:
             sector = Sector(name=sector_name, etf_ticker=etf_ticker)
             session.add(sector)
             session.flush()
-            sector_id_by_name[sector_name] = sector.id
-        else:
-            sector_id_by_name[sector_name] = existing[0].id if isinstance(existing, tuple) else existing.id
+        sector_id_by_name[sector_name] = sector.id
 
     stock_id_by_ticker: dict[str, int] = {}
     for ticker in config.universe.symbols:
-        row = session.exec(select(Stock).where(Stock.ticker == ticker)).first()
-        if row is None:
-            stock = Stock(ticker=ticker, name=ticker, is_common=True, active=True)
+        # stock -> GICS sector (reference data from config.stock_sectors); used for the
+        # rs_sector / sector_strength scoring components (iter-3).
+        sector_id = sector_id_by_name.get(config.stock_sectors.get(ticker))
+        stock = session.scalar(select(Stock).where(Stock.ticker == ticker))
+        if stock is None:
+            stock = Stock(ticker=ticker, name=ticker, sector_id=sector_id, is_common=True, active=True)
             session.add(stock)
             session.flush()
-            stock_id_by_ticker[ticker] = stock.id
-        else:
-            stock_id_by_ticker[ticker] = (row[0] if isinstance(row, tuple) else row).id
+        elif stock.sector_id is None and sector_id is not None:
+            stock.sector_id = sector_id  # idempotent backfill for a pre-existing stock row
+            session.add(stock)
+        stock_id_by_ticker[ticker] = stock.id
 
     def add_etf(ticker: str, kind: str, tracks_sector_id: Optional[int] = None) -> None:
-        if session.exec(select(ETF).where(ETF.ticker == ticker)).first() is None:
+        if session.scalar(select(ETF).where(ETF.ticker == ticker)) is None:
             session.add(ETF(ticker=ticker, name=ticker, kind=kind, tracks_sector_id=tracks_sector_id))
 
     for ticker in config.etfs.index:
@@ -97,22 +103,20 @@ def load_reference_data(session: Session, config: Config) -> None:
         add_etf(ticker, "volatility")
 
     for slug, members in config.themes.items():
-        theme = session.exec(select(Theme).where(Theme.slug == slug)).first()
+        theme = session.scalar(select(Theme).where(Theme.slug == slug))
         if theme is None:
             theme = Theme(slug=slug, name=slug.replace("_", " ").title())
             session.add(theme)
             session.flush()
-        else:
-            theme = theme[0] if isinstance(theme, tuple) else theme
         for ticker in members:
             stock_id = stock_id_by_ticker.get(ticker)
             if stock_id is None:
                 continue
-            already = session.exec(
+            already = session.scalar(
                 select(ThemeMember).where(
                     ThemeMember.theme_id == theme.id, ThemeMember.stock_id == stock_id
                 )
-            ).first()
+            )
             if already is None:
                 session.add(ThemeMember(theme_id=theme.id, stock_id=stock_id))
 
@@ -167,11 +171,14 @@ def load_seed(
     seed_dir = Path(seed_dir) if seed_dir else DEFAULT_SEED_DIR
     with Session(engine) as session:
         existing = _price_count(session)
+        # Reference data is idempotent (guarded upserts, no new rows on re-run); ensure it on every
+        # boot so a DB created before `stock_sectors` existed gets Stock.sector_id backfilled. Only
+        # the PRICE load is gated on emptiness (re-fetching frozen bars would be wasteful).
+        load_reference_data(session, config)
         if existing and not force:
             return {"loaded": False, "reason": "already populated", "price_rows": existing}
 
         started = _utcnow()
-        load_reference_data(session, config)
         symbols_ok, symbols_failed = load_prices(session, config, seed_dir)
         status = "ok" if symbols_failed == 0 else ("failed" if symbols_ok == 0 else "partial")
         session.add(

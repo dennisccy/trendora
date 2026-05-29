@@ -1,11 +1,16 @@
-"""GET /api/dashboard — the CANONICAL and only endpoint for the Market Regime value.
+"""GET /api/dashboard — the CANONICAL endpoint for the Market Regime value + the candidate counts.
 
-Serves the regime panel computed once by `app.engine.regime.score_regime` (anti-goal: Single
-source of truth) plus the universe-relative breadth and the data-as-of date. `candidate_counts`
-and `top_themes` are returned EXPLICITLY null/pending — they depend on per-stock + theme scoring
-that lands in iter-3, and must never be shown as a fabricated zero (anti-goal: No fabricated
-data). The Dashboard's "Top Sectors" list is NOT served here: the frontend reads the canonical
-`GET /api/sectors` and slices the top N, so the sector score has exactly one serving path.
+Serves the regime panel computed once by `app.engine.regime.score_regime`, the universe-relative
+breadth (also from the regime engine — never recomputed here), and — wired in iter-3 — the
+**candidate counts** derived once by `app.engine.setups.summarize_candidates` from the canonical
+`score_stocks` rows (counting the per-stock setup statuses; the iter-5 scanner must READ these,
+never recompute). Single source of truth holds throughout.
+
+NOT served here (each has exactly one serving path):
+  - **Top Sectors** → the frontend reads the canonical `GET /api/sectors` and slices the top N.
+  - **Top Themes** → the frontend reads the canonical `GET /api/themes` and slices the top N
+    (exactly as Top Sectors does). The Theme Score is therefore NOT re-served from this endpoint —
+    that would be a second serving path for a contract value (blueprint Data Contract).
 """
 from __future__ import annotations
 
@@ -16,6 +21,8 @@ from app.config import get_config
 from app.db import get_session
 from app.engine.prices import latest_data_date
 from app.engine.regime import score_regime
+from app.engine.scoring import score_stocks
+from app.engine.setups import summarize_candidates
 
 router = APIRouter(tags=["dashboard"])
 
@@ -25,7 +32,11 @@ def dashboard(session: Session = Depends(get_session)) -> dict:
     asof = latest_data_date(session)
     if asof is None:
         raise HTTPException(status_code=503, detail="no price data available")
-    regime = score_regime(session, asof, get_config())
+    cfg = get_config()
+    regime = score_regime(session, asof, cfg)
+    # candidate counts: the SINGLE place they are derived — counting the canonical per-stock
+    # setup statuses from score_stocks (re-format, not a second computation).
+    candidate_counts = summarize_candidates(score_stocks(session, asof, cfg)["rows"])
     return {
         "regime": {
             "score": regime["score"],
@@ -40,6 +51,5 @@ def dashboard(session: Session = Depends(get_session)) -> dict:
             "label": "universe-relative",
         },
         "asof_date": regime["asof_date"],
-        "candidate_counts": None,  # pending — per-stock setups arrive in iter-3
-        "top_themes": None,        # pending — theme scoring arrives in iter-3
+        "candidate_counts": candidate_counts,
     }
