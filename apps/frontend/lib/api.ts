@@ -15,6 +15,30 @@ async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** Mutating request (POST/DELETE — the iter-7 watchlist write calls). On a non-2xx it throws an
+ *  Error carrying the backend's honest `detail` message so the UI renders an explicit failure
+ *  (e.g. "ANET is already on the watchlist") — never a fabricated success. */
+async function sendJSON<T>(method: "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const data = (await res.json()) as { detail?: unknown };
+      if (typeof data?.detail === "string") detail = data.detail;
+      else if (data?.detail) detail = JSON.stringify(data.detail);
+    } catch {
+      /* non-JSON error body — keep the HTTP status message */
+    }
+    throw new Error(detail);
+  }
+  return (await res.json()) as T;
+}
+
 // --- health (iter-1) -----------------------------------------------------------------------
 export interface HealthStatus {
   status: string;
@@ -340,4 +364,50 @@ export interface SystemHealthResponse {
  *  never fabricated evidence. */
 export async function fetchSystemHealth(horizon: number, signal?: AbortSignal): Promise<SystemHealthResponse> {
   return getJSON<SystemHealthResponse>(`/api/system-health?horizon=${encodeURIComponent(horizon)}`, signal);
+}
+
+// --- watchlist (iter-7) --------------------------------------------------------------------
+/** One persisted watchlist entry, enriched at serve time. The stored fields are `id`/`ticker`/
+ *  `date_added`/`asof_date_added`/`reason`; the CURRENT `leadership`/`entry_quality`/`risk` (each a
+ *  ScoreBlock), `setup`, and `invalidation` are READ LIVE from the canonical `score_stocks` row (the
+ *  SAME values `/api/stocks` serves — single source → J-06) and re-displayed only. `price_since_added`
+ *  is a fraction (0.0123 = +1.23%) derived from the canonical price series — null = NA (no entry_close
+ *  / no current close); 0.0 against the frozen seed is the honest, correct value. */
+export interface WatchlistEntry {
+  id: number;
+  ticker: string;
+  date_added: string; // ISO datetime ("date added")
+  asof_date_added: string; // ISO date (latest data date captured at add time)
+  reason: string;
+  sector: string;
+  leadership: ScoreBlock;
+  entry_quality: ScoreBlock;
+  risk: ScoreBlock; // higher = MORE dangerous (ScoreBadge uses invert)
+  setup: StockSetup;
+  invalidation: Invalidation;
+  price_since_added: number | null; // fraction; null = NA, never fabricated
+}
+
+export interface WatchlistResponse {
+  asof_date: string;
+  entries: WatchlistEntry[];
+}
+
+/** GET /api/watchlist — every saved entry (newest first), enriched live. Throws on non-200 so the
+ *  page renders an explicit "Backend unavailable" state (503 no data) — never fabricated entries. */
+export async function fetchWatchlist(signal?: AbortSignal): Promise<WatchlistResponse> {
+  return getJSON<WatchlistResponse>("/api/watchlist", signal);
+}
+
+/** POST /api/watchlist — save a stock with a free-text reason (the first MUTATING client call).
+ *  Returns the enriched entry on success; throws with the backend's honest `detail` on a non-2xx
+ *  (404 unknown ticker / 409 duplicate / 503 no data) so the UI shows an explicit error. */
+export async function addWatchlistEntry(ticker: string, reason: string): Promise<WatchlistEntry> {
+  return sendJSON<WatchlistEntry>("POST", "/api/watchlist", { ticker, reason });
+}
+
+/** DELETE /api/watchlist/{id} — remove an entry. Throws with the backend's `detail` on a non-2xx
+ *  (404 missing entry) so the UI surfaces the failure rather than silently succeeding. */
+export async function removeWatchlistEntry(id: number): Promise<{ id: number; deleted: boolean }> {
+  return sendJSON<{ id: number; deleted: boolean }>("DELETE", `/api/watchlist/${id}`);
 }

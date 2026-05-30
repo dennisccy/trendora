@@ -228,3 +228,37 @@ class ForwardReturn(SQLModel, table=True):
     entry_close: float  # close ON asof_date (date <= D)
     measured_date: date  # date of the h-th post-snapshot bar (date > D) the return is measured to
     realized_return: float  # measured_close / entry_close - 1 (stored so excess is a subtraction)
+
+
+# --- iter-7 watchlist (USER-MUTABLE — the product's FIRST user-write surface; J-11) ----------
+class Watchlist(SQLModel, table=True):
+    """One user-saved stock on the persistent research watchlist (iter-7). The product's FIRST
+    user-mutable table — INSERT on add, DELETE on remove — and the entry survives a backend restart
+    because it is DB-backed (the J-11 crux), not an in-memory dict/module global.
+
+    This is explicitly NOT a snapshot table: no code path UPDATEs/INSERTs/touches a `scanner_runs` /
+    `scanner_results` / `*_scores` / `forward_returns` row, so the *Snapshots-immutable* critical
+    anti-goal is unaffected. It is also NOT an order/position — it carries no quantity, cost-basis,
+    P&L, or order field; a research save-list only (*No order/execution path*, critical).
+
+    It stores ONLY user/identity + entry-price-capture columns — NEVER any score / bucket / setup /
+    invalidation. Those *current* values are READ LIVE at serve time from the canonical
+    `app.engine.scoring.score_stocks` row (the SAME computation `/api/stocks` serves) and taken
+    verbatim, so the watchlist can never become a second, drifting source (*Single source of truth*
+    → J-06 on a write surface). This parallels how `ForwardReturn` stores a captured `entry_close`
+    with no score.
+      - `ticker` is unique — exactly one entry per ticker (a duplicate add is rejected, never duplicated).
+      - `created_at` is the wall-clock "date added"; `asof_date_added` is the canonical
+        `latest_data_date()` at add time; `entry_close` is the canonical close ON `asof_date_added`
+        (captured once via `app.engine.prices.close_on`) so price-since-added is an honest realized
+        figure (NA when `entry_close` is null — never fabricated).
+    """
+
+    __tablename__ = "watchlist"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    ticker: str = Field(index=True, unique=True)  # one entry per ticker
+    reason: str  # free-text user note
+    created_at: datetime  # wall-clock "date added"
+    asof_date_added: date  # latest_data_date() captured at add time
+    entry_close: Optional[float] = None  # canonical close on asof_date_added (None ⇒ price-since-added NA)

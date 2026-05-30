@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import dashboard, health, runs, sectors, stocks, system_health, themes
+from app.api import dashboard, health, runs, sectors, stocks, system_health, themes, watchlist
 from app.config import load_config
 from app.db import create_db_and_tables, get_engine
 from app.engine.forward_testing import backfill_forward_returns
@@ -61,3 +61,4 @@ app.include_router(stocks.router, prefix="/api")
 app.include_router(themes.router, prefix="/api")
 app.include_router(runs.router, prefix="/api")
 app.include_router(system_health.router, prefix="/api")
+app.include_router(watchlist.router, prefix="/api")

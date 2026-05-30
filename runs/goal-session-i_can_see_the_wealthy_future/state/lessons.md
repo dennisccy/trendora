@@ -105,3 +105,22 @@ evidence was sufficient, but the count overstated distinctness.
 J-09+J-10, or a future combined dashboard); and any evaluator weighing "N screenshots = N journeys
 proven" — hash them first. A decomposer/QA spec can pre-empt this by asking for a focused/cropped capture
 per sub-panel journey.
+
+## iter-7 — 2026-05-30T06:29:04Z
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** The chronic 7-iter dedicated-browser-qa SKIP has a *second* root cause beyond "frontend not
+running": a **CORS_ORIGINS mismatch**. The backend's `main.py:_cors_origins()` defaults to
+`http://localhost:3000` when `CORS_ORIGINS` is unset, so a frontend on `:3835`/`:3836` is silently
+CORS-blocked and the page renders the honest "Backend unavailable" card even though `curl` to the API
+succeeds (curl doesn't enforce CORS). When verifying a UI live, launch the backend with
+`CORS_ORIGINS=http://localhost:<frontend-port>` and rebuild the frontend with
+`NEXT_PUBLIC_API_URL=http://localhost:8835` (it is baked at build time, default `:8000`). Also: Chrome MCP
+`await_text "ANET"` false-positived on the ticker input *placeholder* "e.g. ANET" — await on a row-only value
+(setup status, invalidation level), never on text that also appears in form placeholders. Most important
+takeaway: on a goal-completing iteration with an empty/invalid evidence dir, the evaluator CAN and SHOULD boot
+the services and drive Chrome MCP to produce the missing live evidence (incl. a real backend-restart
+persistence proof) rather than reconcile from API/unit/source alone — it makes GOAL_ACHIEVED rest on an actual
+browser sweep.
+**Applies to:** any iter whose UI must be verified live (esp. when browser-qa SKIPs); any new frontend-facing
+backend route; the runner-script owner fixing the browser-qa frontend self-heal.

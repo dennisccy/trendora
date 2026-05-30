@@ -278,3 +278,49 @@ Pair with a full 11-journey regression sweep + full-product coherence so the nex
 legitimately reach GOAL_ACHIEVED. Runner owner should finally (a) make browser-qa own/await/self-heal its
 frontend — ideally before this goal-completing iter so GOAL_ACHIEVED rests on a clean live browser sweep
 — and (b) emit the audit handoff.
+
+## Iteration 7 — goal-i_can_see_the_wealthy_future-iter-7
+
+**Date:** 2026-05-30T06:29:04Z
+**Verdict:** GOAL_ACHIEVED
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: **J-11** (Watchlist with persistence) — the 11th and last Must-have journey
+- Newly failing: none
+- Regressed: none (J-01–J-10 all held; purely-additive diff — no engine or live-endpoint file touched per `git diff HEAD`; live backend serves their endpoints; all nav links render)
+- Anti-goal violations: none (all four criticals + order-path/secrets fences re-verified directly in source and at runtime)
+
+**Reasoning:** J-11 landed cleanly and I verified it to an exceptional standard — because the dedicated
+browser-qa SKIPPED a **7th** consecutive time (HTTP-000) and QA captured only the Chrome
+"ERR_CONNECTION_REFUSED" error page (the two pre-existing TC-14 evidence PNGs are md5-identical error shots,
+not real UI proof), so there was NO carried-forward screenshot to reconcile from this time. I therefore
+**booted the services myself and produced the missing evidence directly**: (1) a LIVE Chrome render of
+`/watchlist` showing the ANET row with EVERY acceptance field (Ticker→/stocks/ANET, Added 2026-05-30, reason
+verbatim, Leadership E/46.61, Entry E/57.69, Risk E/39.62, Setup Avoid, Since added +0.00% honest-frozen-seed,
+Invalidation "Invalid below the 50-DMA at $148.38", Remove; header "Research-only · decision support · no
+orders") — 4 distinct md5 PNGs in the iter-7 evidence dir; (2) the restart-persistence crux proven
+**end-to-end LIVE** — I killed the backend (PID 340389) and rebooted it **twice**, ANET survived both, and the
+row is physically in on-disk `apps/backend/data/trendora.db`, plus the file-backed unit test passes;
+(3) single-source byte-equality of `/api/watchlist` vs `/api/stocks` (all 6 canonical fields) LIVE + unit;
+(4) the full live journey Add-via-form → row → Remove → empty → re-Add → row; (5) live error paths
+(unknown→404, duplicate→409, delete-missing→404); (6) 11/11 new watchlist unit tests pass under my own run
+(179-suite green per QA). Coherence is **COHERENCE-PASS** (first write surface correctly READS the canonical
+`score_stocks` row, stores no score), so no structural veto. `models.py` only APPENDS the user-mutable
+`Watchlist` table — no snapshot row is ever touched (unit-proven), so the Snapshots-immutable critical
+anti-goal and J-07/J-08 hold. All 11 journeys passing + no critical anti-goal + COHERENCE-PASS →
+**GOAL_ACHIEVED**.
+
+**Process gaps (non-blocking, chronic — runner-script scope, NOT product):** (1) **Dedicated browser-qa
+SKIPPED a 7th consecutive time.** This iter surfaced a *second, concrete* root cause beyond "frontend down":
+a **CORS_ORIGINS mismatch** — a backend launched without `CORS_ORIGINS` defaults to `http://localhost:3000`
+and silently blocks the `:3835`/`:3836` frontend, so even a *running* frontend renders the honest "Backend
+unavailable" card (I reproduced this, then fixed it by relaunching the backend with
+`CORS_ORIGINS=http://localhost:3835`). The durable fix: the runner must set `CORS_ORIGINS` to the real
+frontend port AND keep the frontend up. (2) **Audit handoff missing a 7th consecutive full-depth iter** —
+`reports/audits/` still does not exist. Neither affected the verdict (I produced the live evidence myself).
+
+**Next-step recommendation:** **Halt — goal achieved.** All 11 Must-have journeys pass, no critical anti-goal
+is violated, coherence passes. If the user resumes for the explicitly-deferred nice-to-haves (config-editor
+view #14, historical per-stock score charts #15), a single **lean** iteration suffices — neither is a
+Must-have. Before any further browser-gated work, the runner owner should finally (a) make browser-qa
+own/await/self-heal its frontend AND set `CORS_ORIGINS` to the frontend port, and (b) emit the audit handoff.

@@ -28,9 +28,13 @@ SNAPSHOT_TABLES = {
     "forward_returns",
 }
 
+# iter-7 user-mutable watchlist (the product's first user-write table; created by create_all). It is
+# explicitly NOT a snapshot table — additive to the data model, separate from the append-only set.
+WATCHLIST_TABLES = {"watchlist"}
+
 
 def test_create_all_produces_expected_tables():
-    assert set(SQLModel.metadata.tables.keys()) == ITER1_TABLES | SNAPSHOT_TABLES
+    assert set(SQLModel.metadata.tables.keys()) == ITER1_TABLES | SNAPSHOT_TABLES | WATCHLIST_TABLES
 
 
 def test_daily_prices_has_unique_symbol_date_constraint():
