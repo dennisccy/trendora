@@ -479,11 +479,24 @@ decision_rules:
   avoid_risk: 80
   invalidation: { ma_period: 50 }   # iter-4: the DMA that defines the invalidation level; MUST be one of indicators.ma_periods
 
+# iter-6 CONSUMED — Walk-forward forward-testing engine (app/engine/forward_testing.py).
+# The replay window (history_years), the as-of cadence (daily|weekly|monthly|quarterly), the forward
+# horizons (trading days), the min_sample honesty threshold, the default served horizon, and the
+# control-group params all come from here (anti-goal: No magic numbers — no walk-forward literal in
+# calc code). `asof_cadence: quarterly` over a 2-year window yields a bounded as-of set (~8 dates,
+# intersected with seed trading days) so the first-boot backfill stays tractable while every cadence
+# run still leaves >= max(horizons)=60 post-snapshot bars; widen to monthly/weekly here (config, not
+# code) for denser evidence at the cost of a slower first boot.
 walk_forward:
   history_years: 2
-  asof_cadence: weekly
+  asof_cadence: quarterly
   horizons: [1, 5, 10, 20, 60]
   min_sample: 30
+  default_horizon: 20          # horizon served when /api/system-health gets no ?horizon (must be in horizons)
+  control_group:
+    seed: 20240601             # deterministic RNG seed for the random same-sector cohort (reproducible)
+    top_n: 20                  # top-ranked cohort = stocks ranked <= this in their run
+    peers_per_sector: 5        # random same-sector peers drawn per sector per run
 
 # ----------------------------------------------------------------------------------------
 # iter-5 CONSUMED — Scanner snapshots. The historical as-of dates the scanner persists an

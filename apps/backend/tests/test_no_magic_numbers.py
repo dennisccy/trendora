@@ -20,6 +20,10 @@ CALC_FILES = [
     "indicators.py", "regime.py", "sectors.py", "buckets.py",
     # iter-3 calc modules — every weight/cutoff/period must come from config, never a literal.
     "scoring.py", "themes.py", "setups.py", "labels.py", "normalize.py",
+    # iter-6 walk-forward calc — horizons, min_sample, history_years, asof_cadence, default_horizon,
+    # and the control-group {seed, top_n, peers_per_sector} ALL come from config; the no-lookahead
+    # price accessors (bars_asof / bars_after / close_on) introduce no tunable literal either.
+    "forward_testing.py", "prices.py",
 ]
 
 # The union of every NUMERIC tunable currently in config.yaml (periods, windows, bucket edges,

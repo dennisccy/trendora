@@ -228,3 +228,53 @@ strict no-lookahead and measure realized 1/5/10/20/60-day forward returns from b
 a random-same-sector control group, with `n` and the survivorship-bias label surfaced. Seed ≥1 mid-
 history Risk-on run so the forward-return sample is meaningful. Orchestrator must finally (1) emit the
 audit handoff from the runner and (2) make the dedicated browser-qa own/self-heal its frontend.
+
+## Iteration 6 — goal-i_can_see_the_wealthy_future-iter-6
+
+**Date:** 2026-05-30T05:45:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: **J-09** (System Health forward-tested evidence), **J-10** (control-group honesty)
+- Newly failing: none
+- Regressed: none (J-01–J-08 all held; existing canonical endpoints + engines byte-identical untouched vs HEAD; J-08 freshly re-shot, J-07 live-confirmed both Risk-off runs still 0 Actionable)
+- Anti-goal violations: none (all four criticals — no-lookahead forward boundary / immutable append-only / single-source verbatim / Risk-off-gates-Actionable — verified directly in source + unit-proven)
+
+**Reasoning:** The keystone "prove its own usefulness" capability landed cleanly and I verified both
+target journeys from on-disk evidence (not summaries), because the dedicated browser-qa SKIPPED a **6th**
+consecutive time on an HTTP-000 flap. TC-14-system-health-j09.png (viewed): populated /system-health —
+by-bucket A-E (A +6.00% n=24⚠ … E +2.05% n=772), Excess vs SPY/QQQ, by-setup, by-regime with BOTH
+Risk-on (+2.63% n=732) and Risk-off (+10.55% n=242), each cell with n, survivorship banner (J-09).
+TC-15-horizon-change-5d.png (viewed): selector re-fetches and changes figures (A +6.00%@20d → −1.09%@5d)
+matching the API payload — re-format only. The control-group panel shows all 5 cohorts numeric+labelled+n
+(Top-ranked +3.02% n=200, Random same-sector +1.52% n=285, SPY +1.52% n=10, QQQ +1.99% n=10, Sector ETF
++1.43% n=65) (J-10). Source-verified the three disciplines directly: `bars_after` strict date>D vs
+`close_on`/`bars_asof` date≤D (disjoint partition, the no-lookahead proof); `_backfill` INSERT-only into
+the SEPARATE append-only `forward_returns` table (models.py only APPENDS it) + idempotent; aggregates READ
+`leadership_bucket`/`setup_status`/`sector`/`rank`/`regime_label` verbatim (no `to_bucket`/`score_*`
+import). config.yaml holds every tunable (no magic numbers); control-group RNG re-seeded from
+`control_group.seed`. 168/168 pytest (25 new), COHERENCE-PASS, frontend builds; greps for order-path and
+secrets empty; `git diff HEAD` shows dashboard/stocks/sectors/themes/runs + scoring/regime/buckets/setups/
+scanner all untouched (J-01–J-08 cannot regress). Two journeys newly passing + one tractable remaining →
+CONTINUE. Not GOAL_ACHIEVED: J-11 (Watchlist) unbuilt by design.
+
+**Process gaps (non-blocking, chronic — explicitly NON-gating runner-script scope per the iter-6 spec):**
+(1) **Dedicated browser-qa SKIPPED a 6th consecutive time** (0/15, HTTP-000 on :3836); QA mode-2
+self-healed its own frontend on :3836, ran 19/19 functional TCs, and persisted 4 evidence PNGs (note:
+TC-14 == TC-16 by md5 — one full-page capture saved under two names; J-10 has no dedicated focused shot,
+but the panel is present in the full-page image). (2) **Audit handoff missing a 6th consecutive full-depth
+iter** — `reports/audits/` still does not exist. Neither affected the verdict (reconciled from persisted
+PNGs + 25 unit/API proofs + direct source reads + git-diff, per the standing lesson and the spec's
+explicit evaluator guidance). (3) Review NOTE: unused `horizon` param in `_control_groups()`
+(forward_testing.py:300) — cosmetic, non-functional.
+
+**Next-step recommendation:** iter-7 at **full** depth — **J-11 (Watchlist with persistence)**, the last
+Must-have journey. Persisted `watchlist` table + POST/GET/DELETE `/api/watchlist` (the product's first
+user-write/mutation surface); each entry carries date-added, free-text reason, current
+Leadership/Entry/Risk + setup (**READ canonical, single-source — never recomputed**), price-since-added,
+and an invalidation level; **MUST survive a backend restart** (DB-backed — the J-11 acceptance crux,
+test add→restart→present). Graduate the `/watchlist` stub (sidebar link already present, no nav change).
+Pair with a full 11-journey regression sweep + full-product coherence so the next evaluation can
+legitimately reach GOAL_ACHIEVED. Runner owner should finally (a) make browser-qa own/await/self-heal its
+frontend — ideally before this goal-completing iter so GOAL_ACHIEVED rests on a clean live browser sweep
+— and (b) emit the audit handoff.

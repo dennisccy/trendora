@@ -280,3 +280,64 @@ export interface RunDetail {
 export async function fetchRun(runId: string | number, signal?: AbortSignal): Promise<RunDetail> {
   return getJSON<RunDetail>(`/api/runs/${encodeURIComponent(String(runId))}`, signal);
 }
+
+// --- system health / forward-tested evidence (iter-6) --------------------------------------
+/** One row of a grouped forward-return breakdown: the mean realized return (a fraction, e.g. 0.0123
+ *  = +1.23%) and the sample size `n`. `mean_return` is null for a padded empty group (n === 0).
+ *  Re-formatted only — the page never recomputes a return. */
+export interface ForwardGroupRow {
+  mean_return: number | null;
+  n: number;
+}
+
+export interface ForwardBucketRow extends ForwardGroupRow {
+  bucket: string; // A | B | C | D | E (the stored canonical leadership bucket, verbatim)
+}
+export interface ForwardSetupRow extends ForwardGroupRow {
+  setup: string; // canonical setup status
+}
+export interface ForwardRegimeRow extends ForwardGroupRow {
+  regime: string; // stored regime label of the run
+}
+
+/** Excess vs a benchmark = mean stock forward return − mean benchmark forward return over matched
+ *  runs (a stored subtraction; never recomputed client-side). */
+export interface ExcessVsBenchmark {
+  benchmark: string; // SPY | QQQ
+  mean_excess: number | null;
+  stock_mean: number | null;
+  benchmark_mean: number | null;
+  n: number; // stock observations
+  benchmark_n: number; // benchmark observations (runs)
+}
+
+/** One control-group cohort (J-10): top-ranked vs random same-sector vs SPY/QQQ/sector-ETF. */
+export interface ControlGroupRow extends ForwardGroupRow {
+  key: string; // top_ranked | random_same_sector | spy | qqq | sector_etf
+  label: string; // server-built human label (rendered verbatim)
+}
+
+/** GET /api/system-health payload — the SINGLE canonical forward-return aggregation. Every figure
+ *  carries its sample size `n`; the page re-formats only and recomputes no return/excess/bucket. */
+export interface SystemHealthResponse {
+  horizon: number; // the served forward window (trading days)
+  horizons: number[]; // valid horizons for the selector (from config — not hard-coded in the UI)
+  default_horizon: number;
+  min_sample: number; // figures with n below this are flagged low-sample
+  survivorship_bias: string; // honest caveat, rendered verbatim
+  n_runs: number; // walk-forward snapshots contributing evidence at this horizon
+  asof_dates: string[]; // the contributing as-of dates (descending)
+  overall: ForwardGroupRow;
+  by_bucket: ForwardBucketRow[]; // rows A..E (J-09)
+  by_setup: ForwardSetupRow[]; // by setup type (J-09)
+  by_regime: ForwardRegimeRow[]; // by market regime — both Risk-on and Risk-off (J-09)
+  excess: { vs_spy: ExcessVsBenchmark; vs_qqq: ExcessVsBenchmark }; // J-09
+  control_group: ControlGroupRow[]; // J-10
+}
+
+/** Canonical forward-tested evidence source: GET /api/system-health?horizon=. Throws on non-200 so
+ *  the page renders an explicit "Backend unavailable" state (503 no data / 422 invalid horizon) —
+ *  never fabricated evidence. */
+export async function fetchSystemHealth(horizon: number, signal?: AbortSignal): Promise<SystemHealthResponse> {
+  return getJSON<SystemHealthResponse>(`/api/system-health?horizon=${encodeURIComponent(horizon)}`, signal);
+}

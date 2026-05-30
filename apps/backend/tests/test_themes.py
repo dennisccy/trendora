@@ -110,6 +110,11 @@ _SYNTH_CFG = {
     },
     "stock_sectors": {"AAA": "Technology", "BBB": "Technology", "CCC": "Technology", "DDD": "Technology"},
     "scanner": {"bootstrap_dates": ["2022-10-07"]},  # iter-5: scanner is a required config section
+    "walk_forward": {  # iter-6: walk_forward is a required config section
+        "history_years": 2, "asof_cadence": "quarterly", "horizons": [1, 5, 10, 20, 60],
+        "min_sample": 30, "default_horizon": 20,
+        "control_group": {"seed": 20240601, "top_n": 20, "peers_per_sector": 5},
+    },
 }
 
 

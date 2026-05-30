@@ -90,3 +90,18 @@ evidence PNGs + unit/API proofs + direct source reads, never from a lone browser
 **Applies to:** every future goal-mode iteration's evaluation while the audit-handoff / browser-qa-self-heal
 harness gaps remain unfixed; and any decomposer tempted to fix a harness/runner gap by adding spec or
 DoD text instead of a runner-script change.
+
+## iter-6 — 2026-05-30T05:45:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Distinct journey-named evidence PNGs are NOT guaranteed to be distinct captures: this iter
+`TC-14-system-health-j09.png` and `TC-16-control-group-j10.png` were byte-identical (same md5) — one
+full-page `/system-health` screenshot saved under two journey labels. When a target journey (J-10) is a
+sub-panel of a larger page already captured for another journey (J-09), QA tends to reuse the full-page
+shot. So `md5sum`/diff the evidence files before treating a per-journey screenshot count as independent
+visual proof, and confirm the specific panel is actually present in the shared image (it was, here). The
+evidence was sufficient, but the count overstated distinctness.
+**Applies to:** any iter whose target journeys are multiple panels of ONE page (e.g. system-health
+J-09+J-10, or a future combined dashboard); and any evaluator weighing "N screenshots = N journeys
+proven" — hash them first. A decomposer/QA spec can pre-empt this by asking for a focused/cropped capture
+per sub-panel journey.

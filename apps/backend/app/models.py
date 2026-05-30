@@ -7,9 +7,10 @@ from config (Postgres-ready — no SQLite-only SQL).
 
 IMMUTABILITY (anti-goal: Snapshots are immutable): the snapshot tables are APPEND-ONLY — once a
 `ScannerRun` row and its children are written, no code path UPDATEs them. Forward returns (iter-6)
-will live in a SEPARATE append-only table keyed to the snapshot (run_id, stock, horizon), so the
-snapshot itself is never mutated. The `forward_returns`, `paper_portfolio*` tables remain
-DESIGNED-but-not-created this session.
+live in a SEPARATE append-only table `forward_returns`, keyed to the snapshot (run_id, symbol,
+horizon), so the snapshot itself is never mutated — the walk-forward engine only INSERTs realized
+post-snapshot returns there, never touching a `scanner_runs` / `scanner_results` / `*_scores` row.
+The `paper_portfolio*` tables remain DESIGNED-but-not-created this session.
 """
 from __future__ import annotations
 
@@ -195,3 +196,35 @@ class ThemeScoreRow(SQLModel, table=True):
     trend_label: str
     components_json: str
     rank: int
+
+
+# --- iter-6 walk-forward forward returns (SEPARATE append-only table — the snapshot is NEVER
+# mutated; anti-goals: No lookahead + Snapshots are immutable) -------------------------------
+class ForwardReturn(SQLModel, table=True):
+    """One realized forward return: the return of `symbol` over `horizon` trading days measured
+    from the close ON a run's `asof_date` (D, via `bars_asof`) to the close of the h-th POST-snapshot
+    bar (date > D, via `bars_after`). INSERT-only and keyed to the immutable snapshot by `run_id`,
+    so persisting forward returns never UPDATEs a `scanner_runs` / `scanner_results` / `*_scores`
+    row. Unique on (run_id, symbol, horizon) — exactly one realized return per snapshot/symbol/horizon
+    (idempotent re-backfill inserts no duplicate).
+
+    `symbol` covers BOTH universe stocks and the benchmark ETFs (SPY, QQQ, the 11 sector ETFs) so
+    excess-vs-benchmark is a stored subtraction. `realized_return` is the stored value
+    (`measured_close / entry_close - 1`); `entry_close` (close on D), `asof_date` (D) and
+    `measured_date` (the h-th post-bar's date) are kept for auditability. A (symbol, horizon) with
+    fewer than `horizon` post-snapshot bars yields NO row (n=0) — never a fabricated/zero return."""
+
+    __tablename__ = "forward_returns"
+    __table_args__ = (
+        UniqueConstraint("run_id", "symbol", "horizon", name="uq_forward_returns_run_symbol_horizon"),
+        Index("ix_forward_returns_run_symbol", "run_id", "symbol"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    run_id: int = Field(foreign_key="scanner_runs.id", index=True)
+    symbol: str = Field(index=True)  # universe stock OR benchmark ETF (SPY / QQQ / sector ETF)
+    horizon: int  # forward window in trading days (from config.walk_forward.horizons)
+    asof_date: date  # the run's as-of date D (close on D is the entry) — auditable context
+    entry_close: float  # close ON asof_date (date <= D)
+    measured_date: date  # date of the h-th post-snapshot bar (date > D) the return is measured to
+    realized_return: float  # measured_close / entry_close - 1 (stored so excess is a subtraction)

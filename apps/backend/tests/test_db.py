@@ -18,12 +18,14 @@ ITER1_TABLES = {
     "data_provider_runs",
 }
 
-# iter-5 append-only scanner-snapshot tables (created by create_all on startup).
+# iter-5 append-only scanner-snapshot tables + iter-6 append-only forward_returns (created by
+# create_all on startup).
 SNAPSHOT_TABLES = {
     "scanner_runs",
     "scanner_results",
     "sector_scores",
     "theme_scores",
+    "forward_returns",
 }
 
 

@@ -1,10 +1,15 @@
-"""bars_asof — the no-lookahead boundary (anti-goal: No lookahead).
+"""bars_asof / bars_after — the two no-lookahead boundaries (anti-goal: No lookahead).
 
 `bars_asof(session, symbol, d)` returns the symbol's `daily_prices` rows with **date <= d**,
-ascending by date. EVERY engine computation (regime, sectors, and later scoring/walk-forward)
-reads bars through this accessor and never touches a bar with date > d, so a snapshot dated D
-is computed only from information available on D. The full walk-forward proof arrives in
-iter-6; this accessor + its boundary test are the groundwork.
+ascending by date. EVERY scoring/regime/sector computation reads bars through this accessor and
+never touches a bar with date > d, so a snapshot dated D is computed only from information
+available on D (the backward boundary — the AS-OF score side).
+
+`bars_after(session, symbol, d)` is its strict inverse: the rows with **date > d**, ascending.
+The iter-6 walk-forward forward-testing engine measures realized forward returns ONLY through
+`bars_after` (date > D), so realized returns are drawn exclusively from POST-snapshot data and a
+future bar can never influence an as-of score. Together the two accessors partition a symbol's
+history at D with no overlap (date <= d vs date > d) — that disjointness IS the no-lookahead proof.
 
 Also provides the tiny ascending-series extractors the indicator functions consume.
 """
@@ -26,13 +31,52 @@ def latest_data_date(session: Session) -> Optional[date_cls]:
 
 
 def bars_asof(session: Session, symbol: str, d: date_cls) -> list[DailyPrice]:
-    """All bars for `symbol` with date <= `d`, ascending. The no-lookahead boundary."""
+    """All bars for `symbol` with date <= `d`, ascending. The backward no-lookahead boundary."""
     stmt = (
         select(DailyPrice)
         .where(DailyPrice.symbol == symbol)
         .where(DailyPrice.date <= d)
         .order_by(DailyPrice.date)
     )
+    return list(session.exec(stmt).all())
+
+
+def close_on(session: Session, symbol: str, d: date_cls) -> Optional[float]:
+    """The close of the latest bar with **date <= `d`** (the as-of close on D), or None when the
+    symbol has no bar on/before D. This is the single-bar form of `bars_asof(session, symbol, d)[-1]
+    .close` — the SAME backward boundary (date <= d, no lookahead) — but it fetches only the one bar
+    instead of materializing the symbol's full pre-history, so the walk-forward backfill can read each
+    forward return's entry close cheaply."""
+    stmt = (
+        select(DailyPrice.close)
+        .where(DailyPrice.symbol == symbol)
+        .where(DailyPrice.date <= d)
+        .order_by(DailyPrice.date.desc())
+        .limit(1)
+    )
+    return session.scalar(stmt)
+
+
+def bars_after(
+    session: Session, symbol: str, d: date_cls, limit: Optional[int] = None
+) -> list[DailyPrice]:
+    """All bars for `symbol` with **date > `d`**, ascending — the strict inverse of `bars_asof`
+    and the forward no-lookahead boundary used by the walk-forward forward-testing engine.
+
+    `limit` (optional) caps the number of leading post-snapshot bars returned. A forward return
+    over `horizon` trading days only needs the first `horizon` post-bars, so the backfill passes
+    `limit=max(horizons)` to avoid materializing the full multi-year tail per (symbol, run); the
+    result is byte-identical to the unbounded call truncated to `limit` (the boundary is unchanged,
+    only later, irrelevant bars are not fetched). The no-lookahead boundary test calls it WITHOUT a
+    limit and asserts no returned bar has date <= d."""
+    stmt = (
+        select(DailyPrice)
+        .where(DailyPrice.symbol == symbol)
+        .where(DailyPrice.date > d)
+        .order_by(DailyPrice.date)
+    )
+    if limit is not None:
+        stmt = stmt.limit(limit)
     return list(session.exec(stmt).all())
 
 

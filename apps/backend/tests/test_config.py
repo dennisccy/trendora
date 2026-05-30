@@ -94,6 +94,12 @@ MINIMAL_VALID = {
     "stock_sectors": {"AAA": "Technology", "BBB": "Technology"},
     # iter-5 made `scanner` required (bootstrap dates come from config, never code).
     "scanner": {"bootstrap_dates": ["2022-10-07", "2025-04-04"]},
+    # iter-6 made `walk_forward` required (forward-testing params come from config, never code).
+    "walk_forward": {
+        "history_years": 2, "asof_cadence": "quarterly", "horizons": [1, 5, 10, 20, 60],
+        "min_sample": 30, "default_horizon": 20,
+        "control_group": {"seed": 20240601, "top_n": 20, "peers_per_sector": 5},
+    },
 }
 
 

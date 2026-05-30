@@ -1,9 +1,10 @@
 """Typed config loader — the ONLY entry point to tunables (anti-goal: No magic numbers).
 
-`load_config()` reads the repo-root `config.yaml`, validates the keys iter-1 consumes, and
+`load_config()` reads the repo-root `config.yaml`, validates the keys the app consumes, and
 returns typed pydantic settings. Missing/invalid required keys raise an explicit
-`ConfigError` — never a silent default. Sections that are scaffolded-but-not-yet-wired
-(scores / regime / decision_rules / walk_forward) are accepted via `extra="allow"`.
+`ConfigError` — never a silent default. As of iter-6 every section the engines consume is typed
+and validated, including `walk_forward` (promoted from the iter-1 scaffolded passthrough to the
+typed `WalkForwardCfg`); any remaining forward-looking keys still ride along via `extra="allow"`.
 """
 from __future__ import annotations
 
@@ -283,6 +284,57 @@ class ScannerCfg(BaseModel):
     bootstrap_dates: list[date] = Field(min_length=1)
 
 
+class ControlGroupCfg(BaseModel):
+    """Walk-forward control-group parameters (iter-6). The random same-sector cohort is drawn with a
+    deterministic RNG re-seeded from `seed` on every computation (reproducible across calls/restarts
+    — never bare `random`); `top_n` is the top-ranked cohort cutoff; `peers_per_sector` is the number
+    of random peers drawn per sector. All from config (anti-goal: No magic numbers)."""
+
+    model_config = ConfigDict(extra="allow")
+    seed: int
+    top_n: int
+    peers_per_sector: int
+
+    @model_validator(mode="after")
+    def _validate(self) -> "ControlGroupCfg":
+        if self.top_n <= 0:
+            raise ValueError("walk_forward.control_group.top_n must be positive")
+        if self.peers_per_sector <= 0:
+            raise ValueError("walk_forward.control_group.peers_per_sector must be positive")
+        return self
+
+
+class WalkForwardCfg(BaseModel):
+    """Walk-forward forward-testing parameters (iter-6 CONSUMED). The forward-testing engine reads
+    EVERY tunable here — replay window (`history_years`), as-of cadence (`asof_cadence`), the forward
+    `horizons` (trading days), the `min_sample` honesty threshold, the default served `horizon`, and
+    the `control_group` block — so no walk-forward literal lives in calc code (anti-goal: No magic
+    numbers). Promoted from the iter-1 scaffolded passthrough to a typed/validated section."""
+
+    model_config = ConfigDict(extra="allow")
+    history_years: int
+    asof_cadence: Literal["daily", "weekly", "monthly", "quarterly"]
+    horizons: list[int] = Field(min_length=1)
+    min_sample: int
+    default_horizon: int
+    control_group: ControlGroupCfg
+
+    @model_validator(mode="after")
+    def _validate(self) -> "WalkForwardCfg":
+        if self.history_years <= 0:
+            raise ValueError("walk_forward.history_years must be positive")
+        if any(h <= 0 for h in self.horizons):
+            raise ValueError("walk_forward.horizons must all be positive")
+        if self.min_sample <= 0:
+            raise ValueError("walk_forward.min_sample must be positive")
+        if self.default_horizon not in self.horizons:
+            raise ValueError(
+                f"walk_forward.default_horizon ({self.default_horizon}) must be one of "
+                f"walk_forward.horizons ({self.horizons})"
+            )
+        return self
+
+
 class DatabaseCfg(BaseModel):
     model_config = ConfigDict(extra="allow")
     url: str = Field(min_length=1)
@@ -308,6 +360,7 @@ class Config(BaseModel):
     decision_rules: DecisionRulesCfg
     stock_sectors: dict[str, str] = Field(min_length=1)
     scanner: ScannerCfg
+    walk_forward: WalkForwardCfg
 
     @field_validator("themes")
     @classmethod
