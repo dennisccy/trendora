@@ -75,3 +75,18 @@ full-depth iters running.)
 before acting; verify writes landed without double-appending); any canvas/chart-rendered journey
 (Lightweight-Charts) — trust the QA evidence PNG over demo soft-notes; and the full-depth pipeline
 (browser-qa must own/self-heal its frontend; the audit step must emit its handoff).
+
+## iter-5 — 2026-05-30T05:30:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Spec-text cannot fix runner-level behaviour, and now we have two proofs: iter-3 escalated
+the browser-qa self-heal ask to a spec NOTE (failed → flap recurred 4th/5th time), and iter-5 escalated
+the audit-handoff ask all the way to the spec's **Definition of Done** (still failed → `reports/audits/`
+does not even exist after 5 full-depth iters). When a missing artifact is produced by a pipeline *step*
+(audit) or a precondition the *runner* controls (the dedicated browser-qa's frontend), the only durable
+fix is editing `scripts/automation/*.sh` — stop re-asking via the iteration spec/DoD, it has demonstrably
+no effect. Practical consequence: the evaluator must keep reconciling target journeys from on-disk
+evidence PNGs + unit/API proofs + direct source reads, never from a lone browser-qa SKIP verdict.
+**Applies to:** every future goal-mode iteration's evaluation while the audit-handoff / browser-qa-self-heal
+harness gaps remain unfixed; and any decomposer tempted to fix a harness/runner gap by adding spec or
+DoD text instead of a runner-script change.

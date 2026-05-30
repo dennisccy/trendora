@@ -226,3 +226,57 @@ export interface ThemesResponse {
 export async function fetchThemes(signal?: AbortSignal): Promise<ThemesResponse> {
   return getJSON<ThemesResponse>("/api/themes", signal);
 }
+
+// --- scanner runs (iter-5) -----------------------------------------------------------------
+/** One row in the immutable scan-run history (GET /api/runs). `regime` carries the stored as-of
+ *  label+score; `candidate_counts` are the stored counts of the canonical setup statuses. */
+export interface RunSummary {
+  run_id: number;
+  asof_date: string;
+  created_at: string;
+  regime: { label: string; score: number };
+  candidate_counts: Record<string, number>;
+  n_stocks: number;
+}
+
+export interface RunsResponse {
+  runs: RunSummary[];
+}
+
+/** The immutable scan-run history, descending by as-of date (GET /api/runs). Throws on non-200 so
+ *  the page renders an explicit "Backend unavailable" state — never fabricated runs. */
+export async function fetchRuns(signal?: AbortSignal): Promise<RunsResponse> {
+  return getJSON<RunsResponse>("/api/runs", signal);
+}
+
+/** One run's full STORED snapshot (GET /api/runs/{run_id}) — the exact as-of view for that date.
+ *  `regime`/`breadth`/`candidate_counts` mirror the dashboard shapes; `rows` are the SAME canonical
+ *  `StockRow` shape the leaderboard serves (rehydrated from the stored record), so the detail page
+ *  reuses the leaderboard row rendering + `ScoreBadge`. Nothing is recomputed client-side. */
+export interface RunDetail {
+  run_id: number;
+  asof_date: string;
+  created_at: string;
+  provider: string;
+  benchmark: string;
+  regime: {
+    label: string;
+    score: number;
+    components: ScoreComponent[];
+    asof_date: string;
+  };
+  breadth: {
+    above_50dma_pct: number | null;
+    above_200dma_pct: number | null;
+    new_high_low: NewHighLow;
+    label: string; // "universe-relative"
+  };
+  candidate_counts: Record<string, number>;
+  rows: StockRow[]; // stored canonical rows for the run's as-of date
+}
+
+/** GET /api/runs/{run_id}. Throws on non-200 so the detail page renders an explicit unavailable
+ *  state (404 unknown run / 503 no data) — never a fabricated run. */
+export async function fetchRun(runId: string | number, signal?: AbortSignal): Promise<RunDetail> {
+  return getJSON<RunDetail>(`/api/runs/${encodeURIComponent(String(runId))}`, signal);
+}

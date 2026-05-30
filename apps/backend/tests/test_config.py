@@ -92,6 +92,8 @@ MINIMAL_VALID = {
         "invalidation": {"ma_period": 50},
     },
     "stock_sectors": {"AAA": "Technology", "BBB": "Technology"},
+    # iter-5 made `scanner` required (bootstrap dates come from config, never code).
+    "scanner": {"bootstrap_dates": ["2022-10-07", "2025-04-04"]},
 }
 
 

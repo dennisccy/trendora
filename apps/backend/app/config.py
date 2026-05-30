@@ -8,6 +8,7 @@ returns typed pydantic settings. Missing/invalid required keys raise an explicit
 from __future__ import annotations
 
 import os
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Optional
@@ -272,6 +273,16 @@ class DecisionRulesCfg(BaseModel):
     invalidation: InvalidationCfg
 
 
+class ScannerCfg(BaseModel):
+    """Scanner snapshot bootstrap (iter-5). `bootstrap_dates` are the historical as-of dates the
+    scanner persists an immutable snapshot for (the latest data date is added programmatically in
+    code, not listed here). ISO strings in config.yaml are coerced to `datetime.date` — there is no
+    date literal in calc code (anti-goal: No magic numbers); the scanner reads these."""
+
+    model_config = ConfigDict(extra="allow")
+    bootstrap_dates: list[date] = Field(min_length=1)
+
+
 class DatabaseCfg(BaseModel):
     model_config = ConfigDict(extra="allow")
     url: str = Field(min_length=1)
@@ -296,6 +307,7 @@ class Config(BaseModel):
     theme_scores: ThemeScoresCfg
     decision_rules: DecisionRulesCfg
     stock_sectors: dict[str, str] = Field(min_length=1)
+    scanner: ScannerCfg
 
     @field_validator("themes")
     @classmethod

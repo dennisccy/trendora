@@ -13,9 +13,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import dashboard, health, sectors, stocks, themes
+from app.api import dashboard, health, runs, sectors, stocks, themes
 from app.config import load_config
 from app.db import create_db_and_tables, get_engine
+from app.engine.scanner import bootstrap_runs
 from app.seed_loader import load_seed
 
 
@@ -25,6 +26,10 @@ async def lifespan(app: FastAPI):
     engine = get_engine()
     create_db_and_tables(engine)
     load_seed(engine, config)  # idempotent — no-op once the DB is populated
+    # Persist an immutable snapshot per configured bootstrap date + the latest data date.
+    # Idempotent: subsequent boots skip already-persisted dates. First boot of a fresh DB scans
+    # ~3 dates through the full pipeline before serving — accounted for in readiness probing.
+    bootstrap_runs(engine, config)
     yield
 
 
@@ -48,3 +53,4 @@ app.include_router(sectors.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(stocks.router, prefix="/api")
 app.include_router(themes.router, prefix="/api")
+app.include_router(runs.router, prefix="/api")

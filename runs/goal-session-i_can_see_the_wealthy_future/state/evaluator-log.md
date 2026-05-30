@@ -184,3 +184,47 @@ test of the Snapshots-immutable critical anti-goal; seed a Risk-Off historical r
 light up J-07 as a journey and the no-lookahead walk-forward groundwork). Fold in the two recurring
 fixes: make the dedicated browser-qa own/self-heal its frontend (end the 4x flap), and emit the audit
 handoff.
+
+## Iteration 5 — goal-i_can_see_the_wealthy_future-iter-5
+
+**Date:** 2026-05-30T05:30:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: **J-07** (Risk-Off run → zero Actionable), **J-08** (immutable as-of run history; older differs from latest)
+- Newly failing: none
+- Regressed: none (J-01–J-06 held green; J-01–J-05 freshly re-shot this iter rather than carried; J-06 strengthened — now also proven across the NEW stored snapshot path)
+- Anti-goal violations: none (all four criticals exercised this iter — immutable / no-lookahead / single-source / risk-off-gates-actionable — verified directly)
+
+**Reasoning:** The immutable snapshot persistence spine landed cleanly and I verified both target
+journeys from on-disk evidence (not summaries), because the browser-qa SKIP-vs-PASS flap recurred a
+**5th** time. TC-11-scanner-runs-list.png (viewed): 3 dated runs DESC — 2026-05-28 Risk-on 74.32
+(Actionable 0/Breakout 8/Pullback 1), 2025-04-04 Risk-off 6.30 (Actionable 0), 2022-10-07 Risk-off
+8.34 (Actionable 0) — J-07's gate visible at the aggregate and J-08's ≥2-dated-runs met. TC-13-older
+(regime 8.34) vs TC-13-latest (regime 74.32) are visibly different stored snapshots (J-08). The four
+critical anti-goals are unit-proven AND I confirmed them in source: `scanner.py` calls each canonical
+engine once and reads breadth/counts from `score_regime`/`summarize_candidates` (no 2nd formula —
+the headline single-source risk, avoided), stores faithful `record_json` copies, and uses only INSERTs
+(no UPDATE/merge/delete — immutability); `runs.py:64` serves STORED rows only, never the live engine
+for a historical date (the exact bug J-08 guards). `git diff` confirms the existing live endpoints are
+untouched (main.py only ADDS runs.router) so J-01–J-06 cannot regress; 143/143 pytest, frontend builds
+all 10 routes, coherence.md = COHERENCE-PASS (no veto). Greps for order/execution path and secrets are
+empty. Two journeys newly passing + tractable work remaining → CONTINUE. Not GOAL_ACHIEVED: J-09, J-10,
+J-11 unbuilt by design.
+
+**Process gaps (non-blocking, now chronic):** (1) **Audit handoff missing a 5th consecutive full-depth
+iter** — `reports/audits/` does not even exist, despite iter-5 putting it in the spec's Definition of
+Done. A DoD/spec-level ask has now demonstrably failed to fix this; the fix must move into the runner
+script, not the spec. (2) **Browser-qa SKIP/PASS flap recurred a 5th time** (dedicated report 0/19
+SKIPPED on HTTP 000; QA mode-2 self-healed the frontend on :3836 and persisted all 10 evidence PNGs).
+Reconciled from on-disk evidence + unit/API proofs per the standing lesson. Neither gap affected the
+verdict — evaluation rested on persisted evidence, unit/API tests, and direct source reads.
+
+**Next-step recommendation:** iter-6 at **full** depth — J-09 + J-10: the walk-forward forward-testing
+engine + System Health page. Add a SEPARATE append-only `forward_returns` table keyed to
+`(run_id, ticker, horizon)` (never mutating the snapshot built this iter); replay as-of past dates with
+strict no-lookahead and measure realized 1/5/10/20/60-day forward returns from bars with date > D
+(unit-prove the boundary); aggregate forward return by bucket/setup/regime + excess vs SPY/QQQ/sector +
+a random-same-sector control group, with `n` and the survivorship-bias label surfaced. Seed ≥1 mid-
+history Risk-on run so the forward-return sample is meaningful. Orchestrator must finally (1) emit the
+audit handoff from the runner and (2) make the dedicated browser-qa own/self-heal its frontend.

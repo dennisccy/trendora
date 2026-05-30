@@ -109,6 +109,7 @@ _SYNTH_CFG = {
         "invalidation": {"ma_period": 10},  # must be one of this synthetic config's ma_periods [5, 10]
     },
     "stock_sectors": {"AAA": "Technology", "BBB": "Technology", "CCC": "Technology", "DDD": "Technology"},
+    "scanner": {"bootstrap_dates": ["2022-10-07"]},  # iter-5: scanner is a required config section
 }
 
 

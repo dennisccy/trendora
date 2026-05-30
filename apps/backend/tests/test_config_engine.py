@@ -101,6 +101,7 @@ VALID = {
         "invalidation": {"ma_period": 50},
     },
     "stock_sectors": {"AAA": "Technology", "BBB": "Technology"},
+    "scanner": {"bootstrap_dates": ["2022-10-07", "2025-04-04"]},
 }
 
 
@@ -326,5 +327,31 @@ def test_stock_sectors_missing_symbol_raises(tmp_path):
 def test_stock_sectors_unknown_sector_name_raises(tmp_path):
     data = copy.deepcopy(VALID)
     data["stock_sectors"]["AAA"] = "Bananas"  # not one of the etfs.sector names
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+# --- iter-5: scanner bootstrap dates -------------------------------------------------------
+def test_real_config_exposes_scanner_bootstrap_dates():
+    from datetime import date
+
+    cfg = load_config()
+    dates = cfg.scanner.bootstrap_dates
+    assert len(dates) >= 1
+    # ISO strings in config.yaml are coerced to datetime.date (no date literal in calc code)
+    assert all(isinstance(d, date) for d in dates)
+    assert date(2025, 4, 4) in dates
+
+
+def test_missing_scanner_section_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    del data["scanner"]
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_scanner_empty_bootstrap_dates_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    data["scanner"]["bootstrap_dates"] = []  # must list at least one as-of date
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))

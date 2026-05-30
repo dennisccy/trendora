@@ -484,3 +484,13 @@ walk_forward:
   asof_cadence: weekly
   horizons: [1, 5, 10, 20, 60]
   min_sample: 30
+
+# ----------------------------------------------------------------------------------------
+# iter-5 CONSUMED — Scanner snapshots. The historical as-of dates the scanner persists an
+# immutable snapshot for on first boot (the LATEST data date is added programmatically in
+# bootstrap_runs, NOT listed here). Both dates below are real seed dates the regime engine
+# labels exactly "Risk-off" (verified against the committed seed) — so the seeded Risk-Off run
+# exists (J-07) and the history has >=2 dated runs that differ from the latest (J-08). Parsed to
+# datetime.date by config.py (anti-goal: No magic numbers — no date literal in calc code).
+scanner:
+  bootstrap_dates: ["2022-10-07", "2025-04-04"]

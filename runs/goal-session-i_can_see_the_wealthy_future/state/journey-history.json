@@ -4,81 +4,81 @@
       "id": "J-01",
       "name": "Daily dashboard at a glance",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-3",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-3-evidence/TC-13-dashboard.png",
-      "note": "Carry-forward passing. Not re-shot in iter-4 (dedicated browser-qa SKIPPED, 4th flap; QA mode-2 captured only the J-05 surface). iter-4 only added `themes`+`invalidation` to the shared score_stocks row and changed /stocks/[ticker] + lib/api.ts (additive); dashboard page code untouched, frontend builds (all 10 routes typecheck), backend 126/126 pass -> no regression."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-5-evidence/TC-15-j01-dashboard.png",
+      "note": "Re-verified (regression sweep) and re-shot this iter — I viewed TC-15-j01-dashboard.png directly: regime Risk-on 74.32/100 with 5 named components, breadth 65.57% / 59.02% (universe-relative), net new highs 9.02% (11 hi/0 lo), candidate counts Actionable 0 / Breakout 8 / Pullback 1, 5 top sectors (SOXX A/93.67 ...), 5 top themes (Semiconductors A/100 ...), data as-of 2026-05-28. Cross-consistency: the dashboard's 0/8/1 candidate counts are byte-identical to the scanner-runs list's latest-row (2026-05-28) counts — the faithful-copy single-source holds across the NEW stored path too. Endpoint untouched (main.py diff only ADDS runs.router; dashboard.py unchanged)."
     },
     "J-02": {
       "id": "J-02",
       "name": "Stock Leaderboard with working filters",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-3",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-3-evidence/TC-10-leaderboard.png",
-      "note": "Carry-forward passing. `StockRow` extended additively (themes, invalidation); build typechecks; leaderboard consumes the same shared rows. iter-4 demo step-01 also shows the leaderboard rendering. No regression."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-5-evidence/TC-15-j02-stocks.png",
+      "note": "Re-verified (regression sweep). TC-15-j02-stocks.png viewed: 122-row ranked leaderboard with bucketed score columns. QA mode-2 PASS (MU lead A 94.50; sector + Actionable filters work). /api/stocks endpoint untouched this iter. No regression."
     },
     "J-03": {
       "id": "J-03",
       "name": "Theme Leaderboard",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-3",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-3-evidence/TC-12-themes.png",
-      "note": "Carry-forward passing. iter-4 extracted shared `theme_name(slug)` used by both score_themes and score_stocks (behaviour-preserving for score_themes per coherence); themes page untouched. No regression."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-5-evidence/TC-15-j03-themes.png",
+      "note": "Re-verified (regression sweep). TC-15-j03-themes.png on disk; QA PASS (11 themes ranked). Dashboard Top Themes (Semiconductors A/100, Ai Data Centre B/85, Cybersecurity C/77.50 ...) independently corroborates theme scores render. /api/themes untouched. No regression."
     },
     "J-04": {
       "id": "J-04",
       "name": "Sector / industry Leaderboard",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-3",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-3-evidence/TC-14-sectors.png",
-      "note": "Carry-forward passing. Sector scoring/pages untouched in iter-4. No regression."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-5-evidence/TC-15-j04-sectors.png",
+      "note": "Re-verified (regression sweep). TC-15-j04-sectors.png on disk; QA PASS (31 sector/industry ETFs ranked). Dashboard Top Sectors (SOXX A/93.67, WGMI A/90.67, SMH A/90.00 ...) corroborates. /api/sectors untouched. No regression."
     },
     "J-05": {
       "id": "J-05",
       "name": "Stock Detail with explainable scores",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-4",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-4",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-4-evidence/TC-10-stock-detail-NVDA.png",
-      "note": "NEWLY PASSING. Verified directly from the on-disk QA evidence PNG (viewed, not summarized): TC-10-stock-detail-NVDA.png shows the completed /stocks/NVDA page — a POPULATED candlestick chart ('Price & moving averages') with MA overlay lines + a legend + a volume histogram; theme-membership chips (AI Data Centre / Semiconductors / Megacap Leaders); a concrete INVALIDATION note ('Invalid below the 50-DMA at $198.73' per QA + backend live smoke); and the three score cards (Leadership E/47.48, Entry Quality D/66.24, Risk E/33.79) each with >=3 named components. TC-11-unknown-ticker.png shows the honest 'Unknown ticker' state (no chart, no fabrication). Single-source proven end-to-end: invalidation.level 198.734 == ma['50'][-1]; list==detail byte-identical incl. the new fields (J-06). Backend new canonical GET /api/stocks/{ticker}/bars (no-lookahead bars_asof, ma keyed by every config.indicators.ma_periods via sma_series, 404/503 honest); invalidation + themes computed once in score_stocks and carried on the SHARED row. 126/126 pytest, COHERENCE-PASS, frontend builds. NOTE: dedicated browser-qa SKIPPED (4th flap) but QA mode-2 self-healed + persisted this evidence; reconciled from disk per the standing lesson. (An earlier eval pass mis-read these PNGs as absent during a transient tool outage; corrected after harness recovery.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-5-evidence/TC-15-j05-stock-detail.png",
+      "note": "Re-verified (regression sweep). TC-15-j05-stock-detail.png on disk; QA PASS (MU detail: chart canvas + Leadership/Entry/Risk score cards + invalidation, leadership 94.5). /api/stocks/{ticker} + /bars untouched this iter. No regression."
     },
     "J-06": {
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-4",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-4",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/reviews/goal-i_can_see_the_wealthy_future-iter-4-review.md + runs/goal-session-i_can_see_the_wealthy_future/iter-4/coherence.md",
-      "note": "Re-verified at the CONTRACT level this iteration (the iteration's headline single-source risk, cleared). Unit `test_invalidation_and_themes_ride_on_the_shared_row_for_list_and_detail` PASS and coherence confirmed /api/stocks/{ticker} returns the SAME row object the leaderboard serves, now including the NEW invalidation+themes fields byte-identically; QA live deep-compare 0 mismatches. No regression."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-5-qa.md + runs/goal-session-i_can_see_the_wealthy_future/iter-5/coherence.md",
+      "note": "Re-verified AND strengthened this iter. QA deep-compare: MU leadership 94.5 identical across leaderboard / /api/stocks/MU / the NEW stored snapshot (run-3). The iter-5 single-source liability (run_scan recomputing a value) was the headline risk and was avoided: unit test_latest_run_faithful_to_live_computation proves the latest stored record_json == score_stocks(latest)['rows'] and regime_* == score_regime(latest) field-by-field; coherence.md Part A = PASS (scanner reads canonical breadth/counts, never a second formula). Frontend re-formats only. No regression."
     },
     "J-07": {
       "id": "J-07",
       "name": "Risk-Off regime suppresses Actionable",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-3",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-qa.md",
-      "note": "Not targeted (iter-5). The Risk-off=>zero-Actionable GATE is implemented + exhaustively unit-tested (iter-3 test_setups.py); the browser JOURNEY (open a historical Risk-Off run, confirm zero Actionable) needs scanner-runs history (iter-5). Failing by design."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-5-evidence/TC-12-risk-off-detail.png",
+      "note": "NEWLY PASSING. I viewed TC-11-scanner-runs-list.png directly: BOTH Risk-off runs (2025-04-04 score 6.30, 2022-10-07 score 8.34) show candidate count Actionable = 0 at the aggregate. The detail page TC-12-risk-off-detail.png (790KB full-page 122-row capture) is on disk; QA mode-2 PASS records its 'Immutable snapshot - as of 2025-04-04' header, regime Risk-off 6.30, and all 122 setup cells = Risk-off-watchlist (0 Actionable). Airtight chain: unit test_risk_off_run_has_zero_actionable + API test_api_risk_off_run_has_zero_actionable_j07 prove the STORED rows contain regime_label=='Risk-off' and 0 setup_status=='Actionable'; runs.py:64 serves those stored rows verbatim (never the live engine). Browser-qa dedicated report SKIPPED (5th HTTP-000 flap); reconciled from on-disk evidence + unit proof per standing lesson."
     },
     "J-08": {
       "id": "J-08",
       "name": "Immutable scanner-run history",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-1",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-qa.md",
-      "note": "Not targeted (iter-5). models.py intentionally unchanged this iter (git-diff empty); no snapshot persistence yet."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-5-evidence/TC-13-older.png",
+      "note": "NEWLY PASSING. TC-11 list (viewed) shows 3 dated runs DESC (2026-05-28, 2025-04-04, 2022-10-07) - >=2 met. TC-13-older.png (viewed: regime 8.34, 2022-10-07 Risk-off) vs TC-13-latest.png (viewed: regime 74.32, 2026-05-28 Risk-on) are visibly different regimes with different score-badge distributions. QA PASS: older top5 HUBB/REGN/AXON/SMCI/CEG vs latest MU/ARM/MRVL/STX/INTC. Unit test_runs_are_distinct_as_of_snapshots + API test_api_run_detail_rankings_differ_from_latest_j08 prove all 122 common tickers differ in stored leadership score. Immutability proven: scanner.py uses only INSERTs (no UPDATE/merge/delete), run_scan returns existing run unchanged for a known date; runs.py reads STORED record_json only - a frozen as-of view, not a recomputation of today."
     },
     "J-09": {
       "id": "J-09",
@@ -88,7 +88,7 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-qa.md",
-      "note": "Not targeted (iters 6-7)."
+      "note": "Not targeted (iter-6). The append-only snapshot store built this iter is the precondition: iter-6's walk-forward forward-testing engine reads these immutable runs and writes realized forward returns into a SEPARATE append-only forward_returns table. Failing by design."
     },
     "J-10": {
       "id": "J-10",
@@ -98,7 +98,7 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-qa.md",
-      "note": "Not targeted (iters 6-7)."
+      "note": "Not targeted (iter-6, with J-09). Failing by design."
     },
     "J-11": {
       "id": "J-11",
@@ -108,9 +108,9 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-1-qa.md",
-      "note": "Not targeted (iter-7)."
+      "note": "Not targeted (iter-7). Failing by design."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-05-30T03:30:00Z"
+  "updated_at": "2026-05-30T05:30:00Z"
 }

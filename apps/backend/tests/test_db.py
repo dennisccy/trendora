@@ -1,4 +1,4 @@
-"""DB layer: create_all produces exactly the iter-1 tables; seed load is idempotent."""
+"""DB layer: create_all produces exactly the expected tables; seed load is idempotent."""
 from __future__ import annotations
 
 from sqlalchemy import func, select
@@ -18,9 +18,17 @@ ITER1_TABLES = {
     "data_provider_runs",
 }
 
+# iter-5 append-only scanner-snapshot tables (created by create_all on startup).
+SNAPSHOT_TABLES = {
+    "scanner_runs",
+    "scanner_results",
+    "sector_scores",
+    "theme_scores",
+}
 
-def test_create_all_produces_exactly_iter1_tables():
-    assert set(SQLModel.metadata.tables.keys()) == ITER1_TABLES
+
+def test_create_all_produces_expected_tables():
+    assert set(SQLModel.metadata.tables.keys()) == ITER1_TABLES | SNAPSHOT_TABLES
 
 
 def test_daily_prices_has_unique_symbol_date_constraint():

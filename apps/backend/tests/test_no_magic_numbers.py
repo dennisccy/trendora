@@ -11,6 +11,7 @@ percent unit) are not tunables and are allowed.
 """
 from __future__ import annotations
 
+import re
 import tokenize
 from pathlib import Path
 
@@ -51,3 +52,27 @@ def test_engine_calc_code_has_no_magic_numbers():
             if int(literal, 0) in FORBIDDEN_INT_LITERALS:
                 offenders.append(f"{filename}: tunable literal {literal!r} (must come from config)")
     assert not offenders, "magic numbers found in engine calc code:\n" + "\n".join(offenders)
+
+
+# iter-5: the scanner orchestrates the canonical engines + persists snapshots — it must introduce
+# NO scoring literal (it recomputes nothing) and NO hard-coded as-of date (those come from
+# config.scanner.bootstrap_dates).
+SCANNER_FILE = ENGINE_DIR / "scanner.py"
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
+def test_scanner_has_no_scoring_or_date_literals():
+    source = SCANNER_FILE.read_text()
+    # no hard-coded as-of date anywhere (incl. comments/strings) — dates live in config.yaml
+    iso = _ISO_DATE.search(source)
+    assert iso is None, f"scanner.py must not hard-code an ISO date ({iso.group(0)!r}); read config.scanner.bootstrap_dates"
+
+    # no scoring literal: no float/complex, and no config-tunable integer
+    offenders: list[str] = []
+    for literal in _number_tokens(SCANNER_FILE):
+        lowered = literal.lower()
+        if "." in literal or "e" in lowered or "j" in lowered:
+            offenders.append(f"float/complex literal {literal!r}")
+        elif int(literal, 0) in FORBIDDEN_INT_LITERALS:
+            offenders.append(f"tunable literal {literal!r}")
+    assert not offenders, "scanner.py introduced a scoring literal:\n" + "\n".join(offenders)
