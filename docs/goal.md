@@ -22,7 +22,11 @@ themes, and setups actually outperform SPY, QQQ, sector ETFs, and **random same-
 system **bootstraps that evidence from history with a strict walk-forward**: it replays the scan
 *as-of* many past dates using only data available on that date (no lookahead), then measures realized
 forward returns from the data that came after. So the System Health page shows real,
-bucket-by-bucket, benchmark-relative evidence from day one.
+bucket-by-bucket, benchmark-relative evidence from day one. Beyond that aggregate view, the user can
+**interactively pick any past date** to replay that day's full scan and read its realized
+forward-test scorecard, and **detected price patterns (starting with VCP — the Volatility
+Contraction Pattern)** are tracked and forward-tested alongside the rankings — so the user can judge
+for themselves whether each idea actually works.
 
 The MVP runs **fully offline on a committed seed dataset** (so every result is deterministic and
 reproducible), behind a **provider abstraction** that lets a live end-of-day data source refresh the
@@ -68,6 +72,25 @@ data later. It places **no orders** and holds **no broker keys**.
 - Unit tests cover indicator math, relative-strength and bucket logic, scoring consistency, **the
   no-lookahead guarantee** in walk-forward, and snapshot immutability; the app boots and serves all
   pages offline against the seed.
+- Every setup status and detected pattern is **explained in the UI** from a single config-backed
+  catalog: a Methodology/Glossary page lists each with its plain-language meaning, the exact
+  thresholds from config, and a worked example, and every setup/pattern badge carries an inline
+  explanation; an entry added to config appears in both places with no code change.
+- A user can **browse the whole dashboard as of any past trading day** via a global as-of date
+  switcher (default: latest), with a clear "viewing as-of D (historical)" indicator, and can open a
+  **Backtest workspace** to see that date's full scan plus a **forward-test scorecard** of how that
+  date's cohort performed — realized 1/5/10/20/60-day and excess returns vs SPY/QQQ/sector and a
+  random same-sector control — computed only from seed bars after D, with sample size and
+  partial-horizon (NA) cases shown honestly.
+- **Pages are served from persisted snapshots, not per-request recomputation**: each read endpoint
+  returns canonical values stored for the resolved as-of date (computed once per date, then read
+  from storage), a warm page reaches interactive in **under ~1.5 s**, and the same value still reads
+  identically across pages.
+- **VCP is detected as a config-driven pattern flag**: flagged stocks show a VCP badge with a
+  plain-language reason and a concrete invalidation level (pivot / last-contraction low), are
+  filterable on the leaderboard, are documented in the glossary, and appear as a **VCP-vs-non-VCP
+  forward-return breakdown** (with sample size; NA below the min-sample threshold) so the evidence
+  shows whether VCP-flagged names actually outperform.
 
 ## Key Capabilities
 
@@ -102,6 +125,27 @@ data later. It places **no orders** and holds **no broker keys**.
     Leaderboard, Stock Detail, Scanner Runs, System Health, Watchlist.
 14. *(nice-to-have)* Edit scoring weights/thresholds from a config view.
 15. *(nice-to-have)* Historical charts of a stock's scores across past snapshots.
+16. **Setup & pattern glossary + inline explanations**: a single config-backed catalog of every
+    setup status AND every detected pattern (plain-language meaning, the thresholds that define it,
+    and a worked example), surfaced as a dedicated Methodology/Glossary page and as inline info
+    tooltips on every setup/pattern badge; adding a new status or pattern to config makes it appear
+    everywhere with no code change.
+17. **Interactive as-of date selection** (historical replay + per-date forward test): a global
+    as-of date switcher re-points the whole dashboard to any past trading day's immutable snapshot
+    (strict no-lookahead), plus a dedicated **Backtest / Time-Machine** workspace to pick a date,
+    view its full as-of scan, and read a per-date **forward-test scorecard** — how that date's
+    ranked cohort / setups actually performed vs SPY/QQQ/sector and a random same-sector control at
+    1/5/10/20/60 days — measured only from post-snapshot seed bars.
+18. **Snapshot-served reads** (performance): every read endpoint serves canonical values from the
+    persisted immutable snapshot for the resolved as-of date instead of recomputing the scan per
+    request; a date viewed for the first time is computed once, persisted, and served from storage
+    thereafter.
+19. **VCP detection (Volatility Contraction Pattern)** — the first **detected pattern**: a
+    rule-based, price+volume detector (progressively shallower pullbacks + volume dry-up into a
+    pivot near the highs) whose thresholds live in config. It rides each stock row as a separate
+    flag (with pivot + invalidation level) ALONGSIDE the setup status — it does not replace it — is
+    filterable on the leaderboard, documented in the glossary, and tracked as a forward-test
+    dimension (VCP vs non-VCP) so the evidence shows whether it adds value.
 
 ## Non-Goals
 
@@ -167,6 +211,19 @@ data later. It places **no orders** and holds **no broker keys**.
   excess vs benchmarks, and control-group comparisons.
 - **Watchlist** (`/watchlist`) — user-saved stocks with reason, current state, price-since-added, and
   invalidation.
+- **Methodology / Glossary** (`/methodology`) — explains the three scores, A–E buckets, the six
+  regime labels, every setup status, AND every detected pattern (incl. VCP) — generated from the
+  config-backed catalog.
+- **Backtest / Time-Machine** (`/backtest`) — pick any historical as-of date; see its full as-of
+  scan (read from the canonical snapshot) and a **per-date forward-test scorecard**. This is the
+  single-date drill-down; System Health remains the cross-date aggregate, and Scanner Runs remains
+  the immutable run list.
+
+A global **as-of date switcher** in the top bar re-points Dashboard, Stocks, Themes, Sectors, and
+Stock Detail to a chosen past snapshot (default: latest). The as-of date resolves to a stored
+immutable snapshot — created once on first view, then never mutated. The **Stock Leaderboard**
+(`/stocks`) gains a **VCP filter**, and **System Health** gains a **VCP-vs-non-VCP** forward-return
+breakdown alongside its by-setup breakdown.
 
 The backend is the single source of truth; every page only displays server-computed values.
 
@@ -181,6 +238,11 @@ The backend is the single source of truth; every page only displays server-compu
 - **Setup status** (per stock) — computed once per run from scores + regime + detected pattern.
 - **Forward-return aggregates** (by bucket / setup / regime, and excess vs benchmarks) — computed once
   by the forward-testing engine from stored snapshots + post-snapshot prices; never recomputed in a view.
+- **Setup & pattern catalog** (definition + thresholds + example) — one config-backed source; the
+  glossary page and every inline tooltip read it, never re-describing an entry independently.
+- **Detected patterns** (incl. VCP) — computed once per run by the pattern detector from config
+  thresholds; the flag plus its pivot/invalidation level ride the stock row, and every view reads
+  the same stored value.
 
 ## Must-have user journeys
 
@@ -292,6 +354,67 @@ The backend is the single source of truth; every page only displays server-compu
     + setup, a price-since-added figure, and an invalidation level; after a backend restart the entry is
     still present (persisted in the database), proving the watchlist is not in-memory only.
 
+- **J-12: Understand what each setup/pattern means (glossary + inline)**
+  - Steps:
+    1. Visit `/methodology`
+    2. Read the entries for the six setups (Actionable, Breakout-watch, Pullback-watch, Extended,
+       Avoid, Risk-off-watchlist) and for the VCP pattern
+    3. Confirm each shows a plain-language meaning, the threshold rule that defines it, and an example
+    4. On `/stocks`, hover/tap a setup badge and read its inline explanation
+  - Acceptance: all six setup statuses and the VCP pattern are listed, each with (a) a plain-language
+    description, (b) the thresholds that produce it (matching config), and (c) a worked example; the
+    inline tooltip on a leaderboard badge shows the same definition; the list is generated from the
+    config-backed catalog, so an entry added in config renders with no code change.
+
+- **J-13: Browse the dashboard as of a past date (global as-of switcher)**
+  - Steps:
+    1. On `/`, open the as-of date switcher
+    2. Select a past trading day
+    3. Observe that `/`, then `/stocks`, `/themes`, and `/sectors` reflect that date
+    4. Confirm a "viewing as-of D (historical)" indicator is shown
+    5. Switch back to the latest date
+  - Acceptance: selecting a past date re-points every page to that date's stored snapshot; the values
+    match that date's Scanner Run (not the latest); a clear historical indicator is visible; no
+    future-dated bar influences the as-of values; returning to latest restores the current view.
+
+- **J-14: Backtest a past date and read its forward-test scorecard**
+  - Steps:
+    1. Visit `/backtest`
+    2. Pick a historical as-of date with at least 60 post-snapshot bars
+    3. Read the as-of scan summary (regime, top sectors/themes, the ranked Actionable/watch cohort)
+    4. Read the forward-test scorecard — realized 1/5/10/20/60-day returns, excess vs SPY/QQQ/sector,
+       and vs a random same-sector control
+    5. Pick a recent date and confirm the longer horizons show NA rather than a fabricated number
+  - Acceptance: for the chosen date the page shows the as-of cohort AND numeric forward returns by
+    horizon with excess-vs-benchmark and control-group columns and sample size (n); returns are
+    computed only from seed bars after D (no-lookahead); a date without enough post-snapshot bars
+    shows partial/NA horizons rather than fabricated numbers.
+
+- **J-15: Fast page loads from persisted snapshots**
+  - Steps:
+    1. Load `/stocks` for the latest date
+    2. Reload the page
+    3. Load `/`, `/themes`, and `/sectors`
+  - Acceptance: the leaderboard renders its rows from the stored snapshot for the as-of date (not
+    recomputed per request) and reaches interactive within the load budget (warm load < ~1.5 s); the
+    values remain identical to the Stock Detail page (coherence preserved).
+
+- **J-16: VCP — detected, explained, filterable, forward-tested**
+  - Steps:
+    1. On `/stocks`, apply the **VCP** filter
+    2. Confirm flagged rows show a VCP badge plus a reason and an invalidation level
+    3. Open one flagged stock; confirm the detail page shows the VCP badge with its pivot/invalidation
+    4. On `/methodology`, read the VCP glossary entry
+    5. On `/system-health`, read the VCP-vs-non-VCP forward-return breakdown
+  - Acceptance: the VCP filter shows only flagged names (or an explicit empty-state if none in the
+    current snapshot); each flagged row shows the badge + reason + a concrete invalidation level
+    (pivot / last-contraction low); the glossary lists VCP with its meaning, the config thresholds
+    that define it, and an example; System Health shows mean forward returns for VCP vs non-VCP with
+    sample size n (NA below the min-sample threshold) derived from the walk-forward snapshots; the VCP
+    flag is computed once on the backend and reads identically on leaderboard and detail. The VCP flag
+    is SEPARATE from the setup status (a name can be both, e.g. "Breakout-watch" + VCP) and never makes
+    a name Actionable on its own.
+
 ## Anti-goals
 
 - **No lookahead.** Scoring for a snapshot dated D MUST use only price bars with date ≤ D; forward
@@ -321,3 +444,23 @@ The backend is the single source of truth; every page only displays server-compu
   labelled as carrying survivorship bias (current-membership universe) so results are never overstated.
 - The frontend MUST NOT store auth tokens in `localStorage` (applies only if auth is ever added; this
   version has no auth).
+- **No recompute in the read path.** Read endpoints MUST serve canonical values from the persisted
+  immutable snapshot for the resolved as-of date; they MUST NOT recompute scores/returns/buckets per
+  request. The scan is computed once per date (bootstrap, scheduled, or first view) and then read
+  from storage. *(extends Single source of truth)*
+- **On-demand snapshots stay immutable & lookahead-free.** Creating a snapshot for a newly selected
+  date is create-once: an existing snapshot MUST be read, never overwritten; an as-of-D snapshot MUST
+  use only bars with date ≤ D. *(critical)*
+- **Setup & pattern vocabulary is config-driven in the UI too.** The glossary and tooltips MUST be
+  generated from the single config-backed catalog — no hard-coded per-entry copy or status/pattern
+  list in the frontend — so a new status or pattern is explained automatically. *(extends No magic
+  numbers)*
+- **Honest forward-test for partial windows.** The per-date forward-test scorecard and the
+  VCP-vs-non-VCP breakdown MUST show NA/partial for horizons or cohorts lacking enough samples and
+  MUST show sample size — never fabricate or extrapolate a return to fill a gap. *(extends No
+  fabricated data)*
+- **VCP is a pattern, not a status.** VCP MUST NOT enter the mutually-exclusive setup-status enum and
+  MUST NOT by itself promote a name to "Actionable"; it rides as a separate flag computed once per run,
+  price+volume only, with date ≤ D (no-lookahead), and is part of the immutable snapshot. Its
+  detection thresholds MUST come from config (no magic numbers). *(critical — protects Single source
+  of truth + Risk-Off gating)*
