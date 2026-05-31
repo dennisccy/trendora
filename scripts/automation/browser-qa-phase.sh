@@ -152,15 +152,23 @@ echo "[browser-qa] Resolved ports: frontend=${FRONTEND_URL} backend=${BACKEND_HE
 # refuses to start a second dev server in the same directory even on a different
 # port, using .next/dev/lock as the signal. Also handle the case where a stale
 # frontend may be bound with a different backend URL baked in.
-echo "[browser-qa] Clearing any stale Next.js dev server for this project..."
-kill_stale_next_dev_server
-FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$FRONTEND_URL" 2>/dev/null || true)
-if [[ "$FRONTEND_STATUS" =~ ^[23] ]]; then
-  STALE_PIDS=$(lsof -ti "tcp:${_FRONTEND_PORT}" 2>/dev/null || true)
-  if [[ -n "$STALE_PIDS" ]]; then
-    echo "[browser-qa] Killing stale frontend on port ${_FRONTEND_PORT} to ensure correct API URL..."
-    kill -TERM $STALE_PIDS 2>/dev/null || true
-    sleep 2
+#
+# Skip entirely in the post-dev fanout: there the caller (run-phase.sh
+# _boot_shared_services) owns the frontend and already cleared stale locks at boot.
+# Killing it here would leave the demo — which runs after this script in the SAME
+# branch against the SAME shared services — with no frontend to probe, the cause of
+# spurious demo SKIPs. Only reclaim stale servers when this script owns them.
+if [[ "${CHAIN_SHARED_SERVICES:-false}" != "true" ]]; then
+  echo "[browser-qa] Clearing any stale Next.js dev server for this project..."
+  kill_stale_next_dev_server
+  FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$FRONTEND_URL" 2>/dev/null || true)
+  if [[ "$FRONTEND_STATUS" =~ ^[23] ]]; then
+    STALE_PIDS=$(lsof -ti "tcp:${_FRONTEND_PORT}" 2>/dev/null || true)
+    if [[ -n "$STALE_PIDS" ]]; then
+      echo "[browser-qa] Killing stale frontend on port ${_FRONTEND_PORT} to ensure correct API URL..."
+      kill -TERM $STALE_PIDS 2>/dev/null || true
+      sleep 2
+    fi
   fi
 fi
 
@@ -190,9 +198,19 @@ fi
 # giving up — a slow boot is no longer misread as "frontend not available."
 if _wait_for_url "$FRONTEND_URL" "frontend" 90 "browser-qa"; then
   FRONTEND_AVAILABLE="yes"
+  FRONTEND_SKIP_REASON=""
 else
   FRONTEND_AVAILABLE="no"
   echo "[browser-qa] Frontend not available after re-probe — browser tests will be marked SKIPPED."
+  # Build an actionable reason (dependency hint) instead of a bare "not running",
+  # and echo the real start-up log tail (captured by ensure_services_running) to
+  # the operator console so the cause is visible, not just the symptom.
+  FRONTEND_SKIP_REASON="frontend not running"
+  _fe_hint="$(_qa_dep_hint frontend)"
+  [[ -n "$_fe_hint" ]] && FRONTEND_SKIP_REASON+=" — likely cause: $_fe_hint"
+  _fe_tail="${QA_FRONTEND_LOG_TAIL:-}"
+  [[ -z "$_fe_tail" && -n "${QA_FRONTEND_LOG:-}" && -f "${QA_FRONTEND_LOG:-}" ]] && _fe_tail="$(tail -n 15 "$QA_FRONTEND_LOG" 2>/dev/null || true)"
+  [[ -n "$_fe_tail" ]] && { echo "[browser-qa] Frontend start log tail (${QA_FRONTEND_LOG:-?}):" >&2; echo "$_fe_tail" >&2; }
 fi
 
 SERVICES_NOTE="Note: browser-qa-phase.sh manages backend (${BACKEND_HEALTH_URL}, log: ${QA_BACKEND_LOG}) and frontend (${FRONTEND_URL}, log: ${QA_FRONTEND_LOG}). Services are restarted automatically if they die during quota-retry sleeps."
@@ -225,7 +243,7 @@ $SERVICES_NOTE
 $(if [[ "$FRONTEND_AVAILABLE" == "yes" ]]; then
   echo "Chrome MCP browser checks ARE required. Use mcp__plugin_superpowers-chrome_chrome__use_browser for each test case."
 else
-  echo "Frontend is NOT available. Mark all tests as SKIPPED with reason: frontend not running."
+  echo "Frontend is NOT available. Mark all tests as SKIPPED with reason: ${FRONTEND_SKIP_REASON:-frontend not running}."
   echo "Do NOT attempt to run browser tests."
 fi)
 
