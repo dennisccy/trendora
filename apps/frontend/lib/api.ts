@@ -381,6 +381,52 @@ export async function fetchSystemHealth(horizon: number, signal?: AbortSignal): 
   return getJSON<SystemHealthResponse>(`/api/system-health?horizon=${encodeURIComponent(horizon)}`, signal);
 }
 
+// --- backtest / per-date forward-test scorecard (iter-10, J-14) ----------------------------
+/** Cohort excess vs one benchmark cohort = cohort mean − benchmark mean (a stored subtraction; the
+ *  page never recomputes it). `mean_excess` / `cohort_mean` / `benchmark_mean` are null for an NA
+ *  cohort or benchmark; `n` is the cohort sample size, `benchmark_n` the benchmark cohort's. */
+export interface ScorecardExcess {
+  benchmark: string; // SPY | QQQ | sector-ETF cohort label (rendered verbatim)
+  mean_excess: number | null;
+  cohort_mean: number | null;
+  benchmark_mean: number | null;
+  n: number; // cohort observations
+  benchmark_n: number; // benchmark observations
+}
+
+/** One per-horizon row of the per-date scorecard: the top-ranked cohort's mean realized return + n,
+ *  the excess vs SPY/QQQ/sector, and the five control-group cohorts — each figure with its sample
+ *  size `n` and honest NA (null) for a window that has not fully elapsed in the seed. */
+export interface BacktestScorecardHorizonRow {
+  horizon: number; // 1 | 5 | 10 | 20 | 60 (from config.walk_forward.horizons)
+  cohort: ForwardGroupRow; // top-ranked cohort (rank ≤ control_group.top_n)
+  excess: { vs_spy: ScorecardExcess; vs_qqq: ScorecardExcess; vs_sector: ScorecardExcess };
+  control_group: ControlGroupRow[]; // top_ranked / random_same_sector / spy / qqq / sector_etf
+}
+
+export interface BacktestScorecard {
+  by_horizon: BacktestScorecardHorizonRow[];
+}
+
+/** GET /api/backtest payload — the SINGLE canonical per-date forward-test scorecard (J-14). Every
+ *  figure carries its sample size `n`; the page re-formats only and recomputes no return/excess. The
+ *  scan summary's regime/sector/theme/stock values come from their OWN canonical endpoints, not here. */
+export interface BacktestResponse {
+  asof_date: string; // the resolved as-of date (ISO)
+  is_latest: boolean; // true when the resolved date is the latest stored run
+  min_sample: number; // figures with n below this are flagged low-sample
+  horizons: number[]; // 1/5/10/20/60 (from config — not hard-coded in the UI)
+  survivorship_bias: string; // honest caveat, rendered verbatim
+  scorecard: BacktestScorecard;
+}
+
+/** Canonical per-date forward-test scorecard source: GET /api/backtest?as_of=. Throws on non-200 so
+ *  the page renders an explicit "Backend unavailable" state (503 no data / 4xx invalid date) — never
+ *  fabricated evidence. `asof` time-travels to that date's stored immutable snapshot. */
+export async function fetchBacktest(asof?: string, signal?: AbortSignal): Promise<BacktestResponse> {
+  return getJSON<BacktestResponse>(withAsOf("/api/backtest", asof), signal);
+}
+
 // --- watchlist (iter-7) --------------------------------------------------------------------
 /** One persisted watchlist entry, enriched at serve time. The stored fields are `id`/`ticker`/
  *  `date_added`/`asof_date_added`/`reason`; the CURRENT `leadership`/`entry_quality`/`risk` (each a

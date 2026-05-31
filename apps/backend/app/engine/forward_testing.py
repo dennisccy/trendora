@@ -181,6 +181,56 @@ def walk_forward_asof_dates(session: Session, config: Optional[Config] = None) -
 # --------------------------------------------------------------------------------------------------
 # Backfill — persist the cadence snapshots, then INSERT realized forward returns (idempotent)
 # --------------------------------------------------------------------------------------------------
+def _insert_run_forward_returns(
+    session: Session,
+    run: ScannerRun,
+    symbols: list[str],
+    horizons,
+    max_h: int,
+    existing: set,
+) -> int:
+    """INSERT the missing realized forward returns for ONE run; return how many rows were inserted.
+
+    This is the SINGLE implementation of the forward-return INSERT (entry = the close ON D via
+    `close_on`, exit = the h-th post-D bar via `bars_after` + `forward_return`), factored out of
+    `_backfill` so the walk-forward boot AND the per-date `backfill_run_forward_returns` share exactly
+    ONE forward-return formula (no second math path). Only keys absent from `existing` are inserted
+    (idempotent), and `existing` is updated in place. INSERT-only — it never UPDATEs/overwrites a
+    snapshot row. A (symbol, horizon) with fewer than `horizon` post-D bars contributes nothing
+    (NA, n=0) — never a fabricated 0% (anti-goal: No fabricated data)."""
+    inserted = 0
+    for symbol in symbols:
+        # Idempotency fast-path: if every horizon for this (run, symbol) is already persisted, skip the
+        # price fetches entirely — so a warm re-run does no redundant bar materialization.
+        needed = [h for h in horizons if (run.id, symbol, h) not in existing]
+        if not needed:
+            continue
+        entry_close = close_on(session, symbol, run.asof_date)  # close ON D (date <= D)
+        if entry_close is None:
+            continue
+        post_bars = bars_after(session, symbol, run.asof_date, limit=max_h)  # date > D, bounded
+        if not post_bars:
+            continue  # no post-snapshot bar -> nothing to measure (n=0)
+        for horizon in needed:
+            realized = forward_return(post_bars, entry_close, horizon)
+            if realized is None:
+                continue  # fewer than `horizon` post-bars -> NA, no fabricated row
+            session.add(
+                ForwardReturn(
+                    run_id=run.id,
+                    symbol=symbol,
+                    horizon=horizon,
+                    asof_date=run.asof_date,
+                    entry_close=entry_close,
+                    measured_date=post_bars[horizon - 1].date,
+                    realized_return=realized,
+                )
+            )
+            existing.add((run.id, symbol, horizon))
+            inserted += 1
+    return inserted
+
+
 def _backfill(session: Session, cfg: Config) -> dict:
     latest = latest_data_date(session)
     if latest is None:
@@ -209,37 +259,8 @@ def _backfill(session: Session, cfg: Config) -> dict:
     rows_inserted = 0
     runs_with_returns = 0
     for run in runs:
-        run_inserted = False
-        for symbol in symbols:
-            # Idempotency fast-path: if every horizon for this (run, symbol) is already persisted,
-            # skip the price fetches entirely — so a warm re-boot does no redundant bar materialization.
-            needed = [h for h in horizons if (run.id, symbol, h) not in existing]
-            if not needed:
-                continue
-            entry_close = close_on(session, symbol, run.asof_date)  # close ON D (date <= D)
-            if entry_close is None:
-                continue
-            post_bars = bars_after(session, symbol, run.asof_date, limit=max_h)  # date > D, bounded
-            if not post_bars:
-                continue  # no post-snapshot bar -> nothing to measure (n=0)
-            for horizon in needed:
-                realized = forward_return(post_bars, entry_close, horizon)
-                if realized is None:
-                    continue  # fewer than `horizon` post-bars -> NA, no fabricated row
-                session.add(
-                    ForwardReturn(
-                        run_id=run.id,
-                        symbol=symbol,
-                        horizon=horizon,
-                        asof_date=run.asof_date,
-                        entry_close=entry_close,
-                        measured_date=post_bars[horizon - 1].date,
-                        realized_return=realized,
-                    )
-                )
-                existing.add((run.id, symbol, horizon))
-                rows_inserted += 1
-                run_inserted = True
+        run_inserted = _insert_run_forward_returns(session, run, symbols, horizons, max_h, existing)
+        rows_inserted += run_inserted
         if run_inserted:
             runs_with_returns += 1
 
@@ -442,4 +463,112 @@ def compute_forward_aggregates(session: Session, horizon: int, config: Optional[
         "by_regime": _group_means(stock_obs, "regime", "regime", cfg.regime.labels, pad=False),
         "excess": excess,
         "control_group": _control_groups(horizon, stock_obs, ret_by_run_symbol, runs_with_fr, cfg),
+    }
+
+
+# --------------------------------------------------------------------------------------------------
+# Per-date scorecard (J-14) — create-once population + the SINGLE per-date forward-test read
+# --------------------------------------------------------------------------------------------------
+def backfill_run_forward_returns(
+    session: Session, run: ScannerRun, config: Optional[Config] = None
+) -> dict:
+    """Create-once population of ONE run's realized forward returns into the append-only
+    `forward_returns` table, via the shared `_insert_run_forward_returns` helper (the single
+    forward-return formula). INSERT-only + idempotent — a 2nd call inserts 0 rows and it never UPDATEs
+    a `scanner_runs` / `scanner_results` / `*_scores` row (anti-goal: Snapshots immutable). Frozen-seed-
+    only. This is the "first view computes once" path the No-recompute-in-the-read-path anti-goal
+    explicitly permits; for a run the iter-6 boot backfill already covered it inserts nothing."""
+    cfg = config or get_config()
+    wf = cfg.walk_forward
+    horizons = wf.horizons
+    max_h = max(horizons)
+    symbols = forward_symbols(cfg)
+    existing = {
+        (fr.run_id, fr.symbol, fr.horizon)
+        for fr in session.exec(select(ForwardReturn).where(ForwardReturn.run_id == run.id)).all()
+    }
+    inserted = _insert_run_forward_returns(session, run, symbols, horizons, max_h, existing)
+    session.commit()
+    return {"run_id": run.id, "asof_date": run.asof_date.isoformat(), "rows_inserted": inserted}
+
+
+def _scorecard_excess(cohort_mean: Optional[float], cohort_n: int, bench: dict) -> dict:
+    """Cohort excess vs one benchmark cohort = cohort mean − benchmark mean (NA when either side is
+    NA — never a fabricated 0%). Mirrors `compute_forward_aggregates`'s excess subtraction; the
+    benchmark label / mean / n are READ from the shared control-group cohort, so there is no second
+    source for the benchmark figure."""
+    bench_mean = bench["mean_return"]
+    return {
+        "benchmark": bench["label"],
+        "mean_excess": (cohort_mean - bench_mean)
+        if (cohort_mean is not None and bench_mean is not None) else None,
+        "cohort_mean": cohort_mean,
+        "benchmark_mean": bench_mean,
+        "n": cohort_n,
+        "benchmark_n": bench["n"],
+    }
+
+
+def compute_run_scorecard(session: Session, run: ScannerRun, config: Optional[Config] = None) -> dict:
+    """The SINGLE canonical per-date forward-test scorecard (Data Contract value, J-14). READS the
+    stored `forward_returns` for THIS `run.id` joined to the stored `scanner_results` (leadership
+    bucket / setup / sector / rank, read VERBATIM) — it RECOMPUTES no score, bucket, or return. For
+    EACH configured horizon it returns: the as-of cohort mean realized return + `n` (cohort = stocks
+    ranked <= `control_group.top_n`, i.e. the control-group "top_ranked" definition); the excess
+    (cohort mean − benchmark mean) vs SPY / QQQ / sector, each with `n`; and the five control-group
+    cohorts, each with `mean_return` + `n`. A horizon (or cohort) with no stored realized return for
+    the run -> `mean_return: None` / `n: 0` (honest NA — never a fabricated 0%). Reuses the iter-6
+    `_control_groups` so the cohort + control-group math has exactly ONE implementation."""
+    cfg = config or get_config()
+    wf = cfg.walk_forward
+
+    results = session.exec(select(ScannerResult).where(ScannerResult.run_id == run.id)).all()
+    fr_rows = session.exec(select(ForwardReturn).where(ForwardReturn.run_id == run.id)).all()
+
+    by_horizon: list[dict] = []
+    for horizon in wf.horizons:
+        fr_at_h = [fr for fr in fr_rows if fr.horizon == horizon]
+        ret_by_symbol = {fr.symbol: fr.realized_return for fr in fr_at_h}
+        ret_by_run_symbol = {(run.id, sym): ret for sym, ret in ret_by_symbol.items()}
+        runs_with_fr = sorted({fr.run_id for fr in fr_at_h})  # [] or [run.id]
+
+        # Per-stock observations at this horizon: each stored result joined to its stored realized
+        # return — the bucket / setup / sector / rank are READ from the snapshot, never recomputed.
+        stock_obs: list[dict] = []
+        for res in results:
+            realized = ret_by_symbol.get(res.ticker)
+            if realized is None:
+                continue  # no realized return at this horizon for this stock (n=0 contribution)
+            stock_obs.append({
+                "run_id": run.id,
+                "ticker": res.ticker,
+                "return": realized,
+                "bucket": res.leadership_bucket,   # stored canonical A-E (verbatim — no re-bucketing)
+                "setup": res.setup_status,         # stored canonical setup status (verbatim)
+                "sector": res.sector,
+                "rank": res.rank,                  # stored canonical rank (verbatim — cohort membership)
+            })
+
+        cohorts = _control_groups(horizon, stock_obs, ret_by_run_symbol, runs_with_fr, cfg)
+        by_key = {c["key"]: c for c in cohorts}
+        cohort = by_key["top_ranked"]
+        cohort_mean, cohort_n = cohort["mean_return"], cohort["n"]
+
+        by_horizon.append({
+            "horizon": horizon,
+            "cohort": {"mean_return": cohort_mean, "n": cohort_n},
+            "excess": {
+                "vs_spy": _scorecard_excess(cohort_mean, cohort_n, by_key["spy"]),
+                "vs_qqq": _scorecard_excess(cohort_mean, cohort_n, by_key["qqq"]),
+                "vs_sector": _scorecard_excess(cohort_mean, cohort_n, by_key["sector_etf"]),
+            },
+            "control_group": cohorts,
+        })
+
+    return {
+        "asof_date": run.asof_date.isoformat(),
+        "min_sample": wf.min_sample,
+        "horizons": list(wf.horizons),
+        "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
+        "scorecard": {"by_horizon": by_horizon},
     }

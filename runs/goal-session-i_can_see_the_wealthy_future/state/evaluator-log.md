@@ -429,3 +429,56 @@ forward_returns + stored scanner_results verbatim) + `GET /api/backtest` via `sn
 with `?as_of=D` — no second source — + the per-horizon scorecard) + the Backtest sidebar entry + `fetchBacktest`;
 and the spec's keystone patch-to-raise read-path test, no-lookahead post-D boundary, honest partial/NA, and
 create-once/immutable tests. A clean J-14 → 14/16 Must-haves pass; J-16 (VCP) then J-12 (glossary) finish the round.
+
+## Iteration 10 — goal-i_can_see_the_wealthy_future-iter-10
+
+**Date:** 2026-05-31T09:10:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: **J-14** (Backtest / Time-Machine workspace + per-date forward-test scorecard) — the iter-9 silent dev no-op is fixed; J-14 actually implemented this iter
+- Newly failing: none
+- Regressed: none (J-13 global switcher + J-09/J-10 System Health re-shot LIVE and unchanged; the forward_testing refactor is behaviour-preserving; models.py + the 5 canonical read endpoints byte-identical)
+- Anti-goal violations: none (all engaged criticals — no-lookahead post-D boundary / immutable INSERT-only / single-source + No-recompute-in-read-path / on-demand-create-once / honest-partial-NA / no-magic-numbers / no-order-path / no-secrets — verified in source + unit-proven + live)
+
+**Reasoning:** iter-10 re-executed the iter-9 J-14 plan and landed it cleanly. I verified to gold
+standard **despite a 9th consecutive dedicated browser-qa SKIP and — worse than iters 4–8 — ZERO QA
+evidence PNGs** (the evidence dir did not even exist; QA mode-2 did not self-heal this time), so there
+was nothing to reconcile from. I therefore produced the evidence myself: (1) ran the new suite —
+**17/17 new J-14 tests PASS in my own official `.venv` pytest (exit 0, 229s)**, incl. the KEYSTONE
+patch-`forward_return`-AND-`score_*`-to-raise (read path recomputes nothing — proven by the negative),
+no-lookahead post-D boundary, create-once idempotent, honest partial/NA, group-by-stored-rank (single
+source), and cross-check vs `compute_forward_aggregates`; (2) booted uvicorn :8835 on the seed and hit
+the live API — latest = honest all-NA (`is_latest=true`, every `mean_return:null`/`n:0`), `?as_of=2022-10-07`
+(full window) = NUMERIC cohort returns (n=20=`top_n`) + excess vs SPY/QQQ/sector + random-same-sector
+control n=31 + all 5 control cohorts, invalid dates → 400/400/422; (3) drove Chrome to `next start`
+:3835 and rendered BOTH scorecard states — the rendered cells equal the API payload **byte-for-byte,
+re-formatted to %** (FE recomputes nothing), low-sample `n<30` ⚠, survivorship banner + "Viewing as-of
+D" indicator, Backtest reachable in 1 click, honest "no numbers are fabricated" empty state on the
+all-NA date; **no console errors**. Source-verified `backtest.py` + the 3 new `forward_testing` funcs
+(`_insert_run_forward_returns` extract-method refactor → ONE forward-return formula;
+`backfill_run_forward_returns` create-once INSERT-only; `compute_run_scorecard` reads stored rows +
+reuses `_control_groups`) + `page.tsx` (scan summary reuses the existing canonical `fetch*` with
+`?as_of=D` — no second source) + `sidebar.tsx` + `lib/api.ts`. `models.py` git-clean; order-path/secrets
+greps empty. Frontend production build clean (11 routes incl `/backtest`). Coherence **COHERENCE-PASS**
+(both refactors REDUCE duplication). 14/16 Must-haves pass; J-12 + J-16 unbuilt by design → CONTINUE.
+
+**Process gaps (non-blocking, chronic — runner-script scope, NOT product/spec; ineffective via spec text
+across iters 3–10):** (1) **Dedicated browser-qa SKIPped a 9th consecutive time** (0/15, frontend
+reported down at `:3835`) AND — unlike iters 4–8 — produced **no evidence PNGs at all** (no QA mode-2
+self-heal this run); I booted both services and captured the 4 evidence PNGs myself. (2) **Audit handoff
+missing a 9th consecutive full-depth iter** (`reports/audits/` + `docs/handoffs/...-audit.md` absent;
+`status.json` `current_step` stops at `qa_complete`). Neither affected the verdict (rested on my own test
+run + live API + live browser render + source reads). (3) Minor review NOTE (non-functional):
+`backtest.py:27` imports the private `_latest_stored_run_date` from `app.engine.scanner` — the only API
+module reaching a private engine symbol; optionally expose a public helper.
+
+**Next-step recommendation:** **iter-11 at full depth — J-16 (VCP detection).** A config-driven
+price+volume VCP detector computed once per run with date ≤ D (no-lookahead), riding the immutable
+snapshot row as a SEPARATE flag (NOT in the setup-status enum; never Actionable on its own — *critical*),
+read identically on leaderboard + detail, with a `/stocks` VCP filter, a badge (reason + pivot/invalidation),
+and a System Health VCP-vs-non-VCP forward-return breakdown (n; NA below `min_sample`). Then **J-12
+(config-backed glossary / `/methodology`)** LAST so it documents the VCP entry (adds a nav route → needs
+`blueprint.reapproval-requested`). Clean J-16 → 15/16, then J-12 → 16/16 and a legitimate GOAL_ACHIEVED
+check. Runner owner should finally (a) make browser-qa own/await/self-heal its frontend with `CORS_ORIGINS`
+set to the frontend port, and (b) emit the audit handoff.

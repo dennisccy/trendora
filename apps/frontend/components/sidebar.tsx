@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
+  FlaskConical,
   Grid2x2,
   History,
   Layers,
@@ -29,6 +30,7 @@ const NAV: NavItem[] = [
   { href: "/themes", label: "Themes", icon: Layers },
   { href: "/sectors", label: "Sectors", icon: Grid2x2 },
   { href: "/scanner-runs", label: "Scanner Runs", icon: History },
+  { href: "/backtest", label: "Backtest", icon: FlaskConical },
   { href: "/system-health", label: "System Health", icon: Activity },
   { href: "/watchlist", label: "Watchlist", icon: Star },
 ];

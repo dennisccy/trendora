@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AlertTriangle, ShieldAlert } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
+import { fmtPct, returnClass, Return, SampleSize } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -24,44 +25,6 @@ type State =
   | { kind: "loading" }
   | { kind: "ok"; data: SystemHealthResponse }
   | { kind: "error" };
-
-/** Format a return fraction (0.0123 -> "+1.23%"); null/empty groups render an em dash. */
-function fmtPct(value: number | null): string {
-  if (value === null || value === undefined) return "—";
-  const pct = value * 100;
-  return `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
-}
-
-/** Positive returns green, negative red, zero/NA muted — palette tokens only (DESIGN SYSTEM). */
-function returnClass(value: number | null): string {
-  if (value === null || value === undefined) return "text-text-muted";
-  if (value > 0) return "text-pos";
-  if (value < 0) return "text-neg";
-  return "text-text";
-}
-
-/** Sample size beside every figure; flagged with the warn token when n < min_sample (low sample). */
-function SampleSize({ n, min }: { n: number; min: number }) {
-  const low = n < min;
-  return (
-    <span
-      className={cn("num text-xs", low ? "text-warn" : "text-text-faint")}
-      title={low ? `Low sample — n below the ${min} minimum; treat as indicative only` : undefined}
-    >
-      n={n}
-      {low ? " ⚠" : ""}
-    </span>
-  );
-}
-
-function Return({ value, n, min }: { value: number | null; n: number; min: number }) {
-  return (
-    <span className="inline-flex items-center justify-end gap-2">
-      <span className={cn("num font-semibold", returnClass(value))}>{fmtPct(value)}</span>
-      <SampleSize n={n} min={min} />
-    </span>
-  );
-}
 
 export default function SystemHealthPage() {
   const [horizon, setHorizon] = useState<number>(DEFAULT_HORIZON);

@@ -161,3 +161,24 @@ execution failed.
 is still "starting" / `changed_files` is empty — never infer the feature exists from the spec, the blueprint,
 or a COHERENCE-PASS; confirm code presence from git + filesystem first, and distinguish "not built yet" from
 "built but un-verified."
+
+## iter-10 — 2026-05-31T09:10:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The browser-qa SKIP debt got *qualitatively worse* this iter: for the first time since
+iter-4 there were **zero evidence PNGs** — QA mode-2 did NOT self-heal/persist shots (the evidence dir
+didn't even exist), so the long-standing "reconcile J-14 from QA's persisted PNGs + unit/API + source"
+fallback had **nothing to reconcile from**. The right move (per the iter-7 precedent) is to boot the
+services and produce the evidence yourself, and it is cheap when the frontend already builds clean and
+the data contract is API-proven: `CORS_ORIGINS=http://localhost:3835 uvicorn main:app --port 8835` +
+`PORT=3835 npm run start` (build with `NEXT_PUBLIC_API_URL=http://localhost:8835`) → drive Chrome to
+`/backtest`, `select` the page's own `aria-label="Backtest as-of date"` picker to a full-window date,
+and eval the scorecard `<table>` cells. The strongest single proof of "FE recomputes nothing" was
+diffing the rendered cells against the `/api/backtest` payload — they matched **byte-for-byte,
+re-formatted to %**. Practical note: the per-fixture walk-forward lifespan boot makes the suite slow
+(~230s for just the 17 new J-14 tests; ~885s full) — run the targeted `test_backtest_*.py` files, not
+the whole suite, and budget minutes (use a background task; the foreground sleep guard will block
+polling loops).
+**Applies to:** any iter where the dedicated browser-qa SKIPs AND no QA evidence PNGs exist — do not
+down-grade a journey to `partial`/`unknown` reflexively; self-produce live evidence first. Also any iter
+touching `apps/backend/app/engine/forward_testing.py` (slow walk-forward boots → target the test files).
