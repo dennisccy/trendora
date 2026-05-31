@@ -124,3 +124,21 @@ persistence proof) rather than reconcile from API/unit/source alone — it makes
 browser sweep.
 **Applies to:** any iter whose UI must be verified live (esp. when browser-qa SKIPs); any new frontend-facing
 backend route; the runner-script owner fixing the browser-qa frontend self-heal.
+
+## iter-8 — 2026-05-31T00:54:30Z
+
+**Verdict:** CONTINUE
+**Lesson:** To actually PROVE the "No recompute in the read path" anti-goal, the keystone test
+(`test_repointed_handlers_serve_persisted_date_without_recompute`) monkeypatches the four canonical
+engines (`score_stocks/score_regime/score_sectors/score_themes`, as `run_scan` references them) to
+RAISE, then asserts the handlers still serve a persisted date. This is strictly stronger than a
+served==stored value-equality check, which would still pass if the endpoint recomputed a value that
+happens to match storage — value-equality cannot prove a negative ("did not recompute"); only the
+patch-to-raise seam can. Separately, re-pointing 5 long-green journeys onto stored snapshots was
+de-risked because the diff only APPENDED the resolver (`run_scan` untouched → create-once/immutable/
+no-lookahead inherited) and the iter-5 faithful-equality test made latest payloads byte-identical to
+the old on-request compute.
+**Applies to:** any future iter that claims an endpoint "serves from storage / cache, not recompute"
+(J-14 backtest scorecard, J-16 VCP breakdown, any snapshot-served read) — assert it with a
+patch-the-compute-to-raise seam, not value-equality; and prefer append-only changes to the canonical
+compute path when migrating a read path that backs already-green journeys.

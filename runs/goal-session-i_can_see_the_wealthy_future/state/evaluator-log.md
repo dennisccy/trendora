@@ -324,3 +324,58 @@ is violated, coherence passes. If the user resumes for the explicitly-deferred n
 view #14, historical per-stock score charts #15), a single **lean** iteration suffices — neither is a
 Must-have. Before any further browser-gated work, the runner owner should finally (a) make browser-qa
 own/await/self-heal its frontend AND set `CORS_ORIGINS` to the frontend port, and (b) emit the audit handoff.
+
+## Iteration 8 — goal-i_can_see_the_wealthy_future-iter-8
+
+**Date:** 2026-05-31T00:54:30Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: **J-13** (global as-of date switcher), **J-15** (snapshot-served reads) — the first two of the five newly-added Must-haves
+- Newly failing: none (J-12, J-14, J-16 enter tracking as `failing`/unbuilt by design — they were added to goal.md in commit `ed7712b` after iter-7 and are explicitly OUT OF SCOPE this iter; not a regression sense)
+- Regressed: none (J-01–J-11 all held green through the read-path re-point — the iteration's real risk)
+- Anti-goal violations: none (all six engaged criticals — no-lookahead / immutable / single-source / **No recompute in the read path** / on-demand-immutable / Risk-Off-gates-Actionable — verified directly in source + unit-proven)
+
+**Reasoning:** The keystone read-path consolidation landed cleanly: the five live read endpoints
+(`/api/dashboard`, `/api/stocks`, `/api/stocks/{ticker}`, `/api/sectors`, `/api/themes`) + `/bars` +
+watchlist now serve canonical values from the persisted IMMUTABLE snapshot for a resolved as-of date
+(computed once, then read from storage), and a global top-bar as-of switcher time-travels the whole
+dashboard. The dedicated browser-qa SKIPPED an **8th** consecutive time (HTTP-000); QA mode-2
+self-healed (backend :8835 with `CORS_ORIGINS`, frontend :3835) and persisted 5 distinct PNGs, which
+I reconciled directly. **J-13** verified from the PNGs I viewed: the switcher genuinely re-points
+stored snapshots (dashboard Risk-on 74.32 → Risk-off 6.30; breadth 65.57% → 0.82%; leadership semis
+SOXX/WGMI/SMH → defensives XLP/XLU/XLF; stocks MU/ARM/MRVL → KTOS/NOC/PLTR), shows the amber "Viewing
+as-of 2025-04-04 (historical)" indicator + per-page "Data as-of 2025-04-04", and reset-to-latest is
+md5-identical (`f353ee88…`) to the latest view (clean restore) — the defensive rotation on a Risk-off
+day is internally consistent, a real historical snapshot not a fabrication. **J-15** verified from
+source + test: the keystone `test_repointed_handlers_serve_persisted_date_without_recompute`
+monkeypatches the four canonical engines to RAISE and asserts all four handlers still serve a
+persisted date (proving storage-read, never recompute — stronger than value-equality); warm API
+20–100ms. The read-path regression risk to J-01–J-11 was de-risked because the `scanner.py` diff only
+APPENDS the resolver (`run_scan` untouched → create-once/immutable/no-lookahead inherited; iter-5
+faithful-equality makes latest payloads byte-identical to the old on-request compute) and `models.py`
+is git-clean. J-06 strengthened (list==detail==watchlist from the same stored row), J-07 re-proven on
+a historical view (2025-04-04 Risk-off → Actionable 0). 196/196 pytest, COHERENCE-PASS, frontend
+builds 10 routes; order-path/secrets greps empty. Two target journeys newly passing + tractable work
+remaining → CONTINUE. Not GOAL_ACHIEVED: J-12, J-14, J-16 unbuilt by design (13/16 Must-haves pass).
+
+**Process gaps (non-blocking, chronic — runner-script scope, NOT product; spec-level asks have proven
+ineffective across iters 3–8):** (1) **Dedicated browser-qa SKIPPED an 8th consecutive time** (0/15,
+HTTP-000 — and it probed the wrong health path `GET /health` rather than `/api/health`, plus the
+runner-managed `next dev` died mid-test). QA mode-2 self-healed and persisted 5 distinct PNGs; I
+reconciled from them + source + unit proofs per the standing lesson and the iter-8 spec's explicit
+evaluator guidance. (2) **Audit handoff missing an 8th consecutive full-depth iter** — `reports/audits/`
+still does not exist. Neither affected the verdict. (3) Minor doc nit (review + QA NOTE): the dev
+handoff says the resolver suite is "12 passed" but `test_asof_resolver.py` has **10** tests (10 pass);
+harmless count discrepancy, no code impact.
+
+**Next-step recommendation:** **iter-9 at full depth — J-14 (Backtest / Time-Machine + per-date
+forward-test scorecard).** Builds directly on this iter's `resolve_run` as-of resolver + the iter-6
+forward-testing engine: pick a historical date, render its as-of scan from the canonical snapshot, and
+show a per-date scorecard (realized 1/5/10/20/60-day returns, excess vs SPY/QQQ/sector, random
+same-sector control) computed only from seed bars after D (no-lookahead), with n and partial/NA
+horizons shown honestly. Adds a `/backtest` nav route → needs `blueprint.reapproval-requested`.
+Unit-prove the post-D forward boundary on the per-date scorecard. Then J-16 (VCP), then J-12 (glossary
+incl. the VCP entry) finish the new round. Runner owner should finally (a) make browser-qa
+own/await/self-heal its frontend AND probe `/api/health` with `CORS_ORIGINS` set to the frontend port,
+and (b) emit the audit handoff from the runner script.

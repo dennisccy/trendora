@@ -1,26 +1,28 @@
 """GET /api/themes — the CANONICAL and only endpoint for the Theme Score (Data Contract:
-app.engine.themes). Serves `score_themes(asof=latest_data_date)` verbatim — never recomputes or
-reshapes a score (anti-goal: Single source of truth). The Dashboard's "Top Themes" reads THIS
-endpoint and slices the top N (exactly as Top Sectors slices `/api/sectors`) — no second source.
-`503` when no price data exists, so the frontend renders the explicit "Backend unavailable" state
-rather than fabricated rows (anti-goal: No fabricated data).
+app.engine.themes).
+
+iter-8: re-pointed to serve from the persisted IMMUTABLE snapshot for the resolved as-of date
+(anti-goal: No recompute in the read path). It resolves `?as_of=` to its stored `ScannerRun` (latest by
+default; create-once for a not-yet-stored date) and serves that run's stored `ThemeScoreRow` children,
+echoing the resolved `asof_date`. Because `run_scan` stored faithful copies of `score_themes`, the
+latest-date payload is byte-identical to the former on-request compute (anti-goal: Single source of
+truth). The Dashboard's "Top Themes" reads THIS endpoint and slices the top N (exactly as Top Sectors
+slices `/api/sectors`) — no second source. `503` when no price data exists / `4xx` for an invalid
+`as_of` — never fabricated rows.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
-from app.config import get_config
 from app.db import get_session
-from app.engine.prices import latest_data_date
-from app.engine.themes import score_themes
+from app.engine.snapshot_serving import resolved_run, themes_payload
 
 router = APIRouter(tags=["themes"])
 
 
 @router.get("/themes")
-def themes(session: Session = Depends(get_session)) -> dict:
-    asof = latest_data_date(session)
-    if asof is None:
-        raise HTTPException(status_code=503, detail="no price data available")
-    return score_themes(session, asof, get_config())
+def themes(as_of: Optional[str] = None, session: Session = Depends(get_session)) -> dict:
+    return themes_payload(session, resolved_run(session, as_of))

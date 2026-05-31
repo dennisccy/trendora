@@ -141,7 +141,94 @@ def test_new_endpoints_raise_503_when_no_price_data(tmp_path):
     create_db_and_tables(engine)  # tables exist, but no price rows were ever loaded
     with Session(engine) as session:
         assert latest_data_date(session) is None
-        for call in (lambda: stocks(session), lambda: stock_detail("NVDA", session), lambda: themes_route(session)):
+        # iter-8: handlers now take an optional `as_of` first, so pass `session` by keyword.
+        for call in (
+            lambda: stocks(session=session),
+            lambda: stock_detail("NVDA", session=session),
+            lambda: themes_route(session=session),
+        ):
             with pytest.raises(HTTPException) as exc:
                 call()
             assert exc.value.status_code == 503
+
+
+# --- iter-8: snapshot-served reads + as-of resolution (J-15 + J-13) -------------------------
+def _historical_run(client) -> dict:
+    """The oldest stored run (a genuinely historical as-of date != latest) from the canonical list."""
+    runs = client.get("/api/runs").json()["runs"]
+    return min(runs, key=lambda r: r["asof_date"])
+
+
+def test_repointed_endpoints_echo_resolved_asof(loaded_engine):
+    """Every re-pointed read endpoint echoes the resolved `asof_date` it served — for a historical
+    date as well as the latest — so the UI can render the as-of / historical indicator."""
+    with TestClient(main.app) as client:
+        historical = _historical_run(client)["asof_date"]
+        for path in ("/api/dashboard", "/api/stocks", "/api/sectors", "/api/themes"):
+            body = client.get(f"{path}?as_of={historical}").json()
+            assert body["asof_date"] == historical, path
+
+
+def test_asof_serves_stored_snapshot_matching_run_detail(loaded_engine):
+    """J-13/J-15: `/api/stocks?as_of=D` serves the SAME stored snapshot rows as the immutable
+    `/api/runs/{run_id}` for that date — byte-identical — and that date differs from the latest."""
+    with TestClient(main.app) as client:
+        runs = client.get("/api/runs").json()["runs"]
+        latest_date = max(r["asof_date"] for r in runs)
+        historical = min(runs, key=lambda r: r["asof_date"])
+        assert historical["asof_date"] != latest_date  # genuinely a historical view
+        stocks_asof = client.get(f"/api/stocks?as_of={historical['asof_date']}").json()
+        run_detail = client.get(f"/api/runs/{historical['run_id']}").json()
+    assert stocks_asof["asof_date"] == historical["asof_date"]
+    assert stocks_asof["rows"] == run_detail["rows"]  # the same stored immutable snapshot
+
+
+def test_asof_detail_equals_list_row_for_historical_date(loaded_engine):
+    """J-06 holds for a HISTORICAL date too: a stock's `/api/stocks?as_of=D` list row is byte-identical
+    to its `/api/stocks/{ticker}?as_of=D` detail row (both rehydrated from the same stored result)."""
+    with TestClient(main.app) as client:
+        d = _historical_run(client)["asof_date"]
+        list_rows = client.get(f"/api/stocks?as_of={d}").json()["rows"]
+        ticker = list_rows[0]["ticker"]
+        detail = client.get(f"/api/stocks/{ticker}?as_of={d}").json()
+    assert detail["asof_date"] == d
+    assert detail["row"] == next(r for r in list_rows if r["ticker"] == ticker)
+
+
+def test_repointed_handlers_serve_persisted_date_without_recompute(loaded_engine, monkeypatch):
+    """No-recompute (anti-goal): for an already-persisted as-of date the re-pointed endpoints serve the
+    stored snapshot WITHOUT invoking the live scoring/regime/sector/theme engines. We patch those
+    engines (as `run_scan` references them) to raise, then assert the handlers still return the stored
+    payload for a persisted date — proving they read storage, never recompute."""
+    from app.api.dashboard import dashboard as dashboard_route
+    from app.api.sectors import sectors as sectors_route
+    from app.api.stocks import stocks as stocks_route
+    from app.api.themes import themes as themes_route
+
+    with TestClient(main.app) as client:  # lifespan persists the bootstrap runs
+        historical = _historical_run(client)["asof_date"]
+
+    def boom(*args, **kwargs):
+        raise AssertionError("a live engine must not run for an already-persisted as-of date")
+
+    for name in ("score_stocks", "score_regime", "score_sectors", "score_themes"):
+        monkeypatch.setattr(f"app.engine.scanner.{name}", boom)
+
+    with Session(loaded_engine) as session:
+        assert stocks_route(as_of=historical, session=session)["asof_date"] == historical
+        assert dashboard_route(as_of=historical, session=session)["asof_date"] == historical
+        assert sectors_route(as_of=historical, session=session)["asof_date"] == historical
+        assert themes_route(as_of=historical, session=session)["asof_date"] == historical
+
+
+def test_asof_invalid_dates_are_explicit_4xx_never_fabricated(loaded_engine):
+    """Invalid as-of -> explicit 4xx, never a fabricated snapshot: future -> 400, before history ->
+    400, unparseable -> 422 (FastAPI convention; any 4xx satisfies the no-fabrication contract)."""
+    with TestClient(main.app) as client:
+        assert client.get("/api/stocks?as_of=2999-01-01").status_code == 400      # future
+        assert client.get("/api/stocks?as_of=1900-01-01").status_code == 400      # before history
+        assert client.get("/api/stocks?as_of=not-a-date").status_code == 422      # unparseable
+        # the same contract on the other re-pointed endpoints
+        assert client.get("/api/dashboard?as_of=not-a-date").status_code == 422
+        assert client.get("/api/sectors?as_of=2999-01-01").status_code == 400
+        assert client.get("/api/themes?as_of=not-a-date").status_code == 422

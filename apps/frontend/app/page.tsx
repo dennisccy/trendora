@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Clock } from "lucide-react";
 
+import { useAsOf } from "@/components/asof-provider";
 import { ComponentBreakdown } from "@/components/component-breakdown";
 import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
@@ -39,23 +40,27 @@ function fmtPct(value: number | null | undefined): string {
 }
 
 export default function DashboardPage() {
+  const { asOf } = useAsOf();
   const [state, setState] = useState<State>({ kind: "loading" });
 
   useEffect(() => {
     const controller = new AbortController();
+    const asof = asOf ?? undefined; // historical date or latest
     // Dashboard (regime + candidate counts) is critical; Top Sectors and Top Themes read their
-    // own canonical endpoints (/api/sectors, /api/themes) and may fail independently.
-    fetchDashboard(controller.signal)
+    // own canonical endpoints (/api/sectors, /api/themes) and may fail independently. All three
+    // fetch the SAME as-of date so the snapshot view is coherent across the page.
+    setState({ kind: "loading" });
+    fetchDashboard(asof, controller.signal)
       .then(async (dashboard) => {
         let sectors: SectorsResponse | null = null;
         let themes: ThemesResponse | null = null;
         try {
-          sectors = await fetchSectors(controller.signal);
+          sectors = await fetchSectors(asof, controller.signal);
         } catch {
           sectors = null;
         }
         try {
-          themes = await fetchThemes(controller.signal);
+          themes = await fetchThemes(asof, controller.signal);
         } catch {
           themes = null;
         }
@@ -65,7 +70,7 @@ export default function DashboardPage() {
         if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => controller.abort();
-  }, []);
+  }, [asOf]);
 
   return (
     <div className="space-y-4">

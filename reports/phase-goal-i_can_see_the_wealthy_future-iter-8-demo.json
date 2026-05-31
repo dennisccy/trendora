@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future-iter-8",
+  "base_url": "http://localhost:3835",
+  "iteration": 8,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the daily Dashboard",
+      "narration": "We start on the Dashboard — the whole market read at a glance. New this time: a date picker in the top bar that rewinds the entire app to any past trading day you've already scanned.",
+      "point_out": "The new date switcher in the top-right (showing the latest date) and the quiet “Latest” badge next to it — picking an older date here time-travels every page.",
+      "journey": "J-13",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Data as-of" }
+    },
+    {
+      "n": 2,
+      "title": "Browse the Stock Leaderboard",
+      "narration": "Here are the ranked leaders, with Leadership, Entry Quality and Risk shown side by side. These rankings are served straight from the day's saved snapshot, and the date label tracks whatever the top-bar picker is set to.",
+      "point_out": "The “as of” date label by the heading, and the date switcher still sitting in the top bar as you navigate.",
+      "journey": "J-02",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "as of" }
+    },
+    {
+      "n": 3,
+      "title": "Open a stock's detail page",
+      "narration": "Opening a single name shows the same three scores, fully explained — and they match the leaderboard exactly, because both read the one saved snapshot row for that day. The price chart only draws bars up to the selected date, so a past view never peeks at the future.",
+      "point_out": "The Leadership, Entry Quality and Risk scores agreeing with the leaderboard, and the chart caption that ends in “as of” the selected date.",
+      "journey": "J-05",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/ANET" },
+      "expect": { "text": "Leadership" }
+    },
+    {
+      "n": 4,
+      "title": "Check the Theme Leaderboard",
+      "narration": "Themes are ranked the same way and are just as time-travelable — set a past day in the top bar and this table re-points to that day's standings.",
+      "point_out": "The ranked themes and the “as of” date label that follows the top-bar picker.",
+      "journey": "J-03",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/themes" },
+      "expect": { "text": "as of" }
+    },
+    {
+      "n": 5,
+      "title": "Check the Sector Leaderboard",
+      "narration": "Sectors round out the market picture, ranked by their own score and equally aware of the selected date.",
+      "point_out": "The “as of” date label here too — every primary page honours the same chosen day.",
+      "journey": "J-04",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/sectors" },
+      "expect": { "text": "as of" }
+    },
+    {
+      "n": 6,
+      "title": "Review System Health",
+      "narration": "System Health keeps the product honest — it shows how past picks actually performed on forward returns, measured against a plain control group, so any edge is backed by evidence rather than claims.",
+      "point_out": "The forward-tested results and the side-by-side control-group comparison.",
+      "journey": "J-09",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/system-health" },
+      "expect": { "text": "System Health" }
+    },
+    {
+      "n": 7,
+      "title": "Open your Watchlist",
+      "narration": "Finally, the Watchlist holds the names you're tracking. Their current scores come from the same snapshot row the leaderboard uses, so nothing ever disagrees — and it stays research-only, with no order buttons anywhere.",
+      "point_out": "Saved tickers whose scores match the leaderboard, and the clear “no orders” stance in the header.",
+      "journey": "J-11",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/watchlist" },
+      "expect": { "text": "Watchlist" }
+    }
+  ]
+}

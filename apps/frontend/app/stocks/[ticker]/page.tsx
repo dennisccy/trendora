@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AlertTriangle, ArrowLeft, SearchX } from "lucide-react";
 
+import { useAsOf } from "@/components/asof-provider";
 import { ComponentBreakdown } from "@/components/component-breakdown";
 import { PageHeading } from "@/components/page-heading";
 import { PriceChart } from "@/components/price-chart";
@@ -47,19 +48,21 @@ function setupVariant(status: string): "ok" | "warn" | "danger" | "accent" | "de
 export default function StockDetailPage() {
   const params = useParams<{ ticker: string }>();
   const ticker = (params?.ticker ?? "").toUpperCase();
+  const { asOf } = useAsOf();
   const [state, setState] = useState<State>({ kind: "loading" });
 
   useEffect(() => {
     if (!ticker) return;
     const controller = new AbortController();
-    fetchStock(ticker, controller.signal)
+    setState({ kind: "loading" });
+    fetchStock(ticker, asOf ?? undefined, controller.signal)
       .then((data) => setState({ kind: "ok", data }))
       .catch((err: Error) => {
         if (controller.signal.aborted) return;
         setState({ kind: err.message.includes("404") ? "notfound" : "error" });
       });
     return () => controller.abort();
-  }, [ticker]);
+  }, [ticker, asOf]);
 
   return (
     <div className="space-y-4">
@@ -197,18 +200,19 @@ type ChartState =
   | { kind: "error" };
 
 function StockChartPanel({ ticker }: { ticker: string }) {
+  const { asOf } = useAsOf();
   const [state, setState] = useState<ChartState>({ kind: "loading" });
 
   useEffect(() => {
     const controller = new AbortController();
     setState({ kind: "loading" });
-    fetchStockBars(ticker, controller.signal)
+    fetchStockBars(ticker, asOf ?? undefined, controller.signal)
       .then((data) => setState(data.bars.length > 0 ? { kind: "ok", data } : { kind: "empty" }))
       .catch(() => {
         if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => controller.abort();
-  }, [ticker]);
+  }, [ticker, asOf]);
 
   return (
     <Card>

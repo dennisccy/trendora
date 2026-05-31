@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, TrendingUp } from "lucide-react";
 
+import { useAsOf } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
@@ -49,19 +50,21 @@ function setupVariant(status: string): "ok" | "warn" | "danger" | "accent" | "de
 }
 
 export default function StocksPage() {
+  const { asOf } = useAsOf();
   const [state, setState] = useState<State>({ kind: "loading" });
   const [sector, setSector] = useState<string>(ALL);
   const [setup, setSetup] = useState<string>(ALL);
 
   useEffect(() => {
     const controller = new AbortController();
-    fetchStocks(controller.signal)
+    setState({ kind: "loading" });
+    fetchStocks(asOf ?? undefined, controller.signal)
       .then((data) => setState({ kind: "ok", data }))
       .catch(() => {
         if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => controller.abort();
-  }, []);
+  }, [asOf]);
 
   const rows = state.kind === "ok" ? state.data.rows : [];
 

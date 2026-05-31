@@ -15,6 +15,15 @@ async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** Append `?as_of=YYYY-MM-DD` (the iter-8 as-of switch) when a historical date is selected; the
+ *  latest view passes nothing. The frontend only chooses WHICH date's stored values to fetch — it
+ *  never recomputes a score/bucket/return (the backend serves them from the immutable snapshot). */
+function withAsOf(path: string, asof?: string): string {
+  if (!asof) return path;
+  const sep = path.includes("?") ? "&" : "?";
+  return `${path}${sep}as_of=${encodeURIComponent(asof)}`;
+}
+
 /** Mutating request (POST/DELETE — the iter-7 watchlist write calls). On a non-2xx it throws an
  *  Error carrying the backend's honest `detail` message so the UI renders an explicit failure
  *  (e.g. "ANET is already on the watchlist") — never a fabricated success. */
@@ -92,9 +101,10 @@ export interface SectorsResponse {
 }
 
 /** Canonical Sector Score source: GET /api/sectors. The Dashboard's Top Sectors slice this
- *  same response — there is no second computation/source for the sector score. */
-export async function fetchSectors(signal?: AbortSignal): Promise<SectorsResponse> {
-  return getJSON<SectorsResponse>("/api/sectors", signal);
+ *  same response — there is no second computation/source for the sector score. `asof` time-travels
+ *  to that date's stored snapshot (iter-8). */
+export async function fetchSectors(asof?: string, signal?: AbortSignal): Promise<SectorsResponse> {
+  return getJSON<SectorsResponse>(withAsOf("/api/sectors", asof), signal);
 }
 
 // --- dashboard (iter-2 + iter-3 candidate counts) ------------------------------------------
@@ -124,9 +134,10 @@ export interface DashboardResponse {
   candidate_counts: Record<string, number>;
 }
 
-/** Canonical Market Regime + candidate-counts source: GET /api/dashboard. */
-export async function fetchDashboard(signal?: AbortSignal): Promise<DashboardResponse> {
-  return getJSON<DashboardResponse>("/api/dashboard", signal);
+/** Canonical Market Regime + candidate-counts source: GET /api/dashboard. `asof` time-travels to
+ *  that date's stored snapshot (iter-8). */
+export async function fetchDashboard(asof?: string, signal?: AbortSignal): Promise<DashboardResponse> {
+  return getJSON<DashboardResponse>(withAsOf("/api/dashboard", asof), signal);
 }
 
 // --- stocks (iter-3) -----------------------------------------------------------------------
@@ -187,14 +198,16 @@ export interface StockDetailResponse {
 }
 
 /** Canonical per-stock scores source: GET /api/stocks (list). Filters/sorting on this list are
- *  pure client-side re-display — no score/bucket is recomputed. */
-export async function fetchStocks(signal?: AbortSignal): Promise<StocksResponse> {
-  return getJSON<StocksResponse>("/api/stocks", signal);
+ *  pure client-side re-display — no score/bucket is recomputed. `asof` time-travels to that date's
+ *  stored snapshot (iter-8). */
+export async function fetchStocks(asof?: string, signal?: AbortSignal): Promise<StocksResponse> {
+  return getJSON<StocksResponse>(withAsOf("/api/stocks", asof), signal);
 }
 
-/** GET /api/stocks/{ticker} — the SAME row the leaderboard serves (single source → J-06). */
-export async function fetchStock(ticker: string, signal?: AbortSignal): Promise<StockDetailResponse> {
-  return getJSON<StockDetailResponse>(`/api/stocks/${encodeURIComponent(ticker)}`, signal);
+/** GET /api/stocks/{ticker} — the SAME row the leaderboard serves (single source → J-06). `asof`
+ *  time-travels to that date's stored snapshot (iter-8). */
+export async function fetchStock(ticker: string, asof?: string, signal?: AbortSignal): Promise<StockDetailResponse> {
+  return getJSON<StockDetailResponse>(withAsOf(`/api/stocks/${encodeURIComponent(ticker)}`, asof), signal);
 }
 
 // --- stock price/MA/volume series for the detail chart (iter-4) -----------------------------
@@ -219,9 +232,10 @@ export interface BarsResponse {
 }
 
 /** Canonical price/MA/volume series source: GET /api/stocks/{ticker}/bars. Throws on non-200 so the
- *  chart renders an explicit unavailable state (404 unknown ticker / 503 no data) — never fabricated. */
-export async function fetchStockBars(ticker: string, signal?: AbortSignal): Promise<BarsResponse> {
-  return getJSON<BarsResponse>(`/api/stocks/${encodeURIComponent(ticker)}/bars`, signal);
+ *  chart renders an explicit unavailable state (404 unknown ticker / 503 no data / 4xx bad as_of) —
+ *  never fabricated. `asof` returns the bars with date <= D (the as-of chart; iter-8). */
+export async function fetchStockBars(ticker: string, asof?: string, signal?: AbortSignal): Promise<BarsResponse> {
+  return getJSON<BarsResponse>(withAsOf(`/api/stocks/${encodeURIComponent(ticker)}/bars`, asof), signal);
 }
 
 // --- themes (iter-3) -----------------------------------------------------------------------
@@ -246,9 +260,10 @@ export interface ThemesResponse {
 }
 
 /** Canonical Theme Score source: GET /api/themes. The Dashboard's Top Themes slice this same
- *  response (top N) — there is no second computation/source for the theme score. */
-export async function fetchThemes(signal?: AbortSignal): Promise<ThemesResponse> {
-  return getJSON<ThemesResponse>("/api/themes", signal);
+ *  response (top N) — there is no second computation/source for the theme score. `asof` time-travels
+ *  to that date's stored snapshot (iter-8). */
+export async function fetchThemes(asof?: string, signal?: AbortSignal): Promise<ThemesResponse> {
+  return getJSON<ThemesResponse>(withAsOf("/api/themes", asof), signal);
 }
 
 // --- scanner runs (iter-5) -----------------------------------------------------------------

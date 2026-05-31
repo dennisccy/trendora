@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, Layers } from "lucide-react";
 
+import { useAsOf } from "@/components/asof-provider";
 import { ComponentBreakdown } from "@/components/component-breakdown";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeading } from "@/components/page-heading";
@@ -24,18 +25,20 @@ function fmtSignedPct(value: number | null): string {
 }
 
 export default function ThemesPage() {
+  const { asOf } = useAsOf();
   const [state, setState] = useState<State>({ kind: "loading" });
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const controller = new AbortController();
-    fetchThemes(controller.signal)
+    setState({ kind: "loading" });
+    fetchThemes(asOf ?? undefined, controller.signal)
       .then((data) => setState({ kind: "ok", data }))
       .catch(() => {
         if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => controller.abort();
-  }, []);
+  }, [asOf]);
 
   const toggle = (slug: string) =>
     setExpanded((prev) => {

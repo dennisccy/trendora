@@ -29,6 +29,7 @@ import json
 from datetime import date as date_cls, datetime, timezone
 from typing import Optional, Union
 
+from sqlalchemy import func
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
@@ -39,7 +40,7 @@ from app.engine.scoring import score_stocks
 from app.engine.sectors import score_sectors
 from app.engine.setups import summarize_candidates
 from app.engine.themes import score_themes
-from app.models import ScannerResult, ScannerRun, SectorScoreRow, ThemeScoreRow
+from app.models import DailyPrice, ScannerResult, ScannerRun, SectorScoreRow, ThemeScoreRow
 
 
 def _utcnow() -> datetime:
@@ -172,3 +173,78 @@ def bootstrap_runs(
         return _bootstrap(session_or_engine, cfg)
     with Session(session_or_engine) as session:
         return _bootstrap(session, cfg)
+
+
+# --- iter-8 as-of resolution: map ?as_of= to its IMMUTABLE stored snapshot (J-15 + J-13) --------
+# The read path serves canonical values from the persisted snapshot for the resolved date instead of
+# recomputing per request (anti-goal: No recompute in the read path). Resolution is create-once and
+# lookahead-free — both inherited from `run_scan` above (anti-goals: Snapshots immutable / No
+# lookahead). The engine raises a SEMANTIC error (no HTTP/status literal here); the API layer maps it.
+class AsOfError(Exception):
+    """An as-of date could not be resolved to a stored (or creatable) immutable snapshot.
+
+    `kind` is the semantic reason the API layer maps to an explicit HTTP status — so the engine stays
+    free of web concerns and of any status-code literal. The resolver NEVER fabricates a snapshot for
+    an invalid date (anti-goal: No fabricated data):
+      - "no_data"        — no price data exists at all.
+      - "unparseable"    — the as-of string is not a valid ISO date.
+      - "future"         — the as-of date is after the latest available data date.
+      - "before_history" — the as-of date is before the earliest bar (no bar with date <= D).
+    """
+
+    def __init__(self, kind: str, detail: str):
+        self.kind = kind
+        self.detail = detail
+        super().__init__(detail)
+
+
+def _latest_stored_run_date(session: Session) -> Optional[date_cls]:
+    """The most recent persisted run's as-of date, or None when no run is stored yet."""
+    return session.scalar(select(func.max(ScannerRun.asof_date)))
+
+
+def resolve_as_of_date(
+    session: Session, as_of: Optional[str], config: Optional[Config] = None
+) -> date_cls:
+    """Resolve an optional ?as_of= string to a concrete, snapshot-resolvable trading date.
+
+    `None` / empty -> the latest STORED run's as-of date (falling back to the latest data date when no
+    run is stored yet, so a not-yet-bootstrapped DB still resolves). A provided string is validated
+    against the frozen seed WITHOUT fabricating anything, raising `AsOfError` with the matching kind:
+    not a valid ISO date -> "unparseable"; after the latest data date -> "future"; before the earliest
+    bar (no bar with date <= D) -> "before_history". A valid in-range date is returned unchanged; the
+    caller load-or-creates its immutable snapshot exactly once. No price data at all -> "no_data"."""
+    latest = latest_data_date(session)
+    if latest is None:
+        raise AsOfError("no_data", "no price data available")
+    if not as_of:
+        return _latest_stored_run_date(session) or latest
+    try:
+        target = date_cls.fromisoformat(as_of)
+    except (TypeError, ValueError):
+        raise AsOfError("unparseable", f"as_of is not a valid ISO date: {as_of!r}")
+    if target > latest:
+        raise AsOfError(
+            "future", f"as_of {target.isoformat()} is after the latest data date {latest.isoformat()}"
+        )
+    has_bar_on_or_before = session.scalar(
+        select(DailyPrice.id).where(DailyPrice.date <= target).limit(1)
+    )
+    if has_bar_on_or_before is None:
+        raise AsOfError(
+            "before_history", f"as_of {target.isoformat()} is before the available price history"
+        )
+    return target
+
+
+def resolve_run(
+    session: Session, as_of: Optional[str], config: Optional[Config] = None
+) -> ScannerRun:
+    """Resolve ?as_of= to its IMMUTABLE stored snapshot: return the existing run for the resolved
+    date, or create it EXACTLY ONCE via `run_scan` (INSERT-only, bars <= D, idempotent + immutable).
+    `as_of=None` resolves to the latest stored run. Raises `AsOfError` for an absent/invalid date —
+    never a fabricated snapshot. The read endpoints serve the returned run's STORED rows; the
+    canonical engines run only on first creation, never per request for an already-persisted date."""
+    cfg = config or get_config()
+    target = resolve_as_of_date(session, as_of, cfg)
+    return run_scan(session, target, cfg)

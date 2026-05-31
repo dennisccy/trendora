@@ -8,10 +8,11 @@ path*, critical). It is also NOT a snapshot table — adding/removing an entry o
 
 Single source of truth (J-06 on a write surface): an entry stores ONLY
 `{ticker, reason, created_at, asof_date_added, entry_close}`. Its *current* Leadership / Entry
-Quality / Risk `{score, bucket}`, setup `{status, reason}`, and `invalidation` are READ LIVE at
-serve time from `app.engine.scoring.score_stocks(latest_data_date)` — the SAME computation
-`GET /api/stocks` serves — and taken **verbatim**, so they can never become a second, drifting
-source. `price_since_added` is the only per-entry derived figure: the canonical current close ÷ the
+Quality / Risk `{score, bucket}`, setup `{status, reason}`, and `invalidation` are READ at serve time
+from the LATEST persisted IMMUTABLE snapshot row — the SAME stored row `GET /api/stocks` serves at the
+latest date (iter-8: snapshot-served, not a live `score_stocks` recompute) — and taken **verbatim**, so
+they can never become a second, drifting source. `price_since_added` is the only per-entry derived
+figure: the canonical current close ÷ the
 stored `entry_close` − 1 (an honest 0.00% against the frozen seed when no post-add bars exist; NA
 when `entry_close` is null — never fabricated). This file holds NO scoring/threshold literal — it
 reads everything canonical.
@@ -32,7 +33,7 @@ from sqlmodel import Session, select
 from app.config import Config, get_config
 from app.db import get_session
 from app.engine.prices import close_on, latest_data_date
-from app.engine.scoring import score_stocks
+from app.engine.snapshot_serving import resolved_run, stocks_payload
 from app.models import Watchlist
 
 router = APIRouter(tags=["watchlist"])
@@ -48,10 +49,12 @@ class WatchlistCreate(BaseModel):
     reason: str
 
 
-def _canonical_rows(session: Session, asof, cfg: Config) -> dict[str, dict]:
-    """The SAME `score_stocks` pass `/api/stocks` serves, indexed by ticker (single source → J-06)."""
-    result = score_stocks(session, asof, cfg)
-    return {row["ticker"]: row for row in result["rows"]}
+def _canonical_rows(session: Session, cfg: Config) -> dict[str, dict]:
+    """The SAME stored snapshot rows `/api/stocks` serves at the latest date, indexed by ticker
+    (single source → J-06). iter-8: read from the latest persisted IMMUTABLE snapshot — never a live
+    `score_stocks` recompute (anti-goal: No recompute in the read path)."""
+    rows = stocks_payload(session, resolved_run(session, None, cfg))["rows"]
+    return {row["ticker"]: row for row in rows}
 
 
 def _price_since_added(session: Session, ticker: str, asof, entry_close: Optional[float]) -> Optional[float]:
@@ -90,7 +93,7 @@ def list_watchlist(session: Session = Depends(get_session)) -> dict:
     asof = latest_data_date(session)
     if asof is None:
         raise HTTPException(status_code=503, detail="no price data available")
-    rows_by_ticker = _canonical_rows(session, asof, get_config())
+    rows_by_ticker = _canonical_rows(session, get_config())
     entries = session.exec(
         select(Watchlist).order_by(Watchlist.created_at.desc(), Watchlist.id.desc())
     ).all()
@@ -129,7 +132,7 @@ def add_watchlist(payload: WatchlistCreate, session: Session = Depends(get_sessi
     session.add(entry)
     session.commit()
     session.refresh(entry)
-    return _enrich(entry, _canonical_rows(session, asof, cfg), session, asof)
+    return _enrich(entry, _canonical_rows(session, cfg), session, asof)
 
 
 @router.delete("/watchlist/{entry_id}")

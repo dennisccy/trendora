@@ -4,113 +4,163 @@
       "id": "J-01",
       "name": "Daily dashboard at a glance",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-7",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-7",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-5-evidence/TC-15-j01-dashboard.png",
-      "note": "Held green (goal-completing regression sweep). Regression-confirmed this iter: `git diff HEAD -- app/api/dashboard.py` and all engine modules byte-identical untouched (purely additive watchlist diff); evaluator hit the live backend `/api/health` 200; Dashboard nav link renders in the live sidebar (evaluator screenshots). Full-journey capture carried from iter-5."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-8-evidence/TC-12-J13-dashboard-latest.png",
+      "note": "Held green through the read-path re-point. Evaluator viewed TC-12-J13-dashboard-latest.png: regime Risk-on 74.32/100 + 5 components, candidate counts 0/8/1 (each a number), 5 scored Top Sectors (SOXX A/93.67 …) + 5 scored Top Themes (Semiconductors A/100 …), breadth 65.57% universe-relative, as-of 2026-05-28. dashboard.py is now served from the stored snapshot (dashboard_payload) — values byte-identical to the former on-request compute (iter-5 faithful-equality)."
     },
     "J-02": {
       "id": "J-02",
       "name": "Stock Leaderboard with working filters",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-7",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-7",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-5-evidence/TC-15-j02-stocks.png",
-      "note": "Held green. `app/api/stocks.py` byte-identical untouched. Evaluator confirmed `/api/stocks` serves live (200, ANET row) during the single-source check; Stocks nav link renders. Watchlist reads this exact `score_stocks` pass, so the leaderboard path is exercised, not regressed. Capture carried from iter-5."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-8-evidence/TC-11-J15-stocks-latest.png",
+      "note": "Held green. QA TC-13: Technology filter narrowed 122→58 rows (all Technology). /api/stocks now serves the stored snapshot rows (stocks_payload) instead of a live score_stocks pass; rows still render ranked with 3 bucketed scores + setup + reason."
     },
     "J-03": {
       "id": "J-03",
       "name": "Theme Leaderboard",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-7",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-7",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-5-evidence/TC-15-j03-themes.png",
-      "note": "Held green. `app/api/themes.py` + theme engine byte-identical untouched; 179-suite regression guard passes; Themes nav link renders live. Capture carried from iter-5."
+      "note": "Held green. themes.py now serves stored ThemeScoreRow children (themes_payload) — the score_themes engine is byte-identical untouched. Historical re-point visible in the dashboard PNG (Top Themes flip to Defense A/100 @2025-04-04). 196-suite regression guard passes."
     },
     "J-04": {
       "id": "J-04",
       "name": "Sector / industry Leaderboard",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-7",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-7",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-5-evidence/TC-15-j04-sectors.png",
-      "note": "Held green. `app/api/sectors.py` + sector engine byte-identical untouched; Sectors nav link renders live. Capture carried from iter-5."
+      "note": "Held green. sectors.py now serves stored SectorScoreRow children (sectors_payload) — the score_sectors engine is byte-identical untouched. Historical re-point visible (Top Sectors flip to defensives XLP/XLU/XLF @2025-04-04, vs semis SOXX/WGMI/SMH at latest)."
     },
     "J-05": {
       "id": "J-05",
       "name": "Stock Detail with explainable scores",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-7",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-7",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-5-evidence/TC-15-j05-stock-detail.png",
-      "note": "Held green. `app/api/stocks.py` (incl. `/bars`) byte-identical untouched. The new watchlist ticker cells link to `/stocks/[ticker]` (the canonical detail home — evaluator confirmed the ANET link target in the live render), reusing not duplicating it. Capture carried from iter-5."
+      "note": "Held green. /api/stocks/{ticker} now serves the SAME stored record_json row the list serves (stock_detail_payload); /bars still slices bars_asof(D) (date ≤ D, no lookahead) and the canonical sma_series — scoring/chart logic untouched. The detail page gains as-of awareness (its chart returns only bars ≤ D)."
     },
     "J-06": {
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-7",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-7",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-7-evidence/J11-watchlist-anet-full-row-after-restart.png",
-      "note": "Held green AND extended to the first write surface. Evaluator proved LIVE that `/api/watchlist` ANET scores/bucket/setup/invalidation are byte-identical to `/api/stocks` ANET across all 6 canonical fields (leadership E/46.61, entry E/57.69, risk E/39.62, setup Avoid, invalidation 'Invalid below the 50-DMA at $148.38', sector). Unit guard `test_single_source_equals_stocks_row_byte_for_byte` passes; coherence Part A PASS (watchlist.py:53 calls the SAME `score_stocks(latest_data_date)` as stocks.py:27, copies fields verbatim, stores no score). Single source intact on a mutation surface."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-8-evidence/TC-11-J15-stocks-latest.png",
+      "note": "Held green AND strengthened: list and detail now BOTH read the identical stored row via snapshot_serving.stored_stock_rows, so they are byte-identical by construction. Unit TC-04 proves NVDA's leadership/entry_quality/risk + buckets + setup are byte-identical list↔detail at latest AND at the historical 2025-04-04 date. Coherence Part A PASS (serving layer computes nothing). Watchlist now reads the same stored rows too — single source on three surfaces."
     },
     "J-07": {
       "id": "J-07",
       "name": "Risk-Off regime suppresses Actionable",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-7",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-7",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-5-evidence/TC-12-risk-off-detail.png",
-      "note": "Held green. `scanner.py`/`runs.py`/`regime.py`/`setups.py` byte-identical untouched; the watchlist writes only the `watchlist` table (no scanner_run touch — unit `test_add_remove_touches_no_snapshot_row` passes). Risk-off-gates-Actionable critical anti-goal unaffected. Capture carried from iter-5."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-8-evidence/TC-12-J13-dashboard-historical-2025-04-04.png",
+      "note": "Held green — and now re-proven on a HISTORICAL view reached from the everyday dashboard. Evaluator viewed TC-12-J13-dashboard-historical-2025-04-04.png: the 2025-04-04 snapshot is Risk-off 6.30 with candidate counts Actionable 0 / Breakout-watch 0 / Pullback-watch 0. QA TC-13 confirms both Risk-off runs (2025-04-04, 2022-10-07) show Actionable=0. scanner.py/regime.py/setups.py byte-identical untouched."
     },
     "J-08": {
       "id": "J-08",
       "name": "Immutable scanner-run history",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-7",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-7",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-6-evidence/REG-scanner-runs-j08.png",
-      "note": "Held green. `runs.py`/`scanner.py` untouched; `models.py` only APPENDS the new `Watchlist` table after `ForwardReturn` (no existing table altered). The watchlist is user-mutable INSERT/DELETE but never UPDATEs/touches any snapshot/result/score/forward-return row (unit-proven). Snapshots-immutable critical anti-goal intact. Capture carried from iter-6."
+      "note": "Held green. models.py git-clean (no schema change this iter); runs.py untouched. The scanner.py diff only APPENDS the as-of resolver after line 173 — run_scan is untouched, so its INSERT-only/create-once/immutable behaviour is unchanged. resolve_run reads the existing run for a stored date and never overwrites it; test_resolve_run_create_once_then_immutable asserts no UPDATE and no duplicate rows on a 2nd view."
     },
     "J-09": {
       "id": "J-09",
       "name": "System Health forward-tested evidence",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-7",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-7",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-6-evidence/TC-14-system-health-j09.png",
-      "note": "Held green. `forward_testing.py`/`system_health.py` byte-identical untouched; System Health nav link renders live. Backfill remains INSERT-only into the separate append-only `forward_returns` table; watchlist diff does not touch it. Capture carried from iter-6 (viewed directly that iter)."
+      "note": "Held green. /api/system-health was explicitly NOT re-pointed this iter (out of scope); forward_testing.py/system_health.py byte-identical untouched per git diff. Full 196-suite (incl. forward-testing + system-health tests) green."
     },
     "J-10": {
       "id": "J-10",
       "name": "Control-group honesty (selection vs sector beta)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-7",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-7",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-6-evidence/TC-16-control-group-j10.png",
-      "note": "Held green. Control-group logic in `forward_testing.py` byte-identical untouched; config-seeded RNG determinism test passes. No watchlist code touches the forward-testing path. Capture carried from iter-6 (full-page System Health image containing the control-group panel)."
+      "note": "Held green. Control-group logic in forward_testing.py byte-identical untouched; not re-pointed this iter. No iter-8 code touches the forward-testing path."
     },
     "J-11": {
       "id": "J-11",
       "name": "Watchlist with persistence",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-7",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-7",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-7-evidence/J11-watchlist-anet-full-row-after-restart.png",
-      "note": "NEWLY PASSING (target) — verified by the evaluator to an exceptional standard after the dedicated browser-qa SKIPPED a 7th time (HTTP-000) and QA captured only the Chrome 'ERR_CONNECTION_REFUSED' error page (the two pre-existing TC-14 PNGs are md5-identical error shots). The evaluator BOOTED the services and produced the missing live evidence directly: (1) LIVE BROWSER render of /watchlist (4 distinct md5 PNGs: full-row-after-restart, 800px, empty-state-after-remove, entry-after-add-via-form) showing the ANET row with EVERY acceptance field — Ticker (links /stocks/ANET), Added 2026-05-30, reason verbatim, Leadership E/46.61, Entry E/57.69, Risk E/39.62, Setup Avoid, Since added +0.00% (honest frozen-seed), Invalidation 'Invalid below the 50-DMA at $148.38', Remove button; header reads 'Research-only · decision support · no orders'. (2) RESTART PERSISTENCE proven END-TO-END LIVE: evaluator killed PID 340389 and rebooted twice — ANET survived both — plus the file-backed unit `test_watchlist_entry_survives_engine_restart` passes and the row is physically present in on-disk apps/backend/data/trendora.db. (3) Full live journey: Add-via-form -> row with all fields -> Remove -> empty state -> re-Add -> row reappears. (4) Single-source byte-equality vs /api/stocks proven LIVE + unit. (5) Errors: unknown ZZZZ->404, duplicate->409, delete-missing->404 (live). 11/11 new watchlist unit tests pass (evaluator's own run); 179-suite green per QA."
+      "note": "Held green through the read-path re-point. watchlist.py:_canonical_rows now reads stocks_payload(resolved_run(None)) — the SAME latest stored snapshot rows /api/stocks serves — replacing the former live score_stocks(latest) call. This eliminates a potential second source (improves J-06) rather than creating one. Unit TC-05: ANET current leadership 46.61 / entry 57.69 / risk 39.62 + buckets + setup all equal /api/stocks latest. Persistence (DB-backed Watchlist table, INSERT/DELETE only) unchanged."
+    },
+    "J-12": {
+      "id": "J-12",
+      "name": "Understand what each setup/pattern means (glossary + inline)",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_evidence_path": null,
+      "note": "New Must-have (added to goal.md in commit ed7712b after iter-7). UNBUILT — explicitly OUT OF SCOPE this iter. No /methodology page, config-backed catalog, or inline setup/pattern tooltips exist yet. Recommended after J-16 so the glossary can include the VCP catalog entry; adds a new nav route → will need blueprint.reapproval-requested."
+    },
+    "J-13": {
+      "id": "J-13",
+      "name": "Browse the dashboard as of a past date (global as-of switcher)",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-8-evidence/TC-12-J13-dashboard-historical-2025-04-04.png",
+      "note": "NEWLY PASSING (target). Verified by the evaluator directly from 4 on-disk PNGs (browser-qa SKIPPED an 8th time; QA mode-2 self-healed and persisted evidence). The global top-bar AsOfSwitcher (options from canonical GET /api/runs) re-points stored snapshots: dashboard regime Risk-on 74.32 → Risk-off 6.30, breadth 65.57% → 0.82%, leadership rotates semis (SOXX/WGMI/SMH; Semiconductors) → defensives (XLP/XLU/XLF; Defense); stocks leaderboard top MU/ARM/MRVL → KTOS/NOC/PLTR. Amber 'Viewing as-of 2025-04-04 (historical)' indicator + per-page 'Data as-of 2025-04-04' render; the date persists across in-app nav (dashboard→stocks); reset-to-latest is md5-identical (f353ee88…) to the latest stocks view (clean restore). Values match that date's Scanner Run; no future bar influences them (resolve_run uses bars ≤ D). Known limitation (acceptable/documented): a full browser reload returns to Latest (client-context state, no ?as_of= URL param)."
+    },
+    "J-14": {
+      "id": "J-14",
+      "name": "Backtest a past date and read its forward-test scorecard",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_evidence_path": null,
+      "note": "New Must-have (added in commit ed7712b). UNBUILT — explicitly OUT OF SCOPE this iter. No /backtest Time-Machine page or per-date forward-test scorecard exists yet. Recommended as the NEXT iteration (iter-9): it builds directly on this iter's resolve_run + the iter-6 forward-testing engine; adds a /backtest nav route → will need blueprint.reapproval-requested."
+    },
+    "J-15": {
+      "id": "J-15",
+      "name": "Fast page loads from persisted snapshots",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-8-evidence/TC-11-J15-stocks-latest.png",
+      "note": "NEWLY PASSING (target). The five read endpoints now serve canonical values from the persisted immutable snapshot for the resolved as-of date (snapshot_serving.py reads stored rows, computes nothing). Keystone proof: test_repointed_handlers_serve_persisted_date_without_recompute monkeypatches score_stocks/score_regime/score_sectors/score_themes to RAISE, then asserts all four handlers still serve a persisted date — proving they read storage, never recompute (stronger than served==stored value-equality). Warm API latency 20–100ms (far under the ~1.5s budget). list & detail share stored_stock_rows → coherence preserved. TC-11-J15-stocks-latest.png shows the latest leaderboard rendering from the snapshot."
+    },
+    "J-16": {
+      "id": "J-16",
+      "name": "VCP — detected, explained, filterable, forward-tested",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_evidence_path": null,
+      "note": "New Must-have (added in commit ed7712b). UNBUILT — explicitly OUT OF SCOPE this iter. No VCP detector, leaderboard VCP filter, VCP badge, glossary entry, or VCP-vs-non-VCP forward-return breakdown exists yet. Recommended after J-14: a config-driven detected-pattern flag riding the immutable snapshot row (price+volume, date ≤ D), SEPARATE from the setup status, never promoting a name to Actionable on its own (critical)."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-05-30T06:29:04Z"
+  "updated_at": "2026-05-31T00:54:30Z"
 }

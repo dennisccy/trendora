@@ -96,5 +96,26 @@ def test_bars_503_when_no_price_data(tmp_path):
     with Session(engine) as session:
         assert latest_data_date(session) is None
         with pytest.raises(HTTPException) as exc:
-            stock_bars("NVDA", session)
+            stock_bars("NVDA", session=session)  # iter-8: optional `as_of` first → session by keyword
         assert exc.value.status_code == 503
+
+
+# --- iter-8: as-of chart (date <= D, no lookahead) -----------------------------------------
+def test_bars_asof_historical_returns_only_bars_le_d(loaded_engine):
+    """`/bars?as_of=D` returns only bars with date <= D (the as-of chart; no lookahead) and echoes D."""
+    cfg = load_config()
+    target = max(cfg.scanner.bootstrap_dates)  # a historical date within the seed
+    with Session(loaded_engine) as session:
+        expected_len = len(bars_asof(session, "NVDA", target))
+    with TestClient(main.app) as client:
+        body = client.get(f"/api/stocks/NVDA/bars?as_of={target.isoformat()}").json()
+    assert body["asof_date"] == target.isoformat()
+    assert len(body["bars"]) == expected_len and expected_len > 0
+    assert all(b["date"] <= target.isoformat() for b in body["bars"])  # no bar after D (no lookahead)
+
+
+def test_bars_asof_invalid_dates_are_4xx(loaded_engine):
+    """An invalid `as_of` on the chart endpoint is an explicit 4xx — never a fabricated series."""
+    with TestClient(main.app) as client:
+        assert client.get("/api/stocks/NVDA/bars?as_of=2999-01-01").status_code == 400  # future
+        assert client.get("/api/stocks/NVDA/bars?as_of=not-a-date").status_code == 422  # unparseable

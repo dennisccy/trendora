@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, ChevronDown, ChevronRight, Grid2x2 } from "lucide-react";
 
+import { useAsOf } from "@/components/asof-provider";
 import { ComponentBreakdown } from "@/components/component-breakdown";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeading } from "@/components/page-heading";
@@ -29,18 +30,20 @@ function fmtPct(value: number | null): string {
 }
 
 export default function SectorsPage() {
+  const { asOf } = useAsOf();
   const [state, setState] = useState<State>({ kind: "loading" });
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const controller = new AbortController();
-    fetchSectors(controller.signal)
+    setState({ kind: "loading" });
+    fetchSectors(asOf ?? undefined, controller.signal)
       .then((data) => setState({ kind: "ok", data }))
       .catch(() => {
         if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => controller.abort();
-  }, []);
+  }, [asOf]);
 
   const toggle = (ticker: string) =>
     setExpanded((prev) => {
