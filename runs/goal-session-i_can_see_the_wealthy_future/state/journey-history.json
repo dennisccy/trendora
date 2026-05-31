@@ -4,163 +4,163 @@
       "id": "J-01",
       "name": "Daily dashboard at a glance",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-10",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-11",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-12",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-12",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-10-evidence/J13-dashboard-historical-2022-10-07.png",
-      "note": "Carried passing. iter-11 touched no dashboard code or `/api/dashboard` (git diff: only patterns.py + scoring/scanner/forward_testing additive + 4 FE files). The snapshot DB was rebuilt to add the append-only is_vcp column, and the deterministic rebuild reproduced identical canonical values (latest Risk-on; System Health by-bucket A +6.00% n=24 matches the iter-6/iter-10 baseline in the system-health evidence PNG) — so candidate counts/regime/top sectors+themes are unchanged. Dashboard not re-rendered live this iter, so last_verified stays iter-10."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-12-evidence/TC-17-dashboard.png",
+      "note": "Re-verified LIVE this iter (TC-17-dashboard.png viewed by the evaluator). Market Regime 74.32/100 (Risk-on) with a 5-component breakdown (Index MA stack 35.00, Breadth>50-DMA 16.39, Breadth>200-DMA 14.75, Net new highs 8.18, VIX gate 0.00 — explainable); candidate counts Actionable 0 / Breakout-watch 8 / Pullback-watch 1; Top Sectors SOXX 93.67(A)/WGMI 90.67(A)/SMH 90.00(A)/XLK 79.83(C)/ROBO 74.00(C); Top Themes Semiconductors 100.00(A)/AI Data Centre 85.00(B)/Cybersecurity 77.50(C)/...; breadth 65.57% (universe-relative label); as-of 2026-05-28. Values reproduce the documented iter-8 baseline (74.32 / 65.57%) — the deterministic seed is unchanged and /api/dashboard is byte-unchanged (empty-diff)."
     },
     "J-02": {
       "id": "J-02",
       "name": "Stock Leaderboard with working filters",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-11",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-11",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-12",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-12",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/evidence/goal-i_can_see_the_wealthy_future-iter-11/01-leaderboard-vcp-filtered.png",
-      "note": "Re-verified live this iter. The leaderboard renders 122 ranked rows each with three bucketed scores + setup + reason; the NEW VCP filter (a third Select) narrows to 4/122 flagged (STX/TSLA/TSM/ORCL) as pure client-side re-display with ranking unchanged. QA TC-17: Setup='Extended'→11/122 all Extended; sector filter narrows — the existing filters are intact. The VCP filter is additive (parallel to sector/setup), no recompute/re-sort."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-12-evidence/TC-11-stocks-setup-tooltip.png",
+      "note": "Re-verified LIVE this iter (TC-11 viewed). The leaderboard renders ranked rows each with ticker, three bucketed scores (A-E + number), setup badge, and a non-empty reason. THIS ITER the Setup filter vocabulary became catalog-sourced (hard-coded SETUP_STATUSES removed) — QA TC-13 confirmed options = the 6 catalog statuses in catalog order and Setup='Extended' narrows 122->11 rows (all Extended); the actual filter still matches the SERVER-computed row.setup.status (coherence A4), with graceful fallback to data statuses if the catalog fetch fails (protects J-02/J-15). VCP + Sector filters still narrow. No recompute introduced; stocks/page.tsx change is display-only."
     },
     "J-03": {
       "id": "J-03",
       "name": "Theme Leaderboard",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-10",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-11",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-12",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-10-evidence/J14-backtest-2022-10-07-numeric-scorecard.png",
-      "note": "Carried passing. themes.py + score_themes byte-identical to iter-8 (not in the iter-11 diff); the deterministic DB rebuild reproduces the same ranked theme snapshot. Not re-rendered live this iter, so last_verified stays iter-10."
+      "note": "Carried passing. themes.py + score_themes + /api/themes are byte-unchanged this iter (empty-diff keystone), the deterministic seed reproduces the same ranked theme snapshot, and the iter-12 dashboard PNG corroborates the canonical theme scores (Semiconductors 100.00 A, AI Data Centre 85.00 B, ...). QA TC-17 re-rendered /themes live (HTTP 200) this iter. Not re-walked as a dedicated /themes acceptance shot, so last_verified stays iter-10."
     },
     "J-04": {
       "id": "J-04",
       "name": "Sector / industry Leaderboard",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-10",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-11",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-12",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-10-evidence/J14-backtest-2022-10-07-numeric-scorecard.png",
-      "note": "Carried passing. sectors.py + score_sectors byte-identical (not in the iter-11 diff); DB rebuild reproduces the same ranked sector snapshot. Not re-rendered live this iter, so last_verified stays iter-10."
+      "note": "Carried passing. sectors.py + score_sectors + /api/sectors byte-unchanged (empty-diff); the DB rebuild reproduces the same ranked sector snapshot, corroborated by the iter-12 dashboard Top Sectors (SOXX 93.67 A / WGMI 90.67 A / SMH 90.00 A / XLK 79.83 C / ROBO 74.00 C). QA TC-17 re-rendered /sectors live (HTTP 200). Not re-walked as a dedicated /sectors acceptance shot, so last_verified stays iter-10."
     },
     "J-05": {
       "id": "J-05",
       "name": "Stock Detail with explainable scores",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-11",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-11",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-12",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/evidence/goal-i_can_see_the_wealthy_future-iter-11/02-detail-STX-vcp.png",
-      "note": "Re-verified live this iter (two flagged tickers). STX and ORCL detail pages each render the price+MA+volume chart, all three scores with A-E bucket + 0-100 value + named component breakdowns (STX Leadership 91.53 w/ 'Moving-average stack 1.00→35.00…', Entry 32.11, Risk 51.87; ORCL 53.60/47.81/45.46), theme membership, setup status, reason, and a concrete invalidation level — PLUS the new VCP card (pivot + last-contraction-low invalidation + contractions). The detail scaffold was unchanged by iter-11 beyond the additive VCP card."
+      "note": "Carried passing. stocks/[ticker]/page.tsx is NOT in this iter's changed-file set (only stocks/page.tsx + sidebar + lib/api.ts + the new methodology page/tooltip changed); scoring.py/setups.py/patterns.py + the stocks router are byte-unchanged (empty-diff), so the detail chart + three explainable score breakdowns + theme chips + invalidation are byte-identical to iter-11 where they were verified live (STX 91.53/32.11/51.87, ORCL 53.60/47.81/45.46). Not re-rendered live this iter, so last_verified stays iter-11."
     },
     "J-06": {
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-11",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-11",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-12",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/evidence/goal-i_can_see_the_wealthy_future-iter-11/02-detail-STX-vcp.png",
-      "note": "Strengthened this iter — coherence now extends to the new VCP flag. STX (91.53/32.11/51.87) and ORCL (53.60/47.81/45.46) detail scores are identical to their leaderboard rows; the VCP block too: the keystone test asserts detail.row.vcp == list-row.vcp, and coherence-auditor confirmed both surfaces rehydrate the byte-identical stored record_json row (no second source). One detect_vcp computation, read identically everywhere."
+      "note": "Carried passing — and structurally reinforced this iter. The empty-diff keystone (scoring/setups/patterns + every read router byte-unchanged) means each canonical score is still computed exactly once and read identically by leaderboard + detail. The NEW catalog `meaning` is a DISTINCT displayed value (generic status definition, served by /api/methodology), NOT a second source of the per-row setup.reason (coherence A2) — so no new path can make a score differ between views. COHERENCE-PASS. Not re-rendered live this iter, so last_verified stays iter-11."
     },
     "J-07": {
       "id": "J-07",
       "name": "Risk-Off regime suppresses Actionable",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-11",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-11",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-12",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-12",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-8-evidence/TC-12-J13-dashboard-historical-2025-04-04.png",
-      "note": "Re-proven at the data level this iter, hardened against the new pattern. setups.py is byte-unchanged (VCP never enters the setup vocabulary). NEW test_risk_off_run_vcp_flagged_rows_stay_watchlist_not_actionable asserts a Risk-off run has zero Actionable AND every VCP-flagged row is still 'Risk-off-watchlist' — the flag never promotes a name past the gate. Live: the 4 latest-snapshot flagged rows are Extended/Avoid, none Actionable. The /scanner-runs Risk-off page itself was not re-opened, but the critical gate is unit-proven this iter."
+      "note": "Re-confirmed LIVE this iter via QA TC-17: the seeded Risk-off run (2022-10-07) produces 0 Actionable. setups.py + scanner.py are byte-unchanged (empty-diff), so the Risk-off gate (a critical anti-goal) cannot have regressed. The /methodology Risk-off-watchlist entry (TC-10, viewed) now documents the gate explicitly: 'when the regime label is Risk-off, EVERY name is forced to watchlist-only.' No dedicated new risk-off PNG was saved this iter (QA functional check), so the live evidence path stays the iter-8 historical shot."
     },
     "J-08": {
       "id": "J-08",
       "name": "Immutable scanner-run history",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-11",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-11",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-12",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-6-evidence/REG-scanner-runs-j08.png",
-      "note": "Re-confirmed at the source level this iter — immutability survived the schema addition. models.py adds ONLY the append-only `is_vcp` column (no existing row UPDATEd); the gitignored DB was rebuilt (re-created, not mutated) from the frozen seed; forward_returns stays separate INSERT-only; test_is_vcp_mirrors_record_json_flag confirms is_vcp == record_json.vcp.flagged for every stored row (one detect_vcp output stored twice in one transaction, not a second compute). The /scanner-runs page was not re-opened, so the live last_evidence is the iter-6 shot."
+      "note": "Carried passing. models.py + scanner.py + the runs router are byte-unchanged this iter (empty-diff) — this iteration writes NO snapshot/model change (the methodology catalog is a read-only config surface). Immutability + the separate append-only forward_returns table are untouched. QA TC-17 re-rendered /scanner-runs live (HTTP 200). Not re-walked as a dedicated acceptance shot, so last_verified stays iter-11."
     },
     "J-09": {
       "id": "J-09",
       "name": "System Health forward-tested evidence",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-11",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-11",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-12",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-12",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
-      "last_evidence_path": "reports/evidence/goal-i_can_see_the_wealthy_future-iter-11/03-system-health-by-vcp.png",
-      "note": "Re-verified live this iter. /system-health renders the by-bucket forward returns (A +6.00% n=24⚠ … E +2.05%), excess vs SPY/QQQ, by-setup, and by-regime panels — all intact and unchanged — alongside the NEW 'Forward return: VCP vs non-VCP' panel. The forward_testing.py change is purely additive (a new by_vcp dimension reusing the shared _group_means helper); the existing aggregates are byte-unchanged. Survivorship banner present; every cell carries n."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-12-evidence/TC-17-system-health.png",
+      "note": "Re-verified LIVE this iter (TC-17-system-health.png viewed). By-bucket forward returns A +6.00% n=24 (low-sample flagged) / B +3.74% n=87 / C +1.11% n=162 / D +1.40% n=173 / E +2.05% n=772; Excess vs SPY +0.51% n=1218, vs QQQ +0.04% n=1218; by-setup (Actionable -7.55% n=2, ..., Risk-off-watchlist +10.55% n=242); by-regime (Risk-on +2.63% n=732, Narrow leadership -7.99%, Choppy -8.42%, Risk-off +10.55% n=242); survivorship-bias banner present; every cell carries n; 'n<30 low-sample' honesty note. Reproduces the iter-6/iter-10 baseline; forward_testing.py byte-unchanged (empty-diff)."
     },
     "J-10": {
       "id": "J-10",
       "name": "Control-group honesty (selection vs sector beta)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-11",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-11",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-12",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/evidence/goal-i_can_see_the_wealthy_future-iter-11/03-system-health-by-vcp.png",
-      "note": "Re-verified live this iter. The System Health 'Control group comparison — selection vs sector beta' panel renders the top-ranked cohort, random-same-sector peers, SPY, QQQ, and sector ETF, each numeric and labelled. _control_groups in forward_testing.py is unchanged by iter-11 (the by_vcp addition is orthogonal)."
+      "note": "Carried passing. _control_groups in forward_testing.py is byte-unchanged this iter (empty-diff). The control-group panel sits below the fold of the iter-12 system-health PNG; QA TC-17 confirmed the live /system-health payload still carries control_group (top-ranked cohort vs random-same-sector vs SPY/QQQ/sector ETF), alongside by_bucket/setup/regime/by_vcp/excess. Last dedicated control-group shot stays iter-11."
     },
     "J-11": {
       "id": "J-11",
       "name": "Watchlist with persistence",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-11",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-12",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-7-evidence/J11-watchlist-anet-full-row-after-restart.png",
-      "note": "Carried passing. iter-11 changed no watchlist code (watchlist.py + the DB-backed Watchlist INSERT/DELETE table are untouched). The watchlist row may incidentally carry the new vcp block (it reads the live score_stocks row) but no VCP display was added there, by spec. Not exercised live this iter, so last_verified stays iter-8."
+      "note": "Carried passing. watchlist.py + the DB-backed Watchlist table are byte-unchanged this iter (empty-diff); the restart-persistence crux was proven end-to-end LIVE in iter-7 (backend killed + rebooted twice, ANET survived). QA TC-17 re-rendered /watchlist live (HTTP 200). The methodology catalog adds no mutation/auth. Not re-walked through add->restart this iter, so last_verified stays iter-8."
     },
     "J-12": {
       "id": "J-12",
       "name": "Understand what each setup/pattern means (glossary + inline)",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-11",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-12",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-12",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-8",
-      "last_evidence_path": null,
-      "note": "Still UNBUILT — explicitly OUT OF SCOPE in iter-11 (J-16 only) and sequenced as the NEXT/final iteration so the glossary can document the VCP catalog entry just landed. No /methodology page, config-backed catalog, or inline setup/pattern tooltips exist (no methodology route in the FE diff; grep confirms none). To make J-12 trivial, the iter-11 VCP reason/detail and thresholds were deliberately kept config-backed. Adds a new nav route → will need blueprint.reapproval-requested when built. NOT a regression — never built; its 'first_seen' tracking began iter-8 when the 5 new Must-haves were added."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-12-evidence/TC-10-methodology.png",
+      "note": "NEWLY PASSING — the final Must-have; 16/16 now pass. Verified to gold standard despite an 11th consecutive dedicated browser-qa SKIP (reconciled from self-produced evidence + independent source/payload/config checks). (1) Surface 1 /methodology (TC-10 viewed): all SIX setup statuses (Actionable/Breakout-watch/Pullback-watch/Extended/Avoid/Risk-off-watchlist, each a 'Setup' chip) + the VCP pattern ('Pattern' chip), each with plain-language meaning + config-matching thresholds + a worked example. (2) Surface 2 /stocks setup-badge tooltip (TC-11 viewed; QA TC-11): clicking the info affordance opens role=tooltip whose text EXACTLY matches the /methodology 'Extended' meaning; Escape dismisses; not title-only. (3) MATCHING-CONFIG KEYSTONE independently verified by the evaluator: the live /api/methodology payload values equal config.yaml byte-for-byte (Actionable 80/70/60 == decision_rules.actionable; Extended 85/<50; watch 75; avoid_risk 80; VCP 2/35%/0.9/12%/8%/0.9 == patterns.vcp). engine/methodology.py reads config only (no scoring import -> computes NO score), holds NO threshold literal (in CALC_FILES), and ASSERTS completeness (every ALL_STATUSES status + every config.patterns pattern documented). 11 new tests (config-only-extra-entry renders w/ no code change; unresolvable ref -> ConfigError; VCP not in setup entries). Sidebar 'Methodology' link (1 click). Config-driven UI anti-goal satisfied: no hard-coded per-entry copy/list in the FE; the /stocks setup-filter vocabulary is now catalog-sourced too."
     },
     "J-13": {
       "id": "J-13",
       "name": "Browse the dashboard as of a past date (global as-of switcher)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-11",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-11",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-12",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-12",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-10-evidence/J13-dashboard-historical-2022-10-07.png",
-      "note": "Re-verified this iter as the spec's no-regression guard. QA TC-17: the global top-bar as-of switcher (11 dates) re-points to 2022-10-07; the 'Latest · 2026-05-...' switcher control is visible in the leaderboard evidence PNG. The as-of resolver / snapshot_serving path is untouched by iter-11 (scoring reads the same no-lookahead bars_asof accessor), so re-pointing cannot regress. Known limitation unchanged: a full reload returns to Latest (no ?as_of= URL param)."
+      "note": "Re-confirmed LIVE this iter via QA TC-17: the global as-of switcher re-points results across dates (Actionable count varies — 1 on 2026-02-27, 0 on risk-off dates), and the 'Latest' switcher control is visible in the iter-12 dashboard/stocks PNGs. snapshot_serving.py + scanner resolver are byte-unchanged (empty-diff), so re-pointing cannot regress. Known limitation unchanged (full reload returns to Latest — no ?as_of= URL param). No dedicated new historical PNG saved this iter, so the live evidence path stays the iter-10 shot."
     },
     "J-14": {
       "id": "J-14",
       "name": "Backtest a past date and read its forward-test scorecard",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-10",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-11",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-12",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-10-evidence/J14-backtest-2022-10-07-numeric-scorecard.png",
-      "note": "Carried passing. backtest.py + compute_run_scorecard + /api/backtest were explicitly kept OUT OF SCOPE this iter (not in the diff) — the per-date scorecard gained no VCP dimension. The deterministic DB rebuild reproduces the same stored forward_returns, so the scorecard is identical. Not re-rendered live this iter, so last_verified stays iter-10."
+      "note": "Carried passing. backtest.py + compute_run_scorecard + /api/backtest are byte-unchanged this iter (empty-diff); the deterministic DB rebuild reproduces the same stored forward_returns, so the per-date scorecard is identical. QA TC-17 re-rendered /backtest live (HTTP 200). Not re-walked as a dedicated scorecard shot, so last_verified stays iter-10."
     },
     "J-15": {
       "id": "J-15",
       "name": "Fast page loads from persisted snapshots",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-11",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-11",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-12",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-8-evidence/TC-11-J15-stocks-latest.png",
-      "note": "Re-proven at the source level this iter. snapshot_serving.py is unchanged; the leaderboard/detail serve the stored record_json row (now incl. the vcp block) with no recompute — proven by the NEW keystone test that patches detect_vcp AND score_* to RAISE and asserts /api/stocks, /api/stocks/{ticker}, and by_vcp still serve stored values. The read-path no-recompute discipline is extended to the VCP flag, not regressed."
+      "note": "Carried passing — and protected this iter. snapshot_serving.py + the read routers are byte-unchanged (empty-diff); reads still serve the stored record_json row with no recompute (the iter-10/11 patch-to-raise keystone tests remain in the green 248-suite). The NEW /stocks catalog fetch is non-blocking and independent of the as-of date (coherence A4), with graceful fallback if it fails — so the small extra fetch does not break warm load. Not re-timed live this iter, so last_verified stays iter-11."
     },
     "J-16": {
       "id": "J-16",
       "name": "VCP — detected, explained, filterable, forward-tested",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-11",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-11",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-12",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-12",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-8",
-      "last_evidence_path": "reports/evidence/goal-i_can_see_the_wealthy_future-iter-11/01-leaderboard-vcp-filtered.png",
-      "note": "NEWLY PASSING — the product's first detected price pattern. Verified to gold standard despite a 10th browser-qa SKIP (BOTH QA mode-2 and the dev self-produced evidence). (1) 4 md5-distinct evidence PNGs viewed: /stocks 'VCP only' → 4/122 (STX/TSLA/TSM/ORCL), each with a teal VCP badge ALONGSIDE its setup status (Extended/Avoid — none Actionable); STX detail VCP card (pivot $905.39, invalid below last-contraction low $816.98, 3 contractions); ORCL detail card; System Health 'Forward return: VCP vs non-VCP' = VCP +3.18% n=27⚠ vs non-VCP +2.01% n=1191 @20d (low-sample honestly flagged ⚠, survivorship label). (2) New detector app/engine/patterns.py:detect_vcp — pure, price+volume, reads only as-of series (no-lookahead by construction), every threshold from config.patterns.vcp (typed VcpCfg), NA-graceful (no fabricated pivot). (3) Critical anti-goals proven in source + tests: VCP-not-a-status (setups.py byte-unchanged; 'VCP'∉ALL_STATUSES; forced-flag-every-name → setup statuses byte-identical; risk-off flagged rows stay watchlist); single-source/no-recompute keystone (patch detect_vcp+score_* to raise → reads serve stored); immutable mirror (is_vcp==record_json.vcp.flagged; models.py one append-only column; no new endpoint); no-magic-numbers (patterns.py in CALC_FILES + 8/35 forbidden ints). 54 fast tests pass in my own run; QA 118 targeted + dev 234 full; COHERENCE-PASS; review PASS. The /methodology VCP glossary entry (J-16 acceptance step 4) is delivered by J-12/next iter — explicitly deferred, NOT a gap here. 15/16 Must-haves now pass."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-12-evidence/TC-12-stocks-vcp-tooltip.png",
+      "note": "Fully completed this iter — acceptance step 4 (the /methodology VCP glossary entry), explicitly deferred from iter-11, is now DELIVERED and viewed (TC-10): VCP listed as a 'Pattern' (NOT a 7th setup status) with meaning + the config thresholds that define it (Min contractions >=2, Max base depth <=35%, shrink <=0.9, Final <=12%, Within pivot <=8%, Volume dry-up <=0.9 — matching patterns.vcp) + a worked example. The /stocks VCP badge now also exposes the catalog VCP meaning inline (TC-12 viewed). patterns.py/setups.py/forward_testing.py byte-unchanged (empty-diff): the detector, VCP-is-a-pattern gate, and the by_vcp System Health breakdown are all intact (QA TC-17 confirmed by_vcp present). VCP still never makes a name Actionable. The leaderboard 'VCP only' filter + detail VCP card were proven live in iter-11."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-05-31T14:05:00Z"
+  "updated_at": "2026-05-31T16:30:00Z"
 }

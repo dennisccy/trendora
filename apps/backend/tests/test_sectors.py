@@ -120,6 +120,20 @@ _SYNTH_CFG = {
             "volume_window": 5, "min_history_bars": 20,
         },
     },
+    "methodology": {  # iter-12: methodology is a required config section (one entry whose ref resolves)
+        "intro": "Glossary.",
+        "entries": [
+            {
+                "key": "Actionable", "kind": "setup", "name": "Actionable",
+                "meaning": "A strong leader at a constructive entry.",
+                "example": "L high, E high, R low in Risk-on -> Actionable.",
+                "thresholds": [
+                    {"label": "Leadership", "cmp": ">=", "ref": "decision_rules.actionable.leadership"},
+                    {"label": "Regime", "text": "Risk-on only."},
+                ],
+            },
+        ],
+    },
 }
 
 

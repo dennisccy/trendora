@@ -109,6 +109,24 @@ MINIMAL_VALID = {
             "volume_window": 10, "min_history_bars": 65,
         },
     },
+    # iter-12 made `methodology` required (the config-backed Setup & Pattern catalog). The smallest
+    # valid catalog: >= 1 entry whose refs resolve (completeness is build_catalog's job, not the loader's).
+    "methodology": {
+        "intro": "Glossary.",
+        "entries": [
+            {
+                "key": "Actionable",
+                "kind": "setup",
+                "name": "Actionable",
+                "meaning": "A strong leader at a constructive entry.",
+                "example": "Leadership high, Entry high, Risk low in Risk-on -> Actionable.",
+                "thresholds": [
+                    {"label": "Leadership", "cmp": ">=", "ref": "decision_rules.actionable.leadership"},
+                    {"label": "Regime", "text": "Risk-on only."},
+                ],
+            },
+        ],
+    },
 }
 
 
@@ -172,3 +190,30 @@ def test_theme_member_outside_universe_raises(tmp_path):
 def test_missing_file_raises(tmp_path):
     with pytest.raises(ConfigError):
         load_config(tmp_path / "does_not_exist.yaml")
+
+
+# --- iter-12: methodology section (J-12) ----------------------------------------------------
+
+def test_methodology_minimal_valid_loads(tmp_path):
+    """MINIMAL_VALID (incl. the now-required methodology section) still loads — the from-scratch
+    fixture stays valid (the established pattern for every newly-required section, iter-2/3/5/6/11)."""
+    cfg = load_config(_write(tmp_path, MINIMAL_VALID))
+    assert cfg.methodology.entries
+    assert cfg.methodology.entries[0].key == "Actionable"
+
+
+def test_methodology_unresolvable_ref_raises(tmp_path):
+    """A threshold whose ref points at a non-existent config path fails the boot loudly (anti-goal:
+    No fabricated data — never a silent/placeholder threshold)."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["methodology"]["entries"][0]["thresholds"][0]["ref"] = "decision_rules.nope.missing"
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_methodology_threshold_requires_ref_xor_text(tmp_path):
+    """Each threshold row carries EXACTLY one of `ref`/`text` — both (or neither) is rejected."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["methodology"]["entries"][0]["thresholds"][0]["text"] = "oops both"
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))

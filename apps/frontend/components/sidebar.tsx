@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
+  BookOpen,
   FlaskConical,
   Grid2x2,
   History,
@@ -33,6 +34,7 @@ const NAV: NavItem[] = [
   { href: "/backtest", label: "Backtest", icon: FlaskConical },
   { href: "/system-health", label: "System Health", icon: Activity },
   { href: "/watchlist", label: "Watchlist", icon: Star },
+  { href: "/methodology", label: "Methodology", icon: BookOpen },
 ];
 
 export function Sidebar() {

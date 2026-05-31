@@ -11,8 +11,16 @@ import { ScoreBadge } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { cn } from "@/lib/utils";
-import { fetchStocks, type StockRow, type StocksResponse, type Vcp } from "@/lib/api";
+import {
+  fetchMethodology,
+  fetchStocks,
+  type MethodologyCatalog,
+  type StockRow,
+  type StocksResponse,
+  type Vcp,
+} from "@/lib/api";
 
 type State =
   | { kind: "loading" }
@@ -30,17 +38,6 @@ function vcpTitle(vcp: Vcp): string {
     .filter(Boolean)
     .join(" ");
 }
-
-// The six canonical setup statuses (fixed vocabulary so "Actionable" is always selectable, even
-// when zero rows currently match — the journey then shows an explicit empty state).
-const SETUP_STATUSES = [
-  "Actionable",
-  "Breakout-watch",
-  "Pullback-watch",
-  "Extended",
-  "Avoid",
-  "Risk-off-watchlist",
-];
 
 function setupVariant(status: string): "ok" | "warn" | "danger" | "accent" | "default" {
   switch (status) {
@@ -65,6 +62,7 @@ export default function StocksPage() {
   const [sector, setSector] = useState<string>(ALL);
   const [setup, setSetup] = useState<string>(ALL);
   const [vcp, setVcp] = useState<string>(ALL);
+  const [catalog, setCatalog] = useState<MethodologyCatalog | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -77,7 +75,46 @@ export default function StocksPage() {
     return () => controller.abort();
   }, [asOf]);
 
+  // The config-backed Setup & Pattern catalog (iter-12) — fetched independently of the as-of date
+  // (config is global) and NON-blocking: a failure must NOT break the leaderboard or its filters
+  // (graceful degradation protects J-02 and warm load J-15). It drives the badge definition tooltips
+  // and the Setup-filter vocabulary below.
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchMethodology(controller.signal)
+      .then((data) => setCatalog(data))
+      .catch(() => {
+        if (!controller.signal.aborted) setCatalog(null);
+      });
+    return () => controller.abort();
+  }, []);
+
   const rows = state.kind === "ok" ? state.data.rows : [];
+
+  // status -> catalog meaning (the SAME generic definition the /methodology page shows). The badge
+  // tooltip renders this, NOT the per-row reason (which stays unchanged in the Reason column).
+  const setupMeaning = useMemo(() => {
+    const map = new Map<string, string>();
+    catalog?.entries
+      .filter((entry) => entry.kind === "setup")
+      .forEach((entry) => map.set(entry.key, entry.meaning));
+    return map;
+  }, [catalog]);
+  const vcpMeaning = useMemo(
+    () =>
+      catalog?.entries.find((entry) => entry.kind === "pattern" && entry.key === "vcp")?.meaning ??
+      null,
+    [catalog],
+  );
+  // Setup-filter vocabulary: the catalog's setup entries in catalog order; graceful fallback to the
+  // statuses present in the data if the catalog fetch failed (a catalog hiccup must NOT break J-02).
+  const setupOptions = useMemo(() => {
+    const fromCatalog = catalog?.entries
+      .filter((entry) => entry.kind === "setup")
+      .map((entry) => entry.key);
+    if (fromCatalog && fromCatalog.length > 0) return fromCatalog;
+    return Array.from(new Set(rows.map((row) => row.setup.status)));
+  }, [catalog, rows]);
 
   // sectors present in the data, for the Sector filter (re-display of server rows only)
   const sectors = useMemo(
@@ -125,7 +162,7 @@ export default function StocksPage() {
             Setup
             <Select value={setup} onChange={(e) => setSetup(e.target.value)} aria-label="Filter by setup status">
               <option value={ALL}>All setups</option>
-              {SETUP_STATUSES.map((s) => (
+              {setupOptions.map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
@@ -202,7 +239,12 @@ export default function StocksPage() {
             </thead>
             <tbody>
               {visible.map((row) => (
-                <StockTableRow key={row.ticker} row={row} />
+                <StockTableRow
+                  key={row.ticker}
+                  row={row}
+                  setupMeaning={setupMeaning.get(row.setup.status)}
+                  vcpMeaning={vcpMeaning}
+                />
               ))}
             </tbody>
           </table>
@@ -212,7 +254,15 @@ export default function StocksPage() {
   );
 }
 
-function StockTableRow({ row }: { row: StockRow }) {
+function StockTableRow({
+  row,
+  setupMeaning,
+  vcpMeaning,
+}: {
+  row: StockRow;
+  setupMeaning?: string;
+  vcpMeaning?: string | null;
+}) {
   return (
     <tr className="border-b border-border transition-colors hover:bg-surface-2">
       <td className="num px-3 py-2 text-text-faint">{row.rank}</td>
@@ -237,10 +287,16 @@ function StockTableRow({ row }: { row: StockRow }) {
       <td className="px-3 py-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge variant={setupVariant(row.setup.status)}>{row.setup.status}</Badge>
+          {setupMeaning ? (
+            <InfoTooltip label={`Definition of ${row.setup.status}`} content={setupMeaning} />
+          ) : null}
           {row.vcp.flagged ? (
             <Badge variant="accent" className="cursor-help" title={vcpTitle(row.vcp)}>
               VCP
             </Badge>
+          ) : null}
+          {row.vcp.flagged && vcpMeaning ? (
+            <InfoTooltip label="Definition of the VCP pattern" content={vcpMeaning} />
           ) : null}
         </div>
       </td>

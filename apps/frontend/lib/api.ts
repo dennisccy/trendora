@@ -492,3 +492,40 @@ export async function addWatchlistEntry(ticker: string, reason: string): Promise
 export async function removeWatchlistEntry(id: number): Promise<{ id: number; deleted: boolean }> {
   return sendJSON<{ id: number; deleted: boolean }>("DELETE", `/api/watchlist/${id}`);
 }
+
+// --- methodology / glossary catalog (iter-12, J-12) ----------------------------------------
+/** One threshold row of a methodology entry. EITHER a config-referenced numeric row (`value` with an
+ *  optional `cmp`/`unit`) whose number is resolved LIVE on the backend from the same config the engine
+ *  reads (so it always matches — never recomputed/​re-typed client-side), OR a prose `text` rule. */
+export interface MethodologyThresholdRow {
+  label: string;
+  cmp?: string;
+  value?: number;
+  unit?: string;
+  text?: string;
+}
+
+/** One glossary entry — a setup status (`kind:"setup"`) or a detected pattern (`kind:"pattern"`).
+ *  `key` is the canonical identifier (a setup status name, or a pattern key like "vcp"); `meaning`
+ *  and `example` are plain-language copy; `thresholds` are the config-defined rules. */
+export interface MethodologyEntry {
+  key: string;
+  kind: "setup" | "pattern";
+  name: string;
+  meaning: string;
+  thresholds: MethodologyThresholdRow[];
+  example: string;
+}
+
+/** The config-backed Setup & Pattern catalog served by GET /api/methodology. The ONE source for the
+ *  /methodology page, the /stocks badge tooltips, AND the /stocks setup-filter vocabulary. */
+export interface MethodologyCatalog {
+  intro?: string;
+  entries: MethodologyEntry[];
+}
+
+/** Canonical Setup & Pattern glossary source: GET /api/methodology. Throws on non-200 so callers
+ *  render an explicit "Backend unavailable" state — never fabricated copy. */
+export async function fetchMethodology(signal?: AbortSignal): Promise<MethodologyCatalog> {
+  return getJSON<MethodologyCatalog>("/api/methodology", signal);
+}

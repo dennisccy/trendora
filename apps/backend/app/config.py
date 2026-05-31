@@ -9,6 +9,7 @@ typed `WalkForwardCfg`); any remaining forward-looking keys still ride along via
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
@@ -399,6 +400,83 @@ class PatternsCfg(BaseModel):
     vcp: VcpCfg
 
 
+class MethodologyThreshold(BaseModel):
+    """One row of a methodology entry's threshold list (iter-12). EITHER a config-referenced numeric
+    row ({label, ref, cmp?, unit?}) whose displayed value resolves LIVE from the canonical config
+    block `ref` points at (so it always matches the engine — never re-typed), OR a plain prose rule
+    ({label, text}). EXACTLY one of `ref`/`text` is present (anti-goal: No magic numbers — the numbers
+    are never hard-coded in the catalog copy)."""
+
+    model_config = ConfigDict(extra="allow")
+    label: str
+    ref: Optional[str] = None
+    cmp: Optional[str] = None
+    unit: Optional[str] = None
+    text: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _exactly_one_of_ref_or_text(self) -> "MethodologyThreshold":
+        if (self.ref is None) == (self.text is None):
+            raise ValueError(
+                f"methodology threshold {self.label!r} must have exactly one of `ref` or `text`"
+            )
+        return self
+
+
+class MethodologyEntry(BaseModel):
+    """One glossary entry (iter-12) — a setup status or a detected pattern. `key` matches the
+    canonical identifier (a setup status in `app.engine.setups.ALL_STATUSES`, or a pattern key in
+    `config.patterns`); `name`/`meaning`/`example` are plain-language COPY; `thresholds` reference
+    the config keys that define the entry (resolved live by `app.engine.methodology.build_catalog`)."""
+
+    model_config = ConfigDict(extra="allow")
+    key: str
+    kind: Literal["setup", "pattern"]
+    name: str
+    meaning: str
+    example: str
+    thresholds: list[MethodologyThreshold] = Field(default_factory=list)
+
+
+class MethodologyCfg(BaseModel):
+    """The single config-backed Setup & Pattern catalog (iter-12, J-12). One ORDERED list of entries
+    (the setup statuses + the detected patterns) carrying the human copy + threshold references. The
+    /methodology page, the /stocks badge tooltips, AND the /stocks setup-filter vocabulary ALL read
+    this one catalog (anti-goal: Setup & pattern vocabulary is config-driven in the UI too). Every
+    threshold `ref` is resolved against the loaded Config at boot (see `Config._methodology_refs_resolve`)
+    so an unresolvable reference fails loudly — never a silent placeholder number."""
+
+    model_config = ConfigDict(extra="allow")
+    intro: Optional[str] = None
+    entries: list[MethodologyEntry] = Field(min_length=1)
+
+
+def _node_keys(node: object) -> set[str]:
+    """The traversable keys at `node`: a pydantic model's declared fields + any extra='allow' keys,
+    or a mapping's keys. A scalar has none (it cannot be descended into)."""
+    if isinstance(node, BaseModel):
+        keys = set(type(node).model_fields)
+        if node.__pydantic_extra__:
+            keys |= set(node.__pydantic_extra__)
+        return keys
+    if isinstance(node, Mapping):
+        return set(node)
+    return set()
+
+
+def resolve_ref(config: "Config", ref: str) -> object:
+    """Resolve a dotted-path reference (e.g. "decision_rules.actionable.leadership") to its LIVE value
+    in the loaded `Config`, traversing BOTH pydantic-model attributes AND mappings. Raises
+    `ConfigError` on any unresolvable segment — the methodology glossary never shows a placeholder
+    threshold (anti-goal: No fabricated data)."""
+    node: object = config
+    for part in ref.split("."):
+        if part not in _node_keys(node):
+            raise ConfigError(f"methodology threshold ref {ref!r} is unresolvable at segment {part!r}")
+        node = node[part] if isinstance(node, Mapping) else getattr(node, part)
+    return node
+
+
 class DatabaseCfg(BaseModel):
     model_config = ConfigDict(extra="allow")
     url: str = Field(min_length=1)
@@ -426,6 +504,7 @@ class Config(BaseModel):
     scanner: ScannerCfg
     walk_forward: WalkForwardCfg
     patterns: PatternsCfg
+    methodology: MethodologyCfg
 
     @field_validator("themes")
     @classmethod
@@ -468,6 +547,24 @@ class Config(BaseModel):
                 f"decision_rules.invalidation.ma_period ({period}) must be one of "
                 f"indicators.ma_periods ({self.indicators.ma_periods})"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _methodology_refs_resolve(self) -> "Config":
+        """Every methodology threshold `ref` must resolve to a live config value at boot — an
+        unresolvable reference fails the boot loudly (anti-goal: No fabricated data — the glossary
+        never shows a silent/placeholder threshold). This is the load-time half of the matching-config
+        keystone served by `app.engine.methodology.build_catalog`."""
+        unresolved: list[str] = []
+        for entry in self.methodology.entries:
+            for threshold in entry.thresholds:
+                if threshold.ref is not None:
+                    try:
+                        resolve_ref(self, threshold.ref)
+                    except ConfigError:
+                        unresolved.append(threshold.ref)
+        if unresolved:
+            raise ValueError(f"methodology threshold refs are unresolvable: {sorted(set(unresolved))}")
         return self
 
 

@@ -530,3 +530,84 @@ patterns:
 # datetime.date by config.py (anti-goal: No magic numbers — no date literal in calc code).
 scanner:
   bootstrap_dates: ["2022-10-07", "2025-04-04"]
+
+# ----------------------------------------------------------------------------------------
+# iter-12 CONSUMED — Methodology / Glossary catalog (J-12). The SINGLE config-backed source that
+# EXPLAINS every setup status + the VCP pattern: a plain-language meaning, the exact thresholds that
+# define each (referenced LIVE from the canonical config blocks above — never re-typed, so they always
+# match the engine; the "matching config" keystone), and a worked example. Served verbatim by
+# app.engine.methodology.build_catalog via GET /api/methodology and read by the /methodology page, the
+# /stocks setup/VCP badge tooltips, AND the /stocks setup-filter vocabulary (anti-goal: Setup & pattern
+# vocabulary is config-driven in the UI too — NO per-entry copy or status/pattern list in code).
+# Each threshold row is EITHER { label, ref, cmp?, unit? } (ref = dotted path to a real config key,
+# resolved at boot — an unresolvable ref fails the boot loudly) OR { label, text } (a prose rule).
+# Adding an entry here surfaces it on the page AND in the tooltips with NO code change. The numbers are
+# NEVER typed here — only `ref`s — so tuning a threshold above updates the glossary and the scanner
+# together (single source of truth). VCP is listed as a PATTERN, never as a 7th setup status.
+methodology:
+  intro: "How Trendora classifies every stock. Each name gets exactly one setup status (from its three independent scores plus the market regime) and may also carry a detected price pattern that rides alongside it. The thresholds below are read live from this config — they always match the scanner."
+  entries:
+    - key: Actionable
+      kind: setup
+      name: Actionable
+      meaning: "A strong leader at a constructive entry with contained risk — the only status the scanner treats as a fresh buy candidate, and only while the market regime is risk-on."
+      thresholds:
+        - { label: "Leadership", cmp: ">=", ref: "decision_rules.actionable.leadership" }
+        - { label: "Entry Quality", cmp: ">=", ref: "decision_rules.actionable.entry" }
+        - { label: "Risk (danger)", cmp: "<=", ref: "decision_rules.actionable.risk" }
+        - { label: "Regime", text: "Never produced when the regime is Risk-off — the Risk-off gate forces watchlist-only." }
+      example: "Leadership 92 (A), Entry 74 (C), Risk 48 in a Risk-on regime → Actionable."
+    - key: Breakout-watch
+      kind: setup
+      name: Breakout-watch
+      meaning: "A leader that is not yet at a clean entry — strong enough to watch, but its entry quality is below the Actionable cutoff, so it is a breakout candidate rather than a buy."
+      thresholds:
+        - { label: "Leadership", cmp: ">=", ref: "decision_rules.watch.leadership" }
+        - { label: "Entry Quality", text: "Below the Actionable entry cutoff — not yet a clean entry." }
+        - { label: "Risk (danger)", text: "Below the Avoid danger bound, and the name is not Actionable or Extended." }
+      example: "Leadership 78 (C), Entry 55 in a Risk-on regime → Breakout-watch."
+    - key: Pullback-watch
+      kind: setup
+      name: Pullback-watch
+      meaning: "A leader near a buyable area — its entry quality is already at or above the Actionable cutoff, but another Actionable condition is not met, so it is watched for a lower-risk pullback entry."
+      thresholds:
+        - { label: "Leadership", cmp: ">=", ref: "decision_rules.watch.leadership" }
+        - { label: "Entry Quality", cmp: ">=", ref: "decision_rules.actionable.entry" }
+        - { label: "Risk (danger)", text: "Below the Avoid danger bound; Leadership below the Actionable cutoff keeps it a watch rather than Actionable." }
+      example: "Leadership 78 (C), Entry 72 (C) in a Risk-on regime → Pullback-watch."
+    - key: Extended
+      kind: setup
+      name: Extended
+      meaning: "A strong leader whose entry is extended — too far from a low-risk entry to chase. Wait for a pullback rather than buying here."
+      thresholds:
+        - { label: "Leadership", cmp: ">=", ref: "decision_rules.extended.leadership" }
+        - { label: "Entry Quality", cmp: "<", ref: "decision_rules.extended.entry" }
+        - { label: "Risk (danger)", text: "Below the Avoid danger bound." }
+      example: "Leadership 90 (A), Entry 40 in a Risk-on regime → Extended."
+    - key: Avoid
+      kind: setup
+      name: Avoid
+      meaning: "Not a candidate — either the danger (Risk) is at or above the Avoid bound, or leadership is too weak for any setup."
+      thresholds:
+        - { label: "Risk (danger)", cmp: ">=", ref: "decision_rules.avoid_risk" }
+        - { label: "or Leadership", text: "Below the watch cutoff — too weak for any setup." }
+      example: "Risk 85 (danger at or above the avoid bound), or Leadership 60 with no qualifying setup → Avoid."
+    - key: Risk-off-watchlist
+      kind: setup
+      name: Risk-off-watchlist
+      meaning: "The Risk-off gate. When the market regime label is Risk-off, EVERY name is forced to watchlist-only and zero names are Actionable — no matter how strong the individual scores are."
+      thresholds:
+        - { label: "Regime", text: "Applies to every name whenever the market regime label is Risk-off (the lowest regime band)." }
+      example: "Any stock — even Leadership 95 (A), Entry 80 (B), Risk 30 — in a Risk-off regime → Risk-off-watchlist."
+    - key: vcp
+      kind: pattern
+      name: "VCP — Volatility Contraction Pattern"
+      meaning: "A price-and-volume base of progressively shallower pullbacks with volume drying up into a pivot near the highs. A detected PATTERN that rides ALONGSIDE the setup status — it never by itself makes a name Actionable."
+      thresholds:
+        - { label: "Min contractions", cmp: ">=", ref: "patterns.vcp.min_contractions" }
+        - { label: "Max base depth", cmp: "<=", ref: "patterns.vcp.max_base_depth_pct", unit: "%" }
+        - { label: "Each contraction vs prior", cmp: "<=", ref: "patterns.vcp.contraction_shrink_ratio" }
+        - { label: "Final contraction", cmp: "<=", ref: "patterns.vcp.max_last_contraction_pct", unit: "%" }
+        - { label: "Within pivot", cmp: "<=", ref: "patterns.vcp.pivot_proximity_pct", unit: "%" }
+        - { label: "Volume dry-up", cmp: "<=", ref: "patterns.vcp.volume_dryup_ratio" }
+      example: "3 contractions tightening 18% → 9% → 5%, recent volume at 80% of the base, 3% below the pivot → VCP."

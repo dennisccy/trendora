@@ -27,6 +27,10 @@ CALC_FILES = [
     # iter-11 VCP detector — EVERY threshold (lookback/contraction counts, depth caps, shrink ratio,
     # pivot-proximity band, volume-dry-up ratio/window, min history) comes from config.patterns.vcp.
     "patterns.py",
+    # iter-12 methodology catalog assembler — resolves every displayed threshold from config (the
+    # matching-config keystone); it must hold NO threshold literal of its own (every number is read
+    # from config via resolve_ref).
+    "methodology.py",
 ]
 
 # The union of every NUMERIC tunable currently in config.yaml (periods, windows, bucket edges,

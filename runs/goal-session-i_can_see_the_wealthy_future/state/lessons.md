@@ -202,3 +202,23 @@ diff and an unchanged `setups.py`, which is why J-06/J-09/J-10 could not structu
 2nd detected pattern, a new badge) — prove non-perturbation with a force-the-new-thing monkeypatch +
 byte-equality of the existing field, and prefer composing onto the existing row/endpoint/grouping seams
 over adding a parallel path.
+
+## iter-12 — 2026-05-31T16:30:00Z
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** A goal-completing iteration can legitimately reach GOAL_ACHIEVED on RECONCILED evidence even
+though the dedicated browser-qa never ran once across the entire 12-iteration session. What made it sound:
+(a) the empty-diff keystone (`git diff --stat HEAD` over the engine + every read router = empty) proving
+the 15 carried journeys' canonical computations are byte-identical to when they passed; (b) the
+deterministic seed reproducing documented canonical values (dashboard 74.32 / breadth 65.57% /
+System Health A +6.00% n=24); and (c) the evaluator INDEPENDENTLY verifying the new feature's
+"matching-config" keystone by diffing the live `/api/methodology` payload against `config.yaml`
+byte-for-byte — not trusting the unit test alone. For a config-backed glossary, that payload-vs-config
+diff is the strongest possible proof the displayed thresholds cannot drift.
+**Applies to:** any goal-completing iteration whose diff is provably additive (new read-only surface,
+empty-diff on all engines/routers); and any "matching-config / single-source" claim — verify the live
+served value against the canonical config block directly, don't rely on the in-suite test. NOTE for the
+runner owner: the browser-qa (probes `/health` not `/api/health`; tears services down pre-test) and
+audit-handoff gaps were flagged every iter 3–12 via spec text and never fixed — durable fixes belong in
+`scripts/automation/*.sh`, not spec prose, and should land EARLY in a session so final sign-off rests on a
+live dedicated sweep.

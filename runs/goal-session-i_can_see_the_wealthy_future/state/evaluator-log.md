@@ -540,3 +540,61 @@ Pair with a **full 16-journey regression sweep + full-product coherence** so the
 legitimately reach GOAL_ACHIEVED (16/16). Runner owner should finally (a) make browser-qa own/await/
 self-heal its frontend, probe `/api/health`, and set `CORS_ORIGINS` to the frontend port; and (b) emit
 the audit handoff from the runner script.
+
+## Iteration 12 — goal-i_can_see_the_wealthy_future-iter-12
+
+**Date:** 2026-05-31T16:30:00Z
+**Verdict:** GOAL_ACHIEVED
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: **J-12** (Methodology / Glossary — config-backed catalog at `/methodology` + inline `/stocks` badge tooltips) — the 16th and final Must-have. **16/16 now pass.**
+- Newly failing: none
+- Regressed: none (engine/models + all nine read routers byte-unchanged per `git diff --stat HEAD` — the empty-diff keystone; J-01–J-11, J-13–J-16 cannot structurally regress)
+- Anti-goal violations: none (all eight criticals re-verified — no-lookahead / immutable / single-source / no-recompute-read-path / on-demand-immutable / Risk-Off-gates-Actionable / VCP-is-a-pattern / no-order-path — most inherited via empty-diff; the new read-only catalog introduces none; order/broker/secret/localStorage greps empty)
+
+**Reasoning:** J-12 landed cleanly and I verified it to gold standard, and confirmed all fifteen other
+journeys hold — so all three GOAL_ACHIEVED conditions are met (every Must-have `passing`, no critical
+anti-goal, COHERENCE-PASS). **J-12 evidence:** I viewed TC-10-methodology.png (all SIX setup statuses as
+'Setup' chips + VCP as a 'Pattern' chip, each with meaning + config-matching thresholds + a worked
+example) and TC-11/TC-12 (the `/stocks` setup + VCP badge tooltips; QA confirmed the click reveals the
+Extended meaning matching `/methodology`, dismissible, not title-only). I **independently verified the
+matching-config keystone** — the central anti-goal — by comparing the live `/api/methodology` payload to
+`config.yaml` byte-for-byte: Actionable 80/70/60 == `decision_rules.actionable`; Extended 85/<50; watch
+75; avoid_risk 80; VCP 2/35%/0.9/12%/8%/0.9 == `patterns.vcp`. `engine/methodology.py` imports only
+`resolve_ref`/`Config`/`MethodologyThreshold` + `ALL_STATUSES` (no scoring import → computes NO score),
+holds zero threshold literals (in CALC_FILES), and asserts completeness (every `ALL_STATUSES` status +
+every `config.patterns` pattern documented; VCP not a 7th status). 11 new tests cover the keystone,
+completeness, config-only-extra-entry (renders with no code change), VCP-not-a-status, and
+unresolvable-ref → ConfigError; full backend suite **248 passed / 0 failed** (concordant dev+QA);
+frontend build clean (12 routes incl. `/methodology`). **Regression:** the empty-diff keystone (engine +
+all 9 routers byte-unchanged) is the structural guarantee; I re-verified J-01 (TC-17-dashboard.png:
+regime 74.32 Risk-on + components, counts 0/8/1, top sectors/themes, breadth 65.57%) and J-09
+(TC-17-system-health.png: by-bucket A +6.00% n=24 … E +2.05% n=772, excess vs SPY +0.51% / QQQ +0.04%,
+by-setup, by-regime Risk-on +2.63% n=732 / Risk-off +10.55% n=242, survivorship banner, n shown) live,
+both reproducing documented baselines; QA TC-17 re-confirmed J-02 (filter 122→11), J-07 (risk-off →
+0 Actionable), J-13 (as-of varies Actionable), J-16 (by_vcp present + step-4 `/methodology` VCP entry now
+delivered). The remaining nine carried on empty-diff + deterministic reproduction + TC-17 HTTP-200
+render. COHERENCE-PASS (one additive value, one module, one endpoint; `/methodology` reachable in 1 click;
+reapproval marker present). Pipeline integrity confirmed (status.json `current_step=qa_complete`,
+`tests_run=true`, 15 changed files — not an iter-9-style no-op). **GOAL_ACHIEVED — 16/16.**
+
+**Process gaps (non-blocking, chronic — runner-script scope, NOT product/spec; spec text proven
+ineffective across iters 3–12):** (1) **Dedicated browser-qa SKIPped an 11th consecutive time** (frontend
+HTTP-000 at start-of-run → 200 mid-run; backend health probed at `/health`→404 instead of canonical
+`/api/health`→200). QA mode-2 self-healed both services and self-produced 6 md5-distinct PNGs + 17/17
+functional TCs; the developer also self-produced live evidence. I reconciled from the viewed PNGs + my own
+payload-vs-config verification + empty-diff + source reads — exactly per the standing lesson and the
+spec's explicit evaluator guidance (iter-7/iter-10 precedent), so this is evidence-grounded, not a guess.
+(2) **Audit handoff missing an 11th consecutive full-depth iter** — `reports/audits/` absent;
+`status.json` `next_action=audit` never executed. The coherence-auditor (which ran) supplies the
+structural gate; review PASS_WITH_NOTES + QA PASS + my verification cover the rest. (3) Two optional review
+NOTEs (pop-over clip near the `/stocks` table edge; `resolve_ref` does not assert a scalar) — neither
+blocks; the matching-config test guards drift and the content mounts in the DOM. None affected the verdict.
+
+**Next-step recommendation:** **Halt — goal achieved.** All 16 Must-have journeys pass, no critical
+anti-goal is violated, coherence passes; the product is feature-complete against the goal's Must-haves. If
+the user resumes for the explicitly-deferred nice-to-haves — #14 (config-editor view) or #15 (historical
+per-stock score charts) — a single **lean** iteration suffices for either; neither is a Must-have. Before
+any further browser-gated work, the runner owner should finally (a) make browser-qa own/await/self-heal its
+frontend, probe `/api/health`, and set `CORS_ORIGINS` to the frontend port, and (b) emit the audit handoff
+from the runner script — so a future session's sign-off can rest on a clean live dedicated sweep.

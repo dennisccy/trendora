@@ -117,6 +117,23 @@ VALID = {
             "volume_window": 10, "min_history_bars": 65,
         },
     },
+    # iter-12 made `methodology` required (the config-backed Setup & Pattern catalog).
+    "methodology": {
+        "intro": "Glossary.",
+        "entries": [
+            {
+                "key": "Actionable",
+                "kind": "setup",
+                "name": "Actionable",
+                "meaning": "A strong leader at a constructive entry.",
+                "example": "Leadership high, Entry high, Risk low in Risk-on -> Actionable.",
+                "thresholds": [
+                    {"label": "Leadership", "cmp": ">=", "ref": "decision_rules.actionable.leadership"},
+                    {"label": "Regime", "text": "Risk-on only."},
+                ],
+            },
+        ],
+    },
 }
 
 
