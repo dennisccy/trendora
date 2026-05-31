@@ -24,14 +24,23 @@ CALC_FILES = [
     # and the control-group {seed, top_n, peers_per_sector} ALL come from config; the no-lookahead
     # price accessors (bars_asof / bars_after / close_on) introduce no tunable literal either.
     "forward_testing.py", "prices.py",
+    # iter-11 VCP detector — EVERY threshold (lookback/contraction counts, depth caps, shrink ratio,
+    # pivot-proximity band, volume-dry-up ratio/window, min history) comes from config.patterns.vcp.
+    "patterns.py",
 ]
 
 # The union of every NUMERIC tunable currently in config.yaml (periods, windows, bucket edges,
 # regime/sector cutoffs, vix threshold, and the iter-3 decision-rule / theme-score cutoffs).
 # None of these may be hard-coded in calc code. (85 = decision_rules.extended.leadership, new in
 # iter-3; the other theme_scores/decision_rules integers reuse values already in this set.)
+# iter-11 adds the distinctive VCP integer tunables 8 (patterns.vcp.pivot_proximity_pct) and 35
+# (patterns.vcp.max_base_depth_pct) so the no-magic-numbers contract is ENFORCED for the detector,
+# not merely claimed — every VCP threshold must read from config.patterns.vcp. (lookback_bars /
+# min_history_bars = 65 is already in the set; the remaining VCP counts 2/4 are structural integers
+# used for indexing/arithmetic across the engine and so cannot be added without false positives —
+# they are still config-driven in patterns.py, just not heuristically enforceable here.)
 FORBIDDEN_INT_LITERALS = {
-    14, 20, 21, 30, 45, 50, 55, 60, 63, 65, 70, 75, 80, 85, 90, 126, 150, 200, 252,
+    8, 14, 20, 21, 30, 35, 45, 50, 55, 60, 63, 65, 70, 75, 80, 85, 90, 126, 150, 200, 252,
 }
 
 

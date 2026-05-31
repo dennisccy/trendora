@@ -115,6 +115,14 @@ _SYNTH_CFG = {
         "min_sample": 30, "default_horizon": 20,
         "control_group": {"seed": 20240601, "top_n": 20, "peers_per_sector": 5},
     },
+    "patterns": {  # iter-11: patterns is a required config section (small-scale to match this synth cfg)
+        "vcp": {
+            "lookback_bars": 20, "min_contractions": 2, "max_contractions": 4,
+            "min_contraction_pct": 3, "max_base_depth_pct": 35, "contraction_shrink_ratio": 0.8,
+            "max_last_contraction_pct": 12, "pivot_proximity_pct": 8, "volume_dryup_ratio": 0.9,
+            "volume_window": 5, "min_history_bars": 20,
+        },
+    },
 }
 
 

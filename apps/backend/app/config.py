@@ -335,6 +335,70 @@ class WalkForwardCfg(BaseModel):
         return self
 
 
+class VcpCfg(BaseModel):
+    """VCP (Volatility Contraction Pattern) detector thresholds (iter-11 CONSUMED). EVERY tunable the
+    `app.engine.patterns.detect_vcp` detector reads lives here — windows, contraction counts, depth
+    caps, the shrink ratio, the pivot-proximity band, and the volume-dry-up ratio — so NO detection
+    literal lives in calc code (anti-goal: No magic numbers). Validated like `WalkForwardCfg`: every
+    window/count is positive, the shrink ratio is in (0, 1], and every percentage is positive — an
+    invalid block raises `ConfigError`, never a silent default."""
+
+    model_config = ConfigDict(extra="allow")
+    lookback_bars: int
+    min_contractions: int
+    max_contractions: int
+    min_contraction_pct: float
+    max_base_depth_pct: float
+    contraction_shrink_ratio: float
+    max_last_contraction_pct: float
+    pivot_proximity_pct: float
+    volume_dryup_ratio: float
+    volume_window: int
+    min_history_bars: int
+
+    @model_validator(mode="after")
+    def _validate(self) -> "VcpCfg":
+        windows = {
+            "lookback_bars": self.lookback_bars,
+            "min_contractions": self.min_contractions,
+            "max_contractions": self.max_contractions,
+            "volume_window": self.volume_window,
+            "min_history_bars": self.min_history_bars,
+        }
+        nonpositive = sorted(k for k, v in windows.items() if v <= 0)
+        if nonpositive:
+            raise ValueError(f"patterns.vcp windows/counts must be positive: {nonpositive}")
+        if self.min_contractions > self.max_contractions:
+            raise ValueError(
+                f"patterns.vcp.min_contractions ({self.min_contractions}) must be <= "
+                f"max_contractions ({self.max_contractions})"
+            )
+        if not (0 < self.contraction_shrink_ratio <= 1):
+            raise ValueError(
+                f"patterns.vcp.contraction_shrink_ratio must be in (0, 1], got {self.contraction_shrink_ratio}"
+            )
+        pcts = {
+            "min_contraction_pct": self.min_contraction_pct,
+            "max_base_depth_pct": self.max_base_depth_pct,
+            "max_last_contraction_pct": self.max_last_contraction_pct,
+            "pivot_proximity_pct": self.pivot_proximity_pct,
+            "volume_dryup_ratio": self.volume_dryup_ratio,
+        }
+        bad_pct = sorted(k for k, v in pcts.items() if v <= 0)
+        if bad_pct:
+            raise ValueError(f"patterns.vcp percentages/ratios must be positive: {bad_pct}")
+        return self
+
+
+class PatternsCfg(BaseModel):
+    """Detected-pattern catalog (iter-11). Holds one typed sub-block per detected pattern; the FIRST
+    is `vcp`. Designed so a future pattern is a new typed sub-block here (the catalog COULD grow), but
+    only VCP exists this session."""
+
+    model_config = ConfigDict(extra="allow")
+    vcp: VcpCfg
+
+
 class DatabaseCfg(BaseModel):
     model_config = ConfigDict(extra="allow")
     url: str = Field(min_length=1)
@@ -361,6 +425,7 @@ class Config(BaseModel):
     stock_sectors: dict[str, str] = Field(min_length=1)
     scanner: ScannerCfg
     walk_forward: WalkForwardCfg
+    patterns: PatternsCfg
 
     @field_validator("themes")
     @classmethod

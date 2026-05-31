@@ -20,6 +20,7 @@ import {
   type ScoreBlock,
   type StockDetailResponse,
   type StockRow,
+  type Vcp,
 } from "@/lib/api";
 
 type State =
@@ -120,10 +121,11 @@ function StockDetailBody({ data }: { data: StockDetailResponse }) {
   const { row } = data;
   return (
     <div className="space-y-4">
-      {/* setup + reason header */}
+      {/* setup + reason header — the VCP badge rides ALONGSIDE the setup status, never replacing it */}
       <Card>
         <CardContent className="flex flex-wrap items-center gap-3 p-5">
           <Badge variant={setupVariant(row.setup.status)}>{row.setup.status}</Badge>
+          {row.vcp.flagged ? <VcpBadge vcp={row.vcp} /> : null}
           <span className="text-xs text-text-muted">{row.sector}</span>
           <Badge variant="default" className="num">
             as of {data.asof_date}
@@ -134,6 +136,9 @@ function StockDetailBody({ data }: { data: StockDetailResponse }) {
 
       {/* theme membership + concrete invalidation level (server-computed, rendered verbatim) */}
       <ThemeAndInvalidationCard row={row} />
+
+      {/* VCP pattern — a separate detected pattern with its own pivot + invalidation level */}
+      <VcpCard vcp={row.vcp} />
 
       {/* price + moving-average candle chart with volume (server MA series — never recomputed) */}
       <StockChartPanel ticker={row.ticker} />
@@ -188,6 +193,72 @@ function ThemeAndInvalidationCard({ row }: { row: StockRow }) {
             {row.invalidation.note}
           </p>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** The VCP badge that rides ALONGSIDE the setup status (teal accent). Its tooltip carries the
+ *  server-built reason + pivot + invalidation note (rendered verbatim — never assembled here). */
+function VcpBadge({ vcp }: { vcp: Vcp }) {
+  const title = [
+    vcp.reason,
+    vcp.pivot != null ? `Pivot $${vcp.pivot.toFixed(2)}.` : null,
+    vcp.invalidation.note,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return (
+    <Badge variant="accent" title={title} className="cursor-help">
+      VCP
+    </Badge>
+  );
+}
+
+/** The dedicated VCP pattern card: a SEPARATE detected pattern with its OWN pivot + invalidation
+ *  level (distinct from the setup invalidation above). When not flagged it states so explicitly —
+ *  no fabricated pivot. The same stored value the leaderboard serves (single source → J-06). */
+function VcpCard({ vcp }: { vcp: Vcp }) {
+  if (!vcp.flagged) {
+    return (
+      <Card>
+        <CardContent className="flex flex-wrap items-center gap-3 p-5">
+          <p className="text-xs uppercase tracking-wide text-text-faint">VCP pattern</p>
+          <p className="text-sm text-text-muted">No VCP pattern detected.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardTitle>VCP — Volatility Contraction Pattern</CardTitle>
+        <Badge variant="accent">VCP</Badge>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-text-muted">{vcp.reason}</p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1">
+            <p className="text-xs uppercase tracking-wide text-text-faint">Pivot (breakout level)</p>
+            <p className="num text-lg font-semibold text-text">
+              {vcp.pivot != null ? `$${vcp.pivot.toFixed(2)}` : "—"}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs uppercase tracking-wide text-text-faint">Invalidation</p>
+            <p className="text-sm text-warn">{vcp.invalidation.note}</p>
+          </div>
+        </div>
+        {vcp.contractions && vcp.contractions.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs uppercase tracking-wide text-text-faint">Contractions</span>
+            {vcp.contractions.map((c, i) => (
+              <Badge key={i} variant="default" className="num">
+                {c.toFixed(0)}%
+              </Badge>
+            ))}
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

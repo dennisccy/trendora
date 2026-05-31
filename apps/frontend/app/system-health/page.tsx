@@ -194,6 +194,12 @@ function HealthDashboard({ data }: { data: SystemHealthResponse }) {
           min={min}
           emptyLabel="No regime had a measurable forward return at this horizon."
         />
+        <BreakdownPanel
+          title="Forward return: VCP vs non-VCP"
+          rows={data.by_vcp.map((r) => ({ label: r.vcp, ...r }))}
+          min={min}
+          emptyLabel="No VCP / non-VCP cohort had a measurable forward return at this horizon."
+        />
       </div>
 
       <ControlGroupPanel rows={data.control_group} min={min} horizon={data.horizon} />

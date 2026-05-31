@@ -63,6 +63,20 @@ def test_system_health_default_horizon_full_payload(loaded_engine):
     assert isinstance(cohorts["top_ranked"]["mean_return"], (int, float))
 
 
+def test_system_health_by_vcp_breakdown_present(loaded_engine):
+    """J-16 at the API level: the payload carries a VCP-vs-non-VCP forward-return breakdown — both
+    cohorts labelled, each with mean_return + n (None/NA when a cohort is empty), derived from the
+    stored `is_vcp` flag (never re-detected in the read path)."""
+    with TestClient(main.app) as client:
+        data = client.get("/api/system-health").json()
+    assert "by_vcp" in data
+    by_vcp = {r["vcp"]: r for r in data["by_vcp"]}
+    assert set(by_vcp) == {"VCP", "non-VCP"}                       # both cohorts always present
+    for cohort in by_vcp.values():
+        assert _GROUP_KEYS <= set(cohort)                          # each carries mean_return + n
+    assert sum(c["n"] for c in by_vcp.values()) > 0                # the seed yields >=1 observation
+
+
 def test_system_health_both_regimes_present(loaded_engine):
     """The by-regime breakdown carries BOTH a Risk-on and a Risk-off entry (the seeded walk-forward
     spans both regimes) — neither fabricated, both derived from real snapshots."""

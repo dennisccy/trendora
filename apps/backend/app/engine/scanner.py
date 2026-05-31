@@ -102,7 +102,10 @@ def run_scan(session: Session, asof: date_cls, config: Optional[Config] = None) 
                 risk_bucket=row["risk"]["bucket"],
                 setup_status=row["setup"]["status"],
                 rank=row["rank"],
-                record_json=json.dumps(row),  # the COMPLETE canonical row dict (lossless)
+                record_json=json.dumps(row),  # the COMPLETE canonical row dict (lossless, incl. vcp)
+                # denormalized MIRROR of record_json's vcp.flagged (same single detect_vcp output) —
+                # written once here for the forward-test by_vcp grouping; recomputes nothing.
+                is_vcp=row["vcp"]["flagged"],
             )
         )
 

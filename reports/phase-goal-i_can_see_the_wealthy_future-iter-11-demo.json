@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future-iter-11",
+  "base_url": "http://localhost:3835",
+  "iteration": 11,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open Trendora's daily dashboard",
+      "narration": "We start on Trendora's home dashboard — the after-close read on the whole market: today's mood, breadth, and how many stocks are even worth acting on. It's the backdrop for everything that follows.",
+      "point_out": "The Market Regime panel with its score and component breakdown, plus the candidate counts — Trendora always shows the reasoning, never just a verdict.",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Market Regime" }
+    },
+    {
+      "n": 2,
+      "title": "Find the VCP-flagged leaders on the Stock Leaderboard",
+      "narration": "On the Stock Leaderboard, this release adds a brand-new VCP filter beside Sector and Setup, and a teal \"VCP\" badge on every flagged name. A VCP — Volatility Contraction Pattern — is Trendora's very first detected chart pattern.",
+      "point_out": "The new \"VCP\" dropdown (All / VCP only / Non-VCP) in the filter row, and the teal \"VCP\" badges marking flagged rows — they sit alongside the setup status, never replacing it.",
+      "journey": "J-16",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "VCP" }
+    },
+    {
+      "n": 3,
+      "title": "Read the full VCP explanation on a flagged stock",
+      "narration": "Opening a flagged name (STX) shows the whole story: why it qualifies, the exact breakout price to watch, and the price that would prove the pattern wrong — never a bare flag.",
+      "point_out": "The teal \"VCP\" badge beside the \"Extended\" setup, and the \"VCP — Volatility Contraction Pattern\" card with its Pivot (breakout level) of $905.39 and an amber invalidation level — the same stored values the leaderboard serves.",
+      "journey": "J-16",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/STX" },
+      "expect": { "text": "VCP — Volatility Contraction Pattern" }
+    },
+    {
+      "n": 4,
+      "title": "Confirm the levels are real and per-stock",
+      "narration": "A second flagged name (ORCL) proves the pattern isn't boilerplate — each stock gets its own measured pivot and invalidation, drawn from its own price history.",
+      "point_out": "A different Pivot (breakout level) of $205.00 and invalidation $187.92 here — distinct from the previous stock, because they're computed from this stock's own chart.",
+      "journey": "J-16",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/ORCL" },
+      "expect": { "text": "VCP — Volatility Contraction Pattern" }
+    },
+    {
+      "n": 5,
+      "title": "See whether VCP names actually outperform",
+      "narration": "Finally, the honest test: System Health now breaks forward returns into VCP versus non-VCP, so you can judge whether the pattern genuinely adds an edge — backed by sample sizes, not hype.",
+      "point_out": "The new \"Forward return: VCP vs non-VCP\" panel: VCP +3.18% (n=27, flagged ⚠ as a small sample) versus non-VCP +2.01% (n=1191), under the standing Survivorship bias banner.",
+      "journey": "J-16",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/system-health" },
+      "expect": { "text": "Forward return: VCP vs non-VCP" }
+    }
+  ]
+}

@@ -499,6 +499,29 @@ walk_forward:
     peers_per_sector: 5        # random same-sector peers drawn per sector per run
 
 # ----------------------------------------------------------------------------------------
+# iter-11 CONSUMED — Detected price patterns. The FIRST detected pattern is VCP (Volatility
+# Contraction Pattern), a rule-based price+volume detector (app/engine/patterns.py :: detect_vcp).
+# EVERY VCP threshold lives here (anti-goal: No magic numbers — no detector literal in calc code);
+# the detector reads ONLY these keys via the typed config.patterns.vcp. Values are illustrative
+# hypotheses tuned against the committed seed so the latest snapshot flags a sensible, non-trivial
+# set (some, not all, not none) — never loosened to fabricate flags. VCP is a PATTERN, not a status:
+# it rides each stock row alongside the setup status, never enters the setup-status enum, and never
+# by itself promotes a name to Actionable.
+patterns:
+  vcp:
+    lookback_bars: 65              # base window scanned for contractions (trading days)
+    min_contractions: 2            # min number of progressively-shallower pullbacks in the base
+    max_contractions: 3            # cap on contractions considered (the most recent ones near the pivot)
+    min_contraction_pct: 3         # ZigZag reversal: a swing shallower than this % is noise, not a contraction
+    max_base_depth_pct: 35         # the deepest contraction must be <= this % (VCP bases are not crashes)
+    contraction_shrink_ratio: 0.9  # each contraction must be <= prior * this (volatility CONTRACTING) — in (0,1]
+    max_last_contraction_pct: 12   # the final (tightest) contraction must be <= this %
+    pivot_proximity_pct: 8         # latest close must be within this % below the base high (near the pivot)
+    volume_dryup_ratio: 0.9        # recent avg volume / base avg volume must be <= this (volume drying up)
+    volume_window: 10              # bars for the "recent" volume average (vs the base average)
+    min_history_bars: 65           # below this a symbol cannot be evaluated -> flagged=false / NA (never fabricated)
+
+# ----------------------------------------------------------------------------------------
 # iter-5 CONSUMED — Scanner snapshots. The historical as-of dates the scanner persists an
 # immutable snapshot for on first boot (the LATEST data date is added programmatically in
 # bootstrap_runs, NOT listed here). Both dates below are real seed dates the regime engine

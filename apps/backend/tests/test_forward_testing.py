@@ -170,14 +170,14 @@ def _add_run(session: Session, asof: date, regime_label: str) -> ScannerRun:
     return run
 
 
-def _add_result(session, run_id, ticker, bucket, setup, sector, rank, lead_score=50.0):
+def _add_result(session, run_id, ticker, bucket, setup, sector, rank, lead_score=50.0, is_vcp=False):
     session.add(
         ScannerResult(
             run_id=run_id, ticker=ticker, name=ticker, sector=sector,
             leadership_score=lead_score, leadership_bucket=bucket,
             entry_quality_score=0.0, entry_quality_bucket="E",
             risk_score=0.0, risk_bucket="E",
-            setup_status=setup, rank=rank, record_json="{}",
+            setup_status=setup, rank=rank, record_json="{}", is_vcp=is_vcp,
         )
     )
 
@@ -312,6 +312,48 @@ def test_aggregates_group_by_stored_bucket_not_rescored(tmp_path):
     # grouped by STORED bucket: E has X (0.11), A has Y (0.22) — the OPPOSITE of a score re-bucketing
     assert by_bucket["E"]["n"] == 1 and by_bucket["E"]["mean_return"] == pytest.approx(0.11)
     assert by_bucket["A"]["n"] == 1 and by_bucket["A"]["mean_return"] == pytest.approx(0.22)
+
+
+@pytest.fixture()
+def vcp_aggregates_engine(tmp_path):
+    """A hand-built run with known forward returns split across the VCP / non-VCP cohorts at horizon
+    H, so the by_vcp means are exact by construction (AAA,BBB flagged VCP; CCC non-VCP)."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'vcp_agg.db'}")
+    create_db_and_tables(engine)
+    H = 20
+    with Session(engine) as session:
+        r1 = _add_run(session, date(2025, 1, 10), "Risk-on")
+        _add_result(session, r1.id, "AAA", "A", "Breakout-watch", "Technology", 1, is_vcp=True)
+        _add_result(session, r1.id, "BBB", "B", "Pullback-watch", "Technology", 2, is_vcp=True)
+        _add_result(session, r1.id, "CCC", "C", "Avoid", "Technology", 3, is_vcp=False)
+        for sym, ret in [("AAA", 0.20), ("BBB", 0.10), ("CCC", -0.06), ("SPY", 0.05), ("QQQ", 0.06)]:
+            _add_fr(session, r1.id, sym, H, ret)
+        session.commit()
+    return engine, H
+
+
+def test_aggregates_by_vcp_exact(vcp_aggregates_engine):
+    """by_vcp groups the STORED `is_vcp` flag VERBATIM: the VCP cohort (AAA,BBB) and the non-VCP
+    cohort (CCC), each with an exact mean + n; both cohorts always present and labelled."""
+    engine, H = vcp_aggregates_engine
+    with Session(engine) as session:
+        agg = compute_forward_aggregates(session, H, load_config())
+    by_vcp = {r["vcp"]: r for r in agg["by_vcp"]}
+    assert set(by_vcp) == {"VCP", "non-VCP"}
+    assert by_vcp["VCP"]["n"] == 2 and by_vcp["VCP"]["mean_return"] == pytest.approx(0.15)   # (0.20+0.10)/2
+    assert by_vcp["non-VCP"]["n"] == 1 and by_vcp["non-VCP"]["mean_return"] == pytest.approx(-0.06)
+
+
+def test_aggregates_by_vcp_empty_cohort_is_na_padded(aggregates_engine):
+    """No fabrication: the base fixture flags NO VCP names, so the VCP cohort is padded n=0 / mean
+    None while non-VCP carries all observations — an honest NA, never a fabricated 0%."""
+    engine, H = aggregates_engine
+    with Session(engine) as session:
+        agg = compute_forward_aggregates(session, H, load_config())
+    by_vcp = {r["vcp"]: r for r in agg["by_vcp"]}
+    assert set(by_vcp) == {"VCP", "non-VCP"}
+    assert by_vcp["VCP"]["n"] == 0 and by_vcp["VCP"]["mean_return"] is None
+    assert by_vcp["non-VCP"]["n"] == 6  # all six realized observations are non-VCP (default is_vcp=False)
 
 
 def test_aggregates_zero_post_bar_run_contributes_n0(aggregates_engine):

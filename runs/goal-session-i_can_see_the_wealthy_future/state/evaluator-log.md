@@ -482,3 +482,61 @@ and a System Health VCP-vs-non-VCP forward-return breakdown (n; NA below `min_sa
 `blueprint.reapproval-requested`). Clean J-16 → 15/16, then J-12 → 16/16 and a legitimate GOAL_ACHIEVED
 check. Runner owner should finally (a) make browser-qa own/await/self-heal its frontend with `CORS_ORIGINS`
 set to the frontend port, and (b) emit the audit handoff.
+
+## Iteration 11 — goal-i_can_see_the_wealthy_future-iter-11
+
+**Date:** 2026-05-31T14:05:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: **J-16** (VCP — detected, explained, filterable, forward-tested) — the product's first detected price pattern; 15/16 Must-haves now pass
+- Newly failing: none
+- Regressed: none (J-02/J-05/J-06/J-09/J-10 re-shot LIVE and unchanged alongside the additive VCP surfaces; J-07/J-08/J-15 re-proven at source/test level; the deterministic DB rebuild reproduced identical canonical values for J-01/J-03/J-04/J-11/J-14)
+- Anti-goal violations: none (all engaged criticals — VCP-is-a-pattern-not-a-status / no-lookahead / immutable-append-only / single-source+no-recompute-in-read-path / on-demand-immutable / Risk-Off-gates-Actionable / no-order-path — verified in source + unit-proven + live; plus no-magic-numbers, honest-NA, explainable, no-secrets)
+
+**Reasoning:** iter-11 landed J-16 cleanly on existing seams. I verified to gold standard despite a
+**10th consecutive dedicated browser-qa SKIP** (HTTP-000 on :3835) — but unlike iter-10, BOTH QA mode-2
+self-healed (3 md5-distinct PNGs + 17/17 functional TCs) AND the developer self-produced 4 PNGs, so I
+reconciled from viewed evidence + my own fast-test run + direct source reads. **Evidence I viewed (4
+md5-distinct PNGs):** /stocks 'VCP only' → 4/122 (STX/TSLA/TSM/ORCL), each with a teal VCP badge
+ALONGSIDE its setup status (Extended/Avoid — **none Actionable**, the pattern-not-status critical proven
+LIVE); STX detail VCP card (pivot $905.39 / invalid below last-contraction low $816.98 / 3 contractions);
+ORCL detail card; System Health 'Forward return: VCP vs non-VCP' = VCP +3.18% n=27⚠ vs non-VCP +2.01%
+n=1191 @20d (low-sample honestly ⚠, survivorship label) — alongside the intact by-bucket/by-setup/
+by-regime/excess/control-group panels (J-09/J-10). STX (91.53/32.11/51.87) & ORCL (53.60/47.81/45.46)
+detail scores match their leaderboard rows (J-06). **Source/tests:** `app/engine/patterns.py:detect_vcp`
+is pure, price+volume, reads ONLY the passed as-of series (no-lookahead by construction), imports only
+`VcpCfg` (no reach into scoring/setups/DB → no parallel compute path), NA-graceful (no fabricated pivot).
+`setups.py` byte-unchanged; `models.py` adds ONLY the append-only `is_vcp` mirror; `api/`+`main.py` empty
+diff (no new endpoint). The critical anti-goals are unit-proven by tight tests: the keystone patches
+`detect_vcp`+`score_*` to RAISE and asserts /api/stocks, /api/stocks/{ticker}, and by_vcp still serve
+stored (no read-path recompute); `test_vcp_is_a_pattern_not_a_status` forces the detector to flag EVERY
+name and asserts setup statuses are byte-identical (`forced_status==baseline`) + `'VCP'∉ALL_STATUSES`;
+the risk-off test confirms flagged rows stay 'Risk-off-watchlist'; the mirror test confirms
+`is_vcp==record_json.vcp.flagged`; `patterns.py` is in `CALC_FILES` with `8`/`35` added to forbidden
+ints. I independently ran the fast subset (test_patterns + test_no_magic_numbers + test_config*) → **54
+passed in 0.9s**; QA reported 118 targeted passed, dev 234 full. Order-path/secrets greps empty.
+COHERENCE-PASS (no veto). Review PASS. One target journey newly passing + one tractable Must-have
+remaining → **CONTINUE.** Not GOAL_ACHIEVED: J-12 is `failing` (unbuilt **by design**, sequenced last).
+
+**Process gaps (non-blocking, chronic — runner-script scope, NOT product/spec; spec text proven
+ineffective across iters 3–11):** (1) **Dedicated browser-qa SKIPped a 10th consecutive time** — root
+cause re-confirmed this iter: the runner probed `GET /health` (404) instead of canonical `/api/health`
+(200) AND tore both services down before browser-qa ran (the `next dev` :3835 was not up at QA time);
+QA mode-2 restarted both and self-healed. Unlike iter-10 (zero PNGs), this iter has good self-produced
+evidence from both dev and QA. (2) **Audit handoff missing a 10th consecutive full-depth iter** —
+`reports/audits/` still does not exist; `status.json` `current_step=qa_complete`, `next_action=audit`
+(the audit step never executed). (3) Minor (QA-noted, non-product): an `npm run build` (TC-11) transiently
+overwrote the running dev server's `.next` dir mid-session; QA restarted cleanly. None affected the verdict
+(rested on viewed evidence + my own fast-test run + direct source reads + coherence PASS).
+
+**Next-step recommendation:** **iter-12 at full depth — J-12 (`/methodology` config-backed glossary +
+inline setup/pattern tooltips), the FINAL Must-have.** A single config-backed catalog (the six setup
+statuses + the VCP pattern entry, each with plain-language meaning + exact config thresholds + a worked
+example), surfaced as a new `/methodology` nav route AND inline info tooltips on every setup/pattern badge
+— so a config-added entry appears in both with no code change (the VCP reason/thresholds are already
+config-backed to make this trivial). Adds a **new nav route → requires `blueprint.reapproval-requested`**.
+Pair with a **full 16-journey regression sweep + full-product coherence** so the next evaluation can
+legitimately reach GOAL_ACHIEVED (16/16). Runner owner should finally (a) make browser-qa own/await/
+self-heal its frontend, probe `/api/health`, and set `CORS_ORIGINS` to the frontend port; and (b) emit
+the audit handoff from the runner script.

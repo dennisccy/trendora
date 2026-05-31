@@ -135,8 +135,16 @@ class ScannerRun(SQLModel, table=True):
 class ScannerResult(SQLModel, table=True):
     """One stored per-stock result within a run. Typed columns mirror the canonical `StockRow`
     for ordering/filtering/immutability checks; `record_json` holds the COMPLETE `score_stocks`
-    row dict (three score blocks + components, setup+reason, themes, invalidation) for lossless
-    detail. The detail page rehydrates the `StockRow` from `record_json`."""
+    row dict (three score blocks + components, setup+reason, themes, invalidation, the VCP block)
+    for lossless detail. The detail page rehydrates the `StockRow` from `record_json`.
+
+    `is_vcp` (iter-11) is the denormalized typed MIRROR of `record_json`'s `vcp.flagged` — written
+    once in the SAME `run_scan` transaction, exactly as `leadership_bucket` / `setup_status` already
+    mirror the record (NOT a second source/computation; one `detect_vcp` call per run). It exists only
+    so the forward-test `by_vcp` grouping can read it verbatim like `by_setup` / `by_bucket`; the full
+    `vcp` block (reason / pivot / invalidation / contractions) stays in `record_json`. It is an
+    APPEND-only column addition — no existing snapshot row is ever UPDATEd (anti-goal: Snapshots
+    immutable); a fresh DB re-created from the frozen seed carries it from the start."""
 
     __tablename__ = "scanner_results"
 
@@ -154,6 +162,7 @@ class ScannerResult(SQLModel, table=True):
     setup_status: str = Field(index=True)
     rank: int
     record_json: str  # complete canonical score_stocks row dict (lossless)
+    is_vcp: bool = Field(default=False, index=True)  # mirror of record_json's vcp.flagged (iter-11)
 
 
 class SectorScoreRow(SQLModel, table=True):

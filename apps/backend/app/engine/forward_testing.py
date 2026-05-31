@@ -17,9 +17,10 @@ THREE no-negotiable disciplines, each unit-proved:
      inserts zero new rows).
 
   3. SINGLE SOURCE OF TRUTH. `compute_forward_aggregates` READS the stored canonical bucket / setup /
-     sector / rank (from `scanner_results`) and regime label (from `scanner_runs`) VERBATIM and groups
-     the stored realized returns by them. It NEVER recomputes a score, bucket, or setup from a second
-     formula — buckets are read, not re-derived.
+     sector / rank / VCP flag (from `scanner_results`) and regime label (from `scanner_runs`) VERBATIM
+     and groups the stored realized returns by them. It NEVER recomputes a score, bucket, setup, or
+     VCP flag from a second formula — they are read, not re-derived (the `by_vcp` cohort breakdown
+     groups the stored `is_vcp` mirror exactly like `by_setup`/`by_bucket`).
 
 Every aggregate cell carries its sample size `n`, the payload carries the `min_sample` honesty
 threshold and a `survivorship_bias` label, and a (symbol, horizon) with fewer than `horizon` post-
@@ -55,6 +56,10 @@ SURVIVORSHIP_BIAS_LABEL = (
 
 # The A-E bucket vocabulary (string labels, not tunables) in display order — strongest to weakest.
 BUCKET_ORDER = ("A", "B", "C", "D", "E")
+
+# The VCP cohort labels (iter-11): the stored `is_vcp` boolean -> its display cohort label. Two
+# cohorts always emitted (VCP first, then non-VCP), padded to n=0 when a cohort has no observation.
+VCP_LABELS = {True: "VCP", False: "non-VCP"}
 
 MONTHS_PER_YEAR = 12  # calendar constant (structural, not a scoring tunable)
 QUARTER_MONTHS = 3    # calendar constant (structural, not a scoring tunable)
@@ -419,6 +424,7 @@ def compute_forward_aggregates(session: Session, horizon: int, config: Optional[
             "sector": res.sector,
             "rank": res.rank,
             "regime": regime_by_run.get(res.run_id),  # stored regime label for the run
+            "is_vcp": res.is_vcp,              # stored VCP flag (verbatim — never re-detected here)
         })
 
     stock_returns = [o["return"] for o in stock_obs]
@@ -449,6 +455,15 @@ def compute_forward_aggregates(session: Session, horizon: int, config: Optional[
 
     asof_dates = sorted((run.asof_date.isoformat() for run in run_rows), reverse=True)
 
+    # by_vcp (iter-11, J-16): mean forward return for the VCP-flagged vs non-VCP cohorts, grouping the
+    # STORED `is_vcp` flag verbatim (never re-detected here) exactly like by_setup/by_bucket. Both
+    # cohorts always emitted (padded to n=0 / mean None when empty); each carries `n` so the UI flags
+    # n < min_sample and shows NA honestly. No new endpoint, no second formula — one grouping path.
+    by_vcp = [
+        {"vcp": VCP_LABELS[row["vcp"]], "mean_return": row["mean_return"], "n": row["n"]}
+        for row in _group_means(stock_obs, "is_vcp", "vcp", [True, False], pad=True)
+    ]
+
     return {
         "horizon": horizon,
         "horizons": list(wf.horizons),
@@ -461,6 +476,7 @@ def compute_forward_aggregates(session: Session, horizon: int, config: Optional[
         "by_bucket": _group_means(stock_obs, "bucket", "bucket", BUCKET_ORDER, pad=True),
         "by_setup": _group_means(stock_obs, "setup", "setup", ALL_STATUSES, pad=False),
         "by_regime": _group_means(stock_obs, "regime", "regime", cfg.regime.labels, pad=False),
+        "by_vcp": by_vcp,
         "excess": excess,
         "control_group": _control_groups(horizon, stock_obs, ret_by_run_symbol, runs_with_fr, cfg),
     }

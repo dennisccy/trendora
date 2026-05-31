@@ -187,6 +187,53 @@ def test_invalidation_and_themes_ride_on_the_shared_row_for_list_and_detail(load
     for row in rows:
         assert set(row["invalidation"]) == {"basis", "ma_period", "level", "price", "note"}
         assert isinstance(row["themes"], list)
+        # iter-11: the VCP pattern flag also rides the SAME shared row (list == detail; J-06)
+        assert set(row["vcp"]) == {"flagged", "reason", "pivot", "invalidation", "contractions", "detail"}
+
+
+def test_vcp_block_rides_each_row(loaded_engine):
+    """iter-11: every row carries a `vcp` block (the detected pattern) ALONGSIDE setup/invalidation, a
+    separate flag with the documented shape. A not-flagged row carries NO fabricated pivot/level."""
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        rows = score_stocks(session, asof, cfg)["rows"]
+    for row in rows:
+        vcp = row["vcp"]
+        assert set(vcp) == {"flagged", "reason", "pivot", "invalidation", "contractions", "detail"}
+        assert isinstance(vcp["flagged"], bool)
+        assert isinstance(vcp["reason"], str) and vcp["reason"].strip()
+        assert set(vcp["invalidation"]) == {"level", "note"}
+        if vcp["flagged"]:
+            assert vcp["pivot"] is not None
+            assert vcp["invalidation"]["level"] is not None
+            assert len(vcp["contractions"]) >= cfg.patterns.vcp.min_contractions
+        else:
+            assert vcp["pivot"] is None and vcp["invalidation"]["level"] is None  # never fabricated
+
+
+def test_vcp_is_a_pattern_not_a_status(loaded_engine, monkeypatch):
+    """Critical anti-goal (VCP is a pattern, not a status): "VCP" is never a setup status, and adding
+    the VCP flag changes NO row's setup_status — even when the detector is forced to flag EVERY name."""
+    assert "VCP" not in ALL_STATUSES
+
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        baseline = {r["ticker"]: r["setup"]["status"] for r in score_stocks(session, asof, cfg)["rows"]}
+
+        forced = {
+            "flagged": True, "reason": "forced", "pivot": 1.0,
+            "invalidation": {"level": 1.0, "note": "forced"}, "contractions": [9.0, 5.0],
+            "detail": {"n_contractions": 2, "volume_ratio": 0.5, "dist_from_pivot_pct": 1.0},
+        }
+        monkeypatch.setattr("app.engine.scoring.detect_vcp", lambda *a, **k: dict(forced))
+        forced_rows = score_stocks(session, asof, cfg)["rows"]
+
+    forced_status = {r["ticker"]: r["setup"]["status"] for r in forced_rows}
+    assert forced_status == baseline                       # the VCP flag never altered any setup status
+    assert all(r["vcp"]["flagged"] for r in forced_rows)   # the detector really did flag every name
+    assert all(r["setup"]["status"] in ALL_STATUSES for r in forced_rows)
 
 
 def test_asof_bounds_the_computation_no_lookahead(loaded_engine):

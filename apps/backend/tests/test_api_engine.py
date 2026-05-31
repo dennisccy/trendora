@@ -221,6 +221,44 @@ def test_repointed_handlers_serve_persisted_date_without_recompute(loaded_engine
         assert themes_route(as_of=historical, session=session)["asof_date"] == historical
 
 
+def test_vcp_served_from_storage_not_recomputed_keystone(loaded_engine, monkeypatch):
+    """Keystone (patch-to-raise — NOT value-equality, per the iter-8 lesson): with `detect_vcp` AND
+    the score_* engines patched to RAISE, the read path STILL serves the stored VCP flag from the
+    immutable snapshot — proving `/api/stocks`, `/api/stocks/{ticker}`, and the System Health
+    `by_vcp` breakdown re-detect/recompute nothing (anti-goal: No recompute in the read path)."""
+    from app.engine.forward_testing import compute_forward_aggregates
+
+    # the lifespan persists the bootstrap runs + walk-forward forward_returns into loaded_engine
+    with TestClient(main.app) as client:
+        latest = max(r["asof_date"] for r in client.get("/api/runs").json()["runs"])
+
+    def boom(*args, **kwargs):
+        raise AssertionError("the read path must NOT re-detect VCP or re-score a persisted snapshot")
+
+    monkeypatch.setattr("app.engine.patterns.detect_vcp", boom)
+    monkeypatch.setattr("app.engine.scoring.detect_vcp", boom)
+    for name in ("score_stocks", "score_regime", "score_sectors", "score_themes"):
+        monkeypatch.setattr(f"app.engine.scanner.{name}", boom)
+
+    from app.api.stocks import stock_detail as stock_detail_route, stocks as stocks_route
+
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        # /api/stocks serves the stored vcp block for the persisted latest date (no re-detection)
+        rows = stocks_route(as_of=latest, session=session)["rows"]
+        assert rows
+        assert all("vcp" in r and {"flagged", "pivot", "invalidation"} <= set(r["vcp"]) for r in rows)
+
+        # the detail row's vcp is byte-identical to the same stored list row (J-06)
+        ticker = rows[0]["ticker"]
+        detail = stock_detail_route(ticker, as_of=latest, session=session)
+        assert detail["row"]["vcp"] == rows[0]["vcp"]
+
+        # the System Health by_vcp breakdown reads the stored is_vcp mirror (never re-detects)
+        agg = compute_forward_aggregates(session, cfg.walk_forward.default_horizon, cfg)
+        assert {r["vcp"] for r in agg["by_vcp"]} == {"VCP", "non-VCP"}
+
+
 def test_asof_invalid_dates_are_explicit_4xx_never_fabricated(loaded_engine):
     """Invalid as-of -> explicit 4xx, never a fabricated snapshot: future -> 400, before history ->
     400, unparseable -> 422 (FastAPI convention; any 4xx satisfies the no-fabrication contract)."""

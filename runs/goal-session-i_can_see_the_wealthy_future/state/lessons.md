@@ -182,3 +182,23 @@ polling loops).
 **Applies to:** any iter where the dedicated browser-qa SKIPs AND no QA evidence PNGs exist — do not
 down-grade a journey to `partial`/`unknown` reflexively; self-produce live evidence first. Also any iter
 touching `apps/backend/app/engine/forward_testing.py` (slow walk-forward boots → target the test files).
+
+## iter-11 — 2026-05-31T14:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** To prove a NEW additive field on a canonical row does not perturb an EXISTING canonical
+value (here: that the VCP flag changes no row's `setup_status`), the strongest test is to monkeypatch
+the new computation to its MAXIMAL/forced state and assert the sibling field is byte-identical to a
+clean baseline — `test_vcp_is_a_pattern_not_a_status` patches `detect_vcp` to flag EVERY name and
+asserts `forced_status == baseline` (+ `"VCP" not in ALL_STATUSES`). This is the additivity dual of the
+iter-8 patch-to-RAISE keystone: patch-to-raise proves "the read path recomputes nothing"; patch-to-
+forced-value proves "the new field perturbs no existing field on the compute path." A value-equality
+check ("statuses look the same") is weaker — it can't distinguish "unaffected" from "coincidentally
+equal." Separately: riding a new flag through existing seams (compose onto the `score_stocks` row →
+stored in the existing `record_json` + one append-only mirror column → served by the existing endpoints
+→ grouped by the existing `_group_means` helper) made the whole feature land with an EMPTY `api/`+`main.py`
+diff and an unchanged `setups.py`, which is why J-06/J-09/J-10 could not structurally regress.
+**Applies to:** any future iter that adds an additive flag/field onto an already-canonical row (e.g. a
+2nd detected pattern, a new badge) — prove non-perturbation with a force-the-new-thing monkeypatch +
+byte-equality of the existing field, and prefer composing onto the existing row/endpoint/grouping seams
+over adding a parallel path.

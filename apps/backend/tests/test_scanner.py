@@ -197,6 +197,35 @@ def test_risk_off_run_has_zero_actionable(scanner_engine, config):
     assert sum(1 for r in results if r.setup_status == "Actionable") == 0
 
 
+def test_is_vcp_mirrors_record_json_flag(scanner_engine, config):
+    """iter-11: the denormalized `is_vcp` column is a faithful MIRROR of `record_json`'s vcp.flagged
+    for EVERY stored result — one `detect_vcp` output stored twice (typed column + lossless record),
+    never a second computation. No row's flag is NULL/missing."""
+    with Session(scanner_engine) as session:
+        asof = latest_data_date(session)
+        run = run_scan(session, asof, config)
+        results = session.exec(select(ScannerResult).where(ScannerResult.run_id == run.id)).all()
+    assert len(results) == len(config.universe.symbols)
+    for r in results:
+        assert isinstance(r.is_vcp, bool)
+        assert r.is_vcp == json.loads(r.record_json)["vcp"]["flagged"]  # faithful mirror
+
+
+def test_risk_off_run_vcp_flagged_rows_stay_watchlist_not_actionable(scanner_engine, config):
+    """VCP-is-a-pattern-not-a-status (critical) under the Risk-off gate: a VCP-flagged row is STILL
+    'Risk-off-watchlist' (never Actionable) — the pattern flag never promotes a name past the gate."""
+    with Session(scanner_engine) as session:
+        riskoff = _risk_off_date(session, config)
+        assert riskoff is not None, "expected >=1 configured bootstrap date labelled 'Risk-off'"
+        run = run_scan(session, riskoff, config)
+        results = session.exec(select(ScannerResult).where(ScannerResult.run_id == run.id)).all()
+        label = run.regime_label
+    assert label == "Risk-off"
+    assert all(r.setup_status != "Actionable" for r in results)            # the gate holds
+    flagged = [r for r in results if r.is_vcp]
+    assert all(r.setup_status == "Risk-off-watchlist" for r in flagged)    # flagged rows still watchlist
+
+
 def test_runs_are_distinct_as_of_snapshots(scanner_engine, config):
     """J-08 at unit level: a common ticker's STORED Leadership score differs between an older run
     and the latest run — each snapshot is a frozen as-of view, not a recomputation of today."""

@@ -172,6 +172,21 @@ export interface Invalidation {
   note: string; // human sentence, rendered verbatim
 }
 
+/** The VCP (Volatility Contraction Pattern) flag (iter-11) — a DETECTED PATTERN that rides the row
+ *  ALONGSIDE the setup status, never replacing it. Computed once on the backend (price+volume only,
+ *  date <= as-of) and read identically on the leaderboard and detail page (single source → J-06). The
+ *  UI re-formats this only — it NEVER computes a flag client-side. When not flagged, `pivot` and
+ *  `invalidation.level` are null (no fabricated pattern); `reason`/`note` are server-built, rendered
+ *  verbatim. SEPARATE from the setup status — VCP alone never makes a name Actionable. */
+export interface Vcp {
+  flagged: boolean;
+  reason: string; // plain-language, server-built (rendered verbatim)
+  pivot: number | null; // the breakout level = the base high; null when not flagged
+  invalidation: { level: number | null; note: string }; // last-contraction low + verbatim sentence
+  contractions?: number[]; // detected contraction depths (percent), tightening
+  detail?: Record<string, number | null>; // n_contractions, volume_ratio, dist_from_pivot_pct
+}
+
 export interface StockRow {
   ticker: string;
   name: string;
@@ -182,6 +197,7 @@ export interface StockRow {
   setup: StockSetup;
   themes: ThemeChip[]; // every theme whose member list contains this ticker (config order)
   invalidation: Invalidation;
+  vcp: Vcp; // the VCP pattern flag (iter-11) — separate from `setup`, read-only re-display
   rank: number;
 }
 
@@ -338,6 +354,9 @@ export interface ForwardSetupRow extends ForwardGroupRow {
 export interface ForwardRegimeRow extends ForwardGroupRow {
   regime: string; // stored regime label of the run
 }
+export interface ForwardVcpRow extends ForwardGroupRow {
+  vcp: string; // "VCP" | "non-VCP" cohort label (iter-11)
+}
 
 /** Excess vs a benchmark = mean stock forward return − mean benchmark forward return over matched
  *  runs (a stored subtraction; never recomputed client-side). */
@@ -370,6 +389,7 @@ export interface SystemHealthResponse {
   by_bucket: ForwardBucketRow[]; // rows A..E (J-09)
   by_setup: ForwardSetupRow[]; // by setup type (J-09)
   by_regime: ForwardRegimeRow[]; // by market regime — both Risk-on and Risk-off (J-09)
+  by_vcp: ForwardVcpRow[]; // VCP vs non-VCP cohorts (iter-11, J-16) — each with n; NA below min_sample
   excess: { vs_spy: ExcessVsBenchmark; vs_qqq: ExcessVsBenchmark }; // J-09
   control_group: ControlGroupRow[]; // J-10
 }

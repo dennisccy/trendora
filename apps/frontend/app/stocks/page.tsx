@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { fetchStocks, type StockRow, type StocksResponse } from "@/lib/api";
+import { fetchStocks, type StockRow, type StocksResponse, type Vcp } from "@/lib/api";
 
 type State =
   | { kind: "loading" }
@@ -20,6 +20,16 @@ type State =
   | { kind: "error" };
 
 const ALL = "__all__";
+const VCP_ONLY = "vcp_only";
+const VCP_NONE = "non_vcp";
+
+/** The VCP badge tooltip: the server-built reason + pivot + invalidation note, rendered verbatim
+ *  (never assembled client-side — single source of truth). */
+function vcpTitle(vcp: Vcp): string {
+  return [vcp.reason, vcp.pivot != null ? `Pivot $${vcp.pivot.toFixed(2)}.` : null, vcp.invalidation.note]
+    .filter(Boolean)
+    .join(" ");
+}
 
 // The six canonical setup statuses (fixed vocabulary so "Actionable" is always selectable, even
 // when zero rows currently match — the journey then shows an explicit empty state).
@@ -54,6 +64,7 @@ export default function StocksPage() {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [sector, setSector] = useState<string>(ALL);
   const [setup, setSetup] = useState<string>(ALL);
+  const [vcp, setVcp] = useState<string>(ALL);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -74,13 +85,17 @@ export default function StocksPage() {
     [rows],
   );
 
-  // client-side FILTER only — never re-sorts or recomputes a score (single source of truth)
+  // client-side FILTER only — never re-sorts or recomputes a score/flag (single source of truth).
+  // The VCP filter narrows on the SERVER-computed `row.vcp.flagged` (pure re-display, no detection).
   const visible = useMemo(
     () =>
       rows.filter(
-        (r) => (sector === ALL || r.sector === sector) && (setup === ALL || r.setup.status === setup),
+        (r) =>
+          (sector === ALL || r.sector === sector) &&
+          (setup === ALL || r.setup.status === setup) &&
+          (vcp === ALL || (vcp === VCP_ONLY ? r.vcp.flagged : !r.vcp.flagged)),
       ),
-    [rows, sector, setup],
+    [rows, sector, setup, vcp],
   );
 
   return (
@@ -117,6 +132,14 @@ export default function StocksPage() {
               ))}
             </Select>
           </label>
+          <label className="flex items-center gap-2 text-xs text-text-muted">
+            VCP
+            <Select value={vcp} onChange={(e) => setVcp(e.target.value)} aria-label="Filter by VCP pattern">
+              <option value={ALL}>All</option>
+              <option value={VCP_ONLY}>VCP only</option>
+              <option value={VCP_NONE}>Non-VCP</option>
+            </Select>
+          </label>
           <span className="num text-xs text-text-faint">
             {visible.length} / {rows.length}
           </span>
@@ -150,9 +173,15 @@ export default function StocksPage() {
         <EmptyState
           icon={TrendingUp}
           title="No stocks match these filters"
-          description={`No stock is currently ${setup !== ALL ? `“${setup}”` : "shown"}${
+          description={`${
+            vcp === VCP_ONLY
+              ? "No VCP-flagged name"
+              : vcp === VCP_NONE
+                ? "No non-VCP name"
+                : "No stock"
+          } is currently ${setup !== ALL ? `“${setup}”` : "shown"}${
             sector !== ALL ? ` in ${sector}` : ""
-          }. Clear a filter to see more.`}
+          }. No rows are fabricated to fill the view — clear a filter to see more.`}
         />
       ) : null}
 
@@ -206,7 +235,14 @@ function StockTableRow({ row }: { row: StockRow }) {
         <ScoreBadge bucket={row.risk.bucket} score={row.risk.score} invert />
       </td>
       <td className="px-3 py-2">
-        <Badge variant={setupVariant(row.setup.status)}>{row.setup.status}</Badge>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Badge variant={setupVariant(row.setup.status)}>{row.setup.status}</Badge>
+          {row.vcp.flagged ? (
+            <Badge variant="accent" className="cursor-help" title={vcpTitle(row.vcp)}>
+              VCP
+            </Badge>
+          ) : null}
+        </div>
       </td>
       <td className="max-w-xs px-3 py-2 text-xs text-text-muted">
         <span className="line-clamp-2" title={row.setup.reason}>

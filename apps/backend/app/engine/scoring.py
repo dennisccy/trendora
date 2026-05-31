@@ -5,7 +5,10 @@ truth → J-06). The dashboard's candidate counts count THESE rows' statuses.
 
 `score_stocks(session, asof)` produces, for every `config.universe.symbols` stock, its COMPLETE
 canonical record in ONE pass: three independent scores, each a config-weighted blend of named,
-cross-sectionally-normalized components, plus the setup status + reason. It mirrors the proven
+cross-sectionally-normalized components, plus the setup status + reason, the invalidation level,
+theme chips, and the VCP pattern flag. The VCP flag (iter-11) is composed onto the row ALONGSIDE
+the setup status via `patterns.detect_vcp` — it is a separate DETECTED PATTERN, never a setup status
+(it never touches `classify_setup`), so adding it changes no row's `setup_status`. It mirrors the proven
 `sectors.py` pattern (cross-sectional percentile → weighted blend → 0-100 → `to_bucket`,
 NA-graceful), and composes the canonical regime (read once, never recomputed) + the canonical
 sector ranking (read once) for the two contextual Risk components.
@@ -36,6 +39,7 @@ from app.config import Config, get_config
 from app.engine import indicators as ind
 from app.engine.buckets import to_bucket
 from app.engine.normalize import cross_sectional_percentiles
+from app.engine.patterns import detect_vcp
 from app.engine.prices import bars_asof, closes, highs, lows, volumes
 from app.engine.regime import score_regime
 from app.engine.sectors import score_sectors
@@ -314,14 +318,21 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
         )
         setup["reason"] = _enriched_reason(setup["reason"], leadership["components"])
 
-        # invalidation level: the canonical `sma` over the config invalidation period, read through
-        # the same no-lookahead `bars_asof` accessor (the level == the chart's MA-series endpoint).
-        inv_closes = closes(bars_asof(session, ticker, asof))
+        # as-of bars read ONCE (date <= asof, no lookahead), reused for BOTH the invalidation level
+        # and the VCP detector — no extra DB round-trip.
+        bars = bars_asof(session, ticker, asof)
+        inv_closes = closes(bars)
+        # invalidation level: the canonical `sma` over the config invalidation period (the level ==
+        # the chart's MA-series endpoint).
         invalidation = _invalidation(
             inv_basis, inv_period,
             ind.sma(inv_closes, inv_period),
             inv_closes[-1] if inv_closes else None,
         )
+        # VCP flag composed onto the row ALONGSIDE setup/invalidation/themes — a separate detected
+        # pattern, NOT a setup status (it never touches `classify_setup` or `setup`). Computed once
+        # here from the same as-of bars; stored in `record_json` + mirrored to `ScannerResult.is_vcp`.
+        vcp = detect_vcp(inv_closes, highs(bars), lows(bars), volumes(bars), cfg.patterns.vcp)
         themes = [{"slug": slug, "name": theme_name(slug)} for slug in themes_by_ticker.get(ticker, [])]
 
         rows.append({
@@ -334,6 +345,7 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
             "setup": setup,
             "themes": themes,
             "invalidation": invalidation,
+            "vcp": vcp,
             "rank": None,
         })
 

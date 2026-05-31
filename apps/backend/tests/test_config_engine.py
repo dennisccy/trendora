@@ -108,6 +108,15 @@ VALID = {
         "min_sample": 30, "default_horizon": 20,
         "control_group": {"seed": 20240601, "top_n": 20, "peers_per_sector": 5},
     },
+    # iter-11 made `patterns` required (the VCP detector thresholds come from config, never code).
+    "patterns": {
+        "vcp": {
+            "lookback_bars": 65, "min_contractions": 2, "max_contractions": 4,
+            "min_contraction_pct": 3, "max_base_depth_pct": 35, "contraction_shrink_ratio": 0.8,
+            "max_last_contraction_pct": 12, "pivot_proximity_pct": 8, "volume_dryup_ratio": 0.9,
+            "volume_window": 10, "min_history_bars": 65,
+        },
+    },
 }
 
 
@@ -359,5 +368,62 @@ def test_missing_scanner_section_raises(tmp_path):
 def test_scanner_empty_bootstrap_dates_raises(tmp_path):
     data = copy.deepcopy(VALID)
     data["scanner"]["bootstrap_dates"] = []  # must list at least one as-of date
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+# --- iter-11: patterns.vcp typed validation ------------------------------------------------
+def test_real_config_exposes_typed_vcp_patterns():
+    """The real config.yaml exposes a typed `patterns.vcp` block — every detector threshold present
+    (anti-goal: No magic numbers — the values must actually be in config, sane and positive)."""
+    cfg = load_config()
+    vcp = cfg.patterns.vcp
+    assert vcp.lookback_bars > 0 and vcp.min_history_bars > 0 and vcp.volume_window > 0
+    assert 0 < vcp.min_contractions <= vcp.max_contractions
+    assert 0 < vcp.contraction_shrink_ratio <= 1
+    for pct in (vcp.min_contraction_pct, vcp.max_base_depth_pct, vcp.max_last_contraction_pct,
+                vcp.pivot_proximity_pct, vcp.volume_dryup_ratio):
+        assert pct > 0
+
+
+def test_missing_patterns_section_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    del data["patterns"]
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_vcp_nonpositive_window_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    data["patterns"]["vcp"]["lookback_bars"] = 0  # a window/count must be positive
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_vcp_shrink_ratio_above_one_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    data["patterns"]["vcp"]["contraction_shrink_ratio"] = 1.5  # must be in (0, 1]
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_vcp_shrink_ratio_zero_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    data["patterns"]["vcp"]["contraction_shrink_ratio"] = 0  # must be > 0 (in (0, 1])
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_vcp_nonpositive_pct_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    data["patterns"]["vcp"]["max_base_depth_pct"] = 0  # every *_pct must be positive
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_vcp_min_contractions_above_max_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    data["patterns"]["vcp"]["min_contractions"] = 5
+    data["patterns"]["vcp"]["max_contractions"] = 4  # min must be <= max
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))
