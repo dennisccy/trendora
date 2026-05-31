@@ -28,9 +28,12 @@ forward-test scorecard, and **detected price patterns (starting with VCP — the
 Contraction Pattern)** are tracked and forward-tested alongside the rankings — so the user can judge
 for themselves whether each idea actually works.
 
-The MVP runs **fully offline on a committed seed dataset** (so every result is deterministic and
-reproducible), behind a **provider abstraction** that lets a live end-of-day data source refresh the
-data later. It places **no orders** and holds **no broker keys**.
+The MVP is **offline-first**: it boots and runs deterministically on a **committed seed dataset** (so
+every result is reproducible), behind a **provider abstraction** that lets a live end-of-day data
+source refresh the data later. A **Data Manager** lets the user extend the dataset on demand — fetching
+more real EOD history via the config-selected live provider (real data only) and backfilling additional
+immutable snapshots by date or date range — but the default boot path stays offline and deterministic.
+It places **no orders** and holds **no broker keys**.
 
 ## Target Users
 
@@ -146,6 +149,28 @@ data later. It places **no orders** and holds **no broker keys**.
     flag (with pivot + invalidation level) ALONGSIDE the setup status — it does not replace it — is
     filterable on the leaderboard, documented in the glossary, and tracked as a forward-test
     dimension (VCP vs non-VCP) so the evidence shows whether it adds value.
+20. **Data Manager (on-demand dataset growth)**: a UI + API to grow the dataset manually by date or
+    date range. It can (a) **fetch** real EOD OHLCV via the config-selected live provider for a chosen
+    date/range — extending beyond the committed seed, real data only (on provider failure it surfaces an
+    explicit error and never fabricates prices) — and (b) **backfill** immutable scanner snapshots for a
+    date/range from available bars (offline/deterministic). Fetching or backfilling a range
+    **auto-generates** the scanner snapshots and forward returns for the new trading days, so the
+    forward-test sample actually grows. It runs as an **async background job with live progress** (e.g.
+    "fetched 80/158 symbols", "snapshots 23/120 dates") and a final success/failure summary, and the run
+    is recorded (extends the existing data-provider run log). The default boot path remains the committed
+    offline seed.
+21. **Unified as-of date control**: exactly one date selector — the global top-bar as-of switcher —
+    governs every date-scoped page, **including Backtest**. Per-page date dropdowns are removed and the
+    frontend holds no second, independent date state; "which date am I viewing" has a single source.
+22. **Return attribution / contribution analysis**: beyond aggregate mean returns, the forward-test
+    surfaces (a) **per-stock top contributors & detractors** (which individual tickers drove or dragged
+    the cohort), (b) a **by-sector** breakdown (separating sector beta from stock selection), (c) a
+    **by-rank-band** breakdown (e.g. 1–10 / 11–50 / 51+, testing whether the ranking itself adds value),
+    and (d) **distribution & hit-rate** (median, % positive, dispersion) alongside the mean with sample
+    size n — so a weak number is diagnosable (concentration, outliers, ranking efficacy) rather than
+    taken at face value. Every slice is derived once from the stored per-observation forward-return data
+    (never recomputed in the API or a view) and is surfaced on Backtest (per-date) and System Health
+    (aggregate).
 
 ## Non-Goals
 
@@ -166,7 +191,11 @@ data later. It places **no orders** and holds **no broker keys**.
 
 - **Runs locally and offline by default.** The committed seed dataset makes every scan deterministic
   and reproducible with no network and no API keys. A live EOD provider is optional, config-selected,
-  and its key (if any) comes only from the environment — never committed.
+  and its key (if any) comes only from the environment — never committed. The live provider may be
+  invoked **on demand from the Data Manager** as a going-forward refresh *outside* the build loop;
+  fetched bars are persisted (and may be committed back into the seed for reproducibility), and any
+  walk-forward evidence computed over user-fetched data is labelled honestly. The default boot path
+  remains the committed offline seed.
 - Backend: **Python 3.12, FastAPI (uvicorn), SQLModel over SQLite** (Postgres-ready — engine URL is
   config, no raw SQLite-only SQL), Pandas, APScheduler, Pydantic, pytest.
 - Frontend: **Next.js 15 (App Router), TypeScript, Tailwind CSS, shadcn/ui**, Lightweight-Charts (or
@@ -214,16 +243,21 @@ data later. It places **no orders** and holds **no broker keys**.
 - **Methodology / Glossary** (`/methodology`) — explains the three scores, A–E buckets, the six
   regime labels, every setup status, AND every detected pattern (incl. VCP) — generated from the
   config-backed catalog.
-- **Backtest / Time-Machine** (`/backtest`) — pick any historical as-of date; see its full as-of
-  scan (read from the canonical snapshot) and a **per-date forward-test scorecard**. This is the
-  single-date drill-down; System Health remains the cross-date aggregate, and Scanner Runs remains
-  the immutable run list.
+- **Backtest / Time-Machine** (`/backtest`) — see the full as-of scan (read from the canonical
+  snapshot) and a **per-date forward-test scorecard** for the date chosen in the global as-of switcher
+  (it has **no** date picker of its own). This is the single-date drill-down; System Health remains the
+  cross-date aggregate, and Scanner Runs remains the immutable run list.
+- **Data Manager** (`/data`) — grow the dataset on demand: view current coverage (price-history date
+  range, symbol count, the set of snapshot/as-of dates, and gaps), pick a date or date range, fetch
+  price history and/or backfill snapshots, watch the async job's live progress, and read a history of
+  fetch/backfill runs.
 
-A global **as-of date switcher** in the top bar re-points Dashboard, Stocks, Themes, Sectors, and
-Stock Detail to a chosen past snapshot (default: latest). The as-of date resolves to a stored
-immutable snapshot — created once on first view, then never mutated. The **Stock Leaderboard**
-(`/stocks`) gains a **VCP filter**, and **System Health** gains a **VCP-vs-non-VCP** forward-return
-breakdown alongside its by-setup breakdown.
+A single global **as-of date switcher** in the top bar is the **only** date control. It re-points
+Dashboard, Stocks, Themes, Sectors, Stock Detail, **and Backtest** to a chosen past snapshot (default:
+latest); no page keeps its own separate date picker. The as-of date resolves to a stored immutable
+snapshot — created once on first view, then never mutated. The **Stock Leaderboard** (`/stocks`) gains a
+**VCP filter**, and **System Health** gains a **VCP-vs-non-VCP** forward-return breakdown alongside its
+by-setup breakdown.
 
 The backend is the single source of truth; every page only displays server-computed values.
 
@@ -243,6 +277,11 @@ The backend is the single source of truth; every page only displays server-compu
 - **Detected patterns** (incl. VCP) — computed once per run by the pattern detector from config
   thresholds; the flag plus its pivot/invalidation level ride the stock row, and every view reads
   the same stored value.
+- **Resolved as-of date** — single-source: one global control resolves the viewing date; no page holds
+  a second, independent date state.
+- **Forward-return attribution slices** (per-stock contribution, by-sector, by-rank-band, and
+  distribution/hit-rate) — derived once from the stored per-observation forward returns and read
+  identically wherever shown; never recomputed per request or per view.
 
 ## Must-have user journeys
 
@@ -415,6 +454,40 @@ The backend is the single source of truth; every page only displays server-compu
     is SEPARATE from the setup status (a name can be both, e.g. "Breakout-watch" + VCP) and never makes
     a name Actionable on its own.
 
+- **J-17: Grow the dataset by date / date range**
+  - Steps:
+    1. Visit `/data` and read the current coverage (price-history date range, symbol count, the set of
+       snapshot/as-of dates, and any gaps)
+    2. Pick a date range (or a single date) and start a fetch + backfill job
+    3. Watch the async job's live progress and read its final summary
+    4. Open the global as-of switcher and confirm new as-of dates are now selectable; open
+       `/system-health` and confirm the forward-test sample size (n) has grown
+  - Acceptance: the job runs asynchronously with a visible progress indicator and a final summary that
+    lists how many symbols/dates succeeded vs failed; newly created snapshot dates appear in the global
+    as-of switcher; the System Health sample size (n) increases relative to before the run; a forced
+    provider failure surfaces an explicit error state and fabricates no prices or scores.
+
+- **J-18: One date control (no duplicate)**
+  - Steps:
+    1. Visit `/backtest` and confirm there is **no** page-local date dropdown
+    2. Change the date in the global top-bar as-of switcher
+    3. Observe the Backtest as-of scan and forward-test scorecard re-point to that date
+    4. Open another date-scoped page (e.g. `/stocks`) for the same date and compare
+  - Acceptance: the Backtest page exposes no date selector of its own; the single global switcher drives
+    it; the as-of date shown on Backtest matches the switcher and matches the value other pages resolve
+    for the same date — one date control, one resolved date everywhere.
+
+- **J-19: Diagnose weak forward-test returns via attribution**
+  - Steps:
+    1. Visit `/system-health` (and `/backtest` for a single date)
+    2. Read the **per-stock top contributors & detractors** (named tickers with realized returns)
+    3. Read the **by-sector** and **by-rank-band** (e.g. 1–10 / 11–50 / 51+) return breakdowns
+    4. Read the **distribution & hit-rate** panel — median, % positive, and dispersion alongside the mean
+  - Acceptance: all four attribution layers render numbers with their sample size (n); the per-stock list
+    names individual tickers with their realized return; the slices are consistent with the existing
+    aggregate mean (same underlying observations, not a re-computation); low-sample slices show n and NA
+    honestly rather than a fabricated number.
+
 ## Anti-goals
 
 - **No lookahead.** Scoring for a snapshot dated D MUST use only price bars with date ≤ D; forward
@@ -464,3 +537,17 @@ The backend is the single source of truth; every page only displays server-compu
   price+volume only, with date ≤ D (no-lookahead), and is part of the immutable snapshot. Its
   detection thresholds MUST come from config (no magic numbers). *(critical — protects Single source
   of truth + Risk-Off gating)*
+- **Live fetch is real-data-only.** The Data Manager MUST use the config-selected live provider to
+  fetch real EOD bars; on a provider failure it MUST surface an explicit error and MUST NOT synthesize
+  prices to fill a gap or force a successful run. *(extends No fabricated data)*
+- **Range backfill stays immutable & lookahead-free.** Snapshots created for a fetched or backfilled
+  date range are create-once: an existing snapshot MUST be read, never overwritten, and an as-of-D
+  snapshot MUST use only bars with date ≤ D. *(reaffirms On-demand snapshots stay immutable, for
+  ranges)*
+- **Attribution is read-only.** The forward-return attribution slices (per-stock contribution,
+  by-sector, by-rank-band, distribution/hit-rate) MUST be derived from the stored per-observation
+  forward returns; the API and frontend MUST NOT recompute returns to build them. *(extends No recompute
+  in the read path)*
+- **Exactly one date selector.** The frontend MUST NOT maintain a second, independent date state; every
+  date-scoped page (including Backtest) reads the single global as-of control. *(extends Single source
+  of truth)*
