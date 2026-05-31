@@ -142,3 +142,22 @@ the old on-request compute.
 (J-14 backtest scorecard, J-16 VCP breakdown, any snapshot-served read) — assert it with a
 patch-the-compute-to-raise seam, not value-equality; and prefer append-only changes to the canonical
 compute path when migrating a read path that backs already-green journeys.
+
+## iter-9 — 2026-05-31T02:39:03Z
+
+**Verdict:** CONTINUE
+**Lesson:** A full-depth iteration can reach the goal-evaluator having produced **zero product code** — the
+developer step silently no-op'd: `status.json` stayed at `current_step="starting"`/`changed_files=[]`, and
+there was no dev handoff, review, QA, audit, browser-QA, or evidence, yet the pipeline still advanced (the
+decomposer wrote the spec + blueprint deltas + reapproval marker and coherence ran on the empty diff and
+returned PASS). A COHERENCE-PASS here did NOT mean the feature was built — the coherence file itself warned
+"the blueprint is ahead of the code." The evaluator must verify *implementation presence* before trusting
+any "achieved/continue" framing: `git status` (no apps/ diff, HEAD unchanged) + `git stash list` + `git
+worktree list` + direct file-existence checks (the new module/page/tests) + `grep -rln <feature> apps/`. When
+the spec is sound but simply unexecuted, the correct verdict is **CONTINUE (re-run the existing spec)**, NOT
+STALLED — STALLED's "edit goal.md / narrow scope" remedy is actively wrong when goal + spec are fine and only
+execution failed.
+**Applies to:** any iteration where the dev handoff / QA / evidence are missing or `status.json.current_step`
+is still "starting" / `changed_files` is empty — never infer the feature exists from the spec, the blueprint,
+or a COHERENCE-PASS; confirm code presence from git + filesystem first, and distinguish "not built yet" from
+"built but un-verified."

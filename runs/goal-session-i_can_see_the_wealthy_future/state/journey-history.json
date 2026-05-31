@@ -8,7 +8,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-8-evidence/TC-12-J13-dashboard-latest.png",
-      "note": "Held green through the read-path re-point. Evaluator viewed TC-12-J13-dashboard-latest.png: regime Risk-on 74.32/100 + 5 components, candidate counts 0/8/1 (each a number), 5 scored Top Sectors (SOXX A/93.67 …) + 5 scored Top Themes (Semiconductors A/100 …), breadth 65.57% universe-relative, as-of 2026-05-28. dashboard.py is now served from the stored snapshot (dashboard_payload) — values byte-identical to the former on-request compute (iter-5 faithful-equality)."
+      "note": "Carried passing — iter-9 changed NO apps/ code (the dev step never ran; git diff vs iter-8 HEAD acc00d5 is empty for apps/), so this journey cannot have regressed. Not behaviourally re-tested this iter, so last_verified_iter stays iter-8. Iter-8: regime Risk-on 74.32/100 + 5 components, candidate counts 0/8/1, 5 scored Top Sectors + 5 scored Top Themes, breadth 65.57% universe-relative, served from the stored snapshot (dashboard_payload)."
     },
     "J-02": {
       "id": "J-02",
@@ -18,7 +18,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-8-evidence/TC-11-J15-stocks-latest.png",
-      "note": "Held green. QA TC-13: Technology filter narrowed 122→58 rows (all Technology). /api/stocks now serves the stored snapshot rows (stocks_payload) instead of a live score_stocks pass; rows still render ranked with 3 bucketed scores + setup + reason."
+      "note": "Carried passing — iter-9 changed no apps/ code (dev step never ran), so no regression possible. Iter-8: Technology filter narrowed 122→58 rows; /api/stocks serves stored snapshot rows (stocks_payload); rows render ranked with 3 bucketed scores + setup + reason."
     },
     "J-03": {
       "id": "J-03",
@@ -28,7 +28,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-5-evidence/TC-15-j03-themes.png",
-      "note": "Held green. themes.py now serves stored ThemeScoreRow children (themes_payload) — the score_themes engine is byte-identical untouched. Historical re-point visible in the dashboard PNG (Top Themes flip to Defense A/100 @2025-04-04). 196-suite regression guard passes."
+      "note": "Carried passing — iter-9 changed no apps/ code (dev step never ran), so no regression possible. themes.py serves stored ThemeScoreRow children (themes_payload); score_themes engine byte-identical."
     },
     "J-04": {
       "id": "J-04",
@@ -38,7 +38,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-5-evidence/TC-15-j04-sectors.png",
-      "note": "Held green. sectors.py now serves stored SectorScoreRow children (sectors_payload) — the score_sectors engine is byte-identical untouched. Historical re-point visible (Top Sectors flip to defensives XLP/XLU/XLF @2025-04-04, vs semis SOXX/WGMI/SMH at latest)."
+      "note": "Carried passing — iter-9 changed no apps/ code (dev step never ran), so no regression possible. sectors.py serves stored SectorScoreRow children (sectors_payload); score_sectors engine byte-identical."
     },
     "J-05": {
       "id": "J-05",
@@ -48,7 +48,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-5-evidence/TC-15-j05-stock-detail.png",
-      "note": "Held green. /api/stocks/{ticker} now serves the SAME stored record_json row the list serves (stock_detail_payload); /bars still slices bars_asof(D) (date ≤ D, no lookahead) and the canonical sma_series — scoring/chart logic untouched. The detail page gains as-of awareness (its chart returns only bars ≤ D)."
+      "note": "Carried passing — iter-9 changed no apps/ code (dev step never ran), so no regression possible. /api/stocks/{ticker} serves the same stored record_json row the list serves (stock_detail_payload); /bars slices bars_asof(D) (date ≤ D)."
     },
     "J-06": {
       "id": "J-06",
@@ -58,7 +58,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-8-evidence/TC-11-J15-stocks-latest.png",
-      "note": "Held green AND strengthened: list and detail now BOTH read the identical stored row via snapshot_serving.stored_stock_rows, so they are byte-identical by construction. Unit TC-04 proves NVDA's leadership/entry_quality/risk + buckets + setup are byte-identical list↔detail at latest AND at the historical 2025-04-04 date. Coherence Part A PASS (serving layer computes nothing). Watchlist now reads the same stored rows too — single source on three surfaces."
+      "note": "Carried passing — iter-9 changed no apps/ code (dev step never ran), so no regression possible. Iter-8: list & detail both read the identical stored row via snapshot_serving.stored_stock_rows (byte-identical by construction); coherence Part A PASS."
     },
     "J-07": {
       "id": "J-07",
@@ -68,7 +68,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-8-evidence/TC-12-J13-dashboard-historical-2025-04-04.png",
-      "note": "Held green — and now re-proven on a HISTORICAL view reached from the everyday dashboard. Evaluator viewed TC-12-J13-dashboard-historical-2025-04-04.png: the 2025-04-04 snapshot is Risk-off 6.30 with candidate counts Actionable 0 / Breakout-watch 0 / Pullback-watch 0. QA TC-13 confirms both Risk-off runs (2025-04-04, 2022-10-07) show Actionable=0. scanner.py/regime.py/setups.py byte-identical untouched."
+      "note": "Carried passing — iter-9 changed no apps/ code (dev step never ran), so no regression possible. Iter-8: 2025-04-04 snapshot Risk-off 6.30 with candidate counts 0/0/0; scanner.py/regime.py/setups.py byte-identical."
     },
     "J-08": {
       "id": "J-08",
@@ -78,7 +78,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-6-evidence/REG-scanner-runs-j08.png",
-      "note": "Held green. models.py git-clean (no schema change this iter); runs.py untouched. The scanner.py diff only APPENDS the as-of resolver after line 173 — run_scan is untouched, so its INSERT-only/create-once/immutable behaviour is unchanged. resolve_run reads the existing run for a stored date and never overwrites it; test_resolve_run_create_once_then_immutable asserts no UPDATE and no duplicate rows on a 2nd view."
+      "note": "Carried passing — iter-9 changed no apps/ code (dev step never ran); models.py git-clean, runs.py untouched. resolve_run create-once/immutable behaviour unchanged."
     },
     "J-09": {
       "id": "J-09",
@@ -88,7 +88,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-6-evidence/TC-14-system-health-j09.png",
-      "note": "Held green. /api/system-health was explicitly NOT re-pointed this iter (out of scope); forward_testing.py/system_health.py byte-identical untouched per git diff. Full 196-suite (incl. forward-testing + system-health tests) green."
+      "note": "Carried passing — iter-9 changed no apps/ code (dev step never ran). forward_testing.py is byte-identical to iter-8 (def list ends at the iter-6 compute_forward_aggregates; the planned compute_run_scorecard/backfill_run_forward_returns/_insert_run_forward_returns refactor was never added), so the iter-6 forward-testing suite is unaffected."
     },
     "J-10": {
       "id": "J-10",
@@ -98,7 +98,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-6-evidence/TC-16-control-group-j10.png",
-      "note": "Held green. Control-group logic in forward_testing.py byte-identical untouched; not re-pointed this iter. No iter-8 code touches the forward-testing path."
+      "note": "Carried passing — iter-9 changed no apps/ code (dev step never ran). _control_groups in forward_testing.py byte-identical."
     },
     "J-11": {
       "id": "J-11",
@@ -108,7 +108,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-7-evidence/J11-watchlist-anet-full-row-after-restart.png",
-      "note": "Held green through the read-path re-point. watchlist.py:_canonical_rows now reads stocks_payload(resolved_run(None)) — the SAME latest stored snapshot rows /api/stocks serves — replacing the former live score_stocks(latest) call. This eliminates a potential second source (improves J-06) rather than creating one. Unit TC-05: ANET current leadership 46.61 / entry 57.69 / risk 39.62 + buckets + setup all equal /api/stocks latest. Persistence (DB-backed Watchlist table, INSERT/DELETE only) unchanged."
+      "note": "Carried passing — iter-9 changed no apps/ code (dev step never ran). watchlist.py reads the same stored snapshot rows /api/stocks serves; DB-backed Watchlist table (INSERT/DELETE only) unchanged."
     },
     "J-12": {
       "id": "J-12",
@@ -118,7 +118,7 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "last_evidence_path": null,
-      "note": "New Must-have (added to goal.md in commit ed7712b after iter-7). UNBUILT — explicitly OUT OF SCOPE this iter. No /methodology page, config-backed catalog, or inline setup/pattern tooltips exist yet. Recommended after J-16 so the glossary can include the VCP catalog entry; adds a new nav route → will need blueprint.reapproval-requested."
+      "note": "Still UNBUILT — explicitly OUT OF SCOPE in iter-9. No /methodology page, config-backed catalog, or inline setup/pattern tooltips exist. Sequenced after J-16 so the glossary can include the VCP catalog entry; adds a new nav route → will need blueprint.reapproval-requested."
     },
     "J-13": {
       "id": "J-13",
@@ -128,17 +128,17 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-8-evidence/TC-12-J13-dashboard-historical-2025-04-04.png",
-      "note": "NEWLY PASSING (target). Verified by the evaluator directly from 4 on-disk PNGs (browser-qa SKIPPED an 8th time; QA mode-2 self-healed and persisted evidence). The global top-bar AsOfSwitcher (options from canonical GET /api/runs) re-points stored snapshots: dashboard regime Risk-on 74.32 → Risk-off 6.30, breadth 65.57% → 0.82%, leadership rotates semis (SOXX/WGMI/SMH; Semiconductors) → defensives (XLP/XLU/XLF; Defense); stocks leaderboard top MU/ARM/MRVL → KTOS/NOC/PLTR. Amber 'Viewing as-of 2025-04-04 (historical)' indicator + per-page 'Data as-of 2025-04-04' render; the date persists across in-app nav (dashboard→stocks); reset-to-latest is md5-identical (f353ee88…) to the latest stocks view (clean restore). Values match that date's Scanner Run; no future bar influences them (resolve_run uses bars ≤ D). Known limitation (acceptable/documented): a full browser reload returns to Latest (client-context state, no ?as_of= URL param)."
+      "note": "Carried passing — iter-9 changed no apps/ code (dev step never ran), so the global switcher cannot have regressed (J-14 was to re-shoot it as a guard, but no code ran). Iter-8: AsOfSwitcher re-points stored snapshots (regime 74.32→6.30, breadth 65.57%→0.82%, semis→defensives); amber historical indicator renders; reset-to-latest md5-identical to latest. Known limitation: a full browser reload returns to Latest (no ?as_of= URL param)."
     },
     "J-14": {
       "id": "J-14",
       "name": "Backtest a past date and read its forward-test scorecard",
       "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-8",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future-iter-9",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "last_evidence_path": null,
-      "note": "New Must-have (added in commit ed7712b). UNBUILT — explicitly OUT OF SCOPE this iter. No /backtest Time-Machine page or per-date forward-test scorecard exists yet. Recommended as the NEXT iteration (iter-9): it builds directly on this iter's resolve_run + the iter-6 forward-testing engine; adds a /backtest nav route → will need blueprint.reapproval-requested."
+      "note": "STILL UNBUILT after iter-9 — the iteration was DISPATCHED (full depth) to build J-14 but the developer step never executed (silent pipeline no-op). Verified absent via git status (no apps/ diff; HEAD acc00d5), empty git stash, single worktree, file-existence (apps/backend/app/api/backtest.py, apps/frontend/app/backtest/page.tsx, apps/backend/tests/test_backtest* all absent), and grep -rln 'backtest' apps/ = empty; forward_testing.py has no compute_run_scorecard/backfill_run_forward_returns/_insert_run_forward_returns; sidebar/lib/api.ts have no backtest entry. status.json frozen at current_step='starting', changed_files=[]. NO dev handoff, review, QA, audit, browser-QA, or evidence. The decomposer's iter-9 spec (docs/phases/goal-...-iter-9.md) + the additive blueprint Backtest rows + blueprint.reapproval-requested ARE in place and coherent (COHERENCE-PASS) — so the next run can go straight to implementation. NEXT: re-execute the existing iter-9 J-14 spec at full depth."
     },
     "J-15": {
       "id": "J-15",
@@ -148,7 +148,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future-iter-8-evidence/TC-11-J15-stocks-latest.png",
-      "note": "NEWLY PASSING (target). The five read endpoints now serve canonical values from the persisted immutable snapshot for the resolved as-of date (snapshot_serving.py reads stored rows, computes nothing). Keystone proof: test_repointed_handlers_serve_persisted_date_without_recompute monkeypatches score_stocks/score_regime/score_sectors/score_themes to RAISE, then asserts all four handlers still serve a persisted date — proving they read storage, never recompute (stronger than served==stored value-equality). Warm API latency 20–100ms (far under the ~1.5s budget). list & detail share stored_stock_rows → coherence preserved. TC-11-J15-stocks-latest.png shows the latest leaderboard rendering from the snapshot."
+      "note": "Carried passing — iter-9 changed no apps/ code (dev step never ran), so the snapshot-served read path cannot have regressed. Iter-8: snapshot_serving.py reads stored rows (computes nothing); keystone test_repointed_handlers_serve_persisted_date_without_recompute (patch-engines-to-raise); warm API latency 20–100ms."
     },
     "J-16": {
       "id": "J-16",
@@ -158,9 +158,9 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future-iter-8",
       "last_evidence_path": null,
-      "note": "New Must-have (added in commit ed7712b). UNBUILT — explicitly OUT OF SCOPE this iter. No VCP detector, leaderboard VCP filter, VCP badge, glossary entry, or VCP-vs-non-VCP forward-return breakdown exists yet. Recommended after J-14: a config-driven detected-pattern flag riding the immutable snapshot row (price+volume, date ≤ D), SEPARATE from the setup status, never promoting a name to Actionable on its own (critical)."
+      "note": "Still UNBUILT — explicitly OUT OF SCOPE in iter-9. No VCP detector, leaderboard filter, badge, glossary entry, or VCP-vs-non-VCP forward-return breakdown exists. Sequenced after J-14: a config-driven detected-pattern flag riding the immutable snapshot row (price+volume, date ≤ D), SEPARATE from the setup status, never promoting a name to Actionable on its own (critical)."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-05-31T00:54:30Z"
+  "updated_at": "2026-05-31T02:39:03Z"
 }

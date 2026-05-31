@@ -1,0 +1,1 @@
+iter-9 adds a new top-level sidebar section "Backtest" → /backtest (J-14, the Time-Machine single-date drill-down: pick a historical as-of date, see its as-of scan + per-date forward-test scorecard). Nav-skeleton change — re-approve before the next iteration.

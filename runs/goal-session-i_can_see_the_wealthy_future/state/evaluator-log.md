@@ -379,3 +379,53 @@ Unit-prove the post-D forward boundary on the per-date scorecard. Then J-16 (VCP
 incl. the VCP entry) finish the new round. Runner owner should finally (a) make browser-qa
 own/await/self-heal its frontend AND probe `/api/health` with `CORS_ORIGINS` set to the frontend port,
 and (b) emit the audit handoff from the runner script.
+
+## Iteration 9 — goal-i_can_see_the_wealthy_future-iter-9
+
+**Date:** 2026-05-31T02:39:03Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: none
+- Newly failing: none
+- Regressed: none
+- Anti-goal violations: none (no apps/ code changed, so none could be introduced)
+
+**Reasoning:** iter-9 produced **no product code — the developer step never executed (a silent pipeline
+no-op).** Only the goal-decomposer (iter-9 J-14 spec + additive blueprint Backtest IA/Data-Contract rows +
+`blueprint.reapproval-requested`) and the coherence-auditor (COHERENCE-PASS, with an explicit "implementation
+absent — blueprint is ahead of the code" advisory) ran; developer / reviewer / QA / audit / browser-QA were
+all skipped. I confirmed the absence from multiple independent sources, not from a missing handoff alone:
+`git status` shows zero `apps/` diff and HEAD still at `acc00d5` (iter-8); `git stash list` empty and a
+single worktree (code is not hidden elsewhere); `apps/backend/app/api/backtest.py`,
+`apps/frontend/app/backtest/page.tsx`, and `apps/backend/tests/test_backtest*` are all absent;
+`forward_testing.py`'s def list ends at the iter-6 `compute_forward_aggregates` (no `compute_run_scorecard`
+/ `backfill_run_forward_returns` / `_insert_run_forward_returns`); `sidebar.tsx`/`lib/api.ts` have no
+backtest entry; `grep -rln "backtest" apps/` is empty; and `status.json` is frozen at
+`current_step="starting"`, `changed_files=[]`, `tests_run=false`. So **J-14 was not built** and has no
+evidence (no QA, no screenshots, no tests). Because no `apps/` file changed, the 13 journeys green at iter-8
+are byte-identical to the running `acc00d5` code and cannot have regressed (carried passing; `last_verified`
+stays iter-8 — not behaviourally re-tested). 13/16 Must-haves pass, unchanged. Coherence is **COHERENCE-PASS**
+(no veto). This is **CONTINUE** — not GOAL_ACHIEVED (J-12/J-14/J-16 failing), not REGRESSION (nothing broke),
+not STALLED (the next step is fully specified and tractable — recent iters made real progress; a single
+no-op is an execution miss, and the STALLED remedy "edit goal.md" would be wrong since the goal + spec are
+sound), not ESCALATE (already full depth; the issue is an unexecuted dev step, not lean→full promotion).
+
+**Root cause flagged for the runner owner (PRIMARY this iter):** a full-depth dispatch reached the
+goal-evaluator with the dev/review/QA/audit/browser-QA steps entirely un-run and `status.json` stuck at
+`current_step="starting"`, `changed_files=[]`. The pipeline must not be able to advance past coherence to
+the evaluator when the developer step has produced nothing. (The two chronic non-gating debts persist —
+dedicated browser-qa SKIPped 8+ iters; audit handoff / `reports/audits/` missing 8+ full-depth iters — but
+they are secondary to the dev step not running at all this time.)
+
+**Next-step recommendation:** **iter-10 (or a re-dispatch of iter-9) at full depth — IMPLEMENT J-14 from the
+existing, already-coherent iter-9 spec.** No re-planning needed: `docs/phases/goal-...-iter-9.md` is correct,
+the blueprint already carries the Backtest IA + Data-Contract rows, and `blueprint.reapproval-requested` is
+already written — proceed straight to the developer step and run the full dev→review→QA→audit→browser-QA
+chain. Build: the shared `_insert_run_forward_returns` refactor (iter-6 tests stay byte-green) +
+`backfill_run_forward_returns` (create-once, INSERT-only) + `compute_run_scorecard` (reads stored
+forward_returns + stored scanner_results verbatim) + `GET /api/backtest` via `snapshot_serving.resolved_run`;
+`/backtest` page (date picker + as-of scan summary reusing the existing fetchDashboard/Sectors/Themes/Stocks
+with `?as_of=D` — no second source — + the per-horizon scorecard) + the Backtest sidebar entry + `fetchBacktest`;
+and the spec's keystone patch-to-raise read-path test, no-lookahead post-D boundary, honest partial/NA, and
+create-once/immutable tests. A clean J-14 → 14/16 Must-haves pass; J-16 (VCP) then J-12 (glossary) finish the round.
