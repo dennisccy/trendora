@@ -1,0 +1,18 @@
+{
+  "session_id": "i_can_see_the_wealthy_future_forever",
+  "started_at": "2026-05-31T22:30:55.653266Z",
+  "current_iter": 1,
+  "cli": "claude",
+  "halt_config": {
+    "max_iterations": 30,
+    "stall_window": 3,
+    "regression_halt": true
+  },
+  "status": "in_progress",
+  "last_verdict": "CONTINUE",
+  "next_depth": "full",
+  "auto_release": false,
+  "push_per_iter": true,
+  "push_branch": "goal/i_can_see_the_wealthy_future_forever",
+  "updated_at": "2026-06-01T00:04:25.689167Z"
+}

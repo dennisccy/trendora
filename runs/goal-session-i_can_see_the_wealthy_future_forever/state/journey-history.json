@@ -1,0 +1,185 @@
+{
+  "journeys": {
+    "J-01": {
+      "id": "J-01",
+      "name": "Daily dashboard at a glance",
+      "status": "already_passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-01-dashboard.png"
+    },
+    "J-02": {
+      "id": "J-02",
+      "name": "Stock Leaderboard with working filters",
+      "status": "partial",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-02-J15-J16-stocks.png"
+    },
+    "J-03": {
+      "id": "J-03",
+      "name": "Theme Leaderboard",
+      "status": "already_passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-03-themes.png"
+    },
+    "J-04": {
+      "id": "J-04",
+      "name": "Sector / industry Leaderboard",
+      "status": "already_passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-04-sectors.png"
+    },
+    "J-05": {
+      "id": "J-05",
+      "name": "Stock Detail with explainable scores",
+      "status": "already_passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-05-J06-stock-detail-NVDA.png"
+    },
+    "J-06": {
+      "id": "J-06",
+      "name": "Score consistency across pages (coherence)",
+      "status": "partial",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-05-J06-stock-detail-NVDA.png"
+    },
+    "J-07": {
+      "id": "J-07",
+      "name": "Risk-Off regime suppresses Actionable",
+      "status": "already_passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-07-J08-scanner-runs.png"
+    },
+    "J-08": {
+      "id": "J-08",
+      "name": "Immutable scanner-run history",
+      "status": "already_passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-07-J08-scanner-runs.png"
+    },
+    "J-09": {
+      "id": "J-09",
+      "name": "System Health forward-tested evidence",
+      "status": "already_passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-09-J10-J19-system-health.png"
+    },
+    "J-10": {
+      "id": "J-10",
+      "name": "Control-group honesty (selection vs sector beta)",
+      "status": "already_passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-09-J10-J19-system-health.png"
+    },
+    "J-11": {
+      "id": "J-11",
+      "name": "Watchlist with persistence",
+      "status": "partial",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-11-watchlist.png"
+    },
+    "J-12": {
+      "id": "J-12",
+      "name": "Understand what each setup/pattern means (glossary + inline)",
+      "status": "already_passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-12-methodology.png"
+    },
+    "J-13": {
+      "id": "J-13",
+      "name": "Browse the dashboard as of a past date (global as-of switcher)",
+      "status": "partial",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-01-dashboard.png"
+    },
+    "J-14": {
+      "id": "J-14",
+      "name": "Backtest a past date and read its forward-test scorecard",
+      "status": "already_passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-14-J18-backtest.png"
+    },
+    "J-15": {
+      "id": "J-15",
+      "name": "Fast page loads from persisted snapshots",
+      "status": "partial",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-02-J15-J16-stocks.png"
+    },
+    "J-16": {
+      "id": "J-16",
+      "name": "VCP — detected, explained, filterable, forward-tested",
+      "status": "partial",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-02-J15-J16-stocks.png"
+    },
+    "J-17": {
+      "id": "J-17",
+      "name": "Grow the dataset by date / date range (Data Manager)",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-17-data-404.png"
+    },
+    "J-18": {
+      "id": "J-18",
+      "name": "One date control (no duplicate)",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-14-J18-backtest.png"
+    },
+    "J-19": {
+      "id": "J-19",
+      "name": "Diagnose weak forward-test returns via attribution",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-09-J10-J19-system-health.png"
+    }
+  },
+  "anti_goal_violations": [
+    {
+      "iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "anti_goal": "Exactly one date selector. The frontend MUST NOT maintain a second, independent date state; every date-scoped page (including Backtest) reads the single global as-of control. (extends Single source of truth)",
+      "severity": "minor",
+      "evidence": "PRE-EXISTING (not introduced this iter — baseline is a zero-diff no-op). apps/frontend/app/backtest/page.tsx:53-58 keeps its OWN `selected`/`dates` date state independent of the global as-of provider; lines 112-118 + 175-208 render a local `BacktestDatePicker` `<Select aria-label=\"Backtest as-of date\">`. The page never consumes components/asof-provider.tsx. Confirmed in source and in evidence screenshot UT-J-14-J18-backtest.png (visible 'AS-OF DATE' dropdown). This is the root cause of J-18 failing.",
+      "resolved": false
+    }
+  ],
+  "updated_at": "2026-06-01T01:00:00Z"
+}
