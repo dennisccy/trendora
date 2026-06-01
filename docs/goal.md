@@ -171,18 +171,56 @@ It places **no orders** and holds **no broker keys**.
     taken at face value. Every slice is derived once from the stored per-observation forward-return data
     (never recomputed in the API or a view) and is surfaced on Backtest (per-date) and System Health
     (aggregate).
+23. **Full chart history through latest**: the Stock Detail price+MA+volume chart renders the complete
+    path to the latest seed date with a clear **as-of marker**; the post-as-of region is labelled
+    forward/after-as-of and is **display-only** — it never feeds a score, bucket, setup, pattern, or
+    factor (those stay date ≤ D).
+24. **Horizon-linked realized-return columns on Backtest**: Top Sectors / Top Themes / Ranked Cohort sit
+    below Return Attribution and each carries a realized forward-return at the selected horizon (sector =
+    sector-ETF return; theme = equal-weight member basket; cohort = the stock's own return), read from
+    the stored forward returns and re-pointed by the horizon selector.
+25. **Rule-based, reproducible ~500-name universe**: membership is defined by the config-recorded screen
+    (min market cap / dollar-volume / price + any membership rule), transparent in the UI, and expandable
+    via config + real committed seed — no hand-picked code list.
+26. **Multi-timeframe bars (1D / 1h / 15m / 5m)**: a timeframe-aware store + provider + committed intraday
+    seed with documented per-timeframe coverage windows; timeframe-scaled indicator/pattern periods from
+    config; a chart timeframe selector; strict per-timeframe no-lookahead; daily remains the canonical
+    swing timeframe.
+27. **Factor Lab**: decile sort + **rank information coefficient (IC)** per factor, **multi-factor
+    combination cohorts**, and **regime-conditioned** factor effectiveness; the factor set includes an
+    explicit **volatility family** (level / contraction / downside) and intraday-derived factors where
+    coverage allows. Descriptive evidence only — not a fitted predictive model.
+28. **Additional detected patterns beyond VCP**: ≥2 config-driven price/volume detectors (e.g.
+    pullback-to-rising-DMA, flat-base breakout, RS-line new high, inside-day/tight-area), each
+    forward-tested and following the VCP "pattern-not-status" contract.
+29. **Setup & Pattern research lab (event study)**: pools every historical occurrence of a setup/pattern
+    and reports the forward-return distribution, hit-rate, **expectancy**, **MAE/MFE** (max
+    adverse/favorable excursion from post-snapshot daily highs/lows), best exit-horizon, regime/sector
+    slices, and **risk-adjusted return** — all derived once from stored data.
+30. **Volatility as a first-class factor family**: level (ATR%/HV), change/contraction (VCP-style), and
+    downside/semivol, each decile/IC-tested and regime-conditioned; the contraction measure
+    cross-validates the VCP thesis with forward-test evidence.
+31. **Risk-adjusted return everywhere**: every decile / cohort / setup reports raw return AND
+    return-per-unit-vol, return-per-unit-MAE, and a Sharpe-like ratio (plus expectancy), so a
+    high-return / high-drawdown cohort is never mistaken for a good one; "risk" uses downside vol / MAE /
+    drawdown, never penalising healthy upside volatility.
 
 ## Non-Goals
 
 - **No order execution, no auto-trading, no brokerage integration, no capital deployment** — Trendora
   is decision-support and research only.
-- No options/options-flow, no intraday/scalping — **daily candles and end-of-day analysis only**.
+- No options/options-flow. Intraday timeframes (1h / 15m / 5m) **are now in scope** — for finer
+  entry/setup detection and additional factors — but only as committed, coverage-honest seed data behind
+  the same provider abstraction; the canonical swing/return horizon stays **multi-day end-of-day**. No
+  real-time streaming/tick data and no sub-minute scalping.
 - No machine-learning price prediction.
 - No social-media sentiment, and **no news/LLM catalyst enrichment in this session** (deferred to a
   later session; the technical core must work first).
 - **No paper-portfolio module in this session** (the data model leaves room for it; deferred to a
   later session).
-- Not the full US market on day one — a curated seed universe of liquid names; expansion later.
+- Not the full US market, and **not a hand-picked list**: the universe is a reproducible, **rule-based
+  liquidity / market-cap / price screen** (~400–500 liquid US names) recorded in config,
+  expandable/refreshable via config + committed seed.
 - Not 100 indicators — a small, testable, explainable set; RSI may exist as a minor component but must
   not dominate scoring.
 - Not financial advice; not a real-time signal/alert service.
@@ -230,8 +268,10 @@ It places **no orders** and holds **no broker keys**.
 - **Dashboard** (`/`) — the daily snapshot at a glance: regime, top sectors, top themes, candidate
   counts, breadth, last-run time, evidence summary.
 - **Stocks** (`/stocks`) — the Stock Leaderboard (ranked, filterable). Rows link to Stock Detail.
-- **Stock Detail** (`/stocks/[ticker]`) — one stock's chart, score breakdowns, theme membership, setup,
-  reason, invalidation, and per-snapshot history. Reached from a leaderboard row, not a top-nav tab.
+- **Stock Detail** (`/stocks/[ticker]`) — one stock's chart (with a **1D/1h/15m/5m timeframe selector**,
+  rendering the full price path **through the latest date** with an as-of marker), score breakdowns,
+  theme membership, setup, reason, invalidation, and per-snapshot history. Reached from a leaderboard
+  row, not a top-nav tab.
 - **Themes** (`/themes`) — the Theme Leaderboard (ranked, with members + breadth).
 - **Sectors** (`/sectors`) — the Sector/Industry Leaderboard.
 - **Scanner Runs** (`/scanner-runs`, `/scanner-runs/[runId]`) — history of immutable runs; open one to
@@ -247,6 +287,11 @@ It places **no orders** and holds **no broker keys**.
   snapshot) and a **per-date forward-test scorecard** for the date chosen in the global as-of switcher
   (it has **no** date picker of its own). This is the single-date drill-down; System Health remains the
   cross-date aggregate, and Scanner Runs remains the immutable run list.
+- **Research** (`/research`) — the analysis labs: a **Factor Lab** (decile / rank-IC per factor incl. the
+  volatility family, multi-factor combination cohorts, regime-conditioned effectiveness) and a **Setup &
+  Pattern Lab** (event-study across all snapshots: distribution, hit-rate, expectancy, MAE/MFE,
+  exit-horizon, regime/sector slices). Every figure is shown raw **and** risk-adjusted and is derived
+  once from the stored forward returns. Cross-date aggregate (like System Health), not a per-date view.
 - **Data Manager** (`/data`) — grow the dataset on demand: view current coverage (price-history date
   range, symbol count, the set of snapshot/as-of dates, and gaps), pick a date or date range, fetch
   price history and/or backfill snapshots, watch the async job's live progress, and read a history of
@@ -256,8 +301,10 @@ A single global **as-of date switcher** in the top bar is the **only** date cont
 Dashboard, Stocks, Themes, Sectors, Stock Detail, **and Backtest** to a chosen past snapshot (default:
 latest); no page keeps its own separate date picker. The as-of date resolves to a stored immutable
 snapshot — created once on first view, then never mutated. The **Stock Leaderboard** (`/stocks`) gains a
-**VCP filter**, and **System Health** gains a **VCP-vs-non-VCP** forward-return breakdown alongside its
-by-setup breakdown.
+**VCP filter** (and filters for the additional detected patterns), and **System Health** gains a
+**VCP-vs-non-VCP** forward-return breakdown alongside its by-setup breakdown. The Stock-Detail chart's
+**timeframe selector** changes bar granularity only (up to the resolved as-of bound) — it is **not** a
+second date control.
 
 The backend is the single source of truth; every page only displays server-computed values.
 
@@ -282,6 +329,16 @@ The backend is the single source of truth; every page only displays server-compu
 - **Forward-return attribution slices** (per-stock contribution, by-sector, by-rank-band, and
   distribution/hit-rate) — derived once from the stored per-observation forward returns and read
   identically wherever shown; never recomputed per request or per view.
+- **Lab analytics** (factor decile means + rank-IC, multi-factor cohorts, regime-conditioned slices,
+  event-study distribution / hit-rate / expectancy, MAE/MFE, exit-horizon, and the **risk-adjusted
+  ratios** return/vol · return/MAE · Sharpe-like) — each derived once from the stored per-observation
+  forward returns + stored factor values + post-snapshot price path, read identically wherever shown;
+  never recomputed in the API or a view.
+- **Per-timeframe bars + timeframe-scaled indicators/patterns** (1D/1h/15m/5m) — computed once per
+  `(symbol, timeframe, as-of)` and served from storage; the daily timeframe stays the canonical swing
+  series.
+- **Universe membership** — defined once by the config-recorded screen; every page and list reads the
+  same resolved universe.
 
 ## Must-have user journeys
 
@@ -488,11 +545,177 @@ The backend is the single source of truth; every page only displays server-compu
     aggregate mean (same underlying observations, not a re-computation); low-sample slices show n and NA
     honestly rather than a fabricated number.
 
+- **J-20: Price & MA chart shows the full path through the latest date (with as-of marker)**
+  - Steps:
+    1. Set the global as-of switcher to a historical date D that has bars after D in the seed
+    2. Open `/stocks/NVDA` (or any listed name) and view the price + moving-average chart
+    3. Observe the chart renders through the **latest** available seed date, not truncated at D
+    4. Confirm a visible divider / shaded region marks D and the post-D region is labelled forward/
+       after-as-of; the three scores, setup status, and VCP flag are unchanged
+  - Acceptance: when viewing a historical as-of D, the price+MA+volume chart extends to the latest seed
+    date; D is marked with a visible divider and the post-D region is labelled; the three scores, setup
+    status, VCP flag, and every ranking signal remain computed strictly from bars with date ≤ D (the
+    extension is display-only); at the latest as-of the chart is unchanged; moving-average lines drawn
+    past D are visualization, never as-of signals.
+
+- **J-21: Backtest — leadership cohorts below attribution, with horizon-linked realized returns**
+  - Steps:
+    1. Visit `/backtest` for a historical as-of date D with at least one forward horizon of post-bars
+    2. Confirm the section order is: as-of scan summary → forward-test scorecard → **Return Attribution**
+       → **Top Sectors**, **Top Themes**, **Ranked Cohort** (the three leadership lists now sit BELOW
+       Return Attribution)
+    3. Confirm each of Top Sectors, Top Themes, and Ranked Cohort shows a **realized forward-return** column
+    4. Change the horizon selector and confirm the return column on all three updates to that horizon
+    5. Pick a recent date and confirm horizons lacking post-bars show NA, not a fabricated number
+  - Acceptance: on `/backtest`, Top Sectors / Top Themes / Ranked Cohort render below the Return
+    Attribution section; each row carries a realized forward-return at the selected horizon (sector =
+    sector-ETF return; theme = equal-weight member-basket return; cohort = the stock's own return) read
+    from the stored forward-return data (never recomputed in the view); changing the horizon re-points
+    every return column; horizons without enough post-snapshot bars show NA honestly; the single global
+    as-of control still drives the date (no page-local date picker — J-18 preserved).
+
+- **J-22: Transparent, rule-based, expanded universe (~500 names)**
+  - Steps:
+    1. Visit `/methodology` (or `/data`) and read the **universe selection rule** — the exact liquidity,
+       price, and market-cap screen from config that defines membership
+    2. Confirm the universe now spans ~400–500 names (not 158), each with committed daily history
+    3. Confirm the screen and the sector/theme assignments are config-driven (no hand-curated code list)
+  - Acceptance: the universe is defined by a documented, reproducible screen whose thresholds live in
+    config (min market cap, min dollar volume, min price, plus any membership rule); the seeded universe
+    contains ~400–500 symbols each with committed daily OHLCV; every member passes the recorded screen;
+    the selection methodology is surfaced in the UI and matches config; expanding/refreshing the universe
+    is a config + seed operation, not a code change; breadth and forward-test labels remain honest
+    ("universe-relative", survivorship-biased to current membership).
+
+- **J-23: Multi-timeframe bars — intraday seed + timeframe-aware pipeline**
+  - Steps:
+    1. Confirm the bar store is timeframe-aware (1D / 1h / 15m / 5m) behind the provider abstraction
+    2. Confirm a committed intraday seed exists with **documented coverage windows** (e.g. 5m/15m ≈ recent
+       ~60 days, 1h ≈ ~1–2 years, 1D = full history)
+    3. Confirm indicators and patterns read timeframe-scaled periods from config (no daily-only literals)
+  - Acceptance: bars are stored and queried per timeframe with strict per-timeframe no-lookahead; the
+    committed intraday seed boots offline-deterministically; per-timeframe coverage windows are recorded
+    and surfaced honestly (a timeframe with insufficient history shows NA, never fabricated bars);
+    indicator/pattern periods for each timeframe come from config; the daily pipeline and all of
+    J-01…J-19 are unchanged (daily remains the canonical swing timeframe).
+
+- **J-24: Timeframe selector on the stock chart (1D/1h/15m/5m)**
+  - Steps:
+    1. Open `/stocks/NVDA`
+    2. Use the chart **timeframe selector** to switch between 1D, 1h, 15m, and 5m
+    3. Confirm price, moving averages, and any pattern overlay recompute for the selected timeframe (from
+       config-scaled periods)
+    4. Confirm a timeframe with insufficient committed history shows an explicit limited-coverage / NA
+       state, not fabricated bars
+  - Acceptance: the stock chart offers 1D/1h/15m/5m; switching timeframe re-renders price+MA+volume and
+    any pattern overlay computed for that timeframe from server values (single source of truth, no client
+    recompute); coverage limits are shown honestly; the as-of date control still bounds the upper edge of
+    every timeframe (no second date state — "exactly one date selector" preserved).
+
+- **J-25: Factor Lab — decile sort and rank-IC per factor (raw and risk-adjusted)**
+  - Steps:
+    1. Visit the **Factor Lab** (`/research`)
+    2. Pick a factor (RS 3m, MA-stack, distance-from-52w-high, the volatility family, Entry Quality,
+       volume trend, …) and a horizon
+    3. Read the **decile table**: for each decile D1…D10, the mean forward return AND a risk-adjusted
+       column (return/vol or return/MAE), each with sample size n
+    4. Read the **rank information coefficient (IC)** — the rank correlation between the factor and the
+       forward return — with its sign and magnitude
+  - Acceptance: for a chosen factor + horizon the lab shows mean forward return by decile (monotonicity
+    visible), a risk-adjusted column alongside it, and a numeric rank-IC, each with n; all values are
+    derived once from the stored per-observation forward returns + stored factor values (never recomputed
+    in the view); low-sample deciles show NA; the analysis is labelled survivorship-biased /
+    universe-relative.
+
+- **J-26: Factor Lab — multi-factor combination cohorts**
+  - Steps:
+    1. In the Factor Lab, build a conditional cohort by combining 2–3 factor conditions (e.g. RS 3m
+       top-quintile AND ATR% bottom-tertile AND VCP-flagged)
+    2. Read the cohort's forward return (raw and risk-adjusted: return/vol, return/MAE), hit-rate, and n
+       against an all-names baseline and against each single condition
+  - Acceptance: the lab computes the combined-condition cohort's mean/median forward return, its
+    risk-adjusted return, % positive, and n, and shows them against the unconditional baseline and the
+    single-factor cohorts so interaction effects are visible; computed once from stored data; NA on low
+    sample; no fabrication.
+
+- **J-27: Factor Lab — regime-conditioned factor effectiveness**
+  - Steps:
+    1. In the Factor Lab, view a factor's decile/IC **split by market regime** (e.g. Risk-on vs Defensive
+       vs Risk-off)
+    2. Confirm the factor's effectiveness (IC, the top-minus-bottom-decile spread, and the risk-adjusted
+       spread) is shown per regime
+  - Acceptance: a factor's forward-return relationship (raw and risk-adjusted) is shown conditioned on the
+    snapshot's regime label, with per-regime n; regimes with insufficient samples show NA; all values
+    derive from the stored snapshots + forward returns (no recompute).
+
+- **J-28: More detected patterns beyond VCP (forward-tested)**
+  - Steps:
+    1. On `/stocks`, filter by a new pattern (e.g. pullback-to-rising-DMA, flat-base breakout, RS-line new
+       high, inside-day / tight-area)
+    2. Confirm flagged rows show the pattern badge + reason + invalidation, documented on `/methodology`
+    3. On the Setup & Pattern Lab (or System Health), read the pattern-vs-non-pattern forward-return
+       breakdown with sample size
+  - Acceptance: at least two new price/volume patterns are detected by config-driven rules (thresholds in
+    config, no magic numbers), ride alongside the setup status exactly like VCP (a pattern, never a status,
+    never auto-Actionable, computed once with date ≤ D), are filterable on the leaderboard, documented in
+    the glossary from the config catalog, and appear as a pattern-vs-non-pattern forward-return breakdown
+    with sample size; NA below the min-sample threshold.
+
+- **J-29: Setup & Pattern research lab — event study across all snapshots**
+  - Steps:
+    1. Visit the **Setup & Pattern Lab** (`/research`)
+    2. Pick a setup (e.g. Actionable, Breakout-watch) or a pattern (VCP, …)
+    3. Read its **pooled forward-return distribution** across all historical snapshots — mean, median,
+       % positive (hit-rate), dispersion, **expectancy**, and **risk-adjusted return** (return/vol,
+       return/MAE, Sharpe-like) — by horizon
+    4. Read its **MAE / MFE** (max adverse / favorable excursion from post-snapshot daily highs/lows)
+    5. Read the **best exit-horizon** curve and the **by-regime** and **by-sector** slices
+  - Acceptance: for a chosen setup/pattern the lab pools every historical occurrence and shows, per
+    horizon, mean / median / % positive / dispersion / expectancy AND the risk-adjusted ratios with sample
+    size n; MAE and MFE are computed from the stored post-snapshot daily highs/lows (no-lookahead, never
+    fabricated); a per-horizon return curve and the regime/sector slices render; every figure is derived
+    once from the stored per-observation forward returns + price path (read-only — the API/view never
+    recomputes returns); low-sample cells show NA honestly and the survivorship-bias label is shown.
+
+- **J-30: Volatility as a return driver — the factor family, risk-adjusted and regime-conditioned**
+  - Steps:
+    1. In the Factor Lab, select the **volatility family** and view each measure: **level** (ATR% / 20-day
+       historical volatility), **change / contraction** (the VCP-style contraction metric), and **downside
+       / semivol**
+    2. For each measure, read the decile table (raw return AND risk-adjusted) and the rank-IC, by horizon
+    3. Split by regime (per J-27) and confirm the sign and strength of each measure per regime
+    4. Cross-check the **contraction** measure against the VCP pattern's event-study (J-29) and confirm the
+       evidence agrees (contraction → better risk-adjusted forward return)
+  - Acceptance: each of the three volatility measures renders a decile table (raw + risk-adjusted) and a
+    numeric rank-IC with n, regime-conditioned; "risk" uses downside volatility / MAE (not total
+    volatility); the contraction measure's evidence is consistent with the VCP event-study (the same
+    underlying observations, not a recomputation); the analysis carries the survivorship-bias /
+    universe-relative label and low-sample cells show NA — making explicit *which* volatility measure and
+    *which direction* predicts forward return in this universe, rather than assuming the textbook
+    relationship.
+
+- **J-31: Find a high-return driver end-to-end (synthesis)**
+  - Steps:
+    1. In the Factor Lab, identify a factor (or combination) whose top decile/cohort has the strongest,
+       monotone, positive **risk-adjusted** forward return with adequate n
+    2. Cross-check it is robust in the current market regime (per J-27)
+    3. In the Setup & Pattern Lab, confirm a setup/pattern aligned with that factor has positive expectancy
+       and tolerable MAE at a sensible exit-horizon
+    4. On `/stocks`, filter to the names expressing that factor/pattern today and open one on Stock Detail
+       across timeframes
+  - Acceptance: a user can travel from "which factor / setup / pattern drives positive risk-adjusted
+    return" (lab evidence, with n and regime context) to "which names express it now" (leaderboard filter
+    → detail) without any recomputed or fabricated number; every step reads canonical stored values; weak
+    or low-sample evidence is shown as NA, not hidden.
+
 ## Anti-goals
 
 - **No lookahead.** Scoring for a snapshot dated D MUST use only price bars with date ≤ D; forward
   returns MUST use only bars with date > D. The walk-forward MUST be unit-tested to prove no future bar
-  influences an as-of score. *(critical)*
+  influences an as-of score. Chart **visualization** MAY render bars dated > D strictly as a labelled
+  forward/after-as-of display; this display path MUST NOT feed any score, bucket, setup status, pattern
+  flag, factor value, or ranking — all of which remain computed from bars with date ≤ D — and the
+  moving-average lines drawn past D are visualization only, never as-of signals. *(critical)*
 - **Snapshots are immutable.** A persisted `scanner_run` and its result rows MUST never be updated or
   overwritten after creation; forward returns live in a separate append-only table keyed to the
   snapshot. *(critical)*
@@ -549,5 +772,30 @@ The backend is the single source of truth; every page only displays server-compu
   forward returns; the API and frontend MUST NOT recompute returns to build them. *(extends No recompute
   in the read path)*
 - **Exactly one date selector.** The frontend MUST NOT maintain a second, independent date state; every
-  date-scoped page (including Backtest) reads the single global as-of control. *(extends Single source
-  of truth)*
+  date-scoped page (including Backtest) reads the single global as-of control. The Stock-Detail chart
+  **timeframe selector** (1D/1h/15m/5m) is NOT a date control — it changes bar granularity only, bounded
+  by the resolved as-of date. *(extends Single source of truth)*
+- **Intraday stays deterministic & coverage-honest.** Intraday timeframes MUST boot from the committed
+  seed (no live/streaming dependency in the boot path), MUST record per-timeframe coverage windows, MUST
+  enforce per-timeframe no-lookahead, and MUST show NA where history is insufficient — never fabricating
+  intraday bars or extrapolating across gaps. *(extends No fabricated data + No lookahead)*
+- **Universe screen is reproducible & honest.** Universe membership MUST come from the config-recorded
+  screen (no hand-curated list masquerading as a screen); expansion MUST use real committed data only (no
+  fabricated history); breadth and walk-forward labels stay "universe-relative" / survivorship-biased to
+  current membership. *(extends No magic numbers + No fabricated data)*
+- **Research lab is read-only, honest & not predictive.** Every Factor-Lab and event-study figure (decile
+  means, rank-IC, combination cohorts, regime slices, distribution, hit-rate, expectancy, MAE/MFE,
+  exit-horizon, risk-adjusted ratios) MUST be derived once from the stored per-observation forward returns
+  + stored factor values + post-snapshot price path; the API and frontend MUST NOT recompute returns or
+  factors to build them; low-sample cells show NA + n; results carry the survivorship-bias label. The lab
+  is **descriptive evidence, not a fitted/ML predictive model**. *(extends No recompute in the read path +
+  No machine-learning price prediction)*
+- **New patterns are patterns, not statuses.** Every new detected pattern MUST follow the VCP contract:
+  config-driven thresholds, computed once with date ≤ D, price+volume only, riding alongside the setup
+  status, never entering the setup-status enum, and never alone promoting a name to "Actionable".
+  *(reaffirms VCP is a pattern, not a status)*
+- **Risk-adjusted reporting is honest & must not conflate up/down volatility.** Every risk-adjusted figure
+  (return/vol, return/MAE, Sharpe-like, expectancy) MUST be derived once from the stored per-observation
+  forward returns + post-snapshot price path; "risk" MUST use downside volatility / MAE / drawdown — never
+  total volatility, which would penalise healthy upside moves; raw and risk-adjusted MUST be shown side by
+  side; low-sample cells show NA + n. *(extends Research lab is read-only)*
