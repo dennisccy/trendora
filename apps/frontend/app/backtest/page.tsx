@@ -3,18 +3,17 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Clock, FlaskConical, History, ShieldAlert } from "lucide-react";
 
+import { useAsOf } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
 import { Return } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
   fetchBacktest,
   fetchDashboard,
-  fetchRuns,
   fetchSectors,
   fetchStocks,
   fetchThemes,
@@ -50,38 +49,17 @@ function regimeVariant(label: string): "ok" | "warn" | "danger" | "default" {
 }
 
 export default function BacktestPage() {
-  // The page's OWN date picker (independent of the global top-bar switcher). Options come from the
-  // canonical immutable run list; null = the latest stored run.
-  const [dates, setDates] = useState<string[]>([]);
-  const [latest, setLatest] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
+  // The page reads the SINGLE global as-of date (the top-bar switcher) — it holds NO date state of its
+  // own. The switcher's resolved date drives every fetch below; navigating between pages preserves it.
+  const { asOf, isHistorical: globalIsHistorical } = useAsOf();
   const [state, setState] = useState<State>({ kind: "loading" });
 
-  // Load the run list once (the picker's options + the default latest date).
-  useEffect(() => {
-    let active = true;
-    fetchRuns()
-      .then((res) => {
-        if (!active) return;
-        const ordered = res.runs.map((run) => run.asof_date); // already descending (newest first)
-        setDates(ordered);
-        setLatest(ordered[0] ?? null);
-        setReady(true);
-      })
-      .catch(() => {
-        if (active) setReady(true); // degrade to latest-only; the fetches still resolve "latest"
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  // Selecting a date drives every fetch. The scorecard (fetchBacktest) is the page's reason to exist;
-  // the scan-summary endpoints are best-effort (each may fail independently without blanking the page).
+  // The global as-of date drives every fetch. The scorecard (fetchBacktest) is the page's reason to
+  // exist; the scan-summary endpoints are best-effort (each may fail independently without blanking
+  // the page). The effect re-runs whenever the global switcher changes the resolved date.
   useEffect(() => {
     const controller = new AbortController();
-    const asof = selected ?? undefined; // historical date or latest
+    const asof = asOf ?? undefined; // historical date or latest
     setState({ kind: "loading" });
     fetchBacktest(asof, controller.signal)
       .then(async (backtest) => {
@@ -97,26 +75,19 @@ export default function BacktestPage() {
         if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => controller.abort();
-  }, [selected]);
+  }, [asOf]);
 
-  const resolvedDate = state.kind === "ok" ? state.backtest.asof_date : selected ?? latest;
-  const isHistorical = state.kind === "ok" ? !state.backtest.is_latest : selected !== null;
+  // Read-only "viewing as-of" DISPLAY indicator (not a control): prefer the backtest response's
+  // resolved date/flag; before it loads, fall back to the global switcher's own state.
+  const resolvedDate = state.kind === "ok" ? state.backtest.asof_date : asOf;
+  const isHistorical = state.kind === "ok" ? !state.backtest.is_latest : globalIsHistorical;
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <PageHeading
-          title="Backtest"
-          subtitle="Time-machine to a past scan date and read its forward-test scorecard — how that date's ranked cohort actually performed over the next 1/5/10/20/60 trading days vs SPY/QQQ/sector and a random same-sector control."
-        />
-        <BacktestDatePicker
-          dates={dates}
-          latest={latest}
-          selected={selected}
-          ready={ready}
-          onChange={setSelected}
-        />
-      </div>
+      <PageHeading
+        title="Backtest"
+        subtitle="Time-machine to a past scan date and read its forward-test scorecard — how that date's ranked cohort actually performed over the next 1/5/10/20/60 trading days vs SPY/QQQ/sector and a random same-sector control."
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         {resolvedDate ? (
@@ -169,41 +140,6 @@ export default function BacktestPage() {
         </div>
       ) : null}
     </div>
-  );
-}
-
-function BacktestDatePicker({
-  dates,
-  latest,
-  selected,
-  ready,
-  onChange,
-}: {
-  dates: string[];
-  latest: string | null;
-  selected: string | null;
-  ready: boolean;
-  onChange: (date: string | null) => void;
-}) {
-  const historical = dates.filter((date) => date !== latest);
-  return (
-    <label className="flex items-center gap-2 text-xs text-text-muted">
-      <span className="uppercase tracking-wide text-text-faint">As-of date</span>
-      <Select
-        aria-label="Backtest as-of date"
-        className="num w-44"
-        value={selected ?? ""}
-        disabled={!ready || dates.length === 0}
-        onChange={(event) => onChange(event.target.value || null)}
-      >
-        <option value="">Latest{latest ? ` · ${latest}` : ""}</option>
-        {historical.map((date) => (
-          <option key={date} value={date}>
-            {date}
-          </option>
-        ))}
-      </Select>
-    </label>
   );
 }
 
