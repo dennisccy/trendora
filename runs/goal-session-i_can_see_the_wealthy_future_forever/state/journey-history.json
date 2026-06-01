@@ -5,7 +5,7 @@
       "name": "Daily dashboard at a glance",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-2-evidence/TC-14-dashboard-J01.png"
     },
@@ -14,7 +14,7 @@
       "name": "Stock Leaderboard with working filters",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-4",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-4",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-4-evidence/UT-J-02-sector-energy.png"
     },
@@ -23,7 +23,7 @@
       "name": "Theme Leaderboard",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-1-evidence/UT-J-03-themes-historical-expanded.png"
     },
@@ -32,7 +32,7 @@
       "name": "Sector / industry Leaderboard",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-1-evidence/UT-J-04-sectors-historical.png"
     },
@@ -40,26 +40,26 @@
       "id": "J-05",
       "name": "Stock Detail with explainable scores",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-1-evidence/UT-J-05-stock-detail-nvda.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-5-evidence/UT-J-06-detail-nvda-scores-crop.png"
     },
     "J-06": {
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
-      "status": "partial",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-4",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-4-evidence/UT-J-06-detail-nvda.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-5-evidence/UT-J-06-detail-nvda-scores-crop.png"
     },
     "J-07": {
       "id": "J-07",
       "name": "Risk-Off regime suppresses Actionable",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/TC-18-scanner-runs-new-immutable.png"
     },
@@ -68,7 +68,7 @@
       "name": "Immutable scanner-run history",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/TC-18-scanner-runs-new-immutable.png"
     },
@@ -77,7 +77,7 @@
       "name": "System Health forward-tested evidence",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/TC-16-5-system-health-n-grew.png"
     },
@@ -86,18 +86,18 @@
       "name": "Control-group honesty (selection vs sector beta)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-2-evidence/UT-01-02-03-system-health-attribution.png"
     },
     "J-11": {
       "id": "J-11",
       "name": "Watchlist with persistence",
-      "status": "partial",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-4",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-4-evidence/UT-J-11-before-restart.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-5-evidence/UT-J-11-after-restart.png"
     },
     "J-12": {
       "id": "J-12",
@@ -113,7 +113,7 @@
       "name": "Browse the dashboard as of a past date (global as-of switcher)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/UT-08-dashboard-backfilled-date.png"
     },
@@ -122,25 +122,25 @@
       "name": "Backtest a past date and read its forward-test scorecard",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/UT-08-dashboard-backfilled-date.png"
     },
     "J-15": {
       "id": "J-15",
       "name": "Fast page loads from persisted snapshots",
-      "status": "partial",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-2-evidence/TC-17-stocks-J02-J06.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-5-evidence/UT-J-15-warm-load.png"
     },
     "J-16": {
       "id": "J-16",
       "name": "VCP — detected, explained, filterable, forward-tested",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-4",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-4",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-4-evidence/UT-J-16-detail-stx-vcp.png"
     },
@@ -149,7 +149,7 @@
       "name": "Grow the dataset by date / date range (Data Manager)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/UT-07-UT-06-after-backfill.png"
     },
@@ -158,7 +158,7 @@
       "name": "One date control (no duplicate)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/UT-11-form-date-changed-asof-unchanged.png"
     },
@@ -167,7 +167,7 @@
       "name": "Diagnose weak forward-test returns via attribution",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-2-evidence/UT-01-02-03-system-health-attribution.png"
     }
@@ -180,8 +180,8 @@
       "evidence": "PRE-EXISTING (not introduced this iter — baseline is a zero-diff no-op). apps/frontend/app/backtest/page.tsx:53-58 kept its OWN selected/dates date state independent of the global as-of provider; lines 112-118 + 175-208 rendered a local BacktestDatePicker <Select aria-label=\"Backtest as-of date\">. Root cause of J-18 failing.",
       "resolved": true,
       "resolved_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
-      "resolution_evidence": "iter-1 deleted BacktestDatePicker + its date state; backtest/page.tsx now reads useAsOf only. Re-confirmed STILL HOLDING in iter-3: the new /data page imports useAsOf for refresh() only (page.tsx:54), never setAsOf; its date inputs are local useState job parameters; refresh() re-fetches /api/runs and never mutates asOf (asof-provider.tsx:47-66). iter-4 changed zero source files, so the resolution holds unchanged. COHERENCE-PASS invariant #5."
+      "resolution_evidence": "iter-1 deleted BacktestDatePicker + its date state; backtest/page.tsx now reads useAsOf only. Re-confirmed STILL HOLDING through iter-5: iter-3's /data page imports useAsOf for refresh() only (never setAsOf); iters 4 and 5 changed zero source files (git diff = telemetry/trace bookkeeping only; coherence-auditor COHERENCE-PASS), so the resolution holds unchanged. COHERENCE-PASS invariant #5."
     }
   ],
-  "updated_at": "2026-06-01T15:30:00Z"
+  "updated_at": "2026-06-01T17:00:00Z"
 }

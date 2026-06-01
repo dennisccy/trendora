@@ -90,3 +90,22 @@ Chronological, append-only record of per-iteration verdicts. Newest entries appe
 **Process note:** No `status.json` and no audit handoff (lean depth — expected). The blocking artifact is the **timed-out browser-QA** (exit 124 → SKIPPED stub results), not a verdict-quality gap. This is NOT an ESCALATE: per the iter-4 spec, escalate to full only for a genuine functional gap needing code; the three remaining partials are built + verified at source/API and need only a re-run of their full UI click-paths.
 
 **Next-step recommendation:** **lean** re-verify scoped to **J-06, J-11, J-15** only, hardened against the timeout: J-11 — add ANET → **restart backend by port 8835** → reload `/watchlist` → capture `UT-J-11-after-restart.png`; J-15 — warm-load `/stocks` (compile once, then time a 2nd client-side nav vs ~1.5 s; weight the structural snapshot-served guarantee if borderline on the dev server); J-06 — capture `/stocks/NVDA` scrolled to the three score cards next to the `/stocks` NVDA row (byte-identical bucket+number). Ensure the browser-QA step flushes results incrementally and the restart-by-port doesn't hang the runner. If all three convert and nothing regresses → GOAL_ACHIEVED.
+
+## Iteration 5 — goal-i_can_see_the_wealthy_future_forever-iter-5
+
+**Date:** 2026-06-01T17:00:00Z
+**Verdict:** GOAL_ACHIEVED
+**Depth dispatched:** lean
+**Journey deltas:**
+- Newly passing: **J-06** (partial → passing), **J-11** (partial → passing), **J-15** (partial → passing) — the last three partials, converted via their defining browser-QA flows
+- Re-verified passing this iter (spot-check only — routes 200 + journey APIs non-empty on the freshly-restarted backend; carried forward green): J-01, J-02, J-03, J-04, J-05, J-07, J-08, J-09, J-10, J-13, J-14, J-16, J-17, J-18, J-19; J-12 stays already_passing
+- Newly failing: none
+- Regressed: none (zero source/config/frontend/schema diff — git-verified + coherence-auditor confirmed)
+- Anti-goal violations: none introduced. The single historical minor one (Exactly one date selector) stays RESOLVED (since iter-1, re-confirmed holding). Coherence: COHERENCE-PASS.
+- **State: all 19 must-have journeys passing/already_passing → GOAL_ACHIEVED.**
+
+**Reasoning:** The planned closure pass landed exactly as the iter-5 spec predicted, and I verified every defining artifact directly rather than trusting the handoff. J-06: two distinct legible crops (sha256-distinct) show NVDA **E 47.48 / D 66.24 / E 33.79** byte-identical on `/stocks` and `/stocks/NVDA`, detail carrying ≥3 named components per score — single source of truth re-proven. J-11: the after-restart shot shows ANET still present with a **fresh PID (130503→161123, killed by port :8835)** AND an **empty add form** (rules out leftover client state), and I independently read the row off SQLite disk (`apps/backend/data/trendora.db`: `id=1, ANET, created_at 2026-06-01 14:09:22.769416`) — persistence proven below the UI. J-15: the enlarged warm-load banner is legible — domInteractive **86ms**, fully-loaded **513ms**, 122 rows server-rendered — well under the ~1.5s budget, corroborated by `GET /api/stocks` 32–50ms and the `snapshot_serving.py` no-per-request-recompute guarantee (dev keystone test `test_repointed_handlers_serve_persisted_date_without_recompute` ✓). The iter-4 hardening worked: no `exit 124`; results flushed incrementally; restart bounded by port + 30s health cap. Zero code changed (git diff = telemetry/trace only) ⇒ the 16 carried journeys cannot have regressed; COHERENCE-PASS gives no veto; the only ever-recorded anti-goal violation (minor) is resolved. GOAL_ACHIEVED is met on every rule: all journeys positive, no critical anti-goal open, coherence not FAIL.
+
+**Process note:** Lean depth — no `status.json`, no audit/QA handoff (expected). The blocking artifact that caused iter-4 to leave three partials (browser-QA `exit 124` SKIPPED stub) did NOT recur — `ui-test-results.md` is a real FINAL PASS this run (3/3 targets, 16/16 spot-checked). Evidence dir holds 8 distinct PNGs (all sha256-distinct — iter-3 byte-identical-duplicate lesson honored). I treated J-11's SQLite disk read and J-15's enlarged banner as the falsifiable cross-checks; both confirmed the UI claims.
+
+**Next-step recommendation:** **Halt — goal achieved.** No outstanding functional work; all 19 journeys green with directly-verified evidence, anti-goals hold, coherence passes. If the session is ever resumed, a lean re-verify only — there is nothing left to build.
