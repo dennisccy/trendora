@@ -44,9 +44,9 @@ score, bucket, or return.
 
 A single global **as-of date switcher** in the top bar must be the **only** date control (J-18). It
 re-points Dashboard, Stocks, Themes, Sectors, Stock Detail, **and Backtest** to a chosen past snapshot
-(default: latest); its options read the canonical `GET /api/runs`. **J-18 gap:** `/backtest` currently
-keeps its OWN `BacktestDatePicker` — that page-local picker must be removed so the page reads only the
-global switcher; the frontend must hold no second, independent date state.
+(default: latest); its options read the canonical `GET /api/runs`. **J-18 (resolved iter-1, re-confirmed
+iter-3):** `/backtest` reads only the global switcher — its page-local `BacktestDatePicker` was removed;
+the frontend holds no second, independent date state.
 
 **Navigation skeleton** (the persistent sidebar — every feature lives under one of these):
 
@@ -59,8 +59,8 @@ Trendora
 ├── Sectors          /sectors                (J-04)                           [built]
 ├── Scanner Runs     /scanner-runs           (J-08)                           [built]
 │   └── Run Detail   /scanner-runs/[runId]   (J-07, J-08)                     [built]  — row-reached
-├── Backtest         /backtest               (J-14; J-18 ⚠, J-19 per-date ⛔)  [built; needs J-18 fix + J-19]
-├── System Health    /system-health          (J-09, J-10, J-16 by-VCP; J-19 aggregate ⛔)  [built; needs J-19]
+├── Backtest         /backtest               (J-14, J-18, J-19 per-date)      [built]
+├── System Health    /system-health          (J-09, J-10, J-16 by-VCP, J-19 aggregate)  [built]
 ├── Watchlist        /watchlist              (J-11)                           [built]
 ├── Methodology      /methodology            (J-12)                           [built]  — config-backed glossary; feeds inline tooltips
 └── Data Manager     /data                   (J-17)                           [built iter-3]  — additive sidebar entry
@@ -88,8 +88,8 @@ Legend: [built] = present in the tree; ⚠ = present but violates the contract (
 | J-11 Watchlist with persistence | `/watchlist` | built |
 | J-12 Setup/pattern glossary + inline explanations | `/methodology` | built |
 | J-16 VCP detected/explained/filterable/forward-tested | `/stocks`, `/stocks/[ticker]`, `/methodology`, `/system-health` | built |
-| **J-18 One date control (no duplicate)** | `/backtest` driven by the global switcher | **⚠ fix: remove page-local picker** |
-| **J-19 Diagnose weak returns via attribution** | `/system-health` (aggregate) + `/backtest` (per-date) | **building iter-2** (existing homes; no new page/nav) |
+| J-18 One date control (no duplicate) | `/backtest` driven by the global switcher | built (iter-1; re-confirmed iter-3) |
+| J-19 Diagnose weak returns via attribution | `/system-health` (aggregate) + `/backtest` (per-date) | built iter-2 |
 | **J-17 Grow the dataset by date / range** | `/data` | **built iter-3** (blueprint-approved home; additive sidebar entry) |
 
 ## Data Contract
@@ -121,7 +121,7 @@ bucket, or return. Engine modules live under `apps/backend/app/engine/` (confirm
 | Forward-return aggregates (by bucket / setup / regime / **VCP**; excess vs SPY/QQQ/sector; control groups) | `app.engine.forward_testing:compute_forward_aggregates` | `GET /api/system-health` | built. post-snapshot bars only; each cell carries `n`; labelled survivorship-biased. Stored in append-only `forward_returns`. |
 | Per-date forward-test scorecard (per-horizon return, excess, control groups) | `app.engine.forward_testing:compute_run_scorecard` (READS stored `forward_returns` + `scanner_results` verbatim); create-once `backfill_run_forward_returns` (INSERT-only) | `GET /api/backtest` | built. same stored rows `/api/system-health` aggregates — one source, two read paths. As-of scan summary reuses `/api/dashboard|sectors|themes|stocks?as_of=`. NA per horizon when short. |
 | Watchlist entry (date-added, reason, current score/setup/invalidation, price-since-added) | current scores READ live from `scoring:score_stocks` (latest); price-since via `prices:close_on` | `GET /api/watchlist` (`POST` add, `DELETE` remove) | built. user-mutable `watchlist` table (survives restart → J-11). Stores only `{ticker, reason, created_at, asof_date_added, entry_close}`; scores read at serve time (single source). Not a snapshot; not an order. |
-| **Forward-return attribution slices** (per-stock contributors/detractors, by-sector, by-rank-band, distribution/hit-rate; with `n`) — J-19 | `app.engine.forward_testing` shared attribution helper — **derived once** from the SAME per-observation `stock_obs` list (`forward_returns` ⋈ `scanner_results` sector/rank/bucket, read verbatim) that `compute_forward_aggregates` / `compute_run_scorecard` already build; recomputes no return. Rank-band edges + list size from `config.walk_forward.attribution.{rank_bands, top_contributors_k}` | `GET /api/backtest` (per-date, inside each `by_horizon` entry) **and** `GET /api/system-health` (aggregate, keyed to the selected `horizon`) — existing endpoints, no new surface | **building iter-2.** *Attribution is read-only* — never recompute returns to build a slice; consistent with the existing aggregate mean (same observations: by-sector/by-rank-band `n`s sum to `overall.n`, distribution mean == `overall.mean_return`); low-sample/empty slices show `n`/NA. (Evaluator records pass/fail.) |
+| **Forward-return attribution slices** (per-stock contributors/detractors, by-sector, by-rank-band, distribution/hit-rate; with `n`) — J-19 | `app.engine.forward_testing` shared attribution helper — **derived once** from the SAME per-observation `stock_obs` list (`forward_returns` ⋈ `scanner_results` sector/rank/bucket, read verbatim) that `compute_forward_aggregates` / `compute_run_scorecard` already build; recomputes no return. Rank-band edges + list size from `config.walk_forward.attribution.{rank_bands, top_contributors_k}` | `GET /api/backtest` (per-date, inside each `by_horizon` entry) **and** `GET /api/system-health` (aggregate, keyed to the selected `horizon`) — existing endpoints, no new surface | **built iter-2.** *Attribution is read-only* — never recompute returns to build a slice; consistent with the existing aggregate mean (same observations: by-sector/by-rank-band `n`s sum to `overall.n`, distribution mean == `overall.mean_return`); low-sample/empty slices show `n`/NA. (Evaluator records pass/fail.) |
 | **Dataset coverage + fetch/backfill job** (price range, symbol count, snapshot dates, gaps; async progress + run history) — J-17 | `app.engine.data_manager:compute_coverage` (read-only coverage/gaps over `DailyPrice`+`ScannerRun`) + `app.engine.data_manager:run_data_job` which ORCHESTRATES the existing canonical create-once paths `scanner.run_scan` + `forward_testing.backfill_run_forward_returns` (no second scan/return math) and the **config-selected live provider** `app.data_providers.stooq_provider.StooqProvider` (real EOD only) for new trading days | `GET /api/data` (coverage + run history), `POST /api/data/jobs` (start job → `{job_id}`), `GET /api/data/jobs/{job_id}` (live status) | **built iter-3.** async in-process job + live progress (in-memory registry) + final summary persisted to append-only `DataProviderRun`. Coverage/gaps/progress are NEW descriptive values (not duplicates of any canonical score/return); backfill reuses the registered `scanner.run_scan`/`forward_testing.backfill_run_forward_returns` (no second computation path). Provider failure → explicit error, **never fabricated prices** (*Live fetch is real-data-only* critical). Range backfill is create-once/immutable/lookahead-free. The `/data` date inputs are **job parameters, not a viewing as-of control** (J-18 preserved). Default boot stays the committed offline seed. `data_manager` config block holds any tunables (no magic numbers). |
 
 Health probe: `GET /api/health` → `{"status":"ok", ...}` (no canonical value).
@@ -132,7 +132,7 @@ Health probe: `GET /api/health` → `{"status":"ok", ...}` (no canonical value).
 2. **No recompute in the read path** — read endpoints serve persisted-snapshot values for the resolved as-of date; create-once on first view is the only blessed compute. *(critical)*
 3. **Snapshots immutable** — `scanner_run` + result rows never mutated; `forward_returns` is a separate append-only table. *(critical)*
 4. **No lookahead** — as-of-D snapshot uses only bars ≤ D; forward returns only bars > D; unit-tested. *(critical)*
-5. **Exactly one date selector** — a single global as-of control drives every date-scoped page incl. Backtest; no second date state. **(J-18 currently violated by the Backtest page-local picker — must be removed.)** *(critical)*
+5. **Exactly one date selector** — a single global as-of control drives every date-scoped page incl. Backtest; no second date state. (J-18 resolved iter-1; re-confirmed holding iter-3.) *(critical)*
 6. **VCP is a pattern, not a status** — separate flag; never promotes Actionable alone. *(critical)*
 7. **Risk-Off gates Actionable** — zero Actionable in a Risk-Off regime. *(critical)*
 8. **No fabricated data** — provider failure (incl. Data Manager live fetch) surfaces an explicit error; never synthesize prices/scores; partial forward-test horizons show NA + `n`. *(critical)*

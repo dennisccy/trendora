@@ -12,11 +12,11 @@
     "J-02": {
       "id": "J-02",
       "name": "Stock Leaderboard with working filters",
-      "status": "partial",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-4",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-4",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-2-evidence/TC-17-stocks-J02-J06.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-4-evidence/UT-J-02-sector-energy.png"
     },
     "J-03": {
       "id": "J-03",
@@ -49,10 +49,10 @@
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
       "status": "partial",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-4",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-2-evidence/TC-17-stocks-J02-J06.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-4-evidence/UT-J-06-detail-nvda.png"
     },
     "J-07": {
       "id": "J-07",
@@ -94,10 +94,10 @@
       "id": "J-11",
       "name": "Watchlist with persistence",
       "status": "partial",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-4",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-2-evidence/TC-17-watchlist-J11.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-4-evidence/UT-J-11-before-restart.png"
     },
     "J-12": {
       "id": "J-12",
@@ -138,11 +138,11 @@
     "J-16": {
       "id": "J-16",
       "name": "VCP — detected, explained, filterable, forward-tested",
-      "status": "partial",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-4",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-4",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-2-evidence/UT-01-02-03-system-health-attribution.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-4-evidence/UT-J-16-detail-stx-vcp.png"
     },
     "J-17": {
       "id": "J-17",
@@ -180,8 +180,8 @@
       "evidence": "PRE-EXISTING (not introduced this iter — baseline is a zero-diff no-op). apps/frontend/app/backtest/page.tsx:53-58 kept its OWN selected/dates date state independent of the global as-of provider; lines 112-118 + 175-208 rendered a local BacktestDatePicker <Select aria-label=\"Backtest as-of date\">. Root cause of J-18 failing.",
       "resolved": true,
       "resolved_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
-      "resolution_evidence": "iter-1 deleted BacktestDatePicker + its date state; backtest/page.tsx now reads useAsOf only. Re-confirmed STILL HOLDING in iter-3: the new /data page imports useAsOf for refresh() only (page.tsx:54), never setAsOf; its date inputs are local useState job parameters; refresh() re-fetches /api/runs and never mutates asOf (asof-provider.tsx:47-66). Browser QA UT-11 shows changing a /data form date leaves the global as-of unchanged. COHERENCE-PASS invariant #5."
+      "resolution_evidence": "iter-1 deleted BacktestDatePicker + its date state; backtest/page.tsx now reads useAsOf only. Re-confirmed STILL HOLDING in iter-3: the new /data page imports useAsOf for refresh() only (page.tsx:54), never setAsOf; its date inputs are local useState job parameters; refresh() re-fetches /api/runs and never mutates asOf (asof-provider.tsx:47-66). iter-4 changed zero source files, so the resolution holds unchanged. COHERENCE-PASS invariant #5."
     }
   ],
-  "updated_at": "2026-06-01T13:00:00Z"
+  "updated_at": "2026-06-01T15:30:00Z"
 }
