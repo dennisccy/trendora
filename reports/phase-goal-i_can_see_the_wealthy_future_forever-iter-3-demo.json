@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever-iter-3",
+  "base_url": "http://localhost:3835",
+  "iteration": 3,
+  "default_timeout_ms": 15000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open Trendora",
+      "narration": "We start on Trendora's daily dashboard — the after-the-close view of the market. A brand-new entry, Data Manager, now sits at the very bottom of the left sidebar.",
+      "point_out": "The 'Data Manager' item (database icon) at the bottom of the left navigation — present on every page.",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Data as-of" }
+    },
+    {
+      "n": 2,
+      "title": "Open the Data Manager",
+      "narration": "Clicking Data Manager opens a new page that shows exactly how much history the system holds — the price-date range, the number of symbols and trading days, how many saved snapshot dates exist, and how many days still need one.",
+      "point_out": "The 'Dataset coverage' panel with real numbers (about 158 symbols, thousands of trading days) and the amber 'Backfill gaps' count with its gap range — the days that have prices but no snapshot yet.",
+      "journey": "J-17",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Data Manager" } },
+      "expect": { "text": "Gap range" }
+    },
+    {
+      "n": 3,
+      "title": "Start a backfill job",
+      "narration": "The job form already comes pre-filled with a range of missing days. We keep the kind as 'Backfill snapshots' and press Start — and the job runs live, building one immutable snapshot per day, its progress bar advancing about once a second until it finishes with an 'ok' summary in the run history.",
+      "point_out": "The Start button now reads 'Job running…' and the 'Snapshots backfilled' bar climbs, with its snapshot and forward-return counts rising in real time.",
+      "journey": "J-17",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Start" } },
+      "expect": { "text": "Job running" }
+    },
+    {
+      "n": 4,
+      "title": "New dates appear — no reload",
+      "narration": "As the job finishes, the snapshot dates it just built become selectable in the single global date control at the top of the app — without reloading the page. We pick one of those backfilled days, 2021-01-13.",
+      "point_out": "The top-bar control switches to 'Viewing as-of 2021-01-13 (historical)' — a date that had no snapshot moments ago is now a first-class choice.",
+      "journey": "J-17",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "label": "View as-of date" }, "text": "2021-01-13" },
+      "expect": { "text": "Viewing as-of 2021-01-13" }
+    },
+    {
+      "n": 5,
+      "title": "It resolves across the product",
+      "narration": "That backfilled date now drives the whole dashboard. Opening the Stocks leaderboard shows a complete, ranked scorecard for that exact day — real recorded data, never a placeholder.",
+      "point_out": "The Stocks leaderboard rendered 'as of 2021-01-13' with a full ranked table — the one date control carried straight over from the Data Manager.",
+      "journey": "J-17",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Stocks" } },
+      "expect": { "text": "2021-01-13" }
+    },
+    {
+      "n": 6,
+      "title": "The evidence base grows",
+      "narration": "Because every backfilled day adds more forward-tested history, the System Health page stands on a larger sample over time — more evidence behind every claim the product makes about its own track record.",
+      "point_out": "The forward-test sample size (n) reflects the enlarged dataset that the Data Manager just helped grow.",
+      "journey": "J-17",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "click", "target": { "role": "link", "name": "System Health" } }
+    },
+    {
+      "n": 7,
+      "title": "Back to the Data Manager",
+      "narration": "Back on the Data Manager, we'll show the other side of the story — what the product does when live market data simply isn't available.",
+      "point_out": "The job form, ready for a new run.",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "full_tour",
+      "action": { "type": "click", "target": { "role": "link", "name": "Data Manager" } },
+      "expect": { "text": "Gap range" }
+    },
+    {
+      "n": 8,
+      "title": "Choose a live fetch",
+      "narration": "This time we switch the job kind to 'Fetch EOD prices', which reaches out to a live market-data provider instead of using the built-in offline seed.",
+      "point_out": "The Job kind control now set to 'Fetch EOD prices'.",
+      "journey": "J-17",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "label": "Job kind" }, "text": "Fetch EOD prices" }
+    },
+    {
+      "n": 9,
+      "title": "An honest failure",
+      "narration": "The live provider needs an API key this environment doesn't have — so the job fails out in the open. It lists the per-symbol errors and states plainly that nothing was fabricated: no invented prices, no fake 'success'. That refusal to make up data is exactly the point.",
+      "point_out": "A red 'failed' status with the per-symbol error list and the '(no data fabricated)' note — and not a single new snapshot claimed for the failed symbols.",
+      "journey": "J-17",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Start" } },
+      "expect": { "text": "no data fabricated" }
+    }
+  ]
+}

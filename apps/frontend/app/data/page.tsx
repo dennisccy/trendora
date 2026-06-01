@@ -1,0 +1,506 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AlertTriangle, Database, Loader2, Play } from "lucide-react";
+
+import { useAsOf } from "@/components/asof-provider";
+import { EmptyState } from "@/components/empty-state";
+import { PageHeading } from "@/components/page-heading";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { Select } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+import {
+  fetchDataCoverage,
+  fetchDataJob,
+  startDataJob,
+  type DataJob,
+  type DataJobKind,
+  type DataOverviewResponse,
+  type DataRun,
+} from "@/lib/api";
+
+type State =
+  | { kind: "loading" }
+  | { kind: "ok"; data: DataOverviewResponse }
+  | { kind: "error" };
+
+const FIELD =
+  "h-9 rounded-md border border-border bg-surface-2 px-3 text-sm text-text placeholder:text-text-faint " +
+  "transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent " +
+  "disabled:cursor-not-allowed disabled:opacity-50";
+
+/** Job/run status -> palette token (DESIGN SYSTEM): ok green, partial/running amber/teal, failed red. */
+function statusVariant(status: string): "ok" | "warn" | "danger" | "accent" | "default" {
+  switch (status) {
+    case "ok":
+      return "ok";
+    case "partial":
+      return "warn";
+    case "failed":
+      return "danger";
+    case "running":
+      return "accent";
+    default:
+      return "default";
+  }
+}
+
+function fmtDate(value: string | null): string {
+  return value ? value : "—";
+}
+
+export default function DataManagerPage() {
+  const { refresh } = useAsOf();
+  const [state, setState] = useState<State>({ kind: "loading" });
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [kind, setKind] = useState<DataJobKind>("backfill");
+  const [job, setJob] = useState<DataJob | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const prefilled = useRef(false);
+
+  const loadOverview = useCallback((signal?: AbortSignal) => {
+    fetchDataCoverage(signal)
+      .then((data) => {
+        setState({ kind: "ok", data });
+        // Prefill the range ONCE from the actual backfill gaps so the default Start is a valid,
+        // gap-creating job (the date inputs are job PARAMETERS — they never touch the as-of switcher).
+        if (!prefilled.current) {
+          const gaps = data.coverage.gaps_preview;
+          if (gaps.length > 0) {
+            setStart(gaps[0]);
+            setEnd(gaps[Math.min(4, gaps.length - 1)]);
+            prefilled.current = true;
+          }
+        }
+      })
+      .catch(() => {
+        if (!signal?.aborted) setState({ kind: "error" });
+      });
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    loadOverview(controller.signal);
+    return () => controller.abort();
+  }, [loadOverview]);
+
+  // Poll the active job until it leaves `running`; on completion, refresh the global as-of run list
+  // (so new dates are selectable WITHOUT a hard reload) and reload coverage + run history. Keyed on
+  // the job id + status (primitives) so the interval is created once per run, not re-armed each tick.
+  const jobId = job?.job_id ?? null;
+  const jobStatus = job?.status ?? null;
+  useEffect(() => {
+    if (!jobId || jobStatus !== "running") return;
+    let active = true;
+    const timer = setInterval(() => {
+      fetchDataJob(jobId)
+        .then((snap) => {
+          if (!active) return;
+          setJob(snap);
+          if (snap.status !== "running") {
+            clearInterval(timer);
+            refresh();
+            loadOverview();
+          }
+        })
+        .catch(() => {
+          /* transient poll error — keep polling; a persistent failure surfaces in the job card */
+        });
+    }, 1000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [jobId, jobStatus, refresh, loadOverview]);
+
+  const jobRunning = jobStatus === "running";
+
+  async function handleStart(event: React.FormEvent) {
+    event.preventDefault();
+    if (!start || !end || starting || jobRunning) return;
+    setStarting(true);
+    setFormError(null);
+    try {
+      const resp = await startDataJob(kind, start, end);
+      const snap = await fetchDataJob(resp.job_id); // initial progress snapshot
+      setJob(snap);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Could not start the job.");
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <PageHeading
+        title="Data Manager"
+        subtitle="Grow the dataset on demand — view coverage and gaps, then fetch real EOD history and/or backfill immutable snapshots by date or range. Jobs run asynchronously; new snapshot dates become selectable in the global as-of switcher and grow the System Health evidence."
+      />
+
+      {state.kind === "loading" ? <DataSkeleton /> : null}
+
+      {state.kind === "error" ? (
+        <Card className="flex items-center gap-3 border-neg bg-surface p-5 text-sm text-neg">
+          <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
+          <div>
+            <p className="font-medium">Backend unavailable</p>
+            <p className="text-text-muted">
+              Dataset coverage could not load from the API. No figures are shown rather than fabricated
+              values. Confirm the backend is running and retry.
+            </p>
+          </div>
+        </Card>
+      ) : null}
+
+      {state.kind === "ok" ? (
+        <>
+          <CoveragePanel data={state.data} />
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <JobForm
+              start={start}
+              end={end}
+              kind={kind}
+              setStart={setStart}
+              setEnd={setEnd}
+              setKind={setKind}
+              onStart={handleStart}
+              busy={starting}
+              running={Boolean(jobRunning)}
+              error={formError}
+            />
+            <JobProgressPanel job={job} />
+          </div>
+          <RunHistoryPanel runs={state.data.runs} />
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function PanelTitle({ children, hint }: { children: React.ReactNode; hint?: string }) {
+  return (
+    <div className="border-b border-border px-4 py-3">
+      <h2 className="text-sm font-semibold text-text">{children}</h2>
+      {hint ? <p className="mt-0.5 text-xs text-text-faint">{hint}</p> : null}
+    </div>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="space-y-0.5">
+      <p className="text-xs uppercase tracking-wide text-text-faint">{label}</p>
+      <p className="num text-sm text-text">{value}</p>
+    </div>
+  );
+}
+
+function CoveragePanel({ data }: { data: DataOverviewResponse }) {
+  const c = data.coverage;
+  return (
+    <Card className="p-0">
+      <PanelTitle hint="Descriptive metadata read from the dataset — not a recomputed score or return.">
+        Dataset coverage
+      </PanelTitle>
+      <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-5">
+        <Metric label="Price history" value={`${fmtDate(c.price_start)} → ${fmtDate(c.price_end)}`} />
+        <Metric label="Symbols" value={c.symbol_count} />
+        <Metric label="Trading days" value={c.trading_day_count} />
+        <Metric label="Snapshot dates" value={c.snapshot_count} />
+        <Metric
+          label="Backfill gaps"
+          value={
+            <span className={c.gap_count > 0 ? "text-warn" : "text-pos"}>
+              {c.gap_count}
+            </span>
+          }
+        />
+      </div>
+      {c.gap_count > 0 ? (
+        <p className="border-t border-border px-4 py-2 text-xs text-text-muted">
+          <span className="text-text-faint">Gap range: </span>
+          <span className="num">{fmtDate(c.gap_first)} → {fmtDate(c.gap_last)}</span>
+          <span className="text-text-faint"> · trading days with bars but no snapshot — the actionable backfill targets.</span>
+        </p>
+      ) : (
+        <p className="border-t border-border px-4 py-2 text-xs text-text-muted">
+          Every trading day with bars already has an immutable snapshot — no backfill gaps.
+        </p>
+      )}
+    </Card>
+  );
+}
+
+function JobForm({
+  start,
+  end,
+  kind,
+  setStart,
+  setEnd,
+  setKind,
+  onStart,
+  busy,
+  running,
+  error,
+}: {
+  start: string;
+  end: string;
+  kind: DataJobKind;
+  setStart: (v: string) => void;
+  setEnd: (v: string) => void;
+  setKind: (v: DataJobKind) => void;
+  onStart: (e: React.FormEvent) => void;
+  busy: boolean;
+  running: boolean;
+  error: string | null;
+}) {
+  const disabled = busy || running || !start || !end;
+  return (
+    <Card className="p-0">
+      <PanelTitle hint="Pick a date or range and a job kind. These date inputs are job parameters — they do NOT change the global as-of viewing date.">
+        Start a fetch / backfill job
+      </PanelTitle>
+      <form onSubmit={onStart} className="space-y-4 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1 text-xs text-text-muted">
+            Start date
+            <input
+              type="date"
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+              aria-label="Job start date"
+              className={cn(FIELD, "num w-40")}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-text-muted">
+            End date
+            <input
+              type="date"
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+              aria-label="Job end date"
+              className={cn(FIELD, "num w-40")}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-text-muted">
+            Job kind
+            <Select
+              aria-label="Job kind"
+              className="w-40"
+              value={kind}
+              onChange={(e) => setKind(e.target.value as DataJobKind)}
+            >
+              <option value="backfill">Backfill snapshots</option>
+              <option value="fetch">Fetch EOD prices</option>
+              <option value="both">Fetch + backfill</option>
+            </Select>
+          </label>
+          <button
+            type="submit"
+            disabled={disabled}
+            className={cn(
+              "inline-flex h-9 items-center gap-2 rounded-md bg-accent px-4 text-sm font-semibold text-bg",
+              "transition hover:brightness-110 active:brightness-95",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+            )}
+          >
+            {busy || running ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <Play className="h-4 w-4" aria-hidden />
+            )}
+            {running ? "Job running…" : "Start"}
+          </button>
+        </div>
+        <p className="text-xs text-text-faint">
+          Backfill creates immutable snapshots (and their forward returns) for trading days that have
+          bars but no snapshot — offline and deterministic. Fetch pulls real EOD prices via the
+          config-selected live provider; a provider failure is surfaced explicitly and fabricates nothing.
+        </p>
+        {error ? (
+          <p role="alert" className="flex items-center gap-2 text-sm text-neg">
+            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+            {error}
+          </p>
+        ) : null}
+      </form>
+    </Card>
+  );
+}
+
+function ProgressBar({ done, total }: { done: number; total: number }) {
+  const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+  return (
+    <div className="h-2 w-full overflow-hidden rounded bg-surface-2" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+      <div className="h-2 rounded bg-accent transition-all" style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
+
+function JobProgressPanel({ job }: { job: DataJob | null }) {
+  if (!job) {
+    return (
+      <Card className="p-0">
+        <PanelTitle>Job progress</PanelTitle>
+        <p className="px-4 py-6 text-sm text-text-muted">
+          No job has been started this session. Start a fetch or backfill job to watch its live progress
+          and final summary here.
+        </p>
+      </Card>
+    );
+  }
+
+  const showFetch = job.kind === "fetch" || job.kind === "both";
+  const showBackfill = job.kind === "backfill" || job.kind === "both";
+  const failed = job.status === "failed" || job.status === "partial";
+
+  return (
+    <Card className="p-0">
+      <PanelTitle hint={`${job.kind} job · ${job.start} → ${job.end}`}>Job progress</PanelTitle>
+      <div className="space-y-4 p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <Badge variant={statusVariant(job.status)} className="num gap-1.5">
+            {job.status === "running" ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
+            {job.status}
+          </Badge>
+          <span className="num text-xs text-text-muted">{job.message}</span>
+        </div>
+
+        {showFetch ? (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-xs text-text-muted">
+              <span>Symbols fetched</span>
+              <span className="num">
+                {job.symbols_ok + job.symbols_failed}/{job.symbols_total}{" "}
+                <span className="text-pos">({job.symbols_ok} ok</span>
+                <span className="text-neg">, {job.symbols_failed} failed)</span>
+              </span>
+            </div>
+            <ProgressBar done={job.symbols_ok + job.symbols_failed} total={job.symbols_total} />
+            <p className="num text-xs text-text-faint">{job.bars_fetched} new price bars</p>
+          </div>
+        ) : null}
+
+        {showBackfill ? (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-xs text-text-muted">
+              <span>Snapshots backfilled</span>
+              <span className="num">
+                {job.dates_done}/{job.dates_total} dates
+              </span>
+            </div>
+            <ProgressBar done={job.dates_done} total={job.dates_total} />
+            <p className="num text-xs text-text-faint">
+              {job.snapshots_created} snapshots · {job.forward_returns_inserted} forward returns inserted
+            </p>
+          </div>
+        ) : null}
+
+        {job.errors.length > 0 ? (
+          <div className={cn("rounded-md border p-3 text-xs", failed ? "border-neg" : "border-warn")}>
+            <p className={cn("mb-1 flex items-center gap-1.5 font-medium", failed ? "text-neg" : "text-warn")}>
+              <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+              {job.errors.length} error{job.errors.length === 1 ? "" : "s"} (no data fabricated)
+            </p>
+            <ul className="space-y-0.5 text-text-muted">
+              {job.errors.slice(0, 5).map((err, i) => (
+                <li key={i} className="num truncate" title={err}>
+                  {err}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    </Card>
+  );
+}
+
+function RunHistoryPanel({ runs }: { runs: DataRun[] }) {
+  if (runs.length === 0) {
+    return (
+      <EmptyState
+        icon={Database}
+        title="No fetch / backfill runs yet"
+        description="Start a job above. Each fetch or backfill run is recorded here with its date range, kind, status, and symbol/snapshot counts."
+      />
+    );
+  }
+  return (
+    <Card className="overflow-x-auto p-0">
+      <PanelTitle>Run history</PanelTitle>
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+            <th className="px-3 py-2 font-medium">Started</th>
+            <th className="px-3 py-2 font-medium">Kind</th>
+            <th className="px-3 py-2 font-medium">Range</th>
+            <th className="px-3 py-2 font-medium">Status</th>
+            <th className="px-3 py-2 text-right font-medium">Symbols ok/failed</th>
+            <th className="px-3 py-2 text-right font-medium">Snapshots</th>
+            <th className="px-3 py-2 font-medium">Summary</th>
+          </tr>
+        </thead>
+        <tbody>
+          {runs.map((run) => (
+            <tr key={run.id} className="border-b border-border align-top last:border-b-0 hover:bg-surface-2">
+              <td className="num px-3 py-2 text-xs text-text-muted">
+                {run.started_at ? run.started_at.slice(0, 19).replace("T", " ") : "—"}
+              </td>
+              <td className="px-3 py-2">
+                <Badge variant="default">{run.kind ?? "seed load"}</Badge>
+              </td>
+              <td className="num px-3 py-2 text-xs text-text-muted">
+                {run.start && run.end ? `${run.start} → ${run.end}` : "—"}
+              </td>
+              <td className="px-3 py-2">
+                <Badge variant={statusVariant(run.status)} className="num">
+                  {run.status}
+                </Badge>
+              </td>
+              <td className="num px-3 py-2 text-right">
+                <span className="text-pos">{run.symbols_ok}</span>
+                <span className="text-text-faint"> / </span>
+                <span className={run.symbols_failed > 0 ? "text-neg" : "text-text-muted"}>{run.symbols_failed}</span>
+              </td>
+              <td className="num px-3 py-2 text-right text-text-muted">
+                {run.snapshots_created ?? "—"}
+              </td>
+              <td className="max-w-xs px-3 py-2 text-xs text-text-muted">
+                <span className="line-clamp-2" title={run.message ?? ""}>
+                  {run.message ?? "—"}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
+function DataSkeleton() {
+  return (
+    <div className="space-y-4">
+      <Card className="space-y-2 p-4">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <div key={i} className="h-8 w-full animate-pulse rounded bg-surface-2" />
+        ))}
+      </Card>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {Array.from({ length: 2 }).map((_, i) => (
+          <Card key={i} className="space-y-2 p-4">
+            {Array.from({ length: 4 }).map((__, j) => (
+              <div key={j} className="h-7 w-full animate-pulse rounded bg-surface-2" />
+            ))}
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}

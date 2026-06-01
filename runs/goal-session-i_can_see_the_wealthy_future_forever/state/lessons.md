@@ -37,3 +37,15 @@ filter→badge→detail→glossary) are actually exercised.
 **Applies to:** any iter touching `app/engine/forward_testing.py` attribution/scorecard or the
 `/backtest` vs `/system-health` mean displays; and any closure/re-verify iter intending to convert a
 `partial` journey to `passing`.
+
+## iter-3 — 2026-06-01T13:00:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The config-selected live provider (`stooq`) is effectively unusable for live fetch in this environment — Stooq now gates its free daily-CSV endpoint behind an API key and returns an HTML "apikey required" page instead of CSV. `StooqProvider` correctly treats the non-CSV body as `ProviderUnavailableError` (fabricates nothing), so J-17's **live-fetch** half can only ever be proven by the forced-failure/no-fabrication path offline; the offline **backfill** path is what makes J-17 testable (and grows System Health `n` deterministically from committed seed bars). Any future iteration that needs *real* live data must first swap in a working free EOD provider behind the same `PriceProvider` interface (env-only key) — do not assume `stooq` live fetch works.
+**Applies to:** any iter touching `apps/backend/app/data_providers/` or relying on the Data Manager live-fetch path / a "going-forward refresh" beyond the seed's last date (2026-05-28).
+
+## iter-3 — 2026-06-01T13:00:00Z (process)
+
+**Verdict:** CONTINUE
+**Lesson:** Full-depth goal iters in this session keep finishing WITHOUT a `status.json` or an `auditor` handoff (recurred in iter-2 and iter-3); QA reports may even cite a `status.json` that is not on disk. Do not block on or trust those artifacts — verify the critical anti-goal seams yourself in source. Also de-dup QA evidence: iter-3 shipped two byte-identical screenshots (`TC-16-2`==`TC-16-3`), so a "final summary" claim rested on a copy of the "running" shot until cross-checked against the distinct browser-QA shots + API ground truth.
+**Applies to:** any goal-evaluator run on a full-depth iter in this session (check `iter-<N>/` for status.json/audit before relying on them; md5 suspiciously equal-sized evidence).

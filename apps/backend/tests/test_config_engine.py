@@ -17,6 +17,12 @@ from app.config import ConfigError, load_config
 VALID = {
     "provider": "seed",
     "database": {"url": "sqlite:///:memory:"},
+    "data_manager": {
+        "live_provider": "stooq",
+        "max_range_days": 370,
+        "gap_preview": 60,
+        "run_history_limit": 50,
+    },
     "universe": {
         "symbols": ["AAA", "BBB"],
         "filters": {"min_market_cap": 1, "min_dollar_vol": 1, "min_price": 1},

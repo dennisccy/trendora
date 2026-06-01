@@ -579,3 +579,101 @@ export interface MethodologyCatalog {
 export async function fetchMethodology(signal?: AbortSignal): Promise<MethodologyCatalog> {
   return getJSON<MethodologyCatalog>("/api/methodology", signal);
 }
+
+// --- data manager (iter-3, J-17) -----------------------------------------------------------
+/** Current dataset coverage — descriptive metadata only (the frontend re-formats it; it computes no
+ *  coverage figure). `gaps_preview` is a bounded list of the backfill-able trading days that have bars
+ *  but no snapshot; `gap_count` is the true total. */
+export interface DataCoverage {
+  price_start: string | null;
+  price_end: string | null;
+  symbol_count: number;
+  snapshot_count: number;
+  snapshot_dates: string[]; // newest first
+  trading_day_count: number;
+  gap_count: number;
+  gap_first: string | null;
+  gap_last: string | null;
+  gaps_preview: string[]; // ascending; bounded by config.data_manager.gap_preview
+}
+
+/** One row of the fetch/backfill run history (from the append-only DataProviderRun log). A Data Manager
+ *  job carries `kind`/`start`/`end`/`snapshots_created`/…; a plain seed-load row leaves them null. */
+export interface DataRun {
+  id: number;
+  provider: string;
+  kind: string | null; // fetch | backfill | both | null (seed load)
+  start: string | null;
+  end: string | null;
+  status: string; // ok | partial | failed
+  symbols_ok: number;
+  symbols_failed: number;
+  snapshots_created: number | null;
+  dates_done: number | null;
+  dates_total: number | null;
+  bars_fetched: number | null;
+  started_at: string | null;
+  finished_at: string | null;
+  message: string | null;
+}
+
+export interface DataOverviewResponse {
+  coverage: DataCoverage;
+  runs: DataRun[];
+}
+
+export type DataJobKind = "fetch" | "backfill" | "both";
+
+/** Live progress for one fetch/backfill job (polled from the in-memory job registry). `status` is
+ *  running | ok | partial | failed; counters are the live progress; `message` is a server-built summary
+ *  (rendered verbatim); `errors` carries explicit per-symbol failure messages (never fabricated). */
+export interface DataJob {
+  job_id: string;
+  kind: string;
+  start: string;
+  end: string;
+  status: string;
+  symbols_total: number;
+  symbols_ok: number;
+  symbols_failed: number;
+  bars_fetched: number;
+  dates_total: number;
+  dates_done: number;
+  snapshots_created: number;
+  forward_returns_inserted: number;
+  message: string;
+  errors: string[];
+  started_at: string;
+  finished_at: string | null;
+}
+
+export interface StartJobResponse {
+  job_id: string;
+  kind: string;
+  start: string;
+  end: string;
+  status: string;
+}
+
+/** Canonical Data Manager coverage + run-history source: GET /api/data. Throws on non-200 so the page
+ *  renders an explicit "Backend unavailable" state — never fabricated coverage. */
+export async function fetchDataCoverage(signal?: AbortSignal): Promise<DataOverviewResponse> {
+  return getJSON<DataOverviewResponse>("/api/data", signal);
+}
+
+/** POST /api/data/jobs — start an async fetch/backfill job over a date range (the date inputs are JOB
+ *  PARAMETERS, NOT a viewing as-of control). Returns immediately with a `job_id`; throws with the
+ *  backend's honest `detail` on a non-2xx (400 invalid range / 422 malformed date / 503 no data). */
+export async function startDataJob(
+  kind: DataJobKind,
+  start: string,
+  end: string,
+): Promise<StartJobResponse> {
+  return sendJSON<StartJobResponse>("POST", "/api/data/jobs", { kind, start, end });
+}
+
+/** GET /api/data/jobs/{job_id} — poll a job's live status/progress, ending in its final summary.
+ *  Throws on non-200 (404 unknown job) so the UI surfaces the failure rather than fabricating one. */
+export async function fetchDataJob(jobId: string, signal?: AbortSignal): Promise<DataJob> {
+  return getJSON<DataJob>(`/api/data/jobs/${encodeURIComponent(jobId)}`, signal);
+}

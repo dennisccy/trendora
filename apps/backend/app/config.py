@@ -526,6 +526,34 @@ class DatabaseCfg(BaseModel):
     url: str = Field(min_length=1)
 
 
+class DataManagerCfg(BaseModel):
+    """Data Manager job limits / display caps (iter-3 CONSUMED, J-17). EVERY tunable the on-demand
+    fetch/backfill orchestration reads lives here (anti-goal: No magic numbers — no job/range/preview
+    literal in `app.engine.data_manager` or `app.api.data`). `live_provider` is the config-selected LIVE
+    provider the FETCH path resolves (real EOD only) — distinct from the top-level `provider`, which
+    stays `seed` for the deterministic boot. `max_range_days` bounds a single job's inclusive calendar
+    span; `gap_preview` / `run_history_limit` are payload display caps. Validated like the other typed
+    sections: every limit positive — an invalid block raises `ConfigError`, never a silent default."""
+
+    model_config = ConfigDict(extra="allow")
+    live_provider: Literal["seed", "stooq"]
+    max_range_days: int
+    gap_preview: int
+    run_history_limit: int
+
+    @model_validator(mode="after")
+    def _validate(self) -> "DataManagerCfg":
+        limits = {
+            "max_range_days": self.max_range_days,
+            "gap_preview": self.gap_preview,
+            "run_history_limit": self.run_history_limit,
+        }
+        nonpositive = sorted(k for k, v in limits.items() if v <= 0)
+        if nonpositive:
+            raise ValueError(f"data_manager limits must be positive: {nonpositive}")
+        return self
+
+
 class Config(BaseModel):
     """Validated view of config.yaml. Only the iter-1-consumed sections are typed/validated;
     scaffolded sections ride along via extra="allow" so they can be tuned without code edits."""
@@ -534,6 +562,7 @@ class Config(BaseModel):
 
     provider: Literal["seed", "stooq"]
     database: DatabaseCfg
+    data_manager: DataManagerCfg
     universe: UniverseCfg
     etfs: ETFsCfg
     themes: dict[str, list[str]] = Field(min_length=1)

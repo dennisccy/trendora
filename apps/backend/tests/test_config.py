@@ -11,6 +11,13 @@ from app.config import ConfigError, load_config
 MINIMAL_VALID = {
     "provider": "seed",
     "database": {"url": "sqlite:///:memory:"},
+    # iter-3 made `data_manager` required (the Data Manager job limits come from config, never code).
+    "data_manager": {
+        "live_provider": "stooq",
+        "max_range_days": 370,
+        "gap_preview": 60,
+        "run_history_limit": 50,
+    },
     "universe": {
         "symbols": ["AAA", "BBB"],
         "filters": {"min_market_cap": 1, "min_dollar_vol": 1, "min_price": 1},
@@ -224,5 +231,33 @@ def test_methodology_threshold_requires_ref_xor_text(tmp_path):
     """Each threshold row carries EXACTLY one of `ref`/`text` — both (or neither) is rejected."""
     data = copy.deepcopy(MINIMAL_VALID)
     data["methodology"]["entries"][0]["thresholds"][0]["text"] = "oops both"
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+# --- iter-3: data_manager section (J-17) ----------------------------------------------------
+
+def test_data_manager_minimal_valid_loads(tmp_path):
+    """MINIMAL_VALID (incl. the now-required data_manager section) still loads, and the real config
+    exposes the typed limits (the established pattern for every newly-required section)."""
+    cfg = load_config(_write(tmp_path, MINIMAL_VALID))
+    assert cfg.data_manager.live_provider == "stooq"
+    assert cfg.data_manager.max_range_days == 370
+    real = load_config()
+    assert real.data_manager.max_range_days > 0 and real.data_manager.gap_preview > 0
+
+
+def test_data_manager_nonpositive_limit_raises(tmp_path):
+    """A non-positive job limit fails the boot loudly — never a silent default (anti-goal: explicit)."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["data_manager"]["max_range_days"] = 0
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_data_manager_unknown_live_provider_raises(tmp_path):
+    """`live_provider` is constrained to the known providers (seed | stooq) — a typo fails loudly."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["data_manager"]["live_provider"] = "bogus"
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))

@@ -57,29 +57,29 @@
     "J-07": {
       "id": "J-07",
       "name": "Risk-Off regime suppresses Actionable",
-      "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-07-J08-scanner-runs.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/TC-18-scanner-runs-new-immutable.png"
     },
     "J-08": {
       "id": "J-08",
       "name": "Immutable scanner-run history",
-      "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-07-J08-scanner-runs.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/TC-18-scanner-runs-new-immutable.png"
     },
     "J-09": {
       "id": "J-09",
       "name": "System Health forward-tested evidence",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-2-evidence/UT-01-02-03-system-health-attribution.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/TC-16-5-system-health-n-grew.png"
     },
     "J-10": {
       "id": "J-10",
@@ -112,19 +112,19 @@
       "id": "J-13",
       "name": "Browse the dashboard as of a past date (global as-of switcher)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-2-evidence/UT-11-12-backtest-inapp-nav-asof-preserved.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/UT-08-dashboard-backfilled-date.png"
     },
     "J-14": {
       "id": "J-14",
       "name": "Backtest a past date and read its forward-test scorecard",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-2-evidence/UT-05-06-backtest-2024-08-28-1d.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/UT-08-dashboard-backfilled-date.png"
     },
     "J-15": {
       "id": "J-15",
@@ -147,20 +147,20 @@
     "J-17": {
       "id": "J-17",
       "name": "Grow the dataset by date / date range (Data Manager)",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-17-data-404.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/UT-07-UT-06-after-backfill.png"
     },
     "J-18": {
       "id": "J-18",
       "name": "One date control (no duplicate)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-2-evidence/UT-11-12-backtest-inapp-nav-asof-preserved.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/UT-11-form-date-changed-asof-unchanged.png"
     },
     "J-19": {
       "id": "J-19",
@@ -180,8 +180,8 @@
       "evidence": "PRE-EXISTING (not introduced this iter — baseline is a zero-diff no-op). apps/frontend/app/backtest/page.tsx:53-58 kept its OWN selected/dates date state independent of the global as-of provider; lines 112-118 + 175-208 rendered a local BacktestDatePicker <Select aria-label=\"Backtest as-of date\">. Root cause of J-18 failing.",
       "resolved": true,
       "resolved_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
-      "resolution_evidence": "iter-1 deleted BacktestDatePicker + its date state; backtest/page.tsx now reads useAsOf only. Re-confirmed STILL HOLDING in iter-2: the new J-19 horizon control is a view-only selector (0 refetches, no date state); browser QA UT-07/UT-11 show exactly one date <select> and in-app-nav preserves the as-of. COHERENCE-PASS invariant #5."
+      "resolution_evidence": "iter-1 deleted BacktestDatePicker + its date state; backtest/page.tsx now reads useAsOf only. Re-confirmed STILL HOLDING in iter-3: the new /data page imports useAsOf for refresh() only (page.tsx:54), never setAsOf; its date inputs are local useState job parameters; refresh() re-fetches /api/runs and never mutates asOf (asof-provider.tsx:47-66). Browser QA UT-11 shows changing a /data form date leaves the global as-of unchanged. COHERENCE-PASS invariant #5."
     }
   ],
-  "updated_at": "2026-06-01T10:30:00Z"
+  "updated_at": "2026-06-01T13:00:00Z"
 }

@@ -9,9 +9,24 @@
 # be tuned against the walk-forward evidence; do not treat them as final.
 
 # ----------------------------------------------------------------------------------------
-# Data provider (DEFAULT = offline committed seed; "stooq" is reserved for a future
-# config-selected live request-path provider — NOT implemented this iteration).
+# Data provider (DEFAULT = offline committed seed). The default boot/runtime path always reads
+# the committed seed; the LIVE provider ("stooq") is resolved ONLY by the on-demand Data Manager
+# fetch path (see `data_manager.live_provider` below), never by the boot lifespan — so the
+# walk-forward evidence stays reproducible.
 provider: seed            # seed | stooq
+
+# ----------------------------------------------------------------------------------------
+# iter-3 CONSUMED — Data Manager (J-17, on-demand dataset growth). Every Data Manager job
+# limit / display cap lives here (anti-goal: No magic numbers — no job/range literal in the
+# orchestration code app/engine/data_manager.py or app/api/data.py). The Data Manager
+# ORCHESTRATES the existing canonical create-once paths (scanner.run_scan +
+# forward_testing.backfill_run_forward_returns) — it computes no score/return of its own.
+data_manager:
+  live_provider: stooq      # the config-selected LIVE provider for the FETCH path (real EOD only,
+                            # never fabricated); the SEED stays the default boot/runtime provider.
+  max_range_days: 370       # max span (inclusive calendar days) a single fetch/backfill job may cover
+  gap_preview: 60           # how many backfill-gap dates the coverage payload previews (display cap)
+  run_history_limit: 50     # how many recent fetch/backfill runs GET /api/data returns (display cap)
 
 # ----------------------------------------------------------------------------------------
 # Datastore. Engine URL from config so SQLite -> Postgres is a config-only switch.

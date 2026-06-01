@@ -16,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import (
     backtest,
     dashboard,
+    data,
     health,
     methodology,
     runs,
@@ -75,3 +76,4 @@ app.include_router(system_health.router, prefix="/api")
 app.include_router(backtest.router, prefix="/api")
 app.include_router(watchlist.router, prefix="/api")
 app.include_router(methodology.router, prefix="/api")
+app.include_router(data.router, prefix="/api")

@@ -26,6 +26,10 @@ export interface AsOfContextValue {
   isHistorical: boolean;
   /** True once the run list has been fetched (or failed) — the switcher is disabled until then. */
   ready: boolean;
+  /** Re-fetch the canonical run list (`GET /api/runs`) so dates created since mount (e.g. by a Data
+   *  Manager backfill) become selectable WITHOUT a hard reload. Additive + non-disruptive: it only
+   *  refreshes the available `dates`/`latest`; it never changes the user's current `asOf` selection. */
+  refresh: () => void;
 }
 
 const AsOfContext = createContext<AsOfContextValue | null>(null);
@@ -36,24 +40,32 @@ export function AsOfProvider({ children }: { children: React.ReactNode }) {
   const [asOf, setAsOfState] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
-  useEffect(() => {
-    let active = true;
-    fetchRuns()
-      .then((res) => {
-        if (!active) return;
-        const ordered = res.runs.map((run) => run.asof_date); // already descending by as-of date
-        setDates(ordered);
-        setLatest(ordered[0] ?? null);
-        setReady(true);
-      })
-      .catch(() => {
-        // /api/runs unavailable → degrade to latest-only (the switcher disables; pages use latest)
-        if (active) setReady(true);
-      });
-    return () => {
-      active = false;
-    };
+  // Single canonical loader for the run list. The mount effect runs it (with an abort guard); the
+  // exposed `refresh()` re-runs it on demand (e.g. after a Data Manager job creates new snapshots).
+  // It only updates the AVAILABLE dates/latest — it never touches the user's `asOf` selection, so a
+  // refresh that adds OLDER dates leaves `latest` (and the current view) exactly as they were.
+  const load = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetchRuns(signal);
+      const ordered = res.runs.map((run) => run.asof_date); // already descending by as-of date
+      setDates(ordered);
+      setLatest(ordered[0] ?? null);
+      setReady(true);
+    } catch {
+      // /api/runs unavailable or aborted → degrade to latest-only (the switcher disables; pages use latest)
+      if (!signal?.aborted) setReady(true);
+    }
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
+
+  const refresh = useCallback(() => {
+    void load();
+  }, [load]);
 
   // Selecting the latest date (or null) is the "current" view — normalise it to null so the
   // historical indicator never shows for the latest date.
@@ -65,8 +77,8 @@ export function AsOfProvider({ children }: { children: React.ReactNode }) {
   const isHistorical = asOf !== null && asOf !== latest;
 
   const value = useMemo<AsOfContextValue>(
-    () => ({ asOf, setAsOf, latest, dates, isHistorical, ready }),
-    [asOf, setAsOf, latest, dates, isHistorical, ready],
+    () => ({ asOf, setAsOf, latest, dates, isHistorical, ready, refresh }),
+    [asOf, setAsOf, latest, dates, isHistorical, ready, refresh],
   );
 
   return <AsOfContext.Provider value={value}>{children}</AsOfContext.Provider>;

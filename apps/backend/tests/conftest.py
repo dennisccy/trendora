@@ -17,6 +17,14 @@ from app.db import create_db_and_tables, make_engine  # noqa: E402
 from app.seed_loader import load_seed  # noqa: E402
 
 
+def pytest_configure(config):
+    """Register the `integration` marker (real external network tests; may be skipped offline) so the
+    Data Manager live-fetch integration test is selectable and warning-free."""
+    config.addinivalue_line(
+        "markers", "integration: hits a real external system (network); may be skipped offline"
+    )
+
+
 @pytest.fixture(scope="session")
 def config():
     return load_config()
