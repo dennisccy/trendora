@@ -34,7 +34,7 @@ import random
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date as date_cls, timedelta
-from statistics import mean
+from statistics import mean, median, stdev
 from typing import Optional, Union
 
 from sqlalchemy.engine import Engine
@@ -383,6 +383,84 @@ def _control_groups(
     ]
 
 
+# --------------------------------------------------------------------------------------------------
+# Return attribution (J-19) — four READ-ONLY slices of the ALREADY-BUILT per-observation stock_obs
+# --------------------------------------------------------------------------------------------------
+def _rank_band_label(rank: Optional[int], rank_bands) -> Optional[str]:
+    """The config rank-band label a STORED rank falls in (`min <= rank <= max`, `max=None` = open top
+    band), or None when `rank is None` or it matches no band — those observations are EXCLUDED from the
+    by-rank-band slice (never bucketed into a band)."""
+    if rank is None:
+        return None
+    for band in rank_bands:
+        if rank >= band.min and (band.max is None or rank <= band.max):
+            return band.label
+    return None
+
+
+def _per_stock_attribution(stock_obs: list[dict], top_k: int) -> dict:
+    """Per-stock contributors / detractors: each ticker's mean realized return + n + STORED sector over
+    the SAME observations (no recomputed return), the highest `top_k` means as contributors and the
+    lowest `top_k` as detractors (deterministic ticker tie-break). Empty observations -> empty lists."""
+    returns_by_ticker: dict[str, list[float]] = defaultdict(list)
+    sector_by_ticker: dict[str, Optional[str]] = {}
+    for obs in stock_obs:
+        returns_by_ticker[obs["ticker"]].append(obs["return"])
+        sector_by_ticker.setdefault(obs["ticker"], obs.get("sector"))
+    rows = [
+        {"ticker": ticker, "mean_return": mean(rets), "n": len(rets), "sector": sector_by_ticker[ticker]}
+        for ticker, rets in returns_by_ticker.items()
+    ]
+    contributors = sorted(rows, key=lambda r: (-r["mean_return"], r["ticker"]))[:top_k]
+    detractors = sorted(rows, key=lambda r: (r["mean_return"], r["ticker"]))[:top_k]
+    return {"contributors": contributors, "detractors": detractors}
+
+
+def _distribution(returns: list[float]) -> dict:
+    """The distribution & hit-rate of the SAME observed returns: mean, median, `pct_positive` (the share
+    with return > 0), `dispersion` (sample stdev; None when n < 2 — no spurious zero), and n. Empty ->
+    all-None with n 0 (honest NA — never a fabricated 0%)."""
+    n = len(returns)
+    if n == 0:
+        return {"mean_return": None, "median": None, "pct_positive": None, "dispersion": None, "n": 0}
+    positive = sum(1 for r in returns if r > 0)
+    return {
+        "mean_return": mean(returns),
+        "median": median(returns),
+        "pct_positive": positive / n,
+        "dispersion": stdev(returns) if n >= 2 else None,
+        "n": n,
+    }
+
+
+def _attribution_slices(stock_obs: list[dict], cfg: Config) -> dict:
+    """The four READ-ONLY return-attribution slices (J-19), derived ENTIRELY from the ALREADY-BUILT
+    per-observation `stock_obs` (stored realized returns joined to stored `scanner_results`, read
+    verbatim) + config. It recomputes NO return and takes NO Session, so it can issue no second
+    forward_returns / price-bar query — this IS the anti-goal "Attribution is read-only": the slices
+    are pure groupings of the SAME observations the aggregate / scorecard already measured (no second
+    formula, no second data source; consistency with the aggregate mean is unit-asserted).
+
+      - per_stock     contributors (highest mean) / detractors (lowest mean), each `top_contributors_k`
+      - by_sector     mean realized return + n per STORED sector (config sector-name order; non-padded)
+      - by_rank_band  mean realized return + n per config rank band (every band padded to n=0)
+      - distribution  mean / median / % positive (hit rate) / dispersion (stdev) of the same returns
+    """
+    attribution = cfg.walk_forward.attribution
+    sector_order = list(cfg.etfs.sector.values())  # config sector NAMES (never a literal sector list)
+    band_order = [band.label for band in attribution.rank_bands]
+    banded_obs = [
+        {**obs, "rank_band": _rank_band_label(obs.get("rank"), attribution.rank_bands)}
+        for obs in stock_obs
+    ]
+    return {
+        "per_stock": _per_stock_attribution(stock_obs, attribution.top_contributors_k),
+        "by_sector": _group_means(stock_obs, "sector", "sector", sector_order, pad=False),
+        "by_rank_band": _group_means(banded_obs, "rank_band", "rank_band", band_order, pad=True),
+        "distribution": _distribution([obs["return"] for obs in stock_obs]),
+    }
+
+
 def compute_forward_aggregates(session: Session, horizon: int, config: Optional[Config] = None) -> dict:
     """The SINGLE canonical forward-return aggregation at `horizon` (Data Contract value). Joins the
     stored realized returns (`forward_returns`) to the stored canonical bucket / setup / sector / rank
@@ -479,6 +557,9 @@ def compute_forward_aggregates(session: Session, horizon: int, config: Optional[
         "by_vcp": by_vcp,
         "excess": excess,
         "control_group": _control_groups(horizon, stock_obs, ret_by_run_symbol, runs_with_fr, cfg),
+        # J-19: the four read-only attribution slices for this horizon, derived from the SAME stock_obs
+        # (no recomputed return). distribution.mean_return == overall.mean_return (asserted in tests).
+        "attribution": _attribution_slices(stock_obs, cfg),
     }
 
 
@@ -579,6 +660,9 @@ def compute_run_scorecard(session: Session, run: ScannerRun, config: Optional[Co
                 "vs_sector": _scorecard_excess(cohort_mean, cohort_n, by_key["sector_etf"]),
             },
             "control_group": cohorts,
+            # J-19: the four read-only attribution slices over THIS horizon's observed set (the full
+            # stock_obs, not just the rank<=top_n cohort) — derived from the same stored observations.
+            "attribution": _attribution_slices(stock_obs, cfg),
         })
 
     return {

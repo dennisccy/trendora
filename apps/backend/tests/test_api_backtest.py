@@ -83,6 +83,28 @@ def test_backtest_historical_full_window_is_numeric_with_n(loaded_engine):
         assert h20["excess"][key]["benchmark"]
 
 
+def test_backtest_historical_carries_per_horizon_attribution(loaded_engine):
+    """J-19 per-date at the API level: a historical date's scorecard carries an `attribution` block
+    inside each by_horizon entry — named contributors / detractors (ticker + realized return + n +
+    sector), by-sector, by-rank-band (the config bands), and a distribution panel — each derived from
+    the stored observations (no recomputed return)."""
+    cfg = load_config()
+    band_labels = [b.label for b in cfg.walk_forward.attribution.rank_bands]
+    with TestClient(main.app) as client:
+        oldest = _oldest_date(client)
+        data = client.get(f"/api/backtest?as_of={oldest}").json()
+    h20 = _by_horizon(data, 20)
+    attr = h20["attribution"]
+    assert {"per_stock", "by_sector", "by_rank_band", "distribution"} <= set(attr)
+    assert attr["distribution"]["n"] > 0
+    assert isinstance(attr["distribution"]["mean_return"], (int, float))
+    assert [r["rank_band"] for r in attr["by_rank_band"]] == band_labels
+    assert attr["per_stock"]["contributors"]
+    top = attr["per_stock"]["contributors"][0]
+    assert {"ticker", "mean_return", "n", "sector"} <= set(top)
+    assert isinstance(top["ticker"], str)
+
+
 def test_backtest_keystone_serves_persisted_date_without_recompute(loaded_engine, monkeypatch):
     """KEYSTONE (no recompute, iter-8 lesson — patch-to-raise seam, not value-equality): after a date is
     populated, patch the forward-return math AND the scoring/regime/sector/theme engines to RAISE, then

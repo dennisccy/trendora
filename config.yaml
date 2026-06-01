@@ -497,6 +497,16 @@ walk_forward:
     seed: 20240601             # deterministic RNG seed for the random same-sector cohort (reproducible)
     top_n: 20                  # top-ranked cohort = stocks ranked <= this in their run
     peers_per_sector: 5        # random same-sector peers drawn per sector per run
+  # J-19 CONSUMED — Return attribution (forward_testing._attribution_slices). The rank-band edges and
+  # the contributor/detractor list size come from here so no band edge or list size literal lives in
+  # calc code (anti-goal: No magic numbers). Bands map a STORED rank to its display band; they must be
+  # ascending and non-overlapping and only the LAST band may be open (max: null = no upper bound).
+  attribution:
+    top_contributors_k: 5      # how many per-stock contributors / detractors to list (each side)
+    rank_bands:
+      - { label: "1–10",  min: 1,  max: 10 }
+      - { label: "11–50", min: 11, max: 50 }
+      - { label: "51+",   min: 51, max: null }   # open top band (all remaining ranks)
 
 # ----------------------------------------------------------------------------------------
 # iter-11 CONSUMED — Detected price patterns. The FIRST detected pattern is VCP (Volatility

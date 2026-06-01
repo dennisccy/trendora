@@ -305,12 +305,55 @@ class ControlGroupCfg(BaseModel):
         return self
 
 
+class RankBand(BaseModel):
+    """One rank band for return attribution (J-19): a STORED rank in [`min`, `max`] maps to `label`.
+    `max: null` marks the open top band (no upper bound). Every edge comes from config — no band edge
+    literal lives in calc code (anti-goal: No magic numbers)."""
+
+    model_config = ConfigDict(extra="allow")
+    label: str
+    min: int
+    max: Optional[int] = None
+
+
+class AttributionCfg(BaseModel):
+    """Return-attribution parameters (J-19 CONSUMED by `forward_testing._attribution_slices`).
+    `rank_bands` is the ORDERED list of display bands a stored rank is mapped to (1–10 / 11–50 / 51+,
+    the last open via `max: null`); `top_contributors_k` is how many per-stock contributors / detractors
+    to list. Both come from config so no band edge or list size literal lives in calc code (anti-goal:
+    No magic numbers). Validated like `ControlGroupCfg`: each edge positive, `min <= max`, bands strictly
+    ascending and non-overlapping, only the LAST band open, and `top_contributors_k > 0`."""
+
+    model_config = ConfigDict(extra="allow")
+    rank_bands: list[RankBand] = Field(min_length=1)
+    top_contributors_k: int
+
+    @model_validator(mode="after")
+    def _validate(self) -> "AttributionCfg":
+        if self.top_contributors_k <= 0:
+            raise ValueError("walk_forward.attribution.top_contributors_k must be positive")
+        prev_max: Optional[int] = 0
+        for index, band in enumerate(self.rank_bands):
+            is_last = index == len(self.rank_bands) - 1
+            if band.min <= 0:
+                raise ValueError(f"walk_forward.attribution rank_band {band.label!r} min must be positive")
+            if band.max is None and not is_last:
+                raise ValueError("only the last walk_forward.attribution rank_band may be open (max: null)")
+            if band.max is not None and band.max < band.min:
+                raise ValueError(f"walk_forward.attribution rank_band {band.label!r} max must be >= min")
+            if prev_max is None or band.min <= prev_max:
+                raise ValueError("walk_forward.attribution rank_bands must be ascending and non-overlapping")
+            prev_max = band.max  # None after the open last band
+        return self
+
+
 class WalkForwardCfg(BaseModel):
     """Walk-forward forward-testing parameters (iter-6 CONSUMED). The forward-testing engine reads
     EVERY tunable here — replay window (`history_years`), as-of cadence (`asof_cadence`), the forward
-    `horizons` (trading days), the `min_sample` honesty threshold, the default served `horizon`, and
-    the `control_group` block — so no walk-forward literal lives in calc code (anti-goal: No magic
-    numbers). Promoted from the iter-1 scaffolded passthrough to a typed/validated section."""
+    `horizons` (trading days), the `min_sample` honesty threshold, the default served `horizon`, the
+    `control_group` block, and the `attribution` block (J-19) — so no walk-forward literal lives in calc
+    code (anti-goal: No magic numbers). Promoted from the iter-1 scaffolded passthrough to a typed
+    section."""
 
     model_config = ConfigDict(extra="allow")
     history_years: int
@@ -319,6 +362,7 @@ class WalkForwardCfg(BaseModel):
     min_sample: int
     default_horizon: int
     control_group: ControlGroupCfg
+    attribution: AttributionCfg
 
     @model_validator(mode="after")
     def _validate(self) -> "WalkForwardCfg":

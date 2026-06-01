@@ -77,6 +77,36 @@ def test_system_health_by_vcp_breakdown_present(loaded_engine):
     assert sum(c["n"] for c in by_vcp.values()) > 0                # the seed yields >=1 observation
 
 
+def test_system_health_carries_attribution(loaded_engine):
+    """J-19 at the API level: the served payload carries the four attribution slices for the horizon —
+    per-stock contributors / detractors (named tickers + realized return + n + sector), by-sector,
+    by-rank-band (the config bands), and a distribution panel (mean / median / % positive / dispersion,
+    with n). The distribution mean equals the existing `overall` mean (read-only consistency)."""
+    cfg = load_config()
+    band_labels = [b.label for b in cfg.walk_forward.attribution.rank_bands]
+    with TestClient(main.app) as client:
+        data = client.get("/api/system-health").json()
+
+    attr = data["attribution"]
+    assert {"per_stock", "by_sector", "by_rank_band", "distribution"} <= set(attr)
+
+    dist = attr["distribution"]
+    assert {"mean_return", "median", "pct_positive", "dispersion", "n"} == set(dist)
+    assert dist["mean_return"] == pytest.approx(data["overall"]["mean_return"])  # read-only consistency
+    assert dist["n"] == data["overall"]["n"]
+
+    assert attr["per_stock"]["contributors"], "expected >=1 contributor on the seed"
+    top = attr["per_stock"]["contributors"][0]
+    assert {"ticker", "mean_return", "n", "sector"} <= set(top)
+    assert isinstance(top["ticker"], str) and isinstance(top["mean_return"], (int, float))
+    assert len(attr["per_stock"]["contributors"]) <= cfg.walk_forward.attribution.top_contributors_k
+
+    assert [r["rank_band"] for r in attr["by_rank_band"]] == band_labels  # config bands, complete
+    # consistency: by-sector and by-rank-band sample sizes each sum to overall.n
+    assert sum(r["n"] for r in attr["by_sector"]) == data["overall"]["n"]
+    assert sum(r["n"] for r in attr["by_rank_band"]) == data["overall"]["n"]
+
+
 def test_system_health_both_regimes_present(loaded_engine):
     """The by-regime breakdown carries BOTH a Risk-on and a Risk-off entry (the seeded walk-forward
     spans both regimes) — neither fabricated, both derived from real snapshots."""

@@ -103,10 +103,19 @@ VALID = {
     "stock_sectors": {"AAA": "Technology", "BBB": "Technology"},
     "scanner": {"bootstrap_dates": ["2022-10-07", "2025-04-04"]},
     # iter-6 made `walk_forward` required (forward-testing params come from config, never code).
+    # J-19 made `walk_forward.attribution` required (rank-band edges + list size come from config).
     "walk_forward": {
         "history_years": 2, "asof_cadence": "quarterly", "horizons": [1, 5, 10, 20, 60],
         "min_sample": 30, "default_horizon": 20,
         "control_group": {"seed": 20240601, "top_n": 20, "peers_per_sector": 5},
+        "attribution": {
+            "top_contributors_k": 5,
+            "rank_bands": [
+                {"label": "1–10", "min": 1, "max": 10},
+                {"label": "11–50", "min": 11, "max": 50},
+                {"label": "51+", "min": 51, "max": None},
+            ],
+        },
     },
     # iter-11 made `patterns` required (the VCP detector thresholds come from config, never code).
     "patterns": {
@@ -442,5 +451,53 @@ def test_vcp_min_contractions_above_max_raises(tmp_path):
     data = copy.deepcopy(VALID)
     data["patterns"]["vcp"]["min_contractions"] = 5
     data["patterns"]["vcp"]["max_contractions"] = 4  # min must be <= max
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+# --- J-19: walk_forward.attribution typed validation (no magic numbers) --------------------
+def test_real_config_exposes_typed_attribution():
+    """The real config.yaml exposes a typed `walk_forward.attribution` block — the rank-band edges and
+    the contributor list size are present (anti-goal: No magic numbers — they live in config, not code)."""
+    attr = load_config().walk_forward.attribution
+    assert attr.top_contributors_k > 0
+    assert len(attr.rank_bands) >= 1
+    # bands are ascending, non-overlapping, only the last open
+    assert attr.rank_bands[0].min == 1
+    assert attr.rank_bands[-1].max is None
+    for lo, hi in zip(attr.rank_bands, attr.rank_bands[1:]):
+        assert lo.max is not None and hi.min > lo.max
+
+
+def test_missing_attribution_section_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    del data["walk_forward"]["attribution"]
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_attribution_nonpositive_top_contributors_k_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    data["walk_forward"]["attribution"]["top_contributors_k"] = 0  # must be positive
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_attribution_overlapping_rank_bands_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    data["walk_forward"]["attribution"]["rank_bands"] = [
+        {"label": "1–10", "min": 1, "max": 10},
+        {"label": "5–20", "min": 5, "max": 20},  # overlaps the first band
+    ]
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_attribution_open_band_not_last_raises(tmp_path):
+    data = copy.deepcopy(VALID)
+    data["walk_forward"]["attribution"]["rank_bands"] = [
+        {"label": "1+", "min": 1, "max": None},   # only the LAST band may be open
+        {"label": "11–50", "min": 11, "max": 50},
+    ]
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))

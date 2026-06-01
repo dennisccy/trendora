@@ -6,6 +6,7 @@ import { AlertTriangle, ShieldAlert } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { fmtPct, returnClass, Return, SampleSize } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
+import { ReturnAttributionSection } from "@/components/return-attribution";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { bucketVariant } from "@/components/score-badge";
@@ -203,6 +204,8 @@ function HealthDashboard({ data }: { data: SystemHealthResponse }) {
       </div>
 
       <ControlGroupPanel rows={data.control_group} min={min} horizon={data.horizon} />
+
+      <ReturnAttributionSection attribution={data.attribution} min={min} horizon={data.horizon} />
     </>
   );
 }

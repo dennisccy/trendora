@@ -247,6 +247,41 @@ def test_scorecard_keystone_recomputes_nothing(scorecard_engine, monkeypatch):
 
 
 # ==================================================================================================
+# Return attribution (J-19) — per-horizon slices ride each by_horizon entry
+# ==================================================================================================
+def test_scorecard_horizon_carries_attribution(scorecard_engine):
+    """J-19 per-date: each by_horizon entry carries the four attribution slices for THAT horizon,
+    derived from the same stored observations as the cohort (no recomputed return). At horizon 20 the
+    full observed set is AAA,BBB,CCC,DDD; BBB (+0.20) is the top contributor, DDD (-0.10) the detractor."""
+    engine, run_id, asof = scorecard_engine
+    h20 = _horizon(_scorecard(engine, run_id), 20)
+    attr = h20["attribution"]
+    assert {"per_stock", "by_sector", "by_rank_band", "distribution"} <= set(attr)
+    # distribution is over the FULL observed set at h20 (AAA,BBB,CCC,DDD) -> mean 0.05, n 4
+    assert attr["distribution"]["n"] == 4 and attr["distribution"]["mean_return"] == pytest.approx(0.05)
+    assert attr["per_stock"]["contributors"][0]["ticker"] == "BBB"
+    assert attr["per_stock"]["contributors"][0]["mean_return"] == pytest.approx(0.20)
+    assert attr["per_stock"]["detractors"][0]["ticker"] == "DDD"
+    assert sum(r["n"] for r in attr["by_sector"]) == 4  # every observation has a stored sector
+
+
+def test_scorecard_attribution_partial_and_unobserved_horizons_are_honest(scorecard_engine):
+    """Honest partial: horizon 1 has only AAA,BBB observed -> distribution over those two (n=2); the
+    unobserved horizons (5/10/60) have empty attribution (n=0, NA, no named tickers) — never fabricated.
+    by_rank_band stays padded (all bands present) even when empty."""
+    engine, run_id, asof = scorecard_engine
+    card = _scorecard(engine, run_id)
+    h1 = _horizon(card, 1)["attribution"]
+    assert h1["distribution"]["n"] == 2 and h1["distribution"]["mean_return"] == pytest.approx(0.015)
+    for h in (5, 10, 60):
+        attr = _horizon(card, h)["attribution"]
+        assert attr["distribution"]["n"] == 0 and attr["distribution"]["mean_return"] is None
+        assert attr["per_stock"]["contributors"] == [] and attr["per_stock"]["detractors"] == []
+        assert sum(r["n"] for r in attr["by_sector"]) == 0
+        assert all(r["n"] == 0 for r in attr["by_rank_band"])  # padded, complete, all NA
+
+
+# ==================================================================================================
 # backfill_run_forward_returns — create-once, INSERT-only, no-lookahead (real config symbols, tiny seed)
 # ==================================================================================================
 @pytest.fixture()

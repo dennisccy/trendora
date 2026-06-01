@@ -375,6 +375,54 @@ export interface ControlGroupRow extends ForwardGroupRow {
   label: string; // server-built human label (rendered verbatim)
 }
 
+// --- return attribution (J-19) -------------------------------------------------------------
+/** One per-stock attribution row: a named ticker's mean realized forward return over the same stored
+ *  observations, its sample size n, and its stored sector. Re-formatted only — never recomputed. */
+export interface PerStockRow {
+  ticker: string;
+  mean_return: number | null;
+  n: number;
+  sector: string | null;
+}
+
+/** Per-stock contributors (highest mean) and detractors (lowest mean), each up to top_contributors_k. */
+export interface PerStockAttribution {
+  contributors: PerStockRow[];
+  detractors: PerStockRow[];
+}
+
+/** By-sector attribution row (reuses the grouped mean+n shape with the stored sector name). */
+export interface BySectorRow extends ForwardGroupRow {
+  sector: string; // stored sector name (config sector vocabulary)
+}
+
+/** By-rank-band attribution row: the config band label (1–10 / 11–50 / 51+) with its mean+n. */
+export interface ByRankBandRow extends ForwardGroupRow {
+  rank_band: string; // config band label, rendered verbatim
+}
+
+/** Distribution & hit-rate of the SAME observed forward returns: mean, median, % positive (hit rate,
+ *  a 0..1 fraction), dispersion (sample stdev; null when n < 2), with n. Re-formatted from stored
+ *  returns — never recomputed client-side. */
+export interface Distribution {
+  mean_return: number | null;
+  median: number | null;
+  pct_positive: number | null;
+  dispersion: number | null;
+  n: number;
+}
+
+/** The four READ-ONLY return-attribution slices (J-19): which tickers drove/dragged the cohort, which
+ *  sectors and rank bands carried the return, and the return's distribution shape. Derived from the
+ *  stored per-observation forward returns by the SAME engine that builds the aggregate/scorecard — the
+ *  page re-formats only and recomputes no return. */
+export interface ReturnAttribution {
+  per_stock: PerStockAttribution;
+  by_sector: BySectorRow[];
+  by_rank_band: ByRankBandRow[];
+  distribution: Distribution;
+}
+
 /** GET /api/system-health payload — the SINGLE canonical forward-return aggregation. Every figure
  *  carries its sample size `n`; the page re-formats only and recomputes no return/excess/bucket. */
 export interface SystemHealthResponse {
@@ -392,6 +440,7 @@ export interface SystemHealthResponse {
   by_vcp: ForwardVcpRow[]; // VCP vs non-VCP cohorts (iter-11, J-16) — each with n; NA below min_sample
   excess: { vs_spy: ExcessVsBenchmark; vs_qqq: ExcessVsBenchmark }; // J-09
   control_group: ControlGroupRow[]; // J-10
+  attribution: ReturnAttribution; // J-19 — per-stock / by-sector / by-rank-band / distribution
 }
 
 /** Canonical forward-tested evidence source: GET /api/system-health?horizon=. Throws on non-200 so
@@ -422,6 +471,7 @@ export interface BacktestScorecardHorizonRow {
   cohort: ForwardGroupRow; // top-ranked cohort (rank ≤ control_group.top_n)
   excess: { vs_spy: ScorecardExcess; vs_qqq: ScorecardExcess; vs_sector: ScorecardExcess };
   control_group: ControlGroupRow[]; // top_ranked / random_same_sector / spy / qqq / sector_etf
+  attribution: ReturnAttribution; // J-19 — over THIS horizon's observed set (not just the cohort)
 }
 
 export interface BacktestScorecard {

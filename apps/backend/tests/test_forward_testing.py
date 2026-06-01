@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, timezone
+from statistics import stdev
 
 import pytest
 from sqlalchemy import func
@@ -510,6 +511,157 @@ def test_backfill_latest_run_has_zero_post_bars(backfilled_engine):
             select(func.count()).select_from(ForwardReturn).where(ForwardReturn.run_id == latest_run.id)
         )
     assert n_fr_latest == 0
+
+
+# ==================================================================================================
+# Return attribution (J-19) — four READ-ONLY slices derived from the SAME stored stock_obs
+# ==================================================================================================
+def test_attribution_consistency_with_aggregate(aggregates_engine):
+    """Read-only consistency (the critical anti-goal): the attribution distribution mean EQUALS the
+    existing `overall.mean_return`, and the by-sector / by-rank-band sample sizes each sum to
+    `overall.n` — the slices are the SAME observations grouped, never a recomputed return."""
+    engine, H = aggregates_engine
+    with Session(engine) as session:
+        agg = compute_forward_aggregates(session, H, load_config())
+    attr, overall = agg["attribution"], agg["overall"]
+    assert attr["distribution"]["mean_return"] == pytest.approx(overall["mean_return"])
+    assert attr["distribution"]["n"] == overall["n"]
+    assert sum(r["n"] for r in attr["by_sector"]) == overall["n"]
+    assert sum(r["n"] for r in attr["by_rank_band"]) == overall["n"]
+
+
+def test_attribution_distribution_exact(aggregates_engine):
+    """The distribution panel is exact on the hand fixture: mean, median, hit-rate (% positive), and
+    dispersion (sample stdev), with n — over the SAME six observed returns as the aggregate."""
+    engine, H = aggregates_engine
+    observed = [0.10, 0.20, 0.00, -0.10, 0.30, 0.10]  # the six realized stock returns at H
+    with Session(engine) as session:
+        dist = compute_forward_aggregates(session, H, load_config())["attribution"]["distribution"]
+    assert dist["n"] == 6
+    assert dist["mean_return"] == pytest.approx(0.10)
+    assert dist["median"] == pytest.approx(0.10)
+    assert dist["pct_positive"] == pytest.approx(4 / 6)  # 0.10,0.20,0.30,0.10 > 0 (0.00 / -0.10 are not)
+    assert dist["dispersion"] == pytest.approx(stdev(observed))
+
+
+def test_attribution_per_stock_named_contributors_and_detractors(aggregates_engine):
+    """Per-stock: each NAMED ticker's mean realized return + n + stored sector over the same
+    observations; contributors are the highest means, detractors the lowest. AAA aggregates its two
+    runs to +0.20 (n=2); DDD is the sole detractor at -0.10."""
+    engine, H = aggregates_engine
+    with Session(engine) as session:
+        per_stock = compute_forward_aggregates(session, H, load_config())["attribution"]["per_stock"]
+    contributors, detractors = per_stock["contributors"], per_stock["detractors"]
+
+    aaa = next(r for r in contributors if r["ticker"] == "AAA")
+    assert aaa["mean_return"] == pytest.approx(0.20) and aaa["n"] == 2 and aaa["sector"] == "Technology"
+    assert contributors[0]["ticker"] == "AAA" and contributors[0]["mean_return"] == pytest.approx(0.20)
+    assert detractors[0]["ticker"] == "DDD" and detractors[0]["mean_return"] == pytest.approx(-0.10)
+    # contributors are ordered high->low, detractors low->high (robust to tie order)
+    assert [r["mean_return"] for r in contributors] == sorted(
+        (r["mean_return"] for r in contributors), reverse=True
+    )
+    assert [r["mean_return"] for r in detractors] == sorted(r["mean_return"] for r in detractors)
+
+
+def test_attribution_top_contributors_k_controls_list_length(aggregates_engine):
+    """No magic numbers: the list length is `config.walk_forward.attribution.top_contributors_k`, not a
+    code literal — shrinking it shrinks the contributor / detractor lists."""
+    engine, H = aggregates_engine
+    cfg = load_config()
+    attr_cfg = cfg.walk_forward.attribution.model_copy(update={"top_contributors_k": 2})
+    cfg2 = cfg.model_copy(
+        update={"walk_forward": cfg.walk_forward.model_copy(update={"attribution": attr_cfg})}
+    )
+    with Session(engine) as session:
+        per_stock = compute_forward_aggregates(session, H, cfg2)["attribution"]["per_stock"]
+    assert len(per_stock["contributors"]) == 2 and len(per_stock["detractors"]) == 2
+
+
+def test_attribution_rank_bands_come_from_config(aggregates_engine):
+    """No magic numbers: the rank-band labels / edges come from config — redefining the bands changes
+    both the emitted labels and which observations fall in each (no band edge literal in calc code)."""
+    from app.config import RankBand
+
+    engine, H = aggregates_engine
+    cfg = load_config()
+    bands = [RankBand(label="1–2", min=1, max=2), RankBand(label="3+", min=3, max=None)]
+    attr_cfg = cfg.walk_forward.attribution.model_copy(update={"rank_bands": bands})
+    cfg2 = cfg.model_copy(
+        update={"walk_forward": cfg.walk_forward.model_copy(update={"attribution": attr_cfg})}
+    )
+    with Session(engine) as session:
+        by_rank_band = compute_forward_aggregates(session, H, cfg2)["attribution"]["by_rank_band"]
+    assert [r["rank_band"] for r in by_rank_band] == ["1–2", "3+"]
+    band = {r["rank_band"]: r for r in by_rank_band}
+    # ranks 1,2 -> "1–2": AAA(run1)=0.10, BBB=0.20, AAA(run2)=0.30, EEE=0.10
+    assert band["1–2"]["n"] == 4
+    assert band["1–2"]["mean_return"] == pytest.approx((0.10 + 0.20 + 0.30 + 0.10) / 4)
+    # ranks 3,4 -> "3+": CCC=0.00, DDD=-0.10
+    assert band["3+"]["n"] == 2 and band["3+"]["mean_return"] == pytest.approx(-0.05)
+
+
+def test_attribution_rank_band_with_no_members_is_padded(aggregates_engine):
+    """A rank band with no members is still emitted (padded n=0 / mean None) so the table is complete.
+    On the default config bands every fixture rank (1..4) falls in the first band; the higher bands pad."""
+    engine, H = aggregates_engine
+    cfg = load_config()
+    labels = [b.label for b in cfg.walk_forward.attribution.rank_bands]
+    with Session(engine) as session:
+        by_rank_band = compute_forward_aggregates(session, H, cfg)["attribution"]["by_rank_band"]
+    assert [r["rank_band"] for r in by_rank_band] == labels  # config order, complete
+    band = {r["rank_band"]: r for r in by_rank_band}
+    assert band[labels[0]]["n"] == 6 and band[labels[0]]["mean_return"] == pytest.approx(0.10)
+    for lbl in labels[1:]:
+        assert band[lbl]["n"] == 0 and band[lbl]["mean_return"] is None
+
+
+def test_attribution_empty_observations_are_all_na():
+    """Honesty: empty observations -> every slice NA with n=0 (no fabricated 0%). by_rank_band stays
+    padded (every config band present at n=0); by_sector (non-padded) is empty."""
+    from app.engine.forward_testing import _attribution_slices
+
+    cfg = load_config()
+    attr = _attribution_slices([], cfg)
+    assert attr["per_stock"]["contributors"] == [] and attr["per_stock"]["detractors"] == []
+    assert attr["distribution"] == {
+        "mean_return": None, "median": None, "pct_positive": None, "dispersion": None, "n": 0
+    }
+    assert attr["by_sector"] == []  # pad=False -> no rows when there is nothing to group
+    assert [r["rank_band"] for r in attr["by_rank_band"]] == [
+        b.label for b in cfg.walk_forward.attribution.rank_bands
+    ]
+    assert all(r["n"] == 0 and r["mean_return"] is None for r in attr["by_rank_band"])
+
+
+def test_attribution_single_observation_dispersion_is_null():
+    """A single-observation slice has no defined standard deviation -> dispersion null (no spurious 0
+    stdev); mean / median equal the single value and the hit-rate is 1.0."""
+    from app.engine.forward_testing import _attribution_slices
+
+    dist = _attribution_slices(
+        [{"ticker": "AAA", "return": 0.05, "sector": "Technology", "rank": 1}], load_config()
+    )["distribution"]
+    assert dist["n"] == 1
+    assert dist["mean_return"] == pytest.approx(0.05) and dist["median"] == pytest.approx(0.05)
+    assert dist["pct_positive"] == pytest.approx(1.0)
+    assert dist["dispersion"] is None
+
+
+def test_attribution_is_pure_over_passed_observations_no_new_query():
+    """Read-only / no new query (the critical anti-goal, structural proof): `_attribution_slices` is a
+    pure function of the ALREADY-BUILT `stock_obs` + cfg — it takes NO Session, so it can issue no
+    forward_returns / price-bar query. The same observation list that feeds the aggregate feeds the
+    slices: no second formula, no second data source."""
+    import inspect
+
+    from app.engine.forward_testing import _attribution_slices
+
+    assert set(inspect.signature(_attribution_slices).parameters) == {"stock_obs", "cfg"}
+    attr = _attribution_slices(
+        [{"ticker": "AAA", "return": 0.10, "sector": "Technology", "rank": 1}], load_config()
+    )
+    assert attr["distribution"]["n"] == 1  # produced from a hand list with no DB access at all
 
 
 def test_stored_scores_identical_with_and_without_forward_returns(backfilled_engine):

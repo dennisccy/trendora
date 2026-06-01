@@ -111,6 +111,14 @@ _SYNTH_CFG = {
         "history_years": 2, "asof_cadence": "quarterly", "horizons": [1, 5, 10, 20, 60],
         "min_sample": 30, "default_horizon": 20,
         "control_group": {"seed": 20240601, "top_n": 20, "peers_per_sector": 5},
+        "attribution": {  # J-19: attribution is a required walk_forward sub-section
+            "top_contributors_k": 5,
+            "rank_bands": [
+                {"label": "1–10", "min": 1, "max": 10},
+                {"label": "11–50", "min": 11, "max": 50},
+                {"label": "51+", "min": 51, "max": None},
+            ],
+        },
     },
     "patterns": {  # iter-11: patterns is a required config section (small-scale to match this synth cfg)
         "vcp": {

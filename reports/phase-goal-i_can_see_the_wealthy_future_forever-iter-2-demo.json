@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever-iter-2",
+  "base_url": "http://localhost:3835",
+  "iteration": 2,
+  "default_timeout_ms": 10000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open System Health",
+      "narration": "We start on the System Health page, which gathers the forward-tested evidence behind Trendora's rankings.",
+      "point_out": "The page already shows how each ranked cohort actually performed; the brand-new Return attribution section further down will explain why.",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/system-health" },
+      "expect": { "text": "Mean stock fwd return" }
+    },
+    {
+      "n": 2,
+      "title": "Which tickers drove the return",
+      "narration": "Scrolling down reveals the new Return attribution section. Its first panel names the individual stocks that most drove — or dragged — the cohort's forward return.",
+      "point_out": "Each named ticker shows its sector, its realized mean return (green for gains, red for losses) and its sample size; the panel beside it opens up the full distribution — mean, median, hit rate and dispersion.",
+      "journey": "J-19",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "heading", "name": "Top contributors & detractors" } },
+      "expect": { "text": "20-day forward return" }
+    },
+    {
+      "n": 3,
+      "title": "By sector and by rank band",
+      "narration": "The other two panels break the very same return down by sector and by rank band.",
+      "point_out": "Every configured rank band (1-10, 11-50, 51+) is listed with its own sample size, and higher-ranked bands tend to show stronger returns — you can watch the ranking earn its keep.",
+      "journey": "J-19",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "heading", "name": "Forward return by rank band" } },
+      "expect": { "text": "Forward return by rank band" }
+    },
+    {
+      "n": 4,
+      "title": "Switch the holding period",
+      "narration": "A single horizon selector at the top of the page drives everything at once. We switch it to five trading days.",
+      "point_out": "There is just one horizon control here — the attribution section rides it rather than introducing a second control.",
+      "journey": "J-19",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "click", "target": { "role": "button", "name": "5d" } }
+    },
+    {
+      "n": 5,
+      "title": "Attribution follows the horizon",
+      "narration": "The whole section instantly re-reads itself for the 5-day window — the same stored evidence, a different holding period.",
+      "point_out": "The intro now reads 'Open the 5-day forward return', and the contributors and detractors are re-ranked for that shorter window.",
+      "journey": "J-19",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "heading", "name": "Top contributors & detractors" } },
+      "expect": { "text": "5-day forward return" }
+    },
+    {
+      "n": 6,
+      "title": "Open the Backtest page",
+      "narration": "The same attribution also lives on the Backtest page, which focuses on a single chosen date.",
+      "point_out": "One global as-of date governs the page — here it is showing the latest scan and its forward-test scorecard.",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/backtest" },
+      "expect": { "text": "Forward-test scorecard" }
+    },
+    {
+      "n": 7,
+      "title": "Honest gaps, never faked",
+      "narration": "Backtest carries the same four panels, plus its own horizon view selector. At the latest date the forward windows have not elapsed yet.",
+      "point_out": "Switching horizons here is instant — no reload and the date never changes — and rather than invent a figure, every panel honestly shows a dash with its sample size when no measurable return exists yet.",
+      "journey": "J-19",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "5d" } },
+      "expect": { "text": "No ticker had a measurable forward return at this horizon." }
+    }
+  ]
+}

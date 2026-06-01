@@ -95,10 +95,19 @@ MINIMAL_VALID = {
     # iter-5 made `scanner` required (bootstrap dates come from config, never code).
     "scanner": {"bootstrap_dates": ["2022-10-07", "2025-04-04"]},
     # iter-6 made `walk_forward` required (forward-testing params come from config, never code).
+    # J-19 made `walk_forward.attribution` required (rank-band edges + list size come from config).
     "walk_forward": {
         "history_years": 2, "asof_cadence": "quarterly", "horizons": [1, 5, 10, 20, 60],
         "min_sample": 30, "default_horizon": 20,
         "control_group": {"seed": 20240601, "top_n": 20, "peers_per_sector": 5},
+        "attribution": {
+            "top_contributors_k": 5,
+            "rank_bands": [
+                {"label": "1–10", "min": 1, "max": 10},
+                {"label": "11–50", "min": 11, "max": 50},
+                {"label": "51+", "min": 51, "max": None},
+            ],
+        },
     },
     # iter-11 made `patterns` required (the VCP detector thresholds come from config, never code).
     "patterns": {

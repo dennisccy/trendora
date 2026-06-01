@@ -7,6 +7,7 @@ import { useAsOf } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
 import { Return } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
+import { ReturnAttributionSection } from "@/components/return-attribution";
 import { ScoreBadge } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -137,6 +138,7 @@ export default function BacktestPage() {
             stocks={state.stocks}
           />
           <ScorecardSection data={state.backtest} />
+          <BacktestAttributionSection data={state.backtest} />
         </div>
       ) : null}
     </div>
@@ -400,6 +402,81 @@ function ScorecardSection({ data }: { data: BacktestResponse }) {
         </table>
       </div>
     </Card>
+  );
+}
+
+// --- Return attribution (J-19) — a client-side horizon VIEW selector over data already in the payload
+// The selector picks WHICH already-fetched by_horizon[*].attribution to display. It triggers NO
+// refetch, takes NO fetch param, and keys NO date effect — the page still holds no independent date
+// state and reads only the global useAsOf() switcher (preserves the J-18 single-date-control
+// consolidation). The horizon is a VIEW preference, not a date control.
+function HorizonViewSelector({
+  horizons,
+  value,
+  onChange,
+}: {
+  horizons: number[];
+  value: number;
+  onChange: (h: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs uppercase tracking-wide text-text-faint">Horizon</span>
+      <div
+        role="group"
+        aria-label="Attribution horizon (trading days)"
+        className="inline-flex overflow-hidden rounded-md border border-border bg-surface-2"
+      >
+        {horizons.map((h) => {
+          const active = h === value;
+          return (
+            <button
+              key={h}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChange(h)}
+              className={cn(
+                "num border-r border-border px-3 py-1.5 text-sm transition-colors last:border-r-0",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                active
+                  ? "bg-accent font-semibold text-bg"
+                  : "text-text-muted hover:bg-surface hover:text-text",
+              )}
+            >
+              {h}d
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function BacktestAttributionSection({ data }: { data: BacktestResponse }) {
+  const rows = data.scorecard.by_horizon;
+  // Default the view to the first horizon with an observed window (so attribution is visible on load);
+  // fall back to the last horizon when nothing has elapsed yet (an honest all-NA view).
+  const [viewHorizon, setViewHorizon] = useState<number>(() => {
+    const observed = rows.find((row) => row.attribution.distribution.n > 0);
+    return (observed ?? rows[rows.length - 1])?.horizon ?? data.horizons[0];
+  });
+
+  const selected = rows.find((row) => row.horizon === viewHorizon) ?? rows[0];
+  if (!selected) return null;
+
+  return (
+    <ReturnAttributionSection
+      attribution={selected.attribution}
+      min={data.min_sample}
+      horizon={selected.horizon}
+      action={
+        <HorizonViewSelector
+          horizons={data.horizons}
+          value={selected.horizon}
+          onChange={setViewHorizon}
+        />
+      }
+    />
   );
 }
 
