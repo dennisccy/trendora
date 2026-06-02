@@ -137,6 +137,18 @@ MINIMAL_VALID = {
             "volume_window": 10, "min_breakout_volume_ratio": 1.0,
         },
     },
+    # iter-10 made `research` required (the Factor Lab decile count + factor catalog come from config,
+    # never code). The smallest valid block: deciles > 1 + >= 1 factor whose source resolves (a typed
+    # score column needs no scores.* component lookup) — the established pattern for a newly-required section.
+    "research": {
+        "factor_lab": {
+            "deciles": 10,
+            "factors": [
+                {"key": "leadership_score", "label": "Leadership", "family": "score",
+                 "direction": "higher_better", "source": "leadership_score"},
+            ],
+        },
+    },
     # iter-12 made `methodology` required (the config-backed Setup & Pattern catalog). The smallest
     # valid catalog: >= 1 entry whose refs resolve (completeness is build_catalog's job, not the loader's).
     "methodology": {

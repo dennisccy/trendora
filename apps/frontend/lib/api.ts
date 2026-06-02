@@ -677,6 +677,74 @@ export async function fetchMethodology(signal?: AbortSignal): Promise<Methodolog
   return getJSON<MethodologyCatalog>("/api/methodology", signal);
 }
 
+// --- research / factor lab (iter-10, J-25) -------------------------------------------------
+/** One catalogued factor (the dropdown vocabulary, config-driven on the backend — NOT a hard-coded
+ *  frontend list). `direction`/`family` are descriptive metadata; `source` documents where the stored
+ *  value is read from. The frontend renders `label` and selects by `key`. */
+export interface FactorLabFactor {
+  key: string;
+  label: string;
+  family: string;
+  direction: string; // higher_better | lower_better (descriptive)
+  source: string;
+}
+
+/** One decile row (D1…D10): the mean realized forward return (raw), the DOWNSIDE risk-adjusted column
+ *  (mean / downside-deviation; null = NA — never total volatility), and the sample size `n`, plus the
+ *  factor value bounds of the decile. `low_sample` (n < min_sample) flags the cells the UI renders as
+ *  NA + n. Re-formatted only — the page recomputes no return/factor. */
+export interface FactorDecileRow {
+  decile: number; // 1..deciles
+  factor_min: number | null;
+  factor_max: number | null;
+  mean_return: number | null; // raw mean forward return (fraction); null when n === 0
+  risk_adjusted: number | null; // downside-deviation-adjusted; null = NA (no downside / n < 2)
+  n: number;
+  low_sample: boolean; // n < min_sample — render NA + n, never a fabricated number
+}
+
+/** The factor's rank information coefficient (Spearman): value + sign + n; value null = NA (n < 2 or
+ *  zero rank variance) — never a fabricated 0. */
+export interface RankIC {
+  value: number | null;
+  n: number;
+}
+
+/** GET /api/research/factor-lab payload (J-25) — the SINGLE canonical Factor-Lab analysis for one
+ *  factor × horizon. Every figure is derived once from the stored forward returns + stored factor
+ *  values; the page re-formats only and recomputes no return/factor. A cross-date aggregate (like
+ *  System Health) — there is NO as-of/date control (J-18). */
+export interface FactorLabResponse {
+  factor: FactorLabFactor; // the resolved factor
+  horizon: number; // the served forward window (trading days)
+  factors: FactorLabFactor[]; // the config-driven catalog (the factor dropdown vocabulary)
+  horizons: number[]; // valid horizons for the selector (from config — not hard-coded in the UI)
+  default_horizon: number;
+  deciles_count: number;
+  min_sample: number; // deciles with n below this are NA/low-sample
+  survivorship_bias: string; // honest caveat, rendered verbatim
+  descriptive_caveat: string; // "descriptive, not predictive / universe-relative", rendered verbatim
+  n_total: number; // observations contributing at this horizon
+  deciles: FactorDecileRow[]; // D1…D10 (config-driven count)
+  rank_ic: RankIC;
+}
+
+/** Canonical Factor-Lab source: GET /api/research/factor-lab?factor=&horizon=. Throws on non-200 so the
+ *  page renders an explicit "Backend unavailable" state (503 no data / 422 unknown factor or horizon) —
+ *  never fabricated evidence. Both params are optional (defaults: first catalog factor / config default
+ *  horizon). */
+export async function fetchFactorLab(
+  factor?: string,
+  horizon?: number,
+  signal?: AbortSignal,
+): Promise<FactorLabResponse> {
+  const params = new URLSearchParams();
+  if (factor) params.set("factor", factor);
+  if (horizon !== undefined) params.set("horizon", String(horizon));
+  const query = params.toString();
+  return getJSON<FactorLabResponse>(`/api/research/factor-lab${query ? `?${query}` : ""}`, signal);
+}
+
 // --- data manager (iter-3, J-17) -----------------------------------------------------------
 /** Current dataset coverage — descriptive metadata only (the frontend re-formats it; it computes no
  *  coverage figure). `gaps_preview` is a bounded list of the backfill-able trading days that have bars

@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever-iter-10",
+  "base_url": "http://localhost:3835",
+  "iteration": 10,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Trendora workstation",
+      "narration": "We start on Trendora's daily dashboard — the dark, research-only workstation that ranks the market after each close. The left sidebar now carries a brand-new Research section.",
+      "point_out": "The left sidebar — a new 'Research' item with a microscope icon now sits between System Health and Watchlist.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" }
+    },
+    {
+      "n": 2,
+      "title": "Open the new Research → Factor Lab",
+      "narration": "One click on Research opens the new Factor Lab, which answers a sharp question: does a factor actually sort future returns? Every figure is read from forward-tested evidence the product already stored — nothing is recomputed or invented.",
+      "point_out": "The 'Research — Factor Lab' heading, the D1–D10 decile table of mean forward return, the Rank-IC card, and the amber survivorship-bias honesty banner.",
+      "journey": "J-25",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Research" } },
+      "expect": { "text": "Rank-IC" }
+    },
+    {
+      "n": 3,
+      "title": "Switch the factor to ATR % (volatility)",
+      "narration": "Pick a different factor — here, ATR % volatility — and the whole table and the headline correlation re-point to that factor's real forward returns. The choices in the dropdown come straight from the server's own catalog.",
+      "point_out": "The metadata line now reads 'volatility · lower better', and the decile returns and the Rank-IC value have changed from the Leadership view.",
+      "journey": "J-25",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "css": "[data-testid=\"factor-select\"]" }, "text": "ATR % (volatility level)" },
+      "expect": { "text": "lower better" }
+    },
+    {
+      "n": 4,
+      "title": "Re-point to the 60-day forward horizon",
+      "narration": "Now switch the forward horizon to 60 days to see how the same factor's edge holds over a longer window. The evidence re-points again, all from stored observations.",
+      "point_out": "'Horizon: 60d' in the metadata, the 60d button highlighted, and the decile means shifting to their 60-day values.",
+      "journey": "J-25",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "60d" } },
+      "expect": { "text": "Horizon: 60d" }
+    },
+    {
+      "n": 5,
+      "title": "The existing evidence page still works",
+      "narration": "The new lab is modeled on Trendora's System Health page, the established home for forward-tested evidence — which keeps working exactly as before. The Research section adds depth without disturbing anything that was already there.",
+      "point_out": "System Health's existing by-bucket and control-group forward-test tables still render — no regression from adding Research.",
+      "journey": "J-09",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "click", "target": { "role": "link", "name": "System Health" } }
+    }
+  ]
+}

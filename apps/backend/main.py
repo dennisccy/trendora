@@ -19,6 +19,7 @@ from app.api import (
     data,
     health,
     methodology,
+    research,
     runs,
     sectors,
     stocks,
@@ -77,3 +78,4 @@ app.include_router(backtest.router, prefix="/api")
 app.include_router(watchlist.router, prefix="/api")
 app.include_router(methodology.router, prefix="/api")
 app.include_router(data.router, prefix="/api")
+app.include_router(research.router, prefix="/api")

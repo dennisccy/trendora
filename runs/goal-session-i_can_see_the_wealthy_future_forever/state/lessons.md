@@ -102,3 +102,9 @@ J-25–J-31 (compute-only) split, and any decomposer choosing the next non-walle
 **Verdict:** CONTINUE
 **Lesson:** iter-10 is the FIRST iteration to hit a front-loaded blueprint re-approval pause. `state/blueprint.reapproval-requested` was written this iter, so `run-goal.sh` halts at iter-10's *pre_decomposer* step (run-goal.sh:804) awaiting human approval of the new `/research` nav home BEFORE the decomposer plans the first lab — the loop will NOT autonomously proceed into J-25. The operator approves by re-running with `--resume` (their review of `state/blueprint.md` is treated as approval). After J-28, the `/research` labs (J-25–J-31, compute-only over the stored seed) are the ONLY remaining autonomous track — the data-walled wave (J-22/23/24, Yahoo 429) is not part of this approval.
 **Applies to:** the iter-10 decomposer/evaluator cycle and the operator resuming the session.
+
+## iter-10 — 2026-06-02T15:00:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** `status.json` for this goal session is written to the PHASE-namespace path `runs/goal-<sid>-iter-N/status.json` (e.g. `runs/goal-i_can_see_the_wealthy_future_forever-iter-10/status.json`), NOT the goal-session path `runs/goal-session-<sid>/iter-N/status.json` that the goal-evaluator's artifact list cites (which holds only `coherence.md` + `snapshot-sha`). Several prior iters were logged as "no status.json produced" partly because of this — it was likely present at the phase path all along. A stale no-`_forever` twin (`runs/goal-i_can_see_the_wealthy_future-iter-10/`) also exists and is cross-session noise. The QA agent's "status.json present ✅" can therefore be correct even when the session/iter-N dir lacks it.
+**Applies to:** any future goal-evaluator iter in this session checking for `status.json` / `plan.md` — check BOTH `runs/goal-<sid>-iter-N/` and `runs/goal-session-<sid>/iter-N/` before concluding an artifact is absent; the phase-namespace path is the real one for status.json/plan.md.

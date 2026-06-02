@@ -143,6 +143,15 @@ _SYNTH_CFG = {
             "volume_window": 5, "min_breakout_volume_ratio": 1.0,
         },
     },
+    "research": {  # iter-10: research is a required config section (Factor Lab — typed-column factor)
+        "factor_lab": {
+            "deciles": 10,
+            "factors": [
+                {"key": "leadership_score", "label": "Leadership", "family": "score",
+                 "direction": "higher_better", "source": "leadership_score"},
+            ],
+        },
+    },
     "methodology": {  # iter-12: methodology is a required config section (one entry whose ref resolves)
         "intro": "Glossary.",
         "entries": [

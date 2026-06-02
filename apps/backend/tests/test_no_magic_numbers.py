@@ -31,6 +31,9 @@ CALC_FILES = [
     # matching-config keystone); it must hold NO threshold literal of its own (every number is read
     # from config via resolve_ref).
     "methodology.py",
+    # iter-10 Factor Lab engine — the decile count + factor catalog come from config.research.factor_lab
+    # (no decile/catalog literal here); the downside-risk + rank-IC math uses only structural integers.
+    "research.py",
 ]
 
 # The union of every NUMERIC tunable currently in config.yaml (periods, windows, bucket edges,
@@ -50,8 +53,12 @@ CALC_FILES = [
 # every detector threshold either is enforced here or reuses an already-enforced sentinel — none may be
 # hard-coded in patterns.py. (The percent/ratio floats — slope/dist/undercut/proximity/volume — are
 # caught by the blanket "no float literal in calc code" rule, not the integer set.)
+# iter-10 adds 10 (research.factor_lab.deciles) so the Factor-Lab decile count is ENFORCED to come from
+# config — research.py must read cfg.research.factor_lab.deciles, never hard-code 10. (10 appears as a
+# literal in NO existing calc file, so enforcing it is safe; the per-decile/IC math uses only structural
+# integers 0/1/2 — indexing, the **2 squares, and the n<2 sample guard.)
 FORBIDDEN_INT_LITERALS = {
-    8, 14, 15, 18, 20, 21, 25, 30, 35, 40, 45, 50, 55, 60, 63, 65, 70, 75, 80, 85, 90, 126, 150, 200, 252,
+    8, 10, 14, 15, 18, 20, 21, 25, 30, 35, 40, 45, 50, 55, 60, 63, 65, 70, 75, 80, 85, 90, 126, 150, 200, 252,
 }
 
 

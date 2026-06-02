@@ -91,6 +91,38 @@ RISK_WEIGHT_KEYS = {
 }
 THEME_SCORE_WEIGHT_KEYS = {"rs_spy_1m", "rs_spy_3m", "breadth", "ma_participation"}
 
+# iter-10 Factor Lab (J-25). A factor's stored `source` is EITHER one of these typed `ScannerResult`
+# score columns (never NULL) OR a `<block>.components.<name>.raw` dotted path read from `record_json`,
+# where `<block>` is one of these score blocks and `<name>` is a component in `config.scores.<block>.weights`.
+FACTOR_TYPED_COLUMNS = {"leadership_score", "entry_quality_score", "risk_score"}
+FACTOR_SOURCE_BLOCKS = {"leadership", "entry_quality", "risk"}
+_FACTOR_SOURCE_PARTS = 4  # the dotted shape "<block>.components.<name>.raw"
+
+
+def parse_factor_source(source: str) -> dict:
+    """Parse a Factor-Lab `source` string into its structured READ form (anti-goal: No magic numbers —
+    the factor catalog + its sources live in config, never code). Returns either
+    ``{"kind": "column", "column": <typed ScannerResult column>}`` or
+    ``{"kind": "component", "block": <score block>, "name": <component name>}``. Raises ``ValueError``
+    on a string that is neither a known typed column nor a `<block>.components.<name>.raw` path — the
+    boot validator turns that into a loud ``ConfigError`` (never a silent default). Used at BOTH boot
+    (validation, cross-checked against `scores.<block>.weights`) and serve time (the read-only
+    `app.engine.research` extractor) so there is exactly one source-shape definition."""
+    if source in FACTOR_TYPED_COLUMNS:
+        return {"kind": "column", "column": source}
+    parts = source.split(".")
+    if (
+        len(parts) == _FACTOR_SOURCE_PARTS
+        and parts[0] in FACTOR_SOURCE_BLOCKS
+        and parts[1] == "components"
+        and parts[3] == "raw"
+    ):
+        return {"kind": "component", "block": parts[0], "name": parts[2]}
+    raise ValueError(
+        f"factor source {source!r} must be a typed score column {sorted(FACTOR_TYPED_COLUMNS)} "
+        "or a '<block>.components.<name>.raw' path"
+    )
+
 
 def _require_complete_weights(weights: dict[str, float], expected: set[str], field: str) -> None:
     """A score's weights must cover its expected component set and sum ~1.0 (anti-goal: every
@@ -560,6 +592,53 @@ class PatternsCfg(BaseModel):
     flat_base_breakout: FlatBaseBreakoutCfg
 
 
+class FactorLabFactor(BaseModel):
+    """One catalogued Factor-Lab factor (iter-10, J-25). `source` declares WHERE the stored value is
+    read from — a typed `ScannerResult` score column, or a `record_json` component `raw` path
+    (`<block>.components.<name>.raw`) — validated at boot via `parse_factor_source` + the Config-level
+    cross-check against `scores.<block>.weights`. `direction` / `family` are DESCRIPTIVE metadata only:
+    they do NOT flip the decile sort (the stored raw is read VERBATIM, already oriented by scoring)."""
+
+    model_config = ConfigDict(extra="allow")
+    key: str
+    label: str
+    family: str
+    direction: Literal["higher_better", "lower_better"]
+    source: str
+
+
+class FactorLabCfg(BaseModel):
+    """Factor-Lab config (iter-10, J-25). `deciles` (validated > 1) is the equal-count quantile count;
+    `factors` is the ordered, config-driven catalog. The decile count + the factor catalog living in
+    config (not code) is the No-magic-numbers keystone; the low-sample threshold is REUSED from
+    `walk_forward.min_sample` (no new threshold). Validated: `deciles > 1` and every factor `key`
+    unique — an invalid block raises `ConfigError`, never a silent default (source resolvability is
+    cross-checked on the top-level `Config`, which can see `scores`)."""
+
+    model_config = ConfigDict(extra="allow")
+    deciles: int
+    factors: list[FactorLabFactor] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "FactorLabCfg":
+        if self.deciles <= 1:
+            raise ValueError(f"research.factor_lab.deciles must be > 1, got {self.deciles}")
+        keys = [f.key for f in self.factors]
+        dupes = sorted({k for k in keys if keys.count(k) > 1})
+        if dupes:
+            raise ValueError(f"research.factor_lab.factors have duplicate keys: {dupes}")
+        return self
+
+
+class ResearchCfg(BaseModel):
+    """The Research-lab analytics config (iter-10). Holds one typed sub-block per lab; the FIRST is the
+    Factor Lab (J-25). Designed to grow additively (event study J-29, etc.) exactly like `PatternsCfg`
+    grew its detector sub-blocks."""
+
+    model_config = ConfigDict(extra="allow")
+    factor_lab: FactorLabCfg
+
+
 class MethodologyThreshold(BaseModel):
     """One row of a methodology entry's threshold list (iter-12). EITHER a config-referenced numeric
     row ({label, ref, cmp?, unit?}) whose displayed value resolves LIVE from the canonical config
@@ -711,6 +790,7 @@ class Config(BaseModel):
     walk_forward: WalkForwardCfg
     patterns: PatternsCfg
     methodology: MethodologyCfg
+    research: ResearchCfg
 
     @field_validator("themes")
     @classmethod
@@ -768,6 +848,35 @@ class Config(BaseModel):
                 f"patterns.pullback_to_rising_dma.ma_period ({period}) must be one of "
                 f"indicators.ma_periods ({self.indicators.ma_periods})"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _factor_lab_sources_resolve(self) -> "Config":
+        """Every Factor-Lab factor `source` must resolve to a stored value at boot (anti-goal: No magic
+        numbers / No fabricated data) — a typed `ScannerResult` score column, or a
+        `<block>.components.<name>.raw` path whose `<name>` is a real component in `scores.<block>.weights`.
+        An unresolvable source fails the boot loudly, never a silent default. Cross-checked here (not in
+        the sub-model) because resolving a component source needs `scores` — exactly like the pattern/
+        invalidation `ma_period` checks above."""
+        block_weights = {
+            "leadership": self.scores.leadership.weights,
+            "entry_quality": self.scores.entry_quality.weights,
+            "risk": self.scores.risk.weights,
+        }
+        bad: list[str] = []
+        for factor in self.research.factor_lab.factors:
+            try:
+                parsed = parse_factor_source(factor.source)
+            except ValueError as exc:
+                bad.append(str(exc))
+                continue
+            if parsed["kind"] == "component" and parsed["name"] not in block_weights[parsed["block"]]:
+                bad.append(
+                    f"factor {factor.key!r} source component {parsed['name']!r} is not in "
+                    f"scores.{parsed['block']}.weights"
+                )
+        if bad:
+            raise ValueError("research.factor_lab unresolvable factor sources: " + "; ".join(bad))
         return self
 
     @model_validator(mode="after")

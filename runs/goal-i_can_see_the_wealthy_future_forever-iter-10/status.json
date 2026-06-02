@@ -1,0 +1,36 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever-iter-10",
+  "status": "complete",
+  "current_step": "qa_complete",
+  "updated_at": "2026-06-02T13:55:00.000000Z",
+  "started_at": "2026-06-02T11:35:01.468890Z",
+  "cli": "claude",
+  "depth": "full",
+  "mode": "next",
+  "target_journeys": [
+    "J-25"
+  ],
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/research.py",
+    "apps/backend/app/api/research.py",
+    "apps/backend/main.py",
+    "apps/backend/app/config.py",
+    "config.yaml",
+    "apps/frontend/app/research/page.tsx",
+    "apps/frontend/components/sidebar.tsx",
+    "apps/frontend/lib/api.ts",
+    "apps/backend/tests/test_research.py",
+    "apps/backend/tests/test_api_research.py",
+    "apps/backend/tests/test_config.py",
+    "apps/backend/tests/test_config_engine.py",
+    "apps/backend/tests/test_sectors.py",
+    "apps/backend/tests/test_themes.py",
+    "apps/backend/tests/test_no_magic_numbers.py"
+  ],
+  "tests_run": true,
+  "tests_result": "Full backend suite GREEN: 379 passed, 4 skipped (the 4 skips are the offline-skipped @integration external-network tests, e.g. the stooq live fetch) in 1104s. New: test_research.py (24 cases incl. the read-only patch-to-raise keystone, exact decile math + monotonicity, Spearman rank-IC 1.0/-1.0/known-mixed/NA, downside-only risk-adjusted, NA honesty, the pooled-mean==compute_forward_aggregates.overall.mean_return consistency invariant, config-driven catalog + ConfigError boot-failures) and test_api_research.py (default payload, config-driven catalog match, factor/horizon re-point, 422 unknown factor, 422 bad horizon, 503 no data, J-18 no-date-control). Frontend: npm run build typechecks all 14 routes incl. /research (5.41 kB). LIVE backend check on :8835 (start-backend.sh): GET /api/research/factor-lab returns n_total=1218, 10 deciles (n~121 each), real rank-IC, no date key; 422/422/200 on bad-factor/bad-horizon/default.",
+  "browser_checks_run": true,
+  "next_action": "qa_complete",
+  "notes": "status.json IS written this iteration (prior full-depth iters here sometimes omitted it). Read-only seam verified in source: app/engine/research.py issues only SELECTs against ForwardReturn+ScannerResult and calls no scoring/return/factor math (proven by the patch-to-raise keystone). Known data property for QA: on the committed seed every catalogued factor has ~1218 observations (~121/decile > min_sample 30), so NO decile is low-sample at any horizon (even h=60) \u2014 the NA/low-sample render path is unit-tested but is not browser-observable by switching factor/horizon; do not flag this as a gap."
+}

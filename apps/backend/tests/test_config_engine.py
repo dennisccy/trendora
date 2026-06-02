@@ -143,6 +143,16 @@ VALID = {
             "volume_window": 10, "min_breakout_volume_ratio": 1.0,
         },
     },
+    # iter-10 made `research` required (the Factor Lab decile count + factor catalog come from config).
+    "research": {
+        "factor_lab": {
+            "deciles": 10,
+            "factors": [
+                {"key": "leadership_score", "label": "Leadership", "family": "score",
+                 "direction": "higher_better", "source": "leadership_score"},
+            ],
+        },
+    },
     # iter-12 made `methodology` required (the config-backed Setup & Pattern catalog).
     "methodology": {
         "intro": "Glossary.",

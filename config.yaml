@@ -569,6 +569,33 @@ patterns:
     min_breakout_volume_ratio: 1.0 # recent avg volume / base avg volume must be >= this (volume building into the pivot)
 
 # ----------------------------------------------------------------------------------------
+# iter-10 CONSUMED — Research labs (J-25+). The Factor Lab is a READ-ONLY, cross-date aggregate over the
+# already-stored per-observation forward returns (forward_returns) JOINED to the stored factor values
+# (scanner_results typed columns + record_json component `raw`s). It recomputes NO score, return, factor,
+# or bucket — it is descriptive evidence, NOT a fitted/predictive model. EVERY tunable lives here
+# (anti-goal: No magic numbers — no decile count or factor list in app/engine/research.py):
+#   - `deciles` is the equal-count quantile count (validated > 1).
+#   - `factors` is the ORDERED, config-driven catalog the dropdown is built from (config-only factor =>
+#     no frontend edit). Each row's `source` is read VERBATIM (raws are already oriented by scoring; the
+#     decile sort never re-orients): a typed ScannerResult column (leadership_score/entry_quality_score/
+#     risk_score) OR a `<block>.components.<name>.raw` path whose <name> is a real component in
+#     scores.<block>.weights (validated at boot — an unresolvable/duplicate source fails loudly).
+#   - `direction`/`family` are DESCRIPTIVE metadata only (expected sign + grouping for J-30); they do not
+#     flip the sort. The low-sample threshold is REUSED from walk_forward.min_sample (no new threshold).
+research:
+  factor_lab:
+    deciles: 10
+    factors:
+      - { key: leadership_score,    label: "Leadership score",            family: score,      direction: higher_better, source: leadership_score }
+      - { key: entry_quality_score, label: "Entry Quality score",         family: score,      direction: higher_better, source: entry_quality_score }
+      - { key: risk_score,          label: "Risk score (danger)",         family: score,      direction: lower_better,  source: risk_score }
+      - { key: rs_spy_3m,           label: "Relative strength vs SPY (3m)", family: momentum,  direction: higher_better, source: leadership.components.rs_spy_3m.raw }
+      - { key: ma_stack,            label: "Moving-average stack",         family: trend,      direction: higher_better, source: leadership.components.ma_stack.raw }
+      - { key: high_proximity,      label: "Proximity to 52-week high",    family: trend,      direction: higher_better, source: leadership.components.high_proximity.raw }
+      - { key: up_down_vol,         label: "Up/down volume",               family: momentum,   direction: higher_better, source: leadership.components.up_down_vol.raw }
+      - { key: atr_pct,             label: "ATR % (volatility level)",     family: volatility, direction: lower_better,  source: risk.components.atr_pct.raw }
+
+# ----------------------------------------------------------------------------------------
 # iter-5 CONSUMED — Scanner snapshots. The historical as-of dates the scanner persists an
 # immutable snapshot for on first boot (the LATEST data date is added programmatically in
 # bootstrap_runs, NOT listed here). Both dates below are real seed dates the regime engine
