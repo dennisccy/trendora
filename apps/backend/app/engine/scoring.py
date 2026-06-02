@@ -231,6 +231,7 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
     the frozen seed. The ONE producer read by `/api/stocks`, `/api/stocks/{ticker}`, and the
     dashboard's candidate counts — so no view can diverge (single source / J-06)."""
     cfg = config or get_config()
+    icfg = cfg.indicators
     benchmark = cfg.etfs.index[0]  # SPY
     spy_closes = closes(bars_asof(session, benchmark, asof))
     # invalidation MA basis from config (one of indicators.ma_periods) — no literal in calc code
@@ -343,6 +344,18 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
         )
         themes = [{"slug": slug, "name": theme_name(slug)} for slug in themes_by_ticker.get(ticker, [])]
 
+        # iter-13 (J-30): the three volatility-family factor values, computed ONCE here from the SAME
+        # as-of closes (date <= asof, no lookahead) already in hand — no extra DB round-trip. They are
+        # STORED on the row for the read-only Factor Lab to consume; they enter NO weighted score (they
+        # are not in any cfg.scores.*.weights and never pass through `_build_score`), so every score /
+        # bucket / setup status / candidate count / regime label is byte-identical with them present.
+        # NA (None) on short history propagates honestly (the lab excludes a NULL, never fabricates 0).
+        hv = ind.hist_volatility(inv_closes, icfg.hv_window)
+        vcp_contraction = ind.vol_contraction(
+            inv_closes, icfg.vol_contraction_recent, icfg.vol_contraction_prior
+        )
+        downside_vol = ind.downside_vol(inv_closes, icfg.semivol_window)
+
         rows.append({
             "ticker": ticker,
             "name": ticker,
@@ -356,6 +369,10 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
             "vcp": vcp,
             "pullback_to_rising_dma": pullback_to_rising_dma,
             "flat_base_breakout": flat_base_breakout,
+            # iter-13 (J-30) volatility-family values — stored for the read-only lab, never a score input.
+            "hv": hv,
+            "vcp_contraction": vcp_contraction,
+            "downside_vol": downside_vol,
             "rank": None,
         })
 

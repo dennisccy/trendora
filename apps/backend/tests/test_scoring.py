@@ -264,6 +264,54 @@ def test_new_patterns_are_patterns_not_statuses(loaded_engine, monkeypatch):
     assert all(r["setup"]["status"] in ALL_STATUSES for r in forced_rows)
 
 
+def test_volatility_values_ride_the_row_but_enter_no_score(loaded_engine, monkeypatch):
+    """CRITICAL keystone (iter-13 / J-30 — the guard protecting J-06 score consistency AND the J-07
+    Risk-Off→Actionable gate): the three new volatility-family values (hv / vcp_contraction /
+    downside_vol) ride on every canonical row for the read-only Factor Lab, but enter NO weighted score.
+    Force the three volatility indicators to an absurd constant and assert every row's three scores +
+    A-E buckets + setup status + rank are BYTE-IDENTICAL to baseline — proving the values never feed
+    `_build_score`. (Source guard: none of the three keys appears in any `scores.*.weights`.) Mirrors the
+    proven `test_vcp_is_a_pattern_not_a_status` invariance proof."""
+    cfg = load_config()
+    # source-level guard: the volatility keys are absent from every weighted score's component set
+    vol_keys = {"hv", "vcp_contraction", "downside_vol"}
+    for weights in (cfg.scores.leadership.weights, cfg.scores.entry_quality.weights, cfg.scores.risk.weights):
+        assert not (vol_keys & set(weights))
+
+    def _snapshot(rows):
+        return {
+            r["ticker"]: (
+                r["leadership"]["score"], r["leadership"]["bucket"],
+                r["entry_quality"]["score"], r["entry_quality"]["bucket"],
+                r["risk"]["score"], r["risk"]["bucket"],
+                r["setup"]["status"], r["rank"],
+            )
+            for r in rows
+        }
+
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        baseline_rows = score_stocks(session, asof, cfg)["rows"]
+        baseline = _snapshot(baseline_rows)
+        for r in baseline_rows:
+            assert vol_keys <= set(r)  # every row carries the three volatility values
+
+        # force the three volatility indicators to an absurd constant — must perturb NO score/bucket/setup
+        monkeypatch.setattr("app.engine.indicators.hist_volatility", lambda *a, **k: 999.0)
+        monkeypatch.setattr("app.engine.indicators.vol_contraction", lambda *a, **k: 999.0)
+        monkeypatch.setattr("app.engine.indicators.downside_vol", lambda *a, **k: 999.0)
+        forced_rows = score_stocks(session, asof, cfg)["rows"]
+
+    assert _snapshot(forced_rows) == baseline  # volatility additions changed nothing in any score path
+    assert all(r["hv"] == 999.0 for r in forced_rows)             # the monkeypatch really took effect
+    assert all(r["vcp_contraction"] == 999.0 for r in forced_rows)
+    assert all(r["downside_vol"] == 999.0 for r in forced_rows)
+    # baseline values are the REAL computed numbers (NVDA has ample history → all three numeric, not NA)
+    nvda = _row(baseline_rows, "NVDA")
+    assert isinstance(nvda["hv"], float) and nvda["hv"] != 999.0
+    assert isinstance(nvda["vcp_contraction"], float) and isinstance(nvda["downside_vol"], float)
+
+
 def test_asof_bounds_the_computation_no_lookahead(loaded_engine):
     """The as-of date bounds the data window: scoring at an earlier date echoes that date and
     produces a different ranking than the latest date (it cannot see later bars)."""

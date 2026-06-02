@@ -71,6 +71,7 @@ def _component_record(block: str, name: str, raw):
 def _add_result(
     session, run_id, ticker, rank, *, lead=50.0, entry=50.0, risk=50.0, sector="Technology",
     bucket="C", setup="Breakout-watch", record_json="{}",
+    hv=None, vcp_contraction=None, downside_vol=None,
 ):
     session.add(ScannerResult(
         run_id=run_id, ticker=ticker, name=ticker, sector=sector,
@@ -78,6 +79,7 @@ def _add_result(
         entry_quality_score=entry, entry_quality_bucket=bucket,
         risk_score=risk, risk_bucket=bucket,
         setup_status=setup, rank=rank, record_json=record_json,
+        hv=hv, vcp_contraction=vcp_contraction, downside_vol=downside_vol,  # iter-13 volatility columns
     ))
 
 
@@ -385,6 +387,62 @@ def test_unknown_factor_raises_value_error(monotone_engine):
     with Session(monotone_engine) as session:
         with pytest.raises(ValueError):
             compute_factor_lab(session, "not_a_factor", H, load_config())
+
+
+def test_volatility_column_factor_decile_ic_and_regime_from_stored_values(tmp_path):
+    """J-30: a volatility-family factor (the NEW typed column `hv`) flows through the EXISTING read-only
+    `compute_factor_lab` — a populated decile table + numeric rank-IC + by_regime split, all from STORED
+    values read VERBATIM (no engine recomputation). A NULL `hv` observation (short history) is EXCLUDED
+    (never bucketed). The decile sort is ascending by the stored raw — `direction: lower_better` is
+    descriptive only (the engine never flips the sort). The risk-adjusted column stays downside-only."""
+    engine = _engine(tmp_path, "vol.db")
+    cfg = _cfg_with(deciles=2, min_sample=2)
+    with Session(engine) as session:
+        run = _add_run(session, date(2025, 1, 10), regime_label="Risk-on")
+        # ascending hv with a strictly descending return (higher volatility sorts to LOWER return here),
+        # plus one NULL-hv row (short history) that must be excluded; the top decile carries a downside leg.
+        specs = [("A", 1.0, 0.40), ("B", 2.0, 0.30), ("C", 3.0, 0.20), ("D", 4.0, -0.10), ("Z", None, -0.50)]
+        for i, (tkr, hv, ret) in enumerate(specs, start=1):
+            _add_result(session, run.id, tkr, rank=i, hv=hv)
+            _add_fr(session, run.id, tkr, ret)
+        session.commit()
+        payload = compute_factor_lab(session, "hv", H, cfg)
+
+    assert payload["factor"]["key"] == "hv" and payload["factor"]["family"] == "volatility"
+    # Z (NULL hv) excluded — 4 real observations, never a fabricated bucket
+    assert payload["n_total"] == 4
+    deciles = payload["deciles"]
+    assert [d["decile"] for d in deciles] == [1, 2]
+    # bottom decile = lowest hv {A,B} returns {0.40,0.30} mean 0.35; top decile = highest hv {C,D} {0.20,-0.10} mean 0.05
+    assert deciles[0]["factor_min"] == 1.0 and deciles[0]["factor_max"] == 2.0
+    assert deciles[0]["mean_return"] == pytest.approx(0.35)
+    assert deciles[-1]["mean_return"] == pytest.approx(0.05)
+    # downside-only risk-adjusted: bottom decile all-positive -> NA; top decile has a negative -> numeric
+    assert deciles[0]["risk_adjusted"] is None
+    assert deciles[-1]["risk_adjusted"] is not None
+    # higher hv -> lower return here -> a perfectly inverse rank-IC (an honest descriptive finding)
+    assert payload["rank_ic"]["n"] == 4 and payload["rank_ic"]["value"] == pytest.approx(-1.0)
+    # by_regime is the configured label list (read verbatim from scanner_runs) with Risk-on populated
+    assert [r["regime"] for r in payload["by_regime"]] == cfg.regime.labels
+    on = next(r for r in payload["by_regime"] if r["regime"] == "Risk-on")
+    assert on["n"] == 4
+
+
+def test_volatility_column_factor_short_history_all_null_is_empty_no_fabrication(tmp_path):
+    """J-30 honest NA: when every stored `vcp_contraction` is NULL (short history), the factor yields
+    n_total 0, every decile honest n=0 / mean None, and rank-IC value None / n 0 — never a fabricated
+    row or number (anti-goal: No fabricated data)."""
+    engine = _engine(tmp_path, "vol_allnull.db")
+    with Session(engine) as session:
+        run = _add_run(session, date(2025, 1, 10))
+        for i, tkr in enumerate(["A", "B", "C"], start=1):
+            _add_result(session, run.id, tkr, rank=i, vcp_contraction=None)  # NULL volatility
+            _add_fr(session, run.id, tkr, 0.10)
+        session.commit()
+        payload = compute_factor_lab(session, "vcp_contraction", H, load_config())
+    assert payload["n_total"] == 0
+    assert all(d["n"] == 0 and d["mean_return"] is None for d in payload["deciles"])
+    assert payload["rank_ic"] == {"value": None, "n": 0}
 
 
 def test_payload_carries_survivorship_and_descriptive_labels(monotone_engine):

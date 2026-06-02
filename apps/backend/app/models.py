@@ -150,7 +150,17 @@ class ScannerResult(SQLModel, table=True):
     detected patterns: each is the denormalized mirror of `record_json`'s `<name>.flagged`, written
     once from the single detector output per run, so the forward-test `by_<name>` grouping reads it
     verbatim. The full pattern blocks ride losslessly in `record_json`; the mirrors are only the fast
-    grouping flags. Append-only column additions — the frozen-seed DB carries them from the start."""
+    grouping flags. Append-only column additions — the frozen-seed DB carries them from the start.
+
+    `hv` / `vcp_contraction` / `downside_vol` (iter-13, J-30) are the three NEW volatility-family factor
+    values — the denormalized typed mirror of `record_json`'s same-named keys, each computed ONCE per run
+    in `score_stocks` from the as-of bars (date <= D, no lookahead) and STORED here so the read-only
+    Factor Lab can read them VERBATIM (the SAME computed-once-stored-then-read pattern the score columns
+    follow). They are `Optional[float]` because short-history stocks have NA volatility — a NULL is
+    honestly EXCLUDED by the lab, never bucketed/fabricated. They are STORED FOR LAB CONSUMPTION ONLY and
+    enter NO weighted score (deliberately absent from every `scores.<block>.weights`), so every stock's
+    Leadership/Entry/Risk score, bucket, setup status, and the Risk-Off→Actionable gate are byte-identical
+    with these columns present. Append-only additions — a fresh frozen-seed DB carries them from the start."""
 
     __tablename__ = "scanner_results"
 
@@ -173,6 +183,11 @@ class ScannerResult(SQLModel, table=True):
     # is_vcp; one detector call per run, never recomputed — only the fast forward-test grouping flag).
     is_pullback_to_rising_dma: bool = Field(default=False, index=True)
     is_flat_base_breakout: bool = Field(default=False, index=True)
+    # iter-13 (J-30) volatility-family factor values — stored for the read-only Factor Lab only; NOT a
+    # score input. NULL on short history (honestly excluded by the lab, never fabricated).
+    hv: Optional[float] = Field(default=None)
+    vcp_contraction: Optional[float] = Field(default=None)
+    downside_vol: Optional[float] = Field(default=None)
 
 
 class SectorScoreRow(SQLModel, table=True):

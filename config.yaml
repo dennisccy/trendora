@@ -399,6 +399,13 @@ indicators:
   min_history_bars: 200              # below this a symbol's long-window components report NA
   breadth_short_ma: 50               # universe-breadth short DMA (% of stocks above their 50-DMA)
   breadth_long_ma: 200               # universe-breadth long DMA  (% of stocks above their 200-DMA)
+  # iter-13 (J-30) volatility-factor-family windows. Each is read as an argument by the new
+  # indicator math (No magic numbers); the values are illustrative and tunable. Computed once in
+  # the scoring/snapshot path (bars <= D) and STORED for the read-only Factor Lab — never a score input.
+  hv_window: 21                      # historical-volatility window: stdev of the last 21 daily returns
+  semivol_window: 63                 # downside-semivolatility window (negative leg only, MAR=0)
+  vol_contraction_recent: 21         # recent realized-vol window for the contraction ratio (numerator)
+  vol_contraction_prior: 63          # prior realized-vol baseline window for the ratio (denominator)
 
 # ----------------------------------------------------------------------------------------
 # iter-2 CONSUMED — Sector/industry leadership. Component weights (must cover every component
@@ -594,6 +601,13 @@ research:
       - { key: high_proximity,      label: "Proximity to 52-week high",    family: trend,      direction: higher_better, source: leadership.components.high_proximity.raw }
       - { key: up_down_vol,         label: "Up/down volume",               family: momentum,   direction: higher_better, source: leadership.components.up_down_vol.raw }
       - { key: atr_pct,             label: "ATR % (volatility level)",     family: volatility, direction: lower_better,  source: risk.components.atr_pct.raw }
+      # iter-13 (J-30) — volatility graduates to a labelled FAMILY of measures (level / contraction /
+      # downside). Each is a NEW value computed once in scoring.score_stocks (bars <= D) and STORED on
+      # the immutable snapshot as a typed ScannerResult column, read VERBATIM by compute_factor_lab.
+      # `source` is the bare column name (resolved at boot via FACTOR_TYPED_COLUMNS); they enter NO score.
+      - { key: hv,              label: "Historical volatility (HV)",          family: volatility, direction: lower_better,  source: hv }
+      - { key: vcp_contraction, label: "Volatility contraction (VCP-style)",  family: volatility, direction: lower_better,  source: vcp_contraction }
+      - { key: downside_vol,    label: "Downside volatility (semivol)",       family: volatility, direction: lower_better,  source: downside_vol }
     # iter-12 CONSUMED — Multi-factor combination cohorts (J-26). EVERY tunable the read-only
     # app.engine.research.compute_factor_combination reads lives here (anti-goal: No magic numbers — no
     # condition count, quantile fraction, or default in calc code). A "condition" is a catalog factor at

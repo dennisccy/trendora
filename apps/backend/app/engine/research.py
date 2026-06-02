@@ -133,9 +133,10 @@ def _rank_ic(pairs: list[tuple[float, float]]) -> dict:
 # --------------------------------------------------------------------------------------------------
 def _extract_factor_value(res: ScannerResult, parsed: dict) -> Optional[float]:
     """The stored factor value for ONE result, read VERBATIM (no recomputation). For a typed column it
-    is the `ScannerResult` attribute (never NULL); for a component it is the `record_json[<block>]
-    ["components"]` entry named `<name>` -> its `raw` (None when missing or `available: false` — an
-    excluded factor-NULL observation, never fabricated)."""
+    is the `ScannerResult` attribute (the three score columns are never NULL; the iter-13 volatility-family
+    columns `hv`/`vcp_contraction`/`downside_vol` MAY be NULL on short history → excluded below, never
+    fabricated); for a component it is the `record_json[<block>]["components"]` entry named `<name>` -> its
+    `raw` (None when missing or `available: false` — an excluded factor-NULL observation, never fabricated)."""
     if parsed["kind"] == "column":
         return getattr(res, parsed["column"])
     try:

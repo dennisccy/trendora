@@ -92,9 +92,16 @@ RISK_WEIGHT_KEYS = {
 THEME_SCORE_WEIGHT_KEYS = {"rs_spy_1m", "rs_spy_3m", "breadth", "ma_participation"}
 
 # iter-10 Factor Lab (J-25). A factor's stored `source` is EITHER one of these typed `ScannerResult`
-# score columns (never NULL) OR a `<block>.components.<name>.raw` dotted path read from `record_json`,
-# where `<block>` is one of these score blocks and `<name>` is a component in `config.scores.<block>.weights`.
-FACTOR_TYPED_COLUMNS = {"leadership_score", "entry_quality_score", "risk_score"}
+# columns OR a `<block>.components.<name>.raw` dotted path read from `record_json`, where `<block>` is
+# one of these score blocks and `<name>` is a component in `config.scores.<block>.weights`. The three
+# score columns are never NULL; the iter-13 volatility-family columns (`hv`/`vcp_contraction`/
+# `downside_vol`, J-30) MAY be NULL on short history — a NULL observation is honestly EXCLUDED by the
+# read-only lab, never bucketed/fabricated. The volatility values are STORED for lab consumption only
+# and enter NO weighted score (they are deliberately absent from every `scores.<block>.weights`).
+FACTOR_TYPED_COLUMNS = {
+    "leadership_score", "entry_quality_score", "risk_score",
+    "hv", "vcp_contraction", "downside_vol",
+}
 FACTOR_SOURCE_BLOCKS = {"leadership", "entry_quality", "risk"}
 _FACTOR_SOURCE_PARTS = 4  # the dotted shape "<block>.components.<name>.raw"
 
@@ -159,6 +166,13 @@ class IndicatorsCfg(BaseModel):
     min_history_bars: int
     breadth_short_ma: int
     breadth_long_ma: int
+    # iter-13 (J-30) volatility-factor-family windows — consumed by the new indicator math
+    # (hist_volatility / vol_contraction / downside_vol). Typed + validated positive like every other
+    # indicator period so a missing/non-positive window fails the boot loudly (anti-goal: No magic numbers).
+    hv_window: int
+    semivol_window: int
+    vol_contraction_recent: int
+    vol_contraction_prior: int
 
     @model_validator(mode="after")
     def _validate(self) -> "IndicatorsCfg":
@@ -176,6 +190,10 @@ class IndicatorsCfg(BaseModel):
             "min_history_bars": self.min_history_bars,
             "breadth_short_ma": self.breadth_short_ma,
             "breadth_long_ma": self.breadth_long_ma,
+            "hv_window": self.hv_window,
+            "semivol_window": self.semivol_window,
+            "vol_contraction_recent": self.vol_contraction_recent,
+            "vol_contraction_prior": self.vol_contraction_prior,
         }
         nonpositive = sorted(k for k, v in scalars.items() if v <= 0)
         if nonpositive:

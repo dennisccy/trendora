@@ -78,6 +78,8 @@ _SYNTH_CFG = {
         "ma_periods": [5, 10], "rs_windows": {"1m": 3, "3m": 5, "6m": 10},
         "atr_period": 5, "high_window_52w": 20, "vol_avg_period": 5,
         "min_history_bars": 40, "breadth_short_ma": 5, "breadth_long_ma": 10,
+        # iter-13 volatility-family windows (required + validated positive) — synthetic small scale.
+        "hv_window": 5, "semivol_window": 5, "vol_contraction_recent": 3, "vol_contraction_prior": 5,
     },
     "sectors": {
         "weights": {"rs_spy_1m": 0.20, "rs_spy_3m": 0.25, "rs_spy_6m": 0.20, "ma_stack": 0.15, "dist_from_high": 0.10, "vol_trend": 0.10},

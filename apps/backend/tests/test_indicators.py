@@ -123,3 +123,66 @@ def test_vol_trend_exact():
 def test_vol_trend_na_when_too_short():
     # needs 2*period bars
     assert ind.vol_trend([1, 2, 3], 2) is None
+
+
+# --- hist_volatility (J-30 volatility-family level) ----------------------------------------
+def test_hist_volatility_exact():
+    # closes -> daily simple returns [+0.10, -0.10]; mean 0; population stdev sqrt(0.01)=0.10;
+    # expressed as a percent (x100) -> 10.0 (comparable to ATR%).
+    assert ind.hist_volatility([100, 110, 99], 2) == pytest.approx(10.0)
+
+
+def test_hist_volatility_na_when_too_short():
+    # needs window+1 closes to form `window` returns
+    assert ind.hist_volatility([100, 110], 2) is None
+    assert ind.hist_volatility([], 1) is None
+
+
+def test_hist_volatility_rejects_nonpositive_window():
+    with pytest.raises(ValueError):
+        ind.hist_volatility([100, 110, 99], 0)
+
+
+# --- vol_contraction (J-30 volatility-family change/contraction; VCP-style, continuous) ----
+def test_vol_contraction_exact_ratio_below_one_is_contracting():
+    # returns in order [+0.10, -0.10, +0.05, -0.05]: prior window (first two) realized vol 0.10,
+    # recent window (last two) realized vol 0.05 -> ratio 0.5 (< 1 = volatility drying up).
+    closes = [100, 110, 99, 103.95, 98.7525]
+    assert ind.vol_contraction(closes, 2, 2) == pytest.approx(0.5)
+
+
+def test_vol_contraction_na_when_too_short():
+    # needs recent + prior + 1 closes
+    assert ind.vol_contraction([100, 110, 99, 103.95], 2, 2) is None
+
+
+def test_vol_contraction_na_when_prior_vol_zero():
+    # prior window has constant price (zero realized vol) -> ratio undefined -> NA (never inf/fabricated)
+    assert ind.vol_contraction([100, 100, 100, 105, 99.75], 2, 2) is None
+
+
+def test_vol_contraction_rejects_nonpositive_windows():
+    with pytest.raises(ValueError):
+        ind.vol_contraction([100, 110, 99, 103.95, 98.7525], 0, 2)
+    with pytest.raises(ValueError):
+        ind.vol_contraction([100, 110, 99, 103.95, 98.7525], 2, 0)
+
+
+# --- downside_vol (J-30 volatility-family downside/semivol; negative leg only) --------------
+def test_downside_vol_uses_only_the_negative_leg():
+    # two equal down moves of 10% -> sqrt(mean([0.10^2, 0.10^2])) = sqrt(0.01) = 0.10
+    assert ind.downside_vol([100, 90, 81], 2) == pytest.approx(0.10)
+
+
+def test_downside_vol_all_up_series_is_zero_never_penalises_upside():
+    # an all-non-negative series has NO downside dispersion -> 0.0 (NOT a fabricated/total-vol number)
+    assert ind.downside_vol([100, 110, 121], 2) == 0.0
+
+
+def test_downside_vol_na_when_too_short():
+    assert ind.downside_vol([100], 2) is None
+
+
+def test_downside_vol_rejects_nonpositive_window():
+    with pytest.raises(ValueError):
+        ind.downside_vol([100, 90, 81], 0)

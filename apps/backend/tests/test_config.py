@@ -41,6 +41,11 @@ MINIMAL_VALID = {
         "min_history_bars": 200,
         "breadth_short_ma": 50,
         "breadth_long_ma": 200,
+        # iter-13 (J-30) volatility-factor-family windows (required + validated positive).
+        "hv_window": 21,
+        "semivol_window": 63,
+        "vol_contraction_recent": 21,
+        "vol_contraction_prior": 63,
     },
     "sectors": {
         "weights": {

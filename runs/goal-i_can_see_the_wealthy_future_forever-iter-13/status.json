@@ -1,0 +1,38 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever-iter-13",
+  "status": "complete",
+  "current_step": "qa_complete",
+  "updated_at": "2026-06-02T20:55:00.000000Z",
+  "started_at": "2026-06-02T17:39:43.464337Z",
+  "cli": "claude",
+  "depth": "full",
+  "mode": "next",
+  "target_journeys": [
+    "J-30"
+  ],
+  "blockers": [],
+  "changed_files": [
+    "config.yaml",
+    "apps/backend/app/engine/indicators.py",
+    "apps/backend/app/engine/scoring.py",
+    "apps/backend/app/engine/scanner.py",
+    "apps/backend/app/engine/research.py",
+    "apps/backend/app/models.py",
+    "apps/backend/app/config.py",
+    "apps/backend/tests/test_indicators.py",
+    "apps/backend/tests/test_scoring.py",
+    "apps/backend/tests/test_research.py",
+    "apps/backend/tests/test_config.py",
+    "apps/backend/tests/test_config_engine.py",
+    "apps/backend/tests/test_sectors.py",
+    "apps/backend/tests/test_themes.py",
+    "apps/frontend/app/research/page.tsx",
+    "docs/handoffs/goal-i_can_see_the_wealthy_future_forever-iter-13-dev.md",
+    "docs/handoffs/goal-i_can_see_the_wealthy_future_forever-iter-13-frontend.md",
+    "reports/phase-goal-i_can_see_the_wealthy_future_forever-iter-13-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "tests_result": "Full backend suite GREEN after DB regen: 428 passed, 4 skipped, 0 failed in 1199.86s (~20 min). The 4 skips are the offline-skipped @integration external-network tests. 411 (iter-12 baseline) + 17 new iter-13 tests = 428: 11 in test_indicators.py (exact-value/NA/guard for hist_volatility/vol_contraction/downside_vol), 1 in test_scoring.py (score-invariance keystone: forcing the three volatility indicators to an absurd constant leaves every stock's three scores + A-E buckets + setup status + rank byte-identical -> the values enter NO weighted score, protecting J-06/J-07), 2 in test_research.py (a volatility typed-column factor computes populated deciles + numeric rank-IC + by_regime from STORED values with a NULL obs excluded; all-NULL -> honest-empty), 3 in test_config_engine.py (real-config windows present+positive; non-positive window -> ConfigError; the three factor sources resolve at boot). test_no_magic_numbers green (indicators.py uses only structural literals 0/1/2/100). The first post-regen full run surfaced 2 failures (test_sectors.py + test_themes.py synthetic config fixtures missing the four newly-required indicators windows -> ValidationError, no production code involved); both fixtures fixed, re-run clean. Frontend npm run build PASS (typechecks all routes incl. /research with the new <optgroup> grouping). Live post-regen smoke on :8835: J-30 all four volatility factors render (n_total 1218/1217, numeric rank-IC + downside-risk-adjusted deciles); J-07 both Risk-Off runs (2025-04-04, 2022-10-07) Actionable=0; J-06 NVDA detail==list byte-identical and carries hv/vcp_contraction/downside_vol; unknown factor -> 422.",
+  "browser_checks_run": true,
+  "next_action": "qa_complete"
+}

@@ -110,6 +110,26 @@ export default function ResearchPage() {
   );
 }
 
+/** Group the config-driven factors by `family`, preserving first-appearance order — derived entirely
+ *  from the payload (no hard-coded family or factor list in the frontend). J-30's volatility family
+ *  (ATR%, HV, VCP-style contraction, downside/semivol) collects under one "Volatility" heading. */
+function groupByFamily(
+  factors: FactorLabResponse["factors"],
+): { family: string; items: FactorLabResponse["factors"] }[] {
+  const groups: { family: string; items: FactorLabResponse["factors"] }[] = [];
+  for (const f of factors) {
+    const existing = groups.find((g) => g.family === f.family);
+    if (existing) existing.items.push(f);
+    else groups.push({ family: f.family, items: [f] });
+  }
+  return groups;
+}
+
+/** Present a family key as a heading (capitalised first letter) — purely presentational. */
+function familyLabel(family: string): string {
+  return family.charAt(0).toUpperCase() + family.slice(1);
+}
+
 function FactorSelector({
   factors,
   value,
@@ -131,10 +151,16 @@ function FactorSelector({
         disabled={factors.length === 0}
       >
         {factors.length === 0 ? <option value="">Loading…</option> : null}
-        {factors.map((f) => (
-          <option key={f.key} value={f.key}>
-            {f.label}
-          </option>
+        {/* Grouped by family (config-driven <optgroup>); option values are unchanged so selection
+            semantics stay identical — purely presentational, no recompute, no hard-coded list. */}
+        {groupByFamily(factors).map((group) => (
+          <optgroup key={group.family} label={familyLabel(group.family)}>
+            {group.items.map((f) => (
+              <option key={f.key} value={f.key}>
+                {f.label}
+              </option>
+            ))}
+          </optgroup>
         ))}
       </Select>
     </label>

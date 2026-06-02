@@ -109,6 +109,12 @@ def run_scan(session: Session, asof: date_cls, config: Optional[Config] = None) 
                 is_vcp=row["vcp"]["flagged"],
                 is_pullback_to_rising_dma=row["pullback_to_rising_dma"]["flagged"],
                 is_flat_base_breakout=row["flat_base_breakout"]["flagged"],
+                # iter-13 (J-30): denormalized typed mirrors of the row's volatility-family values
+                # (computed once in score_stocks), stored so the read-only Factor Lab reads them verbatim
+                # like the score columns. NULL on short history (honestly excluded by the lab). Not a score.
+                hv=row["hv"],
+                vcp_contraction=row["vcp_contraction"],
+                downside_vol=row["downside_vol"],
             )
         )
 

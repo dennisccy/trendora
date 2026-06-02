@@ -11,9 +11,30 @@ percent unit). None of them is a tunable scoring parameter.
 """
 from __future__ import annotations
 
+from math import sqrt
 from typing import Optional, Sequence
 
 NA = None  # explicit alias: "insufficient history" — never a fabricated number
+
+
+def _daily_returns(closes: Sequence[float]) -> Optional[list[float]]:
+    """Daily simple returns `r_i = closes[i]/closes[i-1] - 1` over the given price window (length
+    `len(closes) - 1`). NA (`None`) if any prior close is zero (an undefined return) — never fabricated."""
+    out: list[float] = []
+    for i in range(1, len(closes)):
+        prev = closes[i - 1]
+        if prev == 0:
+            return None
+        out.append(closes[i] / prev - 1)
+    return out
+
+
+def _population_stdev(values: Sequence[float]) -> float:
+    """Population standard deviation (mean-centered RMS deviation) of `values`. Empty -> 0."""
+    if not values:
+        return 0
+    mean_value = sum(values) / len(values)
+    return sqrt(sum((v - mean_value) ** 2 for v in values) / len(values))
 
 
 def sma(values: Sequence[float], period: int) -> Optional[float]:
@@ -135,3 +156,59 @@ def vol_trend(volumes: Sequence[float], period: int) -> Optional[float]:
     if prior == 0:
         return NA
     return recent / prior
+
+
+# --- iter-13 volatility factor family (J-30) ------------------------------------------------
+# Three NA-graceful volatility measures, each taking its window(s) as an ARGUMENT (the periods come
+# from `config.indicators`). Computed once in the scoring/snapshot path from bars <= D (no lookahead)
+# and STORED for the read-only Factor Lab to consume — they NEVER enter any weighted score.
+
+def hist_volatility(closes: Sequence[float], window: int) -> Optional[float]:
+    """Historical volatility (level): population standard deviation of the last `window` daily simple
+    returns, expressed as a PERCENT (so it is directly comparable to ATR%). Higher = more volatile.
+    NA if fewer than `window`+1 bars (need `window` returns) or a price in the window is zero."""
+    if window <= 0:
+        raise ValueError(f"hist_volatility window must be positive, got {window}")
+    if len(closes) < window + 1:
+        return NA
+    rets = _daily_returns(closes[-(window + 1):])
+    if rets is None:
+        return NA
+    return _population_stdev(rets) * 100
+
+
+def vol_contraction(closes: Sequence[float], recent: int, prior: int) -> Optional[float]:
+    """Volatility contraction (change/contraction — the VCP-style measure, expressed CONTINUOUSLY):
+    the realized volatility of the most recent `recent` daily returns divided by that of the `prior`
+    daily returns immediately before them. A value < 1 means volatility is drying up (contracting —
+    the VCP thesis); > 1 means expanding. NA if fewer than `recent`+`prior`+1 bars or the prior
+    volatility is zero (an undefined ratio — never a fabricated/infinite number). Price-only and a
+    pre-snapshot stock characteristic from bars <= D; it touches no setup status and no score."""
+    if recent <= 0 or prior <= 0:
+        raise ValueError(f"vol_contraction windows must be positive, got recent={recent}, prior={prior}")
+    if len(closes) < recent + prior + 1:
+        return NA
+    rets = _daily_returns(closes[-(recent + prior + 1):])
+    if rets is None:
+        return NA
+    prior_vol = _population_stdev(rets[:prior])      # the earlier (baseline) block
+    if prior_vol == 0:
+        return NA
+    return _population_stdev(rets[-recent:]) / prior_vol  # the later (recent) block / baseline
+
+
+def downside_vol(closes: Sequence[float], window: int) -> Optional[float]:
+    """Downside / semi-volatility (downside leg ONLY): the trailing downside semideviation of the last
+    `window` daily simple returns about MAR=0 — `sqrt(mean(min(r, 0)**2))`. Only NEGATIVE returns
+    contribute (NEVER total volatility, which would penalise healthy upside). An all-non-negative
+    window yields 0.0 (no downside dispersion), not a fabricated number. NA if fewer than `window`+1
+    bars or a price in the window is zero. A pre-snapshot stock characteristic from bars <= D —
+    DISTINCT from the FORWARD-return downside deviation the lab uses for its risk-adjusted column."""
+    if window <= 0:
+        raise ValueError(f"downside_vol window must be positive, got {window}")
+    if len(closes) < window + 1:
+        return NA
+    rets = _daily_returns(closes[-(window + 1):])
+    if rets is None:
+        return NA
+    return sqrt(sum(min(r, 0) ** 2 for r in rets) / len(rets))

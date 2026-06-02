@@ -44,6 +44,11 @@ VALID = {
         "min_history_bars": 200,
         "breadth_short_ma": 50,
         "breadth_long_ma": 200,
+        # iter-13 (J-30) volatility-factor-family windows (required + validated positive).
+        "hv_window": 21,
+        "semivol_window": 63,
+        "vol_contraction_recent": 21,
+        "vol_contraction_prior": 63,
     },
     "sectors": {
         "weights": {
@@ -225,6 +230,36 @@ def test_indicators_nonpositive_period_raises(tmp_path):
     data["indicators"]["atr_period"] = 0
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))
+
+
+# --- iter-13 (J-30): volatility-factor-family windows --------------------------------------
+def test_real_config_exposes_volatility_windows():
+    """The real config.yaml exposes the four typed volatility-family windows, all positive (anti-goal:
+    No magic numbers — the windows live in config, validated, never as a literal in calc code)."""
+    icfg = load_config().indicators
+    assert icfg.hv_window > 0 and icfg.semivol_window > 0
+    assert icfg.vol_contraction_recent > 0 and icfg.vol_contraction_prior > 0
+
+
+def test_indicators_nonpositive_volatility_window_raises(tmp_path):
+    """A non-positive volatility-family window fails the boot loudly — never a silent default."""
+    data = copy.deepcopy(VALID)
+    data["indicators"]["hv_window"] = 0
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_real_config_resolves_volatility_factor_sources():
+    """The three new volatility factors are catalogued with family `volatility`, `lower_better`, and a
+    typed-column source that RESOLVES at boot (load_config would raise ConfigError otherwise). This is
+    the J-30 factor-family catalog the config-driven Factor-Lab dropdown renders."""
+    cfg = load_config()
+    by_key = {f.key: f for f in cfg.research.factor_lab.factors}
+    for key in ("hv", "vcp_contraction", "downside_vol"):
+        assert key in by_key, f"missing volatility factor {key!r}"
+        assert by_key[key].family == "volatility"
+        assert by_key[key].direction == "lower_better"
+        assert by_key[key].source == key  # bare typed-column source (resolved via FACTOR_TYPED_COLUMNS)
 
 
 # --- sectors -------------------------------------------------------------------------------
