@@ -246,7 +246,18 @@ class ForwardReturn(SQLModel, table=True):
     excess-vs-benchmark is a stored subtraction. `realized_return` is the stored value
     (`measured_close / entry_close - 1`); `entry_close` (close on D), `asof_date` (D) and
     `measured_date` (the h-th post-bar's date) are kept for auditability. A (symbol, horizon) with
-    fewer than `horizon` post-snapshot bars yields NO row (n=0) — never a fabricated/zero return."""
+    fewer than `horizon` post-snapshot bars yields NO row (n=0) — never a fabricated/zero return.
+
+    `mae` / `mfe` (iter-14, J-29) are the NEW append-only post-snapshot excursion columns — the max
+    ADVERSE excursion (`min(low_i)/entry_close - 1`, <= ~0) and max FAVORABLE excursion
+    (`max(high_i)/entry_close - 1`, >= ~0) over the FIRST `horizon` post-snapshot bars (date > D,
+    via `bars_after`), computed ONCE in the SAME `_insert_run_forward_returns` INSERT path via the
+    pure `forward_excursions` helper, which shares the EXACT no-lookahead NA gate as `forward_return`
+    (so a row exists iff `realized_return` does — `< horizon` post-bars yields NO row, never a
+    fabricated excursion). They are forward-side only: no `scanner_runs`/`scanner_results`/`*_scores`
+    row is ever UPDATEd. `Optional[float]` so they are backward-compatible (default `None`); a fresh
+    frozen-seed DB carries them from the start. Read VERBATIM only by the read-only event study
+    (`app.engine.research.compute_event_study`) — never recomputed in the read path."""
 
     __tablename__ = "forward_returns"
     __table_args__ = (
@@ -262,6 +273,10 @@ class ForwardReturn(SQLModel, table=True):
     entry_close: float  # close ON asof_date (date <= D)
     measured_date: date  # date of the h-th post-snapshot bar (date > D) the return is measured to
     realized_return: float  # measured_close / entry_close - 1 (stored so excess is a subtraction)
+    # iter-14 (J-29) append-only post-snapshot excursion columns — computed once with realized_return,
+    # same no-lookahead NA gate; None on short history. Read verbatim by the read-only event study.
+    mae: Optional[float] = Field(default=None)  # max adverse excursion: min(low)/entry_close - 1 (<= ~0)
+    mfe: Optional[float] = Field(default=None)  # max favorable excursion: max(high)/entry_close - 1 (>= ~0)
 
 
 # --- iter-7 watchlist (USER-MUTABLE — the product's FIRST user-write surface; J-11) ----------

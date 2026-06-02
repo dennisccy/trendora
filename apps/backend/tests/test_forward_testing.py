@@ -28,6 +28,7 @@ from app.db import create_db_and_tables, make_engine
 from app.engine.forward_testing import (
     backfill_forward_returns,
     compute_forward_aggregates,
+    forward_excursions,
     forward_return,
     walk_forward_asof_dates,
 )
@@ -48,15 +49,24 @@ from app.seed_loader import load_seed
 # Pure helpers / tiny stand-ins
 # ==================================================================================================
 class _Bar:
-    """A minimal post-snapshot bar stand-in for the pure forward_return tests (only `.close` matters)."""
+    """A minimal post-snapshot bar stand-in. `.close` drives forward_return; `.high`/`.low` drive
+    forward_excursions (iter-14). `high`/`low` default to `close` so the pure forward_return fixtures
+    that pass only closes are unaffected."""
 
-    def __init__(self, close: float, d: date | None = None):
+    def __init__(self, close: float, d: date | None = None, high: float | None = None, low: float | None = None):
         self.close = close
         self.date = d
+        self.high = close if high is None else high
+        self.low = close if low is None else low
 
 
 def _bars(closes: list[float]) -> list[_Bar]:
     return [_Bar(c) for c in closes]
+
+
+def _ex_bars(rows: list[tuple[float, float, float]]) -> list[_Bar]:
+    """Post-snapshot bars with explicit (high, low, close) — only high/low matter to forward_excursions."""
+    return [_Bar(close=c, high=h, low=lo) for (h, lo, c) in rows]
 
 
 # ==================================================================================================
@@ -145,6 +155,50 @@ def test_forward_return_na_on_missing_or_zero_entry():
     post = _bars([110.0])
     assert forward_return(post, None, 1) is None
     assert forward_return(post, 0.0, 1) is None
+
+
+# ==================================================================================================
+# forward_excursions — pure no-lookahead MAE/MFE math (iter-14, J-29)
+# ==================================================================================================
+def test_forward_excursions_uses_only_first_h_post_bars():
+    """MAE/MFE = min-low / max-high over the FIRST h post-bars, measured from entry_close. A later bar
+    with an extreme high/low (the 3rd here) must NOT influence the h=2 window."""
+    post = _ex_bars([(110, 95, 105), (120, 90, 115), (200, 10, 150)])  # 3rd bar is outside an h<=2 window
+    ex1 = forward_excursions(post, 100.0, 1)
+    assert ex1["mfe"] == pytest.approx(110 / 100 - 1)  # +10% (max high over bar 1)
+    assert ex1["mae"] == pytest.approx(95 / 100 - 1)   # -5%  (min low  over bar 1)
+    ex2 = forward_excursions(post, 100.0, 2)
+    assert ex2["mfe"] == pytest.approx(120 / 100 - 1)  # +20% (max high over bars 1-2; 200 excluded)
+    assert ex2["mae"] == pytest.approx(90 / 100 - 1)   # -10% (min low  over bars 1-2; 10 excluded)
+
+
+def test_forward_excursions_na_when_fewer_than_h_post_bars_or_no_entry():
+    """NA (None) — never a fabricated excursion — when fewer than h post-bars exist or entry is
+    missing/zero (the EXACT same gate as forward_return)."""
+    post = _ex_bars([(110, 95, 105), (120, 90, 115)])
+    assert forward_excursions(post, 100.0, 3) is None
+    assert forward_excursions([], 100.0, 1) is None
+    assert forward_excursions(post, None, 1) is None
+    assert forward_excursions(post, 0.0, 1) is None
+
+
+def test_forward_excursions_unchanged_when_later_bars_removed():
+    """No-lookahead (the keystone proof): removing bars dated > d+h does not change the h-day MAE/MFE —
+    the future tail can never influence the as-of-h excursions."""
+    full = _ex_bars([(110, 95, 105), (120, 90, 115), (300, 5, 200), (90, 80, 85)])
+    truncated = _ex_bars([(110, 95, 105), (120, 90, 115)])  # everything after the 2nd post-bar removed
+    assert forward_excursions(full, 100.0, 2) == forward_excursions(truncated, 100.0, 2)
+
+
+def test_forward_excursions_band_contains_realized_return():
+    """The close-to-close return at h lies WITHIN the [mae, mfe] band (MFE >= realized >= MAE): the
+    entry is shared and the h-th close sits between the window's low-min and high-max."""
+    post = _ex_bars([(110, 95, 105), (130, 92, 121)])  # h=2 close 121 -> realized +21%
+    realized = forward_return(post, 100.0, 2)
+    ex = forward_excursions(post, 100.0, 2)
+    assert realized == pytest.approx(0.21)
+    assert ex["mae"] <= realized <= ex["mfe"]
+    assert ex["mfe"] == pytest.approx(130 / 100 - 1) and ex["mae"] == pytest.approx(92 / 100 - 1)
 
 
 # ==================================================================================================
@@ -559,6 +613,22 @@ def test_backfill_is_idempotent(backfilled_engine):
     assert second["rows_inserted"] == 0
     assert runs_after == runs_before
     assert fr_after == fr_before
+
+
+def test_backfill_populates_mae_mfe_within_band(backfilled_engine):
+    """iter-14 (J-29): every INSERTed forward return carries a non-None mae/mfe (computed ONCE with the
+    realized return on the SAME post_bars, sharing forward_return's NA gate), and the realized close-to-
+    close return lies within the [mae, mfe] band — proving the excursions are stored, lookahead-free, and
+    consistent with the realized return (mae = adverse <= mfe = favorable)."""
+    engine, cfg, latest, pre_id, before, first = backfilled_engine
+    with Session(engine) as session:
+        rows = session.exec(select(ForwardReturn)).all()
+    assert rows  # the backfill inserted realized returns
+    # populated on fresh INSERT — a row exists iff realized_return does, so mae/mfe are never NULL here
+    assert all(r.mae is not None and r.mfe is not None for r in rows)
+    for r in rows:
+        assert r.mae <= r.realized_return <= r.mfe  # close-to-close return within the excursion band
+        assert r.mae <= r.mfe  # adverse (min-low) <= favorable (max-high)
 
 
 def test_backfill_latest_run_has_zero_post_bars(backfilled_engine):

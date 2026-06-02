@@ -852,6 +852,106 @@ export async function fetchFactorCombination(
   );
 }
 
+// --- research / setup & pattern event study (iter-14, J-29) --------------------------------
+/** One event-study subject (the dropdown vocabulary, config-driven on the backend — NOT a hard-coded
+ *  frontend list): a setup status (`kind:"setup"`) or a detected pattern (`kind:"pattern"`). The
+ *  frontend renders `label` and selects by `key`; the selector groups by `kind`. */
+export interface EventStudySubject {
+  key: string;
+  label: string;
+  kind: "setup" | "pattern";
+}
+
+/** The per-occurrence expectancy decomposition over the subject cohort: `win_rate` (fraction `> 0`),
+ *  `avg_win` (mean of winning returns; null = no win), `avg_loss` (mean of losing returns, negative;
+ *  null = no loss), and `expectancy` (= win_rate*avg_win + (1−win_rate)*avg_loss, which equals the
+ *  mean). All null for an empty cohort (NA, never a fabricated 0). Re-formatted only. */
+export interface EventStudyExpectancy {
+  win_rate: number | null;
+  avg_win: number | null;
+  avg_loss: number | null;
+  expectancy: number | null;
+}
+
+/** One per-horizon row of the event study: the forward-return distribution (mean / median / %positive
+ *  / dispersion), the expectancy decomposition, the mean stored MAE / MFE excursions, and BOTH
+ *  downside-only risk-adjusted ratios (return/downside-dev and return/mean-|MAE| — never total vol),
+ *  with `n` and `low_sample` (n < min_sample → render NA + n). Re-formatted from stored values only. */
+export interface EventStudyHorizonRow {
+  horizon: number;
+  n: number;
+  low_sample: boolean;
+  mean_return: number | null;
+  median: number | null;
+  pct_positive: number | null;
+  dispersion: number | null;
+  expectancy: EventStudyExpectancy;
+  mean_mae: number | null; // mean max-adverse excursion (fraction, <= ~0); null = NA
+  mean_mfe: number | null; // mean max-favorable excursion (fraction, >= ~0); null = NA
+  return_per_downside_dev: number | null; // mean / downside-deviation; null = NA (no downside / n<2)
+  return_per_mae: number | null; // mean / mean-|MAE|; null = NA (no adverse excursion / n<2)
+}
+
+/** One by-regime slice row (selected horizon): per configured regime label, the per-regime n,
+ *  mean_return, hit_rate (fraction `> 0`), and downside risk_adjusted. `low_sample`/null cells render
+ *  NA + n; the regime list is SERVER-driven (config.regime.labels) — not a hard-coded frontend list. */
+export interface EventStudyRegimeRow {
+  regime: string;
+  n: number;
+  low_sample: boolean;
+  mean_return: number | null;
+  hit_rate: number | null;
+  risk_adjusted: number | null;
+}
+
+/** One by-sector slice row (selected horizon): per stored sector with members, the per-sector n,
+ *  mean_return, and downside risk_adjusted. Non-padded (only sectors with members appear); low-sample
+ *  cells render NA + n. */
+export interface EventStudySectorRow {
+  sector: string;
+  n: number;
+  low_sample: boolean;
+  mean_return: number | null;
+  risk_adjusted: number | null;
+}
+
+/** GET /api/research/event-study payload (J-29) — the SINGLE canonical Setup & Pattern event study for
+ *  one subject × horizon. Every figure is derived once from the stored forward returns + the stored
+ *  MAE/MFE excursions; the page re-formats only and recomputes no return/excursion. A cross-date
+ *  aggregate (like the Factor Lab) — there is NO as-of/date control (J-18). `subjects` is the
+ *  config-driven dropdown vocabulary (no hard-coded list in the UI). */
+export interface EventStudyResponse {
+  subject: EventStudySubject; // the resolved subject
+  horizon: number; // the selected forward window (drives the by-regime/by-sector slices)
+  subjects: EventStudySubject[]; // the config-driven subject catalog (setups + patterns)
+  horizons: number[]; // valid horizons for the selector (from config — not hard-coded in the UI)
+  default_horizon: number;
+  min_sample: number; // figures with n below this are flagged low-sample (render NA + n)
+  survivorship_bias: string; // honest caveat, rendered verbatim
+  descriptive_caveat: string; // "descriptive, not predictive", rendered verbatim
+  n_total: number; // pooled observations at the selected horizon
+  by_horizon: EventStudyHorizonRow[]; // one row per configured horizon (the exit-horizon curve)
+  best_exit_horizon: number | null; // argmax horizon of the primary metric among non-low-sample; null = NA
+  by_regime: EventStudyRegimeRow[]; // per configured regime label at the selected horizon
+  by_sector: EventStudySectorRow[]; // per stored sector with members at the selected horizon
+}
+
+/** Canonical event-study source: GET /api/research/event-study?subject=&horizon=. Throws on non-200 so
+ *  the page renders an explicit "Backend unavailable" state (503 no data / 422 unknown subject or
+ *  horizon) — never fabricated evidence. Both params are optional (defaults: first catalog subject /
+ *  config default horizon). */
+export async function fetchEventStudy(
+  subject?: string,
+  horizon?: number,
+  signal?: AbortSignal,
+): Promise<EventStudyResponse> {
+  const params = new URLSearchParams();
+  if (subject) params.set("subject", subject);
+  if (horizon !== undefined) params.set("horizon", String(horizon));
+  const query = params.toString();
+  return getJSON<EventStudyResponse>(`/api/research/event-study${query ? `?${query}` : ""}`, signal);
+}
+
 // --- data manager (iter-3, J-17) -----------------------------------------------------------
 /** Current dataset coverage — descriptive metadata only (the frontend re-formats it; it computes no
  *  coverage figure). `gaps_preview` is a bounded list of the backfill-able trading days that have bars

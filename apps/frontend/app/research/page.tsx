@@ -10,9 +10,14 @@ import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
+  fetchEventStudy,
   fetchFactorCombination,
   fetchFactorLab,
   type CohortStats,
+  type EventStudyHorizonRow,
+  type EventStudyRegimeRow,
+  type EventStudyResponse,
+  type EventStudySectorRow,
   type FactorCombinationCondition,
   type FactorCombinationResponse,
   type FactorDecileRow,
@@ -106,6 +111,10 @@ export default function ResearchPage() {
       {/* J-26: the multi-factor combination cohort section — its own read-only data source, reusing the
           page's shared `horizon` (no second date/horizon state). Always rendered (own loading/error). */}
       <CombinationLab horizon={horizon} />
+
+      {/* J-29: the Setup & Pattern event study — its own read-only data source, reusing the page's shared
+          `horizon` (no second date/horizon state) plus a subject selector. Always rendered (own states). */}
+      <EventStudyLab horizon={horizon} />
     </div>
   );
 }
@@ -616,7 +625,7 @@ function CombinationLab({ horizon }: { horizon: number | undefined }) {
               The risk-adjusted column is{" "}
               <span className="text-text-muted">downside-deviation only</span> (mean ÷ downside deviation —
               never total volatility, so healthy upside is not penalised). return/MAE and MAE/MFE excursion
-              measures arrive with the event-study lab (J-29).
+              measures are in the Setup &amp; Pattern Lab below (J-29).
             </p>
           </>
         )}
@@ -885,5 +894,413 @@ function CombinationSkeleton() {
         <div key={i} className="h-7 w-full animate-pulse rounded bg-surface-2" />
       ))}
     </div>
+  );
+}
+
+// --- Setup & Pattern event study (J-29) ----------------------------------------------------------
+/** The Setup & Pattern Lab (J-29): pick a setup or pattern subject and read its pooled, cross-snapshot
+ *  event study — per horizon the forward-return distribution + expectancy + MAE/MFE + the downside-only
+ *  risk-adjusted ratios, the best exit-horizon, and behaviour by regime and by sector. Reuses the page's
+ *  shared `horizon` (no second date/horizon state); adds ONLY a `subject` selector. A cross-date aggregate
+ *  — NO as-of/date control (J-18). Re-formats the payload only — recomputes no return/excursion; low-
+ *  sample / empty cells render NA + n (never a fabricated number). The subject list comes from the payload
+ *  (config-driven) — no hard-coded setup/pattern list here. */
+function EventStudyLab({ horizon }: { horizon: number | undefined }) {
+  // `undefined` lets the backend pick the canonical default (first catalog subject). The subject list is
+  // built from the loaded payload — config-driven, never a hard-coded frontend list.
+  const [subject, setSubject] = useState<string | undefined>(undefined);
+  const [data, setData] = useState<EventStudyResponse | null>(null);
+  const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setStatus("loading");
+    fetchEventStudy(subject, horizon, controller.signal)
+      .then((d) => {
+        if (controller.signal.aborted) return;
+        setData(d);
+        setStatus("ok");
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setStatus("error");
+      });
+    return () => controller.abort();
+  }, [subject, horizon]);
+
+  const selectedSubject = subject ?? data?.subject.key ?? "";
+  const hasAny = data ? data.by_horizon.some((r) => r.n > 0) : false;
+
+  return (
+    <Card className="p-0" data-testid="event-study-section">
+      <PanelTitle
+        hint={`Pick a setup or pattern and read its pooled, cross-snapshot event study: per horizon the forward-return distribution + expectancy + MAE/MFE + the downside risk-adjusted ratios, the best exit-horizon, and behaviour by regime and by sector — all from stored, lookahead-free, survivorship-labelled evidence. Cohorts with n < ${data?.min_sample ?? "min"} show NA + n, never a fabricated number.`}
+      >
+        Setup &amp; Pattern Lab — event study
+      </PanelTitle>
+      <div className="space-y-4 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <SubjectSelector
+            subjects={data?.subjects ?? []}
+            value={selectedSubject}
+            onChange={(key) => setSubject(key)}
+          />
+          <p className="max-w-md text-xs text-text-faint">
+            Re-uses the page&apos;s shared horizon selector above. No date control — a cross-date aggregate
+            over every stored snapshot (J-18).
+          </p>
+        </div>
+
+        {data ? (
+          <CaveatBanner survivorship={data.survivorship_bias} descriptive={data.descriptive_caveat} />
+        ) : null}
+
+        {status === "error" ? (
+          <div className="flex items-center gap-3 rounded-md border border-neg bg-surface p-4 text-sm text-neg">
+            <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
+            <div>
+              <p className="font-medium">Backend unavailable</p>
+              <p className="text-text-muted">
+                The event study could not load from the API. No figures are shown rather than fabricated
+                values — confirm the backend is running and adjust the subject to retry.
+              </p>
+            </div>
+          </div>
+        ) : !data ? (
+          <CombinationSkeleton />
+        ) : !hasAny ? (
+          <EmptyState
+            icon={Microscope}
+            title="No forward-tested occurrences for this subject"
+            description="No stored snapshot has this setup/pattern with a realized forward return yet. Pick another subject or a shorter horizon — no distribution is fabricated to fill the gap."
+          />
+        ) : (
+          <EventStudyBody data={data} dim={status === "loading"} />
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/** The subject selector (config-driven from the payload): a single `<select>` grouped by `kind` into
+ *  Setups vs Patterns `<optgroup>`s — the same payload-derived pattern as the factor selector, no
+ *  hard-coded subject list. */
+function SubjectSelector({
+  subjects,
+  value,
+  onChange,
+}: {
+  subjects: EventStudyResponse["subjects"];
+  value: string;
+  onChange: (key: string) => void;
+}) {
+  const setups = subjects.filter((s) => s.kind === "setup");
+  const patterns = subjects.filter((s) => s.kind === "pattern");
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs uppercase tracking-wide text-text-faint">Subject</span>
+      <Select
+        data-testid="subject-select"
+        aria-label="Event-study subject"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-64"
+        disabled={subjects.length === 0}
+      >
+        {subjects.length === 0 ? <option value="">Loading…</option> : null}
+        {setups.length ? (
+          <optgroup label="Setups">
+            {setups.map((s) => (
+              <option key={s.key} value={s.key}>
+                {s.label}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+        {patterns.length ? (
+          <optgroup label="Patterns">
+            {patterns.map((s) => (
+              <option key={s.key} value={s.key}>
+                {s.label}
+              </option>
+            ))}
+          </optgroup>
+        ) : null}
+      </Select>
+    </label>
+  );
+}
+
+/** A value cell shared across the event-study tables: explicit "NA" (muted) when the row is low-sample
+ *  (n < min_sample), empty (n === 0), or the value is null — never a fabricated number; otherwise the
+ *  formatted value (returns/excursions/ratios colour-graded; rates stay neutral so a low rate is not
+ *  painted "good"). The honest n is carried once per row by the SampleSize chip in the dedicated column. */
+function EsValue({
+  value,
+  na,
+  kind,
+}: {
+  value: number | null;
+  na: boolean;
+  kind: "pct" | "ratio" | "rate";
+}) {
+  if (na || value === null) {
+    return (
+      <span className="num font-semibold text-text-muted" title="NA — low sample or no observations">
+        NA
+      </span>
+    );
+  }
+  return (
+    <span className={cn("num font-semibold", kind === "rate" ? "text-text" : returnClass(value))}>
+      {kind === "ratio" ? fmtRatio(value) : fmtPct(value)}
+    </span>
+  );
+}
+
+/** The event-study body once data has loaded: a meta line (subject + pooled n + best exit-horizon), the
+ *  per-horizon distribution / exit-horizon table, and the by-regime + by-sector panels for the selected
+ *  horizon. `dim` fades the body while a re-fetch is in flight (the prior values stay visible). */
+function EventStudyBody({ data, dim }: { data: EventStudyResponse; dim: boolean }) {
+  const selectedHorizon = data.horizon;
+  return (
+    <div className={cn("space-y-4 transition-opacity", dim && "opacity-60")} aria-busy={dim}>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-text-muted">
+        <span>
+          <span className="text-text-faint">Subject: </span>
+          <span className="text-text">{data.subject.label}</span>{" "}
+          <span className="text-text-faint">({data.subject.kind})</span>
+        </span>
+        <span>
+          <span className="text-text-faint">Pooled occurrences ({selectedHorizon}d): </span>
+          <span className="num text-text">{data.n_total}</span>
+        </span>
+        <span>
+          <span className="text-text-faint">Best exit-horizon: </span>
+          <span className="num text-text">
+            {data.best_exit_horizon === null ? "NA" : `${data.best_exit_horizon}d`}
+          </span>
+        </span>
+        <span className="text-text-faint">
+          Rows with <span className="text-warn">n &lt; {data.min_sample} ⚠</span> render NA.
+        </span>
+      </div>
+
+      <EventStudyHorizonTable rows={data.by_horizon} min={data.min_sample} bestExit={data.best_exit_horizon} />
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <EventStudyRegimeTable rows={data.by_regime} min={data.min_sample} horizon={selectedHorizon} />
+        <EventStudySectorTable rows={data.by_sector} min={data.min_sample} horizon={selectedHorizon} />
+      </div>
+    </div>
+  );
+}
+
+/** The per-horizon distribution / exit-horizon curve table: one row per configured horizon carrying the
+ *  distribution (mean / median / %positive / dispersion), expectancy, mean MAE / MFE, and BOTH downside-
+ *  only risk-adjusted ratios (return ÷ downside-deviation and return ÷ mean-|MAE| — never total volatility,
+ *  shown beside the raw mean). The best exit-horizon row is highlighted; low-sample rows render NA + n. */
+function EventStudyHorizonTable({
+  rows,
+  min,
+  bestExit,
+}: {
+  rows: EventStudyHorizonRow[];
+  min: number;
+  bestExit: number | null;
+}) {
+  return (
+    <Card className="p-0">
+      <PanelTitle hint="One row per forward horizon (the exit-horizon curve): the forward-return distribution, per-occurrence expectancy, mean MAE / MFE excursions, and BOTH downside-only risk-adjusted ratios (return ÷ downside-deviation and return ÷ mean-|MAE| — never total volatility). The best exit-horizon (highest downside-risk-adjusted return among non-low-sample horizons) is highlighted; rows with n below the minimum render NA + n.">
+        Per-horizon distribution &amp; exit-horizon curve
+      </PanelTitle>
+      <div className="overflow-x-auto">
+        <table data-testid="event-study-horizon-table" className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+              <th className="px-3 py-2 font-medium">Horizon</th>
+              <th className="px-3 py-2 text-right font-medium">n</th>
+              <th className="px-3 py-2 text-right font-medium">Mean</th>
+              <th className="px-3 py-2 text-right font-medium">Median</th>
+              <th className="px-3 py-2 text-right font-medium">% Positive</th>
+              <th className="px-3 py-2 text-right font-medium">Dispersion</th>
+              <th className="px-3 py-2 text-right font-medium">Expectancy</th>
+              <th className="px-3 py-2 text-right font-medium">Mean MAE</th>
+              <th className="px-3 py-2 text-right font-medium">Mean MFE</th>
+              <th className="px-3 py-2 text-right font-medium">Return / downside-dev</th>
+              <th className="px-3 py-2 text-right font-medium">Return / MAE</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const na = row.low_sample || row.n === 0;
+              const best = bestExit !== null && row.horizon === bestExit;
+              return (
+                <tr
+                  key={row.horizon}
+                  className={cn("border-b border-border last:border-b-0", best && "bg-surface-2")}
+                >
+                  <td className="px-3 py-2">
+                    <span className="num font-semibold text-text">{row.horizon}d</span>
+                    {best ? (
+                      <span className="ml-2 rounded border border-accent px-1.5 py-0.5 text-xs font-medium text-accent">
+                        best exit
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <SampleSize n={row.n} min={min} />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <EsValue value={row.mean_return} na={na} kind="pct" />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <EsValue value={row.median} na={na} kind="pct" />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <EsValue value={row.pct_positive} na={na} kind="rate" />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <EsValue value={row.dispersion} na={na} kind="pct" />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <EsValue value={row.expectancy.expectancy} na={na} kind="pct" />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <EsValue value={row.mean_mae} na={na} kind="pct" />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <EsValue value={row.mean_mfe} na={na} kind="pct" />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <EsValue value={row.return_per_downside_dev} na={na} kind="ratio" />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <EsValue value={row.return_per_mae} na={na} kind="ratio" />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+/** By-market-regime panel for the selected horizon: one row per CONFIGURED regime label (server-driven
+ *  from the payload — no hard-coded frontend regime list), each with its n, mean, hit-rate, and downside
+ *  risk-adjusted. Low-sample / empty regimes render NA + n. */
+function EventStudyRegimeTable({
+  rows,
+  min,
+  horizon,
+}: {
+  rows: EventStudyRegimeRow[];
+  min: number;
+  horizon: number;
+}) {
+  return (
+    <Card className="p-0">
+      <PanelTitle
+        hint={`How the subject behaves by market regime at the ${horizon}-day horizon. Every configured regime emits a row (read verbatim from the stored snapshots); a regime with n below the minimum shows NA + n, never a fabricated number.`}
+      >
+        By market regime ({horizon}d)
+      </PanelTitle>
+      <div className="overflow-x-auto">
+        <table data-testid="event-study-regime-table" className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+              <th className="px-3 py-2 font-medium">Regime</th>
+              <th className="px-3 py-2 text-right font-medium">n</th>
+              <th className="px-3 py-2 text-right font-medium">Mean</th>
+              <th className="px-3 py-2 text-right font-medium">Hit-rate</th>
+              <th className="px-3 py-2 text-right font-medium">Risk-adjusted (downside)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const na = row.low_sample || row.n === 0;
+              return (
+                <tr key={row.regime} className="border-b border-border last:border-b-0">
+                  <td className="px-3 py-2 text-text">{row.regime}</td>
+                  <td className="px-3 py-2 text-right">
+                    <SampleSize n={row.n} min={min} />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <EsValue value={row.mean_return} na={na} kind="pct" />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <EsValue value={row.hit_rate} na={na} kind="rate" />
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <EsValue value={row.risk_adjusted} na={na} kind="ratio" />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+/** By-sector panel for the selected horizon: one row per STORED sector that has occurrences (non-padded —
+ *  only sectors with members appear), each with its n, mean, and downside risk-adjusted. Low-sample
+ *  sectors render NA + n; an empty slice shows an honest note. */
+function EventStudySectorTable({
+  rows,
+  min,
+  horizon,
+}: {
+  rows: EventStudySectorRow[];
+  min: number;
+  horizon: number;
+}) {
+  return (
+    <Card className="p-0">
+      <PanelTitle
+        hint={`How the subject behaves by sector at the ${horizon}-day horizon. Only sectors with occurrences appear; a sector with n below the minimum shows NA + n, never a fabricated number.`}
+      >
+        By sector ({horizon}d)
+      </PanelTitle>
+      {rows.length === 0 ? (
+        <p className="px-4 py-4 text-sm text-text-muted">
+          No sector has an occurrence of this subject at this horizon.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table data-testid="event-study-sector-table" className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+                <th className="px-3 py-2 font-medium">Sector</th>
+                <th className="px-3 py-2 text-right font-medium">n</th>
+                <th className="px-3 py-2 text-right font-medium">Mean</th>
+                <th className="px-3 py-2 text-right font-medium">Risk-adjusted (downside)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const na = row.low_sample || row.n === 0;
+                return (
+                  <tr key={row.sector} className="border-b border-border last:border-b-0">
+                    <td className="px-3 py-2 text-text">{row.sector}</td>
+                    <td className="px-3 py-2 text-right">
+                      <SampleSize n={row.n} min={min} />
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <EsValue value={row.mean_return} na={na} kind="pct" />
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <EsValue value={row.risk_adjusted} na={na} kind="ratio" />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
   );
 }

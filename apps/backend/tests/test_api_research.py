@@ -274,3 +274,110 @@ def test_factor_combination_503_when_no_price_data(tmp_path):
         with pytest.raises(HTTPException) as exc:
             factor_combination(condition=None, horizon=None, session=session)
         assert exc.value.status_code == 503
+
+
+# ==================================================================================================
+# GET /api/research/event-study — Setup & Pattern event study (iter-14, J-29)
+# ==================================================================================================
+def test_event_study_default_payload(loaded_engine):
+    """J-29 at the API level: the default payload (first catalog subject = first setup + default horizon)
+    carries the resolved subject, the config-driven subjects catalog (setups + patterns), one per-horizon
+    row per configured horizon (full shape), the by-regime + by-sector slices, and the honest labels."""
+    from app.engine.research import subject_catalog
+
+    cfg = load_config()
+    subjects = subject_catalog(cfg)
+    with TestClient(main.app) as client:
+        resp = client.get("/api/research/event-study")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # default subject = first catalog subject (the first setup); default horizon = config default_horizon
+    assert data["subject"]["key"] == subjects[0]["key"]
+    assert data["horizon"] == cfg.walk_forward.default_horizon
+    assert data["min_sample"] == cfg.walk_forward.min_sample
+
+    # the subjects catalog is config-driven (the dropdown vocabulary) — exact match, in order
+    assert [s["key"] for s in data["subjects"]] == [s["key"] for s in subjects]
+    assert {"key", "label", "kind"} == set(data["subjects"][0])
+
+    # one per-horizon row per configured horizon, each carrying the full event-study shape
+    assert [r["horizon"] for r in data["by_horizon"]] == list(cfg.walk_forward.horizons)
+    for r in data["by_horizon"]:
+        assert {
+            "horizon", "n", "low_sample", "mean_return", "median", "pct_positive", "dispersion",
+            "expectancy", "mean_mae", "mean_mfe", "return_per_downside_dev", "return_per_mae",
+        } <= set(r)
+        assert {"win_rate", "avg_win", "avg_loss", "expectancy"} <= set(r["expectancy"])
+
+    # by-regime: one row per configured regime label, in order; by-sector: present-only rows
+    assert [r["regime"] for r in data["by_regime"]] == cfg.regime.labels
+    for r in data["by_regime"]:
+        assert {"regime", "n", "low_sample", "mean_return", "hit_rate", "risk_adjusted"} <= set(r)
+    for r in data["by_sector"]:
+        assert {"sector", "n", "low_sample", "mean_return", "risk_adjusted"} <= set(r)
+
+    # best-exit-horizon is a configured horizon or NA; honest labels carried verbatim
+    assert data["best_exit_horizon"] is None or data["best_exit_horizon"] in cfg.walk_forward.horizons
+    assert "survivorship" in data["survivorship_bias"].lower()
+    assert "not a predictive model" in data["descriptive_caveat"].lower()
+
+
+def test_event_study_no_date_control_present(loaded_engine):
+    """J-18: the event study is a cross-date aggregate — its payload exposes NO as-of/date field (no
+    second date state); the only inputs are subject + the shared horizon."""
+    with TestClient(main.app) as client:
+        data = client.get("/api/research/event-study").json()
+    assert not any(k in data for k in ("asof_date", "as_of", "asof_dates", "date", "is_latest"))
+
+
+def test_event_study_changing_subject_repoints(loaded_engine):
+    """Changing the subject re-points the analysis to a different stored cohort (server values, never a
+    client recompute): a setup subject and a pattern subject resolve distinctly and their pooled by_horizon
+    means differ (distinct populations)."""
+    with TestClient(main.app) as client:
+        actionable = client.get("/api/research/event-study", params={"subject": "Actionable"}).json()
+        vcp = client.get("/api/research/event-study", params={"subject": "vcp"}).json()
+    assert actionable["subject"]["key"] == "Actionable" and actionable["subject"]["kind"] == "setup"
+    assert vcp["subject"]["key"] == "vcp" and vcp["subject"]["kind"] == "pattern"
+    # distinct populations -> the per-horizon mean curves differ (a real re-point, not a relabel)
+    a_means = [r["mean_return"] for r in actionable["by_horizon"]]
+    v_means = [r["mean_return"] for r in vcp["by_horizon"]]
+    assert a_means != v_means
+
+
+def test_event_study_changing_horizon_repoints(loaded_engine):
+    """Changing the shared horizon re-points the selected-horizon by-regime/by-sector slices — server
+    values (assert the payload's horizon changes)."""
+    with TestClient(main.app) as client:
+        h20 = client.get("/api/research/event-study", params={"subject": "vcp", "horizon": 20}).json()
+        h60 = client.get("/api/research/event-study", params={"subject": "vcp", "horizon": 60}).json()
+    assert h20["horizon"] == 20 and h60["horizon"] == 60
+
+
+def test_event_study_unknown_subject_422(loaded_engine):
+    """An unknown subject is rejected (422) — no fabricated subject."""
+    with TestClient(main.app) as client:
+        resp = client.get("/api/research/event-study", params={"subject": "not_a_subject"})
+    assert resp.status_code == 422
+
+
+def test_event_study_invalid_horizon_422(loaded_engine):
+    """An out-of-range horizon is rejected (422) — no fabricated horizon."""
+    with TestClient(main.app) as client:
+        resp = client.get("/api/research/event-study", params={"horizon": 7})
+    assert resp.status_code == 422
+
+
+def test_event_study_503_when_no_price_data(tmp_path):
+    """No price data -> explicit 503 (never a fabricated event study). The handler is called directly
+    against an empty DB session, leaving the process engine untouched."""
+    from app.api.research import event_study
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'empty_es.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        assert latest_data_date(session) is None
+        with pytest.raises(HTTPException) as exc:
+            event_study(subject=None, horizon=None, session=session)
+        assert exc.value.status_code == 503

@@ -120,6 +120,30 @@ def forward_return(bars_after_list: list, entry_close: Optional[float], horizon:
     return measured_close / entry_close - 1
 
 
+def forward_excursions(
+    bars_after_list: list, entry_close: Optional[float], horizon: int
+) -> Optional[dict]:
+    """Post-snapshot path excursions over `horizon` trading days (iter-14, J-29): the max ADVERSE
+    excursion `mae = min(low_i)/entry_close - 1` (<= ~0) and max FAVORABLE excursion
+    `mfe = max(high_i)/entry_close - 1` (>= ~0) over the FIRST `horizon` bars of `bars_after_list`
+    (date > D, from `bars_after`), reading each bar's `.low` / `.high`. `entry_close` is the close ON
+    the as-of date D — the SAME entry the realized return uses — so the realized close at h lies within
+    the [mae, mfe] band (asserted in tests).
+
+    Shares the EXACT no-lookahead NA gate as `forward_return`: returns None (NA) — NEVER a fabricated/
+    truncated excursion — when `entry_close` is missing or zero, or when fewer than `horizon` post-
+    snapshot bars exist. Only the first `horizon` post-bars matter, so the result is unchanged when
+    later bars are removed (the keystone no-lookahead-of-the-future-tail property)."""
+    if entry_close is None or entry_close == 0:
+        return None
+    if len(bars_after_list) < horizon:
+        return None
+    window = bars_after_list[:horizon]
+    low = min(bar.low for bar in window)
+    high = max(bar.high for bar in window)
+    return {"mae": low / entry_close - 1, "mfe": high / entry_close - 1}
+
+
 # --------------------------------------------------------------------------------------------------
 # Walk-forward as-of date set (cadence intersected with real seed trading days)
 # --------------------------------------------------------------------------------------------------
@@ -224,6 +248,9 @@ def _insert_run_forward_returns(
             realized = forward_return(post_bars, entry_close, horizon)
             if realized is None:
                 continue  # fewer than `horizon` post-bars -> NA, no fabricated row
+            # iter-14 (J-29): the SAME post_bars/entry_close/horizon already in hand, no extra query —
+            # excursions share forward_return's NA gate, so they are non-None whenever realized is.
+            excursions = forward_excursions(post_bars, entry_close, horizon)
             session.add(
                 ForwardReturn(
                     run_id=run.id,
@@ -233,6 +260,8 @@ def _insert_run_forward_returns(
                     entry_close=entry_close,
                     measured_date=post_bars[horizon - 1].date,
                     realized_return=realized,
+                    mae=excursions["mae"] if excursions else None,
+                    mfe=excursions["mfe"] if excursions else None,
                 )
             )
             existing.add((run.id, symbol, horizon))

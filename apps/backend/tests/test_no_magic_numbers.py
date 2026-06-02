@@ -23,6 +23,8 @@ CALC_FILES = [
     # iter-6 walk-forward calc — horizons, min_sample, history_years, asof_cadence, default_horizon,
     # and the control-group {seed, top_n, peers_per_sector} ALL come from config; the no-lookahead
     # price accessors (bars_asof / bars_after / close_on) introduce no tunable literal either.
+    # iter-14 (J-29) ALSO scans the new MAE/MFE excursion math here: forward_excursions reads each bar's
+    # .low/.high and divides by entry_close (only the structural `- 1` percent unit) — no threshold literal.
     "forward_testing.py", "prices.py",
     # iter-11 VCP detector — EVERY threshold (lookback/contraction counts, depth caps, shrink ratio,
     # pivot-proximity band, volume-dry-up ratio/window, min history) comes from config.patterns.vcp.
@@ -33,6 +35,10 @@ CALC_FILES = [
     "methodology.py",
     # iter-10 Factor Lab engine — the decile count + factor catalog come from config.research.factor_lab
     # (no decile/catalog literal here); the downside-risk + rank-IC math uses only structural integers.
+    # iter-14 (J-29) ALSO scans the event-study additions here: the subject catalog comes from the fixed
+    # ALL_STATUSES setups + config.patterns keys; min_sample/horizons are reused from config; the only
+    # numbers in the new expectancy / MAE-risk / by-regime/by-sector math are the structural `> 0` win/loss
+    # boundary and the n<2 sample guard (rank/index 1's) — no new threshold literal is introduced.
     "research.py",
 ]
 

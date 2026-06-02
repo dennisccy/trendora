@@ -30,6 +30,7 @@ THREE non-negotiable disciplines (each unit-proved):
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from math import ceil, sqrt
 from statistics import mean, median
 from typing import Optional
@@ -37,7 +38,12 @@ from typing import Optional
 from sqlmodel import Session, select
 
 from app.config import Config, get_config, parse_factor_source
-from app.engine.forward_testing import SURVIVORSHIP_BIAS_LABEL
+from app.engine.forward_testing import (
+    SURVIVORSHIP_BIAS_LABEL,
+    _distribution,
+    _mean_or_none,
+)
+from app.engine.setups import ALL_STATUSES
 from app.models import ForwardReturn, ScannerResult, ScannerRun
 
 # The honest "descriptive, not predictive / universe-relative" caveat carried on every Factor-Lab
@@ -502,4 +508,272 @@ def compute_factor_combination(
             "label": "Combined (AND)",
             "stats": _cohort_stats(_returns(combined_members), min_sample),
         },
+    }
+
+
+# --------------------------------------------------------------------------------------------------
+# Setup & Pattern event study (J-29) — read-only pooled cross-snapshot analytic over stored values
+# --------------------------------------------------------------------------------------------------
+def subject_catalog(cfg: Config) -> list[dict]:
+    """The ordered, config-driven event-study subject catalog: one `{key, label, kind}` per subject —
+    every setup status (`setups.ALL_STATUSES`, kind "setup") followed by every detected pattern
+    (`config.patterns` keys, kind "pattern"). Labels REUSE the single config-backed methodology copy
+    (`config.methodology.entries[*].name`), falling back to the key, so an added setup/pattern appears
+    in the subject selector automatically with NO frontend edit (anti-goal: config-driven vocabulary in
+    the UI too). The frontend subject selector AND the API default subject are built from THIS list."""
+    label_by_key = {entry.key: entry.name for entry in cfg.methodology.entries}
+    subjects = [
+        {"key": status, "label": label_by_key.get(status, status), "kind": "setup"}
+        for status in ALL_STATUSES
+    ]
+    subjects += [
+        {"key": key, "label": label_by_key.get(key, key), "kind": "pattern"}
+        for key in cfg.patterns.model_dump()
+    ]
+    return subjects
+
+
+def _subject_member(res: ScannerResult, subject: dict) -> bool:
+    """Whether a stored result belongs to the subject's pooled cohort, read VERBATIM from the snapshot
+    (never re-classified): a SETUP subject pools `scanner_results.setup_status == key`; a PATTERN subject
+    pools the stored mirror flag `is_<key>` being True — the SAME `by_<name>` stored-mirror grouping
+    convention `forward_testing` already uses for is_vcp / is_pullback_to_rising_dma / is_flat_base_breakout."""
+    if subject["kind"] == "setup":
+        return res.setup_status == subject["key"]
+    return bool(getattr(res, f"is_{subject['key']}"))
+
+
+def _event_study_members(session: Session, subject: dict, horizon: int) -> list[dict]:
+    """The read-only per-observation pool for (subject, horizon): join each stored `ForwardReturn` at this
+    horizon (its `realized_return` + `mae` + `mfe`, read VERBATIM) to its stored `ScannerResult` (by
+    run_id + ticker) and the run's stored `regime_label`, keeping ONLY the subject's members. SELECT-only
+    against `ForwardReturn` + `ScannerResult` + `ScannerRun`; it recomputes NO return / excursion / score /
+    regime / pattern. This pools the SAME per-observation rows `compute_forward_aggregates`'s `by_setup` /
+    `by_<pattern>` group (the consistency invariant is unit-asserted). A member with no realized return at
+    this horizon contributes nothing (n=0)."""
+    fr_rows = session.exec(select(ForwardReturn).where(ForwardReturn.horizon == horizon)).all()
+    fr_by_run_symbol = {(fr.run_id, fr.symbol): fr for fr in fr_rows}
+    runs_with_fr = sorted({fr.run_id for fr in fr_rows})
+    results = (
+        session.exec(select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr))).all()
+        if runs_with_fr else []
+    )
+    run_rows = (
+        session.exec(select(ScannerRun).where(ScannerRun.id.in_(runs_with_fr))).all()
+        if runs_with_fr else []
+    )
+    regime_by_run = {run.id: run.regime_label for run in run_rows}  # stored regime label, read VERBATIM
+
+    members: list[dict] = []
+    for res in results:
+        if not _subject_member(res, subject):
+            continue
+        fr = fr_by_run_symbol.get((res.run_id, res.ticker))
+        if fr is None:
+            continue  # no realized return at this horizon for this member (n=0 contribution)
+        members.append({
+            "run_id": res.run_id, "ticker": res.ticker,
+            "return": fr.realized_return, "mae": fr.mae, "mfe": fr.mfe,
+            "regime": regime_by_run.get(res.run_id),  # stored regime label (read verbatim)
+            "sector": res.sector,                     # stored sector (read verbatim)
+        })
+    return members
+
+
+def _expectancy(returns: list[float]) -> dict:
+    """Per-occurrence expectancy with its decomposition over the member returns: `win_rate` (fraction
+    `> 0`), `avg_win` (mean of returns `> 0`; None when no win), `avg_loss` (mean of returns `<= 0`,
+    negative; None when no loss), and `expectancy` = `win_rate*avg_win + (1-win_rate)*avg_loss` — which
+    equals the plain mean (asserted in tests). Empty -> all None (honest NA, never a fabricated 0). The
+    `> 0` win / loss boundary is a fixed structural rule (like `_distribution.pct_positive`), not a tunable."""
+    n = len(returns)
+    if n == 0:
+        return {"win_rate": None, "avg_win": None, "avg_loss": None, "expectancy": None}
+    wins = [r for r in returns if r > 0]
+    losses = [r for r in returns if r <= 0]
+    win_rate = len(wins) / n
+    avg_win = mean(wins) if wins else None
+    avg_loss = mean(losses) if losses else None
+    expectancy = (
+        (win_rate * avg_win if avg_win is not None else 0)
+        + ((1 - win_rate) * avg_loss if avg_loss is not None else 0)
+    )
+    return {"win_rate": win_rate, "avg_win": avg_win, "avg_loss": avg_loss, "expectancy": expectancy}
+
+
+def _return_per_mae(returns: list[float], maes: list[float]) -> Optional[float]:
+    """Mean return per unit mean-|MAE| (`mean_return / mean(|mae|)`) — the J-30-deferred MAE-risk ratio
+    the new stored excursions enable, downside-by-construction (MAE is the adverse leg, never total
+    volatility). NA (None) when n < 2 or `mean(|mae|) == 0` (no adverse excursion) — never fabricated."""
+    if len(returns) < 2 or not maes:
+        return None
+    mean_abs_mae = mean(abs(m) for m in maes)
+    if mean_abs_mae == 0:
+        return None
+    return mean(returns) / mean_abs_mae
+
+
+def _event_study_horizon_row(members: list[dict], horizon: int, min_sample: int) -> dict:
+    """One per-horizon row of the event study over the subject's pooled members: the distribution (mean /
+    median / %positive / dispersion, REUSING `forward_testing._distribution`), the expectancy
+    decomposition, the mean stored MAE / MFE excursions (read VERBATIM, never recomputed), and BOTH
+    downside-only risk-adjusted ratios (return/downside-dev REUSING `_risk_adjusted`; return/mean-|MAE|),
+    each beside the raw mean. Carries `n` + `low_sample` (`n < min_sample`). The engine computes every
+    figure; the UI gates low-sample/empty cells to NA + n. NO total volatility anywhere (anti-goal:
+    risk-adjusted reporting must not conflate up/down volatility)."""
+    returns = [m["return"] for m in members]
+    maes = [m["mae"] for m in members if m["mae"] is not None]
+    mfes = [m["mfe"] for m in members if m["mfe"] is not None]
+    n = len(returns)
+    dist = _distribution(returns)  # {mean_return, median, pct_positive, dispersion, n}
+    return {
+        "horizon": horizon,
+        "n": n,
+        "low_sample": n < min_sample,
+        "mean_return": dist["mean_return"],
+        "median": dist["median"],
+        "pct_positive": dist["pct_positive"],
+        "dispersion": dist["dispersion"],
+        "expectancy": _expectancy(returns),
+        "mean_mae": _mean_or_none(maes),
+        "mean_mfe": _mean_or_none(mfes),
+        "return_per_downside_dev": _risk_adjusted(returns),
+        "return_per_mae": _return_per_mae(returns, maes),
+    }
+
+
+def _best_exit_horizon(by_horizon: list[dict]) -> Optional[int]:
+    """The argmax horizon among the NON-low-sample horizons of the primary metric — the downside
+    risk-adjusted `return_per_downside_dev`, falling back to the raw `mean_return` when it is NA. NA
+    (None) when EVERY horizon is low-sample (honest — never a fabricated 'best' on thin evidence)."""
+    best_horizon: Optional[int] = None
+    best_metric: Optional[float] = None
+    for row in by_horizon:
+        if row["low_sample"]:
+            continue
+        metric = row["return_per_downside_dev"]
+        if metric is None:
+            metric = row["mean_return"]
+        if metric is None:
+            continue
+        if best_metric is None or metric > best_metric:
+            best_metric = metric
+            best_horizon = row["horizon"]
+    return best_horizon
+
+
+def _event_study_by_regime(members: list[dict], cfg: Config) -> list[dict]:
+    """The by-regime slice at the selected horizon: one row per CONFIGURED regime label
+    (`config.regime.labels` order — no hard-coded regime list, mirroring `_regime_effectiveness`'s
+    every-label discipline), each with its per-regime `n`, `low_sample`, `mean_return`, `hit_rate`
+    (fraction `> 0`), and downside `risk_adjusted` (REUSE `_risk_adjusted`). Members are grouped by their
+    STORED regime label (read verbatim). Every label emits a row even at n=0 (honest NA — never omitted),
+    and Σ per-regime `n` == the pooled member count (every member carries exactly one configured label) —
+    the consistency invariant (unit-asserted)."""
+    min_sample = cfg.walk_forward.min_sample
+    by_label: dict[str, list[float]] = defaultdict(list)
+    for member in members:
+        by_label[member["regime"]].append(member["return"])
+    rows: list[dict] = []
+    for label in cfg.regime.labels:
+        returns = by_label.get(label, [])
+        n = len(returns)
+        rows.append({
+            "regime": label,
+            "n": n,
+            "low_sample": n < min_sample,
+            "mean_return": _mean_or_none(returns),
+            "hit_rate": (sum(1 for r in returns if r > 0) / n) if returns else None,
+            "risk_adjusted": _risk_adjusted(returns),
+        })
+    return rows
+
+
+def _event_study_by_sector(members: list[dict], cfg: Config) -> list[dict]:
+    """The by-sector slice at the selected horizon: one row per STORED `scanner_results.sector` that has
+    members (config sector-name order first, then any extras sorted — NON-padded, mirroring
+    `_attribution_slices.by_sector`), each with its per-sector `n`, `low_sample`, `mean_return`, and
+    downside `risk_adjusted` (REUSE `_risk_adjusted`). Sectors with no members do not appear; a thin
+    sector shows honest NA + n (low_sample)."""
+    min_sample = cfg.walk_forward.min_sample
+    sector_order = list(cfg.etfs.sector.values())  # config sector NAMES (never a literal sector list)
+    by_sector: dict[str, list[float]] = defaultdict(list)
+    for member in members:
+        if member["sector"] is not None:
+            by_sector[member["sector"]].append(member["return"])
+
+    def _row(sector: str, returns: list[float]) -> dict:
+        return {
+            "sector": sector,
+            "n": len(returns),
+            "low_sample": len(returns) < min_sample,
+            "mean_return": _mean_or_none(returns),
+            "risk_adjusted": _risk_adjusted(returns),
+        }
+
+    rows: list[dict] = []
+    emitted: set = set()
+    for sector in sector_order:
+        if sector in by_sector:
+            rows.append(_row(sector, by_sector[sector]))
+            emitted.add(sector)
+    for sector in sorted(by_sector):
+        if sector not in emitted:
+            rows.append(_row(sector, by_sector[sector]))
+    return rows
+
+
+def compute_event_study(
+    session: Session, subject_key: str, horizon: int, config: Optional[Config] = None
+) -> dict:
+    """The SINGLE canonical Setup & Pattern event study (Data Contract value, J-29) for `subject_key` at
+    the selected `horizon`. Pools EVERY historical occurrence of the subject (a setup OR a detected
+    pattern) across all immutable snapshots and reports, per configured horizon, the forward-return
+    distribution (mean / median / %positive / dispersion) + expectancy + mean MAE / MFE + the downside-
+    only risk-adjusted ratios (return/downside-dev AND return/mean-|MAE|), plus the best exit-horizon and
+    the by-regime + by-sector slices at the selected horizon — each carrying `n` and honest NA.
+
+    READ-ONLY (the keystone anti-goal): derived ENTIRELY from stored values — `forward_returns`
+    (`realized_return` + the iter-14 `mae` / `mfe`, read VERBATIM) JOINED to the stored `scanner_results`
+    (setup status + the pattern mirror flags) and `scanner_runs.regime_label` (verbatim). It issues ONLY
+    SELECTs and pure stats; it calls NO scoring / regime / return / excursion / pattern math (no run_scan,
+    score_stocks, backfill*, forward_return, forward_excursions, detect_*, score_regime). It pools the SAME
+    per-observation rows `compute_forward_aggregates` groups, so the pooled mean for a subject at horizon h
+    equals the matching `by_setup` / `by_<pattern>` cohort mean (the consistency invariant, unit-asserted).
+    Risk is downside-only everywhere (never total volatility). Raises `ValueError` for an unknown subject
+    (the API pre-validates -> 422)."""
+    cfg = config or get_config()
+    wf = cfg.walk_forward
+    subjects = subject_catalog(cfg)
+
+    subject = next((s for s in subjects if s["key"] == subject_key), None)
+    if subject is None:
+        raise ValueError(
+            f"unknown subject {subject_key!r}; valid subjects are {[s['key'] for s in subjects]}"
+        )
+
+    by_horizon: list[dict] = []
+    selected_members: Optional[list[dict]] = None
+    for h in wf.horizons:
+        members = _event_study_members(session, subject, h)
+        by_horizon.append(_event_study_horizon_row(members, h, wf.min_sample))
+        if h == horizon:
+            selected_members = members
+    if selected_members is None:  # horizon not in wf.horizons (API validates; defensive for direct calls)
+        selected_members = _event_study_members(session, subject, horizon)
+
+    return {
+        "subject": subject,
+        "horizon": horizon,
+        "subjects": subjects,
+        "horizons": list(wf.horizons),
+        "default_horizon": wf.default_horizon,
+        "min_sample": wf.min_sample,
+        "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
+        "descriptive_caveat": RESEARCH_CAVEAT,
+        "n_total": len(selected_members),
+        "by_horizon": by_horizon,
+        "best_exit_horizon": _best_exit_horizon(by_horizon),
+        "by_regime": _event_study_by_regime(selected_members, cfg),
+        "by_sector": _event_study_by_sector(selected_members, cfg),
     }

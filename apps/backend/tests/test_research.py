@@ -32,9 +32,11 @@ from app.engine.research import (
     _quantile_cutoff,
     _rank_ic,
     _risk_adjusted,
+    compute_event_study,
     compute_factor_combination,
     compute_factor_lab,
     factor_catalog,
+    subject_catalog,
 )
 from app.models import ForwardReturn, ScannerResult, ScannerRun
 from test_config import MINIMAL_VALID, _write
@@ -72,6 +74,7 @@ def _add_result(
     session, run_id, ticker, rank, *, lead=50.0, entry=50.0, risk=50.0, sector="Technology",
     bucket="C", setup="Breakout-watch", record_json="{}",
     hv=None, vcp_contraction=None, downside_vol=None,
+    is_vcp=False, is_pullback_to_rising_dma=False, is_flat_base_breakout=False,
 ):
     session.add(ScannerResult(
         run_id=run_id, ticker=ticker, name=ticker, sector=sector,
@@ -80,13 +83,16 @@ def _add_result(
         risk_score=risk, risk_bucket=bucket,
         setup_status=setup, rank=rank, record_json=record_json,
         hv=hv, vcp_contraction=vcp_contraction, downside_vol=downside_vol,  # iter-13 volatility columns
+        is_vcp=is_vcp, is_pullback_to_rising_dma=is_pullback_to_rising_dma,  # iter-14 event-study cohorts
+        is_flat_base_breakout=is_flat_base_breakout,
     ))
 
 
-def _add_fr(session, run_id, symbol, ret, horizon=H):
+def _add_fr(session, run_id, symbol, ret, horizon=H, mae=None, mfe=None):
     session.add(ForwardReturn(
         run_id=run_id, symbol=symbol, horizon=horizon, asof_date=date(2025, 1, 1),
         entry_close=100.0, measured_date=date(2025, 2, 1), realized_return=ret,
+        mae=mae, mfe=mfe,  # iter-14 stored excursions (read verbatim by the event study)
     ))
 
 
@@ -944,3 +950,269 @@ def test_combination_invalid_side_raises(tmp_path):
     data["research"]["factor_lab"]["combination"]["default_conditions"][0]["side"] = "sideways"
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))
+
+
+# ==================================================================================================
+# J-29 — Setup & Pattern event study: pooled cross-snapshot distribution + expectancy + MAE/MFE +
+# downside-only risk-adjusted + best-exit-horizon + by-regime/by-sector, read-only over stored values.
+# ==================================================================================================
+@pytest.fixture()
+def event_study_engine(tmp_path):
+    """Two runs in DIFFERENT regimes with known setups, VCP flags, sectors, returns + stored MAE/MFE — so
+    the event-study pooled stats, the by-regime/by-sector slices, and the consistency invariant vs
+    `compute_forward_aggregates` (by_setup / by_vcp) are exact by construction. VCP names span both
+    regimes (Risk-on AA,CC + Risk-off DD) and all VCP names are Technology (a present-only by-sector)."""
+    engine = _engine(tmp_path, "eventstudy.db")
+    with Session(engine) as session:
+        on = _add_run(session, date(2025, 1, 10), regime_label="Risk-on")
+        off = _add_run(session, date(2025, 2, 10), regime_label="Risk-off")
+        # (ticker, run, setup, sector, is_vcp, ret, mae, mfe)
+        rows = [
+            ("AA", on,  "Actionable",         "Technology", True,  0.10, -0.05, 0.15),
+            ("BB", on,  "Actionable",         "Energy",     False, 0.20, -0.02, 0.25),
+            ("CC", on,  "Breakout-watch",     "Technology", True,  -0.10, -0.18, 0.05),
+            ("DD", off, "Risk-off-watchlist", "Technology", True,  0.30, -0.08, 0.35),
+            ("EE", off, "Risk-off-watchlist", "Energy",     False, 0.04, -0.03, 0.12),
+        ]
+        for i, (tkr, run, setup, sector, is_vcp, ret, mae, mfe) in enumerate(rows, start=1):
+            _add_result(session, run.id, tkr, rank=i, setup=setup, sector=sector, is_vcp=is_vcp)
+            _add_fr(session, run.id, tkr, ret, mae=mae, mfe=mfe)
+        session.commit()
+    return engine
+
+
+# --- read-only keystone (critical) ----------------------------------------------------------------
+def test_event_study_is_read_only_no_scoring_return_excursion_or_pattern_call(event_study_engine, monkeypatch):
+    """Read-only (the critical anti-goal): monkeypatch run_scan / score_stocks / forward_return /
+    forward_excursions / detect_* / score_regime to RAISE, then assert compute_event_study STILL returns a
+    full payload (per-horizon rows + by-regime + by-sector) — proving it SELECTs stored values + pure-math
+    only, recomputing no return/excursion/score/regime/pattern. The new `forward_excursions` is in the
+    raise set because MAE/MFE are STORED and read verbatim, never recomputed in the read path."""
+    import app.engine.forward_testing as ft
+    import app.engine.patterns as patterns
+    import app.engine.regime as regime
+    import app.engine.scanner as scanner
+    import app.engine.scoring as scoring
+
+    def _boom(*args, **kwargs):  # pragma: no cover - must never be reached
+        raise AssertionError("read path must not recompute a score/return/excursion/pattern/regime")
+
+    monkeypatch.setattr(scanner, "run_scan", _boom)
+    monkeypatch.setattr(scoring, "score_stocks", _boom)
+    monkeypatch.setattr(ft, "forward_return", _boom)
+    monkeypatch.setattr(ft, "forward_excursions", _boom)  # iter-14: excursions are STORED, read verbatim
+    monkeypatch.setattr(patterns, "detect_vcp", _boom)
+    monkeypatch.setattr(patterns, "detect_pullback_to_rising_dma", _boom)
+    monkeypatch.setattr(patterns, "detect_flat_base_breakout", _boom)
+    monkeypatch.setattr(regime, "score_regime", _boom)
+
+    cfg = _cfg_with(min_sample=2)
+    with Session(event_study_engine) as session:
+        payload = compute_event_study(session, "vcp", H, cfg)
+    assert payload["subject"]["key"] == "vcp" and payload["subject"]["kind"] == "pattern"
+    row = next(r for r in payload["by_horizon"] if r["horizon"] == H)
+    assert row["n"] == 3 and row["mean_return"] is not None
+    assert [r["regime"] for r in payload["by_regime"]] == cfg.regime.labels
+    assert [r["sector"] for r in payload["by_sector"]] == ["Technology"]
+
+
+# --- consistency invariant (the read-only proof; iter-2 lesson: bind to compute_forward_aggregates) ---
+def test_event_study_consistency_with_forward_aggregates(event_study_engine):
+    """Consistency invariant (the iter-2-scoped read-only proof): the event-study pooled mean for a SETUP
+    equals `compute_forward_aggregates(H).by_setup[setup].mean_return`, and for the VCP PATTERN equals the
+    `by_vcp` flagged-cohort mean — the SAME stored observations grouped, never a second computation. (Bound
+    to compute_forward_aggregates, NOT the per-date scorecard's top cohort — a different population.)"""
+    cfg = load_config()
+    with Session(event_study_engine) as session:
+        es_setup = compute_event_study(session, "Actionable", H, cfg)
+        es_vcp = compute_event_study(session, "vcp", H, cfg)
+        agg = compute_forward_aggregates(session, H, cfg)
+
+    by_setup = {r["setup"]: r for r in agg["by_setup"]}
+    es_setup_row = next(r for r in es_setup["by_horizon"] if r["horizon"] == H)
+    assert es_setup_row["n"] == by_setup["Actionable"]["n"] == 2
+    assert es_setup_row["mean_return"] == pytest.approx(by_setup["Actionable"]["mean_return"])
+
+    by_vcp = {r["vcp"]: r for r in agg["by_vcp"]}
+    es_vcp_row = next(r for r in es_vcp["by_horizon"] if r["horizon"] == H)
+    assert es_vcp_row["n"] == by_vcp["VCP"]["n"] == 3
+    assert es_vcp_row["mean_return"] == pytest.approx(by_vcp["VCP"]["mean_return"])
+
+
+# --- distribution + expectancy + MAE/MFE + downside-only risk-adjusted (exact) ---------------------
+def test_event_study_distribution_expectancy_mae_mfe_exact(event_study_engine):
+    """Exact per-horizon stats on the VCP cohort {AA:0.10, CC:-0.10, DD:0.30}: distribution
+    (mean/median/%positive/dispersion), the expectancy decomposition (which equals the mean), the mean
+    STORED MAE/MFE (read verbatim), and BOTH downside-only risk-adjusted ratios (numeric here — a downside
+    leg and a non-zero mean|MAE| exist), each beside the raw mean."""
+    from statistics import mean as _mean, median as _median, stdev as _stdev
+
+    cfg = _cfg_with(min_sample=2)  # so n=3 is not low-sample (the engine computes either way; this is exact)
+    with Session(event_study_engine) as session:
+        payload = compute_event_study(session, "vcp", H, cfg)
+    row = next(r for r in payload["by_horizon"] if r["horizon"] == H)
+    returns = [0.10, -0.10, 0.30]
+    assert row["n"] == 3 and row["low_sample"] is False
+    assert row["mean_return"] == pytest.approx(_mean(returns))  # 0.10
+    assert row["median"] == pytest.approx(_median(returns))     # 0.10
+    assert row["pct_positive"] == pytest.approx(2 / 3)          # AA,DD > 0 ; CC not
+    assert row["dispersion"] == pytest.approx(_stdev(returns))
+    exp = row["expectancy"]
+    assert exp["win_rate"] == pytest.approx(2 / 3)
+    assert exp["avg_win"] == pytest.approx(_mean([0.10, 0.30]))  # 0.20
+    assert exp["avg_loss"] == pytest.approx(-0.10)
+    assert exp["expectancy"] == pytest.approx(_mean(returns))    # the identity: expectancy == mean
+    assert row["mean_mae"] == pytest.approx(_mean([-0.05, -0.18, -0.08]))  # stored, read verbatim
+    assert row["mean_mfe"] == pytest.approx(_mean([0.15, 0.05, 0.35]))
+    assert row["return_per_downside_dev"] == pytest.approx(_risk_adjusted(returns))  # downside-only
+    assert row["return_per_mae"] == pytest.approx(_mean(returns) / _mean([0.05, 0.18, 0.08]))
+
+
+def test_event_study_risk_adjusted_na_when_no_downside_and_zero_mae(tmp_path):
+    """Downside-only honesty (the iter-11 risk-adjusted-NA fixture): an all-non-negative subject cohort
+    with zero MAE has no downside leg → BOTH return_per_downside_dev and return_per_mae are NA (None) —
+    never a total-volatility number, never a fabricated ratio — while the raw mean is still shown."""
+    engine = _engine(tmp_path, "es_downside.db")
+    cfg = _cfg_with(min_sample=2)
+    with Session(engine) as session:
+        run = _add_run(session, date(2025, 1, 10), regime_label="Risk-on")
+        for i, (tkr, ret) in enumerate([("P", 0.10), ("Q", 0.20), ("R", 0.30)], start=1):
+            _add_result(session, run.id, tkr, rank=i, setup="Actionable", is_vcp=True)
+            _add_fr(session, run.id, tkr, ret, mae=0.0, mfe=0.30)  # all-up + zero adverse excursion
+        session.commit()
+        payload = compute_event_study(session, "vcp", H, cfg)
+    row = next(r for r in payload["by_horizon"] if r["horizon"] == H)
+    assert row["n"] == 3 and row["mean_return"] == pytest.approx(0.20)  # raw mean still shown
+    assert row["return_per_downside_dev"] is None  # no downside leg → NA (not total volatility)
+    assert row["return_per_mae"] is None           # mean|MAE| == 0 → NA
+
+
+def test_event_study_single_member_risk_adjusted_na(tmp_path):
+    """n < 2 → both downside-risk-adjusted ratios are NA (no dispersion / single excursion to divide by),
+    while the raw mean is still shown — honest, never fabricated."""
+    engine = _engine(tmp_path, "es_single.db")
+    cfg = _cfg_with(min_sample=1)
+    with Session(engine) as session:
+        run = _add_run(session, date(2025, 1, 10), regime_label="Risk-on")
+        _add_result(session, run.id, "ONLY", rank=1, setup="Actionable", is_vcp=True)
+        _add_fr(session, run.id, "ONLY", -0.10, mae=-0.20, mfe=0.05)
+        session.commit()
+        payload = compute_event_study(session, "vcp", H, cfg)
+    row = next(r for r in payload["by_horizon"] if r["horizon"] == H)
+    assert row["n"] == 1 and row["mean_return"] == pytest.approx(-0.10)
+    assert row["return_per_downside_dev"] is None and row["return_per_mae"] is None
+
+
+# --- by-regime: every config label, Σ n == pooled n, honest empty rows ------------------------------
+def test_event_study_by_regime_sums_to_pooled_n_and_emits_every_label(event_study_engine):
+    """The by-regime slice emits every CONFIGURED regime label in order (no hard-coded list); Σ per-regime
+    n == the selected-horizon pooled n (each member carries exactly one stored label); an empty configured
+    regime is an HONEST NA row (n=0, mean None) — never omitted, never fabricated."""
+    cfg = _cfg_with(min_sample=2)
+    with Session(event_study_engine) as session:
+        payload = compute_event_study(session, "vcp", H, cfg)
+    by_regime = payload["by_regime"]
+    assert [r["regime"] for r in by_regime] == cfg.regime.labels
+    counts = {r["regime"]: r["n"] for r in by_regime}
+    assert counts["Risk-on"] == 2 and counts["Risk-off"] == 1
+    assert sum(r["n"] for r in by_regime) == payload["n_total"] == 3  # Σ per-regime n == pooled n
+    empty = next(r for r in by_regime if r["regime"] == "Choppy")  # no Choppy member in the fixture
+    assert empty["n"] == 0 and empty["mean_return"] is None and empty["risk_adjusted"] is None
+
+
+# --- by-sector: present-only (non-padded), config order, honest NA ---------------------------------
+def test_event_study_by_sector_present_only(event_study_engine):
+    """The by-sector slice is NON-padded — only sectors WITH subject members appear (config order). All
+    three VCP names are Technology, so the slice is exactly [Technology] with the pooled mean."""
+    cfg = _cfg_with(min_sample=2)
+    with Session(event_study_engine) as session:
+        payload = compute_event_study(session, "vcp", H, cfg)
+    by_sector = payload["by_sector"]
+    assert [r["sector"] for r in by_sector] == ["Technology"]
+    assert by_sector[0]["n"] == 3 and by_sector[0]["mean_return"] == pytest.approx(0.10)
+
+
+def test_event_study_low_count_subject_is_low_sample(event_study_engine):
+    """A low-count subject (a pattern flagged on few names) carries low_sample=True + its honest n at the
+    populated horizon (the UI renders NA + n) — never hidden, never fabricated. (Real min_sample=30.)"""
+    cfg = load_config()  # min_sample 30
+    with Session(event_study_engine) as session:
+        payload = compute_event_study(session, "vcp", H, cfg)
+    assert payload["min_sample"] == cfg.walk_forward.min_sample == 30
+    row = next(r for r in payload["by_horizon"] if r["horizon"] == H)
+    assert row["n"] == 3 and row["low_sample"] is True  # 3 < 30
+
+
+# --- best exit-horizon: argmax of the primary metric among non-low-sample horizons -----------------
+def test_event_study_best_exit_horizon_argmax_non_low_sample(tmp_path):
+    """best_exit_horizon = the argmax horizon among NON-low-sample horizons of the primary metric
+    (return_per_downside_dev, falling back to mean_return). Two populated horizons with the same downside
+    but different means → the higher-metric horizon (60) wins; all-low-sample → None."""
+    engine = _engine(tmp_path, "es_exit.db")
+    cfg = _cfg_with(min_sample=2)
+    with Session(engine) as session:
+        run = _add_run(session, date(2025, 1, 10), regime_label="Risk-on")
+        for i, tkr in enumerate(["X", "Y"], start=1):
+            _add_result(session, run.id, tkr, rank=i, setup="Actionable", is_vcp=True)
+        # horizon 20: returns {0.02,-0.01} (low metric); horizon 60: {0.30,-0.01} (same downside, higher mean)
+        _add_fr(session, run.id, "X", 0.02, horizon=20, mae=-0.05, mfe=0.05)
+        _add_fr(session, run.id, "Y", -0.01, horizon=20, mae=-0.05, mfe=0.05)
+        _add_fr(session, run.id, "X", 0.30, horizon=60, mae=-0.05, mfe=0.35)
+        _add_fr(session, run.id, "Y", -0.01, horizon=60, mae=-0.05, mfe=0.05)
+        session.commit()
+        payload = compute_event_study(session, "vcp", 20, cfg)
+    assert payload["best_exit_horizon"] == 60
+
+
+def test_event_study_best_exit_horizon_na_when_all_low_sample(event_study_engine):
+    """When EVERY horizon is low-sample (real min_sample=30, the fixture is tiny) best_exit_horizon is NA
+    (None) — never a fabricated 'best' on thin evidence."""
+    with Session(event_study_engine) as session:
+        payload = compute_event_study(session, "vcp", H, load_config())
+    assert payload["best_exit_horizon"] is None
+
+
+# --- unknown subject + config-driven catalog + payload labels -------------------------------------
+def test_event_study_unknown_subject_raises(event_study_engine):
+    """An unknown subject key raises ValueError (the API maps this to 422 — never a fabricated subject)."""
+    with Session(event_study_engine) as session:
+        with pytest.raises(ValueError):
+            compute_event_study(session, "not_a_subject", H, load_config())
+
+
+def test_subject_catalog_is_config_driven_setups_then_patterns():
+    """The subject catalog is config-driven: every setup status (ALL_STATUSES order) then every
+    config.patterns key, each labelled from the single config-backed methodology copy (a config-only
+    setup/pattern appears with no code change)."""
+    from app.engine.setups import ALL_STATUSES
+
+    cfg = load_config()
+    subjects = subject_catalog(cfg)
+    setups = [s for s in subjects if s["kind"] == "setup"]
+    patterns = [s for s in subjects if s["kind"] == "pattern"]
+    assert [s["key"] for s in setups] == ALL_STATUSES
+    assert [s["key"] for s in patterns] == list(cfg.patterns.model_dump())
+    assert {"key", "label", "kind"} == set(subjects[0])
+    vcp = next(s for s in subjects if s["key"] == "vcp")
+    assert vcp["label"] == next(e.name for e in cfg.methodology.entries if e.key == "vcp")
+
+
+def test_event_study_payload_shape_and_labels(event_study_engine):
+    """The payload carries the resolved subject, the config-driven subjects catalog + horizons +
+    default_horizon + min_sample, the survivorship + descriptive labels verbatim, and one per-horizon row
+    (full shape) per configured horizon."""
+    cfg = load_config()
+    with Session(event_study_engine) as session:
+        payload = compute_event_study(session, "Actionable", H, cfg)
+    assert payload["subject"] == {"key": "Actionable", "label": "Actionable", "kind": "setup"}
+    assert payload["horizon"] == H and payload["horizons"] == list(cfg.walk_forward.horizons)
+    assert payload["default_horizon"] == cfg.walk_forward.default_horizon
+    assert [s["key"] for s in payload["subjects"]] == [s["key"] for s in subject_catalog(cfg)]
+    assert "survivorship" in payload["survivorship_bias"].lower()
+    assert payload["descriptive_caveat"] == RESEARCH_CAVEAT
+    assert [r["horizon"] for r in payload["by_horizon"]] == list(cfg.walk_forward.horizons)
+    for r in payload["by_horizon"]:
+        assert {
+            "horizon", "n", "low_sample", "mean_return", "median", "pct_positive", "dispersion",
+            "expectancy", "mean_mae", "mean_mfe", "return_per_downside_dev", "return_per_mae",
+        } <= set(r)
