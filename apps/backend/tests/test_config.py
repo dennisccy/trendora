@@ -147,6 +147,19 @@ MINIMAL_VALID = {
                 {"key": "leadership_score", "label": "Leadership", "family": "score",
                  "direction": "higher_better", "source": "leadership_score"},
             ],
+            # iter-12 made `combination` required (the multi-factor cohort limits + quantile vocabulary +
+            # default conditions come from config, never code). The smallest valid block: 1 <= min <= max,
+            # >= 1 quantile (fraction in (0,1), unique key), and default_conditions referencing the single
+            # factor + a real quantile key, count within [min, max].
+            "combination": {
+                "min_conditions": 2,
+                "max_conditions": 3,
+                "quantiles": [{"key": "half", "label": "Half (50%)", "fraction": 0.5}],
+                "default_conditions": [
+                    {"factor": "leadership_score", "side": "top", "quantile": "half"},
+                    {"factor": "leadership_score", "side": "bottom", "quantile": "half"},
+                ],
+            },
         },
     },
     # iter-12 made `methodology` required (the config-backed Setup & Pattern catalog). The smallest

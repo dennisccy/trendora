@@ -607,17 +607,97 @@ class FactorLabFactor(BaseModel):
     source: str
 
 
+class QuantileOption(BaseModel):
+    """One entry of the multi-factor-combination quantile vocabulary (iter-12, J-26). `fraction` is the
+    tail size a `top`/`bottom` condition selects (e.g. `0.20` = a quintile); the dropdown is built from
+    this config-driven list (a config-only quantile needs no frontend edit). `fraction ∈ (0, 1)` and the
+    `key` uniqueness are validated on `CombinationCfg`."""
+
+    model_config = ConfigDict(extra="allow")
+    key: str
+    label: str
+    fraction: float
+
+
+class DefaultCondition(BaseModel):
+    """One canonical default condition shown on first load (iter-12, J-26) — a catalog factor at its
+    `top`/`bottom` `quantile`. `factor` references a sibling `FactorLabCfg.factors` key (cross-checked on
+    `FactorLabCfg`, which can see both `factors` and `combination`); `quantile` references a
+    `CombinationCfg.quantiles` key (cross-checked on `CombinationCfg`). `side` is validated by the
+    `Literal` — an invalid side raises `ConfigError` at boot, never a silent default."""
+
+    model_config = ConfigDict(extra="allow")
+    factor: str
+    side: Literal["top", "bottom"]
+    quantile: str
+
+
+class CombinationCfg(BaseModel):
+    """Multi-factor-combination config (iter-12, J-26). EVERY tunable the read-only
+    `app.engine.research.compute_factor_combination` reads lives here (anti-goal: No magic numbers — no
+    condition count, quantile fraction, or default in calc code): `min_conditions`/`max_conditions` bound
+    the condition count; `quantiles` is the ordered, config-driven top/bottom tail vocabulary; and
+    `default_conditions` is the canonical 2-condition default served on first load. The low-sample
+    threshold is REUSED from `walk_forward.min_sample` (no new threshold). Validated:
+    `1 <= min_conditions <= max_conditions`; every `quantiles[*].fraction ∈ (0, 1)` and `key` unique;
+    `min_conditions <= len(default_conditions) <= max_conditions`; every `default_conditions[*].quantile`
+    is a real `quantiles` key (the factor-key cross-check sits on `FactorLabCfg`). An invalid block raises
+    `ConfigError` at boot — never a silent default."""
+
+    model_config = ConfigDict(extra="allow")
+    min_conditions: int
+    max_conditions: int
+    quantiles: list[QuantileOption] = Field(min_length=1)
+    default_conditions: list[DefaultCondition] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "CombinationCfg":
+        if not (1 <= self.min_conditions <= self.max_conditions):
+            raise ValueError(
+                "research.factor_lab.combination requires 1 <= min_conditions <= max_conditions, got "
+                f"min_conditions={self.min_conditions}, max_conditions={self.max_conditions}"
+            )
+        bad_fraction = sorted(q.key for q in self.quantiles if not (0 < q.fraction < 1))
+        if bad_fraction:
+            raise ValueError(
+                f"research.factor_lab.combination quantile fractions must be in (0, 1): {bad_fraction}"
+            )
+        keys = [q.key for q in self.quantiles]
+        dupes = sorted({k for k in keys if keys.count(k) > 1})
+        if dupes:
+            raise ValueError(f"research.factor_lab.combination.quantiles have duplicate keys: {dupes}")
+        if not (self.min_conditions <= len(self.default_conditions) <= self.max_conditions):
+            raise ValueError(
+                f"research.factor_lab.combination.default_conditions count ({len(self.default_conditions)}) "
+                f"must be in [{self.min_conditions}, {self.max_conditions}]"
+            )
+        quantile_keys = set(keys)
+        bad_quantile = sorted(
+            {c.quantile for c in self.default_conditions if c.quantile not in quantile_keys}
+        )
+        if bad_quantile:
+            raise ValueError(
+                "research.factor_lab.combination.default_conditions reference unknown quantiles: "
+                f"{bad_quantile} (valid: {sorted(quantile_keys)})"
+            )
+        return self
+
+
 class FactorLabCfg(BaseModel):
     """Factor-Lab config (iter-10, J-25). `deciles` (validated > 1) is the equal-count quantile count;
-    `factors` is the ordered, config-driven catalog. The decile count + the factor catalog living in
-    config (not code) is the No-magic-numbers keystone; the low-sample threshold is REUSED from
-    `walk_forward.min_sample` (no new threshold). Validated: `deciles > 1` and every factor `key`
-    unique — an invalid block raises `ConfigError`, never a silent default (source resolvability is
+    `factors` is the ordered, config-driven catalog; `combination` (iter-12, J-26) is the typed
+    multi-factor-combination block. The decile count + the factor catalog living in config (not code) is
+    the No-magic-numbers keystone; the low-sample threshold is REUSED from `walk_forward.min_sample` (no
+    new threshold). Validated: `deciles > 1`, every factor `key` unique, and every
+    `combination.default_conditions[*].factor` references a real `factors` key (cross-checked here — this
+    model can see BOTH `factors` and `combination`, exactly like the Config-level source cross-check).
+    An invalid block raises `ConfigError`, never a silent default (factor-source resolvability is
     cross-checked on the top-level `Config`, which can see `scores`)."""
 
     model_config = ConfigDict(extra="allow")
     deciles: int
     factors: list[FactorLabFactor] = Field(min_length=1)
+    combination: CombinationCfg
 
     @model_validator(mode="after")
     def _validate(self) -> "FactorLabCfg":
@@ -627,6 +707,15 @@ class FactorLabCfg(BaseModel):
         dupes = sorted({k for k in keys if keys.count(k) > 1})
         if dupes:
             raise ValueError(f"research.factor_lab.factors have duplicate keys: {dupes}")
+        factor_keys = set(keys)
+        bad_factor = sorted(
+            {c.factor for c in self.combination.default_conditions if c.factor not in factor_keys}
+        )
+        if bad_factor:
+            raise ValueError(
+                "research.factor_lab.combination.default_conditions reference unknown factors: "
+                f"{bad_factor} (valid: {sorted(factor_keys)})"
+            )
         return self
 
 

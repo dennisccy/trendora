@@ -1,0 +1,33 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever-iter-12",
+  "status": "complete",
+  "current_step": "qa_complete",
+  "updated_at": "2026-06-02T16:24:56.071180Z",
+  "started_at": "2026-06-02T15:19:53.054321Z",
+  "cli": "claude",
+  "depth": "full",
+  "mode": "next",
+  "target_journeys": [
+    "J-26"
+  ],
+  "blockers": [],
+  "changed_files": [
+    "config.yaml",
+    "apps/backend/app/config.py",
+    "apps/backend/app/engine/research.py",
+    "apps/backend/app/api/research.py",
+    "apps/backend/tests/test_research.py",
+    "apps/backend/tests/test_api_research.py",
+    "apps/backend/tests/test_config.py",
+    "apps/backend/tests/test_config_engine.py",
+    "apps/backend/tests/test_sectors.py",
+    "apps/backend/tests/test_themes.py",
+    "apps/frontend/lib/api.ts",
+    "apps/frontend/app/research/page.tsx"
+  ],
+  "tests_run": true,
+  "tests_result": "Full backend suite GREEN: 411 passed, 4 skipped, 0 failed in 1078.10s (~18 min). The 4 skips are the offline-skipped @integration external-network tests (e.g. the stooq live fetch). 384 passed in iter-11 + 27 new iter-12 tests = 411: 15 new in test_research.py (J-26 read-only patch-to-raise keystone for compute_factor_combination; cohort algebra + exact stats on a controlled fixture with the combined cohort == exact AND-intersection {S4,S5,S6}, strictly smaller than each single; opposing-extremes empty cohort -> stats None / NA, never a fabricated 0; thin combined cohort -> low_sample True + honest n; pool honesty: a factor-NULL obs excluded so pool_n <= each single factor's _factor_observations n; horizon-without-observations all-NA; config-driven payload + labels; ValueError on unknown factor/side/quantile/out-of-range count; and 7 combination-config boot-validation cases -> ConfigError) + 12 new in test_api_research.py (default payload from config default_conditions; J-18 no-date-field; explicit-conditions + horizon re-point; 422 on unknown factor/side/quantile/malformed/too-few/too-many/invalid-horizon; 503 no price data). test_no_magic_numbers.py green (research.py introduced no float/forbidden-int literal \u2014 the nearest-rank cutoff uses only structural integers + the config fraction). Frontend: npm run build typechecks all 14 routes incl. /research (7.51 kB, grown by the new combination section).",
+  "browser_checks_run": true,
+  "next_action": "qa_complete",
+  "notes": "Full-depth additive iteration (J-26 multi-factor combination cohorts) on the proven read-only /research Factor-Lab seam. NEW engine fn app.engine.research:compute_factor_combination + NEW endpoint GET /api/research/factor-combination + NEW config block research.factor_lab.combination + NEW frontend section. Anti-goal seams verified in source: (1) READ-ONLY \u2014 _combination_observations + compute_factor_combination issue only SELECTs against ForwardReturn + ScannerResult and call no scoring/return/pattern/regime math; the patch-to-raise keystone proves it. (2) DOWNSIDE-ONLY risk \u2014 risk_adjusted reuses _risk_adjusted (mean/downside_deviation) verbatim, never total vol; NA on no-downside/n<2. (3) NO MAGIC NUMBERS \u2014 condition limits, quantile fractions, defaults all from config; cutoff method uses only structural ints. (4) NO FABRICATION \u2014 factor-NULL obs excluded; low-sample/empty cohorts show NA + n. (5) J-18 \u2014 endpoint takes no as-of param; frontend adds only `conditions` state + reuses the page's shared horizon. Coherence: new value registered in state/blueprint.md Data Contract (decomposer rows 78/108/170) with ONE computing module + ONE serving endpoint; no existing contract value recomputed or re-homed -> expect COHERENCE-PASS. Diff is additive: no change to scoring/forward_testing/scanner/patterns/regime/snapshot_serving/the as-of provider/backtest/the factor-lab route. Per the iter-10/11 process pattern, no developer -audit.md is produced (auditor runs later); status.json IS written at this phase-namespace path. NOTE FOR BROWSER QA: the new section Card carries data-testid=\"combination-section\" and the table data-testid=\"combination-table\"; condition controls are condition-factor-<i>/condition-side-<i>/condition-quantile-<i>/condition-remove-<i> + condition-add. Drive the NA fixture via opposing extremes (e.g. a factor top-quintile AND the same factor bottom-quintile, or RS-3m top AND ATR% bottom narrowed to a thin combined cohort) to capture the NA + n Combined cell. Verify J-18 by toggling the global as-of and asserting the decile/rank-IC/regime AND the new combination table are byte-identical with zero as_of-param requests (the combination fetch never sends as_of). Serialize Chrome between qa and browser-qa, de-dup shots by sha256."
+}

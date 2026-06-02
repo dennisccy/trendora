@@ -108,3 +108,169 @@ def test_factor_lab_503_when_no_price_data(tmp_path):
         with pytest.raises(HTTPException) as exc:
             factor_lab(factor=None, horizon=None, session=session)
         assert exc.value.status_code == 503
+
+
+# ==================================================================================================
+# GET /api/research/factor-combination — multi-factor combination cohorts (iter-12, J-26)
+# ==================================================================================================
+def test_factor_combination_default_payload(loaded_engine):
+    """J-26 at the API level: the default payload (config default_conditions + default horizon) carries
+    the unconditional baseline + one single per condition + the combined-AND cohort, each with the full
+    stat shape; the factor catalog + quantile vocabulary are config-driven; the cohort algebra holds."""
+    cfg = load_config()
+    comb = cfg.research.factor_lab.combination
+    with TestClient(main.app) as client:
+        resp = client.get("/api/research/factor-combination")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    # defaults resolved from config (no condition param -> config.default_conditions; default horizon)
+    assert data["horizon"] == cfg.walk_forward.default_horizon
+    assert data["min_sample"] == cfg.walk_forward.min_sample
+    assert [c["factor"]["key"] for c in data["conditions"]] == [d.factor for d in comb.default_conditions]
+    assert [c["side"] for c in data["conditions"]] == [d.side for d in comb.default_conditions]
+
+    # config-driven vocabularies (the dropdowns) + condition limits
+    assert [q["key"] for q in data["quantiles"]] == [q.key for q in comb.quantiles]
+    assert [f["key"] for f in data["factors"]] == [f.key for f in cfg.research.factor_lab.factors]
+    assert data["min_conditions"] == comb.min_conditions and data["max_conditions"] == comb.max_conditions
+
+    # every cohort carries the full stat shape
+    cohorts = [data["baseline"], data["combined"], *data["singles"]]
+    for cohort in cohorts:
+        assert {"n", "mean_return", "median_return", "hit_rate", "risk_adjusted", "low_sample"} <= set(cohort["stats"])
+    assert len(data["singles"]) == len(comb.default_conditions)
+
+    # algebra: baseline == pool; each single ⊆ pool; combined ⊆ each single
+    assert data["baseline"]["stats"]["n"] == data["pool_n"]
+    assert all(s["stats"]["n"] <= data["pool_n"] for s in data["singles"])
+    assert data["combined"]["stats"]["n"] <= min(s["stats"]["n"] for s in data["singles"])
+
+    # honest labels carried verbatim
+    assert "survivorship" in data["survivorship_bias"].lower()
+    assert "not a predictive model" in data["descriptive_caveat"].lower()
+
+
+def test_factor_combination_no_date_control_present(loaded_engine):
+    """J-18: the combination cohort is a cross-date aggregate — its payload exposes NO as-of/date field
+    (no second date state); the only inputs are conditions + the shared horizon."""
+    with TestClient(main.app) as client:
+        data = client.get("/api/research/factor-combination").json()
+    assert not any(k in data for k in ("asof_date", "as_of", "asof_dates", "date", "is_latest"))
+
+
+def test_factor_combination_explicit_conditions_repoint(loaded_engine):
+    """Passing explicit conditions re-points the cohorts; adding a 3rd condition adds a 3rd single row and
+    keeps combined ≤ each single ≤ pool (server values, never a client recompute)."""
+    with TestClient(main.app) as client:
+        two = client.get(
+            "/api/research/factor-combination",
+            params=[("condition", "leadership_score:top:quintile"), ("condition", "atr_pct:bottom:tertile")],
+        ).json()
+        three = client.get(
+            "/api/research/factor-combination",
+            params=[
+                ("condition", "leadership_score:top:quintile"),
+                ("condition", "atr_pct:bottom:tertile"),
+                ("condition", "entry_quality_score:top:half"),
+            ],
+        ).json()
+    assert len(two["singles"]) == 2 and len(three["singles"]) == 3
+    assert [c["factor"]["key"] for c in three["conditions"]] == [
+        "leadership_score", "atr_pct", "entry_quality_score",
+    ]
+    for data in (two, three):
+        assert all(s["stats"]["n"] <= data["pool_n"] for s in data["singles"])
+        assert data["combined"]["stats"]["n"] <= min(s["stats"]["n"] for s in data["singles"])
+
+
+def test_factor_combination_horizon_repoints(loaded_engine):
+    """Changing the shared horizon re-points the cohort returns — server values (assert the payload's
+    horizon changes and at least one cohort mean differs across horizons)."""
+    with TestClient(main.app) as client:
+        h20 = client.get("/api/research/factor-combination", params={"horizon": 20}).json()
+        h60 = client.get("/api/research/factor-combination", params={"horizon": 60}).json()
+    assert h20["horizon"] == 20 and h60["horizon"] == 60
+    assert h20["baseline"]["stats"]["mean_return"] != h60["baseline"]["stats"]["mean_return"]
+
+
+def test_factor_combination_unknown_factor_422(loaded_engine):
+    with TestClient(main.app) as client:
+        resp = client.get(
+            "/api/research/factor-combination",
+            params=[("condition", "not_a_factor:top:quintile"), ("condition", "atr_pct:bottom:tertile")],
+        )
+    assert resp.status_code == 422
+
+
+def test_factor_combination_unknown_side_422(loaded_engine):
+    with TestClient(main.app) as client:
+        resp = client.get(
+            "/api/research/factor-combination",
+            params=[("condition", "leadership_score:sideways:quintile"), ("condition", "atr_pct:bottom:tertile")],
+        )
+    assert resp.status_code == 422
+
+
+def test_factor_combination_unknown_quantile_422(loaded_engine):
+    with TestClient(main.app) as client:
+        resp = client.get(
+            "/api/research/factor-combination",
+            params=[("condition", "leadership_score:top:decile"), ("condition", "atr_pct:bottom:tertile")],
+        )
+    assert resp.status_code == 422
+
+
+def test_factor_combination_malformed_condition_422(loaded_engine):
+    """A condition not shaped '<factor>:<side>:<quantile>' is rejected (422) — never silently parsed."""
+    with TestClient(main.app) as client:
+        resp = client.get(
+            "/api/research/factor-combination",
+            params=[("condition", "leadership_score:top"), ("condition", "atr_pct:bottom:tertile")],
+        )
+    assert resp.status_code == 422
+
+
+def test_factor_combination_too_few_conditions_422(loaded_engine):
+    """A condition count below min_conditions is rejected (422) — no fabricated cohort."""
+    with TestClient(main.app) as client:
+        resp = client.get(
+            "/api/research/factor-combination", params=[("condition", "leadership_score:top:quintile")]
+        )
+    assert resp.status_code == 422
+
+
+def test_factor_combination_too_many_conditions_422(loaded_engine):
+    """A condition count above max_conditions is rejected (422) — no fabricated cohort."""
+    with TestClient(main.app) as client:
+        resp = client.get(
+            "/api/research/factor-combination",
+            params=[
+                ("condition", "leadership_score:top:quintile"),
+                ("condition", "atr_pct:bottom:tertile"),
+                ("condition", "entry_quality_score:top:half"),
+                ("condition", "risk_score:bottom:quartile"),
+            ],
+        )
+    assert resp.status_code == 422
+
+
+def test_factor_combination_invalid_horizon_422(loaded_engine):
+    """An out-of-range horizon is rejected (422) — no fabricated horizon."""
+    with TestClient(main.app) as client:
+        resp = client.get("/api/research/factor-combination", params={"horizon": 7})
+    assert resp.status_code == 422
+
+
+def test_factor_combination_503_when_no_price_data(tmp_path):
+    """No price data -> explicit 503 (never a fabricated cohort). The handler is called directly against
+    an empty DB session, leaving the process engine untouched."""
+    from app.api.research import factor_combination
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'empty_comb.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        assert latest_data_date(session) is None
+        with pytest.raises(HTTPException) as exc:
+            factor_combination(condition=None, horizon=None, session=session)
+        assert exc.value.status_code == 503

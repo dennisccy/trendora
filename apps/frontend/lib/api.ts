@@ -762,6 +762,96 @@ export async function fetchFactorLab(
   return getJSON<FactorLabResponse>(`/api/research/factor-lab${query ? `?${query}` : ""}`, signal);
 }
 
+// --- research / multi-factor combination cohorts (iter-12, J-26) ---------------------------
+/** One quantile option (the top/bottom tail vocabulary, config-driven on the backend — NOT a hard-coded
+ *  frontend list). `fraction` is the tail size a top/bottom condition selects (0.20 = a quintile). The
+ *  frontend renders `label` and selects by `key`. */
+export interface QuantileOption {
+  key: string;
+  label: string;
+  fraction: number;
+}
+
+/** One resolved combination condition: a catalog factor at its `top`/`bottom` quantile tail. The factor
+ *  + quantile descriptors come from the payload (config-driven) — the frontend renders their labels and
+ *  builds the row label, never inventing a factor/quantile. */
+export interface FactorCombinationCondition {
+  factor: FactorLabFactor;
+  side: "top" | "bottom";
+  quantile: QuantileOption;
+}
+
+/** One cohort's descriptive stats, derived once on the backend from the stored returns (the page
+ *  re-formats only). `mean_return`/`median_return` are return fractions; `hit_rate` is the fraction `> 0`
+ *  (0..1); `risk_adjusted` is the DOWNSIDE-only ratio (mean / downside-deviation — never total vol; null
+ *  = NA). Every figure is `null` for an empty cohort (NA, never a fabricated 0); `low_sample`
+ *  (n < min_sample) flags the cohort the UI renders as NA + n. */
+export interface CohortStats {
+  n: number;
+  mean_return: number | null;
+  median_return: number | null;
+  hit_rate: number | null;
+  risk_adjusted: number | null;
+  low_sample: boolean;
+}
+
+/** The unconditional baseline / combined-AND cohort: a server-built `label` + its `stats`. */
+export interface FactorCombinationCohort {
+  label: string;
+  stats: CohortStats;
+}
+
+/** One single-factor cohort: the resolved `condition` (for the row label) + its `stats`. */
+export interface FactorCombinationSingle {
+  condition: FactorCombinationCondition;
+  stats: CohortStats;
+}
+
+/** GET /api/research/factor-combination payload (J-26) — the SINGLE canonical multi-factor combination
+ *  analysis: the combined-AND cohort vs the unconditional `baseline` vs each single-factor cohort, each
+ *  with mean / median forward return, hit-rate, downside-risk-adjusted, and n. Every figure is derived
+ *  once from the SAME stored pool the Factor Lab reads; the page re-formats only and recomputes no
+ *  return/factor. A cross-date aggregate (like the Factor Lab) — there is NO as-of/date control (J-18).
+ *  `factors`/`quantiles` are the config-driven dropdown vocabularies (no hard-coded list in the UI). */
+export interface FactorCombinationResponse {
+  conditions: FactorCombinationCondition[]; // the resolved requested combination
+  horizon: number; // the served forward window (trading days)
+  horizons: number[]; // valid horizons (from config — not hard-coded in the UI)
+  default_horizon: number;
+  min_sample: number; // cohorts with n below this are flagged low-sample (render NA + n)
+  min_conditions: number; // condition-count bounds (from config) — drive add/remove enablement
+  max_conditions: number;
+  factors: FactorLabFactor[]; // the config-driven factor catalog (the Factor dropdown vocabulary)
+  quantiles: QuantileOption[]; // the config-driven quantile vocabulary (the Quantile dropdown)
+  survivorship_bias: string; // honest caveat, rendered verbatim
+  descriptive_caveat: string; // "descriptive, not predictive", rendered verbatim
+  pool_n: number; // the multi-factor observation pool size (all referenced factors non-null)
+  baseline: FactorCombinationCohort; // the unconditional all-names cohort
+  singles: FactorCombinationSingle[]; // one cohort per condition
+  combined: FactorCombinationCohort; // the exact AND-intersection cohort
+}
+
+/** Canonical multi-factor combination source: GET /api/research/factor-combination. Builds repeated
+ *  `condition=<factor>:<side>:<quantile>` query params + an optional `horizon`. Throws on non-200 so the
+ *  page renders an explicit "Backend unavailable" state (503 no data / 422 bad factor/side/quantile/count/
+ *  horizon) — never fabricated cohorts. With no conditions the backend serves its config default_conditions. */
+export async function fetchFactorCombination(
+  conditions: { factor: string; side: string; quantile: string }[],
+  horizon?: number,
+  signal?: AbortSignal,
+): Promise<FactorCombinationResponse> {
+  const params = new URLSearchParams();
+  for (const c of conditions) {
+    params.append("condition", `${c.factor}:${c.side}:${c.quantile}`);
+  }
+  if (horizon !== undefined) params.set("horizon", String(horizon));
+  const query = params.toString();
+  return getJSON<FactorCombinationResponse>(
+    `/api/research/factor-combination${query ? `?${query}` : ""}`,
+    signal,
+  );
+}
+
 // --- data manager (iter-3, J-17) -----------------------------------------------------------
 /** Current dataset coverage — descriptive metadata only (the frontend re-formats it; it computes no
  *  coverage figure). `gaps_preview` is a bounded list of the backfill-able trading days that have bars

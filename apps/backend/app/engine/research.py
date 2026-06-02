@@ -30,8 +30,8 @@ THREE non-negotiable disciplines (each unit-proved):
 from __future__ import annotations
 
 import json
-from math import sqrt
-from statistics import mean
+from math import ceil, sqrt
+from statistics import mean, median
 from typing import Optional
 
 from sqlmodel import Session, select
@@ -308,4 +308,197 @@ def compute_factor_lab(
         "deciles": _deciles(ordered, fl.deciles, wf.min_sample),
         "rank_ic": _rank_ic([(o["factor"], o["return"]) for o in observations]),
         "by_regime": _regime_effectiveness(observations, cfg, horizon),
+    }
+
+
+# --------------------------------------------------------------------------------------------------
+# Multi-factor combination cohorts (J-26) — read-only AND-intersection over the SAME stored pool
+# --------------------------------------------------------------------------------------------------
+def _combination_observations(session: Session, factors: list, horizon: int) -> list[dict]:
+    """The read-only multi-factor per-observation pool for (`factors`, `horizon`): mirror
+    `_factor_observations` but read EVERY referenced factor's stored value per result. SELECT-only against
+    `ForwardReturn` + `ScannerResult`; it recomputes NO return and NO factor. An observation is kept ONLY
+    when a realized return exists at this horizon AND every referenced factor is non-null — a NULL in ANY
+    referenced factor EXCLUDES the observation (never fabricated), so the pool is a (possibly strict)
+    subset of any single factor's `_factor_observations` pool. Each observation is
+    `{run_id, ticker, return, values: {factor_key: float}}`."""
+    parsed_by_key = {f.key: parse_factor_source(f.source) for f in factors}
+    fr_rows = session.exec(select(ForwardReturn).where(ForwardReturn.horizon == horizon)).all()
+    ret_by_run_symbol = {(fr.run_id, fr.symbol): fr.realized_return for fr in fr_rows}
+    runs_with_fr = sorted({fr.run_id for fr in fr_rows})
+    results = (
+        session.exec(select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr))).all()
+        if runs_with_fr else []
+    )
+
+    observations: list[dict] = []
+    for res in results:
+        realized = ret_by_run_symbol.get((res.run_id, res.ticker))
+        if realized is None:
+            continue  # no realized return at this horizon for this stock (excluded, never fabricated)
+        values: dict[str, float] = {}
+        for key, parsed in parsed_by_key.items():
+            value = _extract_factor_value(res, parsed)
+            if value is None:
+                break  # a NULL in ANY referenced factor EXCLUDES this observation (never fabricated)
+            values[key] = float(value)
+        else:  # ran without a break -> every referenced factor was non-null
+            observations.append({
+                "run_id": res.run_id, "ticker": res.ticker, "return": realized, "values": values,
+            })
+    return observations
+
+
+def _quantile_cutoff(sorted_values: list[float], fraction: float) -> float:
+    """Deterministic nearest-rank empirical quantile cutoff on ascending `sorted_values`: the value at
+    1-based rank `ceil(fraction * n)` (clamped to [1, n]). Tie-tolerant — the caller's `>=`/`<=` boundary
+    test INCLUDES values equal to the cutoff, so a cohort may be marginally larger than `fraction · n`
+    (honest, documented). A fixed statistical RULE, not a tunable — only `fraction` comes from config, so
+    no magic number is introduced (the structural 1's are rank/index arithmetic, not thresholds)."""
+    n = len(sorted_values)
+    rank = max(1, min(ceil(fraction * n), n))
+    return sorted_values[rank - 1]
+
+
+def _cohort_stats(returns: list[float], min_sample: int) -> dict:
+    """Per-cohort descriptive stats over the member realized returns (read-only): raw `mean_return`,
+    `median_return`, `hit_rate` (fraction of returns `> 0`), the downside-only `risk_adjusted` (REUSE
+    `_risk_adjusted` — `mean / downside_deviation`, never total volatility), `n`, and the `low_sample`
+    flag (`n < min_sample`, reusing `walk_forward.min_sample`). An EMPTY cohort yields `None` for every
+    figure (NA) — never a fabricated 0."""
+    n = len(returns)
+    return {
+        "n": n,
+        "mean_return": mean(returns) if returns else None,
+        "median_return": median(returns) if returns else None,
+        "hit_rate": (sum(1 for r in returns if r > 0) / n) if returns else None,
+        "risk_adjusted": _risk_adjusted(returns),
+        "low_sample": n < min_sample,
+    }
+
+
+def _condition_payload(cond: dict) -> dict:
+    """Serialize a resolved condition (factor object + side + quantile object) into its JSON payload
+    shape: the full catalog factor descriptor, the `side`, and the resolved quantile `{key, label,
+    fraction}` — the same vocabulary the frontend's factor/quantile dropdowns render."""
+    factor = cond["factor"]
+    quantile = cond["quantile"]
+    return {
+        "factor": {
+            "key": factor.key, "label": factor.label, "family": factor.family,
+            "direction": factor.direction, "source": factor.source,
+        },
+        "side": cond["side"],
+        "quantile": {"key": quantile.key, "label": quantile.label, "fraction": quantile.fraction},
+    }
+
+
+def compute_factor_combination(
+    session: Session, conditions: list[dict], horizon: int, config: Optional[Config] = None
+) -> dict:
+    """The SINGLE canonical multi-factor combination read (Data Contract value, J-26). Each condition is
+    a catalog factor at its `top`/`bottom` `quantile`; the `combined` cohort is the EXACT set-intersection
+    (AND) of the single-condition memberships, reported beside the unconditional `baseline` (the whole
+    pool) and each `single` cohort so factor INTERACTION is visible. READS the stored factor values (typed
+    column or `record_json` component `raw`, verbatim) joined to the stored realized return via
+    `_combination_observations` — it recomputes NO factor and NO return (SELECT + pure grouping only;
+    calls no run_scan/score_stocks/backfill*/forward_return/detect_*/score_regime).
+
+    `conditions` is a list of `{factor: <key>, side: 'top'|'bottom', quantile: <key>}` dicts. Each
+    quantile membership uses a deterministic nearest-rank cutoff over the SHARED pool's values for that
+    factor: `top` -> value >= cutoff(1 − fraction); `bottom` -> value <= cutoff(fraction); boundary ties
+    are included. Per-cohort stats reuse the downside-only `_risk_adjusted`; an empty/low-sample cohort
+    shows NA + `n`, never a fabricated number. The pool requires ALL referenced factors non-null, so
+    `pool_n` is a (possibly strict) subset of any single factor's `_factor_observations` n. Raises
+    `ValueError` for an unknown factor/side/quantile or an out-of-range condition count (the API
+    pre-validates -> 422)."""
+    cfg = config or get_config()
+    fl = cfg.research.factor_lab
+    comb = fl.combination
+    wf = cfg.walk_forward
+    catalog = factor_catalog(cfg)
+    min_sample = wf.min_sample
+
+    if not (comb.min_conditions <= len(conditions) <= comb.max_conditions):
+        raise ValueError(
+            f"condition count {len(conditions)} out of range "
+            f"[{comb.min_conditions}, {comb.max_conditions}]"
+        )
+
+    resolved: list[dict] = []
+    for cond in conditions:
+        factor = next((f for f in fl.factors if f.key == cond.get("factor")), None)
+        if factor is None:
+            raise ValueError(
+                f"unknown factor {cond.get('factor')!r}; valid factors are {[c['key'] for c in catalog]}"
+            )
+        side = cond.get("side")
+        if side not in ("top", "bottom"):
+            raise ValueError(f"unknown side {side!r}; valid sides are ['bottom', 'top']")
+        quantile = next((q for q in comb.quantiles if q.key == cond.get("quantile")), None)
+        if quantile is None:
+            raise ValueError(
+                f"unknown quantile {cond.get('quantile')!r}; valid quantiles are "
+                f"{[q.key for q in comb.quantiles]}"
+            )
+        resolved.append({"factor": factor, "side": side, "quantile": quantile})
+
+    # the DISTINCT referenced factors (a factor MAY appear in >1 condition — e.g. top AND bottom of the
+    # same factor, the opposing-extremes NA fixture). The pool requires every one of them non-null.
+    distinct_factors = list({c["factor"].key: c["factor"] for c in resolved}.values())
+    pool = _combination_observations(session, distinct_factors, horizon)
+    pool_n = len(pool)
+
+    # per-condition membership (a set of pool indices) using each condition's nearest-rank quantile cutoff
+    # over the SHARED pool's values for that factor; combined = the exact AND-intersection of all singles.
+    single_members: list[set[int]] = []
+    for cond in resolved:
+        key = cond["factor"].key
+        fraction = cond["quantile"].fraction
+        ordered = sorted(obs["values"][key] for obs in pool)
+        if not ordered:
+            single_members.append(set())
+            continue
+        if cond["side"] == "top":
+            cutoff = _quantile_cutoff(ordered, 1 - fraction)
+            members = {i for i, obs in enumerate(pool) if obs["values"][key] >= cutoff}
+        else:  # bottom
+            cutoff = _quantile_cutoff(ordered, fraction)
+            members = {i for i, obs in enumerate(pool) if obs["values"][key] <= cutoff}
+        single_members.append(members)
+
+    combined_members: set[int] = set(range(pool_n))
+    for members in single_members:
+        combined_members &= members
+
+    def _returns(indices) -> list[float]:
+        return [pool[i]["return"] for i in sorted(indices)]
+
+    resolved_conditions = [_condition_payload(c) for c in resolved]
+
+    return {
+        "conditions": resolved_conditions,
+        "horizon": horizon,
+        "horizons": list(wf.horizons),
+        "default_horizon": wf.default_horizon,
+        "min_sample": min_sample,
+        "min_conditions": comb.min_conditions,
+        "max_conditions": comb.max_conditions,
+        "factors": catalog,
+        "quantiles": [{"key": q.key, "label": q.label, "fraction": q.fraction} for q in comb.quantiles],
+        "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
+        "descriptive_caveat": RESEARCH_CAVEAT,
+        "pool_n": pool_n,
+        "baseline": {
+            "label": "Baseline (all names)",
+            "stats": _cohort_stats(_returns(range(pool_n)), min_sample),
+        },
+        "singles": [
+            {"condition": rc, "stats": _cohort_stats(_returns(single_members[i]), min_sample)}
+            for i, rc in enumerate(resolved_conditions)
+        ],
+        "combined": {
+            "label": "Combined (AND)",
+            "stats": _cohort_stats(_returns(combined_members), min_sample),
+        },
     }

@@ -594,6 +594,28 @@ research:
       - { key: high_proximity,      label: "Proximity to 52-week high",    family: trend,      direction: higher_better, source: leadership.components.high_proximity.raw }
       - { key: up_down_vol,         label: "Up/down volume",               family: momentum,   direction: higher_better, source: leadership.components.up_down_vol.raw }
       - { key: atr_pct,             label: "ATR % (volatility level)",     family: volatility, direction: lower_better,  source: risk.components.atr_pct.raw }
+    # iter-12 CONSUMED — Multi-factor combination cohorts (J-26). EVERY tunable the read-only
+    # app.engine.research.compute_factor_combination reads lives here (anti-goal: No magic numbers — no
+    # condition count, quantile fraction, or default in calc code). A "condition" is a catalog factor at
+    # its top/bottom quantile; the combined cohort is the exact AND-intersection of 2-3 such conditions,
+    # reported beside the unconditional baseline and each single-factor cohort. The low-sample threshold
+    # is REUSED from walk_forward.min_sample (no new threshold). The quantile cutoff method is a fixed
+    # statistical rule (nearest-rank, boundary ties included) — only the `fraction` is config.
+    combination:
+      min_conditions: 2          # a combination needs >= 2 conditions (validated 1 <= min <= max)
+      max_conditions: 3          # cap at 3 conditions (keeps the AND-cohort interpretable + the UI compact)
+      # the dropdown vocabulary — config-driven (a config-only quantile needs no frontend edit). `fraction`
+      # is the tail size a top/bottom condition selects; validated in (0, 1) with unique keys.
+      quantiles:
+        - { key: quintile, label: "Quintile (20%)",  fraction: 0.20 }
+        - { key: quartile, label: "Quartile (25%)",  fraction: 0.25 }
+        - { key: tertile,  label: "Tertile (33%)",   fraction: 0.3333 }
+        - { key: half,     label: "Half (50%)",      fraction: 0.50 }
+      # the canonical 2-condition default shown on first load — each references a real catalog factor +
+      # a real quantile key; count validated within [min_conditions, max_conditions].
+      default_conditions:
+        - { factor: rs_spy_3m, side: top,    quantile: quintile }
+        - { factor: atr_pct,   side: bottom, quantile: tertile }
 
 # ----------------------------------------------------------------------------------------
 # iter-5 CONSUMED — Scanner snapshots. The historical as-of dates the scanner persists an

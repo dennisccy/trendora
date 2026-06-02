@@ -28,8 +28,11 @@ from app.engine.research import (
     RESEARCH_CAVEAT,
     _average_ranks,
     _downside_deviation,
+    _factor_observations,
+    _quantile_cutoff,
     _rank_ic,
     _risk_adjusted,
+    compute_factor_combination,
     compute_factor_lab,
     factor_catalog,
 )
@@ -557,3 +560,329 @@ def test_by_regime_low_sample_regime_is_na_with_honest_n(monotone_engine):
     row = next(r for r in payload["by_regime"] if r["regime"] == "Risk-on")
     assert row["n"] == 20 and row["low_sample"] is True
     assert row["spread"] is None and row["risk_adjusted_spread"] is None
+
+
+# ==================================================================================================
+# J-26 — multi-factor combination cohorts: the combined-AND cohort vs baseline vs each single-factor
+# cohort (mean / median / hit-rate / downside-risk-adjusted / n), over the SAME read-only stored pool.
+# ==================================================================================================
+# Two DISTINCT typed-column factors (leadership_score L, risk_score R) laid out so the two single
+# cohorts cross (neither a subset of the other) and the AND-intersection is a known, strictly-smaller
+# set {S4,S5,S6} with a downside leg — exact algebra + stats are computable by hand.
+_COMBO_ROWS = [
+    # (ticker, leadership, risk, return)
+    ("S1", 10, 50, 0.05), ("S2", 20, 60, 0.06), ("S3", 30, 10, -0.50), ("S4", 40, 20, -0.10),
+    ("S5", 50, 30, 0.10), ("S6", 60, 40, 0.30), ("S7", 70, 70, 0.07), ("S8", 80, 80, 0.08),
+]
+_COMBO_CONDITIONS = [
+    {"factor": "leadership_score", "side": "top", "quantile": "half"},
+    {"factor": "risk_score", "side": "bottom", "quantile": "half"},
+]
+
+
+@pytest.fixture()
+def combo_engine(tmp_path):
+    """8 stocks with two distinct typed factors (leadership L, risk R). Under [L top-half, R bottom-half]:
+    the L-top-half single = {S4..S8} (5), the R-bottom-half single = {S3,S4,S5,S6} (4), and the AND
+    cohort = {S4,S5,S6} (3) — a proper subset of EACH single (interaction visible), with a downside leg."""
+    engine = _engine(tmp_path, "combo.db")
+    with Session(engine) as session:
+        run = _add_run(session, date(2025, 1, 10))
+        for i, (tkr, lead, risk, ret) in enumerate(_COMBO_ROWS, start=1):
+            _add_result(session, run.id, tkr, rank=i, lead=float(lead), risk=float(risk))
+            _add_fr(session, run.id, tkr, ret)
+        session.commit()
+    return engine
+
+
+def _expected_membership(rows, key_index, side, fraction):
+    """Independently reconstruct ONE condition's membership tickers from the stored `rows` using the SAME
+    nearest-rank rule the engine documents — so the engine's grouping is checked, not assumed."""
+    values = sorted(r[key_index] for r in rows)
+    if side == "top":
+        cutoff = _quantile_cutoff(values, 1 - fraction)
+        return {r[0] for r in rows if r[key_index] >= cutoff}
+    cutoff = _quantile_cutoff(values, fraction)
+    return {r[0] for r in rows if r[key_index] <= cutoff}
+
+
+# --- read-only keystone (critical) ----------------------------------------------------------------
+def test_combination_is_read_only_no_scoring_or_return_or_pattern_call(monotone_engine, monkeypatch):
+    """Read-only (the critical anti-goal): monkeypatch run_scan / score_stocks / forward_return /
+    detect_* / score_regime to RAISE, then assert compute_factor_combination STILL returns a full payload
+    (baseline + singles + combined) — proving it SELECTs stored values + pure-groups only, recomputing no
+    score/return/factor/regime."""
+    import app.engine.forward_testing as ft
+    import app.engine.patterns as patterns
+    import app.engine.regime as regime
+    import app.engine.scanner as scanner
+    import app.engine.scoring as scoring
+
+    def _boom(*args, **kwargs):  # pragma: no cover - must never be reached
+        raise AssertionError("read path must not recompute a score/return/pattern/regime")
+
+    monkeypatch.setattr(scanner, "run_scan", _boom)
+    monkeypatch.setattr(scoring, "score_stocks", _boom)
+    monkeypatch.setattr(ft, "forward_return", _boom)
+    monkeypatch.setattr(patterns, "detect_vcp", _boom)
+    monkeypatch.setattr(patterns, "detect_pullback_to_rising_dma", _boom)
+    monkeypatch.setattr(patterns, "detect_flat_base_breakout", _boom)
+    monkeypatch.setattr(regime, "score_regime", _boom)
+
+    cfg = load_config()
+    with Session(monotone_engine) as session:
+        payload = compute_factor_combination(
+            session,
+            [
+                {"factor": "leadership_score", "side": "top", "quantile": "half"},
+                {"factor": "risk_score", "side": "bottom", "quantile": "half"},
+            ],
+            H,
+            cfg,
+        )
+    assert payload["pool_n"] == 20
+    assert payload["baseline"]["stats"]["n"] == 20
+    assert len(payload["singles"]) == 2
+    assert payload["combined"]["stats"]["n"] >= 1  # leadership-top-half ∩ (risk all-equal → all) is non-empty
+
+
+# --- cohort algebra + exact stats -----------------------------------------------------------------
+def test_combination_cohort_algebra_and_exact_stats(combo_engine):
+    """Cohort algebra + stats on the controlled fixture: baseline.n == pool_n; each single.n <= pool_n;
+    combined == the EXACT AND-intersection of the single memberships (reconstructed independently) and is
+    strictly smaller than each single (interaction visible); mean / median / hit-rate are exact and the
+    risk_adjusted equals the downside-only `_risk_adjusted` of the combined membership."""
+    from statistics import mean as _mean, median as _median
+
+    cfg = _cfg_with(min_sample=2)  # so the small cohorts are not low-sample (stats are numeric, not NA)
+    with Session(combo_engine) as session:
+        payload = compute_factor_combination(session, _COMBO_CONDITIONS, H, cfg)
+
+    # independently reconstruct the two single memberships + their intersection from the stored rows
+    members_lead = _expected_membership(_COMBO_ROWS, 1, "top", 0.5)     # L top-half
+    members_risk = _expected_membership(_COMBO_ROWS, 2, "bottom", 0.5)  # R bottom-half
+    combined_tickers = members_lead & members_risk
+    assert members_lead == {"S4", "S5", "S6", "S7", "S8"}
+    assert members_risk == {"S3", "S4", "S5", "S6"}
+    assert combined_tickers == {"S4", "S5", "S6"}
+
+    # baseline = whole pool
+    assert payload["pool_n"] == len(_COMBO_ROWS) == 8
+    assert payload["baseline"]["stats"]["n"] == 8
+
+    singles = payload["singles"]
+    assert [s["condition"]["factor"]["key"] for s in singles] == ["leadership_score", "risk_score"]
+    assert singles[0]["stats"]["n"] == len(members_lead) == 5
+    assert singles[1]["stats"]["n"] == len(members_risk) == 4
+    assert all(s["stats"]["n"] <= payload["pool_n"] for s in singles)  # each single ⊆ baseline
+
+    combined = payload["combined"]["stats"]
+    # combined == exact AND-intersection, strictly smaller than EACH single (interaction visible)
+    assert combined["n"] == len(combined_tickers) == 3
+    assert combined["n"] < singles[0]["stats"]["n"] and combined["n"] < singles[1]["stats"]["n"]
+    assert combined["n"] <= min(s["stats"]["n"] for s in singles)
+
+    # exact stats on the known combined returns {S4:-0.10, S5:0.10, S6:0.30}
+    combo_returns = [r[3] for r in _COMBO_ROWS if r[0] in combined_tickers]
+    assert combo_returns == [-0.10, 0.10, 0.30]
+    assert combined["mean_return"] == pytest.approx(_mean(combo_returns))      # 0.10
+    assert combined["median_return"] == pytest.approx(_median(combo_returns))  # 0.10
+    assert combined["hit_rate"] == pytest.approx(2 / 3)                        # 2 of 3 positive
+    assert combined["risk_adjusted"] == pytest.approx(_risk_adjusted(combo_returns))  # downside-only
+    assert combined["risk_adjusted"] is not None and combined["low_sample"] is False
+
+
+# --- honest NA: empty (opposing extremes) + thin (low-sample) cohorts -----------------------------
+def test_combination_opposing_extremes_empty_cohort_is_na_not_zero(monotone_engine):
+    """Honest NA (the iter-11 NA-fixture lesson): the AND of two OPPOSING extremes of the SAME factor
+    (top-quintile AND bottom-quintile) is empty → the combined cohort shows stats `None` (NA) and n=0 —
+    never a fabricated 0 — while each single cohort is itself non-empty."""
+    cfg = load_config()
+    with Session(monotone_engine) as session:
+        payload = compute_factor_combination(
+            session,
+            [
+                {"factor": "leadership_score", "side": "top", "quantile": "quintile"},
+                {"factor": "leadership_score", "side": "bottom", "quantile": "quintile"},
+            ],
+            H,
+            cfg,
+        )
+    combined = payload["combined"]["stats"]
+    assert combined["n"] == 0
+    assert combined["mean_return"] is None and combined["median_return"] is None
+    assert combined["hit_rate"] is None and combined["risk_adjusted"] is None  # NA, never a fabricated 0
+    assert combined["low_sample"] is True  # 0 < min_sample
+    assert all(s["stats"]["n"] >= 1 for s in payload["singles"])  # the extremes themselves are non-empty
+
+
+def test_combination_thin_cohort_is_low_sample_with_honest_n(combo_engine):
+    """A thin but non-empty combined cohort (n < walk_forward.min_sample) carries low_sample=True + its
+    HONEST n (the UI renders NA + n); the engine still computes the figure (the UI gates the display) —
+    never hidden, never fabricated. (Real min_sample=30; the combined cohort here is n=3.)"""
+    cfg = load_config()  # min_sample=30
+    with Session(combo_engine) as session:
+        payload = compute_factor_combination(session, _COMBO_CONDITIONS, H, cfg)
+    assert payload["min_sample"] == cfg.walk_forward.min_sample == 30
+    combined = payload["combined"]["stats"]
+    assert combined["n"] == 3 and combined["low_sample"] is True
+    assert combined["mean_return"] is not None  # computed; the UI renders NA because low_sample is True
+
+
+# --- pool honesty: a factor-NULL observation is excluded from the multi-factor pool ----------------
+def test_combination_pool_excludes_factor_null_observations(tmp_path):
+    """Pool honesty (the iter-2 lesson): an observation NULL in ANY referenced factor is EXCLUDED from
+    the multi-factor pool (never fabricated), so `pool_n` is a (possibly strict) subset of EACH single
+    factor's own `_factor_observations` n — do NOT assert equality to the aggregate mean."""
+    engine = _engine(tmp_path, "combo_pool.db")
+    cfg = _cfg_with(min_sample=2)
+    with Session(engine) as session:
+        run = _add_run(session, date(2025, 1, 10))
+        # (ticker, leadership typed-column, rs_spy_3m component raw, return). CCC's rs_spy_3m is NULL.
+        specs = [("AAA", 10.0, 0.40, 0.20), ("BBB", 20.0, 0.10, 0.05),
+                 ("CCC", 30.0, None, -0.30), ("DDD", 40.0, 0.20, 0.10)]
+        for i, (tkr, lead, rs, ret) in enumerate(specs, start=1):
+            _add_result(session, run.id, tkr, rank=i, lead=lead,
+                        record_json=_component_record("leadership", "rs_spy_3m", rs))
+            _add_fr(session, run.id, tkr, ret)
+        session.commit()
+        payload = compute_factor_combination(
+            session,
+            [
+                {"factor": "rs_spy_3m", "side": "top", "quantile": "half"},
+                {"factor": "leadership_score", "side": "top", "quantile": "half"},
+            ],
+            H,
+            cfg,
+        )
+        lead_factor = next(f for f in cfg.research.factor_lab.factors if f.key == "leadership_score")
+        rs_factor = next(f for f in cfg.research.factor_lab.factors if f.key == "rs_spy_3m")
+        lead_n = len(_factor_observations(session, lead_factor, H))
+        rs_n = len(_factor_observations(session, rs_factor, H))
+    # CCC (rs_spy_3m NULL) is excluded from the multi-factor pool — never fabricated
+    assert payload["pool_n"] == 3
+    assert payload["baseline"]["stats"]["n"] == 3
+    # pool ≤ EACH single factor's OWN _factor_observations n (a subset, not an equality to the agg mean)
+    assert lead_n == 4 and rs_n == 3
+    assert payload["pool_n"] <= lead_n and payload["pool_n"] <= rs_n
+
+
+def test_combination_horizon_without_observations_is_all_na(combo_engine):
+    """A horizon with no stored forward returns (too few post-bars) → pool_n 0 and every cohort NA — never
+    fabricated. Forward returns exist only at H=20; horizon 60 has none in this fixture."""
+    cfg = _cfg_with(min_sample=2)
+    with Session(combo_engine) as session:
+        payload = compute_factor_combination(session, _COMBO_CONDITIONS, 60, cfg)
+    assert payload["horizon"] == 60 and payload["pool_n"] == 0
+    assert payload["baseline"]["stats"]["mean_return"] is None
+    assert payload["combined"]["stats"]["n"] == 0 and payload["combined"]["stats"]["mean_return"] is None
+    assert all(s["stats"]["n"] == 0 and s["stats"]["mean_return"] is None for s in payload["singles"])
+
+
+# --- config-driven payload + ValueError on bad input ----------------------------------------------
+def test_combination_payload_is_config_driven_with_labels(combo_engine):
+    """No magic numbers / single source: the quantile vocabulary, condition limits, and factor catalog
+    all come from config (no hard-coded list in the engine); the survivorship/descriptive labels are
+    carried verbatim; each resolved condition carries the full factor descriptor + side + quantile."""
+    cfg = load_config()
+    comb = cfg.research.factor_lab.combination
+    with Session(combo_engine) as session:
+        payload = compute_factor_combination(session, _COMBO_CONDITIONS, H, cfg)
+    assert [q["key"] for q in payload["quantiles"]] == [q.key for q in comb.quantiles]
+    assert all({"key", "label", "fraction"} == set(q) for q in payload["quantiles"])
+    assert payload["min_conditions"] == comb.min_conditions
+    assert payload["max_conditions"] == comb.max_conditions
+    assert [f["key"] for f in payload["factors"]] == [f.key for f in cfg.research.factor_lab.factors]
+    assert "survivorship" in payload["survivorship_bias"].lower()
+    assert payload["descriptive_caveat"] == RESEARCH_CAVEAT
+    c0 = payload["conditions"][0]
+    assert c0["factor"]["key"] == "leadership_score" and c0["side"] == "top"
+    assert c0["quantile"]["key"] == "half" and "fraction" in c0["quantile"]
+    assert payload["baseline"]["label"] and payload["combined"]["label"]
+
+
+def test_combination_unknown_factor_side_quantile_and_count_raise(monotone_engine):
+    """The engine raises ValueError on an unknown factor/side/quantile or an out-of-range condition count
+    (the API maps each to 422 — never a fabricated factor/side/quantile/cohort)."""
+    cfg = load_config()
+    with Session(monotone_engine) as session:
+        with pytest.raises(ValueError):  # unknown factor
+            compute_factor_combination(session, [
+                {"factor": "not_a_factor", "side": "top", "quantile": "half"},
+                {"factor": "risk_score", "side": "bottom", "quantile": "half"},
+            ], H, cfg)
+        with pytest.raises(ValueError):  # unknown side
+            compute_factor_combination(session, [
+                {"factor": "leadership_score", "side": "sideways", "quantile": "half"},
+                {"factor": "risk_score", "side": "bottom", "quantile": "half"},
+            ], H, cfg)
+        with pytest.raises(ValueError):  # unknown quantile
+            compute_factor_combination(session, [
+                {"factor": "leadership_score", "side": "top", "quantile": "decile"},
+                {"factor": "risk_score", "side": "bottom", "quantile": "half"},
+            ], H, cfg)
+        with pytest.raises(ValueError):  # too few conditions (1 < min_conditions 2)
+            compute_factor_combination(session, [
+                {"factor": "leadership_score", "side": "top", "quantile": "half"},
+            ], H, cfg)
+        with pytest.raises(ValueError):  # too many conditions (4 > max_conditions 3)
+            compute_factor_combination(session, [
+                {"factor": "leadership_score", "side": "top", "quantile": "half"},
+                {"factor": "risk_score", "side": "bottom", "quantile": "half"},
+                {"factor": "entry_quality_score", "side": "top", "quantile": "half"},
+                {"factor": "atr_pct", "side": "bottom", "quantile": "half"},
+            ], H, cfg)
+
+
+# --- boot validation (ConfigError) for the combination block --------------------------------------
+def test_combination_min_gt_max_raises(tmp_path):
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["research"]["factor_lab"]["combination"]["min_conditions"] = 5  # > max_conditions 3
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_combination_fraction_out_of_range_raises(tmp_path):
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["research"]["factor_lab"]["combination"]["quantiles"][0]["fraction"] = 1.5  # ∉ (0, 1)
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_combination_duplicate_quantile_key_raises(tmp_path):
+    data = copy.deepcopy(MINIMAL_VALID)
+    quantiles = data["research"]["factor_lab"]["combination"]["quantiles"]
+    quantiles.append(copy.deepcopy(quantiles[0]))  # duplicate the single quantile's key
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_combination_default_unknown_factor_raises(tmp_path):
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["research"]["factor_lab"]["combination"]["default_conditions"][0]["factor"] = "not_a_factor"
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_combination_default_unknown_quantile_raises(tmp_path):
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["research"]["factor_lab"]["combination"]["default_conditions"][0]["quantile"] = "not_a_quantile"
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_combination_default_count_outside_range_raises(tmp_path):
+    data = copy.deepcopy(MINIMAL_VALID)
+    # only 1 default condition while min_conditions=2 -> count out of [min, max]
+    data["research"]["factor_lab"]["combination"]["default_conditions"] = [
+        {"factor": "leadership_score", "side": "top", "quantile": "half"},
+    ]
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_combination_invalid_side_raises(tmp_path):
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["research"]["factor_lab"]["combination"]["default_conditions"][0]["side"] = "sideways"
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))

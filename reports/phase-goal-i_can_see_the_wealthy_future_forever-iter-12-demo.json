@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever-iter-12",
+  "base_url": "http://localhost:3835",
+  "iteration": 12,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Factor Lab",
+      "narration": "We open the Factor Lab — a read-only research page that grades each stock signal against months of already-recorded forward returns, so nothing here is a guess or a prediction.",
+      "point_out": "The decile sort and rank-IC score at the top judge one factor at a time. The brand-new tool we are here to see sits at the very bottom of the page.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research" },
+      "expect": { "text": "Combined (AND)" }
+    },
+    {
+      "n": 2,
+      "title": "Compare a combined cohort against the baseline and each single factor",
+      "narration": "At the bottom is the new Multi-factor combination cohort panel. Each condition is a factor set to the top or bottom of its range — here we switch the first one to the bottom, and the comparison recomputes on the spot.",
+      "point_out": "Four rows to compare: the all-names baseline, one row per single factor, and the shaded Combined (AND) cohort — each with its sample size, mean and median forward return, hit-rate, and downside risk-adjusted return.",
+      "journey": "J-26",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Bottom" } },
+      "expect": { "text": "Combined (AND)" }
+    },
+    {
+      "n": 3,
+      "title": "Stack a third condition",
+      "narration": "We add a third condition, and the comparison grows to three single factors plus the cohort that satisfies all of them at once.",
+      "point_out": "The combined cohort's sample size is never larger than the smallest single factor — stacking filters can only narrow the group. The Add condition button greys out once three conditions are in play.",
+      "journey": "J-26",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Add condition" } },
+      "expect": { "text": "Combined (AND)" }
+    },
+    {
+      "n": 4,
+      "title": "Pare back to two conditions",
+      "narration": "Removing a condition snaps the table back to two factors plus their combined cohort.",
+      "point_out": "Add condition is selectable again, and the Remove buttons grey out at two conditions — the tool never lets you drop below a real side-by-side comparison.",
+      "journey": "J-26",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Remove condition 3" } },
+      "expect": { "text": "Combined (AND)" }
+    },
+    {
+      "n": 5,
+      "title": "One shared horizon re-points every table",
+      "narration": "One shared horizon control at the top of the page sets the holding period for everything at once — switch it and the decile sort, the regime table, and this new combination table all re-point together.",
+      "point_out": "Your chosen conditions carry over unchanged across the horizon switch; only the numbers update.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "click", "target": { "role": "button", "name": "60d" } },
+      "expect": { "text": "Combined (AND)" }
+    },
+    {
+      "n": 6,
+      "title": "Honest NA instead of invented numbers",
+      "narration": "Honesty is built in: set two conditions to opposite extremes and the combined group can genuinely run out of matching names. When that happens the cells simply read NA beside the real sample size.",
+      "point_out": "A thin or empty cohort shows NA with its true count — never an invented 0.00% return.",
+      "journey": "J-26",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/research" },
+      "expect": { "text": "Combined (AND)" }
+    },
+    {
+      "n": 7,
+      "title": "One date control — the lab is a cross-date aggregate",
+      "narration": "Finally, the global as-of date in the header never touches this page. The Factor Lab pools its evidence across every date, so changing that date leaves all of its tables exactly as they were.",
+      "point_out": "There is just one date control in the whole product — this research page deliberately adds none of its own.",
+      "journey": "J-18",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/research" },
+      "expect": { "text": "Combined (AND)" }
+    }
+  ]
+}

@@ -147,6 +147,14 @@ _SYNTH_CFG = {
                 {"key": "leadership_score", "label": "Leadership", "family": "score",
                  "direction": "higher_better", "source": "leadership_score"},
             ],
+            "combination": {  # iter-12: combination is a required factor_lab sub-block
+                "min_conditions": 2, "max_conditions": 3,
+                "quantiles": [{"key": "half", "label": "Half (50%)", "fraction": 0.5}],
+                "default_conditions": [
+                    {"factor": "leadership_score", "side": "top", "quantile": "half"},
+                    {"factor": "leadership_score", "side": "bottom", "quantile": "half"},
+                ],
+            },
         },
     },
     "methodology": {  # iter-12: methodology is a required config section (one entry whose ref resolves)
