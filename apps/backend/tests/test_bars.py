@@ -17,7 +17,7 @@ import main
 from app.config import load_config
 from app.db import create_db_and_tables, make_engine
 from app.engine.indicators import sma
-from app.engine.prices import bars_asof, closes, latest_data_date
+from app.engine.prices import bars_asof, bars_through_latest, closes, latest_data_date
 
 BAR_KEYS = {"date", "open", "high", "low", "close", "volume"}
 
@@ -119,3 +119,91 @@ def test_bars_asof_invalid_dates_are_4xx(loaded_engine):
     with TestClient(main.app) as client:
         assert client.get("/api/stocks/NVDA/bars?as_of=2999-01-01").status_code == 400  # future
         assert client.get("/api/stocks/NVDA/bars?as_of=not-a-date").status_code == 422  # unparseable
+
+
+# --- iter-6 (J-20): full-path-through-latest display extension (opt-in ?through=latest) ---------
+def test_bars_through_latest_marks_forward_region_and_boundary(loaded_engine):
+    """`?through=latest` at a historical D renders the FULL path: bars with date > D appear, each bar
+    carries `is_forward` (True iff date > D), the payload exposes `latest_date`, and the <= D region is
+    byte-identical to the default (<= D) response — a display-only forward extension, no lookahead."""
+    cfg = load_config()
+    target = max(cfg.scanner.bootstrap_dates)  # a historical seed date (post-D bars exist)
+    with Session(loaded_engine) as session:
+        full_len = len(bars_through_latest(session, "NVDA"))
+        asof_len = len(bars_asof(session, "NVDA", target))
+    with TestClient(main.app) as client:
+        full = client.get(f"/api/stocks/NVDA/bars?as_of={target.isoformat()}&through=latest").json()
+        default = client.get(f"/api/stocks/NVDA/bars?as_of={target.isoformat()}").json()
+
+    assert full["asof_date"] == target.isoformat()          # the as-of boundary D is still echoed
+    assert full["latest_date"] == full["bars"][-1]["date"]  # right-hand boundary = last bar shown
+    assert len(full["bars"]) == full_len > asof_len         # the full series includes the forward region
+
+    forward = [b for b in full["bars"] if b["is_forward"]]
+    le_d = [b for b in full["bars"] if not b["is_forward"]]
+    assert len(forward) > 0                                          # there IS a post-D region here
+    assert all(b["date"] > target.isoformat() for b in forward)     # forward = strictly after D
+    assert all(b["date"] <= target.isoformat() for b in le_d)       # <= D region = on/before D
+    assert len(le_d) == asof_len
+    # the <= D region is byte-identical to the default response (same OHLCV) — the extension is additive
+    assert [{k: b[k] for k in BAR_KEYS} for b in le_d] == default["bars"]
+
+
+def test_bars_through_latest_ma_le_d_region_matches_default(loaded_engine):
+    """The <= D MA values are byte-identical with vs without the forward extension (a trailing SMA only
+    depends on prior closes), so the forward path never alters the as-of MA the chart shows for <= D."""
+    cfg = load_config()
+    target = max(cfg.scanner.bootstrap_dates)
+    with TestClient(main.app) as client:
+        full = client.get(f"/api/stocks/NVDA/bars?as_of={target.isoformat()}&through=latest").json()
+        default = client.get(f"/api/stocks/NVDA/bars?as_of={target.isoformat()}").json()
+    n_le_d = len(default["bars"])
+    for period in cfg.indicators.ma_periods:
+        assert full["ma"][str(period)][:n_le_d] == default["ma"][str(period)]   # <= D MA unchanged
+
+
+def test_bars_through_latest_at_latest_asof_has_no_forward_region(loaded_engine):
+    """At the LATEST as-of (no post-D bars) the full path has NO forward region — every bar is
+    is_forward=False — so the chart is visually unchanged (the latest-as-of edge case)."""
+    with TestClient(main.app) as client:
+        full = client.get("/api/stocks/NVDA/bars?through=latest").json()
+    assert len(full["bars"]) > 0
+    assert all(b["is_forward"] is False for b in full["bars"])
+    assert full["latest_date"] == full["bars"][-1]["date"]
+
+
+def test_bars_default_contract_unchanged_no_forward_fields(loaded_engine):
+    """Default contract (no `?through`) stays <= D and byte-identical: bars carry EXACTLY the six OHLCV
+    keys (no `is_forward`) and there is no `latest_date` — the no-lookahead default boundary is obvious."""
+    cfg = load_config()
+    target = max(cfg.scanner.bootstrap_dates)
+    with TestClient(main.app) as client:
+        body = client.get(f"/api/stocks/NVDA/bars?as_of={target.isoformat()}").json()
+    assert "latest_date" not in body
+    assert all(set(b) == BAR_KEYS for b in body["bars"])               # no extra is_forward key
+    assert all(b["date"] <= target.isoformat() for b in body["bars"])  # still <= D (no lookahead)
+
+
+def test_bars_through_latest_keeps_error_contract(loaded_engine):
+    """The forward extension preserves the existing explicit error contract — never a fabricated row:
+    unknown ticker -> 404; future `as_of` -> 400; unparseable `as_of` -> 422."""
+    with TestClient(main.app) as client:
+        assert client.get("/api/stocks/NOTREAL/bars?through=latest").status_code == 404
+        assert client.get("/api/stocks/NVDA/bars?as_of=2999-01-01&through=latest").status_code == 400
+        assert client.get("/api/stocks/NVDA/bars?as_of=not-a-date&through=latest").status_code == 422
+
+
+def test_bars_through_latest_not_in_scoring_path_source_seam():
+    """No-lookahead seam (critical): the display-only full-path helper is referenced ONLY by the price
+    accessor module and the chart endpoint — NEVER by the scoring/scanner/pattern engines (which keep
+    reading `bars_asof`, date <= D). Proven in source so post-D bars can never feed a score/bucket/VCP."""
+    import inspect
+
+    import app.engine.patterns as patterns_mod
+    import app.engine.scanner as scanner_mod
+    import app.engine.scoring as scoring_mod
+
+    for mod in (scanner_mod, scoring_mod, patterns_mod):
+        assert "bars_through_latest" not in inspect.getsource(mod), (
+            f"{mod.__name__} must not use the display-only full-path helper (no-lookahead seam)"
+        )

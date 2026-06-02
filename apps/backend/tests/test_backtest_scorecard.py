@@ -20,6 +20,7 @@ Named proofs, each guarding a critical anti-goal:
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from statistics import mean
 
 import pytest
 from sqlalchemy import func
@@ -279,6 +280,142 @@ def test_scorecard_attribution_partial_and_unobserved_horizons_are_honest(scorec
         assert attr["per_stock"]["contributors"] == [] and attr["per_stock"]["detractors"] == []
         assert sum(r["n"] for r in attr["by_sector"]) == 0
         assert all(r["n"] == 0 for r in attr["by_rank_band"])  # padded, complete, all NA
+
+
+# ==================================================================================================
+# Leadership realized returns (J-21) — read-only projection riding each by_horizon entry
+# ==================================================================================================
+@pytest.fixture()
+def leadership_engine(tmp_path):
+    """ONE run with stored horizon-20 forward returns for REAL config symbols: two `semiconductors`
+    theme members (NVDA, AMD), the Technology sector ETF (XLK), and a cohort stock (AAPL). Every OTHER
+    symbol has NO stored return at h20 (the honest-NA case) and NOTHING is stored at the other horizons,
+    so J-21's read-only projection can be checked against a direct read of the stored rows."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'leadership.db'}")
+    create_db_and_tables(engine)
+    asof = date(2025, 1, 10)
+    stored = {"NVDA": 0.10, "AMD": 0.30, "XLK": 0.04, "AAPL": 0.07}
+    with Session(engine) as session:
+        run = _add_run(session, asof, "Risk-on")
+        _add_result(session, run.id, "NVDA", "A", "Actionable", "Technology", 1)
+        _add_result(session, run.id, "AMD", "A", "Breakout-watch", "Technology", 2)
+        _add_result(session, run.id, "AAPL", "B", "Pullback-watch", "Technology", 3)
+        for sym, ret in stored.items():
+            _add_fr(session, run.id, sym, 20, ret, asof)
+        session.commit()
+        run_id = run.id
+    return engine, run_id, asof, stored
+
+
+def _leadership(card: dict, h: int) -> dict:
+    return _horizon(card, h)["leadership_returns"]
+
+
+def test_leadership_returns_payload_shape_complete_keyed_projection(leadership_engine):
+    """Each by_horizon entry carries `leadership_returns` with three COMPLETE keyed lists: one row per
+    config sector ETF, one per theme slug, one per universe ticker (the frontend slices what it shows)."""
+    engine, run_id, asof, stored = leadership_engine
+    cfg = load_config()
+    lr = _leadership(_scorecard(engine, run_id), 20)
+    assert {"sectors", "themes", "cohort"} <= set(lr)
+    assert {r["sector_etf"] for r in lr["sectors"]} == set(cfg.etfs.sector)   # every sector ETF
+    assert {r["slug"] for r in lr["themes"]} == set(cfg.themes)               # every theme slug
+    assert {r["ticker"] for r in lr["cohort"]} == set(cfg.universe.symbols)   # every universe ticker
+
+
+def test_leadership_returns_sector_equals_stored_etf_return(leadership_engine):
+    """(a) Each sector's realized return = its sector-ETF's OWN stored forward return (a direct read of
+    `ret_by_symbol`) at the horizon; a sector whose ETF has no stored return is honest NA (None, n=0)."""
+    engine, run_id, asof, stored = leadership_engine
+    by_etf = {r["sector_etf"]: r for r in _leadership(_scorecard(engine, run_id), 20)["sectors"]}
+    assert by_etf["XLK"]["mean_return"] == pytest.approx(0.04) and by_etf["XLK"]["n"] == 1  # XLK's own row
+    assert by_etf["XLF"]["mean_return"] is None and by_etf["XLF"]["n"] == 0                 # no stored -> NA
+
+
+def test_leadership_returns_theme_equals_equal_weight_member_mean(leadership_engine):
+    """(b) Each theme's realized return = the EQUAL-WEIGHT mean of its member stocks' stored returns
+    (only members WITH a stored return contribute; absent members are skipped, never counted as 0); a
+    theme with no stored member return is honest NA. semiconductors has NVDA(.10)+AMD(.30) -> mean .20."""
+    engine, run_id, asof, stored = leadership_engine
+    cfg = load_config()
+    by_slug = {r["slug"]: r for r in _leadership(_scorecard(engine, run_id), 20)["themes"]}
+    members_with_ret = [stored[m] for m in cfg.themes["semiconductors"] if m in stored]
+    assert by_slug["semiconductors"]["mean_return"] == pytest.approx(mean(members_with_ret))
+    assert by_slug["semiconductors"]["n"] == len(members_with_ret) == 2
+    # a theme with no stored member return -> honest NA (defense: LMT/RTX/... none stored)
+    assert by_slug["defense"]["mean_return"] is None and by_slug["defense"]["n"] == 0
+
+
+def test_leadership_returns_cohort_equals_symbols_own_stored_return(leadership_engine):
+    """(c) Each cohort stock's realized return = its OWN stored forward return (a direct read); a
+    universe ticker with no stored return is honest NA (None, n=0). Recomputes no return."""
+    engine, run_id, asof, stored = leadership_engine
+    by_ticker = {r["ticker"]: r for r in _leadership(_scorecard(engine, run_id), 20)["cohort"]}
+    assert by_ticker["NVDA"]["mean_return"] == pytest.approx(0.10) and by_ticker["NVDA"]["n"] == 1
+    assert by_ticker["AAPL"]["mean_return"] == pytest.approx(0.07) and by_ticker["AAPL"]["n"] == 1
+    assert by_ticker["TSLA"]["mean_return"] is None and by_ticker["TSLA"]["n"] == 0   # no stored -> NA
+
+
+def test_leadership_returns_equal_a_direct_read_of_stored_forward_returns(leadership_engine):
+    """Single-source / read-only: every annotated return EQUALS a direct read of the stored
+    `forward_returns` rows for the run+horizon — no recomputed return, no second source."""
+    engine, run_id, asof, stored = leadership_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        fr_rows = session.exec(
+            select(ForwardReturn).where(ForwardReturn.run_id == run_id, ForwardReturn.horizon == 20)
+        ).all()
+    ret_by_symbol = {fr.symbol: fr.realized_return for fr in fr_rows}
+    lr = _leadership(_scorecard(engine, run_id), 20)
+    for r in lr["sectors"]:                                  # sector = the ETF's OWN stored row (exact)
+        assert r["mean_return"] == ret_by_symbol.get(r["sector_etf"])
+    for r in lr["cohort"]:                                   # cohort = the symbol's OWN stored row (exact)
+        assert r["mean_return"] == ret_by_symbol.get(r["ticker"])
+    for r in lr["themes"]:                                   # theme = mean over members WITH a stored row
+        members = [ret_by_symbol[m] for m in cfg.themes[r["slug"]] if m in ret_by_symbol]
+        assert r["n"] == len(members)
+        if members:
+            assert r["mean_return"] == pytest.approx(mean(members))
+        else:
+            assert r["mean_return"] is None
+
+
+def test_leadership_returns_consistent_with_stored_cohort_observations(leadership_engine):
+    """Same stored observations as the scorecard/attribution: a cohort stock's leadership return equals
+    the per-stock attribution mean for that ticker (both read the SAME stored return — one source)."""
+    engine, run_id, asof, stored = leadership_engine
+    h20 = _horizon(_scorecard(engine, run_id), 20)
+    lr_by_ticker = {r["ticker"]: r["mean_return"] for r in h20["leadership_returns"]["cohort"]}
+    attr_by_ticker = {
+        r["ticker"]: r["mean_return"] for r in h20["attribution"]["per_stock"]["contributors"]
+    }
+    for ticker, mean_return in attr_by_ticker.items():       # NVDA/AMD/AAPL each observed once at h20
+        assert lr_by_ticker[ticker] == pytest.approx(mean_return)
+
+
+def test_leadership_returns_unobserved_horizon_all_na(leadership_engine):
+    """A horizon with NO stored return (1/5/10/60 here) -> every sector/theme/cohort row is honest NA
+    (mean None, n 0) — never a fabricated 0%."""
+    engine, run_id, asof, stored = leadership_engine
+    card = _scorecard(engine, run_id)
+    for h in (1, 5, 10, 60):
+        lr = _leadership(card, h)
+        for key in ("sectors", "themes", "cohort"):
+            assert all(r["mean_return"] is None and r["n"] == 0 for r in lr[key])
+
+
+def test_leadership_returns_recomputes_nothing_keystone(leadership_engine, monkeypatch):
+    """KEYSTONE (read-only): with the forward-return math patched to RAISE, the leadership projection
+    is STILL served from the stored rows — proving it reads storage and recomputes no return."""
+    engine, run_id, asof, stored = leadership_engine
+
+    def boom(*args, **kwargs):
+        raise AssertionError("leadership returns must not recompute a forward return")
+
+    monkeypatch.setattr("app.engine.forward_testing.forward_return", boom)
+    lr = _leadership(_scorecard(engine, run_id), 20)
+    by_etf = {r["sector_etf"]: r for r in lr["sectors"]}
+    assert by_etf["XLK"]["mean_return"] == pytest.approx(0.04)   # served from storage, not recomputed
 
 
 # ==================================================================================================

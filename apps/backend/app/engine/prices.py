@@ -80,6 +80,26 @@ def bars_after(
     return list(session.exec(stmt).all())
 
 
+def bars_through_latest(session: Session, symbol: str) -> list[DailyPrice]:
+    """All bars for `symbol`, ascending — the symbol's FULL price path, NOT bounded by any as-of date
+    (distinct from `bars_asof`). DISPLAY-ONLY (J-20): the Stock-Detail chart renders this full path so a
+    user viewing a historical as-of D can see what happened AFTER the snapshot, with D marked and the
+    post-D region labelled forward/after-as-of.
+
+    CRITICAL no-lookahead carve-out: the bars this returns with date > D are VISUALIZATION ONLY. They
+    MUST NOT feed any score, bucket, setup status, VCP flag, factor, or ranking — all of which keep
+    reading `bars_asof` (date <= D). This accessor is therefore NEVER routed into `scoring.score_stocks`
+    / `patterns.detect_vcp` / `scanner.run_scan`; its sole caller is the chart endpoint. For a historical
+    D the full path equals `bars_asof(symbol, D)` ++ `bars_after(symbol, D)` exactly (a disjoint partition
+    at D), so the labelled forward region is precisely the post-D bars the scoring side never reads."""
+    stmt = (
+        select(DailyPrice)
+        .where(DailyPrice.symbol == symbol)
+        .order_by(DailyPrice.date)
+    )
+    return list(session.exec(stmt).all())
+
+
 # --- ascending-series extractors (the indicator functions take plain float lists) ----------
 def closes(bars: list[DailyPrice]) -> list[float]:
     return [b.close for b in bars]

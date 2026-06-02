@@ -5,7 +5,7 @@
       "name": "Daily dashboard at a glance",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-2-evidence/TC-14-dashboard-J01.png"
     },
@@ -14,7 +14,7 @@
       "name": "Stock Leaderboard with working filters",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-4",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-4-evidence/UT-J-02-sector-energy.png"
     },
@@ -23,7 +23,7 @@
       "name": "Theme Leaderboard",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-1-evidence/UT-J-03-themes-historical-expanded.png"
     },
@@ -32,7 +32,7 @@
       "name": "Sector / industry Leaderboard",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-1-evidence/UT-J-04-sectors-historical.png"
     },
@@ -40,26 +40,26 @@
       "id": "J-05",
       "name": "Stock Detail with explainable scores",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-5-evidence/UT-J-06-detail-nvda-scores-crop.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-01-latest-nvda.png"
     },
     "J-06": {
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-5-evidence/UT-J-06-detail-nvda-scores-crop.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-06-via-UT-02-historical-forward-region.png"
     },
     "J-07": {
       "id": "J-07",
       "name": "Risk-Off regime suppresses Actionable",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/TC-18-scanner-runs-new-immutable.png"
     },
@@ -68,7 +68,7 @@
       "name": "Immutable scanner-run history",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/TC-18-scanner-runs-new-immutable.png"
     },
@@ -77,7 +77,7 @@
       "name": "System Health forward-tested evidence",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/TC-16-5-system-health-n-grew.png"
     },
@@ -86,7 +86,7 @@
       "name": "Control-group honesty (selection vs sector beta)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-2-evidence/UT-01-02-03-system-health-attribution.png"
     },
@@ -95,16 +95,16 @@
       "name": "Watchlist with persistence",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-5-evidence/UT-J-11-after-restart.png"
     },
     "J-12": {
       "id": "J-12",
       "name": "Understand what each setup/pattern means (glossary + inline)",
-      "status": "already_passing",
+      "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-0-evidence/UT-J-12-methodology.png"
     },
@@ -112,26 +112,26 @@
       "id": "J-13",
       "name": "Browse the dashboard as of a past date (global as-of switcher)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/UT-08-dashboard-backfilled-date.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-02-historical-forward-region.png"
     },
     "J-14": {
       "id": "J-14",
       "name": "Backtest a past date and read its forward-test scorecard",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/UT-08-dashboard-backfilled-date.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-08-UT-09-backtest-top-order.png"
     },
     "J-15": {
       "id": "J-15",
       "name": "Fast page loads from persisted snapshots",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-5-evidence/UT-J-15-warm-load.png"
     },
@@ -139,17 +139,17 @@
       "id": "J-16",
       "name": "VCP — detected, explained, filterable, forward-tested",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-4",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-4-evidence/UT-J-16-detail-stx-vcp.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-01-latest-nvda.png"
     },
     "J-17": {
       "id": "J-17",
       "name": "Grow the dataset by date / date range (Data Manager)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/UT-07-UT-06-after-backfill.png"
     },
@@ -157,19 +157,127 @@
       "id": "J-18",
       "name": "One date control (no duplicate)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/UT-11-form-date-changed-asof-unchanged.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-08-backtest-fullpage-h1.png"
     },
     "J-19": {
       "id": "J-19",
       "name": "Diagnose weak forward-test returns via attribution",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-2-evidence/UT-01-02-03-system-health-attribution.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-14-backtest-fullpage-h60.png"
+    },
+    "J-20": {
+      "id": "J-20",
+      "name": "Price & MA chart shows the full path through the latest date (with as-of marker)",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-02-UT-03-chart-divider-zoom.png"
+    },
+    "J-21": {
+      "id": "J-21",
+      "name": "Backtest — leadership cohorts below attribution, with horizon-linked realized returns",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-14-leadership-returns-h60.png"
+    },
+    "J-22": {
+      "id": "J-22",
+      "name": "Transparent, rule-based, expanded universe (~500 names)",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_evidence_path": "UNBUILT (out of scope iter-6). Universe is still 158 symbols (health badge + QA env), not ~400-500."
+    },
+    "J-23": {
+      "id": "J-23",
+      "name": "Multi-timeframe bars — intraday seed + timeframe-aware pipeline",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_evidence_path": "UNBUILT (out of scope iter-6). No timeframe/intraday support in apps/backend/app/engine/prices.py (grep)."
+    },
+    "J-24": {
+      "id": "J-24",
+      "name": "Timeframe selector on the stock chart (1D/1h/15m/5m)",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_evidence_path": "UNBUILT (out of scope iter-6). Chart change this iter is daily full-path only; no timeframe control added (dev/frontend handoff)."
+    },
+    "J-25": {
+      "id": "J-25",
+      "name": "Factor Lab — decile sort and rank-IC per factor (raw and risk-adjusted)",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_evidence_path": "UNBUILT (out of scope iter-6). /research route absent (ls apps/frontend/app/research). Gated on blueprint nav re-approval."
+    },
+    "J-26": {
+      "id": "J-26",
+      "name": "Factor Lab — multi-factor combination cohorts",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_evidence_path": "UNBUILT (out of scope iter-6). /research route absent. Gated on blueprint nav re-approval."
+    },
+    "J-27": {
+      "id": "J-27",
+      "name": "Factor Lab — regime-conditioned factor effectiveness",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_evidence_path": "UNBUILT (out of scope iter-6). /research route absent. Gated on blueprint nav re-approval."
+    },
+    "J-28": {
+      "id": "J-28",
+      "name": "More detected patterns beyond VCP (forward-tested)",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_evidence_path": "UNBUILT (out of scope iter-6). Only VCP detector exists; no additional config-driven pattern flags."
+    },
+    "J-29": {
+      "id": "J-29",
+      "name": "Setup & Pattern research lab — event study across all snapshots",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_evidence_path": "UNBUILT (out of scope iter-6). /research route absent; no event-study (expectancy/MAE/MFE) surface. Gated on blueprint nav re-approval."
+    },
+    "J-30": {
+      "id": "J-30",
+      "name": "Volatility as a return driver — factor family, risk-adjusted and regime-conditioned",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_evidence_path": "UNBUILT (out of scope iter-6). Depends on the Factor Lab (J-25); /research route absent."
+    },
+    "J-31": {
+      "id": "J-31",
+      "name": "Find a high-return driver end-to-end (synthesis)",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_evidence_path": "UNBUILT (out of scope iter-6). Synthesis journey across the labs (J-25/J-27/J-29) — none exist yet."
     }
   },
   "anti_goal_violations": [
@@ -180,8 +288,8 @@
       "evidence": "PRE-EXISTING (not introduced this iter — baseline is a zero-diff no-op). apps/frontend/app/backtest/page.tsx:53-58 kept its OWN selected/dates date state independent of the global as-of provider; lines 112-118 + 175-208 rendered a local BacktestDatePicker <Select aria-label=\"Backtest as-of date\">. Root cause of J-18 failing.",
       "resolved": true,
       "resolved_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
-      "resolution_evidence": "iter-1 deleted BacktestDatePicker + its date state; backtest/page.tsx now reads useAsOf only. Re-confirmed STILL HOLDING through iter-5: iter-3's /data page imports useAsOf for refresh() only (never setAsOf); iters 4 and 5 changed zero source files (git diff = telemetry/trace bookkeeping only; coherence-auditor COHERENCE-PASS), so the resolution holds unchanged. COHERENCE-PASS invariant #5."
+      "resolution_evidence": "iter-1 deleted BacktestDatePicker + its date state; backtest/page.tsx now reads useAsOf only. Re-confirmed STILL HOLDING through iter-6: iter-6 LIFTED the horizon VIEW selector (viewHorizon) into BacktestResults and DELETED the old BacktestAttributionSection that held it — there is still exactly one horizon view selector (no refetch/date param/date state) and no BacktestDatePicker reappears (coherence-auditor COHERENCE-PASS invariant #5; QA TC-17 + browser-QA UT-17: 0 date inputs, single global <select>; _leadership_returns source has no date param)."
     }
   ],
-  "updated_at": "2026-06-01T17:00:00Z"
+  "updated_at": "2026-06-02T02:30:00Z"
 }

@@ -227,7 +227,10 @@ export async function fetchStock(ticker: string, asof?: string, signal?: AbortSi
 }
 
 // --- stock price/MA/volume series for the detail chart (iter-4) -----------------------------
-/** One ascending OHLCV bar (date <= as-of; no lookahead — the backend reads only `bars_asof`). */
+/** One ascending OHLCV bar. By default date <= as-of (no lookahead — the backend reads only
+ *  `bars_asof`). With the J-20 `through=latest` opt-in the series extends through the latest seed bar
+ *  and each bar carries `is_forward` (true iff its date is AFTER the as-of D) so the chart can label
+ *  the post-D region; those forward bars are DISPLAY-ONLY and never feed a score/bucket/VCP. */
 export interface PriceBar {
   date: string; // ISO date (YYYY-MM-DD)
   open: number;
@@ -235,23 +238,38 @@ export interface PriceBar {
   low: number;
   close: number;
   volume: number;
+  is_forward?: boolean; // J-20: true for bars dated AFTER the as-of D (display-only forward region)
 }
 
 /** GET /api/stocks/{ticker}/bars payload. `ma` is keyed by each config MA period ("20","50",…) →
  *  a rolling moving-average series aligned 1:1 with `bars` (a number, or null for the warm-up gap).
- *  The chart PLOTS this server series — it never computes a moving average from the close array. */
+ *  The chart PLOTS this server series — it never computes a moving average from the close array.
+ *  `latest_date` is present only in the J-20 `through=latest` mode (the last bar shown = the right
+ *  boundary); `asof_date` is always the resolved as-of D (the forward-region boundary). */
 export interface BarsResponse {
   asof_date: string;
   ticker: string;
   bars: PriceBar[];
   ma: Record<string, (number | null)[]>;
+  latest_date?: string; // J-20: latest seed bar shown (only in through=latest mode)
 }
 
 /** Canonical price/MA/volume series source: GET /api/stocks/{ticker}/bars. Throws on non-200 so the
  *  chart renders an explicit unavailable state (404 unknown ticker / 503 no data / 4xx bad as_of) —
- *  never fabricated. `asof` returns the bars with date <= D (the as-of chart; iter-8). */
-export async function fetchStockBars(ticker: string, asof?: string, signal?: AbortSignal): Promise<BarsResponse> {
-  return getJSON<BarsResponse>(withAsOf(`/api/stocks/${encodeURIComponent(ticker)}/bars`, asof), signal);
+ *  never fabricated. `asof` returns the bars with date <= D (the as-of chart; iter-8). Pass
+ *  `through="latest"` (J-20) to render the DISPLAY-ONLY full path through the latest seed date with the
+ *  as-of boundary marked (`is_forward` per bar + `latest_date`); the default (no `through`) stays <= D. */
+export async function fetchStockBars(
+  ticker: string,
+  asof?: string,
+  signal?: AbortSignal,
+  through?: string,
+): Promise<BarsResponse> {
+  let path = withAsOf(`/api/stocks/${encodeURIComponent(ticker)}/bars`, asof);
+  if (through) {
+    path += `${path.includes("?") ? "&" : "?"}through=${encodeURIComponent(through)}`;
+  }
+  return getJSON<BarsResponse>(path, signal);
 }
 
 // --- themes (iter-3) -----------------------------------------------------------------------
@@ -463,6 +481,36 @@ export interface ScorecardExcess {
   benchmark_n: number; // benchmark observations
 }
 
+// --- backtest leadership realized returns (J-21) -------------------------------------------
+/** One Top-Sectors row's realized forward return = its sector-ETF's OWN stored return at the horizon.
+ *  `sector_etf` is the join key onto a `/api/sectors` row (`row.ticker`). Re-formatted only — never
+ *  recomputed (a read-only projection of the stored `forward_returns`). */
+export interface LeadershipSectorReturn extends ForwardGroupRow {
+  sector_etf: string; // sector ETF ticker (join key = /api/sectors row.ticker)
+  sector: string; // sector name
+}
+/** One Top-Themes row's realized forward return = the equal-weight mean of its members' stored returns
+ *  at the horizon. `slug` is the join key onto a `/api/themes` row (`row.slug`). */
+export interface LeadershipThemeReturn extends ForwardGroupRow {
+  slug: string; // theme slug (join key = /api/themes row.slug)
+}
+/** One Ranked-Cohort row's realized forward return = the stock's OWN stored return at the horizon.
+ *  `ticker` is the join key onto a `/api/stocks` row (`row.ticker`). */
+export interface LeadershipCohortReturn extends ForwardGroupRow {
+  ticker: string; // universe ticker (join key = /api/stocks row.ticker)
+}
+
+/** The J-21 read-only leadership-return projection riding each scorecard horizon row: the realized
+ *  forward return of every Top Sector / Top Theme / Ranked-Cohort name at that horizon, derived from
+ *  the SAME stored `forward_returns` the scorecard/attribution read. The page joins these onto the rows
+ *  it already fetches (sectors by `sector_etf`, themes by `slug`, cohort by `ticker`) and re-formats
+ *  only — it recomputes no return. Honest NA (mean_return null, n 0) when a horizon lacks post-bars. */
+export interface LeadershipReturns {
+  sectors: LeadershipSectorReturn[];
+  themes: LeadershipThemeReturn[];
+  cohort: LeadershipCohortReturn[];
+}
+
 /** One per-horizon row of the per-date scorecard: the top-ranked cohort's mean realized return + n,
  *  the excess vs SPY/QQQ/sector, and the five control-group cohorts — each figure with its sample
  *  size `n` and honest NA (null) for a window that has not fully elapsed in the seed. */
@@ -472,6 +520,7 @@ export interface BacktestScorecardHorizonRow {
   excess: { vs_spy: ScorecardExcess; vs_qqq: ScorecardExcess; vs_sector: ScorecardExcess };
   control_group: ControlGroupRow[]; // top_ranked / random_same_sector / spy / qqq / sector_etf
   attribution: ReturnAttribution; // J-19 — over THIS horizon's observed set (not just the cohort)
+  leadership_returns: LeadershipReturns; // J-21 — Top Sector/Theme/Cohort realized returns at this horizon
 }
 
 export interface BacktestScorecard {

@@ -277,13 +277,18 @@ function StockChartPanel({ ticker }: { ticker: string }) {
   useEffect(() => {
     const controller = new AbortController();
     setState({ kind: "loading" });
-    fetchStockBars(ticker, asOf ?? undefined, controller.signal)
+    // J-20: opt into the DISPLAY-ONLY full path through the latest seed date. At a historical as-of D
+    // the chart shows the post-D region (labelled forward); the scores/setup/VCP below still read
+    // `fetchStock` (the <= D snapshot) — the forward bars never reach the scoring path.
+    fetchStockBars(ticker, asOf ?? undefined, controller.signal, "latest")
       .then((data) => setState(data.bars.length > 0 ? { kind: "ok", data } : { kind: "empty" }))
       .catch(() => {
         if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => controller.abort();
   }, [ticker, asOf]);
+
+  const hasForward = state.kind === "ok" && state.data.bars.some((bar) => bar.is_forward);
 
   return (
     <Card>
@@ -299,7 +304,19 @@ function StockChartPanel({ ticker }: { ticker: string }) {
         {state.kind === "loading" ? (
           <div className="h-80 w-full animate-pulse rounded bg-surface-2" />
         ) : null}
-        {state.kind === "ok" ? <PriceChart bars={state.data.bars} ma={state.data.ma} /> : null}
+        {state.kind === "ok" ? (
+          <div className="space-y-3">
+            {hasForward ? (
+              <p className="text-xs text-text-faint">
+                Full path through {state.data.latest_date ?? "the latest seed date"}. Bars after the
+                as-of date {state.data.asof_date} are{" "}
+                <span className="text-warn">display-only</span> — they don’t affect the scores, setup,
+                or VCP flag below (those read the as-of snapshot, bars ≤ {state.data.asof_date}).
+              </p>
+            ) : null}
+            <PriceChart bars={state.data.bars} ma={state.data.ma} asofDate={state.data.asof_date} />
+          </div>
+        ) : null}
         {state.kind === "empty" ? (
           <div className="flex h-80 items-center justify-center text-sm text-text-muted">
             No price history is available for {ticker}.

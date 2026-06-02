@@ -461,6 +461,53 @@ def _attribution_slices(stock_obs: list[dict], cfg: Config) -> dict:
     }
 
 
+def _leadership_returns(ret_by_symbol: dict[str, float], cfg: Config) -> dict:
+    """The READ-ONLY leadership-return projection (J-21): the realized forward return of each Top Sector
+    / Top Theme / Ranked-Cohort row at ONE horizon, derived ENTIRELY from the already-built
+    `ret_by_symbol` (symbol -> the stored `realized_return` for this run+horizon) + config. It issues NO
+    query, takes NO Session, and recomputes NO return — this IS the "Attribution is read-only" discipline,
+    mirroring `_attribution_slices`: it is a pure projection of the SAME stored `forward_returns` rows the
+    scorecard already read, never a second computation or a second data source (J-21).
+
+    Three COMPLETE keyed lists (the frontend joins these onto rows it already fetches and slices what it
+    shows — so no row-count literal lives here):
+      - `sectors`: one row per config sector ETF -> its OWN stored return (the ETF's realized return,
+        sector ETF -> name via `cfg.etfs.sector`); `n` 1 if present else 0.
+      - `themes`:  one row per config theme slug -> the EQUAL-WEIGHT mean of its member stocks' stored
+        returns over ONLY the members that HAVE a stored return (absent members are skipped, never
+        counted as 0); `n` = that member count.
+      - `cohort`:  one row per universe ticker (the stored `scanner_results` set) -> its OWN stored
+        return; `n` 1 if present else 0.
+    A (row, horizon) with no stored return -> `mean_return` None / `n` 0 (honest NA — never a fabricated
+    0%, anti-goal: No fabricated data)."""
+    sectors = [
+        {
+            "sector_etf": etf,
+            "sector": name,
+            "mean_return": ret_by_symbol.get(etf),
+            "n": 1 if etf in ret_by_symbol else 0,
+        }
+        for etf, name in cfg.etfs.sector.items()
+    ]
+    themes = []
+    for slug, members in cfg.themes.items():
+        member_returns = [ret_by_symbol[m] for m in members if m in ret_by_symbol]
+        themes.append({
+            "slug": slug,
+            "mean_return": _mean_or_none(member_returns),  # equal-weight; None when no member has a return
+            "n": len(member_returns),
+        })
+    cohort = [
+        {
+            "ticker": ticker,
+            "mean_return": ret_by_symbol.get(ticker),
+            "n": 1 if ticker in ret_by_symbol else 0,
+        }
+        for ticker in cfg.universe.symbols
+    ]
+    return {"sectors": sectors, "themes": themes, "cohort": cohort}
+
+
 def compute_forward_aggregates(session: Session, horizon: int, config: Optional[Config] = None) -> dict:
     """The SINGLE canonical forward-return aggregation at `horizon` (Data Contract value). Joins the
     stored realized returns (`forward_returns`) to the stored canonical bucket / setup / sector / rank
@@ -615,7 +662,10 @@ def compute_run_scorecard(session: Session, run: ScannerRun, config: Optional[Co
     (cohort mean − benchmark mean) vs SPY / QQQ / sector, each with `n`; and the five control-group
     cohorts, each with `mean_return` + `n`. A horizon (or cohort) with no stored realized return for
     the run -> `mean_return: None` / `n: 0` (honest NA — never a fabricated 0%). Reuses the iter-6
-    `_control_groups` so the cohort + control-group math has exactly ONE implementation."""
+    `_control_groups` so the cohort + control-group math has exactly ONE implementation. Each horizon
+    entry also rides the J-19 read-only `attribution` slices and the J-21 read-only `leadership_returns`
+    projection (Top Sector / Top Theme / Ranked-Cohort realized returns), both pure projections of the
+    SAME stored `forward_returns` — no recomputed return, no second query."""
     cfg = config or get_config()
     wf = cfg.walk_forward
 
@@ -663,6 +713,9 @@ def compute_run_scorecard(session: Session, run: ScannerRun, config: Optional[Co
             # J-19: the four read-only attribution slices over THIS horizon's observed set (the full
             # stock_obs, not just the rank<=top_n cohort) — derived from the same stored observations.
             "attribution": _attribution_slices(stock_obs, cfg),
+            # J-21: the read-only leadership-return projection (sector ETF / theme members / cohort
+            # symbol) over the SAME stored `ret_by_symbol` — no recomputed return, no second query.
+            "leadership_returns": _leadership_returns(ret_by_symbol, cfg),
         })
 
     return {

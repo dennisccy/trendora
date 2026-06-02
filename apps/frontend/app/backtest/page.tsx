@@ -21,6 +21,7 @@ import {
   type BacktestResponse,
   type ControlGroupRow,
   type DashboardResponse,
+  type LeadershipReturns,
   type SectorsResponse,
   type StocksResponse,
   type ThemesResponse,
@@ -130,16 +131,13 @@ export default function BacktestPage() {
       ) : null}
 
       {state.kind === "ok" ? (
-        <div className="space-y-4">
-          <ScanSummarySection
-            dashboard={state.dashboard}
-            sectors={state.sectors}
-            themes={state.themes}
-            stocks={state.stocks}
-          />
-          <ScorecardSection data={state.backtest} />
-          <BacktestAttributionSection data={state.backtest} />
-        </div>
+        <BacktestResults
+          backtest={state.backtest}
+          dashboard={state.dashboard}
+          sectors={state.sectors}
+          themes={state.themes}
+          stocks={state.stocks}
+        />
       ) : null}
     </div>
   );
@@ -157,8 +155,59 @@ function SurvivorshipBanner({ text }: { text: string }) {
   );
 }
 
-// --- As-of scan summary (reuses the EXISTING canonical endpoints with ?as_of=D) -----------------
-function ScanSummarySection({ dashboard, sectors, themes, stocks }: ScanSummary) {
+// --- The full backtest results: as-of scan summary → forward-test scorecard → Return Attribution →
+// the three leadership lists. `viewHorizon` is LIFTED here so the ONE horizon view-selector (rendered
+// in the Return Attribution header) re-points BOTH the attribution AND the three leadership-return
+// columns below. It is a VIEW selector only — no refetch, no fetch param, no date state (the global
+// as-of switcher still owns the date → J-18 preserved).
+function BacktestResults({
+  backtest,
+  dashboard,
+  sectors,
+  themes,
+  stocks,
+}: { backtest: BacktestResponse } & ScanSummary) {
+  const rows = backtest.scorecard.by_horizon;
+  // Default to the first horizon with an observed window (so attribution + return columns populate on
+  // load); fall back to the last horizon when nothing has elapsed yet (an honest all-NA view).
+  const [viewHorizon, setViewHorizon] = useState<number>(() => {
+    const observed = rows.find((row) => row.attribution.distribution.n > 0);
+    return (observed ?? rows[rows.length - 1])?.horizon ?? backtest.horizons[0];
+  });
+  const selected = rows.find((row) => row.horizon === viewHorizon) ?? rows[0];
+
+  return (
+    <div className="space-y-4">
+      <AsOfScanSummary dashboard={dashboard} />
+      <ScorecardSection data={backtest} />
+      {selected ? (
+        <ReturnAttributionSection
+          attribution={selected.attribution}
+          min={backtest.min_sample}
+          horizon={selected.horizon}
+          action={
+            <HorizonViewSelector
+              horizons={backtest.horizons}
+              value={selected.horizon}
+              onChange={setViewHorizon}
+            />
+          }
+        />
+      ) : null}
+      <LeadershipListsSection
+        sectors={sectors}
+        themes={themes}
+        stocks={stocks}
+        leadership={selected?.leadership_returns}
+        horizon={selected?.horizon ?? viewHorizon}
+        min={backtest.min_sample}
+      />
+    </div>
+  );
+}
+
+// --- As-of scan summary header (regime + candidate counts only; the leadership lists moved below) -
+function AsOfScanSummary({ dashboard }: { dashboard: DashboardResponse | null }) {
   if (dashboard === null) {
     return (
       <Card className="flex items-center gap-3 border-border bg-surface p-5 text-sm text-text-muted">
@@ -168,17 +217,11 @@ function ScanSummarySection({ dashboard, sectors, themes, stocks }: ScanSummary)
       </Card>
     );
   }
-
   const { regime } = dashboard;
-  const topSectors = sectors ? sectors.rows.slice(0, TOP_N_PANEL) : [];
-  const topThemes = themes ? themes.rows.slice(0, TOP_N_PANEL) : [];
-  const cohort = stocks ? stocks.rows.slice(0, COHORT_ROWS) : [];
-
   return (
     <div className="space-y-4">
       <h2 className="text-sm font-semibold text-text">As-of scan summary</h2>
-
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle>Market Regime</CardTitle>
@@ -191,12 +234,58 @@ function ScanSummarySection({ dashboard, sectors, themes, stocks }: ScanSummary)
             </div>
           </CardContent>
         </Card>
-
         <CandidateCountsCard counts={dashboard.candidate_counts} />
+      </div>
+    </div>
+  );
+}
 
+// --- Leadership cohorts (J-21) — Top Sectors / Top Themes / Ranked Cohort, relocated BELOW Return
+// Attribution, each carrying the realized forward return at the SELECTED horizon. The returns are the
+// read-only `leadership_returns` projection joined onto the rows already fetched from /api/sectors
+// (by sector-ETF ticker), /api/themes (by slug), /api/stocks (by ticker). NA ("—") honestly when the
+// horizon lacks post-bars. The horizon is the SAME view selector that drives the attribution above.
+function LeadershipListsSection({
+  sectors,
+  themes,
+  stocks,
+  leadership,
+  horizon,
+  min,
+}: {
+  sectors: SectorsResponse | null;
+  themes: ThemesResponse | null;
+  stocks: StocksResponse | null;
+  leadership: LeadershipReturns | undefined;
+  horizon: number;
+  min: number;
+}) {
+  const topSectors = sectors ? sectors.rows.slice(0, TOP_N_PANEL) : [];
+  const topThemes = themes ? themes.rows.slice(0, TOP_N_PANEL) : [];
+  const cohort = stocks ? stocks.rows.slice(0, COHORT_ROWS) : [];
+
+  // join the read-only realized returns by the keys the lists already carry (sector ETF / slug / ticker)
+  const sectorRet = new Map((leadership?.sectors ?? []).map((r) => [r.sector_etf, r] as const));
+  const themeRet = new Map((leadership?.themes ?? []).map((r) => [r.slug, r] as const));
+  const cohortRet = new Map((leadership?.cohort ?? []).map((r) => [r.ticker, r] as const));
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold text-text">Leadership cohorts</h2>
+        <p className="mt-0.5 max-w-2xl text-xs text-text-faint">
+          The top sectors, themes, and ranked stocks for this date — each with its{" "}
+          <span className="text-text">realized forward return at the {horizon}-day horizon</span> (read
+          from the stored forward returns; set by the Horizon selector above). “—” means the window has
+          not elapsed in the seed (NA); nothing is fabricated.
+        </p>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle>Top Sectors</CardTitle>
+            <span className="num text-xs uppercase tracking-wide text-text-faint">Fwd {horizon}d</span>
           </CardHeader>
           <CardContent>
             {sectors === null ? (
@@ -205,26 +294,31 @@ function ScanSummarySection({ dashboard, sectors, themes, stocks }: ScanSummary)
               <p className="text-sm text-text-muted">No ranked sectors for this date.</p>
             ) : (
               <ul className="space-y-2">
-                {topSectors.map((row) => (
-                  <li key={row.ticker} className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-2">
-                      <span className="num text-text-faint">{row.rank}</span>
-                      <span className="num font-semibold text-text">{row.ticker}</span>
-                      <span className="text-xs text-text-muted">{row.trend_label}</span>
-                    </span>
-                    <ScoreBadge bucket={row.bucket} score={row.score} />
-                  </li>
-                ))}
+                {topSectors.map((row) => {
+                  const ret = sectorRet.get(row.ticker);
+                  return (
+                    <li key={row.ticker} className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-2">
+                        <span className="num text-text-faint">{row.rank}</span>
+                        <span className="num font-semibold text-text">{row.ticker}</span>
+                        <span className="text-xs text-text-muted">{row.trend_label}</span>
+                      </span>
+                      <span className="flex items-center gap-3">
+                        <ScoreBadge bucket={row.bucket} score={row.score} />
+                        <Return value={ret?.mean_return ?? null} n={ret?.n ?? 0} min={min} />
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </CardContent>
         </Card>
-      </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader>
+          <CardHeader className="flex-row items-center justify-between space-y-0">
             <CardTitle>Top Themes</CardTitle>
+            <span className="num text-xs uppercase tracking-wide text-text-faint">Fwd {horizon}d</span>
           </CardHeader>
           <CardContent>
             {themes === null ? (
@@ -233,58 +327,74 @@ function ScanSummarySection({ dashboard, sectors, themes, stocks }: ScanSummary)
               <p className="text-sm text-text-muted">No ranked themes for this date.</p>
             ) : (
               <ul className="space-y-2">
-                {topThemes.map((row) => (
-                  <li key={row.slug} className="flex items-center justify-between gap-2">
-                    <span className="flex items-center gap-2">
-                      <span className="num text-text-faint">{row.rank}</span>
-                      <span className="font-semibold text-text">{row.name}</span>
-                      <span className="text-xs text-text-muted">{row.trend_label}</span>
-                    </span>
-                    <ScoreBadge bucket={row.bucket} score={row.score} />
-                  </li>
-                ))}
+                {topThemes.map((row) => {
+                  const ret = themeRet.get(row.slug);
+                  return (
+                    <li key={row.slug} className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-2">
+                        <span className="num text-text-faint">{row.rank}</span>
+                        <span className="font-semibold text-text">{row.name}</span>
+                        <span className="text-xs text-text-muted">{row.trend_label}</span>
+                      </span>
+                      <span className="flex items-center gap-3">
+                        <ScoreBadge bucket={row.bucket} score={row.score} />
+                        <Return value={ret?.mean_return ?? null} n={ret?.n ?? 0} min={min} />
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </CardContent>
         </Card>
+      </div>
 
-        <Card className="p-0">
-          <div className="border-b border-border px-5 py-4">
-            <h3 className="text-sm font-semibold text-text">Ranked cohort</h3>
-            <p className="mt-0.5 text-xs text-text-faint">
-              The top {COHORT_ROWS} ranked stocks for this date (the cohort the scorecard forward-tests).
-            </p>
-          </div>
-          {stocks === null ? (
-            <p className="px-5 py-4 text-sm text-neg">Stock data unavailable.</p>
-          ) : cohort.length === 0 ? (
-            <p className="px-5 py-4 text-sm text-text-muted">No ranked stocks for this date.</p>
-          ) : (
-            <table className="w-full border-collapse text-sm">
+      <Card className="p-0">
+        <div className="border-b border-border px-5 py-4">
+          <h3 className="text-sm font-semibold text-text">Ranked cohort</h3>
+          <p className="mt-0.5 text-xs text-text-faint">
+            The top {COHORT_ROWS} ranked stocks for this date (the cohort the scorecard forward-tests),
+            each with its realized {horizon}-day forward return.
+          </p>
+        </div>
+        {stocks === null ? (
+          <p className="px-5 py-4 text-sm text-neg">Stock data unavailable.</p>
+        ) : cohort.length === 0 ? (
+          <p className="px-5 py-4 text-sm text-text-muted">No ranked stocks for this date.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[40rem] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
                   <th className="px-5 py-2 font-medium">#</th>
                   <th className="px-3 py-2 font-medium">Ticker</th>
                   <th className="px-3 py-2 font-medium">Setup</th>
-                  <th className="px-5 py-2 text-right font-medium">Leadership</th>
+                  <th className="px-3 py-2 text-right font-medium">Leadership</th>
+                  <th className="px-5 py-2 text-right font-medium">Fwd {horizon}d</th>
                 </tr>
               </thead>
               <tbody>
-                {cohort.map((row) => (
-                  <tr key={row.ticker} className="border-b border-border last:border-b-0">
-                    <td className="num px-5 py-2 text-text-faint">{row.rank}</td>
-                    <td className="num px-3 py-2 font-semibold text-text">{row.ticker}</td>
-                    <td className="px-3 py-2 text-xs text-text-muted">{row.setup.status}</td>
-                    <td className="px-5 py-2 text-right">
-                      <ScoreBadge bucket={row.leadership.bucket} score={row.leadership.score} />
-                    </td>
-                  </tr>
-                ))}
+                {cohort.map((row) => {
+                  const ret = cohortRet.get(row.ticker);
+                  return (
+                    <tr key={row.ticker} className="border-b border-border last:border-b-0">
+                      <td className="num px-5 py-2 text-text-faint">{row.rank}</td>
+                      <td className="num px-3 py-2 font-semibold text-text">{row.ticker}</td>
+                      <td className="px-3 py-2 text-xs text-text-muted">{row.setup.status}</td>
+                      <td className="px-3 py-2 text-right">
+                        <ScoreBadge bucket={row.leadership.bucket} score={row.leadership.score} />
+                      </td>
+                      <td className="px-5 py-2 text-right">
+                        <Return value={ret?.mean_return ?? null} n={ret?.n ?? 0} min={min} />
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
-          )}
-        </Card>
-      </div>
+          </div>
+        )}
+      </Card>
     </div>
   );
 }
@@ -449,34 +559,6 @@ function HorizonViewSelector({
         })}
       </div>
     </div>
-  );
-}
-
-function BacktestAttributionSection({ data }: { data: BacktestResponse }) {
-  const rows = data.scorecard.by_horizon;
-  // Default the view to the first horizon with an observed window (so attribution is visible on load);
-  // fall back to the last horizon when nothing has elapsed yet (an honest all-NA view).
-  const [viewHorizon, setViewHorizon] = useState<number>(() => {
-    const observed = rows.find((row) => row.attribution.distribution.n > 0);
-    return (observed ?? rows[rows.length - 1])?.horizon ?? data.horizons[0];
-  });
-
-  const selected = rows.find((row) => row.horizon === viewHorizon) ?? rows[0];
-  if (!selected) return null;
-
-  return (
-    <ReturnAttributionSection
-      attribution={selected.attribution}
-      min={data.min_sample}
-      horizon={selected.horizon}
-      action={
-        <HorizonViewSelector
-          horizons={data.horizons}
-          value={selected.horizon}
-          onChange={setViewHorizon}
-        />
-      }
-    />
   );
 }
 

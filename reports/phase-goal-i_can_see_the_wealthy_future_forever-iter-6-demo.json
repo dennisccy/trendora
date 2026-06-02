@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+  "base_url": "http://localhost:3835",
+  "iteration": 6,
+  "default_timeout_ms": 10000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "The market at a glance",
+      "narration": "We open on Trendora's daily dashboard — the whole U.S. market summed up after the close, with the overall risk regime, how broad the move is, and the day's leading sectors and themes.",
+      "point_out": "The market-regime score and label, the breadth gauges, and the ranked Top Sectors and Top Themes.",
+      "journey": "J-01",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Market Regime" }
+    },
+    {
+      "n": 2,
+      "title": "Open any stock",
+      "narration": "Clicking into a stock shows its full price-and-moving-average chart, now drawn as the complete daily path right through the latest trading day. Above it sit the setup verdict, the exact price that would invalidate the idea, and whether a volatility-contraction base is forming.",
+      "point_out": "The candlestick-and-volume chart running through today's date, with the setup verdict and invalidation price just above it.",
+      "journey": "J-20",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/NVDA" },
+      "expect": { "text": "No VCP pattern detected" }
+    },
+    {
+      "n": 3,
+      "title": "Three explainable scores",
+      "narration": "Each stock carries three scores — Leadership, Entry Quality, and Risk — and every one opens into the factors that built it. The same numbers show here and on the leaderboard, because each score is computed once and read everywhere.",
+      "point_out": "The three 0–100 scores and the factor breakdown beneath each.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "How strong the stock is" } },
+      "expect": { "text": "Entry Quality" }
+    },
+    {
+      "n": 4,
+      "title": "The forward-test time-machine",
+      "narration": "The Backtest page replays a past scan date and grades how that day's ranked picks actually performed over the next 1 to 60 trading days, against the market and a fair random benchmark. At the very latest date no forward window has elapsed yet, so it says so plainly rather than inventing numbers.",
+      "point_out": "The 'viewing as-of latest' badge, the regime and candidate counts, and the survivorship-bias honesty banner.",
+      "journey": "J-14",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/backtest" },
+      "expect": { "text": "Forward-test scorecard" }
+    },
+    {
+      "n": 5,
+      "title": "Leadership cohorts and their realized returns",
+      "narration": "New this time: the Top Sectors, Top Themes, and Ranked Cohort now sit together below the attribution, each showing the realized forward return of the names that actually drove the result. One Horizon control re-points every return at once, and where a window hasn't elapsed the value reads '—' — never a fabricated zero.",
+      "point_out": "The relocated leadership lists and the new 'Fwd' return column, with an honest '—' at the latest date.",
+      "journey": "J-21",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "Leadership cohorts" } },
+      "expect": { "text": "Top Sectors" }
+    }
+  ]
+}
