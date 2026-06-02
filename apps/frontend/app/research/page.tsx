@@ -9,7 +9,12 @@ import { PageHeading } from "@/components/page-heading";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { fetchFactorLab, type FactorDecileRow, type FactorLabResponse } from "@/lib/api";
+import {
+  fetchFactorLab,
+  type FactorDecileRow,
+  type FactorLabResponse,
+  type RegimeEffectivenessRow,
+} from "@/lib/api";
 
 type State =
   | { kind: "loading" }
@@ -224,6 +229,8 @@ function FactorLab({ data }: { data: FactorLabResponse }) {
         </div>
         <RankICCard ic={data.rank_ic} min={data.min_sample} label={data.factor.label} />
       </div>
+
+      <RegimeEffectivenessTable rows={data.by_regime} min={data.min_sample} horizon={data.horizon} />
     </>
   );
 }
@@ -351,6 +358,100 @@ function RankICCard({
                 ? `A higher ${label} is associated with a lower forward return in this universe (negative rank correlation).`
                 : `${label} shows no monotone rank relationship with forward return in this universe.`}
         </p>
+      </div>
+    </Card>
+  );
+}
+
+/** A regime row's numeric cell: explicit "NA" (muted) when the regime is low-sample (n < min_sample) or
+ *  the value is null — never a fabricated number; otherwise the colour-graded value. The honest `n` is
+ *  carried once per row by the SampleSize chip in the dedicated `n` column (not repeated per cell). */
+function RegimeCell({
+  value,
+  lowSample,
+  isRatio,
+}: {
+  value: number | null;
+  lowSample: boolean;
+  isRatio: boolean;
+}) {
+  if (lowSample || value === null) {
+    return (
+      <span
+        className="num font-semibold text-text-muted"
+        title={lowSample ? "Low sample — n below the minimum; NA, not a fabricated number" : "No value for this regime"}
+      >
+        NA
+      </span>
+    );
+  }
+  return (
+    <span className={cn("num font-semibold", returnClass(value))}>
+      {isRatio ? fmtRatio(value) : fmtPct(value)}
+    </span>
+  );
+}
+
+/** Factor effectiveness by market regime (J-27): one row per CONFIGURED regime label (server-driven from
+ *  the payload — never a hard-coded frontend regime list), each with its per-regime n, rank-IC, top/bottom
+ *  decile means, and the raw + downside-risk-adjusted top-minus-bottom-decile spread. Low-sample or null
+ *  cells render NA + the honest n — so a factor strong in the pooled table can be seen to be regime-
+ *  dependent. Re-formats the payload only — recomputes no return/factor/regime. */
+function RegimeEffectivenessTable({
+  rows,
+  min,
+  horizon,
+}: {
+  rows: RegimeEffectivenessRow[];
+  min: number;
+  horizon: number;
+}) {
+  return (
+    <Card className="p-0">
+      <PanelTitle
+        hint={`Does this factor still sort ${horizon}-day forward returns WITHIN each market regime? Per configured regime: the rank-IC and the long-short (top-minus-bottom-decile) spread — raw and downside-risk-adjusted. A factor strong in the pooled table can be regime-dependent here; regimes with n < ${min} show NA + n, never a fabricated number.`}
+      >
+        Factor effectiveness by market regime
+      </PanelTitle>
+      <div className="overflow-x-auto">
+        <table data-testid="regime-effectiveness-table" className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+              <th className="px-4 py-2 font-medium">Regime</th>
+              <th className="px-4 py-2 text-right font-medium">n</th>
+              <th className="px-4 py-2 text-right font-medium">Rank-IC</th>
+              <th className="px-4 py-2 text-right font-medium">Top-decile mean</th>
+              <th className="px-4 py-2 text-right font-medium">Bottom-decile mean</th>
+              <th className="px-4 py-2 text-right font-medium">Spread (top − bottom)</th>
+              <th className="px-4 py-2 text-right font-medium">Risk-adjusted spread</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.regime} className="border-b border-border last:border-b-0">
+                <td className="px-4 py-2 text-text">{row.regime}</td>
+                <td className="px-4 py-2 text-right">
+                  <SampleSize n={row.n} min={min} />
+                </td>
+                <td className="px-4 py-2 text-right">
+                  <RegimeCell value={row.rank_ic.value} lowSample={row.low_sample} isRatio />
+                </td>
+                <td className="px-4 py-2 text-right">
+                  <RegimeCell value={row.top_decile_mean} lowSample={row.low_sample} isRatio={false} />
+                </td>
+                <td className="px-4 py-2 text-right">
+                  <RegimeCell value={row.bottom_decile_mean} lowSample={row.low_sample} isRatio={false} />
+                </td>
+                <td className="px-4 py-2 text-right">
+                  <RegimeCell value={row.spread} lowSample={row.low_sample} isRatio={false} />
+                </td>
+                <td className="px-4 py-2 text-right">
+                  <RegimeCell value={row.risk_adjusted_spread} lowSample={row.low_sample} isRatio />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </Card>
   );

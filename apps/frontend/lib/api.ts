@@ -710,6 +710,22 @@ export interface RankIC {
   n: number;
 }
 
+/** One row of the J-27 regime-effectiveness split: does this factor still sort forward returns WITHIN
+ *  this market regime? The per-regime sample size `n`, the Spearman `rank_ic`, the raw top/bottom decile
+ *  means, and the long-short top-minus-bottom-decile `spread` both raw and downside-`risk_adjusted`.
+ *  `low_sample` (n < min_sample) or a null leg renders NA + n; the regime list is SERVER-driven (from
+ *  config.regime.labels) — NOT a hard-coded frontend list. Re-formatted only — never recomputed. */
+export interface RegimeEffectivenessRow {
+  regime: string; // stored regime label (config.regime.labels vocabulary, verbatim)
+  n: number;
+  low_sample: boolean; // n < min_sample — render NA + n, never a fabricated number
+  rank_ic: RankIC;
+  top_decile_mean: number | null; // raw mean of the highest factor decile within the regime
+  bottom_decile_mean: number | null; // raw mean of the lowest factor decile within the regime
+  spread: number | null; // top − bottom decile mean (raw long-short); null = NA (low-sample / empty leg)
+  risk_adjusted_spread: number | null; // downside-risk-adjusted long-short; null = NA (no downside / low-sample)
+}
+
 /** GET /api/research/factor-lab payload (J-25) — the SINGLE canonical Factor-Lab analysis for one
  *  factor × horizon. Every figure is derived once from the stored forward returns + stored factor
  *  values; the page re-formats only and recomputes no return/factor. A cross-date aggregate (like
@@ -727,6 +743,7 @@ export interface FactorLabResponse {
   n_total: number; // observations contributing at this horizon
   deciles: FactorDecileRow[]; // D1…D10 (config-driven count)
   rank_ic: RankIC;
+  by_regime: RegimeEffectivenessRow[]; // J-27: per configured regime — rank-IC + raw/downside long-short spread + n
 }
 
 /** Canonical Factor-Lab source: GET /api/research/factor-lab?factor=&horizon=. Throws on non-200 so the

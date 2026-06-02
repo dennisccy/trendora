@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever-iter-11",
+  "base_url": "http://localhost:3835",
+  "iteration": 11,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open Trendora",
+      "narration": "We start on Trendora's daily dashboard — a research workstation that ranks the US market after the close. Everything lives in the left sidebar, including the Research area we're about to open.",
+      "point_out": "The \"Research\" entry in the left sidebar — the home of Trendora's analysis labs.",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "target": { "role": "link", "name": "Research" } }
+    },
+    {
+      "n": 2,
+      "title": "Open the Factor Lab",
+      "narration": "One click on Research opens the Factor Lab. Here you choose one of eight market signals and a time horizon, and Trendora shows — from its stored history — whether stocks with more of that signal actually went on to earn higher returns.",
+      "point_out": "The decile-sort table and the rank-correlation card: the signal split into ten groups with each group's average forward return, raw and adjusted only for downside risk.",
+      "journey": "J-25",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Research" } },
+      "expect": { "text": "Decile sort" }
+    },
+    {
+      "n": 3,
+      "title": "See effectiveness by market regime",
+      "narration": "This panel is new: the same signal, now broken out by market regime — the market's prevailing weather. Each row asks whether the signal still sorts returns inside that one environment, so a signal that looks strong overall can be shown to depend on the conditions.",
+      "point_out": "Six regime rows — Strong risk-on, Risk-on, Narrow leadership, Choppy, Defensive, Risk-off — each with its own sample size, rank correlation, and top-minus-bottom spread.",
+      "journey": "J-27",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "Risk-off" } },
+      "expect": { "text": "Strong risk-on" }
+    },
+    {
+      "n": 4,
+      "title": "Switch to a 5-day horizon",
+      "narration": "We switch the horizon to five trading days. Shorter horizons have the most observations, so more regimes clear the minimum sample and fill in with real numbers.",
+      "point_out": "The whole lab — including the regime table — re-points to the new horizon.",
+      "journey": "J-27",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "click", "target": { "role": "button", "name": "5d" } }
+    },
+    {
+      "n": 5,
+      "title": "Real numbers where there's enough data",
+      "narration": "At this short horizon the well-sampled regimes fill in with genuine signed figures — how well the signal ranks future returns, and the gap between its best and worst groups, both raw and adjusted only for downside risk.",
+      "point_out": "A deep regime like Risk-on, with hundreds of observations, shows a real signed rank correlation and spread — not a placeholder.",
+      "journey": "J-27",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "Risk-off" } },
+      "expect": { "text": "Narrow leadership" }
+    },
+    {
+      "n": 6,
+      "title": "Switch to a 60-day horizon",
+      "narration": "Now we stretch the horizon to sixty trading days. Far fewer observations survive that long, so several regimes fall below the minimum sample.",
+      "point_out": "The table re-points again, this time toward sparser regimes.",
+      "journey": "J-27",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "click", "target": { "role": "button", "name": "60d" } }
+    },
+    {
+      "n": 7,
+      "title": "Honest \"NA\", never a fabricated number",
+      "narration": "And here's the discipline Trendora insists on: regimes without enough data show a plain \"NA\" beside their true, honest count — never a made-up zero dressed up as a result.",
+      "point_out": "Sparse regimes such as Strong risk-on and Defensive read \"NA\" with their real sample size (for example n=0 ⚠), keeping the evidence honest.",
+      "journey": "J-27",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "Risk-off" } },
+      "expect": { "text": "Strong risk-on" }
+    }
+  ]
+}

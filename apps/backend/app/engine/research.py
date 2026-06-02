@@ -38,7 +38,7 @@ from sqlmodel import Session, select
 
 from app.config import Config, get_config, parse_factor_source
 from app.engine.forward_testing import SURVIVORSHIP_BIAS_LABEL
-from app.models import ForwardReturn, ScannerResult
+from app.models import ForwardReturn, ScannerResult, ScannerRun
 
 # The honest "descriptive, not predictive / universe-relative" caveat carried on every Factor-Lab
 # payload alongside the (reused, single-source) survivorship-bias label (anti-goals: Research lab is
@@ -157,7 +157,9 @@ def _factor_observations(session: Session, factor, horizon: int) -> list[dict]:
     and read the factor's stored value. SELECT-only against `ForwardReturn` + `ScannerResult`; it
     recomputes NO return and NO factor. This is the SAME observation pool
     `forward_testing.compute_forward_aggregates(horizon)` builds — observations with no realized return
-    contribute nothing (n=0), and a factor-NULL observation is EXCLUDED (never bucketed)."""
+    contribute nothing (n=0), and a factor-NULL observation is EXCLUDED (never bucketed). Each
+    observation also carries the run's STORED `regime_label` (read verbatim from `scanner_runs`,
+    mirroring `forward_testing.py` — the regime is never recomputed here; J-27)."""
     parsed = parse_factor_source(factor.source)
     fr_rows = session.exec(select(ForwardReturn).where(ForwardReturn.horizon == horizon)).all()
     ret_by_run_symbol = {(fr.run_id, fr.symbol): fr.realized_return for fr in fr_rows}
@@ -166,6 +168,11 @@ def _factor_observations(session: Session, factor, horizon: int) -> list[dict]:
         session.exec(select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr))).all()
         if runs_with_fr else []
     )
+    run_rows = (
+        session.exec(select(ScannerRun).where(ScannerRun.id.in_(runs_with_fr))).all()
+        if runs_with_fr else []
+    )
+    regime_by_run = {run.id: run.regime_label for run in run_rows}  # stored regime label, read VERBATIM
 
     observations: list[dict] = []
     for res in results:
@@ -175,9 +182,10 @@ def _factor_observations(session: Session, factor, horizon: int) -> list[dict]:
         value = _extract_factor_value(res, parsed)
         if value is None:
             continue  # factor-NULL observation EXCLUDED (never bucketed) — honest, not fabricated
-        observations.append(
-            {"run_id": res.run_id, "ticker": res.ticker, "factor": float(value), "return": realized}
-        )
+        observations.append({
+            "run_id": res.run_id, "ticker": res.ticker, "factor": float(value), "return": realized,
+            "regime": regime_by_run.get(res.run_id),  # stored regime label for the run (J-27)
+        })
     return observations
 
 
@@ -205,6 +213,53 @@ def _deciles(ordered: list[dict], count: int, min_sample: int) -> list[dict]:
     return rows
 
 
+def _regime_effectiveness(observations: list[dict], cfg: Config, horizon: int) -> list[dict]:
+    """The read-only by-regime effectiveness split (J-27): for EACH configured regime label (in
+    `config.regime.labels` order — no hard-coded regime list) emit one row describing whether the factor
+    still sorts forward returns WITHIN that market regime. Observations are grouped by their STORED
+    regime label (read verbatim from `scanner_runs.regime_label` — recomputes no regime); each row
+    carries the per-regime `n`, the `low_sample` flag (`n < walk_forward.min_sample`), the Spearman
+    `rank_ic`, the raw top/bottom decile means from a PER-REGIME decile split (the same `_deciles`), and
+    the long-short top-minus-bottom-decile `spread` both raw and downside-`risk_adjusted`. Both spreads
+    are honest NA (None) when the regime is low-sample OR either decile leg is None — an all-non-negative
+    top decile has no downside risk → `risk_adjusted_spread` None, NEVER a total-vol number. Every
+    configured regime emits a row even at n=0 (an honest empty row — never omitted, never fabricated)."""
+    fl = cfg.research.factor_lab
+    wf = cfg.walk_forward
+    rows: list[dict] = []
+    for label in cfg.regime.labels:
+        regime_obs = [o for o in observations if o["regime"] == label]
+        n = len(regime_obs)
+        low_sample = n < wf.min_sample
+        # ascending by stored factor value with the SAME deterministic tie-break compute_factor_lab uses,
+        # so the per-regime deciles reproduce (a regime's pool is a subset of the pooled, re-sorted).
+        ordered = sorted(regime_obs, key=lambda o: (o["factor"], o["ticker"], o["run_id"]))
+        deciles = _deciles(ordered, fl.deciles, wf.min_sample)
+        top_mean, bottom_mean = deciles[-1]["mean_return"], deciles[0]["mean_return"]
+        top_ra, bottom_ra = deciles[-1]["risk_adjusted"], deciles[0]["risk_adjusted"]
+        spread = (
+            top_mean - bottom_mean
+            if not low_sample and top_mean is not None and bottom_mean is not None
+            else None
+        )
+        risk_adjusted_spread = (
+            top_ra - bottom_ra
+            if not low_sample and top_ra is not None and bottom_ra is not None
+            else None
+        )
+        rows.append({
+            "regime": label,
+            "n": n,
+            "low_sample": low_sample,
+            "rank_ic": _rank_ic([(o["factor"], o["return"]) for o in regime_obs]),
+            "top_decile_mean": top_mean,
+            "bottom_decile_mean": bottom_mean,
+            "spread": spread,
+            "risk_adjusted_spread": risk_adjusted_spread,
+        })
+    return rows
+
+
 # --------------------------------------------------------------------------------------------------
 # The single canonical Factor-Lab read (read-only aggregation of stored values)
 # --------------------------------------------------------------------------------------------------
@@ -217,8 +272,10 @@ def compute_factor_lab(
     `factor` + `horizon` + the full config-driven `factors` catalog + `horizons` + `default_horizon` +
     `min_sample` + survivorship/descriptive labels + `n_total`, the decile table (`mean_return` +
     downside `risk_adjusted` + `n` per decile, ascending by factor value, deterministic tie-break by
-    ticker+run), and the Spearman `rank_ic` (`{value, n}`). Raises `ValueError` for an unknown factor
-    (the API pre-validates -> 422)."""
+    ticker+run), the Spearman `rank_ic` (`{value, n}`), and the `by_regime` effectiveness split (J-27 —
+    per configured regime label: `n`, rank-IC, top/bottom decile means, and the raw + downside-risk-
+    adjusted top-minus-bottom-decile spread, all from the SAME observation pool, regime read verbatim).
+    Raises `ValueError` for an unknown factor (the API pre-validates -> 422)."""
     cfg = config or get_config()
     fl = cfg.research.factor_lab
     wf = cfg.walk_forward
@@ -250,4 +307,5 @@ def compute_factor_lab(
         "n_total": len(observations),
         "deciles": _deciles(ordered, fl.deciles, wf.min_sample),
         "rank_ic": _rank_ic([(o["factor"], o["return"]) for o in observations]),
+        "by_regime": _regime_effectiveness(observations, cfg, horizon),
     }

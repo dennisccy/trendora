@@ -163,15 +163,17 @@ def test_rank_ic_exact_on_known_pairs():
 # ==================================================================================================
 def test_factor_lab_is_read_only_no_scoring_or_return_or_pattern_call(monotone_engine, monkeypatch):
     """Read-only (the critical anti-goal): monkeypatch run_scan / score_stocks / forward_return /
-    detect_* to RAISE, then assert compute_factor_lab STILL returns a full payload — proving it reads
-    stored values only (it issues SELECTs and pure math, never a scoring/return/factor computation)."""
+    detect_* / score_regime to RAISE, then assert compute_factor_lab STILL returns a full payload
+    INCLUDING the by_regime split — proving it reads stored values only (it issues SELECTs and pure
+    math, never a scoring/return/factor/regime computation)."""
     import app.engine.forward_testing as ft
     import app.engine.patterns as patterns
+    import app.engine.regime as regime
     import app.engine.scanner as scanner
     import app.engine.scoring as scoring
 
     def _boom(*args, **kwargs):  # pragma: no cover - must never be reached
-        raise AssertionError("read path must not recompute a score/return/pattern")
+        raise AssertionError("read path must not recompute a score/return/pattern/regime")
 
     monkeypatch.setattr(scanner, "run_scan", _boom)
     monkeypatch.setattr(scoring, "score_stocks", _boom)
@@ -179,14 +181,22 @@ def test_factor_lab_is_read_only_no_scoring_or_return_or_pattern_call(monotone_e
     monkeypatch.setattr(patterns, "detect_vcp", _boom)
     monkeypatch.setattr(patterns, "detect_pullback_to_rising_dma", _boom)
     monkeypatch.setattr(patterns, "detect_flat_base_breakout", _boom)
+    monkeypatch.setattr(regime, "score_regime", _boom)  # J-27: regime is READ from stored runs, never recomputed
 
+    cfg = load_config()
     with Session(monotone_engine) as session:
-        payload = compute_factor_lab(session, "leadership_score", H, load_config())
+        payload = compute_factor_lab(session, "leadership_score", H, cfg)
 
     assert payload["factor"]["key"] == "leadership_score"
     assert payload["n_total"] == 20
     assert len(payload["deciles"]) == 10
     assert payload["rank_ic"]["value"] is not None
+    # J-27 read-only keystone: by_regime is fully populated (one row per configured label) even with
+    # score_regime patched to raise — the label is read VERBATIM from stored scanner_runs.regime_label.
+    by_regime = payload["by_regime"]
+    assert [r["regime"] for r in by_regime] == cfg.regime.labels
+    on = next(r for r in by_regime if r["regime"] == "Risk-on")
+    assert on["n"] == 20  # the fixture's single run is stored Risk-on; the regime is read, never recomputed
 
 
 # ==================================================================================================
@@ -415,3 +425,135 @@ def test_component_source_with_unknown_component_raises(tmp_path):
     data["research"]["factor_lab"]["factors"][0]["source"] = "leadership.components.not_a_component.raw"
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))
+
+
+# ==================================================================================================
+# J-27 — regime-conditioned factor effectiveness (by_regime): per configured regime label the rank-IC
+# + the top-minus-bottom-decile spread (raw + downside-risk-adjusted) + honest per-regime n / NA.
+# The split reuses the SAME read-only observation pool (regime read VERBATIM from scanner_runs).
+# ==================================================================================================
+def _cfg_with(*, deciles=None, min_sample=None):
+    """The real config with the Factor-Lab decile count and/or walk-forward min_sample overridden via
+    model_copy (so a tiny hand fixture can be made non-low-sample) — the SAME config-driven code path,
+    no magic number injected into the engine."""
+    cfg = load_config()
+    research = cfg.research
+    if deciles is not None:
+        research = cfg.research.model_copy(
+            update={"factor_lab": cfg.research.factor_lab.model_copy(update={"deciles": deciles})}
+        )
+    walk_forward = cfg.walk_forward
+    if min_sample is not None:
+        walk_forward = cfg.walk_forward.model_copy(update={"min_sample": min_sample})
+    return cfg.model_copy(update={"research": research, "walk_forward": walk_forward})
+
+
+@pytest.fixture()
+def multi_regime_engine(tmp_path):
+    """Two runs with DIFFERENT stored regime labels — 12 Risk-on observations (monotone, positive) and
+    8 Risk-off observations (monotone, negative). Proves the by_regime split groups every observation by
+    its stored label and that the n's sum to the total."""
+    engine = _engine(tmp_path, "multiregime.db")
+    with Session(engine) as session:
+        run_on = _add_run(session, date(2025, 1, 10), regime_label="Risk-on")
+        run_off = _add_run(session, date(2025, 2, 10), regime_label="Risk-off")
+        for i in range(1, 13):
+            _add_result(session, run_on.id, f"N{i:02d}", rank=i, lead=float(i))
+            _add_fr(session, run_on.id, f"N{i:02d}", ret=i / 1000)
+        for i in range(1, 9):
+            _add_result(session, run_off.id, f"F{i:02d}", rank=i, lead=float(i))
+            _add_fr(session, run_off.id, f"F{i:02d}", ret=-i / 1000)
+        session.commit()
+    return engine
+
+
+def test_by_regime_n_sums_to_total(multi_regime_engine):
+    """Consistency invariant (the J-27 keystone): Σ over regimes of per-regime `n` == `n_total` — every
+    observation carries exactly one configured regime label (read verbatim from scanner_runs), so the
+    split partitions the SAME observation pool with no double-count and no drop."""
+    cfg = load_config()
+    with Session(multi_regime_engine) as session:
+        payload = compute_factor_lab(session, "leadership_score", H, cfg)
+    by_regime = payload["by_regime"]
+    counts = {r["regime"]: r["n"] for r in by_regime}
+    assert counts["Risk-on"] == 12 and counts["Risk-off"] == 8
+    assert sum(r["n"] for r in by_regime) == payload["n_total"] == 20
+
+
+def test_by_regime_rows_are_config_labels_in_order_with_honest_empty_rows(multi_regime_engine):
+    """Config-driven vocabulary: by_regime is exactly `config.regime.labels` in order (no hard-coded
+    regime list); a configured regime with no observations is an HONEST n=0 row (rank-IC + spreads
+    None) — never omitted, never fabricated."""
+    cfg = load_config()
+    with Session(multi_regime_engine) as session:
+        payload = compute_factor_lab(session, "leadership_score", H, cfg)
+    by_regime = payload["by_regime"]
+    assert [r["regime"] for r in by_regime] == cfg.regime.labels
+    empty = next(r for r in by_regime if r["regime"] == "Choppy")  # no Choppy run in the fixture
+    assert empty["n"] == 0 and empty["rank_ic"]["value"] is None
+    assert empty["top_decile_mean"] is None and empty["bottom_decile_mean"] is None
+    assert empty["spread"] is None and empty["risk_adjusted_spread"] is None
+
+
+def test_by_regime_exact_spread_and_rank_ic(tmp_path):
+    """Exact per-regime spread + rank-IC on a hand fixture: a monotone factor WITHIN one regime → a known
+    positive spread (top-decile mean − bottom-decile mean) and rank_ic.value ≈ 1.0; an inverse regime →
+    a negative spread and rank_ic.value ≈ -1.0. Distinct populations legitimately differ — only the n's
+    reconcile (asserted separately), never the per-regime means."""
+    engine = _engine(tmp_path, "regime_spread.db")
+    cfg = _cfg_with(deciles=2, min_sample=2)
+    with Session(engine) as session:
+        up = _add_run(session, date(2025, 1, 10), regime_label="Risk-on")
+        down = _add_run(session, date(2025, 2, 10), regime_label="Risk-off")
+        for tkr, score, ret in [("UA", 1.0, 0.01), ("UB", 2.0, 0.02), ("UC", 3.0, 0.03), ("UD", 4.0, 0.04)]:
+            _add_result(session, up.id, tkr, rank=int(score), lead=score)
+            _add_fr(session, up.id, tkr, ret)
+        for tkr, score, ret in [("DA", 1.0, 0.04), ("DB", 2.0, 0.03), ("DC", 3.0, 0.02), ("DD", 4.0, 0.01)]:
+            _add_result(session, down.id, tkr, rank=int(score), lead=score)
+            _add_fr(session, down.id, tkr, ret)
+        session.commit()
+        payload = compute_factor_lab(session, "leadership_score", H, cfg)
+    rows = {r["regime"]: r for r in payload["by_regime"]}
+    up_row = rows["Risk-on"]
+    assert up_row["n"] == 4 and up_row["low_sample"] is False
+    # bottom decile {f1,f2} → returns {0.01,0.02} mean 0.015; top decile {f3,f4} → {0.03,0.04} mean 0.035
+    assert up_row["bottom_decile_mean"] == pytest.approx(0.015)
+    assert up_row["top_decile_mean"] == pytest.approx(0.035)
+    assert up_row["spread"] == pytest.approx(0.02)  # 0.035 − 0.015
+    assert up_row["rank_ic"]["value"] == pytest.approx(1.0)
+    down_row = rows["Risk-off"]
+    assert down_row["spread"] == pytest.approx(-0.02)  # inverse regime → negative long-short spread
+    assert down_row["rank_ic"]["value"] == pytest.approx(-1.0)
+
+
+def test_by_regime_risk_adjusted_spread_na_when_top_decile_all_non_negative(tmp_path):
+    """Downside-only honesty per regime: a regime whose TOP decile is all-non-negative has no downside in
+    that leg → its risk_adjusted leg is None → risk_adjusted_spread is None (NA), while the RAW spread
+    stays numeric — a downside-only figure, never a total-volatility number."""
+    engine = _engine(tmp_path, "regime_downside.db")
+    cfg = _cfg_with(deciles=2, min_sample=2)
+    with Session(engine) as session:
+        run = _add_run(session, date(2025, 1, 10), regime_label="Risk-on")
+        # bottom decile {f1,f2} has a negative (downside present); top decile {f3,f4} all non-negative
+        for tkr, score, ret in [("A", 1.0, -0.10), ("B", 2.0, 0.20), ("C", 3.0, 0.10), ("D", 4.0, 0.30)]:
+            _add_result(session, run.id, tkr, rank=int(score), lead=score)
+            _add_fr(session, run.id, tkr, ret)
+        session.commit()
+        payload = compute_factor_lab(session, "leadership_score", H, cfg)
+    row = next(r for r in payload["by_regime"] if r["regime"] == "Risk-on")
+    assert row["n"] == 4 and row["low_sample"] is False
+    # raw spread numeric: top mean (0.10+0.30)/2=0.20 − bottom mean (-0.10+0.20)/2=0.05 = 0.15
+    assert row["spread"] == pytest.approx(0.15)
+    assert row["risk_adjusted_spread"] is None  # top leg all-non-negative → NA (downside-only)
+
+
+def test_by_regime_low_sample_regime_is_na_with_honest_n(monotone_engine):
+    """Low-sample NA: a regime with n < walk_forward.min_sample carries low_sample=True + its HONEST n,
+    and both spreads are None (the UI renders NA) — even though the per-decile means exist, the
+    regime-TOTAL low sample gates the spread to honest NA, never a number on too few observations."""
+    cfg = load_config()  # min_sample=30; the monotone fixture's single Risk-on run has n=20 (< 30)
+    with Session(monotone_engine) as session:
+        payload = compute_factor_lab(session, "leadership_score", H, cfg)
+    row = next(r for r in payload["by_regime"] if r["regime"] == "Risk-on")
+    assert row["n"] == 20 and row["low_sample"] is True
+    assert row["spread"] is None and row["risk_adjusted_spread"] is None

@@ -1,0 +1,25 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever-iter-11",
+  "status": "complete",
+  "current_step": "qa_complete",
+  "updated_at": "2026-06-02T15:40:00.000000Z",
+  "started_at": "2026-06-02T13:25:29.512863Z",
+  "cli": "claude",
+  "depth": "full",
+  "mode": "next",
+  "target_journeys": [
+    "J-27"
+  ],
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/research.py",
+    "apps/backend/tests/test_research.py",
+    "apps/frontend/lib/api.ts",
+    "apps/frontend/app/research/page.tsx"
+  ],
+  "tests_run": true,
+  "tests_result": "Full backend suite GREEN: 384 passed, 4 skipped, 0 failed in 1181.78s (the 4 skips are the offline-skipped @integration external-network tests, e.g. the stooq live fetch; 379 in iter-10 + 5 new J-27 test functions = 384). New J-27 cases in test_research.py: by_regime n sums to n_total (the \u03a3 per-regime n == n_total consistency invariant on a multi-regime fixture); exact per-regime spread + rank-IC (monotone regime \u2192 +spread & rank_ic\u22481.0, inverse \u2192 negative); the extended read-only patch-to-raise keystone ALSO patches app.engine.regime.score_regime to raise and asserts by_regime is still fully populated (regime read verbatim from scanner_runs, never recomputed); downside-only risk_adjusted_spread is None (NA) when the top decile is all-non-negative while raw spread stays numeric; config-driven regimes (rows == config.regime.labels in order; an empty regime is an honest n=0 row); low-sample NA (n < walk_forward.min_sample \u2192 low_sample=True + honest n, both spreads None). test_no_magic_numbers.py green (research.py introduced no float/forbidden-int literal). test_api_research.py green (by_regime rides the live payload; J-18 no-date-field still holds). Frontend: npm run build typechecks all 14 routes incl. /research (5.79 kB, grown by the new panel). LIVE seed-DB check via compute_factor_lab: by_regime returns the 6 config labels in order; \u03a3 per-regime n == n_total at h=5 (1218) and h=60 (1217); honest NA + n=0 for Strong risk-on & Defensive (no runs); numeric rank-IC + spreads for the 4 populated regimes; leadership_score is +0.063 rank-IC in Risk-on but \u22120.602 in Narrow leadership (regime-dependence visible).",
+  "browser_checks_run": true,
+  "next_action": "qa_complete",
+  "notes": "status.json IS written this iteration (prior full-depth iters here sometimes omitted it). Read-only / single-source / downside-only seams verified directly in app/engine/research.py source: it issues only SELECTs (one added select(ScannerRun) over the runs already in runs_with_fr) and calls no scoring/return/factor/regime math \u2014 the extended patch-to-raise keystone (now also patching score_regime) proves the regime is read verbatim from scanner_runs.regime_label, never recomputed. No new endpoint, no new query param, no new config key, no schema/DB change (regime_label already stored on every run). Blueprint already registers the by_regime slice as a read-only extension of the SAME Factor-Lab value (state/blueprint.md line 165) \u2014 coherence-conforming. NOTE FOR BROWSER QA: unlike iter-10's pooled decile table (which never hit NA because every factor has ~1218 obs > min_sample), the J-27 per-regime split DOES make NA/low-sample/n=0 browser-observable \u2014 Strong risk-on and Defensive are n=0 (NA) on the seed at any horizon, and the 4 populated regimes clear min_sample. The new table carries data-testid=\"regime-effectiveness-table\". Serialize Chrome access (qa vs browser-qa-agent), de-dup evidence by sha256, ground re-points/byte-identical claims on distinct shots + DOM/network assertion. No developer -audit.md is produced (auditor runs later)."
+}
