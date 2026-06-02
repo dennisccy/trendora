@@ -12,6 +12,7 @@ scoring lands in iter-2; industry ETFs are still loaded into `etfs` with kind='i
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -60,8 +61,32 @@ def all_seed_symbols(config: Config) -> list[str]:
     return ordered
 
 
-def load_reference_data(session: Session, config: Config) -> None:
-    """Insert sectors / stocks / etfs / themes / theme_members from config (idempotent)."""
+def load_universe_screen_record(seed_dir: Path) -> dict[str, float]:
+    """Read the committed per-member screen-pass record (`universe.json`, written by the offline
+    `scripts/screen_universe.py`) → {ticker: market_cap}. The reference market cap is RESOLVED ONCE at
+    seed-build time and committed; the loader only READS it (single source / no recompute, J-22). A
+    member with no recorded cap, or an absent record, simply yields no entry — `Stock.market_cap` stays
+    NULL and is shown as NA, never fabricated (anti-goal: No fabricated data)."""
+    path = Path(seed_dir) / "universe.json"
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return {}
+    return {
+        member["symbol"]: float(member["market_cap"])
+        for member in data.get("members", [])
+        if member.get("symbol") and member.get("market_cap") is not None
+    }
+
+
+def load_reference_data(
+    session: Session, config: Config, market_caps: Optional[dict[str, float]] = None
+) -> None:
+    """Insert sectors / stocks / etfs / themes / theme_members from config (idempotent). `market_caps`
+    (the committed screen record) populates `Stock.market_cap` read-only (single source); absent ⇒ NULL."""
+    caps = market_caps or {}
     # session.scalar(select(Model)) returns the model instance (or None) directly — unlike
     # session.exec(...).first(), which yields a SQLAlchemy Row that the prior tuple-guard didn't
     # unwrap (latent on fresh DBs; surfaced once reference data is ensured on a populated DB).
@@ -79,13 +104,19 @@ def load_reference_data(session: Session, config: Config) -> None:
         # stock -> GICS sector (reference data from config.stock_sectors); used for the
         # rs_sector / sector_strength scoring components (iter-3).
         sector_id = sector_id_by_name.get(config.stock_sectors.get(ticker))
+        market_cap = caps.get(ticker)  # committed screen-pass reference cap (None ⇒ NULL/NA)
         stock = session.scalar(select(Stock).where(Stock.ticker == ticker))
         if stock is None:
-            stock = Stock(ticker=ticker, name=ticker, sector_id=sector_id, is_common=True, active=True)
+            stock = Stock(ticker=ticker, name=ticker, sector_id=sector_id,
+                          market_cap=market_cap, is_common=True, active=True)
             session.add(stock)
             session.flush()
-        elif stock.sector_id is None and sector_id is not None:
-            stock.sector_id = sector_id  # idempotent backfill for a pre-existing stock row
+        else:
+            # idempotent backfill from the committed single source for a pre-existing stock row
+            if stock.sector_id is None and sector_id is not None:
+                stock.sector_id = sector_id
+            if market_cap is not None and stock.market_cap != market_cap:
+                stock.market_cap = market_cap
             session.add(stock)
         stock_id_by_ticker[ticker] = stock.id
 
@@ -173,8 +204,9 @@ def load_seed(
         existing = _price_count(session)
         # Reference data is idempotent (guarded upserts, no new rows on re-run); ensure it on every
         # boot so a DB created before `stock_sectors` existed gets Stock.sector_id backfilled. Only
-        # the PRICE load is gated on emptiness (re-fetching frozen bars would be wasteful).
-        load_reference_data(session, config)
+        # the PRICE load is gated on emptiness (re-fetching frozen bars would be wasteful). The
+        # committed screen record (universe.json) populates Stock.market_cap read-only (J-22).
+        load_reference_data(session, config, load_universe_screen_record(seed_dir))
         if existing and not force:
             return {"loaded": False, "reason": "already populated", "price_rows": existing}
 

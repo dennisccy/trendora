@@ -91,6 +91,10 @@ def compute_coverage(session: Session, config: Optional[Config] = None) -> dict:
         "price_start": price_min.isoformat() if price_min else None,
         "price_end": price_max.isoformat() if price_max else None,
         "symbol_count": int(symbol_count or 0),
+        # the RESOLVED UNIVERSE size — the one canonical `config.universe.symbols` (the committed screen
+        # result), read live here and on /api/methodology so the two surfaces never drift (J-22, single
+        # source / no recompute). Distinct from `symbol_count` (DISTINCT priced symbols, incl. ETFs+^VIX).
+        "universe_count": len(cfg.universe.symbols),
         "snapshot_count": len(snapshot_dates),
         "snapshot_dates": [d.isoformat() for d in sorted(snapshot_dates, reverse=True)],
         "trading_day_count": len(trading_days),

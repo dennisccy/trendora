@@ -1,0 +1,551 @@
+# Trendora candidate pool — J-22. Membership rule: S&P 500 ∪ Nasdaq-100 (real index constituents from Wikipedia) ∪ the prior committed universe.
+# Built 2026-06-02 from Wikipedia REST constituent tables. The config screen (universe.filters) is applied to this pool by --screen; only passers become universe.symbols.
+symbol,sector,source
+A,Health Care,sp500
+AAPL,Technology,sp500
+ABBV,Health Care,sp500
+ABNB,Consumer Discretionary,sp500
+ABT,Health Care,sp500
+ACGL,Financials,sp500
+ACN,Technology,sp500
+ADBE,Technology,sp500
+ADI,Technology,sp500
+ADM,Consumer Staples,sp500
+ADP,Industrials,sp500
+ADSK,Technology,sp500
+AEE,Utilities,sp500
+AEP,Utilities,sp500
+AES,Utilities,sp500
+AFL,Financials,sp500
+AIG,Financials,sp500
+AIZ,Financials,sp500
+AJG,Financials,sp500
+AKAM,Technology,sp500
+ALB,Materials,sp500
+ALGN,Health Care,sp500
+ALL,Financials,sp500
+ALLE,Industrials,sp500
+ALNY,Health Care,nasdaq100
+AMAT,Technology,sp500
+AMCR,Materials,sp500
+AMD,Technology,sp500
+AME,Industrials,sp500
+AMGN,Health Care,sp500
+AMP,Financials,sp500
+AMSC,Industrials,prior_universe
+AMT,Real Estate,sp500
+AMZN,Consumer Discretionary,sp500
+ANET,Technology,sp500
+AON,Financials,sp500
+AOS,Industrials,sp500
+APA,Energy,sp500
+APD,Materials,sp500
+APH,Technology,sp500
+APO,Financials,sp500
+APP,Technology,sp500
+APTV,Consumer Discretionary,sp500
+ARE,Real Estate,sp500
+ARES,Financials,sp500
+ARM,Technology,nasdaq100
+ASML,Technology,nasdaq100
+ATO,Utilities,sp500
+AVB,Real Estate,sp500
+AVGO,Technology,sp500
+AVY,Materials,sp500
+AWK,Utilities,sp500
+AXON,Industrials,sp500
+AXP,Financials,sp500
+AZO,Consumer Discretionary,sp500
+BA,Industrials,sp500
+BAC,Financials,sp500
+BALL,Materials,sp500
+BAX,Health Care,sp500
+BBY,Consumer Discretionary,sp500
+BDX,Health Care,sp500
+BEN,Financials,sp500
+BF-B,Consumer Staples,sp500
+BG,Consumer Staples,sp500
+BIIB,Health Care,sp500
+BKNG,Consumer Discretionary,sp500
+BKR,Energy,sp500
+BLDR,Industrials,sp500
+BLK,Financials,sp500
+BMY,Health Care,sp500
+BNY,Financials,sp500
+BR,Industrials,sp500
+BRK-B,Financials,sp500
+BRO,Financials,sp500
+BSX,Health Care,sp500
+BX,Financials,sp500
+BXP,Real Estate,sp500
+C,Financials,sp500
+CAG,Consumer Staples,sp500
+CAH,Health Care,sp500
+CARR,Industrials,sp500
+CASY,Consumer Staples,sp500
+CAT,Industrials,sp500
+CB,Financials,sp500
+CBOE,Financials,sp500
+CBRE,Real Estate,sp500
+CCEP,Consumer Staples,nasdaq100
+CCI,Real Estate,sp500
+CCJ,Energy,prior_universe
+CCL,Consumer Discretionary,sp500
+CDNS,Technology,sp500
+CDW,Technology,sp500
+CEG,Utilities,sp500
+CF,Materials,sp500
+CFG,Financials,sp500
+CHD,Consumer Staples,sp500
+CHRW,Industrials,sp500
+CHTR,Communication Services,sp500
+CI,Health Care,sp500
+CIEN,Technology,sp500
+CINF,Financials,sp500
+CL,Consumer Staples,sp500
+CLSK,Financials,prior_universe
+CLX,Consumer Staples,sp500
+CMCSA,Communication Services,sp500
+CME,Financials,sp500
+CMG,Consumer Discretionary,sp500
+CMI,Industrials,sp500
+CMS,Utilities,sp500
+CNC,Health Care,sp500
+CNP,Utilities,sp500
+COF,Financials,sp500
+COHR,Technology,sp500
+COIN,Financials,sp500
+COO,Health Care,sp500
+COP,Energy,sp500
+COR,Health Care,sp500
+COST,Consumer Staples,sp500
+CPAY,Financials,sp500
+CPB,Consumer Staples,sp500
+CPRT,Industrials,sp500
+CPT,Real Estate,sp500
+CRH,Materials,sp500
+CRL,Health Care,sp500
+CRM,Technology,sp500
+CRWD,Technology,sp500
+CSCO,Technology,sp500
+CSGP,Real Estate,sp500
+CSX,Industrials,sp500
+CTAS,Industrials,sp500
+CTSH,Technology,sp500
+CTVA,Materials,sp500
+CVNA,Consumer Discretionary,sp500
+CVS,Health Care,sp500
+CVX,Energy,sp500
+D,Utilities,sp500
+DAL,Industrials,sp500
+DASH,Consumer Discretionary,sp500
+DD,Materials,sp500
+DDOG,Technology,sp500
+DE,Industrials,sp500
+DECK,Consumer Discretionary,sp500
+DELL,Technology,sp500
+DG,Consumer Staples,sp500
+DGX,Health Care,sp500
+DHI,Consumer Discretionary,sp500
+DHR,Health Care,sp500
+DIS,Communication Services,sp500
+DLR,Real Estate,sp500
+DLTR,Consumer Staples,sp500
+DNN,Energy,prior_universe
+DOC,Real Estate,sp500
+DOV,Industrials,sp500
+DOW,Materials,sp500
+DPZ,Consumer Discretionary,sp500
+DRI,Consumer Discretionary,sp500
+DTE,Utilities,sp500
+DUK,Utilities,sp500
+DVA,Health Care,sp500
+DVN,Energy,sp500
+DXCM,Health Care,sp500
+EA,Communication Services,sp500
+EBAY,Consumer Discretionary,sp500
+ECL,Materials,sp500
+ED,Utilities,sp500
+EFX,Industrials,sp500
+EG,Financials,sp500
+EIX,Utilities,sp500
+EL,Consumer Staples,sp500
+ELV,Health Care,sp500
+EME,Industrials,sp500
+EMR,Industrials,sp500
+ENTG,Technology,prior_universe
+EOG,Energy,sp500
+EPAM,Technology,sp500
+EQIX,Real Estate,sp500
+EQR,Real Estate,sp500
+EQT,Energy,sp500
+ERIE,Financials,sp500
+ES,Utilities,sp500
+ESS,Real Estate,sp500
+ETN,Industrials,sp500
+ETR,Utilities,sp500
+EVRG,Utilities,sp500
+EW,Health Care,sp500
+EXC,Utilities,sp500
+EXE,Energy,sp500
+EXPD,Industrials,sp500
+EXPE,Consumer Discretionary,sp500
+EXR,Real Estate,sp500
+F,Consumer Discretionary,sp500
+FANG,Energy,sp500
+FAST,Industrials,sp500
+FCX,Materials,sp500
+FDS,Financials,sp500
+FDX,Industrials,sp500
+FE,Utilities,sp500
+FER,Industrials,nasdaq100
+FFIV,Technology,sp500
+FICO,Technology,sp500
+FIS,Financials,sp500
+FISV,Financials,sp500
+FITB,Financials,sp500
+FIX,Industrials,sp500
+FOX,Communication Services,sp500
+FOXA,Communication Services,sp500
+FRT,Real Estate,sp500
+FSLR,Technology,sp500
+FTNT,Technology,sp500
+FTV,Industrials,sp500
+GD,Industrials,sp500
+GDDY,Technology,sp500
+GE,Industrials,sp500
+GEHC,Health Care,sp500
+GEN,Technology,sp500
+GEV,Industrials,sp500
+GFS,Technology,prior_universe
+GILD,Health Care,sp500
+GIS,Consumer Staples,sp500
+GL,Financials,sp500
+GLW,Technology,sp500
+GM,Consumer Discretionary,sp500
+GNRC,Industrials,sp500
+GOOG,Communication Services,sp500
+GOOGL,Communication Services,sp500
+GPC,Consumer Discretionary,sp500
+GPN,Financials,sp500
+GRMN,Consumer Discretionary,sp500
+GS,Financials,sp500
+GWW,Industrials,sp500
+HAL,Energy,sp500
+HAS,Consumer Discretionary,sp500
+HBAN,Financials,sp500
+HCA,Health Care,sp500
+HD,Consumer Discretionary,sp500
+HIG,Financials,sp500
+HII,Industrials,sp500
+HLT,Consumer Discretionary,sp500
+HON,Industrials,sp500
+HOOD,Financials,sp500
+HPE,Technology,sp500
+HPQ,Technology,sp500
+HRL,Consumer Staples,sp500
+HSIC,Health Care,sp500
+HST,Real Estate,sp500
+HSY,Consumer Staples,sp500
+HUBB,Industrials,sp500
+HUBS,Technology,prior_universe
+HUM,Health Care,sp500
+HWM,Industrials,sp500
+IBKR,Financials,sp500
+IBM,Technology,sp500
+ICE,Financials,sp500
+IDXX,Health Care,sp500
+IEX,Industrials,sp500
+IFF,Materials,sp500
+INCY,Health Care,sp500
+INSM,Health Care,nasdaq100
+INTC,Technology,sp500
+INTU,Technology,sp500
+INVH,Real Estate,sp500
+IP,Materials,sp500
+IQV,Health Care,sp500
+IR,Industrials,sp500
+IRM,Real Estate,sp500
+ISRG,Health Care,sp500
+IT,Technology,sp500
+ITW,Industrials,sp500
+IVZ,Financials,sp500
+J,Industrials,sp500
+JBHT,Industrials,sp500
+JBL,Technology,sp500
+JCI,Industrials,sp500
+JKHY,Financials,sp500
+JNJ,Health Care,sp500
+JPM,Financials,sp500
+KBH,Consumer Discretionary,prior_universe
+KDP,Consumer Staples,sp500
+KEY,Financials,sp500
+KEYS,Technology,sp500
+KHC,Consumer Staples,sp500
+KIM,Real Estate,sp500
+KKR,Financials,sp500
+KLAC,Technology,sp500
+KMB,Consumer Staples,sp500
+KMI,Energy,sp500
+KO,Consumer Staples,sp500
+KR,Consumer Staples,sp500
+KTOS,Industrials,prior_universe
+KVUE,Consumer Staples,sp500
+L,Financials,sp500
+LDOS,Industrials,sp500
+LEN,Consumer Discretionary,sp500
+LEU,Energy,prior_universe
+LH,Health Care,sp500
+LHX,Industrials,sp500
+LII,Industrials,sp500
+LIN,Materials,sp500
+LITE,Technology,sp500
+LLY,Health Care,sp500
+LMT,Industrials,sp500
+LNT,Utilities,sp500
+LOW,Consumer Discretionary,sp500
+LRCX,Technology,sp500
+LULU,Consumer Discretionary,sp500
+LUV,Industrials,sp500
+LVS,Consumer Discretionary,sp500
+LYB,Materials,sp500
+LYV,Communication Services,sp500
+MA,Financials,sp500
+MAA,Real Estate,sp500
+MAR,Consumer Discretionary,sp500
+MARA,Financials,prior_universe
+MAS,Industrials,sp500
+MCD,Consumer Discretionary,sp500
+MCHP,Technology,sp500
+MCK,Health Care,sp500
+MCO,Financials,sp500
+MDB,Technology,prior_universe
+MDLZ,Consumer Staples,sp500
+MDT,Health Care,sp500
+MELI,Consumer Discretionary,nasdaq100
+MET,Financials,sp500
+META,Communication Services,sp500
+MGM,Consumer Discretionary,sp500
+MKC,Consumer Staples,sp500
+MLM,Materials,sp500
+MMM,Industrials,sp500
+MNST,Consumer Staples,sp500
+MO,Consumer Staples,sp500
+MOS,Materials,sp500
+MPC,Energy,sp500
+MPWR,Technology,sp500
+MRK,Health Care,sp500
+MRNA,Health Care,sp500
+MRSH,Financials,sp500
+MRVL,Technology,nasdaq100
+MS,Financials,sp500
+MSCI,Financials,sp500
+MSFT,Technology,sp500
+MSI,Technology,sp500
+MSTR,Technology,nasdaq100
+MTB,Financials,sp500
+MTD,Health Care,sp500
+MTH,Consumer Discretionary,prior_universe
+MU,Technology,sp500
+NCLH,Consumer Discretionary,sp500
+NDAQ,Financials,sp500
+NDSN,Industrials,sp500
+NEE,Utilities,sp500
+NEM,Materials,sp500
+NET,Technology,prior_universe
+NFLX,Communication Services,sp500
+NI,Utilities,sp500
+NKE,Consumer Discretionary,sp500
+NOC,Industrials,sp500
+NOW,Technology,sp500
+NRG,Utilities,sp500
+NSC,Industrials,sp500
+NTAP,Technology,sp500
+NTRS,Financials,sp500
+NUE,Materials,sp500
+NVDA,Technology,sp500
+NVO,Health Care,prior_universe
+NVR,Consumer Discretionary,sp500
+NVT,Industrials,prior_universe
+NWS,Communication Services,sp500
+NWSA,Communication Services,sp500
+NXPI,Technology,sp500
+O,Real Estate,sp500
+ODFL,Industrials,sp500
+OKE,Energy,sp500
+OKTA,Technology,prior_universe
+OMC,Communication Services,sp500
+ON,Technology,sp500
+ORCL,Technology,sp500
+ORLY,Consumer Discretionary,sp500
+OTIS,Industrials,sp500
+OXY,Energy,sp500
+PANW,Technology,sp500
+PAYX,Industrials,sp500
+PCAR,Industrials,sp500
+PCG,Utilities,sp500
+PDD,Technology,nasdaq100
+PEG,Utilities,sp500
+PEP,Consumer Staples,sp500
+PFE,Health Care,sp500
+PFG,Financials,sp500
+PG,Consumer Staples,sp500
+PGR,Financials,sp500
+PH,Industrials,sp500
+PHM,Consumer Discretionary,sp500
+PKG,Materials,sp500
+PLD,Real Estate,sp500
+PLTR,Technology,sp500
+PM,Consumer Staples,sp500
+PNC,Financials,sp500
+PNR,Industrials,sp500
+PNW,Utilities,sp500
+PODD,Health Care,sp500
+POOL,Consumer Discretionary,sp500
+POWL,Industrials,prior_universe
+PPG,Materials,sp500
+PPL,Utilities,sp500
+PRU,Financials,sp500
+PSA,Real Estate,sp500
+PSKY,Communication Services,sp500
+PSX,Energy,sp500
+PTC,Technology,sp500
+PWR,Industrials,sp500
+PYPL,Financials,sp500
+Q,Technology,sp500
+QCOM,Technology,sp500
+QLYS,Technology,prior_universe
+QRVO,Technology,prior_universe
+RCL,Consumer Discretionary,sp500
+REG,Real Estate,sp500
+REGN,Health Care,sp500
+RF,Financials,sp500
+RIOT,Financials,prior_universe
+RJF,Financials,sp500
+RL,Consumer Discretionary,sp500
+RMD,Health Care,sp500
+ROK,Industrials,sp500
+ROL,Industrials,sp500
+ROP,Technology,sp500
+ROST,Consumer Discretionary,sp500
+RPD,Technology,prior_universe
+RSG,Industrials,sp500
+RTX,Industrials,sp500
+RVTY,Health Care,sp500
+S,Technology,prior_universe
+SATS,Communication Services,sp500
+SBAC,Real Estate,sp500
+SBUX,Consumer Discretionary,sp500
+SCHW,Financials,sp500
+SHOP,Technology,nasdaq100
+SHW,Materials,sp500
+SJM,Consumer Staples,sp500
+SLB,Energy,sp500
+SMCI,Technology,sp500
+SNA,Industrials,sp500
+SNDK,Technology,sp500
+SNOW,Technology,prior_universe
+SNPS,Technology,sp500
+SO,Utilities,sp500
+SOLV,Health Care,sp500
+SPG,Real Estate,sp500
+SPGI,Financials,sp500
+SRE,Utilities,sp500
+STE,Health Care,sp500
+STLD,Materials,sp500
+STT,Financials,sp500
+STX,Technology,sp500
+STZ,Consumer Staples,sp500
+SW,Materials,sp500
+SWK,Industrials,sp500
+SWKS,Technology,sp500
+SYF,Financials,sp500
+SYK,Health Care,sp500
+SYY,Consumer Staples,sp500
+T,Communication Services,sp500
+TAP,Consumer Staples,sp500
+TDG,Industrials,sp500
+TDY,Technology,sp500
+TEAM,Technology,prior_universe
+TECH,Health Care,sp500
+TEL,Technology,sp500
+TENB,Technology,prior_universe
+TER,Technology,sp500
+TFC,Financials,sp500
+TGT,Consumer Staples,sp500
+TJX,Consumer Discretionary,sp500
+TKO,Communication Services,sp500
+TMO,Health Care,sp500
+TMUS,Communication Services,sp500
+TOL,Consumer Discretionary,prior_universe
+TPH,Consumer Discretionary,prior_universe
+TPL,Energy,sp500
+TPR,Consumer Discretionary,sp500
+TRGP,Energy,sp500
+TRI,Technology,nasdaq100
+TRMB,Technology,sp500
+TROW,Financials,sp500
+TRV,Financials,sp500
+TSCO,Consumer Discretionary,sp500
+TSLA,Consumer Discretionary,sp500
+TSM,Technology,prior_universe
+TSN,Consumer Staples,sp500
+TT,Industrials,sp500
+TTD,Communication Services,sp500
+TTWO,Communication Services,sp500
+TXN,Technology,sp500
+TXT,Industrials,sp500
+TYL,Technology,sp500
+UAL,Industrials,sp500
+UBER,Industrials,sp500
+UDR,Real Estate,sp500
+UEC,Energy,prior_universe
+UHS,Health Care,sp500
+ULTA,Consumer Discretionary,sp500
+UNH,Health Care,sp500
+UNP,Industrials,sp500
+UPS,Industrials,sp500
+URI,Industrials,sp500
+USB,Financials,sp500
+V,Financials,sp500
+VEEV,Health Care,sp500
+VICI,Real Estate,sp500
+VKTX,Health Care,prior_universe
+VLO,Energy,sp500
+VLTO,Industrials,sp500
+VMC,Materials,sp500
+VRNS,Technology,prior_universe
+VRSK,Industrials,sp500
+VRSN,Technology,sp500
+VRT,Industrials,sp500
+VRTX,Health Care,sp500
+VST,Utilities,sp500
+VTR,Real Estate,sp500
+VTRS,Health Care,sp500
+VZ,Communication Services,sp500
+WAB,Industrials,sp500
+WAT,Health Care,sp500
+WBD,Communication Services,sp500
+WDAY,Technology,sp500
+WDC,Technology,sp500
+WEC,Utilities,sp500
+WELL,Real Estate,sp500
+WFC,Financials,sp500
+WM,Industrials,sp500
+WMB,Energy,sp500
+WMT,Consumer Staples,sp500
+WRB,Financials,sp500
+WSM,Consumer Discretionary,sp500
+WST,Health Care,sp500
+WTW,Financials,sp500
+WY,Real Estate,sp500
+WYNN,Consumer Discretionary,sp500
+XEL,Utilities,sp500
+XOM,Energy,sp500
+XYL,Industrials,sp500
+XYZ,Financials,sp500
+YUM,Consumer Discretionary,sp500
+ZBH,Health Care,sp500
+ZBRA,Technology,sp500
+ZS,Technology,nasdaq100
+ZTS,Health Care,sp500

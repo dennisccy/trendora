@@ -103,6 +103,46 @@ def test_vcp_thresholds_match_patterns_config():
     assert by_label["Volume dry-up"]["value"] == config.patterns.vcp.volume_dryup_ratio
 
 
+# --- iter-7: Universe Selection section (J-22) ----------------------------------------------
+
+def test_universe_selection_section_present_and_resolves():
+    """The catalog carries a Universe Selection section: the membership-rule prose, the three screen
+    thresholds resolved LIVE from `universe.filters`, and the resolved size read from the ONE canonical
+    universe (a read, not a literal). No hard-coded copy/number."""
+    config = load_config()
+    catalog = build_catalog(config)
+    us = catalog["universe_selection"]
+    assert isinstance(us["membership_rule"], str) and us["membership_rule"].strip()
+    assert us["resolved_size"] == len(config.universe.symbols)
+    # the three thresholds resolve to the SAME numbers the offline screen reads (matching-config keystone)
+    by_label = {r["label"]: r for r in us["thresholds"]}
+    assert by_label["Minimum market cap"]["value"] == config.universe.filters.min_market_cap
+    assert by_label["Minimum average daily dollar volume"]["value"] == config.universe.filters.min_dollar_vol
+    assert by_label["Minimum share price"]["value"] == config.universe.filters.min_price
+    # every threshold is a resolved numeric row (a value), never re-typed prose
+    assert all("value" in r for r in us["thresholds"])
+
+
+def test_universe_selection_thresholds_are_live_refs(tmp_path):
+    """Changing `universe.filters` in config moves the displayed Universe Selection numbers with no code
+    change (the numbers are `ref`s, never hard-coded copy — anti-goal: No magic numbers)."""
+    raw = _committed_raw()
+    raw["universe"]["filters"]["min_price"] = 25  # a different, distinctive value
+    config = load_config(_write(tmp_path, raw))
+    us = build_catalog(config)["universe_selection"]
+    by_label = {r["label"]: r for r in us["thresholds"]}
+    assert by_label["Minimum share price"]["value"] == 25
+
+
+def test_universe_selection_is_not_a_setup_or_pattern_entry():
+    """The Universe Selection section is SEPARATE from the setup/pattern catalog — it must not appear as
+    a glossary entry (which would break the completeness assertion / setup-filter vocabulary)."""
+    catalog = build_catalog(load_config())
+    keys = {e["key"] for e in catalog["entries"]}
+    assert "universe_selection" not in keys
+    assert all(e["kind"] in {"setup", "pattern"} for e in catalog["entries"])
+
+
 def test_config_only_extra_entry_renders_with_no_code_change(tmp_path):
     """Adding ONE extra catalog entry in config (referencing existing keys) surfaces it via
     build_catalog with NO Python change (anti-goal: config-driven UI)."""

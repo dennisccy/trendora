@@ -571,6 +571,17 @@ scanner:
 # together (single source of truth). VCP is listed as a PATTERN, never as a 7th setup status.
 methodology:
   intro: "How Trendora classifies every stock. Each name gets exactly one setup status (from its three independent scores plus the market regime) and may also carry a detected price pattern that rides alongside it. The thresholds below are read live from this config — they always match the scanner."
+  # iter-7 CONSUMED — Universe Selection section (J-22). The membership-rule prose + the three screen
+  # thresholds, resolved LIVE from `universe.filters` via the same `ref` mechanism as the glossary (no
+  # re-typed numbers — the displayed values always match the offline screen). Served by
+  # GET /api/methodology and rendered on /methodology; the resolved member count is read live from the
+  # one canonical `universe.symbols` by build_catalog (a read, not a literal). No hard-coded copy/number.
+  universe_selection:
+    membership_rule: "The universe is a transparent, reproducible screen — not a hand-picked list. Its candidate pool is the union of the S&P 500 and Nasdaq-100 index constituents (real index memberships) together with Trendora's prior curated names; every candidate is then screened against the liquidity, price, and market-cap filters below from real committed end-of-day data. Only names that pass all three thresholds are members; candidates that fail to fetch or fall below a threshold are omitted, never fabricated. Breadth and walk-forward evidence remain universe-relative and survivorship-biased to the current membership."
+    thresholds:
+      - { label: "Minimum market cap", cmp: ">=", ref: "universe.filters.min_market_cap", unit: "$" }
+      - { label: "Minimum average daily dollar volume", cmp: ">=", ref: "universe.filters.min_dollar_vol", unit: "$" }
+      - { label: "Minimum share price", cmp: ">=", ref: "universe.filters.min_price", unit: "$" }
   entries:
     - key: Actionable
       kind: setup

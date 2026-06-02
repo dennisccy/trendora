@@ -616,10 +616,22 @@ export interface MethodologyEntry {
   example: string;
 }
 
+/** The Universe Selection section (J-22) — the config-recorded screen that defines membership. The
+ *  `membership_rule` prose + the three screen `thresholds` (resolved LIVE from `universe.filters` on the
+ *  backend, so they always match the offline screen) + the `resolved_size` read from the ONE canonical
+ *  universe (the same value GET /api/data reports as `universe_count`). The frontend re-formats it only. */
+export interface UniverseSelection {
+  membership_rule: string;
+  thresholds: MethodologyThresholdRow[];
+  resolved_size: number;
+}
+
 /** The config-backed Setup & Pattern catalog served by GET /api/methodology. The ONE source for the
- *  /methodology page, the /stocks badge tooltips, AND the /stocks setup-filter vocabulary. */
+ *  /methodology page, the /stocks badge tooltips, AND the /stocks setup-filter vocabulary.
+ *  `universe_selection` (J-22) carries the Universe Selection section when configured. */
 export interface MethodologyCatalog {
   intro?: string;
+  universe_selection?: UniverseSelection;
   entries: MethodologyEntry[];
 }
 
@@ -637,6 +649,10 @@ export interface DataCoverage {
   price_start: string | null;
   price_end: string | null;
   symbol_count: number;
+  // the RESOLVED UNIVERSE size — the one canonical universe (the committed screen result), the SAME
+  // value /api/methodology reports as universe_selection.resolved_size (J-22; single source, no drift).
+  // Distinct from symbol_count (DISTINCT priced symbols, which includes the benchmark ETFs + ^VIX).
+  universe_count: number;
   snapshot_count: number;
   snapshot_dates: string[]; // newest first
   trading_day_count: number;

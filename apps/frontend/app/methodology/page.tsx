@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, BookOpen } from "lucide-react";
+import { AlertTriangle, BookOpen, Filter } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { PageHeading } from "@/components/page-heading";
@@ -12,6 +12,7 @@ import {
   type MethodologyCatalog,
   type MethodologyEntry,
   type MethodologyThresholdRow,
+  type UniverseSelection,
 } from "@/lib/api";
 
 type State =
@@ -54,6 +55,10 @@ export default function MethodologyPage() {
         <Card className="p-4 text-sm text-text-muted">{state.data.intro}</Card>
       ) : null}
 
+      {state.kind === "ok" && state.data.universe_selection ? (
+        <UniverseSelectionCard selection={state.data.universe_selection} />
+      ) : null}
+
       {state.kind === "loading" ? <MethodologySkeleton /> : null}
 
       {state.kind === "error" ? (
@@ -85,6 +90,53 @@ export default function MethodologyPage() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** Compact currency for the screen thresholds — display formatting of the API value ONLY (e.g.
+ *  2_000_000_000 -> "$2B", 50_000_000 -> "$50M", 10 -> "$10"). The number is never recomputed. */
+function fmtMoney(value: number): string {
+  if (value >= 1e9) return `$${Number((value / 1e9).toFixed(1)).toString()}B`;
+  if (value >= 1e6) return `$${Number((value / 1e6).toFixed(1)).toString()}M`;
+  if (value >= 1e3) return `$${Number((value / 1e3).toFixed(1)).toString()}K`;
+  return `$${value}`;
+}
+
+/** The Universe Selection section (J-22) — the membership rule + the three config screen thresholds
+ *  (read live from config) + the resolved universe size. Mirrors the EntryCard config-backed pattern;
+ *  no hard-coded copy or numbers (everything comes from the API). */
+function UniverseSelectionCard({ selection }: { selection: UniverseSelection }) {
+  return (
+    <Card className="space-y-3 p-4" data-testid="universe-selection">
+      <div className="flex flex-wrap items-center gap-2">
+        <Filter className="h-4 w-4 text-accent" aria-hidden />
+        <h2 className="text-base font-semibold text-text">Universe Selection</h2>
+        <Badge variant="accent">Screen</Badge>
+        <span className="ml-auto text-xs text-text-faint">
+          Resolved universe:{" "}
+          <span className="num text-text" data-testid="universe-size">
+            {selection.resolved_size}
+          </span>{" "}
+          names
+        </span>
+      </div>
+      <p className="text-sm text-text-muted">{selection.membership_rule}</p>
+
+      <div className="space-y-1.5">
+        <p className="text-xs uppercase tracking-wide text-text-faint">Screen thresholds</p>
+        <ul className="space-y-1">
+          {selection.thresholds.map((row, index) => (
+            <li key={index} className="flex items-center gap-2 text-xs text-text-muted">
+              <span className="w-64 shrink-0 text-text">{row.label}</span>
+              <span className="num text-text-faint">{row.cmp}</span>
+              <span className="num text-text">
+                {row.unit === "$" && row.value != null ? fmtMoney(row.value) : `${row.value ?? ""}${row.unit ?? ""}`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </Card>
   );
 }
 

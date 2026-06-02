@@ -206,9 +206,10 @@ function CoveragePanel({ data }: { data: DataOverviewResponse }) {
       <PanelTitle hint="Descriptive metadata read from the dataset — not a recomputed score or return.">
         Dataset coverage
       </PanelTitle>
-      <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-6">
         <Metric label="Price history" value={`${fmtDate(c.price_start)} → ${fmtDate(c.price_end)}`} />
-        <Metric label="Symbols" value={c.symbol_count} />
+        <Metric label="Universe" value={<span data-testid="universe-count">{c.universe_count}</span>} />
+        <Metric label="Symbols (incl. ETFs)" value={c.symbol_count} />
         <Metric label="Trading days" value={c.trading_day_count} />
         <Metric label="Snapshot dates" value={c.snapshot_count} />
         <Metric

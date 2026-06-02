@@ -482,16 +482,33 @@ class MethodologyEntry(BaseModel):
     thresholds: list[MethodologyThreshold] = Field(default_factory=list)
 
 
+class UniverseSelectionCfg(BaseModel):
+    """The config-backed Universe Selection section (J-22). `membership_rule` is the plain-language
+    prose describing how the universe is sourced (an index-membership union, screened); `thresholds`
+    references the SAME `universe.filters` keys the offline screen reads, resolved LIVE at boot/serve
+    via the `ref` mechanism (so the displayed numbers always match the screen — never re-typed; the
+    matching-config keystone, anti-goal: No magic numbers). The resolved member count is NOT stored
+    here — it is read live from the one canonical `config.universe.symbols` by `build_catalog`."""
+
+    model_config = ConfigDict(extra="allow")
+    membership_rule: str
+    thresholds: list[MethodologyThreshold] = Field(min_length=1)
+
+
 class MethodologyCfg(BaseModel):
     """The single config-backed Setup & Pattern catalog (iter-12, J-12). One ORDERED list of entries
     (the setup statuses + the detected patterns) carrying the human copy + threshold references. The
     /methodology page, the /stocks badge tooltips, AND the /stocks setup-filter vocabulary ALL read
     this one catalog (anti-goal: Setup & pattern vocabulary is config-driven in the UI too). Every
     threshold `ref` is resolved against the loaded Config at boot (see `Config._methodology_refs_resolve`)
-    so an unresolvable reference fails loudly — never a silent placeholder number."""
+    so an unresolvable reference fails loudly — never a silent placeholder number.
+
+    `universe_selection` (J-22, optional) adds the config-backed Universe Selection section served on
+    /methodology — the membership rule + the `universe.filters` screen thresholds (resolved live)."""
 
     model_config = ConfigDict(extra="allow")
     intro: Optional[str] = None
+    universe_selection: Optional[UniverseSelectionCfg] = None
     entries: list[MethodologyEntry] = Field(min_length=1)
 
 
@@ -629,8 +646,11 @@ class Config(BaseModel):
         never shows a silent/placeholder threshold). This is the load-time half of the matching-config
         keystone served by `app.engine.methodology.build_catalog`."""
         unresolved: list[str] = []
-        for entry in self.methodology.entries:
-            for threshold in entry.thresholds:
+        threshold_lists = [entry.thresholds for entry in self.methodology.entries]
+        if self.methodology.universe_selection is not None:
+            threshold_lists.append(self.methodology.universe_selection.thresholds)
+        for thresholds in threshold_lists:
+            for threshold in thresholds:
                 if threshold.ref is not None:
                     try:
                         resolve_ref(self, threshold.ref)

@@ -64,4 +64,21 @@ def build_catalog(config: Config) -> dict:
     payload: dict = {"entries": entries}
     if catalog.intro is not None:
         payload["intro"] = catalog.intro
+    if catalog.universe_selection is not None:
+        payload["universe_selection"] = _universe_selection(config)
     return payload
+
+
+def _universe_selection(config: Config) -> dict:
+    """The Universe Selection section (J-22): the membership-rule prose, the three screen thresholds
+    resolved LIVE from `universe.filters` (never re-typed — the matching-config keystone), and the
+    resolved member count read from the ONE canonical `config.universe.symbols` (a read, not a literal —
+    no magic number). The API/frontend reads this verbatim; neither recomputes membership."""
+    section = config.methodology.universe_selection
+    return {
+        "membership_rule": section.membership_rule,
+        "thresholds": [_threshold_row(threshold, config) for threshold in section.thresholds],
+        # the resolved universe is `config.universe.symbols` (the committed screen result) — read once,
+        # here and on /api/data, so the two surfaces never drift (single source, no recompute).
+        "resolved_size": len(config.universe.symbols),
+    }

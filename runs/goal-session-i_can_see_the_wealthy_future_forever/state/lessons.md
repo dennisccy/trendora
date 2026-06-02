@@ -61,3 +61,32 @@ filter→badge→detail→glossary) are actually exercised.
 **Verdict:** CONTINUE
 **Lesson:** In a full-depth iter the `qa` agent (its own Chrome-MCP browser checks) and the `browser-qa-agent` can run CONCURRENTLY against the same shared single-tab Chrome (port 9222), which silently corrupts captures (a "Latest" nav came back showing the other agent's historical state; an eval landed on the other agent's `/backtest`). The browser-qa-agent recovered only by WAITING for the qa agent to vacate the browser, then running all flows on a dedicated tab and asserting live state (`data-testid="asof-indicator"`, URL, values) immediately before each capture. Separately, the qa agent's `TC-15-before/after` shots came back byte-identical (same sha256) — the iter-3 duplicate-shot bug recurring — so the defining proof had to come from the browser-qa-agent's distinct UT-shots + a no-refetch fetch spy.
 **Applies to:** any full-depth goal iter where BOTH the qa agent and the browser-qa-agent perform Chrome-MCP checks — serialize browser access (one agent vacates before the other captures), de-dup evidence by sha256, and ground any "before/after" claim on distinct shots + a DOM/network assertion, never a single screenshot pair.
+
+## iter-7 — 2026-06-02T06:00:00Z
+
+**Verdict:** STALLED
+**Lesson:** The Yahoo-429 data-provider constraint (episodic memory) is not a soft warning — it is a HARD pipeline blocker for any iteration that needs a NEW bulk fetch from this egress. iter-7's J-22 universe expansion built complete, tested, auto-healing infra (offline `screen_universe.py`, an honest gate in `api/methodology.py` that hides the Universe-Selection section until a real `data/seed/universe.json` exists, and a committed finish runbook) but could not fetch OHLCV+market-cap for ~280–380 new names: Yahoo 429 on both hosts + crumb, Stooq captcha, nasdaq empty, SEC has no prices. Three fix cycles re-confirmed the same wall — and the framework's halt-for-environment verdict (non-regression) is STALLED, not the lean→full ESCALATE. **Two takeaways:** (1) any future iter needing a fresh bulk external fetch (universe expansion, J-23/J-24 multi-timeframe intraday) should PROBE the feed with one polite request FIRST and gate the whole iteration on reachability, rather than burning a full pipeline that reproduces the 429; (2) when a deliverable depends on an external one-shot fetch, build it to AUTO-HEAL — separate the committed/testable infra from the data step and gate the UI honestly — so it completes later with zero code change. The unblockable fallback when the feed is down is the compute-only `/research` labs (J-25–J-31, no new fetch), but those need a human blueprint nav re-approval first — consider front-loading that approval so a data-feed outage never fully stalls the loop.
+**Applies to:** any iter that performs a new bulk external data fetch (universe/seed expansion, multi-timeframe/intraday bars), and any environmentally-blocked deliverable — probe-and-gate first, build to auto-heal, and prefer STALLED over blind-retry once the block is re-confirmed.
+
+## iter-8 — 2026-06-02T09:30:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** "The immediate target is externally walled" is NOT the same as "the session is stalled" —
+distinguish them before reaching for STALLED. iter-8 retried the J-22 universe fetch on the (plan-time-GREEN)
+Yahoo feed; the dispatch-time re-probe re-walled (429 both halves), so J-22 made no progress — but the
+session still has tractable autonomous work, so the verdict is CONTINUE, not a second STALLED. The
+non-obvious carve-out: **J-28 (additional detected patterns) escapes BOTH blockers** — it is compute-only
+over the already-stored seed (no external fetch, unlike J-22/J-23/J-24) AND its acceptance explicitly
+allows the pattern-vs-non-pattern breakdown on "the Setup & Pattern Lab **(or System Health)**", so it
+rides the EXISTING /stocks + /methodology + System Health surfaces and needs **no /research nav home and
+no blueprint re-approval** (unlike J-25/J-26/J-27/J-29/J-30/J-31, which do). `engine/patterns.py` +
+`config.patterns=['vcp']` already make a new pattern a pure config-driven extension. iter-7's evaluator had
+lumped all of J-25–J-31 as blueprint-gated and missed this. Also: STALLED's remedy is "edit docs/goal.md,"
+which is the wrong signal when the goal is well-formed and only a data-feed dependency is blocked — prefer
+CONTINUE + a hard "do not retry the walled target; build the compute-only work" pivot (the run-goal.sh
+stall-hash is the independent backstop if the loop genuinely can't progress).
+**Applies to:** any goal-evaluator run where the dispatched target is externally/approval-blocked but other
+failing journeys remain — enumerate each remaining journey's gate (data-wall vs blueprint-reapproval vs
+none) before choosing STALLED; a journey that is both compute-only AND satisfiable on existing surfaces is
+autonomous work that forbids STALLED. Especially any iter touching the J-22/J-23/J-24 (data-walled) vs
+J-25–J-31 (compute-only) split, and any decomposer choosing the next non-walled target.
