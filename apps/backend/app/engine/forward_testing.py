@@ -60,6 +60,10 @@ BUCKET_ORDER = ("A", "B", "C", "D", "E")
 # The VCP cohort labels (iter-11): the stored `is_vcp` boolean -> its display cohort label. Two
 # cohorts always emitted (VCP first, then non-VCP), padded to n=0 when a cohort has no observation.
 VCP_LABELS = {True: "VCP", False: "non-VCP"}
+# The two new detected-pattern cohort labels (iter-9), same design as VCP_LABELS — the stored
+# `is_<name>` boolean -> its display cohort label; flagged cohort first, then the non-flagged one.
+PULLBACK_LABELS = {True: "Pullback-to-DMA", False: "non-Pullback"}
+FLAT_BASE_LABELS = {True: "Flat-base", False: "non-Flat-base"}
 
 MONTHS_PER_YEAR = 12  # calendar constant (structural, not a scoring tunable)
 QUARTER_MONTHS = 3    # calendar constant (structural, not a scoring tunable)
@@ -550,6 +554,9 @@ def compute_forward_aggregates(session: Session, horizon: int, config: Optional[
             "rank": res.rank,
             "regime": regime_by_run.get(res.run_id),  # stored regime label for the run
             "is_vcp": res.is_vcp,              # stored VCP flag (verbatim — never re-detected here)
+            # stored new-pattern flags (verbatim — never re-detected here), iter-9
+            "is_pullback_to_rising_dma": res.is_pullback_to_rising_dma,
+            "is_flat_base_breakout": res.is_flat_base_breakout,
         })
 
     stock_returns = [o["return"] for o in stock_obs]
@@ -588,6 +595,18 @@ def compute_forward_aggregates(session: Session, horizon: int, config: Optional[
         {"vcp": VCP_LABELS[row["vcp"]], "mean_return": row["mean_return"], "n": row["n"]}
         for row in _group_means(stock_obs, "is_vcp", "vcp", [True, False], pad=True)
     ]
+    # by_<name> (iter-9, J-28): the SAME stored-mirror grouping as by_vcp for the two new detected
+    # patterns — read the persisted `is_<name>` flag verbatim (never re-detected), both cohorts always
+    # emitted (padded n=0 / mean None when empty), each carrying `n` so the UI shows honest NA below
+    # min_sample. No new endpoint, no second formula — one grouping path.
+    by_pullback_to_rising_dma = [
+        {"pullback_to_rising_dma": PULLBACK_LABELS[row["pullback_to_rising_dma"]], "mean_return": row["mean_return"], "n": row["n"]}
+        for row in _group_means(stock_obs, "is_pullback_to_rising_dma", "pullback_to_rising_dma", [True, False], pad=True)
+    ]
+    by_flat_base_breakout = [
+        {"flat_base_breakout": FLAT_BASE_LABELS[row["flat_base_breakout"]], "mean_return": row["mean_return"], "n": row["n"]}
+        for row in _group_means(stock_obs, "is_flat_base_breakout", "flat_base_breakout", [True, False], pad=True)
+    ]
 
     return {
         "horizon": horizon,
@@ -602,6 +621,8 @@ def compute_forward_aggregates(session: Session, horizon: int, config: Optional[
         "by_setup": _group_means(stock_obs, "setup", "setup", ALL_STATUSES, pad=False),
         "by_regime": _group_means(stock_obs, "regime", "regime", cfg.regime.labels, pad=False),
         "by_vcp": by_vcp,
+        "by_pullback_to_rising_dma": by_pullback_to_rising_dma,
+        "by_flat_base_breakout": by_flat_base_breakout,
         "excess": excess,
         "control_group": _control_groups(horizon, stock_obs, ret_by_run_symbol, runs_with_fr, cfg),
         # J-19: the four read-only attribution slices for this horizon, derived from the SAME stock_obs

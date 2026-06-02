@@ -435,13 +435,129 @@ class VcpCfg(BaseModel):
         return self
 
 
+class PullbackToRisingDmaCfg(BaseModel):
+    """Pullback-to-rising-DMA detector thresholds (iter-9 CONSUMED). EVERY tunable the
+    `app.engine.patterns.detect_pullback_to_rising_dma` detector reads lives here — the MA basis, the
+    rising-trend lookback + minimum slope, the pulled-back-to-the-DMA proximity band (how far above and
+    how far below the DMA still counts), the maximum pullback depth from the recent high, the minimum
+    history, and the volume window — so NO detection literal lives in calc code (anti-goal: No magic
+    numbers). `ma_period` is cross-checked against `indicators.ma_periods` on the top-level `Config`
+    (a sub-model cannot see `indicators`), exactly like the VCP invalidation MA. Validated like
+    `VcpCfg`: every window/count positive, history long enough to compute the slope, the slope/dist
+    percents positive, and `max_undercut_pct` non-negative (it MAY be 0) — an invalid block raises
+    `ConfigError`, never a silent default."""
+
+    model_config = ConfigDict(extra="allow")
+    ma_period: int
+    min_history_bars: int
+    trend_lookback_bars: int
+    min_dma_slope_pct: float
+    max_dist_above_dma_pct: float
+    max_undercut_pct: float
+    max_pullback_depth_pct: float
+    volume_window: int
+
+    @model_validator(mode="after")
+    def _validate(self) -> "PullbackToRisingDmaCfg":
+        windows = {
+            "ma_period": self.ma_period,
+            "min_history_bars": self.min_history_bars,
+            "trend_lookback_bars": self.trend_lookback_bars,
+            "volume_window": self.volume_window,
+        }
+        nonpositive = sorted(k for k, v in windows.items() if v <= 0)
+        if nonpositive:
+            raise ValueError(
+                f"patterns.pullback_to_rising_dma windows/counts must be positive: {nonpositive}"
+            )
+        if self.min_history_bars < self.ma_period + self.trend_lookback_bars:
+            raise ValueError(
+                "patterns.pullback_to_rising_dma.min_history_bars "
+                f"({self.min_history_bars}) must be >= ma_period + trend_lookback_bars "
+                f"({self.ma_period + self.trend_lookback_bars}) so the DMA slope is computable"
+            )
+        positive_pcts = {
+            "min_dma_slope_pct": self.min_dma_slope_pct,
+            "max_dist_above_dma_pct": self.max_dist_above_dma_pct,
+            "max_pullback_depth_pct": self.max_pullback_depth_pct,
+        }
+        bad_pct = sorted(k for k, v in positive_pcts.items() if v <= 0)
+        if bad_pct:
+            raise ValueError(
+                f"patterns.pullback_to_rising_dma percentages must be positive: {bad_pct}"
+            )
+        if self.max_undercut_pct < 0:
+            raise ValueError(
+                "patterns.pullback_to_rising_dma.max_undercut_pct must be >= 0 "
+                f"(it may be 0), got {self.max_undercut_pct}"
+            )
+        return self
+
+
+class FlatBaseBreakoutCfg(BaseModel):
+    """Flat-base-breakout detector thresholds (iter-9 CONSUMED). EVERY tunable the
+    `app.engine.patterns.detect_flat_base_breakout` detector reads lives here — the lookback window,
+    the base window, the maximum (flat) base depth, the pivot-proximity band, the minimum history, and
+    the volume window + minimum breakout-volume ratio — so NO detection literal lives in calc code
+    (anti-goal: No magic numbers). Validated like `VcpCfg`: every window/count positive, the base fits
+    inside the lookback, history covers the lookback, and every percent/ratio positive — an invalid
+    block raises `ConfigError`, never a silent default."""
+
+    model_config = ConfigDict(extra="allow")
+    lookback_bars: int
+    min_history_bars: int
+    base_window: int
+    max_base_depth_pct: float
+    pivot_proximity_pct: float
+    volume_window: int
+    min_breakout_volume_ratio: float
+
+    @model_validator(mode="after")
+    def _validate(self) -> "FlatBaseBreakoutCfg":
+        windows = {
+            "lookback_bars": self.lookback_bars,
+            "min_history_bars": self.min_history_bars,
+            "base_window": self.base_window,
+            "volume_window": self.volume_window,
+        }
+        nonpositive = sorted(k for k, v in windows.items() if v <= 0)
+        if nonpositive:
+            raise ValueError(
+                f"patterns.flat_base_breakout windows/counts must be positive: {nonpositive}"
+            )
+        if self.base_window > self.lookback_bars:
+            raise ValueError(
+                f"patterns.flat_base_breakout.base_window ({self.base_window}) must be <= "
+                f"lookback_bars ({self.lookback_bars})"
+            )
+        if self.min_history_bars < self.lookback_bars:
+            raise ValueError(
+                f"patterns.flat_base_breakout.min_history_bars ({self.min_history_bars}) must be >= "
+                f"lookback_bars ({self.lookback_bars})"
+            )
+        pcts = {
+            "max_base_depth_pct": self.max_base_depth_pct,
+            "pivot_proximity_pct": self.pivot_proximity_pct,
+            "min_breakout_volume_ratio": self.min_breakout_volume_ratio,
+        }
+        bad_pct = sorted(k for k, v in pcts.items() if v <= 0)
+        if bad_pct:
+            raise ValueError(
+                f"patterns.flat_base_breakout percentages/ratios must be positive: {bad_pct}"
+            )
+        return self
+
+
 class PatternsCfg(BaseModel):
-    """Detected-pattern catalog (iter-11). Holds one typed sub-block per detected pattern; the FIRST
-    is `vcp`. Designed so a future pattern is a new typed sub-block here (the catalog COULD grow), but
-    only VCP exists this session."""
+    """Detected-pattern catalog. Holds one typed sub-block per detected pattern; the FIRST is `vcp`
+    (iter-11). iter-9 adds two more — `pullback_to_rising_dma` and `flat_base_breakout` — each a typed
+    sub-block riding alongside VCP exactly the same way. Designed so a future pattern is a new typed
+    sub-block here (the catalog grows additively)."""
 
     model_config = ConfigDict(extra="allow")
     vcp: VcpCfg
+    pullback_to_rising_dma: PullbackToRisingDmaCfg
+    flat_base_breakout: FlatBaseBreakoutCfg
 
 
 class MethodologyThreshold(BaseModel):
@@ -635,6 +751,21 @@ class Config(BaseModel):
         if period not in self.indicators.ma_periods:
             raise ValueError(
                 f"decision_rules.invalidation.ma_period ({period}) must be one of "
+                f"indicators.ma_periods ({self.indicators.ma_periods})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _pattern_ma_period_is_an_indicator_period(self) -> "Config":
+        """The pullback-to-rising-DMA detector's MA basis must be one of the configured
+        `indicators.ma_periods`, so the DMA it pulls back to is an already-charted canonical MA — the
+        SAME single source the chart overlay / invalidation / scoring use, never a second MA basis.
+        Cross-checked here (not in the sub-model) because a sub-model cannot see `indicators` — exactly
+        like the VCP/invalidation `ma_period` above."""
+        period = self.patterns.pullback_to_rising_dma.ma_period
+        if period not in self.indicators.ma_periods:
+            raise ValueError(
+                f"patterns.pullback_to_rising_dma.ma_period ({period}) must be one of "
                 f"indicators.ma_periods ({self.indicators.ma_periods})"
             )
         return self

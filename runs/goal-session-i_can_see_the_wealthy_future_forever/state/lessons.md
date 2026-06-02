@@ -90,3 +90,15 @@ failing journeys remain — enumerate each remaining journey's gate (data-wall v
 none) before choosing STALLED; a journey that is both compute-only AND satisfiable on existing surfaces is
 autonomous work that forbids STALLED. Especially any iter touching the J-22/J-23/J-24 (data-walled) vs
 J-25–J-31 (compute-only) split, and any decomposer choosing the next non-walled target.
+
+## iter-9 — 2026-06-02T12:00:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** "Config-driven UI vocabulary" is only PARTIALLY satisfied on the leaderboard. `/methodology` glossary cards and the badge *meaning* tooltip auto-render from the config catalog (by key), but `apps/frontend/app/stocks/page.tsx`'s `PATTERNS`/`NEW_PATTERNS` registries hardcode the short badge label + the filter option list — so a future config-only pattern auto-documents in the glossary yet will NOT auto-appear as a leaderboard badge/filter without a frontend edit. The full-config-driven path needs a short badge label added to `config.patterns.<name>` and the registry derived from `catalog kind:"pattern"` entries. (Reviewer rated this a non-blocking enhancement; the iter-9 spec explicitly contemplated a frontend pattern list, so it is not a defect — but it is the seam to close if "add a pattern with zero frontend edits" ever becomes an acceptance bar.)
+**Applies to:** any future iter that adds a detected pattern (J-28 allows >2) or claims fully config-driven leaderboard UI vocabulary.
+
+## iter-9 — 2026-06-02T12:00:00Z (loop-behavior note)
+
+**Verdict:** CONTINUE
+**Lesson:** iter-10 is the FIRST iteration to hit a front-loaded blueprint re-approval pause. `state/blueprint.reapproval-requested` was written this iter, so `run-goal.sh` halts at iter-10's *pre_decomposer* step (run-goal.sh:804) awaiting human approval of the new `/research` nav home BEFORE the decomposer plans the first lab — the loop will NOT autonomously proceed into J-25. The operator approves by re-running with `--resume` (their review of `state/blueprint.md` is treated as approval). After J-28, the `/research` labs (J-25–J-31, compute-only over the stored seed) are the ONLY remaining autonomous track — the data-walled wave (J-22/23/24, Yahoo 429) is not part of this approval.
+**Applies to:** the iter-10 decomposer/evaluator cycle and the operator resuming the session.

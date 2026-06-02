@@ -128,6 +128,17 @@ _SYNTH_CFG = {
             "max_last_contraction_pct": 12, "pivot_proximity_pct": 8, "volume_dryup_ratio": 0.9,
             "volume_window": 5, "min_history_bars": 20,
         },
+        # iter-9: the two new detected patterns are required too (small-scale to match this synth cfg)
+        "pullback_to_rising_dma": {
+            "ma_period": 10, "min_history_bars": 20, "trend_lookback_bars": 5,
+            "min_dma_slope_pct": 1.5, "max_dist_above_dma_pct": 5.0, "max_undercut_pct": 2.0,
+            "max_pullback_depth_pct": 18, "volume_window": 5,
+        },
+        "flat_base_breakout": {
+            "lookback_bars": 20, "min_history_bars": 20, "base_window": 10,
+            "max_base_depth_pct": 15, "pivot_proximity_pct": 6.0,
+            "volume_window": 5, "min_breakout_volume_ratio": 1.0,
+        },
     },
     "methodology": {  # iter-12: methodology is a required config section (one entry whose ref resolves)
         "intro": "Glossary.",

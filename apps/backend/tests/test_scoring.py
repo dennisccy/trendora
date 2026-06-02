@@ -189,6 +189,9 @@ def test_invalidation_and_themes_ride_on_the_shared_row_for_list_and_detail(load
         assert isinstance(row["themes"], list)
         # iter-11: the VCP pattern flag also rides the SAME shared row (list == detail; J-06)
         assert set(row["vcp"]) == {"flagged", "reason", "pivot", "invalidation", "contractions", "detail"}
+        # iter-9: the two new detected patterns ride the row the same way (same contract, no contractions)
+        for name in ("pullback_to_rising_dma", "flat_base_breakout"):
+            assert set(row[name]) == {"flagged", "reason", "pivot", "invalidation", "detail"}
 
 
 def test_vcp_block_rides_each_row(loaded_engine):
@@ -233,6 +236,31 @@ def test_vcp_is_a_pattern_not_a_status(loaded_engine, monkeypatch):
     forced_status = {r["ticker"]: r["setup"]["status"] for r in forced_rows}
     assert forced_status == baseline                       # the VCP flag never altered any setup status
     assert all(r["vcp"]["flagged"] for r in forced_rows)   # the detector really did flag every name
+    assert all(r["setup"]["status"] in ALL_STATUSES for r in forced_rows)
+
+
+def test_new_patterns_are_patterns_not_statuses(loaded_engine, monkeypatch):
+    """Critical anti-goal (New patterns are patterns, not statuses): force-flagging EACH new detected
+    pattern for EVERY name changes NO row's setup_status — the patterns ride alongside the setup, never
+    enter the setup-status enum, and never promote a name. Mirrors the VCP pattern-not-status proof."""
+    cfg = load_config()
+    forced = {
+        "flagged": True, "reason": "forced", "pivot": 1.0,
+        "invalidation": {"level": 1.0, "note": "forced"},
+        "detail": {},
+    }
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        baseline = {r["ticker"]: r["setup"]["status"] for r in score_stocks(session, asof, cfg)["rows"]}
+
+        for name in ("detect_pullback_to_rising_dma", "detect_flat_base_breakout"):
+            monkeypatch.setattr(f"app.engine.scoring.{name}", lambda *a, **k: dict(forced))
+        forced_rows = score_stocks(session, asof, cfg)["rows"]
+
+    forced_status = {r["ticker"]: r["setup"]["status"] for r in forced_rows}
+    assert forced_status == baseline  # neither new pattern altered any setup status
+    assert all(r["pullback_to_rising_dma"]["flagged"] for r in forced_rows)  # detectors really flagged
+    assert all(r["flat_base_breakout"]["flagged"] for r in forced_rows)
     assert all(r["setup"]["status"] in ALL_STATUSES for r in forced_rows)
 
 

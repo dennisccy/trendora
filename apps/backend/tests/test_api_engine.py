@@ -259,6 +259,47 @@ def test_vcp_served_from_storage_not_recomputed_keystone(loaded_engine, monkeypa
         assert {r["vcp"] for r in agg["by_vcp"]} == {"VCP", "non-VCP"}
 
 
+def test_new_patterns_served_from_storage_not_recomputed_keystone(loaded_engine, monkeypatch):
+    """Keystone for the two NEW patterns (patch-to-raise, per the iter-8 lesson): with BOTH new
+    detectors AND the score_* engines patched to RAISE, the read path STILL serves the stored pattern
+    flags from the immutable snapshot — proving `/api/stocks` (list + detail) and the System Health
+    `by_<name>` breakdowns re-detect/recompute nothing (anti-goal: No recompute in the read path)."""
+    from app.engine.forward_testing import compute_forward_aggregates
+
+    with TestClient(main.app) as client:
+        latest = max(r["asof_date"] for r in client.get("/api/runs").json()["runs"])
+
+    def boom(*args, **kwargs):
+        raise AssertionError("the read path must NOT re-detect a pattern or re-score a persisted snapshot")
+
+    for name in ("detect_pullback_to_rising_dma", "detect_flat_base_breakout"):
+        monkeypatch.setattr(f"app.engine.patterns.{name}", boom)
+        monkeypatch.setattr(f"app.engine.scoring.{name}", boom)
+    for name in ("score_stocks", "score_regime", "score_sectors", "score_themes"):
+        monkeypatch.setattr(f"app.engine.scanner.{name}", boom)
+
+    from app.api.stocks import stock_detail as stock_detail_route, stocks as stocks_route
+
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        rows = stocks_route(as_of=latest, session=session)["rows"]
+        assert rows
+        # both new pattern blocks served from storage for every row (no re-detection)
+        for name in ("pullback_to_rising_dma", "flat_base_breakout"):
+            assert all(name in r and {"flagged", "pivot", "invalidation"} <= set(r[name]) for r in rows)
+
+        # the detail row's pattern blocks are byte-identical to the same stored list row (J-06)
+        ticker = rows[0]["ticker"]
+        detail = stock_detail_route(ticker, as_of=latest, session=session)
+        for name in ("pullback_to_rising_dma", "flat_base_breakout"):
+            assert detail["row"][name] == rows[0][name]
+
+        # the System Health by_<name> breakdowns read the stored mirrors (never re-detect)
+        agg = compute_forward_aggregates(session, cfg.walk_forward.default_horizon, cfg)
+        assert {r["pullback_to_rising_dma"] for r in agg["by_pullback_to_rising_dma"]} == {"Pullback-to-DMA", "non-Pullback"}
+        assert {r["flat_base_breakout"] for r in agg["by_flat_base_breakout"]} == {"Flat-base", "non-Flat-base"}
+
+
 def test_asof_invalid_dates_are_explicit_4xx_never_fabricated(loaded_engine):
     """Invalid as-of -> explicit 4xx, never a fabricated snapshot: future -> 400, before history ->
     400, unparseable -> 422 (FastAPI convention; any 4xx satisfies the no-fabrication contract)."""

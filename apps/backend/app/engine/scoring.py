@@ -39,7 +39,7 @@ from app.config import Config, get_config
 from app.engine import indicators as ind
 from app.engine.buckets import to_bucket
 from app.engine.normalize import cross_sectional_percentiles
-from app.engine.patterns import detect_vcp
+from app.engine.patterns import detect_flat_base_breakout, detect_pullback_to_rising_dma, detect_vcp
 from app.engine.prices import bars_asof, closes, highs, lows, volumes
 from app.engine.regime import score_regime
 from app.engine.sectors import score_sectors
@@ -329,10 +329,18 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
             ind.sma(inv_closes, inv_period),
             inv_closes[-1] if inv_closes else None,
         )
-        # VCP flag composed onto the row ALONGSIDE setup/invalidation/themes — a separate detected
-        # pattern, NOT a setup status (it never touches `classify_setup` or `setup`). Computed once
-        # here from the same as-of bars; stored in `record_json` + mirrored to `ScannerResult.is_vcp`.
+        # Detected patterns composed onto the row ALONGSIDE setup/invalidation/themes — each a separate
+        # detected PATTERN, NOT a setup status (none touches `classify_setup` or `setup`). Each is
+        # computed once here from the same as-of bars (date <= D, no lookahead), stored in `record_json`
+        # and mirrored to its `ScannerResult.is_<name>` column. VCP rides exactly as before (byte-
+        # identical); iter-9 adds pullback-to-rising-DMA and flat-base-breakout the same way.
         vcp = detect_vcp(inv_closes, highs(bars), lows(bars), volumes(bars), cfg.patterns.vcp)
+        pullback_to_rising_dma = detect_pullback_to_rising_dma(
+            inv_closes, highs(bars), lows(bars), volumes(bars), cfg.patterns.pullback_to_rising_dma
+        )
+        flat_base_breakout = detect_flat_base_breakout(
+            inv_closes, highs(bars), lows(bars), volumes(bars), cfg.patterns.flat_base_breakout
+        )
         themes = [{"slug": slug, "name": theme_name(slug)} for slug in themes_by_ticker.get(ticker, [])]
 
         rows.append({
@@ -346,6 +354,8 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
             "themes": themes,
             "invalidation": invalidation,
             "vcp": vcp,
+            "pullback_to_rising_dma": pullback_to_rising_dma,
+            "flat_base_breakout": flat_base_breakout,
             "rank": None,
         })
 

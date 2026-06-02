@@ -7,16 +7,16 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-8",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-8-evidence/UT-05-dashboard.png"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-8-evidence/UT-05-dashboard.png (carried green iter-9: additive pattern diff — patterns ride alongside; no score/setup/regime/dashboard change; no regression possible)"
     },
     "J-02": {
       "id": "J-02",
       "name": "Stock Leaderboard with working filters",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-8",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-8",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-8-evidence/UT-06-stocks-leaderboard.png (render re-verified: 122 ranked rows w/ ticker+sector; filter-interaction acceptance carried from iter-4/iter-6)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-9-evidence/UT-14-sector-setup-composed.png (re-verified: Sector=Technology 58/122, +Setup=Avoid 40/122 AND-composed, reset 122/122 — sector + setup filters compose cleanly with the new Pattern filter)"
     },
     "J-03": {
       "id": "J-03",
@@ -25,7 +25,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-1-evidence/UT-J-03-themes-historical-expanded.png (carried green iter-8: empty app diff → no regression possible)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-1-evidence/UT-J-03-themes-historical-expanded.png (carried green iter-9: additive pattern diff; /themes untouched)"
     },
     "J-04": {
       "id": "J-04",
@@ -34,52 +34,52 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-1-evidence/UT-J-04-sectors-historical.png (carried green iter-8: empty app diff)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-1-evidence/UT-J-04-sectors-historical.png (carried green iter-9: additive pattern diff; /sectors untouched)"
     },
     "J-05": {
       "id": "J-05",
       "name": "Stock Detail with explainable scores",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-01-latest-nvda.png (carried green iter-8: empty app diff)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-9-evidence/UT-08-detail-TPH-header-badges.png (re-verified: /stocks/TPH renders header chips [setup status + sector + as-of] and pattern cards; the three score breakdowns are untouched by the additive pattern diff — scoring.py change attaches pattern keys only, never alters leadership/entry/risk)"
     },
     "J-06": {
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-06-via-UT-02-historical-forward-region.png (carried green iter-8: empty app diff)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-9-evidence/TC-15-detail-TPH.png (single-source-of-truth re-proven for the new patterns: TPH detail pattern badges + invalidation $46.71/$46.74 byte-identical to the leaderboard row; the six canonical scores are read verbatim from the stored snapshot and untouched by the diff)"
     },
     "J-07": {
       "id": "J-07",
       "name": "Risk-Off regime suppresses Actionable",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-8",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-8",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-8-evidence/UT-05-dashboard.png (dashboard shows Actionable 0 — 'zero Actionable in a Risk-off regime' — gate corroborated; full /scanner-runs open-a-Risk-off-run flow carried from iter-3/iter-6)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-9-evidence/TC-20-riskoff-actionable-zero.png (CRITICAL gate re-verified after DB regeneration: 2025-04-04 run labels regime 'Risk-off' with Actionable count 0; pattern-not-status proven — new patterns never promote to Actionable; both bootstrap Risk-Off dates still label Risk-off post-regen)"
     },
     "J-08": {
       "id": "J-08",
       "name": "Immutable scanner-run history",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/TC-18-scanner-runs-new-immutable.png (carried green iter-8: empty app diff; scanner-run table untouched)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/TC-18-scanner-runs-new-immutable.png (structurally re-verified iter-9: DB regenerated offline from the frozen seed — every immutable snapshot recomputed once with the new pattern flags; mirror written once in the single ScannerResult(...) [scanner.py:109-111], append-only column additions, no row UPDATE; scanner-run table + record_json contract untouched)"
     },
     "J-09": {
       "id": "J-09",
       "name": "System Health forward-tested evidence",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-3",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-3-evidence/TC-16-5-system-health-n-grew.png (carried green iter-8: empty app diff; n unchanged — universe stayed 122, so sample did NOT grow this iter)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-9-evidence/UT-10-system-health-pattern-panels.png (re-verified: System Health renders forward-return evidence incl. the two new by_<name> pattern-vs-non-pattern panels with sample size n; Pullback -0.27% n=163 / non +2.39% n=1055; Flat-base +0.91% n=48 / non +2.08% n=1170; values match /api/system-health exactly)"
     },
     "J-10": {
       "id": "J-10",
@@ -88,7 +88,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-2",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-2-evidence/UT-01-02-03-system-health-attribution.png (carried green iter-8: empty app diff)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-2-evidence/UT-01-02-03-system-health-attribution.png (carried green iter-9: additive pattern diff; control-group/attribution forward-test path untouched — forward_testing.py change only ADDS by_<name> breakdowns via the generic _group_means)"
     },
     "J-11": {
       "id": "J-11",
@@ -97,16 +97,16 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-5-evidence/UT-J-11-after-restart.png (carried green iter-8: empty app diff)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-5-evidence/UT-J-11-after-restart.png (carried green iter-9: additive pattern diff; watchlist model/route untouched — spec explicitly excludes any watchlist change)"
     },
     "J-12": {
       "id": "J-12",
       "name": "Understand what each setup/pattern means (glossary + inline)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-8",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-8",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-8-evidence/UT-01-UT-02-methodology.png (glossary intact: 6 setups + VCP with live config thresholds; Universe-Selection card correctly ABSENT — honest gate)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-9-evidence/UT-11-methodology-new-pattern-cards.png (re-verified + EXTENDED: glossary now lists 6 setups + 3 patterns [VCP + 2 new], all auto-rendered from the config-backed catalog with live config thresholds via ref: paths; UT-15 DOM-asserts exactly 6 Setup chips + 3 Pattern chips; build_catalog boot-guard fires if a config.patterns key lacks a catalog entry)"
     },
     "J-13": {
       "id": "J-13",
@@ -115,7 +115,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-02-historical-forward-region.png (carried green iter-8: empty app diff)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-02-historical-forward-region.png (carried green iter-9: additive pattern diff; as-of date control + asof-provider untouched — spec excludes any as-of change)"
     },
     "J-14": {
       "id": "J-14",
@@ -124,25 +124,25 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-08-UT-09-backtest-top-order.png (carried green iter-8: empty app diff)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-08-UT-09-backtest-top-order.png (carried green iter-9: additive pattern diff; /backtest untouched this iter)"
     },
     "J-15": {
       "id": "J-15",
       "name": "Fast page loads from persisted snapshots",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-5",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-5-evidence/UT-J-15-warm-load.png (carried green iter-8: empty app diff; snapshot-served read path untouched)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-5-evidence/UT-J-15-warm-load.png (structurally re-verified iter-9: the snapshot-served read path is untouched — patterns are computed once on the scan path [scoring.py] and read verbatim; the two new detectors are referenced ONLY in patterns.py + scoring.py [grep-confirmed], never on the read path; keystone patch-to-raise test confirms /api/stocks + by_<name> serve from storage without re-detecting)"
     },
     "J-16": {
       "id": "J-16",
       "name": "VCP — detected, explained, filterable, forward-tested",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-01-latest-nvda.png (carried green iter-8: empty app diff; patterns.py + config.patterns.vcp untouched)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-9-evidence/UT-13-vcp-only-4rows.png (re-verified UNCHANGED: VCP filter -> 4/122 [ORCL,STX,TSLA,TSM] w/ teal badge + tooltip 'Pivot $905.39'; Not VCP -> 118/122; VCP methodology card + 'Forward return: VCP vs non-VCP' panel [+3.18% n=27 low-sample marker] intact; row['vcp'] byte-identical in scoring.py)"
     },
     "J-17": {
       "id": "J-17",
@@ -151,7 +151,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-8",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-8-evidence/UT-03-UT-04-data.png (/data coverage grid renders: price range 2021-01-04→2026-05-28, Universe 122, Symbols 158, 1356 trading days, 46 snapshot dates, 1310 gaps; fetch/backfill form + run history present)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-8-evidence/UT-03-UT-04-data.png (carried green iter-9: additive pattern diff; /data + data_manager untouched. Note: universe stays 122 / 158 symbols — J-22 still unbuilt, so coverage unchanged)"
     },
     "J-18": {
       "id": "J-18",
@@ -160,7 +160,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-08-backtest-fullpage-h1.png (carried green iter-8: empty app diff; zero frontend date-state changed)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-08-backtest-fullpage-h1.png (carried green iter-9: additive pattern diff; zero frontend date-state changed — the only frontend changes are the /stocks pattern filter, detail pattern cards, system-health panels, and methodology subtitle, none of which add a date control)"
     },
     "J-19": {
       "id": "J-19",
@@ -169,7 +169,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-14-backtest-fullpage-h60.png (carried green iter-8: empty app diff)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-14-backtest-fullpage-h60.png (carried green iter-9: additive pattern diff; attribution slices untouched — forward_testing.py change only ADDS by_<name> via generic _group_means, reads stored mirror verbatim)"
     },
     "J-20": {
       "id": "J-20",
@@ -178,7 +178,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-02-UT-03-chart-divider-zoom.png (carried green iter-8: empty app diff)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-02-UT-03-chart-divider-zoom.png (carried green iter-9: additive pattern diff; prices.py bars_through_latest chart path untouched)"
     },
     "J-21": {
       "id": "J-21",
@@ -187,7 +187,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-14-leadership-returns-h60.png (carried green iter-8: empty app diff)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-6-evidence/UT-14-leadership-returns-h60.png (carried green iter-9: additive pattern diff; /backtest leadership-return path untouched)"
     },
     "J-22": {
       "id": "J-22",
@@ -196,7 +196,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-8",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "BLOCKED (environmental, not a code defect) — RE-CONFIRMED iter-8. The 'finish-the-runbook' data step did not run: the dev's required single polite re-probe at dispatch returned Yahoo HTTP 429 on BOTH no-key halves (chart/OHLCV + cookie+crumb/market-cap), so per the probe-gate design + No-fabricated-data anti-goal the screen+ingest was halted honestly (nothing fabricated, no file changed). Verified directly: config.universe.symbols=122 (yaml load), data/seed/universe.json ABSENT → /api/methodology omits universe_selection (honest gate closed), 158 price CSVs unchanged, iter-8-specific app diff EMPTY (the 254-line working-tree delta vs HEAD is iter-7's still-uncommitted infra; coherence diff vs snapshot 53107871 = empty). browser_checks_run captured the closed gate (UT-02/UT-04: 0 fabricated count). Candidate pool committed (data/seed/universe_pool.csv, 548 names). Infra complete + tested (38 passed/3 skipped) and AUTO-HEALS via the committed finish runbook (dev handoff) once a no-key feed is reachable — do NOT autonomously retry; resume only on operator confirmation of a reachable egress."
+      "last_evidence_path": "BLOCKED (environmental, not a code defect) — carried failing iter-9 (out of scope; iter-9 confirmed config.universe.symbols=122 unchanged). The 'finish-the-runbook' data step needs a one-shot offline fetch of real OHLCV+market-cap for ~280-380 new names; no reachable no-key source supplies it (Yahoo HTTP 429 on both no-key halves; Stooq captcha; nasdaq empty; SEC no prices) — re-confirmed across iters 7-8. Infra complete + tested; candidate pool committed (data/seed/universe_pool.csv, 548 names). AUTO-HEALS via the committed finish runbook ONLY on operator confirmation of a reachable egress — do NOT autonomously retry."
     },
     "J-23": {
       "id": "J-23",
@@ -205,7 +205,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "UNBUILT (out of scope iter-6–iter-8). No timeframe/intraday support in apps/backend/app/engine/prices.py. DATA-WALLED: needs fresh Yahoo intraday fetches — same 429 provider wall as J-22; not autonomously unblockable."
+      "last_evidence_path": "UNBUILT (out of scope iter-6-iter-9). No timeframe/intraday support in apps/backend/app/engine/prices.py. DATA-WALLED: needs fresh Yahoo intraday fetches — same 429 provider wall as J-22; not autonomously unblockable."
     },
     "J-24": {
       "id": "J-24",
@@ -214,16 +214,16 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "UNBUILT (out of scope iter-6–iter-8). Chart change in iter-6 is daily full-path only; no timeframe control added. Depends on J-23 (intraday data) — DATA-WALLED."
+      "last_evidence_path": "UNBUILT (out of scope iter-6-iter-9). Chart change in iter-6 is daily full-path only; no timeframe control added. Depends on J-23 (intraday data) — DATA-WALLED."
     },
     "J-25": {
       "id": "J-25",
       "name": "Factor Lab — decile sort and rank-IC per factor (raw and risk-adjusted)",
       "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-8",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "UNBUILT (out of scope iter-6–iter-8). /research route absent (verified iter-8). COMPUTE-ONLY over the existing stored seed (NOT data-walled) — the loop-resilient pivot; gated only on a human blueprint nav re-approval for the new /research home (no reapproval marker pending). Recommended primary lab target."
+      "last_evidence_path": "UNBUILT (out of scope iter-9; find confirmed NO /research code in apps/). COMPUTE-ONLY over the existing stored seed (NOT data-walled) — the recommended primary target for the NEXT iteration. The /research nav re-approval was FRONT-LOADED this iter: runs/goal-session-.../state/blueprint.reapproval-requested exists and blueprint.md:67 lists /research as 'PLANNED iter-10+'. run-goal.sh will PAUSE at iter-10's pre_decomposer (run-goal.sh:804) for human approval BEFORE the first lab is built. After approval, J-25 Factor Lab (decile/rank-IC, raw + risk-adjusted) is the lean entry point into the labs."
     },
     "J-26": {
       "id": "J-26",
@@ -232,7 +232,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "UNBUILT (out of scope iter-6–iter-8). /research route absent. Compute-only over existing seed; gated on blueprint nav re-approval (depends on J-25 Factor Lab)."
+      "last_evidence_path": "UNBUILT (out of scope iter-9). /research route absent. Compute-only over existing seed; gated on the front-loaded blueprint nav re-approval (depends on J-25 Factor Lab)."
     },
     "J-27": {
       "id": "J-27",
@@ -241,16 +241,16 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "UNBUILT (out of scope iter-6–iter-8). /research route absent. Compute-only over existing seed; gated on blueprint nav re-approval."
+      "last_evidence_path": "UNBUILT (out of scope iter-9). /research route absent. Compute-only over existing seed; gated on the front-loaded blueprint nav re-approval."
     },
     "J-28": {
       "id": "J-28",
       "name": "More detected patterns beyond VCP (forward-tested)",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "UNBUILT (out of scope iter-6–iter-8). Only VCP detector exists (apps/backend/app/engine/patterns.py; config.patterns=['vcp']). FULLY AUTONOMOUS BUILD CANDIDATE (iter-8 analysis): compute-only over the already-stored seed (NO external fetch — not data-walled) AND rides EXISTING surfaces — /stocks filter, /methodology config-backed glossary, and the System Health pattern-vs-non-pattern breakdown (the goal's J-28 acceptance explicitly allows 'Setup & Pattern Lab OR System Health'), so it needs NO /research home and NO blueprint re-approval. Recommended primary target for the next iteration. Must follow the VCP contract (pattern-not-status, never auto-Actionable, date ≤ D, config thresholds, forward-tested with honest n/NA)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-9-evidence/UT-03-after-pullback-only-9.png (TARGET — NEWLY PASSING. Two new config-driven detectors landed following the VCP pattern-not-status contract: /stocks Pattern filter narrows to flagged rows [pullback 9/122 DOM-asserted = API; flat-base 3/122] each with teal badge + server reason + concrete invalidation [UT-03/UT-04/UT-05]; /methodology auto-renders both new pattern cards w/ live config thresholds [UT-11/UT-15]; /system-health by_pullback_to_rising_dma + by_flat_base_breakout panels w/ n + honest NA [UT-10]. All 5 critical seams VERIFIED IN SOURCE by the evaluator: pattern-not-status [scoring.py:353 sets setup independently, patterns attached as separate keys 356-358], no-lookahead [detectors run on bars_asof <= D, referenced only in patterns.py+scoring.py per grep], no-magic-numbers [patterns.py reads only cfg.patterns.<name>.* thresholds], mirror written once [scanner.py:109-111], no-re-detect-in-read-path [forward_testing.py:558-559,604,608 read res.is_<name> via generic _group_means]. Backend 351 passed/0 failed; COHERENCE-PASS; evidence 22/22 sha256-distinct.)"
     },
     "J-29": {
       "id": "J-29",
@@ -259,7 +259,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "UNBUILT (out of scope iter-6–iter-8). /research route absent; no event-study (expectancy/MAE/MFE) surface. Compute-only over existing seed; gated on blueprint nav re-approval."
+      "last_evidence_path": "UNBUILT (out of scope iter-9). /research route absent; no event-study (expectancy/MAE/MFE) surface. Compute-only over existing seed; gated on the front-loaded blueprint nav re-approval."
     },
     "J-30": {
       "id": "J-30",
@@ -268,7 +268,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "UNBUILT (out of scope iter-6–iter-8). Depends on the Factor Lab (J-25); /research route absent. Compute-only over existing seed; gated on blueprint nav re-approval."
+      "last_evidence_path": "UNBUILT (out of scope iter-9). Depends on the Factor Lab (J-25); /research route absent. Compute-only over existing seed; gated on the front-loaded blueprint nav re-approval."
     },
     "J-31": {
       "id": "J-31",
@@ -277,7 +277,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "UNBUILT (out of scope iter-6–iter-8). Synthesis journey across the labs (J-25/J-27/J-29) — none exist yet. Compute-only over existing seed; gated on blueprint nav re-approval."
+      "last_evidence_path": "UNBUILT (out of scope iter-9). Synthesis journey across the labs (J-25/J-27/J-29) — none exist yet. Compute-only over existing seed; gated on the front-loaded blueprint nav re-approval."
     }
   },
   "anti_goal_violations": [
@@ -288,8 +288,8 @@
       "evidence": "PRE-EXISTING (not introduced this iter — baseline is a zero-diff no-op). apps/frontend/app/backtest/page.tsx:53-58 kept its OWN selected/dates date state independent of the global as-of provider; lines 112-118 + 175-208 rendered a local BacktestDatePicker <Select aria-label=\"Backtest as-of date\">. Root cause of J-18 failing.",
       "resolved": true,
       "resolved_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
-      "resolution_evidence": "iter-1 deleted BacktestDatePicker + its date state; backtest/page.tsx now reads useAsOf only. Re-confirmed STILL HOLDING through iter-8: iter-6 lifted the horizon VIEW selector (viewHorizon) into BacktestResults and deleted the old BacktestAttributionSection; iter-7 + iter-8 changed zero frontend date-state (iter-8 changed zero app code at all). Coherence-auditor COHERENCE-PASS (iter-7 and iter-8) confirms no nav/date-state drift."
+      "resolution_evidence": "iter-1 deleted BacktestDatePicker + its date state; backtest/page.tsx now reads useAsOf only. Re-confirmed STILL HOLDING through iter-9: iter-9's frontend changes are the /stocks pattern filter, detail pattern cards, system-health panels, and methodology subtitle — none add a date control (J-18 carried green). Coherence-auditor COHERENCE-PASS (iter-7, iter-8, iter-9) confirms no nav/date-state drift."
     }
   ],
-  "updated_at": "2026-06-02T09:30:00Z"
+  "updated_at": "2026-06-02T12:00:00Z"
 }

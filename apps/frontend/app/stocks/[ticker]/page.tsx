@@ -46,6 +46,28 @@ function setupVariant(status: string): "ok" | "warn" | "danger" | "accent" | "de
   }
 }
 
+/** A detected price pattern's read-only flag shape — VCP and the iter-9 additions share this contract. */
+type PatternFlag = {
+  flagged: boolean;
+  reason: string;
+  pivot: number | null;
+  invalidation: { level: number | null; note: string };
+};
+
+/** The iter-9 detected patterns that ride the detail page alongside VCP. Adding one is a single entry
+ *  here — the header badge and the pattern card both read this list (config-driven UI vocabulary). */
+const NEW_PATTERNS: { key: string; name: string; badge: string; get: (row: StockRow) => PatternFlag }[] = [
+  { key: "pullback_to_rising_dma", name: "Pullback to a rising DMA", badge: "Pullback", get: (r) => r.pullback_to_rising_dma },
+  { key: "flat_base_breakout", name: "Flat-base breakout", badge: "Flat base", get: (r) => r.flat_base_breakout },
+];
+
+/** A pattern badge tooltip: the server-built reason + pivot + invalidation note, rendered verbatim. */
+function patternTitle(flag: PatternFlag): string {
+  return [flag.reason, flag.pivot != null ? `Pivot $${flag.pivot.toFixed(2)}.` : null, flag.invalidation.note]
+    .filter(Boolean)
+    .join(" ");
+}
+
 export default function StockDetailPage() {
   const params = useParams<{ ticker: string }>();
   const ticker = (params?.ticker ?? "").toUpperCase();
@@ -121,11 +143,14 @@ function StockDetailBody({ data }: { data: StockDetailResponse }) {
   const { row } = data;
   return (
     <div className="space-y-4">
-      {/* setup + reason header — the VCP badge rides ALONGSIDE the setup status, never replacing it */}
+      {/* setup + reason header — each detected pattern badge rides ALONGSIDE the setup status, never replacing it */}
       <Card>
         <CardContent className="flex flex-wrap items-center gap-3 p-5">
           <Badge variant={setupVariant(row.setup.status)}>{row.setup.status}</Badge>
           {row.vcp.flagged ? <VcpBadge vcp={row.vcp} /> : null}
+          {NEW_PATTERNS.filter((p) => p.get(row).flagged).map((p) => (
+            <PatternBadge key={p.key} label={p.badge} flag={p.get(row)} />
+          ))}
           <span className="text-xs text-text-muted">{row.sector}</span>
           <Badge variant="default" className="num">
             as of {data.asof_date}
@@ -137,8 +162,12 @@ function StockDetailBody({ data }: { data: StockDetailResponse }) {
       {/* theme membership + concrete invalidation level (server-computed, rendered verbatim) */}
       <ThemeAndInvalidationCard row={row} />
 
-      {/* VCP pattern — a separate detected pattern with its own pivot + invalidation level */}
+      {/* detected patterns — each a separate pattern with its own pivot + invalidation level. VCP always
+          shows (incl. a not-detected state); the iter-9 patterns show a card only when flagged. */}
       <VcpCard vcp={row.vcp} />
+      {NEW_PATTERNS.filter((p) => p.get(row).flagged).map((p) => (
+        <PatternCard key={p.key} name={p.name} badge={p.badge} flag={p.get(row)} />
+      ))}
 
       {/* price + moving-average candle chart with volume (server MA series — never recomputed) */}
       <StockChartPanel ticker={row.ticker} />
@@ -259,6 +288,45 @@ function VcpCard({ vcp }: { vcp: Vcp }) {
             ))}
           </div>
         ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** A detected-pattern badge (iter-9) that rides ALONGSIDE the setup status (teal accent). Its tooltip
+ *  carries the server-built reason + pivot + invalidation note (rendered verbatim — never assembled). */
+function PatternBadge({ label, flag }: { label: string; flag: PatternFlag }) {
+  return (
+    <Badge variant="accent" title={patternTitle(flag)} className="cursor-help">
+      {label}
+    </Badge>
+  );
+}
+
+/** A dedicated detected-pattern card (iter-9): a SEPARATE pattern with its OWN pivot + invalidation
+ *  level. Rendered only when flagged. The same stored value the leaderboard serves (single source → J-06);
+ *  reason/pivot/invalidation are server-built and rendered verbatim — never recomputed client-side. */
+function PatternCard({ name, badge, flag }: { name: string; badge: string; flag: PatternFlag }) {
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardTitle>{name}</CardTitle>
+        <Badge variant="accent">{badge}</Badge>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-text-muted">{flag.reason}</p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1">
+            <p className="text-xs uppercase tracking-wide text-text-faint">Pivot (breakout level)</p>
+            <p className="num text-lg font-semibold text-text">
+              {flag.pivot != null ? `$${flag.pivot.toFixed(2)}` : "—"}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-xs uppercase tracking-wide text-text-faint">Invalidation</p>
+            <p className="text-sm text-warn">{flag.invalidation.note}</p>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );

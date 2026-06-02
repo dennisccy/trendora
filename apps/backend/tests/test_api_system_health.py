@@ -77,6 +77,24 @@ def test_system_health_by_vcp_breakdown_present(loaded_engine):
     assert sum(c["n"] for c in by_vcp.values()) > 0                # the seed yields >=1 observation
 
 
+def test_system_health_by_new_pattern_breakdowns_present(loaded_engine):
+    """J-28 at the API level: the payload carries a pattern-vs-non-pattern forward-return breakdown for
+    EACH new detected pattern — both cohorts labelled, each with mean_return + n — derived from the
+    stored `is_<name>` flag (never re-detected in the read path)."""
+    with TestClient(main.app) as client:
+        data = client.get("/api/system-health").json()
+    for key, flagged_label, non_label in [
+        ("by_pullback_to_rising_dma", "Pullback-to-DMA", "non-Pullback"),
+        ("by_flat_base_breakout", "Flat-base", "non-Flat-base"),
+    ]:
+        assert key in data
+        cohorts = {r[key.removeprefix("by_")]: r for r in data[key]}
+        assert set(cohorts) == {flagged_label, non_label}         # both cohorts always present
+        for cohort in cohorts.values():
+            assert _GROUP_KEYS <= set(cohort)                      # each carries mean_return + n
+        assert sum(c["n"] for c in cohorts.values()) > 0           # the seed yields >=1 observation
+
+
 def test_system_health_carries_attribution(loaded_engine):
     """J-19 at the API level: the served payload carries the four attribution slices for the horizon —
     per-stock contributors / detractors (named tickers + realized return + n + sector), by-sector,

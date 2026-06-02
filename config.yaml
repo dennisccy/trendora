@@ -545,6 +545,28 @@ patterns:
     volume_dryup_ratio: 0.9        # recent avg volume / base avg volume must be <= this (volume drying up)
     volume_window: 10              # bars for the "recent" volume average (vs the base average)
     min_history_bars: 65           # below this a symbol cannot be evaluated -> flagged=false / NA (never fabricated)
+  # iter-9 CONSUMED — two MORE detected patterns beyond VCP (J-28), each held to the identical
+  # pattern-not-status contract: config-driven thresholds, computed once with date <= D, price+volume
+  # only, riding ALONGSIDE the setup status (never a setup, never alone making a name Actionable),
+  # stored on the immutable snapshot, read verbatim everywhere. EVERY threshold lives here (anti-goal:
+  # No magic numbers — no detector literal in app/engine/patterns.py).
+  pullback_to_rising_dma:
+    ma_period: 50                  # the rising DMA price pulls back TO; MUST be one of indicators.ma_periods
+    min_history_bars: 90           # >= ma_period + trend_lookback_bars so the DMA slope is computable; else NA
+    trend_lookback_bars: 40        # the DMA must be RISING over this many bars (an established uptrend)
+    min_dma_slope_pct: 1.5         # the DMA must have risen at least this % over the lookback (rising, not flat)
+    max_dist_above_dma_pct: 5.0    # latest close within this % ABOVE the DMA (pulled back TO it, not extended)
+    max_undercut_pct: 2.0          # latest close tolerated up to this % BELOW the DMA (a shallow undercut; may be 0)
+    max_pullback_depth_pct: 18     # pullback from the recent (trend_lookback) high <= this % (a pullback, not a crash)
+    volume_window: 10              # bars for the "recent" (pullback) volume average reported in the reason
+  flat_base_breakout:
+    lookback_bars: 45              # window scanned; the base must sit at the high of this window
+    min_history_bars: 45           # below this (< lookback_bars) a symbol cannot be evaluated -> NA (never fabricated)
+    base_window: 25                # bars forming the base (the recent consolidation); must be <= lookback_bars
+    max_base_depth_pct: 15         # the base's high-to-low range must be <= this % (FLAT/shallow, not a deep base)
+    pivot_proximity_pct: 6.0       # latest close within this % at/below the base high (coiled under the pivot)
+    volume_window: 10              # bars for the "recent" volume average (vs the base average)
+    min_breakout_volume_ratio: 1.0 # recent avg volume / base avg volume must be >= this (volume building into the pivot)
 
 # ----------------------------------------------------------------------------------------
 # iter-5 CONSUMED — Scanner snapshots. The historical as-of dates the scanner persists an
@@ -647,3 +669,25 @@ methodology:
         - { label: "Within pivot", cmp: "<=", ref: "patterns.vcp.pivot_proximity_pct", unit: "%" }
         - { label: "Volume dry-up", cmp: "<=", ref: "patterns.vcp.volume_dryup_ratio" }
       example: "3 contractions tightening 18% → 9% → 5%, recent volume at 80% of the base, 3% below the pivot → VCP."
+    - key: pullback_to_rising_dma
+      kind: pattern
+      name: "Pullback to a rising DMA"
+      meaning: "An uptrending name that has pulled back TO its rising moving average rather than crashing — price sits at/near a DMA that is sloping up, a lower-risk continuation entry. A detected PATTERN that rides ALONGSIDE the setup status — it never by itself makes a name Actionable."
+      thresholds:
+        - { label: "Moving-average basis", cmp: "=", ref: "patterns.pullback_to_rising_dma.ma_period", unit: "-day" }
+        - { label: "Rising over", cmp: "", ref: "patterns.pullback_to_rising_dma.trend_lookback_bars", unit: " bars" }
+        - { label: "Min DMA slope", cmp: ">=", ref: "patterns.pullback_to_rising_dma.min_dma_slope_pct", unit: "%" }
+        - { label: "Within (above DMA)", cmp: "<=", ref: "patterns.pullback_to_rising_dma.max_dist_above_dma_pct", unit: "%" }
+        - { label: "Undercut tolerated", cmp: "<=", ref: "patterns.pullback_to_rising_dma.max_undercut_pct", unit: "%" }
+        - { label: "Max pullback depth", cmp: "<=", ref: "patterns.pullback_to_rising_dma.max_pullback_depth_pct", unit: "%" }
+      example: "A 50-day MA up 6% over 40 bars, the close 2% above the MA and 9% off the recent high → Pullback to a rising DMA."
+    - key: flat_base_breakout
+      kind: pattern
+      name: "Flat-base breakout"
+      meaning: "A shallow, sideways base built at the highs with price coiled just under the pivot (the base high) on building volume — breakout-ready. A detected PATTERN that rides ALONGSIDE the setup status — it never by itself makes a name Actionable."
+      thresholds:
+        - { label: "Base window", cmp: "", ref: "patterns.flat_base_breakout.base_window", unit: " bars" }
+        - { label: "Max base depth", cmp: "<=", ref: "patterns.flat_base_breakout.max_base_depth_pct", unit: "%" }
+        - { label: "Within pivot", cmp: "<=", ref: "patterns.flat_base_breakout.pivot_proximity_pct", unit: "%" }
+        - { label: "Min breakout volume", cmp: ">=", ref: "patterns.flat_base_breakout.min_breakout_volume_ratio" }
+      example: "A 25-bar base only 12% deep at the 45-bar highs, the close 3% below the pivot on volume at 1.1× the base → Flat-base breakout."

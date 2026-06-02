@@ -48,7 +48,7 @@ export default function MethodologyPage() {
     <div className="space-y-4">
       <PageHeading
         title="Methodology"
-        subtitle="What every setup status and the VCP pattern mean — with the exact config thresholds that define each (read live from config, so they always match the scanner) and a worked example."
+        subtitle="What every setup status and detected price pattern mean — with the exact config thresholds that define each (read live from config, so they always match the scanner) and a worked example."
       />
 
       {state.kind === "ok" && state.data.intro ? (

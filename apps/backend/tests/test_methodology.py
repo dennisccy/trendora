@@ -103,6 +103,39 @@ def test_vcp_thresholds_match_patterns_config():
     assert by_label["Volume dry-up"]["value"] == config.patterns.vcp.volume_dryup_ratio
 
 
+def test_new_pattern_thresholds_match_patterns_config():
+    """iter-9 spot-check: each new pattern entry's numbers are exactly its `patterns.<name>` tunables —
+    resolved live from config (the matching-config keystone), never re-typed in the catalog copy."""
+    config = load_config()
+    catalog = build_catalog(config)
+
+    pb = next(e for e in catalog["entries"] if e["key"] == "pullback_to_rising_dma")
+    pb_by_label = {r["label"]: r for r in pb["thresholds"]}
+    assert pb["kind"] == "pattern"
+    assert pb_by_label["Moving-average basis"]["value"] == config.patterns.pullback_to_rising_dma.ma_period
+    assert pb_by_label["Min DMA slope"]["value"] == config.patterns.pullback_to_rising_dma.min_dma_slope_pct
+    assert pb_by_label["Max pullback depth"]["value"] == config.patterns.pullback_to_rising_dma.max_pullback_depth_pct
+
+    fb = next(e for e in catalog["entries"] if e["key"] == "flat_base_breakout")
+    fb_by_label = {r["label"]: r for r in fb["thresholds"]}
+    assert fb["kind"] == "pattern"
+    assert fb_by_label["Base window"]["value"] == config.patterns.flat_base_breakout.base_window
+    assert fb_by_label["Max base depth"]["value"] == config.patterns.flat_base_breakout.max_base_depth_pct
+    assert fb_by_label["Min breakout volume"]["value"] == config.patterns.flat_base_breakout.min_breakout_volume_ratio
+
+
+def test_incomplete_pattern_catalog_raises(tmp_path):
+    """Dropping a detected pattern's catalog entry → build_catalog raises (pattern completeness — adding
+    a config.patterns key without its kind:pattern entry must fail the boot loudly)."""
+    raw = _committed_raw()
+    raw["methodology"]["entries"] = [
+        e for e in raw["methodology"]["entries"] if e.get("key") != "flat_base_breakout"
+    ]
+    config = load_config(_write(tmp_path, raw))  # the loader still validates; completeness is build_catalog's job
+    with pytest.raises(ValueError):
+        build_catalog(config)
+
+
 # --- iter-7: Universe Selection section (J-22) ----------------------------------------------
 
 def test_universe_selection_section_present_and_resolves():

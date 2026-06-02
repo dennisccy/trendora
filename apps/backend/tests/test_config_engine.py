@@ -131,6 +131,17 @@ VALID = {
             "max_last_contraction_pct": 12, "pivot_proximity_pct": 8, "volume_dryup_ratio": 0.9,
             "volume_window": 10, "min_history_bars": 65,
         },
+        # iter-9 made the two new detected patterns required too (same pattern as every newly-required block).
+        "pullback_to_rising_dma": {
+            "ma_period": 50, "min_history_bars": 90, "trend_lookback_bars": 40,
+            "min_dma_slope_pct": 1.5, "max_dist_above_dma_pct": 5.0, "max_undercut_pct": 2.0,
+            "max_pullback_depth_pct": 18, "volume_window": 10,
+        },
+        "flat_base_breakout": {
+            "lookback_bars": 45, "min_history_bars": 45, "base_window": 25,
+            "max_base_depth_pct": 15, "pivot_proximity_pct": 6.0,
+            "volume_window": 10, "min_breakout_volume_ratio": 1.0,
+        },
     },
     # iter-12 made `methodology` required (the config-backed Setup & Pattern catalog).
     "methodology": {

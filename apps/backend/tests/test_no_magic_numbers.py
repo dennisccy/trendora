@@ -43,8 +43,15 @@ CALC_FILES = [
 # min_history_bars = 65 is already in the set; the remaining VCP counts 2/4 are structural integers
 # used for indexing/arithmetic across the engine and so cannot be added without false positives —
 # they are still config-driven in patterns.py, just not heuristically enforceable here.)
+# iter-9 adds the distinctive integer tunables of the two NEW detectors so the same contract is
+# ENFORCED for them: 40 (pullback_to_rising_dma.trend_lookback_bars) and 18 (.max_pullback_depth_pct);
+# 25 (flat_base_breakout.base_window) and 15 (.max_base_depth_pct). Their other counts reuse values
+# already in the set (50/90 = pullback ma_period/min_history; 45 = flat_base lookback/min_history), so
+# every detector threshold either is enforced here or reuses an already-enforced sentinel — none may be
+# hard-coded in patterns.py. (The percent/ratio floats — slope/dist/undercut/proximity/volume — are
+# caught by the blanket "no float literal in calc code" rule, not the integer set.)
 FORBIDDEN_INT_LITERALS = {
-    8, 14, 20, 21, 30, 35, 45, 50, 55, 60, 63, 65, 70, 75, 80, 85, 90, 126, 150, 200, 252,
+    8, 14, 15, 18, 20, 21, 25, 30, 35, 40, 45, 50, 55, 60, 63, 65, 70, 75, 80, 85, 90, 126, 150, 200, 252,
 }
 
 

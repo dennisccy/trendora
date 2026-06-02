@@ -116,13 +116,25 @@ MINIMAL_VALID = {
             ],
         },
     },
-    # iter-11 made `patterns` required (the VCP detector thresholds come from config, never code).
+    # iter-11 made `patterns` required (the VCP detector thresholds come from config, never code);
+    # iter-9 made `pullback_to_rising_dma` + `flat_base_breakout` required too (same pattern as every
+    # newly-required section — a from-scratch valid config must include them).
     "patterns": {
         "vcp": {
             "lookback_bars": 65, "min_contractions": 2, "max_contractions": 4,
             "min_contraction_pct": 3, "max_base_depth_pct": 35, "contraction_shrink_ratio": 0.8,
             "max_last_contraction_pct": 12, "pivot_proximity_pct": 8, "volume_dryup_ratio": 0.9,
             "volume_window": 10, "min_history_bars": 65,
+        },
+        "pullback_to_rising_dma": {
+            "ma_period": 50, "min_history_bars": 90, "trend_lookback_bars": 40,
+            "min_dma_slope_pct": 1.5, "max_dist_above_dma_pct": 5.0, "max_undercut_pct": 2.0,
+            "max_pullback_depth_pct": 18, "volume_window": 10,
+        },
+        "flat_base_breakout": {
+            "lookback_bars": 45, "min_history_bars": 45, "base_window": 25,
+            "max_base_depth_pct": 15, "pivot_proximity_pct": 6.0,
+            "volume_window": 10, "min_breakout_volume_ratio": 1.0,
         },
     },
     # iter-12 made `methodology` required (the config-backed Setup & Pattern catalog). The smallest
@@ -259,5 +271,69 @@ def test_data_manager_unknown_live_provider_raises(tmp_path):
     """`live_provider` is constrained to the known providers (seed | stooq) — a typo fails loudly."""
     data = copy.deepcopy(MINIMAL_VALID)
     data["data_manager"]["live_provider"] = "bogus"
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+# --- iter-9: the two new detected-pattern blocks (J-28) -------------------------------------
+
+def test_new_patterns_minimal_valid_loads(tmp_path):
+    """MINIMAL_VALID (incl. the now-required pullback/flat-base blocks) still loads, and the real
+    config exposes the typed thresholds (the established pattern for every newly-required section)."""
+    cfg = load_config(_write(tmp_path, MINIMAL_VALID))
+    assert cfg.patterns.pullback_to_rising_dma.ma_period == 50
+    assert cfg.patterns.flat_base_breakout.base_window == 25
+    real = load_config()
+    assert real.patterns.pullback_to_rising_dma.max_pullback_depth_pct > 0
+    assert real.patterns.flat_base_breakout.max_base_depth_pct > 0
+
+
+def test_pullback_ma_period_not_an_indicator_raises(tmp_path):
+    """The pullback MA basis MUST be one of indicators.ma_periods (a single canonical MA) — a value
+    outside that set fails the boot loudly (cross-field check on the top-level Config), not a silent
+    second MA basis."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["patterns"]["pullback_to_rising_dma"]["ma_period"] = 999  # not in [20, 50, 150, 200]
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_pullback_insufficient_history_for_slope_raises(tmp_path):
+    """min_history_bars must cover ma_period + trend_lookback_bars (else the DMA slope is uncomputable)
+    — an under-sized history fails the boot, never a silent default."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["patterns"]["pullback_to_rising_dma"]["min_history_bars"] = 50  # < 50 + 40
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_pullback_nonpositive_percent_raises(tmp_path):
+    """A non-positive pullback-depth cap is invalid (a pullback must have some depth budget)."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["patterns"]["pullback_to_rising_dma"]["max_pullback_depth_pct"] = 0
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_pullback_undercut_may_be_zero(tmp_path):
+    """`max_undercut_pct` MAY be 0 (no undercut tolerated) — that is a VALID config, not an error."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["patterns"]["pullback_to_rising_dma"]["max_undercut_pct"] = 0
+    cfg = load_config(_write(tmp_path, data))
+    assert cfg.patterns.pullback_to_rising_dma.max_undercut_pct == 0
+
+
+def test_flat_base_base_window_exceeds_lookback_raises(tmp_path):
+    """The base must fit inside the lookback window — base_window > lookback_bars fails the boot."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["patterns"]["flat_base_breakout"]["base_window"] = 50  # > lookback_bars (45)
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_flat_base_nonpositive_ratio_raises(tmp_path):
+    """A non-positive breakout-volume ratio is invalid (volume must be a positive multiple)."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["patterns"]["flat_base_breakout"]["min_breakout_volume_ratio"] = 0
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))

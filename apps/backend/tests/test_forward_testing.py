@@ -171,7 +171,10 @@ def _add_run(session: Session, asof: date, regime_label: str) -> ScannerRun:
     return run
 
 
-def _add_result(session, run_id, ticker, bucket, setup, sector, rank, lead_score=50.0, is_vcp=False):
+def _add_result(
+    session, run_id, ticker, bucket, setup, sector, rank, lead_score=50.0,
+    is_vcp=False, is_pullback_to_rising_dma=False, is_flat_base_breakout=False,
+):
     session.add(
         ScannerResult(
             run_id=run_id, ticker=ticker, name=ticker, sector=sector,
@@ -179,6 +182,8 @@ def _add_result(session, run_id, ticker, bucket, setup, sector, rank, lead_score
             entry_quality_score=0.0, entry_quality_bucket="E",
             risk_score=0.0, risk_bucket="E",
             setup_status=setup, rank=rank, record_json="{}", is_vcp=is_vcp,
+            is_pullback_to_rising_dma=is_pullback_to_rising_dma,
+            is_flat_base_breakout=is_flat_base_breakout,
         )
     )
 
@@ -355,6 +360,61 @@ def test_aggregates_by_vcp_empty_cohort_is_na_padded(aggregates_engine):
     assert set(by_vcp) == {"VCP", "non-VCP"}
     assert by_vcp["VCP"]["n"] == 0 and by_vcp["VCP"]["mean_return"] is None
     assert by_vcp["non-VCP"]["n"] == 6  # all six realized observations are non-VCP (default is_vcp=False)
+
+
+@pytest.fixture()
+def new_pattern_aggregates_engine(tmp_path):
+    """A hand-built run with known forward returns split across the new-pattern cohorts at horizon H,
+    so the by_<name> means are exact by construction. AAA,BBB flag pullback-to-rising-DMA; AAA,CCC flag
+    flat-base-breakout (a name may flag MORE than one pattern — the flags are independent)."""
+    engine, H = make_engine(f"sqlite:///{tmp_path / 'newpat_agg.db'}"), 20
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        r1 = _add_run(session, date(2025, 1, 10), "Risk-on")
+        _add_result(session, r1.id, "AAA", "A", "Breakout-watch", "Technology", 1,
+                    is_pullback_to_rising_dma=True, is_flat_base_breakout=True)
+        _add_result(session, r1.id, "BBB", "B", "Pullback-watch", "Technology", 2,
+                    is_pullback_to_rising_dma=True, is_flat_base_breakout=False)
+        _add_result(session, r1.id, "CCC", "C", "Avoid", "Technology", 3,
+                    is_pullback_to_rising_dma=False, is_flat_base_breakout=True)
+        for sym, ret in [("AAA", 0.20), ("BBB", 0.10), ("CCC", -0.06), ("SPY", 0.05), ("QQQ", 0.06)]:
+            _add_fr(session, r1.id, sym, H, ret)
+        session.commit()
+    return engine, H
+
+
+def test_aggregates_by_new_patterns_exact(new_pattern_aggregates_engine):
+    """by_<name> groups the STORED `is_<name>` flag VERBATIM (never re-detected): each pattern's flagged
+    vs non-flagged cohort, with exact mean + n; both cohorts always present and labelled."""
+    engine, H = new_pattern_aggregates_engine
+    with Session(engine) as session:
+        agg = compute_forward_aggregates(session, H, load_config())
+
+    by_pb = {r["pullback_to_rising_dma"]: r for r in agg["by_pullback_to_rising_dma"]}
+    assert set(by_pb) == {"Pullback-to-DMA", "non-Pullback"}
+    assert by_pb["Pullback-to-DMA"]["n"] == 2 and by_pb["Pullback-to-DMA"]["mean_return"] == pytest.approx(0.15)  # (0.20+0.10)/2
+    assert by_pb["non-Pullback"]["n"] == 1 and by_pb["non-Pullback"]["mean_return"] == pytest.approx(-0.06)
+
+    by_fb = {r["flat_base_breakout"]: r for r in agg["by_flat_base_breakout"]}
+    assert set(by_fb) == {"Flat-base", "non-Flat-base"}
+    assert by_fb["Flat-base"]["n"] == 2 and by_fb["Flat-base"]["mean_return"] == pytest.approx(0.07)  # (0.20-0.06)/2
+    assert by_fb["non-Flat-base"]["n"] == 1 and by_fb["non-Flat-base"]["mean_return"] == pytest.approx(0.10)
+
+
+def test_aggregates_by_new_patterns_empty_cohort_is_na_padded(aggregates_engine):
+    """No fabrication: the base fixture flags NEITHER new pattern, so each flagged cohort is padded
+    n=0 / mean None while the non-flagged cohort carries all observations — honest NA, never a 0%."""
+    engine, H = aggregates_engine
+    with Session(engine) as session:
+        agg = compute_forward_aggregates(session, H, load_config())
+    for key, flagged_label, non_label in [
+        ("by_pullback_to_rising_dma", "Pullback-to-DMA", "non-Pullback"),
+        ("by_flat_base_breakout", "Flat-base", "non-Flat-base"),
+    ]:
+        cohorts = {r[key.removeprefix("by_")]: r for r in agg[key]}
+        assert set(cohorts) == {flagged_label, non_label}
+        assert cohorts[flagged_label]["n"] == 0 and cohorts[flagged_label]["mean_return"] is None
+        assert cohorts[non_label]["n"] == 6  # all six realized observations are non-flagged (defaults False)
 
 
 def test_aggregates_zero_post_bar_run_contributes_n0(aggregates_engine):

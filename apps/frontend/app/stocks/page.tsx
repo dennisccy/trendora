@@ -19,7 +19,6 @@ import {
   type MethodologyCatalog,
   type StockRow,
   type StocksResponse,
-  type Vcp,
 } from "@/lib/api";
 
 type State =
@@ -28,13 +27,29 @@ type State =
   | { kind: "error" };
 
 const ALL = "__all__";
-const VCP_ONLY = "vcp_only";
-const VCP_NONE = "non_vcp";
 
-/** The VCP badge tooltip: the server-built reason + pivot + invalidation note, rendered verbatim
+/** A detected price pattern's read-only flag shape — every pattern (VCP + the iter-9 additions) shares
+ *  this contract, so the leaderboard filters/renders them uniformly (no per-pattern branching). */
+type PatternFlag = {
+  flagged: boolean;
+  reason: string;
+  pivot: number | null;
+  invalidation: { level: number | null; note: string };
+};
+
+/** The detected patterns shown on the leaderboard, in display order. Each maps the canonical config key
+ *  (matches the /methodology catalog `key`) to its row field + a short badge label. Adding a pattern is
+ *  ONE entry here — the badge, the filter, and the tooltip all read this list (config-driven UI). */
+const PATTERNS: { key: string; label: string; badge: string; get: (row: StockRow) => PatternFlag }[] = [
+  { key: "vcp", label: "VCP", badge: "VCP", get: (r) => r.vcp },
+  { key: "pullback_to_rising_dma", label: "Pullback to rising DMA", badge: "Pullback", get: (r) => r.pullback_to_rising_dma },
+  { key: "flat_base_breakout", label: "Flat-base breakout", badge: "Flat base", get: (r) => r.flat_base_breakout },
+];
+
+/** A pattern badge tooltip: the server-built reason + pivot + invalidation note, rendered verbatim
  *  (never assembled client-side — single source of truth). */
-function vcpTitle(vcp: Vcp): string {
-  return [vcp.reason, vcp.pivot != null ? `Pivot $${vcp.pivot.toFixed(2)}.` : null, vcp.invalidation.note]
+function patternTitle(flag: PatternFlag): string {
+  return [flag.reason, flag.pivot != null ? `Pivot $${flag.pivot.toFixed(2)}.` : null, flag.invalidation.note]
     .filter(Boolean)
     .join(" ");
 }
@@ -61,7 +76,7 @@ export default function StocksPage() {
   const [state, setState] = useState<State>({ kind: "loading" });
   const [sector, setSector] = useState<string>(ALL);
   const [setup, setSetup] = useState<string>(ALL);
-  const [vcp, setVcp] = useState<string>(ALL);
+  const [pattern, setPattern] = useState<string>(ALL);
   const [catalog, setCatalog] = useState<MethodologyCatalog | null>(null);
 
   useEffect(() => {
@@ -100,12 +115,15 @@ export default function StocksPage() {
       .forEach((entry) => map.set(entry.key, entry.meaning));
     return map;
   }, [catalog]);
-  const vcpMeaning = useMemo(
-    () =>
-      catalog?.entries.find((entry) => entry.kind === "pattern" && entry.key === "vcp")?.meaning ??
-      null,
-    [catalog],
-  );
+  // pattern key -> catalog meaning (the SAME generic definition the /methodology page shows), for every
+  // detected pattern. Keyed by config `key` so a new pattern's tooltip appears with no per-pattern code.
+  const patternMeaning = useMemo(() => {
+    const map = new Map<string, string>();
+    catalog?.entries
+      .filter((entry) => entry.kind === "pattern")
+      .forEach((entry) => map.set(entry.key, entry.meaning));
+    return map;
+  }, [catalog]);
   // Setup-filter vocabulary: the catalog's setup entries in catalog order; graceful fallback to the
   // statuses present in the data if the catalog fetch failed (a catalog hiccup must NOT break J-02).
   const setupOptions = useMemo(() => {
@@ -122,18 +140,31 @@ export default function StocksPage() {
     [rows],
   );
 
-  // client-side FILTER only — never re-sorts or recomputes a score/flag (single source of truth).
-  // The VCP filter narrows on the SERVER-computed `row.vcp.flagged` (pure re-display, no detection).
-  const visible = useMemo(
-    () =>
-      rows.filter(
-        (r) =>
-          (sector === ALL || r.sector === sector) &&
-          (setup === ALL || r.setup.status === setup) &&
-          (vcp === ALL || (vcp === VCP_ONLY ? r.vcp.flagged : !r.vcp.flagged)),
-      ),
-    [rows, sector, setup, vcp],
-  );
+  // client-side FILTER only — never re-sorts or recomputes a score/flag (single source of truth). The
+  // pattern filter narrows on the SERVER-computed `row.<name>.flagged` (pure re-display, no detection).
+  // The `pattern` value is `__all__`, or `<key>__only` / `<key>__none` for a specific detected pattern.
+  const visible = useMemo(() => {
+    const [patternKey, patternMode] = pattern === ALL ? [null, null] : pattern.split("__");
+    const patternEntry = patternKey ? PATTERNS.find((p) => p.key === patternKey) : null;
+    return rows.filter((r) => {
+      if (sector !== ALL && r.sector !== sector) return false;
+      if (setup !== ALL && r.setup.status !== setup) return false;
+      if (patternEntry) {
+        const flagged = patternEntry.get(r).flagged;
+        if (patternMode === "only" ? !flagged : flagged) return false;
+      }
+      return true;
+    });
+  }, [rows, sector, setup, pattern]);
+
+  // a plain-language label for the active pattern filter, used only in the honest empty-state copy.
+  const patternFilterLabel = useMemo(() => {
+    if (pattern === ALL) return null;
+    const [key, mode] = pattern.split("__");
+    const entry = PATTERNS.find((p) => p.key === key);
+    if (!entry) return null;
+    return mode === "only" ? `${entry.label}-flagged` : `non-${entry.label}`;
+  }, [pattern]);
 
   return (
     <div className="space-y-4">
@@ -170,11 +201,15 @@ export default function StocksPage() {
             </Select>
           </label>
           <label className="flex items-center gap-2 text-xs text-text-muted">
-            VCP
-            <Select value={vcp} onChange={(e) => setVcp(e.target.value)} aria-label="Filter by VCP pattern">
-              <option value={ALL}>All</option>
-              <option value={VCP_ONLY}>VCP only</option>
-              <option value={VCP_NONE}>Non-VCP</option>
+            Pattern
+            <Select value={pattern} onChange={(e) => setPattern(e.target.value)} aria-label="Filter by detected pattern">
+              <option value={ALL}>All patterns</option>
+              {PATTERNS.map((p) => (
+                <optgroup key={p.key} label={p.label}>
+                  <option value={`${p.key}__only`}>{p.label} only</option>
+                  <option value={`${p.key}__none`}>Not {p.label}</option>
+                </optgroup>
+              ))}
             </Select>
           </label>
           <span className="num text-xs text-text-faint">
@@ -211,11 +246,7 @@ export default function StocksPage() {
           icon={TrendingUp}
           title="No stocks match these filters"
           description={`${
-            vcp === VCP_ONLY
-              ? "No VCP-flagged name"
-              : vcp === VCP_NONE
-                ? "No non-VCP name"
-                : "No stock"
+            patternFilterLabel ? `No ${patternFilterLabel} name` : "No stock"
           } is currently ${setup !== ALL ? `“${setup}”` : "shown"}${
             sector !== ALL ? ` in ${sector}` : ""
           }. No rows are fabricated to fill the view — clear a filter to see more.`}
@@ -243,7 +274,7 @@ export default function StocksPage() {
                   key={row.ticker}
                   row={row}
                   setupMeaning={setupMeaning.get(row.setup.status)}
-                  vcpMeaning={vcpMeaning}
+                  patternMeaning={patternMeaning}
                 />
               ))}
             </tbody>
@@ -257,11 +288,11 @@ export default function StocksPage() {
 function StockTableRow({
   row,
   setupMeaning,
-  vcpMeaning,
+  patternMeaning,
 }: {
   row: StockRow;
   setupMeaning?: string;
-  vcpMeaning?: string | null;
+  patternMeaning: Map<string, string>;
 }) {
   return (
     <tr className="border-b border-border transition-colors hover:bg-surface-2">
@@ -290,14 +321,19 @@ function StockTableRow({
           {setupMeaning ? (
             <InfoTooltip label={`Definition of ${row.setup.status}`} content={setupMeaning} />
           ) : null}
-          {row.vcp.flagged ? (
-            <Badge variant="accent" className="cursor-help" title={vcpTitle(row.vcp)}>
-              VCP
-            </Badge>
-          ) : null}
-          {row.vcp.flagged && vcpMeaning ? (
-            <InfoTooltip label="Definition of the VCP pattern" content={vcpMeaning} />
-          ) : null}
+          {PATTERNS.filter((p) => p.get(row).flagged).map((p) => {
+            const meaning = patternMeaning.get(p.key);
+            return (
+              <span key={p.key} className="inline-flex items-center gap-1">
+                <Badge variant="accent" className="cursor-help" title={patternTitle(p.get(row))}>
+                  {p.badge}
+                </Badge>
+                {meaning ? (
+                  <InfoTooltip label={`Definition of the ${p.label} pattern`} content={meaning} />
+                ) : null}
+              </span>
+            );
+          })}
         </div>
       </td>
       <td className="max-w-xs px-3 py-2 text-xs text-text-muted">

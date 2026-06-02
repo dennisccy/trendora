@@ -201,6 +201,18 @@ function HealthDashboard({ data }: { data: SystemHealthResponse }) {
           min={min}
           emptyLabel="No VCP / non-VCP cohort had a measurable forward return at this horizon."
         />
+        <BreakdownPanel
+          title="Forward return: Pullback-to-rising-DMA vs not"
+          rows={data.by_pullback_to_rising_dma.map((r) => ({ label: r.pullback_to_rising_dma, ...r }))}
+          min={min}
+          emptyLabel="No pullback-to-rising-DMA cohort had a measurable forward return at this horizon."
+        />
+        <BreakdownPanel
+          title="Forward return: Flat-base breakout vs not"
+          rows={data.by_flat_base_breakout.map((r) => ({ label: r.flat_base_breakout, ...r }))}
+          min={min}
+          emptyLabel="No flat-base-breakout cohort had a measurable forward return at this horizon."
+        />
       </div>
 
       <ControlGroupPanel rows={data.control_group} min={min} horizon={data.horizon} />

@@ -144,7 +144,13 @@ class ScannerResult(SQLModel, table=True):
     so the forward-test `by_vcp` grouping can read it verbatim like `by_setup` / `by_bucket`; the full
     `vcp` block (reason / pivot / invalidation / contractions) stays in `record_json`. It is an
     APPEND-only column addition — no existing snapshot row is ever UPDATEd (anti-goal: Snapshots
-    immutable); a fresh DB re-created from the frozen seed carries it from the start."""
+    immutable); a fresh DB re-created from the frozen seed carries it from the start.
+
+    `is_pullback_to_rising_dma` / `is_flat_base_breakout` (iter-9) are the SAME design for the two new
+    detected patterns: each is the denormalized mirror of `record_json`'s `<name>.flagged`, written
+    once from the single detector output per run, so the forward-test `by_<name>` grouping reads it
+    verbatim. The full pattern blocks ride losslessly in `record_json`; the mirrors are only the fast
+    grouping flags. Append-only column additions — the frozen-seed DB carries them from the start."""
 
     __tablename__ = "scanner_results"
 
@@ -163,6 +169,10 @@ class ScannerResult(SQLModel, table=True):
     rank: int
     record_json: str  # complete canonical score_stocks row dict (lossless)
     is_vcp: bool = Field(default=False, index=True)  # mirror of record_json's vcp.flagged (iter-11)
+    # iter-9 mirrors of record_json's <name>.flagged for the two new detected patterns (same design as
+    # is_vcp; one detector call per run, never recomputed — only the fast forward-test grouping flag).
+    is_pullback_to_rising_dma: bool = Field(default=False, index=True)
+    is_flat_base_breakout: bool = Field(default=False, index=True)
 
 
 class SectorScoreRow(SQLModel, table=True):

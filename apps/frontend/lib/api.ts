@@ -187,6 +187,30 @@ export interface Vcp {
   detail?: Record<string, number | null>; // n_contractions, volume_ratio, dist_from_pivot_pct
 }
 
+/** The pullback-to-rising-DMA pattern flag (iter-9) — a DETECTED PATTERN riding the row ALONGSIDE the
+ *  setup status (never replacing it; never alone making a name Actionable). Same read-only contract as
+ *  `Vcp`: computed once on the backend (price+volume only, date <= as-of), read identically everywhere
+ *  (single source → J-06), re-formatted by the UI only (never recomputed). When not flagged, `pivot`
+ *  and `invalidation.level` are null (no fabricated pattern); `reason`/`note` are server-built. */
+export interface PullbackToRisingDma {
+  flagged: boolean;
+  reason: string;
+  pivot: number | null; // the recent high (resumption level); null when not flagged
+  invalidation: { level: number | null; note: string }; // the rising MA + verbatim sentence
+  detail?: Record<string, number | null>; // dma, slope_pct, dist_from_dma_pct, pullback_depth_pct, volume_ratio
+}
+
+/** The flat-base-breakout pattern flag (iter-9) — same read-only, pattern-not-status contract as
+ *  `Vcp`/`PullbackToRisingDma`. `pivot` is the base high (breakout level); `invalidation.level` is the
+ *  base low. Null when not flagged (never fabricated); reason/note are server-built, rendered verbatim. */
+export interface FlatBaseBreakout {
+  flagged: boolean;
+  reason: string;
+  pivot: number | null; // the base high (breakout level); null when not flagged
+  invalidation: { level: number | null; note: string }; // the base low + verbatim sentence
+  detail?: Record<string, number | null>; // base_depth_pct, dist_below_pivot_pct, volume_ratio
+}
+
 export interface StockRow {
   ticker: string;
   name: string;
@@ -198,6 +222,9 @@ export interface StockRow {
   themes: ThemeChip[]; // every theme whose member list contains this ticker (config order)
   invalidation: Invalidation;
   vcp: Vcp; // the VCP pattern flag (iter-11) — separate from `setup`, read-only re-display
+  // iter-9: two more detected patterns ride the row the SAME way (separate from `setup`, read-only)
+  pullback_to_rising_dma: PullbackToRisingDma;
+  flat_base_breakout: FlatBaseBreakout;
   rank: number;
 }
 
@@ -375,6 +402,12 @@ export interface ForwardRegimeRow extends ForwardGroupRow {
 export interface ForwardVcpRow extends ForwardGroupRow {
   vcp: string; // "VCP" | "non-VCP" cohort label (iter-11)
 }
+export interface ForwardPullbackRow extends ForwardGroupRow {
+  pullback_to_rising_dma: string; // "Pullback-to-DMA" | "non-Pullback" cohort label (iter-9)
+}
+export interface ForwardFlatBaseRow extends ForwardGroupRow {
+  flat_base_breakout: string; // "Flat-base" | "non-Flat-base" cohort label (iter-9)
+}
 
 /** Excess vs a benchmark = mean stock forward return − mean benchmark forward return over matched
  *  runs (a stored subtraction; never recomputed client-side). */
@@ -456,6 +489,9 @@ export interface SystemHealthResponse {
   by_setup: ForwardSetupRow[]; // by setup type (J-09)
   by_regime: ForwardRegimeRow[]; // by market regime — both Risk-on and Risk-off (J-09)
   by_vcp: ForwardVcpRow[]; // VCP vs non-VCP cohorts (iter-11, J-16) — each with n; NA below min_sample
+  // iter-9, J-28: pattern-vs-non-pattern cohorts for the two new detected patterns — each with n; NA below min_sample
+  by_pullback_to_rising_dma: ForwardPullbackRow[];
+  by_flat_base_breakout: ForwardFlatBaseRow[];
   excess: { vs_spy: ExcessVsBenchmark; vs_qqq: ExcessVsBenchmark }; // J-09
   control_group: ControlGroupRow[]; // J-10
   attribution: ReturnAttribution; // J-19 — per-stock / by-sector / by-rank-band / distribution
