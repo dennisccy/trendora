@@ -1,0 +1,121 @@
+# Goal Iteration 15 — Synthesis: travel from lab evidence → leaderboard names → Stock Detail (J-31)
+
+<!-- machine-readable goal-mode metadata -->
+## Goal Mode Metadata
+
+- **Session ID:** i_can_see_the_wealthy_future_forever
+- **Iteration:** 15
+- **Mode:** next
+- **Depth:** full
+- **Frontend Present:** yes
+- **Target journeys:** J-31
+- **Required-still-passing journeys:** J-02, J-05, J-06, J-13, J-15, J-16, J-18, J-25, J-27, J-29, J-30 (and structurally, via untouched paths: J-01, J-03, J-04, J-07, J-08, J-09, J-10, J-11, J-12, J-14, J-17, J-19, J-20, J-21, J-26, J-28)
+- **Anti-goal reminders (verbatim from `docs/goal.md`):**
+  - **Single source of truth.** Each of the six canonical scores (and the A–E bucket and setup status) MUST be computed exactly once by the scoring/regime engine and read identically by every page; the API and frontend MUST NOT recompute them. The same symbol's score MUST NOT differ between two views. *(critical)* — **the synthesis travel only RE-DISPLAYS stored leaderboard/detail/lab values; it computes nothing.**
+  - **No recompute in the read path.** Read endpoints MUST serve canonical values from the persisted immutable snapshot for the resolved as-of date; they MUST NOT recompute scores/returns/buckets per request. The scan is computed once per date (bootstrap, scheduled, or first view) and then read from storage. *(extends Single source of truth)* — **no new endpoint and no new query; the leaderboard deep-link and the lab→leaderboard cross-link read the EXISTING `GET /api/stocks` / `GET /api/research/*` payloads unchanged.**
+  - **Exactly one date selector.** The frontend MUST NOT maintain a second, independent date state; every date-scoped page (including Backtest) reads the single global as-of control. The Stock-Detail chart **timeframe** selector (1D/1h/15m/5m) is NOT a date control — it changes bar granularity only, bounded by the resolved as-of date. *(extends Single source of truth)* — **THE principal anti-goal risk this iter: the new `/stocks` URL query params are FILTER state (sector/setup/pattern) ONLY — never a date param. The as-of date stays in the global provider (`useAsOf()`); the deep-link MUST NOT introduce a `?as_of`/date query param or any second date state.**
+  - **No fabricated data.** On a data-provider failure the system MUST surface an explicit stale/unavailable state and MUST NOT synthesize prices or scores to force a green journey. — **a pattern/setup filter with zero matching names today shows the existing honest empty-state, never a fabricated row.**
+  - **Research lab is read-only, honest & not predictive.** Every Factor-Lab and event-study figure (decile means, rank-IC, combination cohorts, regime slices, distribution, hit-rate, expectancy, MAE/MFE, exit-horizon, risk-adjusted ratios) MUST be derived once from the stored per-observation forward returns + stored factor values + post-snapshot price path; the API and frontend MUST NOT recompute returns or factors to build them; low-sample cells show NA + n; results carry the survivorship-bias label. The lab is **descriptive evidence, not a fitted/ML predictive model.** — **the synthesis adds NO new analytic; it links the existing lab evidence to the leaderboard.**
+  - **Attribution is read-only.** The forward-return attribution slices (per-stock contribution, by-sector, by-rank-band, distribution/hit-rate) MUST be derived from the stored per-observation forward returns; the API and frontend MUST NOT recompute returns to build them. *(extends No recompute in the read path)*
+  - **Honest forward-test for partial windows.** The per-date forward-test scorecard and the VCP-vs-non-VCP breakdown MUST show NA/partial for horizons or cohorts lacking enough samples and MUST show sample size — never fabricate or extrapolate a return to fill a gap. *(extends No fabricated data)* — **weak / low-sample lab evidence stays NA + n along the whole travel; it is never hidden to make the path look stronger.**
+  - **Honest limitations surfaced.** Breadth and new-high/new-low metrics computed from the seed universe MUST be labelled "universe-relative" (not full-market internals), and walk-forward evidence MUST be labelled as carrying survivorship bias (current-membership universe) so results are never overstated.
+  - **Intraday stays deterministic & coverage-honest.** Intraday timeframes MUST boot from the committed seed (no live/streaming dependency in the boot path), MUST record per-timeframe coverage windows, MUST enforce per-timeframe no-lookahead, and MUST show NA where history is insufficient — never fabricating intraday bars or extrapolating across gaps. *(extends No fabricated data + No lookahead)* — **J-24 (the 1D/1h/15m/5m selector) is UNBUILT and externally data-walled; J-31 step 4 "across timeframes" is scoped to the canonical DAILY timeframe (which works), with intraday treated as honestly coverage-limited — NOT a J-31 blocker.**
+  - **No magic numbers.** Every scoring weight, threshold, decision-rule cutoff, bucket edge, universe entry, and theme definition MUST come from the config file — no such literal in calculation code. — **the lab→leaderboard filter mapping MUST be derived from the existing config-driven subject `kind` / pattern keys, NOT a hard-coded subject↔filter table.**
+
+## GOAL
+
+Make the **synthesis journey J-31 navigable end-to-end**: a user reads the **Factor Lab** evidence (which factor / volatility-family measure sorts future *risk-adjusted* returns, with rank-IC + n) and its **by-regime** robustness, confirms an aligned **setup/pattern** has positive expectancy and tolerable MAE at a sensible exit-horizon in the **Setup & Pattern Lab** (event study), then clicks through to the **Stock Leaderboard pre-filtered to the names expressing that setup/pattern today**, and opens one on **Stock Detail** — every step reading only canonical stored values, with weak / low-sample evidence shown as NA, never hidden or fabricated.
+
+## BACKGROUND
+
+J-31 is the **last buildable journey** in the session. 27/31 journeys pass; the only failures are J-22/J-23/J-24 (externally Yahoo-429 data-walled — **do NOT autonomously retry**) and J-31 (unbuilt, the explicit iter-15 target per the iter-14 evaluator). Every J-31 prerequisite already exists and is passing: Factor Lab decile/rank-IC (J-25), regime split (J-27), volatility family (J-30), combination cohorts (J-26), the Setup & Pattern event study (J-29), the leaderboard pattern/setup filters (J-02/J-16/J-28), and Stock Detail with the pattern badge + invalidation + the three A–E scores (J-05/J-06).
+
+**The actual gap (verified in source this planning pass):** there is **no navigable bridge** from the labs to the leaderboard, and the leaderboard cannot be deep-linked. Confirmed:
+- `apps/frontend/app/stocks/page.tsx` holds its `sector` / `setup` / `pattern` filters in `useState` ONLY — there is **no `useSearchParams` / `useRouter` / URL param** anywhere, so `/stocks` cannot be opened pre-filtered.
+- `apps/frontend/app/research/page.tsx` has **no `href` / `Link` / router usage** — nothing links a lab subject to the names that express it.
+- `EventStudySubject` is already `{ key, label, kind: "setup" | "pattern" }` (config-driven on the backend via `subject_catalog`), so the lab→leaderboard mapping is already fully determined by data: **pattern subject → the leaderboard's `pattern=<key>__only` filter; setup subject → the `setup=<status>` filter** (the leaderboard's existing filter encodings — `pattern` state is `<key>__only`/`<key>__none`; `setup` state is the status string).
+
+So J-31 is, per the iter-14 evaluator's explicit guidance, **navigation/cross-linking + filters reading stored values — NO new computation.** The build is **frontend-only**: (A) make the `/stocks` filters deep-linkable from the URL, and (B) add a lab→leaderboard cross-link on the Setup & Pattern Lab. **No backend change** — the leaderboard rows already carry the pattern/setup/score values, and the labs already serve their analytics from `GET /api/research/*`.
+
+**Lessons applied (from `lessons.md` / the journey-history / the iter-14 eval):**
+- **iter-14 lesson (J-31 "across timeframes"):** J-31 step 4 references timeframes, but J-24 (the 1D/1h/15m/5m selector) is unbuilt and externally Yahoo-429 data-walled. **Scope J-31's acceptance to the canonical DAILY timeframe** (the detail chart's full-path-through-latest with the as-of marker, J-20) and treat intraday as honestly coverage-limited — NOT a J-31 blocker. Do NOT build a timeframe selector and do NOT autonomously retry the intraday fetch.
+- **iter-0 / iter-1 lesson (the one historical anti-goal violation — "exactly one date selector"):** the only ever-recorded anti-goal violation in this session was a SECOND date control (the old `BacktestDatePicker`), resolved iter-1 and holding since. Adding `useSearchParams` to `/stocks` is the iter where that risk could recur — so the deep-link MUST encode **filters only, never a date**; the as-of stays in the global `asof-provider`. Verify in source that no `?as_of`/date query param is introduced and that `useAsOf()` remains the sole date source.
+- **iter-1 lesson (as-of provider is in-memory, survives client-side nav, resets on hard reload):** the synthesis travel uses **in-app navigation** (click the cross-link / click a row), so the global as-of carries across; browser-QA must drive it via clicks, not hard reloads.
+- **iter-6 lesson (browser serialization + sha256 de-dup):** if both the `qa` agent and `browser-qa-agent` drive Chrome, serialize access (one vacates before the other captures), de-dup evidence by sha256, and ground any "filtered vs unfiltered" / "as-of toggle leaves the page byte-identical" claim on DISTINCT shots + a DOM/network assertion, never a single screenshot pair.
+- **iter-4 lesson (defining-step evidence):** convert J-31 to passing ONLY if the **full travel is actually captured** — lab evidence read → cross-link clicked → leaderboard pre-filtered to the named cohort → a row opened on Stock Detail showing the badge + scores. A render of one surface in isolation does not satisfy this multi-step cross-page acceptance.
+
+## IN SCOPE
+
+### Backend
+- [ ] **None expected.** J-31 reads existing endpoints only. The developer MUST NOT add a new endpoint, a new query param, or any recompute path. In particular: do **NOT** add a "filter by factor decile" param to `GET /api/stocks` — the synthesis expresses a factor *through its aligned setup/pattern* (the journey's own step 3 → step 4), which the leaderboard already filters from stored row flags. If the developer believes a backend change is unavoidable, STOP and flag it in the handoff rather than introducing a second computation/serving path for an existing value (that is exactly the drift the coherence-auditor hard-fails).
+
+### Frontend
+
+**A. Deep-linkable Stock Leaderboard filters (`apps/frontend/app/stocks/page.tsx`):**
+- [ ] Initialize the existing `sector` / `setup` / `pattern` filter state from URL query params on load (e.g. `?sector=Energy`, `?setup=Breakout-watch`, `?pattern=pullback_to_rising_dma__only`), using `next/navigation` client hooks (`useSearchParams`). The param encodings MUST be the EXISTING filter-state encodings verbatim — `sector` = a sector string (absent ⇒ `__all__`); `setup` = a status string; `pattern` = `<key>__only` / `<key>__none`. An absent or unrecognized param falls back to `__all__` (no crash, no fabricated filter).
+- [ ] Reflect filter changes back into the URL (shallow update via `router.replace`, `scroll: false`) so the view is shareable/back-navigable, **without a server refetch** — the single `fetchStocks(asOf)` call and its dependency array stay keyed to the as-of date ONLY (warm load J-15 unchanged). The filtering stays the existing pure client-side re-display of server rows (`visible` memo) — never re-sorts or recomputes a score/flag.
+- [ ] **J-18 guard (critical):** the only URL params are the three FILTER params above. Do **NOT** add a date/`as_of` query param. The as-of date remains sourced solely from `useAsOf()`; the deep-link must not create a second date state. (Wrap the `useSearchParams` usage in the App-Router-required `<Suspense>` boundary if the Next.js build demands it — a build/typecheck concern only, not a behavior change.)
+
+**B. Lab → leaderboard cross-link (`apps/frontend/app/research/page.tsx`, the `EventStudyLab` section):**
+- [ ] For the resolved event-study subject (`data.subject`), render a **"View the names expressing this on the leaderboard →"** link (a `next/link` `Link`) that deep-links the leaderboard to the matching filter, derived from the subject's existing `kind`:
+  - `kind === "pattern"` → `/stocks?pattern=<subject.key>__only`
+  - `kind === "setup"` → `/stocks?setup=<subject.key>` (the key IS the status string)
+  - The mapping MUST be derived from the payload's `kind` (and, for patterns, the same config-driven key the leaderboard's `PATTERNS` registry uses) — **no hard-coded subject↔filter table** (No magic numbers; config-driven UI vocabulary). Encode the query value safely (it is already URL-safe for the seed's keys/statuses, but use the standard encoder).
+- [ ] Keep the link honest: it points to "the names flagged for this pattern / classified as this setup **at the current as-of date**" — it does not claim a count it cannot prove. (Optional, nice-to-have: show the live count if it is already in hand; do NOT add a fetch to compute one.)
+- [ ] **Optional, minimal framing (nice-to-have, keep tight):** a one-line caption near the top of `/research` (or on the Event Study Lab) that names the synthesis path — "Factor Lab evidence → an aligned setup/pattern's event study → the names expressing it on the leaderboard → Stock Detail." No new component, no new data.
+
+### New user-facing capability
+A user can travel the full evidence→action path **inside the product**: from "which factor / volatility measure / pattern drives positive *risk-adjusted* forward return (with n and regime context)" in the Research labs, to "which names express it right now" on the Stock Leaderboard (one click, pre-filtered), to a single name's Stock Detail (scores + the pattern badge + invalidation + the daily chart) — without copying a ticker by hand and without any recomputed or fabricated number.
+
+### New information displayed
+No new canonical value. The only new UI affordance is the **cross-link** on the Setup & Pattern Lab and the **shareable/deep-linkable URL state** of the leaderboard filters (a re-display control over the SAME stored rows).
+
+### New user actions
+- Click "View the names expressing this on the leaderboard →" on the Setup & Pattern Lab → lands on `/stocks` pre-filtered to that pattern/setup.
+- Open `/stocks` with filter query params directly (shareable link); change a filter and see it reflected in the URL.
+
+### UI surface changes
+- `apps/frontend/app/research/page.tsx` — `EventStudyLab` gains one cross-link (and optionally a one-line synthesis caption).
+- `apps/frontend/app/stocks/page.tsx` — filter state becomes URL-backed (init-from-URL + reflect-to-URL). No table/column/score change.
+
+### Product surface delta
+The labs stop being a read-only dead-end: their evidence now leads directly to the actionable name list and the per-name detail. The leaderboard becomes shareable/deep-linkable by filter. No new page, route, or nav entry; no backend change.
+
+### Blueprint conformance
+J-31 rides **existing approved homes only**: `/research` (Factor Lab + Setup & Pattern Lab, approved since iter-10), `/stocks`, and `/stocks/[ticker]` (built). **No nav-skeleton change → NO `blueprint.reapproval-requested` marker.** The blueprint's Feature/journey-homes table gains a J-31 row (home = the cross-page travel across these existing homes); IA + Data Contract get additive clarifying notes only.
+
+### Data-contract additions
+**None.** No new displayed value. The leaderboard URL query params are a **re-display control** over the already-registered `Leadership/Entry Quality/Risk` + `setup status` + detected-pattern flag values served by `GET /api/stocks` — NOT a date control (J-18) and NOT a second computation/serving path. The lab→leaderboard cross-link reads the already-registered event-study subject (`GET /api/research/event-study`). Both are recorded as a clarifying note in `blueprint.md`, not as a new Data-Contract row.
+
+## OUT OF SCOPE
+- **Any backend change** — no new endpoint, query param, model column, or computation. (If one seems necessary, STOP and flag it.)
+- **A "filter by factor decile" leaderboard control** — the factor is expressed through its aligned setup/pattern (existing filters); a raw-factor-decile filter would be new computation and is explicitly excluded.
+- **J-24 (the 1D/1h/15m/5m chart timeframe selector) and any intraday data** — unbuilt + externally Yahoo-429 data-walled; J-31 is scoped to the canonical daily timeframe. Do NOT build it; do NOT retry the intraday fetch.
+- **J-22 / J-23** — externally data-walled; do NOT autonomously retry.
+- Any change to the labs' analytics, the scoring/forward-testing engines, the as-of provider, or the date control.
+- Persisting filter state beyond the URL (no localStorage / cookies).
+
+## DEFINITION OF DONE
+- [ ] **J-31 passes via browser-qa-agent** through the FULL travel (not isolated renders): read Factor Lab decile + risk-adjusted + rank-IC + n for a factor → read its by-regime split → read the aligned setup/pattern subject's event study (distribution / expectancy / MAE-MFE / best-exit-horizon / by-regime / by-sector, with n + honest NA) → click the cross-link → land on `/stocks` **pre-filtered** to that subject's names (DOM-assert the active filter + the narrowed row count) → open one flagged/classified name on `/stocks/[ticker]` and confirm the pattern badge / setup + invalidation + the three A–E scores render (single source of truth, daily chart).
+- [ ] Required-still-passing journeys remain green — especially **J-18** (no second date state: the leaderboard URL carries filter params only; the global as-of still drives the date; toggling the as-of leaves the deep-linked filter intact and fires no extra date param), **J-02** (the dropdown filters still work and now sync to the URL), **J-15** (warm load unchanged — no new fetch), **J-06** (detail scores byte-identical to the leaderboard), and **J-25/J-27/J-29/J-30** (the labs still render/re-point; the cross-link is additive).
+- [ ] No anti-goal violation introduced — verified IN SOURCE: the diff touches only `stocks/page.tsx` + `research/page.tsx` (+ any `<Suspense>` wrapper); no `as_of`/date query param; no new endpoint/computation; the cross-link mapping is config/payload-`kind`-driven (no hard-coded table).
+- [ ] Frontend build + typecheck pass (`cd apps/frontend && npm run build`). Backend suite stays green (no backend change → trivially green; run once to confirm no incidental breakage).
+- [ ] Dev handoff written at `docs/handoffs/goal-i_can_see_the_wealthy_future_forever-iter-15-dev.md`.
+
+## TESTING REQUIREMENTS
+- **Browser (the J-31 defining flow):**
+  1. `/research` — Factor Lab: pick a factor (e.g. the volatility-family `vcp_contraction` or `RS-vs-SPY-3m`), confirm the decile table shows mean forward return + the downside-risk-adjusted column + rank-IC + n (J-25/J-30), and the **by-regime** split renders per-regime spread + n (J-27).
+  2. Same page — Setup & Pattern Lab: select an aligned subject and confirm the event study renders distribution / expectancy / MAE-MFE / best-exit-horizon / by-regime / by-sector with n + honest NA (J-29).
+  3. Click **"View the names expressing this on the leaderboard →"**.
+  4. **Land on `/stocks` pre-filtered** — DOM-assert the active filter control reflects the subject (e.g. Pattern = "Pullback only" / Setup = "Breakout-watch") AND the visible row count is the narrowed subset (`visible / total`), each row genuinely expressing the subject. **Pick a subject that has ≥1 expressing name at the current as-of** so the next step lands on a real row — e.g. **pullback-to-rising-DMA** (~9 names in the seed) or **flat-base breakout** (~3), or a populous **setup** like **Breakout-watch**; if a chosen pattern has zero flagged names today, that is an honest empty-state (J-16/J-02 acceptance) and the test should select a subject that does populate to complete the open-detail step.
+  5. Click a row → `/stocks/[ticker]` → confirm the subject's badge (pattern badge with pivot/invalidation, or the setup status) + the three A–E scores + invalidation render, byte-consistent with the leaderboard row (J-06), on the daily chart (J-20).
+  - **J-18 cross-check:** with a filter deep-linked, toggle the global as-of switcher and confirm the page re-points by DATE while the filter stays intact and **no `as_of` appears in a leaderboard fetch as a second date state**; confirm there is exactly one date control. Ground this on distinct shots + a network/DOM assertion (iter-6 lesson).
+  - **Shareable-link check:** open `/stocks?pattern=<key>__only` (and `?setup=<status>`) directly in a fresh nav and confirm the filter is pre-applied.
+- **Unit/integration:** no new backend code, so no new pytest is expected. Frontend correctness is covered by `npm run build` (typecheck) + the browser flow. If the dev adds any frontend unit test for the param-encode/decode mapping, it must assert exact values (e.g. `pattern` subject `vcp` → `/stocks?pattern=vcp__only`).
+- **Error / honesty cases:** an unrecognized/empty filter param falls back to `__all__` (no crash); a filter matching zero rows shows the existing honest empty-state (no fabricated row); low-sample lab cells stay NA + n along the travel; the intraday timeframe is honestly absent/coverage-limited (daily only), never faked.
+
+## NOTES
+- **Depth = full** per the iter-14 evaluator's explicit recommendation. Although the change is small and frontend-only, J-31 is the **capstone synthesis** journey whose entire purpose is cross-surface coherence, and its acceptance is a multi-step cross-page browser flow — so it warrants the full pipeline (coherence-auditor on the read-only/one-date-control seams, ux-regression on the new cross-link discoverability, and the closure gate on the cross-page travel). The prior evaluator did NOT emit ESCALATE; full is chosen for verification rigor, not because a functional gap requires it.
+- **Why the pattern/setup is the bridge (scoping rationale for the evaluator):** J-31 step 1 picks a *factor*, but the leaderboard has no factor filter and adding one would be new computation (excluded). The journey itself routes expression through step 3 — "a setup/pattern **aligned with that factor**" — to step 4's leaderboard filter. The aligned pattern (e.g. the VCP / contraction pattern aligned with the volatility-contraction factor) is simultaneously (a) a forward-tested lab subject with risk-adjusted evidence (J-29), (b) an existing leaderboard filter (J-16/J-28), and (c) a per-name badge on detail (J-05/J-16) — so it is the faithful, no-new-computation bridge. The factor↔pattern "alignment" is the user's analytical reading, not a system-asserted invariant; J-31's acceptance is the navigable travel reading canonical values, not a statistical alignment proof.
+- **Principal risk = J-18 (exactly one date selector).** This is the one iter where a second date state could regress, because `/stocks` gains URL query params. Keep them filters-only. The coherence-auditor + the evaluator should verify in source that no `as_of`/date param was added and `useAsOf()` is still the sole date source — exactly the seam every prior `/research` iteration checked.
+- **Strategic (forward planning, not this iter's concern):** after J-31 lands green, **GOAL_ACHIEVED is NOT autonomously reachable** — J-22/J-23/J-24 remain externally Yahoo-429 data-walled and unblock only on operator confirmation of a reachable no-key egress (J-22 auto-heals via its committed finish runbook). Expect the iter-15 evaluator to return CONTINUE (28/31) or, once it confirms no further autonomous work exists, a correct STALLED on the data-walled remainder — at which point the operator either confirms a reachable feed or edits `docs/goal.md` scope. The decomposer must NOT manufacture work against the data-walled journeys.

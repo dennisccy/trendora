@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever-iter-15",
+  "base_url": "http://localhost:3835",
+  "iteration": 15,
+  "default_timeout_ms": 10000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Start with the evidence in the Research labs",
+      "narration": "We open the Research labs, where Trendora shows which signals actually sorted future returns — decile by decile, with a downside risk-adjusted column and a rank correlation, all read from stored history.",
+      "point_out": "The decile sort table and the rank-IC card: honest, descriptive evidence to start from, never a prediction.",
+      "journey": "J-25",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research" },
+      "expect": { "text": "Decile sort" }
+    },
+    {
+      "n": 2,
+      "title": "A new one-click bridge from a pattern's study to the names",
+      "narration": "Further down the same page, the Setup & Pattern Lab studies one setup or pattern. New this time: a link that jumps straight from that evidence to the live names expressing it.",
+      "point_out": "The new accent link \"View the names expressing this on the leaderboard →\" with its plain-language caption right under the subject picker.",
+      "journey": "J-31",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "testid": "subject-select" } },
+      "expect": { "text": "View the names expressing this on the leaderboard" }
+    },
+    {
+      "n": 3,
+      "title": "Land on the leaderboard already filtered",
+      "narration": "Following that link opens the Stock Leaderboard pre-filtered to the matching names — here, the stocks showing a pullback to a rising moving average. No re-picking the filter by hand, and the whole view is shareable as a link.",
+      "point_out": "The Pattern filter is already applied, every row carries a \"Pullback\" badge, and the count is narrowed to just those names.",
+      "journey": "J-31",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks?pattern=pullback_to_rising_dma__only" },
+      "expect": { "text": "Pullback" }
+    },
+    {
+      "n": 4,
+      "title": "Open one name for the full detail",
+      "narration": "Click any ticker to open its detail page — the very same scores from the leaderboard, computed once and read everywhere, alongside the pattern's pivot and invalidation level.",
+      "point_out": "Leadership, Entry Quality and Risk scores with their A–E grades, the pattern badge and the invalidation note — identical to the row you came from.",
+      "journey": "J-31",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "css": "table tbody tr:first-child a" } },
+      "expect": { "text": "Entry Quality" }
+    },
+    {
+      "n": 5,
+      "title": "Share any filtered view as a link",
+      "narration": "Because the filters now live in the web address, you can open a ready-made view directly — for example every name in one sector. The date never rides along; it stays in the single top-bar as-of switcher.",
+      "point_out": "Opening the address with a sector pre-selects it: the Sector filter reads \"Energy\" and every visible row is an Energy name.",
+      "journey": "J-31",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks?sector=Energy" },
+      "expect": { "text": "Energy" }
+    },
+    {
+      "n": 6,
+      "title": "Honest when nothing matches",
+      "narration": "Ask for a combination no stock satisfies today and Trendora says so plainly — it never invents a row to fill the screen.",
+      "point_out": "The \"No stocks match these filters\" message instead of fabricated results; clearing a filter brings names back.",
+      "journey": "J-31",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks?pattern=vcp__only&sector=Energy" },
+      "expect": { "text": "No stocks match these filters" }
+    },
+    {
+      "n": 7,
+      "title": "Robust to a broken link",
+      "narration": "Even an unknown or broken filter in the address is handled gracefully — Trendora ignores it, falls back to showing everything, and never errors out.",
+      "point_out": "The unrecognized value is dropped: the Pattern filter returns to \"All patterns\" and the full ranked list is shown.",
+      "journey": "J-31",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks?pattern=garbage_value" },
+      "expect": { "text": "Entry Quality" }
+    }
+  ]
+}

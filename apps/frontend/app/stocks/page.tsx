@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, TrendingUp } from "lucide-react";
 
 import { useAsOf } from "@/components/asof-provider";
@@ -46,6 +47,19 @@ const PATTERNS: { key: string; label: string; badge: string; get: (row: StockRow
   { key: "flat_base_breakout", label: "Flat-base breakout", badge: "Flat base", get: (r) => r.flat_base_breakout },
 ];
 
+/** Decode the URL `pattern` query param into the leaderboard's internal filter value (J-31 deep-link).
+ *  Strictly validated against the PATTERNS registry: `<key>__only` / `<key>__none` for a KNOWN key,
+ *  else the `__all__` sentinel — an absent or unrecognized param never crashes and fabricates no filter
+ *  (it harmlessly falls back to "all"). The encoding is the leaderboard's existing one verbatim; this is
+ *  the ONLY place a URL param maps to filter state — no date/as_of param is ever read here (J-18). */
+function parsePatternParam(raw: string | null): string {
+  if (!raw) return ALL;
+  const [key, mode] = raw.split("__");
+  const known = PATTERNS.some((p) => p.key === key);
+  if (known && (mode === "only" || mode === "none")) return `${key}__${mode}`;
+  return ALL;
+}
+
 /** A pattern badge tooltip: the server-built reason + pivot + invalidation note, rendered verbatim
  *  (never assembled client-side — single source of truth). */
 function patternTitle(flag: PatternFlag): string {
@@ -71,12 +85,29 @@ function setupVariant(status: string): "ok" | "warn" | "danger" | "accent" | "de
   }
 }
 
+/** Thin wrapper providing the Suspense boundary that `useSearchParams()` requires in the Next 15 App
+ *  Router (a production-build requirement). All hooks live in StocksInner, inside the boundary. */
 export default function StocksPage() {
+  return (
+    <Suspense fallback={<StocksSkeleton />}>
+      <StocksInner />
+    </Suspense>
+  );
+}
+
+function StocksInner() {
   const { asOf } = useAsOf();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [state, setState] = useState<State>({ kind: "loading" });
-  const [sector, setSector] = useState<string>(ALL);
-  const [setup, setSetup] = useState<string>(ALL);
-  const [pattern, setPattern] = useState<string>(ALL);
+  // Filters init ONCE from the URL (lazy initializers — read on mount only). `sector`/`setup` are taken
+  // verbatim (an unmatched value harmlessly renders the existing honest empty-state); `pattern` is
+  // strictly validated against the PATTERNS registry. These three filter params are the ONLY URL state —
+  // the as-of date stays in the global asof-provider (useAsOf), never a query param (J-18).
+  const [sector, setSector] = useState<string>(() => searchParams.get("sector") ?? ALL);
+  const [setup, setSetup] = useState<string>(() => searchParams.get("setup") ?? ALL);
+  const [pattern, setPattern] = useState<string>(() => parsePatternParam(searchParams.get("pattern")));
   const [catalog, setCatalog] = useState<MethodologyCatalog | null>(null);
 
   useEffect(() => {
@@ -103,6 +134,25 @@ export default function StocksPage() {
       });
     return () => controller.abort();
   }, []);
+
+  // Reflect filter changes OUT to the URL so the view is shareable / back-navigable — WITHOUT a server
+  // refetch (the fetchStocks effect above stays keyed to [asOf] only; J-15 warm load unchanged). State is
+  // initialized from the URL once above and never driven FROM searchParams, so there is no state↔URL loop.
+  // The mount run is skipped so only real filter changes are written; `__all__` values are omitted for
+  // clean URLs. NO date/as_of param is ever written here (J-18 — the as-of stays in the global provider).
+  const didReflectMount = useRef(false);
+  useEffect(() => {
+    if (!didReflectMount.current) {
+      didReflectMount.current = true;
+      return;
+    }
+    const params = new URLSearchParams();
+    if (sector !== ALL) params.set("sector", sector);
+    if (setup !== ALL) params.set("setup", setup);
+    if (pattern !== ALL) params.set("pattern", pattern);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [sector, setup, pattern, pathname, router]);
 
   const rows = state.kind === "ok" ? state.data.rows : [];
 

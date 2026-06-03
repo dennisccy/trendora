@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { AlertTriangle, Microscope, Plus, ShieldAlert, X } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
@@ -951,6 +952,16 @@ function EventStudyLab({ horizon }: { horizon: number | undefined }) {
         </div>
 
         {data ? (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <SubjectLeaderboardLink subject={data.subject} />
+            <span className="text-xs text-text-faint">
+              completes the synthesis path — lab evidence → the names expressing this {data.subject.kind} at
+              the current as-of date → Stock Detail. The list reflects the live snapshot; no count is asserted here.
+            </span>
+          </div>
+        ) : null}
+
+        {data ? (
           <CaveatBanner survivorship={data.survivorship_bias} descriptive={data.descriptive_caveat} />
         ) : null}
 
@@ -978,6 +989,30 @@ function EventStudyLab({ horizon }: { horizon: number | undefined }) {
         )}
       </div>
     </Card>
+  );
+}
+
+/** The synthesis cross-link (J-31): from the resolved event-study subject to the Stock Leaderboard
+ *  pre-filtered to the names expressing it TODAY. The leaderboard filter is derived from the subject's
+ *  `kind` (payload/config-driven — NOT a hard-coded subject↔filter table): a pattern → the leaderboard's
+ *  `<key>__only` pattern filter; a setup → the status filter (the key IS the status string). The value is
+ *  URL-encoded (the seed's keys/statuses are already URL-safe). It points to the live as-of snapshot and
+ *  asserts no count it cannot prove (no fetch). Rendered whenever a subject resolves — INCLUDING a
+ *  low-sample / NA subject (the "names expressing it today" set is independent of the event-study sample). */
+function SubjectLeaderboardLink({ subject }: { subject: EventStudyResponse["subject"] }) {
+  const href =
+    subject.kind === "pattern"
+      ? `/stocks?pattern=${encodeURIComponent(subject.key)}__only`
+      : `/stocks?setup=${encodeURIComponent(subject.key)}`;
+  return (
+    <Link
+      href={href}
+      data-testid="subject-leaderboard-link"
+      className="inline-flex items-center gap-1 rounded-sm text-sm font-medium text-accent hover:underline focus-visible:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+    >
+      View the names expressing this on the leaderboard
+      <span aria-hidden>→</span>
+    </Link>
   );
 }
 
