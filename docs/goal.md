@@ -21,10 +21,11 @@ themes, and setups actually outperform SPY, QQQ, sector ETFs, and **random same-
 1 / 5 / 10 / 20 / 60 trading days. Because live evidence takes calendar months to accumulate, the
 system **bootstraps that evidence from history with a strict walk-forward**: it replays the scan
 *as-of* many past dates using only data available on that date (no lookahead), then measures realized
-forward returns from the data that came after. So the System Health page shows real,
-bucket-by-bucket, benchmark-relative evidence from day one. Beyond that aggregate view, the user can
-**interactively pick any past date** to replay that day's full scan and read its realized
-forward-test scorecard, and **detected price patterns (starting with VCP — the Volatility
+forward returns from the data that came after. So the **Backtest workspace** shows real,
+bucket-by-bucket, benchmark-relative evidence as of any chosen date — an expanding walk-forward window
+of every snapshot dated ≤ that date. The user can **interactively pick any past date** to replay that
+day's full scan, read its realized forward-test scorecard, and see that same as-of-scoped evidence, and
+**detected price patterns (starting with VCP — the Volatility
 Contraction Pattern)** are tracked and forward-tested alongside the rankings — so the user can judge
 for themselves whether each idea actually works.
 
@@ -61,9 +62,10 @@ It places **no orders** and holds **no broker keys**.
   candidates per the config thresholds.
 - The **walk-forward forward-testing engine** computes 1/5/10/20/60-day forward returns and excess
   returns vs SPY, QQQ, and sector ETF for past snapshots **using only post-snapshot data**, and the
-  System Health page renders forward return **by score bucket (A–E)**, **by setup type**, and **by
+  **Backtest workspace** renders forward return **by score bucket (A–E)**, **by setup type**, and **by
   regime**, plus a **control-group comparison** (top-ranked cohort vs random same-sector cohort vs
-  SPY/QQQ/sector ETF) so sector beta is visibly separated from stock selection.
+  SPY/QQQ/sector ETF) — all scoped to the snapshots dated ≤ the selected as-of date — so sector beta is
+  visibly separated from stock selection.
 - Scanner runs are **append-only and immutable**: opening a past run shows exactly what the scanner
   said on that date (different from the latest run), and forward returns are stored in a separate table
   keyed to the snapshot — the snapshot itself is never mutated.
@@ -94,6 +96,11 @@ It places **no orders** and holds **no broker keys**.
   filterable on the leaderboard, are documented in the glossary, and appear as a **VCP-vs-non-VCP
   forward-return breakdown** (with sample size; NA below the min-sample threshold) so the evidence
   shows whether VCP-flagged names actually outperform.
+- **Data-dependent journeys never block the rest.** The expanded ~500-name universe (J-22) and the
+  intraday multi-timeframe work (J-23/J-24) depend on a real data fetch the committed seed does not yet
+  contain; the session retries that fetch best-effort on resume, and when the provider is unreachable it
+  records those journeys as honestly blocked (NA) and **continues** — they never halt the loop or veto
+  completion of the buildable journeys.
 
 ## Key Capabilities
 
@@ -121,11 +128,12 @@ It places **no orders** and holds **no broker keys**.
    schedule (APScheduler) or on demand via the API.
 10. **Walk-forward backfill** that replays the scan as-of past dates with **strict no-lookahead**, plus
     a **forward-returns** job that measures realized 1/5/10/20/60-day and excess returns.
-11. **System Health / evidence** analytics: forward returns by bucket, by setup, by regime, excess vs
-    SPY/QQQ/sector, and random-same-sector control groups.
+11. **Forward-tested evidence analytics (on Backtest)**: forward returns by bucket, by setup, by regime,
+    excess vs SPY/QQQ/sector, and random-same-sector control groups — scoped to an expanding window of
+    snapshots dated ≤ the selected as-of date.
 12. **Watchlist** with persistence, reason, current state, price-since-added, and invalidation.
 13. A **dense, dark analytical web dashboard**: Dashboard, Stock Leaderboard, Theme Leaderboard, Sector
-    Leaderboard, Stock Detail, Scanner Runs, System Health, Watchlist.
+    Leaderboard, Stock Detail, Scanner Runs, Watchlist.
 14. *(nice-to-have)* Edit scoring weights/thresholds from a config view.
 15. *(nice-to-have)* Historical charts of a stock's scores across past snapshots.
 16. **Setup & pattern glossary + inline explanations**: a single config-backed catalog of every
@@ -169,8 +177,8 @@ It places **no orders** and holds **no broker keys**.
     and (d) **distribution & hit-rate** (median, % positive, dispersion) alongside the mean with sample
     size n — so a weak number is diagnosable (concentration, outliers, ranking efficacy) rather than
     taken at face value. Every slice is derived once from the stored per-observation forward-return data
-    (never recomputed in the API or a view) and is surfaced on Backtest (per-date) and System Health
-    (aggregate).
+    (never recomputed in the API or a view) and is surfaced on Backtest — both the per-date scorecard and
+    the as-of-scoped aggregate (an expanding window of snapshots dated ≤ the as-of date).
 23. **Full chart history through latest**: the Stock Detail price+MA+volume chart renders the complete
     path to the latest seed date with a clear **as-of marker**; the post-as-of region is labelled
     forward/after-as-of and is **display-only** — it never feeds a score, bucket, setup, pattern, or
@@ -187,9 +195,10 @@ It places **no orders** and holds **no broker keys**.
     config; a chart timeframe selector; strict per-timeframe no-lookahead; daily remains the canonical
     swing timeframe.
 27. **Factor Lab**: decile sort + **rank information coefficient (IC)** per factor, **multi-factor
-    combination cohorts**, and **regime-conditioned** factor effectiveness; the factor set includes an
-    explicit **volatility family** (level / contraction / downside) and intraday-derived factors where
-    coverage allows. Descriptive evidence only — not a fitted predictive model.
+    composite combination cohorts** (a config-weighted percentile rank-blend across any number of
+    selected factors, oriented by side), and **regime-conditioned** factor effectiveness; the factor set
+    includes an explicit **volatility family** (level / contraction / downside) and intraday-derived
+    factors where coverage allows. Descriptive evidence only — not a fitted predictive model.
 28. **Additional detected patterns beyond VCP**: ≥2 config-driven price/volume detectors (e.g.
     pullback-to-rising-DMA, flat-base breakout, RS-line new high, inside-day/tight-area), each
     forward-tested and following the VCP "pattern-not-status" contract.
@@ -276,22 +285,26 @@ It places **no orders** and holds **no broker keys**.
 - **Sectors** (`/sectors`) — the Sector/Industry Leaderboard.
 - **Scanner Runs** (`/scanner-runs`, `/scanner-runs/[runId]`) — history of immutable runs; open one to
   see the exact as-of view for that date.
-- **System Health** (`/system-health`) — the forward-tested evidence: returns by bucket/setup/regime,
-  excess vs benchmarks, and control-group comparisons.
 - **Watchlist** (`/watchlist`) — user-saved stocks with reason, current state, price-since-added, and
   invalidation.
 - **Methodology / Glossary** (`/methodology`) — explains the three scores, A–E buckets, the six
   regime labels, every setup status, AND every detected pattern (incl. VCP) — generated from the
   config-backed catalog.
 - **Backtest / Time-Machine** (`/backtest`) — see the full as-of scan (read from the canonical
-  snapshot) and a **per-date forward-test scorecard** for the date chosen in the global as-of switcher
-  (it has **no** date picker of its own). This is the single-date drill-down; System Health remains the
-  cross-date aggregate, and Scanner Runs remains the immutable run list.
+  snapshot), a **per-date forward-test scorecard**, AND the **forward-tested evidence aggregates**
+  (forward return by bucket/setup/regime, excess vs benchmarks, VCP-vs-non-VCP, and control-group
+  comparisons) for the date chosen in the global as-of switcher (it has **no** date picker of its own).
+  The evidence aggregates are scoped to an **expanding window of every snapshot dated ≤ the as-of date**
+  (at the latest date this equals the full all-history aggregate). Scanner Runs remains the immutable
+  run list.
 - **Research** (`/research`) — the analysis labs: a **Factor Lab** (decile / rank-IC per factor incl. the
-  volatility family, multi-factor combination cohorts, regime-conditioned effectiveness) and a **Setup &
-  Pattern Lab** (event-study across all snapshots: distribution, hit-rate, expectancy, MAE/MFE,
-  exit-horizon, regime/sector slices). Every figure is shown raw **and** risk-adjusted and is derived
-  once from the stored forward returns. Cross-date aggregate (like System Health), not a per-date view.
+  volatility family, multi-factor **composite** combination cohorts — a rank-blend across any number of
+  selected factors — regime-conditioned effectiveness) and a **Setup & Pattern Lab** (event-study across
+  all snapshots: distribution, hit-rate, expectancy, MAE/MFE, exit-horizon, regime/sector slices). Every
+  figure is shown raw **and** risk-adjusted and is derived once from the stored forward returns. Defaults
+  to an all-history aggregate; an optional **"As of date"** mode restricts every figure to snapshots
+  dated ≤ the global as-of date (a point-in-time / walk-forward view bound by the single global control —
+  a mode, not a second date picker).
 - **Data Manager** (`/data`) — grow the dataset on demand: view current coverage (price-history date
   range, symbol count, the set of snapshot/as-of dates, and gaps), pick a date or date range, fetch
   price history and/or backfill snapshots, watch the async job's live progress, and read a history of
@@ -301,8 +314,8 @@ A single global **as-of date switcher** in the top bar is the **only** date cont
 Dashboard, Stocks, Themes, Sectors, Stock Detail, **and Backtest** to a chosen past snapshot (default:
 latest); no page keeps its own separate date picker. The as-of date resolves to a stored immutable
 snapshot — created once on first view, then never mutated. The **Stock Leaderboard** (`/stocks`) gains a
-**VCP filter** (and filters for the additional detected patterns), and **System Health** gains a
-**VCP-vs-non-VCP** forward-return breakdown alongside its by-setup breakdown. The Stock-Detail chart's
+**VCP filter** (and filters for the additional detected patterns), and **Backtest** carries a
+**VCP-vs-non-VCP** forward-return breakdown alongside its by-setup breakdown (as-of-scoped). The Stock-Detail chart's
 **timeframe selector** changes bar granularity only (up to the resolved as-of bound) — it is **not** a
 second date control.
 
@@ -318,7 +331,8 @@ The backend is the single source of truth; every page only displays server-compu
 - **A–E bucket** — derived once from a score by the single bucketing function (config edges).
 - **Setup status** (per stock) — computed once per run from scores + regime + detected pattern.
 - **Forward-return aggregates** (by bucket / setup / regime, and excess vs benchmarks) — computed once
-  by the forward-testing engine from stored snapshots + post-snapshot prices; never recomputed in a view.
+  per resolved as-of date by the forward-testing engine over the snapshots dated ≤ that date (+ their
+  post-snapshot prices), persisted and read from storage; never recomputed in a view.
 - **Setup & pattern catalog** (definition + thresholds + example) — one config-backed source; the
   glossary page and every inline tooltip read it, never re-describing an entry independently.
 - **Detected patterns** (incl. VCP) — computed once per run by the pattern detector from config
@@ -329,11 +343,13 @@ The backend is the single source of truth; every page only displays server-compu
 - **Forward-return attribution slices** (per-stock contribution, by-sector, by-rank-band, and
   distribution/hit-rate) — derived once from the stored per-observation forward returns and read
   identically wherever shown; never recomputed per request or per view.
-- **Lab analytics** (factor decile means + rank-IC, multi-factor cohorts, regime-conditioned slices,
-  event-study distribution / hit-rate / expectancy, MAE/MFE, exit-horizon, and the **risk-adjusted
-  ratios** return/vol · return/MAE · Sharpe-like) — each derived once from the stored per-observation
-  forward returns + stored factor values + post-snapshot price path, read identically wherever shown;
-  never recomputed in the API or a view.
+- **Lab analytics** (factor decile means + rank-IC, multi-factor **composite** cohorts — a rank-blend
+  across any number of factors — regime-conditioned slices, event-study distribution / hit-rate /
+  expectancy, MAE/MFE, exit-horizon, and the **risk-adjusted ratios** return/vol · return/MAE ·
+  Sharpe-like) — each derived once from the stored per-observation forward returns + stored factor
+  values + post-snapshot price path, read identically wherever shown; never recomputed in the API or a
+  view (the Research **all-history vs as-of-date** mode only filters the observation set to snapshots ≤
+  the as-of date — it never recomputes a figure).
 - **Per-timeframe bars + timeframe-scaled indicators/patterns** (1D/1h/15m/5m) — computed once per
   `(symbol, timeframe, as-of)` and served from storage; the daily timeframe stays the canonical swing
   series.
@@ -419,20 +435,27 @@ The backend is the single source of truth; every page only displays server-compu
     that date and differ from the latest run's — confirming each snapshot is an immutable as-of view, not
     a recomputation of today's numbers.
 
-- **J-09: System Health forward-tested evidence**
+- **J-09: Backtest forward-tested evidence (as-of-scoped, expanding window)**
   - Steps:
-    1. Visit `/system-health`
+    1. Visit `/backtest`
     2. Read the "forward return by score bucket" table/chart (buckets A–E) for a horizon (e.g., 20-day)
     3. Read the excess return vs SPY and vs QQQ
     4. Read the breakdown of forward return by setup type and by market regime
+    5. Move the global as-of switcher to an earlier date and confirm the evidence re-points (fewer
+       snapshots contribute, the sample size n drops); return to latest and confirm it matches the full
+       aggregate
   - Acceptance: a by-bucket forward-return table renders numeric mean returns for buckets A–E at a stated
     horizon; numeric excess-vs-SPY and excess-vs-QQQ values render; a by-setup-type and a by-regime
-    breakdown each render numbers — all derived from the walk-forward snapshots, with the sample size (n)
-    shown so the evidence is not presented as more certain than it is.
+    breakdown each render numbers — all on `/backtest`, each with the sample size (n) shown so the
+    evidence is not presented as more certain than it is; the aggregate reflects **only snapshots dated ≤
+    the selected as-of date** (no future snapshot leaks into the as-of-D evidence), so n is non-decreasing
+    toward the latest date and equals the all-history aggregate at latest; every figure is derived once
+    per as-of date from stored snapshots + stored forward returns (never recomputed in the view) and
+    low-sample cells show NA honestly.
 
 - **J-10: Control-group honesty (selection vs sector beta)**
   - Steps:
-    1. On `/system-health`, locate the control-group comparison
+    1. On `/backtest`, locate the control-group comparison
     2. Read the forward return of the top-ranked cohort, the random-same-sector cohort, SPY, QQQ, and the
        relevant sector ETF for the same horizon
   - Acceptance: for a stated horizon the page shows the top-ranked cohort's forward return alongside a
@@ -501,11 +524,11 @@ The backend is the single source of truth; every page only displays server-compu
     2. Confirm flagged rows show a VCP badge plus a reason and an invalidation level
     3. Open one flagged stock; confirm the detail page shows the VCP badge with its pivot/invalidation
     4. On `/methodology`, read the VCP glossary entry
-    5. On `/system-health`, read the VCP-vs-non-VCP forward-return breakdown
+    5. On `/backtest`, read the VCP-vs-non-VCP forward-return breakdown
   - Acceptance: the VCP filter shows only flagged names (or an explicit empty-state if none in the
     current snapshot); each flagged row shows the badge + reason + a concrete invalidation level
     (pivot / last-contraction low); the glossary lists VCP with its meaning, the config thresholds
-    that define it, and an example; System Health shows mean forward returns for VCP vs non-VCP with
+    that define it, and an example; Backtest shows mean forward returns for VCP vs non-VCP with
     sample size n (NA below the min-sample threshold) derived from the walk-forward snapshots; the VCP
     flag is computed once on the backend and reads identically on leaderboard and detail. The VCP flag
     is SEPARATE from the setup status (a name can be both, e.g. "Breakout-watch" + VCP) and never makes
@@ -518,10 +541,10 @@ The backend is the single source of truth; every page only displays server-compu
     2. Pick a date range (or a single date) and start a fetch + backfill job
     3. Watch the async job's live progress and read its final summary
     4. Open the global as-of switcher and confirm new as-of dates are now selectable; open
-       `/system-health` and confirm the forward-test sample size (n) has grown
+       `/backtest` and confirm the forward-test sample size (n) has grown
   - Acceptance: the job runs asynchronously with a visible progress indicator and a final summary that
     lists how many symbols/dates succeeded vs failed; newly created snapshot dates appear in the global
-    as-of switcher; the System Health sample size (n) increases relative to before the run; a forced
+    as-of switcher; the Backtest evidence sample size (n) increases relative to before the run; a forced
     provider failure surfaces an explicit error state and fabricates no prices or scores.
 
 - **J-18: One date control (no duplicate)**
@@ -536,7 +559,7 @@ The backend is the single source of truth; every page only displays server-compu
 
 - **J-19: Diagnose weak forward-test returns via attribution**
   - Steps:
-    1. Visit `/system-health` (and `/backtest` for a single date)
+    1. Visit `/backtest` (the as-of-scoped aggregate and the single-date scorecard both live here)
     2. Read the **per-stock top contributors & detractors** (named tickers with realized returns)
     3. Read the **by-sector** and **by-rank-band** (e.g. 1–10 / 11–50 / 51+) return breakdowns
     4. Read the **distribution & hit-rate** panel — median, % positive, and dispersion alongside the mean
@@ -627,16 +650,23 @@ The backend is the single source of truth; every page only displays server-compu
     in the view); low-sample deciles show NA; the analysis is labelled survivorship-biased /
     universe-relative.
 
-- **J-26: Factor Lab — multi-factor combination cohorts**
+- **J-26: Factor Lab — multi-factor composite cohort (any number of factors)**
   - Steps:
-    1. In the Factor Lab, build a conditional cohort by combining 2–3 factor conditions (e.g. RS 3m
-       top-quintile AND ATR% bottom-tertile AND VCP-flagged)
-    2. Read the cohort's forward return (raw and risk-adjusted: return/vol, return/MAE), hit-rate, and n
-       against an all-names baseline and against each single condition
-  - Acceptance: the lab computes the combined-condition cohort's mean/median forward return, its
-    risk-adjusted return, % positive, and n, and shows them against the unconditional baseline and the
-    single-factor cohorts so interaction effects are visible; computed once from stored data; NA on low
-    sample; no fabrication.
+    1. In the Factor Lab, add factor conditions (each a catalog factor at a top/bottom side) and keep
+       adding **up to all catalog factors** (e.g. RS 3m top + ATR% bottom + VCP-contraction bottom + …)
+    2. Read the **Combined** cohort's forward return (raw and risk-adjusted: return/vol, return/MAE),
+       hit-rate, and n against an all-names baseline and against each single condition
+  - Acceptance: the user can select from 2 up to **all** catalog factors (the cap lives in config, not in
+    code); the **Combined** cohort is a **composite percentile-rank blend** of the selected factors (each
+    oriented by its top/bottom side), taking the top config-quantile of that composite — so it is
+    **non-empty and clears the min-sample threshold** for a sensible selection (no longer perpetually
+    0/NA) and **scales to all factors**; it is shown beside the unconditional baseline and each
+    single-factor cohort so interaction is visible; every figure is derived **once from stored factor
+    values + stored returns** (recomputes no factor and no return — read-only, descriptive, never a
+    fitted/ML model); the blend weights and quantile come from config (default equal-weight — no magic
+    numbers); low-sample cells show NA + n and the survivorship-bias label is shown. *(The strict
+    AND-intersection MAY remain as an optional secondary "strict overlap" column for small selections,
+    clearly labelled and NA when empty.)*
 
 - **J-27: Factor Lab — regime-conditioned factor effectiveness**
   - Steps:
@@ -653,7 +683,7 @@ The backend is the single source of truth; every page only displays server-compu
     1. On `/stocks`, filter by a new pattern (e.g. pullback-to-rising-DMA, flat-base breakout, RS-line new
        high, inside-day / tight-area)
     2. Confirm flagged rows show the pattern badge + reason + invalidation, documented on `/methodology`
-    3. On the Setup & Pattern Lab (or System Health), read the pattern-vs-non-pattern forward-return
+    3. On the Setup & Pattern Lab (or Backtest), read the pattern-vs-non-pattern forward-return
        breakdown with sample size
   - Acceptance: at least two new price/volume patterns are detected by config-driven rules (thresholds in
     config, no magic numbers), ride alongside the setup status exactly like VCP (a pattern, never a status,
@@ -708,6 +738,32 @@ The backend is the single source of truth; every page only displays server-compu
     → detail) without any recomputed or fabricated number; every step reads canonical stored values; weak
     or low-sample evidence is shown as NA, not hidden.
 
+- **J-32: Research point-in-time toggle (as-of vs all-history)**
+  - Steps:
+    1. Visit `/research` and toggle the analysis mode to **As of date**
+    2. Set the global as-of switcher to an earlier trading day
+    3. Confirm the decile / rank-IC / cohort figures recompute from **only** snapshots dated ≤ that date
+       (smaller n, more NA at early dates)
+    4. Toggle back to **All history** and confirm the full-sample figures return
+  - Acceptance: the Research labs offer an **All history ⟷ As of date** toggle; in **As of date** mode
+    every figure pools **only** observations whose snapshot date ≤ the global as-of date (a point-in-time
+    / walk-forward view); in **All history** mode it pools every snapshot (the default); the toggle reuses
+    the **single global as-of control** and introduces **no second date state** (J-18 preserved — the
+    toggle is a mode, not a date picker); both modes are read-only over stored values (no recompute);
+    low-sample cells show NA + n and the survivorship-bias label persists.
+
+**Data-dependent journeys (non-halting).** **J-22**, **J-23**, and **J-24** require a one-shot offline
+fetch of real data the committed seed does not yet contain — expanded-universe daily OHLCV + market-cap
+(J-22) and an intraday bar seed (J-23/J-24) — pulled via the config-selected live provider / the committed
+universe runbook. On each resume the session SHOULD **attempt that fetch once** (a single best-effort
+attempt, never an autonomous retry loop). If the provider is unreachable, J-22/J-23/J-24 are recorded as
+**honestly blocked / limited-coverage (NA)** and **MUST NOT halt the loop, drive a STALLED verdict, or
+veto GOAL_ACHIEVED** — the session continues and finishes every other journey (including the Backtest
+evidence move, the composite combination cohort, and the Research as-of toggle). They auto-complete via
+the committed runbook — **no code change** — once the data becomes reachable; until then every breadth /
+forward-test / coverage label stays honest (universe-relative, survivorship-biased, NA where data is
+missing — never fabricated).
+
 ## Anti-goals
 
 - **No lookahead.** Scoring for a snapshot dated D MUST use only price bars with date ≤ D; forward
@@ -743,7 +799,10 @@ The backend is the single source of truth; every page only displays server-compu
 - **No recompute in the read path.** Read endpoints MUST serve canonical values from the persisted
   immutable snapshot for the resolved as-of date; they MUST NOT recompute scores/returns/buckets per
   request. The scan is computed once per date (bootstrap, scheduled, or first view) and then read
-  from storage. *(extends Single source of truth)*
+  from storage. The relocated **as-of-scoped evidence aggregate** (forward returns by bucket / setup /
+  regime, excess vs benchmarks, control-group, and VCP-vs-non-VCP) is likewise derived once per resolved
+  as-of date over the snapshots dated ≤ D, persisted/cached, and read from storage — never recomputed per
+  request and never including a snapshot dated > D. *(extends Single source of truth)*
 - **On-demand snapshots stay immutable & lookahead-free.** Creating a snapshot for a newly selected
   date is create-once: an existing snapshot MUST be read, never overwritten; an as-of-D snapshot MUST
   use only bars with date ≤ D. *(critical)*
@@ -774,7 +833,9 @@ The backend is the single source of truth; every page only displays server-compu
 - **Exactly one date selector.** The frontend MUST NOT maintain a second, independent date state; every
   date-scoped page (including Backtest) reads the single global as-of control. The Stock-Detail chart
   **timeframe selector** (1D/1h/15m/5m) is NOT a date control — it changes bar granularity only, bounded
-  by the resolved as-of date. *(extends Single source of truth)*
+  by the resolved as-of date. The Research **all-history / as-of-date** toggle is likewise a MODE, NOT a
+  date control — its as-of mode reads the same single global as-of control (no second date state).
+  *(extends Single source of truth)*
 - **Intraday stays deterministic & coverage-honest.** Intraday timeframes MUST boot from the committed
   seed (no live/streaming dependency in the boot path), MUST record per-timeframe coverage windows, MUST
   enforce per-timeframe no-lookahead, and MUST show NA where history is insufficient — never fabricating
@@ -788,8 +849,11 @@ The backend is the single source of truth; every page only displays server-compu
   exit-horizon, risk-adjusted ratios) MUST be derived once from the stored per-observation forward returns
   + stored factor values + post-snapshot price path; the API and frontend MUST NOT recompute returns or
   factors to build them; low-sample cells show NA + n; results carry the survivorship-bias label. The lab
-  is **descriptive evidence, not a fitted/ML predictive model**. *(extends No recompute in the read path +
-  No machine-learning price prediction)*
+  is **descriptive evidence, not a fitted/ML predictive model** — the **composite combination cohort** is
+  a transparent, config-weighted percentile rank-blend of the **stored** factor values (a deterministic
+  ranking/grouping, never a fitted/learned model), and the **as-of-date** mode merely FILTERS the stored
+  observation set to snapshots dated ≤ the as-of date (it recomputes nothing). *(extends No recompute in
+  the read path + No machine-learning price prediction)*
 - **New patterns are patterns, not statuses.** Every new detected pattern MUST follow the VCP contract:
   config-driven thresholds, computed once with date ≤ D, price+volume only, riding alongside the setup
   status, never entering the setup-status enum, and never alone promoting a name to "Actionable".
