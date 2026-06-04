@@ -165,8 +165,13 @@ It places **no orders** and holds **no broker keys**.
     **auto-generates** the scanner snapshots and forward returns for the new trading days, so the
     forward-test sample actually grows. It runs as an **async background job with live progress** (e.g.
     "fetched 80/158 symbols", "snapshots 23/120 dates") and a final success/failure summary, and the run
-    is recorded (extends the existing data-provider run log). The default boot path remains the committed
-    offline seed.
+    is recorded (extends the existing data-provider run log). The Data Manager also offers a
+    **config-catalog source picker** (env-detected availability + an optional session-only key paste,
+    never persisted/committed), a **chunked, rate-limit-aware import** that **checkpoints durably** and,
+    on a persistent 429, **backs off → stops → exposes Resume** (continuing from the last completed
+    chunk, no duplicate fetch, surviving a restart), and an **Expand-universe** job kind that screens the
+    committed candidate pool from the UI (the operator-facing path that unblocks the expanded universe).
+    The default boot path remains the committed offline seed.
 21. **Unified as-of date control**: exactly one date selector — the global top-bar as-of switcher —
     governs every date-scoped page, **including Backtest**. Per-page date dropdowns are removed and the
     frontend holds no second, independent date state; "which date am I viewing" has a single source.
@@ -306,9 +311,11 @@ It places **no orders** and holds **no broker keys**.
   dated ≤ the global as-of date (a point-in-time / walk-forward view bound by the single global control —
   a mode, not a second date picker).
 - **Data Manager** (`/data`) — grow the dataset on demand: view current coverage (price-history date
-  range, symbol count, the set of snapshot/as-of dates, and gaps), pick a date or date range, fetch
-  price history and/or backfill snapshots, watch the async job's live progress, and read a history of
-  fetch/backfill runs.
+  range, symbol count, the set of snapshot/as-of dates, and gaps), choose an import **source** (paste a
+  **session-only key** if the provider needs one), pick a date or date range, fetch price history and/or
+  backfill snapshots and/or **expand the universe** (pool → config screen), watch the async job's live
+  progress, **resume** a rate-limited import from where it stopped, and read a history of
+  fetch/backfill/expand runs.
 
 A single global **as-of date switcher** in the top bar is the **only** date control. It re-points
 Dashboard, Stocks, Themes, Sectors, Stock Detail, **and Backtest** to a chosen past snapshot (default:
@@ -752,6 +759,68 @@ The backend is the single source of truth; every page only displays server-compu
     toggle is a mode, not a date picker); both modes are read-only over stored values (no recompute);
     low-sample cells show NA + n and the survivorship-bias label persists.
 
+- **J-33: Import real data from a selectable, key-aware provider source**
+  - Steps:
+    1. Visit `/data` and open the **Import source** control in the Data Manager
+    2. Read the provider catalog — each source (Yahoo no-key, Tiingo, Finnhub, Alpha Vantage, Stooq)
+       shown with availability: **available** when a key is present in the environment, or **needs key**
+       with a **session-only paste field**
+    3. Pick a source; for a key-required source with no env key, paste a key (held in memory for this
+       run only)
+    4. Start an import; on a provider failure read an **explicit error / unavailable** state (never a
+       fabricated bar)
+  - Acceptance: the import section offers a **config catalog** of providers (the list, and each
+    provider's key requirement + env-var name, live in config — no hardcoded provider list in the
+    component); availability is **env-detected** at request time; a key typed into the UI is
+    **session-only** — held in memory for the run, **never written to disk, the run log, or the DB, and
+    never echoed back** (verifiable: absent from `/api/data`, the run history, and the database); on any
+    provider failure the job surfaces an explicit error and **fabricates no prices** (Live fetch is
+    real-data-only); the import date inputs remain **job parameters**, not the global as-of control (one
+    date selector preserved). *Data-dependent / non-halting:* the section, catalog, key-detection and
+    error states are provable offline with an **injected provider** (a stub returning bars / raising); a
+    *successful live fetch* additionally needs a reachable provider and is recorded honestly as NA /
+    rate-limited when walled — it MUST NOT halt the loop or veto GOAL_ACHIEVED.
+
+- **J-34: Chunked, rate-limit-resilient import that resumes from the last completed chunk**
+  - Steps:
+    1. Start an import that spans more symbols / dates than one request window
+    2. Watch it run in **batches** (chunk x/N) with live per-chunk progress (symbols ok/failed, bars
+       added)
+    3. Hit a provider rate-limit (429): observe the job retry with **backoff**, then — if the limit
+       persists — **stop gracefully** in a **"rate-limited — resumable"** state with progress saved
+    4. Click **Resume**: confirm it continues from the **next un-fetched chunk**, re-fetches nothing
+       already stored, and that the checkpoint **survived a server restart** in between
+  - Acceptance: the import is split into batches whose **symbol-batch size, date-window size,
+    max-retries, backoff base/cap, and inter-request sleep all come from config** (no magic numbers in
+    the engine); after each completed chunk progress is **checkpointed durably** (persisted, not
+    in-memory-only) so it survives a process / server restart; on a persistent rate-limit the job ends in
+    an explicit **resumable / paused** status (distinct from `failed`) recording symbols done vs
+    remaining — it **fabricates nothing** and does **not** halt the goal loop; **Resume** continues from
+    the last completed chunk and the per-`(symbol, date)` idempotency guarantees **no duplicate fetch or
+    row**; symbols that never succeeded are shown honestly as failed / NA. Provable offline with an
+    injected provider scripted to raise 429 after K symbols.
+
+- **J-35: Expand the universe from the Data Manager (pool → config screen → members)**
+  - Steps:
+    1. On `/data`, pick the **Expand universe** job kind
+    2. Confirm it reads the committed **~548-name candidate pool** (`universe_pool.csv`) and the
+       **config screen** (`universe.filters`: min price / min dollar-vol / min market-cap)
+    3. Start the expansion as a **chunked, resumable** import (per J-34) over the selected source
+    4. On completion, confirm the universe grows toward **~400–500 members**, the **selection
+       methodology** + per-member screen-pass + **omitted-with-reason** record are surfaced, and
+       `/methodology` matches config
+  - Acceptance: the expand job is a **config + data operation, not a code change** — it reads the
+    committed pool + the config screen (no hand-curated list), fetches **real OHLCV + a real market-cap
+    reference** for each candidate via the selected provider (a provider that cannot supply market cap is
+    **not selectable** for expansion, shown disabled with a reason), applies the screen, and writes only
+    passers to the universe (`universe.json` + per-symbol CSVs + refreshed `meta.json`); a candidate that
+    fails to fetch / lacks data / fails a threshold is **logged and omitted, never fabricated**; breadth
+    and forward-test labels stay **universe-relative / survivorship-biased**; this is the
+    **operator-facing path that auto-unblocks J-22** — once the data is reachable J-22's acceptance is
+    met with **no code change**. *Data-dependent / non-halting* exactly like J-22: the job UI + screen
+    logic are provable offline (injected provider), but the live expansion needs a reachable provider and
+    is recorded as NA / rate-limited when walled — never halting or vetoing.
+
 **Data-dependent journeys (non-halting).** **J-22**, **J-23**, and **J-24** require a one-shot offline
 fetch of real data the committed seed does not yet contain — expanded-universe daily OHLCV + market-cap
 (J-22) and an intraday bar seed (J-23/J-24) — pulled via the config-selected live provider / the committed
@@ -762,7 +831,17 @@ veto GOAL_ACHIEVED** — the session continues and finishes every other journey 
 evidence move, the composite combination cohort, and the Research as-of toggle). They auto-complete via
 the committed runbook — **no code change** — once the data becomes reachable; until then every breadth /
 forward-test / coverage label stays honest (universe-relative, survivorship-biased, NA where data is
-missing — never fabricated).
+missing — never fabricated). **J-22 also auto-unblocks via the J-35 UI import path** (an operator points
+the Data Manager at a reachable provider and runs the Expand-universe job), in addition to the dev
+runbook.
+
+The import journeys **J-33**, **J-34**, and **J-35** are **only partly data-dependent**: their
+UI + provider catalog + key-detection + chunk/resume/checkpoint + stop-on-limit machinery is **buildable
+and fully testable offline** with an **injected provider** (a stub that returns bars or raises 429), so
+those parts are expected to go green like any other journey — they are **not** blanket-blocked. Only the
+**live-fetch outcome** (an actual successful real import, and thus J-22 fully passing through J-35) is
+data-gated: when every provider is walled it is recorded as **honestly blocked / rate-limited (NA)** and
+**MUST NOT halt the loop, drive STALLED, or veto GOAL_ACHIEVED**.
 
 ## Anti-goals
 
@@ -822,6 +901,13 @@ missing — never fabricated).
 - **Live fetch is real-data-only.** The Data Manager MUST use the config-selected live provider to
   fetch real EOD bars; on a provider failure it MUST surface an explicit error and MUST NOT synthesize
   prices to fill a gap or force a successful run. *(extends No fabricated data)*
+- **Import keys are env-or-session, never persisted.** The import provider catalog and each provider's
+  key-requirement + env-var name MUST come from config (no hardcoded provider list in code); a provider
+  key MUST be read from the environment, or — if the user pastes one into the import UI — held **in
+  memory for that run only**, **never written to disk, the run log, the DB, or any committed file, and
+  never echoed back** in any response. The import's date inputs are **job parameters, not a second date
+  control** (the single global as-of switcher stays the only date selector). *(extends Live fetch is
+  real-data-only + Exactly one date selector)*
 - **Range backfill stays immutable & lookahead-free.** Snapshots created for a fetched or backfilled
   date range are create-once: an existing snapshot MUST be read, never overwritten, and an as-of-D
   snapshot MUST use only bars with date ≤ D. *(reaffirms On-demand snapshots stay immutable, for
