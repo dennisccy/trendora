@@ -381,7 +381,7 @@ export async function fetchRun(runId: string | number, signal?: AbortSignal): Pr
   return getJSON<RunDetail>(`/api/runs/${encodeURIComponent(String(runId))}`, signal);
 }
 
-// --- system health / forward-tested evidence (iter-6) --------------------------------------
+// --- forward-tested evidence aggregate (iter-6; relocated onto Backtest in iter-17) ---------
 /** One row of a grouped forward-return breakdown: the mean realized return (a fraction, e.g. 0.0123
  *  = +1.23%) and the sample size `n`. `mean_return` is null for a padded empty group (n === 0).
  *  Re-formatted only — the page never recomputes a return. */
@@ -474,16 +474,19 @@ export interface ReturnAttribution {
   distribution: Distribution;
 }
 
-/** GET /api/system-health payload — the SINGLE canonical forward-return aggregation. Every figure
- *  carries its sample size `n`; the page re-formats only and recomputes no return/excess/bucket. */
-export interface SystemHealthResponse {
-  horizon: number; // the served forward window (trading days)
-  horizons: number[]; // valid horizons for the selector (from config — not hard-coded in the UI)
+/** The as-of-scoped forward-tested evidence aggregate (Data Contract: app.engine.forward_testing) — the
+ *  SINGLE canonical forward-return aggregation over an EXPANDING WINDOW of snapshots dated <= the
+ *  resolved global as-of date. Served per horizon inside the `/api/backtest` payload (iter-17 relocated
+ *  it off the retired System Health page, so the evidence has exactly one home). Every figure carries its
+ *  sample size `n`; the page re-formats only and recomputes no return/excess/bucket. */
+export interface EvidenceAggregate {
+  horizon: number; // the forward window this aggregate is computed for (trading days)
+  horizons: number[]; // valid horizons (from config — not hard-coded in the UI)
   default_horizon: number;
   min_sample: number; // figures with n below this are flagged low-sample
   survivorship_bias: string; // honest caveat, rendered verbatim
-  n_runs: number; // walk-forward snapshots contributing evidence at this horizon
-  asof_dates: string[]; // the contributing as-of dates (descending)
+  n_runs: number; // walk-forward snapshots (dated <= D) contributing evidence at this horizon
+  asof_dates: string[]; // the contributing as-of dates (descending) — all <= the resolved as-of date
   overall: ForwardGroupRow;
   by_bucket: ForwardBucketRow[]; // rows A..E (J-09)
   by_setup: ForwardSetupRow[]; // by setup type (J-09)
@@ -495,13 +498,6 @@ export interface SystemHealthResponse {
   excess: { vs_spy: ExcessVsBenchmark; vs_qqq: ExcessVsBenchmark }; // J-09
   control_group: ControlGroupRow[]; // J-10
   attribution: ReturnAttribution; // J-19 — per-stock / by-sector / by-rank-band / distribution
-}
-
-/** Canonical forward-tested evidence source: GET /api/system-health?horizon=. Throws on non-200 so
- *  the page renders an explicit "Backend unavailable" state (503 no data / 422 invalid horizon) —
- *  never fabricated evidence. */
-export async function fetchSystemHealth(horizon: number, signal?: AbortSignal): Promise<SystemHealthResponse> {
-  return getJSON<SystemHealthResponse>(`/api/system-health?horizon=${encodeURIComponent(horizon)}`, signal);
 }
 
 // --- backtest / per-date forward-test scorecard (iter-10, J-14) ----------------------------
@@ -573,6 +569,10 @@ export interface BacktestResponse {
   horizons: number[]; // 1/5/10/20/60 (from config — not hard-coded in the UI)
   survivorship_bias: string; // honest caveat, rendered verbatim
   scorecard: BacktestScorecard;
+  // iter-17 (J-09/J-10): the as-of-scoped forward-tested evidence aggregate, keyed by horizon (every
+  // config horizon), all in this one payload so the client-side horizon selector needs no refetch. Each
+  // entry is scoped to the EXPANDING WINDOW of snapshots dated <= `asof_date` (relocated off System Health).
+  evidence_by_horizon: Record<number, EvidenceAggregate>;
 }
 
 /** Canonical per-date forward-test scorecard source: GET /api/backtest?as_of=. Throws on non-200 so

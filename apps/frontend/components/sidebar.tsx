@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Activity,
   BookOpen,
   Database,
   FlaskConical,
@@ -34,7 +33,6 @@ const NAV: NavItem[] = [
   { href: "/sectors", label: "Sectors", icon: Grid2x2 },
   { href: "/scanner-runs", label: "Scanner Runs", icon: History },
   { href: "/backtest", label: "Backtest", icon: FlaskConical },
-  { href: "/system-health", label: "System Health", icon: Activity },
   { href: "/research", label: "Research", icon: Microscope },
   { href: "/watchlist", label: "Watchlist", icon: Star },
   { href: "/methodology", label: "Methodology", icon: BookOpen },

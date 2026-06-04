@@ -23,7 +23,6 @@ from app.api import (
     runs,
     sectors,
     stocks,
-    system_health,
     themes,
     watchlist,
 )
@@ -73,7 +72,6 @@ app.include_router(dashboard.router, prefix="/api")
 app.include_router(stocks.router, prefix="/api")
 app.include_router(themes.router, prefix="/api")
 app.include_router(runs.router, prefix="/api")
-app.include_router(system_health.router, prefix="/api")
 app.include_router(backtest.router, prefix="/api")
 app.include_router(watchlist.router, prefix="/api")
 app.include_router(methodology.router, prefix="/api")

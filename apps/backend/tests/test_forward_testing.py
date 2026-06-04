@@ -505,6 +505,99 @@ def test_aggregates_carry_survivorship_label_and_min_sample(aggregates_engine):
 
 
 # ==================================================================================================
+# As-of scoping (iter-17, J-09/J-10) — the aggregate over an EXPANDING WINDOW of snapshots dated <= D.
+# The cutoff filters on the RUN's `ScannerRun.asof_date` (run1=2025-01-10 Risk-on, run2=2024-07-10
+# Risk-off; run3 has no forward returns). The membership filter is the ONLY change — grouping/excess/
+# control-group/attribution math is untouched and `as_of=None` stays byte-identical to all-history.
+# ==================================================================================================
+def test_aggregates_as_of_pools_only_runs_on_or_before_cutoff(aggregates_engine):
+    """as_of=D pools ONLY runs whose ScannerRun.asof_date <= D. At D = run2's date (2024-07-10) only
+    run2's two observations contribute (AAA 0.30 bucket B, EEE 0.10 bucket E); run1 (2025-01-10 > D) is
+    excluded entirely — the keystone expanding-window walk-forward semantics (J-09)."""
+    engine, H = aggregates_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        early = compute_forward_aggregates(session, H, cfg, as_of=date(2024, 7, 10))
+    assert early["n_runs"] == 1
+    assert early["overall"]["n"] == 2
+    assert early["overall"]["mean_return"] == pytest.approx(0.20)  # mean(0.30, 0.10)
+    by_bucket = {r["bucket"]: r for r in early["by_bucket"]}
+    assert by_bucket["B"]["n"] == 1 and by_bucket["B"]["mean_return"] == pytest.approx(0.30)
+    assert by_bucket["E"]["n"] == 1 and by_bucket["E"]["mean_return"] == pytest.approx(0.10)
+    # run1's A-bucket names (run dated 2025-01-10 > D) must NOT leak in
+    assert by_bucket["A"]["n"] == 0 and by_bucket["A"]["mean_return"] is None
+
+
+def test_aggregates_as_of_sample_grows_toward_latest(aggregates_engine):
+    """The sample size is non-decreasing toward the latest date: n at an early D (run2 only) is strictly
+    LESS than n at a later D that also admits run1 (J-09 'move the date earlier → n drops')."""
+    engine, H = aggregates_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        early = compute_forward_aggregates(session, H, cfg, as_of=date(2024, 7, 10))   # run2 only
+        later = compute_forward_aggregates(session, H, cfg, as_of=date(2025, 1, 10))   # run1 + run2
+    assert early["overall"]["n"] == 2 and later["overall"]["n"] == 6
+    assert early["overall"]["n"] < later["overall"]["n"]
+
+
+def test_aggregates_as_of_none_equals_latest_equals_all_history(aggregates_engine):
+    """as_of=None is BYTE-IDENTICAL to today's all-history result AND equals as_of=latest (a date on or
+    after every run) AND a far-future date — with no run dated > latest, all coincide (DoD:
+    as_of=None == as_of=latest == all-history, byte-identical top-level + per-group n/means)."""
+    engine, H = aggregates_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        all_history = compute_forward_aggregates(session, H, cfg)                         # no filter
+        at_latest = compute_forward_aggregates(session, H, cfg, as_of=date(2025, 1, 10))  # latest run
+        far_future = compute_forward_aggregates(session, H, cfg, as_of=date(2099, 1, 1))  # >> latest
+    assert all_history == at_latest == far_future  # byte-identical dicts (incl. control-group draws)
+
+
+def test_aggregates_as_of_no_future_run_leak(aggregates_engine):
+    """No >D leak (critical anti-goal): a run dated strictly AFTER D contributes 0 to EVERY group. At D
+    one day before run1's date, run1 (2025-01-10) is fully excluded — its Risk-on regime and all its
+    observations are absent from overall / by_regime / control_group; only run2 (Risk-off) remains."""
+    engine, H = aggregates_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        before_run1 = compute_forward_aggregates(session, H, cfg, as_of=date(2025, 1, 9))
+    assert before_run1["overall"]["n"] == 2
+    assert {r["regime"] for r in before_run1["by_regime"]} == {"Risk-off"}  # run1's Risk-on did not leak
+    cg = {c["key"]: c for c in before_run1["control_group"]}
+    assert cg["top_ranked"]["n"] == 2  # run2's 2 obs only — no leak from the later run
+
+
+def test_aggregates_as_of_before_all_runs_is_honest_empty(aggregates_engine):
+    """An as-of date before EVERY run yields an empty, honest-NA aggregate — n=0 everywhere, no
+    fabricated rows; the A-E bucket table is still padded at n=0 / mean None (never a fabricated 0%)."""
+    engine, H = aggregates_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        empty = compute_forward_aggregates(session, H, cfg, as_of=date(2000, 1, 1))
+    assert empty["n_runs"] == 0
+    assert empty["overall"]["n"] == 0 and empty["overall"]["mean_return"] is None
+    assert [r["bucket"] for r in empty["by_bucket"]] == ["A", "B", "C", "D", "E"]
+    assert all(r["n"] == 0 and r["mean_return"] is None for r in empty["by_bucket"])
+
+
+def test_aggregates_as_of_scoped_consistency_invariant_relocated(aggregates_engine):
+    """Relocated consistency invariant (iter-2 lesson — the System Health invariant MOVED to the
+    as-of-scoped aggregate, not deleted): for the as-of-scoped pool the attribution distribution mean
+    EQUALS overall.mean_return and the by-sector / by-rank-band sample sizes each sum to overall.n —
+    the slices are the SAME filtered observations grouped, never a recomputed return."""
+    engine, H = aggregates_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        agg = compute_forward_aggregates(session, H, cfg, as_of=date(2024, 7, 10))
+    attr, overall = agg["attribution"], agg["overall"]
+    assert overall["n"] == 2  # run2 only — the slices below must reflect exactly this filtered pool
+    assert attr["distribution"]["mean_return"] == pytest.approx(overall["mean_return"])
+    assert attr["distribution"]["n"] == overall["n"]
+    assert sum(r["n"] for r in attr["by_sector"]) == overall["n"]
+    assert sum(r["n"] for r in attr["by_rank_band"]) == overall["n"]
+
+
+# ==================================================================================================
 # walk-forward as-of date set (real seed trading calendar; no run_scan -> cheap)
 # ==================================================================================================
 def test_walk_forward_asof_dates_are_real_trading_days_with_full_horizon(loaded_engine, config):

@@ -1,11 +1,11 @@
 # Goal Session Summary — i_can_see_the_wealthy_future_forever
 
 **Final verdict:** STALLED
-**Total iterations:** 8
-**Wall time (seconds):** 22098
+**Total iterations:** 17
+**Wall time (seconds):** 53515
 **Quota pauses:** 0
 **Started:** 2026-05-31T22:30:55.653266Z
-**Finished:** 2026-06-02T04:47:47.221978Z
+**Finished:** 2026-06-03T02:16:03.832678Z
 
 ## Branch
 
@@ -19,37 +19,37 @@ This session pushed iteration commits to `goal/i_can_see_the_wealthy_future_fore
 
 | Journey | Status | Last passing iter |
 |---|---|---|
-| J-01 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
-| J-02 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
+| J-01 | passing | goal-i_can_see_the_wealthy_future_forever-iter-10 |
+| J-02 | passing | goal-i_can_see_the_wealthy_future_forever-iter-16 |
 | J-03 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
 | J-04 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
-| J-05 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
-| J-06 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
-| J-07 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
-| J-08 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
-| J-09 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
+| J-05 | passing | goal-i_can_see_the_wealthy_future_forever-iter-16 |
+| J-06 | passing | goal-i_can_see_the_wealthy_future_forever-iter-16 |
+| J-07 | passing | goal-i_can_see_the_wealthy_future_forever-iter-14 |
+| J-08 | passing | goal-i_can_see_the_wealthy_future_forever-iter-9 |
+| J-09 | passing | goal-i_can_see_the_wealthy_future_forever-iter-14 |
 | J-10 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
 | J-11 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
-| J-12 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
-| J-13 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
-| J-14 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
-| J-15 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
-| J-16 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
-| J-17 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
-| J-18 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
-| J-19 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
-| J-20 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
+| J-12 | passing | goal-i_can_see_the_wealthy_future_forever-iter-10 |
+| J-13 | passing | goal-i_can_see_the_wealthy_future_forever-iter-14 |
+| J-14 | passing | goal-i_can_see_the_wealthy_future_forever-iter-14 |
+| J-15 | passing | goal-i_can_see_the_wealthy_future_forever-iter-16 |
+| J-16 | passing | goal-i_can_see_the_wealthy_future_forever-iter-16 |
+| J-17 | passing | goal-i_can_see_the_wealthy_future_forever-iter-8 |
+| J-18 | passing | goal-i_can_see_the_wealthy_future_forever-iter-16 |
+| J-19 | passing | goal-i_can_see_the_wealthy_future_forever-iter-10 |
+| J-20 | passing | goal-i_can_see_the_wealthy_future_forever-iter-16 |
 | J-21 | passing | goal-i_can_see_the_wealthy_future_forever-iter-6 |
 | J-22 | failing | - |
 | J-23 | failing | - |
 | J-24 | failing | - |
-| J-25 | failing | - |
-| J-26 | failing | - |
-| J-27 | failing | - |
-| J-28 | failing | - |
-| J-29 | failing | - |
-| J-30 | failing | - |
-| J-31 | failing | - |
+| J-25 | passing | goal-i_can_see_the_wealthy_future_forever-iter-16 |
+| J-26 | passing | goal-i_can_see_the_wealthy_future_forever-iter-14 |
+| J-27 | passing | goal-i_can_see_the_wealthy_future_forever-iter-16 |
+| J-28 | passing | goal-i_can_see_the_wealthy_future_forever-iter-16 |
+| J-29 | passing | goal-i_can_see_the_wealthy_future_forever-iter-16 |
+| J-30 | passing | goal-i_can_see_the_wealthy_future_forever-iter-16 |
+| J-31 | passing | goal-i_can_see_the_wealthy_future_forever-iter-16 |
 
 ## Anti-goal violations
 

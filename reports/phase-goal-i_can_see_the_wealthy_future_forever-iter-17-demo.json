@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever-iter-17",
+  "base_url": "http://localhost:3835",
+  "iteration": 17,
+  "default_timeout_ms": 12000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Backtest workspace",
+      "narration": "We open Trendora's Backtest workspace. As of this iteration it has a new role: it is the single home for the platform's forward-tested track record — the historical evidence of how the rankings actually performed, read entirely from stored daily snapshots.",
+      "point_out": "The left navigation now lists ten sections with no 'System Health' link, and one global 'View as-of date' switcher sits at the top of the app. Scroll to the very bottom and the page now ends in a brand-new evidence section.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/backtest" },
+      "expect": { "text": "Forward-tested evidence" }
+    },
+    {
+      "n": 2,
+      "title": "The relocated, now date-aware evidence",
+      "narration": "At the bottom is the headline: the forward-tested evidence that used to live on the separate System Health page now lives here, and it is scoped to a point in time. The heading reads 'expanding window ≤' a date — the section pools every snapshot taken on or before the global as-of date.",
+      "point_out": "Forward return is broken out by A–E score bucket, each row showing its mean return and its exact sample size n. Moving the global date switcher to an earlier date re-points this whole section to only the snapshots on or before that date — the sample n shrinks — and returning to the latest date reproduces the full all-history numbers. Thin rows are flagged ⚠ so low sample is never mistaken for a solid result.",
+      "journey": "J-09",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "Excess vs benchmarks" } },
+      "expect": { "text": "Snapshots contributing" }
+    },
+    {
+      "n": 3,
+      "title": "Breakdowns by setup, regime and chart pattern",
+      "narration": "The same as-of-scoped evidence is sliced several more ways: excess return versus the SPY and QQQ benchmarks, by setup type, by market regime, and by detected chart pattern — VCP, pullback-to-rising-average, and flat-base breakout.",
+      "point_out": "Every cell carries its own sample size n. A cell with no observations shows an honest em-dash '—', never a fabricated 0%. It is the very same evidence System Health used to show, except it now answers 'as of this date, did it work?'",
+      "journey": "J-09",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "Flat-base breakout" } },
+      "expect": { "text": "By market regime" }
+    },
+    {
+      "n": 4,
+      "title": "The control-group honesty check",
+      "narration": "Right at the bottom is the control-group comparison — the platform's built-in honesty check. It lines the top-ranked cohort up against random same-sector peers and the SPY, QQQ and sector-ETF benchmarks, so you can judge whether the selection truly beat plain sector beta.",
+      "point_out": "The top-ranked cohort row is highlighted, and every row shows its return and sample n at the chosen horizon. If the selection only matched a random same-sector basket, this table would say so — it is not built to flatter the rankings.",
+      "journey": "J-10",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "Sector ETF" } },
+      "expect": { "text": "Random same-sector" }
+    },
+    {
+      "n": 5,
+      "title": "One shared horizon control re-points everything",
+      "narration": "The whole page follows one shared Horizon control. Switching it from 60 to 20 days instantly re-points the realized-return attribution and the evidence below it alike.",
+      "point_out": "The switch is purely client-side — no page reload and no new network request, because every horizon ships in a single payload. One date switcher and one horizon control drive the entire page; there is deliberately no second control to drift out of sync.",
+      "journey": "J-15",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "click", "target": { "role": "button", "name": "20d" } },
+      "expect": { "text": "(20d)" }
+    },
+    {
+      "n": 6,
+      "title": "System Health is retired — one home for the evidence",
+      "narration": "Finally, the old System Health page is gone. Typing its address straight into the browser now returns a plain 404 — the forward-tested evidence has exactly one home.",
+      "point_out": "A 404 'This page could not be found'. There is no second copy of this evidence and no second date control anywhere in the app: one source of truth, read through one global as-of date.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/system-health" },
+      "expect": { "text": "This page could not be found" }
+    }
+  ]
+}

@@ -1,7 +1,10 @@
 """Walk-forward forward-testing engine (Data Contract: app.engine.forward_testing).
 
 This module turns the immutable as-of snapshots into hard, forward-tested evidence — the product's
-keystone "does the ranking actually work?" capability (J-09, J-10), served by `GET /api/system-health`.
+keystone "does the ranking actually work?" capability (J-09, J-10). The as-of-scoped aggregate
+(`compute_forward_aggregates(..., as_of=D)`, an expanding window of snapshots dated <= D) is served on
+`GET /api/backtest` under the single global as-of control (iter-17 relocated it off the retired
+System Health page, so the evidence has exactly one home).
 
 THREE no-negotiable disciplines, each unit-proved:
 
@@ -541,18 +544,44 @@ def _leadership_returns(ret_by_symbol: dict[str, float], cfg: Config) -> dict:
     return {"sectors": sectors, "themes": themes, "cohort": cohort}
 
 
-def compute_forward_aggregates(session: Session, horizon: int, config: Optional[Config] = None) -> dict:
-    """The SINGLE canonical forward-return aggregation at `horizon` (Data Contract value). Joins the
-    stored realized returns (`forward_returns`) to the stored canonical bucket / setup / sector / rank
-    (`scanner_results`) and regime label (`scanner_runs`), all READ VERBATIM — no score/bucket/setup is
-    ever recomputed. Returns, each cell carrying `n`: forward return by bucket (A-E), by setup, by
-    regime; excess vs SPY and QQQ; and the control-group cohorts. Carries the `min_sample` threshold
-    and the survivorship-bias label. A run with no post-snapshot bars contributes nothing (n=0)."""
+def compute_forward_aggregates(
+    session: Session,
+    horizon: int,
+    config: Optional[Config] = None,
+    *,
+    as_of: Optional[date_cls] = None,
+) -> dict:
+    """The SINGLE canonical forward-return aggregation at `horizon` (Data Contract value, served on
+    `GET /api/backtest`). Joins the stored realized returns (`forward_returns`) to the stored canonical
+    bucket / setup / sector / rank (`scanner_results`) and regime label (`scanner_runs`), all READ
+    VERBATIM — no score/bucket/setup is ever recomputed. Returns, each cell carrying `n`: forward return
+    by bucket (A-E), by setup, by regime; excess vs SPY and QQQ; and the control-group cohorts. Carries
+    the `min_sample` threshold and the survivorship-bias label. A run with no post-snapshot bars
+    contributes nothing (n=0).
+
+    `as_of` (iter-17, J-09/J-10) optionally scopes the pool to an EXPANDING WALK-FORWARD WINDOW: when
+    set, ONLY snapshots with `ScannerRun.asof_date <= as_of` contribute, so a run dated > D leaks nothing
+    into the as-of-D evidence (the No-lookahead / No-recompute / Single-source criticals). It is a SINGLE
+    membership filter on the `fr_rows` step, so it equally bounds `runs_with_fr`, `results`, `run_rows`,
+    and the SPY/QQQ benchmark lists (all derived from it) — the grouping / excess / control-group /
+    attribution math is untouched. `as_of=None` keeps the all-history behaviour BYTE-IDENTICAL (== the
+    latest-date case, since no run is dated after the latest). The cutoff is the resolved global as-of
+    date transmitted on the snapshot-served read — never a second date state (J-18)."""
     cfg = config or get_config()
     wf = cfg.walk_forward
     bm = benchmark_symbols(cfg)
 
-    fr_rows = session.exec(select(ForwardReturn).where(ForwardReturn.horizon == horizon)).all()
+    # The SINGLE as-of membership filter (iter-17): restrict the pool to runs dated <= D by joining each
+    # forward return to its run's canonical `asof_date`. `as_of=None` adds NO clause -> the query (and
+    # thus every derived set) is byte-identical to the all-history path. The cutoff is read from
+    # `ScannerRun.asof_date` (the canonical snapshot date) — not the denormalized `ForwardReturn.asof_date`
+    # — so it is exactly the "snapshots dated <= D" membership the expanding walk-forward window requires.
+    fr_stmt = select(ForwardReturn).where(ForwardReturn.horizon == horizon)
+    if as_of is not None:
+        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
+            ScannerRun.asof_date <= as_of
+        )
+    fr_rows = session.exec(fr_stmt).all()
     ret_by_run_symbol = {(fr.run_id, fr.symbol): fr.realized_return for fr in fr_rows}
     runs_with_fr = sorted({fr.run_id for fr in fr_rows})
 

@@ -5,6 +5,7 @@ import { AlertTriangle, Clock, FlaskConical, History, ShieldAlert } from "lucide
 
 import { useAsOf } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
+import { EvidenceAggregateSection } from "@/components/evidence-panels";
 import { Return } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
 import { ReturnAttributionSection } from "@/components/return-attribution";
@@ -175,6 +176,9 @@ function BacktestResults({
     return (observed ?? rows[rows.length - 1])?.horizon ?? backtest.horizons[0];
   });
   const selected = rows.find((row) => row.horizon === viewHorizon) ?? rows[0];
+  // The as-of-scoped evidence aggregate for the SAME selected horizon — picked from the single payload's
+  // `evidence_by_horizon` (no refetch on horizon change; the global as-of switcher still owns the date).
+  const evidence = backtest.evidence_by_horizon[selected?.horizon ?? viewHorizon];
 
   return (
     <div className="space-y-4">
@@ -202,6 +206,12 @@ function BacktestResults({
         horizon={selected?.horizon ?? viewHorizon}
         min={backtest.min_sample}
       />
+      {/* The expanding-window forward-tested evidence aggregate (J-09/J-10/J-16/J-28), relocated off the
+          retired System Health. Placed at the VERY BOTTOM (after the leadership lists) so the J-21 order
+          — scorecard → Return Attribution → leadership lists — is preserved; it is the single home now. */}
+      {evidence ? (
+        <EvidenceAggregateSection evidence={evidence} asofDate={backtest.asof_date} />
+      ) : null}
     </div>
   );
 }

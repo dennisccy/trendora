@@ -181,9 +181,95 @@ def test_backtest_503_when_no_price_data(tmp_path):
 
 
 def test_backtest_does_not_reserve_regime_or_stock_values(loaded_engine):
-    """The endpoint serves the scorecard ONLY — it does not re-serve regime/sector/theme/stock values
-    (those stay single-sourced on their own endpoints). The payload's top-level keys are exactly the
-    scorecard contract."""
+    """The endpoint serves the per-date scorecard + the as-of-scoped evidence aggregate ONLY — it does
+    not re-serve regime/sector/theme/stock values (those stay single-sourced on their own endpoints).
+    The payload's top-level keys are exactly the scorecard contract plus `evidence_by_horizon` (iter-17)."""
     with TestClient(main.app) as client:
         data = client.get("/api/backtest").json()
-    assert set(data) == {"asof_date", "is_latest", "min_sample", "horizons", "survivorship_bias", "scorecard"}
+    assert set(data) == {
+        "asof_date", "is_latest", "min_sample", "horizons", "survivorship_bias",
+        "scorecard", "evidence_by_horizon",
+    }
+
+
+# ==================================================================================================
+# As-of-scoped forward-tested evidence aggregate (iter-17, J-09/J-10) — relocated off the retired
+# System Health page onto /api/backtest, driven by the single global as-of (expanding window <= D).
+# ==================================================================================================
+def test_backtest_evidence_by_horizon_shape_and_keys(loaded_engine):
+    """J-09/J-10 at the API level: /api/backtest carries `evidence_by_horizon` keyed by EVERY config
+    horizon, each entry the as-of-scoped forward-return aggregate — by-bucket A..E, by-setup, by-regime,
+    excess vs SPY/QQQ, the control-group cohorts, and the VCP/pattern breakdowns — every cell with n."""
+    cfg = load_config()
+    with TestClient(main.app) as client:
+        data = client.get("/api/backtest").json()
+    assert "evidence_by_horizon" in data
+    ev = data["evidence_by_horizon"]
+    assert set(ev) == {str(h) for h in cfg.walk_forward.horizons}  # JSON object keys are strings
+
+    agg = ev[str(cfg.walk_forward.default_horizon)]
+    assert agg["horizon"] == cfg.walk_forward.default_horizon
+    assert "survivorship" in agg["survivorship_bias"].lower()
+    assert agg["min_sample"] == cfg.walk_forward.min_sample
+    # by-bucket A..E each numeric-or-null with n (J-09 headline)
+    assert [r["bucket"] for r in agg["by_bucket"]] == ["A", "B", "C", "D", "E"]
+    assert all({"mean_return", "n"} <= set(r) for r in agg["by_bucket"])
+    assert any(r["n"] > 0 and isinstance(r["mean_return"], (int, float)) for r in agg["by_bucket"])
+    # by-setup + by-regime numbers with n (J-09)
+    assert agg["by_setup"] and all({"mean_return", "n", "setup"} <= set(r) for r in agg["by_setup"])
+    assert agg["by_regime"] and all({"mean_return", "n", "regime"} <= set(r) for r in agg["by_regime"])
+    # excess vs SPY and QQQ (J-09)
+    assert agg["excess"]["vs_spy"]["benchmark"] == cfg.etfs.index[0]
+    assert agg["excess"]["vs_qqq"]["benchmark"] == cfg.etfs.index[1]
+    # control-group cohorts (J-10)
+    cohorts = {c["key"]: c for c in agg["control_group"]}
+    assert set(cohorts) == {"top_ranked", "random_same_sector", "spy", "qqq", "sector_etf"}
+    assert cohorts["top_ranked"]["n"] > 0
+    # VCP + new-pattern breakdowns ride the aggregate (J-16 / J-28)
+    assert {r["vcp"] for r in agg["by_vcp"]} == {"VCP", "non-VCP"}
+    assert {r["pullback_to_rising_dma"] for r in agg["by_pullback_to_rising_dma"]} == {
+        "Pullback-to-DMA", "non-Pullback"
+    }
+    assert {r["flat_base_breakout"] for r in agg["by_flat_base_breakout"]} == {"Flat-base", "non-Flat-base"}
+
+
+def test_backtest_evidence_is_as_of_scoped_expanding_window(loaded_engine):
+    """J-09 expanding window at the API level: the evidence is scoped to snapshots dated <= the resolved
+    as-of date. At the OLDEST date only that one run contributes (n_runs == 1); at the latest (default)
+    every run contributes and the sample is strictly larger — n is non-decreasing toward latest and no
+    run dated > D leaks in (every contributing as-of date <= the cutoff)."""
+    h = str(load_config().walk_forward.default_horizon)
+    with TestClient(main.app) as client:
+        oldest = _oldest_date(client)
+        at_oldest = client.get(f"/api/backtest?as_of={oldest}").json()["evidence_by_horizon"][h]
+        at_latest = client.get("/api/backtest").json()["evidence_by_horizon"][h]
+    assert at_oldest["n_runs"] == 1                    # only the oldest snapshot is <= the oldest date
+    assert at_latest["n_runs"] > at_oldest["n_runs"]   # the window expands toward latest
+    assert at_latest["overall"]["n"] > at_oldest["overall"]["n"]
+    assert at_oldest["asof_dates"] and all(d <= oldest for d in at_oldest["asof_dates"])  # no >D leak
+
+
+def test_backtest_evidence_default_equals_full_all_history_aggregate(loaded_engine):
+    """At the latest date the evidence equals the FULL all-history aggregate (the value the retired
+    System Health served): n_runs / overall.n match `compute_forward_aggregates(..., as_of=None)`, and
+    both Risk-on and Risk-off regimes are present (the seeded walk-forward spans both)."""
+    from app.engine.forward_testing import compute_forward_aggregates
+
+    cfg = load_config()
+    h = cfg.walk_forward.default_horizon
+    with TestClient(main.app) as client:
+        ev = client.get("/api/backtest").json()["evidence_by_horizon"][str(h)]
+    with Session(loaded_engine) as session:
+        all_history = compute_forward_aggregates(session, h, cfg)  # no as_of -> all-history
+    assert ev["n_runs"] == all_history["n_runs"]
+    assert ev["overall"]["n"] == all_history["overall"]["n"]
+    regimes = {r["regime"] for r in ev["by_regime"]}
+    assert "Risk-on" in regimes and "Risk-off" in regimes
+
+
+def test_system_health_route_is_retired_404(loaded_engine):
+    """System Health is retired (iter-17): GET /api/system-health no longer exists (404) — the
+    forward-tested evidence has exactly ONE home now (/api/backtest), with or without a horizon param."""
+    with TestClient(main.app) as client:
+        assert client.get("/api/system-health").status_code == 404
+        assert client.get("/api/system-health", params={"horizon": 20}).status_code == 404

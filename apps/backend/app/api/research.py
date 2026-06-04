@@ -12,8 +12,8 @@ STORED forward returns + factor values + excursions:
 
 Each validates its selectors against the config-driven catalog / `walk_forward.horizons` (422 on an
 unknown factor / subject / side / quantile / horizon — no fabricated input); `503` when no price data
-exists at all (mirrors `system_health.py`; anti-goal: No fabricated data — never an invented evidence
-row). All three are cross-date aggregates (like System Health) — NONE has an as-of/date control (J-18).
+exists at all (mirrors the Backtest evidence endpoint; anti-goal: No fabricated data — never an invented
+evidence row). All three are cross-date all-history aggregates — NONE has an as-of/date control (J-18).
 """
 from __future__ import annotations
 

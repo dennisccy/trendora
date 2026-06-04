@@ -514,7 +514,7 @@ walk_forward:
   asof_cadence: quarterly
   horizons: [1, 5, 10, 20, 60]
   min_sample: 30
-  default_horizon: 20          # horizon served when /api/system-health gets no ?horizon (must be in horizons)
+  default_horizon: 20          # default forward window surfaced first by the UI (Backtest evidence + research labs); must be in horizons
   control_group:
     seed: 20240601             # deterministic RNG seed for the random same-sector cohort (reproducible)
     top_n: 20                  # top-ranked cohort = stocks ranked <= this in their run
