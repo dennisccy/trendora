@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever-iter-19",
+  "base_url": "http://localhost:3835",
+  "iteration": 19,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Research Factor Lab",
+      "narration": "We open Trendora's Research lab, where the factor, regime, and pattern statistics live. It opens in All-history mode, which pools every snapshot the system has ever recorded.",
+      "point_out": "A new 'Analysis mode' toggle sits at the top with 'All history' highlighted, and the grey line beneath it confirms it is pooling every snapshot.",
+      "journey": "J-32",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research" },
+      "expect": { "text": "Pooling every snapshot — all history" }
+    },
+    {
+      "n": 2,
+      "title": "Switch to As-of-date mode",
+      "narration": "One click flips the lab into As-of-date mode. Because the top-bar date is still on the latest day, the lab tells you this point-in-time view currently equals all of history.",
+      "point_out": "The 'As of date' segment is now the highlighted button, and the context line explains you can pick an earlier date in the top-bar switcher to restrict the window.",
+      "journey": "J-32",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "As of date" } },
+      "expect": { "text": "As of the latest date — equals all history" }
+    },
+    {
+      "n": 3,
+      "title": "Return to All-history mode",
+      "narration": "Clicking 'All history' restores the default view and brings back the full cross-date sample, so the big-picture evidence is always one click away.",
+      "point_out": "The 'All history' segment is highlighted again and the context line reverts to pooling every snapshot — the larger full-history figures return.",
+      "journey": "J-32",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "All history" } },
+      "expect": { "text": "Pooling every snapshot — all history" }
+    },
+    {
+      "n": 4,
+      "title": "Travel from a setup to its names on the leaderboard",
+      "narration": "From the Setup & Pattern lab you can jump straight to the stocks expressing a setup. Here Trendora honestly reports that no name currently qualifies rather than inventing rows to fill the page.",
+      "point_out": "The view lands on the Stocks leaderboard pre-filtered to the setup, showing an honest 'no matches' message instead of any fabricated data.",
+      "journey": "J-31",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "css": "[data-testid=\"subject-leaderboard-link\"]" } },
+      "expect": { "text": "No stocks match these filters" }
+    }
+  ]
+}

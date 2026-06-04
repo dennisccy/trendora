@@ -744,22 +744,26 @@ export interface FactorLabResponse {
   deciles: FactorDecileRow[]; // D1…D10 (config-driven count)
   rank_ic: RankIC;
   by_regime: RegimeEffectivenessRow[]; // J-27: per configured regime — rank-IC + raw/downside long-short spread + n
+  asof_date?: string | null; // J-32: the resolved point-in-time cutoff (ISO) when scoped; null = all-history
 }
 
 /** Canonical Factor-Lab source: GET /api/research/factor-lab?factor=&horizon=. Throws on non-200 so the
- *  page renders an explicit "Backend unavailable" state (503 no data / 422 unknown factor or horizon) —
- *  never fabricated evidence. Both params are optional (defaults: first catalog factor / config default
- *  horizon). */
+ *  page renders an explicit "Backend unavailable" state (503 no data / 422 unknown factor or horizon /
+ *  400 future as-of) — never fabricated evidence. All params optional (defaults: first catalog factor /
+ *  config default horizon). `asof` (J-32) is the single global as-of cutoff — appended via `withAsOf`
+ *  ONLY when a historical cutoff is active (As-of mode + a past date); omitted = all-history. */
 export async function fetchFactorLab(
   factor?: string,
   horizon?: number,
+  asof?: string,
   signal?: AbortSignal,
 ): Promise<FactorLabResponse> {
   const params = new URLSearchParams();
   if (factor) params.set("factor", factor);
   if (horizon !== undefined) params.set("horizon", String(horizon));
   const query = params.toString();
-  return getJSON<FactorLabResponse>(`/api/research/factor-lab${query ? `?${query}` : ""}`, signal);
+  const path = `/api/research/factor-lab${query ? `?${query}` : ""}`;
+  return getJSON<FactorLabResponse>(withAsOf(path, asof), signal);
 }
 
 // --- research / multi-factor combination cohorts (iter-12, J-26) ---------------------------
@@ -846,6 +850,7 @@ export interface FactorCombinationResponse {
   singles: FactorCombinationSingle[]; // one cohort per condition
   composite: FactorCombinationCohort; // HEADLINE: the composite percentile-rank-blend cohort (non-empty)
   strict_overlap: FactorCombinationCohort; // SECONDARY: the exact AND-intersection (NA + n when empty)
+  asof_date?: string | null; // J-32: the resolved point-in-time cutoff (ISO) when scoped; null = all-history
 }
 
 /** Canonical multi-factor combination source: GET /api/research/factor-combination. Builds repeated
@@ -855,6 +860,7 @@ export interface FactorCombinationResponse {
 export async function fetchFactorCombination(
   conditions: { factor: string; side: string; quantile: string }[],
   horizon?: number,
+  asof?: string,
   signal?: AbortSignal,
 ): Promise<FactorCombinationResponse> {
   const params = new URLSearchParams();
@@ -863,10 +869,9 @@ export async function fetchFactorCombination(
   }
   if (horizon !== undefined) params.set("horizon", String(horizon));
   const query = params.toString();
-  return getJSON<FactorCombinationResponse>(
-    `/api/research/factor-combination${query ? `?${query}` : ""}`,
-    signal,
-  );
+  // `asof` (J-32) is appended via `withAsOf` only when a historical cutoff is active (As-of mode + a past date)
+  const path = `/api/research/factor-combination${query ? `?${query}` : ""}`;
+  return getJSON<FactorCombinationResponse>(withAsOf(path, asof), signal);
 }
 
 // --- research / setup & pattern event study (iter-14, J-29) --------------------------------
@@ -951,6 +956,7 @@ export interface EventStudyResponse {
   best_exit_horizon: number | null; // argmax horizon of the primary metric among non-low-sample; null = NA
   by_regime: EventStudyRegimeRow[]; // per configured regime label at the selected horizon
   by_sector: EventStudySectorRow[]; // per stored sector with members at the selected horizon
+  asof_date?: string | null; // J-32: the resolved point-in-time cutoff (ISO) when scoped; null = all-history
 }
 
 /** Canonical event-study source: GET /api/research/event-study?subject=&horizon=. Throws on non-200 so
@@ -960,13 +966,16 @@ export interface EventStudyResponse {
 export async function fetchEventStudy(
   subject?: string,
   horizon?: number,
+  asof?: string,
   signal?: AbortSignal,
 ): Promise<EventStudyResponse> {
   const params = new URLSearchParams();
   if (subject) params.set("subject", subject);
   if (horizon !== undefined) params.set("horizon", String(horizon));
   const query = params.toString();
-  return getJSON<EventStudyResponse>(`/api/research/event-study${query ? `?${query}` : ""}`, signal);
+  // `asof` (J-32) is appended via `withAsOf` only when a historical cutoff is active (As-of mode + a past date)
+  const path = `/api/research/event-study${query ? `?${query}` : ""}`;
+  return getJSON<EventStudyResponse>(withAsOf(path, asof), signal);
 }
 
 // --- data manager (iter-3, J-17) -----------------------------------------------------------

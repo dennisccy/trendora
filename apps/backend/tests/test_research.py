@@ -197,6 +197,10 @@ def test_factor_lab_is_read_only_no_scoring_or_return_or_pattern_call(monotone_e
     cfg = load_config()
     with Session(monotone_engine) as session:
         payload = compute_factor_lab(session, "leadership_score", H, cfg)
+        # iter-19 (J-32): the SCOPED (as-of) path is equally read-only — it adds only a stored-snapshot
+        # membership filter, recomputing no score/return/regime/pattern (the run is dated 2025-01-10, so
+        # the cutoff includes it). It STILL returns a full payload under the patched-to-raise engines.
+        scoped = compute_factor_lab(session, "leadership_score", H, cfg, as_of=date(2025, 1, 10))
 
     assert payload["factor"]["key"] == "leadership_score"
     assert payload["n_total"] == 20
@@ -208,6 +212,8 @@ def test_factor_lab_is_read_only_no_scoring_or_return_or_pattern_call(monotone_e
     assert [r["regime"] for r in by_regime] == cfg.regime.labels
     on = next(r for r in by_regime if r["regime"] == "Risk-on")
     assert on["n"] == 20  # the fixture's single run is stored Risk-on; the regime is read, never recomputed
+    # the scoped read-only path returns a full point-in-time payload + echoes the resolved cutoff
+    assert scoped["n_total"] == 20 and scoped["asof_date"] == "2025-01-10"
 
 
 # ==================================================================================================
@@ -696,15 +702,15 @@ def test_combination_is_read_only_no_scoring_or_return_or_pattern_call(monotone_
 
     cfg = load_config()
     with Session(monotone_engine) as session:
-        payload = compute_factor_combination(
-            session,
-            [
-                {"factor": "leadership_score", "side": "top", "quantile": "half"},
-                {"factor": "risk_score", "side": "bottom", "quantile": "half"},
-            ],
-            H,
-            cfg,
-        )
+        conds = [
+            {"factor": "leadership_score", "side": "top", "quantile": "half"},
+            {"factor": "risk_score", "side": "bottom", "quantile": "half"},
+        ]
+        payload = compute_factor_combination(session, conds, H, cfg)
+        # iter-19 (J-32): the SCOPED (as-of) path is equally read-only — only a stored-snapshot
+        # membership filter on `_combination_observations`, recomputing no score/return/regime/pattern
+        # (the run is dated 2025-01-10, so the cutoff includes it).
+        scoped = compute_factor_combination(session, conds, H, cfg, as_of=date(2025, 1, 10))
     assert payload["pool_n"] == 20
     assert payload["baseline"]["stats"]["n"] == 20
     assert len(payload["singles"]) == 2
@@ -712,6 +718,8 @@ def test_combination_is_read_only_no_scoring_or_return_or_pattern_call(monotone_
     assert payload["composite"]["stats"]["n"] >= 1
     # the strict-AND overlap path ran too: leadership-top-half ∩ (risk all-equal → all) is non-empty
     assert payload["strict_overlap"]["stats"]["n"] >= 1
+    # the scoped read-only path returns a full point-in-time payload + echoes the resolved cutoff
+    assert scoped["pool_n"] == 20 and scoped["asof_date"] == "2025-01-10"
 
 
 # --- cohort algebra + exact stats -----------------------------------------------------------------
@@ -1142,11 +1150,18 @@ def test_event_study_is_read_only_no_scoring_return_excursion_or_pattern_call(ev
     cfg = _cfg_with(min_sample=2)
     with Session(event_study_engine) as session:
         payload = compute_event_study(session, "vcp", H, cfg)
+        # iter-19 (J-32): the SCOPED (as-of) path is equally read-only — only a stored-snapshot
+        # membership filter threaded through the per-horizon loop, recomputing no return/excursion/
+        # score/regime/pattern. The cutoff 2025-01-10 keeps ONLY the Risk-on run (AA+CC); DD (the
+        # 2025-02-10 VCP name) is excluded — a no-future-leak proof under the patched-to-raise engines.
+        scoped = compute_event_study(session, "vcp", H, cfg, as_of=date(2025, 1, 10))
     assert payload["subject"]["key"] == "vcp" and payload["subject"]["kind"] == "pattern"
     row = next(r for r in payload["by_horizon"] if r["horizon"] == H)
     assert row["n"] == 3 and row["mean_return"] is not None
     assert [r["regime"] for r in payload["by_regime"]] == cfg.regime.labels
     assert [r["sector"] for r in payload["by_sector"]] == ["Technology"]
+    scoped_row = next(r for r in scoped["by_horizon"] if r["horizon"] == H)
+    assert scoped["asof_date"] == "2025-01-10" and scoped_row["n"] == 2  # only the 2025-01-10 run's VCP
 
 
 # --- consistency invariant (the read-only proof; iter-2 lesson: bind to compute_forward_aggregates) ---
@@ -1349,3 +1364,147 @@ def test_event_study_payload_shape_and_labels(event_study_engine):
             "horizon", "n", "low_sample", "mean_return", "median", "pct_positive", "dispersion",
             "expectancy", "mean_mae", "mean_mfe", "return_per_downside_dev", "return_per_mae",
         } <= set(r)
+
+
+# ==================================================================================================
+# J-32 — Research point-in-time as-of scoping (iter-19). The optional keyword-only `as_of` cutoff
+# FILTERS the observation pool of all three labs to runs dated <= D (reusing the iter-17
+# `forward_testing.compute_forward_aggregates` membership seam verbatim): `as_of=None` adds NO clause
+# and is byte-identical all-history; an early D pools only the early run (smaller n, honest NA); no run
+# dated > D leaks. The mode merely filters STORED observations — it recomputes nothing (read-only).
+# ==================================================================================================
+_EARLY = date(2025, 1, 10)
+_LATE = date(2025, 3, 10)
+_MID = date(2025, 2, 1)  # between the two runs: pools ONLY the early run (the late run is 2025-03-10 > MID)
+
+
+@pytest.fixture()
+def asof_engine(tmp_path):
+    """Two runs at DIFFERENT as-of dates for the point-in-time scoping proofs (J-32): an EARLY run
+    (2025-01-10, 8 obs, leadership/risk 1..8) and a LATE run (2025-03-10, 12 obs, leadership/risk 1..12),
+    every stock Actionable + VCP + Technology with stored MAE/MFE. The cutoff keeps runs with
+    `ScannerRun.asof_date <= D`: an early D pools ONLY the early run (n=8); D >= the late date pools both
+    (n=20 == all-history). The two runs' distinct factor ranges (max 8 vs 12) make a future-run leak
+    detectable in the decile bounds."""
+    engine = _engine(tmp_path, "asof.db")
+    with Session(engine) as session:
+        early = _add_run(session, _EARLY, regime_label="Risk-on")
+        late = _add_run(session, _LATE, regime_label="Risk-on")
+        for i in range(1, 9):  # early: leadership/risk 1..8
+            _add_result(session, early.id, f"E{i:02d}", rank=i, lead=float(i), risk=float(i),
+                        setup="Actionable", is_vcp=True, sector="Technology")
+            _add_fr(session, early.id, f"E{i:02d}", ret=i / 1000, mae=-i / 1000, mfe=i / 500)
+        for i in range(1, 13):  # late: leadership/risk 1..12
+            _add_result(session, late.id, f"L{i:02d}", rank=i, lead=float(i), risk=float(i),
+                        setup="Actionable", is_vcp=True, sector="Technology")
+            _add_fr(session, late.id, f"L{i:02d}", ret=i / 1000, mae=-i / 1000, mfe=i / 500)
+        session.commit()
+    return engine
+
+
+def _without_echo(payload: dict) -> dict:
+    """The analytical payload with the `asof_date` echo label removed — so the byte-identical guard
+    compares the AGGREGATES (which must be identical at latest == all-history), not the mode label."""
+    return {k: v for k, v in payload.items() if k != "asof_date"}
+
+
+# --- factor lab (J-25/J-27 under the as-of mode) ---------------------------------------------------
+def test_factor_lab_as_of_none_equals_latest_is_byte_identical_all_history(asof_engine):
+    """The all-history regression guard (the critical iter-19 invariant): `as_of=None` adds NO clause, so
+    it is byte-identical to the default (no-kwarg) call; and `as_of=<latest>` (>= every run) equals the
+    all-history aggregate for the whole ANALYTICAL payload — only the `asof_date` echo label differs
+    (None vs the resolved cutoff). The mode never alters a figure at latest (matches J-09)."""
+    cfg = _cfg_with(min_sample=2)
+    with Session(asof_engine) as session:
+        default = compute_factor_lab(session, "leadership_score", H, cfg)
+        none_mode = compute_factor_lab(session, "leadership_score", H, cfg, as_of=None)
+        at_latest = compute_factor_lab(session, "leadership_score", H, cfg, as_of=_LATE)
+    assert none_mode == default                      # as_of=None is byte-identical to the default path
+    assert default["asof_date"] is None              # all-history mode -> null echo (not scoped)
+    assert at_latest["asof_date"] == _LATE.isoformat()
+    assert _without_echo(at_latest) == _without_echo(default)  # latest == all-history aggregate
+    assert default["n_total"] == 20
+
+
+def test_factor_lab_as_of_early_scopes_pool_no_future_leak(asof_engine):
+    """An early `as_of` pools ONLY snapshots dated <= D (J-32): the early cutoff yields n=8 (the early
+    run alone), strictly smaller than all-history (20); no run dated > D leaks (the late run's factor
+    values, up to 12, never enter the early window — the early decile bounds top out at 8); a cutoff
+    BETWEEN the two runs pools the same early-only window."""
+    cfg = _cfg_with(min_sample=2)
+    with Session(asof_engine) as session:
+        all_history = compute_factor_lab(session, "leadership_score", H, cfg)
+        early = compute_factor_lab(session, "leadership_score", H, cfg, as_of=_EARLY)
+        mid = compute_factor_lab(session, "leadership_score", H, cfg, as_of=_MID)
+    assert all_history["n_total"] == 20
+    assert early["n_total"] == 8 and early["n_total"] < all_history["n_total"]
+    assert early["asof_date"] == _EARLY.isoformat()
+    # no future-run leak: the late run (factor max 12) contributes nothing to the early cutoff (max 8)
+    assert all_history["deciles"][-1]["factor_max"] == 12.0
+    assert early["deciles"][-1]["factor_max"] == 8.0
+    # a cutoff between the runs pools the early run only (the late 2025-03-10 run is > 2025-02-01)
+    assert mid["n_total"] == 8 and mid["asof_date"] == _MID.isoformat()
+
+
+def test_factor_lab_as_of_early_cutoff_is_low_sample_na(asof_engine):
+    """Honest NA at a thin early cutoff (the iter-11 thin-by-date lesson): with the real min_sample (30)
+    the 8-observation early window is low-sample — every decile is flagged low_sample and the per-regime
+    spread is NA, never a fabricated number on the thin point-in-time pool."""
+    cfg = load_config()  # real min_sample = 30; the early window has only 8 observations
+    with Session(asof_engine) as session:
+        early = compute_factor_lab(session, "leadership_score", H, cfg, as_of=_EARLY)
+    assert early["n_total"] == 8
+    assert all(d["low_sample"] for d in early["deciles"])
+    on = next(r for r in early["by_regime"] if r["regime"] == "Risk-on")
+    assert on["n"] == 8 and on["low_sample"] is True and on["spread"] is None
+
+
+def test_factor_lab_as_of_before_any_snapshot_is_empty_not_fabricated(asof_engine):
+    """An as-of cutoff EARLIER than every stored snapshot pools zero runs -> n_total 0, honest NA decile
+    rows, rank-IC None — never a fabricated row or a 500 (the read-only filter simply matches no run)."""
+    cfg = _cfg_with(min_sample=2)
+    with Session(asof_engine) as session:
+        payload = compute_factor_lab(session, "leadership_score", H, cfg, as_of=date(2024, 1, 1))
+    assert payload["asof_date"] == "2024-01-01" and payload["n_total"] == 0
+    assert all(d["n"] == 0 and d["mean_return"] is None for d in payload["deciles"])
+    assert payload["rank_ic"] == {"value": None, "n": 0}
+
+
+# --- combination cohorts under the as-of mode -----------------------------------------------------
+def test_combination_as_of_scopes_pool_no_future_leak(asof_engine):
+    """The combination pool is as-of scoped too (J-32): `as_of=None`/latest == all-history (pool_n 20,
+    byte-identical aggregates); an early cutoff pools only the early run (pool_n 8) — the single
+    membership filter on the shared `_combination_observations` query scopes the whole cohort algebra."""
+    cfg = _cfg_with(min_sample=2)
+    conds = [
+        {"factor": "leadership_score", "side": "top", "quantile": "half"},
+        {"factor": "risk_score", "side": "bottom", "quantile": "half"},
+    ]
+    with Session(asof_engine) as session:
+        all_history = compute_factor_combination(session, conds, H, cfg)
+        at_latest = compute_factor_combination(session, conds, H, cfg, as_of=_LATE)
+        early = compute_factor_combination(session, conds, H, cfg, as_of=_EARLY)
+    assert all_history["pool_n"] == 20 and early["pool_n"] == 8
+    assert early["pool_n"] < all_history["pool_n"]
+    assert all_history["asof_date"] is None and at_latest["asof_date"] == _LATE.isoformat()
+    assert _without_echo(at_latest) == _without_echo(all_history)  # latest == all-history aggregate
+    assert early["asof_date"] == _EARLY.isoformat()
+
+
+# --- event study under the as-of mode (threads through the per-horizon loop) ------------------------
+def test_event_study_as_of_scopes_pool_through_horizon_loop_no_future_leak(asof_engine):
+    """The event study is as-of scoped through its per-horizon loop (J-32 — the `_event_study_members`
+    call in `compute_event_study`'s horizon loop receives `as_of`): `as_of=None`/latest == all-history
+    (n=20, byte-identical), an early cutoff pools only the early run (n=8). No run dated > D leaks."""
+    cfg = _cfg_with(min_sample=2)
+    with Session(asof_engine) as session:
+        all_history = compute_event_study(session, "vcp", H, cfg)
+        at_latest = compute_event_study(session, "vcp", H, cfg, as_of=_LATE)
+        early = compute_event_study(session, "vcp", H, cfg, as_of=_EARLY)
+    es_all = next(r for r in all_history["by_horizon"] if r["horizon"] == H)
+    es_early = next(r for r in early["by_horizon"] if r["horizon"] == H)
+    assert es_all["n"] == 20 and es_early["n"] == 8           # the loop is scoped at every horizon
+    assert all_history["n_total"] == 20 and early["n_total"] == 8
+    assert all_history["asof_date"] is None and at_latest["asof_date"] == _LATE.isoformat()
+    assert _without_echo(at_latest) == _without_echo(all_history)  # latest == all-history aggregate
+    assert early["asof_date"] == _EARLY.isoformat()

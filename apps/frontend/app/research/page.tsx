@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Microscope, Plus, ShieldAlert, X } from "lucide-react";
 
+import { useAsOf } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
 import { fmtPct, returnClass, SampleSize } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
@@ -43,18 +44,31 @@ export default function ResearchPage() {
   // horizon). The selectors are built from the loaded payload — config-driven, never a hard-coded list.
   const [factor, setFactor] = useState<string | undefined>(undefined);
   const [horizon, setHorizon] = useState<number | undefined>(undefined);
+  // J-32: the analysis MODE — "all" (default, pool every snapshot) vs "asof" (point-in-time / walk-forward).
+  // It is a MODE, NOT a date control: As-of mode reads the SINGLE global as-of below (no second date state).
+  const [mode, setMode] = useState<"all" | "asof">("all");
   const [state, setState] = useState<State>({ kind: "loading" });
+  // The single global as-of date (the only date control on the whole app). At the latest date it is null.
+  const { asOf } = useAsOf();
+  // ONE resolved cutoff shared by all three labs (J-32). As-of mode reads the global `asOf`; All-history
+  // mode ignores it (null). At the latest date `asOf` is already null → As-of@latest == all-history
+  // (matches J-09). The fetch effects depend on THIS resolved cutoff, NOT raw `asOf`: so toggling
+  // asof→all refetches (full sample returns), while in All-history mode moving the global date does NOT
+  // refetch the labs (cutoff stays null) — preserving the J-15 read-path discipline + the genuine
+  // cross-date nature of all-history. Sending `?as_of=` here is the single global date transmitted on a
+  // snapshot-served read (like /api/stocks?as_of=), NOT a second date state (J-18).
+  const asofCutoff = mode === "asof" ? asOf : null;
 
   useEffect(() => {
     const controller = new AbortController();
     setState({ kind: "loading" });
-    fetchFactorLab(factor, horizon, controller.signal)
+    fetchFactorLab(factor, horizon, asofCutoff ?? undefined, controller.signal)
       .then((data) => setState({ kind: "ok", data }))
       .catch(() => {
         if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => controller.abort();
-  }, [factor, horizon]);
+  }, [factor, horizon, asofCutoff]);
 
   const data = state.kind === "ok" ? state.data : null;
   const selectedFactor = factor ?? data?.factor.key ?? "";
@@ -62,23 +76,27 @@ export default function ResearchPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <PageHeading
-          title="Research — Factor Lab"
-          subtitle="Does a factor actually sort future returns? Decile means + a downside risk-adjusted column + the rank-IC, derived once from the stored forward-tested evidence. Descriptive, not predictive."
-        />
-        <div className="flex flex-wrap items-end gap-3">
-          <FactorSelector
-            factors={data?.factors ?? []}
-            value={selectedFactor}
-            onChange={(key) => setFactor(key)}
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <PageHeading
+            title="Research — Factor Lab"
+            subtitle="Does a factor actually sort future returns? Decile means + a downside risk-adjusted column + the rank-IC, derived once from the stored forward-tested evidence. Descriptive, not predictive."
           />
-          <HorizonSelector
-            horizons={data?.horizons ?? []}
-            value={selectedHorizon}
-            onChange={(h) => setHorizon(h)}
-          />
+          <div className="flex flex-wrap items-end gap-3">
+            <AnalysisModeToggle mode={mode} onChange={setMode} />
+            <FactorSelector
+              factors={data?.factors ?? []}
+              value={selectedFactor}
+              onChange={(key) => setFactor(key)}
+            />
+            <HorizonSelector
+              horizons={data?.horizons ?? []}
+              value={selectedHorizon}
+              onChange={(h) => setHorizon(h)}
+            />
+          </div>
         </div>
+        <ModeContext mode={mode} asofCutoff={asofCutoff} />
       </div>
 
       <CaveatBanner
@@ -110,13 +128,91 @@ export default function ResearchPage() {
       {data ? <FactorLab data={data} /> : null}
 
       {/* J-26: the multi-factor combination cohort section — its own read-only data source, reusing the
-          page's shared `horizon` (no second date/horizon state). Always rendered (own loading/error). */}
-      <CombinationLab horizon={horizon} />
+          page's shared `horizon` + the shared `asofCutoff` (no second date/horizon state). Always rendered. */}
+      <CombinationLab horizon={horizon} asofCutoff={asofCutoff} />
 
       {/* J-29: the Setup & Pattern event study — its own read-only data source, reusing the page's shared
-          `horizon` (no second date/horizon state) plus a subject selector. Always rendered (own states). */}
-      <EventStudyLab horizon={horizon} />
+          `horizon` + the shared `asofCutoff` (no second date/horizon state) plus a subject selector. */}
+      <EventStudyLab horizon={horizon} asofCutoff={asofCutoff} />
     </div>
+  );
+}
+
+/** The analysis-mode toggle (J-32): a segmented "All history" ⟷ "As of date" button group (styled like
+ *  `HorizonSelector`/`SideToggle`, clicked directly — not a `<select>`). It is a MODE, not a date control:
+ *  "As of date" reads the SINGLE global top-bar as-of switcher (no second date state — J-18). Default is
+ *  "All history" (the cross-date aggregate). */
+function AnalysisModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: "all" | "asof";
+  onChange: (mode: "all" | "asof") => void;
+}) {
+  const options: { key: "all" | "asof"; label: string }[] = [
+    { key: "all", label: "All history" },
+    { key: "asof", label: "As of date" },
+  ];
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs uppercase tracking-wide text-text-faint">Analysis mode</span>
+      <div
+        role="group"
+        aria-label="Analysis mode (all-history or as-of-date)"
+        data-testid="analysis-mode-toggle"
+        className="inline-flex h-9 overflow-hidden rounded-md border border-border bg-surface-2"
+      >
+        {options.map((o) => {
+          const active = o.key === mode;
+          return (
+            <button
+              key={o.key}
+              type="button"
+              aria-pressed={active}
+              data-testid={`analysis-mode-${o.key}`}
+              onClick={() => onChange(o.key)}
+              className={cn(
+                "border-r border-border px-3 text-sm transition-colors last:border-r-0",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                active
+                  ? "bg-accent font-semibold text-bg"
+                  : "text-text-muted hover:bg-surface hover:text-text",
+              )}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** The mode context line (J-32): shows the current pooling scope inline — every snapshot (all history),
+ *  or only snapshots dated ≤ the resolved as-of date (point-in-time). The resolved as-of date is read
+ *  from the single global switcher (`asofCutoff`); in As-of mode at the latest date the cutoff is null,
+ *  which equals all history (J-09). Re-formats the resolved cutoff only — no recompute. */
+function ModeContext({ mode, asofCutoff }: { mode: "all" | "asof"; asofCutoff: string | null }) {
+  return (
+    <p className="text-xs text-text-faint" data-testid="analysis-mode-context">
+      {mode === "all" ? (
+        <>
+          Pooling <span className="text-text-muted">every snapshot</span> — all history (the default
+          cross-date aggregate).
+        </>
+      ) : asofCutoff ? (
+        <>
+          Point-in-time: pooling{" "}
+          <span className="text-accent">only snapshots dated ≤ {asofCutoff}</span> (a walk-forward view —
+          smaller n, honest NA at early dates), driven by the single global as-of switcher.
+        </>
+      ) : (
+        <>
+          As of the <span className="text-text-muted">latest date</span> — equals all history. Pick an
+          earlier date in the top-bar as-of switcher to restrict the window.
+        </>
+      )}
+    </p>
   );
 }
 
@@ -529,11 +625,19 @@ function conditionLabel(condition: FactorCombinationCondition): string {
 
 /** The Multi-factor combination cohort section (J-26): compose 2–3 catalog-factor top/bottom quantile
  *  conditions and read the combined-AND cohort beside the unconditional baseline and each single-factor
- *  cohort. Reuses the page's shared `horizon` (no second date/horizon state); adds ONLY `conditions`
- *  state. A cross-date aggregate — NO as-of/date control (J-18). Re-formats the payload only — recomputes
- *  no return/factor; low-sample/empty cohorts render NA + n (never a fabricated number). The factor +
- *  quantile option lists come from the payload (config-driven) — no hard-coded list here. */
-function CombinationLab({ horizon }: { horizon: number | undefined }) {
+ *  cohort. Reuses the page's shared `horizon` + the shared `asofCutoff` (no second date/horizon state);
+ *  adds ONLY `conditions` state. J-32: when `asofCutoff` is set (As-of mode + a past global date) the
+ *  cohorts pool only snapshots dated ≤ that date — the single global as-of, a mode not a second date
+ *  control (J-18). Re-formats the payload only — recomputes no return/factor; low-sample/empty cohorts
+ *  render NA + n (never a fabricated number). The factor + quantile option lists come from the payload
+ *  (config-driven) — no hard-coded list here. */
+function CombinationLab({
+  horizon,
+  asofCutoff,
+}: {
+  horizon: number | undefined;
+  asofCutoff: string | null;
+}) {
   // null until the user first edits — then the explicit condition list. The server resolves the config
   // default_conditions when none are sent (config-driven; no hard-coded default in the UI).
   const [conditions, setConditions] = useState<ConditionInput[] | null>(null);
@@ -543,7 +647,9 @@ function CombinationLab({ horizon }: { horizon: number | undefined }) {
   useEffect(() => {
     const controller = new AbortController();
     setStatus("loading");
-    fetchFactorCombination(conditions ?? [], horizon, controller.signal)
+    // depends on the RESOLVED `asofCutoff` (not raw asOf): All-history mode never refetches on a global
+    // date change (cutoff stays null); toggling mode re-points the cohorts to the new window (J-32/J-15).
+    fetchFactorCombination(conditions ?? [], horizon, asofCutoff ?? undefined, controller.signal)
       .then((d) => {
         if (controller.signal.aborted) return;
         setData(d);
@@ -553,7 +659,7 @@ function CombinationLab({ horizon }: { horizon: number | undefined }) {
         if (!controller.signal.aborted) setStatus("error");
       });
     return () => controller.abort();
-  }, [conditions, horizon]);
+  }, [conditions, horizon, asofCutoff]);
 
   // the editable rows: explicit user conditions, else the server's resolved defaults (kept stable across
   // re-fetches because `data` persists) — config-driven, never a hard-coded frontend list.
@@ -912,11 +1018,19 @@ function CombinationSkeleton() {
 /** The Setup & Pattern Lab (J-29): pick a setup or pattern subject and read its pooled, cross-snapshot
  *  event study — per horizon the forward-return distribution + expectancy + MAE/MFE + the downside-only
  *  risk-adjusted ratios, the best exit-horizon, and behaviour by regime and by sector. Reuses the page's
- *  shared `horizon` (no second date/horizon state); adds ONLY a `subject` selector. A cross-date aggregate
- *  — NO as-of/date control (J-18). Re-formats the payload only — recomputes no return/excursion; low-
- *  sample / empty cells render NA + n (never a fabricated number). The subject list comes from the payload
- *  (config-driven) — no hard-coded setup/pattern list here. */
-function EventStudyLab({ horizon }: { horizon: number | undefined }) {
+ *  shared `horizon` + the shared `asofCutoff` (no second date/horizon state); adds ONLY a `subject`
+ *  selector. J-32: when `asofCutoff` is set (As-of mode + a past global date) every figure pools only
+ *  snapshots dated ≤ that date — the single global as-of, a mode not a second date control (J-18).
+ *  Re-formats the payload only — recomputes no return/excursion; low-sample / empty cells render NA + n
+ *  (never a fabricated number). The subject list comes from the payload (config-driven) — no hard-coded
+ *  setup/pattern list here. */
+function EventStudyLab({
+  horizon,
+  asofCutoff,
+}: {
+  horizon: number | undefined;
+  asofCutoff: string | null;
+}) {
   // `undefined` lets the backend pick the canonical default (first catalog subject). The subject list is
   // built from the loaded payload — config-driven, never a hard-coded frontend list.
   const [subject, setSubject] = useState<string | undefined>(undefined);
@@ -926,7 +1040,9 @@ function EventStudyLab({ horizon }: { horizon: number | undefined }) {
   useEffect(() => {
     const controller = new AbortController();
     setStatus("loading");
-    fetchEventStudy(subject, horizon, controller.signal)
+    // depends on the RESOLVED `asofCutoff` (not raw asOf): All-history mode never refetches on a global
+    // date change (cutoff stays null); toggling mode re-points the study to the new window (J-32/J-15).
+    fetchEventStudy(subject, horizon, asofCutoff ?? undefined, controller.signal)
       .then((d) => {
         if (controller.signal.aborted) return;
         setData(d);
@@ -936,7 +1052,7 @@ function EventStudyLab({ horizon }: { horizon: number | undefined }) {
         if (!controller.signal.aborted) setStatus("error");
       });
     return () => controller.abort();
-  }, [subject, horizon]);
+  }, [subject, horizon, asofCutoff]);
 
   const selectedSubject = subject ?? data?.subject.key ?? "";
   const hasAny = data ? data.by_horizon.some((r) => r.n > 0) : false;
@@ -956,8 +1072,8 @@ function EventStudyLab({ horizon }: { horizon: number | undefined }) {
             onChange={(key) => setSubject(key)}
           />
           <p className="max-w-md text-xs text-text-faint">
-            Re-uses the page&apos;s shared horizon selector above. No date control — a cross-date aggregate
-            over every stored snapshot (J-18).
+            Re-uses the page&apos;s shared horizon selector and the page-level analysis-mode toggle above —
+            no date control of its own (the single global as-of drives any point-in-time scoping, J-18).
           </p>
         </div>
 

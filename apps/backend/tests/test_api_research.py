@@ -5,7 +5,15 @@ lifespan backfill), so the default factor-lab payload carries real observations.
 payload carries the config-driven factor catalog + a D1…D10 decile table (mean_return + downside
 risk-adjusted + n) + rank-IC + the honest labels; the catalog matches config (config-driven, not
 hard-coded); changing factor / horizon re-points the table; unknown factor / bad horizon are 422; no
-price data is 503; and (J-18) the payload exposes NO as-of/date control (a cross-date aggregate).
+price data is 503.
+
+iter-19 (J-32) adds the point-in-time **as-of mode**: each endpoint accepts the SINGLE global `as_of`
+as an OPTIONAL scoping cutoff (a mode, not a second date state — MEMORY j18-asof-on-stocks-fetch-is-
+correct). The default (omitted) call is all-history and echoes `asof_date: null`; a `?as_of=D` call
+scopes the pool to snapshots dated <= D and echoes the resolved `asof_date`. `?as_of=` validation
+reuses the shared snapshot-served resolver (unparseable -> 422, future -> 400). The three
+`test_*_no_date_control_present` tests are UPDATED to this new contract (iter-2 lesson — the `?as_of=`
+is the single global date transmitted on a snapshot-served read, NOT a second/page-local date control).
 """
 from __future__ import annotations
 
@@ -18,6 +26,12 @@ import main
 from app.config import load_config
 from app.db import create_db_and_tables, make_engine
 from app.engine.prices import latest_data_date
+
+
+def _oldest_research_date(client) -> str:
+    """The earliest stored immutable run date (the canonical run list, descending) — the as-of cutoff
+    that scopes a research lab to its earliest point-in-time window (an expanding-window subset)."""
+    return min(r["asof_date"] for r in client.get("/api/runs").json()["runs"])
 
 
 def test_factor_lab_default_payload(loaded_engine):
@@ -55,11 +69,48 @@ def test_factor_lab_default_payload(loaded_engine):
 
 
 def test_factor_lab_no_date_control_present(loaded_engine):
-    """J-18: the Factor Lab is a cross-date aggregate — its payload exposes NO as-of/date field (no
-    second date state); selectors are factor + horizon only."""
+    """J-18 (iter-19 UPDATED contract — iter-2 lesson, not a regression): the Factor Lab accepts the
+    SINGLE global `as_of` as an OPTIONAL point-in-time scoping cutoff (a mode, not a second date state).
+    The default (all-history) payload echoes `asof_date: null`; a `?as_of=D` call echoes the resolved
+    cutoff. There is NO second, independent date field (no `asof_dates`/`date`/`is_latest`) — the only
+    date is the single global as-of transmitted on the read (MEMORY j18-asof-on-stocks-fetch-is-correct)."""
     with TestClient(main.app) as client:
-        data = client.get("/api/research/factor-lab").json()
-    assert not any(k in data for k in ("asof_date", "as_of", "asof_dates", "date", "is_latest"))
+        default = client.get("/api/research/factor-lab").json()
+        oldest = _oldest_research_date(client)
+        scoped = client.get(f"/api/research/factor-lab?as_of={oldest}").json()
+    # all-history default: the echo is present but null (not scoped) — NOT a second date STATE
+    assert default["asof_date"] is None
+    # scoped: the resolved single global as-of is echoed (expected, correct — NOT a J-18 violation)
+    assert scoped["asof_date"] == oldest
+    # no SECOND independent date field beyond the single global as-of echo (no page-local/2nd date state)
+    for data in (default, scoped):
+        assert not any(k in data for k in ("asof_dates", "date", "is_latest"))
+
+
+def test_factor_lab_as_of_scopes_pool_and_echoes_resolved_cutoff(loaded_engine):
+    """J-32 at the API level: a historical `?as_of=D` scopes the factor-lab pool to snapshots dated <= D
+    (the expanding-window discipline — strictly fewer observations than all-history) and echoes the
+    resolved `asof_date`; the default (omitted) call is all-history with `asof_date` null."""
+    with TestClient(main.app) as client:
+        oldest = _oldest_research_date(client)
+        all_history = client.get("/api/research/factor-lab").json()
+        scoped = client.get(f"/api/research/factor-lab?as_of={oldest}").json()
+    assert all_history["asof_date"] is None
+    assert scoped["asof_date"] == oldest
+    assert 0 < scoped["n_total"] < all_history["n_total"]  # oldest cutoff pools strictly fewer, not empty
+
+
+def test_factor_lab_as_of_unparseable_422(loaded_engine):
+    """An unparseable `?as_of=` is rejected 422 (reusing the shared snapshot-served validator) — never a
+    fabricated window."""
+    with TestClient(main.app) as client:
+        assert client.get("/api/research/factor-lab?as_of=not-a-date").status_code == 422
+
+
+def test_factor_lab_as_of_future_400(loaded_engine):
+    """A future `?as_of=` (after the latest data date) is rejected 400 — never a fabricated forward window."""
+    with TestClient(main.app) as client:
+        assert client.get("/api/research/factor-lab?as_of=2999-01-01").status_code == 400
 
 
 def test_factor_lab_changing_factor_and_horizon_changes_payload(loaded_engine):
@@ -166,11 +217,45 @@ def test_factor_combination_default_payload(loaded_engine):
 
 
 def test_factor_combination_no_date_control_present(loaded_engine):
-    """J-18: the combination cohort is a cross-date aggregate — its payload exposes NO as-of/date field
-    (no second date state); the only inputs are conditions + the shared horizon."""
+    """J-18 (iter-19 UPDATED contract — iter-2 lesson, not a regression): the combination cohort accepts
+    the SINGLE global `as_of` as an OPTIONAL point-in-time scoping cutoff (a mode, not a second date
+    state). The default (all-history) payload echoes `asof_date: null`; a `?as_of=D` call echoes the
+    resolved cutoff. There is NO second, independent date field — the only inputs are conditions + the
+    shared horizon + the single global as-of transmitted on the read."""
     with TestClient(main.app) as client:
-        data = client.get("/api/research/factor-combination").json()
-    assert not any(k in data for k in ("asof_date", "as_of", "asof_dates", "date", "is_latest"))
+        default = client.get("/api/research/factor-combination").json()
+        oldest = _oldest_research_date(client)
+        scoped = client.get(f"/api/research/factor-combination?as_of={oldest}").json()
+    assert default["asof_date"] is None
+    assert scoped["asof_date"] == oldest
+    for data in (default, scoped):
+        assert not any(k in data for k in ("asof_dates", "date", "is_latest"))
+
+
+def test_factor_combination_as_of_scopes_pool_and_echoes_resolved_cutoff(loaded_engine):
+    """J-32 at the API level: a historical `?as_of=D` scopes the combination pool to snapshots dated <= D
+    (a non-increasing expanding-window subset — pool_n never grows toward the cutoff) and echoes the
+    resolved `asof_date`; the default call is all-history with `asof_date` null. (The exact strict n-drop +
+    no-future-leak is proven on a controlled fixture in test_research.py.)"""
+    with TestClient(main.app) as client:
+        oldest = _oldest_research_date(client)
+        all_history = client.get("/api/research/factor-combination").json()
+        scoped = client.get(f"/api/research/factor-combination?as_of={oldest}").json()
+    assert all_history["asof_date"] is None
+    assert scoped["asof_date"] == oldest
+    assert 0 < scoped["pool_n"] <= all_history["pool_n"]  # expanding window: oldest cutoff is a subset
+
+
+def test_factor_combination_as_of_unparseable_422(loaded_engine):
+    """An unparseable `?as_of=` is rejected 422 (shared validator) — never a fabricated window."""
+    with TestClient(main.app) as client:
+        assert client.get("/api/research/factor-combination?as_of=not-a-date").status_code == 422
+
+
+def test_factor_combination_as_of_future_400(loaded_engine):
+    """A future `?as_of=` (after the latest data date) is rejected 400 — never a fabricated forward window."""
+    with TestClient(main.app) as client:
+        assert client.get("/api/research/factor-combination?as_of=2999-01-01").status_code == 400
 
 
 def test_factor_combination_explicit_conditions_repoint(loaded_engine):
@@ -381,11 +466,45 @@ def test_event_study_default_payload(loaded_engine):
 
 
 def test_event_study_no_date_control_present(loaded_engine):
-    """J-18: the event study is a cross-date aggregate — its payload exposes NO as-of/date field (no
-    second date state); the only inputs are subject + the shared horizon."""
+    """J-18 (iter-19 UPDATED contract — iter-2 lesson, not a regression): the event study accepts the
+    SINGLE global `as_of` as an OPTIONAL point-in-time scoping cutoff (a mode, not a second date state).
+    The default (all-history) payload echoes `asof_date: null`; a `?as_of=D` call echoes the resolved
+    cutoff. There is NO second, independent date field — the only inputs are subject + the shared horizon
+    + the single global as-of transmitted on the read."""
     with TestClient(main.app) as client:
-        data = client.get("/api/research/event-study").json()
-    assert not any(k in data for k in ("asof_date", "as_of", "asof_dates", "date", "is_latest"))
+        default = client.get("/api/research/event-study").json()
+        oldest = _oldest_research_date(client)
+        scoped = client.get(f"/api/research/event-study?as_of={oldest}").json()
+    assert default["asof_date"] is None
+    assert scoped["asof_date"] == oldest
+    for data in (default, scoped):
+        assert not any(k in data for k in ("asof_dates", "date", "is_latest"))
+
+
+def test_event_study_as_of_scopes_pool_and_echoes_resolved_cutoff(loaded_engine):
+    """J-32 at the API level: a historical `?as_of=D` scopes the event-study pool to snapshots dated <= D
+    (a non-increasing expanding-window subset — n_total never grows toward the cutoff) and echoes the
+    resolved `asof_date`; the default call is all-history with `asof_date` null. (The exact strict n-drop +
+    no-future-leak through the horizon loop is proven on a controlled fixture in test_research.py.)"""
+    with TestClient(main.app) as client:
+        oldest = _oldest_research_date(client)
+        all_history = client.get("/api/research/event-study?subject=vcp").json()
+        scoped = client.get(f"/api/research/event-study?subject=vcp&as_of={oldest}").json()
+    assert all_history["asof_date"] is None
+    assert scoped["asof_date"] == oldest
+    assert scoped["n_total"] <= all_history["n_total"]  # expanding window: oldest cutoff is a subset
+
+
+def test_event_study_as_of_unparseable_422(loaded_engine):
+    """An unparseable `?as_of=` is rejected 422 (shared validator) — never a fabricated window."""
+    with TestClient(main.app) as client:
+        assert client.get("/api/research/event-study?as_of=not-a-date").status_code == 422
+
+
+def test_event_study_as_of_future_400(loaded_engine):
+    """A future `?as_of=` (after the latest data date) is rejected 400 — never a fabricated forward window."""
+    with TestClient(main.app) as client:
+        assert client.get("/api/research/event-study?as_of=2999-01-01").status_code == 400
 
 
 def test_event_study_changing_subject_repoints(loaded_engine):

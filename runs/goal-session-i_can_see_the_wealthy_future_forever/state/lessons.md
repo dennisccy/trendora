@@ -155,3 +155,9 @@ baseline"** — judge the composite's value on *sensible* (non-cancelling) selec
 **Applies to:** any iter touching `compute_factor_combination` / the `_composite_scores` blend, and any
 evaluator judging J-26 or the J-32 as-of-mode applied to the combination cohort — assert differentiation on
 a non-cancelling selection, not just `n > 0`.
+
+## iter-19 — 2026-06-04T13:30:00Z
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** GOAL_ACHIEVED can be correct even with journeys still in `failing` status — when the operator-authored `docs/goal.md` explicitly re-scopes specific journeys as non-halting/non-vetoing. Here J-22/J-23/J-24 stayed `failing` (externally Yahoo-429 data-walled) yet the goal text (commit d723133, lines 99-103 + 755-765) twice states they "MUST NOT halt the loop, drive a STALLED verdict, or veto GOAL_ACHIEVED." That project-specific instruction overrides the goal-evaluator's generic "do not mark GOAL_ACHIEVED if any journey is failing" guardrail. The correct gate became "every *buildable* journey passing (29/29) + no critical anti-goal + coherence not FAIL," not "all 32 passing." Confirm the carve-out is in goal.md itself (not just an evaluator's prior note) before treating blocked journeys as non-vetoing.
+**Applies to:** any goal-mode session whose `docs/goal.md` declares a subset of must-have journeys "non-halting" / data-dependent; any final GOAL_ACHIEVED decision where some journeys remain blocked — read the goal's own halting semantics rather than applying the generic all-journeys-passing rule.

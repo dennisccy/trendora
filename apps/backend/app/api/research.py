@@ -13,7 +13,16 @@ STORED forward returns + factor values + excursions:
 Each validates its selectors against the config-driven catalog / `walk_forward.horizons` (422 on an
 unknown factor / subject / side / quantile / horizon — no fabricated input); `503` when no price data
 exists at all (mirrors the Backtest evidence endpoint; anti-goal: No fabricated data — never an invented
-evidence row). All three are cross-date all-history aggregates — NONE has an as-of/date control (J-18).
+evidence row).
+
+iter-19 (J-32): each endpoint accepts the SINGLE global `as_of` as an OPTIONAL point-in-time scoping
+cutoff (a MODE, not a second date state — it is the same global as-of transmitted on every snapshot-
+served read, e.g. `/api/stocks?as_of=`). When set, the lab pools ONLY snapshots dated <= D (an expanding
+walk-forward window) and echoes the resolved `asof_date`; omitted/null => the default all-history
+aggregate (`asof_date` null). The `?as_of=` is validated by the SHARED snapshot-served resolver
+(`resolved_date`: unparseable -> 422, future -> 400, before-history -> 400), never hand-rolled — so the
+research read path stays consistent with `/api/stocks?as_of=` / `/bars?as_of=`. This is NOT a J-18
+violation: the page holds no second/page-local date control; the cutoff is the single global as-of.
 """
 from __future__ import annotations
 
@@ -32,6 +41,7 @@ from app.engine.research import (
     factor_catalog,
     subject_catalog,
 )
+from app.engine.snapshot_serving import resolved_date
 
 router = APIRouter(tags=["research"])
 
@@ -44,12 +54,17 @@ _CONDITION_SIDES = ("top", "bottom")
 def factor_lab(
     factor: Optional[str] = Query(default=None, description="factor key; defaults to the first catalog factor"),
     horizon: Optional[int] = Query(default=None, description="forward window in trading days; defaults to config default_horizon"),
+    as_of: Optional[str] = Query(
+        default=None,
+        description="optional point-in-time cutoff (YYYY-MM-DD) — the single global as-of; omitted = all-history",
+    ),
     session: Session = Depends(get_session),
 ) -> dict:
     """Serve the Factor Lab for the requested `factor` + `horizon` (defaults: first catalog factor /
     config default_horizon). Validates both against the config-driven catalog / `walk_forward.horizons`
-    (422 otherwise); 503 when no price data exists. The payload is the canonical analysis verbatim —
-    never recomputed in the view."""
+    (422 otherwise); 503 when no price data exists. The optional `as_of` (J-32) scopes the pool to
+    snapshots dated <= D (the single global as-of — a mode, not a second date state); omitted = all-history.
+    The payload is the canonical analysis verbatim — never recomputed in the view."""
     cfg: Config = get_config()
     wf = cfg.walk_forward
 
@@ -71,7 +86,12 @@ def factor_lab(
             detail=f"unknown horizon {resolved_horizon}; valid horizons are {list(wf.horizons)}",
         )
 
-    return compute_factor_lab(session, resolved_factor, resolved_horizon, cfg)
+    # iter-19 (J-32): the optional single global as-of scoping cutoff, validated by the SHARED
+    # snapshot-served resolver (unparseable -> 422, future/before-history -> 400) — never hand-rolled.
+    # Omitted/empty -> all-history (no cutoff). This is the same global as-of transmitted on a
+    # snapshot-served read, NOT a second/page-local date state (J-18).
+    cutoff = resolved_date(session, as_of, cfg) if as_of else None
+    return compute_factor_lab(session, resolved_factor, resolved_horizon, cfg, as_of=cutoff)
 
 
 @router.get("/research/factor-combination")
@@ -83,6 +103,10 @@ def factor_combination(
     horizon: Optional[int] = Query(
         default=None, description="forward window in trading days; defaults to config default_horizon"
     ),
+    as_of: Optional[str] = Query(
+        default=None,
+        description="optional point-in-time cutoff (YYYY-MM-DD) — the single global as-of; omitted = all-history",
+    ),
     session: Session = Depends(get_session),
 ) -> dict:
     """Serve the multi-factor combination cohort analysis (J-26) for the requested `condition`s +
@@ -92,8 +116,9 @@ def factor_combination(
     `[min_conditions, max_conditions]`, each `factor_key` against the config-driven catalog, `side`
     against {top, bottom}, `quantile_key` against the config quantiles, and `horizon` against
     `walk_forward.horizons` (422 on any violation — no fabricated factor/side/quantile/horizon); 503 when
-    no price data exists. The payload is `compute_factor_combination(...)` verbatim — never recomputed in
-    the view. A cross-date aggregate (like the Factor Lab) — there is NO as-of/date control (J-18)."""
+    no price data exists. The optional `as_of` (J-32) scopes the pool to snapshots dated <= D (the single
+    global as-of — a mode, not a second date state); omitted = all-history. The payload is
+    `compute_factor_combination(...)` verbatim — never recomputed in the view."""
     cfg: Config = get_config()
     comb = cfg.research.factor_lab.combination
     wf = cfg.walk_forward
@@ -153,22 +178,30 @@ def factor_combination(
             detail=f"unknown horizon {resolved_horizon}; valid horizons are {list(wf.horizons)}",
         )
 
-    return compute_factor_combination(session, conditions, resolved_horizon, cfg)
+    # iter-19 (J-32): the optional single global as-of scoping cutoff (shared resolver — 422/400; never
+    # hand-rolled). Omitted/empty -> all-history. Not a second date state (J-18).
+    cutoff = resolved_date(session, as_of, cfg) if as_of else None
+    return compute_factor_combination(session, conditions, resolved_horizon, cfg, as_of=cutoff)
 
 
 @router.get("/research/event-study")
 def event_study(
     subject: Optional[str] = Query(default=None, description="subject key (setup or pattern); defaults to the first catalog subject"),
     horizon: Optional[int] = Query(default=None, description="forward window in trading days; defaults to config default_horizon"),
+    as_of: Optional[str] = Query(
+        default=None,
+        description="optional point-in-time cutoff (YYYY-MM-DD) — the single global as-of; omitted = all-history",
+    ),
     session: Session = Depends(get_session),
 ) -> dict:
     """Serve the Setup & Pattern event study (J-29) for the requested `subject` + `horizon` (defaults:
     the first catalog subject / config default_horizon). Validates `subject` against the config-driven
     subject catalog (setups + patterns) and `horizon` against `walk_forward.horizons` (422 otherwise);
     503 when no price data exists — mirroring the factor-lab / factor-combination handlers exactly. The
-    payload is `compute_event_study(...)` verbatim — a read-only aggregation of ALREADY-STORED forward
-    returns + excursions, never recomputed in the view. A cross-date aggregate (like the Factor Lab) —
-    there is NO as-of/date control (J-18)."""
+    optional `as_of` (J-32) scopes every pooled member to snapshots dated <= D (the single global as-of —
+    a mode, not a second date state); omitted = all-history. The payload is `compute_event_study(...)`
+    verbatim — a read-only aggregation of ALREADY-STORED forward returns + excursions, never recomputed in
+    the view."""
     cfg: Config = get_config()
     wf = cfg.walk_forward
 
@@ -190,4 +223,7 @@ def event_study(
             detail=f"unknown horizon {resolved_horizon}; valid horizons are {list(wf.horizons)}",
         )
 
-    return compute_event_study(session, resolved_subject, resolved_horizon, cfg)
+    # iter-19 (J-32): the optional single global as-of scoping cutoff (shared resolver — 422/400; never
+    # hand-rolled). Omitted/empty -> all-history. Not a second date state (J-18).
+    cutoff = resolved_date(session, as_of, cfg) if as_of else None
+    return compute_event_study(session, resolved_subject, resolved_horizon, cfg, as_of=cutoff)

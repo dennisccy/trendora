@@ -15,6 +15,12 @@ THREE non-negotiable disciplines (each unit-proved):
      math (no `run_scan`, `score_stocks`, `backfill*`, `forward_return`, `detect_*`). It recomputes no
      factor and no return — it groups the SAME per-observation pool `forward_testing.compute_forward_
      aggregates(horizon)` builds (the pooled-mean == `overall.mean_return` invariant is unit-asserted).
+     The optional **as-of mode** (iter-19, J-32 — the iter-17 `compute_forward_aggregates` seam verbatim)
+     is a pure membership FILTER on the opening `ForwardReturn` query: when `as_of=D` is set it keeps ONLY
+     snapshots with `ScannerRun.asof_date <= D` (a point-in-time / walk-forward view — no run dated > D
+     contributes); `as_of=None` adds NO clause → byte-identical all-history. It recomputes nothing — the
+     mode merely scopes WHICH stored observations are pooled (anti-goal: Research lab as-of mode FILTERS,
+     never recomputes a figure).
 
   2. RISK IS DOWNSIDE-ONLY (anti-goal: Risk-adjusted reporting must not conflate up/down volatility).
      The risk-adjusted column is `mean_return / downside_deviation`, where the downside deviation uses
@@ -31,6 +37,7 @@ from __future__ import annotations
 
 import json
 from collections import defaultdict
+from datetime import date as date_cls
 from math import ceil, sqrt
 from statistics import mean, median
 from typing import Optional
@@ -158,7 +165,9 @@ def _extract_factor_value(res: ScannerResult, parsed: dict) -> Optional[float]:
     return None
 
 
-def _factor_observations(session: Session, factor, horizon: int) -> list[dict]:
+def _factor_observations(
+    session: Session, factor, horizon: int, as_of: Optional[date_cls] = None
+) -> list[dict]:
     """The read-only per-observation list for (factor, horizon): join each stored
     `ForwardReturn.realized_return` at this horizon to its stored `ScannerResult` (by `run_id` + ticker)
     and read the factor's stored value. SELECT-only against `ForwardReturn` + `ScannerResult`; it
@@ -166,9 +175,21 @@ def _factor_observations(session: Session, factor, horizon: int) -> list[dict]:
     `forward_testing.compute_forward_aggregates(horizon)` builds — observations with no realized return
     contribute nothing (n=0), and a factor-NULL observation is EXCLUDED (never bucketed). Each
     observation also carries the run's STORED `regime_label` (read verbatim from `scanner_runs`,
-    mirroring `forward_testing.py` — the regime is never recomputed here; J-27)."""
+    mirroring `forward_testing.py` — the regime is never recomputed here; J-27).
+
+    `as_of` (iter-19, J-32) optionally scopes the pool to the EXPANDING WALK-FORWARD WINDOW: when set,
+    ONLY snapshots with `ScannerRun.asof_date <= as_of` contribute (no run dated > D leaks). It is a
+    SINGLE membership filter on the `fr_rows` step — identical to `forward_testing.py` — so it equally
+    bounds `runs_with_fr`, `results`, `run_rows`, and the regime map (all derived from it). The cutoff is
+    the canonical `ScannerRun.asof_date` (not the denormalized `ForwardReturn.asof_date`). `as_of=None`
+    adds NO clause → byte-identical all-history."""
     parsed = parse_factor_source(factor.source)
-    fr_rows = session.exec(select(ForwardReturn).where(ForwardReturn.horizon == horizon)).all()
+    fr_stmt = select(ForwardReturn).where(ForwardReturn.horizon == horizon)
+    if as_of is not None:
+        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
+            ScannerRun.asof_date <= as_of
+        )
+    fr_rows = session.exec(fr_stmt).all()
     ret_by_run_symbol = {(fr.run_id, fr.symbol): fr.realized_return for fr in fr_rows}
     runs_with_fr = sorted({fr.run_id for fr in fr_rows})
     results = (
@@ -271,7 +292,8 @@ def _regime_effectiveness(observations: list[dict], cfg: Config, horizon: int) -
 # The single canonical Factor-Lab read (read-only aggregation of stored values)
 # --------------------------------------------------------------------------------------------------
 def compute_factor_lab(
-    session: Session, factor_key: str, horizon: int, config: Optional[Config] = None
+    session: Session, factor_key: str, horizon: int, config: Optional[Config] = None, *,
+    as_of: Optional[date_cls] = None,
 ) -> dict:
     """The SINGLE canonical Factor-Lab analysis (Data Contract value, J-25) for `factor_key` at
     `horizon`. READS the stored factor value (typed column or `record_json` component `raw`, verbatim)
@@ -282,7 +304,12 @@ def compute_factor_lab(
     ticker+run), the Spearman `rank_ic` (`{value, n}`), and the `by_regime` effectiveness split (J-27 —
     per configured regime label: `n`, rank-IC, top/bottom decile means, and the raw + downside-risk-
     adjusted top-minus-bottom-decile spread, all from the SAME observation pool, regime read verbatim).
-    Raises `ValueError` for an unknown factor (the API pre-validates -> 422)."""
+
+    `as_of` (iter-19, J-32) optionally scopes the observation pool to snapshots dated <= D (a
+    point-in-time / walk-forward view — the iter-17 seam, recomputes nothing). The payload echoes the
+    resolved cutoff as `asof_date` (ISO) when scoped, else `null` (all-history). `as_of=None` is
+    byte-identical to the cross-date all-history aggregate. Raises `ValueError` for an unknown factor
+    (the API pre-validates -> 422)."""
     cfg = config or get_config()
     fl = cfg.research.factor_lab
     wf = cfg.walk_forward
@@ -294,7 +321,7 @@ def compute_factor_lab(
             f"unknown factor {factor_key!r}; valid factors are {[f['key'] for f in catalog]}"
         )
 
-    observations = _factor_observations(session, factor, horizon)
+    observations = _factor_observations(session, factor, horizon, as_of)
     # ascending by stored factor value; deterministic tie-break by (ticker, run_id) so deciles reproduce
     ordered = sorted(observations, key=lambda o: (o["factor"], o["ticker"], o["run_id"]))
 
@@ -304,6 +331,8 @@ def compute_factor_lab(
             "direction": factor.direction, "source": factor.source,
         },
         "horizon": horizon,
+        # the resolved as-of scoping cutoff echoed (J-32) — ISO date when scoped, null in all-history mode
+        "asof_date": as_of.isoformat() if as_of is not None else None,
         "factors": catalog,
         "horizons": list(wf.horizons),
         "default_horizon": wf.default_horizon,
@@ -325,16 +354,27 @@ def compute_factor_lab(
 # cohort. The composite is a deterministic ranking / GROUPING of stored values (the SAME read-only class as
 # the J-25 decile sort) — it recomputes NO factor and NO return and is NOT a fitted/learned/ML model.
 # --------------------------------------------------------------------------------------------------
-def _combination_observations(session: Session, factors: list, horizon: int) -> list[dict]:
+def _combination_observations(
+    session: Session, factors: list, horizon: int, as_of: Optional[date_cls] = None
+) -> list[dict]:
     """The read-only multi-factor per-observation pool for (`factors`, `horizon`): mirror
     `_factor_observations` but read EVERY referenced factor's stored value per result. SELECT-only against
     `ForwardReturn` + `ScannerResult`; it recomputes NO return and NO factor. An observation is kept ONLY
     when a realized return exists at this horizon AND every referenced factor is non-null — a NULL in ANY
     referenced factor EXCLUDES the observation (never fabricated), so the pool is a (possibly strict)
     subset of any single factor's `_factor_observations` pool. Each observation is
-    `{run_id, ticker, return, values: {factor_key: float}}`."""
+    `{run_id, ticker, return, values: {factor_key: float}}`.
+
+    `as_of` (iter-19, J-32) optionally scopes the pool to snapshots with `ScannerRun.asof_date <= as_of`
+    (the SAME single membership filter as `_factor_observations` / `forward_testing`); `as_of=None` adds
+    NO clause → byte-identical all-history."""
     parsed_by_key = {f.key: parse_factor_source(f.source) for f in factors}
-    fr_rows = session.exec(select(ForwardReturn).where(ForwardReturn.horizon == horizon)).all()
+    fr_stmt = select(ForwardReturn).where(ForwardReturn.horizon == horizon)
+    if as_of is not None:
+        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
+            ScannerRun.asof_date <= as_of
+        )
+    fr_rows = session.exec(fr_stmt).all()
     ret_by_run_symbol = {(fr.run_id, fr.symbol): fr.realized_return for fr in fr_rows}
     runs_with_fr = sorted({fr.run_id for fr in fr_rows})
     results = (
@@ -442,7 +482,8 @@ def _composite_scores(pool: list[dict], resolved: list[dict], weights: list[floa
 
 
 def compute_factor_combination(
-    session: Session, conditions: list[dict], horizon: int, config: Optional[Config] = None
+    session: Session, conditions: list[dict], horizon: int, config: Optional[Config] = None, *,
+    as_of: Optional[date_cls] = None,
 ) -> dict:
     """The SINGLE canonical multi-factor combination read (Data Contract value, J-26). Each condition is a
     catalog factor at its `top`/`bottom` `quantile`. The HEADLINE `composite` cohort (iter-18 re-scope) is
@@ -466,8 +507,11 @@ def compute_factor_combination(
     config), and takes the top `composite.quantile` of the blend. Per-cohort stats reuse the downside-only
     `_risk_adjusted`; an empty/low-sample cohort shows NA + `n`, never a fabricated number. The pool
     requires ALL referenced factors non-null, so `pool_n` is a (possibly strict) subset of any single
-    factor's `_factor_observations` n. Raises `ValueError` for an unknown factor/side/quantile or an
-    out-of-range condition count (the API pre-validates -> 422)."""
+    factor's `_factor_observations` n. `as_of` (iter-19, J-32) optionally scopes the pool to snapshots
+    dated <= D (the iter-17 membership seam — recomputes nothing); the payload echoes the resolved cutoff
+    as `asof_date` (ISO) when scoped, else `null`; `as_of=None` is byte-identical all-history. Raises
+    `ValueError` for an unknown factor/side/quantile or an out-of-range condition count (the API
+    pre-validates -> 422)."""
     cfg = config or get_config()
     fl = cfg.research.factor_lab
     comb = fl.combination
@@ -502,7 +546,7 @@ def compute_factor_combination(
     # the DISTINCT referenced factors (a factor MAY appear in >1 condition — e.g. top AND bottom of the
     # same factor, the opposing-extremes NA fixture). The pool requires every one of them non-null.
     distinct_factors = list({c["factor"].key: c["factor"] for c in resolved}.values())
-    pool = _combination_observations(session, distinct_factors, horizon)
+    pool = _combination_observations(session, distinct_factors, horizon, as_of)
     pool_n = len(pool)
 
     # per-condition membership (a set of pool indices) using each condition's nearest-rank quantile cutoff
@@ -554,6 +598,8 @@ def compute_factor_combination(
     return {
         "conditions": resolved_conditions,
         "horizon": horizon,
+        # the resolved as-of scoping cutoff echoed (J-32) — ISO date when scoped, null in all-history mode
+        "asof_date": as_of.isoformat() if as_of is not None else None,
         "horizons": list(wf.horizons),
         "default_horizon": wf.default_horizon,
         "min_sample": min_sample,
@@ -625,15 +671,26 @@ def _subject_member(res: ScannerResult, subject: dict) -> bool:
     return bool(getattr(res, f"is_{subject['key']}"))
 
 
-def _event_study_members(session: Session, subject: dict, horizon: int) -> list[dict]:
+def _event_study_members(
+    session: Session, subject: dict, horizon: int, as_of: Optional[date_cls] = None
+) -> list[dict]:
     """The read-only per-observation pool for (subject, horizon): join each stored `ForwardReturn` at this
     horizon (its `realized_return` + `mae` + `mfe`, read VERBATIM) to its stored `ScannerResult` (by
     run_id + ticker) and the run's stored `regime_label`, keeping ONLY the subject's members. SELECT-only
     against `ForwardReturn` + `ScannerResult` + `ScannerRun`; it recomputes NO return / excursion / score /
     regime / pattern. This pools the SAME per-observation rows `compute_forward_aggregates`'s `by_setup` /
     `by_<pattern>` group (the consistency invariant is unit-asserted). A member with no realized return at
-    this horizon contributes nothing (n=0)."""
-    fr_rows = session.exec(select(ForwardReturn).where(ForwardReturn.horizon == horizon)).all()
+    this horizon contributes nothing (n=0).
+
+    `as_of` (iter-19, J-32) optionally scopes the pool to snapshots with `ScannerRun.asof_date <= as_of`
+    (the SAME single membership filter as `_factor_observations` / `forward_testing`); `as_of=None` adds
+    NO clause → byte-identical all-history."""
+    fr_stmt = select(ForwardReturn).where(ForwardReturn.horizon == horizon)
+    if as_of is not None:
+        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
+            ScannerRun.asof_date <= as_of
+        )
+    fr_rows = session.exec(fr_stmt).all()
     fr_by_run_symbol = {(fr.run_id, fr.symbol): fr for fr in fr_rows}
     runs_with_fr = sorted({fr.run_id for fr in fr_rows})
     results = (
@@ -806,7 +863,8 @@ def _event_study_by_sector(members: list[dict], cfg: Config) -> list[dict]:
 
 
 def compute_event_study(
-    session: Session, subject_key: str, horizon: int, config: Optional[Config] = None
+    session: Session, subject_key: str, horizon: int, config: Optional[Config] = None, *,
+    as_of: Optional[date_cls] = None,
 ) -> dict:
     """The SINGLE canonical Setup & Pattern event study (Data Contract value, J-29) for `subject_key` at
     the selected `horizon`. Pools EVERY historical occurrence of the subject (a setup OR a detected
@@ -822,8 +880,14 @@ def compute_event_study(
     score_stocks, backfill*, forward_return, forward_excursions, detect_*, score_regime). It pools the SAME
     per-observation rows `compute_forward_aggregates` groups, so the pooled mean for a subject at horizon h
     equals the matching `by_setup` / `by_<pattern>` cohort mean (the consistency invariant, unit-asserted).
-    Risk is downside-only everywhere (never total volatility). Raises `ValueError` for an unknown subject
-    (the API pre-validates -> 422)."""
+    Risk is downside-only everywhere (never total volatility).
+
+    `as_of` (iter-19, J-32) optionally scopes EVERY pooled member to snapshots dated <= D — threaded
+    through the per-horizon LOOP (and the defensive direct-call fallback) so every horizon row, the
+    by-regime and the by-sector slices reflect the SAME point-in-time window (the iter-17 seam —
+    recomputes nothing). The payload echoes the resolved cutoff as `asof_date` (ISO) when scoped, else
+    `null`; `as_of=None` is byte-identical all-history. Raises `ValueError` for an unknown subject (the
+    API pre-validates -> 422)."""
     cfg = config or get_config()
     wf = cfg.walk_forward
     subjects = subject_catalog(cfg)
@@ -837,16 +901,18 @@ def compute_event_study(
     by_horizon: list[dict] = []
     selected_members: Optional[list[dict]] = None
     for h in wf.horizons:
-        members = _event_study_members(session, subject, h)
+        members = _event_study_members(session, subject, h, as_of)
         by_horizon.append(_event_study_horizon_row(members, h, wf.min_sample))
         if h == horizon:
             selected_members = members
     if selected_members is None:  # horizon not in wf.horizons (API validates; defensive for direct calls)
-        selected_members = _event_study_members(session, subject, horizon)
+        selected_members = _event_study_members(session, subject, horizon, as_of)
 
     return {
         "subject": subject,
         "horizon": horizon,
+        # the resolved as-of scoping cutoff echoed (J-32) — ISO date when scoped, null in all-history mode
+        "asof_date": as_of.isoformat() if as_of is not None else None,
         "subjects": subjects,
         "horizons": list(wf.horizons),
         "default_horizon": wf.default_horizon,
