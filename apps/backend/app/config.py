@@ -650,14 +650,52 @@ class DefaultCondition(BaseModel):
     quantile: str
 
 
+class CompositeWeightingCfg(BaseModel):
+    """The composite rank-blend's weighting scheme (iter-18, J-26). `scheme` is the config-declared blend
+    weighting (currently `equal` — each condition's oriented percentile rank weighted by `default_weight`,
+    then normalized to sum to 1 by the engine, so NO `1/k` weight literal lives in calc code — anti-goal:
+    No magic numbers). `default_weight` is the per-condition base weight, validated `> 0` on `CompositeCfg`.
+    An unknown scheme fails the `Literal` at boot (loud `ConfigError`, never a silent default)."""
+
+    model_config = ConfigDict(extra="allow")
+    scheme: Literal["equal"]
+    default_weight: float
+
+
+class CompositeCfg(BaseModel):
+    """The composite percentile-rank-blend cohort config (iter-18, J-26) — the HEADLINE `Combined` cohort.
+    The cohort is the top `quantile` of the pool by a config-`weighting` blend of the conditions' oriented
+    percentile ranks of the STORED factor values: a deterministic ranking / GROUPING (the same read-only
+    class as the J-25 decile sort) — NOT a fitted/learned/ML model and NOT a recomputed factor. `quantile`
+    MUST be a real `CombinationCfg.quantiles` key (cross-checked on `CombinationCfg`, which can see both);
+    `weighting.default_weight` MUST be `> 0`. An invalid block raises `ConfigError` at boot — never a silent
+    default."""
+
+    model_config = ConfigDict(extra="allow")
+    quantile: str
+    weighting: CompositeWeightingCfg
+
+    @model_validator(mode="after")
+    def _validate(self) -> "CompositeCfg":
+        if self.weighting.default_weight <= 0:
+            raise ValueError(
+                "research.factor_lab.combination.composite.weighting.default_weight must be > 0, got "
+                f"{self.weighting.default_weight}"
+            )
+        return self
+
+
 class CombinationCfg(BaseModel):
-    """Multi-factor-combination config (iter-12, J-26). EVERY tunable the read-only
+    """Multi-factor-combination config (iter-12 / iter-18 re-scoped, J-26). EVERY tunable the read-only
     `app.engine.research.compute_factor_combination` reads lives here (anti-goal: No magic numbers — no
-    condition count, quantile fraction, or default in calc code): `min_conditions`/`max_conditions` bound
-    the condition count; `quantiles` is the ordered, config-driven top/bottom tail vocabulary; and
-    `default_conditions` is the canonical 2-condition default served on first load. The low-sample
-    threshold is REUSED from `walk_forward.min_sample` (no new threshold). Validated:
-    `1 <= min_conditions <= max_conditions`; every `quantiles[*].fraction ∈ (0, 1)` and `key` unique;
+    condition count, quantile fraction, blend weight, or default in calc code): `min_conditions`/
+    `max_conditions` bound the condition count (`max_conditions` is raised to the catalog-factor count so a
+    user can combine UP TO ALL catalog factors — the cap lives in config, not code); `quantiles` is the
+    ordered, config-driven top/bottom tail vocabulary; `composite` (iter-18) is the rank-blend's tunables
+    (its `quantile` selects the headline Combined cohort, config-`weighting`); and `default_conditions` is
+    the canonical 2-condition default served on first load. The low-sample threshold is REUSED from
+    `walk_forward.min_sample` (no new threshold). Validated: `1 <= min_conditions <= max_conditions`; every
+    `quantiles[*].fraction ∈ (0, 1)` and `key` unique; `composite.quantile` is a real `quantiles` key;
     `min_conditions <= len(default_conditions) <= max_conditions`; every `default_conditions[*].quantile`
     is a real `quantiles` key (the factor-key cross-check sits on `FactorLabCfg`). An invalid block raises
     `ConfigError` at boot — never a silent default."""
@@ -666,6 +704,7 @@ class CombinationCfg(BaseModel):
     min_conditions: int
     max_conditions: int
     quantiles: list[QuantileOption] = Field(min_length=1)
+    composite: CompositeCfg
     default_conditions: list[DefaultCondition] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -684,12 +723,17 @@ class CombinationCfg(BaseModel):
         dupes = sorted({k for k in keys if keys.count(k) > 1})
         if dupes:
             raise ValueError(f"research.factor_lab.combination.quantiles have duplicate keys: {dupes}")
+        quantile_keys = set(keys)
+        if self.composite.quantile not in quantile_keys:
+            raise ValueError(
+                f"research.factor_lab.combination.composite.quantile {self.composite.quantile!r} is not a "
+                f"real quantiles key (valid: {sorted(quantile_keys)})"
+            )
         if not (self.min_conditions <= len(self.default_conditions) <= self.max_conditions):
             raise ValueError(
                 f"research.factor_lab.combination.default_conditions count ({len(self.default_conditions)}) "
                 f"must be in [{self.min_conditions}, {self.max_conditions}]"
             )
-        quantile_keys = set(keys)
         bad_quantile = sorted(
             {c.quantile for c in self.default_conditions if c.quantile not in quantile_keys}
         )

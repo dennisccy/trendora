@@ -4,8 +4,8 @@ STORED forward returns + factor values + excursions:
 
   - GET /api/research/factor-lab        — `compute_factor_lab` (per factor × horizon: decile table of
     mean forward return + downside risk-adjusted + n, plus rank-IC).
-  - GET /api/research/factor-combination — `compute_factor_combination` (the combined-AND cohort vs
-    baseline vs each single-factor cohort).
+  - GET /api/research/factor-combination — `compute_factor_combination` (the headline composite
+    rank-blend cohort + the secondary strict-overlap AND cohort vs baseline vs each single-factor cohort).
   - GET /api/research/event-study        — `compute_event_study` (J-29: per setup/pattern subject ×
     horizon, the forward-return distribution + expectancy + MAE/MFE + downside risk-adjusted ratios +
     best-exit-horizon + by-regime/by-sector slices, from stored values incl. the iter-14 excursions).

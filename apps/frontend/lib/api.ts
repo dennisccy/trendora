@@ -795,10 +795,19 @@ export interface CohortStats {
   low_sample: boolean;
 }
 
-/** The unconditional baseline / combined-AND cohort: a server-built `label` + its `stats`. */
+/** A combination cohort (baseline / composite rank-blend / strict-overlap): a server-built `label` +
+ *  its `stats`. The label is rendered verbatim — the UI never invents the cohort name. */
 export interface FactorCombinationCohort {
   label: string;
   stats: CohortStats;
+}
+
+/** The echoed composite-blend weighting scheme (iter-18) — config-driven, so the UI labels the blend
+ *  honestly (e.g. "equal-weight"). `scheme` is the config-declared scheme (currently "equal"); the UI
+ *  re-formats it only and never computes a weight. */
+export interface CompositeWeighting {
+  scheme: string; // config-declared blend scheme (e.g. "equal"), rendered verbatim
+  default_weight: number; // per-condition base weight the backend normalized (descriptive)
 }
 
 /** One single-factor cohort: the resolved `condition` (for the row label) + its `stats`. */
@@ -807,12 +816,17 @@ export interface FactorCombinationSingle {
   stats: CohortStats;
 }
 
-/** GET /api/research/factor-combination payload (J-26) — the SINGLE canonical multi-factor combination
- *  analysis: the combined-AND cohort vs the unconditional `baseline` vs each single-factor cohort, each
- *  with mean / median forward return, hit-rate, downside-risk-adjusted, and n. Every figure is derived
- *  once from the SAME stored pool the Factor Lab reads; the page re-formats only and recomputes no
- *  return/factor. A cross-date aggregate (like the Factor Lab) — there is NO as-of/date control (J-18).
- *  `factors`/`quantiles` are the config-driven dropdown vocabularies (no hard-coded list in the UI). */
+/** GET /api/research/factor-combination payload (J-26, iter-18 re-scoped) — the SINGLE canonical
+ *  multi-factor combination analysis: the HEADLINE `composite` rank-blend cohort + the SECONDARY
+ *  `strict_overlap` (exact AND-intersection) cohort vs the unconditional `baseline` vs each single-factor
+ *  cohort, each with mean / median forward return, hit-rate, downside-risk-adjusted, and n. The composite
+ *  is the top config-quantile of the pool by a config-weighted blend of the conditions' oriented percentile
+ *  ranks of the STORED factor values — a deterministic ranking/grouping (like the J-25 decile sort), NOT a
+ *  fitted/ML model. Every figure is derived once from the SAME stored pool the Factor Lab reads; the page
+ *  re-formats only and recomputes no return/factor/cohort. A cross-date aggregate (like the Factor Lab) —
+ *  there is NO as-of/date control (J-18). `factors`/`quantiles` are the config-driven dropdown
+ *  vocabularies; `composite_quantile`/`weighting` are echoed so the blend's labelling stays config-driven
+ *  (no hard-coded list/number in the UI). */
 export interface FactorCombinationResponse {
   conditions: FactorCombinationCondition[]; // the resolved requested combination
   horizon: number; // the served forward window (trading days)
@@ -820,15 +834,18 @@ export interface FactorCombinationResponse {
   default_horizon: number;
   min_sample: number; // cohorts with n below this are flagged low-sample (render NA + n)
   min_conditions: number; // condition-count bounds (from config) — drive add/remove enablement
-  max_conditions: number;
+  max_conditions: number; // raised to the catalog factor count — combine UP TO all factors
   factors: FactorLabFactor[]; // the config-driven factor catalog (the Factor dropdown vocabulary)
   quantiles: QuantileOption[]; // the config-driven quantile vocabulary (the Quantile dropdown)
+  composite_quantile: QuantileOption; // the resolved composite cohort fraction (echoed from config)
+  weighting: CompositeWeighting; // the echoed composite blend weighting (config-driven label)
   survivorship_bias: string; // honest caveat, rendered verbatim
   descriptive_caveat: string; // "descriptive, not predictive", rendered verbatim
   pool_n: number; // the multi-factor observation pool size (all referenced factors non-null)
   baseline: FactorCombinationCohort; // the unconditional all-names cohort
   singles: FactorCombinationSingle[]; // one cohort per condition
-  combined: FactorCombinationCohort; // the exact AND-intersection cohort
+  composite: FactorCombinationCohort; // HEADLINE: the composite percentile-rank-blend cohort (non-empty)
+  strict_overlap: FactorCombinationCohort; // SECONDARY: the exact AND-intersection (NA + n when empty)
 }
 
 /** Canonical multi-factor combination source: GET /api/research/factor-combination. Builds repeated

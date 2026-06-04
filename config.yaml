@@ -608,16 +608,25 @@ research:
       - { key: hv,              label: "Historical volatility (HV)",          family: volatility, direction: lower_better,  source: hv }
       - { key: vcp_contraction, label: "Volatility contraction (VCP-style)",  family: volatility, direction: lower_better,  source: vcp_contraction }
       - { key: downside_vol,    label: "Downside volatility (semivol)",       family: volatility, direction: lower_better,  source: downside_vol }
-    # iter-12 CONSUMED — Multi-factor combination cohorts (J-26). EVERY tunable the read-only
-    # app.engine.research.compute_factor_combination reads lives here (anti-goal: No magic numbers — no
-    # condition count, quantile fraction, or default in calc code). A "condition" is a catalog factor at
-    # its top/bottom quantile; the combined cohort is the exact AND-intersection of 2-3 such conditions,
-    # reported beside the unconditional baseline and each single-factor cohort. The low-sample threshold
-    # is REUSED from walk_forward.min_sample (no new threshold). The quantile cutoff method is a fixed
-    # statistical rule (nearest-rank, boundary ties included) — only the `fraction` is config.
+    # iter-12 CONSUMED / iter-18 RE-SCOPED — Multi-factor combination cohorts (J-26). EVERY tunable the
+    # read-only app.engine.research.compute_factor_combination reads lives here (anti-goal: No magic numbers
+    # — no condition count, quantile fraction, blend weight, or default in calc code). A "condition" is a
+    # catalog factor at its top/bottom quantile. The HEADLINE `Combined` cohort is now a COMPOSITE
+    # percentile-rank BLEND (the `composite` block below): each condition's stored factor value is
+    # percentile-ranked within the pool, oriented by the user's side (top = high value scores high; bottom =
+    # low value scores high), config-weighted-averaged across conditions, and the top `composite.quantile`
+    # of that blend is the cohort — a deterministic ranking/GROUPING of STORED values (exactly the class of
+    # the J-25 decile sort), NOT a fitted/ML model. It is non-empty + clears walk_forward.min_sample for a
+    # sensible selection and scales to ALL catalog factors. The exact AND-intersection rides along as a
+    # SECONDARY "strict overlap" cohort (NA + n when empty — never a fabricated 0). Both are reported beside
+    # the unconditional baseline and each single-factor cohort. The low-sample threshold is REUSED from
+    # walk_forward.min_sample (no new threshold); the quantile cutoff method is a fixed statistical rule
+    # (nearest-rank, boundary ties included) — only the `fraction`/`quantile`/`weighting` are config.
     combination:
       min_conditions: 2          # a combination needs >= 2 conditions (validated 1 <= min <= max)
-      max_conditions: 3          # cap at 3 conditions (keeps the AND-cohort interpretable + the UI compact)
+      # cap at the number of catalog factors (11) so a user can combine UP TO ALL catalog factors — the cap
+      # lives in config, NOT code (the engine + endpoint + UI all read this; no hard-coded cap anywhere).
+      max_conditions: 11
       # the dropdown vocabulary — config-driven (a config-only quantile needs no frontend edit). `fraction`
       # is the tail size a top/bottom condition selects; validated in (0, 1) with unique keys.
       quantiles:
@@ -625,6 +634,14 @@ research:
         - { key: quartile, label: "Quartile (25%)",  fraction: 0.25 }
         - { key: tertile,  label: "Tertile (33%)",   fraction: 0.3333 }
         - { key: half,     label: "Half (50%)",      fraction: 0.50 }
+      # the composite rank-blend's tunables (the iter-18 headline cohort): `quantile` is the top fraction of
+      # the composite-score-sorted pool taken as the Combined cohort (a real `quantiles` key, cross-checked
+      # at boot — an unknown key fails loudly); `weighting` is the config-declared blend scheme (`equal` —
+      # each condition's oriented percentile rank weighted by `default_weight`, then normalized to sum to 1,
+      # so NO `1/k` weight literal lives in calc code). default_weight validated > 0.
+      composite:
+        quantile: quintile
+        weighting: { scheme: equal, default_weight: 1.0 }
       # the canonical 2-condition default shown on first load — each references a real catalog factor +
       # a real quantile key; count validated within [min_conditions, max_conditions].
       default_conditions:

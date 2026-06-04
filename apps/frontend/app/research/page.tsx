@@ -583,7 +583,7 @@ function CombinationLab({ horizon }: { horizon: number | undefined }) {
   return (
     <Card className="p-0" data-testid="combination-section">
       <PanelTitle
-        hint={`Combine 2–${data?.max_conditions ?? 3} factor conditions (each a catalog factor at its top/bottom quantile) and compare the combined-AND cohort against the all-names baseline and each single-factor cohort — does combining factors beat either alone? Each cohort shows mean / median forward return, hit-rate, and the downside risk-adjusted column with n; cohorts with n < ${data?.min_sample ?? "min"} show NA + n, never a fabricated number.`}
+        hint={`Combine 2–${data?.max_conditions ?? "all"} factor conditions (each a catalog factor at its top/bottom quantile) and read the Combined (composite rank-blend) cohort — the top ${data?.composite_quantile?.label ?? "config-quantile"} of the pool by a ${data?.weighting?.scheme ?? "config"}-weighted blend of the conditions' percentile ranks (a transparent ranking of stored values, NOT a fitted/ML model) — beside the all-names baseline and each single-factor cohort, so "does combining beat either alone?" is answerable. The Strict overlap (AND) row is the optional secondary exact intersection (NA + n when empty). Each cohort shows mean / median forward return, hit-rate, and the downside risk-adjusted column with n; cohorts with n < ${data?.min_sample ?? "min"} show NA + n, never a fabricated number.`}
       >
         Multi-factor combination cohort
       </PanelTitle>
@@ -828,15 +828,19 @@ function CohortCell({
   );
 }
 
-/** The comparison table: Baseline (all names) vs each single-condition cohort vs the Combined (AND) cohort
- *  — columns Cohort / n / Mean fwd return / Median / Hit-rate / Risk-adjusted (downside). Re-formats the
- *  payload only; low-sample/empty/null cells render NA + n via CohortCell + SampleSize. */
+/** The comparison table: Baseline (all names) vs each single-condition cohort vs the HEADLINE Combined
+ *  (composite rank-blend) cohort vs the SECONDARY Strict overlap (AND) cohort — columns Cohort / n / Mean
+ *  fwd return / Median / Hit-rate / Risk-adjusted (downside). Row order Baseline → singles → Combined
+ *  (composite, emphasized) → Strict overlap (AND) (secondary, muted). Re-formats the payload only; low-
+ *  sample/empty/null cells render NA + n via CohortCell + SampleSize (the composite is populated while the
+ *  strict overlap may show NA — never a fabricated number). */
 function CombinationTable({ data, dim }: { data: FactorCombinationResponse; dim: boolean }) {
   const min = data.min_sample;
-  const tableRows: { label: string; stats: CohortStats; emphasis?: "baseline" | "combined" }[] = [
+  const tableRows: { label: string; stats: CohortStats; emphasis?: "baseline" | "composite" | "strict_overlap" }[] = [
     { label: data.baseline.label, stats: data.baseline.stats, emphasis: "baseline" },
     ...data.singles.map((s) => ({ label: conditionLabel(s.condition), stats: s.stats })),
-    { label: data.combined.label, stats: data.combined.stats, emphasis: "combined" },
+    { label: data.composite.label, stats: data.composite.stats, emphasis: "composite" },
+    { label: data.strict_overlap.label, stats: data.strict_overlap.stats, emphasis: "strict_overlap" },
   ];
   return (
     <div className={cn("overflow-x-auto transition-opacity", dim && "opacity-60")} aria-busy={dim}>
@@ -852,16 +856,21 @@ function CombinationTable({ data, dim }: { data: FactorCombinationResponse; dim:
           </tr>
         </thead>
         <tbody>
-          {tableRows.map((row, i) => (
+          {tableRows.map((row, i) => {
+            // the HEADLINE composite row is emphasized (surface-2 + semibold); the strict-overlap row is the
+            // optional SECONDARY column (muted); baseline stays a labelled header row.
+            const primary = row.emphasis === "composite" || row.emphasis === "baseline";
+            return (
             <tr
               key={i}
               className={cn(
                 "border-b border-border last:border-b-0",
-                row.emphasis === "combined" && "bg-surface-2",
+                row.emphasis === "composite" && "bg-surface-2",
               )}
+              data-testid={row.emphasis ? `combination-row-${row.emphasis}` : undefined}
             >
               <td className="px-4 py-2">
-                <span className={cn(row.emphasis ? "font-semibold text-text" : "text-text-muted")}>
+                <span className={cn(primary ? "font-semibold text-text" : "text-text-muted")}>
                   {row.label}
                 </span>
               </td>
@@ -881,7 +890,8 @@ function CombinationTable({ data, dim }: { data: FactorCombinationResponse; dim:
                 <CohortCell value={row.stats.risk_adjusted} stats={row.stats} kind="ratio" min={min} />
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

@@ -319,7 +319,11 @@ def compute_factor_lab(
 
 
 # --------------------------------------------------------------------------------------------------
-# Multi-factor combination cohorts (J-26) — read-only AND-intersection over the SAME stored pool
+# Multi-factor combination cohorts (J-26) — read-only over the SAME stored pool. The HEADLINE `composite`
+# cohort is a config-weighted COMPOSITE PERCENTILE-RANK BLEND of the conditions' STORED factor values (the
+# top config-quantile of the blend); the exact AND-intersection rides along as the SECONDARY `strict_overlap`
+# cohort. The composite is a deterministic ranking / GROUPING of stored values (the SAME read-only class as
+# the J-25 decile sort) — it recomputes NO factor and NO return and is NOT a fitted/learned/ML model.
 # --------------------------------------------------------------------------------------------------
 def _combination_observations(session: Session, factors: list, horizon: int) -> list[dict]:
     """The read-only multi-factor per-observation pool for (`factors`, `horizon`): mirror
@@ -400,25 +404,70 @@ def _condition_payload(cond: dict) -> dict:
     }
 
 
+def _percentile_rank_fractions(values: list[float]) -> list[float]:
+    """Each value's percentile rank as a fraction in (0, 1] — the 1-based average rank (REUSE
+    `_average_ranks`, standard Spearman tie handling) divided by n. A pure, monotone re-encoding /
+    GROUPING of the STORED values (the SAME read-only operation the J-25 decile sort performs) — it
+    recomputes NO factor and is NOT a fitted model. Empty in -> empty out. Used to build the composite
+    rank-blend below; no threshold or magic number is introduced (the only arithmetic is rank / n)."""
+    n = len(values)
+    if not n:
+        return []
+    return [rank / n for rank in _average_ranks(values)]
+
+
+def _composite_scores(pool: list[dict], resolved: list[dict], weights: list[float]) -> list[float]:
+    """The config-weighted COMPOSITE percentile-rank score per pool observation (J-26 headline blend). For
+    EACH condition (a catalog factor at a `top`/`bottom` side) percentile-rank that condition's STORED
+    factor value within the pool (REUSE `_percentile_rank_fractions`), ORIENT it by the user's `side`
+    (`top` keeps the fraction so a HIGH stored value scores high; `bottom` uses `1 − fraction` so a LOW
+    stored value scores high — exactly how the single-condition cohorts are oriented; the catalog
+    `direction`/`family` stay descriptive and never flip the blend), then take the `weights`-weighted mean
+    across the conditions (`weights` sum to 1, normalized by the caller from config — no `1/k` literal
+    here). A deterministic ranking / GROUPING of stored values — NOT a fitted/learned/ML model and NOT a
+    recomputed factor. NOTE a CONDITION (factor+side), not a distinct factor, contributes a rank: a factor
+    used in two conditions (the opposing-extremes fixture) contributes two oriented ranks (which average to
+    a flat 0.5 — the blend then has no differentiating signal, honestly selecting the whole pool)."""
+    oriented_by_condition: list[list[float]] = []
+    for cond in resolved:
+        key = cond["factor"].key
+        fractions = _percentile_rank_fractions([obs["values"][key] for obs in pool])
+        oriented_by_condition.append(
+            [frac if cond["side"] == "top" else 1 - frac for frac in fractions]
+        )
+    return [
+        sum(weight * oriented[i] for weight, oriented in zip(weights, oriented_by_condition))
+        for i in range(len(pool))
+    ]
+
+
 def compute_factor_combination(
     session: Session, conditions: list[dict], horizon: int, config: Optional[Config] = None
 ) -> dict:
-    """The SINGLE canonical multi-factor combination read (Data Contract value, J-26). Each condition is
-    a catalog factor at its `top`/`bottom` `quantile`; the `combined` cohort is the EXACT set-intersection
-    (AND) of the single-condition memberships, reported beside the unconditional `baseline` (the whole
-    pool) and each `single` cohort so factor INTERACTION is visible. READS the stored factor values (typed
-    column or `record_json` component `raw`, verbatim) joined to the stored realized return via
-    `_combination_observations` — it recomputes NO factor and NO return (SELECT + pure grouping only;
-    calls no run_scan/score_stocks/backfill*/forward_return/detect_*/score_regime).
+    """The SINGLE canonical multi-factor combination read (Data Contract value, J-26). Each condition is a
+    catalog factor at its `top`/`bottom` `quantile`. The HEADLINE `composite` cohort (iter-18 re-scope) is
+    the top config-quantile of the pool by a config-weighted COMPOSITE PERCENTILE-RANK BLEND of the
+    conditions' STORED factor values — so combining factors yields a real, sample-sufficient cohort (non-
+    empty + clears `min_sample` for a sensible selection) that scales to ALL catalog factors, instead of the
+    perpetually-0/NA strict intersection. The exact AND-intersection of the single-condition memberships is
+    retained as the SECONDARY `strict_overlap` cohort (NA + n when empty — never a fabricated 0). Both ride
+    beside the unconditional `baseline` (the whole pool) and each `single` cohort so factor INTERACTION is
+    visible. READS the stored factor values (typed column or `record_json` component `raw`, verbatim)
+    joined to the stored realized return via `_combination_observations` — it recomputes NO factor and NO
+    return (SELECT + pure grouping/ranking only; calls no run_scan/score_stocks/backfill*/forward_return/
+    detect_*/score_regime). The composite is a DETERMINISTIC ranking/GROUPING of stored values (the SAME
+    read-only class as the J-25 decile sort) — it is NOT a fitted/learned/ML model.
 
     `conditions` is a list of `{factor: <key>, side: 'top'|'bottom', quantile: <key>}` dicts. Each
-    quantile membership uses a deterministic nearest-rank cutoff over the SHARED pool's values for that
-    factor: `top` -> value >= cutoff(1 − fraction); `bottom` -> value <= cutoff(fraction); boundary ties
-    are included. Per-cohort stats reuse the downside-only `_risk_adjusted`; an empty/low-sample cohort
-    shows NA + `n`, never a fabricated number. The pool requires ALL referenced factors non-null, so
-    `pool_n` is a (possibly strict) subset of any single factor's `_factor_observations` n. Raises
-    `ValueError` for an unknown factor/side/quantile or an out-of-range condition count (the API
-    pre-validates -> 422)."""
+    single-condition quantile membership uses a deterministic nearest-rank cutoff over the SHARED pool's
+    values for that factor: `top` -> value >= cutoff(1 − fraction); `bottom` -> value <= cutoff(fraction);
+    boundary ties included. The composite blends, per condition, the observation's percentile rank of that
+    condition's stored value (oriented by `side`), config-weighted (default equal — every tunable from
+    config), and takes the top `composite.quantile` of the blend. Per-cohort stats reuse the downside-only
+    `_risk_adjusted`; an empty/low-sample cohort shows NA + `n`, never a fabricated number. The pool
+    requires ALL referenced factors non-null, so `pool_n` is a (possibly strict) subset of any single
+    factor's `_factor_observations` n. Raises `ValueError` for an unknown factor/side/quantile or an
+    out-of-range condition count (the API pre-validates -> 422)."""
     cfg = config or get_config()
     fl = cfg.research.factor_lab
     comb = fl.combination
@@ -457,7 +506,7 @@ def compute_factor_combination(
     pool_n = len(pool)
 
     # per-condition membership (a set of pool indices) using each condition's nearest-rank quantile cutoff
-    # over the SHARED pool's values for that factor; combined = the exact AND-intersection of all singles.
+    # over the SHARED pool's values for that factor; strict_overlap = the exact AND-intersection of singles.
     single_members: list[set[int]] = []
     for cond in resolved:
         key = cond["factor"].key
@@ -474,9 +523,28 @@ def compute_factor_combination(
             members = {i for i, obs in enumerate(pool) if obs["values"][key] <= cutoff}
         single_members.append(members)
 
-    combined_members: set[int] = set(range(pool_n))
+    # SECONDARY strict-overlap cohort: the exact AND-intersection of all single memberships (the demoted
+    # iter-12 cohort) — empty for many selections (then NA + n, never a fabricated 0).
+    strict_members: set[int] = set(range(pool_n))
     for members in single_members:
-        combined_members &= members
+        strict_members &= members
+
+    # HEADLINE composite cohort: the top config-quantile of the pool by a config-weighted blend of the
+    # conditions' oriented percentile ranks of the STORED values (REUSE `_composite_scores` +
+    # `_quantile_cutoff`). Config-weighted (default equal): each condition's base weight is the config
+    # `default_weight`, normalized to sum to 1 — so NO `1/k` weight literal lives here (anti-goal: No magic
+    # numbers). Non-empty + clears `min_sample` for a sensible selection; scales to all catalog factors.
+    comp = comb.composite
+    composite_quantile = next(q for q in comb.quantiles if q.key == comp.quantile)  # boot-validated to exist
+    base_weights = [comp.weighting.default_weight] * len(resolved)
+    weight_total = sum(base_weights)
+    weights = [w / weight_total for w in base_weights]
+    composite_scores = _composite_scores(pool, resolved, weights)
+    if composite_scores:
+        cutoff = _quantile_cutoff(sorted(composite_scores), 1 - composite_quantile.fraction)
+        composite_members = {i for i, score in enumerate(composite_scores) if score >= cutoff}
+    else:
+        composite_members = set()
 
     def _returns(indices) -> list[float]:
         return [pool[i]["return"] for i in sorted(indices)]
@@ -493,6 +561,14 @@ def compute_factor_combination(
         "max_conditions": comb.max_conditions,
         "factors": catalog,
         "quantiles": [{"key": q.key, "label": q.label, "fraction": q.fraction} for q in comb.quantiles],
+        # echo the resolved composite quantile + weighting so the UI labels the blend honestly (transparent,
+        # config-driven — not a hard-coded UI string).
+        "composite_quantile": {
+            "key": composite_quantile.key,
+            "label": composite_quantile.label,
+            "fraction": composite_quantile.fraction,
+        },
+        "weighting": {"scheme": comp.weighting.scheme, "default_weight": comp.weighting.default_weight},
         "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
         "descriptive_caveat": RESEARCH_CAVEAT,
         "pool_n": pool_n,
@@ -504,9 +580,15 @@ def compute_factor_combination(
             {"condition": rc, "stats": _cohort_stats(_returns(single_members[i]), min_sample)}
             for i, rc in enumerate(resolved_conditions)
         ],
-        "combined": {
-            "label": "Combined (AND)",
-            "stats": _cohort_stats(_returns(combined_members), min_sample),
+        # HEADLINE: the composite rank-blend cohort (non-empty for a sensible selection).
+        "composite": {
+            "label": "Combined (composite rank-blend)",
+            "stats": _cohort_stats(_returns(composite_members), min_sample),
+        },
+        # SECONDARY: the exact AND-intersection (NA + n when empty, never a fabricated 0).
+        "strict_overlap": {
+            "label": "Strict overlap (AND)",
+            "stats": _cohort_stats(_returns(strict_members), min_sample),
         },
     }
 

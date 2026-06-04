@@ -114,9 +114,11 @@ def test_factor_lab_503_when_no_price_data(tmp_path):
 # GET /api/research/factor-combination — multi-factor combination cohorts (iter-12, J-26)
 # ==================================================================================================
 def test_factor_combination_default_payload(loaded_engine):
-    """J-26 at the API level: the default payload (config default_conditions + default horizon) carries
-    the unconditional baseline + one single per condition + the combined-AND cohort, each with the full
-    stat shape; the factor catalog + quantile vocabulary are config-driven; the cohort algebra holds."""
+    """J-26 at the API level: the default payload (config default_conditions + default horizon) carries the
+    unconditional baseline + one single per condition + the HEADLINE composite rank-blend cohort + the
+    SECONDARY strict-overlap cohort, each with the full stat shape; the factor catalog + quantile vocabulary
+    are config-driven; the cohort algebra holds; AND (the iter-18 headline) the composite cohort is non-empty
+    and CLEARS min_sample on the real seed — no longer perpetually 0/NA."""
     cfg = load_config()
     comb = cfg.research.factor_lab.combination
     with TestClient(main.app) as client:
@@ -130,21 +132,33 @@ def test_factor_combination_default_payload(loaded_engine):
     assert [c["factor"]["key"] for c in data["conditions"]] == [d.factor for d in comb.default_conditions]
     assert [c["side"] for c in data["conditions"]] == [d.side for d in comb.default_conditions]
 
-    # config-driven vocabularies (the dropdowns) + condition limits
+    # config-driven vocabularies (the dropdowns) + condition limits (max raised to the catalog count, 11)
     assert [q["key"] for q in data["quantiles"]] == [q.key for q in comb.quantiles]
     assert [f["key"] for f in data["factors"]] == [f.key for f in cfg.research.factor_lab.factors]
     assert data["min_conditions"] == comb.min_conditions and data["max_conditions"] == comb.max_conditions
+    assert data["max_conditions"] == len(cfg.research.factor_lab.factors)  # up to ALL catalog factors
+
+    # the composite quantile + weighting are echoed from config (transparent, config-driven labels)
+    assert data["composite_quantile"]["key"] == comb.composite.quantile
+    assert data["weighting"]["scheme"] == comb.composite.weighting.scheme
 
     # every cohort carries the full stat shape
-    cohorts = [data["baseline"], data["combined"], *data["singles"]]
+    cohorts = [data["baseline"], data["composite"], data["strict_overlap"], *data["singles"]]
     for cohort in cohorts:
         assert {"n", "mean_return", "median_return", "hit_rate", "risk_adjusted", "low_sample"} <= set(cohort["stats"])
     assert len(data["singles"]) == len(comb.default_conditions)
 
-    # algebra: baseline == pool; each single ⊆ pool; combined ⊆ each single
+    # algebra: baseline == pool; each single ⊆ pool; composite ⊆ pool; strict_overlap ⊆ each single
     assert data["baseline"]["stats"]["n"] == data["pool_n"]
     assert all(s["stats"]["n"] <= data["pool_n"] for s in data["singles"])
-    assert data["combined"]["stats"]["n"] <= min(s["stats"]["n"] for s in data["singles"])
+    assert data["composite"]["stats"]["n"] <= data["pool_n"]
+    assert data["strict_overlap"]["stats"]["n"] <= min(s["stats"]["n"] for s in data["singles"])
+
+    # THE HEADLINE BAR-RAISE: the composite cohort is non-empty AND clears min_sample (populated stats)
+    assert data["composite"]["stats"]["n"] > 0
+    assert data["composite"]["stats"]["n"] >= data["min_sample"]
+    assert data["composite"]["stats"]["low_sample"] is False
+    assert data["composite"]["stats"]["mean_return"] is not None
 
     # honest labels carried verbatim
     assert "survivorship" in data["survivorship_bias"].lower()
@@ -181,7 +195,49 @@ def test_factor_combination_explicit_conditions_repoint(loaded_engine):
     ]
     for data in (two, three):
         assert all(s["stats"]["n"] <= data["pool_n"] for s in data["singles"])
-        assert data["combined"]["stats"]["n"] <= min(s["stats"]["n"] for s in data["singles"])
+        assert data["strict_overlap"]["stats"]["n"] <= min(s["stats"]["n"] for s in data["singles"])
+        assert data["composite"]["stats"]["n"] <= data["pool_n"]  # composite ⊆ baseline
+
+
+def test_factor_combination_scales_to_all_factors(loaded_engine):
+    """The iter-18 'scales to all factors' requirement: a selection of ALL catalog factors (up to the
+    raised max_conditions) is accepted (200) and the composite cohort is still NON-EMPTY — combining every
+    factor no longer collapses the headline cohort to 0/NA (it stays the top config-quantile of the blend)."""
+    cfg = load_config()
+    all_factors = [f.key for f in cfg.research.factor_lab.factors]
+    assert len(all_factors) == cfg.research.factor_lab.combination.max_conditions  # the cap == catalog count
+    with TestClient(main.app) as client:
+        resp = client.get(
+            "/api/research/factor-combination",
+            params=[("condition", f"{f}:top:quintile") for f in all_factors],
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data["singles"]) == len(all_factors)
+    assert data["composite"]["stats"]["n"] > 0           # composite stays non-empty across ALL factors
+    assert data["composite"]["stats"]["n"] <= data["pool_n"]
+
+
+def test_factor_combination_empty_strict_overlap_while_composite_populated(loaded_engine):
+    """The headline improvement captured in ONE response: a selection whose strict AND-intersection is
+    EMPTY (the opposing extremes of the SAME factor — membership-driven NA per the iter-11 lesson, not
+    horizon) still returns a POPULATED composite cohort. strict_overlap = NA (n=0, mean None) while the
+    composite is non-empty with a numeric mean — proving the composite is the real, sample-sufficient
+    Combined cohort the strict intersection could not be."""
+    with TestClient(main.app) as client:
+        data = client.get(
+            "/api/research/factor-combination",
+            params=[
+                ("condition", "leadership_score:top:quintile"),
+                ("condition", "leadership_score:bottom:quintile"),
+            ],
+        ).json()
+    # SECONDARY strict overlap: the empty AND-intersection -> honest NA + n=0
+    assert data["strict_overlap"]["stats"]["n"] == 0
+    assert data["strict_overlap"]["stats"]["mean_return"] is None
+    # HEADLINE composite: populated where the strict overlap is empty
+    assert data["composite"]["stats"]["n"] > 0
+    assert data["composite"]["stats"]["mean_return"] is not None
 
 
 def test_factor_combination_horizon_repoints(loaded_engine):
@@ -241,16 +297,17 @@ def test_factor_combination_too_few_conditions_422(loaded_engine):
 
 
 def test_factor_combination_too_many_conditions_422(loaded_engine):
-    """A condition count above max_conditions is rejected (422) — no fabricated cohort."""
+    """A condition count above max_conditions (now 11 = the catalog factor count) is rejected (422) — no
+    fabricated cohort. 12 conditions (all 11 catalog factors + one repeat) exceed the raised cap."""
+    all_factors = [
+        "leadership_score", "entry_quality_score", "risk_score", "rs_spy_3m", "ma_stack",
+        "high_proximity", "up_down_vol", "atr_pct", "hv", "vcp_contraction", "downside_vol",
+    ]
+    twelve = all_factors + ["leadership_score"]  # 12 conditions > max_conditions 11
     with TestClient(main.app) as client:
         resp = client.get(
             "/api/research/factor-combination",
-            params=[
-                ("condition", "leadership_score:top:quintile"),
-                ("condition", "atr_pct:bottom:tertile"),
-                ("condition", "entry_quality_score:top:half"),
-                ("condition", "risk_score:bottom:quartile"),
-            ],
+            params=[("condition", f"{f}:top:quintile") for f in twelve],
         )
     assert resp.status_code == 422
 

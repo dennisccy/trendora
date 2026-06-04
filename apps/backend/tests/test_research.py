@@ -674,8 +674,9 @@ def _expected_membership(rows, key_index, side, fraction):
 def test_combination_is_read_only_no_scoring_or_return_or_pattern_call(monotone_engine, monkeypatch):
     """Read-only (the critical anti-goal): monkeypatch run_scan / score_stocks / forward_return /
     detect_* / score_regime to RAISE, then assert compute_factor_combination STILL returns a full payload
-    (baseline + singles + combined) — proving it SELECTs stored values + pure-groups only, recomputing no
-    score/return/factor/regime."""
+    (baseline + singles + composite + strict_overlap) — proving BOTH the composite rank-blend path AND the
+    strict-AND path SELECT stored values + pure-group/rank only, recomputing no score/return/factor/regime.
+    The composite is a deterministic ranking of STORED values (like the J-25 decile sort), not a fit."""
     import app.engine.forward_testing as ft
     import app.engine.patterns as patterns
     import app.engine.regime as regime
@@ -707,15 +708,18 @@ def test_combination_is_read_only_no_scoring_or_return_or_pattern_call(monotone_
     assert payload["pool_n"] == 20
     assert payload["baseline"]["stats"]["n"] == 20
     assert len(payload["singles"]) == 2
-    assert payload["combined"]["stats"]["n"] >= 1  # leadership-top-half ∩ (risk all-equal → all) is non-empty
+    # the composite rank-blend path ran (no scoring/return/pattern call) and is non-empty
+    assert payload["composite"]["stats"]["n"] >= 1
+    # the strict-AND overlap path ran too: leadership-top-half ∩ (risk all-equal → all) is non-empty
+    assert payload["strict_overlap"]["stats"]["n"] >= 1
 
 
 # --- cohort algebra + exact stats -----------------------------------------------------------------
 def test_combination_cohort_algebra_and_exact_stats(combo_engine):
     """Cohort algebra + stats on the controlled fixture: baseline.n == pool_n; each single.n <= pool_n;
-    combined == the EXACT AND-intersection of the single memberships (reconstructed independently) and is
-    strictly smaller than each single (interaction visible); mean / median / hit-rate are exact and the
-    risk_adjusted equals the downside-only `_risk_adjusted` of the combined membership."""
+    strict_overlap == the EXACT AND-intersection of the single memberships (reconstructed independently),
+    strictly smaller than each single (interaction visible), with exact downside-only stats; the composite
+    rank-blend cohort is non-empty, ⊆ baseline, populated, and a DISTINCT cohort from the strict overlap."""
     from statistics import mean as _mean, median as _median
 
     cfg = _cfg_with(min_sample=2)  # so the small cohorts are not low-sample (stats are numeric, not NA)
@@ -725,10 +729,10 @@ def test_combination_cohort_algebra_and_exact_stats(combo_engine):
     # independently reconstruct the two single memberships + their intersection from the stored rows
     members_lead = _expected_membership(_COMBO_ROWS, 1, "top", 0.5)     # L top-half
     members_risk = _expected_membership(_COMBO_ROWS, 2, "bottom", 0.5)  # R bottom-half
-    combined_tickers = members_lead & members_risk
+    strict_tickers = members_lead & members_risk
     assert members_lead == {"S4", "S5", "S6", "S7", "S8"}
     assert members_risk == {"S3", "S4", "S5", "S6"}
-    assert combined_tickers == {"S4", "S5", "S6"}
+    assert strict_tickers == {"S4", "S5", "S6"}
 
     # baseline = whole pool
     assert payload["pool_n"] == len(_COMBO_ROWS) == 8
@@ -740,28 +744,38 @@ def test_combination_cohort_algebra_and_exact_stats(combo_engine):
     assert singles[1]["stats"]["n"] == len(members_risk) == 4
     assert all(s["stats"]["n"] <= payload["pool_n"] for s in singles)  # each single ⊆ baseline
 
-    combined = payload["combined"]["stats"]
-    # combined == exact AND-intersection, strictly smaller than EACH single (interaction visible)
-    assert combined["n"] == len(combined_tickers) == 3
-    assert combined["n"] < singles[0]["stats"]["n"] and combined["n"] < singles[1]["stats"]["n"]
-    assert combined["n"] <= min(s["stats"]["n"] for s in singles)
+    # SECONDARY strict_overlap == exact AND-intersection, strictly smaller than EACH single (⊆ each single)
+    strict = payload["strict_overlap"]["stats"]
+    assert strict["n"] == len(strict_tickers) == 3
+    assert strict["n"] < singles[0]["stats"]["n"] and strict["n"] < singles[1]["stats"]["n"]
+    assert strict["n"] <= min(s["stats"]["n"] for s in singles)
 
-    # exact stats on the known combined returns {S4:-0.10, S5:0.10, S6:0.30}
-    combo_returns = [r[3] for r in _COMBO_ROWS if r[0] in combined_tickers]
-    assert combo_returns == [-0.10, 0.10, 0.30]
-    assert combined["mean_return"] == pytest.approx(_mean(combo_returns))      # 0.10
-    assert combined["median_return"] == pytest.approx(_median(combo_returns))  # 0.10
-    assert combined["hit_rate"] == pytest.approx(2 / 3)                        # 2 of 3 positive
-    assert combined["risk_adjusted"] == pytest.approx(_risk_adjusted(combo_returns))  # downside-only
-    assert combined["risk_adjusted"] is not None and combined["low_sample"] is False
+    # exact stats on the known strict-overlap returns {S4:-0.10, S5:0.10, S6:0.30}
+    strict_returns = [r[3] for r in _COMBO_ROWS if r[0] in strict_tickers]
+    assert strict_returns == [-0.10, 0.10, 0.30]
+    assert strict["mean_return"] == pytest.approx(_mean(strict_returns))      # 0.10
+    assert strict["median_return"] == pytest.approx(_median(strict_returns))  # 0.10
+    assert strict["hit_rate"] == pytest.approx(2 / 3)                         # 2 of 3 positive
+    assert strict["risk_adjusted"] == pytest.approx(_risk_adjusted(strict_returns))  # downside-only
+    assert strict["risk_adjusted"] is not None and strict["low_sample"] is False
+
+    # HEADLINE composite rank-blend: non-empty, ⊆ baseline, populated, not low-sample, and a DISTINCT cohort
+    composite = payload["composite"]["stats"]
+    assert composite["n"] >= 1 and composite["n"] <= payload["pool_n"]   # composite ⊆ baseline, non-empty
+    assert composite["mean_return"] is not None and composite["low_sample"] is False
+    assert payload["composite"]["label"] != payload["strict_overlap"]["label"]
 
 
 # --- honest NA: empty (opposing extremes) + thin (low-sample) cohorts -----------------------------
 def test_combination_opposing_extremes_empty_cohort_is_na_not_zero(monotone_engine):
-    """Honest NA (the iter-11 NA-fixture lesson): the AND of two OPPOSING extremes of the SAME factor
-    (top-quintile AND bottom-quintile) is empty → the combined cohort shows stats `None` (NA) and n=0 —
-    never a fabricated 0 — while each single cohort is itself non-empty."""
-    cfg = load_config()
+    """The iter-18 HEADLINE bar-raise on the EXACT fixture that used to be 0/NA (the iter-11 membership-NA
+    lesson — driven by membership, not horizon length): the AND of two OPPOSING extremes of the SAME factor
+    (top-quintile AND bottom-quintile) is empty → the SECONDARY `strict_overlap` cohort shows stats `None`
+    (NA) and n=0 (never a fabricated 0), WHILE the HEADLINE `composite` rank-blend stays POPULATED (non-
+    empty, n > 0, numeric mean). The two opposing oriented ranks average to a flat blend, so the composite
+    honestly selects the whole pool rather than collapsing to NA — proving the re-scoped acceptance is met
+    on the precise selection that previously yielded only 0/NA. Each single cohort is itself non-empty."""
+    cfg = _cfg_with(min_sample=2)  # so the populated composite (n = pool_n) is clearly not low-sample
     with Session(monotone_engine) as session:
         payload = compute_factor_combination(
             session,
@@ -772,25 +786,34 @@ def test_combination_opposing_extremes_empty_cohort_is_na_not_zero(monotone_engi
             H,
             cfg,
         )
-    combined = payload["combined"]["stats"]
-    assert combined["n"] == 0
-    assert combined["mean_return"] is None and combined["median_return"] is None
-    assert combined["hit_rate"] is None and combined["risk_adjusted"] is None  # NA, never a fabricated 0
-    assert combined["low_sample"] is True  # 0 < min_sample
+    # SECONDARY strict overlap: the empty AND-intersection -> honest NA + n=0, never a fabricated 0
+    strict = payload["strict_overlap"]["stats"]
+    assert strict["n"] == 0
+    assert strict["mean_return"] is None and strict["median_return"] is None
+    assert strict["hit_rate"] is None and strict["risk_adjusted"] is None  # NA, never a fabricated 0
+    assert strict["low_sample"] is True  # 0 < min_sample
+
+    # HEADLINE composite: POPULATED where the strict overlap is empty (the bar-raise) — non-empty + numeric
+    composite = payload["composite"]["stats"]
+    assert composite["n"] > 0                       # non-empty (no longer perpetually 0/NA)
+    assert composite["n"] == payload["pool_n"]      # opposing extremes blend flat -> honestly the whole pool
+    assert composite["mean_return"] is not None     # populated mean (the UI shows a number, not NA)
+    assert composite["low_sample"] is False         # n = 20 >= min_sample 2
+
     assert all(s["stats"]["n"] >= 1 for s in payload["singles"])  # the extremes themselves are non-empty
 
 
 def test_combination_thin_cohort_is_low_sample_with_honest_n(combo_engine):
-    """A thin but non-empty combined cohort (n < walk_forward.min_sample) carries low_sample=True + its
-    HONEST n (the UI renders NA + n); the engine still computes the figure (the UI gates the display) —
-    never hidden, never fabricated. (Real min_sample=30; the combined cohort here is n=3.)"""
+    """A thin but non-empty strict-overlap cohort (n < walk_forward.min_sample) carries low_sample=True +
+    its HONEST n (the UI renders NA + n); the engine still computes the figure (the UI gates the display) —
+    never hidden, never fabricated. (Real min_sample=30; the strict overlap here is n=3.)"""
     cfg = load_config()  # min_sample=30
     with Session(combo_engine) as session:
         payload = compute_factor_combination(session, _COMBO_CONDITIONS, H, cfg)
     assert payload["min_sample"] == cfg.walk_forward.min_sample == 30
-    combined = payload["combined"]["stats"]
-    assert combined["n"] == 3 and combined["low_sample"] is True
-    assert combined["mean_return"] is not None  # computed; the UI renders NA because low_sample is True
+    strict = payload["strict_overlap"]["stats"]
+    assert strict["n"] == 3 and strict["low_sample"] is True
+    assert strict["mean_return"] is not None  # computed; the UI renders NA because low_sample is True
 
 
 # --- pool honesty: a factor-NULL observation is excluded from the multi-factor pool ----------------
@@ -839,7 +862,10 @@ def test_combination_horizon_without_observations_is_all_na(combo_engine):
         payload = compute_factor_combination(session, _COMBO_CONDITIONS, 60, cfg)
     assert payload["horizon"] == 60 and payload["pool_n"] == 0
     assert payload["baseline"]["stats"]["mean_return"] is None
-    assert payload["combined"]["stats"]["n"] == 0 and payload["combined"]["stats"]["mean_return"] is None
+    # an empty pool -> BOTH the composite and the strict-overlap cohorts are honest NA (n=0), never a 0
+    assert payload["composite"]["stats"]["n"] == 0 and payload["composite"]["stats"]["mean_return"] is None
+    assert payload["strict_overlap"]["stats"]["n"] == 0
+    assert payload["strict_overlap"]["stats"]["mean_return"] is None
     assert all(s["stats"]["n"] == 0 and s["stats"]["mean_return"] is None for s in payload["singles"])
 
 
@@ -862,7 +888,88 @@ def test_combination_payload_is_config_driven_with_labels(combo_engine):
     c0 = payload["conditions"][0]
     assert c0["factor"]["key"] == "leadership_score" and c0["side"] == "top"
     assert c0["quantile"]["key"] == "half" and "fraction" in c0["quantile"]
-    assert payload["baseline"]["label"] and payload["combined"]["label"]
+    assert payload["baseline"]["label"]
+    # the headline composite + the secondary strict-overlap carry distinct server-built labels
+    assert payload["composite"]["label"] and payload["strict_overlap"]["label"]
+    assert payload["composite"]["label"] != payload["strict_overlap"]["label"]
+    # the composite quantile + weighting are ECHOED from config (transparent, config-driven labels)
+    assert payload["composite_quantile"]["key"] == comb.composite.quantile
+    assert {"key", "label", "fraction"} == set(payload["composite_quantile"])
+    assert payload["weighting"]["scheme"] == comb.composite.weighting.scheme
+    assert payload["weighting"]["default_weight"] == comb.composite.weighting.default_weight
+
+
+# --- composite rank-blend: orientation + config-driven cohort size (the iter-18 headline) -----------
+@pytest.fixture()
+def orient_engine(tmp_path):
+    """10 stocks with leadership AND entry_quality both PERFECTLY MONOTONE in i (both = i) and returns =
+    i/100 (a higher factor => a higher realized return). A two-condition composite with both sides `top`
+    must select the HIGH-i names; both `bottom` must select the LOW-i names — orientation is by the user's
+    side, never by the catalog `direction`/`family` descriptive metadata."""
+    engine = _engine(tmp_path, "orient.db")
+    with Session(engine) as session:
+        run = _add_run(session, date(2025, 1, 10))
+        for i in range(1, 11):
+            _add_result(session, run.id, f"T{i:02d}", rank=i, lead=float(i), entry=float(i))
+            _add_fr(session, run.id, f"T{i:02d}", ret=i / 100)
+        session.commit()
+    return engine
+
+
+def test_combination_composite_orientation_top_vs_bottom(orient_engine):
+    """Orientation correctness (the composite headline): on a monotone fixture a `top`-side composite
+    selects the HIGH-factor names (high realized return) and a `bottom`-side composite selects the
+    LOW-factor names (low realized return) — so the same factors at opposite sides yield clearly different,
+    correctly-ordered composite cohorts. Returns are monotone in the factor, so the cohort mean return is
+    an exact proxy for which names were selected (by hand: top {T08,T09,T10} mean 0.09; bottom
+    {T01,T02,T03} mean 0.02)."""
+    cfg = _cfg_with(min_sample=2)  # the n=3 cohorts are not low-sample (means are numeric)
+    with Session(orient_engine) as session:
+        top = compute_factor_combination(
+            session,
+            [
+                {"factor": "leadership_score", "side": "top", "quantile": "quintile"},
+                {"factor": "entry_quality_score", "side": "top", "quantile": "quintile"},
+            ],
+            H, cfg,
+        )
+        bottom = compute_factor_combination(
+            session,
+            [
+                {"factor": "leadership_score", "side": "bottom", "quantile": "quintile"},
+                {"factor": "entry_quality_score", "side": "bottom", "quantile": "quintile"},
+            ],
+            H, cfg,
+        )
+    top_mean = top["composite"]["stats"]["mean_return"]
+    bottom_mean = bottom["composite"]["stats"]["mean_return"]
+    # top-side composite picks the high-factor (high-return) names; bottom-side picks the low-factor names
+    assert top_mean == pytest.approx(0.09)
+    assert bottom_mean == pytest.approx(0.02)
+    assert top_mean > bottom_mean
+    # both composites are populated (non-empty) — the side flips WHICH extreme, never collapses to NA
+    assert top["composite"]["stats"]["n"] > 0 and bottom["composite"]["stats"]["n"] > 0
+
+
+def test_combination_composite_cohort_size_is_config_driven(combo_engine):
+    """No magic numbers: the composite cohort fraction is config...combination.composite.quantile —
+    widening it (quintile 0.20 -> half 0.50) ENLARGES the composite cohort n (proves the fraction is
+    config-sourced, not a hard-coded literal) and the echoed `composite_quantile` re-points with it."""
+    def _cfg_with_composite_quantile(qkey: str):
+        cfg = load_config()
+        comb = cfg.research.factor_lab.combination
+        new_comb = comb.model_copy(update={"composite": comb.composite.model_copy(update={"quantile": qkey})})
+        fl = cfg.research.factor_lab.model_copy(update={"combination": new_comb})
+        research = cfg.research.model_copy(update={"factor_lab": fl})
+        wf = cfg.walk_forward.model_copy(update={"min_sample": 2})
+        return cfg.model_copy(update={"research": research, "walk_forward": wf})
+
+    with Session(combo_engine) as session:
+        narrow = compute_factor_combination(session, _COMBO_CONDITIONS, H, _cfg_with_composite_quantile("quintile"))
+        wide = compute_factor_combination(session, _COMBO_CONDITIONS, H, _cfg_with_composite_quantile("half"))
+    assert narrow["composite_quantile"]["key"] == "quintile" and wide["composite_quantile"]["key"] == "half"
+    assert wide["composite"]["stats"]["n"] > narrow["composite"]["stats"]["n"]  # wider quantile -> larger cohort
+    assert wide["composite"]["stats"]["n"] <= wide["pool_n"]  # still ⊆ baseline (config drives size, not membership rule)
 
 
 def test_combination_unknown_factor_side_quantile_and_count_raise(monotone_engine):
@@ -889,13 +996,12 @@ def test_combination_unknown_factor_side_quantile_and_count_raise(monotone_engin
             compute_factor_combination(session, [
                 {"factor": "leadership_score", "side": "top", "quantile": "half"},
             ], H, cfg)
-        with pytest.raises(ValueError):  # too many conditions (4 > max_conditions 3)
-            compute_factor_combination(session, [
-                {"factor": "leadership_score", "side": "top", "quantile": "half"},
-                {"factor": "risk_score", "side": "bottom", "quantile": "half"},
-                {"factor": "entry_quality_score", "side": "top", "quantile": "half"},
-                {"factor": "atr_pct", "side": "bottom", "quantile": "half"},
-            ], H, cfg)
+        with pytest.raises(ValueError):  # too many conditions (12 > max_conditions 11)
+            compute_factor_combination(
+                session,
+                [{"factor": "leadership_score", "side": "top", "quantile": "half"}] * 12,
+                H, cfg,
+            )
 
 
 # --- boot validation (ConfigError) for the combination block --------------------------------------
@@ -948,6 +1054,33 @@ def test_combination_default_count_outside_range_raises(tmp_path):
 def test_combination_invalid_side_raises(tmp_path):
     data = copy.deepcopy(MINIMAL_VALID)
     data["research"]["factor_lab"]["combination"]["default_conditions"][0]["side"] = "sideways"
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+# --- iter-18 composite rank-blend boot validation (ConfigError) ------------------------------------
+def test_combination_composite_unknown_quantile_raises(tmp_path):
+    """composite.quantile must be a real `quantiles` key — an unknown key fails the boot loudly (anti-goal:
+    No magic numbers — the composite cohort fraction is config-sourced, never a silent default)."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["research"]["factor_lab"]["combination"]["composite"]["quantile"] = "not_a_quantile"
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_combination_composite_nonpositive_weight_raises(tmp_path):
+    """composite.weighting.default_weight must be > 0 — a non-positive base weight fails the boot loudly."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["research"]["factor_lab"]["combination"]["composite"]["weighting"]["default_weight"] = 0
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_combination_composite_unknown_scheme_raises(tmp_path):
+    """composite.weighting.scheme must be a known scheme (Literal['equal']) — an unknown scheme fails the
+    boot loudly, never a silent default."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["research"]["factor_lab"]["combination"]["composite"]["weighting"]["scheme"] = "ml_fitted"
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))
 

@@ -156,9 +156,11 @@ VALID = {
                 {"key": "leadership_score", "label": "Leadership", "family": "score",
                  "direction": "higher_better", "source": "leadership_score"},
             ],
-            "combination": {  # iter-12: combination is a required factor_lab sub-block
+            "combination": {  # iter-12/iter-18: combination is a required factor_lab sub-block
                 "min_conditions": 2, "max_conditions": 3,
                 "quantiles": [{"key": "half", "label": "Half (50%)", "fraction": 0.5}],
+                # iter-18: composite rank-blend is a required sub-block (quantile = a real quantiles key)
+                "composite": {"quantile": "half", "weighting": {"scheme": "equal", "default_weight": 1.0}},
                 "default_conditions": [
                     {"factor": "leadership_score", "side": "top", "quantile": "half"},
                     {"factor": "leadership_score", "side": "bottom", "quantile": "half"},

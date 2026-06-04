@@ -138,3 +138,20 @@ J-25–J-31 (compute-only) split, and any decomposer choosing the next non-walle
 **Verdict:** CONTINUE
 **Lesson:** When the operator re-scopes `docs/goal.md` mid-session (here commit `d723133` after the iter-16 STALLED), it can (a) RAISE an already-`passing` journey's acceptance bar and (b) ADD new journeys — neither is visible in code or in the diff. J-26 was `passing` since iter-14 (strict AND-intersection) but the re-scope now demands a non-empty composite percentile-rank blend, so its current impl no longer meets the *headline* acceptance → I re-classified it `partial` (some steps pass, the new key step doesn't). This is a **re-scope bar-raise, NOT a REGRESSION** (the code is unchanged and still works; the goalpost moved) — do not emit a REGRESSION verdict for it, and do not let it carry on its old `passing` status on faith. Also added J-32 (newly tracked `failing`). Practically: after any goal.md edit, re-read the Must-have journeys and re-check every previously-passing journey against the NEW acceptance, and confirm new J-IDs are added to journey-history (the goal had grown to J-32 while history still listed J-01..J-31).
 **Applies to:** any iteration whose `docs/goal.md` was edited since the last eval (operator re-scope / `--resume` after STALLED); any journey the iter spec lists as a *future* target while journey-history still marks it `passing`; the goal-evaluator's GOAL_ACHIEVED gate (must count against the current, possibly-raised, acceptance bar).
+
+## iter-18 — 2026-06-04T10:27:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The J-26 composite percentile-rank blend is "non-empty" but on a *cancelling* selection it
+honestly collapses to the whole pool, NOT a differentiated cohort: when the same factor is added at both
+`top` and `bottom` (the opposing-extremes fixture), each observation's two oriented ranks (`frac` and
+`1−frac`) average to a flat ~0.5, so `_quantile_cutoff` includes everyone → `composite.n == pool_n` with
+`mean == baseline.mean` (UT-08: composite n=1218 = baseline, while `strict_overlap` correctly shows n=0/NA).
+This is the mathematically honest "no net signal" answer and it satisfies the bar-raise (non-empty + clears
+`min_sample`), but it means **"composite non-empty" does NOT imply "composite differentiated from
+baseline"** — judge the composite's value on *sensible* (non-cancelling) selections, where it yields a real
+~`composite_fraction·pool_n` cohort distinct from baseline (default quintile → n≈244 vs baseline 1217,
++1.21% vs +2.03%). Don't mistake `composite n == baseline n` for a bug.
+**Applies to:** any iter touching `compute_factor_combination` / the `_composite_scores` blend, and any
+evaluator judging J-26 or the J-32 as-of-mode applied to the combination cohort — assert differentiation on
+a non-cancelling selection, not just `n > 0`.
