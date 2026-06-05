@@ -7,9 +7,12 @@ and returns ZERO bars. It NEVER synthesizes/placeholder-fills a bar to avoid rai
 No fabricated data; *Live fetch is real-data-only*).
 
 Used ONLY by the on-demand Data Manager fetch path (`app.engine.data_manager`), resolved via the
-provider factory from `config.data_manager.live_provider`. The default boot/runtime provider stays
-the offline `SeedProvider`, so the committed seed and the walk-forward evidence remain reproducible.
-Stooq needs no credential; if a provider ever did, it would be read only from the environment.
+provider factory when a job selects the `stooq` import `source` (J-33). The default boot/runtime provider
+stays the offline `SeedProvider`, so the committed seed and the walk-forward evidence remain reproducible.
+This client hits Stooq's free CSV (no credential of its own); the import catalog may still mark `stooq`
+`needs_key` for this environment (the free endpoint is IP-gated — iter-3 lesson), in which case the
+engine's key gate requires an env/session key before the job runs. Any key would be read only from the
+environment or a session paste — never persisted.
 """
 from __future__ import annotations
 

@@ -1019,9 +1019,25 @@ export interface DataRun {
   message: string | null;
 }
 
+/** One import-source provider in the config-driven catalog (J-33), with env-detected availability. The
+ *  frontend re-formats this only — it NEVER hardcodes a provider list (the catalog + each source's key
+ *  requirement come from GET /api/data). `env_var` is the environment-variable NAME the key is read from
+ *  (the NAME only — a key value is NEVER served by the API); `available` is true when no key is needed or
+ *  the env var is set; `reason` is a server-built sentence rendered verbatim. */
+export interface ProviderSource {
+  id: string;
+  label: string;
+  needs_key: boolean;
+  env_var: string | null;
+  supports_market_cap: boolean;
+  available: boolean;
+  reason: string;
+}
+
 export interface DataOverviewResponse {
   coverage: DataCoverage;
   runs: DataRun[];
+  sources: ProviderSource[]; // J-33 import-source catalog (config-driven, env-detected availability)
 }
 
 export type DataJobKind = "fetch" | "backfill" | "both";
@@ -1034,6 +1050,7 @@ export interface DataJob {
   kind: string;
   start: string;
   end: string;
+  source?: string | null; // J-33: the chosen import provider id (not secret); never the key
   status: string;
   symbols_total: number;
   symbols_ok: number;
@@ -1054,6 +1071,7 @@ export interface StartJobResponse {
   kind: string;
   start: string;
   end: string;
+  source?: string; // J-33: the resolved import source id (echoed; never the key)
   status: string;
 }
 
@@ -1064,14 +1082,20 @@ export async function fetchDataCoverage(signal?: AbortSignal): Promise<DataOverv
 }
 
 /** POST /api/data/jobs — start an async fetch/backfill job over a date range (the date inputs are JOB
- *  PARAMETERS, NOT a viewing as-of control). Returns immediately with a `job_id`; throws with the
- *  backend's honest `detail` on a non-2xx (400 invalid range / 422 malformed date / 503 no data). */
+ *  PARAMETERS, NOT a viewing as-of control). The optional J-33 `opts` carry the chosen import `source`
+ *  and a SESSION-ONLY `api_key` (sent only when non-blank — never stored client-side beyond the request).
+ *  Returns immediately with a `job_id`; throws with the backend's honest `detail` on a non-2xx (400
+ *  invalid range / unknown source / needs-key-without-key, 422 malformed date, 503 no data). */
 export async function startDataJob(
   kind: DataJobKind,
   start: string,
   end: string,
+  opts?: { source?: string; api_key?: string },
 ): Promise<StartJobResponse> {
-  return sendJSON<StartJobResponse>("POST", "/api/data/jobs", { kind, start, end });
+  const body: Record<string, string> = { kind, start, end };
+  if (opts?.source) body.source = opts.source;
+  if (opts?.api_key) body.api_key = opts.api_key; // session-only; omitted when blank
+  return sendJSON<StartJobResponse>("POST", "/api/data/jobs", body);
 }
 
 /** GET /api/data/jobs/{job_id} — poll a job's live status/progress, ending in its final summary.

@@ -1,0 +1,15 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever-iter-21",
+  "status": "blocked",
+  "current_step": "qa_complete",
+  "updated_at": "2026-06-05T00:20:00.000000Z",
+  "started_at": "2026-06-04T22:55:27.233503Z",
+  "cli": "claude",
+  "blockers": [
+    "CRITICAL anti-goal: pasted session api_key echoed in GET /api/data/jobs/{id} errors[] and rendered in the /data job card (root cause data_providers/_http.py:42 wrapping str(httpx HTTPStatusError) for key-in-URL providers tiingo/finnhub/alpha_vantage). Violates 'keys never echoed back in any response' + DoD 'absent from GET /api/data/jobs/{id}'. Fails TC-05/TC-07/TC-11."
+  ],
+  "changed_files": [],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "next_action": "fix_qa"
+}

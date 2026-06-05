@@ -56,15 +56,69 @@ def _await_job(job_id: str, timeout_s: float = 10.0) -> dict:
 
 
 def test_get_data_overview_shape(data_api_engine):
-    """GET /api/data returns coverage (descriptive metadata) + a run-history list."""
+    """GET /api/data returns coverage (descriptive metadata) + a run-history list + the import-source
+    catalog (J-33). The `sources` list is config-driven with env-detected availability and carries the
+    env-var NAME only — never a key value."""
     with Session(data_api_engine) as session:
         payload = data_overview(session=session)
-    assert set(payload) == {"coverage", "runs"}
+    assert set(payload) == {"coverage", "runs", "sources"}
     cov = payload["coverage"]
     assert cov["symbol_count"] == 1  # only SPY in this tiny DB
     assert cov["trading_day_count"] == 2 and cov["gap_count"] == 2  # two SPY days, no snapshots yet
     assert cov["snapshot_count"] == 0
     assert isinstance(payload["runs"], list)
+    # the import-source catalog renders from config (the named sources appear) with availability + env-var name
+    sources = payload["sources"]
+    by_id = {s["id"]: s for s in sources}
+    assert {"yahoo", "tiingo", "stooq"}.issubset(set(by_id))
+    assert by_id["yahoo"]["available"] is True and by_id["yahoo"]["needs_key"] is False
+    assert by_id["tiingo"]["needs_key"] is True and by_id["tiingo"]["env_var"] == "TIINGO_API_KEY"
+    # availability metadata carries only the env-var NAME + a boolean + a reason — never a key value
+    for s in sources:
+        assert set(s) == {"id", "label", "needs_key", "env_var", "supports_market_cap", "available", "reason"}
+
+
+def test_post_job_defaults_source_when_omitted(data_api_engine):
+    """A job that omits `source` resolves the config `default_source` (J-17 fetch behavior preserved); the
+    response echoes it (not secret) and carries NO key. A backfill job needs no network."""
+    payload = JobCreate(kind="backfill", start=date(2024, 6, 1), end=date(2024, 6, 5))
+    with Session(data_api_engine) as session:
+        resp = start_job(payload, session=session)
+    assert resp["source"] == "yahoo"  # the config default_source
+    assert "api_key" not in resp  # the key is never echoed back
+
+
+def test_post_job_unknown_source_is_400(data_api_engine):
+    """An unknown import source is rejected with 400 — an explicit error, never a silent no-op."""
+    with Session(data_api_engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            start_job(JobCreate(kind="backfill", start=date(2024, 1, 1), end=date(2024, 1, 2), source="bogus"),
+                      session=session)
+    assert exc.value.status_code == 400
+
+
+def test_post_fetch_needs_key_source_without_key_is_400(data_api_engine, monkeypatch):
+    """A FETCH against a needs-key source with neither an env key nor a pasted key is rejected with an
+    explicit 400 (and so no live fetch is even started) — never a silent no-op or a fabricated bar."""
+    monkeypatch.delenv("TIINGO_API_KEY", raising=False)
+    with Session(data_api_engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            start_job(JobCreate(kind="fetch", start=date(2024, 1, 1), end=date(2024, 1, 2), source="tiingo"),
+                      session=session)
+    assert exc.value.status_code == 400
+    assert "requires a key" in str(exc.value.detail)
+
+
+def test_post_job_payload_accepts_source_and_api_key_without_echo(data_api_engine):
+    """The typed POST model accepts the J-33 `source` + session-only `api_key`; the start response NEVER
+    contains the pasted key. (A backfill job carries the source through with no network call.)"""
+    payload = JobCreate(kind="backfill", start=date(2024, 6, 1), end=date(2024, 6, 5),
+                        source="yahoo", api_key="sk-PASTE-SESSION-ONLY-xyz")
+    with Session(data_api_engine) as session:
+        resp = start_job(payload, session=session)
+    assert resp["source"] == "yahoo"
+    assert "sk-PASTE-SESSION-ONLY-xyz" not in str(resp)
+    assert "api_key" not in resp
 
 
 def test_post_job_returns_job_id_and_reaches_final_summary(data_api_engine):

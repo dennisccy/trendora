@@ -889,20 +889,73 @@ class DatabaseCfg(BaseModel):
     url: str = Field(min_length=1)
 
 
-class DataManagerCfg(BaseModel):
-    """Data Manager job limits / display caps (iter-3 CONSUMED, J-17). EVERY tunable the on-demand
-    fetch/backfill orchestration reads lives here (anti-goal: No magic numbers — no job/range/preview
-    literal in `app.engine.data_manager` or `app.api.data`). `live_provider` is the config-selected LIVE
-    provider the FETCH path resolves (real EOD only) — distinct from the top-level `provider`, which
-    stays `seed` for the deterministic boot. `max_range_days` bounds a single job's inclusive calendar
-    span; `gap_preview` / `run_history_limit` are payload display caps. Validated like the other typed
-    sections: every limit positive — an invalid block raises `ConfigError`, never a silent default."""
+class ProviderCatalogEntry(BaseModel):
+    """One import-source provider in the config-driven catalog (J-33). The catalog (the list, and each
+    provider's key requirement + env-var NAME) lives in `config.yaml` `data_manager.providers` — there is
+    NO hardcoded provider list in code (anti-goal: the provider catalog is config-driven).
+
+      - `id`     — the stable provider key `make_provider` resolves and a job's `source` selects.
+      - `label`  — the display name shown in the import-source picker.
+      - `needs_key` — whether a credential is required (read from the environment, or pasted session-only).
+      - `env_var`   — the environment-variable NAME the key is read from (the NAME only, never the value);
+                      REQUIRED whenever `needs_key` (validated below) so availability can be env-detected.
+      - `supports_market_cap` — whether the source can supply the market-cap field the J-35 expand job
+                      gates on. Declared NOW so the catalog schema is stable; consumed only in J-35
+                      (default `False` — a source is assumed NOT market-cap-capable unless it says so).
+
+    Anti-goal *Import keys are env-or-session, never persisted*: NO key VALUE is ever stored in or served
+    from this model — it carries only the env-var name + the boolean requirement + a display label."""
 
     model_config = ConfigDict(extra="allow")
-    live_provider: Literal["seed", "stooq"]
+    id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    needs_key: bool = False
+    env_var: Optional[str] = None
+    supports_market_cap: bool = False
+
+    @model_validator(mode="after")
+    def _env_var_present_when_needs_key(self) -> "ProviderCatalogEntry":
+        if self.needs_key and not self.env_var:
+            raise ValueError(
+                f"provider {self.id!r} has needs_key=true but no env_var — the environment-variable "
+                "name is required so the key can be read from the environment (never hard-coded)"
+            )
+        return self
+
+
+class DataManagerCfg(BaseModel):
+    """Data Manager job limits / display caps + the import provider catalog (iter-3 / iter-21 CONSUMED,
+    J-17 / J-33). EVERY tunable the on-demand fetch/backfill orchestration reads lives here (anti-goal:
+    No magic numbers — no job/range/preview literal in `app.engine.data_manager` or `app.api.data`).
+
+      - `providers` — the config-driven import-source catalog (J-33). The FETCH path resolves the
+        job-selected `source` against this list — there is NO hardcoded provider list in code. The
+        offline boot/runtime `provider: seed` is the DEFAULT offline provider, NOT an import source, and
+        is deliberately kept OUT of this catalog. (Retired the old 2-value `live_provider` Literal — the
+        import source is validated against the catalog instead.)
+      - `default_source` — the catalog `id` used when a job omits `source` (preserves J-17 fetch
+        behavior); MUST be a real catalog id (validated below), and is a no-key source in `config.yaml`
+        so an omitted-source fetch never fails the key gate.
+      - `max_range_days` bounds a single job's inclusive calendar span; `gap_preview` /
+        `run_history_limit` are payload display caps.
+
+    Validated like the other typed sections — every limit positive, catalog ids unique, and
+    `default_source` ∈ the catalog — an invalid block raises `ConfigError`, never a silent default."""
+
+    model_config = ConfigDict(extra="allow")
+    providers: list[ProviderCatalogEntry] = Field(min_length=1)
+    default_source: str = Field(min_length=1)
     max_range_days: int
     gap_preview: int
     run_history_limit: int
+
+    def provider_ids(self) -> list[str]:
+        """The catalog ids, in config order (the import-source vocabulary)."""
+        return [p.id for p in self.providers]
+
+    def provider_by_id(self, source_id: str) -> Optional[ProviderCatalogEntry]:
+        """The catalog entry for `source_id`, or None when it is not in the catalog."""
+        return next((p for p in self.providers if p.id == source_id), None)
 
     @model_validator(mode="after")
     def _validate(self) -> "DataManagerCfg":
@@ -914,6 +967,15 @@ class DataManagerCfg(BaseModel):
         nonpositive = sorted(k for k, v in limits.items() if v <= 0)
         if nonpositive:
             raise ValueError(f"data_manager limits must be positive: {nonpositive}")
+        ids = [p.id for p in self.providers]
+        dupes = sorted({i for i in ids if ids.count(i) > 1})
+        if dupes:
+            raise ValueError(f"data_manager.providers have duplicate ids: {dupes}")
+        if self.default_source not in ids:
+            raise ValueError(
+                f"data_manager.default_source {self.default_source!r} is not in the provider catalog "
+                f"(valid: {sorted(ids)})"
+            )
         return self
 
 

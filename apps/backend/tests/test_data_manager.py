@@ -16,6 +16,7 @@ backfill proof loads the committed seed and runs the real engines ONCE (module-s
 """
 from __future__ import annotations
 
+import json
 from datetime import date
 
 import pytest
@@ -24,13 +25,16 @@ from sqlmodel import Session, select
 
 from app.config import load_config
 from app.db import create_db_and_tables, make_engine
-from app.data_providers.base import PriceProvider, ProviderUnavailableError
+from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError
 from app.engine import forward_testing, scanner
 from app.engine.data_manager import (
+    JobProgress,
     _trading_days,
     compute_coverage,
+    compute_provider_availability,
     create_job,
     recent_runs,
+    resolve_provider_key,
     run_data_job,
     validate_job_request,
 )
@@ -298,3 +302,96 @@ def test_dataprovider_run_is_append_only_per_job(backfilled_job):
     assert f["dpr_post2"] == f["dpr_after"] + 1  # second job appended one more
     runs = recent_runs  # the history reader exists and is importable
     assert callable(runs)
+
+
+# ==================================================================================================
+# iter-21 (J-33): import-source catalog availability (env-detected) — descriptive metadata, NO key
+# ==================================================================================================
+def test_compute_provider_availability_env_detected(monkeypatch):
+    """A no-key source is always `available`; a needs-key source is `available` ONLY when its env var is
+    set. The env VALUE / any key is NEVER in the output — only the env-var NAME + the boolean + a reason
+    (anti-goal: Import keys are env-or-session, never persisted)."""
+    cfg = load_config()
+    # No env keys set → yahoo available (no key), tiingo NOT available (needs key, env unset).
+    monkeypatch.delenv("TIINGO_API_KEY", raising=False)
+    sources = compute_provider_availability(cfg)
+    by_id = {s["id"]: s for s in sources}
+    assert by_id["yahoo"]["available"] is True and by_id["yahoo"]["needs_key"] is False
+    assert by_id["tiingo"]["available"] is False and by_id["tiingo"]["needs_key"] is True
+    assert by_id["tiingo"]["env_var"] == "TIINGO_API_KEY"  # the NAME is exposed
+    # the catalog is config-driven (the named sources appear)
+    assert {"yahoo", "tiingo", "stooq"}.issubset(set(by_id))
+
+    # Set the env var → tiingo flips to available, but the secret VALUE never appears in the output.
+    monkeypatch.setenv("TIINGO_API_KEY", "super-secret-env-value-zzz")
+    sources2 = compute_provider_availability(cfg)
+    by_id2 = {s["id"]: s for s in sources2}
+    assert by_id2["tiingo"]["available"] is True
+    assert "super-secret-env-value-zzz" not in json.dumps(sources2)
+
+
+def test_resolve_provider_key_prefers_paste_then_env(monkeypatch):
+    """The effective key is the pasted session key if present, else the env var; a no-key source returns
+    None and ignores any pasted value (the key is request-only — never written anywhere)."""
+    cfg = load_config()
+    yahoo = cfg.data_manager.provider_by_id("yahoo")
+    tiingo = cfg.data_manager.provider_by_id("tiingo")
+    assert resolve_provider_key(yahoo, "ignored") is None  # no-key source never uses a key
+    monkeypatch.delenv("TIINGO_API_KEY", raising=False)
+    assert resolve_provider_key(tiingo, None) is None  # needs key, none available
+    assert resolve_provider_key(tiingo, "pasted-key") == "pasted-key"  # paste wins
+    monkeypatch.setenv("TIINGO_API_KEY", "env-key")
+    assert resolve_provider_key(tiingo, None) == "env-key"  # env fallback
+    assert resolve_provider_key(tiingo, "pasted-key") == "pasted-key"  # paste still wins over env
+
+
+# ==================================================================================================
+# iter-21 (J-33) PRINCIPAL ANTI-GOAL: a pasted api_key is NEVER persisted / logged / echoed
+# ==================================================================================================
+class _RecordingOkProvider(PriceProvider):
+    """An injected live provider that returns one real bar per symbol (a successful offline fetch)."""
+
+    def get_daily(self, symbol, start=None, end=None):
+        return [Bar(date=start or date(2024, 1, 2), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0)]
+
+
+def test_pasted_api_key_never_persisted(tmp_path, caplog):
+    """Run a FETCH job (injected provider) with a pasted session `api_key` against a needs-key source.
+    The key string MUST be absent from the in-memory job snapshot, from every `DataProviderRun` column,
+    and from the logs; the chosen `source` id (not secret) IS recorded. The `JobProgress` record has NO
+    field that could hold the key. THE principal anti-goal: Import keys are env-or-session, never
+    persisted."""
+    secret = "sk-PASTE-NEVER-PERSIST-7f3a9c"
+    cfg = load_config()
+    engine = make_engine(f"sqlite:///{tmp_path / 'key.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 1, 2), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    job = create_job("fetch", date(2024, 1, 2), date(2024, 1, 3), source="tiingo")
+    with caplog.at_level("DEBUG"):
+        summary = run_data_job(
+            job.job_id, config=cfg, engine=engine, provider=_RecordingOkProvider(), api_key=secret
+        )
+
+    # the chosen source is recorded (not secret); the key is nowhere in the job snapshot
+    assert summary["source"] == "tiingo"
+    assert summary["status"] == "ok"
+    assert secret not in json.dumps(summary)
+    assert secret not in json.dumps(recent_runs.__doc__ or "")  # sanity: not a constant somewhere
+
+    # structural guarantee: the in-memory job record has NO field that holds a key
+    assert "api_key" not in JobProgress.__dataclass_fields__
+
+    # absent from every DataProviderRun column (provider == the source id, message == key-free detail JSON)
+    with Session(engine) as session:
+        rows = session.exec(select(DataProviderRun)).all()
+    assert rows and rows[-1].provider == "tiingo"  # source id recorded, not the key
+    serialized = json.dumps([
+        {col: str(getattr(r, col)) for col in ("provider", "status", "message")} for r in rows
+    ])
+    assert secret not in serialized
+
+    # absent from the logs
+    assert secret not in caplog.text

@@ -26,6 +26,7 @@ Every job limit / display cap is read from `config.data_manager` (anti-goal: No 
 from __future__ import annotations
 
 import json
+import os
 import threading
 import uuid
 from dataclasses import dataclass, field
@@ -36,7 +37,7 @@ from sqlalchemy import func, insert
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
-from app.config import Config, get_config
+from app.config import Config, ProviderCatalogEntry, get_config
 from app.data_providers import make_provider
 from app.data_providers.base import PriceProvider, ProviderUnavailableError
 from app.db import get_engine
@@ -106,6 +107,50 @@ def compute_coverage(session: Session, config: Optional[Config] = None) -> dict:
 
 
 # --------------------------------------------------------------------------------------------------
+# Import provider catalog + env-detected availability (J-33) — descriptive metadata, NO key value
+# --------------------------------------------------------------------------------------------------
+def resolve_provider_key(entry: ProviderCatalogEntry, pasted_key: Optional[str]) -> Optional[str]:
+    """The effective credential for one import source: the SESSION-ONLY pasted key if present, else the
+    value of the source's configured environment variable (by NAME). Returns None when the source needs
+    no key, or when neither a pasted nor an env key is available. The result is used in-memory only
+    (request-scoped) and is NEVER persisted/logged (anti-goal: Import keys are env-or-session, never
+    persisted). A no-key source returns None and ignores any pasted value."""
+    if not entry.needs_key:
+        return None
+    if pasted_key:
+        return pasted_key
+    return os.environ.get(entry.env_var) if entry.env_var else None
+
+
+def compute_provider_availability(config: Optional[Config] = None) -> list[dict]:
+    """The import-source catalog with per-source availability, computed from config + the environment at
+    REQUEST time (J-33). For each catalog entry: `available = (not needs_key) or the env var is set`. The
+    output carries ONLY the env-var NAME, the boolean requirement/availability, and a human `reason` — it
+    NEVER contains the env value or any key (anti-goal: Import keys are env-or-session, never persisted).
+    This is descriptive availability metadata — NOT a duplicate of any canonical score/return/bucket."""
+    cfg = config or get_config()
+    sources: list[dict] = []
+    for entry in cfg.data_manager.providers:
+        available = (not entry.needs_key) or bool(entry.env_var and os.environ.get(entry.env_var))
+        if not entry.needs_key:
+            reason = "no key required"
+        elif available:
+            reason = f"key present in ${entry.env_var}"
+        else:
+            reason = f"set ${entry.env_var} or paste a session key"
+        sources.append({
+            "id": entry.id,
+            "label": entry.label,
+            "needs_key": entry.needs_key,
+            "env_var": entry.env_var,
+            "supports_market_cap": entry.supports_market_cap,
+            "available": available,
+            "reason": reason,
+        })
+    return sources
+
+
+# --------------------------------------------------------------------------------------------------
 # In-memory job registry (live progress) — the FINAL summary is persisted to DataProviderRun
 # --------------------------------------------------------------------------------------------------
 @dataclass
@@ -116,6 +161,11 @@ class JobProgress:
     kind: str
     start: date_cls
     end: date_cls
+    # The chosen import `source` id (J-33) — NOT secret; recorded so the run history shows which provider
+    # a fetch used. The pasted `api_key` is DELIBERATELY ABSENT from this in-memory record (and from the
+    # persisted run / detail JSON / logs) — it is request-only (anti-goal: keys are env-or-session, never
+    # persisted). Defaults to None for a backfill-only job (no fetch ⇒ no source).
+    source: Optional[str] = None
     status: str = "running"  # running | ok | partial | failed
     symbols_total: int = 0
     symbols_ok: int = 0
@@ -136,6 +186,7 @@ class JobProgress:
             "kind": self.kind,
             "start": self.start.isoformat(),
             "end": self.end.isoformat(),
+            "source": self.source,  # the chosen import provider id (not secret); never the key
             "status": self.status,
             "symbols_total": self.symbols_total,
             "symbols_ok": self.symbols_ok,
@@ -156,9 +207,11 @@ _JOBS: dict[str, JobProgress] = {}
 _LOCK = threading.Lock()
 
 
-def create_job(kind: str, start: date_cls, end: date_cls) -> JobProgress:
-    """Register a new `running` job in the in-memory registry and return it (with a fresh job_id)."""
-    job = JobProgress(job_id=uuid.uuid4().hex, kind=kind, start=start, end=end)
+def create_job(kind: str, start: date_cls, end: date_cls, source: Optional[str] = None) -> JobProgress:
+    """Register a new `running` job in the in-memory registry and return it (with a fresh job_id). The
+    optional `source` is the chosen import provider id (J-33; not secret) — the pasted key is NEVER
+    stored on the job, only threaded to the worker as a request-only argument."""
+    job = JobProgress(job_id=uuid.uuid4().hex, kind=kind, start=start, end=end, source=source)
     with _LOCK:
         _JOBS[job.job_id] = job
     return job
@@ -171,10 +224,22 @@ def get_job(job_id: str) -> Optional[dict]:
     return job.to_dict() if job is not None else None
 
 
-def validate_job_request(kind: str, start: date_cls, end: date_cls, config: Optional[Config] = None) -> None:
+def validate_job_request(
+    kind: str,
+    start: date_cls,
+    end: date_cls,
+    config: Optional[Config] = None,
+    *,
+    source: Optional[str] = None,
+    api_key: Optional[str] = None,
+) -> None:
     """Reject an invalid job request explicitly (the API maps the raised `ValueError` to a 4xx — never a
-    silent no-op): an unknown kind, an inverted range (start > end), or a span over the configured
-    `data_manager.max_range_days`. Malformed dates are rejected earlier by the typed API model."""
+    silent no-op): an unknown kind, an inverted range (start > end), a span over the configured
+    `data_manager.max_range_days`, an unknown import `source`, or a fetch against a `needs_key` source
+    with neither an env key nor a pasted session key. Malformed dates are rejected earlier by the typed
+    API model. `source`/`api_key` are validated only when a `source` is supplied; the key is read
+    request-only for the gate and is never persisted (anti-goal: keys are env-or-session, never
+    persisted)."""
     cfg = config or get_config()
     if kind not in JOB_KINDS:
         raise ValueError(f"unknown job kind {kind!r}; expected one of {list(JOB_KINDS)}")
@@ -186,6 +251,17 @@ def validate_job_request(kind: str, start: date_cls, end: date_cls, config: Opti
             f"date range too large: {span_days} days exceeds the configured maximum "
             f"{cfg.data_manager.max_range_days}"
         )
+    if source is not None:
+        entry = cfg.data_manager.provider_by_id(source)
+        if entry is None:
+            raise ValueError(
+                f"unknown import source {source!r}; expected one of {cfg.data_manager.provider_ids()}"
+            )
+        # A key is only required for a job that actually FETCHES (backfill reads the committed seed).
+        if kind in _FETCH_KINDS and entry.needs_key and not resolve_provider_key(entry, api_key):
+            raise ValueError(
+                f"source {source!r} requires a key; set ${entry.env_var} or paste a session key"
+            )
 
 
 # --------------------------------------------------------------------------------------------------
@@ -301,9 +377,13 @@ def _final_summary(prog: JobProgress) -> str:
 
 
 def _provider_label(prog: JobProgress, cfg: Config) -> str:
-    """The provider recorded on the run row: the LIVE provider when a fetch was involved, else the
-    offline default provider (the backfill reads the committed seed)."""
-    return cfg.data_manager.live_provider if prog.kind in _FETCH_KINDS else cfg.provider
+    """The provider recorded on the run row: the CHOSEN import source id when a fetch was involved (J-33;
+    the source is not secret — the pasted key is never recorded), else the offline default provider (the
+    backfill reads the committed seed). Falls back to the config `default_source` when a fetch job was
+    created without an explicit source."""
+    if prog.kind in _FETCH_KINDS:
+        return prog.source or cfg.data_manager.default_source
+    return cfg.provider
 
 
 def _persist_run(engine: Engine, cfg: Config, prog: JobProgress) -> None:
@@ -341,10 +421,17 @@ def run_data_job(
     config: Optional[Config] = None,
     engine: Optional[Engine] = None,
     provider: Optional[PriceProvider] = None,
+    api_key: Optional[str] = None,
 ) -> dict:
     """Run the registered job to completion SYNCHRONOUSLY (the worker body; `start_data_job` runs this in
     a thread). Opens its OWN DB session (never the request's). Updates the in-memory registry as it goes
-    and persists the final summary to the append-only `DataProviderRun`. Returns the final snapshot."""
+    and persists the final summary to the append-only `DataProviderRun`. Returns the final snapshot.
+
+    `api_key` is the SESSION-ONLY pasted key (request-only): it is a LOCAL argument resolved into the
+    fetch provider here and is NEVER written to the job registry, the persisted run, the detail JSON, or
+    any log (anti-goal: Import keys are env-or-session, never persisted). For a fetch, the job-selected
+    `source` is resolved against the config catalog and `make_provider(source, api_key=key)` builds the
+    live client; an injected `provider` (tests) bypasses that entirely."""
     cfg = config or get_config()
     eng = engine or get_engine()
     with _LOCK:
@@ -352,7 +439,13 @@ def run_data_job(
     try:
         with Session(eng) as session:
             if prog.kind in _FETCH_KINDS:
-                live = provider or make_provider(cfg.data_manager.live_provider)
+                if provider is not None:
+                    live = provider
+                else:
+                    source = prog.source or cfg.data_manager.default_source
+                    entry = cfg.data_manager.provider_by_id(source)
+                    key = resolve_provider_key(entry, api_key) if entry is not None else api_key
+                    live = make_provider(source, api_key=key)
                 _do_fetch(session, cfg, prog, live)
             if prog.kind in _BACKFILL_KINDS:
                 _do_backfill(session, cfg, prog)
@@ -375,18 +468,25 @@ def start_data_job(
     start: date_cls,
     end: date_cls,
     *,
+    source: Optional[str] = None,
+    api_key: Optional[str] = None,
     config: Optional[Config] = None,
     engine: Optional[Engine] = None,
 ) -> str:
     """Register a job and run it ASYNCHRONOUSLY in a daemon thread; return the `job_id` immediately so
-    the POST handler responds without blocking. The thread opens its own session on the given engine."""
+    the POST handler responds without blocking. The thread opens its own session on the given engine.
+
+    `source` (J-33) is the chosen import provider id, recorded on the job (not secret) and defaulted to
+    `data_manager.default_source`. `api_key` is the SESSION-ONLY pasted key — passed to the worker as a
+    request-only thread argument and NEVER stored on the job/registry (anti-goal: keys are env-or-session,
+    never persisted)."""
     cfg = config or get_config()
     eng = engine or get_engine()
-    job = create_job(kind, start, end)
+    job = create_job(kind, start, end, source=source or cfg.data_manager.default_source)
     thread = threading.Thread(
         target=run_data_job,
         args=(job.job_id,),
-        kwargs={"config": cfg, "engine": eng},
+        kwargs={"config": cfg, "engine": eng, "api_key": api_key},
         daemon=True,
         name=f"data-job-{job.job_id}",
     )

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Database, Loader2, Play } from "lucide-react";
+import { AlertTriangle, Database, KeyRound, Loader2, Play } from "lucide-react";
 
 import { useAsOf } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
@@ -18,6 +18,7 @@ import {
   type DataJobKind,
   type DataOverviewResponse,
   type DataRun,
+  type ProviderSource,
 } from "@/lib/api";
 
 type State =
@@ -56,10 +57,22 @@ export default function DataManagerPage() {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [kind, setKind] = useState<DataJobKind>("backfill");
+  // J-33: the chosen import source id + the SESSION-ONLY pasted key. `apiKey` lives in component memory
+  // ONLY — it is NEVER written to localStorage, the URL, or a cookie, and is cleared on job completion /
+  // unmount. The picker is config-driven (populated from `data.sources`) — no hardcoded provider list.
+  const [source, setSource] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const [job, setJob] = useState<DataJob | null>(null);
   const [starting, setStarting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const prefilled = useRef(false);
+
+  const sources: ProviderSource[] = state.kind === "ok" ? state.data.sources : [];
+  const selectedSource = sources.find((s) => s.id === source);
+  const isFetchKind = kind === "fetch" || kind === "both";
+  // Reveal the session-only key field only for a needs-key source with no env key (an available source
+  // already has its key in the environment — no paste needed).
+  const keyFieldVisible = isFetchKind && Boolean(selectedSource?.needs_key) && selectedSource?.available === false;
 
   const loadOverview = useCallback((signal?: AbortSignal) => {
     fetchDataCoverage(signal)
@@ -87,6 +100,16 @@ export default function DataManagerPage() {
     return () => controller.abort();
   }, [loadOverview]);
 
+  // Default the import source to the first catalog entry (the config default_source, no-key) once the
+  // catalog loads — the picker is populated from config, never a hardcoded provider list.
+  useEffect(() => {
+    if (!source && sources.length > 0) setSource(sources[0].id);
+  }, [sources, source]);
+
+  // The session-only key never outlives the component: clear it on unmount (defence in depth — React
+  // also discards the state). Never persisted to localStorage / URL / cookie.
+  useEffect(() => () => setApiKey(""), []);
+
   // Poll the active job until it leaves `running`; on completion, refresh the global as-of run list
   // (so new dates are selectable WITHOUT a hard reload) and reload coverage + run history. Keyed on
   // the job id + status (primitives) so the interval is created once per run, not re-armed each tick.
@@ -102,6 +125,7 @@ export default function DataManagerPage() {
           setJob(snap);
           if (snap.status !== "running") {
             clearInterval(timer);
+            setApiKey(""); // J-33: drop the session-only key as soon as the job finishes
             refresh();
             loadOverview();
           }
@@ -124,7 +148,12 @@ export default function DataManagerPage() {
     setStarting(true);
     setFormError(null);
     try {
-      const resp = await startDataJob(kind, start, end);
+      // Send the chosen source only when the job fetches; send the SESSION-ONLY key only when the paste
+      // field is shown and non-blank (omitted otherwise so a stale key is never transmitted).
+      const opts = isFetchKind
+        ? { source: source || undefined, api_key: keyFieldVisible ? apiKey || undefined : undefined }
+        : undefined;
+      const resp = await startDataJob(kind, start, end, opts);
       const snap = await fetchDataJob(resp.job_id); // initial progress snapshot
       setJob(snap);
     } catch (err) {
@@ -138,7 +167,7 @@ export default function DataManagerPage() {
     <div className="space-y-4">
       <PageHeading
         title="Data Manager"
-        subtitle="Grow the dataset on demand — view coverage and gaps, then fetch real EOD history and/or backfill immutable snapshots by date or range. Jobs run asynchronously; new snapshot dates become selectable in the global as-of switcher and grow the System Health evidence."
+        subtitle="Grow the dataset on demand — view coverage and gaps, then fetch real EOD history and/or backfill immutable snapshots by date or range. Jobs run asynchronously; new snapshot dates become selectable in the global as-of switcher and grow the Backtest evidence."
       />
 
       {state.kind === "loading" ? <DataSkeleton /> : null}
@@ -167,6 +196,14 @@ export default function DataManagerPage() {
               setStart={setStart}
               setEnd={setEnd}
               setKind={setKind}
+              sources={sources}
+              source={source}
+              setSource={setSource}
+              showSource={isFetchKind}
+              apiKey={apiKey}
+              setApiKey={setApiKey}
+              keyFieldVisible={keyFieldVisible}
+              selectedSource={selectedSource}
               onStart={handleStart}
               busy={starting}
               running={Boolean(jobRunning)}
@@ -243,6 +280,14 @@ function JobForm({
   setStart,
   setEnd,
   setKind,
+  sources,
+  source,
+  setSource,
+  showSource,
+  apiKey,
+  setApiKey,
+  keyFieldVisible,
+  selectedSource,
   onStart,
   busy,
   running,
@@ -254,6 +299,14 @@ function JobForm({
   setStart: (v: string) => void;
   setEnd: (v: string) => void;
   setKind: (v: DataJobKind) => void;
+  sources: ProviderSource[];
+  source: string;
+  setSource: (v: string) => void;
+  showSource: boolean;
+  apiKey: string;
+  setApiKey: (v: string) => void;
+  keyFieldVisible: boolean;
+  selectedSource: ProviderSource | undefined;
   onStart: (e: React.FormEvent) => void;
   busy: boolean;
   running: boolean;
@@ -262,7 +315,7 @@ function JobForm({
   const disabled = busy || running || !start || !end;
   return (
     <Card className="p-0">
-      <PanelTitle hint="Pick a date or range and a job kind. These date inputs are job parameters — they do NOT change the global as-of viewing date.">
+      <PanelTitle hint="Pick a date or range, a job kind, and — for a fetch — an import source. These date inputs are job parameters — they do NOT change the global as-of viewing date.">
         Start a fetch / backfill job
       </PanelTitle>
       <form onSubmit={onStart} className="space-y-4 p-4">
@@ -300,6 +353,23 @@ function JobForm({
               <option value="both">Fetch + backfill</option>
             </Select>
           </label>
+          {showSource ? (
+            <label className="flex flex-col gap-1 text-xs text-text-muted">
+              Import source
+              <Select
+                aria-label="Import source"
+                className="w-52"
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+              >
+                {sources.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label} · {s.available ? "available" : "needs key"}
+                  </option>
+                ))}
+              </Select>
+            </label>
+          ) : null}
           <button
             type="submit"
             disabled={disabled}
@@ -318,10 +388,43 @@ function JobForm({
             {running ? "Job running…" : "Start"}
           </button>
         </div>
+
+        {showSource && selectedSource ? (
+          <p className="text-xs text-text-muted" data-testid="source-availability">
+            <span className="text-text-faint">{selectedSource.label}: </span>
+            <span className={selectedSource.available ? "text-pos" : "text-warn"}>
+              {selectedSource.available ? "available" : "needs key"}
+            </span>
+            <span className="text-text-faint"> · {selectedSource.reason}</span>
+          </p>
+        ) : null}
+
+        {keyFieldVisible ? (
+          <label className="flex flex-col gap-1 text-xs text-text-muted">
+            <span className="flex items-center gap-1.5">
+              <KeyRound className="h-3.5 w-3.5 text-warn" aria-hidden />
+              Session API key for {selectedSource?.label}
+            </span>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              aria-label="Session API key"
+              autoComplete="off"
+              placeholder={selectedSource?.env_var ? `or set $${selectedSource.env_var}` : "paste a key"}
+              className={cn(FIELD, "w-80")}
+            />
+            <span className="text-text-faint">
+              Held in memory for this run only — never written to disk, the database, the run log, or a
+              cookie, and never echoed back.
+            </span>
+          </label>
+        ) : null}
+
         <p className="text-xs text-text-faint">
           Backfill creates immutable snapshots (and their forward returns) for trading days that have
-          bars but no snapshot — offline and deterministic. Fetch pulls real EOD prices via the
-          config-selected live provider; a provider failure is surfaced explicitly and fabricates nothing.
+          bars but no snapshot — offline and deterministic. Fetch pulls real EOD prices via the selected
+          import source; a provider failure is surfaced explicitly and fabricates nothing.
         </p>
         {error ? (
           <p role="alert" className="flex items-center gap-2 text-sm text-neg">
@@ -362,7 +465,11 @@ function JobProgressPanel({ job }: { job: DataJob | null }) {
 
   return (
     <Card className="p-0">
-      <PanelTitle hint={`${job.kind} job · ${job.start} → ${job.end}`}>Job progress</PanelTitle>
+      <PanelTitle
+        hint={`${job.kind} job · ${job.source ? `${job.source} · ` : ""}${job.start} → ${job.end}`}
+      >
+        Job progress
+      </PanelTitle>
       <div className="space-y-4 p-4">
         <div className="flex flex-wrap items-center gap-3">
           <Badge variant={statusVariant(job.status)} className="num gap-1.5">

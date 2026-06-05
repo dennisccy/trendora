@@ -12,8 +12,14 @@ MINIMAL_VALID = {
     "provider": "seed",
     "database": {"url": "sqlite:///:memory:"},
     # iter-3 made `data_manager` required (the Data Manager job limits come from config, never code).
+    # iter-21 (J-33) added the required import provider catalog + default_source (the import sources +
+    # each source's key requirement/env-var name come from config, never a hardcoded list).
     "data_manager": {
-        "live_provider": "stooq",
+        "providers": [
+            {"id": "yahoo", "label": "Yahoo", "needs_key": False, "supports_market_cap": True},
+            {"id": "tiingo", "label": "Tiingo", "needs_key": True, "env_var": "TIINGO_API_KEY"},
+        ],
+        "default_source": "yahoo",
         "max_range_days": 370,
         "gap_preview": 60,
         "run_history_limit": 50,
@@ -282,10 +288,12 @@ def test_methodology_threshold_requires_ref_xor_text(tmp_path):
 # --- iter-3: data_manager section (J-17) ----------------------------------------------------
 
 def test_data_manager_minimal_valid_loads(tmp_path):
-    """MINIMAL_VALID (incl. the now-required data_manager section) still loads, and the real config
-    exposes the typed limits (the established pattern for every newly-required section)."""
+    """MINIMAL_VALID (incl. the now-required data_manager section + the iter-21 import catalog) still
+    loads, and the real config exposes the typed limits (the established pattern for every newly-required
+    section)."""
     cfg = load_config(_write(tmp_path, MINIMAL_VALID))
-    assert cfg.data_manager.live_provider == "stooq"
+    assert cfg.data_manager.default_source == "yahoo"
+    assert cfg.data_manager.provider_ids() == ["yahoo", "tiingo"]
     assert cfg.data_manager.max_range_days == 370
     real = load_config()
     assert real.data_manager.max_range_days > 0 and real.data_manager.gap_preview > 0
@@ -299,10 +307,47 @@ def test_data_manager_nonpositive_limit_raises(tmp_path):
         load_config(_write(tmp_path, data))
 
 
-def test_data_manager_unknown_live_provider_raises(tmp_path):
-    """`live_provider` is constrained to the known providers (seed | stooq) — a typo fails loudly."""
+# --- iter-21 (J-33): the config-driven import provider catalog + boot validation -----------
+def test_provider_catalog_is_config_driven(tmp_path):
+    """The catalog (the source list + each source's key requirement/env-var NAME) comes from config —
+    not a hardcoded list in code. The real config exposes the named sources with their requirements."""
+    real = load_config()
+    ids = real.data_manager.provider_ids()
+    assert "yahoo" in ids and "tiingo" in ids and "stooq" in ids
+    yahoo = real.data_manager.provider_by_id("yahoo")
+    assert yahoo.needs_key is False and yahoo.env_var is None
+    tiingo = real.data_manager.provider_by_id("tiingo")
+    assert tiingo.needs_key is True and tiingo.env_var == "TIINGO_API_KEY"
+
+
+def test_provider_needs_key_without_env_var_raises(tmp_path):
+    """A `needs_key` source MUST declare its env_var NAME (so the key can be read from the environment) —
+    a missing env_var fails the boot loudly (anti-goal: keys are env-or-session, never hard-coded)."""
     data = copy.deepcopy(MINIMAL_VALID)
-    data["data_manager"]["live_provider"] = "bogus"
+    data["data_manager"]["providers"] = [
+        {"id": "yahoo", "label": "Yahoo", "needs_key": False},
+        {"id": "tiingo", "label": "Tiingo", "needs_key": True},  # needs_key but no env_var
+    ]
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_provider_duplicate_id_raises(tmp_path):
+    """Two catalog entries with the same `id` fail the boot loudly (the id is the resolution key)."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["data_manager"]["providers"] = [
+        {"id": "yahoo", "label": "Yahoo", "needs_key": False},
+        {"id": "yahoo", "label": "Yahoo Two", "needs_key": False},
+    ]
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_default_source_not_in_catalog_raises(tmp_path):
+    """`default_source` MUST be a real catalog id — a default outside the catalog fails the boot loudly
+    (otherwise an omitted-source fetch could not resolve a provider)."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["data_manager"]["default_source"] = "not_a_source"
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))
 

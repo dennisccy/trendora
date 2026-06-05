@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever-iter-21",
+  "base_url": "http://localhost:3835",
+  "iteration": 21,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Data Manager",
+      "narration": "Open the Data Manager — Trendora's home for growing its own price history. It loads straight to a coverage summary and a job panel, with no sign-in needed.",
+      "point_out": "The 'Dataset coverage' card showing your current price history, universe size, and snapshot counts, with the subtitle now pointing toward the Backtest evidence.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Dataset coverage" }
+    },
+    {
+      "n": 2,
+      "title": "Choose a live fetch — the source picker appears",
+      "narration": "Pick 'Fetch EOD prices' as the job kind and a brand-new Import source picker appears, pre-set to Yahoo. The picker is built entirely from configuration, so it lists every provider Trendora knows about.",
+      "point_out": "The new Import source dropdown, and the green 'available' line telling you Yahoo is ready with no key required.",
+      "journey": "J-33",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "label": "Job kind" }, "text": "Fetch EOD prices" },
+      "expect": { "text": "no key required" }
+    },
+    {
+      "n": 3,
+      "title": "Switch to a key-gated source",
+      "narration": "Switch the source to Tiingo and Trendora is honest about it — the status flips to an amber 'needs key', and a paste field appears for a key you provide for this run only.",
+      "point_out": "The amber 'needs key' status with the exact environment variable to set, plus the masked Session API key field and its promise: held in memory for this run only, never saved to disk and never echoed back.",
+      "journey": "J-33",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "label": "Import source" }, "text": "Tiingo · needs key" },
+      "expect": { "text": "set $TIINGO_API_KEY or paste a session key" }
+    },
+    {
+      "n": 4,
+      "title": "No key, no silent failure",
+      "narration": "Press Start without pasting a key and Trendora stops you up front with a clear message. There's no half-started job and no guessing — it tells you exactly which key the chosen source needs.",
+      "point_out": "The inline warning that the selected source requires a key, naming the environment variable, while the Job progress card stays idle — nothing was started.",
+      "journey": "J-33",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Start" } },
+      "expect": { "text": "requires a key" }
+    },
+    {
+      "n": 5,
+      "title": "Paste a key — masked and kept for this run only",
+      "narration": "Now paste a key and it shows only as dots. It stays masked on screen, lives in the browser's memory for just this run, and is never written to disk, the database, or the run log.",
+      "point_out": "The Session API key field masking every character you type — a key you can supply without it ever being stored or shown back.",
+      "journey": "J-33",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "label": "Session API key" }, "text": "demo-session-key-2468" }
+    },
+    {
+      "n": 6,
+      "title": "Backfill is untouched, and there's still one date control",
+      "narration": "Switch back to a Backfill job and the source and key fields tidy themselves away — they only appear for live fetches. The familiar offline backfill still runs exactly as before, and the single as-of switcher in the header remains the only date control anywhere in the app.",
+      "point_out": "The Import source and key fields disappearing for a backfill job, confirming the new controls are additive and the one-date-switcher rule still holds.",
+      "journey": "J-17",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "label": "Job kind" }, "text": "Backfill snapshots" }
+    }
+  ]
+}

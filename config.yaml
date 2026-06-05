@@ -10,20 +10,50 @@
 
 # ----------------------------------------------------------------------------------------
 # Data provider (DEFAULT = offline committed seed). The default boot/runtime path always reads
-# the committed seed; the LIVE provider ("stooq") is resolved ONLY by the on-demand Data Manager
-# fetch path (see `data_manager.live_provider` below), never by the boot lifespan — so the
-# walk-forward evidence stays reproducible.
-provider: seed            # seed | stooq
+# the committed seed; an import LIVE provider is resolved ONLY by the on-demand Data Manager
+# fetch path (from the `data_manager.providers` catalog below), never by the boot lifespan — so
+# the walk-forward evidence stays reproducible.
+provider: seed            # seed | stooq  (the offline boot/runtime provider; NOT an import source)
 
 # ----------------------------------------------------------------------------------------
-# iter-3 CONSUMED — Data Manager (J-17, on-demand dataset growth). Every Data Manager job
-# limit / display cap lives here (anti-goal: No magic numbers — no job/range literal in the
-# orchestration code app/engine/data_manager.py or app/api/data.py). The Data Manager
+# iter-3 / iter-21 CONSUMED — Data Manager (J-17 + J-33). Every Data Manager job limit / display
+# cap AND the import provider catalog live here (anti-goal: No magic numbers — no job/range literal,
+# and NO hardcoded provider list, in app/engine/data_manager.py or app/api/data.py). The Data Manager
 # ORCHESTRATES the existing canonical create-once paths (scanner.run_scan +
 # forward_testing.backfill_run_forward_returns) — it computes no score/return of its own.
 data_manager:
-  live_provider: stooq      # the config-selected LIVE provider for the FETCH path (real EOD only,
-                            # never fabricated); the SEED stays the default boot/runtime provider.
+  # J-33 import-source catalog: the selectable, key-aware EOD providers. Each entry declares its key
+  # requirement + the ENVIRONMENT-VARIABLE NAME the key is read from (the NAME only — a key VALUE is
+  # NEVER written here, to the DB, the run log, or any committed file). Availability is env-detected at
+  # request time (a needs_key source is "available" only when its env_var is set). `supports_market_cap`
+  # is declared now for the J-35 expand-eligibility gate (consumed in iter-23; default false).
+  providers:
+    - id: yahoo            # the no-key runbook source, listed first (the default import source)
+      label: "Yahoo Finance"
+      needs_key: false
+      supports_market_cap: true
+    - id: tiingo
+      label: "Tiingo"
+      needs_key: true
+      env_var: TIINGO_API_KEY
+      supports_market_cap: true
+    - id: finnhub
+      label: "Finnhub"
+      needs_key: true
+      env_var: FINNHUB_API_KEY
+      supports_market_cap: true
+    - id: alpha_vantage
+      label: "Alpha Vantage"
+      needs_key: true
+      env_var: ALPHAVANTAGE_API_KEY
+      supports_market_cap: false
+    - id: stooq            # free CSV nominally, but key-gated for this IP (iter-3 lesson) — honest
+      label: "Stooq"
+      needs_key: true
+      env_var: STOOQ_API_KEY
+      supports_market_cap: false
+  default_source: yahoo     # the import source used when a job omits `source` (no-key ⇒ J-17 fetch never
+                            # fails the key gate). MUST be a real catalog id (validated at boot).
   max_range_days: 370       # max span (inclusive calendar days) a single fetch/backfill job may cover
   gap_preview: 60           # how many backfill-gap dates the coverage payload previews (display cap)
   run_history_limit: 50     # how many recent fetch/backfill runs GET /api/data returns (display cap)
