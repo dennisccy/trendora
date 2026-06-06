@@ -157,21 +157,38 @@ It places **no orders** and holds **no broker keys**.
     flag (with pivot + invalidation level) ALONGSIDE the setup status — it does not replace it — is
     filterable on the leaderboard, documented in the glossary, and tracked as a forward-test
     dimension (VCP vs non-VCP) so the evidence shows whether it adds value.
-20. **Data Manager (on-demand dataset growth)**: a UI + API to grow the dataset manually by date or
-    date range. It can (a) **fetch** real EOD OHLCV via the config-selected live provider for a chosen
-    date/range — extending beyond the committed seed, real data only (on provider failure it surfaces an
-    explicit error and never fabricates prices) — and (b) **backfill** immutable scanner snapshots for a
-    date/range from available bars (offline/deterministic). Fetching or backfilling a range
-    **auto-generates** the scanner snapshots and forward returns for the new trading days, so the
-    forward-test sample actually grows. It runs as an **async background job with live progress** (e.g.
-    "fetched 80/158 symbols", "snapshots 23/120 dates") and a final success/failure summary, and the run
-    is recorded (extends the existing data-provider run log). The Data Manager also offers a
-    **config-catalog source picker** (env-detected availability + an optional session-only key paste,
-    never persisted/committed), a **chunked, rate-limit-aware import** that **checkpoints durably** and,
-    on a persistent 429, **backs off → stops → exposes Resume** (continuing from the last completed
-    chunk, no duplicate fetch, surviving a restart), and an **Expand-universe** job kind that screens the
-    committed candidate pool from the UI (the operator-facing path that unblocks the expanded universe).
-    The default boot path remains the committed offline seed.
+20. **Data Manager (on-demand dataset growth + coverage clarity + seed-safe curation)**: a UI + API to
+    grow, understand, and curate the dataset manually by date or date range. It can (a) **fetch** real
+    EOD OHLCV via the config-selected live provider for a chosen date/range — extending beyond the
+    committed seed, real data only (on provider failure it surfaces an explicit error and never
+    fabricates prices) — and (b) **backfill** immutable scanner snapshots for a date/range from available
+    bars (offline/deterministic). Fetching or backfilling a range **auto-generates** the scanner
+    snapshots and forward returns for the new trading days, so the forward-test sample actually grows. It
+    runs as an **async background job with live progress** (e.g. "fetched 80/158 symbols", "snapshots
+    23/120 dates") and a final success/failure summary, and the run is recorded (extends the existing
+    data-provider run log). The Data Manager also offers a **config-catalog source picker** (env-detected
+    availability + an optional session-only key paste, never persisted/committed), a **chunked,
+    rate-limit-aware import** that **checkpoints durably** and, on a persistent 429, **backs off → stops →
+    exposes Resume** (continuing from the last completed chunk, no duplicate fetch, surviving a restart),
+    and an **Expand-universe** job kind that screens the committed candidate pool from the UI (the
+    operator-facing path that unblocks the expanded universe). Beyond growing data it makes the dataset
+    **legible and curatable**: a **plain-language coverage explainer** (defining every figure and the
+    **universe-vs-symbols** distinction — universe = the config-screened scored names; symbols = every
+    ticker with bars, incl. index/sector/industry ETFs + `^VIX`) plus a **per-symbol / per-universe-member
+    coverage table** (in-universe?, has-data?, date range, bar count, thin/missing flag); a **missing-data
+    diagnostic** that flags what is **insufficient for analysis** — universe members with no or thin
+    history (below the config history threshold) and intra-series date gaps — each with a **one-click
+    "pull the missing data"** that fetches exactly the gap through the same chunked/resumable machinery; a
+    **unified Unfinished-imports** section listing every non-completed import (paused, partial, failed)
+    with a plain-language state explanation and the right action — **Resume** (rate-limited pause),
+    **Retry remaining/failed** (idempotent — re-fetches only what is missing), or **Remove/Dismiss**
+    (drops only the actionable job-control record, never the immutable run audit); and a **seed-safe
+    Remove-data** control that deletes **only user-added bars** (beyond the committed seed, by symbol
+    and/or date range) behind a **confirm-preview**, **cascade-removing the snapshots/forward-returns
+    derived solely from them** so nothing is left inconsistent, while the **committed seed is never
+    deletable**. Every coverage/diagnostic figure is **read-only descriptive metadata** (no canonical
+    score/return/bucket recomputed), every threshold comes from config (**no magic numbers**), and the
+    default boot path remains the committed offline seed.
 21. **Unified as-of date control**: exactly one date selector — the global top-bar as-of switcher —
     governs every date-scoped page, **including Backtest**. Per-page date dropdowns are removed and the
     frontend holds no second, independent date state; "which date am I viewing" has a single source.
@@ -310,12 +327,20 @@ It places **no orders** and holds **no broker keys**.
   to an all-history aggregate; an optional **"As of date"** mode restricts every figure to snapshots
   dated ≤ the global as-of date (a point-in-time / walk-forward view bound by the single global control —
   a mode, not a second date picker).
-- **Data Manager** (`/data`) — grow the dataset on demand: view current coverage (price-history date
-  range, symbol count, the set of snapshot/as-of dates, and gaps), choose an import **source** (paste a
-  **session-only key** if the provider needs one), pick a date or date range, fetch price history and/or
-  backfill snapshots and/or **expand the universe** (pool → config screen), watch the async job's live
-  progress, **resume** a rate-limited import from where it stopped, and read a history of
-  fetch/backfill/expand runs.
+- **Data Manager** (`/data`) — grow, understand, and curate the dataset on demand: view current coverage
+  with **plain-language definitions** (incl. the **universe-vs-symbols** distinction) and a **per-symbol /
+  per-universe-member coverage table** (in-universe?, has-data?, date range, bar count, thin/missing
+  flag); read a **missing-data diagnostic** (universe members with no/thin history below the config
+  threshold, plus intra-series date gaps) and **pull the missing data** in one click (fetching exactly the
+  gap via the chunked/resumable import); choose an import **source** (paste a **session-only key** if the
+  provider needs one), pick a date or date range, fetch price history and/or backfill snapshots and/or
+  **expand the universe** (pool → config screen), and watch the async job's live progress; act on
+  **Unfinished imports** in one unified section — **Resume** a rate-limited pause, **Retry** remaining/
+  failed symbols (idempotent), or **Remove/Dismiss** a stuck record (without touching the immutable run
+  audit); **Remove imported data** that was fetched beyond the committed seed (by symbol and/or date
+  range) behind a **confirm-preview** that cascades dependent snapshots/forward-returns and **never
+  deletes the committed seed**; and read a history of fetch/backfill/expand/remove runs. The `/data` date
+  and symbol inputs are **job parameters, not the global as-of control**.
 
 A single global **as-of date switcher** in the top bar is the **only** date control. It re-points
 Dashboard, Stocks, Themes, Sectors, Stock Detail, **and Backtest** to a chosen past snapshot (default:
@@ -821,6 +846,146 @@ The backend is the single source of truth; every page only displays server-compu
     logic are provable offline (injected provider), but the live expansion needs a reachable provider and
     is recorded as NA / rate-limited when walled — never halting or vetoing.
 
+- **J-36: Understand coverage — per-symbol table + universe-vs-symbols clarity**
+  - Steps:
+    1. Visit `/data` and read the **Coverage** panel's plain-language **definitions** block — what each
+       figure means, including the explicit distinction between the **universe** (the stocks that pass the
+       config screen — `universe.filters`: min market cap, min dollar-volume, min price — and are the
+       names scored/ranked) and **symbols** (every ticker with stored bars, which additionally includes
+       the index/sector/industry ETFs and `^VIX` that are data-only references, never scored as leaders),
+       and what a **backfill gap** is (a trading day with bars but no scanner snapshot)
+    2. Read the aggregate coverage figures (price-history date range, universe size, symbol count, trading
+       days, snapshot dates, backfill gaps) each shown next to its one-line definition rather than as a
+       bare number
+    3. Open the **per-symbol coverage table** and read, for each priced symbol and each universe member:
+       whether it is **in-universe**, whether it **has data**, its bar **date range** (first → last), its
+       **bar count**, and a **thin / missing flag** when its history is below the config history threshold
+       or absent
+    4. Filter the table to **universe members only** and confirm every member either has data or is
+       explicitly flagged missing — no member is silently absent
+  - Acceptance: the Coverage panel renders a definitions block that names, in plain language, the
+    **universe-vs-symbols** distinction and every coverage figure, so no number is shown unlabelled; the
+    per-symbol table renders one row per stored symbol AND one row per universe member with the columns
+    in-universe / has-data / date-range / bar-count / thin-or-missing flag, each value read directly from
+    stored `daily_prices` (range, count) and `config.universe.symbols` (membership) — it is **descriptive
+    metadata derived once from stored bars + config, recomputing no canonical score, return, bucket, or
+    setup**; a universe member with no bars shows **has-data = no + missing** (NA, never a fabricated range
+    or zero-bar row faked as present), and a member whose bar count is below the config history threshold
+    (`indicators.min_history_bars`) shows the **thin** flag; the "thin" / history threshold is read from
+    config — **no magic number in the coverage code**; the table is sortable/filterable in the UI only
+    (the backend returns the canonical rows once) and reads identically to the aggregate figures (the
+    symbol count equals the table's distinct-symbol rows, the universe size equals the in-universe rows)
+    so the panel can never present two drifting truths; the panel serves gracefully on an empty dataset
+    (null range, zero counts, empty table) rather than erroring.
+
+- **J-37: Diagnose insufficient-for-analysis data and pull exactly the missing history (one-click)**
+  - Steps:
+    1. On `/data`, read the **Missing-data diagnostic** — a list of what is currently **insufficient for
+       analysis**, in three honest categories: (a) **universe members with no history at all**, (b)
+       **universe members with thin history** below the config minimum (`indicators.min_history_bars`),
+       and (c) **intra-series date gaps** (a member missing trading days inside its own first→last range,
+       measured against the benchmark trading calendar)
+    2. Confirm each diagnostic row states the symbol, the category, and the concrete shortfall (e.g.
+       "BRKB: 40 bars, needs ≥ 200" or "ANET: 12 missing trading days between 2024-03-04 and 2024-05-01")
+    3. Click **Pull the missing data** on a row (or **Pull all missing**) — confirm it pre-fills a fetch
+       job whose **symbols and date span are exactly the diagnosed gap** (not the whole universe, not the
+       whole window) and starts it via the existing chunked, rate-limit-resilient import (J-34) over the
+       config-selected source
+    4. Watch the job's live progress and final summary; on completion confirm the diagnostic row clears
+       (or shrinks) because the gap is now filled, and the per-symbol coverage table (J-36) reflects the
+       new bars
+    5. Force the provider unreachable and confirm the diagnostic still renders honestly (the shortfall is
+       real, read from stored data) and the pull surfaces an explicit error / rate-limited state,
+       fabricating no bars
+  - Acceptance: the diagnostic is **read-only metadata derived once from the stored bars + the config
+    thresholds** — it recomputes no score/return/bucket and invents no data; "insufficient" is defined by
+    config (`indicators.min_history_bars` for thin/absent history; the benchmark trading calendar — the
+    same SPY-bar calendar the walk-forward and coverage use — for intra-series gaps) with **no magic
+    number** in the diagnostic code; each category (no-history / thin / intra-series gap) is reported
+    separately with the exact shortfall and the symbol, and a universe member that is fine appears in none
+    of them; **Pull the missing data** constructs a fetch job whose symbol set and `[start, end]` are
+    precisely the diagnosed gap and dispatches it through the **existing J-34 chunked/checkpointed/
+    resumable machinery** (no second fetch path) so the pull is chunked, rate-limit-resilient, resumable,
+    and **per-`(symbol, date)` idempotent — it fetches only the missing bars and INSERTs new-only, never
+    overwriting a committed bar or re-fetching one already stored**; the live fetch is **real-data-only** —
+    on provider failure the pull surfaces an explicit error / rate-limited state and **fabricates no
+    price** to clear a diagnostic row; the diagnostic is **fully provable offline with an injected
+    provider** (a stub returning the gap bars) for the UI + diagnosis + job-construction logic, while a
+    *successful live pull* additionally needs a reachable provider and is recorded honestly as NA /
+    rate-limited when walled — it **MUST NOT halt the loop, drive STALLED, or veto GOAL_ACHIEVED** (the
+    same non-halting contract as J-33/J-34/J-35); the import's date/symbol inputs remain **job parameters,
+    never the global as-of control** (one date selector preserved).
+
+- **J-38: Unified Unfinished-imports — Resume / Retry / Remove with state explanation**
+  - Steps:
+    1. On `/data`, read the **Unfinished imports** section — a single list of every import that did
+       **not** finish cleanly: rate-limited **paused** imports (resumable), **partial** runs (some symbols
+       failed), and **failed** runs (all symbols failed)
+    2. Confirm each row **explains its state** in plain language (e.g. "Paused — hit a provider rate-limit
+       (429); progress saved", "Partial — 142/158 symbols ok, 16 failed", "Failed — every symbol failed;
+       provider unreachable") and shows symbols done / remaining / failed and chunk progress where
+       applicable
+    3. On a **paused** row, click **Resume** — confirm it continues from the next un-fetched chunk (J-34),
+       re-fetching nothing already stored, surviving a backend restart
+    4. On a **partial** or **failed** row, click **Retry remaining/failed** — confirm it re-runs only the
+       un-fetched/failed `(symbol, date)` work and, because of per-`(symbol, date)` idempotency, fetches
+       only what is still missing (already-stored bars are skipped)
+    5. On any row, click **Remove / Dismiss** — confirm the row leaves the Unfinished-imports list and
+       will not be re-offered, while the **Run history** audit log below is unchanged (the run still
+       appears there as the immutable record of what happened)
+  - Acceptance: the Unfinished-imports section lists **all** non-completed imports in one place —
+    paused/resumable, partial, and failed — each with a plain-language state explanation and its
+    done/remaining/failed counts, read from durable job-control state (the resumable checkpoint and the
+    recorded run summary), **never recomputing a canonical value**; **Resume** is offered only for a
+    genuinely paused (rate-limited) checkpoint and continues from the durable `next_chunk_index` (survives
+    a restart); **Retry remaining/failed** re-dispatches only the outstanding work and, via
+    **per-`(symbol, date)` idempotency (INSERT-new-only)**, **re-fetches and re-inserts nothing already
+    stored** — a retry that fully succeeds leaves no duplicate bar and the same dataset it would have
+    reached without the failure; **Remove / Dismiss** removes only the **actionable job-control record**
+    (the resumable checkpoint, or a soft-dismiss flag on the operational run) so the item stops being
+    offered for action — it **MUST NOT delete, hide, or mutate any immutable scanner snapshot,
+    forward-return row, or the append-only Run-history audit entry**, which remain the permanent record;
+    every action is dispatched through the existing import engine (no parallel path), and Retry/Resume
+    against a needs-key source re-prompt for the **session-only key** (request-only, never persisted); the
+    section is **provable offline with an injected provider** (stubs scripted to pause/partially-fail/
+    fully-fail), and any *live* retry outcome is recorded honestly as NA / rate-limited when the provider
+    is walled — **non-halting**, never vetoing completion.
+
+- **J-39: Remove imported data — user-added-only, seed-safe, cascade-consistent, confirm-preview**
+  - Steps:
+    1. On `/data`, open the **Remove data** control and choose a scope — by **symbol**, by **date range**,
+       or both (e.g. "remove TSLA bars after 2026-05-29", "remove everything fetched for BRKB")
+    2. Read the **confirm-preview**: exactly which `(symbol, date)` bars would be removed (count + range),
+       and exactly which **derived dependents** would cascade — the scanner snapshots and forward-return
+       rows whose inputs come **solely** from those user-added bars
+    3. Confirm the preview shows that **committed-seed bars are excluded and protected** — any seed-covered
+       `(symbol, date)` in the chosen scope is listed as **not removable** with the reason "committed
+       seed", and the removable count covers only data fetched **beyond** the seed
+    4. Confirm the removal, then re-read the per-symbol coverage table (J-36) and the as-of switcher —
+       confirm the removed bars and any snapshot dates that existed **only** because of them are gone, and
+       that nothing inconsistent remains (no snapshot or forward return references a now-absent bar)
+    5. Attempt to remove a seed-only symbol or a seed-covered date range and confirm the action is
+       **refused** (the seed is never deletable from the UI), fabricating nothing
+  - Acceptance: removal targets **only user-added data — bars fetched beyond the committed seed** — and the
+    **committed seed is never deletable from the UI**; seed vs user-added is determined from the
+    **committed seed coverage manifest** (the per-symbol `first`/`last`/`bars` windows recorded in
+    `apps/backend/data/seed/meta.json`), so a `(symbol, date)` inside a seed window is protected and
+    excluded from every removal and a removal of a wholly-seed scope is **refused with an explicit
+    reason**, never a silent partial; the **confirm-preview** enumerates exactly what will be removed — the
+    removable bar count + range AND the cascade of dependent rows — **before** any deletion, so nothing is
+    removed without an explicit, accurate preview; deleting bars **cascade-removes the scanner snapshots
+    and forward-return rows derived solely from them** so the dataset is left **consistent** — no snapshot,
+    result, or forward return is left referencing an absent bar — and this cascade is a **whole-row removal
+    of the derived snapshot/forward-return together with its provenance, NOT an in-place mutation or
+    overwrite of any retained snapshot** (a snapshot that still has all its underlying bars is untouched;
+    immutability means *never overwritten in place*, which a consistency-preserving whole-row delete does
+    not violate); the operation **fabricates nothing** (it only deletes; it never recomputes or invents a
+    replacement value) and, after it runs, the global as-of switcher, the per-symbol coverage, and the
+    Backtest sample size all reflect the smaller dataset honestly; the Run-history audit log records the
+    removal as its own operational entry; the entire control is **deterministic and provable offline** (it
+    needs no provider — it only reads the seed manifest and deletes user-added rows) and touches no
+    key/secret.
+
 **Data-dependent journeys (non-halting).** **J-22**, **J-23**, and **J-24** require a one-shot offline
 fetch of real data the committed seed does not yet contain — expanded-universe daily OHLCV + market-cap
 (J-22) and an intraday bar seed (J-23/J-24) — pulled via the config-selected live provider / the committed
@@ -835,13 +1000,16 @@ missing — never fabricated). **J-22 also auto-unblocks via the J-35 UI import 
 the Data Manager at a reachable provider and runs the Expand-universe job), in addition to the dev
 runbook.
 
-The import journeys **J-33**, **J-34**, and **J-35** are **only partly data-dependent**: their
-UI + provider catalog + key-detection + chunk/resume/checkpoint + stop-on-limit machinery is **buildable
-and fully testable offline** with an **injected provider** (a stub that returns bars or raises 429), so
-those parts are expected to go green like any other journey — they are **not** blanket-blocked. Only the
-**live-fetch outcome** (an actual successful real import, and thus J-22 fully passing through J-35) is
+The import journeys **J-33**, **J-34**, **J-35**, **J-37**, and **J-38** are **only partly
+data-dependent**: their UI + provider catalog + key-detection + chunk/resume/checkpoint + stop-on-limit +
+missing-data-diagnostic / pull-missing / retry machinery is **buildable and fully testable offline** with
+an **injected provider** (a stub that returns bars or raises 429), so those parts are expected to go green
+like any other journey — they are **not** blanket-blocked. Only the **live-fetch outcome** (an actual
+successful real import — thus J-22 fully passing through J-35, and a successful pull/retry in J-37/J-38) is
 data-gated: when every provider is walled it is recorded as **honestly blocked / rate-limited (NA)** and
-**MUST NOT halt the loop, drive STALLED, or veto GOAL_ACHIEVED**.
+**MUST NOT halt the loop, drive STALLED, or veto GOAL_ACHIEVED**. **J-36** (coverage description) and
+**J-39** (seed-safe removal) are **fully deterministic — they need no provider** and are expected to go
+green unconditionally, like backfill.
 
 ## Anti-goals
 
@@ -912,6 +1080,41 @@ data-gated: when every provider is walled it is recorded as **honestly blocked /
   date range are create-once: an existing snapshot MUST be read, never overwritten, and an as-of-D
   snapshot MUST use only bars with date ≤ D. *(reaffirms On-demand snapshots stay immutable, for
   ranges)*
+- **Coverage & missing-data are descriptive & honest.** The coverage figures, the per-symbol/per-
+  universe-member table, and the insufficient-for-analysis diagnostic MUST be **read-only metadata derived
+  from the stored bars + config** — they MUST NOT recompute or restate any canonical score, return,
+  bucket, or setup. A universe member with no or thin history MUST be shown as **missing / thin (NA)**,
+  never as a fabricated range, zero-bar-faked-as-present, or filled value; the **history threshold
+  defining "thin/insufficient"** and the trading calendar defining an intra-series gap MUST come from
+  config (`indicators.min_history_bars` and the benchmark-bar calendar) — **no magic number** in
+  coverage/diagnostic code. The **universe-vs-symbols** distinction (config-screened scored names vs every
+  ticker with bars) MUST be surfaced in plain language, not left implicit. *(extends No fabricated data +
+  No recompute in the read path)*
+- **Pull-missing fetches exactly the gap, real-data-only, idempotently.** The one-click "pull the missing
+  data" MUST construct a fetch covering **only** the diagnosed `(symbol, date)` shortfall and MUST run it
+  through the existing chunked/checkpointed/resumable import path (no second fetch path); it MUST be
+  **per-`(symbol, date)` idempotent (INSERT-new-only)** — re-fetching/duplicating nothing already stored,
+  never overwriting a committed seed bar — and on provider failure it MUST surface an explicit error /
+  rate-limited state and **fabricate no price** to clear a diagnostic row. *(extends Live fetch is
+  real-data-only)*
+- **Unfinished-imports actions are idempotent and audit-preserving.** Resume and Retry MUST re-fetch only
+  outstanding work and, via per-`(symbol, date)` idempotency, produce **no duplicate fetch or row**;
+  **Remove/Dismiss MUST drop only the actionable job-control record** (a resumable checkpoint, or a
+  soft-dismiss of the operational run summary) — it MUST NOT delete, hide, mutate, or fabricate any
+  **immutable scanner snapshot or forward-return row**, and the append-only `data_provider_runs` audit
+  trail MUST remain the permanent record of what ran. *(extends Run log is append-only + Snapshots are
+  immutable)*
+- **Data removal is seed-safe & consistency-preserving.** Removal MUST target **only user-added bars**
+  (data fetched beyond the committed seed, identified from the committed seed coverage manifest) — the
+  **committed seed MUST NEVER be deletable from the UI**, and a wholly-seed removal MUST be refused with an
+  explicit reason, never a silent partial. A **confirm-preview** MUST enumerate exactly what will be
+  removed (bars + cascaded dependents) before anything is deleted. Deleting bars MUST **cascade-remove the
+  snapshots and forward-returns derived solely from them** so nothing is left referencing an absent bar;
+  this is a **whole-row deletion of a derived row together with its provenance — NOT an in-place
+  mutation/overwrite of a retained snapshot** (the *Snapshots are immutable* identity means "never
+  overwritten in place," which a consistency-preserving whole-row removal respects). Removal MUST
+  **fabricate nothing** — it only deletes; it never recomputes or invents a replacement value. *(extends
+  Snapshots are immutable + No fabricated data)*
 - **Attribution is read-only.** The forward-return attribution slices (per-stock contribution,
   by-sector, by-rank-band, distribution/hit-rate) MUST be derived from the stored per-observation
   forward returns; the API and frontend MUST NOT recompute returns to build them. *(extends No recompute
