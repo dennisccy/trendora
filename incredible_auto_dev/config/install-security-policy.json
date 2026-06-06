@@ -15,7 +15,7 @@
   },
 
   "npm": {
-    "allowlist": ["lightweight-charts"],
+    "allowlist": [],
     "denylist": [],
     "rules": {
       "require_pinned_version": true,
