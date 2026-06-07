@@ -28,23 +28,28 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import date as date_cls, datetime, timezone
-from typing import Optional
+from datetime import date as date_cls, datetime, timedelta, timezone
+from typing import Callable, Optional
 
 from sqlalchemy import func, insert
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
-from app.config import Config, ProviderCatalogEntry, get_config
+from app.config import Config, ImportChunkingCfg, ProviderCatalogEntry, get_config
 from app.data_providers import make_provider
-from app.data_providers.base import PriceProvider, ProviderUnavailableError
+from app.data_providers.base import PriceProvider, ProviderUnavailableError, RateLimitError
 from app.db import get_engine
 from app.engine import forward_testing, scanner
 from app.engine.prices import bars_asof, latest_data_date
-from app.models import DailyPrice, DataProviderRun, ScannerRun
+from app.models import DailyPrice, DataProviderRun, ImportCheckpoint, ScannerRun
 from app.seed_loader import all_seed_symbols
+
+# Injectable sleep (J-34): the chunked fetch's inter-request delay + 429 backoff call this. Tests pass
+# their own recorder so backoff/sleep add NO wall-clock (MEMORY: backend-test-suite-runtime).
+_sleep: Callable[[float], None] = time.sleep
 
 JOB_KINDS = ("fetch", "backfill", "both")
 _FETCH_KINDS = ("fetch", "both")
@@ -166,7 +171,7 @@ class JobProgress:
     # persisted run / detail JSON / logs) — it is request-only (anti-goal: keys are env-or-session, never
     # persisted). Defaults to None for a backfill-only job (no fetch ⇒ no source).
     source: Optional[str] = None
-    status: str = "running"  # running | ok | partial | failed
+    status: str = "running"  # running | ok | partial | failed | resumable (J-34: a rate-limited pause)
     symbols_total: int = 0
     symbols_ok: int = 0
     symbols_failed: int = 0
@@ -175,6 +180,11 @@ class JobProgress:
     dates_done: int = 0
     snapshots_created: int = 0
     forward_returns_inserted: int = 0
+    # J-34: chunked-fetch progress. `chunk_index` = number of fully-completed chunks (== the durable
+    # checkpoint's resume point); `chunk_total` = the deterministic plan size (symbol-batches × date-
+    # windows). Both 0 for a non-chunked job (e.g. backfill-only) so the UI hides the chunk indicator.
+    chunk_index: int = 0
+    chunk_total: int = 0
     message: str = ""
     errors: list[str] = field(default_factory=list)
     started_at: datetime = field(default_factory=_utcnow)
@@ -196,6 +206,8 @@ class JobProgress:
             "dates_done": self.dates_done,
             "snapshots_created": self.snapshots_created,
             "forward_returns_inserted": self.forward_returns_inserted,
+            "chunk_index": self.chunk_index,  # J-34: completed chunks (== checkpoint resume point)
+            "chunk_total": self.chunk_total,  # J-34: total planned chunks
             "message": self.message,
             "errors": list(self.errors),
             "started_at": self.started_at.isoformat(),
@@ -284,40 +296,211 @@ def _existing_dates(session: Session, symbol: str, start: date_cls, end: date_cl
     return set(session.exec(stmt).all())
 
 
-def _do_fetch(session: Session, cfg: Config, prog: JobProgress, provider: PriceProvider) -> None:
-    """Pull REAL EOD bars for the universe + ETFs over the range and persist only NEW `(symbol, date)`
-    rows. A per-symbol provider failure counts the symbol failed, persists ZERO bars for it, and records
-    an explicit error — never a fabricated price (anti-goal: Live fetch is real-data-only)."""
-    symbols = all_seed_symbols(cfg)
-    prog.symbols_total = len(symbols)
-    for symbol in symbols:
+def _make_scrubber(key: Optional[str]) -> Callable[[str], str]:
+    """A redactor that removes a resolved key literal from any error string (defense-in-depth on top of
+    the `_http.py` URL redaction — important because J-34 surfaces richer per-chunk errors). When no key
+    was resolved it is the identity. The key itself is NEVER logged or persisted — the closure only
+    REMOVES it (anti-goal: Import keys are env-or-session, never persisted)."""
+    if not key:
+        return lambda s: s
+    return lambda s: s.replace(key, "***")
+
+
+def _fetch_message(prog: JobProgress) -> str:
+    return f"fetched {prog.symbols_ok}/{prog.symbols_total} symbols ({prog.symbols_failed} failed)"
+
+
+# --------------------------------------------------------------------------------------------------
+# J-34 chunk plan — deterministic symbol-batches × date-windows (chunk count derives from config)
+# --------------------------------------------------------------------------------------------------
+def _date_windows(start: date_cls, end: date_cls, window_days: int) -> list[tuple[date_cls, date_cls]]:
+    """Split `[start, end]` (inclusive) into consecutive windows of at most `window_days` calendar days."""
+    windows: list[tuple[date_cls, date_cls]] = []
+    ws = start
+    while ws <= end:
+        we = min(ws + timedelta(days=window_days - 1), end)
+        windows.append((ws, we))
+        ws = we + timedelta(days=1)
+    return windows
+
+
+def _chunk_plan(
+    cfg: Config, symbols: list[str], start: date_cls, end: date_cls
+) -> list[tuple[list[str], tuple[date_cls, date_cls]]]:
+    """The deterministic chunk plan = (symbol-batches of `symbol_batch_size` over the STABLE symbol
+    ordering) × (date-windows of `date_window_days` over `[start, end]`). `chunk_total` = len(batches) ×
+    len(windows), so varying either config dimension changes the plan size (No magic numbers — both come
+    from `config.data_manager.import_chunking`)."""
+    chunking = cfg.data_manager.import_chunking
+    batch = chunking.symbol_batch_size
+    batches = [symbols[i:i + batch] for i in range(0, len(symbols), batch)]
+    windows = _date_windows(start, end, chunking.date_window_days)
+    return [(b, w) for b in batches for w in windows]
+
+
+# --------------------------------------------------------------------------------------------------
+# J-34 durable checkpoint — MUTABLE job-control state on import_checkpoints (NEVER a key; NOT a snapshot)
+# --------------------------------------------------------------------------------------------------
+def _load_checkpoint(session: Session, import_id: str) -> Optional[ImportCheckpoint]:
+    return session.exec(select(ImportCheckpoint).where(ImportCheckpoint.import_id == import_id)).first()
+
+
+def get_checkpoint(session: Session, import_id: str) -> Optional[ImportCheckpoint]:
+    """The durable import checkpoint for `import_id`, or None — used by the resume endpoint to map an
+    unknown id → 404 and a non-resumable id → 409 (never a fabricated job)."""
+    return _load_checkpoint(session, import_id)
+
+
+def _start_checkpoint(
+    session: Session, cfg: Config, prog: JobProgress, symbols: list[str], chunk_total: int
+) -> ImportCheckpoint:
+    """Create the durable checkpoint row for a fresh fetch job (status `running`, resume point 0) and
+    record the chunk plan on the live `JobProgress`. Stores the deterministic symbol plan + chunk_total;
+    NEVER a key value."""
+    cp = ImportCheckpoint(
+        import_id=prog.job_id,
+        source=prog.source or cfg.data_manager.default_source,
+        kind=prog.kind,
+        start=prog.start,
+        end=prog.end,
+        symbol_plan_json=json.dumps(symbols),
+        chunk_total=chunk_total,
+        next_chunk_index=0,
+        status="running",
+        created_at=prog.started_at,
+        updated_at=_utcnow(),
+    )
+    session.add(cp)
+    session.commit()
+    session.refresh(cp)
+    prog.chunk_total = chunk_total
+    prog.chunk_index = 0
+    return cp
+
+
+def _advance_checkpoint(
+    session: Session, checkpoint: ImportCheckpoint, prog: JobProgress, *, next_idx: int, status: str
+) -> None:
+    """Persist the checkpoint after a chunk completes (or on a graceful 429 `resumable` stop / terminal
+    state): the resume point + cumulative counters + status + `updated_at`. Committed so the row survives
+    a backend restart (the durability the Resume affordance depends on)."""
+    checkpoint.next_chunk_index = next_idx
+    checkpoint.symbols_ok = prog.symbols_ok
+    checkpoint.symbols_failed = prog.symbols_failed
+    checkpoint.bars_fetched = prog.bars_fetched
+    checkpoint.status = status
+    checkpoint.updated_at = _utcnow()
+    session.add(checkpoint)
+    session.commit()
+
+
+def _finalize_checkpoint(session: Session, checkpoint: ImportCheckpoint, prog: JobProgress) -> None:
+    """Mark a completed (un-paused) fetch's checkpoint terminal: `failed` iff a fetch was attempted and
+    EVERY symbol failed, else `ok` — so it never lingers as `resumable` (a completed import is not
+    resumable: a resume of it → 409)."""
+    terminal = "failed" if (prog.symbols_total > 0 and prog.symbols_ok == 0) else "ok"
+    _advance_checkpoint(session, checkpoint, prog, next_idx=checkpoint.chunk_total, status=terminal)
+
+
+# --------------------------------------------------------------------------------------------------
+# J-34 chunked fetch engine — batched, idempotent, 429-backoff → graceful resumable (the ONE fetch path)
+# --------------------------------------------------------------------------------------------------
+def _fetch_symbol_with_retry(
+    provider: PriceProvider,
+    symbol: str,
+    start: date_cls,
+    end: date_cls,
+    *,
+    chunking: ImportChunkingCfg,
+    sleep_fn: Callable[[float], None],
+):
+    """Fetch one symbol's bars, retrying ONLY on `RateLimitError` with exponential backoff
+    `min(base * 2**attempt, cap)` up to `max_retries` retries (after the first try). Returns bars on
+    success; re-raises `RateLimitError` once the retries are exhausted (caller pauses resumable); lets a
+    non-429 `ProviderUnavailableError` propagate immediately (caller counts it failed). No chunk/backoff
+    literal here — all from `chunking` (No magic numbers)."""
+    attempt = 0
+    while True:
         try:
-            bars = provider.get_daily(symbol, start=prog.start, end=prog.end)
-        except ProviderUnavailableError as exc:
-            prog.symbols_failed += 1
-            _record_error(prog, f"{symbol}: {exc}")
-            prog.message = f"fetched {prog.symbols_ok}/{prog.symbols_total} symbols ({prog.symbols_failed} failed)"
-            continue
-        already = _existing_dates(session, symbol, prog.start, prog.end)
-        new_rows = [
-            {
-                "symbol": symbol,
-                "date": bar.date,
-                "open": bar.open,
-                "high": bar.high,
-                "low": bar.low,
-                "close": bar.close,
-                "volume": bar.volume,
-            }
-            for bar in bars
-            if bar.date not in already
-        ]
-        if new_rows:
-            session.execute(insert(DailyPrice.__table__), new_rows)
-            session.commit()
-            prog.bars_fetched += len(new_rows)
-        prog.symbols_ok += 1
-        prog.message = f"fetched {prog.symbols_ok}/{prog.symbols_total} symbols ({prog.symbols_failed} failed)"
+            return provider.get_daily(symbol, start=start, end=end)
+        except RateLimitError:
+            if attempt >= chunking.max_retries:
+                raise  # exhausted — the provider is persistently rate-limited
+            sleep_fn(min(chunking.backoff_base_seconds * (2 ** attempt), chunking.backoff_cap_seconds))
+            attempt += 1
+
+
+def _run_chunked_fetch(
+    session: Session,
+    cfg: Config,
+    prog: JobProgress,
+    provider: PriceProvider,
+    *,
+    chunks: list[tuple[list[str], tuple[date_cls, date_cls]]],
+    checkpoint: ImportCheckpoint,
+    scrub: Callable[[str], str],
+    sleep_fn: Callable[[float], None],
+    start_chunk: int,
+) -> None:
+    """Run the chunk plan from `start_chunk`, persisting the checkpoint AFTER each completed chunk (so
+    `next_chunk_index` only advances once a chunk fully finishes). Per chunk, fetch each symbol over the
+    chunk's date-window and persist only NEW `(symbol, date)` rows via the existing INSERT-new-only
+    `_existing_dates` guard — so a committed bar is NEVER overwritten and a resume re-fetches/duplicates
+    nothing (per-`(symbol, date)` idempotency).
+
+      * `RateLimitError` beyond `max_retries` ⇒ stop GRACEFULLY: set the job + checkpoint `resumable`
+        (distinct from `failed`), leave `next_chunk_index` at the un-finished chunk, and RETURN — never
+        raise, never fabricate a bar (anti-goals: No fabricated data; Live fetch is real-data-only).
+      * a non-429 `ProviderUnavailableError` for a symbol ⇒ count it failed, record a REDACTED error
+        (the resolved key scrubbed), and continue — unchanged from the single-shot loop.
+    """
+    chunking = cfg.data_manager.import_chunking
+    prog.chunk_index = start_chunk
+    for chunk_idx in range(start_chunk, len(chunks)):
+        sym_batch, (ws, we) = chunks[chunk_idx]
+        for symbol in sym_batch:
+            try:
+                bars = _fetch_symbol_with_retry(
+                    provider, symbol, ws, we, chunking=chunking, sleep_fn=sleep_fn
+                )
+            except RateLimitError:
+                # Persistent rate-limit → graceful resumable stop. Do NOT advance next_chunk_index: the
+                # current chunk is un-finished, so Resume re-attempts from it (idempotent — committed
+                # bars are skipped by _existing_dates). Persist, then return (no raise, no fabrication).
+                prog.status = "resumable"
+                _advance_checkpoint(session, checkpoint, prog, next_idx=chunk_idx, status="resumable")
+                prog.message = _final_summary(prog)
+                return
+            except ProviderUnavailableError as exc:
+                prog.symbols_failed += 1
+                _record_error(prog, scrub(f"{symbol}: {exc}"))
+                prog.message = _fetch_message(prog)
+                continue
+            already = _existing_dates(session, symbol, ws, we)
+            new_rows = [
+                {
+                    "symbol": symbol,
+                    "date": bar.date,
+                    "open": bar.open,
+                    "high": bar.high,
+                    "low": bar.low,
+                    "close": bar.close,
+                    "volume": bar.volume,
+                }
+                for bar in bars
+                if bar.date not in already
+            ]
+            if new_rows:
+                session.execute(insert(DailyPrice.__table__), new_rows)
+                session.commit()
+                prog.bars_fetched += len(new_rows)
+            prog.symbols_ok += 1
+            prog.message = _fetch_message(prog)
+            if chunking.inter_request_sleep_seconds:
+                sleep_fn(chunking.inter_request_sleep_seconds)  # polite delay between requests (injectable)
+        # the chunk fully completed → advance the durable resume point + persist cumulative counters
+        prog.chunk_index = chunk_idx + 1
+        _advance_checkpoint(session, checkpoint, prog, next_idx=chunk_idx + 1, status="running")
 
 
 def _do_backfill(session: Session, cfg: Config, prog: JobProgress) -> None:
@@ -373,7 +556,14 @@ def _final_summary(prog: JobProgress) -> str:
             f"backfill: {prog.snapshots_created} snapshots over {prog.dates_total} dates, "
             f"{prog.forward_returns_inserted} forward returns"
         )
-    return "; ".join(parts) if parts else "no work performed"
+    summary = "; ".join(parts) if parts else "no work performed"
+    if prog.status == "resumable":  # J-34: a graceful 429 pause — surface the resume point honestly
+        remaining = max(prog.symbols_total - prog.symbols_ok - prog.symbols_failed, 0)
+        return (
+            f"rate-limited — resumable at chunk {prog.chunk_index}/{prog.chunk_total} "
+            f"({remaining} symbols remaining); {summary}"
+        )
+    return summary
 
 
 def _provider_label(prog: JobProgress, cfg: Config) -> str:
@@ -415,6 +605,97 @@ def _persist_run(engine: Engine, cfg: Config, prog: JobProgress) -> None:
         session.commit()
 
 
+def _resolve_live_provider(
+    cfg: Config, source: Optional[str], api_key: Optional[str]
+) -> PriceProvider:
+    """Build the live client for a fetch: resolve the job `source` (or the config default) against the
+    catalog, resolve its key (env or the pasted session key — request-only), and `make_provider`. The key
+    is used in-memory only and never persisted."""
+    resolved_source = source or cfg.data_manager.default_source
+    entry = cfg.data_manager.provider_by_id(resolved_source)
+    key = resolve_provider_key(entry, api_key) if entry is not None else api_key
+    return make_provider(resolved_source, api_key=key)
+
+
+def _resolved_key(cfg: Config, source: Optional[str], api_key: Optional[str]) -> Optional[str]:
+    """The effective key for a job's source (used ONLY to build the defense-in-depth error scrubber — it
+    is never stored/logged). None when the source needs no key or none is available."""
+    entry = cfg.data_manager.provider_by_id(source) if source else None
+    return resolve_provider_key(entry, api_key) if entry is not None else None
+
+
+def _run_job(
+    prog: JobProgress,
+    *,
+    cfg: Config,
+    eng: Engine,
+    provider: Optional[PriceProvider],
+    api_key: Optional[str],
+    sleep_fn: Callable[[float], None],
+    is_resume: bool,
+) -> dict:
+    """The shared worker body for a fresh job (`is_resume=False`) and a resume (`is_resume=True`). Opens
+    its OWN DB session (never the request's). The live FETCH is CHUNKED + checkpointed; a persistent 429
+    pauses GRACEFULLY in a `resumable` state (the checkpoint carries it across a restart) WITHOUT raising
+    or fabricating. A resume rebuilds the SAME deterministic plan from the stored symbol list and runs
+    from the checkpoint's `next_chunk_index` — re-fetching/duplicating nothing.
+
+    `api_key` is the SESSION-ONLY pasted key (request-only): a LOCAL argument resolved into the provider
+    and the error scrubber here, NEVER written to the job registry, the checkpoint, the persisted run, the
+    detail JSON, or any log (anti-goal: Import keys are env-or-session, never persisted)."""
+    scrub = _make_scrubber(_resolved_key(cfg, prog.source, api_key))
+    paused = False
+    try:
+        with Session(eng) as session:
+            if prog.kind in _FETCH_KINDS:
+                live = provider if provider is not None else _resolve_live_provider(cfg, prog.source, api_key)
+                if is_resume:
+                    checkpoint = _load_checkpoint(session, prog.job_id)
+                    if checkpoint is None:  # defensive — the endpoint pre-validates existence
+                        raise LookupError(f"unknown import: {prog.job_id}")
+                    symbols = json.loads(checkpoint.symbol_plan_json)
+                    chunks = _chunk_plan(cfg, symbols, prog.start, prog.end)
+                    start_chunk = checkpoint.next_chunk_index
+                    prog.chunk_total = checkpoint.chunk_total
+                    checkpoint.status = "running"  # re-arm the durable row for this resume attempt
+                    checkpoint.updated_at = _utcnow()
+                    session.add(checkpoint)
+                    session.commit()
+                else:
+                    symbols = all_seed_symbols(cfg)
+                    chunks = _chunk_plan(cfg, symbols, prog.start, prog.end)
+                    start_chunk = 0
+                    checkpoint = _start_checkpoint(session, cfg, prog, symbols, len(chunks))
+                prog.symbols_total = len(symbols)
+                _run_chunked_fetch(
+                    session, cfg, prog, live, chunks=chunks, checkpoint=checkpoint,
+                    scrub=scrub, sleep_fn=sleep_fn, start_chunk=start_chunk,
+                )
+                if prog.status == "resumable":
+                    paused = True  # graceful pause — checkpoint already persisted resumable
+                else:
+                    _finalize_checkpoint(session, checkpoint, prog)
+            if not paused and prog.kind in _BACKFILL_KINDS:
+                _do_backfill(session, cfg, prog)
+        if not paused:
+            prog.status = _final_status(prog)
+    except Exception as exc:  # noqa: BLE001 — any failure must surface as an explicit failed job (scrubbed)
+        prog.status = "failed"
+        _record_error(prog, scrub(str(exc)))
+    finally:
+        prog.finished_at = _utcnow()
+        prog.message = _final_summary(prog)
+        # A resumable pause is recorded DURABLY on the checkpoint (it survives a restart and drives
+        # `resumable_imports`); it is NOT a terminal run, so it is not appended to the run-history log —
+        # the eventual completed resume appends its own DataProviderRun.
+        if prog.status != "resumable":
+            try:
+                _persist_run(eng, cfg, prog)
+            except Exception as exc:  # noqa: BLE001 — persistence failure must not crash the worker thread
+                _record_error(prog, scrub(f"failed to persist run summary: {exc}"))
+    return prog.to_dict()
+
+
 def run_data_job(
     job_id: str,
     *,
@@ -422,45 +703,61 @@ def run_data_job(
     engine: Optional[Engine] = None,
     provider: Optional[PriceProvider] = None,
     api_key: Optional[str] = None,
+    sleep_fn: Optional[Callable[[float], None]] = None,
 ) -> dict:
     """Run the registered job to completion SYNCHRONOUSLY (the worker body; `start_data_job` runs this in
-    a thread). Opens its OWN DB session (never the request's). Updates the in-memory registry as it goes
-    and persists the final summary to the append-only `DataProviderRun`. Returns the final snapshot.
-
-    `api_key` is the SESSION-ONLY pasted key (request-only): it is a LOCAL argument resolved into the
-    fetch provider here and is NEVER written to the job registry, the persisted run, the detail JSON, or
-    any log (anti-goal: Import keys are env-or-session, never persisted). For a fetch, the job-selected
-    `source` is resolved against the config catalog and `make_provider(source, api_key=key)` builds the
-    live client; an injected `provider` (tests) bypasses that entirely."""
+    a thread). Updates the in-memory registry as it goes and persists the final summary. Returns the final
+    snapshot. `sleep_fn` is injectable so the 429-backoff + inter-request sleeps add NO wall-clock in
+    tests (defaults to `time.sleep`). For a fetch, the job-selected `source` is resolved against the
+    catalog and `make_provider(source, api_key=key)` builds the live client; an injected `provider`
+    (tests) bypasses that entirely."""
     cfg = config or get_config()
     eng = engine or get_engine()
     with _LOCK:
         prog = _JOBS[job_id]
-    try:
-        with Session(eng) as session:
-            if prog.kind in _FETCH_KINDS:
-                if provider is not None:
-                    live = provider
-                else:
-                    source = prog.source or cfg.data_manager.default_source
-                    entry = cfg.data_manager.provider_by_id(source)
-                    key = resolve_provider_key(entry, api_key) if entry is not None else api_key
-                    live = make_provider(source, api_key=key)
-                _do_fetch(session, cfg, prog, live)
-            if prog.kind in _BACKFILL_KINDS:
-                _do_backfill(session, cfg, prog)
-        prog.status = _final_status(prog)
-    except Exception as exc:  # noqa: BLE001 — any failure must surface as an explicit failed job
-        prog.status = "failed"
-        _record_error(prog, str(exc))
-    finally:
-        prog.finished_at = _utcnow()
-        prog.message = _final_summary(prog)
-        try:
-            _persist_run(eng, cfg, prog)
-        except Exception as exc:  # noqa: BLE001 — persistence failure must not crash the worker thread
-            _record_error(prog, f"failed to persist run summary: {exc}")
-    return prog.to_dict()
+    return _run_job(
+        prog, cfg=cfg, eng=eng, provider=provider, api_key=api_key,
+        sleep_fn=sleep_fn or _sleep, is_resume=False,
+    )
+
+
+def resume_data_job(
+    import_id: str,
+    *,
+    config: Optional[Config] = None,
+    engine: Optional[Engine] = None,
+    provider: Optional[PriceProvider] = None,
+    api_key: Optional[str] = None,
+    sleep_fn: Optional[Callable[[float], None]] = None,
+) -> dict:
+    """Resume a paused (`resumable`) chunked import: load its durable `ImportCheckpoint`, re-register a
+    fresh in-memory `JobProgress` seeded from it (SAME `import_id`), and run the chunk loop from
+    `next_chunk_index` — re-fetching nothing already stored (per-`(symbol, date)` idempotency via the
+    existing INSERT-new-only `DailyPrice` guard). Raises `LookupError` for an unknown id and `ValueError`
+    for a non-resumable id (the API maps these to 404/409). The session-only `api_key` is re-supplied
+    request-only for a needs-key source — it is NEVER read from the checkpoint (no key is stored there)."""
+    cfg = config or get_config()
+    eng = engine or get_engine()
+    with Session(eng) as session:
+        cp = _load_checkpoint(session, import_id)
+        if cp is None:
+            raise LookupError(f"unknown import: {import_id}")
+        if cp.status != "resumable":
+            raise ValueError(f"import {import_id} is not resumable (status {cp.status})")
+        prog = JobProgress(job_id=cp.import_id, kind=cp.kind, start=cp.start, end=cp.end, source=cp.source)
+        prog.symbols_ok = cp.symbols_ok
+        prog.symbols_failed = cp.symbols_failed
+        prog.bars_fetched = cp.bars_fetched
+        prog.chunk_total = cp.chunk_total
+        prog.chunk_index = cp.next_chunk_index
+        prog.symbols_total = len(json.loads(cp.symbol_plan_json))
+        prog.message = _fetch_message(prog)
+    with _LOCK:
+        _JOBS[prog.job_id] = prog
+    return _run_job(
+        prog, cfg=cfg, eng=eng, provider=provider, api_key=api_key,
+        sleep_fn=sleep_fn or _sleep, is_resume=True,
+    )
 
 
 def start_data_job(
@@ -476,13 +773,14 @@ def start_data_job(
     """Register a job and run it ASYNCHRONOUSLY in a daemon thread; return the `job_id` immediately so
     the POST handler responds without blocking. The thread opens its own session on the given engine.
 
-    `source` (J-33) is the chosen import provider id, recorded on the job (not secret) and defaulted to
-    `data_manager.default_source`. `api_key` is the SESSION-ONLY pasted key — passed to the worker as a
-    request-only thread argument and NEVER stored on the job/registry (anti-goal: keys are env-or-session,
-    never persisted)."""
+    `source` (J-33) is recorded on the job ONLY for a kind that FETCHES — a backfill-only job reads the
+    committed seed, so its progress header carries no import source (iter-21 Finding #2). `api_key` is the
+    SESSION-ONLY pasted key — passed to the worker as a request-only thread argument and NEVER stored on
+    the job/registry (anti-goal: keys are env-or-session, never persisted)."""
     cfg = config or get_config()
     eng = engine or get_engine()
-    job = create_job(kind, start, end, source=source or cfg.data_manager.default_source)
+    job_source = (source or cfg.data_manager.default_source) if kind in _FETCH_KINDS else None
+    job = create_job(kind, start, end, source=job_source)
     thread = threading.Thread(
         target=run_data_job,
         args=(job.job_id,),
@@ -492,6 +790,29 @@ def start_data_job(
     )
     thread.start()
     return job.job_id
+
+
+def start_resume_job(
+    import_id: str,
+    *,
+    api_key: Optional[str] = None,
+    config: Optional[Config] = None,
+    engine: Optional[Engine] = None,
+) -> str:
+    """Spawn the resume worker in a daemon thread and return immediately (the endpoint pre-validates the
+    import exists + is resumable + has a key before calling this). `api_key` is the re-supplied
+    SESSION-ONLY key — a request-only thread argument, never persisted."""
+    cfg = config or get_config()
+    eng = engine or get_engine()
+    thread = threading.Thread(
+        target=resume_data_job,
+        args=(import_id,),
+        kwargs={"config": cfg, "engine": eng, "api_key": api_key},
+        daemon=True,
+        name=f"data-resume-{import_id}",
+    )
+    thread.start()
+    return import_id
 
 
 # --------------------------------------------------------------------------------------------------
@@ -538,3 +859,45 @@ def recent_runs(session: Session, config: Optional[Config] = None) -> list[dict]
         .limit(cfg.data_manager.run_history_limit)
     ).all()
     return [summarize_provider_run(run) for run in rows]
+
+
+# --------------------------------------------------------------------------------------------------
+# Resumable imports (GET /api/data) — the paused chunked imports, surviving a backend restart (J-34)
+# --------------------------------------------------------------------------------------------------
+def _summarize_checkpoint(cp: ImportCheckpoint) -> dict:
+    """One `resumable_imports` row for the UI: per-import chunk progress + symbols done vs remaining.
+    Descriptive job-control metadata ONLY — it carries NO key value (anti-goal: keys are env-or-session,
+    never persisted; the checkpoint has no key column to leak)."""
+    try:
+        symbols_total = len(json.loads(cp.symbol_plan_json)) if cp.symbol_plan_json else 0
+    except (ValueError, TypeError):
+        symbols_total = 0
+    symbols_remaining = max(symbols_total - cp.symbols_ok - cp.symbols_failed, 0)
+    return {
+        "import_id": cp.import_id,
+        "source": cp.source,
+        "kind": cp.kind,
+        "start": cp.start.isoformat(),
+        "end": cp.end.isoformat(),
+        "chunk_index": cp.next_chunk_index,  # completed chunks == the resume point
+        "chunk_total": cp.chunk_total,
+        "symbols_total": symbols_total,
+        "symbols_ok": cp.symbols_ok,
+        "symbols_failed": cp.symbols_failed,
+        "symbols_remaining": symbols_remaining,
+        "bars_fetched": cp.bars_fetched,
+        "status": cp.status,
+        "updated_at": cp.updated_at.isoformat() if cp.updated_at else None,
+    }
+
+
+def resumable_imports(session: Session, config: Optional[Config] = None) -> list[dict]:
+    """The paused (`status == "resumable"`) chunked imports, newest first — the durable Resume
+    affordance that SURVIVES a backend restart (the in-memory job is gone, but the checkpoint persists).
+    NEVER carries a key value."""
+    rows = session.exec(
+        select(ImportCheckpoint)
+        .where(ImportCheckpoint.status == "resumable")
+        .order_by(ImportCheckpoint.updated_at.desc(), ImportCheckpoint.id.desc())
+    ).all()
+    return [_summarize_checkpoint(cp) for cp in rows]

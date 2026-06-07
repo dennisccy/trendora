@@ -1,0 +1,18 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever-iter-22",
+  "status": "blocked",
+  "current_step": "qa_complete",
+  "updated_at": "2026-06-07T12:34:56.000000Z",
+  "started_at": "2026-06-05T00:49:15.502329Z",
+  "cli": "claude",
+  "blockers": [
+    "tests/test_db.py::test_create_all_produces_expected_tables — Add 'import_checkpoints' to expected tables set (stale schema assertion)"
+  ],
+  "changed_files": [],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "test_summary": "1 failed, 526 passed, 4 skipped in 1205.07s (0:20:05)",
+  "qa_verdict": "FAIL",
+  "qa_reason": "One stale schema-assertion test failure (test_db.py) — not a product defect, but a maintenance assertion",
+  "next_action": "fix_test_db_assertion"
+}

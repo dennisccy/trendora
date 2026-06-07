@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Database, KeyRound, Loader2, Play } from "lucide-react";
+import { AlertTriangle, Database, KeyRound, Loader2, Play, RotateCcw } from "lucide-react";
 
 import { useAsOf } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
@@ -13,12 +13,14 @@ import { cn } from "@/lib/utils";
 import {
   fetchDataCoverage,
   fetchDataJob,
+  resumeDataJob,
   startDataJob,
   type DataJob,
   type DataJobKind,
   type DataOverviewResponse,
   type DataRun,
   type ProviderSource,
+  type ResumableImport,
 } from "@/lib/api";
 
 type State =
@@ -31,12 +33,15 @@ const FIELD =
   "transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent " +
   "disabled:cursor-not-allowed disabled:opacity-50";
 
-/** Job/run status -> palette token (DESIGN SYSTEM): ok green, partial/running amber/teal, failed red. */
+/** Job/run status -> palette token (DESIGN SYSTEM): ok green, partial/resumable amber, failed red,
+ *  running teal. `resumable` (J-34: a rate-limited graceful pause) is amber `--warn` — explicitly
+ *  DISTINCT from red `--neg` `failed`. */
 function statusVariant(status: string): "ok" | "warn" | "danger" | "accent" | "default" {
   switch (status) {
     case "ok":
       return "ok";
     case "partial":
+    case "resumable":
       return "warn";
     case "failed":
       return "danger";
@@ -142,6 +147,17 @@ export default function DataManagerPage() {
 
   const jobRunning = jobStatus === "running";
 
+  // J-34: pull a freshly-resumed import into the job card. The poll effect (keyed on job id + status)
+  // picks it up because its status is "running" again; on completion it reloads coverage + the
+  // resumable-imports list (the completed import drops off), exactly like a freshly-started job.
+  const onResumed = useCallback((importId: string) => {
+    fetchDataJob(importId)
+      .then((snap) => setJob(snap))
+      .catch(() => {
+        /* the resume POST already surfaced any error; ignore a transient fetch race */
+      });
+  }, []);
+
   async function handleStart(event: React.FormEvent) {
     event.preventDefault();
     if (!start || !end || starting || jobRunning) return;
@@ -209,8 +225,13 @@ export default function DataManagerPage() {
               running={Boolean(jobRunning)}
               error={formError}
             />
-            <JobProgressPanel job={job} />
+            <JobProgressPanel job={job} sources={sources} onResumed={onResumed} />
           </div>
+          <ResumableImportsPanel
+            imports={state.data.resumable_imports}
+            sources={sources}
+            onResumed={onResumed}
+          />
           <RunHistoryPanel runs={state.data.runs} />
         </>
       ) : null}
@@ -446,7 +467,15 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
   );
 }
 
-function JobProgressPanel({ job }: { job: DataJob | null }) {
+function JobProgressPanel({
+  job,
+  sources,
+  onResumed,
+}: {
+  job: DataJob | null;
+  sources: ProviderSource[];
+  onResumed: (importId: string) => void;
+}) {
   if (!job) {
     return (
       <Card className="p-0">
@@ -461,7 +490,11 @@ function JobProgressPanel({ job }: { job: DataJob | null }) {
 
   const showFetch = job.kind === "fetch" || job.kind === "both";
   const showBackfill = job.kind === "backfill" || job.kind === "both";
+  const paused = job.status === "resumable"; // J-34: a rate-limited graceful pause (amber, not failed)
   const failed = job.status === "failed" || job.status === "partial";
+  const chunkTotal = job.chunk_total ?? 0;
+  const symbolsRemaining = Math.max(job.symbols_total - job.symbols_ok - job.symbols_failed, 0);
+  const jobSource = sources.find((s) => s.id === job.source);
 
   return (
     <Card className="p-0">
@@ -474,10 +507,40 @@ function JobProgressPanel({ job }: { job: DataJob | null }) {
         <div className="flex flex-wrap items-center gap-3">
           <Badge variant={statusVariant(job.status)} className="num gap-1.5">
             {job.status === "running" ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
-            {job.status}
+            {paused ? "rate-limited — resumable" : job.status}
           </Badge>
+          {chunkTotal > 0 ? (
+            <Badge variant="default" className="num gap-1" data-testid="chunk-progress">
+              chunk {job.chunk_index ?? 0}/{chunkTotal}
+            </Badge>
+          ) : null}
           <span className="num text-xs text-text-muted">{job.message}</span>
         </div>
+
+        {paused ? (
+          <div
+            className="space-y-2 rounded-md border border-warn bg-surface-2 p-3"
+            data-testid="resumable-state"
+          >
+            <p className="flex items-center gap-1.5 text-xs font-medium text-warn">
+              <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+              Rate-limited — paused at chunk {job.chunk_index ?? 0}/{chunkTotal}. Progress is saved; resume
+              to continue from the next un-fetched chunk (no data is re-fetched or duplicated).
+            </p>
+            <p className="num text-xs text-text-muted">
+              <span className="text-pos">{job.symbols_ok} done</span>
+              <span className="text-text-faint"> · </span>
+              <span className="text-warn">{symbolsRemaining} remaining</span>
+              {job.symbols_failed > 0 ? (
+                <>
+                  <span className="text-text-faint"> · </span>
+                  <span className="text-neg">{job.symbols_failed} failed</span>
+                </>
+              ) : null}
+            </p>
+            <ResumeControl importId={job.job_id} source={jobSource} onResumed={onResumed} />
+          </div>
+        ) : null}
 
         {showFetch ? (
           <div className="space-y-1">
@@ -525,6 +588,145 @@ function JobProgressPanel({ job }: { job: DataJob | null }) {
           </div>
         ) : null}
       </div>
+    </Card>
+  );
+}
+
+/** J-34 Resume control: a Resume button that re-POSTs to the resume endpoint, re-prompting for the
+ *  SESSION-ONLY key (type="password", held in component memory only, cleared right after submit) when
+ *  the source needs one and it is not already in the environment. Used both on the live job card and on
+ *  each post-restart resumable-imports row. */
+function ResumeControl({
+  importId,
+  source,
+  onResumed,
+}: {
+  importId: string;
+  source: ProviderSource | undefined;
+  onResumed: (importId: string) => void;
+}) {
+  // A key is needed only for a needs-key source with no env key (an available source already has its key
+  // in the environment — the backend reads it; no paste needed). Mirrors the JobForm key-field logic.
+  const needsKey = Boolean(source?.needs_key) && source?.available === false;
+  const [apiKey, setApiKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleResume() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await resumeDataJob(importId, needsKey ? { api_key: apiKey || undefined } : undefined);
+      setApiKey(""); // drop the session-only key the instant the resume is submitted
+      onResumed(importId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not resume the import.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {needsKey ? (
+        <label className="flex flex-col gap-1 text-xs text-text-muted">
+          <span className="flex items-center gap-1.5">
+            <KeyRound className="h-3.5 w-3.5 text-warn" aria-hidden />
+            Session API key for {source?.label}
+          </span>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            aria-label={`Session API key to resume ${importId}`}
+            autoComplete="off"
+            placeholder={source?.env_var ? `or set $${source.env_var}` : "paste a key"}
+            className={cn(FIELD, "w-72")}
+          />
+        </label>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={handleResume}
+          disabled={busy}
+          data-testid="resume-button"
+          className={cn(
+            "inline-flex h-8 items-center gap-1.5 rounded-md bg-warn px-3 text-xs font-semibold text-bg",
+            "transition hover:brightness-110 active:brightness-95",
+            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-warn focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+            "disabled:cursor-not-allowed disabled:opacity-50",
+          )}
+        >
+          {busy ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+          ) : (
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+          )}
+          Resume
+        </button>
+        {error ? (
+          <span role="alert" className="text-xs text-neg">
+            {error}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** J-34 post-restart resumable-imports surface: the paused imports from GET /api/data (durable
+ *  checkpoints surviving a backend restart, even with no live in-memory job). Each row shows its source,
+ *  range, chunk x/N, and symbols done/remaining, with a Resume button. Hidden when there are none. */
+function ResumableImportsPanel({
+  imports,
+  sources,
+  onResumed,
+}: {
+  imports: ResumableImport[];
+  sources: ProviderSource[];
+  onResumed: (importId: string) => void;
+}) {
+  if (imports.length === 0) return null; // empty list hidden (no clutter when nothing is paused)
+  return (
+    <Card className="p-0" data-testid="resumable-imports">
+      <PanelTitle hint="Rate-limited imports paused mid-run — progress is saved to the database and survives a backend restart. Resume continues from the next un-fetched chunk; nothing is re-fetched or duplicated.">
+        Resumable imports
+      </PanelTitle>
+      <ul className="divide-y divide-border">
+        {imports.map((imp) => {
+          const impSource = sources.find((s) => s.id === imp.source);
+          return (
+            <li key={imp.import_id} className="flex flex-wrap items-center justify-between gap-3 p-4">
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="warn" className="num gap-1">
+                    chunk {imp.chunk_index}/{imp.chunk_total}
+                  </Badge>
+                  <span className="text-sm font-medium text-text">{impSource?.label ?? imp.source}</span>
+                  <span className="num text-xs text-text-faint">
+                    {imp.start} → {imp.end}
+                  </span>
+                </div>
+                <p className="num text-xs text-text-muted">
+                  <span className="text-pos">{imp.symbols_ok} done</span>
+                  <span className="text-text-faint"> · </span>
+                  <span className="text-warn">{imp.symbols_remaining} remaining</span>
+                  {imp.symbols_failed > 0 ? (
+                    <>
+                      <span className="text-text-faint"> · </span>
+                      <span className="text-neg">{imp.symbols_failed} failed</span>
+                    </>
+                  ) : null}
+                  <span className="text-text-faint"> · {imp.bars_fetched} bars so far</span>
+                </p>
+              </div>
+              <ResumeControl importId={imp.import_id} source={impSource} onResumed={onResumed} />
+            </li>
+          );
+        })}
+      </ul>
     </Card>
   );
 }

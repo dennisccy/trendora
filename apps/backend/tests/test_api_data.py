@@ -13,8 +13,9 @@ that exercises the thread + final-summary path without scanning.
 """
 from __future__ import annotations
 
+import json
 import time
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 from fastapi import HTTPException
@@ -22,10 +23,10 @@ from pydantic import ValidationError
 from sqlmodel import Session
 
 import app.db as db_module
-from app.api.data import JobCreate, data_overview, job_status, start_job
+from app.api.data import JobCreate, ResumeRequest, data_overview, job_status, resume_job, start_job
 from app.db import create_db_and_tables, make_engine
 from app.engine import data_manager
-from app.models import DailyPrice
+from app.models import DailyPrice, ImportCheckpoint
 
 
 @pytest.fixture()
@@ -61,7 +62,8 @@ def test_get_data_overview_shape(data_api_engine):
     env-var NAME only — never a key value."""
     with Session(data_api_engine) as session:
         payload = data_overview(session=session)
-    assert set(payload) == {"coverage", "runs", "sources"}
+    assert set(payload) == {"coverage", "runs", "sources", "resumable_imports"}
+    assert payload["resumable_imports"] == []  # J-34: no paused imports on a fresh DB
     cov = payload["coverage"]
     assert cov["symbol_count"] == 1  # only SPY in this tiny DB
     assert cov["trading_day_count"] == 2 and cov["gap_count"] == 2  # two SPY days, no snapshots yet
@@ -185,3 +187,59 @@ def test_get_unknown_job_is_404():
     with pytest.raises(HTTPException) as exc:
         job_status("definitely-not-a-real-job-id")
     assert exc.value.status_code == 404
+
+
+# --- iter-22 (J-34): resume endpoint 404/409/400 + resumable_imports carries no key ----------
+def _add_checkpoint(session, *, import_id, source, status):
+    """Insert a durable import checkpoint (job-control state — no key column) for the resume tests."""
+    session.add(ImportCheckpoint(
+        import_id=import_id, source=source, kind="fetch", start=date(2024, 1, 1), end=date(2024, 1, 2),
+        symbol_plan_json=json.dumps(["AAA", "BBB"]), chunk_total=2, next_chunk_index=1, symbols_ok=1,
+        status=status, created_at=datetime(2024, 1, 1), updated_at=datetime(2024, 1, 1),
+    ))
+    session.commit()
+
+
+def test_resume_unknown_import_is_404(data_api_engine):
+    """Resuming an unknown import → explicit 404 (never a fabricated job)."""
+    with Session(data_api_engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            resume_job("not-an-import", payload=ResumeRequest(), session=session)
+    assert exc.value.status_code == 404
+
+
+def test_resume_completed_import_is_409(data_api_engine):
+    """Resuming a non-resumable (already `ok`) import → explicit 409."""
+    with Session(data_api_engine) as session:
+        _add_checkpoint(session, import_id="done-import", source="yahoo", status="ok")
+        with pytest.raises(HTTPException) as exc:
+            resume_job("done-import", payload=ResumeRequest(), session=session)
+    assert exc.value.status_code == 409
+
+
+def test_resume_needs_key_source_without_key_is_400(data_api_engine, monkeypatch):
+    """Resuming a needs-key source with neither an env key nor a re-supplied session key → explicit 400
+    (the checkpoint stores no key, so a restart-then-resume of a key source must re-supply it)."""
+    monkeypatch.delenv("TIINGO_API_KEY", raising=False)
+    with Session(data_api_engine) as session:
+        _add_checkpoint(session, import_id="paused-tiingo", source="tiingo", status="resumable")
+        with pytest.raises(HTTPException) as exc:
+            resume_job("paused-tiingo", payload=ResumeRequest(), session=session)
+    assert exc.value.status_code == 400
+    assert "requires a key" in str(exc.value.detail)
+
+
+def test_resumable_imports_in_overview_carries_no_key(data_api_engine):
+    """A `resumable` checkpoint surfaces in GET /api/data `resumable_imports` (newest first) with chunk
+    progress + symbols done/remaining — and NEVER any key field/value (anti-goal: keys never persisted)."""
+    secret = "sk-NEVER-IN-RESUMABLE-LIST-abc"
+    with Session(data_api_engine) as session:
+        _add_checkpoint(session, import_id="paused-1", source="tiingo", status="resumable")
+        payload = data_overview(session=session)
+    listed = payload["resumable_imports"]
+    assert len(listed) == 1 and listed[0]["import_id"] == "paused-1"
+    assert listed[0]["chunk_index"] == 1 and listed[0]["chunk_total"] == 2
+    assert listed[0]["symbols_remaining"] == 1  # 2 total - 1 ok - 0 failed
+    # no key field anywhere on the row, and the sentinel never appears
+    assert "api_key" not in listed[0] and "key" not in listed[0]
+    assert secret not in json.dumps(payload)

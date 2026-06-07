@@ -1034,24 +1034,48 @@ export interface ProviderSource {
   reason: string;
 }
 
+/** One paused, resumable chunked import (J-34), surfaced by GET /api/data so it survives a backend
+ *  restart (the in-memory job is gone but the durable checkpoint persists). Descriptive job-control
+ *  metadata ONLY — it carries the chosen `source` id (not secret) and chunk/symbol progress, NEVER a
+ *  key value (the checkpoint has no key column). The frontend re-formats it and offers a Resume action. */
+export interface ResumableImport {
+  import_id: string;
+  source: string; // the chosen import provider id (not secret); never the key
+  kind: string;
+  start: string;
+  end: string;
+  chunk_index: number; // completed chunks == the resume point
+  chunk_total: number;
+  symbols_total: number;
+  symbols_ok: number;
+  symbols_failed: number;
+  symbols_remaining: number;
+  bars_fetched: number;
+  status: string; // always "resumable" in this list
+  updated_at: string | null;
+}
+
 export interface DataOverviewResponse {
   coverage: DataCoverage;
   runs: DataRun[];
   sources: ProviderSource[]; // J-33 import-source catalog (config-driven, env-detected availability)
+  resumable_imports: ResumableImport[]; // J-34 paused imports (survive a backend restart); never a key
 }
 
 export type DataJobKind = "fetch" | "backfill" | "both";
 
 /** Live progress for one fetch/backfill job (polled from the in-memory job registry). `status` is
- *  running | ok | partial | failed; counters are the live progress; `message` is a server-built summary
- *  (rendered verbatim); `errors` carries explicit per-symbol failure messages (never fabricated). */
+ *  running | ok | partial | failed | "resumable" (J-34: a rate-limited graceful pause). Counters are
+ *  the live progress; `chunk_index`/`chunk_total` are the J-34 chunked-fetch progress (both 0 / absent
+ *  for a non-chunked job); `message` is a server-built summary (rendered verbatim); `errors` carries
+ *  explicit per-symbol failure messages (never fabricated; the key is redacted at source + scrubbed). */
 export interface DataJob {
   job_id: string;
   kind: string;
   start: string;
   end: string;
   source?: string | null; // J-33: the chosen import provider id (not secret); never the key
-  status: string;
+  status: string; // running | ok | partial | failed | resumable
   symbols_total: number;
   symbols_ok: number;
   symbols_failed: number;
@@ -1060,6 +1084,8 @@ export interface DataJob {
   dates_done: number;
   snapshots_created: number;
   forward_returns_inserted: number;
+  chunk_index?: number; // J-34: completed chunks (== checkpoint resume point)
+  chunk_total?: number; // J-34: total planned chunks (chunk x/N); 0/absent for a non-chunked job
   message: string;
   errors: string[];
   started_at: string;
@@ -1102,4 +1128,23 @@ export async function startDataJob(
  *  Throws on non-200 (404 unknown job) so the UI surfaces the failure rather than fabricating one. */
 export async function fetchDataJob(jobId: string, signal?: AbortSignal): Promise<DataJob> {
   return getJSON<DataJob>(`/api/data/jobs/${encodeURIComponent(jobId)}`, signal);
+}
+
+/** POST /api/data/jobs/{import_id}/resume — resume a paused (resumable) chunked import from its next
+ *  un-fetched chunk (J-34). The optional `opts.api_key` is the SESSION-ONLY key re-supplied for a
+ *  needs-key source (sent only when non-blank — the checkpoint stores no key, so a restart-then-resume
+ *  of a key source must re-supply it; never stored client-side beyond the request). Returns immediately
+ *  with the resumed job's id; throws with the backend's honest `detail` on a non-2xx (404 unknown import,
+ *  409 not resumable, 400 needs-key-without-key). */
+export async function resumeDataJob(
+  importId: string,
+  opts?: { api_key?: string },
+): Promise<{ import_id: string; source: string; status: string }> {
+  const body: Record<string, string> = {};
+  if (opts?.api_key) body.api_key = opts.api_key; // session-only; omitted when blank
+  return sendJSON<{ import_id: string; source: string; status: string }>(
+    "POST",
+    `/api/data/jobs/${encodeURIComponent(importId)}/resume`,
+    body,
+  );
 }

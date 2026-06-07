@@ -1,0 +1,1 @@
+self.__REACT_LOADABLE_MANIFEST='{"components/price-chart.tsx -> lightweight-charts":{"id":4004,"files":["static/chunks/d0709137.55379af80595610c.js","static/chunks/54.81557e7b8ebef3c9.js"]}}';

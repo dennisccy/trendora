@@ -48,17 +48,30 @@ class JobCreate(BaseModel):
     api_key: Optional[str] = None
 
 
+class ResumeRequest(BaseModel):
+    """POST body for resuming a paused (`resumable`) chunked import (J-34). `api_key` is the SESSION-ONLY
+    key re-supplied for a needs-key source — request-only: it is forwarded to the resume worker and NEVER
+    persisted (the checkpoint stores no key, so a restart-then-resume of a key source needs it again).
+    Optional/empty for a no-key source."""
+
+    api_key: Optional[str] = None
+
+
 @router.get("/data")
 def data_overview(session: Session = Depends(get_session)) -> dict:
-    """Current dataset coverage + recent run history + the import provider catalog (J-33). Coverage is
-    descriptive metadata (no canonical value recomputed); it serves gracefully even on an empty DB (null
-    range / zero counts). `sources` is the config catalog with env-detected availability — it carries the
-    env-var NAME + a boolean only, never a key value or the run history's key (there is none)."""
+    """Current dataset coverage + recent run history + the import provider catalog (J-33) + the paused
+    resumable imports (J-34). Coverage is descriptive metadata (no canonical value recomputed); it serves
+    gracefully even on an empty DB (null range / zero counts). `sources` is the config catalog with
+    env-detected availability — it carries the env-var NAME + a boolean only, never a key value.
+    `resumable_imports` are the durable checkpoints with `status == "resumable"` (newest first) so a
+    rate-limited import stays discoverable + Resume-able after a backend restart — and it NEVER carries a
+    key value (the checkpoint has no key column)."""
     cfg = get_config()
     return {
         "coverage": data_manager.compute_coverage(session, cfg),
         "runs": data_manager.recent_runs(session, cfg),
         "sources": data_manager.compute_provider_availability(cfg),
+        "resumable_imports": data_manager.resumable_imports(session, cfg),
     }
 
 
@@ -101,3 +114,35 @@ def job_status(job_id: str) -> dict:
     if job is None:
         raise HTTPException(status_code=404, detail=f"unknown job: {job_id}")
     return job
+
+
+@router.post("/data/jobs/{import_id}/resume")
+def resume_job(
+    import_id: str,
+    payload: Optional[ResumeRequest] = None,
+    session: Session = Depends(get_session),
+) -> dict:
+    """Resume a paused (`resumable`) chunked import from its next un-fetched chunk (J-34). Validates
+    explicitly before spawning the async resume worker: `404` for an unknown import_id, `409` for a
+    non-resumable one (already `ok`/`failed`/`running` — never a fabricated job), and `400` for a
+    needs-key source resumed without a key (the checkpoint stores no key, so a restart-then-resume of a
+    key source must re-supply the SESSION-ONLY key). The re-supplied key is request-only and NEVER
+    persisted; the response echoes the resolved `source` (not secret) and never the key."""
+    cfg = get_config()
+    checkpoint = data_manager.get_checkpoint(session, import_id)
+    if checkpoint is None:
+        raise HTTPException(status_code=404, detail=f"unknown import: {import_id}")
+    if checkpoint.status != "resumable":
+        raise HTTPException(
+            status_code=409,
+            detail=f"import {import_id} is not resumable (status {checkpoint.status})",
+        )
+    api_key = payload.api_key if payload is not None else None
+    entry = cfg.data_manager.provider_by_id(checkpoint.source)
+    if entry is not None and entry.needs_key and not data_manager.resolve_provider_key(entry, api_key):
+        raise HTTPException(
+            status_code=400,
+            detail=f"source {checkpoint.source!r} requires a key; set ${entry.env_var} or paste a session key",
+        )
+    data_manager.start_resume_job(import_id, api_key=api_key, config=cfg, engine=get_engine())
+    return {"import_id": import_id, "source": checkpoint.source, "status": "running"}

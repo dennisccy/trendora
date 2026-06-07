@@ -16,7 +16,7 @@ from typing import Optional
 import httpx
 
 from app.data_providers._http import HTTP_TIMEOUT_SECONDS, fetch_json
-from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError
+from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError, RateLimitError
 
 _ALPHA_VANTAGE_URL = "https://www.alphavantage.co/query"
 _SERIES_KEY = "Time Series (Daily)"
@@ -64,11 +64,17 @@ class AlphaVantageProvider(PriceProvider):
         # A rate-limit / error / informational payload omits the series — surface it, never fabricate.
         if not isinstance(data, dict) or _SERIES_KEY not in data:
             note = ""
+            throttled = False
             if isinstance(data, dict):
-                note = str(data.get("Note") or data.get("Information") or data.get("Error Message") or "")
-            raise ProviderUnavailableError(
-                f"alpha_vantage returned no usable data for {symbol!r}{f': {note}' if note else ''}"
-            )
+                # Alpha Vantage signals throttling in the BODY (`Note`/`Information`), not the HTTP status —
+                # map those to RateLimitError (retryable → resumable in J-34); `Error Message` (e.g. an
+                # invalid symbol) stays a generic failure. Best-effort: any missing-series body is at worst
+                # surfaced as a generic ProviderUnavailableError (never fabricated).
+                throttle_note = data.get("Note") or data.get("Information")
+                note = str(throttle_note or data.get("Error Message") or "")
+                throttled = throttle_note is not None
+            message = f"alpha_vantage returned no usable data for {symbol!r}{f': {note}' if note else ''}"
+            raise (RateLimitError if throttled else ProviderUnavailableError)(message)
         series = data[_SERIES_KEY]
         if not isinstance(series, dict) or not series:
             raise ProviderUnavailableError(f"alpha_vantage returned an empty series for {symbol!r}")

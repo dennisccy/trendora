@@ -1,11 +1,11 @@
 # Goal Session Summary — i_can_see_the_wealthy_future_forever
 
 **Final verdict:** ABORTED
-**Total iterations:** 21
-**Wall time (seconds):** 8268
+**Total iterations:** 22
+**Wall time (seconds):** 16053
 **Quota pauses:** 0
 **Started:** 2026-05-31T22:30:55.653266Z
-**Finished:** 2026-06-04T22:32:33.130451Z
+**Finished:** 2026-06-05T03:14:20.627448Z
 
 ## Branch
 
@@ -35,8 +35,8 @@ This session pushed iteration commits to `goal/i_can_see_the_wealthy_future_fore
 | J-14 | passing | goal-i_can_see_the_wealthy_future_forever-iter-20 |
 | J-15 | passing | goal-i_can_see_the_wealthy_future_forever-iter-20 |
 | J-16 | passing | goal-i_can_see_the_wealthy_future_forever-iter-20 |
-| J-17 | passing | goal-i_can_see_the_wealthy_future_forever-iter-20 |
-| J-18 | passing | goal-i_can_see_the_wealthy_future_forever-iter-20 |
+| J-17 | passing | goal-i_can_see_the_wealthy_future_forever-iter-21 |
+| J-18 | passing | goal-i_can_see_the_wealthy_future_forever-iter-21 |
 | J-19 | passing | goal-i_can_see_the_wealthy_future_forever-iter-20 |
 | J-20 | passing | goal-i_can_see_the_wealthy_future_forever-iter-20 |
 | J-21 | passing | goal-i_can_see_the_wealthy_future_forever-iter-20 |
@@ -51,13 +51,14 @@ This session pushed iteration commits to `goal/i_can_see_the_wealthy_future_fore
 | J-30 | passing | goal-i_can_see_the_wealthy_future_forever-iter-20 |
 | J-31 | passing | goal-i_can_see_the_wealthy_future_forever-iter-20 |
 | J-32 | passing | goal-i_can_see_the_wealthy_future_forever-iter-20 |
-| J-33 | failing | - |
+| J-33 | partial | - |
 | J-34 | failing | - |
 | J-35 | failing | - |
 
 ## Anti-goal violations
 
 - [minor] Exactly one date selector. The frontend MUST NOT maintain a second, independent date state; every date-scoped page (including Backtest) reads the single global as-of control. The Research all-history / as-of-date toggle is likewise a MODE, NOT a date control. (extends Single source of truth) (iter goal-i_can_see_the_wealthy_future_forever-iter-0)
+- [minor] Import keys are env-or-session, never persisted. ... a provider key MUST be read from the environment, or — if the user pastes one into the import UI — held in memory for that run only, never written to disk, the run log, the DB, or any committed file, and never echoed back in any response. (the iteration's PRINCIPAL anti-goal) (iter goal-i_can_see_the_wealthy_future_forever-iter-21)
 
 ## Telemetry
 

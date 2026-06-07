@@ -923,10 +923,60 @@ class ProviderCatalogEntry(BaseModel):
         return self
 
 
+class ImportChunkingCfg(BaseModel):
+    """Chunked-import tunables (iter-22 CONSUMED, J-34). EVERY chunk/backoff/sleep number the resilient
+    live-FETCH loop reads lives here (anti-goal: No magic numbers — NO chunk/backoff/sleep literal in
+    `app.engine.data_manager` or the providers; mirrors how `max_range_days` etc. live in config).
+
+      - `symbol_batch_size` — symbols fetched per chunk (the symbol-batch dimension of the chunk plan).
+      - `date_window_days`  — max calendar days per date-window chunk (the other plan dimension); the
+                              chunk plan = symbol-batches × date-windows, so `chunk_total` derives from
+                              both.
+      - `max_retries`       — 429 retry attempts (after the first try) before the import pauses resumable.
+      - `backoff_base_seconds` / `backoff_cap_seconds` — exponential backoff `min(base * 2**attempt, cap)`
+                              between 429 retries; `cap` MUST be `>= base`.
+      - `inter_request_sleep_seconds` — polite delay between per-symbol requests (MAY be 0).
+
+    Boot-validated: the four sizes/retries/backoff numbers MUST be positive and `cap >= base`; the
+    inter-request sleep MUST be `>= 0` (a zero polite delay is valid). An invalid block raises
+    `ConfigError`, never a silent default."""
+
+    model_config = ConfigDict(extra="allow")
+    symbol_batch_size: int
+    date_window_days: int
+    max_retries: int
+    backoff_base_seconds: float
+    backoff_cap_seconds: float
+    inter_request_sleep_seconds: float
+
+    @model_validator(mode="after")
+    def _validate(self) -> "ImportChunkingCfg":
+        positive = {
+            "symbol_batch_size": self.symbol_batch_size,
+            "date_window_days": self.date_window_days,
+            "max_retries": self.max_retries,
+            "backoff_base_seconds": self.backoff_base_seconds,
+            "backoff_cap_seconds": self.backoff_cap_seconds,
+        }
+        nonpositive = sorted(k for k, v in positive.items() if v <= 0)
+        if nonpositive:
+            raise ValueError(f"data_manager.import_chunking values must be positive: {nonpositive}")
+        if self.inter_request_sleep_seconds < 0:
+            raise ValueError(
+                "data_manager.import_chunking.inter_request_sleep_seconds must be >= 0"
+            )
+        if self.backoff_cap_seconds < self.backoff_base_seconds:
+            raise ValueError(
+                "data_manager.import_chunking.backoff_cap_seconds must be >= backoff_base_seconds"
+            )
+        return self
+
+
 class DataManagerCfg(BaseModel):
     """Data Manager job limits / display caps + the import provider catalog (iter-3 / iter-21 CONSUMED,
-    J-17 / J-33). EVERY tunable the on-demand fetch/backfill orchestration reads lives here (anti-goal:
-    No magic numbers — no job/range/preview literal in `app.engine.data_manager` or `app.api.data`).
+    J-17 / J-33) + the iter-22 (J-34) chunked-import block. EVERY tunable the on-demand fetch/backfill
+    orchestration reads lives here (anti-goal: No magic numbers — no job/range/preview/chunk/backoff
+    literal in `app.engine.data_manager` or `app.api.data`).
 
       - `providers` — the config-driven import-source catalog (J-33). The FETCH path resolves the
         job-selected `source` against this list — there is NO hardcoded provider list in code. The
@@ -948,6 +998,7 @@ class DataManagerCfg(BaseModel):
     max_range_days: int
     gap_preview: int
     run_history_limit: int
+    import_chunking: ImportChunkingCfg  # J-34 chunked-import tunables (boot-validated above)
 
     def provider_ids(self) -> list[str]:
         """The catalog ids, in config order (the import-source vocabulary)."""

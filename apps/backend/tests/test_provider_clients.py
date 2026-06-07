@@ -18,7 +18,7 @@ import pytest
 
 from app.data_providers import make_provider
 from app.data_providers.alpha_vantage_provider import AlphaVantageProvider
-from app.data_providers.base import Bar, ProviderUnavailableError
+from app.data_providers.base import Bar, ProviderUnavailableError, RateLimitError
 from app.data_providers.finnhub_provider import FinnhubProvider
 from app.data_providers.tiingo_provider import TiingoProvider
 from app.data_providers.yahoo_provider import YahooProvider
@@ -248,3 +248,71 @@ def test_make_provider_resolves_every_catalog_id():
     assert isinstance(tiingo, TiingoProvider)
     with pytest.raises(ValueError):
         make_provider("definitely-not-a-provider")
+
+
+# ==================================================================================================
+# REAL httpx error path (key-in-URL) — the iter-21 BLIND-SPOT regression (iter-22 fix, J-33).
+#
+# The hard-coded `http://x` `_FakeResponse` above can NEVER reach the leak: it builds an HTTPStatusError
+# whose request URL carries NO key, so `str(exc)` is just "HTTP 429". These tests drive a REAL
+# httpx.HTTPStatusError — whose `.request.url` carries the pasted session key as a `?token=`/`?apikey=`
+# query param — through the real `_http.py` → provider path (a real httpx.Client over MockTransport,
+# injected as `client=`), and assert the key + the ENTIRE query string are ABSENT from the surfaced
+# error. THE iter-21 PRINCIPAL anti-goal breach: a pasted session key echoed back in the job error.
+# ==================================================================================================
+_SENTINEL_KEY = "sk-REAL-HTTPX-LEAK-CHECK-9q7zZ"
+
+_KEY_AWARE = [
+    pytest.param(lambda client: TiingoProvider(api_key=_SENTINEL_KEY, client=client), id="tiingo"),
+    pytest.param(lambda client: FinnhubProvider(api_key=_SENTINEL_KEY, client=client), id="finnhub"),
+    pytest.param(lambda client: AlphaVantageProvider(api_key=_SENTINEL_KEY, client=client), id="alpha_vantage"),
+]
+
+
+def _status_client(status_code: int) -> httpx.Client:
+    """A REAL httpx.Client whose transport returns `status_code` for every request — so
+    `response.raise_for_status()` raises a REAL httpx.HTTPStatusError carrying `request.url` (key in the
+    query). This is the path the FakeResponse (hard-coded `http://x`, no key) could never exercise."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status_code, json={"error": "boom"})
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+@pytest.mark.parametrize("make", _KEY_AWARE)
+def test_real_http_status_error_redacts_key_and_query(make):
+    """A REAL 500 HTTPStatusError whose request URL carries the pasted key → ProviderUnavailableError
+    whose message contains NEITHER the key NOR any query string (the redacted URL is just
+    scheme://host/path). The key string is verifiably absent from the error the job would surface."""
+    provider = make(_status_client(500))
+    with pytest.raises(ProviderUnavailableError) as exc:
+        provider.get_daily("AAPL", start=date(2024, 1, 1), end=date(2024, 1, 31))
+    msg = str(exc.value)
+    assert _SENTINEL_KEY not in msg  # the pasted key is NEVER reflected back (the iter-21 leak, closed)
+    assert "token=" not in msg and "apikey=" not in msg and "?" not in msg  # the whole query is gone
+    assert "AAPL" in msg and "HTTP 500" in msg  # explicit, useful, non-secret context remains
+
+
+@pytest.mark.parametrize("make", _KEY_AWARE)
+def test_real_http_429_raises_rate_limit_error_redacted(make):
+    """A REAL HTTP 429 maps to `RateLimitError` (a ProviderUnavailableError subclass for J-34's
+    retry/backoff), still redacted — the key + query absent, the status surfaced."""
+    provider = make(_status_client(429))
+    with pytest.raises(RateLimitError) as exc:
+        provider.get_daily("AAPL", start=date(2024, 1, 1), end=date(2024, 1, 31))
+    msg = str(exc.value)
+    assert _SENTINEL_KEY not in msg and "?" not in msg  # key + the whole query string are gone
+    assert "HTTP 429" in msg  # the rate-limit status is surfaced (useful, non-secret)
+    assert isinstance(exc.value, ProviderUnavailableError)  # subclass — existing handlers stay correct
+
+
+def test_real_unparseable_body_redacts_key():
+    """A REAL 200 with a non-JSON body → ProviderUnavailableError built from the body parse error (NOT
+    the request URL), so the key (which rides only the URL) is absent from the message."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<html>definitely not json</html>")
+
+    provider = TiingoProvider(api_key=_SENTINEL_KEY, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    with pytest.raises(ProviderUnavailableError) as exc:
+        provider.get_daily("AAPL")
+    assert _SENTINEL_KEY not in str(exc.value)

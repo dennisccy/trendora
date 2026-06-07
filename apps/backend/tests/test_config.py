@@ -23,6 +23,12 @@ MINIMAL_VALID = {
         "max_range_days": 370,
         "gap_preview": 60,
         "run_history_limit": 50,
+        # iter-22 (J-34) made `import_chunking` required (the chunk/backoff/sleep tunables come from
+        # config, never code). The smallest valid block: all sizes/retries/backoff positive, cap >= base.
+        "import_chunking": {
+            "symbol_batch_size": 25, "date_window_days": 90, "max_retries": 4,
+            "backoff_base_seconds": 1.0, "backoff_cap_seconds": 30.0, "inter_request_sleep_seconds": 0.0,
+        },
     },
     "universe": {
         "symbols": ["AAA", "BBB"],
@@ -303,6 +309,49 @@ def test_data_manager_nonpositive_limit_raises(tmp_path):
     """A non-positive job limit fails the boot loudly — never a silent default (anti-goal: explicit)."""
     data = copy.deepcopy(MINIMAL_VALID)
     data["data_manager"]["max_range_days"] = 0
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+# --- iter-22 (J-34): the config-driven chunked-import block + boot validation ----------------
+def test_import_chunking_minimal_valid_loads(tmp_path):
+    """MINIMAL_VALID (incl. the now-required import_chunking block) still loads, and the real config
+    exposes the typed chunk tunables (the established pattern for every newly-required section)."""
+    cfg = load_config(_write(tmp_path, MINIMAL_VALID))
+    assert cfg.data_manager.import_chunking.symbol_batch_size == 25
+    assert cfg.data_manager.import_chunking.max_retries == 4
+    real = load_config()
+    ic = real.data_manager.import_chunking
+    assert ic.symbol_batch_size > 0 and ic.date_window_days > 0 and ic.max_retries > 0
+    assert ic.backoff_cap_seconds >= ic.backoff_base_seconds > 0
+    assert ic.inter_request_sleep_seconds >= 0
+
+
+@pytest.mark.parametrize(
+    "field", ["symbol_batch_size", "date_window_days", "max_retries", "backoff_base_seconds", "backoff_cap_seconds"]
+)
+def test_import_chunking_nonpositive_raises(tmp_path, field):
+    """A non-positive chunk/retry/backoff value fails the boot loudly — never a silent default (anti-goal:
+    No magic numbers — every chunk/backoff number comes from config and is validated)."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["data_manager"]["import_chunking"][field] = 0
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_import_chunking_inter_request_sleep_may_be_zero(tmp_path):
+    """`inter_request_sleep_seconds` MAY be 0 (no polite delay) — that is a VALID config, not an error."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["data_manager"]["import_chunking"]["inter_request_sleep_seconds"] = 0.0
+    cfg = load_config(_write(tmp_path, data))
+    assert cfg.data_manager.import_chunking.inter_request_sleep_seconds == 0.0
+
+
+def test_import_chunking_cap_below_base_raises(tmp_path):
+    """The backoff cap MUST be >= the base (an exponential backoff can't shrink below its starting wait)."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["data_manager"]["import_chunking"]["backoff_base_seconds"] = 10.0
+    data["data_manager"]["import_chunking"]["backoff_cap_seconds"] = 5.0
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))
 

@@ -109,6 +109,49 @@ class DataProviderRun(SQLModel, table=True):
     message: Optional[str] = None
 
 
+class ImportCheckpoint(SQLModel, table=True):
+    """Durable, MUTABLE job-control state for a chunked live import (iter-22, J-34).
+
+    This is EXPLICITLY NOT a scanner snapshot — coherence invariant #3 (Snapshots are immutable) binds
+    ONLY `scanner_runs` / `scanner_results` / `*_scores` / `forward_returns`; like `data_provider_runs`
+    (and the in-memory `JobProgress`), `import_checkpoints` is legitimately mutable job-control state and
+    is freely UPDATEd as chunks complete. It records a chunked fetch's resumable progress so a
+    rate-limited (429) import survives a backend restart and can be RESUMED from the next un-fetched
+    chunk. The fetched bars themselves still flow ONLY through the existing canonical INSERT-new-only
+    `DailyPrice` path (`_existing_dates` guard), so per-`(symbol, date)` idempotency holds and a
+    committed bar is NEVER overwritten — no snapshot is mutated.
+
+    `import_id` is the SAME id as the live `JobProgress.job_id`, so one id threads both the in-memory
+    job and its durable checkpoint (and the Resume endpoint / `resumable_imports` list).
+
+    NO key value is EVER stored here (anti-goal: Import keys are env-or-session, never persisted) — there
+    is deliberately no key column; the session-only `api_key` re-supplied to Resume is request-only.
+
+      - `next_chunk_index` is the index to resume from — advanced ONLY after a chunk fully completes.
+      - `symbol_plan_json` is the deterministic ordered symbol list the chunk plan was built from, so a
+        resume rebuilds the SAME plan even if the live universe later changes.
+      - `status` ∈ running | resumable | ok | failed (only `resumable` rows appear in `resumable_imports`).
+    """
+
+    __tablename__ = "import_checkpoints"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    import_id: str = Field(index=True, unique=True)  # == the live JobProgress.job_id (threads both)
+    source: str
+    kind: str
+    start: date
+    end: date
+    symbol_plan_json: str  # deterministic ordered symbol list the chunk plan was built from
+    chunk_total: int
+    next_chunk_index: int = 0  # resume point — advanced ONLY after a chunk fully completes
+    symbols_ok: int = 0
+    symbols_failed: int = 0
+    bars_fetched: int = 0
+    status: str = "running"  # running | resumable | ok | failed  (NO key column — keys never persisted)
+    created_at: datetime
+    updated_at: datetime
+
+
 # --- iter-5 scanner snapshots (APPEND-ONLY — never updated after creation) -------------------
 class ScannerRun(SQLModel, table=True):
     """One immutable scan snapshot for an as-of date. `asof_date` is unique — there is exactly

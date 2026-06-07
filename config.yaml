@@ -57,6 +57,17 @@ data_manager:
   max_range_days: 370       # max span (inclusive calendar days) a single fetch/backfill job may cover
   gap_preview: 60           # how many backfill-gap dates the coverage payload previews (display cap)
   run_history_limit: 50     # how many recent fetch/backfill runs GET /api/data returns (display cap)
+  # J-34 chunked-import tunables: every chunk/backoff/sleep number the resilient FETCH loop reads lives
+  # here (anti-goal: No magic numbers — NO chunk/backoff/sleep literal in data_manager.py or the
+  # providers). Boot-validated all-positive (sleep MAY be 0); cap >= base. A large import runs in
+  # visible chunks; on a persistent 429 it retries with backoff then stops gracefully `resumable`.
+  import_chunking:
+    symbol_batch_size: 25            # symbols fetched per chunk (a symbol-batch dimension of the plan)
+    date_window_days: 90             # max calendar days per date-window chunk (the other plan dimension)
+    max_retries: 4                   # 429 retry attempts (after the first try) before pausing resumable
+    backoff_base_seconds: 1.0        # exponential backoff base: sleep = min(base * 2**attempt, cap)
+    backoff_cap_seconds: 30.0        # backoff ceiling (so a long retry never blocks the worker forever)
+    inter_request_sleep_seconds: 0.0 # polite delay between per-symbol requests (0 = none; tunable up)
 
 # ----------------------------------------------------------------------------------------
 # Datastore. Engine URL from config so SQLite -> Postgres is a config-only switch.

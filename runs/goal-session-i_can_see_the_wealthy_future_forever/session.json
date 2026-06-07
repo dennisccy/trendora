@@ -1,10 +1,10 @@
 {
   "session_id": "i_can_see_the_wealthy_future_forever",
   "started_at": "2026-05-31T22:30:55.653266Z",
-  "current_iter": 22,
+  "current_iter": 23,
   "cli": "claude",
   "halt_config": {
-    "max_iterations": 40,
+    "max_iterations": 30,
     "stall_window": 3,
     "regression_halt": true
   },
@@ -14,9 +14,10 @@
   "auto_release": false,
   "push_per_iter": true,
   "push_branch": "goal/i_can_see_the_wealthy_future_forever",
-  "updated_at": "2026-06-05T00:37:55.333622Z",
-  "finished_at": "2026-06-04T22:32:33.130451Z",
-  "total_iterations": 21,
-  "wall_time_seconds": 8268,
-  "quota_pause_count": 0
+  "updated_at": "2026-06-07T09:02:15.429194Z",
+  "finished_at": "2026-06-05T03:14:20.627448Z",
+  "total_iterations": 22,
+  "wall_time_seconds": 16053,
+  "quota_pause_count": 0,
+  "agent_backend": "interactive"
 }

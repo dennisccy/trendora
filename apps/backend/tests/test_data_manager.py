@@ -19,29 +19,47 @@ from __future__ import annotations
 import json
 from datetime import date
 
+import httpx
 import pytest
 from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.config import load_config
 from app.db import create_db_and_tables, make_engine
-from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError
+from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError, RateLimitError
+from app.engine import data_manager
 from app.engine import forward_testing, scanner
 from app.engine.data_manager import (
     JobProgress,
+    _chunk_plan,
     _trading_days,
     compute_coverage,
     compute_provider_availability,
     create_job,
+    get_job,
     recent_runs,
     resolve_provider_key,
+    resumable_imports,
+    resume_data_job,
     run_data_job,
     validate_job_request,
 )
 from app.engine.forward_testing import compute_forward_aggregates
 from app.engine.scoring import score_stocks
-from app.models import DailyPrice, DataProviderRun, ForwardReturn, ScannerResult, ScannerRun
+from app.models import (
+    DailyPrice,
+    DataProviderRun,
+    ForwardReturn,
+    ImportCheckpoint,
+    ScannerResult,
+    ScannerRun,
+)
 from app.seed_loader import all_seed_symbols, load_seed
+
+
+def _noop_sleep(_seconds: float) -> None:
+    """A zero-wall-clock sleep injected into the chunked-fetch tests so the 429 backoff adds no real
+    wait (MEMORY: backend-test-suite-runtime — never let a backoff balloon the suite)."""
 
 
 # ==================================================================================================
@@ -395,3 +413,261 @@ def test_pasted_api_key_never_persisted(tmp_path, caplog):
 
     # absent from the logs
     assert secret not in caplog.text
+
+
+# ==================================================================================================
+# iter-22 (J-33 fix): the key is scrubbed even from a REAL-httpx-error string that slipped past _http
+# ==================================================================================================
+def _real_httpx_error_str_with_key(key: str) -> str:
+    """A REAL `httpx.HTTPStatusError` str (from `raise_for_status`) whose request URL carries `key` as a
+    `?token=` query param — the EXACT iter-21 leak vector (`str(exc)` embeds the key). Built from a real
+    `httpx.Request`/`httpx.Response` directly (no `client.get`, so httpx emits no transport-level request
+    log of its own — keeping this a test of OUR scrub, not the httpx library's logging)."""
+    req = httpx.Request("GET", "https://api.tiingo.com/tiingo/daily/AAPL/prices", params={"token": key})
+    try:
+        httpx.Response(429, request=req).raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        return str(exc)
+    return ""  # pragma: no cover
+
+
+class _KeyLeakingProvider(PriceProvider):
+    """An injected provider that (like iter-21's un-redacted `_http.py`) raises a
+    `ProviderUnavailableError` whose message EMBEDS a real httpx error str carrying the key in the URL.
+    The `data_manager` defense-in-depth scrub MUST still remove the key before it reaches any error
+    surface — belt-and-suspenders on top of the `_http.py` redaction."""
+
+    def __init__(self, key: str):
+        self._leak = _real_httpx_error_str_with_key(key)
+
+    def get_daily(self, symbol, start=None, end=None):
+        raise ProviderUnavailableError(self._leak)
+
+
+def test_real_httpx_error_key_scrubbed_end_to_end(tmp_path, caplog):
+    """EXTENDS `test_pasted_api_key_never_persisted` (iter-2 lesson: extend invariant tests, never
+    delete): a FETCH whose injected provider raises an error EMBEDDING a real httpx error with the key in
+    the URL → the data_manager scrub removes it. The sentinel is ABSENT from `JobProgress.errors`,
+    `GET /api/data/jobs/{id}`, the `ImportCheckpoint` row + `resumable_imports`, every `DataProviderRun`
+    column, and the logs — while the redaction marker `***` proves the scrub fired."""
+    secret = "sk-REAL-HTTPX-SCRUB-5b2e1f"
+    assert secret in _real_httpx_error_str_with_key(secret)  # sanity: there IS a key to scrub
+    cfg = load_config()
+    engine = make_engine(f"sqlite:///{tmp_path / 'scrub.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 1, 2), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    job = create_job("fetch", date(2024, 1, 2), date(2024, 1, 3), source="tiingo")
+    with caplog.at_level("DEBUG"):
+        summary = run_data_job(
+            job.job_id, config=cfg, engine=engine,
+            provider=_KeyLeakingProvider(secret), api_key=secret, sleep_fn=_noop_sleep,
+        )
+
+    assert summary["status"] == "failed"  # every symbol raised → no fabricated bar
+    assert summary["errors"]  # explicit errors recorded
+    assert secret not in json.dumps(summary)  # scrubbed from the snapshot + its error list
+    assert "***" in json.dumps(summary["errors"])  # the redaction marker IS present (the scrub fired)
+    assert secret not in json.dumps(get_job(job.job_id))  # absent from GET /api/data/jobs/{id}
+
+    with Session(engine) as session:
+        checkpoints = session.exec(select(ImportCheckpoint)).all()
+        assert checkpoints  # a fetch job creates a checkpoint
+        cp_blob = json.dumps(
+            [{c: str(getattr(cp, c)) for c in ImportCheckpoint.model_fields} for cp in checkpoints]
+        )
+        assert secret not in cp_blob  # NO key column / value on the checkpoint
+        assert secret not in json.dumps(resumable_imports(session, cfg))
+        runs = session.exec(select(DataProviderRun)).all()
+    run_blob = json.dumps([{c: str(getattr(r, c)) for c in ("provider", "status", "message")} for r in runs])
+    assert secret not in run_blob  # absent from every DataProviderRun column
+    assert secret not in caplog.text  # absent from the logs
+
+
+# ==================================================================================================
+# iter-22 (J-34): chunk plan is config-driven; chunk_total derives from symbol_batch × date_window
+# ==================================================================================================
+def _with_chunking(cfg, **overrides):
+    """A config copy with `data_manager.import_chunking` overridden (the rest unchanged)."""
+    ic = cfg.data_manager.import_chunking.model_copy(update=overrides)
+    return cfg.model_copy(update={"data_manager": cfg.data_manager.model_copy(update={"import_chunking": ic})})
+
+
+def test_chunk_total_derives_from_config():
+    """`chunk_total` = ceil(n_symbols / symbol_batch_size) × ceil(span / date_window_days). Varying either
+    config dimension changes the plan size — proving No magic numbers (both come from config)."""
+    cfg = load_config()
+    symbols = [f"S{i}" for i in range(10)]
+    start, end = date(2024, 1, 1), date(2024, 1, 10)  # 10 calendar days
+    # batch 5 over 10 symbols = 2 batches; window 5 over 10 days = 2 windows → 4 chunks
+    assert len(_chunk_plan(_with_chunking(cfg, symbol_batch_size=5, date_window_days=5), symbols, start, end)) == 2 * 2
+    # smaller batch → more chunks (batch 2 → 5 batches × 2 windows = 10)
+    assert len(_chunk_plan(_with_chunking(cfg, symbol_batch_size=2, date_window_days=5), symbols, start, end)) == 5 * 2
+    # wider window → fewer chunks (window 10 → 1 window × 2 batches(batch 5) = 2)
+    assert len(_chunk_plan(_with_chunking(cfg, symbol_batch_size=5, date_window_days=10), symbols, start, end)) == 1 * 2
+
+
+# ==================================================================================================
+# iter-22 (J-34): 429 retry-with-backoff (patched sleep — no wall-clock); exhaustion re-raises
+# ==================================================================================================
+class _Rate429NTimes(PriceProvider):
+    """429s the first `fail` get_daily calls, then returns one real bar. Records its call count."""
+
+    def __init__(self, fail: int):
+        self._fail = fail
+        self.calls = 0
+
+    def get_daily(self, symbol, start=None, end=None):
+        self.calls += 1
+        if self.calls <= self._fail:
+            raise RateLimitError("HTTP 429 at https://provider/x")
+        return [Bar(date=start or date(2024, 1, 2), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0)]
+
+
+def test_fetch_with_retry_backoff_then_success():
+    """429 exactly `max_retries` times then success → bars returned; the backoff sleeps are the exact
+    exponential `min(base*2**i, cap)` sequence, of length `max_retries` (the sleep is PATCHED — no wait)."""
+    chunking = load_config().data_manager.import_chunking
+    sleeps: list[float] = []
+    provider = _Rate429NTimes(chunking.max_retries)
+    bars = data_manager._fetch_symbol_with_retry(
+        provider, "AAA", date(2024, 1, 1), date(2024, 1, 2), chunking=chunking, sleep_fn=sleeps.append
+    )
+    assert bars and provider.calls == chunking.max_retries + 1  # max_retries retries after the first try
+    expected = [min(chunking.backoff_base_seconds * (2 ** i), chunking.backoff_cap_seconds) for i in range(chunking.max_retries)]
+    assert sleeps == expected  # exponential, capped — config-driven, no magic number
+
+
+def test_fetch_with_retry_exhausted_reraises_rate_limit():
+    """A persistent 429 → `RateLimitError` re-raised after `max_retries` backoff sleeps (the caller pauses
+    resumable — it never fabricates a bar)."""
+    chunking = load_config().data_manager.import_chunking
+
+    class _Always429(PriceProvider):
+        def get_daily(self, symbol, start=None, end=None):
+            raise RateLimitError("HTTP 429")
+
+    sleeps: list[float] = []
+    with pytest.raises(RateLimitError):
+        data_manager._fetch_symbol_with_retry(
+            _Always429(), "AAA", date(2024, 1, 1), date(2024, 1, 2), chunking=chunking, sleep_fn=sleeps.append
+        )
+    assert len(sleeps) == chunking.max_retries  # backoff between the max_retries+1 attempts
+
+
+# ==================================================================================================
+# iter-22 (J-34): durable checkpoint + graceful resumable stop + resume + per-(symbol,date) idempotency
+# ==================================================================================================
+class _OkForThen429(PriceProvider):
+    """Returns one bar for symbols in `ok_symbols`; raises a PERSISTENT `RateLimitError` for any other
+    symbol. Records every symbol it is asked to fetch (to prove resume skips already-done chunks)."""
+
+    def __init__(self, ok_symbols: set[str]):
+        self._ok = ok_symbols
+        self.fetched: list[str] = []
+
+    def get_daily(self, symbol, start=None, end=None):
+        self.fetched.append(symbol)
+        if symbol in self._ok:
+            return [Bar(date=start or date(2024, 3, 1), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0)]
+        raise RateLimitError("HTTP 429 at https://provider/x")
+
+
+class _OkForAll(PriceProvider):
+    """Returns one bar for every symbol (a recovered provider). Records what it was asked to fetch."""
+
+    def __init__(self):
+        self.fetched: list[str] = []
+
+    def get_daily(self, symbol, start=None, end=None):
+        self.fetched.append(symbol)
+        return [Bar(date=start or date(2024, 3, 1), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0)]
+
+
+def test_chunked_fetch_pauses_resumable_then_resumes_idempotently(tmp_path):
+    """The J-34 crux. A fetch whose provider 429s persistently from the first symbol of chunk 1 pauses
+    GRACEFULLY `resumable` (NOT `failed`, nothing fabricated, the loop does not raise). A FRESH DB session
+    (simulating a restart) sees the durable `ImportCheckpoint` at `next_chunk_index == 1`;
+    `resumable_imports` lists it; Resume (a recovered provider) continues from chunk 1, SKIPS chunk 0's
+    already-stored symbols, fetches each remaining symbol exactly once, and inserts NO duplicate
+    `(symbol, date)` row."""
+    secret = "sk-RESUME-KEY-NEVER-STORED-9c4"
+    cfg = load_config()
+    batch = cfg.data_manager.import_chunking.symbol_batch_size
+    symbols = all_seed_symbols(cfg)
+    chunk0 = set(symbols[:batch])  # the first chunk's symbols (date_window=90 over 1 day → 1 window)
+    engine = make_engine(f"sqlite:///{tmp_path / 'resume.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:  # a little SPY data so a calendar / latest date exists
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 1, 2), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    # --- run 1: 429s from the first symbol of chunk 1 → graceful resumable pause at chunk index 1 -----
+    fetch_day = date(2024, 3, 1)
+    job = create_job("fetch", fetch_day, fetch_day, source="tiingo")
+    paused_provider = _OkForThen429(chunk0)
+    summary1 = run_data_job(
+        job.job_id, config=cfg, engine=engine, provider=paused_provider, api_key=secret, sleep_fn=_noop_sleep
+    )
+    assert summary1["status"] == "resumable"  # distinct from failed — a graceful pause
+    assert summary1["chunk_index"] == 1 and summary1["chunk_total"] >= 2  # paused after chunk 0 completed
+    assert summary1["symbols_ok"] == batch and summary1["bars_fetched"] == batch  # chunk 0 stored
+
+    # --- a FRESH DB session sees the durable checkpoint (the restart-survival the Resume depends on) ---
+    with Session(engine) as fresh:
+        cp = fresh.exec(select(ImportCheckpoint).where(ImportCheckpoint.import_id == job.job_id)).one()
+        assert cp.next_chunk_index == 1 and cp.status == "resumable"
+        assert cp.symbols_ok == batch
+        # the key is NEVER on the checkpoint (no key column) nor in resumable_imports
+        cp_blob = json.dumps({c: str(getattr(cp, c)) for c in ImportCheckpoint.model_fields})
+        assert secret not in cp_blob
+        listed = resumable_imports(fresh, cfg)
+        assert [r["import_id"] for r in listed] == [job.job_id]  # the paused import is discoverable
+        assert secret not in json.dumps(listed)
+        bars_after_pause = fresh.scalar(select(func.count()).select_from(DailyPrice).where(DailyPrice.date == fetch_day))
+    assert bars_after_pause == batch  # only chunk 0's bars are stored so far
+
+    # --- Resume with a recovered provider → continues from chunk 1, idempotent, completes -------------
+    resumed_provider = _OkForAll()
+    summary2 = resume_data_job(
+        job.job_id, config=cfg, engine=engine, provider=resumed_provider, api_key=secret, sleep_fn=_noop_sleep
+    )
+    assert summary2["status"] == "ok"  # the import completed
+    assert summary2["chunk_index"] == summary2["chunk_total"]  # all chunks done
+    # resume SKIPPED chunk 0 entirely — none of its symbols were re-fetched (idempotency)
+    assert chunk0.isdisjoint(set(resumed_provider.fetched))
+    # resume fetched exactly the remaining symbols, each ONCE (no symbol fetched twice)
+    assert resumed_provider.fetched == symbols[batch:]
+
+    with Session(engine) as session:
+        rows = session.exec(select(DailyPrice).where(DailyPrice.date == fetch_day)).all()
+        # every universe+ETF symbol now has exactly ONE bar on the fetch day — no duplicate (symbol, date)
+        per_symbol = {}
+        for r in rows:
+            per_symbol[r.symbol] = per_symbol.get(r.symbol, 0) + 1
+        assert set(per_symbol) == set(symbols)  # all symbols fetched across the two runs
+        assert all(count == 1 for count in per_symbol.values())  # NO duplicate row for any (symbol, date)
+        # the checkpoint is now terminal (ok) → no longer resumable
+        assert resumable_imports(session, cfg) == []
+
+
+def test_resume_unknown_or_completed_raises():
+    """A resume of an unknown import → `LookupError` (API 404); a resume of a non-resumable (ok) import →
+    `ValueError` (API 409). Never a fabricated job."""
+    cfg = load_config()
+    engine = make_engine("sqlite:///:memory:")
+    create_db_and_tables(engine)
+    with pytest.raises(LookupError):
+        resume_data_job("does-not-exist", config=cfg, engine=engine)
+    # an `ok` checkpoint is not resumable
+    with Session(engine) as session:
+        session.add(ImportCheckpoint(
+            import_id="done-1", source="tiingo", kind="fetch", start=date(2024, 1, 1), end=date(2024, 1, 2),
+            symbol_plan_json=json.dumps(["AAA"]), chunk_total=1, next_chunk_index=1, status="ok",
+            created_at=__import__("datetime").datetime(2024, 1, 1), updated_at=__import__("datetime").datetime(2024, 1, 1),
+        ))
+        session.commit()
+    with pytest.raises(ValueError):
+        resume_data_job("done-1", config=cfg, engine=engine)

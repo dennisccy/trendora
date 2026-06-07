@@ -18,6 +18,15 @@ class ProviderUnavailableError(Exception):
     stale/unavailable state; providers never fabricate data to avoid raising it."""
 
 
+class RateLimitError(ProviderUnavailableError):
+    """A provider signalled rate-limiting — an HTTP 429, or a body-level throttle note (Alpha
+    Vantage signals throttling in the body, not the status). A SUBCLASS of
+    `ProviderUnavailableError` so every existing ``except ProviderUnavailableError`` handler stays
+    correct (a rate-limit is still "no real data"); the J-34 chunked fetch loop catches this subclass
+    FIRST to retry-with-backoff and then pause the import gracefully in a resumable state — distinct
+    from a generic failure — rather than fabricating a bar (anti-goal: No fabricated data)."""
+
+
 @dataclass(frozen=True)
 class Bar:
     """One daily OHLCV bar. Frozen so equality is by value (supports determinism tests)."""

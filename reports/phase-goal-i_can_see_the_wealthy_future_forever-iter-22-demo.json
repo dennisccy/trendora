@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever-iter-22",
+  "base_url": "http://localhost:3835",
+  "iteration": 22,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Data Manager — page loads",
+      "narration": "Open the Data Manager. The page shows a live coverage summary, a job form, and a job progress card — all without any backend error.",
+      "point_out": "The heading 'Data Manager' and the Dataset coverage card with six metrics including Price History, Universe, Symbols, and Trading Days. The backend status line reads 'Backend OK'.",
+      "journey": "J-17",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Dataset coverage" }
+    },
+    {
+      "n": 2,
+      "title": "Backfill job runs — no source label in header",
+      "narration": "Start a backfill using the prefilled gap dates. When it finishes, the Job progress header reads only the date range with no import-source segment, because backfill does not use a live provider.",
+      "point_out": "The job progress card header reading 'backfill job · <start> → <end>' with no source name. The status badge is green 'ok' and the Snapshots backfilled row shows N/N dates.",
+      "journey": "J-17",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Start" } },
+      "expect": { "text": "Snapshots backfilled" },
+      "timeout_ms": 20000
+    },
+    {
+      "n": 3,
+      "title": "Switch to Fetch — Import source picker appears",
+      "narration": "Change the job kind to 'Fetch EOD prices'. An Import source dropdown appears alongside an availability line that tells you whether each provider needs an API key.",
+      "point_out": "The 'Import source' dropdown now visible. The availability line shows the selected source as 'available' (green) or 'needs key' (amber).",
+      "journey": "J-33",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Import source" }
+    },
+    {
+      "n": 4,
+      "title": "Needs-key source — masked key field appears",
+      "narration": "Pick Tiingo, which requires an API key. A password-masked field labeled 'Session API key for Tiingo' appears immediately, with a note that the key is held in memory for this run only and never stored anywhere.",
+      "point_out": "The masked key field (dots, not plain text) and the helper text confirming the key is never written to disk, the database, the run log, a cookie, or echoed back.",
+      "journey": "J-33",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Session API key for" }
+    },
+    {
+      "n": 5,
+      "title": "API key never appears in error messages",
+      "narration": "When a fetch with a pasted key fails at the provider, every error message on the job card and in run history contains no trace of the key or any URL query string — the secret is scrubbed at the source before it ever leaves the backend.",
+      "point_out": "Provider error messages like 'HTTP 403 at https://api.tiingo.com/…/prices' with no ?token=… or ?apikey=… visible anywhere in the text.",
+      "journey": "J-33",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Run history" }
+    },
+    {
+      "n": 6,
+      "title": "Resumable imports panel — survives a backend restart",
+      "narration": "After a backend restart the in-memory job is gone, but any paused import is still listed. The 'Resumable imports' panel reads from the database checkpoint, so progress is never lost between restarts.",
+      "point_out": "The 'Resumable imports' card below the job progress area, showing the chunk X/N badge, source label, date range, symbols done and remaining, and a Resume button — all populated from the durable checkpoint.",
+      "journey": "J-34",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Resumable imports" }
+    },
+    {
+      "n": 7,
+      "title": "Resume rejected gracefully — inline error, page stays up",
+      "narration": "Clicking Resume without the required API key shows an inline alert explaining exactly what is needed. The page stays fully interactive — no crash, no reload required.",
+      "point_out": "The inline alert message that the source requires a key, with the rest of the Data Manager form and panel still visible and usable below it.",
+      "journey": "J-34",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "css": "[data-testid=\"resume-button\"]" } },
+      "expect": { "role": "alert" }
+    },
+    {
+      "n": 8,
+      "title": "Coverage card and run history intact after all changes",
+      "narration": "The Dataset coverage card and the full run history table are completely unchanged after the chunking and resume machinery was added. All six coverage metrics and all seven run history columns are present with no regressions.",
+      "point_out": "All six coverage metrics (Price History, Universe, Symbols, Trading Days, Snapshot Dates, Backfill Gaps) and the run history table with its Started / Kind / Range / Status / Symbols / Snapshots / Summary columns.",
+      "journey": "J-17",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Run history" }
+    }
+  ]
+}
