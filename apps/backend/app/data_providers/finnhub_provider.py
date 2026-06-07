@@ -18,6 +18,10 @@ from app.data_providers._http import HTTP_TIMEOUT_SECONDS, fetch_json
 from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError
 
 _FINNHUB_CANDLE_URL = "https://finnhub.io/api/v1/stock/candle"
+# Finnhub basic financials (market cap) — the J-35 market-cap reference source (key-gated like candles).
+# Finnhub reports `marketCapitalization` in MILLIONS of USD, so the engine scales it to absolute dollars.
+_FINNHUB_METRIC_URL = "https://finnhub.io/api/v1/stock/metric"
+_FINNHUB_MARKET_CAP_TO_USD = 1_000_000.0  # finnhub marketCapitalization is in $millions → absolute USD
 
 
 class FinnhubProvider(PriceProvider):
@@ -61,6 +65,35 @@ class FinnhubProvider(PriceProvider):
             timeout=self._timeout,
         )
         return self._parse(symbol, data, start, end)
+
+    def get_market_cap(self, symbol: str) -> Optional[float]:
+        """REAL market-cap reference for one symbol (J-35 expand capability; finnhub is
+        `supports_market_cap: true`). Reads Finnhub's basic-financials (`metric`) endpoint (token
+        request-only, never persisted) and returns the real `marketCapitalization` scaled from $millions to
+        absolute USD (positive float), or `None` when absent (the expand caller omits that candidate —
+        never fabricates a cap). No key, or a transport/HTTP failure → RAISES like `get_daily` (error built
+        from a REDACTED URL by `_http.fetch_json`, so the token can never leak)."""
+        if not self._api_key:
+            raise ProviderUnavailableError(
+                f"finnhub requires an API key for the market cap of {symbol!r}; set $FINNHUB_API_KEY or paste a session key"
+            )
+        data = fetch_json(
+            _FINNHUB_METRIC_URL,
+            symbol=symbol,
+            label="finnhub",
+            params={"symbol": symbol, "metric": "all", "token": self._api_key},
+            client=self._client,
+            timeout=self._timeout,
+        )
+        metric = data.get("metric") if isinstance(data, dict) else None
+        cap = metric.get("marketCapitalization") if isinstance(metric, dict) else None
+        if cap is None:
+            return None  # no market cap for this symbol — absent, not fabricated
+        try:
+            value = float(cap) * _FINNHUB_MARKET_CAP_TO_USD
+        except (TypeError, ValueError):
+            return None
+        return value if value > 0 else None
 
     def _parse(self, symbol: str, data: object, start: Optional[date_cls], end: Optional[date_cls]) -> list[Bar]:
         if not isinstance(data, dict) or data.get("s") != "ok":

@@ -316,3 +316,59 @@ def test_real_unparseable_body_redacts_key():
     with pytest.raises(ProviderUnavailableError) as exc:
         provider.get_daily("AAPL")
     assert _SENTINEL_KEY not in str(exc.value)
+
+
+# ==================================================================================================
+# iter-23 (J-35): the optional market-cap-reference capability (used ONLY by the expand path)
+# ==================================================================================================
+from app.data_providers.base import PriceProvider  # noqa: E402
+
+
+def test_base_provider_get_market_cap_raises_by_default():
+    """The base `PriceProvider.get_market_cap` raises `ProviderUnavailableError` — so a provider that has
+    not implemented the capability (or is `supports_market_cap: false`) is never used for expand; it never
+    fabricates a cap."""
+
+    class _BarsOnly(PriceProvider):
+        def get_daily(self, symbol, start=None, end=None):
+            return []
+
+    with pytest.raises(ProviderUnavailableError):
+        _BarsOnly().get_market_cap("AAPL")
+
+
+def test_yahoo_get_market_cap_returns_real_value():
+    """Yahoo's market-cap capability returns the REAL `marketCap` from the no-key quote endpoint."""
+    client = _FakeClient(payload={"quoteResponse": {"result": [{"symbol": "AAPL", "marketCap": 3.0e12}]}})
+    assert YahooProvider(client=client).get_market_cap("AAPL") == 3.0e12
+
+
+def test_yahoo_get_market_cap_absent_returns_none_never_fabricates():
+    """A symbol with no `marketCap` field yields None (the expand caller omits it) — never a fabricated cap."""
+    client = _FakeClient(payload={"quoteResponse": {"result": [{"symbol": "AAPL"}]}})
+    assert YahooProvider(client=client).get_market_cap("AAPL") is None
+
+
+def test_yahoo_get_market_cap_http_error_raises():
+    """A transport/HTTP failure on the cap fetch RAISES (redacted) — it never returns a fabricated cap."""
+    provider = YahooProvider(client=_FakeClient(exc=httpx.ConnectError("offline")))
+    with pytest.raises(ProviderUnavailableError):
+        provider.get_market_cap("AAPL")
+
+
+def test_tiingo_get_market_cap_returns_real_value_and_no_key_raises():
+    """Tiingo's market-cap capability returns the REAL latest `marketCap` from fundamentals; with no key it
+    raises explicitly (the key rides the request, never persisted)."""
+    client = _FakeClient(payload=[{"date": "2024-03-01", "marketCap": 5.0e11}])
+    assert TiingoProvider(api_key="k", client=client).get_market_cap("AAPL") == 5.0e11
+    assert client.calls[0]["params"]["token"] == "k"  # the key rides the request only
+    with pytest.raises(ProviderUnavailableError):
+        TiingoProvider(api_key=None).get_market_cap("AAPL")
+
+
+def test_finnhub_get_market_cap_scales_millions_to_usd():
+    """Finnhub reports `marketCapitalization` in $MILLIONS — the capability scales it to absolute USD."""
+    client = _FakeClient(payload={"metric": {"marketCapitalization": 3000.0}})  # $3,000M = $3B
+    assert FinnhubProvider(api_key="k", client=client).get_market_cap("AAPL") == 3.0e9
+    with pytest.raises(ProviderUnavailableError):
+        FinnhubProvider(api_key=None).get_market_cap("AAPL")

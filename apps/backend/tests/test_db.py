@@ -32,9 +32,16 @@ SNAPSHOT_TABLES = {
 # explicitly NOT a snapshot table — additive to the data model, separate from the append-only set.
 WATCHLIST_TABLES = {"watchlist"}
 
+# iter-22 (J-34) durable, MUTABLE chunked-import job-control state (created by create_all). Like
+# data_provider_runs it is legitimately mutable job-control — explicitly NOT a snapshot table.
+IMPORT_TABLES = {"import_checkpoints"}
+
 
 def test_create_all_produces_expected_tables():
-    assert set(SQLModel.metadata.tables.keys()) == ITER1_TABLES | SNAPSHOT_TABLES | WATCHLIST_TABLES
+    assert (
+        set(SQLModel.metadata.tables.keys())
+        == ITER1_TABLES | SNAPSHOT_TABLES | WATCHLIST_TABLES | IMPORT_TABLES
+    )
 
 
 def test_daily_prices_has_unique_symbol_date_constraint():

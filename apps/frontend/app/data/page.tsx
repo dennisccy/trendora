@@ -74,7 +74,13 @@ export default function DataManagerPage() {
 
   const sources: ProviderSource[] = state.kind === "ok" ? state.data.sources : [];
   const selectedSource = sources.find((s) => s.id === source);
-  const isFetchKind = kind === "fetch" || kind === "both";
+  const isExpandKind = kind === "expand";
+  // Both a fetch/both AND an expand pull from a live import source (expand fetches OHLCV + a market cap).
+  const isFetchKind = kind === "fetch" || kind === "both" || isExpandKind;
+  // J-35 eligibility: an expand needs a market-cap-capable source. An ineligible source is disabled in the
+  // picker; if the selected source is ineligible for expand, the Start button is blocked (UI guard mirrors
+  // the backend gate). `supports_market_cap` comes from the config-driven `sources` catalog (no hardcoding).
+  const sourceIneligibleForExpand = isExpandKind && Boolean(selectedSource) && !selectedSource?.supports_market_cap;
   // Reveal the session-only key field only for a needs-key source with no env key (an available source
   // already has its key in the environment — no paste needed).
   const keyFieldVisible = isFetchKind && Boolean(selectedSource?.needs_key) && selectedSource?.available === false;
@@ -161,6 +167,12 @@ export default function DataManagerPage() {
   async function handleStart(event: React.FormEvent) {
     event.preventDefault();
     if (!start || !end || starting || jobRunning) return;
+    // J-35 UI guard: never start an expand over a source that cannot supply market cap (the backend also
+    // rejects it with a 400 — this surfaces the reason BEFORE the request).
+    if (sourceIneligibleForExpand) {
+      setFormError("This source cannot supply market cap — not selectable for an expand job.");
+      return;
+    }
     setStarting(true);
     setFormError(null);
     try {
@@ -216,6 +228,8 @@ export default function DataManagerPage() {
               source={source}
               setSource={setSource}
               showSource={isFetchKind}
+              isExpandKind={isExpandKind}
+              sourceIneligibleForExpand={sourceIneligibleForExpand}
               apiKey={apiKey}
               setApiKey={setApiKey}
               keyFieldVisible={keyFieldVisible}
@@ -305,6 +319,8 @@ function JobForm({
   source,
   setSource,
   showSource,
+  isExpandKind,
+  sourceIneligibleForExpand,
   apiKey,
   setApiKey,
   keyFieldVisible,
@@ -324,6 +340,8 @@ function JobForm({
   source: string;
   setSource: (v: string) => void;
   showSource: boolean;
+  isExpandKind: boolean;
+  sourceIneligibleForExpand: boolean;
   apiKey: string;
   setApiKey: (v: string) => void;
   keyFieldVisible: boolean;
@@ -333,11 +351,13 @@ function JobForm({
   running: boolean;
   error: string | null;
 }) {
-  const disabled = busy || running || !start || !end;
+  // Start is blocked while busy/running, with no dates, OR (J-35) when an expand is aimed at a source that
+  // cannot supply market cap — the backend rejects that too; the UI blocks it up front with a reason.
+  const disabled = busy || running || !start || !end || sourceIneligibleForExpand;
   return (
     <Card className="p-0">
-      <PanelTitle hint="Pick a date or range, a job kind, and — for a fetch — an import source. These date inputs are job parameters — they do NOT change the global as-of viewing date.">
-        Start a fetch / backfill job
+      <PanelTitle hint="Pick a date or range, a job kind, and — for a fetch or expand — an import source. These date inputs are job parameters — they do NOT change the global as-of viewing date.">
+        Start a fetch / backfill / expand job
       </PanelTitle>
       <form onSubmit={onStart} className="space-y-4 p-4">
         <div className="flex flex-wrap items-end gap-3">
@@ -365,13 +385,14 @@ function JobForm({
             Job kind
             <Select
               aria-label="Job kind"
-              className="w-40"
+              className="w-44"
               value={kind}
               onChange={(e) => setKind(e.target.value as DataJobKind)}
             >
               <option value="backfill">Backfill snapshots</option>
               <option value="fetch">Fetch EOD prices</option>
               <option value="both">Fetch + backfill</option>
+              <option value="expand">Expand universe</option>
             </Select>
           </label>
           {showSource ? (
@@ -383,11 +404,19 @@ function JobForm({
                 value={source}
                 onChange={(e) => setSource(e.target.value)}
               >
-                {sources.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label} · {s.available ? "available" : "needs key"}
-                  </option>
-                ))}
+                {sources.map((s) => {
+                  // J-35: for an expand, a source that cannot supply market cap is DISABLED with a reason
+                  // (read from the config-driven `supports_market_cap` flag — never hardcoded).
+                  const ineligible = isExpandKind && !s.supports_market_cap;
+                  return (
+                    <option key={s.id} value={s.id} disabled={ineligible}>
+                      {s.label}
+                      {ineligible
+                        ? " · cannot supply market cap — not selectable for expand"
+                        : ` · ${s.available ? "available" : "needs key"}`}
+                    </option>
+                  );
+                })}
               </Select>
             </label>
           ) : null}
@@ -420,6 +449,18 @@ function JobForm({
           </p>
         ) : null}
 
+        {sourceIneligibleForExpand && selectedSource ? (
+          <p
+            role="alert"
+            className="flex items-center gap-2 rounded-md border border-warn bg-surface-2 p-2 text-xs text-warn"
+            data-testid="expand-ineligible-reason"
+          >
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+            {selectedSource.label} cannot supply market cap — not selectable for an expand job. Pick a
+            market-cap-capable source (e.g. Yahoo).
+          </p>
+        ) : null}
+
         {keyFieldVisible ? (
           <label className="flex flex-col gap-1 text-xs text-text-muted">
             <span className="flex items-center gap-1.5">
@@ -445,7 +486,9 @@ function JobForm({
         <p className="text-xs text-text-faint">
           Backfill creates immutable snapshots (and their forward returns) for trading days that have
           bars but no snapshot — offline and deterministic. Fetch pulls real EOD prices via the selected
-          import source; a provider failure is surfaced explicitly and fabricates nothing.
+          import source. Expand screens the committed candidate pool (the config liquidity/price/market-cap
+          screen) over a market-cap-capable source and grows the scored universe — every omitted candidate
+          is listed with its reason. A provider failure is surfaced explicitly and fabricates nothing.
         </p>
         {error ? (
           <p role="alert" className="flex items-center gap-2 text-sm text-neg">
@@ -488,7 +531,10 @@ function JobProgressPanel({
     );
   }
 
-  const showFetch = job.kind === "fetch" || job.kind === "both";
+  const isExpand = job.kind === "expand";
+  // An expand fetches OHLCV in chunks (shows the symbols-fetched bar) AND then screens; a fetch/both shows
+  // the fetch bar; a backfill shows the snapshot bar. The expand screen-result block is additional.
+  const showFetch = job.kind === "fetch" || job.kind === "both" || isExpand;
   const showBackfill = job.kind === "backfill" || job.kind === "both";
   const paused = job.status === "resumable"; // J-34: a rate-limited graceful pause (amber, not failed)
   const failed = job.status === "failed" || job.status === "partial";
@@ -572,6 +618,8 @@ function JobProgressPanel({
           </div>
         ) : null}
 
+        {isExpand ? <ExpandScreenResult job={job} /> : null}
+
         {job.errors.length > 0 ? (
           <div className={cn("rounded-md border p-3 text-xs", failed ? "border-neg" : "border-warn")}>
             <p className={cn("mb-1 flex items-center gap-1.5 font-medium", failed ? "text-neg" : "text-warn")}>
@@ -589,6 +637,52 @@ function JobProgressPanel({
         ) : null}
       </div>
     </Card>
+  );
+}
+
+/** J-35 expand screen result on the job card: the passers count + the omitted-with-reason list (each
+ *  candidate the config screen omitted, with its plain-language reason — e.g. "market_cap … < …",
+ *  "no_market_cap", "price … < …"). Read-only descriptive job-control metadata served on the job snapshot;
+ *  the universe value itself reads from the Coverage `universe-count` (single source — no second display). */
+function ExpandScreenResult({ job }: { job: DataJob }) {
+  const passers = job.passers ?? 0;
+  const omittedTotal = job.omitted_total ?? 0;
+  const omitted = job.omitted ?? [];
+  return (
+    <div className="space-y-2" data-testid="expand-screen-result">
+      <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+        <span>Universe screen</span>
+        <Badge variant="ok" className="num gap-1" data-testid="expand-passers">
+          {passers} passed
+        </Badge>
+        <Badge variant={omittedTotal > 0 ? "warn" : "default"} className="num gap-1" data-testid="expand-omitted-count">
+          {omittedTotal} omitted
+        </Badge>
+        <span className="num text-text-faint">of {job.symbols_total} candidates</span>
+      </div>
+      {omitted.length > 0 ? (
+        <div className="rounded-md border border-border bg-surface-2 p-3" data-testid="expand-omitted-list">
+          <p className="mb-1 text-xs font-medium text-text-muted">
+            Omitted candidates (each with its reason — never fabricated)
+            {omittedTotal > omitted.length ? (
+              <span className="text-text-faint"> · showing {omitted.length} of {omittedTotal}</span>
+            ) : null}
+          </p>
+          <ul className="max-h-48 space-y-0.5 overflow-y-auto text-xs">
+            {omitted.map((o, i) => (
+              <li key={`${o.symbol}-${i}`} className="flex items-baseline justify-between gap-3">
+                <span className="num font-medium text-text">{o.symbol}</span>
+                <span className="num truncate text-right text-warn" title={o.reason}>
+                  {o.reason}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : passers > 0 ? (
+        <p className="text-xs text-text-faint">All screened candidates passed — no omissions.</p>
+      ) : null}
+    </div>
   );
 }
 

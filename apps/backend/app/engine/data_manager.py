@@ -25,6 +25,7 @@ boot path is untouched — this job is on-demand only and opens its OWN DB sessi
 Every job limit / display cap is read from `config.data_manager` (anti-goal: No magic numbers)."""
 from __future__ import annotations
 
+import csv
 import json
 import os
 import threading
@@ -32,6 +33,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import date as date_cls, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Callable, Optional
 
 from sqlalchemy import func, insert
@@ -41,9 +43,11 @@ from sqlmodel import Session, select
 from app.config import Config, ImportChunkingCfg, ProviderCatalogEntry, get_config
 from app.data_providers import make_provider
 from app.data_providers.base import PriceProvider, ProviderUnavailableError, RateLimitError
+from app.data_providers.seed_provider import symbol_to_filename
 from app.db import get_engine
 from app.engine import forward_testing, scanner
 from app.engine.prices import bars_asof, latest_data_date
+from app.engine.universe_screen import DEFAULT_SEED_DIR, read_pool, screen_reasons
 from app.models import DailyPrice, DataProviderRun, ImportCheckpoint, ScannerRun
 from app.seed_loader import all_seed_symbols
 
@@ -51,12 +55,18 @@ from app.seed_loader import all_seed_symbols
 # their own recorder so backoff/sleep add NO wall-clock (MEMORY: backend-test-suite-runtime).
 _sleep: Callable[[float], None] = time.sleep
 
-JOB_KINDS = ("fetch", "backfill", "both")
+JOB_KINDS = ("fetch", "backfill", "both", "expand")
 _FETCH_KINDS = ("fetch", "both")
 _BACKFILL_KINDS = ("backfill", "both")
+# J-35: the expand kind reuses the chunked-fetch engine (over the pool) but is neither a generic fetch
+# (it adds a market-cap fetch + the screen + the universe.json write) nor a backfill — its own branch.
+_EXPAND_KINDS = ("expand",)
 # Cap stored per-symbol error strings so a wholly-failed fetch (e.g. 158 symbols) keeps the job record
 # bounded; the failed COUNT is always exact (this only truncates the example messages shown).
 _MAX_ERROR_SAMPLES = 20
+# J-35: cap the stored omitted-with-reason list so an all-omitted expand (e.g. ~548 candidates) keeps the
+# job record + the persisted run bounded; the passer/omitted COUNTS stay exact (only the list is bounded).
+_MAX_OMITTED_SAMPLES = 60
 
 
 def _utcnow() -> datetime:
@@ -185,6 +195,13 @@ class JobProgress:
     # windows). Both 0 for a non-chunked job (e.g. backfill-only) so the UI hides the chunk indicator.
     chunk_index: int = 0
     chunk_total: int = 0
+    # J-35 expand: the screen result. `passers` = candidates that PASSED the config screen (became
+    # universe members); `omitted` = a BOUNDED list of {symbol, reason} for candidates omitted (threshold-
+    # failed / no_market_cap / fetch_failed / empty_series) — never fabricated. `omitted_total` is the
+    # EXACT omitted count (the list is capped at `_MAX_OMITTED_SAMPLES`). All 0/empty for a non-expand job.
+    passers: int = 0
+    omitted_total: int = 0
+    omitted: list[dict] = field(default_factory=list)
     message: str = ""
     errors: list[str] = field(default_factory=list)
     started_at: datetime = field(default_factory=_utcnow)
@@ -208,6 +225,9 @@ class JobProgress:
             "forward_returns_inserted": self.forward_returns_inserted,
             "chunk_index": self.chunk_index,  # J-34: completed chunks (== checkpoint resume point)
             "chunk_total": self.chunk_total,  # J-34: total planned chunks
+            "passers": self.passers,  # J-35: candidates that passed the screen (became members)
+            "omitted_total": self.omitted_total,  # J-35: exact omitted count (the list below is bounded)
+            "omitted": list(self.omitted),  # J-35: bounded [{symbol, reason}] — never fabricated
             "message": self.message,
             "errors": list(self.errors),
             "started_at": self.started_at.isoformat(),
@@ -263,14 +283,24 @@ def validate_job_request(
             f"date range too large: {span_days} days exceeds the configured maximum "
             f"{cfg.data_manager.max_range_days}"
         )
+    # A job that FETCHES over the network = a generic fetch OR an expand (which fetches OHLCV + a cap).
+    fetches = kind in _FETCH_KINDS or kind in _EXPAND_KINDS
     if source is not None:
         entry = cfg.data_manager.provider_by_id(source)
         if entry is None:
             raise ValueError(
                 f"unknown import source {source!r}; expected one of {cfg.data_manager.provider_ids()}"
             )
+        # J-35 eligibility gate: an expand job MUST use a market-cap-capable source — a provider that
+        # cannot supply the cap the screen gates on is rejected EXPLICITLY (never a silent no-op, never a
+        # fabricated cap). Reuses the config `supports_market_cap` flag (no hardcoded provider list).
+        if kind in _EXPAND_KINDS and not entry.supports_market_cap:
+            raise ValueError(
+                f"source {source!r} cannot supply market cap — not selectable for an expand job "
+                f"(eligible sources: {sorted(p.id for p in cfg.data_manager.providers if p.supports_market_cap)})"
+            )
         # A key is only required for a job that actually FETCHES (backfill reads the committed seed).
-        if kind in _FETCH_KINDS and entry.needs_key and not resolve_provider_key(entry, api_key):
+        if fetches and entry.needs_key and not resolve_provider_key(entry, api_key):
             raise ValueError(
                 f"source {source!r} requires a key; set ${entry.env_var} or paste a session key"
             )
@@ -282,6 +312,15 @@ def validate_job_request(
 def _record_error(prog: JobProgress, message: str) -> None:
     if len(prog.errors) < _MAX_ERROR_SAMPLES:
         prog.errors.append(message)
+
+
+def _record_omitted(prog: JobProgress, symbol: str, reason: str) -> None:
+    """Record one omitted candidate (J-35): always bump the EXACT `omitted_total`; append to the bounded
+    sample list only while under the cap (so an all-omitted expand stays bounded). The omission is the
+    honest record of a candidate that did NOT become a member — it is NEVER a fabricated member/cap/bar."""
+    prog.omitted_total += 1
+    if len(prog.omitted) < _MAX_OMITTED_SAMPLES:
+        prog.omitted.append({"symbol": symbol, "reason": reason})
 
 
 def _existing_dates(session: Session, symbol: str, start: date_cls, end: date_cls) -> set[date_cls]:
@@ -522,11 +561,177 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress) -> None:
         prog.message = f"snapshots {prog.dates_done}/{prog.dates_total} dates"
 
 
+# --------------------------------------------------------------------------------------------------
+# J-35 expand — screen the committed pool over a market-cap-capable source, grow universe.json
+# --------------------------------------------------------------------------------------------------
+def _write_universe_csv(seed_dir: Path, symbol: str, bars: list[DailyPrice]) -> None:
+    """Write one passer's committed per-symbol price CSV (the same frozen, internally split/div-adjusted
+    shape the offline screen + SeedProvider use). The bars are REAL committed `DailyPrice` rows read back
+    from the DB — nothing is fabricated."""
+    prices_dir = seed_dir / "prices"
+    prices_dir.mkdir(parents=True, exist_ok=True)
+    path = prices_dir / symbol_to_filename(symbol)
+    with path.open("w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=["date", "open", "high", "low", "close", "volume"])
+        writer.writeheader()
+        for bar in bars:
+            writer.writerow({
+                "date": bar.date.isoformat(), "open": bar.open, "high": bar.high,
+                "low": bar.low, "close": bar.close, "volume": bar.volume,
+            })
+
+
+def _screen_one_candidate(
+    session: Session,
+    cfg: Config,
+    provider: PriceProvider,
+    asof: date_cls,
+    symbol: str,
+    *,
+    scrub: Callable[[str], str],
+) -> tuple[Optional[dict], Optional[str]]:
+    """Screen ONE pool candidate against REAL committed bars + a REAL market-cap reference, returning
+    either `(member_dict, None)` for a passer or `(None, reason)` for an omission. The reference values
+    come from stored `DailyPrice` bars (the OHLCV fetch already INSERTed them); the cap comes from the
+    provider's market-cap capability. A fetch failure / empty series / missing cap / threshold failure is
+    an OMISSION (a reason string) — never a fabricated member/cap/bar. Re-raises `RateLimitError` so the
+    caller pauses the WHOLE expand gracefully (the live feed is rate-limited)."""
+    filters = cfg.universe.filters
+    bars = bars_asof(session, symbol, asof)
+    if not bars:
+        return None, "empty_series"
+    reference_close = bars[-1].close
+    adv_rows = bars[-filters.adv_window_days:]
+    adv_dollar = sum(b.close * b.volume for b in adv_rows) / len(adv_rows)
+    try:
+        market_cap = provider.get_market_cap(symbol)  # REAL cap or None — never fabricated
+    except RateLimitError:
+        raise  # persistent rate-limit on the cap feed → caller pauses the expand resumable
+    except ProviderUnavailableError as exc:
+        return None, scrub(f"market_cap_fetch_failed: {exc}")
+    reasons = screen_reasons(
+        reference_close, adv_dollar, market_cap,
+        min_price=filters.min_price, min_dollar_vol=filters.min_dollar_vol,
+        min_market_cap=filters.min_market_cap,
+    )
+    if reasons:
+        return None, "; ".join(reasons)
+    return {
+        "symbol": symbol,
+        "market_cap": round(float(market_cap), 2),
+        "reference_close": round(float(reference_close), 4),
+        "adv_dollar": round(float(adv_dollar), 2),
+        "bars": len(bars),
+        "first": bars[0].date.isoformat(),
+        "last": bars[-1].date.isoformat(),
+    }, None
+
+
+def _write_expand_artifacts(
+    seed_dir: Path, cfg: Config, members: list[dict], omitted: list[dict], asof: date_cls
+) -> None:
+    """Write the canonical universe artifacts the running app READS (J-22 single source): `universe.json`
+    (the per-member screen-pass record + the omitted-with-reason list), refreshed `meta.json`, and each
+    passer's per-symbol price CSV. Matches the member/omitted record shape written by the offline
+    `screen_universe.screen()` so the two writers stay interchangeable (one canonical artifact)."""
+    filters = cfg.universe.filters
+    members = sorted(members, key=lambda m: m["symbol"])
+    universe = {
+        "membership_rule": ("Union of the S&P 500 and Nasdaq-100 index constituents (real memberships) "
+                            "and the prior committed universe, then screened by the config "
+                            "liquidity/price/market-cap filters (universe.filters)."),
+        "screen_thresholds": {
+            "min_market_cap": filters.min_market_cap,
+            "min_dollar_vol": filters.min_dollar_vol,
+            "min_price": filters.min_price,
+            "adv_window_days": filters.adv_window_days,
+        },
+        "source": {
+            "ohlcv": "Data Manager expand job (chunked/resumable import via the config-selected source)",
+            "market_cap": "the config-selected source's market-cap reference capability (real data only)",
+        },
+        "generated_at": _utcnow().isoformat(),
+        "window": {"asof": asof.isoformat()},
+        "member_count": len(members),
+        "members": members,
+        "omitted_count": len(omitted),
+        "omitted": omitted,
+    }
+    seed_dir.mkdir(parents=True, exist_ok=True)
+    (seed_dir / "universe.json").write_text(json.dumps(universe, indent=2) + "\n")
+
+    meta = {
+        "source": "Data Manager expand job (J-35) — chunked/resumable import + config screen",
+        "note": ("REAL EOD OHLCV + a REAL market-cap reference; the universe is the config-recorded screen "
+                 "(universe.filters) applied to the committed candidate pool; see universe.json for "
+                 "per-member screen-pass values and omitted candidates."),
+        "generated_at": _utcnow().isoformat(),
+        "window": {"asof": asof.isoformat()},
+        "universe_members": len(members),
+        "omitted_candidates": len(omitted),
+    }
+    (seed_dir / "meta.json").write_text(json.dumps(meta, indent=2) + "\n")
+
+
+def _run_expand_screen(
+    session: Session,
+    cfg: Config,
+    prog: JobProgress,
+    provider: PriceProvider,
+    pool: list[dict],
+    *,
+    scrub: Callable[[str], str],
+    seed_dir: Path,
+) -> None:
+    """The screen half of an expand job (run AFTER the chunked OHLCV fetch stored the pool's bars). For
+    each pool candidate, screen it against its REAL committed bars + a REAL market-cap reference via the
+    SINGLE `screen_reasons` predicate; accumulate passers (members) and omissions (with reason); then
+    write `universe.json` / per-symbol CSVs / `meta.json`. A persistent `RateLimitError` on the cap feed
+    pauses the expand gracefully `resumable` (the durable checkpoint already records the OHLCV resume
+    point). Nothing is fabricated — a failed/missing candidate is OMITTED with a reason."""
+    asof = latest_data_date(session)
+    if asof is None:
+        return  # no price data — the POST handler already 503s before we get here
+    members: list[dict] = []
+    sector_by_symbol = {row["symbol"]: row.get("sector") for row in pool}
+    source_by_symbol = {row["symbol"]: row.get("source") for row in pool}
+    for row in pool:
+        symbol = row["symbol"]
+        try:
+            member, reason = _screen_one_candidate(session, cfg, provider, asof, symbol, scrub=scrub)
+        except RateLimitError:
+            # the cap feed is persistently rate-limited → pause the expand resumable (honest, non-fab).
+            prog.status = "resumable"
+            prog.message = _final_summary(prog)
+            return
+        if member is not None:
+            member["sector"] = sector_by_symbol.get(symbol)
+            member["source"] = source_by_symbol.get(symbol)
+            members.append(member)
+            prog.passers += 1
+            _write_universe_csv(seed_dir, symbol, bars_asof(session, symbol, asof))
+        else:
+            _record_omitted(prog, symbol, reason or "omitted")
+        prog.message = _expand_message(prog)
+    _write_expand_artifacts(seed_dir, cfg, members, list(prog.omitted), asof)
+    prog.message = _expand_message(prog)
+
+
+def _expand_message(prog: JobProgress) -> str:
+    return (
+        f"expand: {prog.passers} passers, {prog.omitted_total} omitted "
+        f"(of {prog.symbols_total} candidates)"
+    )
+
+
 def _final_status(prog: JobProgress) -> str:
     """Combine the per-phase outcomes into the job status. A fetch that fully fails (every symbol) with
-    no backfill work done is `failed`; any partial success is `partial`; otherwise `ok`."""
+    no backfill work done is `failed`; any partial success is `partial`; otherwise `ok`. An expand is
+    graded on its OHLCV-fetch outcome (the screen step is deterministic): the whole pool failing to fetch
+    → `failed`; some symbols failing → `partial`; else `ok` (an all-threshold-omitted expand is still a
+    SUCCESSFUL honest screen — `ok`, not failed)."""
     statuses: list[str] = []
-    if prog.kind in _FETCH_KINDS:
+    if prog.kind in _FETCH_KINDS or prog.kind in _EXPAND_KINDS:
         if prog.symbols_total == 0:
             statuses.append("ok")
         elif prog.symbols_ok == 0:
@@ -551,6 +756,11 @@ def _final_summary(prog: JobProgress) -> str:
             f"fetch: {prog.symbols_ok}/{prog.symbols_total} symbols ok, "
             f"{prog.symbols_failed} failed, {prog.bars_fetched} new bars"
         )
+    if prog.kind in _EXPAND_KINDS:
+        parts.append(
+            f"expand: {prog.passers} passers, {prog.omitted_total} omitted "
+            f"of {prog.symbols_total} candidates ({prog.bars_fetched} new bars)"
+        )
     if prog.kind in _BACKFILL_KINDS:
         parts.append(
             f"backfill: {prog.snapshots_created} snapshots over {prog.dates_total} dates, "
@@ -570,8 +780,8 @@ def _provider_label(prog: JobProgress, cfg: Config) -> str:
     """The provider recorded on the run row: the CHOSEN import source id when a fetch was involved (J-33;
     the source is not secret — the pasted key is never recorded), else the offline default provider (the
     backfill reads the committed seed). Falls back to the config `default_source` when a fetch job was
-    created without an explicit source."""
-    if prog.kind in _FETCH_KINDS:
+    created without an explicit source. An expand also fetches → it records its chosen source."""
+    if prog.kind in _FETCH_KINDS or prog.kind in _EXPAND_KINDS:
         return prog.source or cfg.data_manager.default_source
     return cfg.provider
 
@@ -588,6 +798,10 @@ def _persist_run(engine: Engine, cfg: Config, prog: JobProgress) -> None:
         "dates_total": prog.dates_total,
         "forward_returns_inserted": prog.forward_returns_inserted,
         "bars_fetched": prog.bars_fetched,
+        # J-35 expand: the screen outcome on the append-only audit row (descriptive job-control values —
+        # NOT a recompute of any canonical score/return/bucket). Present only for an expand kind.
+        "passers": prog.passers if prog.kind in _EXPAND_KINDS else None,
+        "omitted_total": prog.omitted_total if prog.kind in _EXPAND_KINDS else None,
         "summary": _final_summary(prog),
     }
     with Session(engine) as session:
@@ -633,6 +847,7 @@ def _run_job(
     api_key: Optional[str],
     sleep_fn: Callable[[float], None],
     is_resume: bool,
+    seed_dir: Path = DEFAULT_SEED_DIR,
 ) -> dict:
     """The shared worker body for a fresh job (`is_resume=False`) and a resume (`is_resume=True`). Opens
     its OWN DB session (never the request's). The live FETCH is CHUNKED + checkpointed; a persistent 429
@@ -645,10 +860,18 @@ def _run_job(
     detail JSON, or any log (anti-goal: Import keys are env-or-session, never persisted)."""
     scrub = _make_scrubber(_resolved_key(cfg, prog.source, api_key))
     paused = False
+    is_expand = prog.kind in _EXPAND_KINDS
+    # Both a generic FETCH and an EXPAND run the SAME chunked/resumable OHLCV fetch engine (J-34, reused
+    # not forked); they differ only in the symbol set (all seed symbols vs the committed POOL) and in the
+    # EXTRA screen step expand runs afterward.
+    pool: list[dict] = []
+    checkpoint: Optional[ImportCheckpoint] = None  # hoisted: an expand finalizes it AFTER the screen step
     try:
         with Session(eng) as session:
-            if prog.kind in _FETCH_KINDS:
+            if prog.kind in _FETCH_KINDS or is_expand:
                 live = provider if provider is not None else _resolve_live_provider(cfg, prog.source, api_key)
+                if is_expand:
+                    pool = read_pool(seed_dir)  # the committed candidate pool (raises if not built — explicit)
                 if is_resume:
                     checkpoint = _load_checkpoint(session, prog.job_id)
                     if checkpoint is None:  # defensive — the endpoint pre-validates existence
@@ -662,7 +885,9 @@ def _run_job(
                     session.add(checkpoint)
                     session.commit()
                 else:
-                    symbols = all_seed_symbols(cfg)
+                    # the one substitution for expand: the chunk-loop fetches the POOL symbols, not the
+                    # existing seed set (J-35) — everything else (plan, checkpoint, idempotency) is reused.
+                    symbols = [row["symbol"] for row in pool] if is_expand else all_seed_symbols(cfg)
                     chunks = _chunk_plan(cfg, symbols, prog.start, prog.end)
                     start_chunk = 0
                     checkpoint = _start_checkpoint(session, cfg, prog, symbols, len(chunks))
@@ -673,8 +898,28 @@ def _run_job(
                 )
                 if prog.status == "resumable":
                     paused = True  # graceful pause — checkpoint already persisted resumable
-                else:
+                elif not is_expand:
+                    # an EXPAND's checkpoint is finalized only AFTER the screen step completes (so a cap-feed
+                    # pause in the screen leaves the durable row `resumable` — see below); a generic fetch
+                    # has no further step, so finalize now.
                     _finalize_checkpoint(session, checkpoint, prog)
+            if not paused and is_expand:
+                # screen the pool against the freshly-stored bars + a real market-cap reference, writing
+                # universe.json / CSVs / meta.json (the single screen source — screen_reasons). A persistent
+                # cap-feed 429 sets `resumable` (paused) inside the screen step.
+                if not pool:  # a resume re-enters here with pool empty (it was read pre-fetch on a fresh run)
+                    pool = read_pool(seed_dir)
+                _run_expand_screen(session, cfg, prog, live, pool, scrub=scrub, seed_dir=seed_dir)
+                if prog.status == "resumable":
+                    paused = True
+                    # the cap feed walled mid-screen → leave the durable checkpoint `resumable` so the import
+                    # stays discoverable + Resume-able (a re-run re-screens; the OHLCV chunks are idempotent).
+                    if checkpoint is not None:
+                        _advance_checkpoint(
+                            session, checkpoint, prog, next_idx=checkpoint.next_chunk_index, status="resumable"
+                        )
+                elif checkpoint is not None:
+                    _finalize_checkpoint(session, checkpoint, prog)  # expand fully done → terminal checkpoint
             if not paused and prog.kind in _BACKFILL_KINDS:
                 _do_backfill(session, cfg, prog)
         if not paused:
@@ -704,13 +949,15 @@ def run_data_job(
     provider: Optional[PriceProvider] = None,
     api_key: Optional[str] = None,
     sleep_fn: Optional[Callable[[float], None]] = None,
+    seed_dir: Optional[str | Path] = None,
 ) -> dict:
     """Run the registered job to completion SYNCHRONOUSLY (the worker body; `start_data_job` runs this in
     a thread). Updates the in-memory registry as it goes and persists the final summary. Returns the final
     snapshot. `sleep_fn` is injectable so the 429-backoff + inter-request sleeps add NO wall-clock in
     tests (defaults to `time.sleep`). For a fetch, the job-selected `source` is resolved against the
     catalog and `make_provider(source, api_key=key)` builds the live client; an injected `provider`
-    (tests) bypasses that entirely."""
+    (tests) bypasses that entirely. `seed_dir` (J-35) is where an `expand` job reads the candidate pool +
+    writes universe.json/CSVs/meta.json — injectable so tests write to a temp dir, never the committed seed."""
     cfg = config or get_config()
     eng = engine or get_engine()
     with _LOCK:
@@ -718,6 +965,7 @@ def run_data_job(
     return _run_job(
         prog, cfg=cfg, eng=eng, provider=provider, api_key=api_key,
         sleep_fn=sleep_fn or _sleep, is_resume=False,
+        seed_dir=Path(seed_dir) if seed_dir else DEFAULT_SEED_DIR,
     )
 
 
@@ -729,13 +977,15 @@ def resume_data_job(
     provider: Optional[PriceProvider] = None,
     api_key: Optional[str] = None,
     sleep_fn: Optional[Callable[[float], None]] = None,
+    seed_dir: Optional[str | Path] = None,
 ) -> dict:
     """Resume a paused (`resumable`) chunked import: load its durable `ImportCheckpoint`, re-register a
     fresh in-memory `JobProgress` seeded from it (SAME `import_id`), and run the chunk loop from
     `next_chunk_index` — re-fetching nothing already stored (per-`(symbol, date)` idempotency via the
     existing INSERT-new-only `DailyPrice` guard). Raises `LookupError` for an unknown id and `ValueError`
     for a non-resumable id (the API maps these to 404/409). The session-only `api_key` is re-supplied
-    request-only for a needs-key source — it is NEVER read from the checkpoint (no key is stored there)."""
+    request-only for a needs-key source — it is NEVER read from the checkpoint (no key is stored there). A
+    resumed `expand` import re-runs the screen step after the OHLCV catch-up completes (`seed_dir` injectable)."""
     cfg = config or get_config()
     eng = engine or get_engine()
     with Session(eng) as session:
@@ -757,6 +1007,7 @@ def resume_data_job(
     return _run_job(
         prog, cfg=cfg, eng=eng, provider=provider, api_key=api_key,
         sleep_fn=sleep_fn or _sleep, is_resume=True,
+        seed_dir=Path(seed_dir) if seed_dir else DEFAULT_SEED_DIR,
     )
 
 
@@ -779,7 +1030,10 @@ def start_data_job(
     the job/registry (anti-goal: keys are env-or-session, never persisted)."""
     cfg = config or get_config()
     eng = engine or get_engine()
-    job_source = (source or cfg.data_manager.default_source) if kind in _FETCH_KINDS else None
+    # record the source on any job that FETCHES (a generic fetch OR an expand) — a backfill-only job
+    # reads the committed seed, so it carries no import source (iter-21 Finding #2).
+    fetches = kind in _FETCH_KINDS or kind in _EXPAND_KINDS
+    job_source = (source or cfg.data_manager.default_source) if fetches else None
     job = create_job(kind, start, end, source=job_source)
     thread = threading.Thread(
         target=run_data_job,
@@ -843,6 +1097,8 @@ def summarize_provider_run(run: DataProviderRun) -> dict:
         "dates_done": detail.get("dates_done"),
         "dates_total": detail.get("dates_total"),
         "bars_fetched": detail.get("bars_fetched"),
+        "passers": detail.get("passers"),  # J-35 expand screen outcome (None for non-expand runs)
+        "omitted_total": detail.get("omitted_total"),  # J-35 expand screen outcome (None otherwise)
         "started_at": run.started_at.isoformat() if run.started_at else None,
         "finished_at": run.finished_at.isoformat() if run.finished_at else None,
         "message": detail.get("summary") if is_job else run.message,

@@ -23,6 +23,8 @@ from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError
 # Yahoo Finance public chart endpoint (no key). Yahoo uses bare US tickers and keeps the caret for
 # indices (e.g. `AAPL`, `SPY`, `^VIX`) — the SAME symbols Trendora uses internally, so no remapping.
 _YAHOO_CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/"
+# Yahoo Finance public quote endpoint (no key) — the J-35 market-cap reference source (`marketCap`).
+_YAHOO_QUOTE_URL = "https://query1.finance.yahoo.com/v7/finance/quote"
 # A browser-like UA avoids Yahoo's bare-client 403; it carries no credential.
 _HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; Trendora/1.0)"}
 
@@ -54,6 +56,39 @@ class YahooProvider(PriceProvider):
             timeout=self._timeout,
         )
         return self._parse(symbol, data, start, end)
+
+    def get_market_cap(self, symbol: str) -> Optional[float]:
+        """REAL market-cap reference for one symbol (J-35 expand capability, behind the same abstraction;
+        yahoo is `supports_market_cap: true`). Reads Yahoo's no-key quote endpoint and returns the real
+        `marketCap` (a positive float), or `None` when the field is absent for the symbol (the expand
+        caller omits that candidate with `no_market_cap` — never fabricates a cap). On a transport/HTTP
+        failure it RAISES `ProviderUnavailableError` / `RateLimitError` exactly like `get_daily` (the error
+        is built from a REDACTED URL by `_http.fetch_json`, so no credential can leak). NOTE: live Yahoo
+        market-cap egress is rate-limited for this host (MEMORY: data-provider-access-constraints) — the
+        expand machinery is proven offline with an injected provider; this live path records NA/rate-limited
+        honestly when walled."""
+        data = fetch_json(
+            _YAHOO_QUOTE_URL,
+            symbol=symbol,
+            label="yahoo",
+            params={"symbols": symbol},
+            headers=_HEADERS,
+            client=self._client,
+            timeout=self._timeout,
+        )
+        try:
+            results = data["quoteResponse"]["result"]  # type: ignore[index]
+        except (KeyError, IndexError, TypeError) as exc:  # unexpected shape — surface, never fabricate
+            raise ProviderUnavailableError(f"yahoo quote unparseable for {symbol!r}: {exc}") from exc
+        for row in results or []:
+            cap = row.get("marketCap") if isinstance(row, dict) else None
+            if cap is not None:
+                try:
+                    value = float(cap)
+                except (TypeError, ValueError):
+                    return None  # malformed cap → treat as absent (omit + log), never fabricate
+                return value if value > 0 else None
+        return None  # no marketCap for this symbol — absent, not fabricated
 
     def _parse(self, symbol: str, data: object, start: Optional[date_cls], end: Optional[date_cls]) -> list[Bar]:
         try:

@@ -8,6 +8,7 @@ typed `WalkForwardCfg`); any remaining forward-looking keys still ride along via
 """
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Mapping
 from datetime import date
@@ -21,6 +22,10 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 # config.py -> app -> backend -> apps -> <repo root>
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CONFIG_PATH = REPO_ROOT / "config.yaml"
+# The committed canonical universe-membership artifact (written by the offline screen / the J-35 expand
+# job). When present it is the SINGLE source of `universe.symbols` — see `_merge_committed_universe`.
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_UNIVERSE_JSON = BACKEND_DIR / "data" / "seed" / "universe.json"
 
 
 class ConfigError(Exception):
@@ -28,16 +33,32 @@ class ConfigError(Exception):
 
 
 class UniverseFilters(BaseModel):
+    """The config-recorded universe screen thresholds (J-22 / J-35). `min_market_cap` / `min_dollar_vol`
+    / `min_price` are the three-threshold cutoffs the pure `screen_reasons` predicate reads (the single
+    source of the membership rule). `adv_window_days` is the trailing window (trading days) the
+    average-daily-dollar-volume liquidity measure is computed over — OPTIONAL with the documented default
+    so it is tunable from config (No magic numbers) without becoming a new REQUIRED key in every fixture.
+    Validated positive on the parent `UniverseCfg`."""
+
     model_config = ConfigDict(extra="allow")
     min_market_cap: float
     min_dollar_vol: float
     min_price: float
+    adv_window_days: int = 63  # ~3 trading months — the ADV liquidity window (the offline screen default)
 
 
 class UniverseCfg(BaseModel):
     model_config = ConfigDict(extra="allow")
     symbols: list[str] = Field(min_length=1)
     filters: UniverseFilters
+
+    @model_validator(mode="after")
+    def _validate(self) -> "UniverseCfg":
+        if self.filters.adv_window_days <= 0:
+            raise ValueError(
+                f"universe.filters.adv_window_days must be positive, got {self.filters.adv_window_days}"
+            )
+        return self
 
 
 class ETFsCfg(BaseModel):
@@ -1165,9 +1186,76 @@ class Config(BaseModel):
         return self
 
 
+def _merge_committed_universe(data: dict, universe_json: Path) -> None:
+    """Grow `universe.symbols` from the committed `universe.json` screen result — keeping ONE universe
+    source (J-22/J-35).
+
+    `config.yaml` ships a seed `universe.symbols` list; the offline screen and the on-demand `expand` job
+    grow membership by writing `universe.json` (the canonical screen-pass artifact whose `members` are the
+    names that PASSED the config screen — `universe_pool.csv` is `prior universe ∪ S&P 500 ∪ Nasdaq-100`,
+    so a passing prior name is already among them). To keep the J-22 invariant `/api/data universe_count
+    == /methodology resolved_size == len(config.universe.symbols)` TRUE BY CONSTRUCTION (all three read
+    `len(universe.symbols)`), we resolve `universe.symbols` to the UNION of the YAML symbols and the
+    artifact members, in-place on the parsed `data` before validation, and merge each new member's `sector`
+    into `stock_sectors`.
+
+    The UNION (not a replace) is deliberate: it lets the screen GROW the universe while never silently
+    dropping a committed name out from under the config `themes` / `stock_sectors` that reference it (which
+    would break boot validation) — so the merge is safe for ANY artifact content, and a grown universe is
+    `base ∪ new screened passers`. This is a READ of the committed screen result (no recompute, no second
+    computation) — consistent with the "universe membership comes from the config-recorded screen"
+    anti-goal.
+
+    Applied ONLY for the default config (see `load_config`) so alternate/inline test configs are never
+    affected. A new member takes its sector from the artifact (the screen records each member's sector); a
+    name already mapped keeps its YAML sector. Absent/unreadable/empty artifact ⇒ no-op (the YAML `symbols`
+    stand — graceful fallback). Never fabricates a member or a sector."""
+    if not universe_json.exists():
+        return
+    try:
+        record = json.loads(universe_json.read_text())
+    except (OSError, ValueError):
+        return  # unreadable artifact → fall back to the YAML symbols (never crash the boot)
+    members = record.get("members") if isinstance(record, dict) else None
+    if not isinstance(members, list) or not members:
+        return
+    universe = data.get("universe")
+    if not isinstance(universe, dict):
+        return
+    base_symbols = list(universe.get("symbols") or [])
+    seen = set(base_symbols)
+    new_sectors: dict[str, str] = {}
+    grown = list(base_symbols)
+    for member in members:
+        if not isinstance(member, dict):
+            continue
+        sym = member.get("symbol")
+        if not sym or sym in seen:
+            continue
+        seen.add(sym)
+        grown.append(sym)
+        sector = member.get("sector")
+        if sector:
+            new_sectors[sym] = sector
+    if grown == base_symbols:
+        return  # the artifact added no new member — nothing to merge
+    universe["symbols"] = grown  # the universe = YAML base ∪ the committed screen passers (single source)
+    stock_sectors = data.setdefault("stock_sectors", {})
+    if isinstance(stock_sectors, dict):
+        # the YAML mapping wins for an already-mapped name; a new member takes the artifact's sector so
+        # `_stock_sectors_cover_universe` stays satisfied by construction (never a silent default).
+        for sym, sector in new_sectors.items():
+            stock_sectors.setdefault(sym, sector)
+
+
 def load_config(path: Optional[str | Path] = None) -> Config:
     """Load + validate config.yaml. `path` overrides the default (repo-root config.yaml);
-    the TRENDORA_CONFIG env var is honored when no explicit path is given (used by tests)."""
+    the TRENDORA_CONFIG env var is honored when no explicit path is given (used by tests).
+
+    For the DEFAULT config only, the committed `universe.json` (when present) becomes the single source of
+    `universe.symbols` via `_merge_committed_universe` — so the J-22 single-source invariant holds by
+    construction and the J-35 `expand` write naturally flows into `universe_count` + `/methodology`."""
+    is_default = path is None and not os.environ.get("TRENDORA_CONFIG")
     if path is None:
         env = os.environ.get("TRENDORA_CONFIG")
         path = Path(env) if env else DEFAULT_CONFIG_PATH
@@ -1181,6 +1269,8 @@ def load_config(path: Optional[str | Path] = None) -> Config:
         raise ConfigError(f"config YAML parse error in {path}: {exc}") from exc
     if not isinstance(data, dict):
         raise ConfigError(f"config root must be a mapping, got {type(data).__name__}: {path}")
+    if is_default:
+        _merge_committed_universe(data, DEFAULT_UNIVERSE_JSON)
     try:
         return Config(**data)
     except ValidationError as exc:

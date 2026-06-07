@@ -243,3 +243,72 @@ def test_resumable_imports_in_overview_carries_no_key(data_api_engine):
     # no key field anywhere on the row, and the sentinel never appears
     assert "api_key" not in listed[0] and "key" not in listed[0]
     assert secret not in json.dumps(payload)
+
+
+# --- iter-23 (J-35): the `expand` job kind via the API surface ----------------------------------
+def test_job_payload_accepts_expand_kind():
+    """The typed POST model accepts `kind="expand"` (J-35) and still rejects an unknown kind (422)."""
+    payload = JobCreate(kind="expand", start=date(2024, 3, 1), end=date(2024, 3, 1), source="yahoo")
+    assert payload.kind == "expand"
+    with pytest.raises(ValidationError):
+        JobCreate(kind="enlarge", start=date(2024, 3, 1), end=date(2024, 3, 1))
+
+
+def test_post_expand_over_ineligible_source_is_400(data_api_engine):
+    """An expand over a `supports_market_cap: false` source (alpha_vantage / stooq) is rejected with an
+    explicit 400 at the API layer — never a silent no-op, never a fabricated cap."""
+    for ineligible in ("alpha_vantage", "stooq"):
+        with Session(data_api_engine) as session:
+            with pytest.raises(HTTPException) as exc:
+                start_job(
+                    JobCreate(kind="expand", start=date(2024, 3, 1), end=date(2024, 3, 1), source=ineligible),
+                    session=session,
+                )
+        assert exc.value.status_code == 400
+        assert "market cap" in str(exc.value.detail)
+
+
+def test_post_expand_needs_key_source_without_key_is_400(data_api_engine, monkeypatch):
+    """An expand over a needs-key, market-cap-capable source (tiingo) with no env/pasted key → explicit
+    400 (the J-33 key gate is reused for expand — never a silent expand)."""
+    monkeypatch.delenv("TIINGO_API_KEY", raising=False)
+    with Session(data_api_engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            start_job(
+                JobCreate(kind="expand", start=date(2024, 3, 1), end=date(2024, 3, 1), source="tiingo"),
+                session=session,
+            )
+    assert exc.value.status_code == 400
+    assert "requires a key" in str(exc.value.detail)
+
+
+def test_get_data_overview_sources_expose_market_cap_capability(data_api_engine):
+    """The import-source catalog exposes each source's `supports_market_cap` flag (the UI gates the expand
+    option on it): yahoo/tiingo/finnhub true, alpha_vantage/stooq false — config-driven, no hardcoded list."""
+    with Session(data_api_engine) as session:
+        sources = data_overview(session=session)["sources"]
+    by_id = {s["id"]: s for s in sources}
+    assert by_id["yahoo"]["supports_market_cap"] is True
+    assert by_id["tiingo"]["supports_market_cap"] is True
+    assert by_id["finnhub"]["supports_market_cap"] is True
+    assert by_id["alpha_vantage"]["supports_market_cap"] is False
+    assert by_id["stooq"]["supports_market_cap"] is False
+
+
+def test_expand_job_status_shape_has_passers_and_omitted():
+    """The job-status payload (GET /api/data/jobs/{id}) carries the J-35 expand screen fields — `passers`,
+    `omitted_total`, and a bounded `omitted` [{symbol, reason}] list — so the UI can render the screen
+    result. Built directly from a JobProgress (the in-memory record the endpoint serializes)."""
+    prog = data_manager.JobProgress(
+        job_id="exp-1", kind="expand", start=date(2024, 3, 1), end=date(2024, 3, 1), source="yahoo"
+    )
+    prog.passers = 3
+    data_manager._record_omitted(prog, "CHEAP", "price 4.0 < 10")
+    data_manager._record_omitted(prog, "NOCAP", "no_market_cap")
+    snap = prog.to_dict()
+    assert snap["kind"] == "expand" and snap["passers"] == 3
+    assert snap["omitted_total"] == 2
+    assert snap["omitted"] == [
+        {"symbol": "CHEAP", "reason": "price 4.0 < 10"},
+        {"symbol": "NOCAP", "reason": "no_market_cap"},
+    ]

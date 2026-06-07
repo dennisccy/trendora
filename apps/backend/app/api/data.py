@@ -39,9 +39,13 @@ class JobCreate(BaseModel):
     a viewing as-of control. `source` is an optional catalog provider id (defaults to
     `data_manager.default_source`; validated against the catalog in the handler). `api_key` is the pasted
     SESSION-ONLY key — request-only: it is forwarded to the fetch worker and NEVER persisted, logged, or
-    echoed back (anti-goal: Import keys are env-or-session, never persisted)."""
+    echoed back (anti-goal: Import keys are env-or-session, never persisted).
 
-    kind: Literal["fetch", "backfill", "both"]
+    `expand` (J-35) is the operator-facing universe-screen job: it screens the committed candidate pool
+    over the selected source (which MUST be `supports_market_cap: true` — the engine rejects an ineligible
+    source) and grows the scored universe; its `start`/`end` are the OHLCV-fetch window job parameters."""
+
+    kind: Literal["fetch", "backfill", "both", "expand"]
     start: date_cls
     end: date_cls
     source: Optional[str] = None

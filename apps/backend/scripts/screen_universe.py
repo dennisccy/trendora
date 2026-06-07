@@ -56,6 +56,10 @@ UNIVERSE_JSON = SEED_DIR / "universe.json"
 sys.path.insert(0, str(BACKEND_DIR))
 from app.config import load_config  # noqa: E402
 from app.data_providers.seed_provider import symbol_to_filename  # noqa: E402
+# The pure screen predicate now lives in ONE place (app.engine.universe_screen) — imported by BOTH this
+# offline runbook AND the on-demand `expand` job (data_manager). Re-exported here so the long-standing
+# `from scripts.screen_universe import screen_reasons` (tests/test_universe_screen.py) keeps working.
+from app.engine.universe_screen import screen_reasons  # noqa: E402,F401  (single source; re-exported)
 
 CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 QUOTE_URL = "https://query1.finance.yahoo.com/v7/finance/quote"
@@ -318,32 +322,8 @@ def fetch_market_caps(client: httpx.Client, symbols: list[str], crumb: str) -> d
 
 
 # --------------------------------------------------------------------------------------------------
-# Screen application
+# Screen application — `screen_reasons` is imported from app.engine.universe_screen (the single source)
 # --------------------------------------------------------------------------------------------------
-def screen_reasons(
-    reference_close: float | None,
-    adv_dollar: float | None,
-    market_cap: float | None,
-    *,
-    min_price: float,
-    min_dollar_vol: float,
-    min_market_cap: float,
-) -> list[str]:
-    """Pure screen predicate (importable + unit-tested): the list of reasons a candidate FAILS the
-    three config thresholds. Empty list == passes. A missing market cap is a failure ("no_market_cap")
-    — the candidate is omitted, never fabricated. Reads ONLY the passed-in `universe.filters` values."""
-    reasons: list[str] = []
-    if market_cap is None:
-        reasons.append("no_market_cap")
-    elif market_cap < min_market_cap:
-        reasons.append(f"market_cap {market_cap:.0f} < {min_market_cap:.0f}")
-    if reference_close is None or reference_close < min_price:
-        reasons.append(f"price {reference_close} < {min_price}")
-    if adv_dollar is None or adv_dollar < min_dollar_vol:
-        reasons.append(f"adv {adv_dollar} < {min_dollar_vol:.0f}")
-    return reasons
-
-
 def _read_committed_csv(symbol: str, start: date, end: date) -> list[dict] | None:
     """Reuse an already-committed price CSV (within the window) instead of re-fetching it — so the
     proven existing bars (SPY/ETFs/prior names) are preserved and only NEW names hit the network. Each

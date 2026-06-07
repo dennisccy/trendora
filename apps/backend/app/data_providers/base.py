@@ -50,3 +50,21 @@ class PriceProvider(ABC):
         """Return the symbol's daily bars (optionally bounded by [start, end], inclusive),
         sorted by ascending date. Raises ProviderUnavailableError if unavailable."""
         raise NotImplementedError
+
+    def get_market_cap(self, symbol: str) -> Optional[float]:
+        """OPTIONAL market-cap-reference capability — used ONLY by the J-35 `expand` path, behind this
+        same abstraction. `get_daily` (every other journey) is unaffected.
+
+        Returns the symbol's REAL market cap (a positive float), or `None` when the provider has no cap
+        for it (the expand caller omits that candidate with a `no_market_cap` reason — never fabricates a
+        cap). On a fetch/transport failure it RAISES `ProviderUnavailableError` (or `RateLimitError` on a
+        429) exactly like `get_daily` — it MUST NOT synthesize a value (anti-goals: No fabricated data;
+        Live fetch is real-data-only).
+
+        The base implementation raises `ProviderUnavailableError` so a provider declared
+        `supports_market_cap: false` (or one that simply has not implemented the capability) is NEVER used
+        for expand — the engine gates expand to `supports_market_cap: true` sources, and an injected test
+        provider overrides this method."""
+        raise ProviderUnavailableError(
+            f"{type(self).__name__} does not provide a market-cap reference for {symbol!r}"
+        )

@@ -1004,7 +1004,7 @@ export interface DataCoverage {
 export interface DataRun {
   id: number;
   provider: string;
-  kind: string | null; // fetch | backfill | both | null (seed load)
+  kind: string | null; // fetch | backfill | both | expand | null (seed load)
   start: string | null;
   end: string | null;
   status: string; // ok | partial | failed
@@ -1014,6 +1014,8 @@ export interface DataRun {
   dates_done: number | null;
   dates_total: number | null;
   bars_fetched: number | null;
+  passers: number | null; // J-35 expand screen outcome (null for non-expand runs)
+  omitted_total: number | null; // J-35 expand screen outcome (null otherwise)
   started_at: string | null;
   finished_at: string | null;
   message: string | null;
@@ -1062,7 +1064,15 @@ export interface DataOverviewResponse {
   resumable_imports: ResumableImport[]; // J-34 paused imports (survive a backend restart); never a key
 }
 
-export type DataJobKind = "fetch" | "backfill" | "both";
+export type DataJobKind = "fetch" | "backfill" | "both" | "expand";
+
+/** One omitted candidate from a J-35 expand screen — the symbol + the plain-language reason it did NOT
+ *  become a universe member (e.g. "market_cap … < …", "price … < …", "no_market_cap", "fetch_failed").
+ *  Read-only descriptive job-control metadata; never a fabricated member/cap. */
+export interface ExpandOmission {
+  symbol: string;
+  reason: string;
+}
 
 /** Live progress for one fetch/backfill job (polled from the in-memory job registry). `status` is
  *  running | ok | partial | failed | "resumable" (J-34: a rate-limited graceful pause). Counters are
@@ -1086,6 +1096,9 @@ export interface DataJob {
   forward_returns_inserted: number;
   chunk_index?: number; // J-34: completed chunks (== checkpoint resume point)
   chunk_total?: number; // J-34: total planned chunks (chunk x/N); 0/absent for a non-chunked job
+  passers?: number; // J-35 expand: candidates that passed the screen (became universe members)
+  omitted_total?: number; // J-35 expand: EXACT omitted count (the list below is bounded)
+  omitted?: ExpandOmission[]; // J-35 expand: bounded [{symbol, reason}] — never fabricated
   message: string;
   errors: string[];
   started_at: string;

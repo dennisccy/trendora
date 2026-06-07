@@ -19,6 +19,8 @@ from app.data_providers._http import HTTP_TIMEOUT_SECONDS, fetch_json
 from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError
 
 _TIINGO_DAILY_URL = "https://api.tiingo.com/tiingo/daily/{symbol}/prices"
+# Tiingo fundamentals (market cap) — the J-35 market-cap reference source (key-gated like prices).
+_TIINGO_FUNDAMENTALS_URL = "https://api.tiingo.com/tiingo/fundamentals/{symbol}/daily"
 
 
 class TiingoProvider(PriceProvider):
@@ -57,6 +59,36 @@ class TiingoProvider(PriceProvider):
             timeout=self._timeout,
         )
         return self._parse(symbol, data, start, end)
+
+    def get_market_cap(self, symbol: str) -> Optional[float]:
+        """REAL market-cap reference for one symbol (J-35 expand capability; tiingo is
+        `supports_market_cap: true`). Reads Tiingo's fundamentals/daily endpoint (token request-only,
+        never persisted) and returns the latest real `marketCap` (positive float), or `None` when the
+        field is absent (the expand caller omits that candidate — never fabricates a cap). No key, or a
+        transport/HTTP failure → RAISES like `get_daily` (error built from a REDACTED URL by
+        `_http.fetch_json`, so the token can never leak)."""
+        if not self._api_key:
+            raise ProviderUnavailableError(
+                f"tiingo requires an API key for the market cap of {symbol!r}; set $TIINGO_API_KEY or paste a session key"
+            )
+        data = fetch_json(
+            _TIINGO_FUNDAMENTALS_URL.format(symbol=symbol),
+            symbol=symbol,
+            label="tiingo",
+            params={"token": self._api_key, "format": "json"},
+            client=self._client,
+            timeout=self._timeout,
+        )
+        if not isinstance(data, list) or not data:
+            return None  # no fundamentals for this symbol — absent, not fabricated
+        cap = data[0].get("marketCap") if isinstance(data[0], dict) else None
+        if cap is None:
+            return None
+        try:
+            value = float(cap)
+        except (TypeError, ValueError):
+            return None
+        return value if value > 0 else None
 
     def _parse(self, symbol: str, data: object, start: Optional[date_cls], end: Optional[date_cls]) -> list[Bar]:
         if not isinstance(data, list) or not data:

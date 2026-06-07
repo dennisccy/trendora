@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
+from pathlib import Path
 
 import httpx
 import pytest
@@ -671,3 +672,358 @@ def test_resume_unknown_or_completed_raises():
         session.commit()
     with pytest.raises(ValueError):
         resume_data_job("done-1", config=cfg, engine=engine)
+
+
+# ==================================================================================================
+# iter-23 (J-35): the `expand` job kind — screen the committed pool over a market-cap-capable source
+# ==================================================================================================
+from app.config import DEFAULT_CONFIG_PATH, _merge_committed_universe  # noqa: E402
+from app.data_providers.base import PriceProvider  # noqa: E402 (re-imported for clarity in this block)
+from app.engine.methodology import build_catalog  # noqa: E402
+from app.engine.universe_screen import screen_reasons  # noqa: E402
+
+# A tiny deterministic candidate pool (symbols + sectors) the expand tests screen — written to a temp
+# seed dir so the test never touches the committed 548-name pool. Caps/prices are chosen so the screen
+# verdict is known by construction against the config thresholds (min_price 10 / adv $50M / cap $2B).
+_POOL_ROWS = [
+    ("PASSER1", "Technology", "test"),   # passes all three thresholds (big cap, liquid, >$10)
+    ("PASSER2", "Health Care", "test"),  # passes all three
+    ("SMALLCAP", "Energy", "test"),      # cap below $2B → omitted (market_cap reason)
+    ("CHEAP", "Industrials", "test"),    # price below $10 → omitted (price reason)
+    ("NOCAP", "Financials", "test"),     # provider returns no cap → omitted (no_market_cap)
+    ("FETCHFAIL", "Materials", "test"),  # OHLCV fetch raises → omitted (no bars stored → empty_series)
+]
+
+
+def _write_pool(seed_dir, rows=_POOL_ROWS) -> None:
+    """Write a temp candidate pool CSV (the membership-rule half) the expand job reads."""
+    seed_dir.mkdir(parents=True, exist_ok=True)
+    lines = ["# test pool", "symbol,sector,source"]
+    lines += [f"{sym},{sector},{source}" for sym, sector, source in rows]
+    (seed_dir / "universe_pool.csv").write_text("\n".join(lines) + "\n")
+
+
+class _ExpandProvider(PriceProvider):
+    """An injected expand provider: returns real bars + a real market cap for the named passers/edge
+    cases, raises for FETCHFAIL (no bars stored), and returns None cap for NOCAP. Deterministic — the
+    screen verdict for each symbol is known by construction (no live feed)."""
+
+    # close, adv-dollar-volume-per-bar, market_cap by symbol (None ⇒ omit reason exercised)
+    _PRICE = {"PASSER1": 150.0, "PASSER2": 80.0, "SMALLCAP": 60.0, "CHEAP": 4.0, "NOCAP": 90.0}
+    _CAP = {"PASSER1": 3.0e12, "PASSER2": 5.0e11, "SMALLCAP": 1.0e9, "CHEAP": 9.0e9, "NOCAP": None}
+
+    def get_daily(self, symbol, start=None, end=None):
+        if symbol == "FETCHFAIL":
+            raise ProviderUnavailableError("forced OHLCV failure for FETCHFAIL")
+        px = self._PRICE.get(symbol, 100.0)
+        # one bar with volume sized so close*volume clears (or fails) the $50M ADV — all passers are liquid
+        return [Bar(date=start or date(2024, 3, 1), open=px, high=px, low=px, close=px, volume=1_000_000.0)]
+
+    def get_market_cap(self, symbol):
+        return self._CAP.get(symbol)
+
+
+def test_expand_screens_pool_writes_universe_with_exact_passers_and_omissions(tmp_path):
+    """Expand happy path: an expand over the injected provider screens the pool, writes `universe.json`
+    with EXACTLY the expected passers, and records the expected omitted-with-reason entries — asserted by
+    VALUE. A FETCHFAIL (no bars), a NOCAP (no market cap), a SMALLCAP (cap < min), and a CHEAP (price <
+    min) are each omitted with the right reason; nothing is fabricated."""
+    cfg = load_config()
+    seed_dir = tmp_path / "seed"
+    _write_pool(seed_dir)
+    engine = make_engine(f"sqlite:///{tmp_path / 'expand.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:  # a little SPY data so a calendar/latest date exists
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 3, 1), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    job = create_job("expand", date(2024, 3, 1), date(2024, 3, 1), source="yahoo")
+    summary = run_data_job(
+        job.job_id, config=cfg, engine=engine, provider=_ExpandProvider(),
+        sleep_fn=_noop_sleep, seed_dir=seed_dir,
+    )
+
+    # FETCHFAIL's OHLCV fetch failed for one candidate → an honest `partial` (the screen still ran for
+    # every fetched candidate; nothing fabricated). The screen verdicts below are the real DoD assertions.
+    assert summary["status"] == "partial"
+    assert summary["kind"] == "expand"
+    # exactly two passers; the other four omitted (each for a distinct, honest reason)
+    assert summary["passers"] == 2
+    assert summary["omitted_total"] == 4
+
+    # universe.json was written with exactly the expected members + omitted-with-reason (by value)
+    universe = json.loads((seed_dir / "universe.json").read_text())
+    assert {m["symbol"] for m in universe["members"]} == {"PASSER1", "PASSER2"}
+    assert universe["member_count"] == 2
+    omit = {o["symbol"]: o["reason"] for o in universe["omitted"]}
+    assert set(omit) == {"SMALLCAP", "CHEAP", "NOCAP", "FETCHFAIL"}
+    assert "market_cap" in omit["SMALLCAP"]
+    assert "price" in omit["CHEAP"]
+    assert omit["NOCAP"] == "no_market_cap"
+    assert omit["FETCHFAIL"] == "empty_series"  # the failed fetch stored no bars → no series to screen
+    # a passer's recorded screen-pass values are the real reference values (sector carried from the pool)
+    p1 = next(m for m in universe["members"] if m["symbol"] == "PASSER1")
+    assert p1["sector"] == "Technology" and p1["market_cap"] == 3.0e12 and p1["reference_close"] == 150.0
+    # per-symbol CSVs are written ONLY for passers (omitted candidates get none)
+    from app.data_providers.seed_provider import symbol_to_filename
+    assert (seed_dir / "prices" / symbol_to_filename("PASSER1")).exists()
+    assert not (seed_dir / "prices" / symbol_to_filename("SMALLCAP")).exists()
+    # meta.json refreshed honestly
+    meta = json.loads((seed_dir / "meta.json").read_text())
+    assert meta["universe_members"] == 2 and meta["omitted_candidates"] == 4
+
+
+def test_expand_omitted_candidates_contribute_no_member_and_no_fabricated_bar(tmp_path):
+    """No-fabrication: a candidate whose fetch raises, returns empty, or lacks a market cap is omitted
+    with a reason and contributes NO universe member and NO fabricated bar. FETCHFAIL/NOCAP/etc. are not
+    in members; FETCHFAIL's symbol has zero stored DailyPrice rows."""
+    cfg = load_config()
+    seed_dir = tmp_path / "seed"
+    _write_pool(seed_dir)
+    engine = make_engine(f"sqlite:///{tmp_path / 'nofab.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 3, 1), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    job = create_job("expand", date(2024, 3, 1), date(2024, 3, 1), source="yahoo")
+    summary = run_data_job(
+        job.job_id, config=cfg, engine=engine, provider=_ExpandProvider(),
+        sleep_fn=_noop_sleep, seed_dir=seed_dir,
+    )
+    members = {m["symbol"] for m in json.loads((seed_dir / "universe.json").read_text())["members"]}
+    assert "FETCHFAIL" not in members and "NOCAP" not in members
+    with Session(engine) as session:
+        n_fetchfail = session.scalar(
+            select(func.count()).select_from(DailyPrice).where(DailyPrice.symbol == "FETCHFAIL")
+        )
+    assert n_fetchfail == 0  # the failed fetch fabricated no bar
+    assert summary["omitted_total"] == 4
+
+
+def test_expand_engine_decision_matches_screen_reasons_predicate(tmp_path):
+    """Single screen source: the engine's per-candidate pass/omit matches the SAME `screen_reasons`
+    predicate (the one definition the offline runbook + test_universe_screen.py use) for the same
+    reference values — proving the engine did not re-implement the rule."""
+    cfg = load_config()
+    f = cfg.universe.filters
+    seed_dir = tmp_path / "seed"
+    _write_pool(seed_dir)
+    engine = make_engine(f"sqlite:///{tmp_path / 'screen_src.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 3, 1), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+    job = create_job("expand", date(2024, 3, 1), date(2024, 3, 1), source="yahoo")
+    run_data_job(job.job_id, config=cfg, engine=engine, provider=_ExpandProvider(), sleep_fn=_noop_sleep, seed_dir=seed_dir)
+
+    universe = json.loads((seed_dir / "universe.json").read_text())
+    members = {m["symbol"] for m in universe["members"]}
+    prov = _ExpandProvider()
+    for sym in ("PASSER1", "SMALLCAP", "CHEAP", "NOCAP"):
+        px = prov._PRICE[sym]
+        adv = px * 1_000_000.0
+        reasons = screen_reasons(px, adv, prov._CAP[sym], min_price=f.min_price,
+                                 min_dollar_vol=f.min_dollar_vol, min_market_cap=f.min_market_cap)
+        # the predicate's verdict (empty == pass) matches the engine's membership decision exactly
+        assert (sym in members) == (reasons == []), f"{sym}: predicate {reasons} vs member {sym in members}"
+
+
+def test_expand_idempotent_no_duplicate_bars_no_snapshot_regen(tmp_path):
+    """Idempotency / immutability: re-running expand over already-stored bars inserts NO duplicate
+    (symbol, date) and writes/mutates NO scanner_runs / scanner_results / forward_returns (no DB regen)."""
+    cfg = load_config()
+    seed_dir = tmp_path / "seed"
+    _write_pool(seed_dir)
+    engine = make_engine(f"sqlite:///{tmp_path / 'idem.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 3, 1), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    job1 = create_job("expand", date(2024, 3, 1), date(2024, 3, 1), source="yahoo")
+    run_data_job(job1.job_id, config=cfg, engine=engine, provider=_ExpandProvider(), sleep_fn=_noop_sleep, seed_dir=seed_dir)
+    with Session(engine) as session:
+        bars_after_1 = session.scalar(select(func.count()).select_from(DailyPrice))
+        runs_after_1 = session.scalar(select(func.count()).select_from(ScannerRun))
+        results_after_1 = session.scalar(select(func.count()).select_from(ScannerResult))
+        fr_after_1 = session.scalar(select(func.count()).select_from(ForwardReturn))
+
+    job2 = create_job("expand", date(2024, 3, 1), date(2024, 3, 1), source="yahoo")
+    run_data_job(job2.job_id, config=cfg, engine=engine, provider=_ExpandProvider(), sleep_fn=_noop_sleep, seed_dir=seed_dir)
+    with Session(engine) as session:
+        bars_after_2 = session.scalar(select(func.count()).select_from(DailyPrice))
+        runs_after_2 = session.scalar(select(func.count()).select_from(ScannerRun))
+        results_after_2 = session.scalar(select(func.count()).select_from(ScannerResult))
+        fr_after_2 = session.scalar(select(func.count()).select_from(ForwardReturn))
+        # no (symbol, date) duplicate for any passer
+        per_symbol = {}
+        for r in session.exec(select(DailyPrice).where(DailyPrice.date == date(2024, 3, 1))).all():
+            per_symbol[r.symbol] = per_symbol.get(r.symbol, 0) + 1
+    assert bars_after_2 == bars_after_1  # the second expand inserted no duplicate bar
+    assert all(c == 1 for c in per_symbol.values())  # exactly one bar per (symbol, date)
+    # expand writes only DailyPrice + universe.json — it regenerates NO immutable snapshot
+    assert runs_after_1 == 0 and runs_after_2 == 0
+    assert results_after_1 == 0 and results_after_2 == 0
+    assert fr_after_1 == 0 and fr_after_2 == 0
+
+
+def test_expand_eligibility_gate_engine_rejects_non_market_cap_source():
+    """Eligibility gate (engine layer): an `expand` job whose `source` has `supports_market_cap: false`
+    (alpha_vantage / stooq) is rejected with an explicit ValueError — never a silent no-op."""
+    cfg = load_config()
+    for ineligible in ("alpha_vantage", "stooq"):
+        with pytest.raises(ValueError, match="market cap"):
+            validate_job_request("expand", date(2024, 3, 1), date(2024, 3, 1), cfg, source=ineligible)
+    # a market-cap-capable source passes the gate (yahoo is no-key, so no key required)
+    validate_job_request("expand", date(2024, 3, 1), date(2024, 3, 1), cfg, source="yahoo")
+
+
+def test_expand_needs_key_source_without_key_rejected():
+    """An expand over a needs-key, market-cap-capable source (tiingo) with no env/pasted key is rejected
+    explicitly (reuses the J-33 key gate) — never a silent expand."""
+    import os as _os
+    cfg = load_config()
+    prev = _os.environ.pop("TIINGO_API_KEY", None)
+    try:
+        with pytest.raises(ValueError, match="requires a key"):
+            validate_job_request("expand", date(2024, 3, 1), date(2024, 3, 1), cfg, source="tiingo")
+        # with a pasted session key the gate passes (tiingo is market-cap-capable)
+        validate_job_request("expand", date(2024, 3, 1), date(2024, 3, 1), cfg, source="tiingo", api_key="sk-paste")
+    finally:
+        if prev is not None:
+            _os.environ["TIINGO_API_KEY"] = prev
+
+
+def test_merge_committed_universe_makes_universe_json_the_single_source(tmp_path):
+    """Single-source universe (the J-22 invariant after an expand): when a committed `universe.json` is
+    present, `_merge_committed_universe` GROWS `universe.symbols` to `base ∪ artifact members` (+ their
+    sectors), so `len(config.universe.symbols)` == `/api/data universe_count` == `/methodology
+    resolved_size` — all three read the one canonical resolved universe. Asserted by VALUE on a config
+    built from a temp universe.json. The union (not a replace) keeps the existing themed names mapped so
+    boot validation never breaks while the screen grows the universe."""
+    import yaml
+    base = yaml.safe_load(DEFAULT_CONFIG_PATH.read_text())
+    base_n = len(base["universe"]["symbols"])
+    # a committed universe.json with two NEW members not in the YAML universe (each carries a sector)
+    members = [
+        {"symbol": "ZZZA", "sector": "Technology", "market_cap": 3.0e12, "reference_close": 100.0,
+         "adv_dollar": 1.0e8, "bars": 300, "first": "2021-01-04", "last": "2024-03-01"},
+        {"symbol": "ZZZB", "sector": "Energy", "market_cap": 5.0e11, "reference_close": 50.0,
+         "adv_dollar": 9.0e7, "bars": 300, "first": "2021-01-04", "last": "2024-03-01"},
+    ]
+    data = yaml.safe_load(yaml.safe_dump(base))  # deep copy
+    ujson = tmp_path / "universe.json"
+    ujson.write_text(json.dumps({"members": members}))
+    _merge_committed_universe(data, ujson)
+
+    # the merged config validates; the universe GREW by exactly the two new members, each sector-mapped
+    from app.config import Config
+    cfg2 = Config(**data)
+    assert len(cfg2.universe.symbols) == base_n + 2
+    assert {"ZZZA", "ZZZB"}.issubset(set(cfg2.universe.symbols))
+    assert cfg2.stock_sectors["ZZZA"] == "Technology" and cfg2.stock_sectors["ZZZB"] == "Energy"
+    # the three-way single-source equality holds by construction (both read len(universe.symbols))
+    n = len(cfg2.universe.symbols)
+    assert build_catalog(cfg2)["universe_selection"]["resolved_size"] == n
+
+
+def test_merge_committed_universe_absent_is_noop():
+    """No committed universe.json ⇒ the merge is a pure no-op (the YAML symbols stand) — the graceful
+    fallback that keeps every existing test/boot path unchanged until an expand writes the artifact."""
+    import yaml
+    base = yaml.safe_load(DEFAULT_CONFIG_PATH.read_text())
+    data = yaml.safe_load(yaml.safe_dump(base))
+    before = list(data["universe"]["symbols"])
+    _merge_committed_universe(data, Path("/nonexistent/universe.json"))
+    assert data["universe"]["symbols"] == before  # unchanged
+
+
+def test_expand_kind_is_in_job_kinds():
+    """The `expand` kind is a real job kind (the API Literal + the engine JOB_KINDS agree)."""
+    assert "expand" in data_manager.JOB_KINDS
+
+
+class _ExpandCap429Provider(PriceProvider):
+    """An expand provider whose OHLCV fetch always succeeds but whose market-cap feed is PERSISTENTLY
+    rate-limited — so the screen step pauses the expand gracefully `resumable` (never fabricates a cap)."""
+
+    def get_daily(self, symbol, start=None, end=None):
+        return [Bar(date=start or date(2024, 3, 1), open=100.0, high=100.0, low=100.0, close=100.0, volume=1_000_000.0)]
+
+    def get_market_cap(self, symbol):
+        raise RateLimitError("HTTP 429 at https://provider/quote")
+
+
+def test_expand_cap_feed_rate_limited_pauses_resumable_never_fabricates(tmp_path):
+    """A persistent 429 on the market-cap feed during the screen step pauses the expand GRACEFULLY
+    `resumable` (distinct from failed) and writes NO universe.json — never a fabricated cap/member. The
+    durable checkpoint (from the OHLCV fetch) makes it Resume-able."""
+    cfg = load_config()
+    seed_dir = tmp_path / "seed"
+    _write_pool(seed_dir, rows=[("PASSER1", "Technology", "test"), ("PASSER2", "Health Care", "test")])
+    engine = make_engine(f"sqlite:///{tmp_path / 'cap429.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 3, 1), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    job = create_job("expand", date(2024, 3, 1), date(2024, 3, 1), source="yahoo")
+    summary = run_data_job(
+        job.job_id, config=cfg, engine=engine, provider=_ExpandCap429Provider(),
+        sleep_fn=_noop_sleep, seed_dir=seed_dir,
+    )
+    assert summary["status"] == "resumable"  # graceful pause, NOT failed
+    assert summary["passers"] == 0  # no member committed before the cap feed walled
+    assert not (seed_dir / "universe.json").exists()  # nothing fabricated/written on the pause
+    with Session(engine) as session:
+        # the durable checkpoint survives → the import is discoverable + Resume-able (J-34 reuse)
+        listed = resumable_imports(session, cfg)
+    assert [r["import_id"] for r in listed] == [job.job_id]
+
+
+def test_expand_cap_fetch_real_httpx_key_scrubbed_end_to_end(tmp_path, caplog):
+    """Key-safety (carry the iter-21/22 lesson to the NEW expand error surface): an expand whose
+    market-cap fetch raises an error EMBEDDING a real httpx error with the key in the URL → the
+    data_manager scrub removes it. The sentinel is ABSENT from the job snapshot, `GET /api/data/jobs/{id}`,
+    the written universe.json omitted reasons, and the run history — while `***` proves the scrub fired."""
+    secret = "sk-EXPAND-CAP-KEY-SCRUB-7a1"
+    leak = _real_httpx_error_str_with_key(secret)
+    assert secret in leak  # sanity: there IS a key to scrub
+
+    class _CapKeyLeakProvider(PriceProvider):
+        """OHLCV succeeds; the market-cap fetch raises a ProviderUnavailableError embedding the key-in-URL
+        httpx error (a non-429 cap failure → the candidate is omitted with a scrubbed reason)."""
+
+        def get_daily(self, symbol, start=None, end=None):
+            return [Bar(date=start or date(2024, 3, 1), open=100.0, high=100.0, low=100.0, close=100.0, volume=1_000_000.0)]
+
+        def get_market_cap(self, symbol):
+            raise ProviderUnavailableError(leak)
+
+    cfg = load_config()
+    seed_dir = tmp_path / "seed"
+    _write_pool(seed_dir, rows=[("PASSER1", "Technology", "test")])
+    engine = make_engine(f"sqlite:///{tmp_path / 'capscrub.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 3, 1), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    job = create_job("expand", date(2024, 3, 1), date(2024, 3, 1), source="tiingo")
+    with caplog.at_level("DEBUG"):
+        summary = run_data_job(
+            job.job_id, config=cfg, engine=engine, provider=_CapKeyLeakProvider(),
+            api_key=secret, sleep_fn=_noop_sleep, seed_dir=seed_dir,
+        )
+    # the candidate is omitted with a market_cap_fetch_failed reason — but the key is scrubbed everywhere
+    assert summary["omitted_total"] == 1
+    assert secret not in json.dumps(summary)
+    assert secret not in json.dumps(get_job(job.job_id))
+    universe_blob = (seed_dir / "universe.json").read_text()
+    assert secret not in universe_blob  # the omitted reason in the written artifact is key-safe
+    assert "***" in json.dumps(summary["omitted"]) or "***" in universe_blob  # the scrub fired
+    with Session(engine) as session:
+        runs = session.exec(select(DataProviderRun)).all()
+    assert secret not in json.dumps([{c: str(getattr(r, c)) for c in ("provider", "status", "message")} for r in runs])
+    assert secret not in caplog.text
