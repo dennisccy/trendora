@@ -1,7 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, Database, KeyRound, Loader2, Play, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  Database,
+  KeyRound,
+  Loader2,
+  Play,
+  RotateCcw,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react";
 
 import { useAsOf } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
@@ -11,15 +21,20 @@ import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
+  executeDataRemoval,
   fetchDataCoverage,
   fetchDataJob,
+  previewDataRemoval,
   resumeDataJob,
   startDataJob,
   type DataJob,
   type DataJobKind,
   type DataOverviewResponse,
   type DataRun,
+  type PerSymbolCoverage,
   type ProviderSource,
+  type RemovePreview,
+  type RemoveScope,
   type ResumableImport,
 } from "@/lib/api";
 
@@ -246,6 +261,12 @@ export default function DataManagerPage() {
             sources={sources}
             onResumed={onResumed}
           />
+          <RemoveDataPanel
+            onRemoved={() => {
+              refresh(); // the removed dates drop out of the global as-of switcher
+              loadOverview(); // re-read coverage + the per-symbol table (now smaller)
+            }}
+          />
           <RunHistoryPanel runs={state.data.runs} />
         </>
       ) : null}
@@ -271,40 +292,288 @@ function Metric({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+/** A single coverage figure shown NEXT TO its one-line plain-language definition (J-36) — so a reader
+ *  never sees a bare number. The value is read verbatim from the backend payload (no recompute here). */
+function DefinedMetric({
+  label,
+  value,
+  definition,
+  testId,
+  tone,
+}: {
+  label: string;
+  value: React.ReactNode;
+  definition: string;
+  testId?: string;
+  tone?: string;
+}) {
+  return (
+    <div className="space-y-1 rounded-md border border-border bg-surface-2 p-3">
+      <p className="text-xs uppercase tracking-wide text-text-faint">{label}</p>
+      <p className={cn("num text-lg font-semibold text-text", tone)} data-testid={testId}>
+        {value}
+      </p>
+      <p className="text-xs leading-snug text-text-muted">{definition}</p>
+    </div>
+  );
+}
+
 function CoveragePanel({ data }: { data: DataOverviewResponse }) {
   const c = data.coverage;
   return (
     <Card className="p-0">
-      <PanelTitle hint="Descriptive metadata read from the dataset — not a recomputed score or return.">
+      <PanelTitle hint="Descriptive metadata read from the dataset — not a recomputed score or return. Each figure is shown with its plain-language definition.">
         Dataset coverage
       </PanelTitle>
-      <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 lg:grid-cols-6">
-        <Metric label="Price history" value={`${fmtDate(c.price_start)} → ${fmtDate(c.price_end)}`} />
-        <Metric label="Universe" value={<span data-testid="universe-count">{c.universe_count}</span>} />
-        <Metric label="Symbols (incl. ETFs)" value={c.symbol_count} />
-        <Metric label="Trading days" value={c.trading_day_count} />
-        <Metric label="Snapshot dates" value={c.snapshot_count} />
-        <Metric
+      <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
+        <DefinedMetric
+          label="Price history"
+          value={`${fmtDate(c.price_start)} → ${fmtDate(c.price_end)}`}
+          definition="The earliest and latest dates with any stored daily price bar."
+        />
+        <DefinedMetric
+          label="Universe"
+          testId="universe-count-defined"
+          value={<span data-testid="universe-count">{c.universe_count}</span>}
+          definition="The config-screened, SCORED names (the liquidity/price/market-cap screen result). This is the universe — distinct from symbols below."
+        />
+        <DefinedMetric
+          label="Symbols"
+          value={c.symbol_count}
+          definition="Every ticker with stored bars — including the index/sector/industry ETFs and ^VIX, which are NOT scored universe members."
+        />
+        <DefinedMetric
+          label="Trading days"
+          value={c.trading_day_count}
+          definition="Distinct dates the benchmark (SPY) has a bar — the trading calendar the scanner and walk-forward use."
+        />
+        <DefinedMetric
+          label="Snapshot dates"
+          value={c.snapshot_count}
+          definition="Trading days with a stored immutable scanner snapshot (an as-of date selectable in the global switcher)."
+        />
+        <DefinedMetric
           label="Backfill gaps"
-          value={
-            <span className={c.gap_count > 0 ? "text-warn" : "text-pos"}>
-              {c.gap_count}
-            </span>
-          }
+          tone={c.gap_count > 0 ? "text-warn" : "text-pos"}
+          value={c.gap_count}
+          definition="A backfill gap is a trading day that HAS bars but NO scanner snapshot — the actionable backfill targets."
         />
       </div>
-      {c.gap_count > 0 ? (
-        <p className="border-t border-border px-4 py-2 text-xs text-text-muted">
-          <span className="text-text-faint">Gap range: </span>
-          <span className="num">{fmtDate(c.gap_first)} → {fmtDate(c.gap_last)}</span>
-          <span className="text-text-faint"> · trading days with bars but no snapshot — the actionable backfill targets.</span>
-        </p>
-      ) : (
-        <p className="border-t border-border px-4 py-2 text-xs text-text-muted">
-          Every trading day with bars already has an immutable snapshot — no backfill gaps.
-        </p>
-      )}
+      <p className="border-t border-border px-4 py-2 text-xs text-text-muted">
+        <span className="font-medium text-text-muted">Universe vs symbols: </span>
+        the <span className="text-text">universe</span> ({c.universe_count}) is the set of config-screened,
+        scored names; <span className="text-text">symbols</span> ({c.symbol_count}) is every ticker with
+        bars, which additionally includes the benchmark/sector/industry ETFs and <span className="num">^VIX</span>.
+        {c.gap_count > 0 ? (
+          <>
+            {" "}
+            <span className="text-text-faint">Gap range: </span>
+            <span className="num">{fmtDate(c.gap_first)} → {fmtDate(c.gap_last)}</span>.
+          </>
+        ) : (
+          " Every trading day with bars already has an immutable snapshot — no backfill gaps."
+        )}
+      </p>
+      <PerSymbolCoverageTable rows={c.per_symbol} symbolCount={c.symbol_count} universeCount={c.universe_count} />
     </Card>
+  );
+}
+
+/** J-36 per-symbol / per-universe-member coverage table: one row per stored symbol AND per universe
+ *  member, with in-universe / has-data / date-range / bar-count / thin-or-missing. Sorting + filtering are
+ *  UI-only (the page re-formats backend values — it computes no coverage figure). A universe-members-only
+ *  filter confirms every member shows data-or-missing (none silently absent). Thin/missing get an amber/
+ *  muted treatment. The displayed distinct-symbol (has-data) count == symbol_count and the in-universe
+ *  count == universe_count (the same backend source — they can never drift). */
+function PerSymbolCoverageTable({
+  rows,
+  symbolCount,
+  universeCount,
+}: {
+  rows: PerSymbolCoverage[];
+  symbolCount: number;
+  universeCount: number;
+}) {
+  const [query, setQuery] = useState("");
+  const [membersOnly, setMembersOnly] = useState(false);
+  const [sortKey, setSortKey] = useState<"symbol" | "bar_count">("symbol");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toUpperCase();
+    let out = rows.filter((r) => (membersOnly ? r.in_universe : true));
+    if (q) out = out.filter((r) => r.symbol.toUpperCase().includes(q));
+    const sorted = [...out].sort((a, b) => {
+      let cmp: number;
+      if (sortKey === "bar_count") cmp = a.bar_count - b.bar_count;
+      else cmp = a.symbol.localeCompare(b.symbol);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return sorted;
+  }, [rows, query, membersOnly, sortKey, sortDir]);
+
+  // UI-side counts mirror the backend aggregates (read from the same per_symbol payload) — the table can
+  // never present a count that drifts from the definitions block above.
+  const distinctWithData = useMemo(() => rows.filter((r) => r.has_data).length, [rows]);
+  const inUniverseRows = useMemo(() => rows.filter((r) => r.in_universe).length, [rows]);
+
+  function toggleSort(key: "symbol" | "bar_count") {
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(key);
+      setSortDir(key === "bar_count" ? "desc" : "asc");
+    }
+  }
+
+  return (
+    <div className="border-t border-border" data-testid="per-symbol-coverage">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+        <div className="space-y-0.5">
+          <h3 className="text-sm font-semibold text-text">Per-symbol coverage</h3>
+          <p className="text-xs text-text-faint">
+            One row per stored symbol and per universe member. In-universe rows:{" "}
+            <span className="num text-text-muted" data-testid="table-in-universe-count">
+              {inUniverseRows}
+            </span>{" "}
+            (= universe {universeCount}) · with-data rows:{" "}
+            <span className="num text-text-muted" data-testid="table-with-data-count">
+              {distinctWithData}
+            </span>{" "}
+            (= symbols {symbolCount}).
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative flex items-center">
+            <Search className="pointer-events-none absolute left-2 h-3.5 w-3.5 text-text-faint" aria-hidden />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              aria-label="Filter symbols"
+              placeholder="Filter symbol…"
+              className={cn(FIELD, "num h-8 w-40 pl-7 text-xs")}
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => setMembersOnly((v) => !v)}
+            aria-pressed={membersOnly}
+            data-testid="universe-members-only-toggle"
+            className={cn(
+              "inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+              membersOnly
+                ? "border-accent bg-surface-2 text-accent"
+                : "border-border bg-surface-2 text-text-muted hover:border-border-strong",
+            )}
+          >
+            Universe members only
+          </button>
+        </div>
+      </div>
+      <div className="max-h-96 overflow-auto">
+        <table className="w-full border-collapse text-sm">
+          <thead className="sticky top-0 bg-surface">
+            <tr className="border-y border-border text-left text-xs uppercase tracking-wide text-text-faint">
+              <th className="px-3 py-2 font-medium">
+                <SortHeader label="Symbol" active={sortKey === "symbol"} dir={sortDir} onClick={() => toggleSort("symbol")} />
+              </th>
+              <th className="px-3 py-2 font-medium">In universe</th>
+              <th className="px-3 py-2 font-medium">Has data</th>
+              <th className="px-3 py-2 font-medium">Date range</th>
+              <th className="px-3 py-2 text-right font-medium">
+                <SortHeader label="Bars" active={sortKey === "bar_count"} dir={sortDir} onClick={() => toggleSort("bar_count")} right />
+              </th>
+              <th className="px-3 py-2 font-medium">Flag</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-3 py-6 text-center text-xs text-text-muted">
+                  No symbols match the current filter.
+                </td>
+              </tr>
+            ) : (
+              filtered.map((r) => (
+                <tr
+                  key={r.symbol}
+                  data-testid="coverage-row"
+                  data-symbol={r.symbol}
+                  className={cn(
+                    "border-b border-border last:border-b-0 hover:bg-surface-2",
+                    r.missing || r.thin ? "bg-surface-2" : null,
+                  )}
+                >
+                  <td className="num px-3 py-1.5 font-medium text-text">{r.symbol}</td>
+                  <td className="px-3 py-1.5">
+                    {r.in_universe ? (
+                      <Badge variant="accent">universe</Badge>
+                    ) : (
+                      <span className="text-xs text-text-faint">ETF / index</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-1.5">
+                    {r.has_data ? (
+                      <span className="text-xs text-pos">yes</span>
+                    ) : (
+                      <span className="text-xs text-text-faint">no</span>
+                    )}
+                  </td>
+                  <td className="num px-3 py-1.5 text-xs text-text-muted">
+                    {r.has_data ? `${fmtDate(r.first)} → ${fmtDate(r.last)}` : <span className="text-text-faint">NA</span>}
+                  </td>
+                  <td className="num px-3 py-1.5 text-right text-text-muted">{r.bar_count}</td>
+                  <td className="px-3 py-1.5">
+                    {r.missing ? (
+                      <Badge variant="warn">missing</Badge>
+                    ) : r.thin ? (
+                      <Badge variant="warn">thin</Badge>
+                    ) : (
+                      <span className="text-xs text-text-faint">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      <p className="border-t border-border px-4 py-2 text-xs text-text-faint">
+        <span className="text-warn">thin</span> = has some bars but fewer than the config history threshold
+        (insufficient for full analysis); <span className="text-warn">missing</span> = a universe member with
+        no stored bars (shown NA, never a fabricated range).
+      </p>
+    </div>
+  );
+}
+
+function SortHeader({
+  label,
+  active,
+  dir,
+  onClick,
+  right,
+}: {
+  label: string;
+  active: boolean;
+  dir: "asc" | "desc";
+  onClick: () => void;
+  right?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1 uppercase tracking-wide transition hover:text-text",
+        right ? "flex-row-reverse" : null,
+        active ? "text-text" : "text-text-faint",
+      )}
+    >
+      {label}
+      <span aria-hidden className="text-[0.6rem]">{active ? (dir === "asc" ? "▲" : "▼") : "↕"}</span>
+    </button>
   );
 }
 
@@ -822,6 +1091,317 @@ function ResumableImportsPanel({
         })}
       </ul>
     </Card>
+  );
+}
+
+/** J-39 seed-safe Remove-data control. Pick a scope (by symbol and/or date range — these are ACTION
+ *  PARAMETERS, NOT the global as-of viewing control), then a confirm-preview enumerates exactly which
+ *  user-added bars would be removed (count + range), which are NOT removable (committed seed, with the
+ *  reason), and the cascade of dependent snapshot/forward-return rows — BEFORE any deletion. A wholly-seed
+ *  scope is refused (the confirm is disabled with the explicit reason). Confirming dispatches the
+ *  destructive removal; afterward the page re-reads coverage and the as-of switcher reflects the smaller
+ *  dataset. The "dialog" is an in-page modal built from Card + an overlay (there is no Dialog primitive). */
+function RemoveDataPanel({ onRemoved }: { onRemoved: () => void }) {
+  const [symbolsText, setSymbolsText] = useState("");
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [preview, setPreview] = useState<RemovePreview | null>(null);
+  const [loading, setLoading] = useState(false); // preview in-flight
+  const [removing, setRemoving] = useState(false); // destructive removal in-flight
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<RemovePreview | null>(null);
+
+  function buildScope(): RemoveScope {
+    const symbols = symbolsText
+      .split(/[\s,]+/)
+      .map((s) => s.trim().toUpperCase())
+      .filter(Boolean);
+    const scope: RemoveScope = {};
+    if (symbols.length > 0) scope.symbols = symbols;
+    if (start) scope.start = start;
+    if (end) scope.end = end;
+    return scope;
+  }
+
+  const hasScope = symbolsText.trim().length > 0 || Boolean(start) || Boolean(end);
+
+  async function handlePreview() {
+    if (!hasScope || loading) return;
+    setLoading(true);
+    setError(null);
+    setDone(null);
+    try {
+      const result = await previewDataRemoval(buildScope());
+      setPreview(result); // opens the confirm-preview modal
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not preview the removal.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleConfirm() {
+    if (!preview || preview.refused || removing) return;
+    setRemoving(true);
+    setError(null);
+    try {
+      const result = await executeDataRemoval(buildScope());
+      setPreview(null);
+      setDone(result);
+      setSymbolsText("");
+      setStart("");
+      setEnd("");
+      onRemoved(); // re-read coverage + refresh the as-of switcher (smaller dataset)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not remove the data.");
+    } finally {
+      setRemoving(false);
+    }
+  }
+
+  return (
+    <Card className="p-0" data-testid="remove-data">
+      <PanelTitle hint="Delete imported (user-added) data beyond the committed seed, by symbol and/or date range. A confirm-preview shows exactly what will be removed first. These date inputs are action parameters — they do NOT change the global as-of viewing date. The committed seed is never deletable.">
+        Remove imported data
+      </PanelTitle>
+      <div className="space-y-4 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1 text-xs text-text-muted">
+            Symbols (optional, comma/space separated)
+            <input
+              type="text"
+              value={symbolsText}
+              onChange={(e) => setSymbolsText(e.target.value)}
+              aria-label="Symbols to remove"
+              placeholder="e.g. NVDA AMD"
+              className={cn(FIELD, "num w-64")}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-text-muted">
+            From date (optional)
+            <input
+              type="date"
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+              aria-label="Removal start date"
+              className={cn(FIELD, "num w-40")}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-xs text-text-muted">
+            To date (optional)
+            <input
+              type="date"
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+              aria-label="Removal end date"
+              className={cn(FIELD, "num w-40")}
+            />
+          </label>
+          <button
+            type="button"
+            onClick={handlePreview}
+            disabled={!hasScope || loading}
+            data-testid="remove-preview-button"
+            className={cn(
+              "inline-flex h-9 items-center gap-2 rounded-md border border-neg px-4 text-sm font-semibold text-neg",
+              "transition hover:bg-surface-2 active:brightness-95",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neg focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+            )}
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Trash2 className="h-4 w-4" aria-hidden />}
+            Preview removal
+          </button>
+        </div>
+        <p className="text-xs text-text-faint">
+          Removal deletes only user-added bars (fetched beyond the committed seed) and cascade-removes the
+          snapshots and forward returns derived solely from them, leaving the dataset consistent. The
+          committed seed is never deletable; a seed-only scope is refused. Nothing is fabricated — it only
+          deletes.
+        </p>
+        {error && !preview ? (
+          <p role="alert" className="flex items-center gap-2 text-sm text-neg">
+            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+            {error}
+          </p>
+        ) : null}
+        {done ? (
+          <div
+            className="flex items-start gap-2 rounded-md border border-pos bg-surface-2 p-3 text-xs text-pos"
+            data-testid="remove-done"
+          >
+            <Database className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <span>
+              Removed <span className="num">{done.removed_bar_count ?? done.removable_bar_count}</span> user-added
+              bars; cascade-removed <span className="num">{done.cascade.snapshot_count}</span> snapshots and{" "}
+              <span className="num">{done.cascade.forward_return_count}</span> forward returns. The coverage
+              table and as-of switcher now reflect the smaller dataset.
+            </span>
+          </div>
+        ) : null}
+      </div>
+
+      {preview ? (
+        <RemoveConfirmModal
+          preview={preview}
+          removing={removing}
+          error={error}
+          onCancel={() => {
+            setPreview(null);
+            setError(null);
+          }}
+          onConfirm={handleConfirm}
+        />
+      ) : null}
+    </Card>
+  );
+}
+
+/** The J-39 confirm-preview "dialog" — an in-page modal (Card + a fixed overlay; there is no Dialog
+ *  primitive in this project). It enumerates the removable bars + range, the not-removable committed-seed
+ *  breakdown with reason, and the cascade of dependent snapshot/forward-return rows BEFORE any deletion.
+ *  A refused (wholly-seed) scope disables the destructive confirm and shows the explicit reason. */
+function RemoveConfirmModal({
+  preview,
+  removing,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  preview: RemovePreview;
+  removing: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const refused = preview.refused;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(10,14,20,0.8)] p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Confirm data removal"
+      data-testid="remove-confirm-modal"
+    >
+      <Card className="w-full max-w-lg p-0 shadow-xl">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-neg">
+            <AlertTriangle className="h-4 w-4" aria-hidden />
+            Confirm data removal
+          </h2>
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="Cancel"
+            className="rounded p-1 text-text-faint transition hover:bg-surface-2 hover:text-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
+        <div className="space-y-3 p-4 text-sm">
+          {refused ? (
+            <div
+              className="flex items-start gap-2 rounded-md border border-warn bg-surface-2 p-3 text-xs text-warn"
+              data-testid="remove-refused"
+            >
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <span>{preview.reason}</span>
+            </div>
+          ) : (
+            <div className="rounded-md border border-neg bg-surface-2 p-3" data-testid="remove-removable">
+              <p className="text-xs uppercase tracking-wide text-text-faint">Will be removed (user-added)</p>
+              <p className="num mt-1 text-lg font-semibold text-neg">
+                {preview.removable_bar_count} bars
+              </p>
+              <p className="num text-xs text-text-muted">
+                {preview.removable_symbol_count} symbol{preview.removable_symbol_count === 1 ? "" : "s"}
+                {preview.removable_first ? ` · ${preview.removable_first} → ${preview.removable_last}` : null}
+              </p>
+              {preview.removable_symbols.length > 0 ? (
+                <p className="num mt-1 truncate text-xs text-text-faint" title={preview.removable_symbols.join(", ")}>
+                  {preview.removable_symbols.join(", ")}
+                </p>
+              ) : null}
+            </div>
+          )}
+
+          {preview.not_removable_bar_count > 0 ? (
+            <div className="rounded-md border border-border bg-surface-2 p-3" data-testid="remove-not-removable">
+              <p className="text-xs uppercase tracking-wide text-text-faint">
+                Not removable — committed seed (protected)
+              </p>
+              <p className="num mt-1 text-sm text-text-muted">
+                {preview.not_removable_bar_count} bars kept
+              </p>
+              <ul className="mt-1 space-y-0.5 text-xs text-text-muted">
+                {preview.not_removable_by_symbol.map((line) => (
+                  <li key={line.symbol} className="flex items-baseline justify-between gap-3">
+                    <span className="num font-medium text-text">{line.symbol}</span>
+                    <span className="num text-text-faint">
+                      {line.bar_count} bars · {line.reason}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {!refused ? (
+            <div className="rounded-md border border-border bg-surface-2 p-3" data-testid="remove-cascade">
+              <p className="text-xs uppercase tracking-wide text-text-faint">
+                Cascade — dependent rows removed with the bars
+              </p>
+              <p className="num mt-1 text-sm text-text-muted">
+                {preview.cascade.snapshot_count} snapshot{preview.cascade.snapshot_count === 1 ? "" : "s"} ·{" "}
+                {preview.cascade.forward_return_count} forward returns
+              </p>
+              {preview.cascade.snapshot_dates.length > 0 ? (
+                <p className="num mt-1 truncate text-xs text-text-faint" title={preview.cascade.snapshot_dates.join(", ")}>
+                  dates: {preview.cascade.snapshot_dates.join(", ")}
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-text-faint">No dependent snapshots — only bars are removed.</p>
+              )}
+              <p className="mt-2 text-xs text-text-faint">
+                Snapshots are removed whole-row (never overwritten in place); a snapshot still holding all its
+                bars is left untouched.
+              </p>
+            </div>
+          ) : null}
+
+          {error ? (
+            <p role="alert" className="flex items-center gap-2 text-xs text-neg">
+              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+              {error}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="inline-flex h-9 items-center rounded-md border border-border px-4 text-sm text-text-muted transition hover:border-border-strong hover:text-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={refused || removing}
+            data-testid="remove-confirm-button"
+            className={cn(
+              "inline-flex h-9 items-center gap-2 rounded-md bg-neg px-4 text-sm font-semibold text-bg",
+              "transition hover:brightness-110 active:brightness-95",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neg focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+            )}
+          >
+            {removing ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <Trash2 className="h-4 w-4" aria-hidden />}
+            {refused ? "Cannot remove" : `Remove ${preview.removable_bar_count} bars`}
+          </button>
+        </div>
+      </Card>
+    </div>
   );
 }
 

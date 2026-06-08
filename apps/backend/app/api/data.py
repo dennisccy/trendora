@@ -61,6 +61,20 @@ class ResumeRequest(BaseModel):
     api_key: Optional[str] = None
 
 
+class RemoveScope(BaseModel):
+    """POST body for the seed-safe Remove-data preview/execute (J-39). The scope is `symbols` and/or a
+    `[start, end]` date range — these are ACTION PARAMETERS (which bars to remove), NOT a viewing as-of
+    control (the global as-of switcher is untouched). At least one of symbols / range must be supplied (an
+    empty scope is rejected with 400 — never an accidental wipe). The committed seed is never deletable:
+    bars inside the committed-seed windows are excluded and a wholly-seed scope is refused. This body
+    carries NO provider key — removal is a purely local destructive metadata operation (J-33 carry: the
+    error surface is key-free)."""
+
+    symbols: Optional[list[str]] = None
+    start: Optional[date_cls] = None
+    end: Optional[date_cls] = None
+
+
 @router.get("/data")
 def data_overview(session: Session = Depends(get_session)) -> dict:
     """Current dataset coverage + recent run history + the import provider catalog (J-33) + the paused
@@ -150,3 +164,42 @@ def resume_job(
         )
     data_manager.start_resume_job(import_id, api_key=api_key, config=cfg, engine=get_engine())
     return {"import_id": import_id, "source": checkpoint.source, "status": "running"}
+
+
+@router.post("/data/remove/preview")
+def remove_preview(payload: RemoveScope, session: Session = Depends(get_session)) -> dict:
+    """READ-ONLY confirm-preview for a seed-safe removal (J-39): returns exactly what WOULD be removed —
+    removable `(symbol, date)` bar count + range + symbols, the not-removable committed-seed breakdown (per
+    symbol, reason `"committed seed"`), and the cascade of dependent snapshot/forward-return rows — while
+    DELETING NOTHING. A wholly-committed-seed scope returns `refused=True` (a 200 the UI renders to disable
+    the destructive confirm, with the explicit reason). An empty/inverted/unknown scope is 400 (the engine
+    `ValueError` mapped explicitly — never a silent no-op). The error surface carries no key (J-33 carry).
+
+    The scope is ACTION PARAMETERS (which bars to remove), NOT the global as-of viewing control."""
+    cfg = get_config()
+    try:
+        return data_manager.preview_removal(
+            session, cfg, symbols=payload.symbols, start=payload.start, end=payload.end,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/data/remove")
+def remove_data_endpoint(payload: RemoveScope, session: Session = Depends(get_session)) -> dict:
+    """DESTRUCTIVE seed-safe removal (J-39). Deletes ONLY the user-added bars in scope (the committed seed
+    is excluded and un-deletable) and cascade-removes the snapshot/forward-return rows that derived SOLELY
+    from them — a whole-row delete, never an in-place overwrite of a retained snapshot (Snapshots are
+    immutable). The removal is recorded on the append-only `DataProviderRun` audit log. A wholly-committed-
+    seed scope is REFUSED with 400 (never a silent partial); an empty/inverted/unknown scope is 400 too
+    (the engine `ValueError` mapped explicitly). After this returns, `GET /api/data` reflects the smaller
+    dataset (snapshot dates that existed only because of removed bars are gone). The error surface carries
+    no key (J-33 carry)."""
+    cfg = get_config()
+    try:
+        return data_manager.remove_data(
+            session, cfg, symbols=payload.symbols, start=payload.start, end=payload.end,
+            engine=get_engine(),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

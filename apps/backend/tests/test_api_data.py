@@ -312,3 +312,180 @@ def test_expand_job_status_shape_has_passers_and_omitted():
         {"symbol": "CHEAP", "reason": "price 4.0 < 10"},
         {"symbol": "NOCAP", "reason": "no_market_cap"},
     ]
+
+
+# ==================================================================================================
+# J-39 — Remove-data API: POST /api/data/remove/preview (read-only) + POST /api/data/remove (destructive)
+# ==================================================================================================
+@pytest.fixture()
+def removal_api_engine(tmp_path):
+    """An isolated DB + a committed-seed manifest where SPY is wholly seed (2024-01-02..03) and AAA has a
+    user-added bar beyond its seed window (2024-01-02 seed; 2024-01-09 user-added). Set as the process
+    engine and restored afterward so the audit row writes here. The endpoints read the manifest from
+    `data_manager.DEFAULT_SEED_DIR`, which we monkeypatch to a temp seed dir holding our meta.json."""
+    import json as _json
+    from app.engine import data_manager as dm
+    from app.models import ScannerRun
+
+    prev = db_module._engine
+    seed_dir = tmp_path / "seed"
+    seed_dir.mkdir(parents=True, exist_ok=True)
+    meta = {
+        "symbols_ok": 2, "symbols_failed": 0,
+        "symbols": [
+            {"symbol": "SPY", "first": "2024-01-02", "last": "2024-01-03", "bars": 2},
+            {"symbol": "AAA", "first": "2024-01-02", "last": "2024-01-02", "bars": 1},
+        ],
+    }
+    (seed_dir / "meta.json").write_text(_json.dumps(meta) + "\n")
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'remove_api.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        for d in (date(2024, 1, 2), date(2024, 1, 3)):
+            session.add(DailyPrice(symbol="SPY", date=d, open=1, high=1, low=1, close=1, volume=1))
+        session.add(DailyPrice(symbol="AAA", date=date(2024, 1, 2), open=1, high=1, low=1, close=1, volume=1))
+        # AAA user-added bar beyond its seed window (2024-01-02) → removable
+        session.add(DailyPrice(symbol="AAA", date=date(2024, 1, 9), open=1, high=1, low=1, close=1, volume=1))
+        # a snapshot on the user-added date → cascaded when that bar is removed
+        session.add(ScannerRun(
+            asof_date=date(2024, 1, 9), created_at=datetime(2024, 1, 9), provider="seed", benchmark="SPY",
+            regime_score=50.0, regime_label="Choppy", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        ))
+        session.commit()
+    db_module.set_engine(engine)
+    yield engine, seed_dir, prev
+    db_module.set_engine(prev)
+
+
+def test_remove_preview_endpoint_shape_deletes_nothing(removal_api_engine, monkeypatch):
+    """POST /api/data/remove/preview returns the plan (removable bars + range, not-removable committed-seed
+    breakdown, cascade) and DELETES NOTHING."""
+    from app.api.data import RemoveScope, remove_preview
+    from app.engine import data_manager as dm
+    from app.models import ScannerRun
+    engine, seed_dir, _prev = removal_api_engine
+    monkeypatch.setattr(dm, "DEFAULT_SEED_DIR", seed_dir)
+
+    with Session(engine) as session:
+        runs_before = len(session.exec(__import__("sqlmodel").select(ScannerRun)).all())
+        resp = remove_preview(
+            RemoveScope(symbols=["AAA"], start=date(2024, 1, 5), end=date(2024, 1, 10)), session=session
+        )
+        runs_after = len(session.exec(__import__("sqlmodel").select(ScannerRun)).all())
+    assert runs_before == runs_after  # preview deleted nothing
+    assert resp["removable_bar_count"] == 1  # AAA on 2024-01-09
+    assert resp["removable_first"] == "2024-01-09"
+    assert resp["cascade"]["snapshot_count"] == 1  # the 2024-01-09 snapshot
+    assert resp["refused"] is False
+    assert "removable_bars" not in resp  # internal objects never serialized
+
+
+def test_remove_endpoint_executes_and_audits(removal_api_engine, monkeypatch):
+    """POST /api/data/remove deletes the user-added bar + cascades, and the next coverage read reflects the
+    smaller dataset (the snapshot date is gone)."""
+    from app.api.data import RemoveScope, remove_data_endpoint, data_overview
+    from app.engine import data_manager as dm
+    engine, seed_dir, _prev = removal_api_engine
+    monkeypatch.setattr(dm, "DEFAULT_SEED_DIR", seed_dir)
+
+    with Session(engine) as session:
+        resp = remove_data_endpoint(
+            RemoveScope(symbols=["AAA"], start=date(2024, 1, 5), end=date(2024, 1, 10)), session=session
+        )
+    assert resp["removed_bar_count"] == 1
+    assert resp["cascade"]["snapshot_count"] == 1
+    # coverage now reflects the smaller dataset: the 2024-01-09 snapshot date is gone.
+    with Session(engine) as session:
+        cov = data_overview(session=session)["coverage"]
+    assert "2024-01-09" not in cov["snapshot_dates"]
+    assert cov["snapshot_count"] == 0
+
+
+def test_remove_endpoint_seed_only_is_400(removal_api_engine, monkeypatch):
+    """A wholly-committed-seed scope (SPY is entirely seed) is refused with 400 — the committed seed is
+    never deletable; never a silent partial."""
+    from app.api.data import RemoveScope, remove_data_endpoint
+    from app.engine import data_manager as dm
+    engine, seed_dir, _prev = removal_api_engine
+    monkeypatch.setattr(dm, "DEFAULT_SEED_DIR", seed_dir)
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            remove_data_endpoint(
+                RemoveScope(symbols=["SPY"], start=date(2024, 1, 1), end=date(2024, 1, 3)), session=session
+            )
+    assert exc.value.status_code == 400
+    assert "committed seed" in str(exc.value.detail).lower()
+
+
+def test_remove_preview_seed_only_returns_refused(removal_api_engine, monkeypatch):
+    """The PREVIEW of a seed-only scope returns refused=True with a reason (a 200 the UI renders to disable
+    the destructive confirm) — distinct from the destructive endpoint's 400."""
+    from app.api.data import RemoveScope, remove_preview
+    from app.engine import data_manager as dm
+    engine, seed_dir, _prev = removal_api_engine
+    monkeypatch.setattr(dm, "DEFAULT_SEED_DIR", seed_dir)
+    with Session(engine) as session:
+        resp = remove_preview(
+            RemoveScope(symbols=["SPY"], start=date(2024, 1, 1), end=date(2024, 1, 3)), session=session
+        )
+    assert resp["refused"] is True and resp["removable_bar_count"] == 0
+    assert "committed seed" in resp["reason"].lower()
+    assert resp["not_removable_bar_count"] == 2  # SPY × 2 seed days
+
+
+def test_remove_endpoint_empty_scope_is_400(removal_api_engine, monkeypatch):
+    """An empty scope (no symbols, no range) is rejected with 400 — never an accidental wipe."""
+    from app.api.data import RemoveScope, remove_data_endpoint
+    from app.engine import data_manager as dm
+    engine, seed_dir, _prev = removal_api_engine
+    monkeypatch.setattr(dm, "DEFAULT_SEED_DIR", seed_dir)
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            remove_data_endpoint(RemoveScope(), session=session)
+    assert exc.value.status_code == 400
+
+
+def test_remove_endpoint_unknown_symbol_is_400(removal_api_engine, monkeypatch):
+    """An unknown symbol (no stored bars) is rejected with 400 — never a silent no-op or fabricated row."""
+    from app.api.data import RemoveScope, remove_data_endpoint
+    from app.engine import data_manager as dm
+    engine, seed_dir, _prev = removal_api_engine
+    monkeypatch.setattr(dm, "DEFAULT_SEED_DIR", seed_dir)
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            remove_data_endpoint(
+                RemoveScope(symbols=["NOPE"], start=date(2024, 1, 1), end=date(2024, 1, 10)), session=session
+            )
+    assert exc.value.status_code == 400
+
+
+def test_remove_preview_inverted_range_is_400(removal_api_engine, monkeypatch):
+    """An inverted date range (start > end) is rejected with 400."""
+    from app.api.data import RemoveScope, remove_preview
+    from app.engine import data_manager as dm
+    engine, seed_dir, _prev = removal_api_engine
+    monkeypatch.setattr(dm, "DEFAULT_SEED_DIR", seed_dir)
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            remove_preview(
+                RemoveScope(symbols=["AAA"], start=date(2024, 1, 10), end=date(2024, 1, 1)), session=session
+            )
+    assert exc.value.status_code == 400
+
+
+def test_remove_endpoint_error_carries_no_secret(removal_api_engine, monkeypatch):
+    """J-33 carry: the remove/preview error strings carry no key/secret. These paths take no provider key,
+    so the surface is small — assert no `?token=`/`?apikey=` could appear in an error detail."""
+    from app.api.data import RemoveScope, remove_data_endpoint
+    from app.engine import data_manager as dm
+    engine, seed_dir, _prev = removal_api_engine
+    monkeypatch.setattr(dm, "DEFAULT_SEED_DIR", seed_dir)
+    with Session(engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            remove_data_endpoint(
+                RemoveScope(symbols=["SPY"], start=date(2024, 1, 1), end=date(2024, 1, 3)), session=session
+            )
+    detail = str(exc.value.detail)
+    assert "?token=" not in detail and "?apikey=" not in detail and "api_key" not in detail

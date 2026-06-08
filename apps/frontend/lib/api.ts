@@ -982,6 +982,23 @@ export async function fetchEventStudy(
 /** Current dataset coverage — descriptive metadata only (the frontend re-formats it; it computes no
  *  coverage figure). `gaps_preview` is a bounded list of the backfill-able trading days that have bars
  *  but no snapshot; `gap_count` is the true total. */
+/** One row of the J-36 per-symbol / per-universe-member coverage table — READ-ONLY descriptive metadata
+ *  (the frontend re-formats it only; it recomputes no coverage figure). One row per stored symbol AND per
+ *  universe member: `in_universe` is membership from the single canonical config.universe.symbols;
+ *  `has_data` whether the symbol has bars; `first`/`last` the bar-date range (null/NA when no bars —
+ *  never fabricated); `bar_count` the stored bar count; `thin` true iff 0 < bars < indicators.min_history_bars
+ *  (the config thin threshold); `missing` true iff a universe member has no data (shown missing, not faked). */
+export interface PerSymbolCoverage {
+  symbol: string;
+  in_universe: boolean;
+  has_data: boolean;
+  first: string | null; // NA when no bars
+  last: string | null;
+  bar_count: number;
+  thin: boolean;
+  missing: boolean;
+}
+
 export interface DataCoverage {
   price_start: string | null;
   price_end: string | null;
@@ -997,6 +1014,9 @@ export interface DataCoverage {
   gap_first: string | null;
   gap_last: string | null;
   gaps_preview: string[]; // ascending; bounded by config.data_manager.gap_preview
+  // J-36: the per-symbol / per-universe-member coverage table (universe members first, then priced
+  // symbols; the UI re-sorts/filters only). distinct has-data rows == symbol_count; in-universe == universe_count.
+  per_symbol: PerSymbolCoverage[];
 }
 
 /** One row of the fetch/backfill run history (from the append-only DataProviderRun log). A Data Manager
@@ -1160,4 +1180,69 @@ export async function resumeDataJob(
     `/api/data/jobs/${encodeURIComponent(importId)}/resume`,
     body,
   );
+}
+
+// --- J-39 seed-safe Remove-data: confirm-preview + destructive removal ----------------------------
+
+/** The removal scope (action parameters — which bars to remove, NOT the global as-of viewing control):
+ *  by symbol and/or by date range. At least one must be set; the committed seed is never deletable. */
+export interface RemoveScope {
+  symbols?: string[];
+  start?: string;
+  end?: string;
+}
+
+/** One not-removable (committed-seed) breakdown line in a removal preview: the protected symbol, how many
+ *  of its in-scope bars are committed seed, and the reason ("committed seed"). The committed seed is
+ *  un-deletable, so these bars are always excluded from the removal. */
+export interface RemoveSeedLine {
+  symbol: string;
+  bar_count: number;
+  reason: string;
+}
+
+/** The cascade of derived rows a removal would (preview) / did (execute) remove: the snapshots
+ *  (ScannerRun + children) and forward returns that depended SOLELY on the removed bars. A whole-row
+ *  delete — never an in-place overwrite of a retained snapshot. */
+export interface RemoveCascade {
+  snapshot_count: number;
+  snapshot_dates: string[];
+  forward_return_count: number;
+}
+
+/** The J-39 confirm-preview / removal result (read-only descriptive metadata; the frontend re-formats it).
+ *  `removable_*` is exactly what would be / was removed (user-added bars only); `not_removable_by_symbol`
+ *  is the protected committed-seed breakdown; `cascade` is the dependent snapshot/forward-return rows;
+ *  `refused` + `reason` mark a wholly-committed-seed scope (the destructive endpoint 400s on it, the
+ *  preview returns refused=true so the UI disables the confirm). `removed_bar_count` is present on the
+ *  executed-removal response (the done-count). */
+export interface RemovePreview {
+  removable_bar_count: number;
+  removable_symbol_count: number;
+  removable_symbols: string[];
+  removable_first: string | null;
+  removable_last: string | null;
+  not_removable_bar_count: number;
+  not_removable_by_symbol: RemoveSeedLine[];
+  cascade: RemoveCascade;
+  refused: boolean;
+  reason: string;
+  removed_bar_count?: number; // present on the executed removal response only
+}
+
+/** POST /api/data/remove/preview — READ-ONLY confirm-preview: returns exactly what WOULD be removed
+ *  (removable user-added bars + range, the not-removable committed-seed breakdown, and the cascade of
+ *  dependent snapshot/forward-return rows) while DELETING NOTHING. A wholly-committed-seed scope returns
+ *  refused=true (a 200 the UI renders to disable the destructive confirm). Throws with the backend's
+ *  honest `detail` on a non-2xx (400 empty/inverted/unknown scope). */
+export async function previewDataRemoval(scope: RemoveScope): Promise<RemovePreview> {
+  return sendJSON<RemovePreview>("POST", "/api/data/remove/preview", scope);
+}
+
+/** POST /api/data/remove — DESTRUCTIVE seed-safe removal: deletes only the user-added bars in scope and
+ *  cascade-removes the snapshot/forward-return rows that derived solely from them (the committed seed is
+ *  un-deletable). Throws with the backend's honest `detail` on a non-2xx (400 wholly-seed / empty /
+ *  inverted / unknown scope). After it resolves, re-read GET /api/data — it reflects the smaller dataset. */
+export async function executeDataRemoval(scope: RemoveScope): Promise<RemovePreview> {
+  return sendJSON<RemovePreview>("POST", "/api/data/remove", scope);
 }

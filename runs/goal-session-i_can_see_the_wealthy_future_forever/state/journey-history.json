@@ -7,7 +7,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-01-dashboard.png (carried passing iter-23: iter-23 working-tree diff is EXACTLY 14 app/config files [data_manager.py, api/data.py, universe_screen.py(new), scripts/screen_universe.py, data_providers/{base,yahoo,tiingo,finnhub}.py, config.py, /data page, lib/api.ts, 4 test files]; git out-of-scope check EMPTY over scoring/scanner/regime/patterns/buckets/forward_testing/research/snapshot_serving + /stocks·/backtest·/research pages + asof-provider + sidebar; no DB regen; 549 backend tests pass. Cannot have regressed.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-01-dashboard.png (carried passing iter-24: working-tree diff is EXACTLY 6 app files [data_manager.py, api/data.py, 2 test files, /data page.tsx, lib/api.ts]; git out-of-scope check EMPTY over scoring/scanner/regime/patterns/buckets/forward_testing/research/snapshot_serving + /stocks·/backtest·/research·/themes·/sectors pages + asof-provider + sidebar; no DB regen; J-36/J-39 73 tests pass + test_db 4 pass. Cannot have regressed.)"
     },
     "J-02": {
       "id": "J-02",
@@ -16,7 +16,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-02-leaderboard.png (carried passing iter-23: /stocks path git-untouched; no DB regen; 549 backend tests pass.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-02-leaderboard.png (carried passing iter-24: /stocks path git-untouched; no DB regen.)"
     },
     "J-03": {
       "id": "J-03",
@@ -25,7 +25,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-03-themes.png (carried passing iter-23: /themes path git-untouched; no DB regen. NOTE: config.py _merge_committed_universe also unions universe.json members' sectors into stock_sectors — but universe.json is ABSENT on this host so the merge is a no-op and theme/sector config is unchanged; test_sectors+test_themes 86 passed.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-03-themes.png (carried passing iter-24: /themes path git-untouched; no DB regen; universe.json absent on host so the config merge is a no-op.)"
     },
     "J-04": {
       "id": "J-04",
@@ -34,7 +34,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-04-sectors.png (carried passing iter-23: /sectors path git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-04-sectors.png (carried passing iter-24: /sectors path git-untouched; no DB regen.)"
     },
     "J-05": {
       "id": "J-05",
@@ -43,7 +43,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-05-J-06-nvda-detail-coherence.png (carried passing iter-23: scoring/serving paths git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-05-J-06-nvda-detail-coherence.png (carried passing iter-24: scoring/serving paths git-untouched; no DB regen.)"
     },
     "J-06": {
       "id": "J-06",
@@ -52,7 +52,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-05-J-06-nvda-detail-coherence.png (carried passing iter-23: scoring.py/scanner.py/snapshot_serving.py git-untouched, no DB regen — leaderboard==detail byte-identical preserved.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-05-J-06-nvda-detail-coherence.png (carried passing iter-24: scoring.py/scanner.py/snapshot_serving.py git-untouched, no DB regen; the J-39 remove cascade is whole-row delete of derived rows only — never an in-place overwrite of a retained snapshot, so leaderboard==detail byte-identical preserved.)"
     },
     "J-07": {
       "id": "J-07",
@@ -61,7 +61,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-07-riskoff-run.png (carried passing iter-23: regime.py/scoring.py git-untouched, no DB regen — Risk-off Actionable=0 gate preserved.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-07-riskoff-run.png (carried passing iter-24: regime.py/scoring.py git-untouched, no DB regen — Risk-off Actionable=0 gate preserved.)"
     },
     "J-08": {
       "id": "J-08",
@@ -70,7 +70,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-08-scanner-runs.png (carried passing iter-23: scanner snapshot path git-untouched; the expand writer INSERTs only DailyPrice (insert-new-only) + writes universe.json/CSV/meta.json + INSERT-only forward returns via backfill_run_forward_returns — NO ScannerRun/ScannerResult/*_scores UPDATE or overwrite (test_expand_idempotent_no_duplicate_bars_no_snapshot_regen); invariant #3 untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-08-scanner-runs.png (RE-CONFIRMED iter-24 required-still-passing — the principal immutability-adjacent risk this iter: the J-39 remove path executes ONLY whole-row delete() on ForwardReturn/ScannerResult/SectorScoreRow/ThemeScoreRow/ScannerRun/DailyPrice (data_manager.py:494-513) and a fully-covered snapshot is left UNTOUCHED — grep confirms ZERO update()/in-place overwrite of any ScannerRun/ScannerResult; the *Snapshots are immutable* identity = 'never overwritten in place', which a consistency-preserving whole-row delete respects. test_data_manager.py asserts cascade-solely + fully-covered-snapshot-untouched + no-recompute; 73 tests green. No DB regen.)"
     },
     "J-09": {
       "id": "J-09",
@@ -79,7 +79,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-09-J-10-backtest-latest.png (carried passing iter-23: forward_testing.py/backtest path git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-09-J-10-backtest-latest.png (carried passing iter-24: forward_testing.py/backtest path git-untouched; no DB regen.)"
     },
     "J-10": {
       "id": "J-10",
@@ -88,7 +88,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-09-J-10-backtest-latest.png (carried passing iter-23: forward_testing.py/backtest path git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-09-J-10-backtest-latest.png (carried passing iter-24: forward_testing.py/backtest path git-untouched; no DB regen.)"
     },
     "J-11": {
       "id": "J-11",
@@ -97,7 +97,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-11-watchlist-added.png (carried passing iter-23: watchlist path git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-11-watchlist-added.png (carried passing iter-24: watchlist path git-untouched; no DB regen.)"
     },
     "J-12": {
       "id": "J-12",
@@ -106,7 +106,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-12-methodology.png (carried passing iter-23: /methodology + config catalog git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-12-methodology.png (carried passing iter-24: /methodology + config catalog git-untouched; no DB regen.)"
     },
     "J-13": {
       "id": "J-13",
@@ -115,7 +115,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-13-stocks-historical-asof.png (carried passing iter-23: as-of provider git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-13-stocks-historical-asof.png (carried passing iter-24: as-of provider git-untouched; no DB regen.)"
     },
     "J-14": {
       "id": "J-14",
@@ -124,7 +124,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-14-J-19-J-21-backtest-historical-60d.png (carried passing iter-23: forward_testing.py/backtest path git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-14-J-19-J-21-backtest-historical-60d.png (carried passing iter-24: forward_testing.py/backtest path git-untouched; no DB regen.)"
     },
     "J-15": {
       "id": "J-15",
@@ -133,7 +133,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-23",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-23",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "RE-CONFIRMED iter-23 required-still-passing (structural/source): snapshot_serving.py git-untouched — read path unchanged, no per-request recompute introduced. The expand job only adds INSERT-new-only DailyPrice writes + universe.json/CSV/meta.json + INSERT-only forward returns; no read-serving change. Coherence COHERENCE-PASS confirms no new computation path for any blueprint-registered value. Carries reports/qa/.../iter-20-evidence/UT-J-15 baseline."
+      "last_evidence_path": "RE-CONFIRMED iter-24 required-still-passing (structural/source): snapshot_serving.py git-untouched — read path unchanged, no per-request recompute introduced. The J-36 coverage table is read-only descriptive metadata over stored bars + config (recomputes no score/return/bucket); J-39 remove only DELETES rows. Coherence COHERENCE-PASS confirms no new computation path for any blueprint-registered value. Carries iter-20 UT-J-15 baseline."
     },
     "J-16": {
       "id": "J-16",
@@ -142,7 +142,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-16-vcp-filter.png + UT-J-16-tsm-vcp-detail.png (carried passing iter-23: patterns.py/scoring.py git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-16-vcp-filter.png + UT-J-16-tsm-vcp-detail.png (carried passing iter-24: patterns.py/scoring.py git-untouched; no DB regen.)"
     },
     "J-17": {
       "id": "J-17",
@@ -151,16 +151,16 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-23",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-23",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "RE-CONFIRMED iter-23 required-still-passing: the expand job adds an `expand` BRANCH to the existing _run_job (data_manager.py:912) and reuses _FETCH_KINDS for the fetch/backfill/both flow unchanged — the existing fetch/backfill paths are not forked. validate_job_request only requires a key for jobs that actually fetch (a backfill reads the committed seed). QA TC-04 (expand over yahoo created 201) + the 549-green suite (incl. existing fetch/backfill/idempotency tests) confirm the existing kinds still run. Carries reports/qa/.../iter-22-evidence/UT-02-result.png (backfill end-to-end, 5/5 dates, 3200 fwd returns)."
+      "last_evidence_path": "RE-CONFIRMED iter-24 required-still-passing (source + tests): iter-24 added J-36 coverage + J-39 remove to data_manager.py/api/data.py but the fetch/backfill/both/expand job branches + JOB_KINDS are unchanged (JOB_KINDS still ('fetch','backfill','both','expand')); the diff is purely additive coverage/remove functions. 73 scoped tests green incl. existing job tests. QA run history on /data shows fetch/backfill executing. Carries iter-22 UT-02-result.png."
     },
     "J-18": {
       "id": "J-18",
       "name": "One date control (no duplicate)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-23",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-23",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-24",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-24",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-23-evidence/TC-14-expand-selected.png (RE-CONFIRMED iter-23 — THE flagged anti-goal watch risk, held: the QA-MODE-2 browser screenshots show the /data page with exactly ONE date <select> — the global top-bar as-of switcher 'Latest · 2026-...' (the dropdown is visible open in TC-14-source-dropdown.png). The new expand controls — Expand job-kind option, import-source picker with eligibility disabling, passers/omitted screen-result block, reused chunk/Resume affordances — add ZERO date state; pool/source are job parameters. Coherence-auditor COHERENCE-PASS independently confirms the diff adds no new route and no date useState. Source: /data page job-kind+source controls are not date inputs.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-24-evidence/TC-01-coverage-defs.png (RE-CONFIRMED iter-24 — THE flagged anti-goal watch risk, held: the hydrated /data render shows exactly ONE date <select> in the nav (top-right '2026 ▾' global as-of switcher). The new Coverage panel adds NO date state; the Remove-data date-range inputs are ACTION PARAMETERS, not a viewing-date control. Coherence-auditor COHERENCE-PASS independently confirms the iter-24 diff adds no new route and no date useState; QA MODE-2 confirmed exactly one <select> per page via DOM eval.)"
     },
     "J-19": {
       "id": "J-19",
@@ -169,7 +169,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-14-J-19-J-21-backtest-historical-60d.png (carried passing iter-23: forward_testing.py/backtest attribution path git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-14-J-19-J-21-backtest-historical-60d.png (carried passing iter-24: forward_testing.py/backtest attribution path git-untouched; no DB regen.)"
     },
     "J-20": {
       "id": "J-20",
@@ -178,7 +178,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-20-nvda-chart-asof-marker.png (carried passing iter-23: prices.py/stock-detail chart path git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-20-nvda-chart-asof-marker.png (carried passing iter-24: prices.py/stock-detail chart path git-untouched; no DB regen.)"
     },
     "J-21": {
       "id": "J-21",
@@ -187,7 +187,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-14-J-19-J-21-backtest-historical-60d.png (carried passing iter-23: backtest page/forward_testing.py git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-14-J-19-J-21-backtest-historical-60d.png (carried passing iter-24: backtest page/forward_testing.py git-untouched; no DB regen.)"
     },
     "J-22": {
       "id": "J-22",
@@ -196,7 +196,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-8",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "BLOCKED (environmental) + NON-HALTING + NON-VETOING (re-scoped goal.md lines 989-1001). iter-23 BUILT the J-35 operator-facing Expand-universe UI path that auto-unblocks J-22 — but the LIVE market-cap expansion is still externally walled on this host (no reachable no-key OHLCV+market-cap egress; Yahoo/Stooq/Tiingo cap egress walled per MEMORY data-provider-access-constraints), so universe.json is NOT produced and universe_count stays YAML 122. The expand machinery is offline-proven (injected-provider integration tests write universe.json with exact passers/omissions); the live outcome is recorded honestly NA/resumable. J-22's acceptance (~400-500 committed members) is met with NO code change once an operator points the Data Manager at a reachable cap-capable source and runs Expand (or the committed dev runbook). NOT re-probed iter-23 (spec forbids autonomous retry). Candidate pool committed (apps/backend/data/seed/universe_pool.csv, 550 names). Does NOT block GOAL_ACHIEVED."
+      "last_evidence_path": "BLOCKED (environmental) + NON-HALTING + NON-VETOING (re-scoped goal.md lines 989-1001). The J-35 operator-facing Expand-universe UI path auto-unblocks J-22, but LIVE market-cap expansion is still externally walled on this host (no reachable no-key OHLCV+market-cap egress per MEMORY data-provider-access-constraints), so universe.json is NOT produced and universe_count stays YAML 122 (TC-01 shows Universe 122 / Symbols 162). J-22 met with NO code change once an operator points the Data Manager at a reachable cap-capable source and runs Expand. NOT re-probed iter-24 (spec forbids autonomous retry). Candidate pool committed (apps/backend/data/seed/universe_pool.csv). Does NOT block GOAL_ACHIEVED."
     },
     "J-23": {
       "id": "J-23",
@@ -205,7 +205,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "UNBUILT + DATA-WALLED + NON-HALTING + NON-VETOING (re-scoped goal.md): no intraday support in prices.py; needs fresh Yahoo intraday fetches (same 429 wall as J-22). Out of scope iter-23 (spec: data-walled, unrelated). Recorded honestly blocked (NA); does not halt/STALL/veto. Not re-probed iter-23."
+      "last_evidence_path": "UNBUILT + DATA-WALLED + NON-HALTING + NON-VETOING (re-scoped goal.md): no intraday support in prices.py; needs fresh Yahoo intraday fetches (same 429 wall as J-22). Out of scope iter-24. Recorded honestly blocked (NA); does not halt/STALL/veto. Not re-probed iter-24."
     },
     "J-24": {
       "id": "J-24",
@@ -214,7 +214,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "UNBUILT + DATA-WALLED + NON-HALTING + NON-VETOING (re-scoped goal.md): no timeframe control on the chart (depends on J-23 intraday data). Out of scope iter-23. Recorded honestly blocked (NA); does not halt/STALL/veto. Not re-probed iter-23."
+      "last_evidence_path": "UNBUILT + DATA-WALLED + NON-HALTING + NON-VETOING (re-scoped goal.md): no timeframe control on the chart (depends on J-23 intraday data). Out of scope iter-24. Recorded honestly blocked (NA); does not halt/STALL/veto. Not re-probed iter-24."
     },
     "J-25": {
       "id": "J-25",
@@ -223,7 +223,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-25-J-27-factor-lab.png (carried passing iter-23: research.py/research page git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-25-J-27-factor-lab.png (carried passing iter-24: research.py/research page git-untouched; no DB regen.)"
     },
     "J-26": {
       "id": "J-26",
@@ -232,7 +232,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-26-composite-cohort.png (carried passing iter-23: research.py composite engine git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-26-composite-cohort.png (carried passing iter-24: research.py composite engine git-untouched; no DB regen.)"
     },
     "J-27": {
       "id": "J-27",
@@ -241,7 +241,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-25-J-27-factor-lab.png (carried passing iter-23: research.py git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-25-J-27-factor-lab.png (carried passing iter-24: research.py git-untouched; no DB regen.)"
     },
     "J-28": {
       "id": "J-28",
@@ -250,7 +250,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-28-flatbase-filter.png (carried passing iter-23: patterns.py/scoring.py git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-28-flatbase-filter.png (carried passing iter-24: patterns.py/scoring.py git-untouched; no DB regen.)"
     },
     "J-29": {
       "id": "J-29",
@@ -259,7 +259,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-29-event-study.png (carried passing iter-23: research.py event-study path git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-29-event-study.png (carried passing iter-24: research.py event-study path git-untouched; no DB regen.)"
     },
     "J-30": {
       "id": "J-30",
@@ -268,7 +268,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-25-J-27-factor-lab.png (carried passing iter-23: research.py volatility-family path git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-25-J-27-factor-lab.png (carried passing iter-24: research.py volatility-family path git-untouched; no DB regen.)"
     },
     "J-31": {
       "id": "J-31",
@@ -277,7 +277,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-29-event-study.png + UT-J-02-leaderboard.png (carried passing iter-23: research/stocks cross-link paths git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-29-event-study.png + UT-J-02-leaderboard.png (carried passing iter-24: research/stocks cross-link paths git-untouched; no DB regen.)"
     },
     "J-32": {
       "id": "J-32",
@@ -286,7 +286,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-17",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-32-asof-mode.png (carried passing iter-23: research.py as-of FILTER path git-untouched; no DB regen.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-32-asof-mode.png (carried passing iter-24: research.py as-of FILTER path git-untouched; no DB regen.)"
     },
     "J-33": {
       "id": "J-33",
@@ -295,7 +295,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-23",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-23",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_evidence_path": "RE-CONFIRMED iter-23 required-still-passing (source + 549-green suite). The iter-22 key-leak fix HELD on the NEW expand market-cap path (the flagged iter-21/22 lesson): get_market_cap routes HTTP/transport failures through _http.py:_provider_error (built from _redacted_url => req.url.copy_with(query=None, fragment=None) — entire query stripped, key-agnostic) + status, NEVER str(exc); the only raw-exc strings in get_market_cap are JSON-shape parse errors (KeyError/TypeError on the parsed body — carry no URL/key); and the data_manager consumption layer wraps EVERY error string in scrub() (_make_scrubber => s.replace(resolved_key,'***'), data_manager.py:345) before it reaches JobProgress.errors / the omitted list / the persisted run (_screen_one_candidate:611 scrub(f'market_cap_fetch_failed: {exc}'); job-level :929 scrub(str(exc))). The iter-21 mocked-provider blind spot is closed on the new path by REAL httpx.MockTransport tests (test_provider_clients.py:283/297/309 redacted on status/429/unparseable-body; :352 get_market_cap http-error-raises) PLUS a real-httpx end-to-end expand cap-fetch key-scrub test (test_data_manager.py:985 test_expand_cap_fetch_real_httpx_key_scrubbed_end_to_end). Source picker + session-only key threading + 5-source config catalog unchanged. Carries reports/qa/.../iter-22-evidence/UT-11-result.png."
+      "last_evidence_path": "RE-CONFIRMED iter-24 required-still-passing: iter-24 touches no key-carrying provider path (J-36 coverage + J-39 remove are deterministic, no fetch). The J-39 removal error surface carries no secret (no URL/key in removal errors; QA J-33-key-safety carry). The iter-22 redacted-URL + resolved-key scrub fix is unchanged. Carries iter-22 UT-11-result.png."
     },
     "J-34": {
       "id": "J-34",
@@ -304,52 +304,52 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-23",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-23",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_evidence_path": "RE-CONFIRMED iter-23 required-still-passing (source + 549-green suite). The iter-22 chunked/resumable engine is REUSED by expand, not forked: expand uses _EXPAND_KINDS that ride the SAME _chunk_plan / RateLimitError->backoff->resumable / durable import_checkpoints / resume_data_job path (coherence-auditor independently confirms 'no fork'); a cap-feed pause leaves the durable checkpoint resumable (test_expand_cap_feed_rate_limited_pauses_resumable_never_fabricates:958; test_chunked_fetch_pauses_resumable_then_resumes_idempotently:590 unchanged). Resume still works (the reused J-34 resume-button path serves an expand checkpoint per the frontend handoff). The screenshot TC-14-expand-selected.png shows the Resumable-imports panel with Alpha Vantage + Resume control present on /data. No new numeric literal (all 6 chunk tunables from config.yaml data_manager.import_chunking). Carries reports/qa/.../iter-22-evidence/UT-07-result.png."
+      "last_evidence_path": "RE-CONFIRMED iter-24 required-still-passing: the iter-22 chunked/resumable engine + durable import_checkpoints + resume_data_job path is git-untouched by iter-24 (the diff adds only J-36 coverage + J-39 remove functions). QA: Resumable-imports panel still visible on /data with Resume control. Carries iter-22 UT-07-result.png."
     },
     "J-35": {
       "id": "J-35",
       "name": "Expand the universe from the Data Manager (pool -> config screen -> members)",
       "status": "partial",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-23",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-24",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-23-evidence/TC-13-data-page.png + TC-14-expand-selected.png + TC-14-source-dropdown.png (3 sha256-distinct, healthy hydrated /data renders). BUILT end-to-end and verified correct IN SOURCE + by the 549-green suite, but recorded PARTIAL (not passing) because the DEFINING end-to-end browser flow was not captured: the dedicated browser-qa step recorded SKIPPED (frontend dev server DOWN at run time — curl :3835 => HTTP 000; ENVIRONMENTAL per MEMORY browser-qa-dead-shell-next-cache / dev-server-cleanup-by-port, NOT a code FAIL), so no live capture exists of an injected-provider expand running to completion -> passers + omitted-with-reason + grown universe-count. WHAT IS PROVEN: (browser, QA MODE 2 screenshots) the Expand-universe job kind is selectable (TC-13/TC-14 — 4 kinds incl. 'expand universe'), an ineligible supports_market_cap:false source (alpha_vantage/stooq) is disabled with the reason 'cannot supply market cap — not selectable for expand' (TC-14), a market-cap-capable source (yahoo) is selectable+enabled (TC-15), and exactly one date <select> per page (J-18); (integration, injected provider) test_expand_screens_pool_writes_universe_with_exact_passers_and_omissions:726 writes universe.json with EXACT passers + omitted-with-reason, test_expand_omitted_..no_fabricated_bar:776, test_expand_engine_decision_matches_screen_reasons_predicate:804 (single screen source), test_expand_idempotent_no_duplicate_bars_no_snapshot_regen:832, eligibility 422/400 (engine:871 + api TC-01/TC-02), J-22 single-source merge:898. (api, QA) TC-01 unknown-kind 422, TC-02 expand-over-alpha_vantage 400, TC-04 expand-over-yahoo 201, TC-05 expand progress fields (passers/omitted). The LIVE market-cap expansion is data-walled (universe.json ABSENT on host; universe_count stays YAML 122) — recorded honestly NA/resumable, NON-HALTING per the J-22/J-35 contract. NEXT (iter-24+ or a lean re-verify): bring the frontend up and capture the injected-provider expand happy-path browser flow (chunk x/N -> passers + omitted list -> grown universe-count) to lift J-35 partial->passing."
+      "last_evidence_path": "Carried PARTIAL iter-24 — the defining end-to-end expand browser capture was AGAIN not produced this iter. The dedicated browser-qa-agent SKIPPED all 26 tests (frontend not running at :3835 — ENVIRONMENTAL per MEMORY browser-qa-dead-shell-next-cache / dev-server-cleanup-by-port, NOT a code FAIL), and the QA MODE-2 report explicitly DEFERRED the J-35 expand end-to-end capture ('deferred to live session, not blocking'). Machinery remains integration-proven (iter-23: test_expand_screens_pool_writes_universe_with_exact_passers_and_omissions:726, eligibility 422/400, single screen source) + 73 iter-24 scoped tests green; LIVE market-cap expansion stays data-walled (universe.json absent; universe_count 122) — recorded honestly NA/non-halting. NEXT (iter-25): bring the frontend up cleanly (stop by port; rm -rf .next; main-app.js 200; health badge cleared) and capture the injected-provider expand happy-path (chunk x/N -> passers + omitted-with-reason -> grown universe-count) to lift partial->passing. Per the iter-4/15/23 multi-step-capture lesson, a render of surfaces in isolation does not satisfy this multi-step acceptance."
     },
     "J-36": {
       "id": "J-36",
       "name": "Understand coverage — per-symbol table + universe-vs-symbols clarity",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-23",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-24",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-24",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-22",
-      "last_evidence_path": "Must-have (operator re-scope commit 4541fbb) — goal.md:849. CONFIRMED UNBUILT + EXPLICITLY OUT OF SCOPE iter-23 (the iter-23 spec OUT OF SCOPE list forbids building the coverage table here). Homes on the existing /data page (additive, no nav change). FULLY DETERMINISTIC — no provider needed (read-only descriptive coverage metadata). Sequenced iter-24+ (smallest/most-deterministic of the four new, per the iter-22 eval). GOAL_ACHIEVED is UNREACHABLE until J-36..J-39 are built and green."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-24-evidence/TC-01-coverage-defs.png (NEWLY PASSING iter-24). Evidence: (browser, QA MODE-2) TC-01 is a genuine FULLY-HYDRATED /data render showing the J-36 Coverage panel — six aggregate definition blocks (Dataset coverage 2021-01-04..2026-06-05, Universe 122 with prose, Symbols-with-prices 162, Backfill gaps 0, snapshot/as-of date count, latest), the universe-vs-symbols prose line, AND the per-symbol coverage table with all columns (Symbol / In-universe / Has-data / Date range / Bars / thin-missing Status badges, e.g. an AABV thin row). (source + tests) `_per_symbol_coverage` (data_manager.py:98) wired into `compute_coverage` (:156): one row per stored DailyPrice.symbol + one per config.universe.symbols member; thin = 0<bar_count<indicators.min_history_bars (threshold from config, no magic number); missing member => has_data=false / NA range (never fabricated); recomputes no score/return/bucket. Consistency invariant HOLDS: 162 distinct-symbol rows == symbol_count, 122 in-universe rows == universe_count (QA TC-03/04/21/22 DOM + API; source-by-construction). Empty-dataset graceful serve tested. 73 J-36/J-39 tests + test_db 4 pass (verifier-run green). Coherence COHERENCE-PASS (single canonical universe source; served on existing GET /api/data). The dedicated browser-qa SKIP did not block J-36 because the QA MODE-2 hydrated render captured the defining J-36 surfaces directly."
     },
     "J-37": {
       "id": "J-37",
       "name": "Diagnose insufficient-for-analysis data and pull exactly the missing history (one-click)",
       "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-23",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-24",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-22",
-      "last_evidence_path": "Must-have (operator re-scope commit 4541fbb) — goal.md:881. CONFIRMED UNBUILT + EXPLICITLY OUT OF SCOPE iter-23. Homes on the existing /data page (additive, no nav change). Missing-data diagnostic + one-click 'pull the missing data' through the J-34 chunked/resumable engine. REUSES the J-34 engine; diagnostic deterministic, pull partly data-dependent (NA/non-halting on a wall). Sequenced iter-24+ (build after J-36/J-39 + the J-34 engine)."
+      "last_evidence_path": "Must-have (operator re-scope commit 4541fbb) — goal.md:881. CONFIRMED UNBUILT + EXPLICITLY OUT OF SCOPE iter-24 (the iter-24 spec OUT OF SCOPE list defers J-37 to iter-25 — 'Do NOT build the missing-data diagnostic or any pull missing action here'). Homes on the existing /data page (additive, no nav change). Missing-data diagnostic + one-click 'pull the missing data' through the J-34 chunked/resumable engine. REUSES the J-34 engine; diagnostic deterministic, pull partly data-dependent (NA/non-halting on a wall). iter-25 target. GOAL_ACHIEVED is UNREACHABLE until J-37 + J-38 are built and green."
     },
     "J-38": {
       "id": "J-38",
       "name": "Unified Unfinished-imports — Resume / Retry / Remove with state explanation",
       "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-23",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-24",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-22",
-      "last_evidence_path": "Must-have (operator re-scope commit 4541fbb) — goal.md:919. CONFIRMED UNBUILT + EXPLICITLY OUT OF SCOPE iter-23. Homes on the existing /data page (additive, no nav change). BUILDS ON the J-34 ImportCheckpoint + resumable_imports surface (iter-22 delivered Resume; J-38 generalizes to Retry/Remove + the unified section). Provable offline. Sequenced iter-24+."
+      "last_evidence_path": "Must-have (operator re-scope commit 4541fbb) — goal.md:919. CONFIRMED UNBUILT + EXPLICITLY OUT OF SCOPE iter-24 (the iter-24 spec defers J-38 to iter-25 — 'The existing iter-22 Resumable-imports panel stays unchanged; do NOT generalize it to Retry/Remove here'). Homes on the existing /data page (additive, no nav change). BUILDS ON the J-34 ImportCheckpoint + resumable_imports surface (iter-22 delivered Resume; J-38 generalizes to Retry/Remove + the unified section). Provable offline. iter-25 target."
     },
     "J-39": {
       "id": "J-39",
       "name": "Remove imported data — user-added-only, seed-safe, cascade-consistent, confirm-preview",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-23",
+      "status": "partial",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-24",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-22",
-      "last_evidence_path": "Must-have (operator re-scope commit 4541fbb) — goal.md:954. CONFIRMED UNBUILT + EXPLICITLY OUT OF SCOPE iter-23. Homes on the existing /data page (additive, no nav change). Seed-safe Remove-data (user-added bars only, confirm-preview, cascade-remove derived snapshots/forward-returns, committed seed never deletable). FULLY DETERMINISTIC — no provider needed. Sequenced iter-24+ (smallest/most-deterministic, alongside J-36)."
+      "last_evidence_path": "BUILT end-to-end and verified CORRECT IN SOURCE + by 73 green tests, but recorded PARTIAL (not passing) iter-24 because the DEFINING browser flow was NOT captured: the dedicated browser-qa-agent SKIPPED all 26 tests (frontend not running at :3835 — ENVIRONMENTAL, MEMORY browser-qa-dead-shell-next-cache / dev-server-cleanup-by-port), and the only J-39 QA shot (reports/qa/.../iter-24-evidence/TC-07-remove-data-control.png) is essentially BLANK (a near-empty dark capture) — so no live capture exists of the Remove-data confirm-preview (removable bars + range + protected committed-seed breakdown + dependent cascade) -> confirm/refusal. WHAT IS PROVEN: (source, the principal cascade-boundary review focus) remove_data (data_manager.py:480-513) executes ONLY whole-row delete() on ForwardReturn/ScannerResult/SectorScoreRow/ThemeScoreRow/ScannerRun/DailyPrice — grep confirms ZERO update()/in-place overwrite; _cascade_targets (:305-349) invalidates a run iff a removed bar has date<=D (input) OR a stored ForwardReturn.measured_date is removed (forward), leaving fully-covered snapshots UNTOUCHED; seed classifier reads data/seed/meta.json windows (seed bars protected, wholly-seed scope refused with reason); no run_scan/score_stocks/forward_return/detect_*/score_regime reachable from the remove path (only fetch/backfill docstrings + _do_backfill). (tests) test_remove_data_cascade_solely_dependent + fully-covered-snapshot-untouched + seed-only-refused + audit-recorded + no-recompute + 4xx error cases — part of the 73 green. (api, QA MODE-2) TC-25 preview deletes nothing (6 removable bars, symbol_count unchanged), TC-26 removal deletes only the 6 user-added bars (seed 1356 remain), TC-30 coverage updates, TC-31 no recompute, audit recorded. (live, dev) preview on NVDA: 6 removable / 1356 not-removable committed-seed / 14 snapshots / 5384 fwd returns cascade — deletes nothing (preview-only on the live host per MEMORY j39-live-host-has-user-added-nvda-bars). NEXT (iter-25): re-capture the Remove-data confirm-preview + protected-seed refusal browser flow on a clean hydrated build (preview path on the live host; destructive confirm proven by the user-added-bar fixture) to lift partial->passing. Per the iter-4/15/23 multi-step-capture lesson, a blank/absent UI capture does not satisfy the defining flow even though the logic is integration-proven."
     }
   },
   "anti_goal_violations": [
@@ -360,7 +360,7 @@
       "evidence": "PRE-EXISTING baseline issue (backtest/page.tsx local BacktestDatePicker + date state), root cause of J-18 failing at iter-0.",
       "resolved": true,
       "resolved_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
-      "resolution_evidence": "iter-1 deleted BacktestDatePicker; re-confirmed holding through iter-23. The J-35 expand UI (iter-23) was again the flagged WATCH risk — re-confirmed HELD iter-23: QA-MODE-2 browser screenshots (TC-14-expand-selected.png / TC-14-source-dropdown.png) show the /data page with exactly one date <select> (the global top-bar as-of switcher); the new Expand job-kind option + import-source picker + eligibility disabling + passers/omitted screen-result block + reused chunk/Resume affordances add ZERO date state (pool/source are job parameters). Coherence-auditor COHERENCE-PASS independently confirms the iter-23 diff adds no new route and no date useState."
+      "resolution_evidence": "iter-1 deleted BacktestDatePicker; re-confirmed holding through iter-24. The J-36 Coverage panel + J-39 Remove-data controls (iter-24) were again the flagged WATCH risk — re-confirmed HELD iter-24: the hydrated /data render (TC-01-coverage-defs.png) shows exactly one date <select> (the global top-bar as-of switcher '2026'); the Coverage panel adds ZERO date state and the Remove-data date-range inputs are ACTION PARAMETERS, not a viewing-date control. Coherence-auditor COHERENCE-PASS independently confirms the iter-24 diff adds no new route and no date useState; QA MODE-2 confirmed exactly one <select> per page via DOM eval."
     },
     {
       "iter": "goal-i_can_see_the_wealthy_future_forever-iter-21",
@@ -369,8 +369,8 @@
       "evidence": "VERIFIED BREACH at iter-21 of the 'never echoed back in any response' clause. A pasted SESSION-ONLY API key was echoed verbatim in GET /api/data/jobs/{id} errors[] and rendered in the /data job card. Root cause: _http.py raised ProviderUnavailableError(f'...: {exc}') where str(httpx.HTTPStatusError) embedded the full request URL including ?token=<key>/?apikey=<key>.",
       "resolved": true,
       "resolved_iter": "goal-i_can_see_the_wealthy_future_forever-iter-22",
-      "resolution_evidence": "CLOSED iter-22 (redacted-URL error message + defense-in-depth resolved-key scrub; real httpx.MockTransport regression test). RE-CONFIRMED HELD iter-23 on the NEW J-35 expand market-cap path (the flagged iter-21/22 lesson): get_market_cap routes HTTP/transport failures through _http.py:_provider_error (redacted URL, key-agnostic) + status, never str(exc); its only raw-exc strings are JSON-shape parse errors carrying no URL/key; and the data_manager consumption layer wraps every error string in scrub() (s.replace(resolved_key,'***')) before it reaches JobProgress.errors / the omitted list / the persisted run. Closed on the new path by REAL httpx tests: test_provider_clients.py:283/297/309 (redacted on status/429/unparseable body) + test_data_manager.py:985 test_expand_cap_fetch_real_httpx_key_scrubbed_end_to_end. KNOWN/ACCEPTED non-app residue (unchanged from iter-22, not penalized): the third-party httpx INFO log line (not enabled by default in this app). All OUR surfaces redacted/scrubbed."
+      "resolution_evidence": "CLOSED iter-22 (redacted-URL error message + defense-in-depth resolved-key scrub; real httpx.MockTransport regression test). RE-CONFIRMED HELD iter-23 on the expand market-cap path. iter-24 touches NO key-carrying provider path (J-36 coverage + J-39 remove are deterministic, no fetch); the J-39 removal error surface carries no URL/key (QA J-33-key-safety carry). No new exposure."
     }
   ],
-  "updated_at": "2026-06-07T13:40:00Z"
+  "updated_at": "2026-06-08T23:40:00Z"
 }

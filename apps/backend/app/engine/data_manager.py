@@ -36,7 +36,7 @@ from datetime import date as date_cls, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
-from sqlalchemy import func, insert
+from sqlalchemy import delete, func, insert
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
@@ -48,7 +48,16 @@ from app.db import get_engine
 from app.engine import forward_testing, scanner
 from app.engine.prices import bars_asof, latest_data_date
 from app.engine.universe_screen import DEFAULT_SEED_DIR, read_pool, screen_reasons
-from app.models import DailyPrice, DataProviderRun, ImportCheckpoint, ScannerRun
+from app.models import (
+    DailyPrice,
+    DataProviderRun,
+    ForwardReturn,
+    ImportCheckpoint,
+    ScannerResult,
+    ScannerRun,
+    SectorScoreRow,
+    ThemeScoreRow,
+)
 from app.seed_loader import all_seed_symbols
 
 # Injectable sleep (J-34): the chunked fetch's inter-request delay + 429 backoff call this. Tests pass
@@ -86,12 +95,73 @@ def _trading_days(session: Session, cfg: Config) -> list[date_cls]:
     return [bar.date for bar in bars_asof(session, benchmark, latest)]
 
 
+def _per_symbol_coverage(session: Session, cfg: Config) -> list[dict]:
+    """J-36 — the per-symbol / per-universe-member coverage table: one row per stored `DailyPrice.symbol`
+    AND one row per `config.universe.symbols` member, each a READ-ONLY descriptive metadata record that
+    recomputes NO canonical score/return/bucket/setup. Each row carries:
+      - `symbol`,
+      - `in_universe`  — membership read from the SINGLE canonical `config.universe.symbols` (the same
+                         source `universe_count` / /api/methodology read — no second universe computation),
+      - `has_data`     — the symbol has >= 1 stored bar,
+      - `first`/`last` — the bar-date range from `daily_prices` (NA / None when no bars — NEVER fabricated),
+      - `bar_count`    — the stored bar count,
+      - `thin`         — true iff `0 < bar_count < indicators.min_history_bars` (the thin threshold is read
+                         from config — No magic number),
+      - `missing`      — true iff a universe member has no data (shown missing, never a faked zero-bar row).
+
+    The (range, count) come from a single grouped scan of `daily_prices`; membership comes from config.
+    Rows are sorted: universe members first (alphabetical), then the remaining priced symbols (alphabetical)
+    — purely presentational; the API serves one canonical ordered list and the UI re-sorts/filters only."""
+    thin_threshold = cfg.indicators.min_history_bars  # the canonical "thin/insufficient" cutoff (config)
+    universe = list(cfg.universe.symbols)
+    universe_set = set(universe)
+
+    # One grouped pass over daily_prices → {symbol: (bar_count, first, last)} for every PRICED symbol.
+    stats_rows = session.exec(
+        select(
+            DailyPrice.symbol,
+            func.count(DailyPrice.id),
+            func.min(DailyPrice.date),
+            func.max(DailyPrice.date),
+        ).group_by(DailyPrice.symbol)
+    ).all()
+    stats: dict[str, tuple[int, Optional[date_cls], Optional[date_cls]]] = {
+        symbol: (int(count or 0), first, last) for symbol, count, first, last in stats_rows
+    }
+
+    # The row set = every priced symbol ∪ every universe member (a member with no bars still gets a row).
+    all_symbols = sorted(set(stats) | universe_set)
+
+    def _row(symbol: str) -> dict:
+        bar_count, first, last = stats.get(symbol, (0, None, None))
+        in_universe = symbol in universe_set
+        has_data = bar_count > 0
+        return {
+            "symbol": symbol,
+            "in_universe": in_universe,
+            "has_data": has_data,
+            "first": first.isoformat() if first else None,  # NA when no bars — never fabricated
+            "last": last.isoformat() if last else None,
+            "bar_count": bar_count,
+            "thin": 0 < bar_count < thin_threshold,  # strictly between 0 and the config threshold
+            "missing": in_universe and not has_data,  # a universe member with no data is MISSING (NA), not faked
+        }
+
+    rows = [_row(s) for s in all_symbols]
+    # universe members first (alphabetical), then the rest (alphabetical) — presentational only.
+    rows.sort(key=lambda r: (not r["in_universe"], r["symbol"]))
+    return rows
+
+
 def compute_coverage(session: Session, config: Optional[Config] = None) -> dict:
     """Current dataset coverage — purely descriptive, recomputing NO canonical value:
       - price-history date range (min/max `DailyPrice.date`) and distinct symbol count,
       - the set of snapshot/as-of dates (`ScannerRun.asof_date`), newest first,
       - GAPS = trading days (bars present) with no snapshot — the actionable backfill targets — with a
-        count plus a bounded preview (`config.data_manager.gap_preview`)."""
+        count plus a bounded preview (`config.data_manager.gap_preview`),
+      - (J-36) `per_symbol` — the per-symbol / per-universe-member coverage table (see
+        `_per_symbol_coverage`), consistency-bound to the aggregates below: the distinct-symbol (has-data)
+        row count == `symbol_count` and the in-universe row count == `universe_count` (same sources)."""
     cfg = config or get_config()
     price_min = session.scalar(select(func.min(DailyPrice.date)))
     price_max = session.scalar(select(func.max(DailyPrice.date)))
@@ -118,7 +188,340 @@ def compute_coverage(session: Session, config: Optional[Config] = None) -> dict:
         "gap_first": gaps[0].isoformat() if gaps else None,
         "gap_last": gaps[-1].isoformat() if gaps else None,
         "gaps_preview": [d.isoformat() for d in gaps[:preview]],
+        # J-36: the per-symbol / per-universe-member coverage table (read-only descriptive metadata).
+        "per_symbol": _per_symbol_coverage(session, cfg),
     }
+
+
+# --------------------------------------------------------------------------------------------------
+# J-39 — seed-safe Remove-data: the seed-vs-user-added classifier + confirm-preview + destructive
+# cascade. The session's FIRST destructive data path.
+#
+# Boundaries (each guarding a critical anti-goal):
+#   * The committed seed is UN-DELETABLE — `meta.json` per-symbol {first,last} windows are the
+#     authoritative seed manifest; a `(symbol, date)` inside a window is PROTECTED and excluded from every
+#     removal; a wholly-seed scope is REFUSED with an explicit reason (never a silent partial).
+#   * Removal only DELETES user-added bars and cascade-removes the derived snapshot/forward-return rows
+#     that depended SOLELY on them — a WHOLE-ROW delete of a derived row together with its provenance,
+#     NEVER an in-place UPDATE/overwrite of a retained snapshot (the *Snapshots are immutable* identity =
+#     "never overwritten in place", which a consistency-preserving whole-row delete respects). A snapshot
+#     that still has ALL its underlying bars after the removal is left UNTOUCHED.
+#   * Removal FABRICATES NOTHING — it only deletes; it never recomputes or invents a replacement value
+#     (no scoring/scanner recompute is reachable from this path).
+# --------------------------------------------------------------------------------------------------
+def load_seed_windows(seed_dir: Optional[str | Path] = None) -> dict[str, tuple[date_cls, date_cls]]:
+    """Read the committed-seed manifest (`<seed_dir>/meta.json`) into the per-symbol seed window map
+    `{symbol: (first_date, last_date)}` — the authoritative seed-vs-user-added boundary J-39 reads. A
+    `(symbol, date)` with `first <= date <= last` is the COMMITTED SEED (protected); a date beyond `last`
+    (or a symbol absent from the manifest) is USER-ADDED (removable). An absent/unreadable manifest yields
+    an empty map (so every bar is treated user-added — the safe default for a host with no committed seed
+    manifest), never a crash."""
+    path = Path(seed_dir or DEFAULT_SEED_DIR) / "meta.json"
+    if not path.exists():
+        return {}
+    try:
+        meta = json.loads(path.read_text())
+    except (ValueError, OSError):
+        return {}
+    windows: dict[str, tuple[date_cls, date_cls]] = {}
+    for row in meta.get("symbols") or []:
+        symbol = row.get("symbol")
+        first = row.get("first")
+        last = row.get("last")
+        if symbol and first and last:
+            windows[symbol] = (date_cls.fromisoformat(first), date_cls.fromisoformat(last))
+    return windows
+
+
+def is_seed_bar(
+    symbol: str, d: date_cls, windows: dict[str, tuple[date_cls, date_cls]]
+) -> bool:
+    """True iff `(symbol, date)` falls inside the symbol's committed-seed window (inclusive) — i.e. it is
+    COMMITTED SEED and PROTECTED from removal. A symbol absent from the manifest, or a date beyond its
+    window, is user-added (removable) → False."""
+    window = windows.get(symbol)
+    if window is None:
+        return False
+    first, last = window
+    return first <= d <= last
+
+
+def _scope_bars(
+    session: Session, symbols: Optional[list[str]], start: Optional[date_cls], end: Optional[date_cls]
+) -> list[DailyPrice]:
+    """The stored `DailyPrice` rows matching the removal scope (`symbols` and/or `[start, end]`). At least
+    one of symbols / range must be given (an empty scope is rejected by the caller — never an accidental
+    wipe). Ordered by (symbol, date) for deterministic previews."""
+    stmt = select(DailyPrice)
+    if symbols:
+        stmt = stmt.where(DailyPrice.symbol.in_(symbols))
+    if start is not None:
+        stmt = stmt.where(DailyPrice.date >= start)
+    if end is not None:
+        stmt = stmt.where(DailyPrice.date <= end)
+    stmt = stmt.order_by(DailyPrice.symbol, DailyPrice.date)
+    return list(session.exec(stmt).all())
+
+
+def _validate_remove_scope(
+    session: Session,
+    symbols: Optional[list[str]],
+    start: Optional[date_cls],
+    end: Optional[date_cls],
+) -> None:
+    """Reject an invalid removal scope explicitly (the API maps the `ValueError` to a 4xx — never a silent
+    no-op or accidental wipe): an empty scope (neither symbols nor a range), an inverted range
+    (start > end), or an unknown symbol (named but with NO stored bars anywhere)."""
+    if not symbols and start is None and end is None:
+        raise ValueError("removal scope is empty: provide symbols and/or a date range (start/end)")
+    if start is not None and end is not None and start > end:
+        raise ValueError(
+            f"start date {start.isoformat()} must be on or before end date {end.isoformat()}"
+        )
+    if symbols:
+        for symbol in symbols:
+            exists = session.scalar(select(DailyPrice.id).where(DailyPrice.symbol == symbol).limit(1))
+            if exists is None:
+                raise ValueError(f"unknown symbol {symbol!r}: no stored bars to remove")
+
+
+def _classify_scope(
+    bars: list[DailyPrice], windows: dict[str, tuple[date_cls, date_cls]]
+) -> tuple[list[DailyPrice], dict[str, int]]:
+    """Split the in-scope bars into REMOVABLE (user-added) and NOT-REMOVABLE (committed seed). Returns
+    `(removable_bars, not_removable_by_symbol)` where the second maps each protected symbol → its
+    protected-bar count (for the preview's committed-seed breakdown). The committed seed is NEVER in the
+    removable list (it is un-deletable)."""
+    removable: list[DailyPrice] = []
+    not_removable: dict[str, int] = {}
+    for bar in bars:
+        if is_seed_bar(bar.symbol, bar.date, windows):
+            not_removable[bar.symbol] = not_removable.get(bar.symbol, 0) + 1
+        else:
+            removable.append(bar)
+    return removable, not_removable
+
+
+def _cascade_targets(
+    session: Session, removable: list[DailyPrice]
+) -> tuple[list[int], list[date_cls], int]:
+    """Identify the snapshot runs whose scorecard depended SOLELY on the removable bars and so must be
+    cascade-removed (whole-row, together with their children + forward returns). A `ScannerRun` D is
+    invalidated iff:
+      (a) any removed bar has `date <= D`  — its as-of INPUT set (bars <= D, the scoring side) shrank, OR
+      (b) any of its stored `ForwardReturn` rows has `measured_date` among the removed bar dates — a
+          forward-measurement bar (date > D) it was built from is gone.
+    A snapshot that still has ALL its underlying bars after the removal satisfies NEITHER and is left
+    UNTOUCHED. Returns `(run_ids, asof_dates, forward_return_count)` for the invalidated runs — descriptive
+    only; this function recomputes NO score/return (it only reads keys to decide what whole rows to delete)."""
+    if not removable:
+        return [], [], 0
+    removed_dates = {bar.date for bar in removable}
+    max_removed = max(removed_dates)
+
+    runs = session.exec(select(ScannerRun)).all()
+    invalidated_ids: list[int] = []
+    invalidated_dates: list[date_cls] = []
+    for run in runs:
+        # (a) an input bar (date <= D) was removed → the run's as-of dataset changed.
+        input_hit = min(removed_dates) <= run.asof_date <= max_removed or any(
+            d <= run.asof_date for d in removed_dates
+        )
+        # (b) a forward-measurement bar this run stored a return into was removed.
+        forward_hit = False
+        if not input_hit:
+            measured = session.exec(
+                select(ForwardReturn.measured_date).where(ForwardReturn.run_id == run.id)
+            ).all()
+            forward_hit = any(md in removed_dates for md in measured)
+        if input_hit or forward_hit:
+            invalidated_ids.append(run.id)
+            invalidated_dates.append(run.asof_date)
+
+    fr_count = 0
+    if invalidated_ids:
+        fr_count = int(
+            session.scalar(
+                select(func.count(ForwardReturn.id)).where(ForwardReturn.run_id.in_(invalidated_ids))
+            )
+            or 0
+        )
+    return invalidated_ids, sorted(invalidated_dates), fr_count
+
+
+def _build_removal_plan(
+    session: Session,
+    config: Optional[Config],
+    symbols: Optional[list[str]],
+    start: Optional[date_cls],
+    end: Optional[date_cls],
+    seed_dir: Optional[str | Path],
+) -> dict:
+    """The shared read-only analysis behind both the preview and the destructive removal: validate the
+    scope, classify in-scope bars into removable (user-added) vs not-removable (committed seed), and
+    determine the cascade. Returns a plan dict carrying the removable bars (objects, for the deleter), the
+    committed-seed breakdown, the cascade run-ids/dates/counts, and a `refused` flag (+ reason) when the
+    scope is wholly committed seed (nothing removable). This function DELETES NOTHING."""
+    _validate_remove_scope(session, symbols, start, end)
+    windows = load_seed_windows(seed_dir)
+    bars = _scope_bars(session, symbols, start, end)
+    removable, not_removable = _classify_scope(bars, windows)
+
+    removable_dates = sorted({b.date for b in removable})
+    removable_symbols = sorted({b.symbol for b in removable})
+    not_removable_count = sum(not_removable.values())
+
+    refused = len(removable) == 0
+    reason = ""
+    if refused:
+        if not_removable_count > 0:
+            reason = (
+                "refused: every bar in this scope is committed seed — the committed seed is never "
+                "deletable. Choose user-added (beyond-seed) symbols/dates."
+            )
+        else:
+            reason = "refused: no removable bars found in this scope."
+
+    run_ids, cascade_dates, fr_count = _cascade_targets(session, removable)
+
+    return {
+        "removable_bars": removable,  # objects — the destructive deleter consumes these
+        "removable_bar_count": len(removable),
+        "removable_symbol_count": len(removable_symbols),
+        "removable_symbols": removable_symbols,
+        "removable_first": removable_dates[0].isoformat() if removable_dates else None,
+        "removable_last": removable_dates[-1].isoformat() if removable_dates else None,
+        "not_removable_bar_count": not_removable_count,
+        "not_removable_by_symbol": [
+            {"symbol": s, "bar_count": c, "reason": "committed seed"}
+            for s, c in sorted(not_removable.items())
+        ],
+        "cascade": {
+            "run_ids": run_ids,
+            "snapshot_count": len(run_ids),
+            "snapshot_dates": [d.isoformat() for d in cascade_dates],
+            "forward_return_count": fr_count,
+        },
+        "refused": refused,
+        "reason": reason,
+    }
+
+
+def _public_plan(plan: dict) -> dict:
+    """A JSON-serializable view of a removal plan WITHOUT the internal `removable_bars` objects (the
+    preview/remove API surface)."""
+    return {k: v for k, v in plan.items() if k != "removable_bars"}
+
+
+def preview_removal(
+    session: Session,
+    config: Optional[Config] = None,
+    *,
+    symbols: Optional[list[str]] = None,
+    start: Optional[date_cls] = None,
+    end: Optional[date_cls] = None,
+    seed_dir: Optional[str | Path] = None,
+) -> dict:
+    """READ-ONLY confirm-preview for a removal scope (J-39): returns exactly what WOULD be removed —
+    removable `(symbol, date)` bar count + range + symbols, the not-removable committed-seed breakdown
+    (per symbol, reason `"committed seed"`), and the cascade of dependent snapshot/forward-return rows —
+    DELETING NOTHING (the DB is byte-unchanged afterward). A wholly-committed-seed scope returns
+    `refused=True` with an explicit reason. Raises `ValueError` for an empty/inverted/unknown scope (the
+    API maps it to 4xx)."""
+    plan = _build_removal_plan(session, config, symbols, start, end, seed_dir)
+    return _public_plan(plan)
+
+
+def _record_removal_run(engine: Engine, cfg: Config, plan: dict) -> None:
+    """Record the removal as its own append-only `DataProviderRun` audit entry (own session; INSERT only —
+    the audit trail is the permanent record and is NEVER deleted). Structured detail (kind `remove`, the
+    scope, removed counts, and the cascade) is JSON-encoded in `message`, exactly like a fetch/backfill run."""
+    detail = {
+        "kind": "remove",
+        "removed_bar_count": plan["removable_bar_count"],
+        "removed_symbol_count": plan["removable_symbol_count"],
+        "removed_first": plan["removable_first"],
+        "removed_last": plan["removable_last"],
+        "not_removable_bar_count": plan["not_removable_bar_count"],
+        "cascade": plan["cascade"],
+        "summary": (
+            f"removed {plan['removable_bar_count']} user-added bars "
+            f"({plan['removable_symbol_count']} symbols); cascade-removed "
+            f"{plan['cascade']['snapshot_count']} snapshots + "
+            f"{plan['cascade']['forward_return_count']} forward returns"
+        ),
+    }
+    with Session(engine) as session:
+        session.add(
+            DataProviderRun(
+                provider=cfg.provider,
+                started_at=_utcnow(),
+                finished_at=_utcnow(),
+                symbols_ok=plan["removable_symbol_count"],
+                symbols_failed=0,
+                status="ok",
+                message=json.dumps(detail),
+            )
+        )
+        session.commit()
+
+
+def remove_data(
+    session: Session,
+    config: Optional[Config] = None,
+    *,
+    symbols: Optional[list[str]] = None,
+    start: Optional[date_cls] = None,
+    end: Optional[date_cls] = None,
+    seed_dir: Optional[str | Path] = None,
+    engine: Optional[Engine] = None,
+) -> dict:
+    """DESTRUCTIVE, seed-safe, cascade-consistent removal (J-39). Deletes ONLY the user-added `DailyPrice`
+    rows in scope (whole-row deletes — the committed seed is excluded and un-deletable) and cascade-removes
+    the derived snapshot rows (`ScannerRun` + its `ScannerResult` / `SectorScoreRow` / `ThemeScoreRow`
+    children) and `ForwardReturn` rows that depended SOLELY on the removed bars — a WHOLE-ROW delete of
+    each derived row, NEVER an in-place overwrite of a retained snapshot (so the *Snapshots are immutable*
+    identity holds: a fully-covered snapshot is left UNTOUCHED). It FABRICATES NOTHING and never recomputes
+    a score/return — it only deletes. The removal is recorded on the append-only `DataProviderRun` audit
+    log (the audit trail is NOT deleted). A wholly-committed-seed scope is REFUSED (`ValueError`); raises
+    `ValueError` for an empty/inverted/unknown scope too (the API maps these to 4xx)."""
+    cfg = config or get_config()
+    plan = _build_removal_plan(session, cfg, symbols, start, end, seed_dir)
+    if plan["refused"]:
+        raise ValueError(plan["reason"])
+
+    run_ids: list[int] = plan["cascade"]["run_ids"]
+    # 1) cascade-remove the dependent snapshot children + forward returns + runs (whole-row deletes only).
+    if run_ids:
+        session.execute(delete(ForwardReturn).where(ForwardReturn.run_id.in_(run_ids)))
+        session.execute(delete(ScannerResult).where(ScannerResult.run_id.in_(run_ids)))
+        session.execute(delete(SectorScoreRow).where(SectorScoreRow.run_id.in_(run_ids)))
+        session.execute(delete(ThemeScoreRow).where(ThemeScoreRow.run_id.in_(run_ids)))
+        session.execute(delete(ScannerRun).where(ScannerRun.id.in_(run_ids)))
+
+    # 2) delete the user-added bars themselves (by exact id — the committed seed is never in this list).
+    bar_ids = [bar.id for bar in plan["removable_bars"]]
+    if bar_ids:
+        session.execute(delete(DailyPrice).where(DailyPrice.id.in_(bar_ids)))
+
+    # 3) defensive consistency sweep: drop ANY remaining forward-return row that still references a removed
+    #    bar (by measured_date) — guarantees "no remaining row references an absent bar" even if a future
+    #    cascade predicate change missed a case. With the predicate above this set is already empty.
+    removed_dates = {bar.date for bar in plan["removable_bars"]}
+    if removed_dates:
+        session.execute(
+            delete(ForwardReturn).where(ForwardReturn.measured_date.in_(list(removed_dates)))
+        )
+
+    session.commit()
+
+    # 4) record the removal on the append-only audit log (own session — never deleted).
+    eng = engine or get_engine()
+    _record_removal_run(eng, cfg, plan)
+
+    result = _public_plan(plan)
+    result["removed_bar_count"] = plan["removable_bar_count"]  # explicit done-count alias
+    return result
 
 
 # --------------------------------------------------------------------------------------------------

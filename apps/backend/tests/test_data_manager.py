@@ -38,7 +38,11 @@ from app.engine.data_manager import (
     compute_provider_availability,
     create_job,
     get_job,
+    is_seed_bar,
+    load_seed_windows,
+    preview_removal,
     recent_runs,
+    remove_data,
     resolve_provider_key,
     resumable_imports,
     resume_data_job,
@@ -54,6 +58,8 @@ from app.models import (
     ImportCheckpoint,
     ScannerResult,
     ScannerRun,
+    SectorScoreRow,
+    ThemeScoreRow,
 )
 from app.seed_loader import all_seed_symbols, load_seed
 
@@ -130,6 +136,150 @@ def test_compute_coverage_empty_db_is_all_none():
     assert cov["price_start"] is None and cov["price_end"] is None
     assert cov["symbol_count"] == 0 and cov["snapshot_count"] == 0
     assert cov["trading_day_count"] == 0 and cov["gap_count"] == 0
+
+
+# ==================================================================================================
+# J-36 — per-symbol / per-universe-member coverage table (read-only descriptive metadata)
+# ==================================================================================================
+def _persymbol_cfg():
+    """A small config whose universe is exactly {AAA, BBB, CCC} and whose thin threshold is a known
+    value (10) — so the per-symbol table's in_universe/thin/missing are exact by construction and the
+    thin threshold is provably read from config (No magic numbers)."""
+    cfg = load_config()
+    universe = cfg.universe.model_copy(update={"symbols": ["AAA", "BBB", "CCC"]})
+    indicators = cfg.indicators.model_copy(update={"min_history_bars": 10})
+    return cfg.model_copy(update={"universe": universe, "indicators": indicators})
+
+
+@pytest.fixture()
+def persymbol_engine(tmp_path):
+    """A hand-built DB exercising every per-symbol coverage case against a {AAA,BBB,CCC} universe with a
+    thin threshold of 10 bars:
+      - AAA: a FULL-history universe member (12 bars >= threshold 10) → in_universe, has_data, not thin.
+      - BBB: a THIN universe member (3 bars, 0 < 3 < 10) → in_universe, has_data, thin.
+      - CCC: a universe member with NO bars → in_universe, has_data=false, missing=true, NA range.
+      - SPY: a priced NON-universe symbol (a benchmark ETF) → in_universe=false, has_data.
+      - ^VIX: a priced NON-universe symbol → in_universe=false, has_data.
+    So distinct priced symbols = {AAA,BBB,SPY,^VIX} = 4, plus CCC is a universe-member row with no bars."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'persym.db'}")
+    create_db_and_tables(engine)
+    base = date(2024, 1, 1)
+
+    def _bars(symbol: str, n: int) -> None:
+        for i in range(n):
+            session.add(DailyPrice(
+                symbol=symbol, date=base + __import__("datetime").timedelta(days=i),
+                open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0,
+            ))
+
+    with Session(engine) as session:
+        _bars("AAA", 12)   # full-history member
+        _bars("BBB", 3)    # thin member
+        _bars("SPY", 12)   # non-universe priced symbol (benchmark)
+        _bars("^VIX", 5)   # non-universe priced symbol
+        session.commit()
+    return engine
+
+
+def _rows_by_symbol(cov: dict) -> dict:
+    return {r["symbol"]: r for r in cov["per_symbol"]}
+
+
+def test_coverage_per_symbol_exact_values(persymbol_engine):
+    """Exact per-symbol coverage for a full-history member, a thin member, a no-bars member, and two
+    non-universe priced symbols — each field asserted by value (never 'something returned')."""
+    cfg = _persymbol_cfg()
+    with Session(persymbol_engine) as session:
+        cov = compute_coverage(session, cfg)
+    rows = _rows_by_symbol(cov)
+
+    # (a) AAA — a full-history universe member: in_universe, has_data, 12 bars, not thin, not missing.
+    aaa = rows["AAA"]
+    assert aaa["in_universe"] is True and aaa["has_data"] is True
+    assert aaa["bar_count"] == 12
+    assert aaa["first"] == date(2024, 1, 1).isoformat()
+    assert aaa["last"] == (date(2024, 1, 1) + __import__("datetime").timedelta(days=11)).isoformat()
+    assert aaa["thin"] is False and aaa["missing"] is False
+
+    # (b) BBB — a THIN universe member: 0 < 3 < 10 → thin True, missing False, range present.
+    bbb = rows["BBB"]
+    assert bbb["in_universe"] is True and bbb["has_data"] is True
+    assert bbb["bar_count"] == 3 and bbb["thin"] is True and bbb["missing"] is False
+    assert bbb["first"] == date(2024, 1, 1).isoformat()
+
+    # (c) CCC — a universe member with NO bars: has_data False, missing True, NA range (never fabricated),
+    #     0 bars, and thin False (thin is strictly 0 < bars < threshold; a no-bars member is `missing`).
+    ccc = rows["CCC"]
+    assert ccc["in_universe"] is True and ccc["has_data"] is False
+    assert ccc["bar_count"] == 0 and ccc["missing"] is True and ccc["thin"] is False
+    assert ccc["first"] is None and ccc["last"] is None  # NA range — not a fabricated 0/zero-date row
+
+    # (d) SPY / ^VIX — priced NON-universe symbols: in_universe False, has_data True, never `missing`
+    #     (missing flags only universe members with no data).
+    spy = rows["SPY"]
+    assert spy["in_universe"] is False and spy["has_data"] is True and spy["missing"] is False
+    vix = rows["^VIX"]
+    assert vix["in_universe"] is False and vix["has_data"] is True and vix["missing"] is False
+
+
+def test_coverage_per_symbol_consistency_with_aggregates(persymbol_engine):
+    """The table can never present two drifting truths: the distinct-symbol row count equals the existing
+    `symbol_count` aggregate, and the in-universe row count equals `universe_count`."""
+    cfg = _persymbol_cfg()
+    with Session(persymbol_engine) as session:
+        cov = compute_coverage(session, cfg)
+    rows = cov["per_symbol"]
+
+    # one row per distinct symbol (priced symbols ∪ universe members) — no duplicate symbol row.
+    symbols = [r["symbol"] for r in rows]
+    assert len(symbols) == len(set(symbols))
+
+    # distinct PRICED symbols == symbol_count (AAA,BBB,SPY,^VIX = 4); CCC has no bars so it is not priced.
+    priced = [r for r in rows if r["has_data"]]
+    assert len(priced) == cov["symbol_count"] == 4
+
+    # in-universe rows == universe_count (AAA,BBB,CCC = 3) — reads the SAME config.universe.symbols.
+    in_universe = [r for r in rows if r["in_universe"]]
+    assert len(in_universe) == cov["universe_count"] == 3
+    assert {r["symbol"] for r in in_universe} == {"AAA", "BBB", "CCC"}
+
+    # every universe member appears with data-or-missing — none silently absent.
+    assert all((r["has_data"] or r["missing"]) for r in in_universe)
+
+
+def test_coverage_per_symbol_thin_threshold_from_config(persymbol_engine):
+    """The thin flag is computed from `indicators.min_history_bars` — RAISING the threshold flips a
+    previously-not-thin member to thin (proves no magic literal; the threshold is the config value)."""
+    with Session(persymbol_engine) as session:
+        # threshold 10: AAA (12 bars) is NOT thin.
+        cov_lo = compute_coverage(session, _persymbol_cfg())
+        # threshold 13: AAA (12 bars) IS now thin (0 < 12 < 13).
+        cfg_hi = _persymbol_cfg()
+        cfg_hi = cfg_hi.model_copy(
+            update={"indicators": cfg_hi.indicators.model_copy(update={"min_history_bars": 13})}
+        )
+        cov_hi = compute_coverage(session, cfg_hi)
+    assert _rows_by_symbol(cov_lo)["AAA"]["thin"] is False
+    assert _rows_by_symbol(cov_hi)["AAA"]["thin"] is True
+
+
+def test_coverage_per_symbol_empty_dataset_is_members_only(persymbol_engine, tmp_path):
+    """Empty-dataset grace: with NO bars, the per-symbol table still serves cleanly — one row per universe
+    member, each has_data=false + missing=true + NA range — never an error and never a fabricated bar."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'empty_persym.db'}")
+    create_db_and_tables(engine)
+    cfg = _persymbol_cfg()
+    with Session(engine) as session:
+        cov = compute_coverage(session, cfg)
+    assert cov["symbol_count"] == 0
+    rows = _rows_by_symbol(cov)
+    # exactly the 3 universe members, all missing with NA range (no priced symbols at all).
+    assert set(rows) == {"AAA", "BBB", "CCC"}
+    for r in rows.values():
+        assert r["in_universe"] is True and r["has_data"] is False and r["missing"] is True
+        assert r["bar_count"] == 0 and r["first"] is None and r["last"] is None
+    # aggregate consistency still holds on the empty dataset.
+    assert len([r for r in cov["per_symbol"] if r["in_universe"]]) == cov["universe_count"] == 3
 
 
 # ==================================================================================================
@@ -1027,3 +1177,308 @@ def test_expand_cap_fetch_real_httpx_key_scrubbed_end_to_end(tmp_path, caplog):
         runs = session.exec(select(DataProviderRun)).all()
     assert secret not in json.dumps([{c: str(getattr(r, c)) for c in ("provider", "status", "message")} for r in runs])
     assert secret not in caplog.text
+
+
+# ==================================================================================================
+# J-39 — seed-safe Remove-data: classifier + confirm-preview + destructive cascade + audit
+#
+# The session's FIRST destructive data path. The cascade MUST be a whole-row delete of user-added bars
+# + the derived rows that depended SOLELY on them; a fully-covered snapshot is left UNTOUCHED (NEVER an
+# in-place overwrite of a retained snapshot — the *Snapshots are immutable* identity = "never overwritten
+# in place"). The committed seed (the meta.json windows) is genuinely un-deletable. The live host has zero
+# user-added bars (so a live remove is a no-op) — correctness is proven here against a fixture that ADDS
+# user bars beyond the seed.
+# ==================================================================================================
+import datetime as _dt  # noqa: E402
+
+
+def _write_seed_meta(seed_dir: Path, windows: dict[str, tuple[str, str, int]]) -> None:
+    """Write a minimal committed-seed manifest (`meta.json`) carrying per-symbol {first,last,bars} windows
+    — the authoritative seed-vs-user-added source J-39 reads. A `(symbol, date)` inside a window is the
+    committed seed (protected); a date beyond `last` (or a symbol absent from the manifest) is user-added."""
+    seed_dir.mkdir(parents=True, exist_ok=True)
+    symbols = [{"symbol": s, "first": f, "last": l, "bars": b} for s, (f, l, b) in windows.items()]
+    meta = {"source": "test seed", "symbols_ok": len(symbols), "symbols_failed": 0, "symbols": symbols}
+    (seed_dir / "meta.json").write_text(json.dumps(meta) + "\n")
+
+
+def _add_run(session, asof, *, label="Choppy", score=50.0):
+    """Insert one immutable ScannerRun + a child ScannerResult/SectorScoreRow/ThemeScoreRow so the cascade
+    has every derived table to remove. Returns the run."""
+    run = ScannerRun(
+        asof_date=asof, created_at=_dt.datetime(2024, 1, 1), provider="seed", benchmark="SPY",
+        regime_score=score, regime_label=label, regime_components_json="[]",
+        new_high_low_json="{}", candidate_counts_json="{}",
+    )
+    session.add(run)
+    session.flush()
+    session.add(ScannerResult(
+        run_id=run.id, ticker="AAA", name="AAA", sector="Tech",
+        leadership_score=50.0, leadership_bucket="C", entry_quality_score=50.0, entry_quality_bucket="C",
+        risk_score=50.0, risk_bucket="C", setup_status="Avoid", rank=1, record_json="{}",
+    ))
+    session.add(SectorScoreRow(
+        run_id=run.id, ticker="XLK", kind="sector", name="Tech", score=50.0, bucket="C",
+        trend_label="flat", components_json="[]", rank=1,
+    ))
+    session.add(ThemeScoreRow(
+        run_id=run.id, slug="ai", name="AI", score=50.0, bucket="C", members_json="[]",
+        breadth_label="flat", trend_label="flat", components_json="[]", rank=1,
+    ))
+    return run
+
+
+def _add_fr(session, run, symbol, horizon, measured_date):
+    """Insert one ForwardReturn keyed to a run, measuring into `measured_date` (a post-snapshot bar)."""
+    session.add(ForwardReturn(
+        run_id=run.id, symbol=symbol, horizon=horizon, asof_date=run.asof_date,
+        entry_close=1.0, measured_date=measured_date, realized_return=0.0,
+    ))
+
+
+@pytest.fixture()
+def removal_engine(tmp_path):
+    """A hand-built dataset with an EXACT seed-vs-user-added boundary and dependency structure:
+
+      seed window  : SPY & AAA on D1..D10 (committed seed — PROTECTED).
+      user-added   : SPY & AAA on D11, D12, D13 (beyond the seed `last` D10 — REMOVABLE).
+
+      Snapshot A (asof D3)  — fully SEED-covered: inputs <= D3 are seed; its forward returns measure into
+                              D4/D5 (seed). It depends on NO removed bar → MUST be left UNTOUCHED.
+      Snapshot B (asof D12) — a USER-ADDED trading day: inputs <= D12 include user bars D11/D12; its
+                              forward return measures into D13 (user). → cascade-removed entirely.
+      Snapshot C (asof D9)  — SEED inputs (<= D9 all seed) BUT a forward return measures into D11 (a
+                              user-added, removed bar). → cascade-removed entirely (a forward-measurement
+                              bar it depended on is gone).
+
+    Removing the user-added scope (D11..D13) must drop B and C (+ their children + their forward returns)
+    and the user bars, leave A untouched, and leave NO row referencing an absent bar."""
+    seed_dir = tmp_path / "seed"
+    _write_seed_meta(seed_dir, {"SPY": ("2024-01-01", "2024-01-10", 10), "AAA": ("2024-01-01", "2024-01-10", 10)})
+    engine = make_engine(f"sqlite:///{tmp_path / 'remove.db'}")
+    create_db_and_tables(engine)
+    days = [date(2024, 1, d) for d in range(1, 14)]  # D1..D13
+    with Session(engine) as session:
+        for sym in ("SPY", "AAA"):
+            for d in days:
+                session.add(DailyPrice(symbol=sym, date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        run_a = _add_run(session, days[2])   # D3 — fully seed-covered
+        run_c = _add_run(session, days[8])   # D9 — seed inputs, forward bar into user date
+        run_b = _add_run(session, days[11])  # D12 — user-added input date
+        session.flush()
+        _add_fr(session, run_a, "AAA", 1, days[3])   # D3 → D4 (seed) — retained
+        _add_fr(session, run_a, "AAA", 2, days[4])   # D3 → D5 (seed) — retained
+        _add_fr(session, run_c, "AAA", 1, days[9])   # D9 → D10 (seed)
+        _add_fr(session, run_c, "AAA", 2, days[10])  # D9 → D11 (USER) — makes C depend on a removed bar
+        _add_fr(session, run_b, "AAA", 1, days[12])  # D12 → D13 (USER)
+        session.commit()
+        ids = {"a": run_a.id, "b": run_b.id, "c": run_c.id}
+    return engine, seed_dir, days, ids
+
+
+def test_load_seed_windows_and_is_seed_bar(removal_engine):
+    """The seed classifier reads meta.json windows: a (symbol, date) inside a window is committed-seed
+    (protected); a date beyond `last`, or a symbol absent from the manifest, is user-added (removable)."""
+    _engine, seed_dir, days, _ids = removal_engine
+    windows = load_seed_windows(seed_dir)
+    assert windows["SPY"] == (date(2024, 1, 1), date(2024, 1, 10))
+    # inside the window → committed seed (protected)
+    assert is_seed_bar("SPY", date(2024, 1, 5), windows) is True
+    assert is_seed_bar("SPY", date(2024, 1, 10), windows) is True  # the boundary `last` is still seed
+    # beyond the window → user-added (removable)
+    assert is_seed_bar("SPY", date(2024, 1, 11), windows) is False
+    assert is_seed_bar("AAA", date(2024, 1, 13), windows) is False
+    # a symbol not in the manifest at all → user-added everywhere
+    assert is_seed_bar("ZZZ", date(2024, 1, 5), windows) is False
+
+
+def test_preview_removal_deletes_nothing(removal_engine):
+    """The preview is READ-ONLY: it returns the exact removable bars + range + the not-removable
+    committed-seed breakdown + the cascade set, and the DB is BYTE-UNCHANGED afterward (no deletion)."""
+    engine, seed_dir, days, ids = removal_engine
+    with Session(engine) as session:
+        before = {
+            "prices": session.scalar(select(func.count(DailyPrice.id))),
+            "runs": session.scalar(select(func.count(ScannerRun.id))),
+            "results": session.scalar(select(func.count(ScannerResult.id))),
+            "frs": session.scalar(select(func.count(ForwardReturn.id))),
+        }
+        # scope: the whole user-added tail by date range (no symbol filter → all symbols)
+        prev = preview_removal(session, None, symbols=None, start=days[10], end=days[12], seed_dir=seed_dir)
+        after = {
+            "prices": session.scalar(select(func.count(DailyPrice.id))),
+            "runs": session.scalar(select(func.count(ScannerRun.id))),
+            "results": session.scalar(select(func.count(ScannerResult.id))),
+            "frs": session.scalar(select(func.count(ForwardReturn.id))),
+        }
+    assert before == after  # PREVIEW DELETED NOTHING
+
+    # removable: SPY & AAA on D11,D12,D13 = 6 bars; range D11..D13.
+    assert prev["removable_bar_count"] == 6
+    assert prev["removable_first"] == days[10].isoformat()
+    assert prev["removable_last"] == days[12].isoformat()
+    assert prev["removable_symbol_count"] == 2  # SPY + AAA
+    # not-removable: nothing seed is in this scope (D11..D13 is wholly user-added).
+    assert prev["not_removable_bar_count"] == 0
+    # cascade: runs B (D12) and C (D9) are removed; A (D3) is NOT. Exactly 2 snapshots + their forward
+    # returns (C has 2, B has 1 = 3 forward-return rows).
+    assert prev["cascade"]["snapshot_count"] == 2
+    assert set(prev["cascade"]["snapshot_dates"]) == {days[8].isoformat(), days[11].isoformat()}
+    assert prev["cascade"]["forward_return_count"] == 3
+    assert prev["refused"] is False
+
+
+def test_preview_seed_only_scope_is_refused(removal_engine):
+    """A wholly-committed-seed scope is REFUSED in the preview (refused True, an explicit reason, zero
+    removable) — never a silent partial; the seed is un-deletable."""
+    engine, seed_dir, days, _ids = removal_engine
+    with Session(engine) as session:
+        prev = preview_removal(session, None, symbols=None, start=days[0], end=days[4], seed_dir=seed_dir)
+    assert prev["removable_bar_count"] == 0
+    assert prev["refused"] is True
+    assert "committed seed" in prev["reason"].lower()
+    # the seed bars in scope are reported as not-removable (SPY & AAA on D1..D5 = 10 bars).
+    assert prev["not_removable_bar_count"] == 10
+
+
+def test_preview_seed_only_symbol_is_refused(removal_engine):
+    """A symbol whose every in-scope bar is committed seed is refused (the committed seed is never
+    deletable, even named explicitly)."""
+    engine, seed_dir, days, _ids = removal_engine
+    with Session(engine) as session:
+        # SPY over D1..D10 is entirely seed → nothing removable → refused.
+        prev = preview_removal(session, None, symbols=["SPY"], start=days[0], end=days[9], seed_dir=seed_dir)
+    assert prev["removable_bar_count"] == 0 and prev["refused"] is True
+
+
+def test_remove_data_cascade_solely_dependent(removal_engine):
+    """The destructive removal deletes ONLY the user-added bars in scope and cascade-removes ONLY the
+    snapshot/forward-return rows that derived SOLELY from them; a fully-covered snapshot (A) is left
+    UNTOUCHED, and NO remaining row references an absent bar."""
+    engine, seed_dir, days, ids = removal_engine
+    # snapshot A's created_at + content BEFORE, to prove it is untouched (not overwritten in place).
+    with Session(engine) as session:
+        a_before = session.get(ScannerRun, ids["a"])
+        a_created_before = a_before.created_at
+        a_results_before = session.scalar(
+            select(func.count(ScannerResult.id)).where(ScannerResult.run_id == ids["a"])
+        )
+
+    with Session(engine) as session:
+        result = remove_data(
+            session, None, symbols=None, start=days[10], end=days[12], seed_dir=seed_dir, engine=engine,
+        )
+
+    with Session(engine) as session:
+        # user bars D11..D13 for SPY+AAA are gone; seed bars D1..D10 remain (un-deletable).
+        remaining_dates = sorted(set(session.exec(select(DailyPrice.date).distinct()).all()))
+        assert remaining_dates == days[:10]  # only D1..D10 survive
+        assert session.scalar(select(func.count(DailyPrice.id))) == 2 * 10  # SPY+AAA × 10 seed days
+
+        # snapshot B (D12) and C (D9) are gone; A (D3) survives — UNTOUCHED.
+        surviving_runs = {r.asof_date for r in session.exec(select(ScannerRun)).all()}
+        assert surviving_runs == {days[2]}  # only A
+        assert session.get(ScannerRun, ids["b"]) is None
+        assert session.get(ScannerRun, ids["c"]) is None
+        a_after = session.get(ScannerRun, ids["a"])
+        assert a_after is not None
+        # immutability: A was NEVER overwritten in place — same created_at + same child rows.
+        assert a_after.created_at == a_created_before
+        assert session.scalar(
+            select(func.count(ScannerResult.id)).where(ScannerResult.run_id == ids["a"])
+        ) == a_results_before
+
+        # cascade removed B's & C's children across ALL derived tables (no orphan child rows).
+        for run_id in (ids["b"], ids["c"]):
+            assert session.scalar(select(func.count(ScannerResult.id)).where(ScannerResult.run_id == run_id)) == 0
+            assert session.scalar(select(func.count(SectorScoreRow.id)).where(SectorScoreRow.run_id == run_id)) == 0
+            assert session.scalar(select(func.count(ThemeScoreRow.id)).where(ThemeScoreRow.run_id == run_id)) == 0
+
+        # NO remaining forward-return row references an absent bar: every surviving fr belongs to run A
+        # and measures into a date that still exists.
+        frs = session.exec(select(ForwardReturn)).all()
+        assert {fr.run_id for fr in frs} == {ids["a"]}
+        assert all(fr.measured_date in set(days[:10]) for fr in frs)
+
+    # the result summary reports the exact deletion.
+    assert result["removed_bar_count"] == 6
+    assert result["cascade"]["snapshot_count"] == 2
+    assert result["cascade"]["forward_return_count"] == 3
+    assert result["refused"] is False
+
+
+def test_remove_data_records_audit_run(removal_engine):
+    """The removal is recorded as its own append-only DataProviderRun audit entry (the audit trail is the
+    permanent record — it is NOT deleted), with a 'remove' kind and the removed counts."""
+    engine, seed_dir, days, _ids = removal_engine
+    with Session(engine) as session:
+        runs_before = session.scalar(select(func.count(DataProviderRun.id)))
+        remove_data(session, None, symbols=None, start=days[10], end=days[12], seed_dir=seed_dir, engine=engine)
+    with Session(engine) as session:
+        audit_rows = session.exec(
+            select(DataProviderRun).order_by(DataProviderRun.id.desc())
+        ).all()
+    assert len(audit_rows) == runs_before + 1
+    audit = audit_rows[0]
+    assert audit.status == "ok"
+    detail = json.loads(audit.message)
+    assert detail["kind"] == "remove"
+    assert detail["removed_bar_count"] == 6
+    assert detail["cascade"]["snapshot_count"] == 2
+
+
+def test_remove_data_seed_only_scope_refused_nothing_deleted(removal_engine):
+    """A wholly-committed-seed removal is REFUSED (raises ValueError → the API maps to 4xx) and deletes
+    NOTHING — never a silent partial; the committed seed stays intact."""
+    engine, seed_dir, days, _ids = removal_engine
+    with Session(engine) as session:
+        before = session.scalar(select(func.count(DailyPrice.id)))
+        with pytest.raises(ValueError) as exc:
+            remove_data(session, None, symbols=["SPY"], start=days[0], end=days[9], seed_dir=seed_dir, engine=engine)
+        after = session.scalar(select(func.count(DailyPrice.id)))
+    assert "committed seed" in str(exc.value).lower()
+    assert before == after  # NOTHING deleted on a refusal
+
+
+def test_remove_data_does_not_recompute(removal_engine, monkeypatch):
+    """The cascade ONLY deletes rows — it NEVER reaches the scoring/scanner recompute paths. Patch
+    scanner.run_scan and score_stocks to raise; the removal must still succeed (proving neither is called)."""
+    engine, seed_dir, days, _ids = removal_engine
+
+    def _boom(*_a, **_k):  # pragma: no cover - only fires on a wrong call
+        raise AssertionError("scoring/scanner recompute MUST NOT be reachable from the remove cascade")
+
+    monkeypatch.setattr("app.engine.scanner.run_scan", _boom)
+    monkeypatch.setattr("app.engine.scoring.score_stocks", _boom)
+    monkeypatch.setattr("app.engine.data_manager.scanner.run_scan", _boom, raising=False)
+    with Session(engine) as session:
+        result = remove_data(
+            session, None, symbols=None, start=days[10], end=days[12], seed_dir=seed_dir, engine=engine,
+        )
+    assert result["removed_bar_count"] == 6  # completed without ever recomputing
+
+
+def test_remove_data_unknown_symbol_is_rejected(removal_engine):
+    """An unknown symbol (no stored bars + not in scope) is rejected explicitly — never a silent no-op or a
+    fabricated row."""
+    engine, seed_dir, days, _ids = removal_engine
+    with Session(engine) as session:
+        with pytest.raises(ValueError):
+            preview_removal(session, None, symbols=["NOPE"], start=days[10], end=days[12], seed_dir=seed_dir)
+
+
+def test_remove_data_inverted_range_is_rejected(removal_engine):
+    """An inverted date range (start > end) is rejected explicitly (the API maps it to 4xx)."""
+    engine, seed_dir, days, _ids = removal_engine
+    with Session(engine) as session:
+        with pytest.raises(ValueError):
+            preview_removal(session, None, symbols=None, start=days[12], end=days[10], seed_dir=seed_dir)
+
+
+def test_remove_preview_no_scope_is_rejected(removal_engine):
+    """A scope with neither symbols nor a date range is rejected (it would mean 'remove everything' — must
+    be explicit, never an accidental wipe)."""
+    engine, seed_dir, _days, _ids = removal_engine
+    with Session(engine) as session:
+        with pytest.raises(ValueError):
+            preview_removal(session, None, symbols=None, start=None, end=None, seed_dir=seed_dir)
