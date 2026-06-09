@@ -641,6 +641,73 @@ def remove_data(
 # --------------------------------------------------------------------------------------------------
 # Import provider catalog + env-detected availability (J-33) — descriptive metadata, NO key value
 # --------------------------------------------------------------------------------------------------
+# iter-26: the deterministic, OFFLINE `seed` import source — the browser-capture enabler for the
+# defining J-37 pull / J-35 expand multi-step flows. It is a TEST/DEV affordance only: exposed in the
+# import-source picker and accepted by the job-source validator ONLY when the env flag below is set
+# (off by default, NEVER in the committed `config.yaml` `data_manager.providers` catalog, NEVER in
+# production). It serves the REAL committed seed bars through the EXISTING J-34 chunked engine +
+# `screen_reasons` predicate (NO second fetch path, NO second screen rule) — so it serves real data,
+# never request-time-fabricated prices (anti-goals *No fabricated data* / *Live fetch is real-data-only*
+# preserved). `make_provider("seed", ...)` already resolves it to `SeedProvider` (no change there).
+SEED_IMPORT_SOURCE_ID = "seed"
+SEED_IMPORT_ENV_FLAG = "TRENDORA_ENABLE_SEED_IMPORT_SOURCE"
+
+
+def seed_import_source_enabled() -> bool:
+    """True when the env-gated offline `seed` import source is enabled (the env flag is set to a non-empty
+    value). Off by default — the `seed` source is a test/dev harness affordance, never selectable in
+    production. Read at REQUEST time (like `compute_provider_availability`) so the QA harness can toggle
+    it per process without a config edit."""
+    return bool(os.environ.get(SEED_IMPORT_ENV_FLAG))
+
+
+def _seed_import_entry() -> ProviderCatalogEntry:
+    """The single in-memory catalog entry for the env-gated offline `seed` import source. Built in ONE
+    place so the availability list and the job-source validator agree on its shape. It is a no-key,
+    market-cap-capable, always-available source serving committed seed bars — it carries NO key and NO
+    env-var (the seed reads no credential)."""
+    return ProviderCatalogEntry(
+        id=SEED_IMPORT_SOURCE_ID,
+        label="Seed (offline test data)",
+        needs_key=False,
+        env_var=None,
+        supports_market_cap=True,
+    )
+
+
+def seed_import_overlay_dir() -> Optional[Path]:
+    """The throwaway OVERLAY seed dir for the env-gated `seed` import source (set by the QA harness via
+    `TRENDORA_SEED_IMPORT_DIR`), or None. When set, a `seed`-source EXPAND writes its grown universe.json /
+    per-symbol CSVs / meta.json HERE — never the committed `data/seed/` tree (so an offline J-35 capture
+    never mutates the committed seed). Only honored while the seed import source is enabled."""
+    if not seed_import_source_enabled():
+        return None
+    raw = os.environ.get("TRENDORA_SEED_IMPORT_DIR")
+    return Path(raw) if raw else None
+
+
+def _expand_seed_dir_for_source(source: Optional[str]) -> Optional[Path]:
+    """For a `seed`-source expand, the artifact write-dir is the throwaway overlay (never the committed
+    seed); for any other source it is None (the default committed `DEFAULT_SEED_DIR` is used as before —
+    the committed-universe-grow behavior is unchanged for real providers)."""
+    if source == SEED_IMPORT_SOURCE_ID:
+        return seed_import_overlay_dir()
+    return None
+
+
+def _provider_entry_with_seed(cfg: Config, source_id: str) -> Optional[ProviderCatalogEntry]:
+    """Resolve a job `source` id to its catalog entry, transparently including the env-gated offline
+    `seed` source (which is deliberately absent from the committed `config.yaml` catalog). Returns the
+    config catalog entry when `source_id` is a real provider; the in-memory seed entry when `source_id`
+    is `seed` AND the env flag is set; else None (an unknown source — the validator rejects it)."""
+    entry = cfg.data_manager.provider_by_id(source_id)
+    if entry is not None:
+        return entry
+    if source_id == SEED_IMPORT_SOURCE_ID and seed_import_source_enabled():
+        return _seed_import_entry()
+    return None
+
+
 def resolve_provider_key(entry: ProviderCatalogEntry, pasted_key: Optional[str]) -> Optional[str]:
     """The effective credential for one import source: the SESSION-ONLY pasted key if present, else the
     value of the source's configured environment variable (by NAME). Returns None when the source needs
@@ -662,7 +729,14 @@ def compute_provider_availability(config: Optional[Config] = None) -> list[dict]
     This is descriptive availability metadata — NOT a duplicate of any canonical score/return/bucket."""
     cfg = config or get_config()
     sources: list[dict] = []
-    for entry in cfg.data_manager.providers:
+    catalog = list(cfg.data_manager.providers)
+    # iter-26: append the env-gated offline `seed` source ONLY when the flag is set (off by default,
+    # absent from the committed catalog). It is a no-key, always-available, market-cap-capable test/dev
+    # source — descriptive metadata only, NO key value (anti-goal: keys are env-or-session, never
+    # persisted). It serves committed seed bars through the existing engine — no second serving path.
+    if seed_import_source_enabled():
+        catalog = catalog + [_seed_import_entry()]
+    for entry in catalog:
         available = (not entry.needs_key) or bool(entry.env_var and os.environ.get(entry.env_var))
         if not entry.needs_key:
             reason = "no key required"
@@ -803,7 +877,11 @@ def validate_job_request(
     # A job that FETCHES over the network = a generic fetch OR an expand (which fetches OHLCV + a cap).
     fetches = kind in _FETCH_KINDS or kind in _EXPAND_KINDS
     if source is not None:
-        entry = cfg.data_manager.provider_by_id(source)
+        # Resolve through the seed-aware helper so the env-gated offline `seed` source (absent from the
+        # committed catalog) is accepted ONLY when its env flag is set — mirroring the same gate the
+        # availability list uses. No second fetch/screen path: a `seed` job routes through the existing
+        # engine + `screen_reasons` predicate exactly like any other source.
+        entry = _provider_entry_with_seed(cfg, source)
         if entry is None:
             raise ValueError(
                 f"unknown import source {source!r}; expected one of {cfg.data_manager.provider_ids()}"
@@ -1568,10 +1646,16 @@ def start_data_job(
     fetches = kind in _FETCH_KINDS or kind in _EXPAND_KINDS
     job_source = (source or cfg.data_manager.default_source) if fetches else None
     job = create_job(kind, start, end, source=job_source)
+    # iter-26: a `seed`-source EXPAND writes its grown universe.json/CSVs/meta.json to the THROWAWAY
+    # overlay dir (never the committed seed) so an offline J-35 capture cannot mutate `data/seed/`.
+    job_kwargs = {"config": cfg, "engine": eng, "api_key": api_key, "symbols": symbols}
+    expand_seed_dir = _expand_seed_dir_for_source(job_source) if kind in _EXPAND_KINDS else None
+    if expand_seed_dir is not None:
+        job_kwargs["seed_dir"] = expand_seed_dir
     thread = threading.Thread(
         target=run_data_job,
         args=(job.job_id,),
-        kwargs={"config": cfg, "engine": eng, "api_key": api_key, "symbols": symbols},
+        kwargs=job_kwargs,
         daemon=True,
         name=f"data-job-{job.job_id}",
     )

@@ -60,3 +60,23 @@ def test_empty_seed_dir_raises_not_returns_empty(tmp_path):
     provider = SeedProvider(tmp_path)
     with pytest.raises(ProviderUnavailableError):
         provider.get_daily("SPY")
+
+
+def test_get_market_cap_none_when_no_reference_file(seed_dir):
+    """The committed seed dir carries NO market_caps.csv (the production default provider) → get_market_cap
+    returns None (an honest absence) and NEVER fabricates or raises (iter-26, J-35 offline expand)."""
+    provider = SeedProvider(seed_dir)
+    assert not (provider.seed_dir / "market_caps.csv").exists()  # committed seed has no cap reference
+    assert provider.get_market_cap("NVDA") is None
+
+
+def test_get_market_cap_reads_committed_reference_and_omits_absent(tmp_path):
+    """With a market_caps.csv overlay (a THROWAWAY dir, never the committed seed), get_market_cap returns
+    the REAL listed value and None for an absent symbol — read from a committed file, never synthesized."""
+    overlay = tmp_path / "overlay"
+    (overlay / "prices").mkdir(parents=True)
+    (overlay / "market_caps.csv").write_text("symbol,market_cap\nNVDA,3300000000000\nAMSC,1200000000\n")
+    provider = SeedProvider(overlay)
+    assert provider.get_market_cap("NVDA") == 3_300_000_000_000.0
+    assert provider.get_market_cap("AMSC") == 1_200_000_000.0
+    assert provider.get_market_cap("ZZZZ_ABSENT") is None  # honest omission, not a fabricated cap

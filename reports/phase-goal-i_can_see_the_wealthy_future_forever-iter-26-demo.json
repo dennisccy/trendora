@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever-iter-26",
+  "base_url": "http://localhost:3835",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Data Manager loads with all panels intact",
+      "narration": "We open the Data Manager page, which organises everything about your imported price history. All sections — Unfinished Imports, coverage table, and the fetch form — load cleanly with no errors.",
+      "point_out": "The 'Data Manager' heading, the Unfinished Imports panel showing its rows, and the fetch form are all visible without any blank boxes or error boundaries.",
+      "journey": "J-38",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Data Manager" }
+    },
+    {
+      "n": 2,
+      "title": "Unfinished Imports panel shows paused and partial runs",
+      "narration": "The Unfinished Imports panel lists every import that didn't finish — partial runs and provider-paused jobs — so nothing is silently lost. Each row shows a plain-language status and action buttons.",
+      "point_out": "The rows in the Unfinished Imports panel with their status labels, Retry buttons, and Dismiss buttons are all visible and intact.",
+      "journey": "J-38",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Unfinished" }
+    },
+    {
+      "n": 3,
+      "title": "Retry an unfinished import queues a new job",
+      "narration": "Clicking Retry on any unfinished import queues a fresh job attempt right away. The panel keeps all its rows — nothing disappears — and the job progress area updates to show the new job running.",
+      "point_out": "After clicking Retry, the Job progress panel shows a new running job while the Unfinished Imports panel still shows its full list of rows.",
+      "journey": "J-38",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Retry remaining" } }
+    },
+    {
+      "n": 4,
+      "title": "Dismiss a row without losing the rest",
+      "narration": "Dismissing a row removes just that one entry and leaves every other row in place. The panel does not flash empty or lose its remaining imports.",
+      "point_out": "The dismissed row is gone and the row count drops by one, but the rest of the panel is unchanged and the section heading is still present.",
+      "journey": "J-38",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Unfinished" }
+    },
+    {
+      "n": 5,
+      "title": "Exactly one global date selector — no accidental duplicates",
+      "narration": "A core design rule is that the whole product shares a single 'View as-of date' control. This iteration's fixes touched the Unfinished Imports panel and added no extra date inputs anywhere on the page.",
+      "point_out": "Only one date-related selector — labelled 'View as-of date' — is present on the page. The fetch form's start/end date fields are job-entry fields, not a second viewing-date control.",
+      "journey": "J-18",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "View as-of date" }
+    },
+    {
+      "n": 6,
+      "title": "Per-symbol coverage table confirms the dataset",
+      "narration": "Below the Unfinished Imports panel the per-symbol coverage table shows how many price bars each ticker has. This lets you see exactly where the data is healthy versus where more history is needed.",
+      "point_out": "The coverage rows listing each symbol alongside its bar count are visible. No raw JSON or 'Something went wrong' message appears anywhere on the page.",
+      "journey": "J-36",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Data Manager" }
+    }
+  ]
+}

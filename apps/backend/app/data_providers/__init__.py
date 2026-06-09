@@ -15,6 +15,7 @@ reads no environment and stores no key.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Optional, Union
 
@@ -23,6 +24,13 @@ from app.data_providers.seed_provider import SeedProvider, symbol_to_filename
 
 # app/data_providers/__init__.py -> app -> backend ; the committed seed lives at backend/data/seed.
 DEFAULT_SEED_DIR = Path(__file__).resolve().parents[2] / "data" / "seed"
+
+# iter-26: the env-gated offline `seed` IMPORT source (test/dev only) may be pointed at an OVERLAY seed
+# dir via `TRENDORA_SEED_IMPORT_DIR` — a throwaway dir the QA harness builds that carries a `prices/`
+# tree (or a copy/symlink of the committed prices) PLUS an optional `market_caps.csv` so an OFFLINE
+# J-35 expand can read a real committed cap reference WITHOUT mutating the committed `data/seed/` tree.
+# Unset (the default / production) → the `seed` import source reads the committed `DEFAULT_SEED_DIR`.
+SEED_IMPORT_DIR_ENV = "TRENDORA_SEED_IMPORT_DIR"
 
 __all__ = [
     "Bar",
@@ -47,7 +55,10 @@ def make_provider(
     runs). An unknown name raises `ValueError` — never a silent fallback (the catalog constrains the
     value upstream, and the engine validates a job's `source` against it)."""
     if name == "seed":
-        return SeedProvider(seed_dir or DEFAULT_SEED_DIR)
+        # an explicit seed_dir wins; else the test/dev overlay env dir (iter-26 J-35 offline expand);
+        # else the committed default. The overlay is a throwaway QA dir — never the committed seed tree.
+        resolved = seed_dir or os.environ.get(SEED_IMPORT_DIR_ENV) or DEFAULT_SEED_DIR
+        return SeedProvider(resolved)
     if name == "yahoo":
         from app.data_providers.yahoo_provider import YahooProvider  # lazy: only when a fetch runs
 

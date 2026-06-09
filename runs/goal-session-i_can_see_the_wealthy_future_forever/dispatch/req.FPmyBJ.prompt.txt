@@ -1,0 +1,29 @@
+You are the qa agent operating in QA VALIDATION mode for phased development.
+
+Phase: goal-i_can_see_the_wealthy_future_forever-iter-26
+Phase spec: /home/dennisccy/Git/trendora/docs/phases/goal-i_can_see_the_wealthy_future_forever-iter-26.md
+Review report: /home/dennisccy/Git/trendora/reports/reviews/goal-i_can_see_the_wealthy_future_forever-iter-26-review.md
+Execution plan: /home/dennisccy/Git/trendora/runs/goal-i_can_see_the_wealthy_future_forever-iter-26/plan.md
+Project template: .claude/project-template.md  <-- read this for test commands
+Agent instructions: .claude/agents/qa.md  <-- read this first, follow MODE 2 instructions
+(CLAUDE.md is already in your system prompt — do not Read it again.)
+
+Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
+
+Frontend Present for this phase: yes
+Chrome MCP browser checks ARE required. The frontend should be accessible at http://localhost:3835.
+
+Functional Test Plan: /home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-26-test-plan.md  <-- read this and execute each test case step by step.
+For each test case: record test ID, steps taken, expected result, actual result, PASS/FAIL, and notes.
+Include the results table in your QA report.
+
+Note: The QA runner manages backend (http://localhost:8835/health, log: /tmp/qa-backend-8835.log) and frontend (http://localhost:3835, log: /tmp/qa-frontend-8835.log) for this validation.
+Services are restarted automatically if they die during quota-retry sleeps.
+You do NOT need to start or stop them yourself.
+
+Write your QA report to: reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-26-qa.md
+
+The report MUST contain a line matching exactly:
+**Verdict:** PASS
+  or
+**Verdict:** FAIL

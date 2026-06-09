@@ -52,8 +52,11 @@ from app.engine.data_manager import (
     resume_data_job,
     retry_run,
     run_data_job,
+    seed_import_source_enabled,
     unfinished_imports,
     validate_job_request,
+    SEED_IMPORT_ENV_FLAG,
+    SEED_IMPORT_SOURCE_ID,
 )
 from app.engine.forward_testing import compute_forward_aggregates
 from app.engine.scoring import score_stocks
@@ -503,6 +506,69 @@ def test_compute_provider_availability_env_detected(monkeypatch):
     by_id2 = {s["id"]: s for s in sources2}
     assert by_id2["tiingo"]["available"] is True
     assert "super-secret-env-value-zzz" not in json.dumps(sources2)
+
+
+# ==================================================================================================
+# iter-26 (J-37 / J-35 capture enabler): the env-gated OFFLINE `seed` import source
+# ==================================================================================================
+def test_seed_import_source_absent_without_flag(monkeypatch):
+    """By default (flag unset) the offline `seed` source is ABSENT from the availability catalog and the
+    validator REJECTS a `seed`-source job — it is a test/dev affordance, never in production."""
+    monkeypatch.delenv(SEED_IMPORT_ENV_FLAG, raising=False)
+    cfg = load_config()
+    assert seed_import_source_enabled() is False
+    by_id = {s["id"]: s for s in compute_provider_availability(cfg)}
+    assert SEED_IMPORT_SOURCE_ID not in by_id  # absent from the picker
+    # the validator rejects `seed` as unknown when the flag is unset
+    with pytest.raises(ValueError, match="unknown import source"):
+        validate_job_request("fetch", date(2024, 1, 1), date(2024, 1, 2), cfg, source=SEED_IMPORT_SOURCE_ID)
+
+
+def test_seed_import_source_present_only_when_flagged(monkeypatch):
+    """With the flag set, exactly ONE `seed` entry appears — no-key, market-cap-capable, always available,
+    carrying NO env-var/key value — and it is NOT in the committed config catalog (no production leak)."""
+    monkeypatch.setenv(SEED_IMPORT_ENV_FLAG, "1")
+    cfg = load_config()
+    assert seed_import_source_enabled() is True
+    # never in the committed config catalog (a test/dev affordance only)
+    assert SEED_IMPORT_SOURCE_ID not in cfg.data_manager.provider_ids()
+    sources = compute_provider_availability(cfg)
+    seed_entries = [s for s in sources if s["id"] == SEED_IMPORT_SOURCE_ID]
+    assert len(seed_entries) == 1  # exactly one
+    seed = seed_entries[0]
+    assert seed["label"] == "Seed (offline test data)"
+    assert seed["needs_key"] is False
+    assert seed["env_var"] is None
+    assert seed["supports_market_cap"] is True
+    assert seed["available"] is True
+    # carries no key/secret value (anti-goal: keys are env-or-session, never persisted)
+    monkeypatch.setenv("TIINGO_API_KEY", "super-secret-zzz")
+    assert "super-secret-zzz" not in json.dumps(compute_provider_availability(load_config()))
+
+
+def test_seed_source_job_validates_through_existing_gate_when_flagged(monkeypatch):
+    """A `seed`-source job (fetch AND expand) PASSES `validate_job_request` when the flag is set — it
+    routes through the EXISTING source gate (no key required, market-cap-capable so the J-35 expand
+    eligibility gate accepts it). No second validation path."""
+    monkeypatch.setenv(SEED_IMPORT_ENV_FLAG, "1")
+    cfg = load_config()
+    # a fetch over seed needs no key (the seed reads no credential) — accepted with no api_key
+    validate_job_request("fetch", date(2024, 1, 1), date(2024, 1, 2), cfg, source=SEED_IMPORT_SOURCE_ID)
+    # an expand over seed passes the supports_market_cap eligibility gate (seed is cap-capable)
+    validate_job_request("expand", date(2024, 1, 1), date(2024, 1, 1), cfg, source=SEED_IMPORT_SOURCE_ID)
+
+
+def test_seed_source_resolves_to_seed_provider(monkeypatch):
+    """A `seed`-source fetch resolves to the offline `SeedProvider` through the SAME `make_provider`
+    path every other source uses (no second fetch path) and needs no key."""
+    from app.data_providers.seed_provider import SeedProvider
+
+    monkeypatch.setenv(SEED_IMPORT_ENV_FLAG, "1")
+    cfg = load_config()
+    provider = data_manager._resolve_live_provider(cfg, SEED_IMPORT_SOURCE_ID, None)
+    assert isinstance(provider, SeedProvider)
+    # the error-scrubber key for a seed job is None (no key → nothing to leak)
+    assert data_manager._resolved_key(cfg, SEED_IMPORT_SOURCE_ID, None) is None
 
 
 def test_resolve_provider_key_prefers_paste_then_env(monkeypatch):
@@ -1712,6 +1778,204 @@ def test_pull_missing_provider_failure_no_fabricated_bar(tmp_path):
     with Session(engine) as session:
         ddd = session.exec(select(DailyPrice).where(DailyPrice.symbol == "DDD")).all()
     assert ddd == []  # zero bars — nothing fabricated
+
+
+def test_seed_source_pull_is_gap_exact_and_idempotent(tmp_path, monkeypatch):
+    """iter-26: a `seed`-source pull over a REAL SeedProvider (a tiny committed-style seed dir) fetches
+    EXACTLY the requested `(symbol, [start,end])` gap and is per-`(symbol,date)` idempotent — a re-run
+    stores NO duplicate bar (the INSERT-new-only guard). It routes through the existing engine + provider
+    path (no fork), and no second pull-constructor exists for the offline source."""
+    monkeypatch.setenv(SEED_IMPORT_ENV_FLAG, "1")
+    cfg = load_config()
+    # a tiny throwaway seed dir: SPY (calendar) + MU with a 2-day mid hole the seed can supply.
+    seed_dir = tmp_path / "seed"
+    prices = seed_dir / "prices"
+    prices.mkdir(parents=True)
+    cal = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5), date(2024, 1, 8)]
+    def _csv(sym, days):
+        lines = ["date,open,high,low,close,volume"]
+        for i, d in enumerate(days):
+            lines.append(f"{d.isoformat()},{10+i}.0,{11+i}.0,{9+i}.0,{10+i}.5,{1000+i}")
+        (prices / f"{sym}.csv").write_text("\n".join(lines) + "\n")
+    _csv("SPY", cal)
+    _csv("MU", cal)  # the seed has ALL MU bars (so a gap pull can supply the missing ones)
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'seedpull.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        for d in cal:
+            session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        # MU is stored with a hole on Jan 4 + Jan 5 (the gap to pull)
+        for d in (cal[0], cal[1], cal[4]):
+            session.add(DailyPrice(symbol="MU", date=d, open=2.0, high=2.0, low=2.0, close=2.0, volume=2.0))
+        session.commit()
+
+    from app.data_providers import make_provider
+    provider = make_provider("seed", seed_dir=seed_dir)
+    # gap-exact pull: ONLY MU, ONLY [Jan 4, Jan 5]
+    job = create_job("fetch", date(2024, 1, 4), date(2024, 1, 5), source="seed")
+    summary = run_data_job(job.job_id, config=cfg, engine=engine, provider=provider,
+                           sleep_fn=_noop_sleep, symbols=["MU"])
+    assert summary["status"] == "ok"
+    with Session(engine) as session:
+        mu_dates = sorted(session.exec(select(DailyPrice.date).where(DailyPrice.symbol == "MU")).all())
+        spy_count = session.exec(select(func.count(DailyPrice.id)).where(DailyPrice.symbol == "SPY")).one()
+    assert mu_dates == cal  # the two missing dates were filled — exactly the gap, nothing else
+    assert spy_count == len(cal)  # SPY untouched (the pull targeted only MU — gap-exact scope)
+
+    # idempotent re-run: re-fetch the same gap → ZERO duplicate rows
+    job2 = create_job("fetch", date(2024, 1, 4), date(2024, 1, 5), source="seed")
+    run_data_job(job2.job_id, config=cfg, engine=engine, provider=provider, sleep_fn=_noop_sleep, symbols=["MU"])
+    with Session(engine) as session:
+        mu_count = session.exec(select(func.count(DailyPrice.id)).where(DailyPrice.symbol == "MU")).one()
+    assert mu_count == len(cal)  # still 5 bars — no duplicate (INSERT-new-only)
+
+
+def test_qa_fixture_builder_writes_only_to_temp_and_not_committed_seed(tmp_path):
+    """The QA fixture builder writes the throwaway DB + narrowed config under the given out dir ONLY — it
+    NEVER mutates the committed seed tree and refuses to write inside it. The narrowed config is a valid
+    Config whose universe = exactly the 4 chosen members."""
+    import importlib.util
+    from app.config import load_config as _lc
+    from app.data_providers import DEFAULT_SEED_DIR
+
+    spec = importlib.util.spec_from_file_location(
+        "build_qa_fixture_db",
+        str(__import__("pathlib").Path(__file__).resolve().parents[1] / "scripts" / "build_qa_fixture_db.py"),
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    seed_before = sorted(p.name for p in (DEFAULT_SEED_DIR / "prices").glob("*.csv"))
+    out = tmp_path / "fixture_out"
+    result = mod.build_fixture(out, window=230, thin_bars=40, gap_len=10)
+
+    # wrote ONLY under the out dir
+    assert __import__("pathlib").Path(result["db_path"]).parent == out.resolve()
+    assert __import__("pathlib").Path(result["config_path"]).parent == out.resolve()
+    # the committed seed tree is byte-identical (untouched)
+    seed_after = sorted(p.name for p in (DEFAULT_SEED_DIR / "prices").glob("*.csv"))
+    assert seed_after == seed_before
+    # refuses to write inside the committed seed tree
+    with pytest.raises(ValueError, match="committed seed"):
+        mod.build_fixture(DEFAULT_SEED_DIR / "sub", window=50)
+    # the narrowed fixture config loads + has exactly the 4 chosen members
+    fixcfg = _lc(result["config_path"])
+    assert set(fixcfg.universe.symbols) == {"ANET", "DELL", "MU", "AMD"}
+    # the diagnostic-triggering shape is recorded
+    assert result["no_history"]["symbol"] == "ANET"
+    assert result["thin"]["symbol"] == "DELL" and 0 < result["thin"]["bars_have"] < result["thin"]["bars_needed"]
+    assert result["gap"]["symbol"] == "MU" and result["gap"]["missing_day_count"] == 10
+
+
+def test_seed_source_expand_runs_offline_with_passers_and_omitted(tmp_path, monkeypatch):
+    """iter-26 (J-35): an expand over the env-gated offline `seed` source runs end-to-end with a real
+    market-cap reference (a committed `market_caps.csv` overlay) → produces PASSERS (cap >= min) AND
+    omitted-with-reason candidates (no_market_cap / market_cap<min / empty_series), all real-data-only,
+    through the EXISTING `screen_reasons` predicate. No live network."""
+    from app.data_providers import SEED_IMPORT_DIR_ENV
+    monkeypatch.setenv(SEED_IMPORT_ENV_FLAG, "1")
+
+    # a throwaway overlay seed dir: prices for 3 pool symbols + a market_caps.csv (one sub-threshold, one
+    # absent) + a tiny pool CSV listing 4 candidates. Never the committed seed tree.
+    overlay = tmp_path / "overlay"
+    prices = overlay / "prices"
+    prices.mkdir(parents=True)
+    cal = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)]
+    def _csv(sym):
+        lines = ["date,open,high,low,close,volume"]
+        for i, d in enumerate(cal):
+            lines.append(f"{d.isoformat()},{20+i}.0,{21+i}.0,{19+i}.0,{20+i}.0,{5_000_000+i}")
+        (prices / f"{sym}.csv").write_text("\n".join(lines) + "\n")
+    for sym in ("SPY", "BIGCAP", "SMALLCAP", "HASBARS_NOCAP"):
+        _csv(sym)
+    # BIGCAP passes (cap huge); SMALLCAP omitted (cap < min); HASBARS_NOCAP omitted (no cap); NOBARS omitted (empty_series)
+    cfg = load_config()
+    min_cap = cfg.universe.filters.min_market_cap
+    (overlay / "market_caps.csv").write_text(
+        f"symbol,market_cap\nBIGCAP,{min_cap * 100:.0f}\nSMALLCAP,{min_cap / 2:.0f}\n"
+    )
+    (overlay / "universe_pool.csv").write_text(
+        "symbol,sector,source\nBIGCAP,Tech,test\nSMALLCAP,Tech,test\nHASBARS_NOCAP,Tech,test\nNOBARS,Tech,test\n"
+    )
+    monkeypatch.setenv(SEED_IMPORT_DIR_ENV, str(overlay))
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'expand.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        for d in cal:
+            session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    # universe.json is written under the seed dir's parent path the engine uses; point it at a temp dir
+    monkeypatch.setattr(data_manager, "DEFAULT_SEED_DIR", overlay, raising=False)
+    monkeypatch.setattr(data_manager, "read_pool", lambda *a, **k: [
+        {"symbol": "BIGCAP", "sector": "Tech", "source": "test"},
+        {"symbol": "SMALLCAP", "sector": "Tech", "source": "test"},
+        {"symbol": "HASBARS_NOCAP", "sector": "Tech", "source": "test"},
+        {"symbol": "NOBARS", "sector": "Tech", "source": "test"},
+    ])
+
+    job = create_job("expand", date(2024, 1, 4), date(2024, 1, 4), source="seed")
+    summary = run_data_job(job.job_id, config=cfg, engine=engine, sleep_fn=_noop_sleep)
+    assert summary["passers"] == 1  # only BIGCAP clears the cap + price + bars screen
+    omitted = {o["symbol"]: o["reason"] for o in summary["omitted"]}
+    assert "no_market_cap" in omitted.get("HASBARS_NOCAP", "")
+    assert omitted.get("SMALLCAP", "").startswith("market_cap")  # cap < min
+    assert omitted.get("NOBARS") == "empty_series"  # no committed bars — honest, not fabricated
+
+
+def test_seed_source_expand_writes_to_overlay_not_committed_seed(tmp_path, monkeypatch):
+    """CRITICAL (iter-26): a `seed`-source expand MUST write its grown universe.json / per-symbol CSVs /
+    meta.json to the throwaway OVERLAY dir (TRENDORA_SEED_IMPORT_DIR) — NEVER the committed `data/seed/`
+    tree. `start_data_job` routes the seed-expand artifact write to the overlay; the committed seed dir
+    sha is unchanged. (Guards the regression where an offline expand truncated committed seed CSVs.)"""
+    from app.data_providers import DEFAULT_SEED_DIR, SEED_IMPORT_DIR_ENV
+
+    # an overlay seed dir with writable copies of one pool symbol + a cap + a tiny pool
+    overlay = tmp_path / "overlay"
+    (overlay / "prices").mkdir(parents=True)
+    cal = [date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)]
+    lines = ["date,open,high,low,close,volume"]
+    for i, d in enumerate(cal):
+        lines.append(f"{d.isoformat()},{20+i}.0,{21+i}.0,{19+i}.0,{20+i}.0,5000000")
+    (overlay / "prices" / "BIGCAP.csv").write_text("\n".join(lines) + "\n")
+    cfg = load_config()
+    (overlay / "market_caps.csv").write_text(
+        f"symbol,market_cap\nBIGCAP,{cfg.universe.filters.min_market_cap * 100:.0f}\n"
+    )
+    (overlay / "universe_pool.csv").write_text("symbol,sector,source\nBIGCAP,Tech,test\n")
+    monkeypatch.setenv(SEED_IMPORT_ENV_FLAG, "1")
+    monkeypatch.setenv(SEED_IMPORT_DIR_ENV, str(overlay))
+
+    # the committed seed dir must be byte-identical before/after (assert via a recursive sha of its files)
+    def _seed_sha() -> str:
+        import hashlib
+        h = hashlib.sha256()
+        for p in sorted((DEFAULT_SEED_DIR / "prices").glob("*.csv")):
+            h.update(p.read_bytes())
+        return h.hexdigest()
+
+    before = _seed_sha()
+    engine = make_engine(f"sqlite:///{tmp_path / 'expand2.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        for d in cal:
+            session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    import time as _t
+    jid = data_manager.start_data_job("expand", date(2024, 1, 4), date(2024, 1, 4),
+                                      source="seed", config=cfg, engine=engine)
+    for _ in range(400):
+        snap = data_manager.get_job(jid)
+        if snap and snap["status"] != "running":
+            break
+        _t.sleep(0.01)
+    assert snap["passers"] == 1  # BIGCAP passed — the expand ran to completion
+    # the grown artifact landed in the OVERLAY, NOT the committed seed
+    assert (overlay / "universe.json").exists()
+    assert _seed_sha() == before  # committed seed CSVs untouched (no truncation/mutation)
 
 
 # ==================================================================================================

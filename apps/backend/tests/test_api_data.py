@@ -113,6 +113,51 @@ def test_post_fetch_needs_key_source_without_key_is_400(data_api_engine, monkeyp
     assert "requires a key" in str(exc.value.detail)
 
 
+def test_seed_import_source_surfaces_under_flag_via_api(data_api_engine, monkeypatch):
+    """iter-26: with the env flag set, the offline `seed` source appears in GET /api/data `sources`
+    (no-key, market-cap-capable, available) so the browser harness can drive an offline pull/expand;
+    without the flag it is ABSENT. It carries the same metadata shape as every other source — no key."""
+    # absent by default
+    monkeypatch.delenv(data_manager.SEED_IMPORT_ENV_FLAG, raising=False)
+    with Session(data_api_engine) as session:
+        off = data_overview(session=session)
+    assert "seed" not in {s["id"] for s in off["sources"]}
+    # present under the flag
+    monkeypatch.setenv(data_manager.SEED_IMPORT_ENV_FLAG, "1")
+    with Session(data_api_engine) as session:
+        on = data_overview(session=session)
+    by_id = {s["id"]: s for s in on["sources"]}
+    assert "seed" in by_id
+    seed = by_id["seed"]
+    assert seed["needs_key"] is False and seed["available"] is True
+    assert seed["supports_market_cap"] is True and seed["env_var"] is None
+    # same metadata contract as every other source (no extra/secret field)
+    assert set(seed) == {"id", "label", "needs_key", "env_var", "supports_market_cap", "available", "reason"}
+
+
+def test_post_seed_source_job_dispatches_without_key(data_api_engine, monkeypatch):
+    """A `seed`-source fetch POSTed to /api/data/jobs is ACCEPTED under the flag (no key needed) and runs
+    through the EXISTING job path to a final summary — echoing the source (not secret) and no key. Without
+    the flag the same request is rejected 400 (the seed source is a test/dev affordance only)."""
+    # rejected without the flag
+    monkeypatch.delenv(data_manager.SEED_IMPORT_ENV_FLAG, raising=False)
+    with Session(data_api_engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            start_job(JobCreate(kind="fetch", start=date(2024, 6, 1), end=date(2024, 6, 2), source="seed"),
+                      session=session)
+    assert exc.value.status_code == 400
+    # accepted under the flag, runs to a final summary (a future-dated window is a deterministic no-op)
+    monkeypatch.setenv(data_manager.SEED_IMPORT_ENV_FLAG, "1")
+    with Session(data_api_engine) as session:
+        resp = start_job(JobCreate(kind="fetch", start=date(2099, 1, 1), end=date(2099, 1, 2), source="seed"),
+                         session=session)
+    assert resp["source"] == "seed"
+    assert "api_key" not in resp
+    snap = _await_job(resp["job_id"])
+    assert snap is not None and snap["status"] in {"ok", "partial", "failed"}
+    assert snap["source"] == "seed"  # the chosen source is recorded; no key field present
+
+
 def test_post_job_payload_accepts_source_and_api_key_without_echo(data_api_engine):
     """The typed POST model accepts the J-33 `source` + session-only `api_key`; the start response NEVER
     contains the pasted key. (A backfill job carries the source through with no network call.)"""

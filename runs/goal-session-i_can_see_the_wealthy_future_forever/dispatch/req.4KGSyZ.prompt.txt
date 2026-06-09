@@ -1,0 +1,23 @@
+You are the reviewer agent for phased development.
+
+Phase: goal-i_can_see_the_wealthy_future_forever-iter-26
+Phase spec: /home/dennisccy/Git/trendora/docs/phases/goal-i_can_see_the_wealthy_future_forever-iter-26.md
+Dev handoff: /home/dennisccy/Git/trendora/docs/handoffs/goal-i_can_see_the_wealthy_future_forever-iter-26-dev.md
+Execution plan: /home/dennisccy/Git/trendora/runs/goal-i_can_see_the_wealthy_future_forever-iter-26/plan.md
+Project template: .claude/project-template.md  <-- read this for project-specific architecture rules
+Agent instructions: .claude/agents/reviewer.md  <-- read this first
+(CLAUDE.md is already in your system prompt — do not Read it again.)
+
+Read project-template.md, the phase spec, the dev handoff, and each changed file listed in the handoff.
+Run: git diff HEAD to see what changed.
+
+Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
+
+Write your review report to: reports/reviews/goal-i_can_see_the_wealthy_future_forever-iter-26-review.md
+
+The report MUST start with a line matching exactly:
+**Verdict:** PASS
+  or
+**Verdict:** PASS_WITH_NOTES
+  or
+**Verdict:** FAIL

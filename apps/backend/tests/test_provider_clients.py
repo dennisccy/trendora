@@ -250,6 +250,27 @@ def test_make_provider_resolves_every_catalog_id():
         make_provider("definitely-not-a-provider")
 
 
+def test_make_provider_seed_honors_overlay_env_dir(tmp_path, monkeypatch):
+    """iter-26: the env-gated offline `seed` import source reads its seed dir from `TRENDORA_SEED_IMPORT_DIR`
+    when set (the throwaway QA overlay carrying a `market_caps.csv` for an OFFLINE J-35 expand) — never
+    the committed seed tree. An explicit `seed_dir=` still wins; unset → the committed default."""
+    from app.data_providers import DEFAULT_SEED_DIR, SEED_IMPORT_DIR_ENV
+    from app.data_providers.seed_provider import SeedProvider
+
+    overlay = tmp_path / "overlay"
+    (overlay / "prices").mkdir(parents=True)
+    monkeypatch.setenv(SEED_IMPORT_DIR_ENV, str(overlay))
+    p = make_provider("seed")
+    assert isinstance(p, SeedProvider) and p.seed_dir == overlay  # overlay env dir honored
+    # an explicit seed_dir wins over the env override
+    other = tmp_path / "explicit"
+    (other / "prices").mkdir(parents=True)
+    assert make_provider("seed", seed_dir=other).seed_dir == other
+    # unset → the committed default seed dir
+    monkeypatch.delenv(SEED_IMPORT_DIR_ENV, raising=False)
+    assert make_provider("seed").seed_dir == DEFAULT_SEED_DIR
+
+
 # ==================================================================================================
 # REAL httpx error path (key-in-URL) — the iter-21 BLIND-SPOT regression (iter-22 fix, J-33).
 #

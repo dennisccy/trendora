@@ -1271,9 +1271,19 @@ function ResumeControl({
     try {
       await resumeDataJob(importId, needsKey ? { api_key: apiKey || undefined } : undefined);
       setApiKey(""); // drop the session-only key the instant the resume is submitted
+      // onResumed (success ONLY) just re-reads the resumed job into the live card — it does NOT reload the
+      // unfinished list, so a SUCCESSFUL resume keeps the row visible until the next overview refresh.
       onResumed(importId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not resume the import.");
+      // J-38 / iter-25 UT-11 fix: a FAILED resume (e.g. a needs-key source resumed without a key → 400)
+      // surfaces a VISIBLE inline error and does NOT call onResumed / any overview reload — so the row
+      // STAYS in the Unfinished-imports panel (it is never silently dropped on a failed resume). For the
+      // needs-key-without-key case we render an actionable, source-specific prompt instead of the raw 400.
+      const fallback =
+        needsKey && !apiKey
+          ? `Enter the session key for ${source?.label ?? "this source"} to resume.`
+          : "Could not resume the import.";
+      setError(err instanceof Error ? err.message : fallback);
     } finally {
       setBusy(false);
     }
@@ -1319,7 +1329,7 @@ function ResumeControl({
           Resume
         </button>
         {error ? (
-          <span role="alert" className="text-xs text-neg">
+          <span role="alert" data-testid="resume-error" className="text-xs text-neg">
             {error}
           </span>
         ) : null}
