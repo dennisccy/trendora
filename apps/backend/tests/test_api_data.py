@@ -24,9 +24,10 @@ from sqlmodel import Session
 
 import app.db as db_module
 from app.api.data import JobCreate, ResumeRequest, data_overview, job_status, resume_job, start_job
+from app.config import get_config
 from app.db import create_db_and_tables, make_engine
 from app.engine import data_manager
-from app.models import DailyPrice, ImportCheckpoint
+from app.models import DailyPrice, DataProviderRun, ImportCheckpoint
 
 
 @pytest.fixture()
@@ -62,8 +63,9 @@ def test_get_data_overview_shape(data_api_engine):
     env-var NAME only — never a key value."""
     with Session(data_api_engine) as session:
         payload = data_overview(session=session)
-    assert set(payload) == {"coverage", "runs", "sources", "resumable_imports"}
+    assert set(payload) == {"coverage", "runs", "sources", "resumable_imports", "unfinished_imports"}
     assert payload["resumable_imports"] == []  # J-34: no paused imports on a fresh DB
+    assert payload["unfinished_imports"] == []  # J-38: nothing unfinished on a fresh DB
     cov = payload["coverage"]
     assert cov["symbol_count"] == 1  # only SPY in this tiny DB
     assert cov["trading_day_count"] == 2 and cov["gap_count"] == 2  # two SPY days, no snapshots yet
@@ -489,3 +491,137 @@ def test_remove_endpoint_error_carries_no_secret(removal_api_engine, monkeypatch
             )
     detail = str(exc.value.detail)
     assert "?token=" not in detail and "?apikey=" not in detail and "api_key" not in detail
+
+
+# --- iter-25 (J-37 pull / J-38 retry+dismiss) API surface ----------------------------------------
+def test_post_job_accepts_symbols_for_pull(data_api_engine):
+    """POST /api/data/jobs accepts a J-37 pull body: a fetch carrying the diagnosed-gap `symbols`. The
+    response echoes the normalized symbols (the gap-exact scope), and carries no key."""
+    payload = JobCreate(kind="fetch", start=date(2024, 1, 2), end=date(2024, 1, 3), symbols=["DDD", "", "  "])
+    with Session(data_api_engine) as session:
+        resp = start_job(payload, session=session)
+    job_id = resp["job_id"]
+    assert resp["symbols"] == ["DDD"]  # whitespace/empty normalized away
+    assert "api_key" not in resp
+    _await_job(job_id)  # let the (offline) job finish so the thread is clean
+
+
+def test_get_data_overview_has_unfinished_imports(data_api_engine):
+    """GET /api/data now also carries the unified `unfinished_imports` list (J-38)."""
+    with Session(data_api_engine) as session:
+        _add_checkpoint(session, import_id="paused-x", source="tiingo", status="resumable")
+        payload = data_overview(session=session)
+    assert "unfinished_imports" in payload
+    ids = {(r["record_type"], r["id"]) for r in payload["unfinished_imports"]}
+    assert ("checkpoint", "paused-x") in ids
+
+
+def test_retry_unknown_run_is_404(data_api_engine):
+    """Retrying an unknown run id → explicit 404 (never a fabricated job)."""
+    from app.api.data import retry_job
+    with Session(data_api_engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            retry_job(99999, payload=ResumeRequest(), session=session)
+    assert exc.value.status_code == 404
+
+
+def test_retry_clean_run_is_409(data_api_engine):
+    """Retrying a clean (ok) run → explicit 409 (only partial/failed runs are retryable)."""
+    from app.api.data import retry_job
+    with Session(data_api_engine) as session:
+        run = DataProviderRun(
+            provider="yahoo", started_at=datetime(2024, 1, 3), finished_at=datetime(2024, 1, 3),
+            symbols_ok=5, symbols_failed=0, status="ok",
+            message=json.dumps({"kind": "fetch", "start": "2024-01-02", "end": "2024-01-03", "summary": "ok"}),
+        )
+        session.add(run)
+        session.commit()
+        session.refresh(run)
+        with pytest.raises(HTTPException) as exc:
+            retry_job(run.id, payload=ResumeRequest(), session=session)
+    assert exc.value.status_code == 409
+
+
+def test_retry_needs_key_source_without_key_is_400(data_api_engine, monkeypatch):
+    """Retrying a partial run whose source needs a key, with no env/session key → explicit 400."""
+    from app.api.data import retry_job
+    monkeypatch.delenv("TIINGO_API_KEY", raising=False)
+    with Session(data_api_engine) as session:
+        run = DataProviderRun(
+            provider="tiingo", started_at=datetime(2024, 1, 3), finished_at=datetime(2024, 1, 3),
+            symbols_ok=1, symbols_failed=1, status="partial",
+            message=json.dumps({"kind": "fetch", "start": "2024-01-02", "end": "2024-01-03", "summary": "partial"}),
+        )
+        session.add(run)
+        session.commit()
+        session.refresh(run)
+        with pytest.raises(HTTPException) as exc:
+            retry_job(run.id, payload=ResumeRequest(), session=session)
+    assert exc.value.status_code == 400
+    assert "requires a key" in str(exc.value.detail)
+
+
+def test_dismiss_run_endpoint_soft_dismisses(data_api_engine):
+    """POST /api/data/jobs/{id}/dismiss (record_type=run) soft-dismisses; the run leaves unfinished_imports
+    but stays in Run history."""
+    from app.api.data import dismiss_job
+    with Session(data_api_engine) as session:
+        run = DataProviderRun(
+            provider="yahoo", started_at=datetime(2024, 1, 3), finished_at=datetime(2024, 1, 3),
+            symbols_ok=1, symbols_failed=1, status="partial",
+            message=json.dumps({"kind": "fetch", "start": "2024-01-02", "end": "2024-01-03", "summary": "partial"}),
+        )
+        session.add(run)
+        session.commit()
+        session.refresh(run)
+        resp = dismiss_job(str(run.id), record_type="run", session=session)
+        assert resp["dismissed"] is True
+        payload = data_overview(session=session)
+    run_ids = {r["id"] for r in payload["unfinished_imports"] if r["record_type"] == "run"}
+    assert run.id not in run_ids  # left the actionable list
+    assert any(r["id"] == run.id for r in payload["runs"])  # still in Run history audit
+
+
+def test_dismiss_unknown_is_404(data_api_engine):
+    from app.api.data import dismiss_job
+    with Session(data_api_engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            dismiss_job("88888", record_type="run", session=session)
+    assert exc.value.status_code == 404
+
+
+def test_pull_key_leak_scrubbed_through_job_status_surface(data_api_engine, monkeypatch):
+    """CRITICAL key-leak regression (J-33 carry on the J-37 pull): a pull whose provider raises a REAL
+    httpx error EMBEDDING the session key in the URL must have the key SCRUBBED from the job-status surface
+    (`GET /api/data/jobs/{id}`), the checkpoint, and run history — driven through the API's own job path."""
+    secret = "sk-PULL-LEAK-25-9f3a"
+    # a REAL httpx.HTTPStatusError str carrying the key as ?token= (the exact iter-21 leak vector)
+    req = __import__("httpx").Request(
+        "GET", "https://api.tiingo.com/tiingo/daily/DDD/prices", params={"token": secret}
+    )
+    try:
+        __import__("httpx").Response(429, request=req).raise_for_status()
+    except Exception as e:  # noqa: BLE001
+        leak = str(e)
+    assert secret in leak  # sanity: there IS a key to scrub
+
+    from app.data_providers.base import PriceProvider, ProviderUnavailableError
+
+    class _Leak(PriceProvider):
+        def get_daily(self, symbol, start=None, end=None):
+            raise ProviderUnavailableError(leak)
+
+    # dispatch a gap-exact pull (symbols=["DDD"]) through the engine with the injected leaking provider
+    cfg = get_config()
+    job = data_manager.create_job("fetch", date(2024, 1, 2), date(2024, 1, 3), source="tiingo")
+    data_manager.run_data_job(
+        job.job_id, config=cfg, engine=data_api_engine, provider=_Leak(),
+        api_key=secret, sleep_fn=lambda _s: None, symbols=["DDD"],
+    )
+    status = job_status(job.job_id)  # the GET /api/data/jobs/{id} surface
+    assert status["status"] == "failed"
+    assert secret not in json.dumps(status)  # absent from the job-status surface
+    assert "***" in json.dumps(status["errors"])  # the scrub fired
+    with Session(data_api_engine) as session:
+        overview = data_overview(session=session)
+    assert secret not in json.dumps(overview)  # absent from unfinished_imports + run history

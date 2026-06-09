@@ -153,6 +153,116 @@ def _per_symbol_coverage(session: Session, cfg: Config) -> list[dict]:
     return rows
 
 
+def _missing_data_diagnostic(session: Session, cfg: Config) -> dict:
+    """J-37 — the Missing-data diagnostic: a READ-ONLY honest report of every universe member that is
+    INSUFFICIENT FOR ANALYSIS, derived ONCE from the SAME stored bars + `config.universe.symbols` +
+    `indicators.min_history_bars` + the benchmark trading calendar the J-36 table / walk-forward already
+    use. It recomputes NO score/return/bucket/setup and fabricates nothing (a member with no/thin history
+    is shown missing/thin, never a faked range or filled value). Three honest categories, each row carrying
+    the symbol + the EXACT shortfall:
+
+      (a) `no_history`   — a universe member with ZERO stored bars (`bars_have=0`, `bars_needed=threshold`).
+      (b) `thin`         — `0 < bar_count < indicators.min_history_bars` (carries `bars_have`/`bars_needed`).
+      (c) `intra_series_gap` — trading days MISSING inside the member's own first→last range, measured
+                           against the benchmark calendar (carries `missing_day_count` +
+                           `[first_gap, last_gap]` + a bounded preview of the missing dates).
+
+    A member that is fine appears in NO category. The thin threshold and the trading calendar both come
+    from config (No magic number). `pullable` flags the rows a one-click pull can act on: no-history and
+    intra-series-gap members (a thin member's gap, if any, surfaces as an intra-series-gap row; a thin
+    member with a contiguous-but-short series has no gap to pull and is shown for transparency only)."""
+    threshold = cfg.indicators.min_history_bars  # canonical "insufficient-for-analysis" cutoff (config)
+    universe = list(cfg.universe.symbols)
+    universe_set = set(universe)
+    calendar = _trading_days(session, cfg)  # benchmark (SPY) bar dates, ascending — the SAME calendar
+    calendar_set = set(calendar)
+    preview_cap = cfg.data_manager.gap_preview  # reuse the existing gap-preview display cap (No magic number)
+
+    # One grouped pass over daily_prices → {symbol: (bar_count, first, last)} for the universe members.
+    stats_rows = session.exec(
+        select(
+            DailyPrice.symbol,
+            func.count(DailyPrice.id),
+            func.min(DailyPrice.date),
+            func.max(DailyPrice.date),
+        )
+        .where(DailyPrice.symbol.in_(universe))
+        .group_by(DailyPrice.symbol)
+    ).all()
+    stats: dict[str, tuple[int, Optional[date_cls], Optional[date_cls]]] = {
+        symbol: (int(count or 0), first, last) for symbol, count, first, last in stats_rows
+    }
+
+    no_history: list[dict] = []
+    thin: list[dict] = []
+    intra_gaps: list[dict] = []
+
+    for symbol in sorted(universe_set):
+        bar_count, first, last = stats.get(symbol, (0, None, None))
+
+        if bar_count == 0:
+            # (a) no-history — a member with zero stored bars. The pull target is the full benchmark
+            # calendar window (first→last trading day) — exactly the dates a fetch would supply.
+            no_history.append({
+                "symbol": symbol,
+                "category": "no_history",
+                "bars_have": 0,
+                "bars_needed": threshold,
+                "pull_start": calendar[0].isoformat() if calendar else None,
+                "pull_end": calendar[-1].isoformat() if calendar else None,
+                "pullable": bool(calendar),
+            })
+            continue
+
+        # (b) thin — strictly between 0 and the config threshold (insufficient history for analysis).
+        if bar_count < threshold:
+            thin.append({
+                "symbol": symbol,
+                "category": "thin",
+                "bars_have": bar_count,
+                "bars_needed": threshold,
+                # a thin member's exact shortfall is bars; the actionable gap (if its series has holes)
+                # surfaces separately as an intra_series_gap row, so a thin row alone is not pullable.
+                "pullable": False,
+            })
+
+        # (c) intra-series gap — trading days (benchmark calendar) MISSING inside the member's own
+        # first→last range. Measured against the SAME calendar; never a fabricated date.
+        if first is not None and last is not None:
+            own_dates = set(session.exec(
+                select(DailyPrice.date)
+                .where(DailyPrice.symbol == symbol)
+                .where(DailyPrice.date >= first)
+                .where(DailyPrice.date <= last)
+            ).all())
+            missing_in_range = sorted(
+                d for d in calendar_set if first <= d <= last and d not in own_dates
+            )
+            if missing_in_range:
+                intra_gaps.append({
+                    "symbol": symbol,
+                    "category": "intra_series_gap",
+                    "missing_day_count": len(missing_in_range),
+                    "first_gap": missing_in_range[0].isoformat(),
+                    "last_gap": missing_in_range[-1].isoformat(),
+                    "missing_preview": [d.isoformat() for d in missing_in_range[:preview_cap]],
+                    # the pull target is exactly the gap span (first_gap → last_gap); the chunked fetch's
+                    # INSERT-new-only guard fills only the missing dates inside it (idempotent).
+                    "pull_start": missing_in_range[0].isoformat(),
+                    "pull_end": missing_in_range[-1].isoformat(),
+                    "pullable": True,
+                })
+
+    affected = len(no_history) + len(thin) + len(intra_gaps)
+    return {
+        "threshold": threshold,  # indicators.min_history_bars — surfaced so the UI states the cutoff
+        "no_history": no_history,
+        "thin": thin,
+        "intra_series_gaps": intra_gaps,
+        "affected_count": affected,
+    }
+
+
 def compute_coverage(session: Session, config: Optional[Config] = None) -> dict:
     """Current dataset coverage — purely descriptive, recomputing NO canonical value:
       - price-history date range (min/max `DailyPrice.date`) and distinct symbol count,
@@ -190,6 +300,10 @@ def compute_coverage(session: Session, config: Optional[Config] = None) -> dict:
         "gaps_preview": [d.isoformat() for d in gaps[:preview]],
         # J-36: the per-symbol / per-universe-member coverage table (read-only descriptive metadata).
         "per_symbol": _per_symbol_coverage(session, cfg),
+        # J-37: the Missing-data diagnostic — three honest categories of universe members insufficient
+        # for analysis (no-history / thin / intra-series gap), each with its EXACT shortfall, derived from
+        # the SAME stored bars + threshold + calendar above. Recomputes no canonical value; fabricates nothing.
+        "diagnostic": _missing_data_diagnostic(session, cfg),
     }
 
 
@@ -1251,6 +1365,7 @@ def _run_job(
     sleep_fn: Callable[[float], None],
     is_resume: bool,
     seed_dir: Path = DEFAULT_SEED_DIR,
+    symbols_override: Optional[list[str]] = None,
 ) -> dict:
     """The shared worker body for a fresh job (`is_resume=False`) and a resume (`is_resume=True`). Opens
     its OWN DB session (never the request's). The live FETCH is CHUNKED + checkpointed; a persistent 429
@@ -1288,9 +1403,18 @@ def _run_job(
                     session.add(checkpoint)
                     session.commit()
                 else:
-                    # the one substitution for expand: the chunk-loop fetches the POOL symbols, not the
-                    # existing seed set (J-35) — everything else (plan, checkpoint, idempotency) is reused.
-                    symbols = [row["symbol"] for row in pool] if is_expand else all_seed_symbols(cfg)
+                    # the symbol set for a fresh fetch, in priority order:
+                    #   - an EXPAND fetches the committed POOL (J-35),
+                    #   - a J-37 PULL fetches EXACTLY the diagnosed-gap symbols (`symbols_override`) — the
+                    #     gap-exact fetch dispatched through this SAME chunked engine (no second fetch path),
+                    #   - otherwise a generic fetch fetches the existing seed set.
+                    # Everything downstream (plan, checkpoint, per-(symbol,date) idempotency) is reused.
+                    if is_expand:
+                        symbols = [row["symbol"] for row in pool]
+                    elif symbols_override is not None:
+                        symbols = list(symbols_override)
+                    else:
+                        symbols = all_seed_symbols(cfg)
                     chunks = _chunk_plan(cfg, symbols, prog.start, prog.end)
                     start_chunk = 0
                     checkpoint = _start_checkpoint(session, cfg, prog, symbols, len(chunks))
@@ -1353,6 +1477,7 @@ def run_data_job(
     api_key: Optional[str] = None,
     sleep_fn: Optional[Callable[[float], None]] = None,
     seed_dir: Optional[str | Path] = None,
+    symbols: Optional[list[str]] = None,
 ) -> dict:
     """Run the registered job to completion SYNCHRONOUSLY (the worker body; `start_data_job` runs this in
     a thread). Updates the in-memory registry as it goes and persists the final summary. Returns the final
@@ -1360,7 +1485,9 @@ def run_data_job(
     tests (defaults to `time.sleep`). For a fetch, the job-selected `source` is resolved against the
     catalog and `make_provider(source, api_key=key)` builds the live client; an injected `provider`
     (tests) bypasses that entirely. `seed_dir` (J-35) is where an `expand` job reads the candidate pool +
-    writes universe.json/CSVs/meta.json — injectable so tests write to a temp dir, never the committed seed."""
+    writes universe.json/CSVs/meta.json — injectable so tests write to a temp dir, never the committed seed.
+    `symbols` (J-37 pull) restricts a FETCH to EXACTLY the diagnosed-gap symbols — dispatched through this
+    SAME chunked engine (no second fetch path); None ⇒ the full seed set (generic fetch behavior)."""
     cfg = config or get_config()
     eng = engine or get_engine()
     with _LOCK:
@@ -1369,6 +1496,7 @@ def run_data_job(
         prog, cfg=cfg, eng=eng, provider=provider, api_key=api_key,
         sleep_fn=sleep_fn or _sleep, is_resume=False,
         seed_dir=Path(seed_dir) if seed_dir else DEFAULT_SEED_DIR,
+        symbols_override=symbols,
     )
 
 
@@ -1423,6 +1551,7 @@ def start_data_job(
     api_key: Optional[str] = None,
     config: Optional[Config] = None,
     engine: Optional[Engine] = None,
+    symbols: Optional[list[str]] = None,
 ) -> str:
     """Register a job and run it ASYNCHRONOUSLY in a daemon thread; return the `job_id` immediately so
     the POST handler responds without blocking. The thread opens its own session on the given engine.
@@ -1430,7 +1559,8 @@ def start_data_job(
     `source` (J-33) is recorded on the job ONLY for a kind that FETCHES — a backfill-only job reads the
     committed seed, so its progress header carries no import source (iter-21 Finding #2). `api_key` is the
     SESSION-ONLY pasted key — passed to the worker as a request-only thread argument and NEVER stored on
-    the job/registry (anti-goal: keys are env-or-session, never persisted)."""
+    the job/registry (anti-goal: keys are env-or-session, never persisted). `symbols` (J-37 pull) restricts
+    a fetch to exactly the diagnosed-gap symbols (the SAME chunked engine — no second fetch path)."""
     cfg = config or get_config()
     eng = engine or get_engine()
     # record the source on any job that FETCHES (a generic fetch OR an expand) — a backfill-only job
@@ -1441,7 +1571,7 @@ def start_data_job(
     thread = threading.Thread(
         target=run_data_job,
         args=(job.job_id,),
-        kwargs={"config": cfg, "engine": eng, "api_key": api_key},
+        kwargs={"config": cfg, "engine": eng, "api_key": api_key, "symbols": symbols},
         daemon=True,
         name=f"data-job-{job.job_id}",
     )
@@ -1560,3 +1690,182 @@ def resumable_imports(session: Session, config: Optional[Config] = None) -> list
         .order_by(ImportCheckpoint.updated_at.desc(), ImportCheckpoint.id.desc())
     ).all()
     return [_summarize_checkpoint(cp) for cp in rows]
+
+
+# --------------------------------------------------------------------------------------------------
+# J-38 — Unified Unfinished-imports (GET /api/data) — one read-only union of every import that did NOT
+# finish cleanly, each with a PLAIN-LANGUAGE state + the right action. Reads the canonical job-control
+# rows ONLY (the resumable `import_checkpoints` + the partial/failed `data_provider_runs`); recomputes NO
+# canonical score/return/bucket. NEVER carries a key value.
+# --------------------------------------------------------------------------------------------------
+def _resumable_state_text(cp: ImportCheckpoint, symbols_remaining: int) -> str:
+    """The plain-language state for a paused/resumable checkpoint row (J-38)."""
+    return (
+        f"Paused — hit a provider rate-limit (429); progress saved at chunk "
+        f"{cp.next_chunk_index}/{cp.chunk_total} ({symbols_remaining} symbols remaining). Resume to continue."
+    )
+
+
+def _run_state_text(run: DataProviderRun) -> str:
+    """The plain-language state for a partial/failed operational `DataProviderRun` row (J-38)."""
+    total = run.symbols_ok + run.symbols_failed
+    if run.status == "failed":
+        return f"Failed — every symbol failed ({run.symbols_failed} of {total}); provider unreachable."
+    return (
+        f"Partial — {run.symbols_ok}/{total} symbols ok, {run.symbols_failed} failed. "
+        f"Retry re-fetches only the outstanding/failed work (idempotent — no duplicate bar)."
+    )
+
+
+def _checkpoint_unfinished_row(cp: ImportCheckpoint) -> dict:
+    """One unified Unfinished-imports row for a resumable CHECKPOINT (action: Resume / Remove). Generalizes
+    `_summarize_checkpoint` with a stable `record_type`/`id`/`state`/`actions` shape shared with run rows."""
+    base = _summarize_checkpoint(cp)
+    base.update({
+        "record_type": "checkpoint",
+        "id": cp.import_id,  # the import_id drives resume/dismiss/retry endpoints
+        "state": _resumable_state_text(cp, base["symbols_remaining"]),
+        "actions": ["resume", "remove"],
+    })
+    return base
+
+
+def _run_unfinished_row(run: DataProviderRun) -> dict:
+    """One unified Unfinished-imports row for a partial/failed operational RUN (action: Retry / Dismiss).
+    Reads the canonical run-history summary (so kind/start/end/counts match Run history exactly) and adds
+    the unified shape. NEVER carries a key value (the summarized run has no key column)."""
+    summary = summarize_provider_run(run)
+    return {
+        "record_type": "run",
+        "id": run.id,  # the run id drives retry/dismiss endpoints
+        "import_id": None,  # a run is not a durable checkpoint (no chunk resume point)
+        "source": run.provider,
+        "kind": summary.get("kind"),
+        "start": summary.get("start"),
+        "end": summary.get("end"),
+        "chunk_index": None,
+        "chunk_total": None,
+        "symbols_total": run.symbols_ok + run.symbols_failed,
+        "symbols_ok": run.symbols_ok,
+        "symbols_failed": run.symbols_failed,
+        "symbols_remaining": run.symbols_failed,  # the outstanding (failed) work a Retry re-attempts
+        "bars_fetched": summary.get("bars_fetched"),
+        "status": run.status,  # partial | failed
+        "updated_at": run.finished_at.isoformat() if run.finished_at else (
+            run.started_at.isoformat() if run.started_at else None
+        ),
+        "state": _run_state_text(run),
+        "actions": ["retry", "dismiss"],
+    }
+
+
+def unfinished_imports(session: Session, config: Optional[Config] = None) -> list[dict]:
+    """J-38 — the UNIFIED Unfinished-imports list: a read-only union of every import that did NOT finish
+    cleanly, newest first, each with a PLAIN-LANGUAGE state + the right action:
+      - paused/resumable `import_checkpoints` (status `resumable`)            → Resume / Remove
+      - operational `DataProviderRun` rows with status ∈ {partial, failed}, EXCLUDING soft-dismissed
+        ones (`dismissed == True`) and EXCLUDING the plain seed-load row (a non-job message)  → Retry / Dismiss
+    Reads the canonical job-control rows ONLY (it neither recomputes a canonical value nor reads a snapshot);
+    NEVER carries a key value (neither the checkpoint nor the run summary has a key column)."""
+    cp_rows = session.exec(
+        select(ImportCheckpoint)
+        .where(ImportCheckpoint.status == "resumable")
+        .order_by(ImportCheckpoint.updated_at.desc(), ImportCheckpoint.id.desc())
+    ).all()
+    run_rows = session.exec(
+        select(DataProviderRun)
+        .where(DataProviderRun.status.in_(["partial", "failed"]))
+        .where(DataProviderRun.dismissed == False)  # noqa: E712 — soft-dismissed runs are not offered
+        .order_by(DataProviderRun.started_at.desc(), DataProviderRun.id.desc())
+    ).all()
+    # A run only counts as an actionable import if it is a Data Manager JOB (has a JSON `kind` detail) —
+    # a plain seed-load failure (raw-text message) is not a retryable import job.
+    rows: list[dict] = [_checkpoint_unfinished_row(cp) for cp in cp_rows]
+    for run in run_rows:
+        if summarize_provider_run(run).get("kind") is not None:
+            rows.append(_run_unfinished_row(run))
+    return rows
+
+
+# --------------------------------------------------------------------------------------------------
+# J-38 — Retry / Dismiss actions (engine helpers; the API maps unknown ids → 404, etc.)
+# --------------------------------------------------------------------------------------------------
+def get_provider_run(session: Session, run_id: int) -> Optional[DataProviderRun]:
+    """The operational run row for `run_id`, or None — used by the API to map an unknown id → 404."""
+    return session.get(DataProviderRun, run_id)
+
+
+def retry_run(
+    run_id: int,
+    *,
+    api_key: Optional[str] = None,
+    config: Optional[Config] = None,
+    engine: Optional[Engine] = None,
+) -> str:
+    """J-38 Retry — re-dispatch ONLY the outstanding/failed work of a partial/failed `DataProviderRun`
+    through the EXISTING J-34 chunked import engine (`start_data_job`, the ONE fetch path). The re-run
+    covers the SAME job kind + `[start, end]` window; per-`(symbol, date)` idempotency (the INSERT-new-only
+    `DailyPrice` guard) means it re-fetches/duplicates NOTHING already stored, so a Retry that fully
+    succeeds reaches the SAME dataset it would have without the failure. The session-only `api_key` is
+    threaded request-only (never persisted). Returns the NEW job_id. The original audit run is NEVER
+    mutated/deleted (a fresh DataProviderRun records the retry outcome). Raises `LookupError` for an
+    unknown id and `ValueError` for a non-retryable run (not partial/failed, or not a Data Manager job)."""
+    cfg = config or get_config()
+    eng = engine or get_engine()
+    with Session(eng) as session:
+        run = session.get(DataProviderRun, run_id)
+        if run is None:
+            raise LookupError(f"unknown run: {run_id}")
+        if run.status not in ("partial", "failed"):
+            raise ValueError(f"run {run_id} is not retryable (status {run.status})")
+        summary = summarize_provider_run(run)
+        kind = summary.get("kind")
+        start_s = summary.get("start")
+        end_s = summary.get("end")
+        source = run.provider
+    if kind is None or start_s is None or end_s is None:
+        raise ValueError(f"run {run_id} is not a retryable import job (no job parameters recorded)")
+    return start_data_job(
+        kind, date_cls.fromisoformat(start_s), date_cls.fromisoformat(end_s),
+        source=source, api_key=api_key, config=cfg, engine=eng,
+    )
+
+
+def dismiss_import(
+    session: Session,
+    record_type: str,
+    record_id: str,
+    *,
+    config: Optional[Config] = None,
+) -> dict:
+    """J-38 Remove/Dismiss — drop ONLY the actionable JOB-CONTROL record so the item stops being offered
+    in `unfinished_imports`:
+      - `record_type == "checkpoint"`: DELETE the resumable `ImportCheckpoint` row (a durable resume
+        point — pure job-control state, NOT a snapshot).
+      - `record_type == "run"`: set the soft-dismiss flag (`DataProviderRun.dismissed = True`) — the run
+        STAYS in the append-only Run-history audit (it is only filtered out of the actionable list).
+    It MUST NOT delete/hide/mutate any immutable `scanner_runs`/`scanner_results`/`*_scores`/`forward_returns`
+    row OR the append-only `data_provider_runs` audit entry (the run still appears in Run history). Raises
+    `LookupError` for an unknown id (the API maps it to 404)."""
+    if record_type == "checkpoint":
+        cp = session.exec(
+            select(ImportCheckpoint).where(ImportCheckpoint.import_id == record_id)
+        ).first()
+        if cp is None:
+            raise LookupError(f"unknown import: {record_id}")
+        session.delete(cp)  # delete ONLY the job-control checkpoint — no bar/snapshot is touched
+        session.commit()
+        return {"record_type": "checkpoint", "id": record_id, "dismissed": True}
+    if record_type == "run":
+        try:
+            run_id = int(record_id)
+        except (TypeError, ValueError) as exc:
+            raise LookupError(f"unknown run: {record_id}") from exc
+        run = session.get(DataProviderRun, run_id)
+        if run is None:
+            raise LookupError(f"unknown run: {record_id}")
+        run.dismissed = True  # soft-dismiss ONLY — the audit row is preserved in Run history
+        session.add(run)
+        session.commit()
+        return {"record_type": "run", "id": run_id, "dismissed": True}
+    raise LookupError(f"unknown record type: {record_type!r}")

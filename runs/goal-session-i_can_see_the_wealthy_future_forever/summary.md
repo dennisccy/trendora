@@ -1,11 +1,11 @@
 # Goal Session Summary — i_can_see_the_wealthy_future_forever
 
 **Final verdict:** ABORTED
-**Total iterations:** 24
-**Wall time (seconds):** 1
+**Total iterations:** 25
+**Wall time (seconds):** 6529
 **Quota pauses:** 0
 **Started:** 2026-05-31T22:30:55.653266Z
-**Finished:** 2026-06-08T21:36:22.890461Z
+**Finished:** 2026-06-08T23:25:52.944986Z
 
 ## Branch
 
@@ -36,7 +36,7 @@ This session pushed iteration commits to `goal/i_can_see_the_wealthy_future_fore
 | J-15 | passing | goal-i_can_see_the_wealthy_future_forever-iter-23 |
 | J-16 | passing | goal-i_can_see_the_wealthy_future_forever-iter-20 |
 | J-17 | passing | goal-i_can_see_the_wealthy_future_forever-iter-23 |
-| J-18 | passing | goal-i_can_see_the_wealthy_future_forever-iter-23 |
+| J-18 | passing | goal-i_can_see_the_wealthy_future_forever-iter-24 |
 | J-19 | passing | goal-i_can_see_the_wealthy_future_forever-iter-20 |
 | J-20 | passing | goal-i_can_see_the_wealthy_future_forever-iter-20 |
 | J-21 | passing | goal-i_can_see_the_wealthy_future_forever-iter-20 |
@@ -54,10 +54,10 @@ This session pushed iteration commits to `goal/i_can_see_the_wealthy_future_fore
 | J-33 | passing | goal-i_can_see_the_wealthy_future_forever-iter-23 |
 | J-34 | passing | goal-i_can_see_the_wealthy_future_forever-iter-23 |
 | J-35 | partial | - |
-| J-36 | failing | - |
+| J-36 | passing | goal-i_can_see_the_wealthy_future_forever-iter-24 |
 | J-37 | failing | - |
 | J-38 | failing | - |
-| J-39 | failing | - |
+| J-39 | partial | - |
 
 ## Anti-goal violations
 

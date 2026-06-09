@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
+from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, create_engine
 
@@ -53,8 +54,36 @@ def set_engine(engine: Engine) -> None:
     _engine = engine
 
 
+# Additive, idempotent column backfills for an EXISTING database (no Alembic in this project — see
+# project-template). `SQLModel.metadata.create_all` creates MISSING TABLES but never ALTERs an existing
+# one, so a column added to an already-created table (e.g. iter-25 `data_provider_runs.dismissed`) must be
+# backfilled here. Each entry is `(table, column, "ADD COLUMN" DDL)` — only applied when the table exists
+# and the column is absent (a fresh DB already has the column from the model and is skipped). The DDL adds
+# a NULLABLE/DEFAULTED column only — it never drops/rewrites data, so existing rows are untouched (a
+# soft-dismiss flag defaults to 0/False, so no historical run is auto-dismissed). This keeps the
+# offline-first "no DB regen" guarantee: an existing live DB gains the column in place.
+_ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
+    ("data_provider_runs", "dismissed", "ALTER TABLE data_provider_runs ADD COLUMN dismissed BOOLEAN NOT NULL DEFAULT 0"),
+)
+
+
+def _ensure_additive_columns(engine: Engine) -> None:
+    """Apply each additive column backfill that is missing from an existing table (idempotent)."""
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    with engine.begin() as conn:
+        for table, column, ddl in _ADDITIVE_COLUMNS:
+            if table not in existing_tables:
+                continue  # create_all just made it WITH the column (fresh DB) — nothing to backfill
+            cols = {c["name"] for c in inspector.get_columns(table)}
+            if column not in cols:
+                conn.execute(text(ddl))
+
+
 def create_db_and_tables(engine: Optional[Engine] = None) -> None:
-    SQLModel.metadata.create_all(engine or get_engine())
+    eng = engine or get_engine()
+    SQLModel.metadata.create_all(eng)
+    _ensure_additive_columns(eng)
 
 
 def get_session():

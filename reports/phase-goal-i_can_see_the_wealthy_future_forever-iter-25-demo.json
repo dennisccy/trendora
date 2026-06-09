@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever-iter-25",
+  "base_url": "http://localhost:3835",
+  "iteration": 25,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Data Manager — all three panels load",
+      "narration": "Opening the Data Manager shows three panels at once: the existing Coverage table, the new Missing-data diagnostic below it, and the Unfinished-imports tracker at the bottom. The page is fully hydrated with no red error banners.",
+      "point_out": "Look for the 'Data Manager' heading, the 'Online' health badge, and the 'Missing-data diagnostic' panel appearing directly below the Coverage panel.",
+      "journey": "J-37",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Missing-data diagnostic" }
+    },
+    {
+      "n": 2,
+      "title": "Missing-data diagnostic — clean empty state",
+      "narration": "When every universe member has enough price history and no internal gaps, the diagnostic panel shows a reassuring 'No missing data' confirmation instead of hiding silently or showing a blank card.",
+      "point_out": "The panel reads 'No missing data' with a plain-language explanation. No 'Pull' buttons or shortfall rows are visible.",
+      "journey": "J-37",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "No missing data" }
+    },
+    {
+      "n": 3,
+      "title": "Coverage panel unchanged — one date selector",
+      "narration": "The Coverage panel with per-symbol bar counts remains exactly as before, positioned above the new diagnostic panel. Across the entire page there is still exactly one date selector — the global as-of switcher — not a second one introduced by the new panels.",
+      "point_out": "The Coverage panel rows are visible with bar counts. Scan the full page and confirm only the top-right 'View as-of date' dropdown is present; no extra date control appears in the diagnostic or unfinished-imports areas.",
+      "journey": "J-36",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Dataset coverage" }
+    },
+    {
+      "n": 4,
+      "title": "Unfinished imports — three import states visible",
+      "narration": "The new Unfinished-imports panel consolidates every import that did not finish cleanly. Paused and partial rows carry an amber badge; failed rows carry a red badge. Each row shows a plain-language explanation plus done, remaining, and failed counts.",
+      "point_out": "Find the 'Unfinished imports' heading (not the old 'Resumable imports'). Amber badges on rows that say 'Paused' or 'Partial'; red badges on rows that say 'Failed'.",
+      "journey": "J-38",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Unfinished imports" }
+    },
+    {
+      "n": 5,
+      "title": "Retry remaining — re-dispatches only failed work",
+      "narration": "Clicking 'Retry remaining' on a partial import creates a new job scoped only to the symbols that previously failed. The job card updates to show the retry running, and the original run-history entry below stays intact.",
+      "point_out": "After clicking Retry, a job card appears showing the symbol range from the partial import. The run-history table below is unchanged.",
+      "journey": "J-38",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Retry remaining" } },
+      "expect": { "text": "running" }
+    },
+    {
+      "n": 6,
+      "title": "Dismiss — row leaves panel, audit log stays",
+      "narration": "The Dismiss button removes a row from the Unfinished-imports panel immediately, but the corresponding entry in the run-history audit table below is untouched. The permanent record of what ran is always preserved.",
+      "point_out": "After clicking Dismiss, the row count in the Unfinished-imports panel drops by one. Scroll down to confirm the run-history table still shows the entry for that import.",
+      "journey": "J-38",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "css": "[data-testid='dismiss-button']" } },
+      "expect": { "text": "Run history" }
+    },
+    {
+      "n": 7,
+      "title": "Session key re-prompt — inline, masked, never echoed",
+      "narration": "When a paused or failed import came from a provider that requires an API key, the Retry or Resume row shows an inline key input before dispatching. The key is masked as a password field and never appears in the job card or any state string.",
+      "point_out": "Look for the 'Session API key' input field inline on the row. After entering and submitting a key, the job card shows the import running but contains no trace of the key text.",
+      "journey": "J-38",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Session API key" }
+    },
+    {
+      "n": 8,
+      "title": "Panel label — 'Unfinished imports', not 'Resumable imports'",
+      "narration": "The panel heading now reads 'Unfinished imports', reflecting that it covers all three states — paused, partial, and failed — not just imports waiting to be resumed.",
+      "point_out": "The panel heading reads exactly 'Unfinished imports'. The old label 'Resumable imports' does not appear anywhere on the page.",
+      "journey": "J-38",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Unfinished imports" }
+    }
+  ]
+}

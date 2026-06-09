@@ -50,6 +50,11 @@ class JobCreate(BaseModel):
     end: date_cls
     source: Optional[str] = None
     api_key: Optional[str] = None
+    # J-37 pull-missing: when present, a FETCH covers EXACTLY these diagnosed-gap symbols instead of the
+    # whole seed universe — the gap-exact pull dispatched through this SAME job-start path (no second fetch
+    # engine). The chunked fetch is per-(symbol, date) idempotent, so it fills only the missing bars.
+    # Ignored for a backfill (which reads the committed seed). These are JOB PARAMETERS, not a date control.
+    symbols: Optional[list[str]] = None
 
 
 class ResumeRequest(BaseModel):
@@ -90,6 +95,10 @@ def data_overview(session: Session = Depends(get_session)) -> dict:
         "runs": data_manager.recent_runs(session, cfg),
         "sources": data_manager.compute_provider_availability(cfg),
         "resumable_imports": data_manager.resumable_imports(session, cfg),
+        # J-38: the UNIFIED Unfinished-imports list — resumable checkpoints + partial/failed runs (minus
+        # soft-dismissed), each with a plain-language state + the right action. Generalizes
+        # `resumable_imports` (kept for backward compatibility). Reads only job-control rows; carries no key.
+        "unfinished_imports": data_manager.unfinished_imports(session, cfg),
     }
 
 
@@ -110,9 +119,16 @@ def start_job(payload: JobCreate, session: Session = Depends(get_session)) -> di
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    # J-37 pull-missing: a FETCH may carry the diagnosed-gap `symbols` so it fetches EXACTLY that scope
+    # (gap-exact) through the SAME engine. Empty/whitespace symbols are normalized away (a None ⇒ the
+    # whole seed set, the generic-fetch behavior). Ignored for a backfill.
+    symbols = None
+    if payload.symbols:
+        symbols = [s.strip() for s in payload.symbols if s and s.strip()] or None
     job_id = data_manager.start_data_job(
         payload.kind, payload.start, payload.end,
         source=source, api_key=payload.api_key, config=cfg, engine=get_engine(),
+        symbols=symbols,
     )
     return {
         "job_id": job_id,
@@ -120,6 +136,7 @@ def start_job(payload: JobCreate, session: Session = Depends(get_session)) -> di
         "start": payload.start.isoformat(),
         "end": payload.end.isoformat(),
         "source": source,
+        "symbols": symbols,
         "status": "running",
     }
 
@@ -164,6 +181,60 @@ def resume_job(
         )
     data_manager.start_resume_job(import_id, api_key=api_key, config=cfg, engine=get_engine())
     return {"import_id": import_id, "source": checkpoint.source, "status": "running"}
+
+
+@router.post("/data/jobs/{run_id}/retry")
+def retry_job(
+    run_id: int,
+    payload: Optional[ResumeRequest] = None,
+    session: Session = Depends(get_session),
+) -> dict:
+    """J-38 Retry — re-dispatch ONLY the outstanding/failed work of a partial/failed `DataProviderRun`
+    through the EXISTING J-34 chunked import engine (the ONE fetch path). Per-`(symbol, date)` idempotency
+    means a Retry re-fetches/duplicates NOTHING already stored. Validates explicitly before spawning the
+    async worker: `404` for an unknown run_id, `409` for a non-retryable run (not partial/failed, or not a
+    Data Manager job), and `400` for a needs-key source retried without a key (the re-supplied SESSION-ONLY
+    key is request-only and NEVER persisted). The original audit run is never mutated; a fresh
+    DataProviderRun records the retry outcome (Run history is append-only)."""
+    cfg = get_config()
+    run = data_manager.get_provider_run(session, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"unknown run: {run_id}")
+    if run.status not in ("partial", "failed"):
+        raise HTTPException(
+            status_code=409, detail=f"run {run_id} is not retryable (status {run.status})"
+        )
+    summary = data_manager.summarize_provider_run(run)
+    if summary.get("kind") is None or summary.get("start") is None or summary.get("end") is None:
+        raise HTTPException(
+            status_code=409, detail=f"run {run_id} is not a retryable import job (no job parameters)"
+        )
+    api_key = payload.api_key if payload is not None else None
+    entry = cfg.data_manager.provider_by_id(run.provider)
+    if entry is not None and entry.needs_key and not data_manager.resolve_provider_key(entry, api_key):
+        raise HTTPException(
+            status_code=400,
+            detail=f"source {run.provider!r} requires a key; set ${entry.env_var} or paste a session key",
+        )
+    job_id = data_manager.retry_run(run_id, api_key=api_key, config=cfg, engine=get_engine())
+    return {"run_id": run_id, "job_id": job_id, "source": run.provider, "status": "running"}
+
+
+@router.post("/data/jobs/{record_id}/dismiss")
+def dismiss_job(
+    record_id: str,
+    record_type: str = "run",
+    session: Session = Depends(get_session),
+) -> dict:
+    """J-38 Remove/Dismiss — drop ONLY the actionable JOB-CONTROL record so it leaves `unfinished_imports`:
+    a resumable `ImportCheckpoint` is DELETED (`record_type=checkpoint`); a partial/failed `DataProviderRun`
+    is SOFT-DISMISSED (`record_type=run`, the default) — it STAYS in the append-only Run-history audit and
+    no immutable snapshot/forward-return/audit row is deleted, hidden, or mutated. `404` for an unknown id.
+    The error surface carries no key (J-33 carry)."""
+    try:
+        return data_manager.dismiss_import(session, record_type, record_id, config=get_config())
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/data/remove/preview")

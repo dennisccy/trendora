@@ -1,19 +1,110 @@
-You are the goal-decomposer agent for goal-mode iteration planning.
+You are the goal-evaluator agent for goal-mode iteration evaluation.
 
-Mode: next
 Session ID: i_can_see_the_wealthy_future_forever
-Iteration index: 24
-Iter name: goal-i_can_see_the_wealthy_future_forever-iter-24
-Prior verdict: CONTINUE
-Prior depth: full
+Iteration index: 25
+Iter name: goal-i_can_see_the_wealthy_future_forever-iter-25
+Depth dispatched: full
 
-Project template: .claude/project-template.md
 Project goal: /home/dennisccy/Git/trendora/docs/goal.md  <-- read 'Must-have user journeys' and 'Anti-goals'
-Agent instructions: .claude/agents/goal-decomposer.md  <-- read this first
+Iter spec: /home/dennisccy/Git/trendora/docs/phases/goal-i_can_see_the_wealthy_future_forever-iter-25.md
+Agent instructions: .claude/agents/goal-evaluator.md  <-- read this first
 (CLAUDE.md is already in your system prompt — do not Read it again.)
 
-Recent evaluator log entries (last 3, pre-trimmed):
+Iteration artifacts (read what exists):
+  Dev handoff: docs/handoffs/goal-i_can_see_the_wealthy_future_forever-iter-25-dev.md
+  Review report: reports/reviews/goal-i_can_see_the_wealthy_future_forever-iter-25-review.md
+  QA report: reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-25-qa.md (full mode only)
+  Audit handoff: docs/handoffs/goal-i_can_see_the_wealthy_future_forever-iter-25-audit.md (full mode only)
+  Browser QA results: reports/phase-goal-i_can_see_the_wealthy_future_forever-iter-25-ui-test-results.md
+  Evidence: reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-25-evidence/
+  Coherence audit: /home/dennisccy/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever/iter-25/coherence.md  <-- COHERENCE-FAIL vetoes GOAL_ACHIEVED and drives a consolidation CONTINUE
+
+Prior session state:
+  Journey history: /home/dennisccy/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever/state/journey-history.json  <-- update this with new state (full atomic write)
+  Evaluator log: /home/dennisccy/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever/state/evaluator-log.md  <-- append a new entry; do not overwrite or read the full file (last 5 entries pre-trimmed below)
+  Lessons file: /home/dennisccy/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever/state/lessons.md  <-- append a brief lesson entry capturing a non-obvious takeaway (1-3 sentences). Skip if nothing surprising happened.
+
+Recent evaluator log entries (last 5, pre-trimmed):
 ```
+- Regressed: none.
+- Anti-goal violations: none introduced. The single historical minor one (Exactly one date selector) stays RESOLVED (re-confirmed — no date control added). Coherence: COHERENCE-PASS.
+
+**Reasoning:** The target journey landed cleanly and I verified all five critical anti-goal seams in SOURCE rather than trusting the (absent) audit handoff, per this session's recurring full-depth process gap. (1) **Pattern-not-status:** `scoring.py:353` sets `setup` independently and attaches the two new patterns as separate row keys (356-358) beside `row["vcp"]`; detectors never touch `classify_setup`. (2) **No-lookahead:** detectors run on `inv_closes` from `bars_asof(...) <= asof`, and a grep confirms `detect_pullback_to_rising_dma`/`detect_flat_base_breakout` are referenced ONLY in `patterns.py` (def) + `scoring.py` (scan call) — never in `api/` or `forward_testing.py`. (3) **No-magic-numbers:** the detector body reads only `cfg.*` thresholds (structural literals only); pure (no Session) and NA-graceful. (4) **Mirror written once:** `scanner.py:109-111` writes `is_<name>` from `row["<name>"]["flagged"]` in the single `ScannerResult(...)`, append-only. (5) **No-re-detect:** `forward_testing.py:558-559,604,608` read the stored `res.is_<name>` via the generic `_group_means(..., [True, False], pad=True)`. Evidence integrity is clean: **22/22 PNGs sha256-distinct** (the iter-3/6 byte-identical duplicate-shot bug did NOT recur; the iter-9 guardrails worked), browser QA DOM-asserted filtered row counts (pullback 9, flat-base 3) against the API. Backend 351 passed/0 failed; frontend typechecks; COHERENCE-PASS. **Not GOAL_ACHIEVED:** 9 must-have journeys remain failing. **Not STALLED:** clear progress (J-28) + identifiable next work (the /research labs). **Not REGRESSION:** no prior-passing journey regressed, no critical anti-goal violated, Risk-Off gate verified intact after DB regeneration.
+
+**Process note:** As in iters 2/3/6/8, no `auditor` handoff and no `status.json` were produced for this full-depth iter (only `coherence.md` + `snapshot-sha` under `iter-9/`) — yet the QA report's artifact table again claims `status.json` "✅ present". That is the recurring QA inaccuracy this session's spec explicitly warned about; I verified the seams directly in source and did not block on it. No verdict impact. Reviewer PASS_WITH_NOTES (one non-blocking enhancement: the frontend pattern badge/filter registry hardcodes badge labels, so a future config-only pattern won't auto-badge — glossary + tooltip meaning DO auto-render). Scope confirmed clean: `find` shows zero `/research` code in `apps/`; `config.universe.symbols`=122 unchanged; exactly 3 pattern keys.
+
+**Next-step recommendation:** **full** depth. The only remaining autonomous work is the compute-only `/research` labs (J-25–J-31). The `/research` nav re-approval is front-loaded (`state/blueprint.reapproval-requested` written; `blueprint.md:67` = ⛔ PLANNED iter-10+), so `run-goal.sh` will PAUSE at iter-10's pre_decomposer (run-goal.sh:804) for human approval BEFORE the first lab is built. After approval, target **J-25 (Factor Lab — decile sort + rank-IC, raw + risk-adjusted)** as the entry point that establishes the new `/research` page + the read-only lab-analytics seam (derive once from stored forward returns + factor values; never recompute in API/view; honest NA + survivorship-bias label; descriptive not predictive). Full depth is justified (new page/route/nav home, backend lab endpoints + frontend, needs coherence + ux-regression + closure). Do NOT autonomously re-dispatch J-22/23/24 — the Yahoo 429 wall persists; J-22 auto-heals via its committed runbook only on operator confirmation of a reachable no-key egress.
+
+## Iteration 10 — goal-i_can_see_the_wealthy_future_forever-iter-10
+
+**Date:** 2026-06-02T15:00:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: **J-25** (failing → passing) — the first `/research` lab (Factor Lab: decile sort + downside-risk-adjusted + Spearman rank-IC), establishing the new nav home + the read-only lab-analytics seam J-26/J-27/J-29/J-30/J-31 will reuse.
+- Re-verified passing this iter (required-still-passing): J-09 (System Health by-bucket/excess/control-group still render — UT-15), J-01 (dashboard + full 11-item sidebar incl. Research — UT-14/UT-15), J-18 (the principal anti-goal risk — /research adds NO date state, source + UT-13 as-of-non-reactivity). Carried green structurally (required, untouched paths): J-12 (methodology catalog), J-15 (snapshot-served read path — no new per-request recompute), J-19 (attribution slices).
+- Carried passing (additive /research diff → no regression possible; not individually re-exercised): J-02–J-08, J-10, J-11, J-13, J-14, J-16, J-17, J-20, J-21, J-28.
+- Still failing (out of scope): J-22/J-23/J-24 (externally Yahoo-429 data-walled — do NOT autonomously retry); J-26/J-27/J-29/J-30/J-31 (unbuilt `/research` labs — NOW UNBLOCKED: the home + read-only seam exist as of iter-10; compute-only over the stored seed, no new nav re-approval).
+- Regressed: none.
+- Anti-goal violations: none introduced. The single historical minor one (Exactly one date selector) stays RESOLVED and was re-confirmed holding (no date control added to /research). Coherence: COHERENCE-PASS.
+
+**Reasoning:** The target landed cleanly and I verified every critical seam in SOURCE (the spec flagged this as a verify-by-source session). **Read-only:** `research.py:154-181` (`_factor_observations`) issues only `select(ForwardReturn)` + `select(ScannerResult)`, reads `realized_return` and the factor value verbatim (typed column via `getattr`, or a `record_json` component `raw`), and the only `forward_testing` import is the `SURVIVORSHIP_BIAS_LABEL` constant — no `run_scan`/`score_stocks`/`backfill`/`forward_return`/`detect_*` call anywhere (patch-to-raise keystone test confirms). **Downside-only risk:** `_downside_deviation = sqrt(mean(min(r,0)**2))` (MAR=0), NA when dd==0/n<2 — never total stdev. **No magic numbers:** deciles(=10) + the 8-factor catalog live in `config.research.factor_lab`; `test_no_magic_numbers` now scans `research.py` and enforces the `deciles:10` sentinel; `FactorLabCfg`/`Config._factor_lab_sources_resolve` raise `ConfigError` at boot on deciles≤1 / dup key / unresolvable source. **Consistency invariant** unit-asserts pooled lab mean == `compute_forward_aggregates.overall.mean_return` (same stored pool, read-only slice — not a 2nd computation). **J-18:** the page's only `useState` are `{factor, horizon, state}` (grep for useAsOf/asof/DatePicker/type=date = NONE), and UT-13 proved changing the global as-of leaves Factor-Lab data byte-identical with zero `as_of` requests. I viewed UT-02 + UT-05 directly: the D1…D10 table (raw mean + downside risk-adjusted + n) + Rank-IC render and re-point +0.00→+0.16 on factor+horizon change (distinct sha256 + DOM + observed network). The diff is purely additive (no `scoring.py`/`forward_testing.py`/`scanner.py`/`patterns.py`/`prices.py`/watchlist/as-of-provider/`backtest/page.tsx`/existing-endpoint change), so the required-still-passing set cannot have regressed. **Not GOAL_ACHIEVED:** 8 journeys remain failing. **Not STALLED:** clear progress (J-25) + identifiable next work (the now-unblocked labs). **Not REGRESSION:** nothing prior-passing regressed, no critical anti-goal violated, COHERENCE-PASS gives no veto.
+
+**Process note:** Unlike iters 2/3/6/9, a real `status.json` WAS produced — but at the PHASE-namespace path `runs/goal-i_can_see_the_wealthy_future_forever-iter-10/status.json` (status:complete, current_step:qa_complete, changed_files matching the diff exactly), NOT under the goal-evaluator's cited `runs/goal-session-.../iter-10/` (which holds only `coherence.md` + `snapshot-sha`). A stale no-`_forever` twin exists at `runs/goal-i_can_see_the_wealthy_future-iter-10/` (cross-session noise, per the iter-7 note). `plan.md` + a `-frontend.md` handoff also exist; still **no `-audit.md`** (the recurring full-depth gap) — I substituted source-level verification. Evidence: 12 PNGs / **8 distinct sha256** — the 4 collisions are cross-agent TC↔UT renames (the `qa` agent reused the `browser-qa-agent`'s captures), NOT the iter-3/6 same-agent duplicate bug; the browser-qa-agent's own 6 shots are distinct and J-25's re-point proof rests on 3 distinct shots (UT-02/04/05) + DOM/network. Minor hygiene note: `qa`'s `TC-17-research-nav.png` is byte-identical to the default-factorlab shot (nav still visible in it). None of these altered the verdict.
+
+**Next-step recommendation:** **full** depth. Target the next compute-only `/research` lab on the seam just established — primary **J-27 (regime-conditioned factor effectiveness)**, the smallest direct extension (add a `regime` field per observation from the stored `scanner_runs.regime_label`, split the existing decile/IC + the top-minus-bottom-decile spread by regime, honest per-regime n/NA). Alternative **J-26 (multi-factor combination cohorts)**. Both reuse `compute_factor_lab`'s read-only observation builder + the `/research` page shell, need NO nav re-approval (additive section under the approved home), and are NOT data-walled. Defer **J-29 (event study)** until the post-snapshot daily high/low excursion path (MAE/MFE) is extracted; then **J-30 (full volatility family, extending atr_pct)** and **J-31 (synthesis)**. Keep verifying the read-only seam in source on each lab (no recompute) and de-dup evidence by sha256. Do NOT autonomously retry J-22/J-23/J-24 (Yahoo-429 wall persists).
+
+## Iteration 11 — goal-i_can_see_the_wealthy_future_forever-iter-11
+
+**Date:** 2026-06-02T17:30:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: **J-27** (failing → passing) — regime-conditioned factor effectiveness on the Factor Lab (`/research`), the smallest direct extension of the iter-10 read-only seam.
+- Re-verified passing this iter (required-still-passing, browser-exercised): J-25 (decile table + rank-IC still render and re-point on factor change — UT-06/UT-09), J-18 (the principal anti-goal risk of a new panel — UT-08: as-of toggle leaves decile/IC/regime rows byte-identical, zero `as_of` requests). Carried green structurally (required, untouched paths): J-09 (`forward_testing.py` unchanged), J-19 (attribution slices unchanged), J-15 (endpoint stays SELECT-only — source-confirmed).
+- Carried passing (additive /research-only diff → no regression possible; not individually re-exercised): J-01–J-08, J-10–J-14, J-16, J-17, J-20, J-21, J-28.
+- Still failing (out of scope): J-22/J-23/J-24 (externally Yahoo-429 data-walled — do NOT autonomously retry); J-26/J-29/J-30/J-31 (unbuilt /research labs — compute-only, now-unblocked). **24/31 passing, 7 failing.**
+- Regressed: none.
+- Anti-goal violations: none introduced. The single historical minor one (Exactly one date selector) stays RESOLVED and was re-confirmed holding (the J-27 panel adds no date state). Coherence: COHERENCE-PASS.
+
+**Reasoning:** The target landed as a textbook-clean additive slice and I verified every critical seam in SOURCE rather than trusting the (absent) audit handoff, per this session's recurring full-depth gap. `git diff --name-only` confirms the diff touches EXACTLY 4 files (`research.py` +72, its test +150, `research/page.tsx` +103, `api.ts` +17) — no `forward_testing`/`scoring`/`scanner`/`patterns`/`regime`/`config`/as-of/watchlist/backtest/API-view path, so the 22 carried journeys cannot have regressed. (1) **Single source of truth / read-only:** the regime is read VERBATIM — `regime_by_run = {run.id: run.regime_label for run in run_rows}` over a SELECT-only `select(ScannerRun)` (research.py:172/175); `grep score_regime` and `grep "from app.engine.regime"` both return NONE (the module doesn't even import the regime engine), and the extended patch-to-raise keystone (now also patching `regime.score_regime`) passes — the regime is consumed, never recomputed. (2) **Downside-only honesty:** `_risk_adjusted`/`_downside_deviation` are untouched in the diff (0 lines), and `risk_adjusted_spread` is `None` when low-sample or either decile leg is None — UT-05 proves the live case (Risk-off raw Spread +16.50% numeric, Risk-adjusted spread NA), never a total-vol fallback. (3) **No magic numbers / config-driven vocabulary:** `for label in cfg.regime.labels`, `wf.min_sample`, `fl.deciles` only (no new key, no literal — `test_no_magic_numbers` passes); the frontend renders `rows={data.by_regime}` server-driven with NO hard-coded regime array, NA on `lowSample || value === null`. (4) **Consistency invariant** Σ per-regime n == n_total unit-asserted (`test_by_regime_n_sums_to_total`) + API-confirmed (1218==1218 h5, 1217==1217 h60). I viewed UT-03 directly: 6 config-order regime rows × 7 columns, numeric for populated regimes, honest NA + `n=0` for empty ones. COHERENCE-PASS gives no veto; review PASS_WITH_NOTES (2 non-blocking nits); QA 18/18; browser 11/12 (1 N/A empty-state, code-verified). **Not GOAL_ACHIEVED:** 7 journeys remain failing. **Not REGRESSION:** nothing prior-passing regressed, no critical anti-goal violated. **Not STALLED:** clear progress (J-27) + identifiable next work (the now-doubly-proven compute-only labs).
+
+**Process note:** As in iters 2/3/6/9/10, no `-audit.md` handoff was produced; `status.json` exists at the **phase-namespace** path `runs/goal-i_can_see_the_wealthy_future_forever-iter-11/status.json` (status:complete, current_step:qa_complete, changed_files matching the diff exactly), NOT under `runs/goal-session-.../iter-11/` (only `coherence.md`). I substituted source verification. Evidence hygiene CLEAN: 13 PNGs, ALL sha256-distinct (the iter-3/6 duplicate-shot bug did not recur). Minor non-blocking nit (reviewer-flagged): the dev handoff says `test_research.py` "29 passed/6 new"; actual is 27 passed/5 new functions (keystone extended in place); the full-suite +5 reconciliation (379→384) is correct.
+
+**Next-step recommendation:** **full** depth. Target **J-26 (multi-factor combination cohorts)** — the smallest direct extension of the now-doubly-proven read-only seam (intersect two catalog factors' top/bottom quantile membership over the SAME `_factor_observations` pool; report joint cohort forward return raw + risk-adjusted, hit-rate, n vs the unconditional baseline and each single-factor cohort). Reuses `compute_factor_lab` + the `/research` shell; no new endpoint, no nav re-approval, not data-walled; full depth for the same reason J-25/J-27 were (new backend aggregation needing real unit tests + coherence/closure on the critical read-only surface). Autonomous runway: J-26 → J-30 (volatility family, now directly enabled by J-25 decile/IC + J-27 regime split) → J-29 (event study; larger lift — extract the post-snapshot daily high/low MAE/MFE excursion path first) → J-31 (synthesis). **Strategic:** even after all 4 labs land, GOAL_ACHIEVED is not autonomously reachable — J-22/J-23/J-24 are externally data-walled and unblock only on operator confirmation of a reachable no-key egress; expect either that confirmation or a (correct) STALLED on the data-walled remainder once the labs are done. Do NOT autonomously retry J-22/J-23/J-24.
+
+## Iteration 12 — goal-i_can_see_the_wealthy_future_forever-iter-12
+
+**Date:** 2026-06-02T20:30:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: **J-26** (failing → passing) — Factor Lab multi-factor combination cohorts, the smallest direct extension of the read-only Factor-Lab seam (J-25 decile/IC + J-27 regime split).
+- Re-verified passing this iter (required-still-passing, browser-exercised): J-18 (the principal anti-goal risk — UT-15: as-of toggle leaves the decile/rank-IC/regime AND the new combination table byte-identical, zero as_of requests), J-25 (UT-14: decile + rank-IC re-point on factor change, rank-IC +0.00->-0.04), J-27 (UT-14: regime 7-col table intact below decile). Carried green structurally (required, untouched paths): J-09 (forward_testing.py unchanged), J-19 (attribution slices unchanged), J-15 (endpoint SELECT-only — source-confirmed), J-16/J-28/J-01/J-12 (additive /research diff).
+- Carried passing (additive /research-only diff -> no regression possible; not individually re-exercised): J-02-J-08, J-10, J-11, J-13, J-14, J-17, J-20, J-21.
+- Still failing (out of scope): J-22/J-23/J-24 (externally Yahoo-429 data-walled — do NOT autonomously retry); J-29/J-30/J-31 (unbuilt /research labs — compute-only, now-unblockable). **25/31 passing, 6 failing.**
+- Regressed: none.
+- Anti-goal violations: none introduced. The single historical minor one (Exactly one date selector) stays RESOLVED and was re-confirmed holding (the new combination section adds no date state; the new route has no as_of param). Coherence: COHERENCE-PASS.
+
+**Reasoning:** The target landed as a textbook-clean additive slice and I verified every critical seam IN SOURCE rather than trusting the (absent) audit handoff, per this session's recurring full-depth gap. `git diff --stat HEAD` is purely additive (1408+/8-, the 8 deletions are import-line edits) across exactly the 12 files the spec promised — no forward_testing/scoring/scanner/patterns/regime/snapshot_serving/as-of/backtest touched, so the 22 carried journeys cannot have regressed. (1) **Read-only:** compute_factor_combination + _combination_observations issue only select(ForwardReturn)/select(ScannerResult) (research.py:326/330); the forbidden-call grep (run_scan/score_stocks/backfill/forward_return/detect_*/score_regime) hits ONLY docstrings (lines 12/15/405); the import surface has no scoring/scanner/regime/patterns engine; the patch-to-raise keystone passes. (2) **Cohort algebra:** combined_members = set(range(pool_n)) then &= each single (research.py:470-472) — exact AND-intersection; baseline = whole pool. (3) **Downside-only:** _cohort_stats reuses _risk_adjusted = mean/downside_deviation (MAR=0), None for n<2/all-non-negative; _downside_deviation (sqrt(mean(min(r,0)^2))) untouched. (4) **No-magic-numbers:** limits/quantiles/defaults/min_sample/horizons all from config; test_no_magic_numbers passes. (5) **No-fabrication:** factor-NULL obs excluded (research.py:342-343), empty cohort stats all None (research.py:372-374). (6) **J-18:** the new route takes only condition+horizon (api/research.py:67-76, docstring confirms no as_of); the frontend CombinationLab adds only conditions state (page.tsx:503), effect keyed [conditions, horizon] (page.tsx:520). I viewed UT-02 (default: Baseline n=1217, RS-3m top-quintile n=244, ATR% bottom-tertile n=406, Combined-AND n=49 — strictly smaller than each single, interaction visible, DOM==API), UT-10 (opposing-extremes NA fixture: Combined n=0 -> 4 NA cells + honest n, no fabricated 0), UT-15 (J-18 historical badge 2025-11-28 + byte-identical tables), and UT-14 (J-25/J-27 re-point) directly. Evidence hygiene CLEAN: 11 UT-* PNGs ALL sha256-distinct (the iter-3/6 duplicate-shot bug did not recur — the browser-qa agent caught 3 colliding viewport shots and re-captured them fullpage). COHERENCE-PASS gives no veto; review PASS; QA 19/19; browser 15/16 (1 SKIP empty-pool unreproducible, code-verified); backend 411 passed/4 skipped. **Not GOAL_ACHIEVED:** 6 journeys remain failing. **Not REGRESSION:** nothing prior-passing regressed, no critical anti-goal violated. **Not STALLED:** clear progress (J-26) + identifiable next work (J-30 -> J-29 -> J-31).
+
+**Process note:** As predicted by the iter-10/11/12 pattern, no `-audit.md` handoff was produced; `status.json` exists at the **phase-namespace** path `runs/goal-i_can_see_the_wealthy_future_forever-iter-12/status.json` (status:complete, current_step:qa_complete, browser_checks_run:true, changed_files == the 12-file diff), NOT under `runs/goal-session-.../iter-12/` (which holds only coherence.md + snapshot-sha). I substituted source-level verification of every critical seam. No verdict impact.
+
+**Next-step recommendation:** **full** depth, target **J-30 (volatility factor family)** — extend config.research.factor_lab beyond atr_pct (HV, VCP-style contraction, downside/semivol), each decile/IC-tested raw + downside-risk-adjusted and regime-conditioned via the existing J-27 by-regime helper; cross-validate contraction vs VCP. **Decomposer must determine up front** whether the volatility factor *values* are ALREADY stored on ScannerResult/record_json (-> purely additive read-only catalog entries, like J-25/J-27/J-26, on the /research seam, no nav re-approval) OR must be added to scoring.py (-> touches the critical scoring path + DB regen + must re-verify the J-07 Risk-Off gate after regen). Full depth either way (critical read-only research surface). Runway: J-30 -> J-29 (event study; needs the post-snapshot MAE/MFE excursion path first; return/MAE lands here) -> J-31 (synthesis). GOAL_ACHIEVED is NOT autonomously reachable while J-22/J-23/J-24 stay data-walled — expect operator egress confirmation or a correct STALLED once the labs are done. Do NOT autonomously retry J-22/J-23/J-24.
+
+## Iteration 13 — goal-i_can_see_the_wealthy_future_forever-iter-13
+
+**Date:** 2026-06-02T23:30:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: **J-30** (failing → passing) — volatility as a first-class Factor-Lab family (HV + VCP-style contraction + downside/semivol added to the existing atr_pct, each decile/IC/by-regime-tested raw + downside-risk-adjusted).
+- Re-verified passing this iter (browser-exercised + evaluator API cross-check): J-07 (CRITICAL post-regen — both Risk-Off runs Actionable=0), J-06 (CRITICAL post-regen — NVDA scores byte-identical list↔detail), J-05 (NVDA detail chart + component breakdowns), J-25 (decile/rank-IC re-point on factor change), J-27 (by-regime split renders for the new factors), J-18 (as-of toggle leaves lab byte-identical, zero as_of requests), J-02 (leaderboard surface re-rendered post-regen).
+- Carried passing (additive 15-file diff → no regression possible; not individually re-exercised): J-01, J-03, J-04, J-08, J-09, J-10, J-11, J-12, J-13, J-14, J-15, J-16, J-17, J-19, J-20, J-21, J-26, J-28.
+- Still failing (out of scope): J-22/J-23/J-24 (externally Yahoo-429 data-walled — do NOT autonomously retry); J-29 (unbuilt — next target, needs MAE/MFE excursion path); J-31 (unbuilt — synthesis, needs J-29). **26/31 passing, 5 failing.**
+- Regressed: none.
+- Anti-goal violations: none introduced. The single historical minor one (Exactly one date selector) stays RESOLVED and was re-confirmed holding (the volatility additions add no date state to /research; UT-08). Coherence: COHERENCE-PASS.
+
 **Reasoning:** The target landed cleanly on the CRITICAL scoring/snapshot path (the riskiest lab iter so far — a new value added to score_stocks + a DB regen) and I verified every critical seam IN SOURCE and LIVE rather than trusting the (absent) audit handoff, per this session's recurring full-depth gap. The single biggest risk — a volatility value leaking into a weighted score and shifting J-06/J-07 — did NOT materialize: (1) **No score leak** — yaml load confirms none of hv/vcp_contraction/downside_vol is in any scores.*.weights (leadership 7 / entry_quality 5 / risk 8, LEAK=none); the values are appended to the row dict AFTER _build_score (scoring.py:369-374); the keystone `test_volatility_values_ride_the_row_but_enter_no_score` forces them to a constant and asserts byte-identical scores/buckets/setup/rank. (2) **No lookahead** — computed from inv_closes=closes(bars_asof(...,asof)) (scoring.py:325,353-357). (3) **Read-only lab** — research.py diff is docstring-only; it imports only SURVIVORSHIP_BIAS_LABEL (a constant) + models; the forbidden-call grep hits only docstrings (lines 15,406); reads the stored column via getattr. I independently cross-checked the LIVE regenerated DB: GET /api/runs both Risk-Off runs (regime 6.3 / 8.34) → Actionable=0 / Risk-off-watchlist=122 (J-07); GET /api/stocks NVDA {47.48 E, 66.24 D, 33.79 E, Avoid} == GET /api/stocks/NVDA /row{...} byte-identical (J-06); all four factor-lab payloads return 10/10 populated deciles + numeric rank-IC (hv +0.028 / vcp_contraction −0.015 / downside_vol +0.116 / atr_pct −0.006), n=1217 honestly excluding one short-history NULL, 2 empty regimes per factor → NA, unknown factor → 422. Viewed UT-03/UT-05/UT-10/UT-11-12 directly: HV decile+rank-IC+caveat render; downside-vol empty-regime NA + n=0 (not fabricated 0) with a downside-only signed risk-adjusted column; Risk-Off all-122 watchlist-only; NVDA detail "identical to the leaderboard; single source of truth" with the volatility values correctly absent from the breakdown. The contraction cross-check is an HONEST descriptive finding (vcp_contraction IC ≈ −0.015, essentially flat — no edge in this seed), which J-30's acceptance explicitly allows ("rather than assuming the textbook relationship"). Diff additive (15 files, +398/−11; forward_testing/patterns/regime/api/prices/backtest/as-of/watchlist/stocks-UI all untouched) ⇒ the 18 carried journeys cannot have regressed. COHERENCE-PASS gives no veto; review PASS; QA 17/17; browser 13/13; backend 428 passed/4 skipped after regen. **Not GOAL_ACHIEVED:** 5 journeys remain failing. **Not REGRESSION:** nothing prior-passing regressed, no critical anti-goal violated, criticals re-verified green post-regen. **Not STALLED:** clear progress (J-30) + identifiable next work (J-29 → J-31).
 
 **Process note:** As predicted by the iter-13 spec (and the iters 3/6/9/10/11/12 pattern), no `-audit.md` handoff was produced; `status.json` exists at the **phase-namespace** path `runs/goal-i_can_see_the_wealthy_future_forever-iter-13/status.json` (status:complete, current_step:qa_complete, browser_checks_run:true, changed_files == the 15-file diff), NOT under `runs/goal-session-.../iter-13/` (only coherence.md + eval.md). Evidence hygiene: 18 PNGs, 17 distinct sha256 — the single collision (TC-15-nvda-leaderboard == UT-11-leaderboard-top) is cross-agent corroboration of the SAME deterministic render (qa vs browser-qa), not the iter-3/6 same-agent duplicate-shot bug. The dev hit the known fixture trap (test_sectors/test_themes synthetic configs missing the 4 new required indicators windows → ValidationError) and fixed it before the clean 428/4 run — exactly the MEMORY note `config-fixtures-need-new-required-keys`.
@@ -214,214 +305,41 @@ Recent evaluator log entries (last 3, pre-trimmed):
 **Process note:** As predicted by the spec (iters 2/3/6/9-22 pattern), no -audit.md handoff; status.json at the PHASE-namespace path (NOT under runs/goal-session-.../iter-23/, which holds only coherence.md + snapshot-sha b14b739…). I substituted source + live-suite verification. The dedicated ui-test-results.md recorded SKIPPED (22/22, HTTP 000 connection-refused) — environmental, frontend down at dispatch; the QA report's browser MODE-2 (TC-13/14/15) is the authoritative browser evidence and is corroborated by the 3 committed screenshots. universe_pool.csv = 550 candidates (committed, pre-existing); universe.json ABSENT on host (live screen walled) → the single-source merge is a no-op so universe_count stays YAML 122. The dev ran targeted selections (168 passed/3 skipped) and correctly deferred the full ~20-min suite to the QA gate per the interactive-dispatch single-command time cap; the QA gate ran it green.
 
 **Next-step recommendation:** **full** depth iter-24. (1) **Lift J-35 partial→passing** by bringing the frontend up cleanly (stop strays by port; rm -rf apps/frontend/.next; confirm main-app.js 200 + health badge cleared before UI; no prod build against the live dev .next) and capturing the INJECTED-PROVIDER expand happy-path browser flow end-to-end (select Expand → start over a cap-capable injected source → chunk x/N → completion → expand-screen-result passers + omitted-with-reason list → grown universe-count, /methodology size matches). Machinery is integration-proven — only the browser capture is missing; live expansion stays data-walled/non-halting. (2) **Build the four remaining buildable Must-haves smallest/most-deterministic first** (all additive on /data, no nav change): **J-36** (coverage description + per-symbol table + universe-vs-symbols clarity — fully deterministic), **J-39** (seed-safe Remove-data cascade — fully deterministic), **J-38** (unified Unfinished-imports Retry/Remove on the J-34 ImportCheckpoint surface), **J-37** (missing-data diagnostic + one-click pull-missing via the J-34 engine). After J-35 captures green + J-36–J-39 land green offline and nothing regresses, GOAL_ACHIEVED is reachable (J-22/23/24/35 live outcomes NA/non-halting). Do NOT autonomously re-probe J-22/J-23/J-24; do NOT declare completion on a single import-journey landing (iter-20 re-scope trap).
+
+## Iteration 24 — goal-i_can_see_the_wealthy_future_forever-iter-24
+
+**Date:** 2026-06-08T23:40:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: **J-36** (failing → passing) — per-symbol coverage table + plain-language definitions + universe-vs-symbols clarity. Verified via a genuine hydrated QA MODE-2 render (TC-01-coverage-defs.png) + 73 green tests + the 162==symbol_count / 122==universe_count consistency invariant.
+- Target advanced (NOT yet passing): **J-39** (failing → **partial**) — seed-safe Remove-data; cascade boundary verified sound IN SOURCE (whole-row deletes, no in-place overwrite, no recompute, seed-protection + refusal) and 73-green, but its DEFINING confirm-preview browser flow was UNCAPTURED (dedicated browser-qa SKIPPED all 26; the lone J-39 QA shot TC-07 is blank). **J-35** carried **partial** — its end-to-end expand capture was again explicitly DEFERRED.
+- Re-verified passing (required-still-passing): J-18 (THE flagged watch risk — TC-01 shows exactly one nav date <select>, remove inputs are action params, coverage adds no date state — held), J-08 (the immutability-adjacent risk — remove is whole-row delete, never in-place overwrite — held), J-17/J-33/J-34 (fetch/backfill/expand/resume paths git-untouched), J-06/J-07/J-15 (scoring/snapshot path git-untouched, no DB regen).
+- Carried passing (additive 6-file diff → no regression possible): J-01–J-05, J-09–J-14, J-16, J-19–J-21, J-25–J-32.
+- Newly tracked failing: none new (J-37/J-38 already tracked from iter-22 re-scope; confirmed unbuilt + explicitly OUT OF SCOPE iter-24, deferred to iter-25).
+- Still failing (data-walled, NON-HALTING/NON-VETOING): J-22/J-23/J-24 — not re-probed. **Board: 32 passing / 2 partial (J-35, J-39) / 5 failing (3 data-walled + J-37/J-38 unbuilt-buildable).**
+- Regressed: none.
+- Anti-goal violations: none introduced. Both historical minor ones stay RESOLVED — "Exactly one date selector" was again the flagged watch risk and held (TC-01); the key-leak fix is untouched (iter-24 touches no key-carrying path). Coherence: COHERENCE-PASS.
+
+**Reasoning:** NOT GOAL_ACHIEVED (J-37/J-38 are unbuilt buildable Must-haves; J-39 + J-35 are partial), NOT REGRESSION (working-tree diff is exactly 6 app files — scoring/scanner/regime/snapshot/research/stocks/backtest all git-untouched, no DB regen → the 31 carried journeys cannot have regressed; no critical anti-goal). The skeptical work this iter was reconciling a divergence: the dedicated browser-qa-agent reported **SKIPPED 0/26 (frontend not running at :3835)** — the recurring iter-15/iter-23 environmental dead-shell/down-server class — while the QA MODE-2 report claimed the frontend was RUNNING and PASS. Only 2 evidence PNGs exist: TC-01 is a real hydrated render that DOES capture J-36's defining surfaces (definitions + prose + per-symbol table with thin/missing badges) → J-36 passing; but TC-07 (the only J-39 shot) is essentially **blank**, and J-35's expand capture was explicitly deferred → J-39/J-35 **partial**, applying the iter-4/15/23 multi-step-capture lesson cited verbatim in the iter-24 spec (a render of surfaces in isolation, or a blank/absent capture, does not satisfy a multi-step defining flow even when the logic is source- and test-proven). I verified the J-39 destructive cascade boundary (the spec's principal review focus) directly in source: whole-row delete() only, zero UPDATE/in-place snapshot overwrite, no run_scan/score_stocks/forward_return/detect_*/score_regime reachable from the remove path, seed-protection + refusal — and ran the J-36/J-39 test files (73 passed) + test_db (4 passed, no stale schema RED, iter-22 lesson applied). **Not STALLED:** concrete next work (re-capture J-39/J-35 on a clean build; build J-37/J-38). **Not ESCALATE:** already full.
+
+**Process note:** As predicted by the spec (iters 2/3/6/9-23 pattern), no `-audit.md` handoff; status.json at the PHASE-namespace path runs/goal-i_can_see_the_wealthy_future_forever-iter-24/status.json (status:complete, current_step:qa_complete, browser_checks_run:true [but the DEDICATED browser-qa-agent SKIPPED — status.json's flag reflects the QA MODE-2 browser step, not the dedicated agent], next_action:audit), NOT under runs/goal-session-.../iter-24/ (coherence.md + snapshot-sha only). The crucial process fact this iter: the dedicated ui-test-results.md is SKIPPED 0/26 (frontend down at its run time), so the QA MODE-2 report (different timing, frontend up) is the only browser evidence — and it captured J-36 well but left J-39 with a blank shot and deferred J-35. Evidence dir holds 2 PNGs; reviewer PASS_WITH_NOTES (2 non-blocking backend nits: a logically-redundant input_hit sub-expression at data_manager.py:327 — confirmed not a correctness bug; a removed_/removable_ dual key name).
+
+**Next-step recommendation:** **full** depth iter-25. (1) On a clean hydrated build (stop by port; rm -rf apps/frontend/.next; main-app.js 200 + health badge cleared BEFORE any UI), re-capture the two partial flows: **J-39** Remove-data confirm-preview (removable bars + range + protected committed-seed breakdown + cascade) → seed-only refusal — use the PREVIEW path on the live host (MEMORY j39-live-host-has-user-added-nvda-bars; destructive confirm proven by the fixture, never run on a real symbol live); **J-35** injected-provider expand → passers + omitted-with-reason → grown universe-count. (2) Build the last two buildable Must-haves: **J-37** (missing-data diagnostic + one-click pull-missing via the J-34 engine — re-confirm the key-leak scrub holds on any new error string) and **J-38** (unified Unfinished-imports: generalize the iter-22 Resumable panel to Resume/Retry/Remove with state explanation, on the J-34 ImportCheckpoint surface; provable offline). After J-37/J-38 land green offline and J-39/J-35 capture green, GOAL_ACHIEVED is reachable — J-22/J-23/J-24/J-35 live-fetch outcomes recorded honestly NA/non-halting. Do NOT autonomously re-probe J-22/J-23/J-24; do NOT declare completion on a single import-journey landing (iter-20 re-scope trap).
 ```
-Lessons learned (full file, append-only):
-```
-# Goal Session i_can_see_the_wealthy_future_forever — Lessons Learned
-
-Append-only ledger of takeaways from prior iterations. The goal-evaluator
-appends one entry per iteration; the goal-decomposer reads this file before
-planning each iteration to avoid repeating known pitfalls.
-
-Each entry should be 1-3 sentences capturing a non-obvious lesson — surprising
-failures, regression triggers, or decisions that worked well. Avoid
-restating the verdict (the evaluator-log.md already does that).
-
-## iter-0 — 2026-06-01T01:00:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** When the Chrome-MCP tool layer is degraded, browser-QA's *negative* interaction findings are unreliable: this run QA marked J-18 PARTIAL claiming "no separate date dropdown" on `/backtest`, but `apps/frontend/app/backtest/page.tsx:53-58,112-208` clearly carries a page-local `BacktestDatePicker` with its own date state (and the evidence screenshot shows the dropdown) — a genuine "exactly one date selector" violation. Always confirm date-control / single-source-of-truth claims against frontend source, not just the browser-QA summary.
-**Applies to:** any iter verifying J-13/J-18 or the "exactly one date selector" / single-source-of-truth anti-goals; any iter touching `apps/frontend/app/backtest/` or `components/asof-*`.
-
-
-## iter-1 — 2026-06-01T08:30:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** The global as-of date lives in an **in-memory app-shell provider** (`components/asof-provider.tsx`) with no localStorage/URL persistence by design — it survives client-side navigation (the path all the J-13/J-18 journeys take) but resets to Latest on a hard reload. Browser-QA must drive date journeys via in-app nav, not hard reloads; and any future feature that wants a shareable/deep-linkable or reload-surviving date (e.g. a J-17 Data Manager URL, or "share this date's view") will need to add URL/query-param persistence to the provider — it is not there today.
-**Applies to:** any iter adding deep-link/shareable date URLs or expecting the as-of date to survive a hard reload; any browser-QA verifying J-13/J-18 (use client-side nav, not reload); iters touching `components/asof-provider.tsx`.
-
-## iter-2 — 2026-06-01T10:30:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** On `/backtest`, the J-19 distribution-panel mean is over the FULL observed set at the
-selected horizon and legitimately differs from the scorecard's top-ranked-cohort mean shown directly
-above it (different populations). The `distribution.mean == overall.mean` consistency invariant binds
-ONLY the `/system-health` aggregate, where both are over the same observation set — asserted in
-`test_forward_testing.py:527-529`. A future reviewer must NOT "fix" the per-date mismatch as an
-inconsistency; doing so would break the honest cohort-vs-full-set semantics. Secondary: an opportunistic
-single-screenshot re-verify (this iter's TC-17) confirms a surface exists but does NOT satisfy a
-multi-step acceptance flow — J-02/J-06/J-11/J-15/J-16 stay `partial` until their full flows (filter
-interaction, cross-page numeric compare, add+backend-restart, warm-load timing, VCP
-filter→badge→detail→glossary) are actually exercised.
-**Applies to:** any iter touching `app/engine/forward_testing.py` attribution/scorecard or the
-`/backtest` vs `/system-health` mean displays; and any closure/re-verify iter intending to convert a
-`partial` journey to `passing`.
-
-## iter-3 — 2026-06-01T13:00:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** The config-selected live provider (`stooq`) is effectively unusable for live fetch in this environment — Stooq now gates its free daily-CSV endpoint behind an API key and returns an HTML "apikey required" page instead of CSV. `StooqProvider` correctly treats the non-CSV body as `ProviderUnavailableError` (fabricates nothing), so J-17's **live-fetch** half can only ever be proven by the forced-failure/no-fabrication path offline; the offline **backfill** path is what makes J-17 testable (and grows System Health `n` deterministically from committed seed bars). Any future iteration that needs *real* live data must first swap in a working free EOD provider behind the same `PriceProvider` interface (env-only key) — do not assume `stooq` live fetch works.
-**Applies to:** any iter touching `apps/backend/app/data_providers/` or relying on the Data Manager live-fetch path / a "going-forward refresh" beyond the seed's last date (2026-05-28).
-
-## iter-3 — 2026-06-01T13:00:00Z (process)
-
-**Verdict:** CONTINUE
-**Lesson:** Full-depth goal iters in this session keep finishing WITHOUT a `status.json` or an `auditor` handoff (recurred in iter-2 and iter-3); QA reports may even cite a `status.json` that is not on disk. Do not block on or trust those artifacts — verify the critical anti-goal seams yourself in source. Also de-dup QA evidence: iter-3 shipped two byte-identical screenshots (`TC-16-2`==`TC-16-3`), so a "final summary" claim rested on a copy of the "running" shot until cross-checked against the distinct browser-QA shots + API ground truth.
-**Applies to:** any goal-evaluator run on a full-depth iter in this session (check `iter-<N>/` for status.json/audit before relying on them; md5 suspiciously equal-sized evidence).
-
-## iter-4 — 2026-06-01T15:30:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** The browser-QA agent can time out (exit 124) mid-run, leaving an auto-written **SKIPPED stub** `ui-test-results.md` *while having captured a partial set of real screenshots*. Do NOT take the stub at face value (it pre-suggests "ESCALATE") and do NOT trust a missing results file as "all failed" — inspect the evidence directory directly and read the screenshot timestamps to reconstruct how far the run got. Convert a `partial` ONLY if the journey's **defining step** was actually captured: here J-02/J-16 had complete flows (passed), but J-11's after-restart persistence shot and J-15's warm-load timing were never reached, and J-06's three-score cards were below the fold — so those three stay `partial` even though their earlier/structural evidence looks green. A timed-out QA step is a tooling failure → a hardened lean re-verify, NOT an ESCALATE (no functional gap, no code needed).
-**Applies to:** any goal-mode closure/re-verify iter that depends on browser-QA full-flow evidence; any iter where `ui-test-results.md` is a SKIPPED/stub but the `*-evidence/` dir is non-empty — always reconcile the two before assigning journey statuses, and scope the re-run to the journeys whose defining step is unproven.
-
-## iter-6 — 2026-06-02T02:30:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** In a full-depth iter the `qa` agent (its own Chrome-MCP browser checks) and the `browser-qa-agent` can run CONCURRENTLY against the same shared single-tab Chrome (port 9222), which silently corrupts captures (a "Latest" nav came back showing the other agent's historical state; an eval landed on the other agent's `/backtest`). The browser-qa-agent recovered only by WAITING for the qa agent to vacate the browser, then running all flows on a dedicated tab and asserting live state (`data-testid="asof-indicator"`, URL, values) immediately before each capture. Separately, the qa agent's `TC-15-before/after` shots came back byte-identical (same sha256) — the iter-3 duplicate-shot bug recurring — so the defining proof had to come from the browser-qa-agent's distinct UT-shots + a no-refetch fetch spy.
-**Applies to:** any full-depth goal iter where BOTH the qa agent and the browser-qa-agent perform Chrome-MCP checks — serialize browser access (one agent vacates before the other captures), de-dup evidence by sha256, and ground any "before/after" claim on distinct shots + a DOM/network assertion, never a single screenshot pair.
-
-## iter-7 — 2026-06-02T06:00:00Z
-
-**Verdict:** STALLED
-**Lesson:** The Yahoo-429 data-provider constraint (episodic memory) is not a soft warning — it is a HARD pipeline blocker for any iteration that needs a NEW bulk fetch from this egress. iter-7's J-22 universe expansion built complete, tested, auto-healing infra (offline `screen_universe.py`, an honest gate in `api/methodology.py` that hides the Universe-Selection section until a real `data/seed/universe.json` exists, and a committed finish runbook) but could not fetch OHLCV+market-cap for ~280–380 new names: Yahoo 429 on both hosts + crumb, Stooq captcha, nasdaq empty, SEC has no prices. Three fix cycles re-confirmed the same wall — and the framework's halt-for-environment verdict (non-regression) is STALLED, not the lean→full ESCALATE. **Two takeaways:** (1) any future iter needing a fresh bulk external fetch (universe expansion, J-23/J-24 multi-timeframe intraday) should PROBE the feed with one polite request FIRST and gate the whole iteration on reachability, rather than burning a full pipeline that reproduces the 429; (2) when a deliverable depends on an external one-shot fetch, build it to AUTO-HEAL — separate the committed/testable infra from the data step and gate the UI honestly — so it completes later with zero code change. The unblockable fallback when the feed is down is the compute-only `/research` labs (J-25–J-31, no new fetch), but those need a human blueprint nav re-approval first — consider front-loading that approval so a data-feed outage never fully stalls the loop.
-**Applies to:** any iter that performs a new bulk external data fetch (universe/seed expansion, multi-timeframe/intraday bars), and any environmentally-blocked deliverable — probe-and-gate first, build to auto-heal, and prefer STALLED over blind-retry once the block is re-confirmed.
-
-## iter-8 — 2026-06-02T09:30:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** "The immediate target is externally walled" is NOT the same as "the session is stalled" —
-distinguish them before reaching for STALLED. iter-8 retried the J-22 universe fetch on the (plan-time-GREEN)
-Yahoo feed; the dispatch-time re-probe re-walled (429 both halves), so J-22 made no progress — but the
-session still has tractable autonomous work, so the verdict is CONTINUE, not a second STALLED. The
-non-obvious carve-out: **J-28 (additional detected patterns) escapes BOTH blockers** — it is compute-only
-over the already-stored seed (no external fetch, unlike J-22/J-23/J-24) AND its acceptance explicitly
-allows the pattern-vs-non-pattern breakdown on "the Setup & Pattern Lab **(or System Health)**", so it
-rides the EXISTING /stocks + /methodology + System Health surfaces and needs **no /research nav home and
-no blueprint re-approval** (unlike J-25/J-26/J-27/J-29/J-30/J-31, which do). `engine/patterns.py` +
-`config.patterns=['vcp']` already make a new pattern a pure config-driven extension. iter-7's evaluator had
-lumped all of J-25–J-31 as blueprint-gated and missed this. Also: STALLED's remedy is "edit docs/goal.md,"
-which is the wrong signal when the goal is well-formed and only a data-feed dependency is blocked — prefer
-CONTINUE + a hard "do not retry the walled target; build the compute-only work" pivot (the run-goal.sh
-stall-hash is the independent backstop if the loop genuinely can't progress).
-**Applies to:** any goal-evaluator run where the dispatched target is externally/approval-blocked but other
-failing journeys remain — enumerate each remaining journey's gate (data-wall vs blueprint-reapproval vs
-none) before choosing STALLED; a journey that is both compute-only AND satisfiable on existing surfaces is
-autonomous work that forbids STALLED. Especially any iter touching the J-22/J-23/J-24 (data-walled) vs
-J-25–J-31 (compute-only) split, and any decomposer choosing the next non-walled target.
-
-## iter-9 — 2026-06-02T12:00:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** "Config-driven UI vocabulary" is only PARTIALLY satisfied on the leaderboard. `/methodology` glossary cards and the badge *meaning* tooltip auto-render from the config catalog (by key), but `apps/frontend/app/stocks/page.tsx`'s `PATTERNS`/`NEW_PATTERNS` registries hardcode the short badge label + the filter option list — so a future config-only pattern auto-documents in the glossary yet will NOT auto-appear as a leaderboard badge/filter without a frontend edit. The full-config-driven path needs a short badge label added to `config.patterns.<name>` and the registry derived from `catalog kind:"pattern"` entries. (Reviewer rated this a non-blocking enhancement; the iter-9 spec explicitly contemplated a frontend pattern list, so it is not a defect — but it is the seam to close if "add a pattern with zero frontend edits" ever becomes an acceptance bar.)
-**Applies to:** any future iter that adds a detected pattern (J-28 allows >2) or claims fully config-driven leaderboard UI vocabulary.
-
-## iter-9 — 2026-06-02T12:00:00Z (loop-behavior note)
-
-**Verdict:** CONTINUE
-**Lesson:** iter-10 is the FIRST iteration to hit a front-loaded blueprint re-approval pause. `state/blueprint.reapproval-requested` was written this iter, so `run-goal.sh` halts at iter-10's *pre_decomposer* step (run-goal.sh:804) awaiting human approval of the new `/research` nav home BEFORE the decomposer plans the first lab — the loop will NOT autonomously proceed into J-25. The operator approves by re-running with `--resume` (their review of `state/blueprint.md` is treated as approval). After J-28, the `/research` labs (J-25–J-31, compute-only over the stored seed) are the ONLY remaining autonomous track — the data-walled wave (J-22/23/24, Yahoo 429) is not part of this approval.
-**Applies to:** the iter-10 decomposer/evaluator cycle and the operator resuming the session.
-
-## iter-10 — 2026-06-02T15:00:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** `status.json` for this goal session is written to the PHASE-namespace path `runs/goal-<sid>-iter-N/status.json` (e.g. `runs/goal-i_can_see_the_wealthy_future_forever-iter-10/status.json`), NOT the goal-session path `runs/goal-session-<sid>/iter-N/status.json` that the goal-evaluator's artifact list cites (which holds only `coherence.md` + `snapshot-sha`). Several prior iters were logged as "no status.json produced" partly because of this — it was likely present at the phase path all along. A stale no-`_forever` twin (`runs/goal-i_can_see_the_wealthy_future-iter-10/`) also exists and is cross-session noise. The QA agent's "status.json present ✅" can therefore be correct even when the session/iter-N dir lacks it.
-**Applies to:** any future goal-evaluator iter in this session checking for `status.json` / `plan.md` — check BOTH `runs/goal-<sid>-iter-N/` and `runs/goal-session-<sid>/iter-N/` before concluding an artifact is absent; the phase-namespace path is the real one for status.json/plan.md.
-
-## iter-11 — 2026-06-02T17:30:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** In this seed, forward-return observations exist for nearly the same snapshots at every horizon (`n_total` 1218 at 5d vs 1217 at 60d), so per-regime/per-cohort `n` is almost horizon-independent — you CANNOT reliably thin samples to exercise an NA / low-sample path by lengthening the horizon (the browser test's "60d → smaller n → more ⚠" expectation was only minimally hit). The honest-NA evidence instead had to come from (a) genuinely empty regimes with `n=0` (Strong risk-on, Defensive) and (b) the downside-only-undefined case (Risk-off: raw spread +16.50% numeric but `risk_adjusted_spread` NA because the top decile had no downside). Future /research lab tests should target those two NA sources directly, not horizon length.
-**Applies to:** any future `/research` lab iteration (J-26 combination cohorts, J-29 event study, J-30 volatility family, J-31 synthesis) whose browser/unit tests must prove honest NA + n on low-sample cells — design the NA fixture around empty regime/cohort membership or the downside-undefined ratio, not around horizon-driven sample shrinkage.
-
-## iter-14 — 2026-06-03T02:30:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** J-31 (the final synthesis journey) step 4 says "open one on Stock Detail **across timeframes**" — but the timeframe selector (J-24) is unbuilt and externally Yahoo-429 data-walled. The next decomposer must scope J-31's acceptance to the **canonical daily timeframe** (which works) and treat intraday as honestly coverage-limited, NOT let the J-24 data wall block J-31. J-31 is otherwise compute-only over the seed on already-approved surfaces (no new computation expected — it is navigation/cross-linking + leaderboard filters reading canonical stored values), so it should add no read-path recompute; verify that seam in source as usual.
-**Applies to:** iter-15 (J-31 synthesis) and any future iter whose journey text references a timeframe/intraday sub-step while J-23/J-24 remain data-walled.
-
-## iter-15 — 2026-06-03T05:30:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** The iteration's own DoD step `cd apps/frontend && npm run build` (a production build) clobbered the running `next dev` server's shared `.next/` — the dev server kept emitting HTML pointing at unhashed dev chunks (`/_next/static/chunks/main-app.js`) while disk now held only content-hashed PROD artifacts → framework-chunk 404 → a dead, un-hydrated SSR shell on EVERY route ("Checking backend…", 0 rows). This blocked browser-QA entirely (SKIPPED, not FAIL — reproduced in a clean isolated browser), so a clean, correct, statically-verified build of the **capstone** journey (J-31) could not be confirmed at its **defining multi-step browser flow** and had to be recorded `partial`, not `passing`. The smoking-gun check: `.next/static/chunks/main-app.js` ABSENT while `main-app-<hash>.js` + `BUILD_ID` + `build-diagnostics.json:static-generation` are PRESENT (matches MEMORY `browser-qa-dead-shell-next-cache`). The pipeline-ordering root cause: running the prod build against the same `.next` the live dev server serves from. Fix before re-verify: stop `next dev`, `rm -rf apps/frontend/.next`, restart, and run `npm run build` against a separate dir or before the dev server starts.
-**Applies to:** any iter whose acceptance is a browser flow AND whose DoD runs `npm run build` against the live dev server's `.next` (especially capstone/cross-page journeys whose only proof is the captured travel) — confirm `GET /_next/static/chunks/main-app.js` → 200 and the health badge clears before driving UI tests; a dead-shell browser-QA SKIP is environmental, never a code FAIL/regression.
-
-## iter-16 — 2026-06-03T08:30:00Z
-
-**Verdict:** STALLED
-**Lesson:** When the LAST buildable journey converts in the same iteration that exhausts the autonomous runway, the correct verdict is **STALLED**, not CONTINUE — even though ≥1 journey newly passed (which the literal CONTINUE rule matches). The operative STALLED signal is "I cannot identify productive next work," decoupled from the script's no-progress stall-hash. Returning CONTINUE here would dispatch a next iteration whose only options are a forbidden data-wall re-probe or a no-op, wasting a pipeline before stalling anyway. The J-31 progress is still preserved in journey-history regardless of the halt verdict, so STALLED costs no signal.
-**Applies to:** any goal-mode iteration where the target was the final autonomous deliverable and the only remaining failing journeys are externally blocked (data feed, paid egress, human approval); also any session whose remainder is gated on operator action rather than code.
-
-## iter-17 — 2026-06-04T04:00:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** When the operator re-scopes `docs/goal.md` mid-session (here commit `d723133` after the iter-16 STALLED), it can (a) RAISE an already-`passing` journey's acceptance bar and (b) ADD new journeys — neither is visible in code or in the diff. J-26 was `passing` since iter-14 (strict AND-intersection) but the re-scope now demands a non-empty composite percentile-rank blend, so its current impl no longer meets the *headline* acceptance → I re-classified it `partial` (some steps pass, the new key step doesn't). This is a **re-scope bar-raise, NOT a REGRESSION** (the code is unchanged and still works; the goalpost moved) — do not emit a REGRESSION verdict for it, and do not let it carry on its old `passing` status on faith. Also added J-32 (newly tracked `failing`). Practically: after any goal.md edit, re-read the Must-have journeys and re-check every previously-passing journey against the NEW acceptance, and confirm new J-IDs are added to journey-history (the goal had grown to J-32 while history still listed J-01..J-31).
-**Applies to:** any iteration whose `docs/goal.md` was edited since the last eval (operator re-scope / `--resume` after STALLED); any journey the iter spec lists as a *future* target while journey-history still marks it `passing`; the goal-evaluator's GOAL_ACHIEVED gate (must count against the current, possibly-raised, acceptance bar).
-
-## iter-18 — 2026-06-04T10:27:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** The J-26 composite percentile-rank blend is "non-empty" but on a *cancelling* selection it
-honestly collapses to the whole pool, NOT a differentiated cohort: when the same factor is added at both
-`top` and `bottom` (the opposing-extremes fixture), each observation's two oriented ranks (`frac` and
-`1−frac`) average to a flat ~0.5, so `_quantile_cutoff` includes everyone → `composite.n == pool_n` with
-`mean == baseline.mean` (UT-08: composite n=1218 = baseline, while `strict_overlap` correctly shows n=0/NA).
-This is the mathematically honest "no net signal" answer and it satisfies the bar-raise (non-empty + clears
-`min_sample`), but it means **"composite non-empty" does NOT imply "composite differentiated from
-baseline"** — judge the composite's value on *sensible* (non-cancelling) selections, where it yields a real
-~`composite_fraction·pool_n` cohort distinct from baseline (default quintile → n≈244 vs baseline 1217,
-+1.21% vs +2.03%). Don't mistake `composite n == baseline n` for a bug.
-**Applies to:** any iter touching `compute_factor_combination` / the `_composite_scores` blend, and any
-evaluator judging J-26 or the J-32 as-of-mode applied to the combination cohort — assert differentiation on
-a non-cancelling selection, not just `n > 0`.
-
-## iter-19 — 2026-06-04T13:30:00Z
-
-**Verdict:** GOAL_ACHIEVED
-**Lesson:** GOAL_ACHIEVED can be correct even with journeys still in `failing` status — when the operator-authored `docs/goal.md` explicitly re-scopes specific journeys as non-halting/non-vetoing. Here J-22/J-23/J-24 stayed `failing` (externally Yahoo-429 data-walled) yet the goal text (commit d723133, lines 99-103 + 755-765) twice states they "MUST NOT halt the loop, drive a STALLED verdict, or veto GOAL_ACHIEVED." That project-specific instruction overrides the goal-evaluator's generic "do not mark GOAL_ACHIEVED if any journey is failing" guardrail. The correct gate became "every *buildable* journey passing (29/29) + no critical anti-goal + coherence not FAIL," not "all 32 passing." Confirm the carve-out is in goal.md itself (not just an evaluator's prior note) before treating blocked journeys as non-vetoing.
-**Applies to:** any goal-mode session whose `docs/goal.md` declares a subset of must-have journeys "non-halting" / data-dependent; any final GOAL_ACHIEVED decision where some journeys remain blocked — read the goal's own halting semantics rather than applying the generic all-journeys-passing rule.
-
-## iter-20 — 2026-06-04T22:15:28Z
-
-**Verdict:** CONTINUE
-**Lesson:** A post-GOAL_ACHIEVED "finalization" iteration is a trap when the operator re-scoped `docs/goal.md` between iterations. Here commit d3e5076 added three new Must-have journeys (J-33/34/35) at 21:14; the goal-decomposer wrote a "session-complete, no-code" spec 93 s later (21:15) that ignored them, and dev/review/QA/coherence all dutifully reported "29/29 complete." The evaluator must ALWAYS evaluate against the *current* goal.md (read it fresh, diff for journeys absent from journey-history) and never inherit the iter spec's "buildable set complete" framing. Two corroborating traps: (1) the dev handoff *claimed* the Data Manager already had the new capabilities (source picker / resumable import / expand-universe) — it was restating the goal vision, not the code; the actual `JobCreate`/`JOB_KINDS`/config proved them absent. (2) "all required-still-passing journeys green" says nothing about newly-added journeys. Confirm new/claimed capabilities exist in source before trusting any "complete" verdict.
-**Applies to:** any iteration immediately following a `docs/goal.md` re-scope commit; any "finalization" / post-GOAL_ACHIEVED iteration; any time a dev handoff asserts a capability without a code diff to back it. Cross-check: # of journeys in goal.md vs # tracked in journey-history.json.
-
-## iter-21 — 2026-06-05T00:30:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A "secret-never-persisted" unit test that injects a *mocked* provider raising a *sanitized* error will pass green while the *real* client leaks the key — here `_http.py:42` wraps `str(httpx.HTTPStatusError)`, which embeds the full request URL incl. `?token=<key>`/`?apikey=<key>`, into `JobProgress.errors[]` → `GET /api/data/jobs/{id}` → the `/data` job card. The full backend suite (502 passed) never exercised the real httpx-URL-in-exception path, so dev+review+coherence all PASSED and only live QA/browser-QA caught it. When a key travels as a URL query param, the secret can leak through any error string built from the exception — grep the live job-status RESPONSE and the rendered UI, not just the DB/`/api/data`; and any "absent from X" anti-goal test MUST drive a *real* error (key-in-URL), not a sanitized mock. (Matches MEMORY `httpx-error-leaks-url-query-key`.)
-**Applies to:** any iter adding/extending an external HTTP client that carries a credential (esp. as a URL query param), or asserting a secret is "never echoed/persisted" — verify with a real transport error through the full job-status→UI path, prefer header auth or a redacted-URL error message, and treat error strings as untrusted-for-secrets before serving. Directly relevant to iter-22 (J-34 chunked import threads the same key + surfaces richer per-chunk errors → inherits this leak unless fixed first).
-
-## iter-22 — 2026-06-07T09:50:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** Adding any new `table=True` model (here `import_checkpoints` for J-34) RED-fails `tests/test_db.py::test_create_all_produces_expected_tables`, which asserts `set(SQLModel.metadata.tables.keys()) == ITER1_TABLES | SNAPSHOT_TABLES | WATCHLIST_TABLES` (a hardcoded expected set at `test_db.py:37`). This is a stale schema-snapshot assertion, NOT a product defect — but it flips the whole-suite exit code to 1 and drove the QA agent to a FAIL verdict while dev/review/browser-qa were all green. Any iter that adds a table MUST update that expected set (add the new table name) in the same change, or the next evaluator has to reconcile a misleading suite-RED. The decisive evidence lives in the authoritative `ui-test-results.md` (browser-qa-agent), which can say PASS even when the QA report says FAIL/SKIPPED — read it directly, do not take the QA verdict at face value.
-**Applies to:** any iter adding a new `table=True` SQLModel (fix `tests/test_db.py` expected-tables set in the same commit); any evaluator seeing a QA FAIL with dev/review green (check whether the single RED is a schema-snapshot/maintenance assertion vs a real product test).
-
-## iter-22 — 2026-06-07T09:50:00Z (key-leak closure)
-
-**Lesson:** The iter-21 session-key leak was finally closed AND proven by driving a REAL httpx error through the real `_http.py` path — both in a unit test (`httpx.MockTransport` + a real `httpx.Client` injected into Tiingo/Finnhub/AlphaVantage) and live in the browser (a real Tiingo HTTP 403, key-in-URL, sentinel `SENupKEY123` absent from the error). The earlier mocked-provider "key-never-persisted" test passed green for an entire iteration while the real client leaked, because the test's `_FakeResponse` hard-coded `http://x` (no key) as the request URL — `str(httpx.HTTPStatusError)` only embeds the credential when the exception carries a real `.request.url` with the query params. One honest, accepted residue remains and was deliberately NOT penalized (per the iter-22 spec): the third-party `httpx` library emits its own INFO `HTTP Request: GET <url-with-key>` line — that is the library's logger, not the app's error/persist/response path, and httpx INFO logging is off by default here.
-**Applies to:** any iter touching `apps/backend/app/data_providers/` error handling or asserting a secret is absent from an error/response — assert against a REAL provider-client error (key-in-URL via MockTransport), never a sanitized mock; grep the live `GET /api/data/jobs/{id}` response + job card + checkpoint + run history for the sentinel, not just the DB (MEMORY `httpx-error-leaks-url-query-key`).
-
-## iter-23 — 2026-06-07T13:40:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** When the dedicated browser-qa step SKIPs because the frontend dev server is down at dispatch (curl :3835 → HTTP 000), the QA MODE-2 step may still capture only the *static* surfaces of a new feature (e.g. the Expand option present, ineligible sources disabled-with-reason) — leaving the journey's *defining multi-step end-to-end flow* uncaptured even though dev/review/QA/coherence all PASS and the full backend suite is green. That state is **partial, not passing** for a multi-step journey (here J-35: the "run an injected-provider expand → passers + omitted-with-reason + grown universe-count" flow was never driven). Grant `passing` only when the defining flow is actually captured; a render of surfaces in isolation + integration-proven logic is `partial` — and it is honest (an environmental capture gap), not a FAIL, so it drives a re-verify CONTINUE, not a halt. The frontend being down at dispatch is itself the recurring `dev-server-cleanup-by-port` / `browser-qa-dead-shell-next-cache` environment class — bring the dev server up cleanly BEFORE the browser-qa run.
-**Applies to:** any iter whose target journey is a multi-step browser flow but whose dedicated browser-qa SKIPs (frontend down / dead-shell) while a green backend suite + a partial QA MODE-2 surface-capture exist; any iter delivering an offline-provable, data-walled-live import/expand journey on the Data Manager.
-```
-Journey history: /home/dennisccy/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever/state/journey-history.json  <-- read for full journey state
-
-Last iteration eval: /home/dennisccy/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever/iter-23/eval.md
 
 Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
 
-Write the iteration spec to: docs/phases/goal-i_can_see_the_wealthy_future_forever-iter-24.md
-Also keep /home/dennisccy/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever/state/blueprint.md current per your agent instructions: register any new displayed value in the Data Contract and place new pages under an existing Information-Architecture home (additive edits only). For a nav-skeleton change, make the edit AND write a one-line reason to /home/dennisccy/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever/state/blueprint.reapproval-requested.
+Write your verdict to: /home/dennisccy/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever/iter-25/eval.md
 
-The spec MUST include a 'Goal Mode Metadata' section with at minimum:
-  - Mode: next
-  - Depth: lean | full
-  - Target journeys: <comma-separated journey IDs>
+The verdict line MUST appear at the top of /home/dennisccy/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever/iter-25/eval.md and start exactly with:
+**Verdict:** GOAL_ACHIEVED
+  or **Verdict:** CONTINUE
+  or **Verdict:** ESCALATE
+  or **Verdict:** REGRESSION
+  or **Verdict:** STALLED
 
-Do NOT write code or implement anything. The iteration spec and any blueprint edits are planning documents, not code. STOP after writing them.
+Also include a 'Depth Recommendation For Next Iteration:' line: lean or full.
+
+Then update /home/dennisccy/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever/state/journey-history.json (full atomic write) and append an entry to /home/dennisccy/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever/state/evaluator-log.md.
+STOP.

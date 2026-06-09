@@ -107,6 +107,13 @@ class DataProviderRun(SQLModel, table=True):
     symbols_failed: int = 0
     status: str  # ok | partial | failed
     message: Optional[str] = None
+    # iter-25 (J-38) soft-dismiss flag for the unified Unfinished-imports panel. A MUTABLE job-control
+    # column on this already-mutable operational table — NOT a new table and NOT a snapshot column. When
+    # an operator Dismisses an unfinished (partial/failed) run, this flips True so the run stops being
+    # OFFERED as actionable in `unfinished_imports`; the row itself is NEVER deleted/hidden from the
+    # append-only Run-history audit (the run still appears there). The immutable snapshot/forward-return
+    # rows are untouched. Append-only column addition — a fresh DB carries it (default False) from start.
+    dismissed: bool = Field(default=False)
 
 
 class ImportCheckpoint(SQLModel, table=True):

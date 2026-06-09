@@ -36,6 +36,10 @@ WATCHLIST_TABLES = {"watchlist"}
 # data_provider_runs it is legitimately mutable job-control — explicitly NOT a snapshot table.
 IMPORT_TABLES = {"import_checkpoints"}
 
+# iter-25 (J-38): `DataProviderRun.dismissed` is a MUTABLE job-control COLUMN added to the existing
+# data_provider_runs table — it adds NO new table, so the expected-tables set below is unchanged. The
+# explicit assertion in test_data_provider_run_has_dismissed_column verifies the column exists.
+
 
 def test_create_all_produces_expected_tables():
     assert (
@@ -47,6 +51,48 @@ def test_create_all_produces_expected_tables():
 def test_daily_prices_has_unique_symbol_date_constraint():
     constraints = {c.name for c in DailyPrice.__table__.constraints}
     assert "uq_daily_prices_symbol_date" in constraints
+
+
+def test_data_provider_run_has_dismissed_column():
+    """iter-25 (J-38): the soft-dismiss flag is a MUTABLE column on the existing data_provider_runs
+    table (not a new table); it defaults False so existing/audit rows are never auto-dismissed."""
+    cols = {c.name for c in DataProviderRun.__table__.columns}
+    assert "dismissed" in cols
+    assert DataProviderRun.model_fields["dismissed"].default is False
+
+
+def test_additive_migration_backfills_dismissed_on_existing_db(tmp_path):
+    """iter-25 (J-38): an EXISTING data_provider_runs table that PREDATES the `dismissed` column gains it
+    in place on startup (no Alembic; create_all never ALTERs) — so an existing offline-first DB is not
+    regenerated. The backfill is idempotent and defaults existing rows to 0/False (never auto-dismissed)."""
+    from sqlalchemy import inspect, text
+
+    from app.db import create_db_and_tables, make_engine
+
+    db = tmp_path / "legacy.db"
+    engine = make_engine(f"sqlite:///{db}")
+    # Build a LEGACY data_provider_runs table WITHOUT the dismissed column (the pre-iter-25 shape).
+    with engine.begin() as conn:
+        conn.execute(text(
+            "CREATE TABLE data_provider_runs ("
+            "id INTEGER PRIMARY KEY, provider TEXT, started_at DATETIME, finished_at DATETIME, "
+            "symbols_ok INTEGER, symbols_failed INTEGER, status TEXT, message TEXT)"
+        ))
+        conn.execute(text(
+            "INSERT INTO data_provider_runs (provider, started_at, symbols_ok, symbols_failed, status) "
+            "VALUES ('yahoo', '2024-01-01 00:00:00', 1, 0, 'partial')"
+        ))
+    before = {c["name"] for c in inspect(engine).get_columns("data_provider_runs")}
+    assert "dismissed" not in before
+
+    create_db_and_tables(engine)  # applies the additive backfill
+    after = {c["name"] for c in inspect(make_engine(f"sqlite:///{db}")).get_columns("data_provider_runs")}
+    assert "dismissed" in after
+    # the pre-existing row defaults to not-dismissed (0/False) — never auto-dismissed
+    with engine.begin() as conn:
+        val = conn.execute(text("SELECT dismissed FROM data_provider_runs")).scalar()
+    assert val in (0, False)
+    create_db_and_tables(make_engine(f"sqlite:///{db}"))  # idempotent — a second run must not error
 
 
 def _counts(engine):

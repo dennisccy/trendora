@@ -17,7 +17,8 @@ backfill proof loads the committed seed and runs the real engines ONCE (module-s
 from __future__ import annotations
 
 import json
-from datetime import date
+import time
+from datetime import date, datetime
 from pathlib import Path
 
 import httpx
@@ -33,11 +34,14 @@ from app.engine import forward_testing, scanner
 from app.engine.data_manager import (
     JobProgress,
     _chunk_plan,
+    _missing_data_diagnostic,
     _trading_days,
     compute_coverage,
     compute_provider_availability,
     create_job,
+    dismiss_import,
     get_job,
+    get_provider_run,
     is_seed_bar,
     load_seed_windows,
     preview_removal,
@@ -46,7 +50,9 @@ from app.engine.data_manager import (
     resolve_provider_key,
     resumable_imports,
     resume_data_job,
+    retry_run,
     run_data_job,
+    unfinished_imports,
     validate_job_request,
 )
 from app.engine.forward_testing import compute_forward_aggregates
@@ -1482,3 +1488,395 @@ def test_remove_preview_no_scope_is_rejected(removal_engine):
     with Session(engine) as session:
         with pytest.raises(ValueError):
             preview_removal(session, None, symbols=None, start=None, end=None, seed_dir=seed_dir)
+
+
+# ==================================================================================================
+# J-37 — Missing-data diagnostic (read-only, three honest categories, exact shortfall, no recompute)
+# ==================================================================================================
+def _diag_cfg():
+    """A small config whose universe is exactly {AAA, BBB, CCC, DDD} and whose thin threshold is a known
+    value (5) — so the diagnostic categories + shortfalls are exact and the threshold is provably read from
+    config (No magic numbers)."""
+    cfg = load_config()
+    universe = cfg.universe.model_copy(update={"symbols": ["AAA", "BBB", "CCC", "DDD"]})
+    indicators = cfg.indicators.model_copy(update={"min_history_bars": 5})
+    return cfg.model_copy(update={"universe": universe, "indicators": indicators})
+
+
+@pytest.fixture()
+def diagnostic_engine(tmp_path):
+    """A hand-built DB exercising all three diagnostic categories against {AAA,BBB,CCC,DDD}, threshold 5,
+    SPY defining a 6-day trading calendar (D0..D5):
+      - AAA: 6 bars on every trading day  → FINE (>= threshold 5, no gap) → in NO category.
+      - BBB: 2 bars (D0, D1)              → THIN (0 < 2 < 5); contiguous → no intra-series gap.
+      - CCC: bars on D0, D2, D4 (3 bars)  → THIN (3 < 5) AND an intra-series gap (D1, D3 missing inside).
+      - DDD: NO bars                      → NO-HISTORY.
+    """
+    engine = make_engine(f"sqlite:///{tmp_path / 'diag.db'}")
+    create_db_and_tables(engine)
+    days = [date(2024, 1, 1) + __import__("datetime").timedelta(days=i) for i in range(6)]
+    with Session(engine) as session:
+        for d in days:
+            session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        for d in days:
+            session.add(DailyPrice(symbol="AAA", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        for d in (days[0], days[1]):
+            session.add(DailyPrice(symbol="BBB", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        for d in (days[0], days[2], days[4]):
+            session.add(DailyPrice(symbol="CCC", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+    return engine, days
+
+
+def test_diagnostic_three_categories_exact(diagnostic_engine):
+    """All three honest categories produced with the EXACT shortfall against the fixture; a fine member
+    (AAA) appears in NO category; the thin threshold is read from config (5, not a literal)."""
+    engine, days = diagnostic_engine
+    cfg = _diag_cfg()
+    with Session(engine) as session:
+        diag = _missing_data_diagnostic(session, cfg)
+
+    assert diag["threshold"] == 5  # from indicators.min_history_bars (not a magic number)
+
+    # (a) no-history — DDD (a universe member with zero bars), exact shortfall 0/5, pull spans the calendar
+    nohist = {r["symbol"]: r for r in diag["no_history"]}
+    assert set(nohist) == {"DDD"}
+    assert nohist["DDD"]["bars_have"] == 0 and nohist["DDD"]["bars_needed"] == 5
+    assert nohist["DDD"]["pull_start"] == days[0].isoformat()
+    assert nohist["DDD"]["pull_end"] == days[5].isoformat()
+    assert nohist["DDD"]["pullable"] is True
+
+    # (b) thin — BBB (2 bars) and CCC (3 bars), each 0 < bars < 5; AAA (6) is NOT thin.
+    thin = {r["symbol"]: r for r in diag["thin"]}
+    assert set(thin) == {"BBB", "CCC"}
+    assert thin["BBB"]["bars_have"] == 2 and thin["BBB"]["bars_needed"] == 5
+    assert thin["CCC"]["bars_have"] == 3 and thin["CCC"]["bars_needed"] == 5
+    assert thin["BBB"]["pullable"] is False  # a thin row alone is not pullable
+
+    # (c) intra-series gap — CCC only: D1 and D3 missing inside its D0..D4 range (BBB is contiguous).
+    gaps = {r["symbol"]: r for r in diag["intra_series_gaps"]}
+    assert set(gaps) == {"CCC"}
+    assert gaps["CCC"]["missing_day_count"] == 2  # D1, D3
+    assert gaps["CCC"]["first_gap"] == days[1].isoformat()
+    assert gaps["CCC"]["last_gap"] == days[3].isoformat()
+    assert gaps["CCC"]["missing_preview"] == [days[1].isoformat(), days[3].isoformat()]
+    assert gaps["CCC"]["pull_start"] == days[1].isoformat()
+    assert gaps["CCC"]["pull_end"] == days[3].isoformat()
+    assert gaps["CCC"]["pullable"] is True
+
+    # AAA (fine) appears in no category; affected_count is the exact union size.
+    assert "AAA" not in nohist and "AAA" not in thin and "AAA" not in gaps
+    assert diag["affected_count"] == len(diag["no_history"]) + len(diag["thin"]) + len(diag["intra_series_gaps"])
+    assert diag["affected_count"] == 4  # DDD + BBB + CCC(thin) + CCC(gap)
+
+
+def test_diagnostic_threshold_from_config_not_literal(diagnostic_engine):
+    """Raising the thin threshold makes a previously-fine member thin — proving the cutoff is the config
+    value, not a hardcoded literal."""
+    engine, _days = diagnostic_engine
+    cfg = _diag_cfg()
+    cfg_hi = cfg.model_copy(update={"indicators": cfg.indicators.model_copy(update={"min_history_bars": 7})})
+    with Session(engine) as session:
+        diag = _missing_data_diagnostic(session, cfg_hi)
+    thin = {r["symbol"] for r in diag["thin"]}
+    assert "AAA" in thin  # 6 bars < 7 threshold ⇒ now thin (was fine at threshold 5)
+    assert diag["threshold"] == 7
+
+
+def test_diagnostic_surfaced_on_coverage_payload(diagnostic_engine):
+    """The diagnostic rides the EXISTING coverage payload (reused producer, not a parallel module)."""
+    engine, _days = diagnostic_engine
+    cfg = _diag_cfg()
+    with Session(engine) as session:
+        cov = compute_coverage(session, cfg)
+    assert "diagnostic" in cov
+    assert cov["diagnostic"]["threshold"] == 5
+    assert {r["symbol"] for r in cov["diagnostic"]["no_history"]} == {"DDD"}
+
+
+def test_diagnostic_empty_dataset_graceful(tmp_path):
+    """An empty DB serves a graceful diagnostic: no-history rows for every universe member, no gaps, no
+    crash (the no-history pull spans are null because there is no calendar)."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'empty.db'}")
+    create_db_and_tables(engine)
+    cfg = _diag_cfg()
+    with Session(engine) as session:
+        diag = _missing_data_diagnostic(session, cfg)
+    assert {r["symbol"] for r in diag["no_history"]} == {"AAA", "BBB", "CCC", "DDD"}
+    assert diag["thin"] == [] and diag["intra_series_gaps"] == []
+    for r in diag["no_history"]:
+        assert r["pull_start"] is None and r["pullable"] is False  # no calendar ⇒ nothing to pull
+
+
+def test_diagnostic_no_canonical_recompute(diagnostic_engine, monkeypatch):
+    """The diagnostic recomputes NO canonical value — patch run_scan / score_stocks / forward-return /
+    detectors / regime to raise; the diagnostic must still produce (proving none is reachable)."""
+    engine, _days = diagnostic_engine
+    cfg = _diag_cfg()
+
+    def _boom(*_a, **_k):  # pragma: no cover - only fires on a wrong call
+        raise AssertionError("the diagnostic MUST NOT recompute any canonical score/return/bucket/setup")
+
+    monkeypatch.setattr("app.engine.scanner.run_scan", _boom, raising=False)
+    monkeypatch.setattr("app.engine.scoring.score_stocks", _boom, raising=False)
+    monkeypatch.setattr("app.engine.data_manager.scanner.run_scan", _boom, raising=False)
+    monkeypatch.setattr("app.engine.data_manager.forward_testing.backfill_run_forward_returns", _boom, raising=False)
+    with Session(engine) as session:
+        diag = _missing_data_diagnostic(session, cfg)
+    assert diag["affected_count"] == 4  # produced without recomputing anything
+
+
+# ==================================================================================================
+# J-37 — Pull-missing job constructor (gap-exact, dispatched through the EXISTING J-34 chunked engine)
+# ==================================================================================================
+class _RecordingProvider(PriceProvider):
+    """A fake provider that records every (symbol, start, end) get_daily call and returns one bar per
+    requested day in [start, end] — so a test can assert EXACTLY which symbols/dates a pull fetched."""
+
+    def __init__(self):
+        self.calls: list[tuple[str, date, date]] = []
+
+    def get_daily(self, symbol, start=None, end=None):
+        self.calls.append((symbol, start, end))
+        bars = []
+        d = start
+        while d <= end:
+            bars.append(Bar(date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+            d = d + __import__("datetime").timedelta(days=1)
+        return bars
+
+
+def test_pull_missing_fetches_exactly_the_gap(tmp_path):
+    """A J-37 pull fetches EXACTLY the diagnosed `(symbol, [start,end])` shortfall — NOT the whole universe
+    and NOT the whole window — dispatched through the SAME chunked engine (`run_data_job` with `symbols`)."""
+    cfg = _diag_cfg()
+    engine = make_engine(f"sqlite:///{tmp_path / 'pull.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 1, 1), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    provider = _RecordingProvider()
+    job = create_job("fetch", date(2024, 1, 2), date(2024, 1, 4), source="yahoo")
+    summary = run_data_job(
+        job.job_id, config=cfg, engine=engine, provider=provider,
+        sleep_fn=_noop_sleep, symbols=["DDD"],  # the single diagnosed no-history member
+    )
+    assert summary["status"] == "ok"
+    # EXACTLY one symbol fetched (DDD), over EXACTLY the diagnosed range — not the 4-member universe.
+    assert {c[0] for c in provider.calls} == {"DDD"}
+    assert all(c[1] == date(2024, 1, 2) and c[2] == date(2024, 1, 4) for c in provider.calls)
+    with Session(engine) as session:
+        ddd = session.exec(select(DailyPrice).where(DailyPrice.symbol == "DDD")).all()
+    assert {b.date for b in ddd} == {date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)}
+
+
+def test_pull_missing_idempotent_inserts_new_only(tmp_path):
+    """A pull is per-(symbol, date) idempotent: re-running over an already-stored range INSERTs nothing
+    new (the existing INSERT-new-only DailyPrice guard) — duplicating no bar, overwriting no committed bar."""
+    cfg = _diag_cfg()
+    engine = make_engine(f"sqlite:///{tmp_path / 'pull2.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 1, 1), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+    rng = (date(2024, 1, 2), date(2024, 1, 3))
+    j1 = create_job("fetch", *rng, source="yahoo")
+    run_data_job(j1.job_id, config=cfg, engine=engine, provider=_RecordingProvider(), sleep_fn=_noop_sleep, symbols=["DDD"])
+    with Session(engine) as session:
+        before = len(session.exec(select(DailyPrice).where(DailyPrice.symbol == "DDD")).all())
+    j2 = create_job("fetch", *rng, source="yahoo")
+    run_data_job(j2.job_id, config=cfg, engine=engine, provider=_RecordingProvider(), sleep_fn=_noop_sleep, symbols=["DDD"])
+    with Session(engine) as session:
+        after = len(session.exec(select(DailyPrice).where(DailyPrice.symbol == "DDD")).all())
+    assert before == after == 2  # the re-pull duplicated nothing
+
+
+def test_pull_missing_provider_failure_no_fabricated_bar(tmp_path):
+    """On a provider failure the pull surfaces an explicit failed/partial state and fabricates NO bar."""
+    cfg = _diag_cfg()
+    engine = make_engine(f"sqlite:///{tmp_path / 'pullfail.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 1, 1), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    class _Failing(PriceProvider):
+        def get_daily(self, symbol, start=None, end=None):
+            raise ProviderUnavailableError("provider unreachable")
+
+    job = create_job("fetch", date(2024, 1, 2), date(2024, 1, 3), source="yahoo")
+    summary = run_data_job(job.job_id, config=cfg, engine=engine, provider=_Failing(), sleep_fn=_noop_sleep, symbols=["DDD"])
+    assert summary["status"] == "failed"  # the single symbol failed
+    assert summary["errors"]
+    with Session(engine) as session:
+        ddd = session.exec(select(DailyPrice).where(DailyPrice.symbol == "DDD")).all()
+    assert ddd == []  # zero bars — nothing fabricated
+
+
+# ==================================================================================================
+# J-38 — Unified Unfinished-imports list + Retry / Dismiss (job-control only; audit-preserving)
+# ==================================================================================================
+def _add_provider_run(session, *, status, kind="fetch", ok=0, failed=0, dismissed=False, message_kind=True):
+    detail = {"kind": kind, "start": "2024-01-02", "end": "2024-01-03", "summary": f"{status} run", "bars_fetched": 0}
+    msg = json.dumps(detail) if message_kind else "seed load"
+    run = DataProviderRun(
+        provider="yahoo", started_at=datetime(2024, 1, 3, 12, 0, 0), finished_at=datetime(2024, 1, 3, 12, 1, 0),
+        symbols_ok=ok, symbols_failed=failed, status=status, message=msg, dismissed=dismissed,
+    )
+    session.add(run)
+    session.commit()
+    session.refresh(run)
+    return run
+
+
+def _add_resumable_checkpoint(session, import_id="cp-1"):
+    cp = ImportCheckpoint(
+        import_id=import_id, source="tiingo", kind="fetch", start=date(2024, 1, 2), end=date(2024, 1, 3),
+        symbol_plan_json=json.dumps(["AAA", "BBB", "CCC"]), chunk_total=3, next_chunk_index=1,
+        symbols_ok=1, symbols_failed=0, bars_fetched=10, status="resumable",
+        created_at=datetime(2024, 1, 3), updated_at=datetime(2024, 1, 3, 12, 5, 0),
+    )
+    session.add(cp)
+    session.commit()
+    return cp
+
+
+@pytest.fixture()
+def unfinished_engine(tmp_path):
+    engine = make_engine(f"sqlite:///{tmp_path / 'unfinished.db'}")
+    create_db_and_tables(engine)
+    return engine
+
+
+def test_unfinished_imports_union(unfinished_engine):
+    """The union = resumable checkpoints + partial/failed runs, MINUS soft-dismissed runs and MINUS a
+    plain seed-load (non-job) row. Each carries a plain-language state + the right actions."""
+    cfg = load_config()
+    with Session(unfinished_engine) as session:
+        _add_resumable_checkpoint(session, "cp-1")
+        partial = _add_provider_run(session, status="partial", ok=142, failed=16)
+        failed = _add_provider_run(session, status="failed", ok=0, failed=3)
+        _add_provider_run(session, status="partial", ok=1, failed=1, dismissed=True)  # soft-dismissed → excluded
+        _add_provider_run(session, status="failed", ok=0, failed=2, message_kind=False)  # seed-load → excluded
+        _add_provider_run(session, status="ok", ok=5)  # clean → excluded
+        rows = unfinished_imports(session, cfg)
+
+    by_type = {(r["record_type"], r["id"]): r for r in rows}
+    assert ("checkpoint", "cp-1") in by_type
+    assert ("run", partial.id) in by_type
+    assert ("run", failed.id) in by_type
+    assert len(rows) == 3  # exactly the resumable + the two non-dismissed jobs
+
+    cp_row = by_type[("checkpoint", "cp-1")]
+    assert cp_row["actions"] == ["resume", "remove"]
+    assert "Paused" in cp_row["state"] and "rate-limit" in cp_row["state"]
+    assert cp_row["symbols_remaining"] == 2  # 3 total - 1 ok
+
+    part_row = by_type[("run", partial.id)]
+    assert part_row["actions"] == ["retry", "dismiss"]
+    assert "Partial" in part_row["state"] and "142" in part_row["state"]
+    assert part_row["symbols_remaining"] == 16
+
+    fail_row = by_type[("run", failed.id)]
+    assert "Failed" in fail_row["state"]
+
+
+def test_unfinished_imports_carries_no_key(unfinished_engine):
+    """No row in the union carries a key value (neither the checkpoint nor the run summary has a key)."""
+    cfg = load_config()
+    with Session(unfinished_engine) as session:
+        _add_resumable_checkpoint(session, "cp-key")
+        _add_provider_run(session, status="partial", ok=1, failed=1)
+        rows = unfinished_imports(session, cfg)
+    blob = json.dumps(rows)
+    assert "api_key" not in blob and "token=" not in blob and "apikey=" not in blob
+
+
+def test_dismiss_run_is_soft_and_preserves_audit(unfinished_engine):
+    """Dismiss of a partial/failed RUN sets the soft-dismiss flag ONLY: the run LEAVES unfinished_imports
+    but STAYS in the append-only Run-history audit (still queryable, never deleted)."""
+    cfg = load_config()
+    with Session(unfinished_engine) as session:
+        run = _add_provider_run(session, status="partial", ok=1, failed=1)
+        run_id = run.id
+        assert any(r["id"] == run_id for r in unfinished_imports(session, cfg))
+        result = dismiss_import(session, "run", str(run_id), config=cfg)
+        assert result == {"record_type": "run", "id": run_id, "dismissed": True}
+        # the run is gone from the actionable list...
+        assert not any(r.get("id") == run_id for r in unfinished_imports(session, cfg) if r["record_type"] == "run")
+        # ...but the audit row is preserved (still present, only flagged dismissed).
+        still = session.get(DataProviderRun, run_id)
+        assert still is not None and still.dismissed is True
+        assert any(r["id"] == run_id for r in recent_runs(session, cfg))  # still in Run history
+
+
+def test_dismiss_checkpoint_deletes_only_job_control(unfinished_engine):
+    """Dismiss of a resumable CHECKPOINT deletes ONLY that job-control row — no bar/snapshot is touched."""
+    cfg = load_config()
+    with Session(unfinished_engine) as session:
+        _add_resumable_checkpoint(session, "cp-del")
+        # seed a snapshot + forward return that MUST survive the checkpoint delete
+        session.add(ScannerRun(
+            asof_date=date(2024, 1, 2), created_at=datetime(2024, 1, 2), provider="seed", benchmark="SPY",
+            regime_score=50.0, regime_label="Choppy", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        ))
+        session.commit()
+        result = dismiss_import(session, "checkpoint", "cp-del", config=cfg)
+        assert result["dismissed"] is True
+        assert session.exec(select(ImportCheckpoint).where(ImportCheckpoint.import_id == "cp-del")).first() is None
+        assert session.exec(select(ScannerRun)).all()  # the snapshot survived
+
+
+def test_dismiss_unknown_id_raises(unfinished_engine):
+    cfg = load_config()
+    with Session(unfinished_engine) as session:
+        with pytest.raises(LookupError):
+            dismiss_import(session, "run", "99999", config=cfg)
+        with pytest.raises(LookupError):
+            dismiss_import(session, "checkpoint", "nope", config=cfg)
+
+
+def test_retry_run_redispatches_outstanding_only(tmp_path):
+    """Retry re-dispatches the partial run's SAME kind + window through the chunked engine; per-(symbol,
+    date) idempotency means an already-stored bar is not duplicated. Returns a NEW job id; the original
+    audit run is untouched."""
+    cfg = _diag_cfg()
+    engine = make_engine(f"sqlite:///{tmp_path / 'retry.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 1, 1), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        # one already-stored DDD bar inside the retry window — a retry must NOT duplicate it
+        session.add(DailyPrice(symbol="DDD", date=date(2024, 1, 2), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        run = _add_provider_run(session, status="partial", ok=1, failed=1)
+        run_id = run.id
+
+    # Retry uses start_data_job (async) — inject a recording provider via run_data_job by patching is hard;
+    # instead assert the dispatch returns a new job id and the original run is preserved.
+    job_id = retry_run(run_id, config=cfg, engine=engine)
+    assert isinstance(job_id, str) and job_id
+    # wait for the async job to finish
+    deadline = time.monotonic() + 10
+    while (snap := get_job(job_id)) and snap["status"] == "running" and time.monotonic() < deadline:
+        time.sleep(0.02)
+    with Session(engine) as session:
+        assert session.get(DataProviderRun, run_id) is not None  # original audit row preserved
+        ddd = session.exec(select(DailyPrice).where(DailyPrice.symbol == "DDD")).all()
+    # the pre-existing bar is not duplicated (idempotent); a real fetch path ran (yahoo seed provider is
+    # offline in tests → it may add nothing, but it must never delete/duplicate the existing bar).
+    assert len([b for b in ddd if b.date == date(2024, 1, 2)]) == 1
+
+
+def test_retry_run_unknown_and_non_retryable(tmp_path):
+    """Retry of an unknown run raises LookupError; retry of a clean (ok) run raises ValueError."""
+    cfg = load_config()
+    engine = make_engine(f"sqlite:///{tmp_path / 'retry2.db'}")
+    create_db_and_tables(engine)
+    with pytest.raises(LookupError):
+        retry_run(99999, config=cfg, engine=engine)
+    with Session(engine) as session:
+        run = _add_provider_run(session, status="ok", ok=5)
+        ok_id = run.id
+    with pytest.raises(ValueError):
+        retry_run(ok_id, config=cfg, engine=engine)

@@ -999,6 +999,56 @@ export interface PerSymbolCoverage {
   missing: boolean;
 }
 
+/** J-37 — one no-history diagnostic row: a universe member with ZERO stored bars. `bars_have` is 0,
+ *  `bars_needed` the config thin threshold; `pull_start`/`pull_end` span the benchmark calendar (the
+ *  pull target). The frontend re-formats this only — it computes no shortfall. */
+export interface DiagnosticNoHistory {
+  symbol: string;
+  category: "no_history";
+  bars_have: number;
+  bars_needed: number;
+  pull_start: string | null;
+  pull_end: string | null;
+  pullable: boolean;
+}
+
+/** J-37 — one thin diagnostic row: 0 < bar_count < indicators.min_history_bars (insufficient history).
+ *  A thin row alone is not pullable (its actionable gap, if any, surfaces as an intra_series_gap row). */
+export interface DiagnosticThin {
+  symbol: string;
+  category: "thin";
+  bars_have: number;
+  bars_needed: number;
+  pullable: boolean;
+}
+
+/** J-37 — one intra-series-gap diagnostic row: trading days (benchmark calendar) MISSING inside the
+ *  member's own first→last range. `missing_day_count` + [first_gap, last_gap] are the exact shortfall;
+ *  `missing_preview` is a bounded sample; `pull_start`/`pull_end` are the gap span the pull fills. */
+export interface DiagnosticGap {
+  symbol: string;
+  category: "intra_series_gap";
+  missing_day_count: number;
+  first_gap: string;
+  last_gap: string;
+  missing_preview: string[];
+  pull_start: string;
+  pull_end: string;
+  pullable: boolean;
+}
+
+/** J-37 — the Missing-data diagnostic: three honest categories of universe members insufficient for
+ *  analysis, each with its EXACT shortfall, derived once from stored bars + config threshold + the
+ *  benchmark calendar. A fine member appears in none. `threshold` is indicators.min_history_bars (the
+ *  cutoff, surfaced so the UI states it). Read-only descriptive metadata — recomputes no canonical value. */
+export interface MissingDataDiagnostic {
+  threshold: number;
+  no_history: DiagnosticNoHistory[];
+  thin: DiagnosticThin[];
+  intra_series_gaps: DiagnosticGap[];
+  affected_count: number;
+}
+
 export interface DataCoverage {
   price_start: string | null;
   price_end: string | null;
@@ -1017,6 +1067,8 @@ export interface DataCoverage {
   // J-36: the per-symbol / per-universe-member coverage table (universe members first, then priced
   // symbols; the UI re-sorts/filters only). distinct has-data rows == symbol_count; in-universe == universe_count.
   per_symbol: PerSymbolCoverage[];
+  // J-37: the Missing-data diagnostic (three honest categories with exact shortfalls). Read-only.
+  diagnostic: MissingDataDiagnostic;
 }
 
 /** One row of the fetch/backfill run history (from the append-only DataProviderRun log). A Data Manager
@@ -1077,11 +1129,38 @@ export interface ResumableImport {
   updated_at: string | null;
 }
 
+/** J-38 — one row of the UNIFIED Unfinished-imports list: every import that did NOT finish cleanly.
+ *  `record_type` distinguishes a resumable durable CHECKPOINT (`id` = import_id; actions Resume/Remove)
+ *  from a partial/failed operational RUN (`id` = numeric run id; actions Retry/Dismiss). `state` is a
+ *  server-built plain-language explanation rendered verbatim; `actions` lists the offered actions.
+ *  Descriptive job-control metadata ONLY — NEVER a key value (the source id is not secret). */
+export interface UnfinishedImport {
+  record_type: "checkpoint" | "run";
+  id: string | number; // import_id (checkpoint) or run id (run)
+  import_id: string | null;
+  source: string;
+  kind: string | null;
+  start: string | null;
+  end: string | null;
+  chunk_index: number | null;
+  chunk_total: number | null;
+  symbols_total: number;
+  symbols_ok: number;
+  symbols_failed: number;
+  symbols_remaining: number;
+  bars_fetched: number | null;
+  status: string; // resumable | partial | failed
+  updated_at: string | null;
+  state: string; // plain-language explanation (rendered verbatim)
+  actions: string[]; // e.g. ["resume","remove"] or ["retry","dismiss"]
+}
+
 export interface DataOverviewResponse {
   coverage: DataCoverage;
   runs: DataRun[];
   sources: ProviderSource[]; // J-33 import-source catalog (config-driven, env-detected availability)
   resumable_imports: ResumableImport[]; // J-34 paused imports (survive a backend restart); never a key
+  unfinished_imports: UnfinishedImport[]; // J-38 unified unfinished imports (resumable + partial + failed)
 }
 
 export type DataJobKind = "fetch" | "backfill" | "both" | "expand";
@@ -1149,12 +1228,59 @@ export async function startDataJob(
   kind: DataJobKind,
   start: string,
   end: string,
-  opts?: { source?: string; api_key?: string },
+  opts?: { source?: string; api_key?: string; symbols?: string[] },
 ): Promise<StartJobResponse> {
-  const body: Record<string, string> = { kind, start, end };
+  const body: Record<string, unknown> = { kind, start, end };
   if (opts?.source) body.source = opts.source;
   if (opts?.api_key) body.api_key = opts.api_key; // session-only; omitted when blank
+  if (opts?.symbols && opts.symbols.length) body.symbols = opts.symbols; // J-37 gap-exact pull scope
   return sendJSON<StartJobResponse>("POST", "/api/data/jobs", body);
+}
+
+/** J-37 pull-missing — start a gap-exact fetch over EXACTLY the diagnosed `(symbols, [start,end])`
+ *  shortfall, dispatched through the SAME job-start path (no second fetch engine). The chunked fetch is
+ *  per-(symbol, date) idempotent, so it fills only the missing bars. The optional `opts` carry the chosen
+ *  import `source` + a SESSION-ONLY `api_key` (sent only when non-blank — never stored beyond the request). */
+export async function pullMissingData(
+  symbols: string[],
+  start: string,
+  end: string,
+  opts?: { source?: string; api_key?: string },
+): Promise<StartJobResponse> {
+  return startDataJob("fetch", start, end, { ...opts, symbols });
+}
+
+/** J-38 Retry — re-dispatch ONLY the outstanding/failed work of a partial/failed run through the SAME
+ *  chunked engine (per-(symbol, date) idempotent — no duplicate bar). The optional `opts.api_key` is the
+ *  SESSION-ONLY key re-supplied for a needs-key source (sent only when non-blank). Returns the NEW job's
+ *  id; throws with the backend's honest `detail` (404 unknown run, 409 not retryable, 400 needs-key). */
+export async function retryDataJob(
+  runId: number,
+  opts?: { api_key?: string },
+): Promise<{ run_id: number; job_id: string; source: string; status: string }> {
+  const body: Record<string, string> = {};
+  if (opts?.api_key) body.api_key = opts.api_key; // session-only; omitted when blank
+  return sendJSON<{ run_id: number; job_id: string; source: string; status: string }>(
+    "POST",
+    `/api/data/jobs/${encodeURIComponent(String(runId))}/retry`,
+    body,
+  );
+}
+
+/** J-38 Remove/Dismiss — drop ONLY the actionable job-control record so it leaves the Unfinished-imports
+ *  list: a resumable `checkpoint` is DELETED; a partial/failed `run` is SOFT-DISMISSED (it stays in the
+ *  append-only Run-history audit). No immutable snapshot/forward-return/audit row is deleted or mutated.
+ *  Throws with the backend's honest `detail` on a non-2xx (404 unknown id). */
+export async function dismissUnfinishedImport(
+  recordType: "checkpoint" | "run",
+  recordId: string | number,
+): Promise<{ record_type: string; id: string | number; dismissed: boolean }> {
+  const qs = `?record_type=${encodeURIComponent(recordType)}`;
+  return sendJSON<{ record_type: string; id: string | number; dismissed: boolean }>(
+    "POST",
+    `/api/data/jobs/${encodeURIComponent(String(recordId))}/dismiss${qs}`,
+    {},
+  );
 }
 
 /** GET /api/data/jobs/{job_id} — poll a job's live status/progress, ending in its final summary.

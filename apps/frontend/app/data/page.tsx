@@ -21,21 +21,25 @@ import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
+  dismissUnfinishedImport,
   executeDataRemoval,
   fetchDataCoverage,
   fetchDataJob,
   previewDataRemoval,
+  pullMissingData,
   resumeDataJob,
+  retryDataJob,
   startDataJob,
   type DataJob,
   type DataJobKind,
   type DataOverviewResponse,
   type DataRun,
+  type MissingDataDiagnostic,
   type PerSymbolCoverage,
   type ProviderSource,
   type RemovePreview,
   type RemoveScope,
-  type ResumableImport,
+  type UnfinishedImport,
 } from "@/lib/api";
 
 type State =
@@ -179,6 +183,29 @@ export default function DataManagerPage() {
       });
   }, []);
 
+  // J-37 pull-missing: start a gap-exact fetch over EXACTLY the diagnosed (symbols, [start,end]) shortfall
+  // and surface it in the SAME live job card (reuses the poll/refresh path). The chosen import source (and,
+  // for a needs-key source, the session-only pasted key) ride along; the key never outlives the request.
+  const handlePull = useCallback(
+    async (symbols: string[], pullStart: string, pullEnd: string) => {
+      const opts = {
+        source: source || undefined,
+        api_key: keyFieldVisible ? apiKey || undefined : undefined,
+      };
+      const resp = await pullMissingData(symbols, pullStart, pullEnd, opts);
+      const snap = await fetchDataJob(resp.job_id);
+      setJob(snap);
+    },
+    [source, apiKey, keyFieldVisible],
+  );
+
+  // J-38 retry/dismiss: after a Retry (new job) or a Remove/Dismiss, reload coverage + the unfinished
+  // list. A Retry also surfaces its new job in the live card via onResumed (status running → polled).
+  const onUnfinishedChanged = useCallback(() => {
+    refresh();
+    loadOverview();
+  }, [refresh, loadOverview]);
+
   async function handleStart(event: React.FormEvent) {
     event.preventDefault();
     if (!start || !end || starting || jobRunning) return;
@@ -231,6 +258,11 @@ export default function DataManagerPage() {
       {state.kind === "ok" ? (
         <>
           <CoveragePanel data={state.data} />
+          <MissingDataDiagnosticPanel
+            diagnostic={state.data.coverage.diagnostic}
+            onPull={handlePull}
+            pullDisabled={Boolean(jobRunning)}
+          />
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <JobForm
               start={start}
@@ -256,10 +288,13 @@ export default function DataManagerPage() {
             />
             <JobProgressPanel job={job} sources={sources} onResumed={onResumed} />
           </div>
-          <ResumableImportsPanel
-            imports={state.data.resumable_imports}
+          <UnfinishedImportsPanel
+            imports={state.data.unfinished_imports}
             sources={sources}
             onResumed={onResumed}
+            onChanged={onUnfinishedChanged}
+            selectedSource={source}
+            apiKey={keyFieldVisible ? apiKey : ""}
           />
           <RemoveDataPanel
             onRemoved={() => {
@@ -376,6 +411,260 @@ function CoveragePanel({ data }: { data: DataOverviewResponse }) {
       </p>
       <PerSymbolCoverageTable rows={c.per_symbol} symbolCount={c.symbol_count} universeCount={c.universe_count} />
     </Card>
+  );
+}
+
+/** J-37 Missing-data diagnostic panel (additive, alongside the J-36 Coverage panel): the three honest
+ *  categories of universe members insufficient for analysis — no-history, thin, and intra-series gap —
+ *  each row stating the symbol + category + EXACT shortfall, read verbatim from the GET /api/data coverage
+ *  `diagnostic` field (the page re-formats backend values; it computes no shortfall). A per-row "Pull the
+ *  missing data" button (on pullable rows) and a "Pull all missing" button start a gap-exact fetch over
+ *  EXACTLY the diagnosed (symbols, [start,end]) shortfall via the EXISTING job-start path; on completion
+ *  the diagnostic re-reads (the row clears/shrinks) and the J-36 coverage table reflects the new bars. A
+ *  fine member appears in no category — an empty diagnostic renders a clean empty-state (no spurious pull). */
+function MissingDataDiagnosticPanel({
+  diagnostic,
+  onPull,
+  pullDisabled,
+}: {
+  diagnostic: MissingDataDiagnostic;
+  onPull: (symbols: string[], start: string, end: string) => Promise<void>;
+  pullDisabled: boolean;
+}) {
+  const { no_history, thin, intra_series_gaps, threshold, affected_count } = diagnostic;
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  // "Pull all missing" — the union of every PULLABLE shortfall: each no-history member over its full
+  // calendar span, plus each intra-series-gap member over its gap span. Per shortfall (symbol + its own
+  // [start,end]) so each pull is gap-exact; we dispatch them sequentially (each idempotent).
+  const pullableShortfalls = useMemo(() => {
+    const out: { key: string; symbols: string[]; start: string; end: string; label: string }[] = [];
+    for (const r of no_history) {
+      if (r.pullable && r.pull_start && r.pull_end) {
+        out.push({ key: `nh:${r.symbol}`, symbols: [r.symbol], start: r.pull_start, end: r.pull_end, label: r.symbol });
+      }
+    }
+    for (const r of intra_series_gaps) {
+      if (r.pullable) {
+        out.push({ key: `gap:${r.symbol}`, symbols: [r.symbol], start: r.pull_start, end: r.pull_end, label: r.symbol });
+      }
+    }
+    return out;
+  }, [no_history, intra_series_gaps]);
+
+  async function runPull(key: string, symbols: string[], start: string, end: string) {
+    if (busyKey) return;
+    setBusyKey(key);
+    setError(null);
+    try {
+      await onPull(symbols, start, end);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start the pull.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  async function pullAll() {
+    if (busyKey || pullableShortfalls.length === 0) return;
+    setBusyKey("all");
+    setError(null);
+    try {
+      for (const s of pullableShortfalls) {
+        await onPull(s.symbols, s.start, s.end);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start the pull.");
+    } finally {
+      setBusyKey(null);
+    }
+  }
+
+  return (
+    <Card className="p-0" data-testid="missing-data-diagnostic">
+      <PanelTitle hint="Universe members that are insufficient for analysis, derived read-only from stored bars + the config history threshold + the benchmark trading calendar. It recomputes no score/return/bucket and fabricates nothing — a member with no/thin history or an internal gap is shown honestly. 'Pull the missing data' fetches EXACTLY the gap through the same chunked/resumable import.">
+        Missing-data diagnostic
+      </PanelTitle>
+
+      {affected_count === 0 ? (
+        <div className="p-4">
+          <EmptyState
+            title="No missing data"
+            description={`Every universe member has at least ${threshold} bars (the config history threshold) and no internal gaps — nothing is insufficient for analysis.`}
+          />
+        </div>
+      ) : (
+        <>
+          <p className="border-b border-border px-4 py-2 text-xs text-text-muted">
+            A member needs at least{" "}
+            <span className="num text-text">{threshold}</span> bars (config{" "}
+            <span className="font-mono text-text-faint">indicators.min_history_bars</span>) to be analyzable.
+            These members are <span className="text-warn">insufficient</span> — shown honestly as missing /
+            thin / gapped (never fabricated). Pull fetches exactly the gap.
+          </p>
+          {pullableShortfalls.length > 0 ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+              <span className="text-xs text-text-muted">
+                {pullableShortfalls.length} pullable shortfall{pullableShortfalls.length === 1 ? "" : "s"}{" "}
+                (no-history + intra-series gaps)
+              </span>
+              <button
+                type="button"
+                onClick={pullAll}
+                disabled={Boolean(busyKey) || pullDisabled}
+                data-testid="pull-all-button"
+                className={cn(
+                  "inline-flex h-8 items-center gap-1.5 rounded-md bg-accent px-3 text-xs font-semibold text-bg",
+                  "transition hover:brightness-110 active:brightness-95",
+                  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
+                )}
+              >
+                {busyKey === "all" ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <Play className="h-3.5 w-3.5" aria-hidden />
+                )}
+                Pull all missing
+              </button>
+            </div>
+          ) : null}
+
+          <div className="divide-y divide-border">
+            <DiagnosticCategory
+              title="No history"
+              tone="text-neg"
+              hint="A universe member with ZERO stored bars."
+              rows={no_history.map((r) => ({
+                key: `nh:${r.symbol}`,
+                symbol: r.symbol,
+                shortfall: `${r.bars_have} / ${r.bars_needed} bars`,
+                pullable: r.pullable,
+                pullStart: r.pull_start,
+                pullEnd: r.pull_end,
+              }))}
+              busyKey={busyKey}
+              pullDisabled={pullDisabled}
+              onPull={runPull}
+            />
+            <DiagnosticCategory
+              title="Thin history"
+              tone="text-warn"
+              hint="0 < bars < the config threshold — too little history to analyze."
+              rows={thin.map((r) => ({
+                key: `thin:${r.symbol}`,
+                symbol: r.symbol,
+                shortfall: `${r.bars_have} / ${r.bars_needed} bars`,
+                pullable: r.pullable,
+                pullStart: null,
+                pullEnd: null,
+              }))}
+              busyKey={busyKey}
+              pullDisabled={pullDisabled}
+              onPull={runPull}
+            />
+            <DiagnosticCategory
+              title="Intra-series gaps"
+              tone="text-warn"
+              hint="Trading days (benchmark calendar) MISSING inside the member's own first→last range."
+              rows={intra_series_gaps.map((r) => ({
+                key: `gap:${r.symbol}`,
+                symbol: r.symbol,
+                shortfall: `${r.missing_day_count} missing (${r.first_gap} → ${r.last_gap})`,
+                pullable: r.pullable,
+                pullStart: r.pull_start,
+                pullEnd: r.pull_end,
+              }))}
+              busyKey={busyKey}
+              pullDisabled={pullDisabled}
+              onPull={runPull}
+            />
+          </div>
+          {error ? (
+            <p role="alert" className="border-t border-border px-4 py-2 text-xs text-neg">
+              {error}
+            </p>
+          ) : null}
+        </>
+      )}
+    </Card>
+  );
+}
+
+type DiagnosticRow = {
+  key: string;
+  symbol: string;
+  shortfall: string;
+  pullable: boolean;
+  pullStart: string | null;
+  pullEnd: string | null;
+};
+
+/** One diagnostic category section (no-history / thin / intra-series gap). Each row states the symbol +
+ *  the EXACT shortfall and, when pullable, a "Pull the missing data" button over exactly that gap. An
+ *  empty category is hidden (a fine member appears in no category). */
+function DiagnosticCategory({
+  title,
+  tone,
+  hint,
+  rows,
+  busyKey,
+  pullDisabled,
+  onPull,
+}: {
+  title: string;
+  tone: string;
+  hint: string;
+  rows: DiagnosticRow[];
+  busyKey: string | null;
+  pullDisabled: boolean;
+  onPull: (key: string, symbols: string[], start: string, end: string) => void;
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="p-4" data-testid={`diagnostic-${title.toLowerCase().replace(/\s+/g, "-")}`}>
+      <div className="mb-2 flex items-center gap-2">
+        <span className={cn("text-sm font-semibold", tone)}>{title}</span>
+        <Badge variant="default" className="num">
+          {rows.length}
+        </Badge>
+        <span className="text-xs text-text-faint">{hint}</span>
+      </div>
+      <ul className="divide-y divide-border rounded-md border border-border">
+        {rows.map((r) => (
+          <li key={r.key} className="flex flex-wrap items-center justify-between gap-3 px-3 py-2">
+            <div className="flex flex-wrap items-baseline gap-3">
+              <span className="num text-sm font-medium text-text">{r.symbol}</span>
+              <span className="num text-xs text-text-muted">{r.shortfall}</span>
+            </div>
+            {r.pullable && r.pullStart && r.pullEnd ? (
+              <button
+                type="button"
+                onClick={() => onPull(r.key, [r.symbol], r.pullStart!, r.pullEnd!)}
+                disabled={Boolean(busyKey) || pullDisabled}
+                data-testid="pull-row-button"
+                className={cn(
+                  "inline-flex h-7 items-center gap-1.5 rounded-md border border-accent px-2.5 text-xs font-medium text-accent",
+                  "transition hover:bg-accent hover:text-bg active:brightness-95",
+                  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                  "disabled:cursor-not-allowed disabled:opacity-50",
+                )}
+              >
+                {busyKey === r.key ? (
+                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                ) : (
+                  <Play className="h-3 w-3" aria-hidden />
+                )}
+                Pull the missing data
+              </button>
+            ) : (
+              <span className="text-xs text-text-faint">transparency only — no actionable gap</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -1039,39 +1328,65 @@ function ResumeControl({
   );
 }
 
-/** J-34 post-restart resumable-imports surface: the paused imports from GET /api/data (durable
- *  checkpoints surviving a backend restart, even with no live in-memory job). Each row shows its source,
- *  range, chunk x/N, and symbols done/remaining, with a Resume button. Hidden when there are none. */
-function ResumableImportsPanel({
+/** J-38 unified Unfinished-imports surface (generalizes the old Resumable-imports panel): EVERY import
+ *  that did not finish cleanly from GET /api/data — paused/resumable durable checkpoints (Resume / Remove)
+ *  AND partial/failed operational runs (Retry / Dismiss) — each with a server-built plain-language `state`
+ *  rendered verbatim, done/remaining/failed counts, and chunk progress where applicable. A checkpoint row
+ *  offers Resume (continues from the next chunk) + Remove (deletes the resumable checkpoint). A run row
+ *  offers Retry (re-runs only outstanding/failed work, idempotent) + Dismiss (soft-dismiss — the run STAYS
+ *  in Run history below). Remove/Dismiss touches NO immutable snapshot/forward-return/audit row. Hidden
+ *  when there are none. */
+function UnfinishedImportsPanel({
   imports,
   sources,
   onResumed,
+  onChanged,
+  selectedSource,
+  apiKey,
 }: {
-  imports: ResumableImport[];
+  imports: UnfinishedImport[];
   sources: ProviderSource[];
   onResumed: (importId: string) => void;
+  onChanged: () => void;
+  selectedSource: string;
+  apiKey: string;
 }) {
-  if (imports.length === 0) return null; // empty list hidden (no clutter when nothing is paused)
+  if (imports.length === 0) return null; // empty list hidden (no clutter when nothing is unfinished)
   return (
-    <Card className="p-0" data-testid="resumable-imports">
-      <PanelTitle hint="Rate-limited imports paused mid-run — progress is saved to the database and survives a backend restart. Resume continues from the next un-fetched chunk; nothing is re-fetched or duplicated.">
-        Resumable imports
+    <Card className="p-0" data-testid="unfinished-imports">
+      <PanelTitle hint="Every import that did not finish cleanly, in one place — paused (rate-limited), partial, or failed. Resume continues a paused import from the next chunk; Retry re-runs only the outstanding/failed work (idempotent — no duplicate bar); Remove/Dismiss drops only the job-control record (the run stays in Run history below).">
+        Unfinished imports
       </PanelTitle>
       <ul className="divide-y divide-border">
         {imports.map((imp) => {
           const impSource = sources.find((s) => s.id === imp.source);
+          const key = `${imp.record_type}:${imp.id}`;
           return (
-            <li key={imp.import_id} className="flex flex-wrap items-center justify-between gap-3 p-4">
+            <li
+              key={key}
+              data-testid={`unfinished-${imp.record_type}`}
+              className="flex flex-wrap items-start justify-between gap-3 p-4"
+            >
               <div className="space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="warn" className="num gap-1">
-                    chunk {imp.chunk_index}/{imp.chunk_total}
+                  <Badge variant={statusVariant(imp.status)} className="capitalize">
+                    {imp.status}
                   </Badge>
+                  {imp.chunk_total ? (
+                    <Badge variant="warn" className="num gap-1">
+                      chunk {imp.chunk_index}/{imp.chunk_total}
+                    </Badge>
+                  ) : null}
                   <span className="text-sm font-medium text-text">{impSource?.label ?? imp.source}</span>
-                  <span className="num text-xs text-text-faint">
-                    {imp.start} → {imp.end}
-                  </span>
+                  {imp.start && imp.end ? (
+                    <span className="num text-xs text-text-faint">
+                      {imp.start} → {imp.end}
+                    </span>
+                  ) : null}
                 </div>
+                <p className="text-xs text-text-muted" data-testid="unfinished-state">
+                  {imp.state}
+                </p>
                 <p className="num text-xs text-text-muted">
                   <span className="text-pos">{imp.symbols_ok} done</span>
                   <span className="text-text-faint"> · </span>
@@ -1082,15 +1397,191 @@ function ResumableImportsPanel({
                       <span className="text-neg">{imp.symbols_failed} failed</span>
                     </>
                   ) : null}
-                  <span className="text-text-faint"> · {imp.bars_fetched} bars so far</span>
+                  {imp.bars_fetched != null ? (
+                    <span className="text-text-faint"> · {imp.bars_fetched} bars so far</span>
+                  ) : null}
                 </p>
               </div>
-              <ResumeControl importId={imp.import_id} source={impSource} onResumed={onResumed} />
+              <div className="flex flex-col items-end gap-2">
+                {imp.record_type === "checkpoint" && imp.import_id ? (
+                  <ResumeControl importId={imp.import_id} source={impSource} onResumed={onResumed} />
+                ) : null}
+                {imp.record_type === "run" ? (
+                  <RetryControl
+                    runId={Number(imp.id)}
+                    source={impSource}
+                    selectedSource={selectedSource}
+                    apiKey={apiKey}
+                    onRetried={onResumed}
+                    onChanged={onChanged}
+                  />
+                ) : null}
+                <DismissControl
+                  recordType={imp.record_type}
+                  recordId={imp.id}
+                  onDismissed={onChanged}
+                />
+              </div>
             </li>
           );
         })}
       </ul>
     </Card>
+  );
+}
+
+/** J-38 Retry control on a partial/failed run row: re-dispatches ONLY the outstanding/failed work through
+ *  the SAME chunked engine (idempotent). For a needs-key source it re-prompts for the SESSION-ONLY key
+ *  (request-only — never stored/echoed; the page's current source key is offered as the default). On
+ *  success the new job surfaces in the live job card (via onRetried) and the list reloads (onChanged). */
+function RetryControl({
+  runId,
+  source,
+  selectedSource,
+  apiKey,
+  onRetried,
+  onChanged,
+}: {
+  runId: number;
+  source: ProviderSource | undefined;
+  selectedSource: string;
+  apiKey: string;
+  onRetried: (jobId: string) => void;
+  onChanged: () => void;
+}) {
+  const needsKey = Boolean(source?.needs_key) && source?.available === false;
+  // re-prompt for the key only when this run's source needs one and is not the page's already-keyed source
+  const [localKey, setLocalKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleRetry() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      // prefer the row's own re-prompted key, else the page's current session key (when same source)
+      const effectiveKey = localKey || (source && source.id === selectedSource ? apiKey : "") || undefined;
+      const resp = await retryDataJob(runId, needsKey ? { api_key: effectiveKey } : undefined);
+      setLocalKey(""); // drop the session-only key the instant the retry is submitted
+      onRetried(resp.job_id);
+      onChanged();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not retry the import.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {needsKey ? (
+        <label className="flex flex-col gap-1 text-xs text-text-muted">
+          <span className="flex items-center gap-1.5">
+            <KeyRound className="h-3.5 w-3.5 text-warn" aria-hidden />
+            Session API key for {source?.label}
+          </span>
+          <input
+            type="password"
+            value={localKey}
+            onChange={(e) => setLocalKey(e.target.value)}
+            aria-label={`Session API key to retry run ${runId}`}
+            autoComplete="off"
+            placeholder={source?.env_var ? `or set $${source.env_var}` : "paste a key"}
+            className={cn(FIELD, "w-72")}
+          />
+        </label>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={handleRetry}
+          disabled={busy}
+          data-testid="retry-button"
+          className={cn(
+            "inline-flex h-8 items-center gap-1.5 rounded-md bg-warn px-3 text-xs font-semibold text-bg",
+            "transition hover:brightness-110 active:brightness-95",
+            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-warn focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+            "disabled:cursor-not-allowed disabled:opacity-50",
+          )}
+        >
+          {busy ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+          ) : (
+            <RotateCcw className="h-3.5 w-3.5" aria-hidden />
+          )}
+          Retry remaining
+        </button>
+        {error ? (
+          <span role="alert" className="text-xs text-neg">
+            {error}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** J-38 Remove/Dismiss control on every unfinished row: drops ONLY the job-control record (a resumable
+ *  checkpoint is deleted; a partial/failed run is soft-dismissed). Touches NO immutable snapshot/
+ *  forward-return/audit row — a dismissed run stays in Run history below. */
+function DismissControl({
+  recordType,
+  recordId,
+  onDismissed,
+}: {
+  recordType: "checkpoint" | "run";
+  recordId: string | number;
+  onDismissed: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleDismiss() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await dismissUnfinishedImport(recordType, recordId);
+      onDismissed();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not remove the record.");
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      <button
+        type="button"
+        onClick={handleDismiss}
+        disabled={busy}
+        data-testid="dismiss-button"
+        title={
+          recordType === "run"
+            ? "Dismiss this run from the actionable list (it stays in Run history)"
+            : "Remove this resumable checkpoint"
+        }
+        className={cn(
+          "inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium text-text-muted",
+          "transition hover:border-border-strong hover:text-text active:brightness-95",
+          "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+          "disabled:cursor-not-allowed disabled:opacity-50",
+        )}
+      >
+        {busy ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+        ) : (
+          <X className="h-3.5 w-3.5" aria-hidden />
+        )}
+        {recordType === "run" ? "Dismiss" : "Remove"}
+      </button>
+      {error ? (
+        <span role="alert" className="text-xs text-neg">
+          {error}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
