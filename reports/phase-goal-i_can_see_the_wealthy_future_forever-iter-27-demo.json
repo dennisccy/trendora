@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever-iter-27",
+  "base_url": "http://localhost:3835",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Daily dashboard overview",
+      "narration": "The home screen shows today's stock leaderboard at a glance — every ranked name with its composite score, regime signal, and key setup flags already computed.",
+      "point_out": "The ranked stock table with scores and the current market regime indicator at the top of the page.",
+      "journey": "J-01",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Actionable" }
+    },
+    {
+      "n": 2,
+      "title": "Stock leaderboard with filters",
+      "narration": "The Stocks page lets you slice the leaderboard by sector, pattern, or score tier so the highest-conviction names rise to the top instantly.",
+      "point_out": "The filter controls along the top of the leaderboard and the ranked rows updating beneath them.",
+      "journey": "J-02",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "Score" }
+    },
+    {
+      "n": 3,
+      "title": "Stock detail with explainable scores",
+      "narration": "Clicking into any stock opens its detail page — score breakdown, detected patterns, price and moving-average chart, and a forward-test scorecard all on one screen.",
+      "point_out": "The score component bars that explain exactly why this stock ranks where it does, and the price chart extending to the current as-of date.",
+      "journey": "J-05",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/NVDA" },
+      "expect": { "text": "NVDA" }
+    },
+    {
+      "n": 4,
+      "title": "Theme leaderboard",
+      "narration": "The Themes page ranks every tracked theme by the same composite scoring engine, so you can see which narratives have the most momentum behind them right now.",
+      "point_out": "Theme rows ranked by score, each summarising the constituent stocks driving the theme's position.",
+      "journey": "J-03",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/themes" },
+      "expect": { "text": "Theme" }
+    },
+    {
+      "n": 5,
+      "title": "Backtest forward-test evidence",
+      "narration": "The Backtest page shows how a scanner run from any past date actually performed: a forward-test scorecard with realized returns, attribution by score tier, and a leadership cohort breakdown.",
+      "point_out": "The forward-test scorecard table with realized return percentages and the attribution section below it.",
+      "journey": "J-09",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/backtest" },
+      "expect": { "text": "Forward" }
+    },
+    {
+      "n": 6,
+      "title": "Factor Lab — decile analysis",
+      "narration": "The Research page is the analytical engine: pick any factor, and the lab instantly shows decile-sorted rank-IC, risk-adjusted returns, and regime-conditioned effectiveness across all historical snapshots.",
+      "point_out": "The decile chart and rank-IC table that show how strongly this factor predicts forward returns.",
+      "journey": "J-25",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research" },
+      "expect": { "text": "Factor" }
+    },
+    {
+      "n": 7,
+      "title": "Data Manager — coverage and unfinished imports",
+      "narration": "The Data Manager gives you full visibility into what data is loaded: a per-symbol coverage table, any unfinished imports that can be retried or dismissed, and controls to fetch new history or remove user-added bars.",
+      "point_out": "The per-symbol coverage table listing bar counts and date ranges, and the Unfinished Imports panel with retry and dismiss actions.",
+      "journey": "J-36",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Data Manager" }
+    },
+    {
+      "n": 8,
+      "title": "Methodology and glossary",
+      "narration": "Every score, pattern, and term in the product has a plain-language explanation on the Methodology page — no black boxes, just rules you can read and reason about.",
+      "point_out": "The glossary entries and scoring-rule descriptions that explain exactly how each setup and rank is computed.",
+      "journey": "J-12",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/methodology" },
+      "expect": { "text": "Methodology" }
+    }
+  ]
+}

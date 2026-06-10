@@ -117,6 +117,12 @@ _SYNTH_CFG = {
     },
     "stock_sectors": {"AAA": "Technology", "BBB": "Financials"},
     "scanner": {"bootstrap_dates": ["2022-10-07"]},  # iter-5: scanner is a required config section
+    "startup": {  # iter-28: startup is a required config section (fast-ready boot + warm-up tunables)
+        "readiness_budget_seconds": 30.0,
+        "warmup_batch_size": 1,
+        "health_poll_interval_seconds": 2.0,
+        "health_poll_idle_interval_seconds": 30.0,
+    },
     "walk_forward": {  # iter-6: walk_forward is a required config section
         "history_years": 2, "asof_cadence": "quarterly", "horizons": [1, 5, 10, 20, 60],
         "min_sample": 30, "default_horizon": 20,

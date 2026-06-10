@@ -8,6 +8,8 @@ import { useAsOf } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
 import { fmtPct, returnClass, SampleSize } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
+import { useReadiness } from "@/components/readiness-provider";
+import { shouldShowWarming, WarmingState } from "@/components/warming-state";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
@@ -50,6 +52,10 @@ export default function ResearchPage() {
   const [state, setState] = useState<State>({ kind: "loading" });
   // The single global as-of date (the only date control on the whole app). At the latest date it is null.
   const { asOf } = useAsOf();
+  // The SINGLE shared readiness value (J-40) — while the background historical warm-up is still loading
+  // (`initializing`), the labs show the "warming up (n/m)" state instead of an empty/partial result. It
+  // reads the same value the badge reads; it adds NO date state (J-18 preserved).
+  const { state: readiness } = useReadiness();
   // ONE resolved cutoff shared by all three labs (J-32). As-of mode reads the global `asOf`; All-history
   // mode ignores it (null). At the latest date `asOf` is already null → As-of@latest == all-history
   // (matches J-09). The fetch effects depend on THIS resolved cutoff, NOT raw `asOf`: so toggling
@@ -68,7 +74,8 @@ export default function ResearchPage() {
         if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => controller.abort();
-  }, [factor, horizon, asofCutoff]);
+    // `readiness` is a dep so the labs AUTO-POPULATE the moment the background warm-up finishes.
+  }, [factor, horizon, asofCutoff, readiness]);
 
   const data = state.kind === "ok" ? state.data : null;
   const selectedFactor = factor ?? data?.factor.key ?? "";
@@ -110,30 +117,39 @@ export default function ResearchPage() {
         }
       />
 
-      {state.kind === "loading" ? <LabSkeleton /> : null}
+      {/* While the background historical warm-up is still loading, show the honest "warming up (n/m)"
+          state — never an error, never an empty/partial lab result presented as complete (J-40). The
+          labs auto-populate when warm-up finishes (the readiness flip re-runs the fetches). */}
+      {shouldShowWarming(readiness) ? (
+        <WarmingState what="The Factor Lab, Combination Lab, and Setup & Pattern event study" />
+      ) : (
+        <>
+          {state.kind === "loading" ? <LabSkeleton /> : null}
 
-      {state.kind === "error" ? (
-        <Card className="flex items-center gap-3 border-neg bg-surface p-5 text-sm text-neg">
-          <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
-          <div>
-            <p className="font-medium">Backend unavailable</p>
-            <p className="text-text-muted">
-              The Factor-Lab evidence could not load from the API. No figures are shown rather than
-              fabricated values. Confirm the backend is running and retry.
-            </p>
-          </div>
-        </Card>
-      ) : null}
+          {state.kind === "error" ? (
+            <Card className="flex items-center gap-3 border-neg bg-surface p-5 text-sm text-neg">
+              <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
+              <div>
+                <p className="font-medium">Backend unavailable</p>
+                <p className="text-text-muted">
+                  The Factor-Lab evidence could not load from the API. No figures are shown rather than
+                  fabricated values. Confirm the backend is running and retry.
+                </p>
+              </div>
+            </Card>
+          ) : null}
 
-      {data ? <FactorLab data={data} /> : null}
+          {data ? <FactorLab data={data} /> : null}
 
-      {/* J-26: the multi-factor combination cohort section — its own read-only data source, reusing the
-          page's shared `horizon` + the shared `asofCutoff` (no second date/horizon state). Always rendered. */}
-      <CombinationLab horizon={horizon} asofCutoff={asofCutoff} />
+          {/* J-26: the multi-factor combination cohort section — its own read-only data source, reusing the
+              page's shared `horizon` + the shared `asofCutoff` (no second date/horizon state). Always rendered. */}
+          <CombinationLab horizon={horizon} asofCutoff={asofCutoff} />
 
-      {/* J-29: the Setup & Pattern event study — its own read-only data source, reusing the page's shared
-          `horizon` + the shared `asofCutoff` (no second date/horizon state) plus a subject selector. */}
-      <EventStudyLab horizon={horizon} asofCutoff={asofCutoff} />
+          {/* J-29: the Setup & Pattern event study — its own read-only data source, reusing the page's shared
+              `horizon` + the shared `asofCutoff` (no second date/horizon state) plus a subject selector. */}
+          <EventStudyLab horizon={horizon} asofCutoff={asofCutoff} />
+        </>
+      )}
     </div>
   );
 }

@@ -41,6 +41,7 @@ from statistics import mean, median, stdev
 from typing import Optional, Union
 
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.config import Config, get_config
@@ -272,6 +273,24 @@ def _insert_run_forward_returns(
     return inserted
 
 
+def _commit_forward_returns_concurrency_safe(session: Session) -> None:
+    """Commit pending forward-return INSERTs, tolerating a concurrent-INSERT race (iter-28, J-41).
+
+    The forward-return INSERT path builds an in-process `existing` set then INSERTs only the missing
+    (run_id, symbol, horizon) keys. When two warm-ups (e.g. an in-flight background warm-up and a
+    concurrent boot) both pass that in-memory check for the SAME key, one commit wins and the other
+    fires the `(run_id, symbol, horizon)` UNIQUE constraint (`IntegrityError`). Because forward returns
+    are a DETERMINISTIC function of the frozen seed, the winning writer's row is byte-identical to ours,
+    so the safe resolution is to ROLL BACK our duplicate INSERTs (discarding only the redundant rows) —
+    never raising, never writing a duplicate, never overwriting an existing append-only row (anti-goal:
+    Snapshots are immutable; forward_returns is append-only + idempotent). The caller re-reads `existing`
+    on the next pass / next boot and INSERTs only the genuinely-missing remainder (idempotent)."""
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()  # a concurrent writer already inserted these keys — our duplicates are dropped
+
+
 def _backfill(session: Session, cfg: Config) -> dict:
     latest = latest_data_date(session)
     if latest is None:
@@ -305,7 +324,7 @@ def _backfill(session: Session, cfg: Config) -> dict:
         if run_inserted:
             runs_with_returns += 1
 
-    session.commit()
+    _commit_forward_returns_concurrency_safe(session)  # iter-28 (J-41): tolerate a concurrent INSERT race
     return {
         "asof_dates": [d.isoformat() for d in asof_dates],
         "runs_with_returns": runs_with_returns,
@@ -711,7 +730,7 @@ def backfill_run_forward_returns(
         for fr in session.exec(select(ForwardReturn).where(ForwardReturn.run_id == run.id)).all()
     }
     inserted = _insert_run_forward_returns(session, run, symbols, horizons, max_h, existing)
-    session.commit()
+    _commit_forward_returns_concurrency_safe(session)  # iter-28 (J-41): tolerate a concurrent INSERT race
     return {"run_id": run.id, "asof_date": run.asof_date.isoformat(), "rows_inserted": inserted}
 
 

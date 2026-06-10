@@ -1,376 +1,394 @@
 {
-  "journeys": {
-    "J-01": {
-      "id": "J-01",
-      "name": "Daily dashboard at a glance",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-01-dashboard.png (carried passing iter-26: working-tree diff is EXACTLY 8 app files [data_providers/__init__.py, seed_provider.py, data_manager.py, 4 test files, /data page.tsx] + the untracked QA fixture builder; git out-of-scope seam check EMPTY over scoring/scanner/regime/patterns/buckets/forward_testing/research/snapshot_serving + /stocks·/backtest·/research pages + asof-provider + sidebar; no DB regen; backend 610 tests pass. Cannot have regressed.)"
-    },
-    "J-02": {
-      "id": "J-02",
-      "name": "Stock Leaderboard with working filters",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-02-leaderboard.png (carried passing iter-26: /stocks path git-untouched; no DB regen.)"
-    },
-    "J-03": {
-      "id": "J-03",
-      "name": "Theme Leaderboard",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-03-themes.png (carried passing iter-26: /themes path git-untouched; no DB regen.)"
-    },
-    "J-04": {
-      "id": "J-04",
-      "name": "Sector / industry Leaderboard",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-04-sectors.png (carried passing iter-26: /sectors path git-untouched; no DB regen.)"
-    },
-    "J-05": {
-      "id": "J-05",
-      "name": "Stock Detail with explainable scores",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-05-J-06-nvda-detail-coherence.png (carried passing iter-26: scoring/serving paths git-untouched; no DB regen.)"
-    },
-    "J-06": {
-      "id": "J-06",
-      "name": "Score consistency across pages (coherence)",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-05-J-06-nvda-detail-coherence.png (carried passing iter-26: scoring.py/scanner.py/snapshot_serving.py git-untouched, no DB regen; iter-26 touches only /data Data-Manager paths + the env-gated seed source.)"
-    },
-    "J-07": {
-      "id": "J-07",
-      "name": "Risk-Off regime suppresses Actionable",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-07-riskoff-run.png (carried passing iter-26: regime.py/scoring.py git-untouched, no DB regen — Risk-off Actionable=0 gate preserved.)"
-    },
-    "J-08": {
-      "id": "J-08",
-      "name": "Immutable scanner-run history",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-25",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-25",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "RE-CONFIRMED iter-26 required-still-passing (source): iter-26 makes NO change to the J-39 removal/cascade or the J-38 dismiss boundary; the only frontend change is the ResumeControl error-handling branch (data/page.tsx +14, confirmed via git diff). Coherence COHERENCE-PASS independently confirms 'Dismiss mutates job-control only (no snapshot/forward-return deleted)'. QA pytest test_dismiss_run_is_soft_and_preserves_audit + the J-08 boundary tests are part of the 610-green suite. No DB regen."
-    },
-    "J-09": {
-      "id": "J-09",
-      "name": "Backtest forward-tested evidence (as-of-scoped, expanding window <= D)",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-09-J-10-backtest-latest.png (carried passing iter-26: forward_testing.py/backtest path git-untouched; no DB regen.)"
-    },
-    "J-10": {
-      "id": "J-10",
-      "name": "Control-group honesty (selection vs sector beta)",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-09-J-10-backtest-latest.png (carried passing iter-26: forward_testing.py/backtest path git-untouched; no DB regen.)"
-    },
-    "J-11": {
-      "id": "J-11",
-      "name": "Watchlist with persistence",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-11-watchlist-added.png (carried passing iter-26: watchlist path git-untouched; no DB regen.)"
-    },
-    "J-12": {
-      "id": "J-12",
-      "name": "Understand what each setup/pattern means (glossary + inline)",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-12-methodology.png (carried passing iter-26: /methodology + config catalog git-untouched; no DB regen.)"
-    },
-    "J-13": {
-      "id": "J-13",
-      "name": "Browse the dashboard as of a past date (global as-of switcher)",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-13-stocks-historical-asof.png (carried passing iter-26: as-of provider git-untouched; no DB regen.)"
-    },
-    "J-14": {
-      "id": "J-14",
-      "name": "Backtest a past date and read its forward-test scorecard",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-14-J-19-J-21-backtest-historical-60d.png (carried passing iter-26: forward_testing.py/backtest path git-untouched; no DB regen.)"
-    },
-    "J-15": {
-      "id": "J-15",
-      "name": "Fast page loads from persisted snapshots",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-23",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-23",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "RE-CONFIRMED iter-26 required-still-passing (structural/source): snapshot_serving.py git-untouched — read path unchanged, no per-request recompute introduced. The env-gated seed source serves committed bars through the EXISTING J-34 fetch path; the J-38 ResumeControl UX fix is presentational. Coherence COHERENCE-PASS confirms no new computation/serving path for any blueprint-registered value. Carries iter-20 UT-J-15 baseline."
-    },
-    "J-16": {
-      "id": "J-16",
-      "name": "VCP — detected, explained, filterable, forward-tested",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-16-vcp-filter.png + UT-J-16-tsm-vcp-detail.png (carried passing iter-26: patterns.py/scoring.py git-untouched; no DB regen.)"
-    },
-    "J-17": {
-      "id": "J-17",
-      "name": "Grow the dataset by date / date range (Data Manager)",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-26",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-26",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-26-evidence/UT-07-result.png (RE-CONFIRMED iter-26: browser UT-07 clicked a Retry on an existing unfinished import — a live 'both job · yahoo · 2021-01-27 -> 2021-02-02' running job appeared and the panel retained its rows, exercising the existing chunked fetch/backfill/both engine [the seed source routes through the SAME path, no fork — coherence COHERENCE-PASS]. NOTE the UT-07-result.png capture is a blank/dark frame (evidence-hygiene blemish); the PASS rests on the browser-qa network/DOM narrative + the 610-green test suite incl. existing job tests. The seed source adds only an env-gated provider entry on the EXISTING JOB_KINDS path.)"
-    },
-    "J-18": {
-      "id": "J-18",
-      "name": "One date control (no duplicate)",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-26",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-26",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-26-evidence/UT-09-selects.png + UT-09-result.png (RE-CONFIRMED iter-26 — THE flagged anti-goal watch risk, held: browser UT-09 ran document.querySelectorAll('select, input[type=date]') -> 6 total: exactly ONE 'View as-of date' <select> [the single global as-of switcher], 1 'Job kind' <select> [not a date control], and 4 <input type=date> that are pre-existing fetch/removal JOB/ACTION parameters. The J-38 ResumeControl error-feedback fix and the env-gated seed source add ZERO new <select>/<input type=date>/calendar widget. Source confirms data/page.tsx +14 is the error branch only — no new date useState. Coherence COHERENCE-PASS independently confirms /data holds no independent viewing-date state.)"
-    },
-    "J-19": {
-      "id": "J-19",
-      "name": "Diagnose weak forward-test returns via attribution",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-14-J-19-J-21-backtest-historical-60d.png (carried passing iter-26: forward_testing.py/backtest attribution path git-untouched; no DB regen.)"
-    },
-    "J-20": {
-      "id": "J-20",
-      "name": "Price & MA chart shows the full path through the latest date (with as-of marker)",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-20-nvda-chart-asof-marker.png (carried passing iter-26: prices.py/stock-detail chart path git-untouched; no DB regen.)"
-    },
-    "J-21": {
-      "id": "J-21",
-      "name": "Backtest — leadership cohorts below attribution, with horizon-linked realized returns",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-14-J-19-J-21-backtest-historical-60d.png (carried passing iter-26: backtest page/forward_testing.py git-untouched; no DB regen.)"
-    },
-    "J-22": {
-      "id": "J-22",
-      "name": "Transparent, rule-based, expanded universe (~500 names)",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-8",
-      "last_passing_iter": null,
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "BLOCKED (environmental) + NON-HALTING + NON-VETOING (re-scoped goal.md lines 989-1012). The J-35 Expand-universe UI auto-unblocks J-22, but LIVE market-cap expansion is still externally walled on this host, so universe.json is NOT produced and universe_count stays YAML 122 (UT-09-selects.png shows 162 per-symbol coverage rows; Universe 122). J-22 met with NO code change once an operator points the Data Manager at a reachable cap-capable source and runs Expand. NOT re-probed iter-26 (spec forbids autonomous retry). Candidate pool committed (apps/backend/data/seed/universe_pool.csv). Does NOT block GOAL_ACHIEVED."
-    },
-    "J-23": {
-      "id": "J-23",
-      "name": "Multi-timeframe bars — intraday seed + timeframe-aware pipeline",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_passing_iter": null,
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "UNBUILT + DATA-WALLED + NON-HALTING + NON-VETOING (re-scoped goal.md): no intraday support in prices.py; needs fresh Yahoo intraday fetches (same 429 wall as J-22). Out of scope iter-26. Recorded honestly blocked (NA); does not halt/STALL/veto. Not re-probed iter-26."
-    },
-    "J-24": {
-      "id": "J-24",
-      "name": "Timeframe selector on the stock chart (1D/1h/15m/5m)",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_passing_iter": null,
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "UNBUILT + DATA-WALLED + NON-HALTING + NON-VETOING (re-scoped goal.md): no timeframe control on the chart (depends on J-23 intraday data). Out of scope iter-26. Recorded honestly blocked (NA); does not halt/STALL/veto. Not re-probed iter-26."
-    },
-    "J-25": {
-      "id": "J-25",
-      "name": "Factor Lab — decile sort and rank-IC per factor (raw and risk-adjusted)",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-25-J-27-factor-lab.png (carried passing iter-26: research.py/research page git-untouched; no DB regen.)"
-    },
-    "J-26": {
-      "id": "J-26",
-      "name": "Factor Lab — multi-factor composite combination cohort",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-26-composite-cohort.png (carried passing iter-26: research.py composite engine git-untouched; no DB regen.)"
-    },
-    "J-27": {
-      "id": "J-27",
-      "name": "Factor Lab — regime-conditioned factor effectiveness",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-25-J-27-factor-lab.png (carried passing iter-26: research.py git-untouched; no DB regen.)"
-    },
-    "J-28": {
-      "id": "J-28",
-      "name": "More detected patterns beyond VCP (forward-tested)",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-28-flatbase-filter.png (carried passing iter-26: patterns.py/scoring.py git-untouched; no DB regen.)"
-    },
-    "J-29": {
-      "id": "J-29",
-      "name": "Setup & Pattern research lab — event study across all snapshots",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-29-event-study.png (carried passing iter-26: research.py event-study path git-untouched; no DB regen.)"
-    },
-    "J-30": {
-      "id": "J-30",
-      "name": "Volatility as a return driver — factor family, risk-adjusted and regime-conditioned",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-25-J-27-factor-lab.png (carried passing iter-26: research.py volatility-family path git-untouched; no DB regen.)"
-    },
-    "J-31": {
-      "id": "J-31",
-      "name": "Find a high-return driver end-to-end (synthesis)",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-29-event-study.png + UT-J-02-leaderboard.png (carried passing iter-26: research/stocks cross-link paths git-untouched; no DB regen.)"
-    },
-    "J-32": {
-      "id": "J-32",
-      "name": "Research point-in-time toggle (as-of vs all-history)",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-17",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-32-asof-mode.png (carried passing iter-26: research.py as-of FILTER path git-untouched; no DB regen.)"
-    },
-    "J-33": {
-      "id": "J-33",
-      "name": "Import real data from a selectable, key-aware provider source",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-26",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-26",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_evidence_path": "RE-CONFIRMED iter-26 required-still-passing — the key-leak scrub HELD on the NEW seed-source provider entry + any new pull/retry/resume error string (the flagged iter-21/22 risk): source-verified the iter-22 redacted-URL + resolved-key scrub is intact (data_manager.py unchanged on the scrub path); the env-gated `seed` source is no-key (carries no secret to leak — coherence COHERENCE-PASS notes the seed entry needs_key:false); QA confirms the REAL-httpx key-leak regression test (test_pull_key_leak_scrubbed_through_job_status_surface) + test_resumable_imports_in_overview_carries_no_key are part of the 610-green suite. The provider source picker + needs-key detection is extended (not forked) by one conditional env-gated catalog entry — coherence Part A confirms 'conditional extension of the single registered function, not a second module/endpoint'. No new exposure."
-    },
-    "J-34": {
-      "id": "J-34",
-      "name": "Chunked, rate-limit-resilient import that resumes from the last completed chunk",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-26",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-26",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-26-evidence/UT-07-result.png (RE-CONFIRMED iter-26 required-still-passing — the seed source + J-37 pull + J-38 Retry/Resume REUSE the chunked/checkpointed engine, no fork: coherence COHERENCE-PASS Part A confirms validate_job_request widens the accepted source set via _provider_entry_with_seed [same module, same ProviderCatalogEntry type] and start_data_job routes a seed expand through the EXISTING run_data_job / J-34 engine — no second computation path. Browser UT-07: Retry dispatched a running 'both job · yahoo · 2021-01-27 -> 2021-02-02' through the canonical engine. 610 tests green incl. seed-job-dispatches-through-existing-gate. NOTE: the SUCCESSFUL Resume-continues-from-checkpoint leg was NOT browser-captured this iter [the live host carried no checkpoint] — that gap is tracked on J-38, not here; J-34's chunked-engine + durable-checkpoint machinery is source/test-proven.)"
-    },
-    "J-35": {
-      "id": "J-35",
-      "name": "Expand the universe from the Data Manager (pool -> config screen -> members)",
-      "status": "partial",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-26",
-      "last_passing_iter": null,
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
-      "last_evidence_path": "Carried PARTIAL iter-26 — the iter-26 enabler (env-gated `seed` source + build_qa_fixture_db.py) was BUILT and source/test-proven (test_seed_source_expand_runs_offline_with_passers_and_omitted + test_seed_source_expand_writes_to_overlay_not_committed_seed PASS in the 610-green suite), BUT the defining injected/seed-source expand END-TO-END browser flow (run -> passers + omitted-with-reason -> grown universe-count, /methodology size matching) was AGAIN NOT captured: the dedicated browser-qa-agent ran against the LIVE host with TRENDORA_ENABLE_SEED_IMPORT_SOURCE unset and NO fixture DB booted, so the seed source never appeared in the source picker and no expand ran (the 11 ui-test results are all live-host /data smoke/retry/dismiss/date-selector checks; ZERO J-35 test). Per the iter-4/15/23/24/25 multi-step-capture lesson, surface-build + tests do not satisfy the multi-step acceptance. LIVE market-cap expansion stays data-walled (universe.json absent; universe_count 122) — NA/non-halting. NEXT (iter-27): boot the backend with the three env values build_qa_fixture_db.py prints (TRENDORA_ENABLE_SEED_IMPORT_SOURCE=1, TRENDORA_CONFIG=<tmp>/config.yaml, TRENDORA_SEED_IMPORT_DIR=<tmp>/seed_overlay), select the `seed` source, and capture the expand to completion."
-    },
-    "J-36": {
-      "id": "J-36",
-      "name": "Understand coverage — per-symbol table + universe-vs-symbols clarity",
-      "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-26",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-26",
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-22",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-26-evidence/UT-09-selects.png (RE-CONFIRMED iter-26 required-still-passing — the J-37 diagnostic REUSES, not forks, the coverage producer): browser UT-09-selects.png shows the Coverage panel with the per-symbol table (162 symbols listed with bar counts/first-last dates), Universe 122, and the honest Missing-data-diagnostic empty-state ('No missing data — Every universe member has at least 200 bars...'). Source + coherence COHERENCE-PASS confirm no change to compute_coverage (the single registered producer). consistency invariant holds (162 symbol rows; Universe 122). 610 tests green.)"
-    },
-    "J-37": {
-      "id": "J-37",
-      "name": "Diagnose insufficient-for-analysis data and pull exactly the missing history (one-click)",
-      "status": "partial",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-26",
-      "last_passing_iter": null,
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-22",
-      "last_evidence_path": "Carried PARTIAL iter-26 — the iter-26 enabler (env-gated `seed` source + build_qa_fixture_db.py seeding a no-history ANET / thin DELL / intra-series-gap MU member) was BUILT and source/test-proven (gap-exact + idempotent seed pull + 3-category diagnostic tests PASS in the 610-green suite), BUT the DEFINING three-category-diagnostic + gap-exact-pull-to-completion browser flow was AGAIN NOT captured: the dedicated browser-qa-agent ran against the LIVE host WITHOUT the fixture DB / seed source, where the Missing-data-diagnostic panel shows its honest empty-state ('No missing data' — UT-09-selects.png) because the live universe has NO insufficient member. So all three categories rendering with exact shortfalls + the 'Pull the missing data'/'Pull all missing' gap-exact flow were not demonstrated (UT-03..07/16/19 SKIPPED, exactly the iter-25 situation). Per the iter-4/15/23/24/25 multi-step-capture lesson, the panel-render + passing tests do not satisfy the multi-step acceptance. NEXT (iter-27): boot the QA harness against the fixture DB (env values from build_qa_fixture_db.py) so the three categories render with exact shortfalls, then capture a gap-exact pull over the `seed` source to completion (assert the job's symbols+[start,end] == diagnosed gap, NOT whole universe) -> row clears + J-36 coverage updates. Live pull over a walled provider stays NA/non-halting."
-    },
-    "J-38": {
-      "id": "J-38",
-      "name": "Unified Unfinished-imports — Resume / Retry / Remove with state explanation",
-      "status": "partial",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-26",
-      "last_passing_iter": null,
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-22",
-      "last_evidence_path": "Carried PARTIAL iter-26 — the iter-25 UT-11 Resume-without-key UX FIX was BUILT this iter (data/page.tsx ResumeControl: visible role=alert inline error + data-testid='resume-error'; onResumed/overview-reload fires on SUCCESS only so a failed resume never drops the row — source-confirmed, +14 lines, coherence COHERENCE-PASS) and is source/test-proven (test_resume_needs_key_source_without_key_is_400 PASS in the 610-green suite), BUT NEITHER (a) the defining SUCCESSFUL Resume-continues-from-next_chunk_index leg NOR (b) the UT-11 fix itself was browser-captured: the dedicated browser-qa-agent ran against the LIVE host where ALL 12 unfinished imports are record_type:'run' (partial/failed) with NO record_type:'checkpoint', so the ResumeControl + Resume button NEVER rendered -> UT-02/03/04/05/06/10 all SKIPPED (the exact iter-25 precondition gap, NOT solved by the build because no checkpoint was seeded). Retry (UT-07) and Dismiss (UT-08) PASS per the browser narrative but their result PNGs are BLANK/dark frames (sha d3bcc7c4, 14622 bytes, byte-identical across UT-04/07/08 — evidence-hygiene blemish). Per the iter-4/15/23/24/25 multi-step-capture lesson + the rule that exercising only the deliberate-error path leaves the SUCCESS leg unverified, J-38 stays PARTIAL. WHAT IS PROVEN: source + coherence COHERENCE-PASS (ResumeControl change is the error branch only; resume/retry/dismiss route through the canonical J-34 engine) + 610 tests green. NEXT (iter-27): boot the QA harness with a SEEDED resumable `seed`-source checkpoint, capture a SUCCESSFUL Resume continuing from next_chunk_index (distinct before/after sha) AND the UT-11 fix (needs-key Resume-without-key -> 400 -> visible inline error + row stays)."
-    },
-    "J-39": {
-      "id": "J-39",
-      "name": "Remove imported data — user-added-only, seed-safe, cascade-consistent, confirm-preview",
-      "status": "partial",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-26",
-      "last_passing_iter": null,
-      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-22",
-      "last_evidence_path": "Carried PARTIAL iter-26 — NO code change to J-39 this iter (the removal/cascade/preview paths are out of scope, integration-proven, 610 green), and the DEFINING Remove-data confirm-preview browser flow was AGAIN not captured: the dedicated browser-qa-agent recorded NO J-39 test at all (the 11 ui-test results are smoke/retry/dismiss/date-selector on the live host; the remove form's two date inputs appear only in the UT-09 selector count). The confirm-preview multi-step acceptance (removable bars + range + protected committed-seed breakdown + dependent cascade -> wholly-seed refusal) was therefore NOT demonstrated. WHAT IS PROVEN (unchanged): source — remove_data executes only whole-row delete() (zero update()/in-place overwrite); seed-protected, wholly-seed scope refused (test_remove_endpoint_seed_only_is_400 + test_remove_preview_seed_only_returns_refused PASS in the 610-green suite). NEXT (iter-27): capture the Remove-data confirm-preview + protected-seed refusal — use the non-destructive PREVIEW endpoint on the live host (MEMORY j39-live-host-has-user-added-nvda-bars; the destructive confirm + cascade is proven by the fixture, NEVER run on a real live symbol)."
-    }
+ "journeys": {
+  "J-01": {
+   "id": "J-01",
+   "name": "Daily dashboard at a glance",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-evidence/TC-16-cold-boot-latest-snapshot.png (genuine hydrated Dashboard: regime 67.44 Risk-on, candidate counts, sectors/themes, READY badge + provider/seed/162-symbols detail). Re-verified iter-28: FULL suite green (621 passed/4 skipped/0 failed, 32:51, exit 0 — authoritative line in /tmp/iter28_fullsuite.log + the AUDIT ANNOTATION in reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log); out-of-scope seam git-clean (scoring/patterns/regime/buckets/snapshot_serving/research/data paths untouched); scanner.py/forward_testing.py diffs are IntegrityError concurrency guards ONLY, byte-identity proven by test_scheduling_change_only_old_synchronous_path_is_a_noop."
   },
-  "anti_goal_violations": [
-    {
-      "iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
-      "anti_goal": "Exactly one date selector. The frontend MUST NOT maintain a second, independent date state; every date-scoped page (including Backtest) reads the single global as-of control. The Research all-history / as-of-date toggle is likewise a MODE, NOT a date control. (extends Single source of truth)",
-      "severity": "minor",
-      "evidence": "PRE-EXISTING baseline issue (backtest/page.tsx local BacktestDatePicker + date state), root cause of J-18 failing at iter-0.",
-      "resolved": true,
-      "resolved_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
-      "resolution_evidence": "iter-1 deleted BacktestDatePicker; re-confirmed holding through iter-26. The J-38 ResumeControl error-feedback fix + the env-gated `seed` source were again the flagged WATCH risk this iter and HELD: browser UT-09 DOM query (select, input[type=date]) -> 6 elements: exactly one 'View as-of date' <select> [global as-of], 1 'Job kind' <select> [not a date control], 4 pre-existing fetch/removal <input type=date> [job/action parameters, not viewing-date controls]. The iter-26 frontend diff is +14 lines on the error branch only — no new date useState. Coherence COHERENCE-PASS independently confirms /data holds no independent viewing-date state."
-    },
-    {
-      "iter": "goal-i_can_see_the_wealthy_future_forever-iter-21",
-      "anti_goal": "Import keys are env-or-session, never persisted. ... a provider key MUST be read from the environment, or — if the user pastes one into the import UI — held in memory for that run only, never written to disk, the run log, the DB, or any committed file, and never echoed back in any response. (the iteration's PRINCIPAL anti-goal)",
-      "severity": "minor",
-      "evidence": "VERIFIED BREACH at iter-21 of the 'never echoed back in any response' clause. A pasted SESSION-ONLY API key was echoed verbatim in GET /api/data/jobs/{id} errors[] and rendered in the /data job card. Root cause: _http.py raised ProviderUnavailableError(f'...: {exc}') where str(httpx.HTTPStatusError) embedded the full request URL including ?token=<key>/?apikey=<key>.",
-      "resolved": true,
-      "resolved_iter": "goal-i_can_see_the_wealthy_future_forever-iter-22",
-      "resolution_evidence": "CLOSED iter-22 (redacted-URL error message + defense-in-depth resolved-key scrub; real httpx.MockTransport regression test). RE-CONFIRMED HELD iter-26: the new env-gated `seed` import source is no-key (needs_key:false — carries no secret to leak, per coherence Part A); the iter-22 scrub path in data_manager.py / _http.py is git-unchanged; the REAL-httpx key-leak regression test (test_pull_key_leak_scrubbed_through_job_status_surface) + test_resumable_imports_in_overview_carries_no_key remain part of the 610-green suite. No new exposure."
-    }
-  ],
-  "updated_at": "2026-06-09T04:30:00Z"
+  "J-02": {
+   "id": "J-02",
+   "name": "Stock Leaderboard with working filters",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-evidence/TC-20-stocks-page.png (genuine /stocks leaderboard: ranked rows, A-E badges, setup statuses, sector/setup/pattern filters, Ready badge, single header as-of select). Re-verified iter-28: FULL suite green (621 passed/4 skipped/0 failed, 32:51, exit 0 — authoritative line in /tmp/iter28_fullsuite.log + the AUDIT ANNOTATION in reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log); out-of-scope seam git-clean (scoring/patterns/regime/buckets/snapshot_serving/research/data paths untouched); scanner.py/forward_testing.py diffs are IntegrityError concurrency guards ONLY, byte-identity proven by test_scheduling_change_only_old_synchronous_path_is_a_noop."
+  },
+  "J-03": {
+   "id": "J-03",
+   "name": "Theme Leaderboard",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-03-themes.png (carried passing iter-28: diff confined to boot/readiness/concurrency + readiness UI; out-of-scope seam git-clean; full suite 621/4/0 green; cannot have regressed.)"
+  },
+  "J-04": {
+   "id": "J-04",
+   "name": "Sector / industry Leaderboard",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-04-sectors.png (carried passing iter-28: diff confined to boot/readiness/concurrency + readiness UI; out-of-scope seam git-clean; full suite 621/4/0 green; cannot have regressed.)"
+  },
+  "J-05": {
+   "id": "J-05",
+   "name": "Stock Detail with explainable scores",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "Re-verified iter-28: FULL suite green (621 passed/4 skipped/0 failed, 32:51, exit 0 — authoritative line in /tmp/iter28_fullsuite.log + the AUDIT ANNOTATION in reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log); out-of-scope seam git-clean (scoring/patterns/regime/buckets/snapshot_serving/research/data paths untouched); scanner.py/forward_testing.py diffs are IntegrityError concurrency guards ONLY, byte-identity proven by test_scheduling_change_only_old_synchronous_path_is_a_noop. Stock-detail serving paths git-untouched; no DB regen (warmed output byte-identical)."
+  },
+  "J-06": {
+   "id": "J-06",
+   "name": "Score consistency across pages (coherence)",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "Re-verified iter-28: FULL suite green (621 passed/4 skipped/0 failed, 32:51, exit 0 — authoritative line in /tmp/iter28_fullsuite.log + the AUDIT ANNOTATION in reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log); out-of-scope seam git-clean (scoring/patterns/regime/buckets/snapshot_serving/research/data paths untouched); scanner.py/forward_testing.py diffs are IntegrityError concurrency guards ONLY, byte-identity proven by test_scheduling_change_only_old_synchronous_path_is_a_noop. scoring.py git-untouched; single-source list==detail asserted in suite; no DB regen."
+  },
+  "J-07": {
+   "id": "J-07",
+   "name": "Risk-Off regime suppresses Actionable",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "Re-verified iter-28: FULL suite green (621 passed/4 skipped/0 failed, 32:51, exit 0 — authoritative line in /tmp/iter28_fullsuite.log + the AUDIT ANNOTATION in reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log); out-of-scope seam git-clean (scoring/patterns/regime/buckets/snapshot_serving/research/data paths untouched); scanner.py/forward_testing.py diffs are IntegrityError concurrency guards ONLY, byte-identity proven by test_scheduling_change_only_old_synchronous_path_is_a_noop. regime/scanner gating git-untouched (scanner diff = concurrency guards only); Risk-Off gate asserted in suite."
+  },
+  "J-08": {
+   "id": "J-08",
+   "name": "Immutable scanner-run history",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "Re-verified iter-28: FULL suite green (621 passed/4 skipped/0 failed, 32:51, exit 0 — authoritative line in /tmp/iter28_fullsuite.log + the AUDIT ANNOTATION in reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log); out-of-scope seam git-clean (scoring/patterns/regime/buckets/snapshot_serving/research/data paths untouched); scanner.py/forward_testing.py diffs are IntegrityError concurrency guards ONLY, byte-identity proven by test_scheduling_change_only_old_synchronous_path_is_a_noop. Immutability STRENGTHENED: the J-41 race guards return the existing immutable row (never overwrite/duplicate) — test_run_scan_concurrency_safe_returns_existing_no_duplicate + test_concurrent_run_scan_threads_no_unique_crash green (evaluator re-ran the single-flight + keystone subset: 3 passed in 181s)."
+  },
+  "J-09": {
+   "id": "J-09",
+   "name": "Backtest forward-tested evidence (as-of-scoped, expanding window <= D)",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-evidence/TC-18-backtest-page.png (genuine /backtest: as-of summary, forward-test scorecard with HONEST \"No elapsed forward window for this date yet\" NA for the latest date — nothing fabricated; Ready badge; single date select). test_backtest_evidence_is_as_of_scoped_expanding_window PASSED in suite."
+  },
+  "J-10": {
+   "id": "J-10",
+   "name": "Control-group honesty (selection vs sector beta)",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-09-J-10-backtest-latest.png (carried passing iter-28: diff confined to boot/readiness/concurrency + readiness UI; out-of-scope seam git-clean; full suite 621/4/0 green; cannot have regressed.)"
+  },
+  "J-11": {
+   "id": "J-11",
+   "name": "Watchlist with persistence",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-11-watchlist-added.png (carried passing iter-28: diff confined to boot/readiness/concurrency + readiness UI; out-of-scope seam git-clean; full suite 621/4/0 green; cannot have regressed.)"
+  },
+  "J-12": {
+   "id": "J-12",
+   "name": "Understand what each setup/pattern means (glossary + inline)",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-12-methodology.png (carried passing iter-28: diff confined to boot/readiness/concurrency + readiness UI; out-of-scope seam git-clean; full suite 621/4/0 green; cannot have regressed.)"
+  },
+  "J-13": {
+   "id": "J-13",
+   "name": "Browse the dashboard as of a past date (global as-of switcher)",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "Re-verified iter-28: FULL suite green (621 passed/4 skipped/0 failed, 32:51, exit 0 — authoritative line in /tmp/iter28_fullsuite.log + the AUDIT ANNOTATION in reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log); out-of-scope seam git-clean (scoring/patterns/regime/buckets/snapshot_serving/research/data paths untouched); scanner.py/forward_testing.py diffs are IntegrityError concurrency guards ONLY, byte-identity proven by test_scheduling_change_only_old_synchronous_path_is_a_noop. asof-provider.tsx git-untouched; the global as-of switcher visible in all 4 genuine iter-28 captures."
+  },
+  "J-14": {
+   "id": "J-14",
+   "name": "Backtest a past date and read its forward-test scorecard",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-evidence/TC-18-backtest-page.png + scorecard tests green in suite. Re-verified iter-28: FULL suite green (621 passed/4 skipped/0 failed, 32:51, exit 0 — authoritative line in /tmp/iter28_fullsuite.log + the AUDIT ANNOTATION in reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log); out-of-scope seam git-clean (scoring/patterns/regime/buckets/snapshot_serving/research/data paths untouched); scanner.py/forward_testing.py diffs are IntegrityError concurrency guards ONLY, byte-identity proven by test_scheduling_change_only_old_synchronous_path_is_a_noop."
+  },
+  "J-15": {
+   "id": "J-15",
+   "name": "Fast page loads from persisted snapshots",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "Re-verified iter-28: FULL suite green (621 passed/4 skipped/0 failed, 32:51, exit 0 — authoritative line in /tmp/iter28_fullsuite.log + the AUDIT ANNOTATION in reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log); out-of-scope seam git-clean (scoring/patterns/regime/buckets/snapshot_serving/research/data paths untouched); scanner.py/forward_testing.py diffs are IntegrityError concurrency guards ONLY, byte-identity proven by test_scheduling_change_only_old_synchronous_path_is_a_noop. snapshot_serving git-untouched; read path serves persisted snapshots; readiness adds no read-path recompute."
+  },
+  "J-16": {
+   "id": "J-16",
+   "name": "VCP — detected, explained, filterable, forward-tested",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-16-vcp-filter.png + UT-J-16-tsm-vcp-detail.png (carried passing iter-28: diff confined to boot/readiness/concurrency + readiness UI; out-of-scope seam git-clean; full suite 621/4/0 green; cannot have regressed.)"
+  },
+  "J-17": {
+   "id": "J-17",
+   "name": "Grow the dataset by date / date range (Data Manager)",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "Re-verified iter-28: FULL suite green (621 passed/4 skipped/0 failed, 32:51, exit 0 — authoritative line in /tmp/iter28_fullsuite.log + the AUDIT ANNOTATION in reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log); out-of-scope seam git-clean (scoring/patterns/regime/buckets/snapshot_serving/research/data paths untouched); scanner.py/forward_testing.py diffs are IntegrityError concurrency guards ONLY, byte-identity proven by test_scheduling_change_only_old_synchronous_path_is_a_noop. fetch/backfill/expand paths git-clean (data_manager.py untouched this iter)."
+  },
+  "J-18": {
+   "id": "J-18",
+   "name": "One date control (no duplicate)",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "SOURCE+BROWSER iter-28: the readiness badge + warming states add NO date state (warming-state.tsx/health-badge.tsx/readiness-provider.tsx carry zero date state, source-verified in the diff; pages key fetches on [asOf, readiness] — readiness is a state string, not a date). All 4 genuine captures (TC-16/TC-18/TC-19/TC-20) show exactly ONE header as-of select. QA TC-20 PASS."
+  },
+  "J-19": {
+   "id": "J-19",
+   "name": "Diagnose weak forward-test returns via attribution",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "last_evidence_path": "Re-verified iter-28: FULL suite green (621 passed/4 skipped/0 failed, 32:51, exit 0 — authoritative line in /tmp/iter28_fullsuite.log + the AUDIT ANNOTATION in reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log); out-of-scope seam git-clean (scoring/patterns/regime/buckets/snapshot_serving/research/data paths untouched); scanner.py/forward_testing.py diffs are IntegrityError concurrency guards ONLY, byte-identity proven by test_scheduling_change_only_old_synchronous_path_is_a_noop. attribution read path git-untouched; backtest API tests green."
+  },
+  "J-20": {
+   "id": "J-20",
+   "name": "Price & MA chart shows the full path through the latest date (with as-of marker)",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-20-nvda-chart-asof-marker.png (carried passing iter-28: diff confined to boot/readiness/concurrency + readiness UI; out-of-scope seam git-clean; full suite 621/4/0 green; cannot have regressed.)"
+  },
+  "J-21": {
+   "id": "J-21",
+   "name": "Backtest — leadership cohorts below attribution, with horizon-linked realized returns",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+   "last_evidence_path": "Re-verified iter-28: FULL suite green (621 passed/4 skipped/0 failed, 32:51, exit 0 — authoritative line in /tmp/iter28_fullsuite.log + the AUDIT ANNOTATION in reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log); out-of-scope seam git-clean (scoring/patterns/regime/buckets/snapshot_serving/research/data paths untouched); scanner.py/forward_testing.py diffs are IntegrityError concurrency guards ONLY, byte-identity proven by test_scheduling_change_only_old_synchronous_path_is_a_noop. backtest layout/serving git-confined to the warming-state addition; leadership-cohort tests green."
+  },
+  "J-22": {
+   "id": "J-22",
+   "name": "Transparent, rule-based, expanded universe (~500 names)",
+   "status": "failing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-8",
+   "last_passing_iter": null,
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+   "last_evidence_path": "BLOCKED (external) + NON-HALTING + NON-VETOING per the operator-authored goal.md (lines 1100-1112: \"MUST NOT halt the loop, drive a STALLED verdict, or veto GOAL_ACHIEVED\"). NOT re-probed iter-28 (spec forbids). Auto-heals via the committed runbook or the J-35 Expand-universe UI path once a reachable provider exists — no code change needed."
+  },
+  "J-23": {
+   "id": "J-23",
+   "name": "Multi-timeframe bars — intraday seed + timeframe-aware pipeline",
+   "status": "failing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+   "last_passing_iter": null,
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+   "last_evidence_path": "BLOCKED (external, intraday seed unreachable) + NON-HALTING + NON-VETOING per goal.md. NOT re-probed iter-28 (spec forbids autonomous retry)."
+  },
+  "J-24": {
+   "id": "J-24",
+   "name": "Timeframe selector on the stock chart (1D/1h/15m/5m)",
+   "status": "failing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+   "last_passing_iter": null,
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+   "last_evidence_path": "BLOCKED (depends on J-23 intraday bars) + NON-HALTING + NON-VETOING per goal.md. NOT re-probed iter-28."
+  },
+  "J-25": {
+   "id": "J-25",
+   "name": "Factor Lab — decile sort and rank-IC per factor (raw and risk-adjusted)",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-evidence/TC-19-research-page.png (genuine /research Factor Lab: decile table populated, rank-IC −0.09, raw + downside-risk-adjusted columns, survivorship banner, Ready badge). Research engine/api git-untouched; lab tests green in suite."
+  },
+  "J-26": {
+   "id": "J-26",
+   "name": "Factor Lab — multi-factor composite combination cohort",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+   "last_evidence_path": "Re-verified iter-28: FULL suite green (621 passed/4 skipped/0 failed, 32:51, exit 0 — authoritative line in /tmp/iter28_fullsuite.log + the AUDIT ANNOTATION in reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log); out-of-scope seam git-clean (scoring/patterns/regime/buckets/snapshot_serving/research/data paths untouched); scanner.py/forward_testing.py diffs are IntegrityError concurrency guards ONLY, byte-identity proven by test_scheduling_change_only_old_synchronous_path_is_a_noop. research.py git-untouched; composite-cohort tests green in suite."
+  },
+  "J-27": {
+   "id": "J-27",
+   "name": "Factor Lab — regime-conditioned factor effectiveness",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-25-J-27-factor-lab.png (carried passing iter-28: diff confined to boot/readiness/concurrency + readiness UI; out-of-scope seam git-clean; full suite 621/4/0 green; cannot have regressed.)"
+  },
+  "J-28": {
+   "id": "J-28",
+   "name": "More detected patterns beyond VCP (forward-tested)",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-28-flatbase-filter.png (carried passing iter-28: diff confined to boot/readiness/concurrency + readiness UI; out-of-scope seam git-clean; full suite 621/4/0 green; cannot have regressed.)"
+  },
+  "J-29": {
+   "id": "J-29",
+   "name": "Setup & Pattern research lab — event study across all snapshots",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+   "last_evidence_path": "Re-verified iter-28: FULL suite green (621 passed/4 skipped/0 failed, 32:51, exit 0 — authoritative line in /tmp/iter28_fullsuite.log + the AUDIT ANNOTATION in reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log); out-of-scope seam git-clean (scoring/patterns/regime/buckets/snapshot_serving/research/data paths untouched); scanner.py/forward_testing.py diffs are IntegrityError concurrency guards ONLY, byte-identity proven by test_scheduling_change_only_old_synchronous_path_is_a_noop. event-study tests green in suite; research paths git-clean."
+  },
+  "J-30": {
+   "id": "J-30",
+   "name": "Volatility as a return driver — factor family, risk-adjusted and regime-conditioned",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-25-J-27-factor-lab.png (carried passing iter-28: diff confined to boot/readiness/concurrency + readiness UI; out-of-scope seam git-clean; full suite 621/4/0 green; cannot have regressed.)"
+  },
+  "J-31": {
+   "id": "J-31",
+   "name": "Find a high-return driver end-to-end (synthesis)",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-6",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-20-evidence/UT-J-29-event-study.png + UT-J-02-leaderboard.png (carried passing iter-28: diff confined to boot/readiness/concurrency + readiness UI; out-of-scope seam git-clean; full suite 621/4/0 green; cannot have regressed.)"
+  },
+  "J-32": {
+   "id": "J-32",
+   "name": "Research point-in-time toggle (as-of vs all-history)",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-17",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-evidence/TC-19-research-page.png (All-history/As-of MODE toggle visible; no second date state). as_of scoping tests green in suite (test_factor_lab_as_of_*, test_combination_as_of_*, test_event_study_as_of_* PASSED)."
+  },
+  "J-33": {
+   "id": "J-33",
+   "name": "Import real data from a selectable, key-aware provider source",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "last_evidence_path": "Re-verified iter-28: FULL suite green (621 passed/4 skipped/0 failed, 32:51, exit 0 — authoritative line in /tmp/iter28_fullsuite.log + the AUDIT ANNOTATION in reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log); out-of-scope seam git-clean (scoring/patterns/regime/buckets/snapshot_serving/research/data paths untouched); scanner.py/forward_testing.py diffs are IntegrityError concurrency guards ONLY, byte-identity proven by test_scheduling_change_only_old_synchronous_path_is_a_noop. Provider/key paths git-clean; key-scrub regressions green (test_real_httpx_error_key_scrubbed_end_to_end, test_pasted_api_key_never_persisted, test_pull_key_leak_scrubbed_through_job_status_surface PASSED). Warmup JobProgress verified NOT to leak into /api/data listings (read DB tables, never the in-memory _JOBS registry — dev-confirmed + auditor-verified in source)."
+  },
+  "J-34": {
+   "id": "J-34",
+   "name": "Chunked, rate-limit-resilient import that resumes from the last completed chunk",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "last_evidence_path": "Re-verified iter-28: FULL suite green (621 passed/4 skipped/0 failed, 32:51, exit 0 — authoritative line in /tmp/iter28_fullsuite.log + the AUDIT ANNOTATION in reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log); out-of-scope seam git-clean (scoring/patterns/regime/buckets/snapshot_serving/research/data paths untouched); scanner.py/forward_testing.py diffs are IntegrityError concurrency guards ONLY, byte-identity proven by test_scheduling_change_only_old_synchronous_path_is_a_noop. Chunk/resume/checkpoint paths git-clean; test_chunked_fetch_pauses_resumable_then_resumes_idempotently + checkpoint tests PASSED."
+  },
+  "J-35": {
+   "id": "J-35",
+   "name": "Expand the universe from the Data Manager (pool -> config screen -> members)",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-20",
+   "last_evidence_path": "RE-JUDGED PASSING iter-28 under the operator-re-scoped \"Verification basis (re-scoped 2026-06-09, post iter-27)\" in the CURRENT docs/goal.md (browser capture explicitly NOT a gate; \"its absence MUST NOT keep this journey partial or block GOAL_ACHIEVED\"). Named basis evidence ALL green in the iter-28 suite: test_seed_source_expand_writes_to_overlay_not_committed_seed (named verbatim in goal.md), test_expand_screens_pool_writes_universe_with_exact_passers_and_omissions, test_seed_source_expand_runs_offline_with_passers_and_omitted, test_expand_job_status_shape_has_passers_and_omitted (API layer), test_expand_idempotent_no_duplicate_bars_no_snapshot_regen, eligibility + no-fabrication + rate-limit-resumable tests — all PASSED. Plus the iter-27 dev API-layer proof against a running backend (seed expand: 17 passers / 531 omitted-with-reason on a throwaway port). LIVE market-cap expansion stays data-walled — honestly NA, non-halting per goal.md."
+  },
+  "J-36": {
+   "id": "J-36",
+   "name": "Understand coverage — per-symbol table + universe-vs-symbols clarity",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-22",
+   "last_evidence_path": "Re-verified iter-28: FULL suite green (621 passed/4 skipped/0 failed, 32:51, exit 0 — authoritative line in /tmp/iter28_fullsuite.log + the AUDIT ANNOTATION in reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log); out-of-scope seam git-clean (scoring/patterns/regime/buckets/snapshot_serving/research/data paths untouched); scanner.py/forward_testing.py diffs are IntegrityError concurrency guards ONLY, byte-identity proven by test_scheduling_change_only_old_synchronous_path_is_a_noop. Coverage paths git-clean; test_compute_coverage_exact + per-symbol coverage tests PASSED."
+  },
+  "J-37": {
+   "id": "J-37",
+   "name": "Diagnose insufficient-for-analysis data and pull exactly the missing history (one-click)",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-22",
+   "last_evidence_path": "RE-JUDGED PASSING iter-28 under the operator-re-scoped \"Verification basis (re-scoped 2026-06-09, post iter-27)\" in the CURRENT docs/goal.md (browser capture explicitly NOT a gate; \"its absence MUST NOT keep this journey partial or block GOAL_ACHIEVED\"). Named basis evidence ALL green in the iter-28 suite: test_diagnostic_three_categories_exact (3-category), test_pull_missing_fetches_exactly_the_gap + test_pull_missing_idempotent_inserts_new_only + test_seed_source_pull_is_gap_exact_and_idempotent (gap-exact idempotent pull), test_pull_missing_provider_failure_no_fabricated_bar, test_pull_key_leak_scrubbed_through_job_status_surface + test_real_httpx_error_key_scrubbed_end_to_end (key-scrub regression) — all PASSED. Plus the iter-27 dev API-layer gap-exact pull-to-completion proof. Live pull outcome data-gated — NA, non-halting."
+  },
+  "J-38": {
+   "id": "J-38",
+   "name": "Unified Unfinished-imports — Resume / Retry / Remove with state explanation",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-22",
+   "last_evidence_path": "RE-JUDGED PASSING iter-28 under the operator-re-scoped \"Verification basis (re-scoped 2026-06-09, post iter-27)\" in the CURRENT docs/goal.md (browser capture explicitly NOT a gate; \"its absence MUST NOT keep this journey partial or block GOAL_ACHIEVED\"). Named basis evidence ALL green in the iter-28 suite: test_chunked_fetch_pauses_resumable_then_resumes_idempotently (Resume-from-durable-next_chunk_index SUCCESS leg), test_retry_run_redispatches_outstanding_only (Retry-only-outstanding idempotency), test_dismiss_checkpoint_deletes_only_job_control + test_dismiss_run_endpoint_soft_dismisses (Dismiss preserves audit), test_resume/retry_needs_key_source_without_key_is_400 (needs-key re-prompt — goal.md states the 400 is CORRECT behaviour, not a defect), test_unfinished_imports_union + test_unfinished_imports_carries_no_key — all PASSED."
+  },
+  "J-39": {
+   "id": "J-39",
+   "name": "Remove imported data — user-added-only, seed-safe, cascade-consistent, confirm-preview",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-22",
+   "last_evidence_path": "RE-JUDGED PASSING iter-28 under the operator-re-scoped \"Verification basis (re-scoped 2026-06-09, post iter-27)\" in the CURRENT docs/goal.md (browser capture explicitly NOT a gate; \"its absence MUST NOT keep this journey partial or block GOAL_ACHIEVED\"). Named basis evidence ALL green in the iter-28 suite: test_remove_preview_endpoint_shape_deletes_nothing (confirm-preview enumeration), test_remove_preview_seed_only_returns_refused + test_remove_endpoint_seed_only_is_400 (seed-protection refusal), test_remove_data_cascade_solely_dependent (whole-row cascade), test_remove_endpoint_executes_and_audits + error-case tests (empty scope/unknown symbol/inverted range/no secret) — all PASSED. iter-24 source verification stands: whole-row delete() only, no in-place snapshot overwrite, no recompute reachable from the remove path. Fully deterministic, provider-free."
+  },
+  "J-40": {
+   "id": "J-40",
+   "name": "Backend is ready when the frontend is ready (fast boot, background warm-up, honest readiness)",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-evidence/TC-16-cold-boot-latest-snapshot.png (READY badge + populated dashboard). ACCEPTANCE PROOF (deterministic offline, per goal.md J-40): tests/test_warmup.py::test_lifespan_serves_dashboard_200_while_warmup_in_flight — boots the REAL lifespan on a fresh DB with the warm-up worker provably in-flight, asserts /api/health 200 + readiness \"initializing\" (done<total) + /api/dashboard 200 serving the latest as-of — EVALUATOR INDEPENDENTLY RE-RAN: PASSED (3-test subset, 181s). Plus: fast-lifespan split source-verified (main.py: config/tables/seed/ensure_latest_snapshot then non-blocking start_warmup spawn then yield); single readiness producer compute_readiness served ONLY on extended GET /api/health (coherence-audited); three-state badge + /backtest + /research warming(n/m) states source-verified reading ONE useReadiness context, config-derived poll cadence (2.0s active / 30.0s idle from config.startup), auto-populate via readiness dep; honest states (failed warm-up never ready, warming never unavailable, empty DB unavailable — test_readiness_unavailable_on_empty_db PASSED in evaluator re-run); scheduling-only byte-identity invariant green; dev live cold-boot observation (serving at ~30s, initializing 0/6→6/6 with dashboard 200 while warming, flip to ready). FULL suite 621/4/0 exit 0."
+  },
+  "J-41": {
+   "id": "J-41",
+   "name": "Boot is resilient — a slow, contended, or failed warm-up never takes the app down",
+   "status": "passing",
+   "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+   "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-test.log (AUDIT ANNOTATION: 621 passed/4 skipped/0 failed, exit 0). ACCEPTANCE PROOF (deterministic offline): run_scan IntegrityError catch-rollback-return-existing guards at BOTH flush + commit (scanner.py — source-verified; re-raises when NOT explained by an existing run); _commit_forward_returns_concurrency_safe on both backfill paths (forward_testing.py); tests green: test_run_scan_concurrency_safe_returns_existing_no_duplicate (two sessions), test_concurrent_run_scan_threads_no_unique_crash (real threads + barrier), test_forward_returns_concurrent_insert_idempotent_no_duplicate, test_warmup_failure_is_caught_logged_and_nonfatal (caught + logged + honest failed status + next boot completes idempotent remainder), test_start_warmup_is_single_flight_no_duplicate_concurrent_worker (re-spawn/--reload double-fire returns existing job id, exactly ONE warmup thread) — EVALUATOR INDEPENDENTLY RE-RAN the single-flight + empty-DB + HTTP keystone: 3 passed in 181s. The single-flight guard is also the verified root-cause fix for the first-dispatch QA FAIL (the per-TestClient warm-up thread storm; 69-min crawl GONE — suite deterministic at 32:51)."
+  }
+ },
+ "anti_goal_violations": [
+  {
+   "iter": "goal-i_can_see_the_wealthy_future_forever-iter-0",
+   "anti_goal": "Exactly one date selector. The frontend MUST NOT maintain a second, independent date state; every date-scoped page (including Backtest) reads the single global as-of control. The Research all-history / as-of-date toggle is likewise a MODE, NOT a date control. (extends Single source of truth)",
+   "severity": "minor",
+   "evidence": "PRE-EXISTING baseline issue (backtest/page.tsx local BacktestDatePicker + date state), root cause of J-18 failing at iter-0.",
+   "resolved": true,
+   "resolved_iter": "goal-i_can_see_the_wealthy_future_forever-iter-1",
+   "resolution_evidence": "iter-1 deleted BacktestDatePicker; re-confirmed holding through iter-28. iter-27 introduced ZERO production frontend diff (HEAD still 77d0816), so no new date state could be added; the TC-13-initial-load.png live /data capture shows the single global 'View as-of date' select with the remove form's inputs as action parameters. Coherence COHERENCE-PASS. iter-28 was a fresh risk surface (new badge + warming states) and HELD: source-verified zero date state in readiness-provider/health-badge/warming-state; all 4 genuine captures show exactly one header as-of select."
+  },
+  {
+   "iter": "goal-i_can_see_the_wealthy_future_forever-iter-21",
+   "anti_goal": "Import keys are env-or-session, never persisted. ... a provider key MUST be read from the environment, or — if the user pastes one into the import UI — held in memory for that run only, never written to disk, the run log, the DB, or any committed file, and never echoed back in any response. (the iteration's PRINCIPAL anti-goal)",
+   "severity": "minor",
+   "evidence": "VERIFIED BREACH at iter-21 of the 'never echoed back in any response' clause. A pasted SESSION-ONLY API key was echoed verbatim in GET /api/data/jobs/{id} errors[] and rendered in the /data job card. Root cause: _http.py raised ProviderUnavailableError(f'...: {exc}') where str(httpx.HTTPStatusError) embedded the full request URL including ?token=<key>/?apikey=<key>.",
+   "resolved": true,
+   "resolved_iter": "goal-i_can_see_the_wealthy_future_forever-iter-22",
+   "resolution_evidence": "CLOSED iter-22 (redacted-URL error message + defense-in-depth resolved-key scrub; real httpx.MockTransport regression test). RE-CONFIRMED HELD iter-27: zero production diff this iter (the scrub path in data_manager.py / _http.py is git-unchanged); the dev's API-layer verification confirmed a needs-key resume-400 surfaces only the env-var NAME (no key value); the REAL-httpx key-leak regression test remains part of the 610-green suite. No new exposure."
+  }
+ ],
+ "updated_at": "2026-06-10T15:30:00Z"
 }

@@ -31,6 +31,7 @@ from typing import Optional, Union
 
 from sqlalchemy import func
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.config import Config, get_config
@@ -85,7 +86,19 @@ def run_scan(session: Session, asof: date_cls, config: Optional[Config] = None) 
         candidate_counts_json=json.dumps(candidate_counts),
     )
     session.add(run)
-    session.flush()  # assign run.id for the child foreign keys
+    try:
+        session.flush()  # assign run.id for the child foreign keys (executes the scanner_runs INSERT)
+    except IntegrityError:
+        # CONCURRENCY-SAFE create (iter-28, J-41): under SQLite the unique-`asof_date` conflict can fire
+        # HERE at flush time (when the scanner_runs INSERT executes) rather than at commit — a concurrent
+        # writer committed this date between our `get_run_for_date` check and this flush. Same resolution
+        # as the commit guard below: roll back our duplicate INSERT and return the existing immutable
+        # snapshot (never raise, never duplicate, never overwrite — anti-goal: Snapshots are immutable).
+        session.rollback()
+        existing = get_run_for_date(session, asof)
+        if existing is not None:
+            return existing
+        raise  # an IntegrityError NOT explained by an existing run for this date is a real error
 
     for row in stock_result["rows"]:
         session.add(
@@ -154,7 +167,21 @@ def run_scan(session: Session, asof: date_cls, config: Optional[Config] = None) 
             )
         )
 
-    session.commit()
+    try:
+        session.commit()
+    except IntegrityError:
+        # CONCURRENCY-SAFE create (iter-28, J-41): another writer inserted this `asof_date` between our
+        # `get_run_for_date` check (line ~61) and this commit — the unique `asof_date` constraint fires
+        # `UNIQUE constraint failed: scanner_runs.asof_date`. We roll back our duplicate INSERT and
+        # re-read the now-committed existing immutable snapshot (the SAME canonical row the winning
+        # writer produced — reproducible from the frozen seed), returning it unchanged. We NEVER raise,
+        # NEVER write a duplicate row, and NEVER overwrite (anti-goal: Snapshots are immutable). The
+        # check-then-return idempotency above handles the non-racing case; this handles the race window.
+        session.rollback()
+        existing = get_run_for_date(session, asof)
+        if existing is not None:
+            return existing
+        raise  # an IntegrityError NOT explained by an existing run for this date is a real error
     return run
 
 

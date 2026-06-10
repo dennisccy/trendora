@@ -1,0 +1,40 @@
+You are the phase-closure-auditor for phased development.
+
+Phase: goal-i_can_see_the_wealthy_future_forever-iter-28
+Phase spec: /home/dennisccy/Git/trendora/docs/phases/goal-i_can_see_the_wealthy_future_forever-iter-28.md
+Agent instructions: .claude/agents/phase-closure-auditor.md  <-- read this first
+(CLAUDE.md is already in your system prompt — do not Read it again.)
+Skill: .claude/skills/phase-closure-gate.md
+
+Execution plan: /home/dennisccy/Git/trendora/runs/goal-i_can_see_the_wealthy_future_forever-iter-28/plan.md
+Review report: /home/dennisccy/Git/trendora/reports/reviews/goal-i_can_see_the_wealthy_future_forever-iter-28-review.md
+QA report: /home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever-iter-28-qa.md
+Audit report: /home/dennisccy/Git/trendora/docs/handoffs/goal-i_can_see_the_wealthy_future_forever-iter-28-audit.md (if exists)
+
+UI visibility artifacts (check each exists and has real content):
+  - reports/phase-goal-i_can_see_the_wealthy_future_forever-iter-28-implementation-summary.md
+  - reports/phase-goal-i_can_see_the_wealthy_future_forever-iter-28-user-visible-changes.md
+  - reports/phase-goal-i_can_see_the_wealthy_future_forever-iter-28-ui-surface-map.md
+  - reports/phase-goal-i_can_see_the_wealthy_future_forever-iter-28-ui-test-plan.md
+  - reports/phase-goal-i_can_see_the_wealthy_future_forever-iter-28-ui-test-results.md
+  - reports/phase-goal-i_can_see_the_wealthy_future_forever-iter-28-what-to-click.md
+
+UX regression report (if exists): reports/phase-goal-i_can_see_the_wealthy_future_forever-iter-28-ux-regression.md
+
+Your job:
+1. Verify all standard pipeline gates passed (review, QA, audit)
+2. Verify all 6 UI visibility artifacts exist and are non-vague
+3. Cross-reference claims vs evidence for consistency
+4. Check for backend-only claims when frontend work was expected
+5. Write closure verdict to: /home/dennisccy/Git/trendora/reports/phase-goal-i_can_see_the_wealthy_future_forever-iter-28-closure-verdict.md
+
+Use template: templates/closure-verdict.md
+
+Verdict line MUST appear at the top of the file:
+**Verdict:** CLOSURE-PASS
+  or
+**Verdict:** CLOSURE-FAIL
+
+For CLOSURE-FAIL: list exact blocking issues and specific remediation steps.
+
+Then STOP.

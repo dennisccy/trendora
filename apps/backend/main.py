@@ -7,7 +7,9 @@ origins come from the `CORS_ORIGINS` env var set by the start script.
 """
 from __future__ import annotations
 
+import logging
 import os
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -28,26 +30,42 @@ from app.api import (
 )
 from app.config import load_config
 from app.db import create_db_and_tables, get_engine
-from app.engine.forward_testing import backfill_forward_returns
-from app.engine.scanner import bootstrap_runs
+from app.engine.warmup import ensure_latest_snapshot, start_warmup
 from app.seed_loader import load_seed
+
+logger = logging.getLogger("trendora.lifespan")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # FAST-READY BOOT (iter-28, J-40): do ONLY the minimal synchronous work needed to serve the LATEST
+    # as-of snapshot, then yield so the server begins accepting connections (it never blocks /health or
+    # the core read pages on the multi-minute historical backfill). The full historical walk-forward —
+    # the bootstrap cadence dates (minus the latest, done here) + forward-returns — warms up in the
+    # BACKGROUND after yield, reusing the canonical engines (only the scheduling moves).
     config = load_config()
     engine = get_engine()
     create_db_and_tables(engine)
     load_seed(engine, config)  # idempotent — no-op once the DB is populated
-    # Persist an immutable snapshot per configured bootstrap date + the latest data date.
-    # Idempotent: subsequent boots skip already-persisted dates.
-    bootstrap_runs(engine, config)
-    # Walk-forward (iter-6): persist the cadence as-of snapshots and INSERT their realized forward
-    # returns into the append-only `forward_returns` table (idempotent; reads the frozen seed only).
-    # Coexists with bootstrap_runs. A FRESH-DB first boot scans each cadence as-of date through the
-    # full pipeline before serving, so it is slower than the bootstrap alone — accounted for in
-    # readiness probing; subsequent boots skip already-persisted work and are fast.
-    backfill_forward_returns(engine, config)
+    # The SINGLE minimal latest-snapshot step: persist (idempotently) ONLY the latest data date's
+    # immutable snapshot so the read pages serve the latest as-of immediately. Instant on a warm DB; one
+    # snapshot compute on a fresh DB, soft-bounded by config.startup.readiness_budget_seconds (logged on
+    # overrun — the boot does NOT abort, so a cold DB still becomes serving-ready, just slower).
+    started = time.monotonic()
+    latest = ensure_latest_snapshot(engine, config)
+    elapsed = time.monotonic() - started
+    if latest is None:
+        logger.warning("boot: no price data — readiness will report 'unavailable' until a seed is loaded")
+    elif elapsed > config.startup.readiness_budget_seconds:
+        logger.warning(
+            "boot: latest-snapshot ready in %.1fs (over the %.1fs readiness budget) — serving anyway",
+            elapsed, config.startup.readiness_budget_seconds,
+        )
+    # Launch the background historical warm-up (cadence snapshots + forward returns) AFTER the server is
+    # already serving. It is idempotent, concurrency-safe, and NON-FATAL (a failure is caught + logged
+    # inside the worker; the server keeps serving persisted snapshots and the next boot finishes it).
+    if latest is not None:
+        start_warmup(engine, config)
     yield
 
 

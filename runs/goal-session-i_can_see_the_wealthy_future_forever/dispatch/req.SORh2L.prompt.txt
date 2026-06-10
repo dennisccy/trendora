@@ -1,0 +1,23 @@
+You are the readme-maintainer agent.
+
+Phase id: goal-i_can_see_the_wealthy_future_forever-iter-28
+Target file: README.md (the project-root README of THIS repository)
+Agent instructions: .claude/agents/readme-maintainer.md  <-- read this first
+Skill: .claude/skills/readme-maintenance.md  <-- the marker-scoped editing method
+Run-command source of truth: .claude/project-template.md  <-- Stack, Test commands, Service start commands, URLs
+README skeleton (use only if README.md is absent): templates/project-readme.md
+Capabilities inputs (read what exists, silently skip what doesn't):
+- reports/phase-goal-i_can_see_the_wealthy_future_forever-iter-28-user-visible-changes.md
+- reports/phase-goal-i_can_see_the_wealthy_future_forever-iter-28-implementation-summary.md
+- reports/phase-goal-i_can_see_the_wealthy_future_forever-iter-28-iteration-summary.md
+(CLAUDE.md is already in your system prompt -- do not Read it again.)
+
+Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
+
+Refresh README.md so it reflects the CURRENT project and includes a 'How to run'
+section. Edit ONLY the marker-delimited AUTO blocks described in your skill;
+never delete human-written prose outside them. Ground every install/run/test
+command in .claude/project-template.md — if a needed field is still a template
+placeholder (<e.g., ...>), write a 'TODO:' line rather than inventing a command.
+
+When finished, STOP.

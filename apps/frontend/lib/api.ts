@@ -48,7 +48,22 @@ async function sendJSON<T>(method: "POST" | "DELETE", path: string, body?: unkno
   return (await res.json()) as T;
 }
 
-// --- health (iter-1) -----------------------------------------------------------------------
+// --- health + readiness (iter-1 / iter-28 J-40) --------------------------------------------
+/** The honest backend readiness state computed ONCE by the backend (app.engine.readiness) and served
+ *  on the single canonical /api/health endpoint. The frontend NEVER computes readiness itself — it
+ *  renders this value. `ready` = serving + history warmed; `initializing` = latest servable but the
+ *  background historical warm-up is still loading; `unavailable` = no servable snapshot / DB down. */
+export type ReadinessState = "ready" | "initializing" | "unavailable";
+
+/** Background warm-up progress (cadence snapshots produced / expected — "history n/m"). `done`/`total`
+ *  drive the badge progress + the Backtest/Research "warming up (n/m)" states. */
+export interface WarmupProgress {
+  done: number;
+  total: number;
+  status: string;
+  message: string;
+}
+
 export interface HealthStatus {
   status: string;
   db_ok: boolean;
@@ -56,9 +71,15 @@ export interface HealthStatus {
   last_run_date: string | null;
   seed_latest_date: string | null;
   symbol_count: number;
+  // iter-28 (J-40): the single canonical readiness value (state + warm-up progress).
+  readiness: ReadinessState;
+  warmup: WarmupProgress;
+  // the config-derived poll cadences the badge derives its interval from (no client-side poll literal).
+  poll_interval_seconds: number;
+  poll_idle_interval_seconds: number;
 }
 
-/** Fetch backend health. Throws on network error or non-200 so callers can render an
+/** Fetch backend health + readiness. Throws on network error or non-200 so callers can render an
  *  explicit "unavailable" state — we never fabricate an "ok". */
 export async function fetchHealth(signal?: AbortSignal): Promise<HealthStatus> {
   return getJSON<HealthStatus>("/api/health", signal);

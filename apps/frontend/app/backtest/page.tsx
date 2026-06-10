@@ -8,8 +8,10 @@ import { EmptyState } from "@/components/empty-state";
 import { EvidenceAggregateSection } from "@/components/evidence-panels";
 import { Return } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
+import { useReadiness } from "@/components/readiness-provider";
 import { ReturnAttributionSection } from "@/components/return-attribution";
 import { ScoreBadge } from "@/components/score-badge";
+import { shouldShowWarming, WarmingState } from "@/components/warming-state";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -55,6 +57,10 @@ export default function BacktestPage() {
   // The page reads the SINGLE global as-of date (the top-bar switcher) — it holds NO date state of its
   // own. The switcher's resolved date drives every fetch below; navigating between pages preserves it.
   const { asOf, isHistorical: globalIsHistorical } = useAsOf();
+  // The SINGLE shared readiness value (J-40) — while the background historical warm-up is still loading
+  // (`initializing`), this page shows the "warming up (n/m)" state instead of an empty/partial aggregate.
+  // It reads the same value the badge reads; it adds NO date state (J-18 preserved).
+  const { state: readiness } = useReadiness();
   const [state, setState] = useState<State>({ kind: "loading" });
 
   // The global as-of date drives every fetch. The scorecard (fetchBacktest) is the page's reason to
@@ -78,7 +84,9 @@ export default function BacktestPage() {
         if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => controller.abort();
-  }, [asOf]);
+    // `readiness` is a dep so the page AUTO-POPULATES the moment the background warm-up finishes (the
+    // flip to `ready` re-runs the fetch). The global as-of switcher still owns the date (J-18).
+  }, [asOf, readiness]);
 
   // Read-only "viewing as-of" DISPLAY indicator (not a control): prefer the backtest response's
   // resolved date/flag; before it loads, fall back to the global switcher's own state.
@@ -116,30 +124,39 @@ export default function BacktestPage() {
         }
       />
 
-      {state.kind === "loading" ? <BacktestSkeleton /> : null}
+      {/* While the background historical warm-up is still loading, show the honest "warming up (n/m)"
+          state — never an error, never an empty/partial aggregate presented as complete (J-40). It
+          auto-populates when warm-up finishes (the readiness flip re-runs the fetch above). */}
+      {shouldShowWarming(readiness) ? (
+        <WarmingState what="The forward-tested evidence (by bucket / setup / regime, control groups, attribution)" />
+      ) : (
+        <>
+          {state.kind === "loading" ? <BacktestSkeleton /> : null}
 
-      {state.kind === "error" ? (
-        <Card className="flex items-center gap-3 border-neg bg-surface p-5 text-sm text-neg">
-          <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
-          <div>
-            <p className="font-medium">Backend unavailable</p>
-            <p className="text-text-muted">
-              The backtest scorecard could not load from the API. No figures are shown rather than
-              fabricated values. Confirm the backend is running and retry.
-            </p>
-          </div>
-        </Card>
-      ) : null}
+          {state.kind === "error" ? (
+            <Card className="flex items-center gap-3 border-neg bg-surface p-5 text-sm text-neg">
+              <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
+              <div>
+                <p className="font-medium">Backend unavailable</p>
+                <p className="text-text-muted">
+                  The backtest scorecard could not load from the API. No figures are shown rather than
+                  fabricated values. Confirm the backend is running and retry.
+                </p>
+              </div>
+            </Card>
+          ) : null}
 
-      {state.kind === "ok" ? (
-        <BacktestResults
-          backtest={state.backtest}
-          dashboard={state.dashboard}
-          sectors={state.sectors}
-          themes={state.themes}
-          stocks={state.stocks}
-        />
-      ) : null}
+          {state.kind === "ok" ? (
+            <BacktestResults
+              backtest={state.backtest}
+              dashboard={state.dashboard}
+              sectors={state.sectors}
+              themes={state.themes}
+              stocks={state.stocks}
+            />
+          ) : null}
+        </>
+      )}
     </div>
   );
 }

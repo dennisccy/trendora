@@ -700,6 +700,21 @@ scanner:
   bootstrap_dates: ["2022-10-07", "2025-04-04"]
 
 # ----------------------------------------------------------------------------------------
+# iter-28 CONSUMED — Fast-ready boot + background warm-up (J-40/J-41). EVERY startup/readiness/poll
+# number the boot path (main.py lifespan), the readiness module (app.engine.readiness), the warm-up
+# controller (app.engine.warmup), and the frontend readiness badge derive from lives HERE
+# (anti-goal: No magic numbers — NO budget/poll/backoff literal in those modules). Boot-validated:
+# the budget + both poll intervals must be > 0, batch size >= 1, idle interval >= the active interval.
+# The lifespan does ONLY the minimal sync work (config/db/seed + the single latest-snapshot compute)
+# before yielding; the full historical walk-forward cadence + forward-returns warm up in the
+# BACKGROUND after the server is already serving (it never blocks /health or the read pages).
+startup:
+  readiness_budget_seconds: 30.0          # soft budget for the minimal sync boot before serving (logged on overrun)
+  warmup_batch_size: 1                     # cadence as-of dates the background warm-up persists per progress tick
+  health_poll_interval_seconds: 2.0        # badge poll cadence while warming (fast flip to Ready, not a 30s cycle)
+  health_poll_idle_interval_seconds: 30.0  # slower poll cadence the badge backs off to once Ready (>= active)
+
+# ----------------------------------------------------------------------------------------
 # iter-12 CONSUMED — Methodology / Glossary catalog (J-12). The SINGLE config-backed source that
 # EXPLAINS every setup status + the VCP pattern: a plain-language meaning, the exact thresholds that
 # define each (referenced LIVE from the canonical config blocks above — never re-typed, so they always

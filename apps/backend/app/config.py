@@ -356,6 +356,52 @@ class ScannerCfg(BaseModel):
     bootstrap_dates: list[date] = Field(min_length=1)
 
 
+class StartupCfg(BaseModel):
+    """Fast-ready boot + background warm-up tunables (iter-28, J-40/J-41). EVERY startup/readiness/poll
+    number the boot path, the readiness module, and the frontend badge derive from lives here
+    (anti-goal: No magic numbers — NO budget/poll/backoff literal in `main.py`, `app.engine.readiness`,
+    `app.engine.warmup`, or the frontend health badge; mirrors how `import_chunking` lives in config).
+
+      - `readiness_budget_seconds` — the soft budget for the minimal synchronous boot work (config/db/
+        seed + the SINGLE latest-snapshot compute) before the server begins serving. Surfaced to
+        operators / the readiness payload; the boot does not abort on overrun (it logs), it bounds
+        what "fast-ready" means.
+      - `warmup_batch_size` — how many cadence as-of dates the background warm-up persists per progress
+        tick (the warm-up loop's batch granularity). MUST be `>= 1`.
+      - `health_poll_interval_seconds` — the cadence the frontend readiness badge polls the readiness
+        endpoint at while warming (fast enough that the flip to Ready shows within a poll of warm-up
+        completion — NOT a slow 30 s cycle). MUST be `> 0`.
+      - `health_poll_idle_interval_seconds` — the slower cadence the badge MAY back off to once Ready
+        (a healthy backend needs no fast poll). MUST be `>= health_poll_interval_seconds`.
+
+    Boot-validated: the budget + both poll intervals MUST be `> 0`, the batch size `>= 1`, and the idle
+    interval `>= the active interval`. An invalid block raises `ConfigError`, never a silent default."""
+
+    model_config = ConfigDict(extra="allow")
+    readiness_budget_seconds: float
+    warmup_batch_size: int
+    health_poll_interval_seconds: float
+    health_poll_idle_interval_seconds: float
+
+    @model_validator(mode="after")
+    def _validate(self) -> "StartupCfg":
+        positive = {
+            "readiness_budget_seconds": self.readiness_budget_seconds,
+            "health_poll_interval_seconds": self.health_poll_interval_seconds,
+            "health_poll_idle_interval_seconds": self.health_poll_idle_interval_seconds,
+        }
+        nonpositive = sorted(k for k, v in positive.items() if v <= 0)
+        if nonpositive:
+            raise ValueError(f"startup values must be positive: {nonpositive}")
+        if self.warmup_batch_size < 1:
+            raise ValueError("startup.warmup_batch_size must be >= 1")
+        if self.health_poll_idle_interval_seconds < self.health_poll_interval_seconds:
+            raise ValueError(
+                "startup.health_poll_idle_interval_seconds must be >= health_poll_interval_seconds"
+            )
+        return self
+
+
 class ControlGroupCfg(BaseModel):
     """Walk-forward control-group parameters (iter-6). The random same-sector cohort is drawn with a
     deterministic RNG re-seeded from `seed` on every computation (reproducible across calls/restarts
@@ -1072,6 +1118,7 @@ class Config(BaseModel):
     decision_rules: DecisionRulesCfg
     stock_sectors: dict[str, str] = Field(min_length=1)
     scanner: ScannerCfg
+    startup: StartupCfg  # iter-28 (J-40/J-41) fast-ready boot + warm-up tunables (boot-validated above)
     walk_forward: WalkForwardCfg
     patterns: PatternsCfg
     methodology: MethodologyCfg

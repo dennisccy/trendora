@@ -121,6 +121,12 @@ VALID = {
     },
     "stock_sectors": {"AAA": "Technology", "BBB": "Technology"},
     "scanner": {"bootstrap_dates": ["2022-10-07", "2025-04-04"]},
+    "startup": {
+        "readiness_budget_seconds": 30.0,
+        "warmup_batch_size": 1,
+        "health_poll_interval_seconds": 2.0,
+        "health_poll_idle_interval_seconds": 30.0,
+    },
     # iter-6 made `walk_forward` required (forward-testing params come from config, never code).
     # J-19 made `walk_forward.attribution` required (rank-band edges + list size come from config).
     "walk_forward": {

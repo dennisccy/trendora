@@ -1,0 +1,21 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever-iter-27",
+  "status": "blocked",
+  "current_step": "qa_failed",
+  "updated_at": "2026-06-09T04:20:00.000000Z",
+  "started_at": "2026-06-09T03:13:29.925603Z",
+  "cli": "claude",
+  "blockers": [
+    {
+      "severity": "CRITICAL",
+      "category": "environmental",
+      "summary": "Backend not wired to fixture DB — seed import source not present; all browser tests blocked",
+      "detail": "The backend is running against the LIVE database instead of the fixture DB built by build_qa_fixture_db.py. The three required environment variables (TRENDORA_ENABLE_SEED_IMPORT_SOURCE, TRENDORA_CONFIG, TRENDORA_SEED_IMPORT_DIR) are not set. This is the iter-23/24/25/26 recurrence pattern that prevents all four target journeys from being reachable.",
+      "next_action": "Restart backend with fixture env values; then re-run browser tests TC-01 through TC-12"
+    }
+  ],
+  "changed_files": [],
+  "tests_run": false,
+  "browser_checks_run": false,
+  "next_action": "fix_qa"
+}

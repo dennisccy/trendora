@@ -14,6 +14,8 @@ if str(BACKEND_DIR) not in sys.path:
 from app import db as db_module  # noqa: E402
 from app.config import load_config  # noqa: E402
 from app.db import create_db_and_tables, make_engine  # noqa: E402
+from app.engine.forward_testing import backfill_forward_returns  # noqa: E402
+from app.engine.scanner import bootstrap_runs  # noqa: E402
 from app.seed_loader import load_seed  # noqa: E402
 
 
@@ -37,12 +39,28 @@ def seed_dir() -> Path:
 
 @pytest.fixture(scope="session")
 def loaded_engine(tmp_path_factory, config, seed_dir):
-    """A temp SQLite DB with the real committed seed loaded ONCE. Also registered as the
-    process engine so the FastAPI app (TestClient) reads the same database."""
+    """A temp SQLite DB with the real committed seed loaded ONCE, then warmed to the FULL historical
+    cadence ONCE. Also registered as the process engine so the FastAPI app (TestClient) reads the same
+    database.
+
+    iter-28: the FastAPI `lifespan` no longer does the historical walk-forward synchronously — it persists
+    only the latest snapshot and warms the cadence in a BACKGROUND daemon thread (J-40). The API test suite
+    has an implicit DETERMINISM CONTRACT with a fully-warm DB (research/backtest/runs/as-of tests need the
+    complete cadence; J-08 needs >= 2 dated runs; immutability tests count snapshot rows expecting them
+    stable). To restore that contract WITHOUT weakening the product's fast boot, this fixture brings the
+    shared DB to the warm state ONCE here — via the SAME canonical engines the warm-up uses
+    (`bootstrap_runs` + `backfill_forward_returns`); `test_warmup.py::test_..._only_old_synchronous_path_is_a_noop`
+    proves this is byte-identical to what the background warm-up produces (no second compute path). With
+    the DB already warm, the `TestClient` lifespan's single-flight-guarded warm-up is an idempotent no-op,
+    so tests never assert against a mid-warm-up, concurrently-mutating DB."""
     db_path = tmp_path_factory.mktemp("db") / "trendora_test.db"
     engine = make_engine(f"sqlite:///{db_path}")
     create_db_and_tables(engine)
     summary = load_seed(engine, config, seed_dir)
     assert summary["loaded"] is True and summary["price_rows"] > 0
+    # Bring the DB to the fully-warm cadence ONCE, deterministically, via the canonical engines — the same
+    # work the background warm-up does, only paid up-front + synchronously so the suite is deterministic.
+    bootstrap_runs(engine, config)
+    backfill_forward_returns(engine, config)
     db_module.set_engine(engine)
     return engine

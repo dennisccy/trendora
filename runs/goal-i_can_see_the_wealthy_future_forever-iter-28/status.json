@@ -1,0 +1,68 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever-iter-28",
+  "status": "blocked",
+  "current_step": "closure_failed",
+  "updated_at": "2026-06-10T13:37:38.865683Z",
+  "started_at": "2026-06-09T22:01:47.469405Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/main.py",
+    "apps/backend/app/engine/warmup.py",
+    "apps/backend/app/engine/readiness.py",
+    "apps/backend/app/engine/scanner.py",
+    "apps/backend/app/engine/forward_testing.py",
+    "apps/backend/app/api/health.py",
+    "apps/backend/app/config.py",
+    "config.yaml",
+    "apps/backend/tests/conftest.py",
+    "apps/backend/tests/test_warmup.py",
+    "apps/backend/tests/test_health.py",
+    "apps/backend/tests/test_config.py",
+    "apps/backend/tests/test_config_engine.py",
+    "apps/backend/tests/test_sectors.py",
+    "apps/backend/tests/test_themes.py",
+    "apps/frontend/lib/api.ts",
+    "apps/frontend/components/readiness-provider.tsx",
+    "apps/frontend/components/health-badge.tsx",
+    "apps/frontend/components/warming-state.tsx",
+    "apps/frontend/app/layout.tsx",
+    "apps/frontend/app/backtest/page.tsx",
+    "apps/frontend/app/research/page.tsx",
+    "runs/goal-session-i_can_see_the_wealthy_future_forever/state/blueprint.md"
+  ],
+  "tests_run": true,
+  "test_summary": "621 passed, 4 skipped, 0 failed in 1971.46s (0:32:51); exit 0; full suite run once at the QA gate; audit added 1 HTTP-layer J-40 test (verified standalone: 1 passed, 23.31s)",
+  "browser_checks_run": true,
+  "next_action": "evaluation",
+  "qa_verdict": "PASS",
+  "qa_reason": "Backend test suite passed (621/625), functional test cases passed, browser checks passed, UI evolution audit passed, no blockers",
+  "fix_cycle": {
+    "trigger": "qa_failed",
+    "root_cause": "Fast-ready lifespan moved the historical warm-up to an unguarded background daemon thread; every TestClient(main.app) lifespan entry spawned a duplicate concurrent warm-up over the shared session SQLite test DB, so API tests asserted against an incomplete, concurrently-mutating DB (confirmed from a real trace: test_api_runs assert 1 >= 2 \u2014 only the latest run present, not the full cadence) and the suite crawled under write contention. Verified the warmup JobProgress does NOT leak into any /api/data listing (recent_runs/resumable_imports/unfinished_imports read DB tables, never the in-memory _JOBS registry), so no listing change was needed.",
+    "fixes": [
+      "Single-flight guard in app/engine/warmup.start_warmup (module _WARMUP_LOCK + _WARMUP_THREAD): a re-invocation while a warm-up thread is alive returns the existing job id and spawns no duplicate; re-launch after settle is allowed (J-41 re-spawn resilience).",
+      "conftest.loaded_engine pre-warms the shared session DB ONCE via the canonical engines (bootstrap_runs + backfill_forward_returns), restoring the API suite's fully-warm-DB determinism contract without weakening product fast-boot.",
+      "Added test_warmup.test_start_warmup_is_single_flight_no_duplicate_concurrent_worker regression test."
+    ],
+    "verified": [
+      "test_api_runs.py + test_api_watchlist.py together -> 15 passed (was 3 failed)",
+      "test_api_engine.py + test_api_data.py + test_api_backtest.py + test_api_research.py together -> 102 passed",
+      "test_warmup single-flight test -> 1 passed",
+      "FULL suite once at the QA gate -> 621 passed, 4 skipped, 0 failed in 32:51 (exit 0); the 69-min-at-19% crawl is gone"
+    ]
+  },
+  "audit_verdict": "PASS",
+  "audit_report": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever-iter-28-audit.md",
+  "audit": {
+    "verdict": "PASS",
+    "fixes": [
+      "Added tests/test_warmup.py::test_lifespan_serves_dashboard_200_while_warmup_in_flight (HTTP-layer J-40 keystone proof; verified standalone: 1 passed in 23.31s, exit 0)",
+      "Repaired reports/qa/...-iter-28-test.log with an AUDIT ANNOTATION restoring the authoritative QA-gate summary (621 passed, 4 skipped in 1971.46s, exit 0) after the log was truncated by an interrupted audit-turn re-run"
+    ],
+    "gaps": [
+      "No negative-case unit tests for the StartupCfg validators (config.py:393-400) \u2014 validators verified in source, happy path exercised suite-wide (GAP, non-blocking)"
+    ],
+    "note": "Full suite NOT re-run during the audit (independently green at the QA gate: 621/4/0, exit 0); seams verified in source + one targeted test run. Suite now collects 626 tests including the audit-added one."
+  }
+}
