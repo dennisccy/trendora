@@ -112,6 +112,16 @@
 # Callers (run-phase.sh) use this to distinguish quota exhaustion from code failures.
 QUOTA_EXHAUSTED_EXIT_CODE=75
 
+# Exit code returned by the interactive dispatch backend when the pump/session
+# became unavailable (heartbeat went stale before a request was picked up, or a
+# claimed in-flight agent exceeded CHAIN_DISPATCH_INFLIGHT_TIMEOUT). This is a
+# transport/infrastructure failure, NOT an agent-quality failure: callers
+# (run-phase.sh, goal-iter-lean.sh, run-goal.sh) use it to pause the run cleanly
+# and resumably instead of treating a missing handoff as a code-review failure.
+# 70 = EX_SOFTWARE (POSIX sysexits.h) — sibling convention to the 75 above; it is
+# produced in exactly one place (lib/interactive-dispatch.sh).
+DISPATCH_UNAVAILABLE_EXIT_CODE=70
+
 # Sentinel file paths — per CLI so Claude and Codex don't trip over each other
 # on machines where both are configured.
 _QUOTA_SENTINEL="/tmp/claude-quota-exhausted"
@@ -489,6 +499,27 @@ _claude_invoke() {
         _budget=$(python3 "$_perms_script" budget "$CHAIN_CURRENT_AGENT" 2>/dev/null) || _budget=""
         if [[ -n "$_budget" ]]; then
           _claude_extra_args+=(--max-budget-usd "$_budget")
+        fi
+      fi
+    fi
+
+    # Per-agent model resolution.
+    #
+    # The interactive/subagent dispatch path inherits an agent's model from its
+    # .claude/agents/<name>.md frontmatter automatically; a top-level `claude -p`
+    # does NOT — without this it would silently run on the CLI default model,
+    # ignoring per-agent tier/override assignments. So mirror the --effort
+    # overlay: when CHAIN_CURRENT_AGENT is set and CHAIN_DISABLE_MODEL_OVERRIDE
+    # != "true", look up the agent's model via agent_permissions.py and pass
+    # --model. The lookup is non-fatal — any error leaves the CLI default.
+    if [[ "$CHAIN_DISABLE_MODEL_OVERRIDE" != "true" && -n "${CHAIN_CURRENT_AGENT:-}" ]]; then
+      local _perms_script_for_model
+      _perms_script_for_model="$(dirname "${BASH_SOURCE[0]}")/agent_permissions.py"
+      if [[ -f "$_perms_script_for_model" ]]; then
+        local _model_lookup
+        _model_lookup=$(python3 "$_perms_script_for_model" model "$CHAIN_CURRENT_AGENT" 2>/dev/null) || _model_lookup=""
+        if [[ -n "$_model_lookup" ]]; then
+          _claude_extra_args+=(--model "$_model_lookup")
         fi
       fi
     fi
