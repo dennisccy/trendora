@@ -8,16 +8,16 @@
     "stall_window": 3,
     "regression_halt": true
   },
-  "status": "in_progress",
+  "status": "GOAL_ACHIEVED",
   "last_verdict": "GOAL_ACHIEVED",
   "next_depth": "lean",
   "auto_release": false,
   "push_per_iter": true,
   "push_branch": "goal/i_can_see_the_wealthy_future_forever",
   "updated_at": "2026-06-10T14:18:31.111099Z",
-  "finished_at": "2026-06-10T10:55:02.314823Z",
-  "total_iterations": 28,
-  "wall_time_seconds": 6744,
+  "finished_at": "2026-06-10T14:23:15.382050Z",
+  "total_iterations": 29,
+  "wall_time_seconds": 11923,
   "quota_pause_count": 0,
   "agent_backend": "interactive"
 }
