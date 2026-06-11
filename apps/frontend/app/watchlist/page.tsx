@@ -9,6 +9,7 @@ import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { formatIsoDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import {
   addWatchlistEntry,
@@ -198,7 +199,7 @@ export default function WatchlistPage() {
         <>
           <div className="flex flex-wrap items-center gap-3">
             <Badge variant="default" className="num">
-              as of {state.data.asof_date}
+              as of {formatIsoDate(state.data.asof_date)}
             </Badge>
             <span className="num text-xs text-text-faint">{entries.length} saved</span>
           </div>
@@ -252,7 +253,7 @@ function WatchlistRow({
           {entry.ticker}
         </Link>
       </td>
-      <td className="num px-3 py-2 text-xs text-text-muted">{entry.date_added.slice(0, 10)}</td>
+      <td className="num px-3 py-2 text-xs text-text-muted">{formatIsoDate(entry.date_added)}</td>
       <td className="max-w-xs px-3 py-2 text-xs text-text-muted">
         <span className="line-clamp-2" title={entry.reason}>
           {entry.reason || <span className="text-text-faint">—</span>}

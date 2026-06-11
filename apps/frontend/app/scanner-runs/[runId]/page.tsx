@@ -10,6 +10,7 @@ import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatIsoDate, formatIsoDateTime } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { fetchRun, type RunDetail, type StockRow } from "@/lib/api";
 
@@ -118,10 +119,10 @@ function RunBody({ data }: { data: RunDetail }) {
           <Lock className="h-4 w-4 text-warn" aria-hidden />
           <div>
             <p className="text-sm font-semibold text-text">
-              Immutable snapshot — as of <span className="num">{data.asof_date}</span>
+              Immutable snapshot — as of <span className="num">{formatIsoDate(data.asof_date)}</span>
             </p>
             <p className="text-xs text-text-muted">
-              Stored exactly as scanned; never recomputed for today. Scanned {data.created_at} ·
+              Stored exactly as scanned; never recomputed for today. Scanned {formatIsoDateTime(data.created_at)} ·
               provider {data.provider} · benchmark {data.benchmark}
             </p>
           </div>
@@ -133,7 +134,7 @@ function RunBody({ data }: { data: RunDetail }) {
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle>Market Regime · as of {data.asof_date}</CardTitle>
+            <CardTitle>Market Regime · as of {formatIsoDate(data.asof_date)}</CardTitle>
             <Badge variant={regimeVariant(regime.label)}>{regime.label}</Badge>
           </CardHeader>
           <CardContent className="space-y-4">

@@ -5,6 +5,7 @@ import { fmtPct, Return, returnClass } from "@/components/forward-return";
 import { bucketVariant } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { formatIsoDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import type { ControlGroupRow, EvidenceAggregate, ExcessVsBenchmark } from "@/lib/api";
 
@@ -217,11 +218,11 @@ export function EvidenceAggregateSection({
     <section className="space-y-4" data-testid="evidence-aggregate">
       <div>
         <h2 className="text-sm font-semibold text-text">
-          Forward-tested evidence (expanding window ≤ {asofDate})
+          Forward-tested evidence (expanding window ≤ {formatIsoDate(asofDate)})
         </h2>
         <p className="mt-0.5 max-w-3xl text-xs text-text-faint">
           The forward-test track record accumulated from{" "}
-          <span className="text-text">every snapshot dated on or before {asofDate}</span> — by bucket,
+          <span className="text-text">every snapshot dated on or before {formatIsoDate(asofDate)}</span> — by bucket,
           setup and regime, excess vs benchmarks, VCP/pattern, and the control group. Moving the global
           as-of date earlier shrinks the sample (n); at the latest date this equals the full all-history
           aggregate. Distinct from the per-date scorecard above (which shows only what <em>this</em>{" "}
@@ -243,14 +244,14 @@ export function EvidenceAggregateSection({
             data-testid="evidence-summary"
           >
             <span>
-              <span className="text-text-faint">Snapshots contributing (≤ {asofDate}): </span>
+              <span className="text-text-faint">Snapshots contributing (≤ {formatIsoDate(asofDate)}): </span>
               <span className="num text-text">{evidence.n_runs}</span>
             </span>
             <span>
               <span className="text-text-faint">As-of range: </span>
               <span className="num text-text">
                 {evidence.asof_dates.length > 0
-                  ? `${evidence.asof_dates[evidence.asof_dates.length - 1]} → ${evidence.asof_dates[0]}`
+                  ? `${formatIsoDate(evidence.asof_dates[evidence.asof_dates.length - 1])} → ${formatIsoDate(evidence.asof_dates[0])}`
                   : "—"}
               </span>
             </span>

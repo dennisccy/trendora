@@ -10,6 +10,7 @@ import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { formatIsoDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { fetchSectors, type SectorRow, type SectorsResponse } from "@/lib/api";
 
@@ -62,7 +63,7 @@ export default function SectorsPage() {
       {state.kind === "ok" && state.data.rows.length > 0 ? (
         <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
           <Badge variant="default" className="num">
-            as of {state.data.asof_date}
+            as of {formatIsoDate(state.data.asof_date)}
           </Badge>
           <Badge variant="accent">RS benchmark: {state.data.benchmark} (excluded)</Badge>
           <span>Leadership is relative across sector &amp; industry ETFs. Click a row for its component breakdown.</span>

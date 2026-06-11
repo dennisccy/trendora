@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
+import { formatIsoDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import {
   fetchMethodology,
@@ -226,7 +227,7 @@ function StocksInner() {
       {state.kind === "ok" && rows.length > 0 ? (
         <div className="flex flex-wrap items-center gap-3">
           <Badge variant="default" className="num">
-            as of {state.data.asof_date}
+            as of {formatIsoDate(state.data.asof_date)}
           </Badge>
           <label className="flex items-center gap-2 text-xs text-text-muted">
             Sector

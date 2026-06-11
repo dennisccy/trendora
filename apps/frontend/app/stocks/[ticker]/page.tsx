@@ -12,6 +12,7 @@ import { PriceChart } from "@/components/price-chart";
 import { ScoreBadge } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatIsoDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import {
   fetchStock,
@@ -153,7 +154,7 @@ function StockDetailBody({ data }: { data: StockDetailResponse }) {
           ))}
           <span className="text-xs text-text-muted">{row.sector}</span>
           <Badge variant="default" className="num">
-            as of {data.asof_date}
+            as of {formatIsoDate(data.asof_date)}
           </Badge>
           <p className="w-full text-sm text-text-muted">{row.setup.reason}</p>
         </CardContent>
@@ -364,7 +365,7 @@ function StockChartPanel({ ticker }: { ticker: string }) {
         <CardTitle>Price &amp; moving averages</CardTitle>
         {state.kind === "ok" ? (
           <span className="num text-xs text-text-faint">
-            {state.data.bars.length} bars · as of {state.data.asof_date}
+            {state.data.bars.length} bars · as of {formatIsoDate(state.data.asof_date)}
           </span>
         ) : null}
       </CardHeader>
@@ -376,10 +377,10 @@ function StockChartPanel({ ticker }: { ticker: string }) {
           <div className="space-y-3">
             {hasForward ? (
               <p className="text-xs text-text-faint">
-                Full path through {state.data.latest_date ?? "the latest seed date"}. Bars after the
-                as-of date {state.data.asof_date} are{" "}
+                Full path through {state.data.latest_date ? formatIsoDate(state.data.latest_date) : "the latest seed date"}. Bars after the
+                as-of date {formatIsoDate(state.data.asof_date)} are{" "}
                 <span className="text-warn">display-only</span> — they don’t affect the scores, setup,
-                or VCP flag below (those read the as-of snapshot, bars ≤ {state.data.asof_date}).
+                or VCP flag below (those read the as-of snapshot, bars ≤ {formatIsoDate(state.data.asof_date)}).
               </p>
             ) : null}
             <PriceChart bars={state.data.bars} ma={state.data.ma} asofDate={state.data.asof_date} />

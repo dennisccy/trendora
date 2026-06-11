@@ -11,6 +11,7 @@ import type {
 } from "lightweight-charts";
 
 import type { PriceBar } from "@/lib/api";
+import { formatIsoDate } from "@/lib/dates";
 
 /**
  * Client-only price chart (Lightweight-Charts, MIT-style permissive / Apache-2.0, no key, no
@@ -40,6 +41,21 @@ const ASOF_MARKER_VAR = "--warn";
 
 function maColorVar(index: number): string {
   return MA_PALETTE_VARS[index % MA_PALETTE_VARS.length];
+}
+
+/**
+ * Normalise a Lightweight-Charts `Time` to an ISO `yyyy-MM-dd` string for the shared formatter.
+ * Our series uses string business-day times (the backend's ISO `bar.date`), so `time` is normally that
+ * exact string; the BusinessDay-object and UNIX-timestamp shapes are handled defensively so the
+ * crosshair date is always ISO and never a locale-formatted value.
+ */
+function isoFromTime(time: Time): string {
+  if (typeof time === "string") return time;
+  if (typeof time === "number") return new Date(time * 1000).toISOString().slice(0, 10);
+  // BusinessDay object { year, month, day } — pad to yyyy-MM-dd.
+  const { year, month, day } = time as { year: number; month: number; day: number };
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${year}-${pad(month)}-${pad(day)}`;
 }
 
 export function PriceChart({
@@ -89,6 +105,10 @@ export function PriceChart({
         rightPriceScale: { borderColor: token("--border-strong") },
         timeScale: { borderColor: token("--border-strong") },
         crosshair: { mode: lwc.CrosshairMode.Normal },
+        // J-42: the crosshair/tooltip DATE is a displayed calendar date — render it `yyyy-MM-dd`
+        // through the one shared formatter (no locale-dependent path). The compact axis TICK labels
+        // stay the library default (abbreviated scale marks, not displayed dates — per J-42 acceptance).
+        localization: { timeFormatter: (time: Time) => formatIsoDate(isoFromTime(time)) },
       });
 
       const forwardCandle = token(FORWARD_CANDLE_VAR);

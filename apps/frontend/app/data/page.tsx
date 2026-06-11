@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { formatIsoDate, formatIsoDateTime, isValidIsoDate, ISO_DATE_PLACEHOLDER } from "@/lib/dates";
 import {
   dismissUnfinishedImport,
   executeDataRemoval,
@@ -71,8 +72,74 @@ function statusVariant(status: string): "ok" | "warn" | "danger" | "accent" | "d
   }
 }
 
-function fmtDate(value: string | null): string {
-  return value ? value : "—";
+// One date authority for the whole frontend: route through the shared `formatIsoDate` (lib/dates.ts)
+// so this module holds no per-component date-format literal (J-42). Kept as a thin local alias so the
+// existing coverage/range/run-table call sites read clearly.
+const fmtDate = formatIsoDate;
+
+/**
+ * J-42: a locale-proof, validated ISO `yyyy-MM-dd` TEXT input for the `/data` job/removal forms — the
+ * replacement for the four native `<input type="date">` pickers (whose rendered widget output is
+ * locale-dependent). The user types the date directly; the value is validated against the SHARED
+ * `isValidIsoDate` (exact `yyyy-MM-dd` format + calendar validity, so `2026-13-40` and `10/06/2026`
+ * are both rejected). A non-empty invalid value shows a visible inline error and is reported up via
+ * `onValidityChange` so the form's submit/preview button can be blocked while invalid. The submitted
+ * job uses exactly the typed string. These inputs are JOB PARAMETERS — they never touch the global
+ * as-of control (no `?asof` write here).
+ */
+function IsoDateInput({
+  label,
+  value,
+  onChange,
+  onValidityChange,
+  ariaLabel,
+  optional = false,
+  testId,
+}: {
+  label: React.ReactNode;
+  value: string;
+  onChange: (v: string) => void;
+  onValidityChange?: (valid: boolean) => void;
+  ariaLabel: string;
+  optional?: boolean;
+  testId?: string;
+}) {
+  // Empty is "valid" for an optional field (no constraint); for a required field empty is incomplete
+  // (not shown as an error, but reported invalid so the form blocks until both ends are filled).
+  const isEmpty = value.trim() === "";
+  const formatValid = isEmpty ? optional : isValidIsoDate(value);
+  // Only SHOW the inline error once the user has typed something that isn't a valid ISO date — never
+  // nag an untouched empty field.
+  const showError = !isEmpty && !isValidIsoDate(value);
+  const errorId = testId ? `${testId}-error` : undefined;
+
+  useEffect(() => {
+    onValidityChange?.(formatValid);
+  }, [formatValid, onValidityChange]);
+
+  return (
+    <label className="flex flex-col gap-1 text-xs text-text-muted">
+      {label}
+      <input
+        type="text"
+        inputMode="numeric"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={ariaLabel}
+        aria-invalid={showError || undefined}
+        aria-describedby={showError ? errorId : undefined}
+        placeholder={ISO_DATE_PLACEHOLDER}
+        data-testid={testId}
+        className={cn(FIELD, "num w-40", showError && "border-neg focus-visible:ring-neg")}
+      />
+      {showError ? (
+        <span id={errorId} role="alert" className="flex items-center gap-1 text-[11px] text-neg" data-testid={errorId}>
+          <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
+          Enter a valid date as {ISO_DATE_PLACEHOLDER}
+        </span>
+      ) : null}
+    </label>
+  );
 }
 
 export default function DataManagerPage() {
@@ -209,6 +276,12 @@ export default function DataManagerPage() {
   async function handleStart(event: React.FormEvent) {
     event.preventDefault();
     if (!start || !end || starting || jobRunning) return;
+    // J-42 guard: block submit (incl. via Enter) unless BOTH dates are exact, calendar-valid ISO
+    // `yyyy-MM-dd` — never POST a malformed date. The Start button is also disabled while invalid.
+    if (!isValidIsoDate(start) || !isValidIsoDate(end)) {
+      setFormError("Enter both dates as yyyy-MM-dd (e.g. 2026-05-01).");
+      return;
+    }
     // J-35 UI guard: never start an expand over a source that cannot supply market cap (the backend also
     // rejects it with a 400 — this surfaces the reason BEFORE the request).
     if (sourceIneligibleForExpand) {
@@ -571,7 +644,7 @@ function MissingDataDiagnosticPanel({
               rows={intra_series_gaps.map((r) => ({
                 key: `gap:${r.symbol}`,
                 symbol: r.symbol,
-                shortfall: `${r.missing_day_count} missing (${r.first_gap} → ${r.last_gap})`,
+                shortfall: `${r.missing_day_count} missing (${fmtDate(r.first_gap)} → ${fmtDate(r.last_gap)})`,
                 pullable: r.pullable,
                 pullStart: r.pull_start,
                 pullEnd: r.pull_end,
@@ -909,36 +982,38 @@ function JobForm({
   running: boolean;
   error: string | null;
 }) {
-  // Start is blocked while busy/running, with no dates, OR (J-35) when an expand is aimed at a source that
-  // cannot supply market cap — the backend rejects that too; the UI blocks it up front with a reason.
-  const disabled = busy || running || !start || !end || sourceIneligibleForExpand;
+  // J-42: the two date fields are validated ISO TEXT inputs; the form is blocked until BOTH are a valid
+  // `yyyy-MM-dd`. Memoised callbacks keep IsoDateInput's validity effect stable (one report per change).
+  const [startValid, setStartValid] = useState(false);
+  const [endValid, setEndValid] = useState(false);
+  const onStartValid = useCallback((v: boolean) => setStartValid(v), []);
+  const onEndValid = useCallback((v: boolean) => setEndValid(v), []);
+  // Start is blocked while busy/running, with an empty/INVALID date, OR (J-35) when an expand is aimed at
+  // a source that cannot supply market cap — the backend rejects that too; the UI blocks it up front.
+  const disabled = busy || running || !start || !end || !startValid || !endValid || sourceIneligibleForExpand;
   return (
     <Card className="p-0">
-      <PanelTitle hint="Pick a date or range, a job kind, and — for a fetch or expand — an import source. These date inputs are job parameters — they do NOT change the global as-of viewing date.">
+      <PanelTitle hint="Pick a date or range (typed as yyyy-MM-dd), a job kind, and — for a fetch or expand — an import source. These date inputs are job parameters — they do NOT change the global as-of viewing date.">
         Start a fetch / backfill / expand job
       </PanelTitle>
       <form onSubmit={onStart} className="space-y-4 p-4">
         <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-xs text-text-muted">
-            Start date
-            <input
-              type="date"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-              aria-label="Job start date"
-              className={cn(FIELD, "num w-40")}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-text-muted">
-            End date
-            <input
-              type="date"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              aria-label="Job end date"
-              className={cn(FIELD, "num w-40")}
-            />
-          </label>
+          <IsoDateInput
+            label="Start date"
+            value={start}
+            onChange={setStart}
+            onValidityChange={onStartValid}
+            ariaLabel="Job start date"
+            testId="job-start-date"
+          />
+          <IsoDateInput
+            label="End date"
+            value={end}
+            onChange={setEnd}
+            onValidityChange={onEndValid}
+            ariaLabel="Job end date"
+            testId="job-end-date"
+          />
           <label className="flex flex-col gap-1 text-xs text-text-muted">
             Job kind
             <Select
@@ -1103,7 +1178,7 @@ function JobProgressPanel({
   return (
     <Card className="p-0">
       <PanelTitle
-        hint={`${job.kind} job · ${job.source ? `${job.source} · ` : ""}${job.start} → ${job.end}`}
+        hint={`${job.kind} job · ${job.source ? `${job.source} · ` : ""}${fmtDate(job.start)} → ${fmtDate(job.end)}`}
       >
         Job progress
       </PanelTitle>
@@ -1390,7 +1465,7 @@ function UnfinishedImportsPanel({
                   <span className="text-sm font-medium text-text">{impSource?.label ?? imp.source}</span>
                   {imp.start && imp.end ? (
                     <span className="num text-xs text-text-faint">
-                      {imp.start} → {imp.end}
+                      {fmtDate(imp.start)} → {fmtDate(imp.end)}
                     </span>
                   ) : null}
                 </div>
@@ -1611,6 +1686,12 @@ function RemoveDataPanel({ onRemoved }: { onRemoved: () => void }) {
   const [removing, setRemoving] = useState(false); // destructive removal in-flight
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<RemovePreview | null>(null);
+  // J-42: the two optional date fields are validated ISO text inputs — empty is allowed (optional), but
+  // a NON-EMPTY value must be a valid `yyyy-MM-dd` before a preview can run.
+  const [startValid, setStartValid] = useState(true);
+  const [endValid, setEndValid] = useState(true);
+  const onStartValid = useCallback((v: boolean) => setStartValid(v), []);
+  const onEndValid = useCallback((v: boolean) => setEndValid(v), []);
 
   function buildScope(): RemoveScope {
     const symbols = symbolsText
@@ -1625,9 +1706,16 @@ function RemoveDataPanel({ onRemoved }: { onRemoved: () => void }) {
   }
 
   const hasScope = symbolsText.trim().length > 0 || Boolean(start) || Boolean(end);
+  // Both date fields must be valid ISO (or empty) before a preview is allowed.
+  const datesValid = startValid && endValid;
 
   async function handlePreview() {
-    if (!hasScope || loading) return;
+    if (!hasScope || loading || !datesValid) return;
+    // J-42 guard: never preview/POST a malformed date (the button is also disabled while invalid).
+    if ((start && !isValidIsoDate(start)) || (end && !isValidIsoDate(end))) {
+      setError("Enter dates as yyyy-MM-dd (e.g. 2026-05-01).");
+      return;
+    }
     setLoading(true);
     setError(null);
     setDone(null);
@@ -1678,30 +1766,28 @@ function RemoveDataPanel({ onRemoved }: { onRemoved: () => void }) {
               className={cn(FIELD, "num w-64")}
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs text-text-muted">
-            From date (optional)
-            <input
-              type="date"
-              value={start}
-              onChange={(e) => setStart(e.target.value)}
-              aria-label="Removal start date"
-              className={cn(FIELD, "num w-40")}
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-xs text-text-muted">
-            To date (optional)
-            <input
-              type="date"
-              value={end}
-              onChange={(e) => setEnd(e.target.value)}
-              aria-label="Removal end date"
-              className={cn(FIELD, "num w-40")}
-            />
-          </label>
+          <IsoDateInput
+            label="From date (optional)"
+            value={start}
+            onChange={setStart}
+            onValidityChange={onStartValid}
+            ariaLabel="Removal start date"
+            optional
+            testId="remove-start-date"
+          />
+          <IsoDateInput
+            label="To date (optional)"
+            value={end}
+            onChange={setEnd}
+            onValidityChange={onEndValid}
+            ariaLabel="Removal end date"
+            optional
+            testId="remove-end-date"
+          />
           <button
             type="button"
             onClick={handlePreview}
-            disabled={!hasScope || loading}
+            disabled={!hasScope || loading || !datesValid}
             data-testid="remove-preview-button"
             className={cn(
               "inline-flex h-9 items-center gap-2 rounded-md border border-neg px-4 text-sm font-semibold text-neg",
@@ -1816,7 +1902,7 @@ function RemoveConfirmModal({
               </p>
               <p className="num text-xs text-text-muted">
                 {preview.removable_symbol_count} symbol{preview.removable_symbol_count === 1 ? "" : "s"}
-                {preview.removable_first ? ` · ${preview.removable_first} → ${preview.removable_last}` : null}
+                {preview.removable_first ? ` · ${fmtDate(preview.removable_first)} → ${fmtDate(preview.removable_last)}` : null}
               </p>
               {preview.removable_symbols.length > 0 ? (
                 <p className="num mt-1 truncate text-xs text-text-faint" title={preview.removable_symbols.join(", ")}>
@@ -1857,8 +1943,11 @@ function RemoveConfirmModal({
                 {preview.cascade.forward_return_count} forward returns
               </p>
               {preview.cascade.snapshot_dates.length > 0 ? (
-                <p className="num mt-1 truncate text-xs text-text-faint" title={preview.cascade.snapshot_dates.join(", ")}>
-                  dates: {preview.cascade.snapshot_dates.join(", ")}
+                <p
+                  className="num mt-1 truncate text-xs text-text-faint"
+                  title={preview.cascade.snapshot_dates.map(fmtDate).join(", ")}
+                >
+                  dates: {preview.cascade.snapshot_dates.map(fmtDate).join(", ")}
                 </p>
               ) : (
                 <p className="mt-1 text-xs text-text-faint">No dependent snapshots — only bars are removed.</p>
@@ -1935,13 +2024,13 @@ function RunHistoryPanel({ runs }: { runs: DataRun[] }) {
           {runs.map((run) => (
             <tr key={run.id} className="border-b border-border align-top last:border-b-0 hover:bg-surface-2">
               <td className="num px-3 py-2 text-xs text-text-muted">
-                {run.started_at ? run.started_at.slice(0, 19).replace("T", " ") : "—"}
+                {formatIsoDateTime(run.started_at)}
               </td>
               <td className="px-3 py-2">
                 <Badge variant="default">{run.kind ?? "seed load"}</Badge>
               </td>
               <td className="num px-3 py-2 text-xs text-text-muted">
-                {run.start && run.end ? `${run.start} → ${run.end}` : "—"}
+                {run.start && run.end ? `${fmtDate(run.start)} → ${fmtDate(run.end)}` : "—"}
               </td>
               <td className="px-3 py-2">
                 <Badge variant={statusVariant(run.status)} className="num">

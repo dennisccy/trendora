@@ -14,6 +14,7 @@ import { ScoreBadge } from "@/components/score-badge";
 import { shouldShowWarming, WarmingState } from "@/components/warming-state";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatIsoDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import {
   fetchBacktest,
@@ -105,12 +106,12 @@ export default function BacktestPage() {
           isHistorical ? (
             <Badge variant="warn" className="num gap-1.5" data-testid="backtest-asof">
               <History className="h-3.5 w-3.5" aria-hidden />
-              Viewing as-of {resolvedDate} (historical)
+              Viewing as-of {formatIsoDate(resolvedDate)} (historical)
             </Badge>
           ) : (
             <Badge variant="default" className="num gap-1.5" data-testid="backtest-asof">
               <Clock className="h-3.5 w-3.5" aria-hidden />
-              Viewing as-of {resolvedDate} (latest)
+              Viewing as-of {formatIsoDate(resolvedDate)} (latest)
             </Badge>
           )
         ) : null}

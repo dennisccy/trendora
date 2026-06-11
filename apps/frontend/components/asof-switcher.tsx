@@ -5,6 +5,7 @@ import { Clock, History } from "lucide-react";
 import { useAsOf } from "@/components/asof-provider";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
+import { formatIsoDate } from "@/lib/dates";
 
 /**
  * Global top-bar as-of date switcher (iter-8, J-13). Picks any past trading day from the canonical
@@ -23,7 +24,7 @@ export function AsOfSwitcher() {
       {isHistorical ? (
         <Badge variant="warn" className="num gap-1.5" aria-live="polite" data-testid="asof-indicator">
           <History className="h-3.5 w-3.5" aria-hidden />
-          Viewing as-of {asOf} (historical)
+          Viewing as-of {formatIsoDate(asOf)} (historical)
         </Badge>
       ) : (
         <Badge variant="default" className="gap-1.5" data-testid="asof-indicator">
@@ -40,10 +41,10 @@ export function AsOfSwitcher() {
           disabled={!ready || dates.length === 0}
           onChange={(event) => setAsOf(event.target.value || null)}
         >
-          <option value="">Latest{latest ? ` · ${latest}` : ""}</option>
+          <option value="">Latest{latest ? ` · ${formatIsoDate(latest)}` : ""}</option>
           {historical.map((date) => (
             <option key={date} value={date}>
-              {date}
+              {formatIsoDate(date)}
             </option>
           ))}
         </Select>

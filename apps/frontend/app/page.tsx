@@ -9,6 +9,7 @@ import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatIsoDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import {
   fetchDashboard,
@@ -79,7 +80,7 @@ export default function DashboardPage() {
         {state.kind === "ok" ? (
           <Badge variant="default" className="num gap-1.5">
             <Clock className="h-3.5 w-3.5" aria-hidden />
-            Data as-of {state.dashboard.asof_date}
+            Data as-of {formatIsoDate(state.dashboard.asof_date)}
           </Badge>
         ) : null}
       </div>

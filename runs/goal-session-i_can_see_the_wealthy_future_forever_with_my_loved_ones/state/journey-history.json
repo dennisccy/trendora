@@ -53,12 +53,12 @@
     "J-06": {
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
-      "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-05-nvda-detail.png",
-      "note": "THIN baseline evidence: no side-by-side numeric comparison captured this iter; carried on snapshot-served single-source architecture + prior-session verification on identical code (8c566d8). Re-verify opportunistically."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-evidence/UT-J-43-detail-clickthrough.png",
+      "note": "Iter-1 upgrades the thin baseline with a direct numeric comparison at a HISTORICAL date: MRVL @2026-06-09 Leadership A 94.42, Entry Quality E 20.54, Risk E 58.42 identical on leaderboard (UT-J-43-url-missing-asof.png) and detail (DOM-extracted; detail screenshot confirms as-of 2026-06-09 view)."
     },
     "J-07": {
       "id": "J-07",
@@ -123,12 +123,12 @@
     "J-13": {
       "id": "J-13",
       "name": "Browse dashboard as of a past date (global as-of switcher)",
-      "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-13-historical.png",
-      "note": "'Viewing as-of 2026-03-31 (historical)' indicator; dashboard re-pointed to that date's stored run (Risk-off 28.11, Actionable 0, different sectors/themes, 'Data as-of 2026-03-31')."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-evidence/UT-J-13-dashboard-historical.png",
+      "note": "Re-verified iter-1: 'Viewing as-of 2026-06-09 (historical)' indicator + 'Data as-of 2026-06-09'; regime changed Narrow-leadership 61.00 -> Risk-on 68.95 (different snapshot); /stocks /themes /sectors re-pointed; return-to-latest clears indicator and URL param."
     },
     "J-14": {
       "id": "J-14",
@@ -148,7 +148,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": null,
-      "note": "THIN baseline evidence: no timing capture this iter. Carried on snapshot-served read architecture (dev handoff: all read endpoints 200 from stored snapshot while warming) + prior-session verification. Re-verify with a timed load when convenient."
+      "note": "THIN baseline evidence: no timing capture. Carried on snapshot-served read architecture (dev handoff: all read endpoints 200 from stored snapshot while warming) + prior-session verification. Re-verify with a timed load when convenient."
     },
     "J-16": {
       "id": "J-16",
@@ -163,22 +163,22 @@
     "J-17": {
       "id": "J-17",
       "name": "Grow the dataset by date / date range",
-      "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-iter-0-evidence/J-17-data-manager.png",
-      "note": "Coverage panel + job UI verified in browser; the run-a-job leg (progress, growing as-of dates, growing n) not re-exercised this baseline (live fetch out of scope) — carried from prior session on identical code."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-evidence/UT-J-17-job-complete.png",
+      "note": "Iter-1: a real backfill job (2021-02-10 -> 2021-02-17) submitted through the NEW validated ISO text inputs, ran asynchronously with live progress, and completed 'ok' — stronger than the baseline's coverage-panel-only check. Live-provider fetch leg still out of scope (provider-walled)."
     },
     "J-18": {
       "id": "J-18",
       "name": "One date control (no duplicate)",
-      "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-09-result.png",
-      "note": "Backtest carries no page-local date picker; global top-bar switcher drives Backtest and Dashboard (UT-J-13/UT-J-14 historical captures). Judged on 'no page-local independent date state' per the J-43 amendment."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-evidence/UT-J-18-backtest-no-local-date.png",
+      "note": "Re-verified iter-1 per the J-43 amendment: /backtest DOM has no page-local date control (only the global select); global switcher re-points Backtest; /backtest?asof=2026-06-09 is the serialization of the ONE state, not a second state (coherence audit confirmed asof-provider is the sole ?asof reader/writer)."
     },
     "J-19": {
       "id": "J-19",
@@ -193,12 +193,12 @@
     "J-20": {
       "id": "J-20",
       "name": "Chart shows full path through latest with as-of marker",
-      "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-iter-0-evidence/J-16-nrg-vcp-2024-01-03.png",
-      "note": "NRG @ as-of 2024-01-03 chart header: 'Full path through 2026-06-10. Bars after the as-of date are display-only — they don't affect the scores, setup, or VCP flag (those read the as-of snapshot, bars <= 2024-01-03)'. Direct through-latest + display-only evidence."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-evidence/UT-J-20-nvda-chart-full.png",
+      "note": "Re-verified iter-1 at as-of 2026-06-09: NVDA chart 'Full path through 2026-06-10', forward region labelled display-only, 'Forward — after as-of 2026-06-09 (display only)' legend; scores (47.93/59.09/33.77) read the as-of snapshot. Tooltip date format now via shared formatter (J-42)."
     },
     "J-21": {
       "id": "J-21",
@@ -308,7 +308,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-iter-0-evidence/J-25-J-32-research.png",
-      "note": "THIN baseline evidence: end-to-end synthesis walk not re-run; component surfaces (lab, filters, detail) all verified individually this iter; carried from prior session."
+      "note": "THIN baseline evidence: end-to-end synthesis walk not re-run; component surfaces (lab, filters, detail) all verified individually at baseline; carried from prior session."
     },
     "J-32": {
       "id": "J-32",
@@ -338,57 +338,57 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": null,
-      "note": "QA SKIPPED the ~3-min alpha_vantage demo-key resumable exercise this baseline; Unfinished-imports surface visible in DM UI. Carried on suite tests + prior-session verification on identical code."
+      "note": "QA SKIPPED the ~3-min alpha_vantage demo-key resumable exercise at baseline; Unfinished-imports surface visible in DM UI. Carried on suite tests (full suite green 622/4/0 in iter-1) + prior-session verification on identical code."
     },
     "J-35": {
       "id": "J-35",
       "name": "Expand the universe from the Data Manager",
       "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": null,
-      "note": "Verification basis is API-layer + green suite (browser NOT a gate, per goal.md re-scope). Suite collect-only this iter (626/0 errors); last full green run at the same product commit (8c566d8: 621 pass/4 skip/0 fail). Full suite re-run owed in iter-1."
+      "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-dev.md",
+      "note": "Verification basis is API-layer + green suite (browser NOT a gate, per goal.md re-scope). Baseline's collect-only debt PAID in iter-1: full pytest 622 passed / 4 skipped / 0 failed at this product commit."
     },
     "J-36": {
       "id": "J-36",
       "name": "Coverage — per-symbol table + universe-vs-symbols clarity",
       "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-iter-0-evidence/J-17-data-manager.png",
-      "note": "Coverage panel with plain-language definitions, universe-vs-symbols note, aggregate figures, and the per-symbol table (in-universe / has-data / date-range / bar-count) all visible."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-evidence/UT-J-42-invalid-2026-13-40.png",
+      "note": "Coverage panel + per-symbol table visible (now with ISO-formatted ranges via the shared formatter) in iter-1's full /data capture; figures unchanged (162 symbols, 2021-01-04 -> 2026-06-10)."
     },
     "J-37": {
       "id": "J-37",
       "name": "Missing-data diagnostic + pull exactly the gap",
       "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": null,
-      "note": "Verification basis is API-layer + green suite (browser NOT a gate). Carried on suite tests + prior session; full suite re-run owed in iter-1."
+      "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-dev.md",
+      "note": "Verification basis is API-layer + green suite (browser NOT a gate). Suite debt paid in iter-1 (622/4/0); diagnostic section visible in iter-1 /data capture with ISO ranges."
     },
     "J-38": {
       "id": "J-38",
       "name": "Unified Unfinished-imports — Resume / Retry / Remove",
       "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": null,
-      "note": "Verification basis is API-layer + green suite (browser NOT a gate). Unfinished-imports surface present in DM UI; carried on suite tests + prior session; full suite re-run owed in iter-1."
+      "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-dev.md",
+      "note": "Verification basis is API-layer + green suite (browser NOT a gate). Suite debt paid in iter-1 (622/4/0); Unfinished-imports section visible in iter-1 /data capture."
     },
     "J-39": {
       "id": "J-39",
       "name": "Remove imported data — seed-safe, cascade-consistent",
       "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": null,
-      "note": "Read-only preview endpoint verified via curl (destructive endpoint correctly NOT exercised — NVDA carries unrestorable user-added bars). Verification basis API + suite; carried; full suite re-run owed in iter-1."
+      "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-dev.md",
+      "note": "Verification basis API + suite (destructive endpoint correctly never exercised live — NVDA carries unrestorable user-added bars). Suite debt paid in iter-1 (622/4/0). Remove form now uses validated ISO text inputs (J-42) and still gates Preview on validity."
     },
     "J-40": {
       "id": "J-40",
@@ -398,37 +398,37 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-dev.md",
-      "note": "Direct baseline evidence: cold boot served 200s on health/stocks/dashboard/sectors/themes while warm-up progressed 'history 2/10 -> 10/10', then readiness flipped to ready; never 'unavailable', never crashed."
+      "note": "Direct baseline evidence: cold boot served 200s on health/stocks/dashboard/sectors/themes while warm-up progressed 'history 2/10 -> 10/10', then readiness flipped to ready; never 'unavailable', never crashed. 'Ready' badge visible in all iter-1 captures."
     },
     "J-41": {
       "id": "J-41",
       "name": "Boot resilience — warm-up never takes the app down",
       "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-dev.md",
-      "note": "Concurrency/single-flight/non-fatal warm-up tests confirmed present and collected (test_warmup.py); last full green run at the same product commit. Full suite re-run owed in iter-1."
+      "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-dev.md",
+      "note": "Concurrency/single-flight/non-fatal warm-up tests (test_warmup.py) ran in iter-1's full suite: 622 passed / 4 skipped / 0 failed — the baseline's collect-only debt is paid."
     },
     "J-42": {
       "id": "J-42",
       "name": "Every user-facing date reads yyyy-MM-dd (locale-proof)",
-      "status": "partial",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-42-iso-dates.png",
-      "note": "QA's PASS is an overclaim — downgraded. Displayed run-list/leaderboard dates ARE ISO (backend sends ISO strings rendered raw), but the acceptance also requires validated ISO TEXT inputs on /data and one shared formatter: source scan proves /data still uses native type='date' inputs (locale-rendered) and no shared formatter exists. Chart tooltip dates unverified."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-evidence/UT-J-42-invalid-2026-13-40.png",
+      "note": "NEWLY PASSING iter-1. One shared formatter (apps/frontend/lib/dates.ts) is the format authority (coherence audit confirmed no per-component literal, no toLocaleDateString, no native type='date'); /data's four fields are validated ISO text inputs — 2026-13-40 and 10/06/2026 both show inline error + disabled Start (DOM-verified); coverage/job-card/run-list/switcher/indicator all ISO in captures. Chart TOOLTIP leg accepted on code inspection (single localization.timeFormatter -> formatIsoDate hook; canvas hover not automatable) — axis-tick carve-out respected. Real backfill job submitted with the typed dates and completed ok."
     },
     "J-43": {
       "id": "J-43",
       "name": "Deep-linkable as-of (?asof URL serialization)",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
+      "status": "partial",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-43-asof-deeplink-fail.png",
-      "note": "Loading /stocks?asof=2026-05-01 leaves the switcher at 'Latest' — the param is neither read nor written. Corroborated by source scan: components/asof-provider.tsx has zero ?asof URL read/write hits. (Screenshot is a byte-copy of the leaderboard capture; verdict stands on the source scan + QA's live eval.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-evidence/UT-J-43-url-missing-asof.png",
+      "note": "PARTIAL (was failing). Now working: interactive selection writes ?asof=D (persists while historical), switch-to-latest removes it, invalid/unknown ?asof degrades to latest (no crash), and a deep-linked ?asof DOES restore into the one global control (switcher + indicator + data correct). STILL FAILING: after deep-link hydration / reload / fresh tab the URL is stripped to param-free, defeating shareability. Root cause confirmed in asof-provider.tsx AsOfUrlSync: the serialize effect's deps [asOf, latest, ready, pathname] omit searchParams — the restore-path strip fires with asOf=null, then the asOf=D re-run reads a stale searchParams (current===next) and early-returns, so the strip wins permanently. Small surgical fix; re-QA reload/fresh-tab/click-through legs."
     },
     "J-44": {
       "id": "J-44",
@@ -438,7 +438,7 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-44-dashboard.png",
-      "note": "No 'Major indexes & regime' card anywhere on the dashboard (visually confirmed); no regime-history or index-series endpoint exists in apps/backend/app (source scan)."
+      "note": "No 'Major indexes & regime' card anywhere on the dashboard (visually confirmed at baseline); no regime-history or index-series endpoint exists in apps/backend/app (source scan). Not targeted in iter-1; planned for iter-2."
     },
     "J-45": {
       "id": "J-45",
@@ -448,7 +448,7 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-45-nvda-detail.png",
-      "note": "Full NVDA detail capture shows price+MA+volume chart with no regime bands and no Regime toggle; depends on the same stored-regime-history endpoint as J-44."
+      "note": "No regime bands and no Regime toggle on the detail chart (iter-1's UT-J-20-nvda-chart-full.png confirms still absent); depends on the same stored-regime-history endpoint as J-44. Not targeted in iter-1; planned for iter-2."
     },
     "J-46": {
       "id": "J-46",
@@ -458,7 +458,7 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": null,
-      "note": "Source-scan evidence (sufficient per iter spec): no worker-pool config key, no parallel-fetch primitives in the import path, no committed benchmark script, no load-bars-once instrumentation test."
+      "note": "Source-scan evidence (sufficient per iter spec): no worker-pool config key, no parallel-fetch primitives in the import path, no committed benchmark script, no load-bars-once instrumentation test. Not targeted in iter-1."
     },
     "J-47": {
       "id": "J-47",
@@ -468,9 +468,9 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-47-methodology.png",
-      "note": "/methodology has the setup/pattern catalog only (~32 items) — no Glossary section, no search, no categorized >=100-term catalog, no info-tooltips on dense column headers reading a shared catalog."
+      "note": "/methodology has the setup/pattern catalog only (~32 items) — no Glossary section, no search, no categorized >=100-term catalog, no info-tooltips on dense column headers reading a shared catalog. Not targeted in iter-1."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-06-11T08:41:43+01:00"
+  "updated_at": "2026-06-11T10:55:47+01:00"
 }

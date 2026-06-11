@@ -1,0 +1,32 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-06-11T10:30:00Z",
+  "started_at": "2026-06-11T08:56:00Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/frontend/lib/dates.ts",
+    "apps/frontend/components/asof-provider.tsx",
+    "apps/frontend/components/asof-switcher.tsx",
+    "apps/frontend/components/price-chart.tsx",
+    "apps/frontend/components/evidence-panels.tsx",
+    "apps/frontend/app/data/page.tsx",
+    "apps/frontend/app/page.tsx",
+    "apps/frontend/app/stocks/page.tsx",
+    "apps/frontend/app/stocks/[ticker]/page.tsx",
+    "apps/frontend/app/sectors/page.tsx",
+    "apps/frontend/app/themes/page.tsx",
+    "apps/frontend/app/watchlist/page.tsx",
+    "apps/frontend/app/scanner-runs/page.tsx",
+    "apps/frontend/app/scanner-runs/[runId]/page.tsx",
+    "apps/frontend/app/backtest/page.tsx",
+    "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-dev.md",
+    "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-frontend.md"
+  ],
+  "tests_run": true,
+  "tests_result": "backend full pytest 622 passed / 4 skipped / 0 failed in 2199.13s (exit 0; +1 vs 621 baseline, no backend change); frontend npx tsc --noEmit exit 0 (strict) + next dev compiled all changed routes HTTP 200 (incl. /stocks?asof valid/malformed/unknown); ISO date-validation logic asserted against spec error cases (2026-13-40, 10/06/2026, not-a-date rejected). ESLint not installed in project (next lint is interactive-only) — tsc is the frontend gate, as in prior iters.",
+  "browser_checks_run": false,
+  "next_action": "qa"
+}

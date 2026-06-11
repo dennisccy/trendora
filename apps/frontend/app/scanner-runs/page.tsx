@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/empty-state";
 import { PageHeading } from "@/components/page-heading";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { formatIsoDate } from "@/lib/dates";
 import { fetchRuns, type RunSummary, type RunsResponse } from "@/lib/api";
 
 type State =
@@ -100,7 +101,7 @@ function RunTableRow({ run }: { run: RunSummary }) {
           href={`/scanner-runs/${run.run_id}`}
           className="num font-semibold text-accent hover:underline focus-visible:underline focus-visible:outline-none"
         >
-          {run.asof_date}
+          {formatIsoDate(run.asof_date)}
         </Link>
       </td>
       <td className="px-3 py-2">
