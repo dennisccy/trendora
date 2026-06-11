@@ -64,3 +64,36 @@
 **Pipeline notes (non-vetoing):** the engine's audit/ux-regression/closure steps did not execute (run ended after the parallel fanout with a non-fatal `invalid step 'post_dev_parallel_complete'` error — session-consistent behavior); the QA-resumed alpha_vantage demo job re-paused resumable at 17:21:32Z and now sits as a dismissible unfinished-import record on /data (benign operator state, not a failure).
 
 **Next-step recommendation:** Target J-47 at **lean** depth — the final buildable journey: the ≥100-term config-backed glossary catalog rendered searchable + categorized on /methodology, with info-tooltips on the dense pages' column headers (Research, Backtest, Stocks, Dashboard cards, Data Manager coverage) reading the same catalog; reference — never duplicate — the existing setup/pattern catalog. Browser QA must verify search live, the goal's step-3 spot-check terms, ≥1 tooltip per dense surface, and that captured screenshots are non-blank. Make the single best-effort J-22/J-23/J-24 fetch attempt per goal.md (non-halting). If J-47 lands and required journeys hold, the next evaluation is a GOAL_ACHIEVED candidate.
+
+## Iteration 4 — goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-4
+
+**Date:** 2026-06-11T21:15:12+01:00
+**Verdict:** GOAL_ACHIEVED
+**Depth dispatched:** lean
+**Journey deltas:**
+- Newly passing: J-47 (the final buildable journey)
+- Re-verified passing: J-01, J-02, J-09, J-12, J-18, J-25, J-26, J-29, J-36
+- Newly failing: none
+- Regressed: none
+- Anti-goal violations: none
+
+**Reasoning:** J-47's evidence was verified four independent ways: (1) the evaluator re-derived the
+served catalog offline from the committed config via `build_catalog(load_config())` → 118 terms
+(109 authored + 9 derived) across the exact per-category counts QA reported (17/9/16/21/28/27),
+all 19 spot-check terms present; (2) the full backend suite log corroborated 678/4/0
+(`/tmp/trendora-iter4-fullsuite.log`, PYTEST_EXIT=0, +19 glossary tests vs iter-3) incl. the
+config-injected-term-no-code-change contract; (3) pinned-open catalog tooltips visually verified
+with readable definition text on /stocks, /, /data, /backtest (+DOM-asserted on /research) —
+character-for-character API equality; (4) the QA DOM extraction quotes exactly match the committed
+`methodology/page.tsx` template ("118 terms across 6 categories…"). Review PASS_WITH_NOTES (count
+correction 118 not 120 — still ≥100; a pre-existing J-36 DefinedMetric copy noted, not introduced
+this iter), coherence COHERENCE-PASS, no secrets/magic numbers/second catalog in the diff.
+With that, every buildable Must-have journey (J-01..J-21, J-25..J-47) is passing/already_passing;
+J-22/J-23/J-24 are data-walled blocked-NA and explicitly NON-VETOING per goal.md's
+"Data-dependent journeys (non-halting)" section — confirmed verbatim against the goal text, not
+taken on faith. All three GOAL_ACHIEVED conditions hold.
+
+**Next-step recommendation:** halt — goal achieved. If resumed later: one-shot J-22/J-23/J-24 data
+fetch via the committed runbook / J-35 expand job once a live provider is reachable (no code change
+expected); optional cleanup of the pre-existing /data DefinedMetric static definition strings
+(apps/frontend/app/data/page.tsx:453) in favor of the catalog tooltips.

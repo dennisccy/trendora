@@ -31,3 +31,18 @@ restating the verdict (the evaluator-log.md already does that).
 **Verdict:** CONTINUE
 **Lesson:** Browser-QA evidence can silently degrade to byte-identical BLANK captures (8 iter-3 PNGs shared md5 23fe5583…, a 7278-byte dark rectangle) while the written claims are still correct — the iter-3 resumable/Resume/backfill claims were all verifiable against persistent backend state instead (`data_provider_runs` row id 30 and `import_checkpoints` id 22 in apps/backend/data/trendora.db, read-only). Also: IPv6 SYN-SENT timeouts to alphavantage.co stretch the alpha_vantage+demo rate-limit technique from ~3 min to ~16 min per chunk attempt (5×15s timeout per symbol), and the engine's audit/ux-regression/closure steps never ran (non-fatal `invalid step 'post_dev_parallel_complete'` after the parallel fanout — no audit handoff exists for any iteration of this session).
 **Applies to:** any iter relying on /data job-card screenshots (md5-check captures; corroborate via the run log + import_checkpoints); any browser-QA budgeting the alpha_vantage demo-key throttle; framework owner re the skipped audit/closure steps in goal-mode full depth.
+
+## iter-4 — 2026-06-11T21:15:12+01:00
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** A served-payload claim can be corroborated with NO running backend:
+`apps/backend/.venv/bin/python -c "from app.config import load_config; from app.engine.methodology
+import build_catalog; ..."` rebuilds the exact `GET /api/methodology` glossary from the committed
+`config.yaml` in seconds (118 terms, per-category counts byte-matching QA's live capture). Also: QA
+captured /methodology only at top scroll, so the below-the-fold Glossary section never appears in
+any screenshot — when a target section renders below the fold, require a scrolled-to capture or
+treat the DOM-extraction + offline-rebuild pair as the primary record. Finally, dev-handoff counts
+drift (handoff said 111 authored/120 served; committed reality 109/118) — always recount from the
+committed artifact, never from the handoff.
+**Applies to:** any future evaluation of catalog/config-served content (methodology, glossary,
+provider catalog); any browser-QA plan whose acceptance target sits below the first viewport.

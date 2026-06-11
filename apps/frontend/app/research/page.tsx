@@ -12,6 +12,7 @@ import { useReadiness } from "@/components/readiness-provider";
 import { shouldShowWarming, WarmingState } from "@/components/warming-state";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
+import { TermInfo } from "@/components/ui/term-info";
 import { cn } from "@/lib/utils";
 import {
   fetchEventStudy,
@@ -444,10 +445,16 @@ function DecileTable({ rows, min, horizon }: { rows: FactorDecileRow[]; min: num
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
-              <th className="px-4 py-2 font-medium">Decile</th>
+              <th className="px-4 py-2 font-medium">
+                <span className="inline-flex items-center gap-1">Decile<TermInfo term="decile" /></span>
+              </th>
               <th className="px-4 py-2 text-right font-medium">Factor range</th>
-              <th className="px-4 py-2 text-right font-medium">Mean fwd return</th>
-              <th className="px-4 py-2 text-right font-medium">Risk-adjusted (downside)</th>
+              <th className="px-4 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Mean fwd return<TermInfo term="forward return" /></span>
+              </th>
+              <th className="px-4 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Risk-adjusted (downside)<TermInfo term="risk-adjusted return" /></span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -574,11 +581,17 @@ function RegimeEffectivenessTable({
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
               <th className="px-4 py-2 font-medium">Regime</th>
-              <th className="px-4 py-2 text-right font-medium">n</th>
-              <th className="px-4 py-2 text-right font-medium">Rank-IC</th>
+              <th className="px-4 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">n<TermInfo term="n (sample size)" /></span>
+              </th>
+              <th className="px-4 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Rank-IC<TermInfo term="rank-IC" /></span>
+              </th>
               <th className="px-4 py-2 text-right font-medium">Top-decile mean</th>
               <th className="px-4 py-2 text-right font-medium">Bottom-decile mean</th>
-              <th className="px-4 py-2 text-right font-medium">Spread (top − bottom)</th>
+              <th className="px-4 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Spread (top − bottom)<TermInfo term="long-short spread" /></span>
+              </th>
               <th className="px-4 py-2 text-right font-medium">Risk-adjusted spread</th>
             </tr>
           </thead>
@@ -969,11 +982,15 @@ function CombinationTable({ data, dim }: { data: FactorCombinationResponse; dim:
       <table data-testid="combination-table" className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
-            <th className="px-4 py-2 font-medium">Cohort</th>
+            <th className="px-4 py-2 font-medium">
+              <span className="inline-flex items-center gap-1">Cohort<TermInfo term="composite" /></span>
+            </th>
             <th className="px-4 py-2 text-right font-medium">n</th>
             <th className="px-4 py-2 text-right font-medium">Mean fwd return</th>
             <th className="px-4 py-2 text-right font-medium">Median</th>
-            <th className="px-4 py-2 text-right font-medium">Hit-rate</th>
+            <th className="px-4 py-2 text-right font-medium">
+              <span className="inline-flex items-center gap-1">Hit-rate<TermInfo term="hit-rate" /></span>
+            </th>
             <th className="px-4 py-2 text-right font-medium">Risk-adjusted (downside)</th>
           </tr>
         </thead>
@@ -1294,17 +1311,37 @@ function EventStudyHorizonTable({
         <table data-testid="event-study-horizon-table" className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
-              <th className="px-3 py-2 font-medium">Horizon</th>
-              <th className="px-3 py-2 text-right font-medium">n</th>
+              <th className="px-3 py-2 font-medium">
+                <span className="inline-flex items-center gap-1">Horizon<TermInfo term="horizon" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">n<TermInfo term="n (sample size)" /></span>
+              </th>
               <th className="px-3 py-2 text-right font-medium">Mean</th>
-              <th className="px-3 py-2 text-right font-medium">Median</th>
-              <th className="px-3 py-2 text-right font-medium">% Positive</th>
-              <th className="px-3 py-2 text-right font-medium">Dispersion</th>
-              <th className="px-3 py-2 text-right font-medium">Expectancy</th>
-              <th className="px-3 py-2 text-right font-medium">Mean MAE</th>
-              <th className="px-3 py-2 text-right font-medium">Mean MFE</th>
-              <th className="px-3 py-2 text-right font-medium">Return / downside-dev</th>
-              <th className="px-3 py-2 text-right font-medium">Return / MAE</th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Median<TermInfo term="median" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">% Positive<TermInfo term="% positive" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Dispersion<TermInfo term="dispersion" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Expectancy<TermInfo term="expectancy" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Mean MAE<TermInfo term="MAE" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Mean MFE<TermInfo term="MFE" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Return / downside-dev<TermInfo term="return / downside-dev" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Return / MAE<TermInfo term="return / MAE" /></span>
+              </th>
             </tr>
           </thead>
           <tbody>

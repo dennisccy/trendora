@@ -6,6 +6,7 @@ import { AsOfSwitcher } from "@/components/asof-switcher";
 import { HealthBadge } from "@/components/health-badge";
 import { ReadinessProvider } from "@/components/readiness-provider";
 import { Sidebar } from "@/components/sidebar";
+import { GlossaryProvider } from "@/lib/glossary";
 
 export const metadata: Metadata = {
   title: "Trendora",
@@ -18,6 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <ReadinessProvider>
           <AsOfProvider>
+            <GlossaryProvider>
             <div className="flex min-h-screen">
               <Sidebar />
               <div className="flex min-w-0 flex-1 flex-col">
@@ -33,6 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 <main className="flex-1 overflow-x-auto p-6">{children}</main>
               </div>
             </div>
+            </GlossaryProvider>
           </AsOfProvider>
         </ReadinessProvider>
       </body>

@@ -2,6 +2,7 @@ import { type ReactNode } from "react";
 
 import { fmtPct, Return, returnClass, SampleSize } from "@/components/forward-return";
 import { Card } from "@/components/ui/card";
+import { TermInfo } from "@/components/ui/term-info";
 import type { Distribution, PerStockAttribution, PerStockRow, ReturnAttribution } from "@/lib/api";
 
 /**
@@ -19,10 +20,13 @@ function fmtUnsignedPct(value: number | null): string {
   return `${(value * 100).toFixed(2)}%`;
 }
 
-function PanelTitle({ children, hint }: { children: ReactNode; hint?: string }) {
+function PanelTitle({ children, hint, term }: { children: ReactNode; hint?: string; term?: string }) {
   return (
     <div className="border-b border-border px-4 py-3">
-      <h3 className="text-sm font-semibold text-text">{children}</h3>
+      <h3 className="flex items-center gap-1.5 text-sm font-semibold text-text">
+        {children}
+        {term ? <TermInfo term={term} /> : null}
+      </h3>
       {hint ? <p className="mt-0.5 text-xs text-text-faint">{hint}</p> : null}
     </div>
   );
@@ -60,7 +64,10 @@ function PerStockPanel({ data, min }: { data: PerStockAttribution; min: number }
   const empty = data.contributors.length === 0 && data.detractors.length === 0;
   return (
     <Card className="p-0">
-      <PanelTitle hint="Each named ticker's mean realized forward return over the observed snapshots (with n)">
+      <PanelTitle
+        term="contributors & detractors"
+        hint="Each named ticker's mean realized forward return over the observed snapshots (with n)"
+      >
         Top contributors &amp; detractors
       </PanelTitle>
       {empty ? (
@@ -79,10 +86,13 @@ function PerStockPanel({ data, min }: { data: PerStockAttribution; min: number }
   );
 }
 
-function StatRow({ label, children }: { label: string; children: ReactNode }) {
+function StatRow({ label, term, children }: { label: string; term?: string; children: ReactNode }) {
   return (
     <div className="flex items-center justify-between border-b border-border px-4 py-2 last:border-b-0">
-      <span className="text-text-muted">{label}</span>
+      <span className="flex items-center gap-1.5 text-text-muted">
+        {label}
+        {term ? <TermInfo term={term} /> : null}
+      </span>
       <span className="num">{children}</span>
     </div>
   );
@@ -98,16 +108,16 @@ function DistributionPanel({ d, min }: { d: Distribution; min: number }) {
         <StatRow label="Mean">
           <span className={returnClass(d.mean_return)}>{fmtPct(d.mean_return)}</span>
         </StatRow>
-        <StatRow label="Median">
+        <StatRow label="Median" term="median">
           <span className={returnClass(d.median)}>{fmtPct(d.median)}</span>
         </StatRow>
-        <StatRow label="% positive (hit rate)">
+        <StatRow label="% positive (hit rate)" term="hit-rate">
           <span className="text-text">{fmtUnsignedPct(d.pct_positive)}</span>
         </StatRow>
-        <StatRow label="Dispersion (σ)">
+        <StatRow label="Dispersion (σ)" term="dispersion">
           <span className="text-text">{fmtUnsignedPct(d.dispersion)}</span>
         </StatRow>
-        <StatRow label="Sample size">
+        <StatRow label="Sample size" term="n (sample size)">
           <SampleSize n={d.n} min={min} />
         </StatRow>
       </div>
@@ -118,19 +128,21 @@ function DistributionPanel({ d, min }: { d: Distribution; min: number }) {
 function GroupPanel({
   title,
   hint,
+  term,
   rows,
   min,
   emptyLabel,
 }: {
   title: string;
   hint?: string;
+  term?: string;
   rows: { label: string; mean_return: number | null; n: number }[];
   min: number;
   emptyLabel: string;
 }) {
   return (
     <Card className="p-0">
-      <PanelTitle hint={hint}>{title}</PanelTitle>
+      <PanelTitle hint={hint} term={term}>{title}</PanelTitle>
       {rows.length === 0 ? (
         <p className="px-4 py-4 text-sm text-text-muted">{emptyLabel}</p>
       ) : (
@@ -184,6 +196,7 @@ export function ReturnAttributionSection({
         <DistributionPanel d={attribution.distribution} min={min} />
         <GroupPanel
           title="Forward return by sector"
+          term="by-sector"
           hint="Mean realized forward return per stored sector"
           rows={attribution.by_sector.map((r) => ({ label: r.sector, mean_return: r.mean_return, n: r.n }))}
           min={min}
@@ -191,6 +204,7 @@ export function ReturnAttributionSection({
         />
         <GroupPanel
           title="Forward return by rank band"
+          term="by-rank-band"
           hint="Mean realized forward return per rank band"
           rows={attribution.by_rank_band.map((r) => ({
             label: r.rank_band,

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { AlertTriangle, BookOpen, Filter } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, BookOpen, Filter, Search } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
 import { PageHeading } from "@/components/page-heading";
@@ -9,8 +9,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
   fetchMethodology,
+  type GlossaryTerm,
   type MethodologyCatalog,
   type MethodologyEntry,
+  type MethodologyGlossary,
   type MethodologyThresholdRow,
   type UniverseSelection,
 } from "@/lib/api";
@@ -89,7 +91,132 @@ export default function MethodologyPage() {
           ))}
         </div>
       ) : null}
+
+      {state.kind === "ok" && state.data.glossary ? (
+        <GlossarySection glossary={state.data.glossary} />
+      ) : null}
     </div>
+  );
+}
+
+/** The J-47 terminology Glossary section — the categorized, client-side-searchable ≥100-term list read
+ *  from the SAME served catalog (single source of truth; the inline tooltips read these very entries).
+ *  Search filters live on term + definition; an empty match shows an honest empty state. */
+function GlossarySection({ glossary }: { glossary: MethodologyGlossary }) {
+  const [query, setQuery] = useState("");
+
+  const normalized = query.trim().toLowerCase();
+  const totalTerms = useMemo(
+    () => glossary.categories.reduce((sum, category) => sum + category.terms.length, 0),
+    [glossary],
+  );
+
+  // Live client-side filter on term + definition (e.g. "IC" narrows to rank-IC). Categories with no
+  // matching terms are dropped so the result reads cleanly; catalog order is preserved.
+  const filtered = useMemo(() => {
+    if (!normalized) return glossary.categories;
+    return glossary.categories
+      .map((category) => ({
+        ...category,
+        terms: category.terms.filter(
+          (term) =>
+            term.term.toLowerCase().includes(normalized) ||
+            term.definition.toLowerCase().includes(normalized),
+        ),
+      }))
+      .filter((category) => category.terms.length > 0);
+  }, [glossary, normalized]);
+
+  const matchCount = filtered.reduce((sum, category) => sum + category.terms.length, 0);
+
+  return (
+    <section className="space-y-3" data-testid="glossary-section">
+      <div className="flex flex-wrap items-center gap-2 pt-2">
+        <BookOpen className="h-4 w-4 text-accent" aria-hidden />
+        <h2 className="text-base font-semibold text-text">Glossary</h2>
+        <span className="text-xs text-text-faint">
+          {totalTerms} terms across {glossary.categories.length} categories — every word the UI uses,
+          from this one config-backed catalog.
+        </span>
+      </div>
+
+      <div className="relative max-w-md">
+        <Search
+          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-faint"
+          aria-hidden
+        />
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search terms and definitions…"
+          aria-label="Search the glossary"
+          data-testid="glossary-search"
+          className="w-full rounded-md border border-border bg-surface py-2 pl-9 pr-3 text-sm text-text placeholder:text-text-faint transition-colors focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+        />
+      </div>
+
+      {normalized ? (
+        <p className="text-xs text-text-faint" data-testid="glossary-match-count">
+          {matchCount} match{matchCount === 1 ? "" : "es"} for{" "}
+          <span className="text-text">&ldquo;{query.trim()}&rdquo;</span>
+        </p>
+      ) : null}
+
+      {matchCount === 0 ? (
+        <EmptyState
+          icon={Search}
+          title="No matching terms"
+          description="No glossary term or definition matches your search. Clear the box or try a different word."
+        />
+      ) : (
+        <div className="space-y-4">
+          {filtered.map((category) => (
+            <Card key={category.key} className="space-y-3 p-4" data-category-key={category.key}>
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-accent">
+                {category.label}
+              </h3>
+              <ul className="space-y-2">
+                {category.terms.map((term) => (
+                  <GlossaryRow key={term.term} term={term} />
+                ))}
+              </ul>
+            </Card>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** One glossary term row — the literal UI term, its plain-language definition, an optional where-note,
+ *  and any resolved threshold references. Pure presentation of the served entry (no recompute). */
+function GlossaryRow({ term }: { term: GlossaryTerm }) {
+  return (
+    <li className="border-b border-border pb-2 last:border-b-0 last:pb-0" data-term={term.term}>
+      <div className="flex flex-wrap items-baseline gap-2">
+        <span className="font-medium text-text">{term.term}</span>
+        {term.kind ? (
+          <Badge variant={term.kind === "pattern" ? "accent" : "default"}>
+            {term.kind === "pattern" ? "Pattern" : "Setup"}
+          </Badge>
+        ) : null}
+      </div>
+      <p className="text-sm text-text-muted">{term.definition}</p>
+      {term.where ? (
+        <p className="text-xs text-text-faint">
+          <span className="uppercase tracking-wide">Where: </span>
+          {term.where}
+        </p>
+      ) : null}
+      {term.thresholds && term.thresholds.length > 0 ? (
+        <ul className="mt-1 space-y-0.5">
+          {term.thresholds.map((row, index) => (
+            <ThresholdRow key={index} row={row} />
+          ))}
+        </ul>
+      ) : null}
+    </li>
   );
 }
 

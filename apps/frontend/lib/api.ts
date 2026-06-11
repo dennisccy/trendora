@@ -753,13 +753,43 @@ export interface UniverseSelection {
   resolved_size: number;
 }
 
+/** One glossary term (iter-4 goal-mode, J-47). `term` is the LITERAL UI string (the tooltip/lookup
+ *  key, e.g. "rank-IC"); `definition` is the plain-language explanation; `where` optionally notes where
+ *  it appears; `thresholds` optionally cite config thresholds (resolved live on the backend, never
+ *  re-typed). Setup/pattern rows additionally carry `entry_key`/`kind` linking to the full catalog entry. */
+export interface GlossaryTerm {
+  term: string;
+  category: string;
+  definition: string;
+  where?: string;
+  thresholds?: MethodologyThresholdRow[];
+  entry_key?: string;
+  kind?: "setup" | "pattern";
+}
+
+/** One glossary category (iter-4 goal-mode, J-47) — an ordered group of terms. `key` is the stable id,
+ *  `label` the display heading; `terms` are the category's terms in catalog order. */
+export interface GlossaryCategory {
+  key: string;
+  label: string;
+  terms: GlossaryTerm[];
+}
+
+/** The J-47 terminology glossary served on the SAME GET /api/methodology payload — categorized terms in
+ *  catalog order. The /methodology Glossary page and every inline info-tooltip read THESE entries. */
+export interface MethodologyGlossary {
+  categories: GlossaryCategory[];
+}
+
 /** The config-backed Setup & Pattern catalog served by GET /api/methodology. The ONE source for the
- *  /methodology page, the /stocks badge tooltips, AND the /stocks setup-filter vocabulary.
- *  `universe_selection` (J-22) carries the Universe Selection section when configured. */
+ *  /methodology page, the /stocks badge tooltips, the /stocks setup-filter vocabulary, AND (J-47) the
+ *  full terminology glossary + every inline term tooltip. `universe_selection` (J-22) carries the
+ *  Universe Selection section when configured; `glossary` (J-47) carries the categorized term list. */
 export interface MethodologyCatalog {
   intro?: string;
   universe_selection?: UniverseSelection;
   entries: MethodologyEntry[];
+  glossary?: MethodologyGlossary;
 }
 
 /** Canonical Setup & Pattern glossary source: GET /api/methodology. Throws on non-200 so callers

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import date
 from functools import lru_cache
 from pathlib import Path
@@ -968,6 +968,44 @@ class UniverseSelectionCfg(BaseModel):
     thresholds: list[MethodologyThreshold] = Field(min_length=1)
 
 
+class GlossaryCategory(BaseModel):
+    """One ordered glossary category (iter-4 goal-mode, J-47) — a group of terms shown together on
+    /methodology and the lookup namespace tooltips read. `key` is the stable identifier a term's
+    `category` points at; `label` is the display heading (e.g. "Scores & Buckets"). The category LIST
+    order is the catalog order rendered on the page (a stable, ordered list)."""
+
+    model_config = ConfigDict(extra="allow")
+    key: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+
+
+class GlossaryTerm(BaseModel):
+    """One authored glossary term (iter-4 goal-mode, J-47). `term` is the LITERAL UI string as shown on
+    a page (the tooltip/lookup key — e.g. "rank-IC", "breadth > 50-DMA"); `category` references a
+    `GlossaryCategory.key`; `definition` is the plain-language explanation (the product's skeptical,
+    plain voice — never filler). `where` optionally notes where-it-appears. `thresholds` optionally cite
+    config thresholds via the SAME `ref` mechanism the setup/pattern entries use (resolved live at boot —
+    never a re-typed number; anti-goal: No magic numbers).
+
+    The Setups & Patterns glossary category is DERIVED from `methodology.entries` by `build_catalog`, so
+    a term here MUST NOT re-describe a setup/pattern: a `term`/`category`/key colliding with a setup or
+    pattern entry is rejected at boot (anti-goal: Glossary copy lives in one catalog)."""
+
+    model_config = ConfigDict(extra="allow")
+    term: str = Field(min_length=1)
+    category: str = Field(min_length=1)
+    definition: str = Field(min_length=1)
+    where: Optional[str] = None
+    thresholds: list[MethodologyThreshold] = Field(default_factory=list)
+
+    @field_validator("definition")
+    @classmethod
+    def _definition_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("glossary term definition must not be blank")
+        return value
+
+
 class MethodologyCfg(BaseModel):
     """The single config-backed Setup & Pattern catalog (iter-12, J-12). One ORDERED list of entries
     (the setup statuses + the detected patterns) carrying the human copy + threshold references. The
@@ -977,12 +1015,55 @@ class MethodologyCfg(BaseModel):
     so an unresolvable reference fails loudly — never a silent placeholder number.
 
     `universe_selection` (J-22, optional) adds the config-backed Universe Selection section served on
-    /methodology — the membership rule + the `universe.filters` screen thresholds (resolved live)."""
+    /methodology — the membership rule + the `universe.filters` screen thresholds (resolved live).
+
+    `categories` + `terms` (J-47, iter-4 goal-mode) add the ≥100-term terminology glossary served on the
+    SAME GET /api/methodology payload. The Setups & Patterns category is DERIVED from `entries` (never
+    re-described) — see `app.engine.methodology.build_catalog`. Both default empty so the smallest valid
+    catalog (and the inline test fixtures) need no glossary block; boot validation (term/category/ref/
+    collision checks) only fires for the terms that ARE authored."""
 
     model_config = ConfigDict(extra="allow")
     intro: Optional[str] = None
     universe_selection: Optional[UniverseSelectionCfg] = None
     entries: list[MethodologyEntry] = Field(min_length=1)
+    categories: list[GlossaryCategory] = Field(default_factory=list)
+    terms: list[GlossaryTerm] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _glossary_terms_well_formed(self) -> "MethodologyCfg":
+        """Boot validation for the J-47 glossary (the parts that don't need the whole Config):
+
+          - category keys are unique;
+          - every authored term's `category` references a declared category key;
+          - authored term keys are unique;
+          - an authored term key MUST NOT collide with a setup/pattern entry `key` OR `name` (no second
+            copy of a setup/pattern — the Setups & Patterns category is derived from `entries`).
+
+        (Threshold `ref` resolution needs the full Config and is checked in `Config._methodology_refs_resolve`.)"""
+        category_keys = [c.key for c in self.categories]
+        if len(category_keys) != len(set(category_keys)):
+            raise ValueError("methodology glossary category keys must be unique")
+        category_key_set = set(category_keys)
+
+        entry_identifiers = {e.key for e in self.entries} | {e.name for e in self.entries}
+
+        seen_terms: set[str] = set()
+        for term in self.terms:
+            if term.category not in category_key_set:
+                raise ValueError(
+                    f"glossary term {term.term!r} references unknown category {term.category!r}"
+                )
+            if term.term in seen_terms:
+                raise ValueError(f"duplicate glossary term key {term.term!r}")
+            seen_terms.add(term.term)
+            if term.term in entry_identifiers:
+                raise ValueError(
+                    f"glossary term {term.term!r} collides with a setup/pattern entry — the Setups & "
+                    "Patterns category is derived from `entries`; a setup/pattern is explained in exactly "
+                    "one place (anti-goal: Glossary copy lives in one catalog)"
+                )
+        return self
 
 
 def _node_keys(node: object) -> set[str]:
@@ -1000,11 +1081,26 @@ def _node_keys(node: object) -> set[str]:
 
 def resolve_ref(config: "Config", ref: str) -> object:
     """Resolve a dotted-path reference (e.g. "decision_rules.actionable.leadership") to its LIVE value
-    in the loaded `Config`, traversing BOTH pydantic-model attributes AND mappings. Raises
-    `ConfigError` on any unresolvable segment — the methodology glossary never shows a placeholder
-    threshold (anti-goal: No fabricated data)."""
+    in the loaded `Config`, traversing pydantic-model attributes, mappings, AND sequence INDICES (a
+    numeric segment indexes into a list/tuple, e.g. "regime.label_edges.0.min"). Raises `ConfigError` on
+    any unresolvable segment — the methodology glossary never shows a placeholder threshold (anti-goal:
+    No fabricated data)."""
     node: object = config
     for part in ref.split("."):
+        # numeric segment into a sequence (but not a str/bytes/Mapping) — supports list-element refs
+        if (
+            part.lstrip("-").isdigit()
+            and isinstance(node, Sequence)
+            and not isinstance(node, (str, bytes))
+        ):
+            index = int(part)
+            if not -len(node) <= index < len(node):
+                raise ConfigError(
+                    f"methodology threshold ref {ref!r} is unresolvable at segment {part!r} "
+                    f"(index out of range for length-{len(node)} sequence)"
+                )
+            node = node[index]
+            continue
         if part not in _node_keys(node):
             raise ConfigError(f"methodology threshold ref {ref!r} is unresolvable at segment {part!r}")
         node = node[part] if isinstance(node, Mapping) else getattr(node, part)
@@ -1290,6 +1386,8 @@ class Config(BaseModel):
         threshold_lists = [entry.thresholds for entry in self.methodology.entries]
         if self.methodology.universe_selection is not None:
             threshold_lists.append(self.methodology.universe_selection.thresholds)
+        # J-47: glossary terms may cite config thresholds via the same `ref` mechanism — resolve them too.
+        threshold_lists.extend(term.thresholds for term in self.methodology.terms)
         for thresholds in threshold_lists:
             for threshold in thresholds:
                 if threshold.ref is not None:

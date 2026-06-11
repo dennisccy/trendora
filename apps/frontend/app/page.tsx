@@ -8,6 +8,7 @@ import { ComponentBreakdown } from "@/components/component-breakdown";
 import { MajorIndexesCard } from "@/components/major-indexes-card";
 import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
+import { TermInfo } from "@/components/ui/term-info";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatIsoDate } from "@/lib/dates";
@@ -127,7 +128,10 @@ function DashboardBody({
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader className="flex-row items-center justify-between space-y-0">
-            <CardTitle>Market Regime</CardTitle>
+            <CardTitle className="flex items-center gap-1.5">
+              Market Regime
+              <TermInfo term="market regime" />
+            </CardTitle>
             <Badge variant={regimeVariant(regime.label)}>{regime.label}</Badge>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -142,16 +146,19 @@ function DashboardBody({
         <div className="grid gap-4">
           <MetricCard
             title="Breadth · above 50-DMA"
+            term="breadth > 50-DMA"
             value={fmtPct(breadth.above_50dma_pct)}
             caption={breadth.label}
           />
           <MetricCard
             title="Breadth · above 200-DMA"
+            term="breadth > 200-DMA"
             value={fmtPct(breadth.above_200dma_pct)}
             caption={breadth.label}
           />
           <MetricCard
             title="Net new highs"
+            term="net new-high/low"
             value={`${breadth.new_high_low.net_pct.toFixed(2)}%`}
             caption={`${breadth.new_high_low.new_highs} hi / ${breadth.new_high_low.new_lows} lo · ${breadth.label}`}
           />
@@ -232,13 +239,19 @@ function CandidateCountsCard({ counts }: { counts: Record<string, number> }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Candidate Counts</CardTitle>
+        <CardTitle className="flex items-center gap-1.5">
+          Candidate Counts
+          <TermInfo term="setup status" />
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <ul className="space-y-1.5">
           {rows.map(({ label, key, accent }) => (
             <li key={key} className="flex items-center justify-between text-sm">
-              <span className="text-text-muted">{label}</span>
+              <span className="flex items-center gap-1.5 text-text-muted">
+                {label}
+                <TermInfo term={label} />
+              </span>
               <span className={cn("num text-lg font-semibold", accent ? "text-pos" : "text-text")}>
                 {counts[key] ?? 0}
               </span>
@@ -253,11 +266,24 @@ function CandidateCountsCard({ counts }: { counts: Record<string, number> }) {
   );
 }
 
-function MetricCard({ title, value, caption }: { title: string; value: string; caption: string }) {
+function MetricCard({
+  title,
+  value,
+  caption,
+  term,
+}: {
+  title: string;
+  value: string;
+  caption: string;
+  term?: string;
+}) {
   return (
     <Card>
       <CardContent className="space-y-1 p-5">
-        <p className="text-xs uppercase tracking-wide text-text-faint">{title}</p>
+        <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-text-faint">
+          {title}
+          {term ? <TermInfo term={term} /> : null}
+        </p>
         <p className="num text-2xl font-semibold text-text">{value}</p>
         <Badge variant="warn" className="text-xs">{caption}</Badge>
       </CardContent>

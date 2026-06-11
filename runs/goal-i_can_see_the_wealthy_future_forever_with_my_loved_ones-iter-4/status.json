@@ -1,0 +1,30 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-4",
+  "status": "complete",
+  "current_step": "dev_complete",
+  "updated_at": "2026-06-11T19:30:00Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "config.yaml",
+    "apps/backend/app/config.py",
+    "apps/backend/app/engine/methodology.py",
+    "apps/backend/tests/test_glossary.py",
+    "apps/backend/tests/test_api_methodology.py",
+    "apps/frontend/lib/api.ts",
+    "apps/frontend/lib/glossary.tsx",
+    "apps/frontend/components/ui/term-info.tsx",
+    "apps/frontend/app/layout.tsx",
+    "apps/frontend/app/methodology/page.tsx",
+    "apps/frontend/app/stocks/page.tsx",
+    "apps/frontend/app/page.tsx",
+    "apps/frontend/app/research/page.tsx",
+    "apps/frontend/app/backtest/page.tsx",
+    "apps/frontend/components/return-attribution.tsx",
+    "apps/frontend/app/data/page.tsx"
+  ],
+  "tests_run": true,
+  "tests_result": "TARGETED GREEN (foreground, fast path per session pytest discipline): test_glossary.py + test_methodology.py + test_api_methodology.py + test_no_magic_numbers.py = 38 passed, 0 failed; the five inline-config-dict modules test_config.py + test_config_engine.py + test_sectors.py + test_themes.py + test_indexes.py = 98 passed, 0 failed (6m18s, heavy walk-forward boot in test_config_engine). Served glossary verified at 120 terms (111 authored + 9 derived setups/patterns) >= 100; all 19 J-47 spot-check terms present; all 32 frontend TermInfo keys resolve in the served catalog. Frontend gate `cd apps/frontend && npx tsc --noEmit` = clean (exit 0). config.yaml glossary fields are OPTIONAL (default empty) so no new REQUIRED config key entered the five inline dicts (grep-confirmed). FULL SUITE GREEN (pump ran `cd apps/backend && .venv/bin/python -m pytest tests/ -q` to completion): **678 passed, 4 skipped, 0 failed in 2808.58s (0:46:48)** — +19 vs iter-3's 659 (the new glossary tests), zero failures, zero regressions.",
+  "browser_checks_run": false,
+  "next_action": "review"
+}

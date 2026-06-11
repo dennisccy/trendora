@@ -48,6 +48,52 @@ def test_methodology_endpoint_documents_vcp():
         assert vcp["thresholds"]  # config-referenced VCP thresholds present
 
 
+# --- J-47: the served terminology glossary on the SAME endpoint -----------------------------
+
+# The J-47 step-3 spot-check terms — corroborated against the SERVED /api/methodology payload (the
+# independent-corroboration record QA reads, not screenshots alone).
+GLOSSARY_SPOT_CHECK_TERMS = {
+    "breadth > 50-DMA", "DMA", "rank-IC", "universe", "decile", "MAE", "MFE", "expectancy",
+    "hit-rate", "dispersion", "walk-forward", "survivorship bias", "horizon", "excess return",
+    "composite", "quantile", "ATR%", "pivot", "invalidation",
+}
+
+
+def test_methodology_endpoint_serves_glossary_with_at_least_100_terms():
+    """The endpoint serves the J-47 glossary on the SAME payload (no new endpoint); the served term count
+    is >= 100 and the categories are present in order (the verifiable, corroborable count)."""
+    with _client() as client:
+        data = client.get("/api/methodology").json()
+    glossary = data["glossary"]
+    terms = [t for c in glossary["categories"] for t in c["terms"]]
+    assert len(terms) >= 100, f"served glossary has {len(terms)} terms; J-47 requires >= 100"
+    labels = [c["label"] for c in glossary["categories"]]
+    for required in ("Scores & Buckets", "Setups & Patterns", "Regime & Breadth", "Universe & Data",
+                     "Forward-testing & Evidence", "Factor Lab & Statistics"):
+        assert required in labels
+
+
+def test_methodology_endpoint_glossary_has_spot_check_terms():
+    with _client() as client:
+        data = client.get("/api/methodology").json()
+    served = {t["term"] for c in data["glossary"]["categories"] for t in c["terms"]}
+    missing = GLOSSARY_SPOT_CHECK_TERMS - served
+    assert not missing, f"served glossary missing spot-check terms: {sorted(missing)}"
+
+
+def test_methodology_endpoint_glossary_setups_patterns_single_sourced():
+    """The served Setups & Patterns glossary rows are DERIVED from `entries` (same key/meaning), so a
+    setup/pattern is served in exactly one place — never a duplicated copy (anti-goal: one catalog)."""
+    with _client() as client:
+        data = client.get("/api/methodology").json()
+    sp = next(c for c in data["glossary"]["categories"] if c["label"] == "Setups & Patterns")
+    entry_by_name = {e["name"]: e for e in data["entries"]}
+    for row in sp["terms"]:
+        assert row["term"] in entry_by_name
+        assert row["definition"] == entry_by_name[row["term"]]["meaning"]
+        assert row["entry_key"] == entry_by_name[row["term"]]["key"]
+
+
 def test_universe_selection_gated_on_committed_screen_record():
     """Honest gate (J-22 — anti-goal: Universe screen is reproducible & honest). The API serves the
     universe_selection section ONLY when the committed screen record (data/seed/universe.json) exists.

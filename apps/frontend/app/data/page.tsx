@@ -19,6 +19,7 @@ import { PageHeading } from "@/components/page-heading";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
+import { TermInfo } from "@/components/ui/term-info";
 import { cn } from "@/lib/utils";
 import { formatIsoDate, formatIsoDateTime, isValidIsoDate, ISO_DATE_PLACEHOLDER } from "@/lib/dates";
 import {
@@ -408,16 +409,21 @@ function DefinedMetric({
   definition,
   testId,
   tone,
+  term,
 }: {
   label: string;
   value: React.ReactNode;
   definition: string;
   testId?: string;
   tone?: string;
+  term?: string;
 }) {
   return (
     <div className="space-y-1 rounded-md border border-border bg-surface-2 p-3">
-      <p className="text-xs uppercase tracking-wide text-text-faint">{label}</p>
+      <p className="flex items-center gap-1.5 text-xs uppercase tracking-wide text-text-faint">
+        {label}
+        {term ? <TermInfo term={term} /> : null}
+      </p>
       <p className={cn("num text-lg font-semibold text-text", tone)} data-testid={testId}>
         {value}
       </p>
@@ -441,12 +447,14 @@ function CoveragePanel({ data }: { data: DataOverviewResponse }) {
         />
         <DefinedMetric
           label="Universe"
+          term="universe"
           testId="universe-count-defined"
           value={<span data-testid="universe-count">{c.universe_count}</span>}
           definition="The config-screened, SCORED names (the liquidity/price/market-cap screen result). This is the universe — distinct from symbols below."
         />
         <DefinedMetric
           label="Symbols"
+          term="symbols"
           value={c.symbol_count}
           definition="Every ticker with stored bars — including the index/sector/industry ETFs and ^VIX, which are NOT scored universe members."
         />
@@ -840,13 +848,22 @@ function PerSymbolCoverageTable({
               <th className="px-3 py-2 font-medium">
                 <SortHeader label="Symbol" active={sortKey === "symbol"} dir={sortDir} onClick={() => toggleSort("symbol")} />
               </th>
-              <th className="px-3 py-2 font-medium">In universe</th>
-              <th className="px-3 py-2 font-medium">Has data</th>
-              <th className="px-3 py-2 font-medium">Date range</th>
-              <th className="px-3 py-2 text-right font-medium">
-                <SortHeader label="Bars" active={sortKey === "bar_count"} dir={sortDir} onClick={() => toggleSort("bar_count")} right />
+              <th className="px-3 py-2 font-medium">
+                <span className="inline-flex items-center gap-1">In universe<TermInfo term="in-universe" /></span>
               </th>
-              <th className="px-3 py-2 font-medium">Flag</th>
+              <th className="px-3 py-2 font-medium">Has data</th>
+              <th className="px-3 py-2 font-medium">
+                <span className="inline-flex items-center gap-1">Date range<TermInfo term="date range" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center justify-end gap-1">
+                  <SortHeader label="Bars" active={sortKey === "bar_count"} dir={sortDir} onClick={() => toggleSort("bar_count")} right />
+                  <TermInfo term="bar count" />
+                </span>
+              </th>
+              <th className="px-3 py-2 font-medium">
+                <span className="inline-flex items-center gap-1">Flag<TermInfo term="thin/missing" /></span>
+              </th>
             </tr>
           </thead>
           <tbody>

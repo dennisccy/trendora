@@ -14,6 +14,7 @@ import { ScoreBadge } from "@/components/score-badge";
 import { shouldShowWarming, WarmingState } from "@/components/warming-state";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { TermInfo } from "@/components/ui/term-info";
 import { formatIsoDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import {
@@ -489,12 +490,24 @@ function ScorecardSection({ data }: { data: BacktestResponse }) {
         <table className="w-full min-w-[56rem] border-collapse text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
-              <th className="px-5 py-2 font-medium">Horizon</th>
-              <th className="px-3 py-2 text-right font-medium">Cohort</th>
-              <th className="px-3 py-2 text-right font-medium">vs SPY</th>
-              <th className="px-3 py-2 text-right font-medium">vs QQQ</th>
-              <th className="px-3 py-2 text-right font-medium">vs Sector</th>
-              <th className="px-3 py-2 text-right font-medium">Random peers</th>
+              <th className="px-5 py-2 font-medium">
+                <span className="inline-flex items-center gap-1">Horizon<TermInfo term="horizon" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Cohort<TermInfo term="forward return" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">vs SPY<TermInfo term="excess return" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">vs QQQ<TermInfo term="excess return" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">vs Sector<TermInfo term="excess return" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Random peers<TermInfo term="random same-sector control" /></span>
+              </th>
               <th className="px-3 py-2 text-right font-medium">SPY</th>
               <th className="px-3 py-2 text-right font-medium">QQQ</th>
               <th className="px-5 py-2 text-right font-medium">Sector ETF</th>

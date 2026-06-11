@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
+import { TermInfo } from "@/components/ui/term-info";
 import { formatIsoDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import {
@@ -312,11 +313,21 @@ function StocksInner() {
                 <th className="px-3 py-2 font-medium">#</th>
                 <th className="px-3 py-2 font-medium">Ticker</th>
                 <th className="px-3 py-2 font-medium">Sector</th>
-                <th className="px-3 py-2 font-medium">Leadership</th>
-                <th className="px-3 py-2 font-medium">Entry Quality</th>
-                <th className="px-3 py-2 font-medium">Risk</th>
-                <th className="px-3 py-2 font-medium">Setup</th>
-                <th className="px-3 py-2 font-medium">Reason</th>
+                <th className="px-3 py-2 font-medium">
+                  <TermInfo term="Leadership Score">Leadership</TermInfo>
+                </th>
+                <th className="px-3 py-2 font-medium">
+                  <TermInfo term="Entry Quality Score">Entry Quality</TermInfo>
+                </th>
+                <th className="px-3 py-2 font-medium">
+                  <TermInfo term="Risk Score">Risk</TermInfo>
+                </th>
+                <th className="px-3 py-2 font-medium">
+                  <TermInfo term="setup status">Setup</TermInfo>
+                </th>
+                <th className="px-3 py-2 font-medium">
+                  <TermInfo term="reason summary">Reason</TermInfo>
+                </th>
               </tr>
             </thead>
             <tbody>

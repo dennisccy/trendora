@@ -851,3 +851,492 @@ methodology:
         - { label: "Within pivot", cmp: "<=", ref: "patterns.flat_base_breakout.pivot_proximity_pct", unit: "%" }
         - { label: "Min breakout volume", cmp: ">=", ref: "patterns.flat_base_breakout.min_breakout_volume_ratio" }
       example: "A 25-bar base only 12% deep at the 45-bar highs, the close 3% below the pivot on volume at 1.1× the base → Flat-base breakout."
+
+  # iter-4 goal-mode CONSUMED — the J-47 terminology Glossary. The SAME single config-backed catalog
+  # (this `methodology:` block → build_catalog → GET /api/methodology) now also serves a categorized,
+  # >=100-term glossary. `categories` is the ordered list of groups; `terms` is the authored vocabulary.
+  # The "Setups & Patterns" category (key `setups_patterns`) is DERIVED from `entries` above by
+  # build_catalog — its rows are NOT authored here (anti-goal: Glossary copy lives in one catalog), so an
+  # authored term may not collide with a setup/pattern key/name. Any number a term cites uses the existing
+  # `ref` mechanism (resolved live at boot — never a re-typed number; anti-goal: No magic numbers). The
+  # /methodology Glossary page and every inline info-tooltip read THESE entries (single source of truth).
+  categories:
+    - { key: scores_buckets,    label: "Scores & Buckets" }
+    - { key: setups_patterns,   label: "Setups & Patterns" }
+    - { key: regime_breadth,    label: "Regime & Breadth" }
+    - { key: universe_data,     label: "Universe & Data" }
+    - { key: forward_evidence,  label: "Forward-testing & Evidence" }
+    - { key: factor_stats,      label: "Factor Lab & Statistics" }
+  terms:
+    # --- Scores & Buckets -----------------------------------------------------------------
+    - term: "Leadership Score"
+      category: scores_buckets
+      definition: "How strong a stock is right now — a 0–100 weighted blend of relative strength, moving-average trend stack, proximity to its 52-week high, and up/down volume. One of three deliberately independent scores; a high Leadership says nothing about whether the entry is good."
+      where: "Stocks leaderboard, Stock Detail, Dashboard candidates."
+    - term: "Entry Quality Score"
+      category: scores_buckets
+      definition: "Whether the current price location is buyable or already too extended — a 0–100 score that is INDEPENDENT of Leadership, so a great leader at a terrible entry is labelled exactly that. Higher means a lower-risk entry point."
+      where: "Stocks leaderboard, Stock Detail."
+    - term: "Risk Score"
+      category: scores_buckets
+      definition: "Danger factors for a name — extension from trend, volatility, weak regime, weak sector, climax action, and poor liquidity — as a 0–100 score where HIGHER means MORE danger (it is a danger score, not a quality score)."
+      where: "Stocks leaderboard, Stock Detail."
+    - term: "A–E bucket"
+      category: scores_buckets
+      definition: "Each 0–100 score is foregrounded as a letter grade A (strongest) through E (weakest) to resist false precision, with the raw number shown secondary. The letter edges come from config, so A means the same cutoff everywhere."
+      where: "Everywhere a score is shown."
+      thresholds:
+        - { label: "A at or above", cmp: ">=", ref: "buckets.A" }
+        - { label: "B at or above", cmp: ">=", ref: "buckets.B" }
+        - { label: "C at or above", cmp: ">=", ref: "buckets.C" }
+        - { label: "D at or above", cmp: ">=", ref: "buckets.D" }
+    - term: "composite"
+      category: scores_buckets
+      definition: "A config-weighted percentile rank-BLEND across several factors (each value converted to a 0–1 percentile rank oriented so better scores high, then weight-averaged) — the Factor Lab's multi-factor cohort. It is a descriptive rank-blend, never a fitted or predictive model."
+      where: "Research → Factor Lab combination cohorts."
+    - term: "component breakdown"
+      category: scores_buckets
+      definition: "Every score exposes the named components that produced it (component → contribution), so no number is a black box. Reading the breakdown tells you WHY a name scored what it did."
+      where: "Stock Detail score panels."
+    - term: "reason summary"
+      category: scores_buckets
+      definition: "A plain-language sentence explaining why a stock got its setup status — the human-readable companion to the component breakdown."
+      where: "Stocks leaderboard Reason column, Stock Detail."
+    - term: "setup status"
+      category: scores_buckets
+      definition: "The single classification each name gets from its three scores plus the market regime — Actionable, Breakout-watch, Pullback-watch, Extended, Avoid, or Risk-off-watchlist. Only Actionable is treated as a fresh buy candidate, and only in a risk-on regime. See the Setups & Patterns catalog for each status's exact rule."
+      where: "Stocks leaderboard Setup column, Stock Detail."
+    - term: "invalidation"
+      category: scores_buckets
+      definition: "The price level at which the idea is wrong — typically a moving average — so the cost of being wrong is visible BEFORE you act. Trendora always shows what would invalidate an idea rather than a bare 'buy'."
+      where: "Stocks leaderboard, Stock Detail, Watchlist."
+      thresholds:
+        - { label: "Invalidation DMA", cmp: "=", ref: "decision_rules.invalidation.ma_period", unit: "-day" }
+    - term: "Relative Strength (RS)"
+      category: scores_buckets
+      definition: "A stock's price performance MEASURED AGAINST a benchmark (SPY) over a lookback, not its absolute return — the core leadership input. A rising RS line means the name is outperforming the market."
+      where: "Leadership components, Factor Lab."
+    - term: "RS line new high"
+      category: scores_buckets
+      definition: "The relative-strength line (stock ÷ benchmark) makes a new high BEFORE price does — a leadership tell that the name is outperforming even while basing. Tracked as a detected pattern dimension."
+      where: "Stock Detail, patterns."
+    - term: "moving-average stack"
+      category: scores_buckets
+      definition: "Whether the moving averages are stacked in bullish order (shorter above longer, all rising) — a trend-quality component of the Leadership score. A clean stack is a strong uptrend."
+      where: "Leadership components."
+    - term: "52-week high proximity"
+      category: scores_buckets
+      definition: "How close price is to its one-year high — leaders tend to trade near their highs. A leadership component, NOT a buy signal by itself."
+      where: "Leadership components."
+      thresholds:
+        - { label: "High window", cmp: "=", ref: "indicators.high_window_52w", unit: " bars" }
+    - term: "up/down volume"
+      category: scores_buckets
+      definition: "The balance of volume on up days versus down days — accumulation versus distribution. Persistent up-volume dominance is a sign of institutional buying."
+      where: "Leadership components."
+    - term: "extension"
+      category: scores_buckets
+      definition: "How far price has stretched above its trend (e.g. above a rising moving average) — a Risk-score danger factor. An extended leader is too far from a low-risk entry to chase."
+      where: "Risk components, Extended setup."
+    - term: "climax action"
+      category: scores_buckets
+      definition: "A near-vertical, high-volume price spike that often marks exhaustion rather than a healthy entry — a danger factor inside the Risk score."
+      where: "Risk components."
+    - term: "liquidity"
+      category: scores_buckets
+      definition: "How easily a name can be traded without moving its price — proxied by average daily dollar volume. Thin liquidity is a Risk danger factor and a universe-screen gate."
+      where: "Risk components, universe screen."
+    # --- Regime & Breadth -----------------------------------------------------------------
+    - term: "market regime"
+      category: regime_breadth
+      definition: "A 0–100 score plus one of six labels describing the whole market's health — the top of the funnel (regime → sectors → industry groups → themes → stocks). In a Risk-off regime the scanner marks ZERO names Actionable."
+      where: "Dashboard, Backtest, every snapshot."
+    - term: "Strong risk-on"
+      category: regime_breadth
+      definition: "The healthiest market-regime label — a broadly strong, trending tape where leadership is widespread. The top regime band."
+      where: "Regime label."
+      thresholds:
+        - { label: "Score at or above", cmp: ">=", ref: "regime.label_edges.0.min" }
+    - term: "Risk-on"
+      category: regime_breadth
+      definition: "A healthy, buyable market-regime band below Strong risk-on — Actionable candidates are produced here."
+      where: "Regime label."
+    - term: "Narrow leadership"
+      category: regime_breadth
+      definition: "A market-regime label where only a thin set of names is leading — the indexes may hold up while breadth deteriorates. A caution band."
+      where: "Regime label."
+    - term: "Choppy"
+      category: regime_breadth
+      definition: "A directionless, whipsaw market-regime label — no sustained trend in either direction."
+      where: "Regime label."
+    - term: "Defensive"
+      category: regime_breadth
+      definition: "A weak market-regime band where risk should be reduced — below Choppy and above Risk-off."
+      where: "Regime label."
+    - term: "Risk-off"
+      category: regime_breadth
+      definition: "The weakest market-regime label — the Risk-off gate forces EVERY name to watchlist-only and zero names to Actionable, no matter how strong the individual scores are."
+      where: "Regime label, Risk-off-watchlist setup."
+      thresholds:
+        - { label: "Score below", cmp: "<", ref: "regime.label_edges.4.min" }
+    - term: "breadth"
+      category: regime_breadth
+      definition: "How MANY stocks participate in a move, not just the index level — a market-internals measure. Strong breadth confirms a rally; deteriorating breadth warns of a narrowing, fragile one."
+      where: "Dashboard breadth card, regime inputs."
+    - term: "breadth > 50-DMA"
+      category: regime_breadth
+      definition: "The percentage of universe stocks trading above their own 50-day moving average — a short-horizon breadth gauge. Falling participation here is an early warning even while the index holds."
+      where: "Dashboard breadth card, regime inputs."
+      thresholds:
+        - { label: "Short breadth DMA", cmp: "=", ref: "indicators.breadth_short_ma", unit: "-day" }
+    - term: "breadth > 200-DMA"
+      category: regime_breadth
+      definition: "The percentage of universe stocks trading above their 200-day moving average — a long-horizon, structural breadth gauge of how many names are in primary uptrends."
+      where: "Dashboard breadth card, regime inputs."
+      thresholds:
+        - { label: "Long breadth DMA", cmp: "=", ref: "indicators.breadth_long_ma", unit: "-day" }
+    - term: "net new-high/low"
+      category: regime_breadth
+      definition: "New 52-week highs minus new 52-week lows across the universe — a breadth thrust/washout indicator that feeds the regime score. Positive and rising is healthy participation."
+      where: "Dashboard breadth, regime inputs."
+    - term: "DMA"
+      category: regime_breadth
+      definition: "Daily Moving Average — the average closing price over N trading days (e.g. the 50-DMA, 200-DMA). The backbone of trend, breadth, invalidation, and several patterns."
+      where: "Charts, breadth, invalidation, patterns."
+      thresholds:
+        - { label: "MA periods", cmp: "=", ref: "indicators.ma_periods", unit: " days" }
+    - term: "50-DMA"
+      category: regime_breadth
+      definition: "The 50-day moving average — the intermediate-trend line used for breadth, the pullback-to-rising-DMA pattern, and (by default) the invalidation level."
+      where: "Charts, breadth, invalidation."
+    - term: "200-DMA"
+      category: regime_breadth
+      definition: "The 200-day moving average — the long-term-trend line. Price above a rising 200-DMA is the classic definition of a primary uptrend."
+      where: "Charts, breadth."
+    - term: "VIX"
+      category: regime_breadth
+      definition: "The market's implied-volatility ('fear') index — an elevated VIX is a risk-off input to the regime score. Trendora reads `^VIX` from stored bars, never live."
+      where: "Regime inputs."
+      thresholds:
+        - { label: "Elevated above", cmp: ">", ref: "regime.vix_threshold" }
+    - term: "regime bands"
+      category: regime_breadth
+      definition: "Soft coloured background bands behind the index and stock charts encoding the stored market regime over time (three risk-family colours), so you can see WHAT REGIME a move happened in. An honest step function between snapshot dates — never interpolated."
+      where: "Dashboard indexes chart, Stock Detail chart."
+    # --- Universe & Data ------------------------------------------------------------------
+    - term: "universe"
+      category: universe_data
+      definition: "The config-screened set of SCORED names — a transparent, reproducible liquidity/market-cap/price screen, NOT a hand-picked list. Distinct from 'symbols': the universe is what gets ranked; symbols is every ticker with bars (incl. ETFs and ^VIX)."
+      where: "Data Manager coverage, methodology universe selection."
+    - term: "symbols"
+      category: universe_data
+      definition: "EVERY ticker that has stored bars — the universe members PLUS the index/sector/industry ETFs and ^VIX. Broader than the universe (which is only the screened, scored names). The universe-vs-symbols distinction is the key to reading coverage."
+      where: "Data Manager coverage table."
+    - term: "in-universe"
+      category: universe_data
+      definition: "A coverage flag marking whether a symbol is a member of the scored universe (versus a support ticker like a sector ETF or ^VIX that has bars but is never ranked)."
+      where: "Data Manager coverage table."
+    - term: "survivorship bias"
+      category: universe_data
+      definition: "The distortion from studying only the names that SURVIVED into today's universe — winners are over-represented because failed names dropped out. Trendora labels its walk-forward evidence as universe-relative and survivorship-biased rather than hiding it."
+      where: "Backtest evidence, methodology."
+    - term: "seed dataset"
+      category: universe_data
+      definition: "The committed offline EOD price history the app boots on, so every scan is deterministic and reproducible with no network and no API keys. The default boot path is always the seed."
+      where: "Data Manager, boot."
+    - term: "EOD"
+      category: universe_data
+      definition: "End-of-day — the daily OHLCV bar finalized after the close. Trendora's canonical swing/return horizon is multi-day EOD data; intraday timeframes are secondary."
+      where: "Data Manager, provider."
+    - term: "OHLCV"
+      category: universe_data
+      definition: "Open, High, Low, Close, Volume — the five fields of a price bar. The raw material every indicator, pattern, and return is computed from."
+      where: "Charts, Data Manager."
+    - term: "bar count"
+      category: universe_data
+      definition: "How many price bars are stored for a symbol on a timeframe — a coverage figure. Too few bars (below the history threshold) means the symbol's long-window components report NA rather than a fabricated value."
+      where: "Data Manager coverage table."
+      thresholds:
+        - { label: "Min history bars", cmp: ">=", ref: "indicators.min_history_bars" }
+    - term: "date range"
+      category: universe_data
+      definition: "The first and last stored bar dates for a symbol — the coverage window. A gap inside the range is flagged separately as a missing-data diagnostic."
+      where: "Data Manager coverage table."
+    - term: "thin/missing"
+      category: universe_data
+      definition: "A coverage flag for a universe member with NO history or fewer bars than the config history threshold — i.e. INSUFFICIENT for analysis. Each carries a one-click 'pull the missing data' that fetches exactly the gap."
+      where: "Data Manager diagnostics."
+    - term: "coverage"
+      category: universe_data
+      definition: "Read-only descriptive metadata about WHAT DATA EXISTS — per-symbol bar counts, date ranges, and gaps. No canonical score, return, or bucket is recomputed from coverage figures."
+      where: "Data Manager."
+    - term: "provider"
+      category: universe_data
+      definition: "The pluggable end-of-day data SOURCE behind an abstraction — the default is the committed seed (offline, deterministic); a config-selected live provider can refresh data on demand from the Data Manager. Real data only — on failure it surfaces an explicit error and never fabricates prices."
+      where: "Data Manager source picker."
+    - term: "snapshot"
+      category: universe_data
+      definition: "An IMMUTABLE, append-only record of one full scan as-of one date — the regime, sector/theme/stock scores, setups, and patterns exactly as they were. Reads are served from the persisted snapshot, never recomputed per request."
+      where: "Scanner Runs, Backtest, as-of reads."
+    - term: "as-of date"
+      category: universe_data
+      definition: "The single global date the whole app is pointed at — pick any past trading day to replay that day's full scan with strict no-lookahead. Exactly one control governs it (serialized to the URL as ?asof= while historical)."
+      where: "Top-bar date switcher, every date-scoped page."
+    - term: "no-lookahead"
+      category: universe_data
+      definition: "The strict rule that an as-of scan uses ONLY data available on or before that date — no future bar leaks into a past score, bucket, setup, or pattern. The discipline that makes the walk-forward evidence honest."
+      where: "Backtest, historical replay."
+    - term: "Data Manager"
+      category: universe_data
+      definition: "The UI + API to grow, understand, and curate the dataset by hand — fetch real EOD history, backfill snapshots, see coverage, and seed-safely remove only user-added bars. The committed seed is never deletable."
+      where: "/data."
+    - term: "backfill"
+      category: universe_data
+      definition: "Auto-generating the immutable scanner snapshots (and their forward returns) for a date or date range from available bars — offline and deterministic. Fetching or backfilling a range grows the forward-test sample."
+      where: "Data Manager jobs."
+    - term: "resumable import"
+      category: universe_data
+      definition: "A chunked, rate-limit-aware fetch that checkpoints durably and, on a persistent 429, backs off, stops, and exposes Resume — continuing from the last completed chunk with no duplicate fetch, surviving a restart."
+      where: "Data Manager imports."
+    - term: "429"
+      category: universe_data
+      definition: "An HTTP 'too many requests' rate-limit response from a data provider. Trendora's import backs off and pauses to a resumable state rather than hammering the source or fabricating the missing bars."
+      where: "Data Manager imports."
+    - term: "intraday timeframe"
+      category: universe_data
+      definition: "A finer bar interval (1h / 15m / 5m) used for entry/setup detection and extra factors where coverage allows — committed, coverage-honest seed data only. Daily (1D) remains the canonical swing timeframe."
+      where: "Stock Detail timeframe selector."
+    - term: "^VIX"
+      category: universe_data
+      definition: "The ticker for the volatility index in the symbols set — it has bars (so it appears in coverage) but is NEVER a universe member or scored name; it feeds the regime score only."
+      where: "Data Manager coverage."
+    # --- Forward-testing & Evidence -------------------------------------------------------
+    - term: "forward return"
+      category: forward_evidence
+      definition: "The realized price change over the next N trading days AFTER a snapshot — measured only from post-snapshot data (no lookahead). The raw evidence behind every backtest number."
+      where: "Backtest scorecard, Research."
+    - term: "horizon"
+      category: forward_evidence
+      definition: "The forward-return measurement window in trading days (1/5/10/20/60). The horizon selector re-points every realized-return figure on Backtest to that window."
+      where: "Backtest, Research event study."
+    - term: "excess return"
+      category: forward_evidence
+      definition: "A cohort's forward return MINUS a benchmark's (SPY, QQQ, or sector ETF) over the same window — what the selection added beyond simply being in the market. Excess return separates skill from market beta."
+      where: "Backtest attribution."
+    - term: "walk-forward"
+      category: forward_evidence
+      definition: "Bootstrapping evidence from history by replaying the scan as-of many past dates using ONLY data available then, then measuring the returns that came after — an expanding window of every snapshot dated ≤ the as-of date. The honest way to test rankings before live months accrue."
+      where: "Backtest, warm-up."
+    - term: "expanding window"
+      category: forward_evidence
+      definition: "The set of snapshots dated ≤ the selected as-of date that the aggregate evidence is scoped to — it GROWS as the as-of date moves forward (at the latest date it equals the full all-history aggregate)."
+      where: "Backtest aggregates."
+    - term: "hit-rate"
+      category: forward_evidence
+      definition: "The percentage of occurrences with a POSITIVE forward return — how OFTEN an idea worked, independent of how much. A high mean with a low hit-rate signals a few outliers carried the result."
+      where: "Backtest, Research event study."
+    - term: "expectancy"
+      category: forward_evidence
+      definition: "The average per-occurrence outcome — (hit-rate × average win) − (miss-rate × average loss) — i.e. what you'd expect to make PER trade on average. It blends frequency and magnitude into one figure."
+      where: "Research event study, setup/pattern lab."
+    - term: "MAE"
+      category: forward_evidence
+      definition: "Maximum Adverse Excursion — the worst drawdown from entry reached over the horizon (from post-snapshot daily lows). It measures the PAIN you'd have sat through, even on a trade that ended green."
+      where: "Research event study, risk-adjusted ratios."
+    - term: "MFE"
+      category: forward_evidence
+      definition: "Maximum Favorable Excursion — the best unrealized gain reached over the horizon (from post-snapshot daily highs). Paired with MAE it shows the full risk/reward envelope of an idea."
+      where: "Research event study."
+    - term: "dispersion"
+      category: forward_evidence
+      definition: "How SPREAD OUT the forward returns are around their mean (a standard-deviation-style measure) — high dispersion means the average hides very different outcomes, so the mean is less trustworthy."
+      where: "Research event study, attribution distribution."
+    - term: "% positive"
+      category: forward_evidence
+      definition: "The share of a cohort's occurrences that finished with a gain — the distributional companion to the mean and the same idea as hit-rate."
+      where: "Research event study."
+    - term: "median"
+      category: forward_evidence
+      definition: "The middle forward return of a cohort — robust to outliers, so a median far below the mean reveals a right-skewed, outlier-driven result."
+      where: "Research event study, attribution."
+    - term: "n (sample size)"
+      category: forward_evidence
+      definition: "The number of observations behind a statistic. Cohorts below the config minimum render NA + n rather than a fabricated number — small samples are shown honestly, never dressed up."
+      where: "Everywhere a statistic is shown."
+    - term: "low-sample"
+      category: forward_evidence
+      definition: "A flag that a cohort has fewer observations than the config minimum, so its statistic is suppressed to NA + n. Prevents reading signal into noise."
+      where: "Backtest, Research."
+    - term: "control group"
+      category: forward_evidence
+      definition: "A baseline cohort the top-ranked names are compared against — a RANDOM same-sector basket plus SPY/QQQ/sector ETFs — so sector beta is visibly separated from genuine stock selection."
+      where: "Backtest control-group comparison."
+    - term: "random same-sector control"
+      category: forward_evidence
+      definition: "A randomly drawn basket of same-sector names used as the apples-to-apples baseline — if the ranked cohort can't beat a random same-sector draw, the ranking added nothing in that slice."
+      where: "Backtest control group."
+    - term: "by-rank-band"
+      category: forward_evidence
+      definition: "Forward returns split by rank tiers (e.g. 1–10 / 11–50 / 51+) — a direct test of whether the RANKING ITSELF adds value, not just sector or market exposure."
+      where: "Backtest return attribution."
+    - term: "by-sector"
+      category: forward_evidence
+      definition: "A return-attribution breakdown that separates sector beta from stock selection — how much of a cohort's result came from being in a hot sector versus picking the right names within it."
+      where: "Backtest return attribution."
+    - term: "contributors & detractors"
+      category: forward_evidence
+      definition: "The individual tickers that drove or dragged a cohort's return — per-stock attribution so a headline number can be diagnosed as concentration or breadth, not taken at face value."
+      where: "Backtest return attribution."
+    - term: "risk-adjusted return"
+      category: forward_evidence
+      definition: "Return PER UNIT of risk — return ÷ downside-deviation, return ÷ mean-|MAE|, and a Sharpe-like ratio — so a high-return / high-drawdown cohort is never mistaken for a good one. 'Risk' uses downside vol / MAE, never healthy upside."
+      where: "Research, Backtest."
+    - term: "return / downside-dev"
+      category: forward_evidence
+      definition: "A risk-adjusted ratio dividing mean forward return by DOWNSIDE deviation (the volatility of negative returns only) — it rewards return without penalising healthy upside volatility."
+      where: "Research event study."
+    - term: "return / MAE"
+      category: forward_evidence
+      definition: "Mean forward return divided by mean maximum adverse excursion — reward earned per unit of drawdown actually endured. A pure pain-adjusted efficiency measure."
+      where: "Research event study."
+    - term: "best exit-horizon"
+      category: forward_evidence
+      definition: "The forward horizon with the highest downside-risk-adjusted return among non-low-sample horizons — the exit window the historical evidence favoured for a setup or pattern."
+      where: "Research event study horizon curve."
+    - term: "scorecard"
+      category: forward_evidence
+      definition: "The per-date forward-test report for one as-of snapshot — how that day's ranked cohort, setups, and patterns actually performed vs benchmarks at each horizon, measured only from post-snapshot bars."
+      where: "Backtest."
+    - term: "event study"
+      category: forward_evidence
+      definition: "Pooling EVERY historical occurrence of a setup or pattern and reporting the forward-return distribution, hit-rate, expectancy, MAE/MFE, best exit-horizon, and regime/sector slices — all derived once from stored data."
+      where: "Research → Setup & Pattern lab."
+    - term: "attribution"
+      category: forward_evidence
+      definition: "Decomposing a cohort's aggregate return into its sources — by sector, by rank-band, by individual contributor, plus its distribution — so a weak number is diagnosable rather than mysterious."
+      where: "Backtest."
+    - term: "benchmark (SPY/QQQ/sector ETF)"
+      category: forward_evidence
+      definition: "The reference returns a cohort's excess is measured against — the broad market (SPY), large-cap growth (QQQ), and the name's own sector ETF — so out/under-performance is always relative to a fair yardstick."
+      where: "Backtest excess returns."
+    - term: "VCP-vs-non-VCP"
+      category: forward_evidence
+      definition: "A forward-test dimension splitting names that had a detected VCP from those that didn't — the evidence that shows whether the VCP pattern actually ADDS value, rather than assuming it does."
+      where: "Backtest evidence."
+    # --- Factor Lab & Statistics ----------------------------------------------------------
+    - term: "factor"
+      category: factor_stats
+      definition: "A single measurable characteristic of a stock (e.g. RS, ATR%, historical volatility) tested for whether it sorts future returns. The Factor Lab studies factors descriptively — it is not a fitted predictive model."
+      where: "Research → Factor Lab."
+    - term: "rank-IC"
+      category: factor_stats
+      definition: "The rank Information Coefficient — the rank correlation between a factor's value and the subsequent forward return across names. Positive and stable means the factor sorts future returns; near zero means it doesn't."
+      where: "Research → Factor Lab."
+    - term: "decile"
+      category: factor_stats
+      definition: "One of ten equal-sized buckets a factor's values are sorted into (D1 = lowest, D10 = highest). Comparing mean forward returns across deciles shows whether the factor sorts returns monotonically."
+      where: "Research → Factor Lab decile sort."
+      thresholds:
+        - { label: "Deciles", cmp: "=", ref: "research.factor_lab.deciles" }
+    - term: "decile sort"
+      category: factor_stats
+      definition: "Ranking names by a factor and measuring mean forward return per decile — a clean D1→D10 monotonic rise is the visual signature of a factor that works."
+      where: "Research → Factor Lab."
+    - term: "monotonicity"
+      category: factor_stats
+      definition: "Whether mean forward return rises (or falls) consistently from decile D1 to D10 — the hallmark of a factor that genuinely sorts returns rather than one that only works at the extremes."
+      where: "Research → Factor Lab."
+    - term: "long-short spread"
+      category: factor_stats
+      definition: "The top-decile mean minus the bottom-decile mean forward return — the simplest summary of how much a factor separates winners from losers."
+      where: "Research → Factor Lab regime table."
+    - term: "regime-conditioned"
+      category: factor_stats
+      definition: "Re-measuring a factor's effectiveness WITHIN each market regime — a factor strong in the pooled data may only work in certain regimes, which the per-regime rank-IC and spread reveal."
+      where: "Research → Factor Lab regime table."
+    - term: "quantile"
+      category: factor_stats
+      definition: "A fractional cutoff of a sorted population — e.g. the top quintile (20%), quartile (25%), or tertile (33%). The composite cohort takes the top quantile of the rank-blended score."
+      where: "Research → Factor Lab combination."
+    - term: "quintile"
+      category: factor_stats
+      definition: "The top (or bottom) 20% of a sorted population — a coarser cut than a decile, used for the composite cohort's selection fraction."
+      where: "Research → Factor Lab combination."
+    - term: "percentile rank"
+      category: factor_stats
+      definition: "Where a value sits in its population from 0 to 1 (0.9 = higher than 90% of names) — the normalization the composite uses to blend differently-scaled factors fairly, oriented so better always scores higher."
+      where: "Research → Factor Lab composite."
+    - term: "factor family"
+      category: factor_stats
+      definition: "A group of related factors — score, momentum, trend, and an explicit VOLATILITY family (level / contraction / downside) — so volatility is studied as a first-class, multi-faceted input."
+      where: "Research → Factor Lab."
+    - term: "ATR%"
+      category: factor_stats
+      definition: "Average True Range as a PERCENT of price — a normalized volatility-LEVEL measure comparable across names. A Risk danger input and a volatility-family factor (lower is calmer)."
+      where: "Stocks, Risk components, Factor Lab."
+      thresholds:
+        - { label: "ATR period", cmp: "=", ref: "indicators.atr_period", unit: " bars" }
+    - term: "historical volatility (HV)"
+      category: factor_stats
+      definition: "The standard deviation of recent daily returns over a fixed window — a classic volatility-LEVEL factor. Computed once in the snapshot path and stored for the read-only Factor Lab."
+      where: "Research → Factor Lab volatility family."
+      thresholds:
+        - { label: "HV window", cmp: "=", ref: "indicators.hv_window", unit: " bars" }
+    - term: "volatility contraction"
+      category: factor_stats
+      definition: "A measure of volatility SHRINKING over time (the VCP thesis as a continuous factor) — it cross-validates the VCP pattern with decile/IC forward-test evidence rather than assuming the pattern works."
+      where: "Research → Factor Lab volatility family."
+    - term: "downside volatility (semivol)"
+      category: factor_stats
+      definition: "Volatility computed from NEGATIVE returns only — the kind of volatility that actually hurts. Used so 'risk' never penalises healthy upside movement."
+      where: "Research → Factor Lab volatility family, risk-adjusted ratios."
+    - term: "pivot"
+      category: factor_stats
+      definition: "The breakout trigger price at the top of a base (e.g. the base high in a VCP or flat base) — a buy is referenced TO the pivot, and proximity to it is a pattern condition."
+      where: "Patterns, Stock Detail."
+    - term: "base"
+      category: factor_stats
+      definition: "A sideways price consolidation where a stock digests a prior advance — the launchpad patterns like VCP and flat-base breakout form in. Base depth and length are pattern conditions."
+      where: "Patterns."
+    - term: "base depth"
+      category: factor_stats
+      definition: "How far a base corrects from its high to its low, as a percent — shallower bases are generally constructive. A maximum base-depth threshold gates the VCP and flat-base patterns."
+      where: "Patterns."
+    - term: "contraction"
+      category: factor_stats
+      definition: "One progressively-shallower pullback within a VCP base — each contraction should be tighter than the prior as supply dries up. The count and shrink ratio are config pattern conditions."
+      where: "VCP pattern."
+      thresholds:
+        - { label: "Min contractions", cmp: ">=", ref: "patterns.vcp.min_contractions" }
+    - term: "volume dry-up"
+      category: factor_stats
+      definition: "Volume falling to a fraction of the base average as a name coils near the pivot — a sign supply is exhausted and a breakout can move on light resistance. A VCP condition."
+      where: "VCP pattern."
+    - term: "rising DMA"
+      category: factor_stats
+      definition: "A moving average sloping UP over a lookback — price pulling back TO a rising DMA (rather than crashing through it) is a lower-risk continuation entry and a detected pattern."
+      where: "Pullback-to-rising-DMA pattern."
+    - term: "flat base"
+      category: factor_stats
+      definition: "A shallow, sideways base built right at the highs with price coiled just under the pivot on building volume — breakout-ready. A detected pattern that rides alongside the setup status."
+      where: "Flat-base-breakout pattern."
+    - term: "detected pattern"
+      category: factor_stats
+      definition: "A rule-based price/volume formation (VCP, pullback-to-rising-DMA, flat-base breakout, RS-line new high…) that rides ALONGSIDE the setup status — it never by itself makes a name Actionable, and each is forward-tested to prove its worth."
+      where: "Stocks, patterns, Backtest."
+    - term: "rank correlation"
+      category: factor_stats
+      definition: "Correlation computed on the RANKS of two variables rather than their raw values — robust to outliers and non-linearity. The basis of the rank-IC."
+      where: "Research → Factor Lab."
+    - term: "Sharpe-like ratio"
+      category: factor_stats
+      definition: "A return-per-unit-of-volatility ratio in the spirit of the Sharpe ratio — one of the risk-adjusted measures so a high-return / high-volatility cohort isn't mistaken for a good one."
+      where: "Research, Backtest risk-adjusted."
+    - term: "normalization"
+      category: factor_stats
+      definition: "Rescaling a raw component to a common range before it enters a score (e.g. 0–100) so differently-scaled inputs combine fairly. Every score component is a normalized, named value."
+      where: "Scoring engine."
+    - term: "lookback"
+      category: factor_stats
+      definition: "The trailing window of bars a measure is computed over (e.g. a 63-bar 3-month RS lookback). Longer lookbacks capture structural trend; shorter ones capture recent momentum."
+      where: "Indicators, factors."

@@ -66,7 +66,61 @@ def build_catalog(config: Config) -> dict:
         payload["intro"] = catalog.intro
     if catalog.universe_selection is not None:
         payload["universe_selection"] = _universe_selection(config)
+    if catalog.categories:
+        payload["glossary"] = _glossary(config)
     return payload
+
+
+# The category key the Setups & Patterns glossary rows are DERIVED into (J-47). The category itself is
+# declared in `config.methodology.categories` with this key; build_catalog fills its `terms` from the
+# existing `methodology.entries` so a setup/pattern is explained in exactly one place (never re-described).
+SETUPS_PATTERNS_CATEGORY_KEY = "setups_patterns"
+
+
+def _glossary(config: Config) -> dict:
+    """Assemble the J-47 terminology glossary from `config.methodology.categories` + `.terms`, grouped by
+    category in catalog (declared) order. The Setups & Patterns category's terms are DERIVED from
+    `methodology.entries` (each entry projected as a glossary row referencing the full entry — single
+    source of truth; never a re-authored second copy). Every authored term's threshold `ref` is resolved
+    LIVE (the matching-config keystone — never a re-typed number)."""
+    catalog = config.methodology
+
+    # authored terms bucketed by their category key (catalog order preserved within a category)
+    authored: dict[str, list[dict]] = {}
+    for term in catalog.terms:
+        row: dict = {
+            "term": term.term,
+            "category": term.category,
+            "definition": term.definition,
+        }
+        if term.where is not None:
+            row["where"] = term.where
+        if term.thresholds:
+            row["thresholds"] = [_threshold_row(threshold, config) for threshold in term.thresholds]
+        authored.setdefault(term.category, []).append(row)
+
+    # the Setups & Patterns rows, derived from the existing entries (single-sourced — references the entry)
+    derived_setups_patterns = [
+        {
+            "term": entry.name,
+            "category": SETUPS_PATTERNS_CATEGORY_KEY,
+            "definition": entry.meaning,
+            "entry_key": entry.key,  # links the glossary row to the full /methodology catalog entry
+            "kind": entry.kind,
+        }
+        for entry in catalog.entries
+    ]
+
+    categories = []
+    for category in catalog.categories:
+        terms = list(authored.get(category.key, []))
+        if category.key == SETUPS_PATTERNS_CATEGORY_KEY:
+            # derived rows lead the category; any authored terms in this category would have been rejected
+            # at boot if they collided with an entry, so here they can only be non-colliding extras.
+            terms = derived_setups_patterns + terms
+        categories.append({"key": category.key, "label": category.label, "terms": terms})
+
+    return {"categories": categories}
 
 
 def _universe_selection(config: Config) -> dict:
