@@ -1,0 +1,25 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-06-10T21:58:44.381538Z",
+  "started_at": "2026-06-10T21:58:44.381538Z",
+  "cli": "claude",
+  "mode": "baseline",
+  "depth": "lean",
+  "blockers": [],
+  "changed_files": [],
+  "tests_run": true,
+  "tests_result": "verify-only baseline (no code changes); developer check is collect-only: 626 tests collected in 3.29s, 0 collection errors. Full ~14-min execution is QA's gate (prior green gate iter-28: 621 passed / 4 skipped / 0 failed). Baseline-critical tests confirmed present: no-lookahead, snapshot-immutability/append-only, warm-up concurrency / run_scan race / single-flight.",
+  "browser_checks_run": false,
+  "verification": {
+    "backend_boot_offline": "PASS — port 8835, provider=seed, db_ok=true, seed_latest_date=2026-06-10, symbol_count=162; honest readiness initializing(history 2/10) -> ready(10/10), warmup.status=ok; core endpoints (health/stocks/dashboard/sectors/themes) all HTTP 200 while warming; /api/stocks 122 ranked rows with component breakdowns",
+    "frontend_serve": "PASS — Next.js 15 dev on 3835, GET / 200, dev chunks present and webpack.js 200 (not a clobbered .next shell); will hydrate",
+    "new_journeys_sourcescan": "J-42 no shared ISO formatter + native date input on /data; J-43 asof-provider has 0 ?asof URL hits; J-44/J-45 no regime-history/index-series endpoint; J-46 no benchmark script / no worker-pool config; J-47 setup/pattern catalog exists, full >=100-term glossary unevidenced — all expected FAIL/partial, recorded for iter-1+",
+    "blueprint_exists": "PASS — runs/goal-session-.../state/blueprint.md present with J-42..J-47 TARGET rows (12 TARGET markers)",
+    "servers_cleaned": "backend 8835 + frontend 3835 killed by port, both free; pre-existing next-server on 3650 (other project) left untouched",
+    "live_provider_probe": "not performed (out of scope — committed offline seed only)",
+    "destructive_db_op": "not performed (POST /api/data/remove deliberately not run on a live symbol)"
+  },
+  "next_action": "qa"
+}
