@@ -34,9 +34,9 @@ source of truth; the frontend only re-formats server values.
 
 ```
 Trendora
-├── Dashboard        /                       (J-01; J-44 Major-indexes & regime card [TARGET])
+├── Dashboard        /                       (J-01; J-44 Major-indexes & regime card [built iter-2])
 ├── Stocks           /stocks                 (J-02, J-06, J-16/J-28 pattern filters, J-31 deep-link)
-│   └── Stock Detail /stocks/[ticker]        (J-05, J-06, J-16, J-20; J-45 regime bands [TARGET]; J-24 timeframe — data-walled)  — row-reached
+│   └── Stock Detail /stocks/[ticker]        (J-05, J-06, J-16, J-20; J-45 regime bands [built iter-2]; J-24 timeframe — data-walled)  — row-reached
 ├── Themes           /themes                 (J-03)
 ├── Sectors          /sectors                (J-04)
 ├── Scanner Runs     /scanner-runs           (J-08)
@@ -48,10 +48,11 @@ Trendora
 └── Data Manager     /data                   (J-17, J-33–J-39; J-42 ISO date inputs [built iter-1])
 ```
 
-Cross-cutting (no page of their own): **J-13/J-43** top-bar as-of switcher; **J-15** snapshot-served
-reads; **J-40/J-41** fast boot + readiness badge; **J-42** ISO dates on every surface (built iter-1 — `apps/frontend/lib/dates.ts`); **J-46**
-backend pipeline speed (no UI surface; advisory benchmark script). **J-22/J-23/J-24** are
-data-walled, non-halting (honest NA) on existing homes.
+Cross-cutting (no page of their own): **J-13/J-43** top-bar as-of switcher (J-43 `?asof`
+serialization built iter-2); **J-15** snapshot-served reads; **J-40/J-41** fast boot + readiness
+badge; **J-42** ISO dates on every surface (built iter-1 — `apps/frontend/lib/dates.ts`); **J-46**
+backend pipeline speed (no UI surface; advisory benchmark script — iter-3 target). **J-22/J-23/J-24**
+are data-walled, non-halting (honest NA) on existing homes.
 
 ## Data Contract
 
@@ -72,7 +73,7 @@ recomputed per request. Engine modules live under `apps/backend/app/engine/`.
 | Detected patterns — VCP, `pullback_to_rising_dma`, `flat_base_breakout` (+pivot/invalidation/reason) | `patterns:detect_*` composed by `score_stocks` (≤ D) | `/api/stocks*` rows + mirror cols `scanner_results.is_*` + by-pattern breakdowns on `GET /api/backtest` | built; patterns-not-statuses |
 | Price/MA/volume series (per ticker, as-of) + through-latest display extension (as-of divider, `is_forward`) | `prices:bars_asof`/`bars_through_latest` + `indicators:sma_series` | `GET /api/stocks/{ticker}/bars` | built; post-D = display-only (J-20) |
 | Scanner run snapshot (immutable, append-only, create-once, concurrency-safe) | `scanner:run_scan` | `GET /api/runs`, `GET /api/runs/{run_id}` | built |
-| Resolved as-of date + available dates (ONE global state) | `snapshot_serving` + create-once resolution in `scanner` | `GET /api/runs`; `asof_date` echoed by every read | built. **J-43 [TARGET — partial after iter-1]:** state serializes to `?asof=yyyy-MM-dd` while historical, restored through the ONE global control; invalid `?asof` → latest; never a second date state. Iter-1 built+verified the interactive serialize/restore/degrade legs; reload/fresh-tab/click-through URL durability outstanding (asof-provider serialize-effect stale `searchParams` dep — iter-2 target) |
+| Resolved as-of date + available dates (ONE global state) | `snapshot_serving` + create-once resolution in `scanner` | `GET /api/runs`; `asof_date` echoed by every read | built. **J-43 [built iter-2]:** state serializes to `?asof=yyyy-MM-dd` while historical, restored through the ONE global control; invalid `?asof` → latest; never a second date state; reload/fresh-tab/click-through URL durability verified iter-2 (`asof-provider.tsx` `searchKey` dep fix) |
 | Forward-return evidence aggregates (by bucket/setup/regime/pattern; excess vs SPY/QQQ/sector; control groups) — as-of-scoped ≤ D | `forward_testing:compute_forward_aggregates(as_of)` | `GET /api/backtest` | built |
 | Per-date scorecard + leadership realized returns + attribution slices (per-stock/by-sector/by-rank-band/distribution) | `forward_testing:compute_run_scorecard` + `_leadership_returns` + shared attribution helper (read-only over stored `forward_returns`) | `GET /api/backtest` | built |
 | MAE/MFE excursions per (run, symbol, horizon) | `forward_testing` INSERT path (`forward_excursions`, bars > D) | stored append-only on `forward_returns`; read by event study | built |
@@ -83,10 +84,10 @@ recomputed per request. Engine modules live under `apps/backend/app/engine/`.
 | Setup & Pattern event study (distribution/expectancy/MAE-MFE/exit-horizon/regime+sector slices) | `research:compute_event_study` | `GET /api/research/event-study` | built |
 | Universe membership + selection screen | committed `universe.json` + `config.universe.symbols` via the single screen rule `screen_universe.screen_reasons` | `GET /api/methodology` (rule + size) + `GET /api/data` (`universe_count`) | built; ~500-name live expansion data-walled NA (J-22/J-35 live leg) |
 | Coverage + per-symbol table + missing-data diagnostic + definitions | `data_manager:compute_coverage` (single producer; thresholds from config) | `GET /api/data` `coverage` | built |
-| Import job control: provider catalog + availability, chunked/resumable checkpoints, unfinished imports (Resume/Retry/Dismiss), expand job, seed-safe remove preview+cascade | `data_manager:*` (ONE import engine; `import_checkpoints` + `DataProviderRun` job-control — not snapshots) | `GET /api/data`, `POST /api/data/jobs*` (+`/resume`,`/retry`,`/dismiss`), `POST /api/data/remove(/preview)` | built. **J-46 [TARGET]:** the fetch loop gains a bounded **config-set parallel worker pool** + per-chunk transactional writes; the walk-forward backfill loads each symbol's bars **once per job**; canonical outputs identical (existing suites green) + a committed **advisory** benchmark script. No new displayed value |
+| Import job control: provider catalog + availability, chunked/resumable checkpoints, unfinished imports (Resume/Retry/Dismiss), expand job, seed-safe remove preview+cascade | `data_manager:*` (ONE import engine; `import_checkpoints` + `DataProviderRun` job-control — not snapshots) | `GET /api/data`, `POST /api/data/jobs*` (+`/resume`,`/retry`,`/dismiss`), `POST /api/data/remove(/preview)` | built. **J-46 [TARGET — iter-3 in flight]:** the fetch loop gains a bounded **config-set parallel worker pool** (`data_manager.import_chunking.fetch_workers`; network I/O on workers, DB writes serialized on the orchestrating thread) + **per-chunk single-transaction writes** in `data_manager:_run_chunked_fetch`; the walk-forward backfill loads each symbol's bars **once per job** via a job-scoped cache at the `prices:bars_asof` seam (consumed by `_do_backfill` / `warmup`; a loading optimization, never a second source of bar truth); canonical outputs identical (existing suites green) + a committed **advisory** benchmark script `apps/backend/scripts/benchmark_pipeline.py`. No new displayed value |
 | Backend readiness state + warm-up progress (`ready`/`initializing`/`unavailable` + n/m) | `readiness:compute_readiness` (+ `warmup` controller) | `GET /api/health` (the ONE readiness read) | built |
-| **J-44/J-45 [TARGET] — Regime history series** (date → stored regime label + score) | ONE read-only module over immutable `scanner_runs` (propose `regime_history:get_regime_history`; labels/scores read VERBATIM, never recomputed) | ONE endpoint (propose `GET /api/regime-history`) | TARGET. Consumed by BOTH the dashboard index-chart bands AND the stock-detail chart bands — same label/color per date; honest step function; never rendered past the resolved as-of |
-| **J-44 [TARGET] — Normalized index display series** (config-listed index ETFs as % lines rebased to range start) | server-side from stored bars (propose `indexes:compute_index_series`; symbols/names/range presets from config) | ONE endpoint (propose `GET /api/indexes`) | TARGET. Presentation series, not a canonical score; a series without stored bars (DIA) is omitted honestly; frontend only re-formats |
+| **J-44/J-45 [built iter-2] — Regime history series** (date → stored regime label + score) | `regime_history:get_regime_history` (read-only over immutable `scanner_runs`; labels/scores read VERBATIM, never recomputed) | `GET /api/regime-history` | built iter-2. Consumed by BOTH the dashboard index-chart bands AND the stock-detail chart bands via ONE shared `apps/frontend/lib/regime.ts` mapping — same label/color per date; honest step function; never rendered past the resolved as-of |
+| **J-44 [built iter-2] — Normalized index display series** (config-listed index ETFs as % lines rebased to range start) | `indexes:compute_index_series` (server-side from stored bars; symbols/names/range presets from `config.index_chart`) | `GET /api/indexes` | built iter-2. Presentation series, not a canonical score; a series without stored bars (DIA) is omitted honestly; frontend only re-formats |
 | **J-42 [built iter-1] — Displayed date format** (`yyyy-MM-dd` everywhere) | ONE shared frontend formatter `apps/frontend/lib/dates.ts` (`ISO_DATE_FORMAT`, `formatIsoDate`, `formatIsoDateTime`, `isValidIsoDate`); `/data` date fields are validated ISO TEXT inputs | every surface displaying a calendar date (presentation contract — no endpoint) | built (verified + coherence-audited iter-1: no per-component format literals, no locale-dependent widget output; API/DB/config dates ISO unchanged) |
 
 ## Coherence invariants (the auditor hard-fails on these)
@@ -100,6 +101,6 @@ recomputed per request. Engine modules live under `apps/backend/app/engine/`.
 7. **Risk-Off gates Actionable** — zero Actionable in Risk-Off. *(critical)*
 8. **No fabricated data** — provider failure → explicit error; partial horizons/low samples → NA + n; a configured index series without bars is omitted, never synthesized. *(critical)*
 9. **Attribution & lab analytics read-only** — derived from stored returns/excursions/factor values; risk-adjusted uses downside only.
-10. **No magic numbers** — weights/thresholds/edges/universe/themes/providers/chunking/startup/range-presets/glossary from `config.yaml`.
+10. **No magic numbers** — weights/thresholds/edges/universe/themes/providers/chunking/startup/range-presets/glossary (and the J-46 worker-pool size) from `config.yaml`.
 11. **No order/execution path** — research-only. *(critical)*
 12. **Every feature navigable** from the sidebar; no second home for an existing entity; regime label/color identical on every surface for the same date.

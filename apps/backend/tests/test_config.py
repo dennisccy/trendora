@@ -28,6 +28,7 @@ MINIMAL_VALID = {
         "import_chunking": {
             "symbol_batch_size": 25, "date_window_days": 90, "max_retries": 4,
             "backoff_base_seconds": 1.0, "backoff_cap_seconds": 30.0, "inter_request_sleep_seconds": 0.0,
+            "fetch_workers": 4,  # J-46: bounded parallel fetch-pool size (>= 1)
         },
     },
     "universe": {
@@ -366,6 +367,44 @@ def test_import_chunking_cap_below_base_raises(tmp_path):
     data = copy.deepcopy(MINIMAL_VALID)
     data["data_manager"]["import_chunking"]["backoff_base_seconds"] = 10.0
     data["data_manager"]["import_chunking"]["backoff_cap_seconds"] = 5.0
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+# --- J-46: the config-set parallel fetch-pool size + boot validation -------------------------
+def test_fetch_workers_loads_from_config(tmp_path):
+    """`fetch_workers` is a typed required field on the import_chunking block — the real committed config
+    sets it > 1 (a parallel pool, not a magic-number literal in data_manager.py), and MINIMAL_VALID loads."""
+    cfg = load_config(_write(tmp_path, MINIMAL_VALID))
+    assert cfg.data_manager.import_chunking.fetch_workers == 4
+    real = load_config()
+    assert real.data_manager.import_chunking.fetch_workers >= 1
+    assert real.data_manager.import_chunking.fetch_workers > 1  # committed default is a real parallel pool
+
+
+def test_fetch_workers_one_is_valid_serial(tmp_path):
+    """`fetch_workers: 1` is VALID — it is effectively serial (a degenerate single-worker pool), not an error."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["data_manager"]["import_chunking"]["fetch_workers"] = 1
+    cfg = load_config(_write(tmp_path, data))
+    assert cfg.data_manager.import_chunking.fetch_workers == 1
+
+
+@pytest.mark.parametrize("bad", [0, -1])
+def test_fetch_workers_below_one_raises(tmp_path, bad):
+    """`fetch_workers` of 0 / negative fails the boot loudly (a pool must have >= 1 worker) — never a
+    silent default (anti-goal: No magic numbers — the pool size comes from config and is validated)."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["data_manager"]["import_chunking"]["fetch_workers"] = bad
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_fetch_workers_missing_raises(tmp_path):
+    """A missing `fetch_workers` key fails the boot (it is a required typed field, like the other
+    import_chunking tunables) — never a silent default."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    del data["data_manager"]["import_chunking"]["fetch_workers"]
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))
 

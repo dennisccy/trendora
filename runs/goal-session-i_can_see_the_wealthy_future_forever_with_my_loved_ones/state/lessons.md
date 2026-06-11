@@ -25,3 +25,9 @@ restating the verdict (the evaluator-log.md already does that).
 **Verdict:** CONTINUE
 **Lesson:** A dev-turn background full-pytest run does NOT survive the turn ending — iter-2's suite run was torn down mid-flight and the pump had to re-run the identical command to get real numbers (639/4/0 in 2044s). Also note the full suite now takes ~34 min, not the ~14 min in older project memory (test_api_indexes alone needs 229s of warm-seed boot).
 **Applies to:** any iter that gates handoff on the full backend suite (i.e., all of them) — either run pytest to completion in the foreground within the dev turn, or explicitly hand the run to the pump; budget ~35 min and never run two invocations concurrently. Especially relevant to the upcoming J-46 performance iteration, whose benchmark baseline should use these real timings.
+
+## iter-3 — 2026-06-11T18:40:00+01:00
+
+**Verdict:** CONTINUE
+**Lesson:** Browser-QA evidence can silently degrade to byte-identical BLANK captures (8 iter-3 PNGs shared md5 23fe5583…, a 7278-byte dark rectangle) while the written claims are still correct — the iter-3 resumable/Resume/backfill claims were all verifiable against persistent backend state instead (`data_provider_runs` row id 30 and `import_checkpoints` id 22 in apps/backend/data/trendora.db, read-only). Also: IPv6 SYN-SENT timeouts to alphavantage.co stretch the alpha_vantage+demo rate-limit technique from ~3 min to ~16 min per chunk attempt (5×15s timeout per symbol), and the engine's audit/ux-regression/closure steps never ran (non-fatal `invalid step 'post_dev_parallel_complete'` after the parallel fanout — no audit handoff exists for any iteration of this session).
+**Applies to:** any iter relying on /data job-card screenshots (md5-check captures; corroborate via the run log + import_checkpoints); any browser-QA budgeting the alpha_vantage demo-key throttle; framework owner re the skipped audit/closure steps in goal-mode full depth.

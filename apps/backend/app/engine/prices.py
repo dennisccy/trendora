@@ -15,8 +15,10 @@ Also provides the tiny ascending-series extractors the indicator functions consu
 """
 from __future__ import annotations
 
+import bisect
+from contextlib import contextmanager
 from datetime import date as date_cls
-from typing import Optional
+from typing import Iterator, Optional
 
 from sqlalchemy import func
 from sqlmodel import Session, select
@@ -30,8 +32,87 @@ def latest_data_date(session: Session) -> Optional[date_cls]:
     return session.scalar(select(func.max(DailyPrice.date)))
 
 
+# --------------------------------------------------------------------------------------------------
+# J-46 — load-once bar cache (Capability 33): an OPT-IN, per-session optimization at the single
+# `bars_asof` seam. A multi-date backfill calls `bars_asof(symbol, D)` once PER DATE today, so each
+# symbol's full history is loaded K+ times for a K-date job. When a `bar_cache(session)` context is
+# active, the FIRST `bars_asof` for a symbol loads its FULL stored series ONCE (one ordered query) and
+# every subsequent call slices `date <= D` IN MEMORY — preserving today's exact ordering/contents (the
+# `(symbol, date)` unique constraint means the date-ordered list has no ties, so a date-filtered slice
+# of the full ordered list is byte-identical to today's date-filtered query).
+#
+# It is a LOADING optimization beneath the registered engines — NOT a second source of bar truth: it
+# reads the SAME `daily_prices` rows the per-request path reads, is keyed by `id(session)` (so only the
+# session inside the `with` block is cached), and dies when the block exits (no staleness across jobs;
+# a fetch job that ADDS bars must run OUTSIDE any cache context — the backfill stage opens its own).
+# The default per-request read path (no active context) is completely unchanged.
+# --------------------------------------------------------------------------------------------------
+class _BarCache:
+    """A per-session memo of each symbol's FULL date-ordered series, loaded once on first request."""
+
+    def __init__(self) -> None:
+        self._by_symbol: dict[str, list[DailyPrice]] = {}
+        self._dates_by_symbol: dict[str, list[date_cls]] = {}
+
+    def bars_asof(self, session: Session, symbol: str, d: date_cls) -> list[DailyPrice]:
+        full = self._by_symbol.get(symbol)
+        if full is None:
+            # one ordered query for the symbol's WHOLE series — the SAME ordering today's bars_asof uses
+            # (order by date; the (symbol, date) unique constraint guarantees no ties), just unbounded by d.
+            stmt = (
+                select(DailyPrice)
+                .where(DailyPrice.symbol == symbol)
+                .order_by(DailyPrice.date)
+            )
+            full = list(session.exec(stmt).all())
+            self._by_symbol[symbol] = full
+            self._dates_by_symbol[symbol] = [bar.date for bar in full]
+        # slice `date <= d` from the ascending series: bisect_right gives the count of dates <= d, so the
+        # returned list equals `[bar for bar in full if bar.date <= d]` exactly (same rows, same order).
+        cut = bisect.bisect_right(self._dates_by_symbol[symbol], d)
+        return full[:cut]
+
+
+# Registry keyed by id(session) — a cache is consulted by `bars_asof` ONLY while its session's context
+# is active. id(session) is stable for a live session object; the context removes its own entry on exit.
+_BAR_CACHES: dict[int, _BarCache] = {}
+
+
+@contextmanager
+def bar_cache(session: Session) -> Iterator[_BarCache]:
+    """Activate the load-once bar cache for `session` for the duration of the `with` block (J-46).
+
+    While active, every `bars_asof(session, symbol, d)` call — at EVERY engine call site, with no
+    signature change — loads each symbol's full series once and slices `date <= d` in memory. On exit
+    the cache is dropped, so it never outlives the job and never serves a stale series across a
+    data-mutating stage. Re-entrant for the SAME session: a nested context reuses the outer cache (so a
+    backfill that nests sub-loops shares one load); only the OUTERMOST exit clears it.
+
+    USE ONLY around READ-ONLY multi-date snapshot loops (`_do_backfill`, the warm-up cadence): a stage
+    that ADDS bars must run outside the context so a later read never sees a stale cached series."""
+    key = id(session)
+    existing = _BAR_CACHES.get(key)
+    if existing is not None:
+        # already cached for this session (re-entrant / nested) — reuse it; the outer context owns cleanup
+        yield existing
+        return
+    cache = _BarCache()
+    _BAR_CACHES[key] = cache
+    try:
+        yield cache
+    finally:
+        _BAR_CACHES.pop(key, None)
+
+
 def bars_asof(session: Session, symbol: str, d: date_cls) -> list[DailyPrice]:
-    """All bars for `symbol` with date <= `d`, ascending. The backward no-lookahead boundary."""
+    """All bars for `symbol` with date <= `d`, ascending. The backward no-lookahead boundary.
+
+    When a `bar_cache(session)` context is active (J-46), this slices the symbol's once-loaded full
+    series in memory; otherwise it runs the original per-request date-bounded query (the default path,
+    byte-identical to before). Either way it returns exactly the bars with date <= d, ascending."""
+    cache = _BAR_CACHES.get(id(session))
+    if cache is not None:
+        return cache.bars_asof(session, symbol, d)
     stmt = (
         select(DailyPrice)
         .where(DailyPrice.symbol == symbol)

@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
+  "base_url": "http://localhost:3835",
+  "iteration": 3,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Stocks leaderboard",
+      "narration": "The stocks leaderboard shows all 122 universe members ranked by their composite score, with Leadership, Entry Quality, and Risk grades visible at a glance. This is the daily starting point for finding the best-positioned equities.",
+      "point_out": "NVDA appears with three numeric scores and a letter bucket (E), confirming the scoring engine is live and producing results.",
+      "journey": "J-02",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "NVDA" }
+    },
+    {
+      "n": 2,
+      "title": "NVDA detail — explainable scores",
+      "narration": "Clicking any stock opens the detail page with a full breakdown of how each score was built — component by component — along with a price chart and an actionable invalidation level.",
+      "point_out": "The Leadership, Entry Quality, and Risk scores shown here are identical to the list page values (43.14 / 54.05 / 35.80), confirming a single source of truth with no recomputation.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/NVDA" },
+      "expect": { "text": "43.14" }
+    },
+    {
+      "n": 3,
+      "title": "Data Manager — import and backfill",
+      "narration": "The Data Manager is where you grow the price history used for scoring. Start a live fetch job or run a backfill over existing seed data — both run asynchronously with a live progress counter.",
+      "point_out": "The page is fully interactive with no loading spinner. The import form and run history are both visible, showing the backend is healthy and responding.",
+      "journey": "J-17",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Data Manager" }
+    },
+    {
+      "n": 4,
+      "title": "Rate-limited fetch — resumable checkpoint",
+      "narration": "When a live fetch hits a provider rate limit mid-run, the job pauses gracefully in an amber resumable state rather than failing. The exact chunk where it paused is saved, so resuming picks up exactly where the work stopped — no data is re-fetched or duplicated.",
+      "point_out": "The job card shows 'rate-limited — resumable' in amber with a message describing the saved checkpoint and a Resume button. The status is never 'failed'.",
+      "journey": "J-17",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "rate-limited" }
+    }
+  ]
+}

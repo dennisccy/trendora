@@ -68,6 +68,9 @@ data_manager:
     backoff_base_seconds: 1.0        # exponential backoff base: sleep = min(base * 2**attempt, cap)
     backoff_cap_seconds: 30.0        # backoff ceiling (so a long retry never blocks the worker forever)
     inter_request_sleep_seconds: 0.0 # polite delay between per-symbol requests (0 = none; tunable up)
+    fetch_workers: 4                 # J-46: bounded parallel fetch pool size (>= 1; 1 = serial). Per-chunk
+                                     # the symbol batch fetches on this many worker threads (network I/O
+                                     # only — DB writes stay serialized on the orchestrating thread).
 
 # ----------------------------------------------------------------------------------------
 # Datastore. Engine URL from config so SQLite -> Postgres is a config-only switch.

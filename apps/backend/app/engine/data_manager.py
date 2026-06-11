@@ -31,6 +31,7 @@ import os
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import date as date_cls, datetime, timedelta, timezone
 from pathlib import Path
@@ -46,7 +47,7 @@ from app.data_providers.base import PriceProvider, ProviderUnavailableError, Rat
 from app.data_providers.seed_provider import symbol_to_filename
 from app.db import get_engine
 from app.engine import forward_testing, scanner
-from app.engine.prices import bars_asof, latest_data_date
+from app.engine.prices import bar_cache, bars_asof, latest_data_date
 from app.engine.universe_screen import DEFAULT_SEED_DIR, read_pool, screen_reasons
 from app.models import (
     DailyPrice,
@@ -1064,6 +1065,79 @@ def _fetch_symbol_with_retry(
             attempt += 1
 
 
+@dataclass
+class _SymbolFetchResult:
+    """One symbol's outcome from a worker thread (network I/O ONLY — no session/JobProgress touch). The
+    orchestrating thread consumes these IN BATCH ORDER to apply DB writes + progress mutations, so the
+    workers stay side-effect-free (anti-goal: SQLite writes serialized; progress mutated on one thread)."""
+
+    symbol: str
+    outcome: str  # "ok" | "failed" | "ratelimited"
+    bars: list = field(default_factory=list)  # the fetched Bars (only for "ok")
+    error: Optional[str] = None  # the RAW (un-scrubbed) error text (only for "failed"); scrubbed on-thread
+
+
+def _fetch_one_symbol(
+    provider: PriceProvider,
+    symbol: str,
+    ws: date_cls,
+    we: date_cls,
+    *,
+    chunking: ImportChunkingCfg,
+    sleep_fn: Callable[[float], None],
+) -> _SymbolFetchResult:
+    """The WORKER body (runs on a pool thread): fetch ONE symbol's bars over the chunk's date-window with
+    the existing 429-backoff retry, honoring `inter_request_sleep_seconds` as the polite per-worker delay.
+    It does NO DB I/O and mutates NO shared state — it only calls the provider + the injected sleep and
+    returns a plain result object the orchestrating thread interprets. A persistent 429 (retries exhausted)
+    ⇒ `ratelimited`; a non-429 `ProviderUnavailableError` ⇒ `failed` (carrying the RAW error text, scrubbed
+    later on the orchestrating thread before it is recorded — httpx errors embed `?apikey=`)."""
+    try:
+        bars = _fetch_symbol_with_retry(provider, symbol, ws, we, chunking=chunking, sleep_fn=sleep_fn)
+    except RateLimitError:
+        return _SymbolFetchResult(symbol=symbol, outcome="ratelimited")
+    except ProviderUnavailableError as exc:
+        return _SymbolFetchResult(symbol=symbol, outcome="failed", error=f"{symbol}: {exc}")
+    if chunking.inter_request_sleep_seconds:
+        sleep_fn(chunking.inter_request_sleep_seconds)  # polite per-worker delay (injectable; no wall-clock in tests)
+    return _SymbolFetchResult(symbol=symbol, outcome="ok", bars=bars)
+
+
+def _fetch_chunk_symbols(
+    provider: PriceProvider,
+    sym_batch: list[str],
+    ws: date_cls,
+    we: date_cls,
+    *,
+    chunking: ImportChunkingCfg,
+    sleep_fn: Callable[[float], None],
+    workers: int,
+) -> list[_SymbolFetchResult]:
+    """Fetch a chunk's symbol batch on a BOUNDED pool of at most `workers` threads (network I/O only),
+    returning the per-symbol results IN BATCH ORDER (deterministic, regardless of completion order) so the
+    orchestrating thread applies DB writes + progress in a stable sequence. With `workers == 1` this is
+    effectively serial. EVERY submitted worker is awaited before this returns (no thread outlives the
+    chunk — the iter-28 determinism lesson: no daemon outlives the job)."""
+    if workers <= 1 or len(sym_batch) <= 1:
+        return [
+            _fetch_one_symbol(provider, s, ws, we, chunking=chunking, sleep_fn=sleep_fn)
+            for s in sym_batch
+        ]
+    results: dict[str, _SymbolFetchResult] = {}
+    with ThreadPoolExecutor(max_workers=min(workers, len(sym_batch))) as pool:
+        future_to_symbol = {
+            pool.submit(
+                _fetch_one_symbol, provider, s, ws, we, chunking=chunking, sleep_fn=sleep_fn
+            ): s
+            for s in sym_batch
+        }
+        # as_completed drains every future (the `with` also joins on exit) — nothing is left in flight.
+        for future in as_completed(future_to_symbol):
+            res = future.result()  # a worker exception would surface here, not deadlock the pool
+            results[res.symbol] = res
+    return [results[s] for s in sym_batch]  # re-order to the deterministic batch order
+
+
 def _run_chunked_fetch(
     session: Session,
     cfg: Config,
@@ -1077,62 +1151,75 @@ def _run_chunked_fetch(
     start_chunk: int,
 ) -> None:
     """Run the chunk plan from `start_chunk`, persisting the checkpoint AFTER each completed chunk (so
-    `next_chunk_index` only advances once a chunk fully finishes). Per chunk, fetch each symbol over the
-    chunk's date-window and persist only NEW `(symbol, date)` rows via the existing INSERT-new-only
-    `_existing_dates` guard — so a committed bar is NEVER overwritten and a resume re-fetches/duplicates
-    nothing (per-`(symbol, date)` idempotency).
+    `next_chunk_index` only advances once a chunk's bars are durably committed). Within EACH chunk the
+    symbol batch is fetched on a bounded pool of `fetch_workers` threads (network I/O only — J-46); ALL
+    DB reads/writes and ALL `JobProgress` mutations stay on THIS orchestrating thread, and the chunk's
+    new `(symbol, date)` rows are written in ONE transaction (one INSERT + one `commit()` per chunk, not
+    per symbol). Only NEW rows are written (the existing INSERT-new-only `_existing_dates` guard) — so a
+    committed bar is NEVER overwritten and a resume re-fetches/duplicates nothing (per-`(symbol, date)`
+    idempotency).
 
-      * `RateLimitError` beyond `max_retries` ⇒ stop GRACEFULLY: set the job + checkpoint `resumable`
-        (distinct from `failed`), leave `next_chunk_index` at the un-finished chunk, and RETURN — never
-        raise, never fabricate a bar (anti-goals: No fabricated data; Live fetch is real-data-only).
+      * `RateLimitError` beyond `max_retries` for ANY symbol in the chunk ⇒ stop GRACEFULLY: DISCARD the
+        interrupted chunk's fetched bars (nothing is committed for it — chunk-atomic), set the job +
+        checkpoint `resumable` (distinct from `failed`) with `next_chunk_index` at the UN-finished chunk,
+        and RETURN — never raise, never fabricate a bar (anti-goals: No fabricated data; Live fetch is
+        real-data-only). Resume re-attempts the whole chunk; its already-committed PRIOR chunks are
+        skipped by `_existing_dates`, so no duplicate fetch of committed bars.
       * a non-429 `ProviderUnavailableError` for a symbol ⇒ count it failed, record a REDACTED error
-        (the resolved key scrubbed), and continue — unchanged from the single-shot loop.
+        (the resolved key scrubbed on THIS thread), and continue the chunk — unchanged semantics.
     """
     chunking = cfg.data_manager.import_chunking
+    workers = chunking.fetch_workers  # the bounded pool size (config — No magic numbers)
     prog.chunk_index = start_chunk
     for chunk_idx in range(start_chunk, len(chunks)):
         sym_batch, (ws, we) = chunks[chunk_idx]
-        for symbol in sym_batch:
-            try:
-                bars = _fetch_symbol_with_retry(
-                    provider, symbol, ws, we, chunking=chunking, sleep_fn=sleep_fn
-                )
-            except RateLimitError:
-                # Persistent rate-limit → graceful resumable stop. Do NOT advance next_chunk_index: the
-                # current chunk is un-finished, so Resume re-attempts from it (idempotent — committed
-                # bars are skipped by _existing_dates). Persist, then return (no raise, no fabrication).
-                prog.status = "resumable"
-                _advance_checkpoint(session, checkpoint, prog, next_idx=chunk_idx, status="resumable")
-                prog.message = _final_summary(prog)
-                return
-            except ProviderUnavailableError as exc:
+        # fetch the whole batch on the bounded pool (network only); results come back in batch order.
+        results = _fetch_chunk_symbols(
+            provider, sym_batch, ws, we, chunking=chunking, sleep_fn=sleep_fn, workers=workers
+        )
+        if any(r.outcome == "ratelimited" for r in results):
+            # Persistent rate-limit somewhere in the chunk → graceful resumable stop. Do NOT commit the
+            # chunk's bars (chunk-atomic: it is committed entirely or not at all) and do NOT advance
+            # next_chunk_index: the current chunk is un-finished, so Resume re-attempts it (idempotent —
+            # prior chunks' committed bars are skipped by _existing_dates). Discard any pending ORM state,
+            # then persist resumable and return (no raise, no fabrication).
+            session.rollback()  # drop any in-session changes; the chunk's bars were never committed
+            prog.status = "resumable"
+            _advance_checkpoint(session, checkpoint, prog, next_idx=chunk_idx, status="resumable")
+            prog.message = _final_summary(prog)
+            return
+        # Apply the chunk's outcomes on THIS thread: collect new rows for ok symbols, count failures —
+        # in deterministic batch order. (Idempotency: each symbol appears once per chunk; prior chunks
+        # are already committed, so _existing_dates reflects committed reality and dedups correctly.)
+        chunk_rows: list[dict] = []
+        for res in results:
+            if res.outcome == "failed":
                 prog.symbols_failed += 1
-                _record_error(prog, scrub(f"{symbol}: {exc}"))
+                _record_error(prog, scrub(res.error or f"{res.symbol}: provider error"))
                 prog.message = _fetch_message(prog)
                 continue
-            already = _existing_dates(session, symbol, ws, we)
-            new_rows = [
-                {
-                    "symbol": symbol,
-                    "date": bar.date,
-                    "open": bar.open,
-                    "high": bar.high,
-                    "low": bar.low,
-                    "close": bar.close,
-                    "volume": bar.volume,
-                }
-                for bar in bars
-                if bar.date not in already
-            ]
-            if new_rows:
-                session.execute(insert(DailyPrice.__table__), new_rows)
-                session.commit()
-                prog.bars_fetched += len(new_rows)
+            already = _existing_dates(session, res.symbol, ws, we)
+            for bar in res.bars:
+                if bar.date not in already:
+                    chunk_rows.append({
+                        "symbol": res.symbol,
+                        "date": bar.date,
+                        "open": bar.open,
+                        "high": bar.high,
+                        "low": bar.low,
+                        "close": bar.close,
+                        "volume": bar.volume,
+                    })
             prog.symbols_ok += 1
             prog.message = _fetch_message(prog)
-            if chunking.inter_request_sleep_seconds:
-                sleep_fn(chunking.inter_request_sleep_seconds)  # polite delay between requests (injectable)
-        # the chunk fully completed → advance the durable resume point + persist cumulative counters
+        # ONE transaction per chunk: a single INSERT of every new row, then a single commit — so the
+        # durable resume point only advances once the chunk's bars are committed (a crash before this
+        # leaves next_chunk_index at the chunk, and Resume re-fetches it idempotently).
+        if chunk_rows:
+            session.execute(insert(DailyPrice.__table__), chunk_rows)
+        session.commit()
+        prog.bars_fetched += len(chunk_rows)
+        # the chunk fully completed + committed → advance the durable resume point + cumulative counters
         prog.chunk_index = chunk_idx + 1
         _advance_checkpoint(session, checkpoint, prog, next_idx=chunk_idx + 1, status="running")
 
@@ -1147,13 +1234,19 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress) -> None:
     targets = [d for d in trading_days if prog.start <= d <= prog.end and d not in snapshot_dates]
     prog.dates_total = len(targets)
     prog.message = f"snapshots {prog.dates_done}/{prog.dates_total} dates"
-    for d in targets:
-        run = scanner.run_scan(session, d, cfg)  # create-once; recomputes nothing
-        result = forward_testing.backfill_run_forward_returns(session, run, cfg)  # INSERT-only, bars > D
-        prog.snapshots_created += 1
-        prog.forward_returns_inserted += result["rows_inserted"]
-        prog.dates_done += 1
-        prog.message = f"snapshots {prog.dates_done}/{prog.dates_total} dates"
+    # J-46 (Capability 33): activate the load-once bar cache for this READ-ONLY multi-date snapshot loop
+    # so each symbol's full series is loaded ONCE for the whole job (not once per `run_scan` per date).
+    # The cache dies with the `with` block; any prior fetch stage that ADDED bars ran outside it (the
+    # fetch loop is a separate stage), so no read sees a stale series. Canonical outputs are identical
+    # (run_scan reads the SAME bars, just sliced in memory) — asserted by the cached-vs-uncached test.
+    with bar_cache(session):
+        for d in targets:
+            run = scanner.run_scan(session, d, cfg)  # create-once; recomputes nothing
+            result = forward_testing.backfill_run_forward_returns(session, run, cfg)  # INSERT-only, bars > D
+            prog.snapshots_created += 1
+            prog.forward_returns_inserted += result["rows_inserted"]
+            prog.dates_done += 1
+            prog.message = f"snapshots {prog.dates_done}/{prog.dates_total} dates"
 
 
 # --------------------------------------------------------------------------------------------------

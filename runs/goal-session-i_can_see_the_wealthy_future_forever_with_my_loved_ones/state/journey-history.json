@@ -54,11 +54,11 @@
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-2",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-2",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-2-evidence/J-06-score-coherence.png",
-      "note": "Re-verified iter-2 at latest: NVDA Leadership E 43.14, Entry Quality E 54.05, Risk E 35.80 exactly identical on /stocks and /stocks/NVDA (DOM-extracted comparison recorded in QA report; screenshot shows the detail surface). No recompute path introduced by the two new read endpoints (coherence audit PASS)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3-evidence/UT-08-nvda-detail.png",
+      "note": "Re-verified iter-3 AFTER the bar-cache/parallel engine refactor: NVDA Leadership E 43.14, Entry Quality E 54.05, Risk E 35.80 identical on /stocks (UT-07) and /stocks/NVDA (UT-08); evaluator independently re-read both /api/stocks and /api/stocks/NVDA live — identical stored values, no compute-path drift."
     },
     "J-07": {
       "id": "J-07",
@@ -78,7 +78,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-07-result.png",
-      "note": "Older run (2026-03-31, Risk-off 28.11) shown as stored ('Immutable snapshot — never recomputed') and differs from latest (Narrow leadership 61.00). QA's cited UT-J-08-result.png is actually a warming Backtest capture — disregarded; immutability also covered by suite tests."
+      "note": "Older run (2026-03-31, Risk-off 28.11) shown as stored ('Immutable snapshot — never recomputed') and differs from latest (Narrow leadership 61.00). QA's cited UT-J-08-result.png is actually a warming Backtest capture — disregarded; immutability also covered by suite tests (re-green iter-3, 659/4/0)."
     },
     "J-09": {
       "id": "J-09",
@@ -164,11 +164,11 @@
       "id": "J-17",
       "name": "Grow the dataset by date / date range",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-evidence/UT-J-17-job-complete.png",
-      "note": "Iter-1: a real backfill job (2021-02-10 -> 2021-02-17) submitted through the NEW validated ISO text inputs, ran asynchronously with live progress, and completed 'ok' — stronger than the baseline's coverage-panel-only check. Live-provider fetch leg still out of scope (provider-walled)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3-evidence/UT-06-running.png",
+      "note": "Re-verified iter-3 over the rewired pipeline: backfill 2021-02-18 -> 2021-02-24 ran async with live progress (5/5 dates) to 'ok' (5 snapshots, 3200 forward returns). UT-06-result.png capture is blank (capture defect) but the claim is corroborated by persistent run-log row id 30 (status ok, snapshots_created 5, started 2026-06-11T16:40:13). Live-provider fetch leg still honestly NA (provider-walled, non-halting)."
     },
     "J-18": {
       "id": "J-18",
@@ -324,21 +324,21 @@
       "id": "J-33",
       "name": "Import from selectable, key-aware provider source",
       "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-iter-0-evidence/J-33-import-source.png",
-      "note": "Provider catalog confirmed via GET /api/data/providers (curl) + Data Manager UI. Live-fetch leg honestly NA (provider-walled, non-halting per goal.md)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3-evidence/UT-03-before.png",
+      "note": "Incidentally re-exercised iter-3: source=alpha_vantage selected with session-only key 'demo' pasted in the UI to start a real fetch job (the J-46 browser legs); key never appeared in the page DOM/HTML (UT-09 scan). Live-fetch SUCCESS leg still honestly NA (provider-walled, non-halting)."
     },
     "J-34": {
       "id": "J-34",
       "name": "Chunked, rate-limit-resilient, resumable import",
-      "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": null,
-      "note": "QA SKIPPED the ~3-min alpha_vantage demo-key resumable exercise at baseline; Unfinished-imports surface visible in DM UI. Carried on suite tests (full suite green 639/4/0 in iter-2) + prior-session verification on identical code."
+      "last_evidence_path": "reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3-ui-test-results.md",
+      "note": "FIRST direct live verification this session (iter-3, under the NEW parallel pool): alpha_vantage+demo fetch (158 symbols, 7 chunks) hit persistent 429 -> amber 'rate-limited — resumable' (never 'failed'), Resume continued from the checkpoint. UT-04/UT-05 captures are blank (capture defect) but the claims are corroborated by persistent import_checkpoints id 22 (chunk_total=7, next_chunk_index=0, symbols_ok=0, bars_fetched=0, status=resumable — chunk-atomic, zero duplicates) whose updated_at shows the Resume genuinely ran. Suite contracts re-proven under parallelism (test_data_manager_parallel.py)."
     },
     "J-35": {
       "id": "J-35",
@@ -348,67 +348,67 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-dev.md",
-      "note": "Verification basis is API-layer + green suite (browser NOT a gate, per goal.md re-scope). Baseline's collect-only debt PAID in iter-1: full pytest 622 passed / 4 skipped / 0 failed at this product commit (639/4/0 in iter-2)."
+      "note": "Verification basis is API-layer + green suite (browser NOT a gate, per goal.md re-scope). Baseline's collect-only debt PAID in iter-1: full pytest 622 passed / 4 skipped / 0 failed at this product commit (659/4/0 in iter-3)."
     },
     "J-36": {
       "id": "J-36",
       "name": "Coverage — per-symbol table + universe-vs-symbols clarity",
       "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-evidence/UT-J-42-invalid-2026-13-40.png",
-      "note": "Coverage panel + per-symbol table visible (now with ISO-formatted ranges via the shared formatter) in iter-1's full /data capture; figures unchanged (162 symbols, 2021-01-04 -> 2026-06-10). Iter-2's J-42 capture re-shows the same coverage surface intact."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3-evidence/UT-03-before.png",
+      "note": "Re-verified iter-3: coverage panel + per-symbol table visible and unchanged in the iter-3 /data capture (2021-01-04 -> 2026-06-10, 162 symbols, 122 universe); test_data_manager.py 68 green in the 659/4/0 full suite under the parallel rewrite."
     },
     "J-37": {
       "id": "J-37",
       "name": "Missing-data diagnostic + pull exactly the gap",
       "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-dev.md",
-      "note": "Verification basis is API-layer + green suite (browser NOT a gate). Suite debt paid in iter-1 (622/4/0); diagnostic section visible in iter-1 /data capture with ISO ranges."
+      "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3-dev.md",
+      "note": "Re-verified iter-3 via suite: pull-the-gap rides the rewired chunked loop unchanged (parallel-contract regression tests + test_data_manager.py 68 green in 659/4/0)."
     },
     "J-38": {
       "id": "J-38",
       "name": "Unified Unfinished-imports — Resume / Retry / Remove",
       "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-dev.md",
-      "note": "Verification basis is API-layer + green suite (browser NOT a gate). Suite debt paid in iter-1 (622/4/0); Unfinished-imports section visible in iter-1 /data capture."
+      "last_evidence_path": "reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3-ui-test-results.md",
+      "note": "Re-verified iter-3: the unified Unfinished-imports section rendered live (QA had to disambiguate ITS Resume button from the job-card Resume — both present); Resume exercised for real on the rate-limited alpha_vantage job; idempotency/audit-preserving contracts green in suite under parallelism."
     },
     "J-39": {
       "id": "J-39",
       "name": "Remove imported data — seed-safe, cascade-consistent",
       "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-dev.md",
-      "note": "Verification basis API + suite (destructive endpoint correctly never exercised live — NVDA carries unrestorable user-added bars). Suite debt paid in iter-1 (622/4/0). Remove form now uses validated ISO text inputs (J-42) and still gates Preview on validity."
+      "note": "Re-verified iter-3 via suite (remove/preview/cascade tests green in 659/4/0); destructive endpoint correctly never exercised live (NVDA carries unrestorable user-added bars — project memory)."
     },
     "J-40": {
       "id": "J-40",
       "name": "Fast boot, background warm-up, honest readiness",
       "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-dev.md",
-      "note": "Direct baseline evidence: cold boot served 200s on health/stocks/dashboard/sectors/themes while warm-up progressed 'history 2/10 -> 10/10', then readiness flipped to ready; never 'unavailable', never crashed. 'Ready' badge visible in all iter-2 captures."
+      "note": "Re-verified iter-3: /api/health 200 ready / db_ok during QA; 'Ready' badge in iter-3 captures; warm-up now runs the bar cache (load-once) with test_warmup.py green in 659/4/0 — no single-flight conflict."
     },
     "J-41": {
       "id": "J-41",
       "name": "Boot resilience — warm-up never takes the app down",
       "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-dev.md",
-      "note": "Concurrency/single-flight/non-fatal warm-up tests (test_warmup.py) ran green again in iter-2's full suite (639/4/0)."
+      "note": "Concurrency/single-flight/non-fatal warm-up tests (test_warmup.py) green again in iter-3's full suite (659/4/0), now exercising the bar-cache-wrapped cadence loop."
     },
     "J-42": {
       "id": "J-42",
@@ -453,12 +453,12 @@
     "J-46": {
       "id": "J-46",
       "name": "Fetch + backfill materially faster (parallel, vectorized, benchmarked)",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": null,
-      "note": "Source-scan evidence (sufficient per iter spec): no worker-pool config key, no parallel-fetch primitives in the import path, no committed benchmark script, no load-bars-once instrumentation test. Not targeted in iter-1/iter-2; next up."
+      "last_evidence_path": "reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3-ui-test-results.md",
+      "note": "NEWLY PASSING iter-3. All acceptance legs verified: fetch_workers=4 from config (boot-validated >=1, no magic number); parallel bounded pool with workers network-only + per-chunk single-transaction commit + checkpoint-after-commit (diff-inspected); instrumented K=3 backfill proves <=1 bar-store load/symbol; cached==uncached snapshot row-level equality; full suite 659/4/0 (pump-run, /tmp/trendora-iter3-fullsuite-v2.log) — canonical outputs byte-identical; J-34/J-37/J-38 contracts regression-tested under parallelism; committed advisory benchmark (scripts/benchmark_pipeline.py, fetch 3.24x pool speedup, no CI wall-clock gate); live browser rate-limited->resumable->Resume corroborated by persistent import_checkpoints id 22 (chunk-atomic, zero dup). 8 browser-evidence PNGs were blank (capture defect) — all claims independently corroborated against persistent backend state."
     },
     "J-47": {
       "id": "J-47",
@@ -468,9 +468,9 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-47-methodology.png",
-      "note": "/methodology has the setup/pattern catalog only (~32 items) — no Glossary section, no search, no categorized >=100-term catalog, no info-tooltips on dense column headers reading a shared catalog. Not targeted in iter-1/iter-2."
+      "note": "/methodology has the setup/pattern catalog only (~32 items) — no Glossary section, no search, no categorized >=100-term catalog, no info-tooltips on dense column headers reading a shared catalog. The final buildable journey — target next (lean)."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-06-11T13:35:00+01:00"
+  "updated_at": "2026-06-11T18:40:00+01:00"
 }

@@ -33,7 +33,7 @@ from sqlmodel import Session
 from app.config import Config, get_config
 from app.engine import data_manager
 from app.engine.forward_testing import backfill_forward_returns, walk_forward_asof_dates
-from app.engine.prices import latest_data_date
+from app.engine.prices import bar_cache, latest_data_date
 from app.engine.scanner import get_run_for_date, run_scan
 
 logger = logging.getLogger("trendora.warmup")
@@ -116,13 +116,20 @@ def _run_warmup(engine: Engine, cfg: Config, prog: "data_manager.JobProgress") -
             )
             prog.dates_done = prog.snapshots_created
             prog.message = f"history {prog.dates_done}/{prog.dates_total}"
-            for index, asof in enumerate(dates, start=1):
-                run_scan(session, asof, cfg)  # canonical engine; idempotent + concurrency-safe
-                prog.dates_done = index
-                prog.snapshots_created = index
-                # tick the message on each batch boundary (and the final date) so progress is live
-                if index % batch_size == 0 or index == len(dates):
-                    prog.message = f"history {prog.dates_done}/{prog.dates_total}"
+            # J-46 (Capability 33): the warm-up's cadence loop is the SAME read-only multi-date
+            # `run_scan` pattern as the Data Manager backfill — activate the load-once bar cache so each
+            # symbol's full series loads ONCE for the whole warm-up (not once per cadence date). This is
+            # orthogonal to the iter-28 single-flight guard (which serializes the warm-up THREAD in
+            # `start_warmup`); the cache only changes how this thread's own session loads bars. The cache
+            # dies with the `with Session` block; the warm-up adds no bars, so no read sees a stale series.
+            with bar_cache(session):
+                for index, asof in enumerate(dates, start=1):
+                    run_scan(session, asof, cfg)  # canonical engine; idempotent + concurrency-safe
+                    prog.dates_done = index
+                    prog.snapshots_created = index
+                    # tick the message on each batch boundary (and the final date) so progress is live
+                    if index % batch_size == 0 or index == len(dates):
+                        prog.message = f"history {prog.dates_done}/{prog.dates_total}"
         # the realized forward returns over every persisted cadence snapshot (idempotent INSERT-only,
         # concurrency-safe) — the SAME engine the synchronous boot ran, only rescheduled.
         result = backfill_forward_returns(engine, cfg)

@@ -1,0 +1,29 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
+  "status": "complete",
+  "current_step": "qa_complete",
+  "updated_at": "2026-06-11T17:15:00Z",
+  "started_at": "2026-06-11T12:37:33.476083Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "config.yaml",
+    "apps/backend/app/config.py",
+    "apps/backend/app/engine/prices.py",
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/app/engine/warmup.py",
+    "apps/backend/app/engine/scanner.py",
+    "apps/backend/scripts/benchmark_pipeline.py",
+    "apps/backend/tests/test_bar_cache.py",
+    "apps/backend/tests/test_data_manager_parallel.py",
+    "apps/backend/tests/test_config.py",
+    "apps/backend/tests/test_config_engine.py",
+    "apps/backend/tests/test_sectors.py",
+    "apps/backend/tests/test_themes.py",
+    "apps/backend/tests/test_indexes.py"
+  ],
+  "tests_run": true,
+  "tests_result": "FIX APPLIED \u2014 cross-test thread pollution in test_worker_exception_does_not_strand_job (global threading.enumerate() caught a leftover data-job-* daemon spawned by an EARLIER async start_data_job/retry_run test in test_data_manager.py, which polls job status but never join()s the daemon). Scoped the assertion to threads NEW since the call (snapshot pre-existing data-job-* thread ids, assert no new one stranded) \u2014 intent preserved, no production change (ThreadPoolExecutor `with` already joins the pool on the exception path). Targeted reproduction GREEN: `tests/test_data_manager.py tests/test_data_manager_parallel.py` = 75 passed, 0 failed (the exact in-suite condition that exposed the bug). FULL SUITE GREEN (pump ran `cd apps/backend && .venv/bin/python -m pytest tests/ -q` to completion post-fix): **659 passed, 4 skipped, 0 failed in 2760.91s (0:46:00)** \u2014 +20 vs iter-2's 639 (new J-46 parallel/bar-cache/config tests), zero failures, zero regressions. (The pre-fix run was 1 failed/658 passed \u2014 the single failure was the cross-test-pollution assertion now fixed.)",
+  "browser_checks_run": false,
+  "next_action": "review"
+}

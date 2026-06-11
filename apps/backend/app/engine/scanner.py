@@ -35,7 +35,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.config import Config, get_config
-from app.engine.prices import latest_data_date
+from app.engine.prices import bar_cache, latest_data_date
 from app.engine.regime import score_regime
 from app.engine.scoring import score_stocks
 from app.engine.sectors import score_sectors
@@ -198,7 +198,12 @@ def _bootstrap(session: Session, cfg: Config) -> list[ScannerRun]:
         if candidate not in asof_dates:
             asof_dates.append(candidate)
 
-    return [run_scan(session, asof, cfg) for asof in asof_dates]
+    # J-46 (Capability 33): the bootstrap cadence is a READ-ONLY multi-date `run_scan` loop — activate
+    # the load-once bar cache so each symbol's full series loads once for the whole bootstrap. The cache
+    # dies with this block; bootstrap reads the committed seed (adds no bars), so no read sees a stale
+    # series. Canonical outputs identical (run_scan reads the same bars, just sliced in memory).
+    with bar_cache(session):
+        return [run_scan(session, asof, cfg) for asof in asof_dates]
 
 
 def bootstrap_runs(

@@ -1063,10 +1063,13 @@ class ImportChunkingCfg(BaseModel):
       - `backoff_base_seconds` / `backoff_cap_seconds` — exponential backoff `min(base * 2**attempt, cap)`
                               between 429 retries; `cap` MUST be `>= base`.
       - `inter_request_sleep_seconds` — polite delay between per-symbol requests (MAY be 0).
+      - `fetch_workers` — the bounded parallel fetch-pool size (J-46): symbols within a chunk fetch on
+                          this many worker threads (network I/O only — DB writes stay serialized on the
+                          orchestrating thread). MUST be `>= 1` (1 = effectively serial, still valid).
 
-    Boot-validated: the four sizes/retries/backoff numbers MUST be positive and `cap >= base`; the
-    inter-request sleep MUST be `>= 0` (a zero polite delay is valid). An invalid block raises
-    `ConfigError`, never a silent default."""
+    Boot-validated: the four sizes/retries/backoff numbers MUST be positive, `fetch_workers >= 1`, and
+    `cap >= base`; the inter-request sleep MUST be `>= 0` (a zero polite delay is valid). An invalid block
+    raises `ConfigError`, never a silent default."""
 
     model_config = ConfigDict(extra="allow")
     symbol_batch_size: int
@@ -1075,6 +1078,7 @@ class ImportChunkingCfg(BaseModel):
     backoff_base_seconds: float
     backoff_cap_seconds: float
     inter_request_sleep_seconds: float
+    fetch_workers: int
 
     @model_validator(mode="after")
     def _validate(self) -> "ImportChunkingCfg":
@@ -1088,6 +1092,10 @@ class ImportChunkingCfg(BaseModel):
         nonpositive = sorted(k for k, v in positive.items() if v <= 0)
         if nonpositive:
             raise ValueError(f"data_manager.import_chunking values must be positive: {nonpositive}")
+        if self.fetch_workers < 1:
+            raise ValueError(
+                "data_manager.import_chunking.fetch_workers must be >= 1 (1 = serial, still valid)"
+            )
         if self.inter_request_sleep_seconds < 0:
             raise ValueError(
                 "data_manager.import_chunking.inter_request_sleep_seconds must be >= 0"
