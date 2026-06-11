@@ -115,21 +115,33 @@ It places **no orders** and holds **no broker keys**.
 - **The historical view survives navigation.** The single global as-of state is serialized into the URL
   (`?asof=yyyy-MM-dd` when historical; date-free at latest), so a leaderboard→detail click-through, a
   reload, a new tab, or a shared link restores exactly the selected historical date through the one
-  global control — one date control, one state (J-18 amended, not weakened).
+  global control — one date control, one state (J-18 amended, not weakened). While historical, every
+  in-app link's **href itself carries `?asof`** — so middle-click / new-tab / copied-link navigation
+  preserves the date without depending on post-navigation re-stamping (J-50) — and the leaderboard
+  tickers open the detail in a new tab carrying the same date (J-54).
 - **The market's path and its regime are visible at a glance.** The dashboard renders a major-indexes
   chart (config-listed committed index ETFs, normalized to a common % scale) over soft background bands
   built from the stored per-date market-regime history (exact label + score on hover), default-on behind
   a persisted toggle; the stock-detail price chart carries the same regime bands — both read stored
-  values only (no regime or return recomputed in an endpoint or view).
+  values only (no regime or return recomputed in an endpoint or view). The dashboard card charts the
+  **full stored history** regardless of the global as-of, drawing a **vertical as-of marker** when a
+  historical date is selected (display-only context — post-as-of data feeds no as-of-scoped value); the
+  stock-detail bands stay clamped at the as-of date (J-49 / J-45).
 - **Fetch + backfill are materially faster.** Symbol fetching runs on a bounded, config-set parallel
   worker pool (rate-limit-aware; checkpoint/Resume and idempotency preserved), bar writes commit per
   chunk, and the walk-forward backfill loads each symbol's bars once per job (not once per date) — with
   canonical outputs proven identical by the existing suites and a committed benchmark script reporting
-  stage timings.
+  stage timings. The multi-date snapshot backfill itself runs concurrently — at least ~2× faster than
+  the per-date sequential sum, with identical snapshots — and per-stage timings (fetch vs backfill:
+  elapsed, items processed, concurrency used) are surfaced in the job status (J-53).
 - **Every domain term on every page is explained.** A config-backed glossary catalog covering the
   inventoried UI vocabulary (≥ 100 terms) renders as a searchable, categorized Glossary on
   `/methodology`, and the dense pages' column headers / stat labels carry info-tooltips reading the same
   catalog — no bare jargon anywhere in the UI.
+- **Every research sample count is auditable.** Each `N=` figure on `/research` links to a read-only
+  drill-down listing the exact stored observations behind it — the observation total equals the
+  published N and the values are the same stored per-observation inputs the aggregate used — and each
+  row's ticker opens the dated stock detail in a new tab (J-51 / J-52).
 
 ## Key Capabilities
 
@@ -290,6 +302,8 @@ It places **no orders** and holds **no broker keys**.
     state into the page URL (`?asof=yyyy-MM-dd` only while historical; date-free at latest) on every
     date-scoped page, and a URL carrying `?asof` restores that date into the global control on load.
     One state, one control — the URL is its serialization, never a second, independent date state.
+    While historical, every in-app navigational link's href embeds the param, so new-tab and
+    copied-link navigation preserve the date too (J-50).
 37. **Major-indexes & regime history visualization**: a dashboard card charting the config-listed index
     ETFs (SPY/QQQ/IWM/RSP, plus DIA once fetched) as % lines normalized to the selected range start,
     drawn over soft market-regime background bands built from the stored per-run regime history (three
@@ -297,20 +311,30 @@ It places **no orders** and holds **no broker keys**.
     snapshot dates), with config-driven range presets and a default-on enable toggle persisted
     client-side; the same regime bands render behind the stock-detail price chart. Both surfaces read
     stored bars + stored regime only — nothing recomputed in an endpoint or view; the normalized series
-    is computed server-side (the frontend only re-formats).
+    is computed server-side (the frontend only re-formats). The dashboard card renders the full stored
+    history regardless of the global as-of, with a vertical as-of marker when historical (display-only
+    context); the stock-detail bands stay clamped at the as-of date (J-49 / J-45).
 38. **Parallel, batched, vectorized data pipeline**: the chunked import fetches symbols on a bounded,
     config-set worker pool (per-provider rate-limit aware; 429 backoff → resumable pause → durable
     Resume and per-`(symbol, date)` idempotency fully preserved; DB writes stay serialized/transactional
     and commit per chunk, not per symbol), and the walk-forward backfill realizes Capability 33: each
     symbol's bars are loaded once per job and indicators are computed once over the full series, then
     sliced per as-of date — identical canonical outputs asserted by the existing scanner/forward-test
-    suites, plus a committed benchmark script reporting per-stage timings (advisory).
+    suites, plus a committed benchmark script reporting per-stage timings (advisory). The multi-date
+    snapshot backfill also runs concurrently (mechanism open; determinism, serialized writes, and
+    idempotency preserved — at least ~2× faster than the per-date sequential sum) and the job status
+    payload reports per-stage timings (J-53).
 39. **Full UI terminology glossary + inline term help**: one config-backed glossary catalog (the
     committed term inventory: scores & buckets, setups & patterns, regime & breadth, universe & data,
     forward-testing & evidence, factor-lab / statistics vocabulary) rendered as a searchable,
     categorized Glossary section on `/methodology`, with info-tooltips on the dense pages' column
     headers and stat labels reading the same catalog entries — a config-added term appears in both
     places with no code change; the existing setup/pattern catalog is referenced, never duplicated.
+40. **Research sample drill-down (evidence auditability)**: every published research sample count links
+    to a dedicated read-only samples page reproducing that exact cohort from the same stored
+    per-observation data (count-coherent — the observation total equals the published N; same stored
+    factor values and realized returns), with each row deep-linking to the dated stock detail in a new
+    tab (J-51 / J-52).
 
 ## Non-Goals
 
@@ -376,7 +400,9 @@ It places **no orders** and holds **no broker keys**.
   counts, breadth, last-run time, evidence summary, and the **Major indexes & regime** chart
   (normalized index-ETF % lines over regime background bands, default-on behind a persisted toggle —
   J-44).
-- **Stocks** (`/stocks`) — the Stock Leaderboard (ranked, filterable). Rows link to Stock Detail.
+- **Stocks** (`/stocks`) — the Stock Leaderboard (ranked, filterable, **client-side sortable** — J-48).
+  Rows link to Stock Detail (**opens in a new tab**, the href carrying the historical `?asof` —
+  J-54/J-50).
 - **Stock Detail** (`/stocks/[ticker]`) — one stock's chart (with a **1D/1h/15m/5m timeframe selector**,
   rendering the full price path **through the latest date** with an as-of marker), score breakdowns,
   theme membership, setup, reason, invalidation, and per-snapshot history. Reached from a leaderboard
@@ -406,7 +432,14 @@ It places **no orders** and holds **no broker keys**.
   figure is shown raw **and** risk-adjusted and is derived once from the stored forward returns. Defaults
   to an all-history aggregate; an optional **"As of date"** mode restricts every figure to snapshots
   dated ≤ the global as-of date (a point-in-time / walk-forward view bound by the single global control —
-  a mode, not a second date picker).
+  a mode, not a second date picker). Every sample-size figure (`N=…`) is a link into **Research
+  Samples** (J-51).
+- **Research Samples** (`/research/samples`) — the drill-down behind every research sample count: each
+  `N=…` figure on `/research` links here, parameterized to reproduce that exact cohort (analysis kind,
+  factor(s)/subject, horizon, decile/cohort, regime, sector, and the all-history vs as-of scope, as
+  applicable), listing every member observation — ticker, snapshot date, the qualifying stored
+  value(s), and the realized forward return at the stated horizon. Reached from the `N=` chips, not a
+  top-nav tab; deep-linkable; row tickers open the dated Stock Detail in a new tab (J-52).
 - **Data Manager** (`/data`) — grow, understand, and curate the dataset on demand: view current coverage
   with **plain-language definitions** (incl. the **universe-vs-symbols** distinction) and a **per-symbol /
   per-universe-member coverage table** (in-universe?, has-data?, date range, bar count, thin/missing
@@ -427,9 +460,14 @@ Dashboard, Stocks, Themes, Sectors, Stock Detail, **and Backtest** to a chosen p
 latest); no page keeps its own separate date picker. That single state is **serialized into the URL**
 (`?asof=yyyy-MM-dd` while historical; date-free at latest) and is restored through the same global
 control on load — deep links, reloads, new tabs, and leaderboard→detail click-throughs all preserve the
-selected as-of view (J-43); the URL is the one state's serialization, never a second control. The as-of
-date resolves to a stored immutable snapshot — created once on first view, then never mutated. The **Stock Leaderboard** (`/stocks`) gains a
-**VCP filter** (and filters for the additional detected patterns), and **Backtest** carries a
+selected as-of view (J-43); the URL is the one state's serialization, never a second control. While
+historical, every in-app navigational link's **href itself embeds `?asof`** (J-50), so new-tab /
+middle-click / copied-link navigation preserves the date too; the stocks-leaderboard tickers and the
+Research-Samples row tickers open Stock Detail in a **new tab** (J-54 / J-52) — all other links stay
+same-window. The as-of date resolves to a stored immutable snapshot — created once on first view, then
+never mutated. The **Stock Leaderboard** (`/stocks`) gains a **VCP filter** (and filters for the
+additional detected patterns) and **client-side sortable columns** (J-48 — a view transform; the
+default order remains the scanner's stored rank), and **Backtest** carries a
 **VCP-vs-non-VCP** forward-return breakdown alongside its by-setup breakdown (as-of-scoped). The Stock-Detail chart's
 **timeframe selector** changes bar granularity only (up to the resolved as-of bound) — it is **not** a
 second date control.
@@ -477,11 +515,25 @@ The backend is the single source of truth; every page only displays server-compu
   same resolved universe.
 - **Regime history series** (date → regime label + score) — read from the stored immutable
   `scanner_runs` rows; the dashboard index-chart bands and the stock-detail chart bands render the same
-  stored values, identically colored for the same date — never recomputed in an endpoint or view.
+  stored values, identically colored for the same date — never recomputed in an endpoint or view. The
+  as-of clamp is a per-surface display choice: the dashboard card reads the full stored series with an
+  as-of marker (J-49); the stock-detail bands stay clamped at the as-of date (J-45) — both from the
+  same single-source endpoint.
 - **Normalized index display series** — computed once server-side from stored bars for the
   major-indexes chart (a presentation series, not a canonical score); the frontend only re-formats it.
+  Served full-history to the dashboard card regardless of the global as-of (J-49) — same endpoint,
+  clamp optional.
 - **Displayed date format** — one shared `yyyy-MM-dd` formatter/constant used by every surface that
   shows a calendar date; no component renders a date through a locale-dependent path.
+- **Research sample membership** (the per-observation cohort behind every published N — ticker,
+  snapshot date, qualifying stored factor/indicator value(s) or matched setup/pattern, realized
+  forward return at the stated horizon) — assembled by the **same observation builders the lab
+  aggregates are computed from** (one membership filter, one observation set) and served read-only by
+  a samples endpoint family; the drill-down's observation total always equals the published N and
+  re-exposes the same stored values — never a recompute, never a second membership rule.
+- **Job stage timings** (fetch stage vs backfill stage: elapsed time, items processed, concurrency
+  used) — recorded once by the data-manager job runner into the job progress/status payload;
+  descriptive operational metadata, not a canonical score; the `/data` job card only re-formats it.
 
 ## Must-have user journeys
 
@@ -527,6 +579,7 @@ The backend is the single source of truth; every page only displays server-compu
 - **J-05: Stock Detail with explainable scores**
   - Steps:
     1. From the Stock Leaderboard, click `NVDA` (or any listed leader) to open `/stocks/NVDA`
+       *(Amended by J-54: opens in a new tab)*
     2. Confirm a price chart with moving averages and a volume series renders
     3. Expand each of the three scores (Leadership, Entry Quality, Risk) and read their component
        breakdowns
@@ -1195,7 +1248,8 @@ The backend is the single source of truth; every page only displays server-compu
        carries `?asof=D` and the historical indicator shows
     2. Click a leaderboard row to `/stocks/[ticker]` — the detail page still shows as-of D (URL carries
        `?asof=D`; the three scores/buckets equal that row's leaderboard values per J-06; the historical
-       indicator is visible)
+       indicator is visible) *(Amended by J-54: opens in a new tab — the href itself carries `?asof=D`
+       per J-50)*
     3. Reload the detail page — still as-of D
     4. Open the same URL in a fresh tab — still as-of D
     5. Switch back to the latest date — the `?asof` param disappears on every date-scoped page
@@ -1220,6 +1274,8 @@ The backend is the single source of truth; every page only displays server-compu
     5. Toggle the card off — it hides; reload — still off; toggle on — back (a fresh browser defaults
        to ON)
     6. Set the global as-of to a past date D — the chart renders no bar and no band dated after D
+       *(Amended by J-49: the card now renders the full history; D draws a vertical as-of marker
+       instead of a clamp)*
   - Acceptance: the card renders the **config-listed** index series (symbols + display names from
     config — no hardcoded list) as normalized % lines sharing one scale, with a legend; the regime
     bands derive from the **stored per-run regime history** (label + score read from the persisted
@@ -1231,7 +1287,13 @@ The backend is the single source of truth; every page only displays server-compu
     display preference), and fully hides the card when off; with a historical global as-of nothing
     dated after the as-of date renders; a configured series with no stored bars (e.g. DIA before its
     one-shot fetch) is **omitted from the legend honestly — never fabricated — and the card still
-    renders** with the available series (the journey is NOT gated on DIA).
+    renders** with the available series (the journey is NOT gated on DIA). *(Amended by J-49: the
+    dashboard card now renders the **full stored history** regardless of the global as-of — step 6 and
+    the clause "with a historical global as-of nothing dated after the as-of date renders" are
+    superseded for this card; a historical as-of D draws a clear **vertical as-of marker** at D instead
+    of clamping. The full-history rendering is display-only market context — post-as-of data never
+    feeds an as-of-scoped computed value — and J-45's stock-detail bands remain clamped at the as-of
+    date.)*
 
 - **J-45: Market-regime bands behind the stock-detail price chart**
   - Steps:
@@ -1302,6 +1364,159 @@ The backend is the single source of truth; every page only displays server-compu
     entries** (no duplicated hardcoded copy); the existing setup/pattern catalog (J-12) is referenced
     or hosted by the same mechanism, never re-described in a second place; a config-added entry
     renders in both surfaces with no code change.
+
+- **J-48: Stocks leaderboard column sorting (sort the view, never the scores)**
+  - Steps:
+    1. Visit `/stocks` — the table renders in the scanner's stored rank order by default (the `#`
+       column, ascending)
+    2. Click the **Leadership** column header — the visible rows re-order by Leadership; click again —
+       the direction toggles; a visible sort indicator marks the active column + direction
+    3. Sort by **Ticker**, **Sector**, **Entry Quality**, **Risk**, and **Setup** in turn — each
+       re-orders the visible rows accordingly
+    4. With a sort active, apply the Sector and Setup/pattern filters (J-02 / J-16) — filter and sort
+       compose (the filtered rows render in the sorted order)
+    5. Click the `#` header — the default rank order returns; confirm every rank, score, bucket,
+       setup, and flag value is identical to before any sorting
+  - Acceptance: the leaderboard's column headers (Ticker, Sector, Leadership, Entry Quality, Risk,
+    Setup) are click-sortable with an asc/desc toggle and exactly one visible sort indicator; the `#`
+    column is the default order — the scanner's stored rank — and restores it on demand; sorting is a
+    **client-side view transform over the already-served snapshot rows**: it re-orders the rendered
+    list only and **never changes, recomputes, or re-ranks any stored value** (each row's `#`, three
+    scores/buckets, setup status, and pattern flags read exactly as served — single source of truth,
+    no new endpoint, no recompute); score columns order by the stored 0–100 value (the A–E bucket
+    rides along); sorting composes with the existing sector / setup-status / pattern filters, and
+    J-02 / J-16 behavior is otherwise untouched.
+
+- **J-49: Major indexes & regime card shows full history — the as-of is a marker, not a clamp (amends J-44)**
+  - Steps:
+    1. Set the global as-of switcher to a historical date D
+    2. Visit `/` — the **Major indexes & regime** card still renders the **full stored history**: the
+       index % lines and the regime bands extend past D through the latest stored date
+    3. Confirm a clear **vertical as-of marker** is drawn at D on the card (the same as-of-divider
+       treatment the stock-detail price chart already uses — J-20), so "where am I viewing" stays
+       unmistakable
+    4. Switch the range presets — the lines re-normalize per J-44; the marker stays at D
+    5. Return to the latest date — the marker disappears and the card reads exactly as J-44 defines
+    6. Open `/stocks/NVDA` at the same historical D — the stock-detail regime bands still stop at D
+       (J-45 unchanged)
+  - Acceptance: the dashboard card always charts **all available stored bars and stored regime
+    history** regardless of the global as-of — read from the **same single-source endpoints**
+    (`GET /api/indexes`, `GET /api/regime-history`) with the as-of clamp now optional for this
+    surface (same stored values, nothing recomputed, no second path); while a historical as-of D is
+    selected, a clearly visible vertical as-of marker is drawn at D (no marker at latest); every
+    J-44 behavior not amended here is unchanged (config-listed series, server-side normalization,
+    legend, step-function bands, three risk families, exact label + score on hover, config range
+    presets, persisted default-ON toggle, honest omission of bar-less series); the full-history
+    rendering is **display-only market context** — no post-as-of bar or regime value feeds any
+    as-of-scoped score, count, gate, or evidence figure (no-lookahead intact); **J-45 is explicitly
+    NOT amended** — the stock-detail regime bands still never render past the resolved as-of date.
+
+- **J-50: The as-of date survives EVERY in-app navigation, including new tabs (extends J-43)**
+  - Steps:
+    1. Pick a historical date D in the global as-of switcher
+    2. Inspect in-app links — the sidebar nav entries, the leaderboard rows, the theme / sector
+       member links, and the research links — each link's `href` itself carries `?asof=D`
+    3. Middle-click (or ctrl/cmd-click) a leaderboard row into a **new tab** — the new tab opens
+       directly at as-of D
+    4. Copy a link address and open it in a fresh tab — still as-of D
+    5. Switch back to the latest date — every in-app `href` is date-free again
+  - Acceptance: while a historical as-of D is selected, **every in-app navigational link embeds
+    `?asof=D` in its `href`** (top-nav/sidebar entries, leaderboard → detail rows, theme/sector
+    member links, research links) so same-tab clicks, new-tab / middle-click / ctrl-click opens, and
+    copied links all land on as-of D **without depending on post-navigation re-stamping**; at the
+    latest date every href is clean (no param); the embedded param is more of the same J-43
+    serialization — restored **through the one global control** on load, never a page-local date
+    state — so J-18 still holds (one date control, one state); an invalid `?asof` still degrades
+    safely to the latest view, and the `/data` date/symbol inputs remain job parameters, never a
+    date control.
+
+- **J-51: Every research sample count is a link to its exact samples**
+  - Steps:
+    1. Visit `/research` — every published sample-size figure renders as a link: Factor Lab
+       (`n_total`, per-decile n, rank-IC n, by-regime n), Combination Lab (baseline /
+       single-condition / composite / strict-overlap cohort n), Event Study (per-horizon n,
+       by-regime n, by-sector n, pooled `n_total`)
+    2. Click a Factor Lab decile's `N` — a dedicated samples page opens, parameterized to that exact
+       cohort (analysis kind, factor(s)/subject, horizon, decile/cohort, regime, sector, and the
+       all-history vs as-of scope, as applicable)
+    3. Read the samples table: one row per observation — ticker, snapshot (as-of) date, the stored
+       qualifying value(s) that put it in the cohort (the factor value; for a Combination cohort,
+       each referenced factor's stored value; for an Event Study, the matched setup/pattern), and
+       the realized forward return at the stated horizon
+    4. Confirm the displayed total **equals the N shown on the chip** that was clicked
+    5. Click an `N=0` cohort (e.g. an empty strict-overlap) — the samples page shows an honest empty
+       state, never a fabricated row
+  - Acceptance: every research sample count is a hyperlink to a **dedicated, deep-linkable samples
+    drill-down route** whose parameters fully reproduce the cohort (reload-safe); the page lists
+    **every** member observation with its ticker, snapshot date, qualifying stored factor/indicator
+    value(s) (or matched setup/pattern), and stored realized forward return at the stated horizon
+    (a paged or virtualized table is acceptable — the displayed total must equal the published N and
+    every observation must be reachable); **the observation total equals the published N** (count
+    coherence — the same membership filter and observation set the aggregate was computed from), and
+    every displayed value is the **same stored per-observation value** the aggregate used — the
+    drill-down is **read-only** (a SELECT-only exposure of what the existing observation builders
+    already assemble; it recomputes no factor, return, or membership); it honors the Research
+    all-history vs as-of mode (J-32 — the same scoping, no second date state); n=0 cohorts show an
+    explicit empty state; the survivorship-bias label is shown, and the table's column headers read
+    the same glossary catalog as every dense surface (J-47).
+
+- **J-52: From a sample row to the dated stock detail**
+  - Steps:
+    1. From a J-51 samples table, click a row's ticker
+    2. A **new tab** opens at `/stocks/[ticker]?asof=<that row's snapshot date>` — the "viewing
+       as-of D (historical)" indicator shows and the scores/buckets/setup are that date's stored
+       snapshot
+    3. Switch back to the original research tab — its mode, selections, scope, and scroll are
+       exactly as left
+  - Acceptance: a samples-row ticker opens the stock detail in a **new tab** with `?asof=` set to
+    **that row's snapshot date** (not the research tab's date); the new tab restores that date
+    through the single global control per J-43 (`?asof` is the serialization — the top-bar switcher
+    reflects it, the historical indicator is visible, and the page reads that date's stored
+    immutable snapshot per J-06 — no recompute, no lookahead); the originating research tab's own
+    state is untouched (independent tabs, one control semantics per tab — never a second date
+    state); an unknown/invalid date degrades safely per J-43.
+
+- **J-53: Fetch+backfill pipeline reports stage timings and backfills dates in parallel (extends J-46)**
+  - Steps:
+    1. Start a multi-date fetch + backfill job from `/data`
+    2. Watch the job card: live progress stays accurate, and the job detail/status now surfaces
+       **per-stage timings** — the fetch stage and the backfill stage, each with elapsed time, the
+       symbols/dates processed, and the concurrency used
+    3. On completion, confirm the multi-date backfill stage's wall-clock is materially below the sum
+       of its per-date times — at least ~2× faster than the sequential per-date baseline
+    4. Re-run the same range — create-once/idempotent semantics hold (existing snapshots are read,
+       nothing duplicated, no UNIQUE crash)
+    5. Run the scanner / forward-returns / immutability / no-lookahead suites — all green, outputs
+       identical
+  - Acceptance: the multi-date snapshot backfill is **no longer a sequential per-date wall-clock
+    sum** — it completes at least **~2× faster** than the per-date-sum sequential baseline (evidenced
+    by the job's own stage timings and a committed benchmark script — advisory, no flaky CI
+    wall-clock gate), with the **mechanism left open** (parallel dates with serialized writes,
+    parallel per-symbol computation within a date, further vectorization — any combination) so long
+    as every guard holds: snapshots and forward returns are **identical to the sequential output**
+    (the existing suites assert the same scores/buckets/setups/returns), create-once / idempotent /
+    concurrency-safe snapshot creation is preserved (J-41), SQLite writes stay
+    serialized/transactional, and progress stays honest (counts never exceed totals; checkpoints
+    stay consistent — J-34/J-37/J-38 intact); the job status payload and the `/data` job card
+    surface **per-stage timings** (fetch vs backfill: elapsed, items processed, concurrency used) as
+    descriptive operational metadata; any new concurrency knob lives in config (**no magic
+    numbers**).
+
+- **J-54: Leaderboard ticker opens the stock detail in a new tab**
+  - Steps:
+    1. On `/stocks`, click a ticker — the stock detail opens in a **new tab**; the leaderboard tab
+       keeps its filters, sort (J-48), scroll position, and date untouched
+    2. With a historical as-of D selected, click a ticker — the new tab lands directly on
+       `/stocks/[ticker]?asof=D` (the href carries the date per J-50)
+    3. Confirm theme-member and sector links still navigate in the same window
+  - Acceptance: the stocks-leaderboard ticker links open in a **new tab** (`target="_blank"` with
+    `rel="noopener"`-equivalent behavior); the href itself carries `?asof=D` while historical (J-50)
+    so the new tab resolves the same date through the single global control (J-43), and at latest
+    the href is clean; the originating leaderboard tab's state (active filters, sort order, scroll,
+    selected date) is never disturbed; the new-tab behavior applies **only** to the stocks-leaderboard
+    tickers and the J-52 samples-table tickers — theme/sector member links and every other in-app
+    link stay same-window; J-05 and J-43 are amended, not weakened (the click-through still lands on
+    the same dated, coherent detail view per J-06).
 
 **Data-dependent journeys (non-halting).** **J-22**, **J-23**, and **J-24** require a one-shot offline
 fetch of real data the committed seed does not yet contain — expanded-universe daily OHLCV + market-cap
@@ -1509,8 +1724,10 @@ green unconditionally, like backfill.
 - **Regime overlays read stored regime only.** The dashboard index-chart bands and the stock-detail
   bands MUST be built from the persisted per-run regime values (label + score from the immutable runs);
   no endpoint, view, or client may recompute a regime, and the same date MUST show the same regime
-  label/color on every surface. Bands MUST NOT render past the resolved as-of date. *(extends No
-  recompute in the read path + Single source of truth)*
+  label/color on every surface. The stock-detail bands MUST NOT render past the resolved as-of date;
+  the dashboard card renders the full stored history behind a visible as-of marker (J-49 — see
+  *Full-history market context never looks ahead*). *(extends No recompute in the read path + Single
+  source of truth)*
 - **The index chart is honest and never data-gated.** A configured index series without stored bars
   MUST be omitted with no synthesized line; the chart MUST render fully from the committed ETFs without
   DIA; the normalized % series MUST be computed server-side from stored bars (the frontend only
@@ -1529,3 +1746,30 @@ green unconditionally, like backfill.
   single config-backed catalog; no component may hardcode or duplicate a definition; the setup/pattern
   entries stay single-sourced (referenced or hosted by the same catalog, never re-described). *(extends
   Setup & pattern vocabulary is config-driven in the UI too)*
+- **Leaderboard sorting is a view transform.** Column sorting on `/stocks` MUST re-order only the
+  client-rendered rows of the already-served snapshot; it MUST NOT change, recompute, or re-rank any
+  stored value — the rank `#`, scores, buckets, setup statuses, and pattern flags read exactly as
+  served, and the default order remains the scanner's stored rank. Sorting MUST NOT introduce a new
+  endpoint or any second compute path. *(extends Single source of truth + No recompute in the read
+  path)*
+- **Full-history market context never looks ahead.** The dashboard major-indexes & regime card MAY
+  render stored bars and stored regime bands dated after the selected as-of **strictly as
+  display-only context** behind a visible as-of marker; that rendering MUST NOT feed any as-of-scoped
+  computed value (score, count, bucket, gate, aggregate, or evidence figure — all of which stay
+  derived from data dated ≤ D), and the stock-detail regime bands MUST stay clamped at the resolved
+  as-of date (J-45). *(extends No lookahead + Regime overlays read stored regime only)*
+- **Sample drill-downs are read-only and count-coherent.** Every research samples page MUST list
+  exactly the observations behind the published aggregate — the observation total MUST equal the N
+  shown on `/research` (same membership filter, same observation set), and every displayed
+  factor/indicator value and realized return MUST be the same stored per-observation value the
+  aggregate was computed from; the drill-down MUST NOT recompute a factor, return, or membership,
+  and an empty cohort renders an honest empty state, never a fabricated row. *(extends Research lab
+  is read-only, honest & not predictive + No fabricated data)*
+- **Parallel backfill never changes results.** Any backfill concurrency (parallel dates, parallel
+  per-symbol computation, vectorization) MUST produce snapshots and forward returns identical to the
+  sequential output (same canonical engines, same stored values — asserted by the existing suites),
+  MUST preserve create-once / idempotent / concurrency-safe snapshot creation (J-41) and
+  serialized/transactional SQLite writes, and MUST keep progress honest (counts never exceed totals;
+  checkpoints stay consistent). A faster pipeline that changes any stored value is a regression, not
+  an optimization. *(extends Vectorized scans are a pure refactor + Parallel import preserves every
+  import contract)*
