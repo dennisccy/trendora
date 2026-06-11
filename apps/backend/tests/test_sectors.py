@@ -79,6 +79,10 @@ _SYNTH_CFG = {
     },
     "universe": {"symbols": ["AAA", "BBB"], "filters": {"min_market_cap": 1, "min_dollar_vol": 1, "min_price": 1}},
     "etfs": {"index": ["SPY"], "sector": {"XLK": "Technology", "XLF": "Financials"}, "industry": ["SMH"], "volatility": ["^VIX"]},
+    "index_chart": {  # J-44 required block (chart symbols/names + range presets from config)
+        "symbols": [{"symbol": "SPY", "name": "S&P 500 (SPY)"}],
+        "range_presets": [{"key": "all", "label": "All", "days": None}], "default_range": "all",
+    },
     "themes": {"t1": ["AAA", "BBB"]},
     "buckets": {"A": 90, "B": 80, "C": 70, "D": 60},
     "indicators": {

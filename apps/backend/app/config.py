@@ -69,6 +69,66 @@ class ETFsCfg(BaseModel):
     volatility: list[str] = Field(default_factory=list)
 
 
+class IndexChartSymbol(BaseModel):
+    """One config-listed major-index ETF on the J-44 dashboard chart: its ticker `symbol` and the
+    `name` shown in the legend / tooltip. The symbol list + display names are config, never a hardcoded
+    frontend list (anti-goal: No magic numbers). A configured symbol with no stored bars (e.g. DIA
+    before its one-shot fetch) is honestly omitted server-side — listing it here is safe."""
+
+    model_config = ConfigDict(extra="allow")
+    symbol: str
+    name: str
+
+
+class IndexRangePreset(BaseModel):
+    """One range-preset option for the major-index chart: `key` is the stable API/URL value, `label`
+    the displayed text, `days` the trailing-calendar-day window (`None` ⇒ all available history). The
+    presets come from config so the frontend switcher never hardcodes a range (anti-goal: No magic
+    numbers). `days` (when set) MUST be `>= 1`."""
+
+    model_config = ConfigDict(extra="allow")
+    key: str
+    label: str
+    days: Optional[int] = None
+
+    @model_validator(mode="after")
+    def _days_positive(self) -> "IndexRangePreset":
+        if self.days is not None and self.days < 1:
+            raise ValueError(f"index_chart range preset {self.key!r} days must be >= 1 (got {self.days})")
+        return self
+
+
+class IndexChartCfg(BaseModel):
+    """Config for the J-44 "Major indexes & regime" dashboard chart (Capability 37): the index ETF
+    symbols + display names and the range presets, all config-driven (anti-goal: No magic numbers — no
+    symbol list / display name / range window literal in the engine or the frontend). `default_range`
+    MUST be one of the `range_presets` keys; preset keys + symbol tickers MUST be unique. A configured
+    symbol with no stored bars (e.g. DIA before its one-shot fetch) is honestly OMITTED at serve time
+    (never fabricated) — this list is the chart's presentation universe and is intentionally independent
+    of `etfs.index`/the scoring inputs, so listing DIA here never touches regime/scoring computation."""
+
+    model_config = ConfigDict(extra="allow")
+    symbols: list[IndexChartSymbol] = Field(min_length=1)
+    range_presets: list[IndexRangePreset] = Field(min_length=1)
+    default_range: str
+
+    @model_validator(mode="after")
+    def _validate(self) -> "IndexChartCfg":
+        keys = [preset.key for preset in self.range_presets]
+        dupes = sorted({k for k in keys if keys.count(k) > 1})
+        if dupes:
+            raise ValueError(f"index_chart.range_presets keys must be unique; duplicates: {dupes}")
+        if self.default_range not in keys:
+            raise ValueError(
+                f"index_chart.default_range ({self.default_range!r}) must be one of the preset keys {keys}"
+            )
+        symbols = [s.symbol for s in self.symbols]
+        sym_dupes = sorted({s for s in symbols if symbols.count(s) > 1})
+        if sym_dupes:
+            raise ValueError(f"index_chart.symbols must be unique; duplicates: {sym_dupes}")
+        return self
+
+
 class BucketsCfg(BaseModel):
     model_config = ConfigDict(extra="allow")
     A: int
@@ -1108,6 +1168,7 @@ class Config(BaseModel):
     data_manager: DataManagerCfg
     universe: UniverseCfg
     etfs: ETFsCfg
+    index_chart: IndexChartCfg  # J-44 major-indexes chart symbols + display names + range presets
     themes: dict[str, list[str]] = Field(min_length=1)
     buckets: BucketsCfg
     indicators: IndicatorsCfg

@@ -20,7 +20,9 @@ from app.api import (
     dashboard,
     data,
     health,
+    indexes,
     methodology,
+    regime_history,
     research,
     runs,
     sectors,
@@ -95,3 +97,5 @@ app.include_router(watchlist.router, prefix="/api")
 app.include_router(methodology.router, prefix="/api")
 app.include_router(data.router, prefix="/api")
 app.include_router(research.router, prefix="/api")
+app.include_router(regime_history.router, prefix="/api")
+app.include_router(indexes.router, prefix="/api")

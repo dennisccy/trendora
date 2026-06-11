@@ -175,6 +175,14 @@ function AsOfUrlSync({
   // `pathname` too so a client-side nav (a leaderboard row `<Link>` → `/stocks/[ticker]`, which does
   // NOT carry query params) RE-ASSERTS `?asof` onto the new route — the historical view survives the
   // click-through (the provider, mounted in the shell, kept the state; this re-stamps the URL).
+  //
+  // J-43 FIX (iter-2): `searchParams` (via its stable `.toString()` key `searchKey`) is in the
+  // dependency set. Without it, the closure captured a STALE `searchParams` on the deep-link path:
+  // when `setAsOf(D)` committed `asOf=D`, this effect re-ran but still read the pre-restore URL
+  // (`current === D === next`) and early-returned, so a date-free URL "won" permanently and the
+  // `?asof=D` never got re-stamped after reload/fresh-tab. Keying on the LIVE URL lets the effect
+  // re-evaluate against the URL Next.js actually committed, so the restored state serializes back.
+  const searchKey = searchParams.toString();
   useEffect(() => {
     if (!ready || !restored.current) return;
     const current = searchParams.get(ASOF_PARAM);
@@ -183,7 +191,7 @@ function AsOfUrlSync({
     if ((current ?? null) === next) return;
     writeAsofParam(router, pathname, searchParams, next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [asOf, latest, ready, pathname]);
+  }, [asOf, latest, ready, pathname, searchKey]);
 
   return null;
 }

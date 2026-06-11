@@ -261,6 +261,27 @@ etfs:
     - "^VIX"
 
 # ----------------------------------------------------------------------------------------
+# Major-indexes chart (J-44 / Capability 37): the dashboard "Major indexes & regime" card.
+# The symbol list + display names and the range presets are config (NO magic numbers — the
+# frontend never hardcodes a symbol, a legend name, or a range window). This is the chart's
+# presentation universe, deliberately independent of `etfs.index`/the scoring inputs, so a
+# bar-less symbol (DIA before its one-shot fetch) is listed here and honestly OMITTED at
+# serve time without ever touching regime/scoring. Read-only normalized-% display series.
+index_chart:
+  symbols:                # ticker -> legend/tooltip display name
+    - { symbol: SPY, name: "S&P 500 (SPY)" }
+    - { symbol: QQQ, name: "Nasdaq 100 (QQQ)" }
+    - { symbol: IWM, name: "Russell 2000 (IWM)" }
+    - { symbol: RSP, name: "S&P 500 Equal-Weight (RSP)" }
+    - { symbol: DIA, name: "Dow 30 (DIA)" }   # bar-less until its one-shot fetch — honestly omitted
+  range_presets:          # key (API/URL value) -> label + trailing-calendar-day window (null = all)
+    - { key: "3M", label: "3M", days: 92 }
+    - { key: "6M", label: "6M", days: 183 }
+    - { key: "1Y", label: "1Y", days: 366 }
+    - { key: "all", label: "All", days: null }
+  default_range: "6M"
+
+# ----------------------------------------------------------------------------------------
 # Themes: manually-defined, many-to-many (a stock may appear in several). Price-confirmed,
 # NOT news-driven. Every member ticker MUST also be present in universe.symbols.
 themes:

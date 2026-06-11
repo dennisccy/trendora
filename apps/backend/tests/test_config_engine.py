@@ -41,6 +41,12 @@ VALID = {
         "industry": ["SMH"],
         "volatility": ["^VIX"],
     },
+    # J-44 made `index_chart` required (chart symbols/names + range presets from config, never code).
+    "index_chart": {
+        "symbols": [{"symbol": "SPY", "name": "S&P 500 (SPY)"}],
+        "range_presets": [{"key": "all", "label": "All", "days": None}],
+        "default_range": "all",
+    },
     "themes": {"t1": ["AAA", "BBB"]},
     "buckets": {"A": 90, "B": 80, "C": 70, "D": 60},
     "indicators": {

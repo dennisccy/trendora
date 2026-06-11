@@ -5,6 +5,7 @@ import { AlertTriangle, Clock } from "lucide-react";
 
 import { useAsOf } from "@/components/asof-provider";
 import { ComponentBreakdown } from "@/components/component-breakdown";
+import { MajorIndexesCard } from "@/components/major-indexes-card";
 import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
@@ -156,6 +157,9 @@ function DashboardBody({
           />
         </div>
       </div>
+
+      {/* J-44: Major indexes & regime — normalized % index lines over stored-regime bands (default ON). */}
+      <MajorIndexesCard />
 
       {/* Top sectors + pending placeholders */}
       <div className="grid gap-4 lg:grid-cols-3">

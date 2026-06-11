@@ -40,6 +40,13 @@ MINIMAL_VALID = {
         "industry": ["SMH"],
         "volatility": ["^VIX"],
     },
+    # J-44 made `index_chart` required (the major-indexes chart symbols/names + range presets come
+    # from config, never code). The smallest valid block: >= 1 symbol, >= 1 preset, default a real key.
+    "index_chart": {
+        "symbols": [{"symbol": "SPY", "name": "S&P 500 (SPY)"}],
+        "range_presets": [{"key": "all", "label": "All", "days": None}],
+        "default_range": "all",
+    },
     "themes": {"t1": ["AAA", "BBB"]},
     "buckets": {"A": 90, "B": 80, "C": 70, "D": 60},
     # iter-2 made these sections required + validated (see test_config_engine.py for the

@@ -10,8 +10,10 @@ import type {
   Time,
 } from "lightweight-charts";
 
-import type { PriceBar } from "@/lib/api";
+import type { PriceBar, RegimePoint } from "@/lib/api";
 import { formatIsoDate } from "@/lib/dates";
+import { RegimeBandPrimitive } from "@/components/regime-band-primitive";
+import { familyColor, familyLabel, RISK_FAMILIES } from "@/lib/regime";
 
 /**
  * Client-only price chart (Lightweight-Charts, MIT-style permissive / Apache-2.0, no key, no
@@ -62,12 +64,27 @@ export function PriceChart({
   bars,
   ma,
   asofDate,
+  regimePoints,
+  regimeEnabled = false,
 }: {
   bars: PriceBar[];
   ma: Record<string, (number | null)[]>;
   asofDate?: string; // the resolved as-of D — labels the forward-region boundary marker (J-20)
+  // J-45: the stored regime-history points (date <= as-of) for the soft background bands. The SAME
+  // stored values + the SAME lib/regime color mapping as the dashboard card (coherence). Undefined /
+  // empty ⇒ no bands. Bounded to <= as-of by the endpoint, so the forward region stays band-free (J-20).
+  regimePoints?: RegimePoint[];
+  regimeEnabled?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  // Only the points dated <= the as-of are eligible for bands; the post-as-of forward region never gets
+  // a band (J-20). The endpoint already bounds them, but we re-assert it here as a defensive clip.
+  const bandPoints = useMemo(() => {
+    if (!regimeEnabled || !regimePoints || regimePoints.length === 0) return [];
+    if (!asofDate) return regimePoints;
+    return regimePoints.filter((point) => point.date <= asofDate);
+  }, [regimeEnabled, regimePoints, asofDate]);
+  const hasBands = bandPoints.length > 0;
   // MA periods shortest→longest (numeric), so overlay colours and the legend stay aligned.
   const periods = useMemo(
     () => Object.keys(ma).sort((a, b) => Number(a) - Number(b)),
@@ -119,6 +136,15 @@ export function PriceChart({
         wickDownColor: token("--neg"),
         borderVisible: false,
       });
+
+      // J-45: soft regime background bands behind price. The primitive reads the SAME stored regime
+      // points + lib/regime mapping as the dashboard card (coherence) and clips at the as-of date so the
+      // forward region stays band-free (J-20). Attached to the candle series; disposed with the chart.
+      if (hasBands) {
+        const bandPrimitive = new RegimeBandPrimitive();
+        candles.attachPrimitive(bandPrimitive);
+        bandPrimitive.setData(bandPoints, asofDate ?? null);
+      }
       candles.setData(
         bars.map((bar): CandlestickData<Time> => {
           const point: CandlestickData<Time> = {
@@ -199,12 +225,12 @@ export function PriceChart({
       disposed = true;
       chart?.remove();
     };
-  }, [bars, ma, periods, hasForward, asofDate]);
+  }, [bars, ma, periods, hasForward, asofDate, hasBands, bandPoints]);
 
   return (
     <div className="space-y-3">
       <div ref={containerRef} className="h-80 w-full" />
-      <ChartLegend periods={periods} hasForward={hasForward} asofDate={asofDate} />
+      <ChartLegend periods={periods} hasForward={hasForward} asofDate={asofDate} hasBands={hasBands} />
     </div>
   );
 }
@@ -226,10 +252,12 @@ function ChartLegend({
   periods,
   hasForward,
   asofDate,
+  hasBands,
 }: {
   periods: string[];
   hasForward: boolean;
   asofDate?: string;
+  hasBands?: boolean;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-text-muted">
@@ -248,6 +276,18 @@ function ChartLegend({
         <LegendDot varName="--text-faint" />
         Volume
       </span>
+      {hasBands
+        ? RISK_FAMILIES.map((family) => (
+            <span key={family} className="flex items-center gap-1.5">
+              <span
+                className="inline-block h-2 w-2 rounded-sm"
+                style={{ backgroundColor: familyColor(family) }}
+                aria-hidden
+              />
+              {familyLabel(family)} regime
+            </span>
+          ))
+        : null}
       {hasForward ? (
         <span className="flex items-center gap-1.5 text-text-faint">
           <LegendDot varName={FORWARD_CANDLE_VAR} />

@@ -45,11 +45,11 @@ Trendora
 ├── Watchlist        /watchlist              (J-11)
 ├── Methodology      /methodology            (J-12, J-22 universe rule; J-47 full Glossary [TARGET])
 ├── Research         /research               (J-25, J-26, J-27, J-29, J-30, J-31, J-32; J-47 tooltips)
-└── Data Manager     /data                   (J-17, J-33–J-39; J-42 ISO date inputs [TARGET])
+└── Data Manager     /data                   (J-17, J-33–J-39; J-42 ISO date inputs [built iter-1])
 ```
 
 Cross-cutting (no page of their own): **J-13/J-43** top-bar as-of switcher; **J-15** snapshot-served
-reads; **J-40/J-41** fast boot + readiness badge; **J-42** ISO dates on every surface; **J-46**
+reads; **J-40/J-41** fast boot + readiness badge; **J-42** ISO dates on every surface (built iter-1 — `apps/frontend/lib/dates.ts`); **J-46**
 backend pipeline speed (no UI surface; advisory benchmark script). **J-22/J-23/J-24** are
 data-walled, non-halting (honest NA) on existing homes.
 
@@ -72,7 +72,7 @@ recomputed per request. Engine modules live under `apps/backend/app/engine/`.
 | Detected patterns — VCP, `pullback_to_rising_dma`, `flat_base_breakout` (+pivot/invalidation/reason) | `patterns:detect_*` composed by `score_stocks` (≤ D) | `/api/stocks*` rows + mirror cols `scanner_results.is_*` + by-pattern breakdowns on `GET /api/backtest` | built; patterns-not-statuses |
 | Price/MA/volume series (per ticker, as-of) + through-latest display extension (as-of divider, `is_forward`) | `prices:bars_asof`/`bars_through_latest` + `indicators:sma_series` | `GET /api/stocks/{ticker}/bars` | built; post-D = display-only (J-20) |
 | Scanner run snapshot (immutable, append-only, create-once, concurrency-safe) | `scanner:run_scan` | `GET /api/runs`, `GET /api/runs/{run_id}` | built |
-| Resolved as-of date + available dates (ONE global state) | `snapshot_serving` + create-once resolution in `scanner` | `GET /api/runs`; `asof_date` echoed by every read | built. **J-43 [TARGET]:** state serializes to `?asof=yyyy-MM-dd` while historical, restored through the ONE global control; invalid `?asof` → latest; never a second date state |
+| Resolved as-of date + available dates (ONE global state) | `snapshot_serving` + create-once resolution in `scanner` | `GET /api/runs`; `asof_date` echoed by every read | built. **J-43 [TARGET — partial after iter-1]:** state serializes to `?asof=yyyy-MM-dd` while historical, restored through the ONE global control; invalid `?asof` → latest; never a second date state. Iter-1 built+verified the interactive serialize/restore/degrade legs; reload/fresh-tab/click-through URL durability outstanding (asof-provider serialize-effect stale `searchParams` dep — iter-2 target) |
 | Forward-return evidence aggregates (by bucket/setup/regime/pattern; excess vs SPY/QQQ/sector; control groups) — as-of-scoped ≤ D | `forward_testing:compute_forward_aggregates(as_of)` | `GET /api/backtest` | built |
 | Per-date scorecard + leadership realized returns + attribution slices (per-stock/by-sector/by-rank-band/distribution) | `forward_testing:compute_run_scorecard` + `_leadership_returns` + shared attribution helper (read-only over stored `forward_returns`) | `GET /api/backtest` | built |
 | MAE/MFE excursions per (run, symbol, horizon) | `forward_testing` INSERT path (`forward_excursions`, bars > D) | stored append-only on `forward_returns`; read by event study | built |
@@ -87,7 +87,7 @@ recomputed per request. Engine modules live under `apps/backend/app/engine/`.
 | Backend readiness state + warm-up progress (`ready`/`initializing`/`unavailable` + n/m) | `readiness:compute_readiness` (+ `warmup` controller) | `GET /api/health` (the ONE readiness read) | built |
 | **J-44/J-45 [TARGET] — Regime history series** (date → stored regime label + score) | ONE read-only module over immutable `scanner_runs` (propose `regime_history:get_regime_history`; labels/scores read VERBATIM, never recomputed) | ONE endpoint (propose `GET /api/regime-history`) | TARGET. Consumed by BOTH the dashboard index-chart bands AND the stock-detail chart bands — same label/color per date; honest step function; never rendered past the resolved as-of |
 | **J-44 [TARGET] — Normalized index display series** (config-listed index ETFs as % lines rebased to range start) | server-side from stored bars (propose `indexes:compute_index_series`; symbols/names/range presets from config) | ONE endpoint (propose `GET /api/indexes`) | TARGET. Presentation series, not a canonical score; a series without stored bars (DIA) is omitted honestly; frontend only re-formats |
-| **J-42 [TARGET] — Displayed date format** (`yyyy-MM-dd` everywhere) | ONE shared frontend formatter/constant (propose `apps/frontend/lib/dates.ts:formatIsoDate`); `/data` date fields become validated ISO TEXT inputs | every surface displaying a calendar date (presentation contract — no endpoint) | TARGET. No per-component format literals, no locale-dependent widget output; API/DB/config dates stay ISO unchanged |
+| **J-42 [built iter-1] — Displayed date format** (`yyyy-MM-dd` everywhere) | ONE shared frontend formatter `apps/frontend/lib/dates.ts` (`ISO_DATE_FORMAT`, `formatIsoDate`, `formatIsoDateTime`, `isValidIsoDate`); `/data` date fields are validated ISO TEXT inputs | every surface displaying a calendar date (presentation contract — no endpoint) | built (verified + coherence-audited iter-1: no per-component format literals, no locale-dependent widget output; API/DB/config dates ISO unchanged) |
 
 ## Coherence invariants (the auditor hard-fails on these)
 

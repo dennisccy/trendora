@@ -320,6 +320,76 @@ export async function fetchStockBars(
   return getJSON<BarsResponse>(path, signal);
 }
 
+// --- major-indexes chart + regime history (iter-2 goal mode, J-44 + J-45) ------------------
+/** One stored per-date regime point read VERBATIM from the immutable scanner_runs (label + score).
+ *  Both regime-band surfaces (dashboard card + stock-detail chart) consume the SAME points so the same
+ *  date shows the same stored label/color everywhere — the frontend never recomputes a regime. */
+export interface RegimePoint {
+  date: string; // ISO yyyy-MM-dd
+  label: string; // one of the six configured regime labels (stored)
+  score: number; // 0–100 (stored)
+}
+
+/** GET /api/regime-history payload. `points` are ascending by date and bounded to dates <= asof_date
+ *  (no band past the resolved as-of). */
+export interface RegimeHistoryResponse {
+  asof_date: string;
+  points: RegimePoint[];
+}
+
+/** The stored per-date market-regime series for the regime bands (J-44/J-45). `asof` bounds it to a
+ *  historical date; the latest view passes nothing. Read-only — no regime is recomputed client-side. */
+export async function fetchRegimeHistory(
+  asof?: string,
+  signal?: AbortSignal,
+): Promise<RegimeHistoryResponse> {
+  return getJSON<RegimeHistoryResponse>(withAsOf("/api/regime-history", asof), signal);
+}
+
+/** One point on a normalized-% index line (rebased to the range start, computed server-side). */
+export interface IndexSeriesPoint {
+  date: string; // ISO yyyy-MM-dd
+  pct: number; // normalized % vs the range-start close (first point ~0)
+}
+
+/** One config-listed index ETF line: its `symbol`, legend `name`, and the rebased % `points`. */
+export interface IndexSeries {
+  symbol: string;
+  name: string;
+  points: IndexSeriesPoint[];
+}
+
+/** One range-preset switcher option (from config). */
+export interface IndexRangeOption {
+  key: string;
+  label: string;
+}
+
+/** GET /api/indexes payload. `series` excludes any configured symbol with no stored bars in the range
+ *  (e.g. DIA — honestly omitted, never fabricated). `range` is the resolved preset; `ranges` are the
+ *  config-driven switcher options. `asof_date` bounds every series (no bar dated after it). */
+export interface IndexesResponse {
+  asof_date: string;
+  range: { key: string; label: string; days: number | null; start: string | null };
+  ranges: IndexRangeOption[];
+  series: IndexSeries[];
+}
+
+/** The normalized-% major-indexes display series for the dashboard chart (J-44). `range` is a preset
+ *  key (from `ranges`); `asof` bounds it to a historical date. The frontend only re-formats these
+ *  server-computed numbers — it never does return math. An unknown `range` yields a 422 (thrown). */
+export async function fetchIndexes(
+  range?: string,
+  asof?: string,
+  signal?: AbortSignal,
+): Promise<IndexesResponse> {
+  let path = withAsOf("/api/indexes", asof);
+  if (range) {
+    path += `${path.includes("?") ? "&" : "?"}range=${encodeURIComponent(range)}`;
+  }
+  return getJSON<IndexesResponse>(path, signal);
+}
+
 // --- themes (iter-3) -----------------------------------------------------------------------
 export interface ThemeRow {
   slug: string;

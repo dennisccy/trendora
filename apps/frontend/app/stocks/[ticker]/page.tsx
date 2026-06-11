@@ -15,14 +15,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatIsoDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import {
+  fetchRegimeHistory,
   fetchStock,
   fetchStockBars,
   type BarsResponse,
+  type RegimePoint,
   type ScoreBlock,
   type StockDetailResponse,
   type StockRow,
   type Vcp,
 } from "@/lib/api";
+import { usePersistedToggle } from "@/lib/use-persisted-toggle";
 
 type State =
   | { kind: "loading" }
@@ -342,6 +345,11 @@ type ChartState =
 function StockChartPanel({ ticker }: { ticker: string }) {
   const { asOf } = useAsOf();
   const [state, setState] = useState<ChartState>({ kind: "loading" });
+  // J-45: regime bands behind price. Stored regime history (date <= as-of), same endpoint + lib/regime
+  // mapping as the dashboard card, fetched at the SAME as-of so the same date shows the same band color.
+  const [regimePoints, setRegimePoints] = useState<RegimePoint[]>([]);
+  // Regime band toggle — a client display preference, default ON, persisted across reloads (J-45).
+  const [regimeOn, setRegimeOn] = usePersistedToggle("trendora.detail.regimeBands", true);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -357,17 +365,32 @@ function StockChartPanel({ ticker }: { ticker: string }) {
     return () => controller.abort();
   }, [ticker, asOf]);
 
+  // Regime history loads independently (same as-of); a failure just means no bands (never blocks the chart).
+  useEffect(() => {
+    const controller = new AbortController();
+    setRegimePoints([]);
+    fetchRegimeHistory(asOf ?? undefined, controller.signal)
+      .then((res) => setRegimePoints(res.points))
+      .catch(() => {
+        /* bands are optional — a regime-history failure leaves the price chart fully functional */
+      });
+    return () => controller.abort();
+  }, [asOf]);
+
   const hasForward = state.kind === "ok" && state.data.bars.some((bar) => bar.is_forward);
 
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <CardTitle>Price &amp; moving averages</CardTitle>
-        {state.kind === "ok" ? (
-          <span className="num text-xs text-text-faint">
-            {state.data.bars.length} bars · as of {formatIsoDate(state.data.asof_date)}
-          </span>
-        ) : null}
+        <div className="flex items-center gap-3">
+          <RegimeToggle on={regimeOn} onChange={setRegimeOn} />
+          {state.kind === "ok" ? (
+            <span className="num text-xs text-text-faint">
+              {state.data.bars.length} bars · as of {formatIsoDate(state.data.asof_date)}
+            </span>
+          ) : null}
+        </div>
       </CardHeader>
       <CardContent>
         {state.kind === "loading" ? (
@@ -383,7 +406,13 @@ function StockChartPanel({ ticker }: { ticker: string }) {
                 or VCP flag below (those read the as-of snapshot, bars ≤ {formatIsoDate(state.data.asof_date)}).
               </p>
             ) : null}
-            <PriceChart bars={state.data.bars} ma={state.data.ma} asofDate={state.data.asof_date} />
+            <PriceChart
+              bars={state.data.bars}
+              ma={state.data.ma}
+              asofDate={state.data.asof_date}
+              regimePoints={regimePoints}
+              regimeEnabled={regimeOn}
+            />
           </div>
         ) : null}
         {state.kind === "empty" ? (
@@ -405,6 +434,36 @@ function StockChartPanel({ ticker }: { ticker: string }) {
         ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+/** J-45 Regime band toggle — a small, accessible switch in the chart controls (default ON, persisted
+ *  client-side). Shows/hides the soft regime background bands; it changes no served value. */
+function RegimeToggle({ on, onChange }: { on: boolean; onChange: (next: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={() => onChange(!on)}
+      className={cn(
+        "group flex items-center gap-2 rounded border px-2.5 py-1 text-xs transition-colors",
+        "focus:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+        on
+          ? "border-border-strong bg-surface-2 text-text"
+          : "border-border bg-surface text-text-muted hover:text-text",
+      )}
+    >
+      <span
+        className={cn(
+          "inline-block h-2 w-2 rounded-sm transition-opacity",
+          on ? "opacity-100" : "opacity-40",
+        )}
+        style={{ backgroundColor: "var(--warn)" }}
+        aria-hidden
+      />
+      Regime {on ? "on" : "off"}
+    </button>
   );
 }
 
