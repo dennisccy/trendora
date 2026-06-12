@@ -1,0 +1,375 @@
+"""Research samples drill-down engine (Data Contract: app.engine.samples — J-51 / J-52).
+
+A SELECT-only exposure of the SAME per-observation pools the three research labs already assemble. Every
+published `N=` figure on `/research` is the count of one cohort slice; this module reproduces that exact
+cohort and lists its member observations — one row per observation: ticker, snapshot (as-of) date, the
+qualifying stored factor/indicator value(s) (or, for an event study, the matched setup/pattern), and the
+stored realized forward return at the stated horizon. The drill-down `total` ALWAYS equals the published N
+(count-coherence keystone — invariant 13), because membership is derived through the EXACT same code paths
+the aggregates use:
+
+  - factor cohorts          → `research._factor_observations` (+ `_decile_member_slice` for a per-decile
+                              cohort; + the stored-`regime` filter for a by-regime cohort) — the SAME
+                              ascending-by-factor ordering + quantile edges `compute_factor_lab` reads.
+  - combination cohorts     → `research._combination_observations` (+ `_combination_cohort_members` for the
+                              single/strict/composite index sets) — the SAME membership `compute_factor_
+                              combination` publishes.
+  - event-study cohorts     → `research._event_study_members` (+ the stored-`regime`/`sector` filter for a
+                              by-regime / by-sector slice) — the SAME pool `compute_event_study` groups.
+
+THREE non-negotiable disciplines (mirroring `app.engine.research`):
+
+  1. READ-ONLY / NO RECOMPUTE. This module issues only SELECTs (the reused builders + a `run_id → asof_date`
+     map) and pure index arithmetic. It recomputes NO factor, NO return, NO regime, NO membership rule —
+     every displayed value is the stored per-observation value the aggregate consumed, read VERBATIM.
+
+  2. SINGLE MEMBERSHIP RULE. A cohort's members come from the SAME builder + the SAME slicing helper the
+     aggregate used (never a second "equivalent" filter), so `total == published N` by construction.
+
+  3. NO FABRICATION. A VALID n=0 cohort (e.g. an empty strict-overlap) returns an empty list + `total` 0 —
+     never a fabricated row. An INVALID cohort selector (unknown kind/factor/subject/horizon, decile out of
+     range, malformed condition) raises `ValueError` — the API turns it into an explicit 4xx (never a silent
+     empty 200, which is reserved for the valid n=0 case).
+
+The optional `as_of` cutoff (J-32) is the SINGLE global as-of transmitted on the read — a pure membership
+FILTER on the opening forward-return query (snapshots dated ≤ D), threaded into the SAME builders. It is a
+mode, never a second date state (J-18). `as_of=None` ⇒ all-history.
+"""
+from __future__ import annotations
+
+from datetime import date as date_cls
+from typing import Optional
+
+from sqlmodel import Session, select
+
+from app.config import Config, get_config
+from app.engine.forward_testing import SURVIVORSHIP_BIAS_LABEL
+from app.engine.research import (
+    RESEARCH_CAVEAT,
+    _combination_cohort_members,
+    _combination_observations,
+    _decile_member_slice,
+    _event_study_members,
+    _factor_observations,
+    factor_catalog,
+    subject_catalog,
+)
+from app.models import ScannerRun
+
+# The analysis kinds a sample cohort can belong to (one per research lab) — a fixed structural vocabulary
+# (not a tunable). The API validates `kind` against this set.
+KIND_FACTOR = "factor"
+KIND_COMBINATION = "combination"
+KIND_EVENT_STUDY = "event-study"
+ALL_KINDS = (KIND_FACTOR, KIND_COMBINATION, KIND_EVENT_STUDY)
+
+# The factor-cohort slice families (which published `N=` chip on the Factor Lab was clicked). `total` is
+# `n_total` / rank-IC n (whole pool); `decile` is one D1…D10 bucket; `regime` is the per-regime split.
+_FACTOR_SLICES = ("total", "decile", "regime")
+# The combination cohort families (which published `N=` chip on the Combination Lab was clicked).
+_COMBINATION_COHORTS = ("baseline", "single", "composite", "strict_overlap")
+# The event-study slice families (which published `N=` chip on the Setup & Pattern Lab was clicked).
+_EVENT_STUDY_SLICES = ("pooled", "regime", "sector")
+
+
+def _run_date_map(session: Session) -> dict[int, str]:
+    """`run_id → asof_date` (ISO string) over every immutable `scanner_runs` row — read VERBATIM (the
+    snapshot date the observation came from; used for the row's snapshot date AND the J-52 `?asof` link).
+    A single SELECT; recomputes nothing."""
+    return {
+        run.id: run.asof_date.isoformat()
+        for run in session.exec(select(ScannerRun.id, ScannerRun.asof_date)).all()
+    }
+
+
+# --------------------------------------------------------------------------------------------------
+# Factor cohort (Factor Lab — J-25 chips: n_total / rank-IC n / per-decile n / by-regime n)
+# --------------------------------------------------------------------------------------------------
+def _factor_samples(
+    session: Session, cfg: Config, *, factor_key: str, horizon: int, slice_kind: str,
+    decile: Optional[int], regime: Optional[str], as_of: Optional[date_cls],
+) -> dict:
+    """Reproduce a Factor-Lab cohort and list its member observations. `slice_kind`:
+      - "total"  → the whole `_factor_observations` pool (== `n_total` == rank-IC n).
+      - "decile" → the `decile`-th `_decile_member_slice` of the ascending-by-factor pool (== that decile's n).
+      - "regime" → the pool filtered to the stored `regime` label (== that by-regime row's n).
+    Each row: ticker, snapshot date, the qualifying stored factor value, the realized forward return."""
+    fl = cfg.research.factor_lab
+    factor = next((f for f in fl.factors if f.key == factor_key), None)
+    if factor is None:
+        raise ValueError(
+            f"unknown factor {factor_key!r}; valid factors are {[f.key for f in fl.factors]}"
+        )
+
+    observations = _factor_observations(session, factor, horizon, as_of)
+
+    if slice_kind == "total":
+        members = observations
+    elif slice_kind == "decile":
+        if decile is None or not (1 <= decile <= fl.deciles):
+            raise ValueError(
+                f"decile {decile!r} out of range [1, {fl.deciles}] for a factor decile cohort"
+            )
+        # the SAME ascending-by-factor ordering + deterministic tie-break compute_factor_lab uses, then
+        # the SAME quantile-edge slice — so this decile's member list reproduces the aggregate's n exactly.
+        ordered = sorted(observations, key=lambda o: (o["factor"], o["ticker"], o["run_id"]))
+        members = _decile_member_slice(ordered, fl.deciles, decile)
+    elif slice_kind == "regime":
+        if regime is None or regime not in cfg.regime.labels:
+            raise ValueError(
+                f"regime {regime!r} is not a configured regime label {list(cfg.regime.labels)}"
+            )
+        # the SAME stored-regime grouping `_regime_effectiveness` uses (regime read verbatim, never recomputed)
+        members = [o for o in observations if o["regime"] == regime]
+    else:
+        raise ValueError(f"unknown factor slice {slice_kind!r}; valid slices are {list(_FACTOR_SLICES)}")
+
+    run_dates = _run_date_map(session)
+    rows = [
+        {
+            "ticker": o["ticker"],
+            "snapshot_date": run_dates.get(o["run_id"]),
+            "regime": o["regime"],
+            "values": [{"key": factor.key, "label": factor.label, "value": o["factor"]}],
+            "forward_return": o["return"],
+        }
+        for o in members
+    ]
+    cohort = {
+        "kind": KIND_FACTOR,
+        "slice": slice_kind,
+        "horizon": horizon,
+        "factor": {
+            "key": factor.key, "label": factor.label, "family": factor.family,
+            "direction": factor.direction, "source": factor.source,
+        },
+        "decile": decile if slice_kind == "decile" else None,
+        "regime": regime if slice_kind == "regime" else None,
+        "deciles_count": fl.deciles,
+    }
+    return {"cohort": cohort, "rows": rows}
+
+
+# --------------------------------------------------------------------------------------------------
+# Combination cohort (Combination Lab — J-26 chips: baseline / single / composite / strict-overlap n)
+# --------------------------------------------------------------------------------------------------
+def _combination_samples(
+    session: Session, cfg: Config, *, conditions: list[dict], horizon: int, cohort_kind: str,
+    single_index: Optional[int], as_of: Optional[date_cls],
+) -> dict:
+    """Reproduce a Combination-Lab cohort and list its member observations. `cohort_kind`:
+      - "baseline"       → the whole pool (== `pool_n`).
+      - "single"         → the `single_index`-th condition's membership (== that single's n).
+      - "composite"      → the composite rank-blend cohort (== the composite's n).
+      - "strict_overlap" → the exact AND-intersection (== the strict-overlap n; may be a valid 0).
+    Membership is the SAME `_combination_cohort_members` `compute_factor_combination` publishes, so the
+    drill-down total equals the published N. Each row carries EVERY referenced factor's stored value."""
+    fl = cfg.research.factor_lab
+    comb = fl.combination
+
+    if not (comb.min_conditions <= len(conditions) <= comb.max_conditions):
+        raise ValueError(
+            f"condition count {len(conditions)} out of range "
+            f"[{comb.min_conditions}, {comb.max_conditions}]"
+        )
+
+    resolved: list[dict] = []
+    for cond in conditions:
+        factor = next((f for f in fl.factors if f.key == cond.get("factor")), None)
+        if factor is None:
+            raise ValueError(
+                f"unknown factor {cond.get('factor')!r}; valid factors are {[f.key for f in fl.factors]}"
+            )
+        side = cond.get("side")
+        if side not in ("top", "bottom"):
+            raise ValueError(f"unknown side {side!r}; valid sides are ['bottom', 'top']")
+        quantile = next((q for q in comb.quantiles if q.key == cond.get("quantile")), None)
+        if quantile is None:
+            raise ValueError(
+                f"unknown quantile {cond.get('quantile')!r}; valid quantiles are {[q.key for q in comb.quantiles]}"
+            )
+        resolved.append({"factor": factor, "side": side, "quantile": quantile})
+
+    distinct_factors = list({c["factor"].key: c["factor"] for c in resolved}.values())
+    pool = _combination_observations(session, distinct_factors, horizon, as_of)
+    cohort_members = _combination_cohort_members(pool, resolved, comb)
+
+    if cohort_kind == "baseline":
+        indices = range(len(pool))
+    elif cohort_kind == "single":
+        if single_index is None or not (0 <= single_index < len(resolved)):
+            raise ValueError(
+                f"single condition index {single_index!r} out of range [0, {len(resolved) - 1}]"
+            )
+        indices = cohort_members["single"][single_index]
+    elif cohort_kind == "composite":
+        indices = cohort_members["composite"]
+    elif cohort_kind == "strict_overlap":
+        indices = cohort_members["strict"]
+    else:
+        raise ValueError(
+            f"unknown combination cohort {cohort_kind!r}; valid cohorts are {list(_COMBINATION_COHORTS)}"
+        )
+
+    # order-stable member rows: every referenced factor's stored value, read verbatim from the pool obs.
+    members = [pool[i] for i in sorted(indices)]
+    label_by_key = {f.key: f.label for f in fl.factors}
+    run_dates = _run_date_map(session)
+    rows = [
+        {
+            "ticker": o["ticker"],
+            "snapshot_date": run_dates.get(o["run_id"]),
+            "regime": None,
+            "values": [
+                {"key": f.key, "label": label_by_key.get(f.key, f.key), "value": o["values"][f.key]}
+                for f in distinct_factors
+            ],
+            "forward_return": o["return"],
+        }
+        for o in members
+    ]
+    cohort = {
+        "kind": KIND_COMBINATION,
+        "cohort": cohort_kind,
+        "horizon": horizon,
+        "single_index": single_index if cohort_kind == "single" else None,
+        "conditions": [
+            {
+                "factor": {
+                    "key": c["factor"].key, "label": c["factor"].label, "family": c["factor"].family,
+                    "direction": c["factor"].direction, "source": c["factor"].source,
+                },
+                "side": c["side"],
+                "quantile": {
+                    "key": c["quantile"].key, "label": c["quantile"].label, "fraction": c["quantile"].fraction,
+                },
+            }
+            for c in resolved
+        ],
+        "composite_quantile": {
+            "key": comb.composite.quantile,
+            "fraction": next(q.fraction for q in comb.quantiles if q.key == comb.composite.quantile),
+        },
+    }
+    return {"cohort": cohort, "rows": rows}
+
+
+# --------------------------------------------------------------------------------------------------
+# Event-study cohort (Setup & Pattern Lab — J-29 chips: per-horizon n / pooled n_total / by-regime / by-sector)
+# --------------------------------------------------------------------------------------------------
+def _event_study_samples(
+    session: Session, cfg: Config, *, subject_key: str, horizon: int, slice_kind: str,
+    regime: Optional[str], sector: Optional[str], as_of: Optional[date_cls],
+) -> dict:
+    """Reproduce an event-study cohort and list its member occurrences. `slice_kind`:
+      - "pooled" → the whole `_event_study_members` pool at this horizon (== per-horizon n / pooled n_total).
+      - "regime" → the pool filtered to the stored `regime` label (== that by-regime row's n).
+      - "sector" → the pool filtered to the stored `sector` (== that by-sector row's n).
+    Each row: ticker, snapshot date, the matched setup/pattern (the subject), the realized forward return."""
+    subjects = subject_catalog(cfg)
+    subject = next((s for s in subjects if s["key"] == subject_key), None)
+    if subject is None:
+        raise ValueError(
+            f"unknown subject {subject_key!r}; valid subjects are {[s['key'] for s in subjects]}"
+        )
+
+    members = _event_study_members(session, subject, horizon, as_of)
+
+    if slice_kind == "pooled":
+        pass
+    elif slice_kind == "regime":
+        if regime is None or regime not in cfg.regime.labels:
+            raise ValueError(
+                f"regime {regime!r} is not a configured regime label {list(cfg.regime.labels)}"
+            )
+        members = [m for m in members if m["regime"] == regime]
+    elif slice_kind == "sector":
+        if sector is None:
+            raise ValueError("a by-sector event-study cohort requires a `sector`")
+        # stored sector read verbatim; a sector with no members is a valid n=0 (empty list, never fabricated)
+        members = [m for m in members if m["sector"] == sector]
+    else:
+        raise ValueError(
+            f"unknown event-study slice {slice_kind!r}; valid slices are {list(_EVENT_STUDY_SLICES)}"
+        )
+
+    run_dates = _run_date_map(session)
+    rows = [
+        {
+            "ticker": m["ticker"],
+            "snapshot_date": run_dates.get(m["run_id"]),
+            "regime": m["regime"],
+            "sector": m["sector"],
+            # the matched setup/pattern — the subject itself (read-only; the member IS an occurrence of it)
+            "values": [{"key": subject["key"], "label": subject["label"], "value": subject["label"]}],
+            "forward_return": m["return"],
+        }
+        for m in members
+    ]
+    cohort = {
+        "kind": KIND_EVENT_STUDY,
+        "slice": slice_kind,
+        "horizon": horizon,
+        "subject": subject,
+        "regime": regime if slice_kind == "regime" else None,
+        "sector": sector if slice_kind == "sector" else None,
+    }
+    return {"cohort": cohort, "rows": rows}
+
+
+# --------------------------------------------------------------------------------------------------
+# The single canonical samples read (read-only exposure of the stored observation pools)
+# --------------------------------------------------------------------------------------------------
+def compute_samples(
+    session: Session, *, kind: str, horizon: int, config: Optional[Config] = None,
+    as_of: Optional[date_cls] = None,
+    # factor cohort selectors
+    factor_key: Optional[str] = None, slice_kind: Optional[str] = None,
+    decile: Optional[int] = None, regime: Optional[str] = None, sector: Optional[str] = None,
+    # combination cohort selectors
+    conditions: Optional[list[dict]] = None, cohort_kind: Optional[str] = None,
+    single_index: Optional[int] = None,
+    # event-study cohort selector
+    subject_key: Optional[str] = None,
+) -> dict:
+    """The SINGLE canonical Research-samples read (Data Contract value, J-51 / J-52). Reproduces ONE
+    published research cohort from the SAME stored per-observation data the aggregate used and returns its
+    member observation rows + a `total` that EQUALS the published N (count-coherence keystone). SELECT-only;
+    recomputes no factor / return / regime / membership.
+
+    `kind` ∈ {factor, combination, event-study} selects the lab; the per-kind selectors reproduce the exact
+    cohort slice. Raises `ValueError` for any unknown/out-of-range selector (the API → 4xx); a VALID n=0
+    cohort returns an empty `rows` + `total` 0 (never a fabricated row). `as_of` (J-32) optionally scopes
+    every pool to snapshots dated ≤ D (the single global as-of — a mode, not a second date state)."""
+    cfg = config or get_config()
+
+    if kind == KIND_FACTOR:
+        built = _factor_samples(
+            session, cfg, factor_key=factor_key, horizon=horizon,
+            slice_kind=slice_kind or "total", decile=decile, regime=regime, as_of=as_of,
+        )
+    elif kind == KIND_COMBINATION:
+        built = _combination_samples(
+            session, cfg, conditions=conditions or [], horizon=horizon,
+            cohort_kind=cohort_kind or "baseline", single_index=single_index, as_of=as_of,
+        )
+    elif kind == KIND_EVENT_STUDY:
+        built = _event_study_samples(
+            session, cfg, subject_key=subject_key, horizon=horizon,
+            slice_kind=slice_kind or "pooled", regime=regime, sector=sector, as_of=as_of,
+        )
+    else:
+        raise ValueError(f"unknown kind {kind!r}; valid kinds are {list(ALL_KINDS)}")
+
+    rows = built["rows"]
+    return {
+        "kind": kind,
+        "horizon": horizon,
+        # the resolved as-of scoping cutoff echoed (J-32) — ISO date when scoped, null in all-history mode
+        "asof_date": as_of.isoformat() if as_of is not None else None,
+        "cohort": built["cohort"],
+        "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
+        "descriptive_caveat": RESEARCH_CAVEAT,
+        "total": len(rows),
+        "rows": rows,
+    }

@@ -41,6 +41,13 @@ from app.engine.research import (
     factor_catalog,
     subject_catalog,
 )
+from app.engine.samples import (
+    ALL_KINDS,
+    KIND_COMBINATION,
+    KIND_EVENT_STUDY,
+    KIND_FACTOR,
+    compute_samples,
+)
 from app.engine.snapshot_serving import resolved_date
 
 router = APIRouter(tags=["research"])
@@ -227,3 +234,88 @@ def event_study(
     # hand-rolled). Omitted/empty -> all-history. Not a second date state (J-18).
     cutoff = resolved_date(session, as_of, cfg) if as_of else None
     return compute_event_study(session, resolved_subject, resolved_horizon, cfg, as_of=cutoff)
+
+
+@router.get("/research/samples")
+def research_samples(
+    kind: str = Query(description="analysis kind: factor | combination | event-study"),
+    horizon: Optional[int] = Query(default=None, description="forward window in trading days; defaults to config default_horizon"),
+    # factor-cohort selectors
+    factor: Optional[str] = Query(default=None, description="factor key (factor kind)"),
+    slice: Optional[str] = Query(default=None, description="factor: total|decile|regime · event-study: pooled|regime|sector"),
+    decile: Optional[int] = Query(default=None, description="1..deciles_count (factor decile cohort)"),
+    regime: Optional[str] = Query(default=None, description="a configured regime label (by-regime cohort)"),
+    sector: Optional[str] = Query(default=None, description="a stored sector (event-study by-sector cohort)"),
+    # combination-cohort selectors
+    condition: Optional[list[str]] = Query(default=None, description="repeatable '<factor_key>:<side>:<quantile_key>' (combination kind)"),
+    cohort: Optional[str] = Query(default=None, description="combination: baseline|single|composite|strict_overlap"),
+    single_index: Optional[int] = Query(default=None, description="0-based condition index (combination single cohort)"),
+    # event-study selector
+    subject: Optional[str] = Query(default=None, description="subject key: setup or pattern (event-study kind)"),
+    as_of: Optional[str] = Query(
+        default=None,
+        description="optional point-in-time cutoff (YYYY-MM-DD) — the single global as-of; omitted = all-history",
+    ),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Serve the Research samples drill-down (J-51 / J-52): the exact member observations behind ONE
+    published `N=` figure on `/research`. SELECT-only — it reproduces the cohort the published N was
+    counted from (same observation builder + same membership path) and lists its rows; the response
+    `total` EQUALS that published N by construction (count-coherence keystone). Each row is ticker +
+    snapshot (as-of) date + the qualifying stored value(s) + the realized forward return at the stated
+    horizon. A VALID n=0 cohort returns an empty `rows` + `total` 0 (never a fabricated row); an INVALID
+    selector (unknown kind/factor/subject/horizon, decile out of range, malformed condition) is an
+    explicit 4xx (never a silent empty 200). The optional `as_of` (J-32) scopes the pool to snapshots
+    dated <= D (the single global as-of — a mode, not a second date state); omitted = all-history."""
+    cfg: Config = get_config()
+    wf = cfg.walk_forward
+
+    if latest_data_date(session) is None:
+        raise HTTPException(status_code=503, detail="no price data available")
+
+    if kind not in ALL_KINDS:
+        raise HTTPException(status_code=422, detail=f"unknown kind {kind!r}; valid kinds are {list(ALL_KINDS)}")
+
+    resolved_horizon = wf.default_horizon if horizon is None else horizon
+    if resolved_horizon not in wf.horizons:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown horizon {resolved_horizon}; valid horizons are {list(wf.horizons)}",
+        )
+
+    # parse the combination conditions (each "<factor_key>:<side>:<quantile_key>") up front so a malformed
+    # triple is an explicit 422 before the engine runs (mirrors the factor-combination handler exactly).
+    conditions: Optional[list[dict]] = None
+    if kind == KIND_COMBINATION:
+        if not condition:
+            # the config-driven canonical default cohort (same as the Combination Lab's default chips)
+            conditions = [
+                {"factor": c.factor, "side": c.side, "quantile": c.quantile}
+                for c in cfg.research.factor_lab.combination.default_conditions
+            ]
+        else:
+            conditions = []
+            for spec in condition:
+                parts = spec.split(":")
+                if len(parts) != 3:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=f"condition {spec!r} must be '<factor_key>:<side>:<quantile_key>'",
+                    )
+                conditions.append({"factor": parts[0], "side": parts[1], "quantile": parts[2]})
+
+    # iter-7 (J-32): the optional single global as-of scoping cutoff, validated by the SHARED snapshot-
+    # served resolver (unparseable -> 422, future/before-history -> 400) — never hand-rolled. Not a second
+    # date state (J-18). All other invalid selectors raise ValueError in the engine -> 422 below.
+    cutoff = resolved_date(session, as_of, cfg) if as_of else None
+    try:
+        return compute_samples(
+            session, kind=kind, horizon=resolved_horizon, config=cfg, as_of=cutoff,
+            factor_key=factor, slice_kind=slice, decile=decile, regime=regime, sector=sector,
+            conditions=conditions, cohort_kind=cohort, single_index=single_index,
+            subject_key=subject,
+        )
+    except ValueError as exc:
+        # an unknown/out-of-range cohort selector is an explicit 4xx — never a silent empty 200 (which is
+        # reserved for a VALID n=0 cohort). 422 mirrors the sibling research handlers.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

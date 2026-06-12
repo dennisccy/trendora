@@ -1114,6 +1114,79 @@ export async function fetchEventStudy(
   return getJSON<EventStudyResponse>(withAsOf(path, asof), signal);
 }
 
+// --- research / samples drill-down (iter-7, J-51 / J-52) -----------------------------------
+/** One displayed qualifying value on a sample row: the catalog `key` + `label` + the STORED `value`
+ *  (a numeric factor value, or for an event study the matched setup/pattern label as a string). Read
+ *  verbatim — the page re-formats only. */
+export interface SampleRowValue {
+  key: string;
+  label: string;
+  value: number | string;
+}
+
+/** One sample observation row (J-51): the ticker, its snapshot (as-of) date, the qualifying stored
+ *  value(s), and the realized forward return at the cohort's horizon. The ticker links (J-52) to
+ *  `/stocks/[ticker]?asof=<snapshot_date>` in a new tab. Re-formatted from stored values only. */
+export interface SampleRow {
+  ticker: string;
+  snapshot_date: string | null; // the run's as-of date (ISO) — the J-52 deep-link date
+  regime?: string | null;
+  sector?: string | null;
+  values: SampleRowValue[];
+  forward_return: number | null;
+}
+
+/** The echoed resolved cohort definition (re-formatted into the page header so the drill-down states
+ *  exactly which published N it reproduces). Shape varies by `kind`; the page reads the fields it needs. */
+export interface SampleCohort {
+  kind: "factor" | "combination" | "event-study";
+  horizon: number;
+  slice?: string; // factor: total|decile|regime · event-study: pooled|regime|sector
+  cohort?: string; // combination: baseline|single|composite|strict_overlap
+  factor?: FactorLabFactor; // factor kind
+  decile?: number | null;
+  regime?: string | null;
+  sector?: string | null;
+  subject?: EventStudySubject; // event-study kind
+  conditions?: FactorCombinationCondition[]; // combination kind
+  single_index?: number | null;
+  deciles_count?: number;
+}
+
+/** GET /api/research/samples payload (J-51 / J-52) — the read-only drill-down behind one published `N=`
+ *  figure. `total` EQUALS the published N by construction (count-coherence); `rows` are the exact member
+ *  observations (the same stored per-observation inputs the aggregate consumed). A VALID n=0 cohort
+ *  returns `rows: []` + `total: 0` (honest empty state, never a fabricated row). The page re-formats only
+ *  — it recomputes no value/membership. `asof_date` (J-32) echoes the resolved point-in-time cutoff (ISO)
+ *  when scoped; null = all-history. */
+export interface SamplesResponse {
+  kind: "factor" | "combination" | "event-study";
+  horizon: number;
+  asof_date: string | null;
+  cohort: SampleCohort;
+  survivorship_bias: string;
+  descriptive_caveat: string;
+  total: number;
+  rows: SampleRow[];
+}
+
+/** Canonical samples source: GET /api/research/samples. The query string fully reproduces the cohort
+ *  (deep-linkable + reload-safe). Throws on non-200 so the page renders an explicit "Backend unavailable"
+ *  state (503 no data / 422 invalid selector) — never fabricated rows. `asof` (J-32) is appended via
+ *  `withAsOf` only when a historical cutoff is active (As-of mode + a past date). `params` is a flat
+ *  list of [key, value] pairs so a repeated `condition` (combination kind) is preserved. */
+export async function fetchSamples(
+  params: [string, string][],
+  asof?: string,
+  signal?: AbortSignal,
+): Promise<SamplesResponse> {
+  const search = new URLSearchParams();
+  for (const [k, v] of params) search.append(k, v);
+  const query = search.toString();
+  const path = `/api/research/samples${query ? `?${query}` : ""}`;
+  return getJSON<SamplesResponse>(withAsOf(path, asof), signal);
+}
+
 // --- data manager (iter-3, J-17) -----------------------------------------------------------
 /** Current dataset coverage — descriptive metadata only (the frontend re-formats it; it computes no
  *  coverage figure). `gaps_preview` is a bounded list of the backfill-able trading days that have bars

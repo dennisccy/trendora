@@ -217,17 +217,28 @@ def _factor_observations(
     return observations
 
 
+def _decile_member_slice(ordered: list[dict], count: int, decile: int) -> list[dict]:
+    """The EXACT `ordered[lo:hi]` member slice the `_deciles` aggregate assigns to a 1-based `decile`
+    (D1…D`count`). The lo/hi quantile edges are the SAME integer-arithmetic boundaries `_deciles` uses
+    (`lo = (d-1)*n//count`, `hi = d*n//count`), so the samples drill-down for a decile reproduces the
+    aggregate's membership byte-identically — the count-coherence keystone (J-51, invariant 13): no
+    second membership rule, no re-derived "equivalent" edges. The caller is responsible for passing the
+    SAME ascending-by-factor `ordered` list (deterministic tie-break by ticker+run) the aggregate used."""
+    n = len(ordered)
+    lo = (decile - 1) * n // count
+    hi = decile * n // count
+    return ordered[lo:hi]
+
+
 def _deciles(ordered: list[dict], count: int, min_sample: int) -> list[dict]:
     """Split the factor-ascending `ordered` observations into `count` equal-count quantiles (deciles).
     Each row carries its `factor_min`/`factor_max`, `mean_return`, downside `risk_adjusted`, `n`, and a
     `low_sample` flag (`n < min_sample`). When there are fewer observations than `count`, the higher
-    deciles are honest empty rows (`mean_return` None, `n` 0) — never fabricated buckets."""
-    n = len(ordered)
+    deciles are honest empty rows (`mean_return` None, `n` 0) — never fabricated buckets. Membership uses
+    the SAME `_decile_member_slice` the samples drill-down reads (one quantile-edge definition)."""
     rows: list[dict] = []
     for d in range(1, count + 1):
-        lo = (d - 1) * n // count
-        hi = d * n // count
-        members = ordered[lo:hi]
+        members = _decile_member_slice(ordered, count, d)
         returns = [m["return"] for m in members]
         rows.append({
             "decile": d,
@@ -481,6 +492,62 @@ def _composite_scores(pool: list[dict], resolved: list[dict], weights: list[floa
     ]
 
 
+def _combination_cohort_members(pool: list[dict], resolved: list[dict], comb) -> dict:
+    """The SINGLE membership-derivation path for every combination cohort over `pool` (J-26): the
+    per-condition `single` index sets (each condition's nearest-rank quantile membership over the SHARED
+    pool's values for that factor), the `strict` AND-intersection of those singles, and the `composite`
+    rank-blend cohort (the top config-quantile of the config-weighted oriented-percentile-rank blend).
+    Returns `{"single": list[set[int]], "strict": set[int], "composite": set[int]}` — pool indices into
+    `pool`. BOTH `compute_factor_combination` (the published n) and the samples drill-down (the member
+    list) call THIS function, so a cohort's drill-down total EQUALS its published N by construction
+    (count-coherence keystone, invariant 13 — never a second membership rule). Pure index arithmetic over
+    the already-built pool; recomputes no factor and no return."""
+    pool_n = len(pool)
+
+    # per-condition membership (a set of pool indices) using each condition's nearest-rank quantile cutoff
+    # over the SHARED pool's values for that factor; strict_overlap = the exact AND-intersection of singles.
+    single_members: list[set[int]] = []
+    for cond in resolved:
+        key = cond["factor"].key
+        fraction = cond["quantile"].fraction
+        ordered = sorted(obs["values"][key] for obs in pool)
+        if not ordered:
+            single_members.append(set())
+            continue
+        if cond["side"] == "top":
+            cutoff = _quantile_cutoff(ordered, 1 - fraction)
+            members = {i for i, obs in enumerate(pool) if obs["values"][key] >= cutoff}
+        else:  # bottom
+            cutoff = _quantile_cutoff(ordered, fraction)
+            members = {i for i, obs in enumerate(pool) if obs["values"][key] <= cutoff}
+        single_members.append(members)
+
+    # SECONDARY strict-overlap cohort: the exact AND-intersection of all single memberships (the demoted
+    # iter-12 cohort) — empty for many selections (then NA + n, never a fabricated 0).
+    strict_members: set[int] = set(range(pool_n))
+    for members in single_members:
+        strict_members &= members
+
+    # HEADLINE composite cohort: the top config-quantile of the pool by a config-weighted blend of the
+    # conditions' oriented percentile ranks of the STORED values (REUSE `_composite_scores` +
+    # `_quantile_cutoff`). Config-weighted (default equal): each condition's base weight is the config
+    # `default_weight`, normalized to sum to 1 — so NO `1/k` weight literal lives here (anti-goal: No magic
+    # numbers). Non-empty + clears `min_sample` for a sensible selection; scales to all catalog factors.
+    comp = comb.composite
+    composite_quantile = next(q for q in comb.quantiles if q.key == comp.quantile)  # boot-validated to exist
+    base_weights = [comp.weighting.default_weight] * len(resolved)
+    weight_total = sum(base_weights)
+    weights = [w / weight_total for w in base_weights]
+    composite_scores = _composite_scores(pool, resolved, weights)
+    if composite_scores:
+        cutoff = _quantile_cutoff(sorted(composite_scores), 1 - composite_quantile.fraction)
+        composite_members = {i for i, score in enumerate(composite_scores) if score >= cutoff}
+    else:
+        composite_members = set()
+
+    return {"single": single_members, "strict": strict_members, "composite": composite_members}
+
+
 def compute_factor_combination(
     session: Session, conditions: list[dict], horizon: int, config: Optional[Config] = None, *,
     as_of: Optional[date_cls] = None,
@@ -549,46 +616,16 @@ def compute_factor_combination(
     pool = _combination_observations(session, distinct_factors, horizon, as_of)
     pool_n = len(pool)
 
-    # per-condition membership (a set of pool indices) using each condition's nearest-rank quantile cutoff
-    # over the SHARED pool's values for that factor; strict_overlap = the exact AND-intersection of singles.
-    single_members: list[set[int]] = []
-    for cond in resolved:
-        key = cond["factor"].key
-        fraction = cond["quantile"].fraction
-        ordered = sorted(obs["values"][key] for obs in pool)
-        if not ordered:
-            single_members.append(set())
-            continue
-        if cond["side"] == "top":
-            cutoff = _quantile_cutoff(ordered, 1 - fraction)
-            members = {i for i, obs in enumerate(pool) if obs["values"][key] >= cutoff}
-        else:  # bottom
-            cutoff = _quantile_cutoff(ordered, fraction)
-            members = {i for i, obs in enumerate(pool) if obs["values"][key] <= cutoff}
-        single_members.append(members)
-
-    # SECONDARY strict-overlap cohort: the exact AND-intersection of all single memberships (the demoted
-    # iter-12 cohort) — empty for many selections (then NA + n, never a fabricated 0).
-    strict_members: set[int] = set(range(pool_n))
-    for members in single_members:
-        strict_members &= members
-
-    # HEADLINE composite cohort: the top config-quantile of the pool by a config-weighted blend of the
-    # conditions' oriented percentile ranks of the STORED values (REUSE `_composite_scores` +
-    # `_quantile_cutoff`). Config-weighted (default equal): each condition's base weight is the config
-    # `default_weight`, normalized to sum to 1 — so NO `1/k` weight literal lives here (anti-goal: No magic
-    # numbers). Non-empty + clears `min_sample` for a sensible selection; scales to all catalog factors.
+    # the SINGLE membership-derivation path (shared verbatim with the samples drill-down so a cohort's
+    # drill-down total EQUALS its published N — invariant 13). Returns pool-index sets for the singles,
+    # the strict AND-intersection, and the composite rank-blend cohort.
+    cohort_members = _combination_cohort_members(pool, resolved, comb)
+    single_members = cohort_members["single"]
+    strict_members = cohort_members["strict"]
+    composite_members = cohort_members["composite"]
+    # echoed for the payload labelling (config-driven — not a hard-coded UI string).
     comp = comb.composite
     composite_quantile = next(q for q in comb.quantiles if q.key == comp.quantile)  # boot-validated to exist
-    base_weights = [comp.weighting.default_weight] * len(resolved)
-    weight_total = sum(base_weights)
-    weights = [w / weight_total for w in base_weights]
-    composite_scores = _composite_scores(pool, resolved, weights)
-    if composite_scores:
-        cutoff = _quantile_cutoff(sorted(composite_scores), 1 - composite_quantile.fraction)
-        composite_members = {i for i, score in enumerate(composite_scores) if score >= cutoff}
-    else:
-        composite_members = set()
 
     def _returns(indices) -> list[float]:
         return [pool[i]["return"] for i in sorted(indices)]

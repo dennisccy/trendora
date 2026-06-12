@@ -6,13 +6,15 @@ import { AlertTriangle, Microscope, Plus, ShieldAlert, X } from "lucide-react";
 
 import { useAsOf, useAsOfHref } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
-import { fmtPct, returnClass, SampleSize } from "@/components/forward-return";
+import { fmtPct, returnClass } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
 import { useReadiness } from "@/components/readiness-provider";
 import { shouldShowWarming, WarmingState } from "@/components/warming-state";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { TermInfo } from "@/components/ui/term-info";
+import { SampleLink } from "@/components/sample-link";
+import { type SampleScope } from "@/lib/samples-link";
 import { cn } from "@/lib/utils";
 import {
   fetchEventStudy,
@@ -140,15 +142,15 @@ export default function ResearchPage() {
             </Card>
           ) : null}
 
-          {data ? <FactorLab data={data} /> : null}
+          {data ? <FactorLab data={data} scope={mode} /> : null}
 
           {/* J-26: the multi-factor combination cohort section — its own read-only data source, reusing the
               page's shared `horizon` + the shared `asofCutoff` (no second date/horizon state). Always rendered. */}
-          <CombinationLab horizon={horizon} asofCutoff={asofCutoff} />
+          <CombinationLab horizon={horizon} asofCutoff={asofCutoff} scope={mode} />
 
           {/* J-29: the Setup & Pattern event study — its own read-only data source, reusing the page's shared
               `horizon` + the shared `asofCutoff` (no second date/horizon state) plus a subject selector. */}
-          <EventStudyLab horizon={horizon} asofCutoff={asofCutoff} />
+          <EventStudyLab horizon={horizon} asofCutoff={asofCutoff} scope={mode} />
         </>
       )}
     </div>
@@ -349,7 +351,7 @@ function CaveatBanner({ survivorship, descriptive }: { survivorship: string; des
   );
 }
 
-function FactorLab({ data }: { data: FactorLabResponse }) {
+function FactorLab({ data, scope }: { data: FactorLabResponse; scope: SampleScope }) {
   if (data.n_total === 0) {
     return (
       <EmptyState
@@ -382,12 +384,31 @@ function FactorLab({ data }: { data: FactorLabResponse }) {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <DecileTable rows={data.deciles} min={data.min_sample} horizon={data.horizon} />
+          <DecileTable
+            rows={data.deciles}
+            min={data.min_sample}
+            horizon={data.horizon}
+            factor={data.factor.key}
+            scope={scope}
+          />
         </div>
-        <RankICCard ic={data.rank_ic} min={data.min_sample} label={data.factor.label} />
+        <RankICCard
+          ic={data.rank_ic}
+          min={data.min_sample}
+          label={data.factor.label}
+          horizon={data.horizon}
+          factor={data.factor.key}
+          scope={scope}
+        />
       </div>
 
-      <RegimeEffectivenessTable rows={data.by_regime} min={data.min_sample} horizon={data.horizon} />
+      <RegimeEffectivenessTable
+        rows={data.by_regime}
+        min={data.min_sample}
+        horizon={data.horizon}
+        factor={data.factor.key}
+        scope={scope}
+      />
     </>
   );
 }
@@ -402,19 +423,28 @@ function PanelTitle({ children, hint }: { children: React.ReactNode; hint?: stri
 }
 
 /** A decile's mean/risk-adjusted cell: explicit "NA" + n when the decile is low-sample (n < min_sample)
- *  or empty — never a fabricated number; otherwise the colour-graded value + n. */
+ *  or empty — never a fabricated number; otherwise the colour-graded value + n. The `n` chip is a J-51
+ *  LINK into the samples drill-down for this exact decile cohort (count-coherent — its total == this n). */
 function DecileValue({
   value,
   lowSample,
   isRatio,
   n,
   min,
+  factor,
+  horizon,
+  decile,
+  scope,
 }: {
   value: number | null;
   lowSample: boolean;
   isRatio: boolean;
   n: number;
   min: number;
+  factor: string;
+  horizon: number;
+  decile: number;
+  scope: SampleScope;
 }) {
   const na = lowSample || n === 0 || value === null;
   return (
@@ -428,12 +458,30 @@ function DecileValue({
           {isRatio ? fmtRatio(value) : fmtPct(value)}
         </span>
       )}
-      <SampleSize n={n} min={min} />
+      <SampleLink
+        n={n}
+        min={min}
+        scope={scope}
+        cohort={{ kind: "factor", factor, horizon, slice: "decile", decile }}
+        label={`See the ${n} observations in decile D${decile}`}
+      />
     </span>
   );
 }
 
-function DecileTable({ rows, min, horizon }: { rows: FactorDecileRow[]; min: number; horizon: number }) {
+function DecileTable({
+  rows,
+  min,
+  horizon,
+  factor,
+  scope,
+}: {
+  rows: FactorDecileRow[];
+  min: number;
+  horizon: number;
+  factor: string;
+  scope: SampleScope;
+}) {
   return (
     <Card className="p-0">
       <PanelTitle
@@ -469,10 +517,30 @@ function DecileTable({ rows, min, horizon }: { rows: FactorDecileRow[]; min: num
                     : `${row.factor_min.toFixed(2)} … ${row.factor_max.toFixed(2)}`}
                 </td>
                 <td className="px-4 py-2 text-right">
-                  <DecileValue value={row.mean_return} lowSample={row.low_sample} isRatio={false} n={row.n} min={min} />
+                  <DecileValue
+                    value={row.mean_return}
+                    lowSample={row.low_sample}
+                    isRatio={false}
+                    n={row.n}
+                    min={min}
+                    factor={factor}
+                    horizon={horizon}
+                    decile={row.decile}
+                    scope={scope}
+                  />
                 </td>
                 <td className="px-4 py-2 text-right">
-                  <DecileValue value={row.risk_adjusted} lowSample={row.low_sample} isRatio n={row.n} min={min} />
+                  <DecileValue
+                    value={row.risk_adjusted}
+                    lowSample={row.low_sample}
+                    isRatio
+                    n={row.n}
+                    min={min}
+                    factor={factor}
+                    horizon={horizon}
+                    decile={row.decile}
+                    scope={scope}
+                  />
                 </td>
               </tr>
             ))}
@@ -487,10 +555,16 @@ function RankICCard({
   ic,
   min,
   label,
+  factor,
+  horizon,
+  scope,
 }: {
   ic: FactorLabResponse["rank_ic"];
   min: number;
   label: string;
+  factor: string;
+  horizon: number;
+  scope: SampleScope;
 }) {
   const na = ic.value === null;
   const sign = ic.value !== null && ic.value > 0 ? "positive" : ic.value !== null && ic.value < 0 ? "negative" : "flat";
@@ -510,7 +584,14 @@ function RankICCard({
           >
             {na ? "NA" : fmtRatio(ic.value)}
           </span>
-          <SampleSize n={ic.n} min={min} />
+          {/* the rank-IC n IS the factor's n_total — drill into the whole observation pool (J-51) */}
+          <SampleLink
+            n={ic.n}
+            min={min}
+            scope={scope}
+            cohort={{ kind: "factor", factor, horizon, slice: "total" }}
+            label={`See all ${ic.n} observations behind the rank-IC`}
+          />
         </div>
         <p className="text-xs text-text-muted">
           {na
@@ -564,10 +645,14 @@ function RegimeEffectivenessTable({
   rows,
   min,
   horizon,
+  factor,
+  scope,
 }: {
   rows: RegimeEffectivenessRow[];
   min: number;
   horizon: number;
+  factor: string;
+  scope: SampleScope;
 }) {
   return (
     <Card className="p-0">
@@ -600,7 +685,13 @@ function RegimeEffectivenessTable({
               <tr key={row.regime} className="border-b border-border last:border-b-0">
                 <td className="px-4 py-2 text-text">{row.regime}</td>
                 <td className="px-4 py-2 text-right">
-                  <SampleSize n={row.n} min={min} />
+                  <SampleLink
+                    n={row.n}
+                    min={min}
+                    scope={scope}
+                    cohort={{ kind: "factor", factor, horizon, slice: "regime", regime: row.regime }}
+                    label={`See the ${row.n} observations in the ${row.regime} regime`}
+                  />
                 </td>
                 <td className="px-4 py-2 text-right">
                   <RegimeCell value={row.rank_ic.value} lowSample={row.low_sample} isRatio />
@@ -663,9 +754,11 @@ function conditionLabel(condition: FactorCombinationCondition): string {
 function CombinationLab({
   horizon,
   asofCutoff,
+  scope,
 }: {
   horizon: number | undefined;
   asofCutoff: string | null;
+  scope: SampleScope;
 }) {
   // null until the user first edits — then the explicit condition list. The server resolves the config
   // default_conditions when none are sent (config-driven; no hard-coded default in the UI).
@@ -756,7 +849,7 @@ function CombinationLab({
           />
         ) : (
           <>
-            <CombinationTable data={data} dim={status === "loading"} />
+            <CombinationTable data={data} dim={status === "loading"} scope={scope} />
             <p className="text-xs text-text-faint">
               The risk-adjusted column is{" "}
               <span className="text-text-muted">downside-deviation only</span> (mean ÷ downside deviation —
@@ -969,13 +1062,41 @@ function CohortCell({
  *  (composite, emphasized) → Strict overlap (AND) (secondary, muted). Re-formats the payload only; low-
  *  sample/empty/null cells render NA + n via CohortCell + SampleSize (the composite is populated while the
  *  strict overlap may show NA — never a fabricated number). */
-function CombinationTable({ data, dim }: { data: FactorCombinationResponse; dim: boolean }) {
+function CombinationTable({
+  data,
+  dim,
+  scope,
+}: {
+  data: FactorCombinationResponse;
+  dim: boolean;
+  scope: SampleScope;
+}) {
   const min = data.min_sample;
-  const tableRows: { label: string; stats: CohortStats; emphasis?: "baseline" | "composite" | "strict_overlap" }[] = [
-    { label: data.baseline.label, stats: data.baseline.stats, emphasis: "baseline" },
-    ...data.singles.map((s) => ({ label: conditionLabel(s.condition), stats: s.stats })),
-    { label: data.composite.label, stats: data.composite.stats, emphasis: "composite" },
-    { label: data.strict_overlap.label, stats: data.strict_overlap.stats, emphasis: "strict_overlap" },
+  const horizon = data.horizon;
+  // the resolved condition triples (config-driven) — the SAME the backend pooled; sent verbatim so the
+  // drill-down reproduces this exact cohort (count-coherent). One author for the triple string shape.
+  const conditions = data.conditions.map(
+    (c) => `${c.factor.key}:${c.side}:${c.quantile.key}`,
+  );
+  // each table row carries the cohort selector its `n` chip drills into (J-51). `cohort` is the kind;
+  // `singleIndex` identifies WHICH single-condition cohort (its index into `data.singles`).
+  type Cohort = "baseline" | "single" | "composite" | "strict_overlap";
+  const tableRows: {
+    label: string;
+    stats: CohortStats;
+    emphasis?: "baseline" | "composite" | "strict_overlap";
+    cohort: Cohort;
+    singleIndex?: number;
+  }[] = [
+    { label: data.baseline.label, stats: data.baseline.stats, emphasis: "baseline", cohort: "baseline" },
+    ...data.singles.map((s, idx) => ({
+      label: conditionLabel(s.condition),
+      stats: s.stats,
+      cohort: "single" as Cohort,
+      singleIndex: idx,
+    })),
+    { label: data.composite.label, stats: data.composite.stats, emphasis: "composite", cohort: "composite" },
+    { label: data.strict_overlap.label, stats: data.strict_overlap.stats, emphasis: "strict_overlap", cohort: "strict_overlap" },
   ];
   return (
     <div className={cn("overflow-x-auto transition-opacity", dim && "opacity-60")} aria-busy={dim}>
@@ -1014,7 +1135,19 @@ function CombinationTable({ data, dim }: { data: FactorCombinationResponse; dim:
                 </span>
               </td>
               <td className="px-4 py-2 text-right">
-                <SampleSize n={row.stats.n} min={min} />
+                <SampleLink
+                  n={row.stats.n}
+                  min={min}
+                  scope={scope}
+                  cohort={{
+                    kind: "combination",
+                    conditions,
+                    horizon,
+                    cohort: row.cohort,
+                    singleIndex: row.singleIndex,
+                  }}
+                  label={`See the ${row.stats.n} names in the ${row.label} cohort`}
+                />
               </td>
               <td className="px-4 py-2 text-right">
                 <CohortCell value={row.stats.mean_return} stats={row.stats} kind="pct" min={min} />
@@ -1060,9 +1193,11 @@ function CombinationSkeleton() {
 function EventStudyLab({
   horizon,
   asofCutoff,
+  scope,
 }: {
   horizon: number | undefined;
   asofCutoff: string | null;
+  scope: SampleScope;
 }) {
   // `undefined` lets the backend pick the canonical default (first catalog subject). The subject list is
   // built from the loaded payload — config-driven, never a hard-coded frontend list.
@@ -1144,7 +1279,7 @@ function EventStudyLab({
             description="No stored snapshot has this setup/pattern with a realized forward return yet. Pick another subject or a shorter horizon — no distribution is fabricated to fill the gap."
           />
         ) : (
-          <EventStudyBody data={data} dim={status === "loading"} />
+          <EventStudyBody data={data} dim={status === "loading"} scope={scope} />
         )}
       </div>
     </Card>
@@ -1258,8 +1393,17 @@ function EsValue({
 /** The event-study body once data has loaded: a meta line (subject + pooled n + best exit-horizon), the
  *  per-horizon distribution / exit-horizon table, and the by-regime + by-sector panels for the selected
  *  horizon. `dim` fades the body while a re-fetch is in flight (the prior values stay visible). */
-function EventStudyBody({ data, dim }: { data: EventStudyResponse; dim: boolean }) {
+function EventStudyBody({
+  data,
+  dim,
+  scope,
+}: {
+  data: EventStudyResponse;
+  dim: boolean;
+  scope: SampleScope;
+}) {
   const selectedHorizon = data.horizon;
+  const subject = data.subject.key;
   return (
     <div className={cn("space-y-4 transition-opacity", dim && "opacity-60")} aria-busy={dim}>
       <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-text-muted">
@@ -1283,11 +1427,29 @@ function EventStudyBody({ data, dim }: { data: EventStudyResponse; dim: boolean 
         </span>
       </div>
 
-      <EventStudyHorizonTable rows={data.by_horizon} min={data.min_sample} bestExit={data.best_exit_horizon} />
+      <EventStudyHorizonTable
+        rows={data.by_horizon}
+        min={data.min_sample}
+        bestExit={data.best_exit_horizon}
+        subject={subject}
+        scope={scope}
+      />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <EventStudyRegimeTable rows={data.by_regime} min={data.min_sample} horizon={selectedHorizon} />
-        <EventStudySectorTable rows={data.by_sector} min={data.min_sample} horizon={selectedHorizon} />
+        <EventStudyRegimeTable
+          rows={data.by_regime}
+          min={data.min_sample}
+          horizon={selectedHorizon}
+          subject={subject}
+          scope={scope}
+        />
+        <EventStudySectorTable
+          rows={data.by_sector}
+          min={data.min_sample}
+          horizon={selectedHorizon}
+          subject={subject}
+          scope={scope}
+        />
       </div>
     </div>
   );
@@ -1301,10 +1463,14 @@ function EventStudyHorizonTable({
   rows,
   min,
   bestExit,
+  subject,
+  scope,
 }: {
   rows: EventStudyHorizonRow[];
   min: number;
   bestExit: number | null;
+  subject: string;
+  scope: SampleScope;
 }) {
   return (
     <Card className="p-0">
@@ -1366,7 +1532,14 @@ function EventStudyHorizonTable({
                     ) : null}
                   </td>
                   <td className="px-3 py-2 text-right">
-                    <SampleSize n={row.n} min={min} />
+                    {/* this row's n is the pooled cohort AT THIS row's horizon — drill into it (J-51) */}
+                    <SampleLink
+                      n={row.n}
+                      min={min}
+                      scope={scope}
+                      cohort={{ kind: "event-study", subject, horizon: row.horizon, slice: "pooled" }}
+                      label={`See the ${row.n} occurrences at the ${row.horizon}-day horizon`}
+                    />
                   </td>
                   <td className="px-3 py-2 text-right">
                     <EsValue value={row.mean_return} na={na} kind="pct" />
@@ -1412,10 +1585,14 @@ function EventStudyRegimeTable({
   rows,
   min,
   horizon,
+  subject,
+  scope,
 }: {
   rows: EventStudyRegimeRow[];
   min: number;
   horizon: number;
+  subject: string;
+  scope: SampleScope;
 }) {
   return (
     <Card className="p-0">
@@ -1442,7 +1619,13 @@ function EventStudyRegimeTable({
                 <tr key={row.regime} className="border-b border-border last:border-b-0">
                   <td className="px-3 py-2 text-text">{row.regime}</td>
                   <td className="px-3 py-2 text-right">
-                    <SampleSize n={row.n} min={min} />
+                    <SampleLink
+                      n={row.n}
+                      min={min}
+                      scope={scope}
+                      cohort={{ kind: "event-study", subject, horizon, slice: "regime", regime: row.regime }}
+                      label={`See the ${row.n} occurrences in the ${row.regime} regime`}
+                    />
                   </td>
                   <td className="px-3 py-2 text-right">
                     <EsValue value={row.mean_return} na={na} kind="pct" />
@@ -1470,10 +1653,14 @@ function EventStudySectorTable({
   rows,
   min,
   horizon,
+  subject,
+  scope,
 }: {
   rows: EventStudySectorRow[];
   min: number;
   horizon: number;
+  subject: string;
+  scope: SampleScope;
 }) {
   return (
     <Card className="p-0">
@@ -1504,7 +1691,13 @@ function EventStudySectorTable({
                   <tr key={row.sector} className="border-b border-border last:border-b-0">
                     <td className="px-3 py-2 text-text">{row.sector}</td>
                     <td className="px-3 py-2 text-right">
-                      <SampleSize n={row.n} min={min} />
+                      <SampleLink
+                        n={row.n}
+                        min={min}
+                        scope={scope}
+                        cohort={{ kind: "event-study", subject, horizon, slice: "sector", sector: row.sector }}
+                        label={`See the ${row.n} occurrences in ${row.sector}`}
+                      />
                     </td>
                     <td className="px-3 py-2 text-right">
                       <EsValue value={row.mean_return} na={na} kind="pct" />

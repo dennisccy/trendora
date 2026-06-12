@@ -1,0 +1,386 @@
+"""Research samples drill-down engine (iter-7 goal-mode, J-51 / J-52) — `app.engine.samples`.
+
+The keystone proof is COUNT COHERENCE (coherence-auditor invariant 13): for every published `N=` chip
+kind/slice on `/research`, the samples drill-down `total` EQUALS the n the corresponding aggregate
+endpoint publishes under identical params — because membership is derived through the SAME observation
+builders + the SAME slicing helpers the aggregates use (never a second membership rule). Also proven:
+value-identity (row values are the stored per-observation inputs the aggregate consumed), the honest
+n=0 strict-overlap case (empty list + total 0, never a fabricated row), the as_of-scoped mode, and the
+explicit ValueError on an invalid cohort selector.
+
+All math runs on tiny hand-built in-memory data — the engine READS stored rows, so no scan is needed.
+The fixture helpers mirror `test_research.py` (one membership/value definition, asserted against it).
+"""
+from __future__ import annotations
+
+import json
+from datetime import date, datetime, timezone
+
+import pytest
+from sqlmodel import Session
+
+from app.config import load_config
+from app.db import create_db_and_tables, make_engine
+from app.engine.research import (
+    compute_event_study,
+    compute_factor_combination,
+    compute_factor_lab,
+)
+from app.engine.samples import compute_samples
+from app.models import ForwardReturn, ScannerResult, ScannerRun
+
+H = 20  # a real config horizon used throughout
+
+
+# ==================================================================================================
+# Hand-built snapshot fixtures (no engine — exact values by construction; mirrors test_research.py)
+# ==================================================================================================
+def _utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _add_run(session: Session, asof: date, regime_label: str = "Risk-on") -> ScannerRun:
+    run = ScannerRun(
+        asof_date=asof, created_at=_utc(), provider="seed", benchmark="SPY",
+        regime_score=50.0, regime_label=regime_label, regime_components_json="[]",
+        new_high_low_json="{}", candidate_counts_json="{}",
+    )
+    session.add(run)
+    session.flush()
+    return run
+
+
+def _component_record(block: str, name: str, raw):
+    return json.dumps({
+        block: {"components": [{"name": name, "raw": raw, "available": raw is not None}]}
+    })
+
+
+def _add_result(
+    session, run_id, ticker, rank, *, lead=50.0, entry=50.0, risk=50.0, sector="Technology",
+    bucket="C", setup="Breakout-watch", record_json="{}",
+    hv=None, vcp_contraction=None, downside_vol=None,
+    is_vcp=False, is_pullback_to_rising_dma=False, is_flat_base_breakout=False,
+):
+    session.add(ScannerResult(
+        run_id=run_id, ticker=ticker, name=ticker, sector=sector,
+        leadership_score=lead, leadership_bucket=bucket,
+        entry_quality_score=entry, entry_quality_bucket=bucket,
+        risk_score=risk, risk_bucket=bucket,
+        setup_status=setup, rank=rank, record_json=record_json,
+        hv=hv, vcp_contraction=vcp_contraction, downside_vol=downside_vol,
+        is_vcp=is_vcp, is_pullback_to_rising_dma=is_pullback_to_rising_dma,
+        is_flat_base_breakout=is_flat_base_breakout,
+    ))
+
+
+def _add_fr(session, run_id, symbol, ret, horizon=H, mae=None, mfe=None):
+    session.add(ForwardReturn(
+        run_id=run_id, symbol=symbol, horizon=horizon, asof_date=date(2025, 1, 1),
+        entry_close=100.0, measured_date=date(2025, 2, 1), realized_return=ret,
+        mae=mae, mfe=mfe,
+    ))
+
+
+def _engine(tmp_path, name="samples.db"):
+    engine = make_engine(f"sqlite:///{tmp_path / name}")
+    create_db_and_tables(engine)
+    return engine
+
+
+@pytest.fixture()
+def factor_engine(tmp_path):
+    """20 stocks (leadership 1..20, return = score/1000) in ONE Risk-on run — a monotone factor so the
+    deciles are well populated. The exact fixture the Factor-Lab decile/IC tests use."""
+    engine = _engine(tmp_path, "factor.db")
+    with Session(engine) as session:
+        run = _add_run(session, date(2025, 1, 10))
+        for i in range(1, 21):
+            _add_result(session, run.id, f"S{i:02d}", rank=i, lead=float(i))
+            _add_fr(session, run.id, f"S{i:02d}", ret=i / 1000)
+        session.commit()
+    return engine
+
+
+@pytest.fixture()
+def multi_regime_engine(tmp_path):
+    """12 Risk-on + 8 Risk-off observations across two runs (different stored regime labels)."""
+    engine = _engine(tmp_path, "multiregime.db")
+    with Session(engine) as session:
+        run_on = _add_run(session, date(2025, 1, 10), regime_label="Risk-on")
+        run_off = _add_run(session, date(2025, 2, 10), regime_label="Risk-off")
+        for i in range(1, 13):
+            _add_result(session, run_on.id, f"N{i:02d}", rank=i, lead=float(i))
+            _add_fr(session, run_on.id, f"N{i:02d}", ret=i / 1000)
+        for i in range(1, 9):
+            _add_result(session, run_off.id, f"F{i:02d}", rank=i, lead=float(i))
+            _add_fr(session, run_off.id, f"F{i:02d}", ret=-i / 1000)
+        session.commit()
+    return engine
+
+
+@pytest.fixture()
+def event_study_engine(tmp_path):
+    """A pooled cohort for the Breakout-watch setup across two regimes + two sectors, plus a different
+    setup (Actionable) so the subject filter is exercised. Each member has a realized return."""
+    engine = _engine(tmp_path, "eventstudy.db")
+    with Session(engine) as session:
+        run_on = _add_run(session, date(2025, 1, 10), regime_label="Risk-on")
+        run_off = _add_run(session, date(2025, 2, 10), regime_label="Risk-off")
+        # Breakout-watch members: 4 Risk-on (Tech), 3 Risk-off (Energy)
+        for i in range(1, 5):
+            _add_result(session, run_on.id, f"B{i}", rank=i, setup="Breakout-watch", sector="Technology")
+            _add_fr(session, run_on.id, f"B{i}", ret=i / 100)
+        for i in range(1, 4):
+            _add_result(session, run_off.id, f"E{i}", rank=i, setup="Breakout-watch", sector="Energy")
+            _add_fr(session, run_off.id, f"E{i}", ret=-i / 100)
+        # a different setup so the pool is filtered, not "everything"
+        _add_result(session, run_on.id, "X1", rank=9, setup="Actionable", sector="Technology")
+        _add_fr(session, run_on.id, "X1", ret=0.5)
+        session.commit()
+    return engine
+
+
+# ==================================================================================================
+# Factor cohort count-coherence + value-identity
+# ==================================================================================================
+def test_factor_total_coherence_and_value_identity(factor_engine):
+    """The `n_total` (== rank-IC n) chip: the samples total equals `compute_factor_lab.n_total`, and each
+    row carries the SAME stored factor value + realized return + snapshot date the aggregate pooled."""
+    cfg = load_config()
+    with Session(factor_engine) as session:
+        agg = compute_factor_lab(session, "leadership_score", H, cfg)
+        s = compute_samples(
+            session, kind="factor", horizon=H, config=cfg,
+            factor_key="leadership_score", slice_kind="total",
+        )
+    assert s["total"] == agg["n_total"] == 20
+    # value identity: leadership 1..20 read verbatim, return = score/1000, all from the one 2025-01-10 run
+    by_ticker = {r["ticker"]: r for r in s["rows"]}
+    assert by_ticker["S05"]["values"][0]["value"] == pytest.approx(5.0)
+    assert by_ticker["S05"]["values"][0]["key"] == "leadership_score"
+    assert by_ticker["S05"]["forward_return"] == pytest.approx(5 / 1000)
+    assert by_ticker["S05"]["snapshot_date"] == "2025-01-10"
+
+
+def test_factor_decile_coherence_for_every_decile(factor_engine):
+    """Per-decile chip: for EVERY D1…D10 the samples total equals that decile's published `n`, and the
+    union of all deciles' member tickers equals the whole pool (no double-count, no drop)."""
+    cfg = load_config()
+    with Session(factor_engine) as session:
+        agg = compute_factor_lab(session, "leadership_score", H, cfg)
+        all_tickers: set[str] = set()
+        for row in agg["deciles"]:
+            s = compute_samples(
+                session, kind="factor", horizon=H, config=cfg,
+                factor_key="leadership_score", slice_kind="decile", decile=row["decile"],
+            )
+            assert s["total"] == row["n"], f"decile {row['decile']} coherence"
+            all_tickers |= {r["ticker"] for r in s["rows"]}
+    assert all_tickers == {f"S{i:02d}" for i in range(1, 21)}
+    # D10 (highest factor) holds the two highest leadership scores by construction
+    with Session(factor_engine) as session:
+        d10 = compute_samples(
+            session, kind="factor", horizon=H, config=cfg,
+            factor_key="leadership_score", slice_kind="decile", decile=10,
+        )
+    assert {r["ticker"] for r in d10["rows"]} == {"S19", "S20"}
+
+
+def test_factor_by_regime_coherence(multi_regime_engine):
+    """By-regime chip: the samples total for each regime equals that by-regime row's published `n`."""
+    cfg = load_config()
+    with Session(multi_regime_engine) as session:
+        agg = compute_factor_lab(session, "leadership_score", H, cfg)
+        n_by_regime = {r["regime"]: r["n"] for r in agg["by_regime"]}
+        for label in ("Risk-on", "Risk-off"):
+            s = compute_samples(
+                session, kind="factor", horizon=H, config=cfg,
+                factor_key="leadership_score", slice_kind="regime", regime=label,
+            )
+            assert s["total"] == n_by_regime[label]
+            assert all(r["regime"] == label for r in s["rows"])
+    assert n_by_regime["Risk-on"] == 12 and n_by_regime["Risk-off"] == 8
+
+
+# ==================================================================================================
+# Combination cohort count-coherence (baseline / single / composite / strict-overlap incl. n=0)
+# ==================================================================================================
+def test_combination_cohort_coherence_all_kinds(factor_engine):
+    """Every combination chip — baseline / each single / composite / strict-overlap — has a samples total
+    equal to the aggregate's published n. Uses the config default conditions (the default chips)."""
+    cfg = load_config()
+    comb = cfg.research.factor_lab.combination
+    conditions = [
+        {"factor": c.factor, "side": c.side, "quantile": c.quantile} for c in comb.default_conditions
+    ]
+    with Session(factor_engine) as session:
+        agg = compute_factor_combination(session, conditions, H, cfg)
+        # baseline == pool_n
+        base = compute_samples(
+            session, kind="combination", horizon=H, config=cfg,
+            conditions=conditions, cohort_kind="baseline",
+        )
+        assert base["total"] == agg["pool_n"] == agg["baseline"]["stats"]["n"]
+        # each single
+        for idx, single in enumerate(agg["singles"]):
+            s = compute_samples(
+                session, kind="combination", horizon=H, config=cfg,
+                conditions=conditions, cohort_kind="single", single_index=idx,
+            )
+            assert s["total"] == single["stats"]["n"], f"single {idx} coherence"
+        # composite
+        comp = compute_samples(
+            session, kind="combination", horizon=H, config=cfg,
+            conditions=conditions, cohort_kind="composite",
+        )
+        assert comp["total"] == agg["composite"]["stats"]["n"]
+        # strict overlap
+        strict = compute_samples(
+            session, kind="combination", horizon=H, config=cfg,
+            conditions=conditions, cohort_kind="strict_overlap",
+        )
+        assert strict["total"] == agg["strict_overlap"]["stats"]["n"]
+
+
+def test_combination_strict_overlap_zero_is_honest_empty(tmp_path):
+    """The n=0 strict-overlap case (opposing extremes of the same factor → empty AND-intersection): the
+    aggregate publishes n=0 and the samples drill-down returns an empty `rows` + `total` 0 — never a
+    fabricated row (anti-goal: No fabricated data)."""
+    cfg = load_config()
+    engine = _engine(tmp_path, "strictzero.db")
+    with Session(engine) as session:
+        run = _add_run(session, date(2025, 1, 10))
+        for i in range(1, 11):
+            _add_result(session, run.id, f"S{i}", rank=i, lead=float(i))
+            _add_fr(session, run.id, f"S{i}", ret=i / 1000)
+        session.commit()
+    # top AND bottom of the SAME factor → the strict intersection is empty
+    q = cfg.research.factor_lab.combination.quantiles[0].key
+    conditions = [
+        {"factor": "leadership_score", "side": "top", "quantile": q},
+        {"factor": "leadership_score", "side": "bottom", "quantile": q},
+    ]
+    with Session(engine) as session:
+        agg = compute_factor_combination(session, conditions, H, cfg)
+        s = compute_samples(
+            session, kind="combination", horizon=H, config=cfg,
+            conditions=conditions, cohort_kind="strict_overlap",
+        )
+    assert agg["strict_overlap"]["stats"]["n"] == 0
+    assert s["total"] == 0 and s["rows"] == []
+
+
+def test_combination_row_carries_every_referenced_factor_value(factor_engine):
+    """Value identity for a combination row: every referenced factor's STORED value rides each row
+    (read verbatim), keyed by the catalog factor key."""
+    cfg = load_config()
+    q = cfg.research.factor_lab.combination.quantiles[0].key
+    # two DISTINCT factors so the pool requires both non-null and each row carries both stored values
+    conditions = [
+        {"factor": "leadership_score", "side": "top", "quantile": q},
+        {"factor": "risk_score", "side": "top", "quantile": q},
+    ]
+    with Session(factor_engine) as session:
+        s = compute_samples(
+            session, kind="combination", horizon=H, config=cfg,
+            conditions=conditions, cohort_kind="baseline",
+        )
+    assert s["total"] == 20  # leadership + risk both non-null on all 20 stocks
+    row = next(r for r in s["rows"] if r["ticker"] == "S20")
+    keys = {v["key"]: v["value"] for v in row["values"]}
+    assert keys["leadership_score"] == pytest.approx(20.0)
+    assert keys["risk_score"] == pytest.approx(50.0)  # the fixture's default risk score
+    assert row["forward_return"] == pytest.approx(20 / 1000)
+
+
+# ==================================================================================================
+# Event-study cohort count-coherence (pooled / by-regime / by-sector)
+# ==================================================================================================
+def test_event_study_pooled_coherence_and_subject_value(event_study_engine):
+    """Pooled chip (== `n_total` / per-horizon n): the samples total equals `compute_event_study.n_total`
+    for the Breakout-watch subject; each row's value is the matched subject (read-only)."""
+    cfg = load_config()
+    with Session(event_study_engine) as session:
+        agg = compute_event_study(session, "Breakout-watch", H, cfg)
+        s = compute_samples(
+            session, kind="event-study", horizon=H, config=cfg,
+            subject_key="Breakout-watch", slice_kind="pooled",
+        )
+    assert s["total"] == agg["n_total"] == 7  # 4 Risk-on + 3 Risk-off Breakout-watch members
+    assert all(r["values"][0]["key"] == "Breakout-watch" for r in s["rows"])
+    # the lone Actionable member must NOT leak into the Breakout-watch pool
+    assert "X1" not in {r["ticker"] for r in s["rows"]}
+
+
+def test_event_study_by_regime_and_by_sector_coherence(event_study_engine):
+    """By-regime and by-sector chips: each slice's samples total equals the published per-regime /
+    per-sector `n`."""
+    cfg = load_config()
+    with Session(event_study_engine) as session:
+        agg = compute_event_study(session, "Breakout-watch", H, cfg)
+        n_by_regime = {r["regime"]: r["n"] for r in agg["by_regime"]}
+        n_by_sector = {r["sector"]: r["n"] for r in agg["by_sector"]}
+        for label in ("Risk-on", "Risk-off"):
+            s = compute_samples(
+                session, kind="event-study", horizon=H, config=cfg,
+                subject_key="Breakout-watch", slice_kind="regime", regime=label,
+            )
+            assert s["total"] == n_by_regime[label]
+        for sector in ("Technology", "Energy"):
+            s = compute_samples(
+                session, kind="event-study", horizon=H, config=cfg,
+                subject_key="Breakout-watch", slice_kind="sector", sector=sector,
+            )
+            assert s["total"] == n_by_sector[sector]
+    # the populated slices (by-regime emits a row per configured label incl. 0; by-sector is non-padded)
+    assert n_by_regime["Risk-on"] == 4 and n_by_regime["Risk-off"] == 3
+    assert n_by_sector == {"Technology": 4, "Energy": 3}
+
+
+# ==================================================================================================
+# as_of-scoped mode coherence (J-32) — the single global as-of, a membership filter not a 2nd date
+# ==================================================================================================
+def test_as_of_scoping_matches_aggregate(multi_regime_engine):
+    """With `as_of` = the earlier run date, BOTH the factor aggregate and the samples drill-down pool ONLY
+    the snapshots dated <= D — and the samples total still equals the as-of-scoped published `n_total`."""
+    cfg = load_config()
+    cutoff = date(2025, 1, 10)  # the Risk-on run only (the Risk-off run is dated 2025-02-10 > D)
+    with Session(multi_regime_engine) as session:
+        agg = compute_factor_lab(session, "leadership_score", H, cfg, as_of=cutoff)
+        s = compute_samples(
+            session, kind="factor", horizon=H, config=cfg, as_of=cutoff,
+            factor_key="leadership_score", slice_kind="total",
+        )
+    assert agg["n_total"] == 12  # only the 12 Risk-on observations are <= D
+    assert s["total"] == agg["n_total"] == 12
+    assert s["asof_date"] == "2025-01-10"
+    assert all(r["snapshot_date"] == "2025-01-10" for r in s["rows"])
+
+
+# ==================================================================================================
+# Invalid cohort selectors → ValueError (the API turns these into an explicit 4xx, never a silent 200)
+# ==================================================================================================
+def test_invalid_selectors_raise(factor_engine):
+    """Unknown kind/factor/subject, out-of-range decile, bad single index, malformed slice all raise
+    ValueError (not a silent empty result) — the 4xx contract (an empty 200 is reserved for valid n=0)."""
+    cfg = load_config()
+    with Session(factor_engine) as session:
+        with pytest.raises(ValueError):
+            compute_samples(session, kind="not-a-kind", horizon=H, config=cfg)
+        with pytest.raises(ValueError):
+            compute_samples(session, kind="factor", horizon=H, config=cfg,
+                            factor_key="nope", slice_kind="total")
+        with pytest.raises(ValueError):
+            compute_samples(session, kind="factor", horizon=H, config=cfg,
+                            factor_key="leadership_score", slice_kind="decile", decile=999)
+        with pytest.raises(ValueError):
+            compute_samples(session, kind="event-study", horizon=H, config=cfg,
+                            subject_key="not-a-subject", slice_kind="pooled")
+        with pytest.raises(ValueError):
+            compute_samples(
+                session, kind="combination", horizon=H, config=cfg,
+                conditions=[{"factor": "leadership_score", "side": "top",
+                             "quantile": cfg.research.factor_lab.combination.quantiles[0].key}],
+                cohort_kind="single", single_index=99,
+            )

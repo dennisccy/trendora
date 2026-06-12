@@ -149,3 +149,18 @@ one-shot J-22/J-23/J-24 + DIA best-effort fetch.
 **Reasoning:** Target J-49 passed all six goal.md steps with evaluator-viewed, md5-checked captures (marker at D historical, no marker at latest, NVDA detail bands still clamped — J-45/J-20 contrast in one capture); backend diff inspected and matches the no-second-path contract; coherence COHERENCE-PASS; review PASS; full pytest 691/4/0 (pump-run, 45:05). Two honest gaps accepted, not hidden: J-44 toggle-persistence cycle not re-exercised (mid-session backend death + Chrome MCP cross-contamination; UT-J-44-toggle-off.png actually shows the honest "Backend unavailable" page) and J-48 second-click desc direction not captured — both carried from prior full verification on code this diff did not touch.
 
 **Next-step recommendation:** Iter-7 lean: J-51+J-52 (read-only samples endpoint family + /research/samples drill-down; count-coherence = same observation builders, total == published N; dated new-tab rows via proven J-50/J-54 mechanics; apply the un-nested SortHeader/TermInfo pattern to samples headers; backend touch => full pytest gate). Required-still-passing: J-25/J-26/J-29/J-32/J-47/J-50/J-54; opportunistically re-exercise the J-44 toggle cycle. Then iter-8 full: J-53 + one-shot J-22/J-23/J-24 + DIA fetch.
+
+## Iteration 7 — goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7
+
+**Date:** 2026-06-12T17:05:00+01:00
+**Verdict:** CONTINUE
+**Depth dispatched:** lean
+**Journey deltas:**
+- Newly passing: J-51, J-52
+- Newly failing: none
+- Regressed: none
+- Anti-goal violations: none
+
+**Reasoning:** Both target journeys verified beyond the QA report: the evaluator booted the backend and INDEPENDENTLY re-proved count-coherence live for every chip kind (factor D1/D10/total 2095/2096/20954 == aggregate n's; combination baseline/composite/strict 16809/3362/606 == published; event-study Actionable 20d 54==54; as_of D1 11==11; invalid selectors → 422), and code-verified samples.py is SELECT-only sharing the exact aggregate builders (coherence audit PASS). Browser QA 9/9 with genuine key captures (samples page, n=0 honest empty, J-52 dated new tab — all evaluator-viewed); full suite 710/4/0 confirmed from the pump log. One evidence-hygiene flaw recorded: UT-J-26-combination-lab.png and UT-J-51-initial.png are byte-identical duplicates of UT-J-25-factor-lab.png (md5 17053fd6), so J-26/J-29's screenshot legs were mislabeled — their PASS stands on DOM/API assertions that the evaluator's live queries exactly corroborated. NOT goal-achieved: J-53 remains failing.
+
+**Next-step recommendation:** Iter-8 at FULL depth per the standing plan: J-53 (parallel multi-date snapshot backfill ~2× + per-stage timings in the job status payload and /data job card — concurrency-sensitive backend work mirroring the J-46/iter-3 shape) bundled with the one-shot best-effort J-22/J-23/J-24 + DIA fetch (non-halting; record honestly-blocked NA if the provider stays walled). Opportunistic: the J-44 toggle off→reload→still-off cycle is STILL unverified since iter-2 (spec asked, QA did not do it) — fold it into iter-8 QA; also instruct QA to never reuse one PNG under multiple evidence names (capture per-surface or cite the shared file once).

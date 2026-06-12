@@ -557,3 +557,190 @@ def test_event_study_503_when_no_price_data(tmp_path):
         with pytest.raises(HTTPException) as exc:
             event_study(subject=None, horizon=None, session=session)
         assert exc.value.status_code == 503
+
+
+# ==================================================================================================
+# GET /api/research/samples — the J-51 / J-52 drill-down (count-coherence at the API level)
+# ==================================================================================================
+def test_samples_factor_total_coherence(loaded_engine):
+    """J-51 at the API level: the samples `total` for a factor's `n_total` chip EQUALS the published
+    factor-lab `n_total`; each row carries ticker, snapshot date, the stored factor value, and the
+    realized forward return."""
+    with TestClient(main.app) as client:
+        agg = client.get("/api/research/factor-lab", params={"factor": "leadership_score", "horizon": 20}).json()
+        s = client.get(
+            "/api/research/samples",
+            params={"kind": "factor", "factor": "leadership_score", "horizon": 20, "slice": "total"},
+        ).json()
+    assert s["total"] == agg["n_total"]
+    assert len(s["rows"]) == agg["n_total"]
+    row = s["rows"][0]
+    assert set(row) >= {"ticker", "snapshot_date", "values", "forward_return"}
+    assert row["values"][0]["key"] == "leadership_score"
+    # honest labels ride the payload (survivorship + descriptive)
+    assert "survivorship" in s["survivorship_bias"].lower()
+
+
+def test_samples_factor_every_decile_coherence(loaded_engine):
+    """For EVERY published decile chip the samples total equals that decile's `n` — and the deciles'
+    member counts sum to `n_total` (no double-count, no drop)."""
+    with TestClient(main.app) as client:
+        agg = client.get("/api/research/factor-lab", params={"factor": "leadership_score", "horizon": 20}).json()
+        running = 0
+        for d in agg["deciles"]:
+            s = client.get(
+                "/api/research/samples",
+                params={"kind": "factor", "factor": "leadership_score", "horizon": 20,
+                        "slice": "decile", "decile": d["decile"]},
+            ).json()
+            assert s["total"] == d["n"], f"decile {d['decile']}"
+            running += s["total"]
+    assert running == agg["n_total"]
+
+
+def test_samples_factor_by_regime_coherence(loaded_engine):
+    """Each by-regime chip's samples total equals that regime's published `n`."""
+    with TestClient(main.app) as client:
+        agg = client.get("/api/research/factor-lab", params={"factor": "leadership_score", "horizon": 20}).json()
+        for r in agg["by_regime"]:
+            s = client.get(
+                "/api/research/samples",
+                params={"kind": "factor", "factor": "leadership_score", "horizon": 20,
+                        "slice": "regime", "regime": r["regime"]},
+            ).json()
+            assert s["total"] == r["n"], f"regime {r['regime']}"
+
+
+def test_samples_combination_coherence_all_cohorts(loaded_engine):
+    """Every combination chip (baseline / each single / composite / strict-overlap) has a samples total
+    equal to the aggregate's published n — under the config default conditions."""
+    with TestClient(main.app) as client:
+        agg = client.get("/api/research/factor-combination", params={"horizon": 20}).json()
+        conds = [f"{c['factor']['key']}:{c['side']}:{c['quantile']['key']}" for c in agg["conditions"]]
+        base = client.get(
+            "/api/research/samples",
+            params=[("kind", "combination"), ("horizon", "20"), ("cohort", "baseline"),
+                    *[("condition", c) for c in conds]],
+        ).json()
+        assert base["total"] == agg["pool_n"]
+        for idx, single in enumerate(agg["singles"]):
+            s = client.get(
+                "/api/research/samples",
+                params=[("kind", "combination"), ("horizon", "20"), ("cohort", "single"),
+                        ("single_index", str(idx)), *[("condition", c) for c in conds]],
+            ).json()
+            assert s["total"] == single["stats"]["n"], f"single {idx}"
+        comp = client.get(
+            "/api/research/samples",
+            params=[("kind", "combination"), ("horizon", "20"), ("cohort", "composite"),
+                    *[("condition", c) for c in conds]],
+        ).json()
+        assert comp["total"] == agg["composite"]["stats"]["n"]
+        strict = client.get(
+            "/api/research/samples",
+            params=[("kind", "combination"), ("horizon", "20"), ("cohort", "strict_overlap"),
+                    *[("condition", c) for c in conds]],
+        ).json()
+        assert strict["total"] == agg["strict_overlap"]["stats"]["n"]
+
+
+def test_samples_event_study_coherence(loaded_engine):
+    """The pooled event-study chip's samples total equals `compute_event_study.n_total` for a subject."""
+    with TestClient(main.app) as client:
+        agg = client.get("/api/research/event-study", params={"subject": "vcp", "horizon": 20}).json()
+        s = client.get(
+            "/api/research/samples",
+            params={"kind": "event-study", "subject": "vcp", "horizon": 20, "slice": "pooled"},
+        ).json()
+    assert s["total"] == agg["n_total"]
+    assert all(r["values"][0]["key"] == "vcp" for r in s["rows"])
+
+
+def test_samples_as_of_scopes_and_echoes(loaded_engine):
+    """J-32 at the API level: a `?as_of=D` scopes the samples pool to snapshots dated <= D and echoes the
+    resolved `asof_date`; the total matches the as-of-scoped factor-lab n_total (strictly fewer than
+    all-history, not empty)."""
+    with TestClient(main.app) as client:
+        oldest = _oldest_research_date(client)
+        all_s = client.get(
+            "/api/research/samples",
+            params={"kind": "factor", "factor": "leadership_score", "horizon": 20, "slice": "total"},
+        ).json()
+        scoped_agg = client.get(
+            "/api/research/factor-lab",
+            params={"factor": "leadership_score", "horizon": 20, "as_of": oldest},
+        ).json()
+        scoped = client.get(
+            "/api/research/samples",
+            params={"kind": "factor", "factor": "leadership_score", "horizon": 20,
+                    "slice": "total", "as_of": oldest},
+        ).json()
+    assert all_s["asof_date"] is None
+    assert scoped["asof_date"] == oldest
+    assert scoped["total"] == scoped_agg["n_total"]
+    assert 0 < scoped["total"] < all_s["total"]
+    assert all(r["snapshot_date"] <= oldest for r in scoped["rows"])
+
+
+def test_samples_invalid_selectors_are_4xx(loaded_engine):
+    """Invalid cohort selectors are explicit 4xx (never a silent empty 200, which is reserved for a valid
+    n=0): unknown kind / factor / subject, out-of-range decile, bad horizon, malformed condition."""
+    with TestClient(main.app) as client:
+        assert client.get("/api/research/samples", params={"kind": "nope"}).status_code == 422
+        assert client.get(
+            "/api/research/samples",
+            params={"kind": "factor", "factor": "not_a_factor", "slice": "total"},
+        ).status_code == 422
+        assert client.get(
+            "/api/research/samples",
+            params={"kind": "factor", "factor": "leadership_score", "slice": "decile", "decile": 999},
+        ).status_code == 422
+        assert client.get(
+            "/api/research/samples",
+            params={"kind": "event-study", "subject": "not_a_subject", "slice": "pooled"},
+        ).status_code == 422
+        assert client.get(
+            "/api/research/samples",
+            params={"kind": "factor", "factor": "leadership_score", "horizon": 7, "slice": "total"},
+        ).status_code == 422
+        assert client.get(
+            "/api/research/samples",
+            params=[("kind", "combination"), ("condition", "leadership_score:top")],
+        ).status_code == 422
+
+
+def test_samples_strict_overlap_zero_is_empty_200(loaded_engine):
+    """A VALID n=0 cohort (opposing extremes of the SAME factor → empty strict overlap) is an empty 200
+    (rows == [], total == 0) — never a fabricated row, and explicitly NOT a 4xx (4xx is for invalid
+    selectors). Coherence holds: the published strict-overlap n is also 0."""
+    cfg = load_config()
+    q = cfg.research.factor_lab.combination.quantiles[0].key
+    conds = [f"leadership_score:top:{q}", f"leadership_score:bottom:{q}"]
+    with TestClient(main.app) as client:
+        agg = client.get(
+            "/api/research/factor-combination",
+            params=[("horizon", "20"), *[("condition", c) for c in conds]],
+        ).json()
+        resp = client.get(
+            "/api/research/samples",
+            params=[("kind", "combination"), ("horizon", "20"), ("cohort", "strict_overlap"),
+                    *[("condition", c) for c in conds]],
+        )
+    assert agg["strict_overlap"]["stats"]["n"] == 0
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["total"] == 0 and data["rows"] == []
+
+
+def test_samples_503_when_no_price_data(tmp_path):
+    """No price data -> explicit 503 (never a fabricated drill-down). The handler is called directly
+    against an empty DB session, leaving the process engine untouched."""
+    from app.api.research import research_samples
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'empty_samples.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        assert latest_data_date(session) is None
+        with pytest.raises(HTTPException) as exc:
+            research_samples(kind="factor", session=session)
+        assert exc.value.status_code == 503

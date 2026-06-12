@@ -66,3 +66,9 @@ must-explain regression signal even when every journey leg passes.
 **Verdict:** CONTINUE
 **Lesson:** An evidence filename can show something entirely different from its name: `UT-J-44-toggle-off.png` actually captures the honest "Backend unavailable" dashboard from a mid-session backend death, not a toggle state — and the Chrome MCP session then got cross-contaminated with another project's app (Tapeology, port 3650). QA disclosed it honestly, but the toggle-persistence leg was silently left unverified behind a plausibly-named file. Capture fragile multi-step legs (toggle->reload cycles) EARLY in a browser session, and evaluators must view pixels per capture, never trust filenames.
 **Applies to:** any iter whose QA session restarts the backend on :8835 or runs long (>30 min) browser sessions on this multi-project machine; the J-44 toggle off->reload->still-off cycle specifically still needs an opportunistic re-verification.
+
+## iter-7 — 2026-06-12T17:05:00+01:00
+
+**Verdict:** CONTINUE
+**Lesson:** Published research Ns DRIFT between backend boots: the background warm-up matures additional forward returns, so QA captured n_total=20832/D1=2083 while the evaluator's fresh boot read 20954/2095 (+122 = one snapshot's universe). Count-coherence (samples total == aggregate n) must therefore be asserted same-instant against the live aggregate, never against a hardcoded N from an earlier capture or report. Separately, the md5 duplicate-evidence failure recurred a third time (UT-J-26-combination-lab.png + UT-J-51-initial.png are byte-copies of UT-J-25-factor-lab.png) — QA reused one /research capture under three evidence names.
+**Applies to:** any iter asserting an exact N/count across page reloads or backend restarts (J-53's job-progress counts especially); every evaluator/QA pass — md5sum the evidence dir FIRST and require one capture per claimed surface.
