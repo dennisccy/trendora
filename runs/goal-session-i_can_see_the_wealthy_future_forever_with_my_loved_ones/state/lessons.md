@@ -46,3 +46,17 @@ drift (handoff said 111 authored/120 served; committed reality 109/118) — alwa
 committed artifact, never from the handoff.
 **Applies to:** any future evaluation of catalog/config-served content (methodology, glossary,
 provider catalog); any browser-QA plan whose acceptance target sits below the first viewport.
+
+## iter-5 — 2026-06-12T10:27:25+01:00
+
+**Verdict:** CONTINUE
+**Lesson:** Wrapping an existing labelled header in a clickable affordance can nest interactive
+elements: `SortHeader`'s `<button>` in `apps/frontend/app/stocks/page.tsx` wraps `TermInfo`, whose
+`InfoTooltip` trigger is itself a `<button>` (components/ui/info-tooltip.tsx:62) — invalid DOM that
+surfaced as a NEW red "1 error" Next dev-overlay badge visible in every iter-5 /stocks capture
+(absent in iter-2 captures), and the inner info-click bubbles into a sort. QA passed all journeys
+without reporting the badge.
+**Applies to:** any iter making header labels / badges / table cells clickable around `TermInfo`/
+`InfoTooltip` (J-51 samples table headers are next); evaluators + browser-qa should treat a
+dev-overlay error badge appearing in a capture (vs prior iterations' captures of the same page) as a
+must-explain regression signal even when every journey leg passes.

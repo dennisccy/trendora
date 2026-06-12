@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, History } from "lucide-react";
 
+import { useAsOfHref } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeading } from "@/components/page-heading";
 import { Badge } from "@/components/ui/badge";
@@ -93,12 +94,13 @@ export default function ScannerRunsPage() {
 }
 
 function RunTableRow({ run }: { run: RunSummary }) {
+  const asofHref = useAsOfHref();
   const counts = run.candidate_counts;
   return (
     <tr className="border-b border-border transition-colors hover:bg-surface-2">
       <td className="px-3 py-2">
         <Link
-          href={`/scanner-runs/${run.run_id}`}
+          href={asofHref(`/scanner-runs/${run.run_id}`)}
           className="num font-semibold text-accent hover:underline focus-visible:underline focus-visible:outline-none"
         >
           {formatIsoDate(run.asof_date)}

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AlertTriangle, ArrowLeft, SearchX } from "lucide-react";
 
-import { useAsOf } from "@/components/asof-provider";
+import { useAsOf, useAsOfHref } from "@/components/asof-provider";
 import { ComponentBreakdown } from "@/components/component-breakdown";
 import { PageHeading } from "@/components/page-heading";
 import { PriceChart } from "@/components/price-chart";
@@ -76,6 +76,9 @@ export default function StockDetailPage() {
   const params = useParams<{ ticker: string }>();
   const ticker = (params?.ticker ?? "").toUpperCase();
   const { asOf } = useAsOf();
+  // J-50: in-app links on this page carry the global as-of date while historical (clean at latest) via
+  // the one shared helper, so middle-click / new-tab / copied-link from the detail view stays dated.
+  const asofHref = useAsOfHref();
   const [state, setState] = useState<State>({ kind: "loading" });
 
   useEffect(() => {
@@ -99,7 +102,7 @@ export default function StockDetailPage() {
           subtitle="Stock detail — the three explainable scores (identical to the leaderboard; single source of truth)"
         />
         <Link
-          href="/stocks"
+          href={asofHref("/stocks")}
           className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text focus-visible:text-text focus-visible:outline-none"
         >
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
@@ -116,7 +119,7 @@ export default function StockDetailPage() {
             <p className="font-medium">Unknown ticker</p>
             <p className="text-text-muted">
               “{ticker}” is not in the scanned universe. Open a stock from the{" "}
-              <Link href="/stocks" className="text-accent hover:underline">
+              <Link href={asofHref("/stocks")} className="text-accent hover:underline">
                 leaderboard
               </Link>
               .
@@ -196,6 +199,7 @@ function StockDetailBody({ data }: { data: StockDetailResponse }) {
 }
 
 function ThemeAndInvalidationCard({ row }: { row: StockRow }) {
+  const asofHref = useAsOfHref();
   const naInvalidation = row.invalidation.level == null;
   return (
     <Card>
@@ -207,7 +211,7 @@ function ThemeAndInvalidationCard({ row }: { row: StockRow }) {
               {row.themes.map((theme) => (
                 <Link
                   key={theme.slug}
-                  href="/themes"
+                  href={asofHref("/themes")}
                   className="rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                 >
                   <Badge variant="accent" className="hover:bg-surface active:bg-bg">

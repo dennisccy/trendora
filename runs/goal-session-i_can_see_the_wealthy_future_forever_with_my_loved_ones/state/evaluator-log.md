@@ -97,3 +97,38 @@ taken on faith. All three GOAL_ACHIEVED conditions hold.
 fetch via the committed runbook / J-35 expand job once a live provider is reachable (no code change
 expected); optional cleanup of the pre-existing /data DefinedMetric static definition strings
 (apps/frontend/app/data/page.tsx:453) in favor of the catalog tooltips.
+
+## Iteration 5 — goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5
+
+**Date:** 2026-06-12T10:27:25+01:00
+**Verdict:** CONTINUE
+**Depth dispatched:** lean
+**Journey deltas:**
+- Newly passing: J-48, J-50, J-54 (the first three of the human-approved J-48..J-54 extension)
+- Newly recorded failing: J-49, J-51, J-52, J-53 (extension journeys not yet built — first history entries)
+- Re-verified passing: J-02 + J-16 (with a sort active), J-05, J-06 (NVDA 43.14/54.05/35.80 identical both views), J-13, J-18, J-43 (reload / invalid-degrade after app-wide href changes)
+- Regressed: none
+- Anti-goal violations: none
+
+**Reasoning:** All three targets verified beyond the QA report: the diff is provably frontend-only
+(8 files, 216+/26-, `git diff --name-only -- apps/backend/` empty — evaluator-run), the J-48
+comparators read only served fields over a stable filter-then-sort memo (restore-rank capture shows
+MRVL A94.30/E23.35/E59.43 identical pre/post), `useAsOfHref()` is the single `?asof` author app-wide
+with the historical/fresh-tab/latest-clean legs DOM-asserted and screenshot-corroborated, and the
+J-54 ticker anchors carry target/rel/dated-href with sidebar links confirmed same-window. Review
+PASS, coherence COHERENCE-PASS, tsc clean. md5 spot-check found three byte-identical evidence
+groups; only one matters — UT-J-13 reuses the latest-view capture, so J-13's historical leg was
+accepted on the distinct UT-J-50 captures showing the same date's historical banner. One NEW minor
+defect QA missed: SortHeader nests TermInfo's InfoTooltip `<button>` inside the sort `<button>`
+(invalid DOM → the new "1 error" dev-overlay badge on every iter-5 /stocks capture, absent in
+iter-2; the inner click also bubbles into a sort). Functional acceptance unaffected — minor, queued
+for next iteration. Not GOAL_ACHIEVED: J-49/J-51/J-52/J-53 remain failing.
+
+**Next-step recommendation:** Iter-6 lean: target J-49 (dashboard indexes/regime card full-history
++ vertical as-of marker via clamp-optional serving on the existing GET /api/indexes +
+GET /api/regime-history; J-45 detail-chart clamp explicitly NOT amended), required-still-passing
+J-44/J-45/J-20/J-13; backend touch ⇒ full pytest suite becomes a gate (~35-46 min, hand to the
+pump). Bundle the nested-button fix (info affordance as a sibling of the sort button, or a
+non-button trigger) and have QA assert the /stocks dev-overlay badge is gone and an info-icon click
+no longer changes the sort. Then iter-7 → J-51+J-52, iter-8 → J-53 at full depth + the deferred
+one-shot J-22/J-23/J-24 + DIA best-effort fetch.

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Microscope, Plus, ShieldAlert, X } from "lucide-react";
 
-import { useAsOf } from "@/components/asof-provider";
+import { useAsOf, useAsOfHref } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
 import { fmtPct, returnClass, SampleSize } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
@@ -1159,10 +1159,14 @@ function EventStudyLab({
  *  asserts no count it cannot prove (no fetch). Rendered whenever a subject resolves — INCLUDING a
  *  low-sample / NA subject (the "names expressing it today" set is independent of the event-study sample). */
 function SubjectLeaderboardLink({ subject }: { subject: EventStudyResponse["subject"] }) {
-  const href =
+  const asofHref = useAsOfHref();
+  // The filter param is the leaderboard's existing one; the J-50 helper MERGES `?asof=D` (while
+  // historical) into the already-present query string WITHOUT clobbering the `pattern`/`setup` param.
+  const href = asofHref(
     subject.kind === "pattern"
       ? `/stocks?pattern=${encodeURIComponent(subject.key)}__only`
-      : `/stocks?setup=${encodeURIComponent(subject.key)}`;
+      : `/stocks?setup=${encodeURIComponent(subject.key)}`,
+  );
   return (
     <Link
       href={href}

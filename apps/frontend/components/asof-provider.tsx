@@ -217,3 +217,42 @@ export function useAsOf(): AsOfContextValue {
   if (!ctx) throw new Error("useAsOf must be used within <AsOfProvider>");
   return ctx;
 }
+
+/**
+ * J-50 — the ONE canonical builder of an in-app link's `href` that embeds the global as-of date.
+ *
+ * This is the single implementation every navigational link uses: it reads the one global as-of
+ * state (the same `ASOF_PARAM` this provider owns) and serializes it into the link's `href` while
+ * historical, leaving the `href` date-free at latest. No component builds the `?asof` string itself —
+ * the URL serialization of the single date state has exactly one author here, mirroring how
+ * `AsOfUrlSync` is the sole writer of `?asof` onto the *current* page. So middle-click / new-tab /
+ * copied-link navigation lands on the same dated view WITHOUT depending on post-navigation re-stamping.
+ *
+ * The returned `asofHref(path)`:
+ *  - takes a same-origin app path that MAY already carry its own query string (e.g.
+ *    `/stocks?pattern=vcp__only`) and/or a hash, and merges `asof` into it without clobbering them;
+ *  - while historical, sets `asof=<D>`; at latest (or before the run list resolves), it emits the
+ *    clean path with NO `asof` param (and strips any `asof` the caller mistakenly included);
+ *  - never fabricates a date and never reads/holds a second date state — it only re-formats the one
+ *    global `asOf` value into the link.
+ */
+export function useAsOfHref(): (path: string) => string {
+  const { asOf, isHistorical } = useAsOf();
+  return useCallback(
+    (path: string) => {
+      // Split off any hash so it is preserved after the query string we (re)write.
+      const hashIndex = path.indexOf("#");
+      const hash = hashIndex >= 0 ? path.slice(hashIndex) : "";
+      const beforeHash = hashIndex >= 0 ? path.slice(0, hashIndex) : path;
+      const queryIndex = beforeHash.indexOf("?");
+      const basePath = queryIndex >= 0 ? beforeHash.slice(0, queryIndex) : beforeHash;
+      const params = new URLSearchParams(queryIndex >= 0 ? beforeHash.slice(queryIndex + 1) : "");
+      // The single state decides the param: historical → asof=D; latest/loading → no asof at all.
+      if (isHistorical && asOf) params.set(ASOF_PARAM, asOf);
+      else params.delete(ASOF_PARAM);
+      const query = params.toString();
+      return `${basePath}${query ? `?${query}` : ""}${hash}`;
+    },
+    [asOf, isHistorical],
+  );
+}

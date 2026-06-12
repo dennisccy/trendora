@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { useAsOfHref } from "@/components/asof-provider";
 import { cn } from "@/lib/utils";
 
 interface NavItem {
@@ -41,6 +42,11 @@ const NAV: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  // J-50: every nav href carries the global as-of date while historical (clean at latest) via the one
+  // shared helper — so middle-click / new-tab on a sidebar entry lands on the same dated view. The
+  // `isActive` check still keys on the route (the base path), never the query, so the active highlight
+  // is unaffected by the `?asof` serialization.
+  const asofHref = useAsOfHref();
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
 
@@ -56,7 +62,7 @@ export function Sidebar() {
           return (
             <Link
               key={href}
-              href={href}
+              href={asofHref(href)}
               aria-current={active ? "page" : undefined}
               className={cn(
                 "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",

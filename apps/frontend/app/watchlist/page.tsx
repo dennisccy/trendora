@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Plus, Star, Trash2 } from "lucide-react";
 
+import { useAsOfHref } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
@@ -243,11 +244,12 @@ function WatchlistRow({
   onRemove: (id: number) => void;
   busy: boolean;
 }) {
+  const asofHref = useAsOfHref();
   return (
     <tr className="border-b border-border align-top transition-colors hover:bg-surface-2">
       <td className="px-3 py-2">
         <Link
-          href={`/stocks/${entry.ticker}`}
+          href={asofHref(`/stocks/${entry.ticker}`)}
           className="num font-semibold text-accent hover:underline focus-visible:underline focus-visible:outline-none"
         >
           {entry.ticker}

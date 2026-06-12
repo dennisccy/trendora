@@ -4,6 +4,7 @@ import { use, useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft, History, Lock } from "lucide-react";
 
+import { useAsOfHref } from "@/components/asof-provider";
 import { ComponentBreakdown } from "@/components/component-breakdown";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeading } from "@/components/page-heading";
@@ -51,6 +52,7 @@ function fmtPct(value: number | null | undefined): string {
 
 export default function RunDetailPage({ params }: { params: Promise<{ runId: string }> }) {
   const { runId } = use(params);
+  const asofHref = useAsOfHref();
   const [state, setState] = useState<State>({ kind: "loading" });
 
   useEffect(() => {
@@ -73,7 +75,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ runId: str
           subtitle="The exact, immutable as-of view the scanner produced on this date"
         />
         <Link
-          href="/scanner-runs"
+          href={asofHref("/scanner-runs")}
           className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs text-text-muted transition-colors hover:bg-surface-2 hover:text-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
         >
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
