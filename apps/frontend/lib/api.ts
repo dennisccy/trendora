@@ -338,12 +338,20 @@ export interface RegimeHistoryResponse {
 }
 
 /** The stored per-date market-regime series for the regime bands (J-44/J-45). `asof` bounds it to a
- *  historical date; the latest view passes nothing. Read-only — no regime is recomputed client-side. */
+ *  historical date; the latest view passes nothing. Read-only — no regime is recomputed client-side.
+ *
+ *  `full` (J-49 — dashboard card only): when true, ask the endpoint for the WHOLE stored regime series
+ *  through the latest run (display-only context past the as-of marker) instead of clamping at the as-of.
+ *  The stock-detail consumer omits it, keeping the clamped (J-45) default. `asof_date` is still echoed
+ *  so the card draws the vertical marker at D; the stored labels/scores are byte-identical either way. */
 export async function fetchRegimeHistory(
   asof?: string,
   signal?: AbortSignal,
+  full = false,
 ): Promise<RegimeHistoryResponse> {
-  return getJSON<RegimeHistoryResponse>(withAsOf("/api/regime-history", asof), signal);
+  let path = withAsOf("/api/regime-history", asof);
+  if (full) path += `${path.includes("?") ? "&" : "?"}full=true`;
+  return getJSON<RegimeHistoryResponse>(path, signal);
 }
 
 /** One point on a normalized-% index line (rebased to the range start, computed server-side). */
@@ -377,16 +385,23 @@ export interface IndexesResponse {
 
 /** The normalized-% major-indexes display series for the dashboard chart (J-44). `range` is a preset
  *  key (from `ranges`); `asof` bounds it to a historical date. The frontend only re-formats these
- *  server-computed numbers — it never does return math. An unknown `range` yields a 422 (thrown). */
+ *  server-computed numbers — it never does return math. An unknown `range` yields a 422 (thrown).
+ *
+ *  `full` (J-49 — dashboard card only): when true, ask the endpoint for the WHOLE stored path through
+ *  the latest date (display-only context past the as-of marker) instead of clamping at the as-of. The
+ *  server still echoes the resolved `asof_date` (the card draws the marker at D); the overlapping
+ *  `<= D` portion is value-identical to the clamped default. */
 export async function fetchIndexes(
   range?: string,
   asof?: string,
   signal?: AbortSignal,
+  full = false,
 ): Promise<IndexesResponse> {
   let path = withAsOf("/api/indexes", asof);
   if (range) {
     path += `${path.includes("?") ? "&" : "?"}range=${encodeURIComponent(range)}`;
   }
+  if (full) path += `${path.includes("?") ? "&" : "?"}full=true`;
   return getJSON<IndexesResponse>(path, signal);
 }
 

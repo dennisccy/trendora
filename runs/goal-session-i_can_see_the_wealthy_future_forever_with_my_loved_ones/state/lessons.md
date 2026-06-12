@@ -60,3 +60,9 @@ without reporting the badge.
 `InfoTooltip` (J-51 samples table headers are next); evaluators + browser-qa should treat a
 dev-overlay error badge appearing in a capture (vs prior iterations' captures of the same page) as a
 must-explain regression signal even when every journey leg passes.
+
+## iter-6 — 2026-06-12T12:49:57+01:00
+
+**Verdict:** CONTINUE
+**Lesson:** An evidence filename can show something entirely different from its name: `UT-J-44-toggle-off.png` actually captures the honest "Backend unavailable" dashboard from a mid-session backend death, not a toggle state — and the Chrome MCP session then got cross-contaminated with another project's app (Tapeology, port 3650). QA disclosed it honestly, but the toggle-persistence leg was silently left unverified behind a plausibly-named file. Capture fragile multi-step legs (toggle->reload cycles) EARLY in a browser session, and evaluators must view pixels per capture, never trust filenames.
+**Applies to:** any iter whose QA session restarts the backend on :8835 or runs long (>30 min) browser sessions on this multi-project machine; the J-44 toggle off->reload->still-off cycle specifically still needs an opportunistic re-verification.

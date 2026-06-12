@@ -120,3 +120,81 @@ def test_api_regime_history_and_indexes_agree_on_asof(loaded_engine):
         rh = client.get("/api/regime-history", params={"as_of": d}).json()
         ix = client.get("/api/indexes", params={"as_of": d}).json()
     assert rh["asof_date"] == ix["asof_date"]
+
+
+# --- J-49: ?full=true clamp-optional serving over the API (warm seed) -----------------------------
+# The new optional `full` query param widens the SERVED window to all stored bars/runs through the
+# latest date (display-only dashboard context) while still echoing the resolved as-of. Default (param
+# absent) is byte-identical to today, and the overlapping <= D portion is value-identical between modes.
+
+
+def test_api_indexes_full_param_default_is_byte_identical(loaded_engine):
+    """`?full=false` (and the absent param) serve EXACTLY today's clamped payload — regression pin."""
+    with Session(loaded_engine) as session:
+        earliest, _latest = _earliest_and_latest_run_dates(session)
+        d = earliest.isoformat()
+    with TestClient(main.app) as client:
+        absent = client.get("/api/indexes", params={"as_of": d}).json()
+        explicit_false = client.get("/api/indexes", params={"as_of": d, "full": "false"}).json()
+    assert absent == explicit_false
+    # clamped: no bar dated after the historical as-of
+    for s in absent["series"]:
+        assert all(p["date"] <= absent["asof_date"] for p in s["points"])
+
+
+def test_api_indexes_full_param_serves_through_latest_and_echoes_asof(loaded_engine):
+    """`?full=true` at a historical as-of serves bars dated AFTER D (display-only context) through the
+    latest stored date while still echoing the resolved as-of D (the client draws the marker from it)."""
+    with Session(loaded_engine) as session:
+        earliest, latest = _earliest_and_latest_run_dates(session)
+        d = earliest.isoformat()
+    with TestClient(main.app) as client:
+        clamped = client.get("/api/indexes", params={"as_of": d, "range": "all"}).json()
+        full = client.get("/api/indexes", params={"as_of": d, "range": "all", "full": "true"}).json()
+
+    # both echo the SAME resolved as-of (the marker position is unchanged by full mode)
+    assert full["asof_date"] == clamped["asof_date"] == earliest.isoformat()
+    # full mode renders bars AFTER the as-of (the clamped mode does not)
+    full_max = max(p["date"] for s in full["series"] for p in s["points"])
+    clamped_max = max(p["date"] for s in clamped["series"] for p in s["points"])
+    assert full_max > clamped_max  # the post-as-of context is present only in full mode
+    assert full_max == latest.isoformat()  # ...through the latest stored date
+    # value identity on the overlapping <= D range (no second compute path)
+    clamped_by_sym = {s["symbol"]: s["points"] for s in clamped["series"]}
+    for s in full["series"]:
+        overlap = [p for p in s["points"] if p["date"] <= clamped["asof_date"]]
+        assert overlap == clamped_by_sym[s["symbol"]]
+
+
+def test_api_indexes_full_param_unknown_range_still_422(loaded_engine):
+    with TestClient(main.app) as client:
+        resp = client.get("/api/indexes", params={"range": "nope", "full": "true"})
+    assert resp.status_code == 422
+
+
+def test_api_regime_history_full_param_default_is_byte_identical(loaded_engine):
+    with Session(loaded_engine) as session:
+        earliest, _latest = _earliest_and_latest_run_dates(session)
+        d = earliest.isoformat()
+    with TestClient(main.app) as client:
+        absent = client.get("/api/regime-history", params={"as_of": d}).json()
+        explicit_false = client.get("/api/regime-history", params={"as_of": d, "full": "false"}).json()
+    assert absent == explicit_false
+    assert all(p["date"] <= absent["asof_date"] for p in absent["points"])
+
+
+def test_api_regime_history_full_param_serves_through_latest(loaded_engine):
+    with Session(loaded_engine) as session:
+        earliest, latest = _earliest_and_latest_run_dates(session)
+        d = earliest.isoformat()
+    with TestClient(main.app) as client:
+        clamped = client.get("/api/regime-history", params={"as_of": d}).json()
+        full = client.get("/api/regime-history", params={"as_of": d, "full": "true"}).json()
+    # the resolved as-of echo is unchanged by full mode
+    assert full["asof_date"] == clamped["asof_date"] == earliest.isoformat()
+    # full mode includes runs dated after the as-of, through the latest run
+    assert len(full["points"]) >= len(clamped["points"])
+    assert full["points"][-1]["date"] == latest.isoformat()
+    # value identity on the overlapping <= D range (verbatim stored values, no recompute)
+    overlap = [p for p in full["points"] if p["date"] <= clamped["asof_date"]]
+    assert overlap == clamped["points"]

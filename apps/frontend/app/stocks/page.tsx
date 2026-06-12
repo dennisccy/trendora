@@ -383,18 +383,38 @@ function StocksInner() {
                 <SortHeader col="rank" label="#" activeKey={sortKey} dir={sortDir} onSort={onSort} />
                 <SortHeader col="ticker" label="Ticker" activeKey={sortKey} dir={sortDir} onSort={onSort} />
                 <SortHeader col="sector" label="Sector" activeKey={sortKey} dir={sortDir} onSort={onSort} />
-                <SortHeader col="leadership" activeKey={sortKey} dir={sortDir} onSort={onSort}>
-                  <TermInfo term="Leadership Score">Leadership</TermInfo>
-                </SortHeader>
-                <SortHeader col="entry_quality" activeKey={sortKey} dir={sortDir} onSort={onSort}>
-                  <TermInfo term="Entry Quality Score">Entry Quality</TermInfo>
-                </SortHeader>
-                <SortHeader col="risk" activeKey={sortKey} dir={sortDir} onSort={onSort}>
-                  <TermInfo term="Risk Score">Risk</TermInfo>
-                </SortHeader>
-                <SortHeader col="setup" activeKey={sortKey} dir={sortDir} onSort={onSort}>
-                  <TermInfo term="setup status">Setup</TermInfo>
-                </SortHeader>
+                <SortHeader
+                  col="leadership"
+                  label="Leadership"
+                  term="Leadership Score"
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={onSort}
+                />
+                <SortHeader
+                  col="entry_quality"
+                  label="Entry Quality"
+                  term="Entry Quality Score"
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={onSort}
+                />
+                <SortHeader
+                  col="risk"
+                  label="Risk"
+                  term="Risk Score"
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={onSort}
+                />
+                <SortHeader
+                  col="setup"
+                  label="Setup"
+                  term="setup status"
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={onSort}
+                />
                 <th className="px-3 py-2 font-medium">
                   <TermInfo term="reason summary">Reason</TermInfo>
                 </th>
@@ -490,18 +510,22 @@ function StockTableRow({
 /** J-48 — a sortable column header. Renders a button (keyboard + click accessible) that sorts by `col`
  *  and shows the sort indicator ONLY on the active column, so exactly one indicator is visible at a time
  *  across the whole header row. Inactive columns show a faint neutral up/down glyph as the affordance.
- *  `label` is used for a plain string header; `children` (e.g. a `TermInfo`) takes precedence when given. */
+ *  `label` is the visible header text; an optional `term` renders a definition info affordance BESIDE
+ *  the sort button (a sibling, never nested inside it — valid DOM, iter-6 nested-button fix). */
 function SortHeader({
   col,
   label,
-  children,
+  term,
   activeKey,
   dir,
   onSort,
 }: {
   col: SortKey;
-  label?: string;
-  children?: React.ReactNode;
+  /** The visible column label (also the sort button's accessible name). */
+  label: string;
+  /** Optional glossary term — renders a definition info affordance BESIDE the sort button (NOT inside
+   *  it, so the info `<button>` is never nested in the sort `<button>` — valid DOM; iter-6 fix). */
+  term?: string;
   activeKey: SortKey;
   dir: SortDir;
   onSort: (key: SortKey) => void;
@@ -514,26 +538,32 @@ function SortHeader({
     : "none";
   return (
     <th className="px-3 py-2 font-medium" aria-sort={ariaSort}>
-      <button
-        type="button"
-        onClick={() => onSort(col)}
-        aria-label={`Sort by ${label ?? col}${active ? (dir === "asc" ? ", ascending" : ", descending") : ""}`}
-        className="group inline-flex items-center gap-1 rounded-sm uppercase tracking-wide transition-colors hover:text-text focus-visible:text-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
-      >
-        <span className={cn(active && "text-text")}>{children ?? label}</span>
-        {active ? (
-          dir === "asc" ? (
-            <ArrowUp className="h-3 w-3 text-accent" aria-hidden data-testid="sort-indicator" />
+      {/* The sort control and the term-definition affordance are SIBLINGS — the info trigger lives
+          outside the sort <button> so no interactive element is nested in another (valid DOM), and
+          clicking the info icon never triggers a sort (the icon also stops propagation defensively). */}
+      <span className="inline-flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => onSort(col)}
+          aria-label={`Sort by ${label}${active ? (dir === "asc" ? ", ascending" : ", descending") : ""}`}
+          className="group inline-flex items-center gap-1 rounded-sm uppercase tracking-wide transition-colors hover:text-text focus-visible:text-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+        >
+          <span className={cn(active && "text-text")}>{label}</span>
+          {active ? (
+            dir === "asc" ? (
+              <ArrowUp className="h-3 w-3 text-accent" aria-hidden data-testid="sort-indicator" />
+            ) : (
+              <ArrowDown className="h-3 w-3 text-accent" aria-hidden data-testid="sort-indicator" />
+            )
           ) : (
-            <ArrowDown className="h-3 w-3 text-accent" aria-hidden data-testid="sort-indicator" />
-          )
-        ) : (
-          <ArrowUpDown
-            className="h-3 w-3 text-text-faint/40 opacity-0 transition-opacity group-hover:opacity-100"
-            aria-hidden
-          />
-        )}
-      </button>
+            <ArrowUpDown
+              className="h-3 w-3 text-text-faint/40 opacity-0 transition-opacity group-hover:opacity-100"
+              aria-hidden
+            />
+          )}
+        </button>
+        {term ? <TermInfo term={term} /> : null}
+      </span>
     </th>
   );
 }

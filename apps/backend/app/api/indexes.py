@@ -27,10 +27,18 @@ router = APIRouter(tags=["indexes"])
 def indexes(
     range: Optional[str] = Query(default=None),
     as_of: Optional[str] = None,
+    full: bool = Query(
+        default=False,
+        description=(
+            "J-49 clamp-optional: when true, serve the full stored path through the latest date "
+            "(display-only dashboard context past the as-of marker). Default false clamps at the "
+            "resolved as-of (byte-identical to before) for the stock-detail-fed path."
+        ),
+    ),
     session: Session = Depends(get_session),
 ) -> dict:
     try:
-        return compute_index_series(session, as_of=as_of, range_key=range)
+        return compute_index_series(session, as_of=as_of, range_key=range, full=full)
     except UnknownRangeError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except AsOfError as exc:

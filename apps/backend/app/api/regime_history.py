@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session
 
 from app.db import get_session
@@ -24,8 +24,19 @@ router = APIRouter(tags=["regime-history"])
 
 
 @router.get("/regime-history")
-def regime_history(as_of: Optional[str] = None, session: Session = Depends(get_session)) -> dict:
+def regime_history(
+    as_of: Optional[str] = None,
+    full: bool = Query(
+        default=False,
+        description=(
+            "J-49 clamp-optional: when true, serve the full stored regime series through the latest "
+            "run (display-only dashboard context past the as-of marker). Default false clamps at the "
+            "resolved as-of (the stock-detail regime-band consumer keeps it — J-45)."
+        ),
+    ),
+    session: Session = Depends(get_session),
+) -> dict:
     try:
-        return get_regime_history(session, as_of)
+        return get_regime_history(session, as_of, full=full)
     except AsOfError as exc:
         raise _http(exc)

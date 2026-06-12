@@ -1,0 +1,31 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-6",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-06-12T09:58:00.000000Z",
+  "started_at": "2026-06-12T08:50:00.000000Z",
+  "cli": "claude",
+  "depth": "lean",
+  "mode": "next",
+  "param_name": "full",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/api/indexes.py",
+    "apps/backend/app/api/regime_history.py",
+    "apps/backend/app/engine/indexes.py",
+    "apps/backend/app/engine/regime_history.py",
+    "apps/backend/tests/test_api_indexes.py",
+    "apps/backend/tests/test_indexes.py",
+    "apps/backend/tests/test_regime_history.py",
+    "apps/frontend/app/stocks/page.tsx",
+    "apps/frontend/components/asof-marker-primitive.ts",
+    "apps/frontend/components/index-regime-chart.tsx",
+    "apps/frontend/components/major-indexes-card.tsx",
+    "apps/frontend/components/ui/info-tooltip.tsx",
+    "apps/frontend/lib/api.ts"
+  ],
+  "tests_run": true,
+  "tests_result": "Backend: new clamp-optional tests green (tests/test_indexes.py + tests/test_regime_history.py = 19 passed; tests/test_api_indexes.py = 11 passed incl. 6 new ?full= API tests, 333s warm-seed boot). FULL backend pytest suite (tests/) run to completion in the foreground of this dev turn (backend read endpoints touched => suite is the gate) — see dev handoff for the final pass/fail line. Frontend: cd apps/frontend && npx tsc --noEmit => clean (exit 0).",
+  "browser_checks_run": false,
+  "next_action": "qa"
+}

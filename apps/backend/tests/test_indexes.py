@@ -315,3 +315,104 @@ def test_as_of_before_history_yields_honest_empty_series(tmp_path):
         from app.engine.scanner import AsOfError
         with pytest.raises(AsOfError):
             compute_index_series(session, as_of="2026-01-01", range_key="all", config=cfg)
+
+
+# --- J-49: clamp-optional (full-history) serving on the index series ------------------------------
+# When full=True the engine widens the SERVED window to include bars dated AFTER the resolved as-of
+# (display-only market context behind the dashboard's vertical as-of marker), while default (full=False)
+# stays byte-identical to today. The overlapping <= D portion is value-identical between modes (the
+# rebase base / range start is unchanged) — same single compute path, only the upper bound moves.
+
+
+def test_full_mode_includes_bars_after_asof_through_latest(tmp_path):
+    cfg = _cfg(tmp_path)
+    engine = _engine_with_bars()
+    closes = [100.0, 110.0, 120.0, 130.0, 140.0, 150.0]  # Jan 1..6
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", closes)
+        session.commit()
+        # as-of Jan 3, but full mode -> the post-as-of bars Jan 4..6 are served as display-only context.
+        full = compute_index_series(
+            session, as_of="2026-01-03", range_key="all", config=cfg, full=True
+        )
+
+    pts = full["series"][0]["points"]
+    # the whole stored path through the latest date (Jan 6) is served, NOT clamped at Jan 3
+    assert [p["date"] for p in pts] == [
+        "2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05", "2026-01-06"
+    ]
+    # the response still echoes the RESOLVED as-of (Jan 3) — the client draws the vertical marker from it
+    assert full["asof_date"] == "2026-01-03"
+    # rebased at Jan 1 (base 100): 0,10,20,30,40,50
+    assert [p["pct"] for p in pts] == [0.0, 10.0, 20.0, 30.0, 40.0, 50.0]
+
+
+def test_full_mode_default_is_byte_identical_clamped(tmp_path):
+    """The default (full=False, param absent) request is byte-for-byte unchanged — a regression pin so
+    every existing consumer (and the stock-detail-fed default) is untouched."""
+    cfg = _cfg(tmp_path)
+    engine = _engine_with_bars()
+    closes = [100.0, 110.0, 120.0, 130.0, 140.0, 150.0]
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", closes)
+        session.commit()
+        # the param ABSENT and full=False must both produce the same clamped result
+        absent = compute_index_series(session, as_of="2026-01-03", range_key="all", config=cfg)
+        explicit_false = compute_index_series(
+            session, as_of="2026-01-03", range_key="all", config=cfg, full=False
+        )
+    assert absent == explicit_false
+    # and it is exactly the clamped (<= Jan 3) series
+    assert [p["date"] for p in absent["series"][0]["points"]] == [
+        "2026-01-01", "2026-01-02", "2026-01-03"
+    ]
+
+
+def test_full_and_default_value_identical_on_overlapping_range(tmp_path):
+    """No second compute path: the overlapping <= D portion of the full series is value-identical to the
+    default clamped series (same rebase base, same stored bars, same normalization)."""
+    cfg = _cfg(tmp_path)
+    engine = _engine_with_bars()
+    closes = [100.0, 110.0, 99.0, 120.0, 121.0, 132.0]
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", closes)
+        _insert_bars(session, "QQQ", [50.0, 55.0, 60.0, 60.0, 66.0, 72.0])
+        session.commit()
+        clamped = compute_index_series(session, as_of="2026-01-03", range_key="all", config=cfg)
+        full = compute_index_series(
+            session, as_of="2026-01-03", range_key="all", config=cfg, full=True
+        )
+
+    clamped_by_sym = {s["symbol"]: s["points"] for s in clamped["series"]}
+    full_by_sym = {s["symbol"]: s["points"] for s in full["series"]}
+    assert set(clamped_by_sym) == set(full_by_sym)
+    for sym, clamped_pts in clamped_by_sym.items():
+        # the full series' leading portion (dates <= Jan 3) equals the clamped series exactly
+        overlap = [p for p in full_by_sym[sym] if p["date"] <= "2026-01-03"]
+        assert overlap == clamped_pts
+
+
+def test_full_mode_still_omits_barless_symbol(tmp_path):
+    """Honest omission is unchanged in full mode — a configured symbol with no stored bars (DIA/QQQ)
+    is still omitted, never synthesized."""
+    cfg = _cfg(tmp_path)
+    engine = _engine_with_bars()
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", [100.0, 101.0, 102.0])
+        session.commit()  # QQQ + DIA have no bars
+        full = compute_index_series(
+            session, as_of="2026-01-02", range_key="all", config=cfg, full=True
+        )
+    symbols = [s["symbol"] for s in full["series"]]
+    assert symbols == ["SPY"]
+    assert "DIA" not in symbols and "QQQ" not in symbols
+
+
+def test_full_mode_unknown_range_still_raises(tmp_path):
+    cfg = _cfg(tmp_path)
+    engine = _engine_with_bars()
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", [100.0, 101.0])
+        session.commit()
+        with pytest.raises(UnknownRangeError):
+            compute_index_series(session, as_of=None, range_key="bogus", config=cfg, full=True)

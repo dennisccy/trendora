@@ -9,19 +9,27 @@ import type {
   Time,
 } from "lightweight-charts";
 
+import { AsOfMarkerPrimitive } from "@/components/asof-marker-primitive";
 import { RegimeBandPrimitive } from "@/components/regime-band-primitive";
 import { formatIsoDate } from "@/lib/dates";
 import { familyColor, familyLabel, regimeFamily, RISK_FAMILIES } from "@/lib/regime";
 import type { IndexSeries, RegimePoint } from "@/lib/api";
 
 /**
- * The J-44 "Major indexes & regime" chart body: normalized-% index lines over soft market-regime
+ * The J-44 / J-49 "Major indexes & regime" chart body: normalized-% index lines over soft market-regime
  * background bands, with a hover tooltip showing the `yyyy-MM-dd` date, each index's % value, and the
  * exact stored regime label + score for that date.
  *
  * It RE-FORMATS server values only: the % lines are the server-computed `series` (no client return math),
  * and the bands + tooltip read the stored regime points via the SAME `lib/regime` mapping the stock-detail
  * chart uses (coherence: same date ⇒ same band color everywhere). It computes no regime and no return.
+ *
+ * J-49 (full-history dashboard context): this surface receives the FULL stored path (the card requests
+ * `full=true`), so the lines AND regime bands render through the latest stored date regardless of the
+ * global as-of — the bands are NOT clipped at the as-of here (unlike the stock-detail chart, J-45, which
+ * stays clamped). While a historical date is selected, a clearly visible vertical as-of marker is drawn
+ * at D (the J-20 as-of-divider treatment) so "where am I viewing" stays unmistakable; the post-D segment
+ * is display-only context. At the latest date no marker is drawn (the full series already ends at D).
  *
  * Line colors come from the DESIGN SYSTEM palette tokens (globals.css), cycled per series; the legend
  * mirrors that order so a line and its legend swatch always match.
@@ -53,10 +61,17 @@ export function IndexRegimeChart({
   series,
   regimePoints,
   asofDate,
+  isHistorical = false,
 }: {
   series: IndexSeries[];
   regimePoints: RegimePoint[];
-  asofDate: string; // the resolved as-of D — bands never paint past it (no-lookahead)
+  // The resolved as-of D. J-49: on THIS full-history surface it is the MARKER POSITION (the vertical
+  // as-of divider is drawn at D while historical) — NOT a band clip. The bands paint through the latest
+  // stored date here; only the stock-detail chart (J-45) clamps its bands at the as-of.
+  asofDate: string;
+  // True when a historical date is selected — drives whether the vertical as-of marker is drawn. At the
+  // latest date it is false, so no marker appears (the full series already ends at D).
+  isHistorical?: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
@@ -111,9 +126,12 @@ export function IndexRegimeChart({
         },
       });
 
-      // Regime bands behind the lines — the SAME primitive + mapping as the stock-detail chart (J-45),
-      // clipped at the as-of date so nothing paints in a post-as-of region (no-lookahead). Attached to
-      // the FIRST line series (any series shares the same time scale).
+      // Regime bands behind the lines — the SAME primitive + mapping as the stock-detail chart so the
+      // same date shows the same band color everywhere (coherence). J-49: on THIS surface the bands are
+      // NOT clipped at the as-of — they paint through the latest stored date (passing `null` as the clip
+      // bound), so the full market path stays visible. The post-D segment is display-only context; the
+      // vertical as-of marker (below) shows where D sits. Attached to the FIRST line series (any series
+      // shares the same time scale).
       const lineSeries: ISeriesApi<"Line">[] = [];
       series.forEach((s, index) => {
         const line = chart!.addSeries(lwc.LineSeries, {
@@ -131,10 +149,18 @@ export function IndexRegimeChart({
       if (regimePoints.length > 0 && lineSeries[0]) {
         const bandPrimitive = new RegimeBandPrimitive();
         lineSeries[0].attachPrimitive(bandPrimitive);
-        bandPrimitive.setData(
-          regimePoints.filter((point) => point.date <= asofDate),
-          asofDate,
-        );
+        // null clip ⇒ the last band extends to the right edge (full history), no clamp at the as-of.
+        bandPrimitive.setData(regimePoints, null);
+      }
+
+      // J-49: a clearly visible vertical as-of divider at D while historical (the J-20 `--warn` family
+      // from the price chart), so "where am I viewing" stays unmistakable as the market path extends past
+      // D. No marker at the latest date (the full series already ends at D — the card reads exactly as
+      // J-44). Attached to the first line series so it shares the time scale.
+      if (isHistorical && lineSeries[0]) {
+        const marker = new AsOfMarkerPrimitive();
+        lineSeries[0].attachPrimitive(marker);
+        marker.setData(asofDate, token("--warn"), `as-of ${formatIsoDate(asofDate)}`);
       }
 
       // Tooltip: on crosshair move, surface the date, each index % (from the series data at that time),
@@ -175,7 +201,7 @@ export function IndexRegimeChart({
       chart?.remove();
       setTooltip(null);
     };
-  }, [series, regimePoints, asofDate, regimeByDate]);
+  }, [series, regimePoints, asofDate, regimeByDate, isHistorical]);
 
   return (
     <div className="space-y-3">

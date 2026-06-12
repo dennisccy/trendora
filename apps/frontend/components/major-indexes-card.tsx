@@ -23,11 +23,16 @@ import {
  * switcher and an enable toggle (default ON, persisted client-side, fully hides the card when off).
  *
  * Single source of truth: the % series come from `GET /api/indexes` (computed server-side) and the
- * regime bands from `GET /api/regime-history` (stored labels/scores) — both at the SAME as-of, so a
- * historical global as-of renders no bar and no band dated after D. The frontend recomputes nothing.
+ * regime bands from `GET /api/regime-history` (stored labels/scores). For THIS surface (J-49) both are
+ * requested in FULL mode (`full=true`) — the whole stored market path through the latest date renders
+ * regardless of the global as-of, so the user keeps the market's whole context while browsing
+ * historically. The server still echoes the resolved `asof_date`; when a historical date is selected the
+ * chart draws a vertical as-of marker at D and the post-D segment is DISPLAY-ONLY context (it feeds no
+ * as-of-scoped value). At the latest date the full series == the clamped series, so no marker is drawn.
+ * The frontend recomputes nothing (the % series and stored regime are read verbatim).
  */
 export function MajorIndexesCard() {
-  const { asOf } = useAsOf();
+  const { asOf, isHistorical } = useAsOf();
   // The enable toggle is a client display preference (default ON, persisted) — when OFF the card is
   // fully hidden except a compact "show" affordance so the user can bring it back.
   const [enabled, setEnabled] = usePersistedToggle("trendora.dashboard.indexCard", true);
@@ -42,9 +47,13 @@ export function MajorIndexesCard() {
     const controller = new AbortController();
     setStatus("loading");
     const asof = asOf ?? undefined;
+    // J-49: this surface always requests FULL history (full=true) so the whole stored market path is
+    // visible regardless of the global as-of; the server still echoes the resolved as-of for the marker.
     Promise.all([
-      fetchIndexes(rangeKey ?? undefined, asof, controller.signal),
-      fetchRegimeHistory(asof, controller.signal).catch(() => ({ asof_date: "", points: [] as RegimePoint[] })),
+      fetchIndexes(rangeKey ?? undefined, asof, controller.signal, true),
+      fetchRegimeHistory(asof, controller.signal, true).catch(
+        () => ({ asof_date: "", points: [] as RegimePoint[] }),
+      ),
     ])
       .then(([ix, rh]) => {
         setIndexes(ix);
@@ -124,6 +133,7 @@ export function MajorIndexesCard() {
             series={indexes.series}
             regimePoints={regimePoints}
             asofDate={indexes.asof_date}
+            isHistorical={isHistorical}
           />
         ) : null}
         {status === "empty" ? (

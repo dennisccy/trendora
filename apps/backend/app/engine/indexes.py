@@ -29,7 +29,7 @@ from typing import Optional
 from sqlmodel import Session
 
 from app.config import Config, IndexRangePreset, get_config
-from app.engine.prices import bars_asof
+from app.engine.prices import bars_asof, bars_through_latest
 from app.engine.scanner import resolve_as_of_date
 
 
@@ -67,6 +67,7 @@ def compute_index_series(
     as_of: Optional[str] = None,
     range_key: Optional[str] = None,
     config: Optional[Config] = None,
+    full: bool = False,
 ) -> dict:
     """Normalized-% display series for the config-listed index ETFs over the selected range preset.
 
@@ -85,9 +86,19 @@ def compute_index_series(
 
     Each series is rebased to its FIRST bar in the range (`pct = (close/base - 1) * 100`), so the first
     point is exactly 0.0% and all lines share one scale. A configured symbol with no bar in the range is
-    omitted entirely (no `series` entry → no legend). Bars are read via `bars_asof` (date <= resolved),
-    so no future-dated bar appears. Raises `AsOfError` for an invalid as-of and `UnknownRangeError` for
-    an unknown range key — never a fabricated row/range."""
+    omitted entirely (no `series` entry → no legend). Raises `AsOfError` for an invalid as-of and
+    `UnknownRangeError` for an unknown range key — never a fabricated row/range.
+
+    `full` (J-49 — clamp-optional, dashboard card only): when `False` (the default — every existing
+    consumer, incl. the stock-detail-fed path) bars are read via `bars_asof` (date <= resolved), so NO
+    future-dated bar appears — byte-identical to before. When `True` the SERVED upper bound widens to the
+    symbol's full stored path (`bars_through_latest`), so post-as-of bars render as DISPLAY-ONLY market
+    context behind the dashboard's vertical as-of marker. It is the SAME compute path: same range start
+    (lower bound), same rebase base (the first in-range bar), same normalization — only the upper bound
+    moves, so the overlapping `<= resolved` portion is value-identical between modes. The response still
+    echoes the resolved `asof_date` (the client draws the marker from it). This widened window is
+    presentation-only; it feeds no as-of-scoped computed value (anti-goal: Full-history market context
+    never looks ahead)."""
     cfg = config or get_config()
     resolved = resolve_as_of_date(session, as_of, cfg)
     preset = _resolve_preset(cfg, range_key)
@@ -95,7 +106,12 @@ def compute_index_series(
 
     series: list[dict] = []
     for entry in cfg.index_chart.symbols:
-        bars = bars_asof(session, entry.symbol, resolved)
+        # full mode serves the whole stored path (display-only context past D); default clamps at <= D.
+        bars = (
+            bars_through_latest(session, entry.symbol)
+            if full
+            else bars_asof(session, entry.symbol, resolved)
+        )
         if start is not None:
             bars = [bar for bar in bars if bar.date >= start]
         if not bars:

@@ -33,7 +33,10 @@ from app.models import ScannerRun
 
 
 def get_regime_history(
-    session: Session, as_of: Optional[str] = None, config: Optional[Config] = None
+    session: Session,
+    as_of: Optional[str] = None,
+    config: Optional[Config] = None,
+    full: bool = False,
 ) -> dict:
     """The stored per-date market-regime series, bounded to dates `<= the resolved as-of date`.
 
@@ -48,17 +51,25 @@ def get_regime_history(
         }
 
     Every point's `label` + `score` is the verbatim stored value from the immutable `ScannerRun` for
-    that date (read once at scan time, never recomputed). No row dated after the resolved as-of date is
-    ever returned (no-lookahead). An as-of predating all runs yields an honest empty `points` list (no
-    crash, no fabricated rows). Raises `AsOfError` (mapped to an HTTP 4xx/503 by the API layer) for an
-    unparseable / future / before-history as-of — never a fabricated date."""
+    that date (read once at scan time, never recomputed). An as-of predating all runs yields an honest
+    empty `points` list (no crash, no fabricated rows). Raises `AsOfError` (mapped to an HTTP 4xx/503 by
+    the API layer) for an unparseable / future / before-history as-of — never a fabricated date.
+
+    `full` (J-49 — clamp-optional, dashboard card only): when `False` (the default — the stock-detail
+    regime-band consumer keeps it, J-45) no row dated after the resolved as-of date is returned (no
+    lookahead; bands must not render past the as-of). When `True` the ENTIRE stored per-run series
+    through the latest run is returned, so post-as-of regime bands render as DISPLAY-ONLY market context
+    behind the dashboard's vertical as-of marker. Either way the labels/scores are the SAME verbatim
+    stored values (nothing recomputed — there is no second path) and the resolved `asof_date` is still
+    echoed (the client draws the marker from it), so the overlapping `<= resolved` portion is
+    value-identical between modes."""
     cfg = config or get_config()
     resolved = resolve_as_of_date(session, as_of, cfg)
-    rows = session.exec(
-        select(ScannerRun)
-        .where(ScannerRun.asof_date <= resolved)
-        .order_by(ScannerRun.asof_date)
-    ).all()
+    stmt = select(ScannerRun).order_by(ScannerRun.asof_date)
+    if not full:
+        # default: clamp at the resolved as-of (no band past D — J-45 stock-detail consumer keeps this)
+        stmt = stmt.where(ScannerRun.asof_date <= resolved)
+    rows = session.exec(stmt).all()
     points = [
         {
             "date": run.asof_date.isoformat(),

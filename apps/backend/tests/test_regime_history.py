@@ -117,3 +117,58 @@ def test_as_of_before_any_run_yields_empty_points():
 
     assert result["asof_date"] == "2026-01-02"
     assert result["points"] == []
+
+
+# --- J-49: clamp-optional (full-history) serving on the regime series -----------------------------
+# full=True returns the ENTIRE stored per-run regime series (labels + scores VERBATIM, never
+# recomputed) through the latest run, while still echoing the resolved as-of (the client draws the
+# vertical marker from it). Default (full=False) stays clamped at the as-of (the stock-detail consumer
+# keeps it — J-45). The overlapping <= D portion is value-identical between modes (no second path).
+
+
+def test_full_mode_includes_runs_after_asof_through_latest():
+    engine = _engine()
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", 10)
+        _insert_run(session, date(2026, 1, 1), "Risk-off", 12.0)
+        _insert_run(session, date(2026, 1, 3), "Choppy", 48.0)
+        _insert_run(session, date(2026, 1, 5), "Risk-on", 70.0)  # AFTER the as-of below
+        session.commit()
+        result = get_regime_history(session, as_of="2026-01-03", full=True)
+
+    # full mode serves the whole stored series through the latest run (Jan 5), NOT clamped at Jan 3
+    assert [p["date"] for p in result["points"]] == ["2026-01-01", "2026-01-03", "2026-01-05"]
+    # the resolved as-of is still echoed verbatim (the marker position D)
+    assert result["asof_date"] == "2026-01-03"
+    # labels/scores are the verbatim stored values — nothing recomputed
+    assert result["points"][2] == {"date": "2026-01-05", "label": "Risk-on", "score": 70.0}
+
+
+def test_full_mode_default_is_byte_identical_clamped():
+    engine = _engine()
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", 10)
+        _insert_run(session, date(2026, 1, 1), "Risk-off", 12.0)
+        _insert_run(session, date(2026, 1, 3), "Choppy", 48.0)
+        _insert_run(session, date(2026, 1, 5), "Risk-on", 70.0)
+        session.commit()
+        absent = get_regime_history(session, as_of="2026-01-03")
+        explicit_false = get_regime_history(session, as_of="2026-01-03", full=False)
+    assert absent == explicit_false
+    # default stays clamped at the as-of (the stock-detail consumer — J-45 — keeps this)
+    assert [p["date"] for p in absent["points"]] == ["2026-01-01", "2026-01-03"]
+
+
+def test_full_and_default_value_identical_on_overlapping_range():
+    """No second path: the <= D portion of the full series equals the clamped series exactly."""
+    engine = _engine()
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", 10)
+        _insert_run(session, date(2026, 1, 1), "Risk-off", 12.0)
+        _insert_run(session, date(2026, 1, 3), "Choppy", 48.25)
+        _insert_run(session, date(2026, 1, 5), "Risk-on", 70.5)
+        session.commit()
+        clamped = get_regime_history(session, as_of="2026-01-03")
+        full = get_regime_history(session, as_of="2026-01-03", full=True)
+    overlap = [p for p in full["points"] if p["date"] <= "2026-01-03"]
+    assert overlap == clamped["points"]

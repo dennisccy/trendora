@@ -64,7 +64,12 @@ export function InfoTooltip({
         aria-label={label}
         aria-expanded={open}
         aria-describedby={open ? panelId : undefined}
-        onClick={() => setPinned((value) => !value)}
+        // Stop the click from bubbling to an enclosing interactive control (e.g. a sortable column
+        // header): opening a definition tooltip must never trigger that control's action (J-48 / iter-6).
+        onClick={(event) => {
+          event.stopPropagation();
+          setPinned((value) => !value);
+        }}
         onFocus={() => setTransient(true)}
         onBlur={() => setTransient(false)}
         className={cn(

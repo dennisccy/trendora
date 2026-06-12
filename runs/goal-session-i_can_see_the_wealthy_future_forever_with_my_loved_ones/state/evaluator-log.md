@@ -132,3 +132,20 @@ pump). Bundle the nested-button fix (info affordance as a sibling of the sort bu
 non-button trigger) and have QA assert the /stocks dev-overlay badge is gone and an info-icon click
 no longer changes the sort. Then iter-7 → J-51+J-52, iter-8 → J-53 at full depth + the deferred
 one-shot J-22/J-23/J-24 + DIA best-effort fetch.
+
+## Iteration 6 — goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-6
+
+**Date:** 2026-06-12T12:49:57+01:00
+**Verdict:** CONTINUE
+**Depth dispatched:** lean
+**Journey deltas:**
+- Newly passing: J-49 (full-history dashboard card + as-of marker; one optional ?full= param on the same two endpoints, default byte-identical)
+- Newly failing: none
+- Regressed: none
+- Re-verified passing: J-13, J-20, J-44 (re-judged under amended acceptance), J-45, J-48 (post SortHeader restructure; iter-5 nested-button defect fixed, dev-overlay error badge gone)
+- Still failing (not built): J-51, J-52, J-53
+- Anti-goal violations: none (full-history rendering is the blessed display-only exception; corroborated by unchanged regime panel/counts at historical D + overlap value-identity tests + 691/4/0 full suite)
+
+**Reasoning:** Target J-49 passed all six goal.md steps with evaluator-viewed, md5-checked captures (marker at D historical, no marker at latest, NVDA detail bands still clamped — J-45/J-20 contrast in one capture); backend diff inspected and matches the no-second-path contract; coherence COHERENCE-PASS; review PASS; full pytest 691/4/0 (pump-run, 45:05). Two honest gaps accepted, not hidden: J-44 toggle-persistence cycle not re-exercised (mid-session backend death + Chrome MCP cross-contamination; UT-J-44-toggle-off.png actually shows the honest "Backend unavailable" page) and J-48 second-click desc direction not captured — both carried from prior full verification on code this diff did not touch.
+
+**Next-step recommendation:** Iter-7 lean: J-51+J-52 (read-only samples endpoint family + /research/samples drill-down; count-coherence = same observation builders, total == published N; dated new-tab rows via proven J-50/J-54 mechanics; apply the un-nested SortHeader/TermInfo pattern to samples headers; backend touch => full pytest gate). Required-still-passing: J-25/J-26/J-29/J-32/J-47/J-50/J-54; opportunistically re-exercise the J-44 toggle cycle. Then iter-8 full: J-53 + one-shot J-22/J-23/J-24 + DIA fetch.
