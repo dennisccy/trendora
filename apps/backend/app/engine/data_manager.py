@@ -47,7 +47,7 @@ from app.data_providers.base import PriceProvider, ProviderUnavailableError, Rat
 from app.data_providers.seed_provider import symbol_to_filename
 from app.db import get_engine
 from app.engine import forward_testing, scanner
-from app.engine.prices import bar_cache, bars_asof, latest_data_date
+from app.engine.prices import attach_shared_cache, bar_cache, bars_asof, latest_data_date, prefilled_bar_cache
 from app.engine.universe_screen import DEFAULT_SEED_DIR, read_pool, screen_reasons
 from app.models import (
     DailyPrice,
@@ -794,10 +794,48 @@ class JobProgress:
     passers: int = 0
     omitted_total: int = 0
     omitted: list[dict] = field(default_factory=list)
+    # J-53: per-stage operational timings, recorded ONCE by the job runner per EXECUTED stage. Each
+    # entry is descriptive operational metadata (NOT a canonical score) — a stage that never ran is
+    # ABSENT from this dict (never a fabricated zero). The backfill entry additionally carries
+    # `per_date_seconds_sum` (the sum of each date's compute time), so the job's OWN payload evidences
+    # the >=~2x speedup (parallel wall-clock `elapsed_seconds` vs the sequential `per_date_seconds_sum`).
+    #   fetch:    {elapsed_seconds, items_processed (symbols ok+failed), concurrency}
+    #   backfill: {elapsed_seconds, items_processed (dates done), concurrency, per_date_seconds_sum}
+    stages: dict[str, dict] = field(default_factory=dict)
     message: str = ""
     errors: list[str] = field(default_factory=list)
     started_at: datetime = field(default_factory=_utcnow)
     finished_at: Optional[datetime] = None
+    # J-53 backfill-stage scratch (NOT serialized — internal accumulators the orchestrator fills during
+    # the backfill, read once by `_run_job` to `record_stage("backfill", ...)`): the sum of each date's
+    # per-date compute seconds (the sequential baseline the parallel wall-clock beats) and the actual
+    # concurrency the pool used (min(config workers, target dates)).
+    _backfill_per_date_seconds_sum: float = 0.0
+    _backfill_concurrency: int = 0
+
+    def record_stage(
+        self,
+        stage: str,
+        *,
+        elapsed_seconds: float,
+        items_processed: int,
+        concurrency: int,
+        per_date_seconds_sum: Optional[float] = None,
+    ) -> None:
+        """Record one EXECUTED stage's honest timings ONCE (J-53). Called by the job runner on the
+        orchestrating thread after a stage finishes (or, for a paused/failed stage, with the honest
+        partial figures for the portion that ran). `elapsed_seconds` is wall-clock; `items_processed`
+        is symbols (fetch) or dates (backfill); `concurrency` is the config pool size actually used.
+        `per_date_seconds_sum` (backfill only) is the sequential per-date baseline the parallel
+        wall-clock beats. A stage is only ever recorded when it actually ran — never fabricated."""
+        entry: dict = {
+            "elapsed_seconds": round(float(elapsed_seconds), 4),
+            "items_processed": int(items_processed),
+            "concurrency": int(concurrency),
+        }
+        if per_date_seconds_sum is not None:
+            entry["per_date_seconds_sum"] = round(float(per_date_seconds_sum), 4)
+        self.stages[stage] = entry
 
     def to_dict(self) -> dict:
         return {
@@ -820,6 +858,9 @@ class JobProgress:
             "passers": self.passers,  # J-35: candidates that passed the screen (became members)
             "omitted_total": self.omitted_total,  # J-35: exact omitted count (the list below is bounded)
             "omitted": list(self.omitted),  # J-35: bounded [{symbol, reason}] — never fabricated
+            # J-53: per-stage operational timings (fetch / backfill: elapsed, items, concurrency; backfill
+            # also per_date_seconds_sum) — only stages that actually RAN appear; absent = never ran (NA).
+            "stages": {k: dict(v) for k, v in self.stages.items()},
             "message": self.message,
             "errors": list(self.errors),
             "started_at": self.started_at.isoformat(),
@@ -1224,29 +1265,102 @@ def _run_chunked_fetch(
         _advance_checkpoint(session, checkpoint, prog, next_idx=chunk_idx + 1, status="running")
 
 
-def _do_backfill(session: Session, cfg: Config, prog: JobProgress) -> None:
-    """For each in-range trading day with bars but NO snapshot, create the immutable snapshot via the
-    EXISTING `scanner.run_scan` (create-once, bars <= D) then INSERT its realized forward returns via
-    `forward_testing.backfill_run_forward_returns` (bars > D). No scan/return math is re-implemented and
-    no snapshot is overwritten — this is pure orchestration of the registered canonical paths."""
+def _compute_one_backfill_date(
+    eng: Engine, cfg: Config, d: date_cls, shared_cache
+) -> tuple[date_cls, Optional[dict], float]:
+    """Worker body (J-53): compute ONE date's canonical snapshot payload on this worker's OWN read-only
+    session (a separate SQLite connection — concurrent readers are safe; the worker NEVER writes). Returns
+    `(d, payload, per_date_seconds)` where `payload` is None when the date already has a snapshot (the
+    create-once fast-path — nothing to compute) so the orchestrator skips the write. The worker ATTACHES
+    the orchestrator's pre-filled SHARED bar cache to its session, so each symbol's full series is loaded
+    ONCE for the whole job (the J-46 load-once-per-job guarantee, preserved under parallelism) — the
+    worker reads the shared immutable series, it does not reload bars. The engines are deterministic and
+    read the SAME bars the sequential path reads, so the payload is byte-identical to an inline compute
+    (asserted by the parallel-vs-sequential equality test). A worker exception propagates to the
+    orchestrator (surfaced as an explicit per-date failure — never a silent partial)."""
+    t0 = time.perf_counter()
+    with Session(eng) as wsession:
+        if scanner.get_run_for_date(wsession, d) is not None:
+            return d, None, time.perf_counter() - t0  # create-once: existing snapshot, no compute/overwrite
+        with attach_shared_cache(wsession, shared_cache):
+            payload = scanner.compute_run_payload(wsession, d, cfg)
+    return d, payload, time.perf_counter() - t0
+
+
+def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engine) -> None:
+    """For each in-range trading day with bars but NO snapshot, create the immutable snapshot then INSERT
+    its realized forward returns (bars > D). No scan/return math is re-implemented and no snapshot is
+    overwritten — pure orchestration of the registered canonical paths.
+
+    J-53 — the per-date COMPUTE (the expensive scoring engines) is fanned out to a bounded pool of
+    `backfill_workers` threads (each worker on its OWN read-only session — pure compute, no DB write),
+    while THIS orchestrating thread owns EVERY write: it persists each computed payload via the create-
+    once/idempotent `scanner.persist_run_payload`, then INSERTs forward returns — both on `session`,
+    serially, in date order. So SQLite writes stay serialized/transactional, snapshots stay create-once/
+    concurrency-safe (J-41 guards intact), and the parallel output is byte-identical to the sequential
+    path (the worker engines read the same bars). With `backfill_workers == 1` this is the sequential
+    baseline (still correct). The stage's per-stage timings are recorded ONCE by the caller (`_run_job`)
+    from the figures this populates: `prog._backfill_per_date_seconds_sum` accumulates each date's
+    compute time (the sequential baseline the parallel wall-clock beats)."""
     trading_days = _trading_days(session, cfg)
     snapshot_dates = set(session.exec(select(ScannerRun.asof_date)).all())
     targets = [d for d in trading_days if prog.start <= d <= prog.end and d not in snapshot_dates]
     prog.dates_total = len(targets)
     prog.message = f"snapshots {prog.dates_done}/{prog.dates_total} dates"
-    # J-46 (Capability 33): activate the load-once bar cache for this READ-ONLY multi-date snapshot loop
-    # so each symbol's full series is loaded ONCE for the whole job (not once per `run_scan` per date).
-    # The cache dies with the `with` block; any prior fetch stage that ADDED bars ran outside it (the
-    # fetch loop is a separate stage), so no read sees a stale series. Canonical outputs are identical
-    # (run_scan reads the SAME bars, just sliced in memory) — asserted by the cached-vs-uncached test.
-    with bar_cache(session):
-        for d in targets:
-            run = scanner.run_scan(session, d, cfg)  # create-once; recomputes nothing
-            result = forward_testing.backfill_run_forward_returns(session, run, cfg)  # INSERT-only, bars > D
-            prog.snapshots_created += 1
-            prog.forward_returns_inserted += result["rows_inserted"]
-            prog.dates_done += 1
-            prog.message = f"snapshots {prog.dates_done}/{prog.dates_total} dates"
+    workers = cfg.data_manager.import_chunking.backfill_workers  # config pool size (No magic numbers)
+    prog._backfill_concurrency = min(workers, len(targets)) if targets else workers
+    prog._backfill_per_date_seconds_sum = 0.0
+    if not targets:
+        return
+
+    def _persist(d: date_cls, payload: Optional[dict], per_date_seconds: float) -> None:
+        """Apply ONE date's result on the orchestrating thread (serial, in date order): persist the
+        snapshot (or read the existing one — create-once) then INSERT its forward returns. The ONLY
+        place a write happens. The pre-filled SHARED cache on THIS session keeps the forward-return reads
+        (and the rare race-fallback compute) load-once."""
+        prog._backfill_per_date_seconds_sum += per_date_seconds
+        if payload is None:
+            run = scanner.get_run_for_date(session, d)  # already present (worker fast-path) — read, don't write
+            if run is None:  # a concurrent date created it between the worker check and here — compute now
+                run = scanner.run_scan(session, d, cfg)
+        else:
+            run = scanner.persist_run_payload(session, d, payload, cfg)  # create-once; recomputes nothing
+        result = forward_testing.backfill_run_forward_returns(session, run, cfg)  # INSERT-only, bars > D
+        prog.snapshots_created += 1
+        prog.forward_returns_inserted += result["rows_inserted"]
+        prog.dates_done += 1
+        prog.message = f"snapshots {prog.dates_done}/{prog.dates_total} dates"
+
+    # J-46/J-53: pre-fill ONE shared bar cache on the orchestrating session (every symbol's full series
+    # loaded ONCE in one query). Workers ATTACH this same cache (read-only) so the whole K-date job does
+    # at most one bar-store load per symbol — load-once-per-job, not once per date NOR once per worker.
+    # The orchestrator's own forward-return reads + the race-fallback run_scan also read from it.
+    with prefilled_bar_cache(session) as shared_cache:
+        if workers <= 1 or len(targets) <= 1:
+            # serial baseline (workers=1) — compute + persist inline, one date at a time, in order.
+            for d in targets:
+                _, payload, secs = _compute_one_backfill_date(eng, cfg, d, shared_cache)
+                _persist(d, payload, secs)
+            return
+        # PARALLEL: fan out the per-date compute; persist results IN DATE ORDER on this thread as they
+        # arrive (a worker exception surfaces here via future.result() — an explicit per-date failure,
+        # never a deadlock; the `with ThreadPoolExecutor` joins every worker before returning, so no
+        # thread outlives the job — the iter-28 determinism lesson).
+        pending: dict[date_cls, tuple[Optional[dict], float]] = {}
+        next_idx = 0
+        with ThreadPoolExecutor(max_workers=min(workers, len(targets))) as pool:
+            future_to_date = {
+                pool.submit(_compute_one_backfill_date, eng, cfg, d, shared_cache): d for d in targets
+            }
+            for future in as_completed(future_to_date):
+                d, payload, secs = future.result()  # propagate a worker exception as an explicit failure
+                pending[d] = (payload, secs)
+                # drain any now-contiguous prefix in target (date) order, so writes are strictly ordered.
+                while next_idx < len(targets) and targets[next_idx] in pending:
+                    cur = targets[next_idx]
+                    cur_payload, cur_secs = pending.pop(cur)
+                    _persist(cur, cur_payload, cur_secs)
+                    next_idx += 1
 
 
 # --------------------------------------------------------------------------------------------------
@@ -1490,6 +1604,10 @@ def _persist_run(engine: Engine, cfg: Config, prog: JobProgress) -> None:
         # NOT a recompute of any canonical score/return/bucket). Present only for an expand kind.
         "passers": prog.passers if prog.kind in _EXPAND_KINDS else None,
         "omitted_total": prog.omitted_total if prog.kind in _EXPAND_KINDS else None,
+        # J-53: the per-stage operational timings on the permanent audit row (descriptive metadata, NOT a
+        # canonical score) so a completed job's timings survive past the in-memory registry. Only stages
+        # that actually ran are present (a stage that never ran is absent — never a fabricated zero).
+        "stages": {k: dict(v) for k, v in prog.stages.items()},
         "summary": _final_summary(prog),
     }
     with Session(engine) as session:
@@ -1558,6 +1676,7 @@ def _run_job(
     try:
         with Session(eng) as session:
             if prog.kind in _FETCH_KINDS or is_expand:
+                _fetch_t0 = time.perf_counter()  # J-53: fetch-stage wall-clock (honest even on a pause/fail)
                 live = provider if provider is not None else _resolve_live_provider(cfg, prog.source, api_key)
                 if is_expand:
                     pool = read_pool(seed_dir)  # the committed candidate pool (raises if not built — explicit)
@@ -1594,6 +1713,15 @@ def _run_job(
                     session, cfg, prog, live, chunks=chunks, checkpoint=checkpoint,
                     scrub=scrub, sleep_fn=sleep_fn, start_chunk=start_chunk,
                 )
+                # J-53: record the fetch-stage timing ONCE — honest for the portion that ran (a paused/
+                # failed fetch records its elapsed + the symbols it DID process; `items_processed` = the
+                # symbols accounted ok+failed, `concurrency` = the config fetch pool size).
+                prog.record_stage(
+                    "fetch",
+                    elapsed_seconds=time.perf_counter() - _fetch_t0,
+                    items_processed=prog.symbols_ok + prog.symbols_failed,
+                    concurrency=cfg.data_manager.import_chunking.fetch_workers,
+                )
                 if prog.status == "resumable":
                     paused = True  # graceful pause — checkpoint already persisted resumable
                 elif not is_expand:
@@ -1619,7 +1747,19 @@ def _run_job(
                 elif checkpoint is not None:
                     _finalize_checkpoint(session, checkpoint, prog)  # expand fully done → terminal checkpoint
             if not paused and prog.kind in _BACKFILL_KINDS:
-                _do_backfill(session, cfg, prog)
+                _backfill_t0 = time.perf_counter()  # J-53: backfill-stage wall-clock (parallel)
+                _do_backfill(session, cfg, prog, eng=eng)
+                # J-53: record the backfill-stage timing ONCE — elapsed wall-clock, dates processed, the
+                # concurrency the pool actually used, and the SUM of per-date compute seconds (the
+                # sequential baseline the parallel wall-clock beats — so the >=~2x speedup is evidenced
+                # by the job's OWN payload: elapsed_seconds vs per_date_seconds_sum).
+                prog.record_stage(
+                    "backfill",
+                    elapsed_seconds=time.perf_counter() - _backfill_t0,
+                    items_processed=prog.dates_done,
+                    concurrency=prog._backfill_concurrency,
+                    per_date_seconds_sum=prog._backfill_per_date_seconds_sum,
+                )
         if not paused:
             prog.status = _final_status(prog)
     except Exception as exc:  # noqa: BLE001 — any failure must surface as an explicit failed job (scrubbed)

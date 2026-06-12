@@ -35,6 +35,7 @@ _CFG = {
             "symbol_batch_size": 25, "date_window_days": 90, "max_retries": 4,
             "backoff_base_seconds": 1.0, "backoff_cap_seconds": 30.0, "inter_request_sleep_seconds": 0.0,
             "fetch_workers": 4,  # J-46: bounded parallel fetch-pool size (>= 1)
+            "backfill_workers": 4,  # J-53: bounded parallel backfill-pool size (>= 1)
         },
     },
     "universe": {"symbols": ["AAA", "BBB"], "filters": {"min_market_cap": 1, "min_dollar_vol": 1, "min_price": 1}},

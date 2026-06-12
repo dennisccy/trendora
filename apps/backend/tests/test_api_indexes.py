@@ -1,9 +1,10 @@
 """API tests for GET /api/indexes and GET /api/regime-history (J-44 + J-45 / Capability 37).
 
 Served-from-storage read paths over the real committed seed:
-  - /api/indexes serves config-listed normalized-% series rebased to the range start, with DIA (a
-    bar-less configured symbol) honestly omitted from the series + legend; unknown range -> 422; the
-    series equals the engine output (no recompute drift); as-of bounds the series.
+  - /api/indexes serves config-listed normalized-% series rebased to the range start, with each legend
+    symbol that HAS committed bars present (DIA's one-shot seed is now committed — iter-8 J-44 leg — so
+    it renders; a bar-less legend symbol stays honestly omitted, proven in test_indexes.py); unknown
+    range -> 422; the series equals the engine output (no recompute drift); as-of bounds the series.
   - /api/regime-history serves the stored per-run label/score verbatim, bounded to the resolved as-of.
 """
 from __future__ import annotations
@@ -27,7 +28,7 @@ def _earliest_and_latest_run_dates(session):
     return dates[0], dates[-1]
 
 
-def test_api_indexes_equals_engine_and_omits_barless_dia(loaded_engine):
+def test_api_indexes_equals_engine_and_includes_committed_dia(loaded_engine):
     cfg = load_config()
     with Session(loaded_engine) as session:
         expected = compute_index_series(session, as_of=None, range_key=None, config=cfg)
@@ -38,8 +39,8 @@ def test_api_indexes_equals_engine_and_omits_barless_dia(loaded_engine):
     assert served == expected  # no recompute drift — served value == engine value
 
     symbols = [s["symbol"] for s in served["series"]]
-    # the config lists SPY/QQQ/IWM/RSP/DIA; DIA has no seed bars -> honestly omitted
-    assert "DIA" not in symbols
+    # the config lists SPY/QQQ/IWM/RSP/DIA; DIA's one-shot seed is now committed (iter-8) -> it renders.
+    assert "DIA" in symbols  # the J-44 DIA legend leg, now data-backed
     assert "SPY" in symbols
     # default range comes from config
     assert served["range"]["key"] == cfg.index_chart.default_range

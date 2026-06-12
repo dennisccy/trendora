@@ -44,14 +44,20 @@ def _utcnow() -> datetime:
 
 
 def all_seed_symbols(config: Config) -> list[str]:
-    """Every symbol that should have a committed price fixture (stocks + ETFs + ^VIX),
-    de-duplicated and order-preserving."""
+    """Every symbol that should have a committed price fixture (stocks + ETFs + ^VIX + the J-44
+    index-chart legend symbols), de-duplicated and order-preserving.
+
+    The `index_chart.symbols` legend set (J-44) is included so a committed bar fixture for a legend-only
+    symbol (e.g. DIA, after its one-shot fetch) is loaded into `daily_prices` and rendered in the chart.
+    A legend symbol with NO committed CSV is simply skipped by `load_prices` (a missing fixture is not a
+    failure) and stays honestly omitted from the chart — so listing it here never data-gates the boot."""
     symbols: list[str] = []
     symbols += list(config.universe.symbols)
     symbols += list(config.etfs.index)
     symbols += list(config.etfs.sector.keys())
     symbols += list(config.etfs.industry)
     symbols += list(config.etfs.volatility)
+    symbols += [entry.symbol for entry in config.index_chart.symbols]  # J-44 legend (DIA, etc.)
     seen: set[str] = set()
     ordered: list[str] = []
     for sym in symbols:

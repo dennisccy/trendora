@@ -78,6 +78,28 @@ function statusVariant(status: string): "ok" | "warn" | "danger" | "accent" | "d
 // existing coverage/range/run-table call sites read clearly.
 const fmtDate = formatIsoDate;
 
+/** J-53: human-readable seconds for the per-stage job timings. Pure DISPLAY formatting of a number the
+ *  backend already computed (the frontend derives no figure beyond rounding for display): sub-second →
+ *  milliseconds, otherwise seconds with one decimal, rolling into "Xm Ys" past a minute. */
+function fmtDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "—";
+  if (seconds < 1) return `${Math.round(seconds * 1000)}ms`;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return `${m}m ${s}s`;
+}
+
+/** J-53: the backfill speedup factor read from the job's OWN timings — the sequential per-date sum
+ *  divided by the parallel wall-clock. Returns null when either figure is missing/zero (honest NA —
+ *  never a fabricated ratio). DISPLAY-only: the frontend re-formats two backend numbers, it computes
+ *  no canonical value. */
+function speedupFactor(sumSeconds: number | undefined, elapsedSeconds: number): number | null {
+  if (sumSeconds === undefined || !Number.isFinite(sumSeconds) || sumSeconds <= 0) return null;
+  if (!Number.isFinite(elapsedSeconds) || elapsedSeconds <= 0) return null;
+  return sumSeconds / elapsedSeconds;
+}
+
 /**
  * J-42: a locale-proof, validated ISO `yyyy-MM-dd` TEXT input for the `/data` job/removal forms — the
  * replacement for the four native `<input type="date">` pickers (whose rendered widget output is
@@ -1160,6 +1182,81 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
   );
 }
 
+/** J-53: the per-stage operational timings block on the job card — fetch vs backfill, each with elapsed
+ *  wall-clock, items processed (symbols / dates), and the concurrency used; the backfill stage also
+ *  shows the per-date-sum vs wall-clock so the ≥~2× speedup is readable. This is PURE re-formatting of
+ *  `job.stages` (the backend computed every figure; this renders no derived value beyond display
+ *  formatting). A stage that never ran is ABSENT from `job.stages`, so it simply does not render (NA
+ *  honesty — no fabricated zero). New stat labels carry J-47 `TermInfo` tooltips reading the
+ *  config-backed glossary; each tooltip trigger is a SIBLING of the label text, never nested in a
+ *  clickable affordance (iter-5 lesson). */
+function StageTimings({ job }: { job: DataJob }) {
+  const stages = job.stages ?? {};
+  const fetchStage = stages.fetch;
+  const backfillStage = stages.backfill;
+  if (!fetchStage && !backfillStage) return null; // no executed stage yet → nothing honest to show
+
+  const speedup = backfillStage
+    ? speedupFactor(backfillStage.per_date_seconds_sum, backfillStage.elapsed_seconds)
+    : null;
+
+  return (
+    <div className="space-y-2 rounded-md border border-border bg-surface-2 p-3" data-testid="stage-timings">
+      <p className="flex items-center gap-1 text-xs font-medium text-text-muted">
+        <span>Stage timings</span>
+        <TermInfo term="stage timings" />
+      </p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {fetchStage ? (
+          <div className="space-y-1" data-testid="stage-timing-fetch">
+            <p className="text-xs font-medium text-text">Fetch</p>
+            <dl className="num grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs text-text-muted">
+              <dt>Elapsed</dt>
+              <dd className="text-right text-text">{fmtDuration(fetchStage.elapsed_seconds)}</dd>
+              <dt>Symbols</dt>
+              <dd className="text-right text-text">{fetchStage.items_processed}</dd>
+              <dt className="flex items-center gap-1">
+                Concurrency
+                <TermInfo term="concurrency" />
+              </dt>
+              <dd className="text-right text-text">{fetchStage.concurrency}×</dd>
+            </dl>
+          </div>
+        ) : null}
+        {backfillStage ? (
+          <div className="space-y-1" data-testid="stage-timing-backfill">
+            <p className="text-xs font-medium text-text">Backfill</p>
+            <dl className="num grid grid-cols-2 gap-x-2 gap-y-0.5 text-xs text-text-muted">
+              <dt>Elapsed</dt>
+              <dd className="text-right text-text">{fmtDuration(backfillStage.elapsed_seconds)}</dd>
+              <dt>Dates</dt>
+              <dd className="text-right text-text">{backfillStage.items_processed}</dd>
+              <dt className="flex items-center gap-1">
+                Concurrency
+                <TermInfo term="concurrency" />
+              </dt>
+              <dd className="text-right text-text">{backfillStage.concurrency}×</dd>
+              {backfillStage.per_date_seconds_sum !== undefined ? (
+                <>
+                  <dt>Per-date sum</dt>
+                  <dd className="text-right text-text">
+                    {fmtDuration(backfillStage.per_date_seconds_sum)}
+                  </dd>
+                </>
+              ) : null}
+            </dl>
+            {speedup !== null ? (
+              <p className="num text-xs text-pos" data-testid="backfill-speedup">
+                {speedup.toFixed(1)}× faster than the per-date sum
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 function JobProgressPanel({
   job,
   sources,
@@ -1267,6 +1364,8 @@ function JobProgressPanel({
             </p>
           </div>
         ) : null}
+
+        <StageTimings job={job} />
 
         {isExpand ? <ExpandScreenResult job={job} /> : null}
 

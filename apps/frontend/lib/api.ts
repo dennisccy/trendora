@@ -1382,6 +1382,18 @@ export interface ExpandOmission {
   reason: string;
 }
 
+/** J-53: one EXECUTED stage's operational timings (descriptive metadata, NOT a canonical score). Only
+ *  stages that actually ran are present in `DataJob.stages` — a stage that never ran is ABSENT (NA),
+ *  never a fabricated zero. `items_processed` is symbols (fetch) or dates (backfill); `concurrency` is
+ *  the config pool size used; `per_date_seconds_sum` (backfill only) is the sequential per-date baseline
+ *  the parallel `elapsed_seconds` is measured against (the >=~2x speedup is read from the two figures). */
+export interface JobStageTiming {
+  elapsed_seconds: number;
+  items_processed: number;
+  concurrency: number;
+  per_date_seconds_sum?: number; // backfill only — the sum of per-date compute times (the serial baseline)
+}
+
 /** Live progress for one fetch/backfill job (polled from the in-memory job registry). `status` is
  *  running | ok | partial | failed | "resumable" (J-34: a rate-limited graceful pause). Counters are
  *  the live progress; `chunk_index`/`chunk_total` are the J-34 chunked-fetch progress (both 0 / absent
@@ -1407,6 +1419,7 @@ export interface DataJob {
   passers?: number; // J-35 expand: candidates that passed the screen (became universe members)
   omitted_total?: number; // J-35 expand: EXACT omitted count (the list below is bounded)
   omitted?: ExpandOmission[]; // J-35 expand: bounded [{symbol, reason}] — never fabricated
+  stages?: Record<string, JobStageTiming>; // J-53: per-stage timings (only EXECUTED stages present)
   message: string;
   errors: string[];
   started_at: string;

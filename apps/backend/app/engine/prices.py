@@ -16,6 +16,7 @@ Also provides the tiny ascending-series extractors the indicator functions consu
 from __future__ import annotations
 
 import bisect
+import threading
 from contextlib import contextmanager
 from datetime import date as date_cls
 from typing import Iterator, Optional
@@ -48,25 +49,55 @@ def latest_data_date(session: Session) -> Optional[date_cls]:
 # The default per-request read path (no active context) is completely unchanged.
 # --------------------------------------------------------------------------------------------------
 class _BarCache:
-    """A per-session memo of each symbol's FULL date-ordered series, loaded once on first request."""
+    """A per-session memo of each symbol's FULL date-ordered series, loaded once on first request.
+
+    A cache may be SHARED read-only across threads (J-53: the parallel multi-date backfill pre-fills one
+    cache on the orchestrating session, then every worker session reads bars from that SAME pre-loaded
+    cache so each symbol's series is loaded ONCE for the whole job — the J-46 load-once-per-job
+    guarantee, preserved under parallelism). A small lock guards the lazy-load mutation so a symbol NOT
+    pre-loaded (defensive) is still loaded exactly once even if two workers race for it; once `prefill`
+    has loaded every symbol up front, the hot path is a pure lock-free read of immutable lists."""
 
     def __init__(self) -> None:
         self._by_symbol: dict[str, list[DailyPrice]] = {}
         self._dates_by_symbol: dict[str, list[date_cls]] = {}
+        self._load_lock = threading.Lock()
+
+    def prefill(self, session: Session) -> None:
+        """Load EVERY symbol's full date-ordered series ONCE, in ONE query, on `session` (the
+        orchestrating thread, before any worker fan-out). After this, a shared read across worker
+        threads needs no further bar-store load — so a K-date parallel backfill loads each symbol once
+        for the whole job (J-46), not once per worker session. Same rows/order as the lazy path: ordered
+        by (symbol, date); the (symbol, date) unique constraint guarantees no ties."""
+        stmt = select(DailyPrice).order_by(DailyPrice.symbol, DailyPrice.date)
+        by_symbol: dict[str, list[DailyPrice]] = {}
+        for bar in session.exec(stmt).all():
+            by_symbol.setdefault(bar.symbol, []).append(bar)
+        # publish atomically under the lock so a concurrent reader sees a fully-built map, not a partial.
+        with self._load_lock:
+            for symbol, full in by_symbol.items():
+                if symbol not in self._by_symbol:  # never overwrite a series already loaded
+                    self._by_symbol[symbol] = full
+                    self._dates_by_symbol[symbol] = [bar.date for bar in full]
 
     def bars_asof(self, session: Session, symbol: str, d: date_cls) -> list[DailyPrice]:
         full = self._by_symbol.get(symbol)
         if full is None:
-            # one ordered query for the symbol's WHOLE series — the SAME ordering today's bars_asof uses
-            # (order by date; the (symbol, date) unique constraint guarantees no ties), just unbounded by d.
-            stmt = (
-                select(DailyPrice)
-                .where(DailyPrice.symbol == symbol)
-                .order_by(DailyPrice.date)
-            )
-            full = list(session.exec(stmt).all())
-            self._by_symbol[symbol] = full
-            self._dates_by_symbol[symbol] = [bar.date for bar in full]
+            # lazy load (defensive — a pre-filled cache rarely reaches here): guard the mutation so a
+            # shared cache loads a missing symbol exactly once even under concurrent worker access.
+            with self._load_lock:
+                full = self._by_symbol.get(symbol)
+                if full is None:
+                    # one ordered query for the symbol's WHOLE series — the SAME ordering today's
+                    # bars_asof uses (order by date; the unique constraint guarantees no ties).
+                    stmt = (
+                        select(DailyPrice)
+                        .where(DailyPrice.symbol == symbol)
+                        .order_by(DailyPrice.date)
+                    )
+                    full = list(session.exec(stmt).all())
+                    self._by_symbol[symbol] = full
+                    self._dates_by_symbol[symbol] = [bar.date for bar in full]
         # slice `date <= d` from the ascending series: bisect_right gives the count of dates <= d, so the
         # returned list equals `[bar for bar in full if bar.date <= d]` exactly (same rows, same order).
         cut = bisect.bisect_right(self._dates_by_symbol[symbol], d)
@@ -75,7 +106,13 @@ class _BarCache:
 
 # Registry keyed by id(session) — a cache is consulted by `bars_asof` ONLY while its session's context
 # is active. id(session) is stable for a live session object; the context removes its own entry on exit.
+# The registry is guarded by a lock so the J-53 parallel backfill — where several worker threads, each
+# with its OWN session, enter/exit a `bar_cache` context concurrently — registers/clears its (distinct)
+# keys without racing on the shared dict. Each session keys a SEPARATE cache (distinct `id(session)`),
+# so a per-session `_BarCache` is still only ever touched by its own single thread (no shared mutation
+# of a cache instance) — the lock guards only the registry dict's insert/lookup/pop.
 _BAR_CACHES: dict[int, _BarCache] = {}
+_BAR_CACHES_LOCK = threading.Lock()
 
 
 @contextmanager
@@ -88,20 +125,61 @@ def bar_cache(session: Session) -> Iterator[_BarCache]:
     data-mutating stage. Re-entrant for the SAME session: a nested context reuses the outer cache (so a
     backfill that nests sub-loops shares one load); only the OUTERMOST exit clears it.
 
+    Thread-safe registry (J-53): the insert/lookup/pop of the shared `_BAR_CACHES` dict is lock-guarded
+    so concurrent backfill workers (each on its OWN session ⇒ a distinct key) never race the dict; a
+    given session's `_BarCache` is still only ever read/written by that session's single owning thread.
+
     USE ONLY around READ-ONLY multi-date snapshot loops (`_do_backfill`, the warm-up cadence): a stage
     that ADDS bars must run outside the context so a later read never sees a stale cached series."""
     key = id(session)
-    existing = _BAR_CACHES.get(key)
+    with _BAR_CACHES_LOCK:
+        existing = _BAR_CACHES.get(key)
+        if existing is None:
+            cache = _BarCache()
+            _BAR_CACHES[key] = cache
+        else:
+            cache = existing
     if existing is not None:
         # already cached for this session (re-entrant / nested) — reuse it; the outer context owns cleanup
         yield existing
         return
-    cache = _BarCache()
-    _BAR_CACHES[key] = cache
     try:
         yield cache
     finally:
-        _BAR_CACHES.pop(key, None)
+        with _BAR_CACHES_LOCK:
+            _BAR_CACHES.pop(key, None)
+
+
+@contextmanager
+def prefilled_bar_cache(session: Session) -> Iterator[_BarCache]:
+    """Like `bar_cache`, but PRE-FILLS every symbol's full series up front in ONE query (J-53). Returns
+    the cache so it can be SHARED with worker sessions via `attach_shared_cache` — so a parallel
+    multi-date backfill loads each symbol ONCE for the whole job (the J-46 load-once-per-job guarantee),
+    not once per worker session. The orchestrating thread owns this context; workers only READ the
+    pre-loaded immutable series."""
+    with bar_cache(session) as cache:
+        cache.prefill(session)
+        yield cache
+
+
+@contextmanager
+def attach_shared_cache(session: Session, cache: _BarCache) -> Iterator[None]:
+    """Bind an EXISTING (pre-filled) `_BarCache` to `session`'s id for the `with` block so this session's
+    `bars_asof` reads the SHARED pre-loaded series (J-53 worker side) — no extra bar-store load. The
+    shared cache's series are immutable after `prefill`, so concurrent worker reads are safe; the lazy-
+    load lock covers the rare un-prefilled symbol. The orchestrating context owns the cache's lifetime;
+    this only registers/unregisters the worker session's view of it."""
+    key = id(session)
+    with _BAR_CACHES_LOCK:
+        had = key in _BAR_CACHES
+        if not had:
+            _BAR_CACHES[key] = cache
+    try:
+        yield
+    finally:
+        if not had:
+            with _BAR_CACHES_LOCK:
+                _BAR_CACHES.pop(key, None)
 
 
 def bars_asof(session: Session, symbol: str, d: date_cls) -> list[DailyPrice]:

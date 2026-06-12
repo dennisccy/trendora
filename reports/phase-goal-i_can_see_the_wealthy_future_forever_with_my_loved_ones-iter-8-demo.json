@@ -1,0 +1,110 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-8",
+  "base_url": "http://localhost:3835",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Dashboard — five-index market chart",
+      "narration": "The main dashboard now tracks five major indexes at once. Alongside the familiar S&P 500, Nasdaq 100, Russell 2000, and Equal-Weight S&P 500, the Dow 30 (DIA) is plotted as a fifth line so you can see how the oldest and most-watched benchmark fits into the current regime.",
+      "point_out": "Five distinct colored lines in the 'Major indexes & regime' chart, with 'Dow 30 (DIA)' appearing as the fifth legend entry.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Dow 30 (DIA)" }
+    },
+    {
+      "n": 2,
+      "title": "Dashboard — DIA legend entry confirmed",
+      "narration": "The chart legend makes each line easy to read at a glance. 'Dow 30 (DIA)' is written out in full so you know immediately which line represents the Dow Jones Industrial Average — no ticker decoding required.",
+      "point_out": "The legend row reading 'Dow 30 (DIA)' with its distinct color swatch, clearly distinguishable from the other four index entries.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "S&P 500 (SPY)" }
+    },
+    {
+      "n": 3,
+      "title": "Data Manager — stage timings on a completed job",
+      "narration": "Every completed data job now shows a 'Stage timings' panel that breaks down exactly where the time was spent. You can see the wall-clock elapsed time, how many dates or symbols were processed, and how many worker threads ran in parallel — all on the job card itself.",
+      "point_out": "The 'Stage timings' section on the completed job card, with a Backfill sub-block showing Elapsed, Dates, Concurrency, Per-date sum, and the speed-up ratio line.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Stage timings" }
+    },
+    {
+      "n": 4,
+      "title": "Data Manager — Backfill sub-block detail",
+      "narration": "The Backfill sub-block shows the concrete benefit of parallel processing: 'Per-date sum' tells you how long all the dates would have taken if run one by one, while 'Elapsed' shows the actual wall-clock time with workers running in parallel.",
+      "point_out": "The Backfill sub-block with Elapsed, Dates, Concurrency, Per-date sum, and the speed-up ratio, all showing real non-zero values from the last completed job.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Per-date sum" }
+    },
+    {
+      "n": 5,
+      "title": "Data Manager — 'Stage timings' tooltip",
+      "narration": "Not sure what 'Stage timings' means? Click the small info icon right next to the heading and a plain-language definition pops up on the spot — no need to navigate away to the glossary.",
+      "point_out": "The tooltip panel that appears after clicking the info icon, showing a readable definition of 'stage timings' in place.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": { "css": "button[aria-label='Definition of stage timings']" }
+      },
+      "expect": { "text": "Per-stage operational timings" }
+    },
+    {
+      "n": 6,
+      "title": "Data Manager — 'Concurrency' tooltip",
+      "narration": "The 'Concurrency' stat label inside each stage block also carries its own info icon. One click explains exactly how many worker threads are running in parallel and why that matters for job speed.",
+      "point_out": "The tooltip showing the definition of 'concurrency', appearing inline next to the stat it describes.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": { "css": "button[aria-label='Definition of concurrency']" }
+      },
+      "expect": { "text": "worker threads" }
+    },
+    {
+      "n": 7,
+      "title": "Methodology — new glossary terms",
+      "narration": "The Methodology glossary has been updated with two new entries — 'stage timings' and 'concurrency' — so the definitions are also discoverable outside the job card for anyone who wants to read them in context.",
+      "point_out": "Both 'stage timings' and 'concurrency' listed in the glossary with their full definitions, in the UNIVERSE & DATA category.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/methodology" },
+      "expect": { "text": "stage timings" }
+    },
+    {
+      "n": 8,
+      "title": "Methodology — concurrency definition in glossary",
+      "narration": "Scrolling through the glossary confirms the 'concurrency' entry with its full definition, matching the tooltip you saw on the job card. The same authoritative copy is used in both places — no risk of the tooltip and the glossary saying different things.",
+      "point_out": "'concurrency' as a named glossary entry with a multi-sentence definition explaining parallel worker threads, immediately following the 'stage timings' entry.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/methodology" },
+      "expect": { "text": "concurrency" }
+    }
+  ]
+}

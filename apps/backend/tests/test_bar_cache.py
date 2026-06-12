@@ -166,33 +166,52 @@ def seed_engine(tmp_path_factory):
 
 
 def test_kdate_backfill_loads_each_symbol_at_most_once(seed_engine, monkeypatch):
-    """The J-46 crux: a K-date (K >= 3) backfill over seed data loads each symbol's bar series AT MOST
-    ONCE for the WHOLE job — proven by instrumenting `_BarCache` to record each full-series load and
+    """The J-46/J-53 crux: a K-date (K >= 3) PARALLEL backfill over seed data loads each symbol's bar
+    series AT MOST ONCE for the WHOLE job — not once per date NOR once per worker — proven by counting
+    every full-series bar-store load (the orchestrator's `prefill` up front + any lazy load) and
     asserting no symbol is loaded twice, while >= K dates are scanned (without the cache each symbol
-    would be loaded >= K times)."""
+    would be loaded >= K times). The shared pre-filled cache is what preserves load-once under the
+    parallel build (workers READ the orchestrator's pre-loaded immutable series)."""
     engine, cfg, trading = seed_engine
     # three CONSECUTIVE gap dates (no snapshot yet) → K = 3
     r_start, r_end = trading[200], trading[202]
     in_range = [d for d in trading if r_start <= d <= r_end]
     assert len(in_range) >= 3  # K >= 3
+    # ensure the parallel path is actually exercised (workers > 1 over a >1-date range).
+    assert cfg.data_manager.import_chunking.backfill_workers > 1
 
-    # instrument the bar-store load point: count how many times each symbol's full series is loaded
+    # instrument EVERY full-series bar-store load — both the eager `prefill` and the lazy `bars_asof`
+    # fallback push rows into `_by_symbol`, so a per-symbol DB query is exactly an entry appearing there.
     load_counts: dict[str, int] = {}
+    lock = __import__("threading").Lock()
     orig_bars_asof = prices._BarCache.bars_asof
+    orig_prefill = prices._BarCache.prefill
+
+    def _count(symbol):
+        with lock:
+            load_counts[symbol] = load_counts.get(symbol, 0) + 1
 
     def _counting_bars_asof(self, session, symbol, d):
-        if symbol not in self._by_symbol:  # a real bar-store load is about to happen for this symbol
-            load_counts[symbol] = load_counts.get(symbol, 0) + 1
+        if symbol not in self._by_symbol:  # a real lazy bar-store load is about to happen
+            _count(symbol)
         return orig_bars_asof(self, session, symbol, d)
 
+    def _counting_prefill(self, session):
+        before = set(self._by_symbol)
+        orig_prefill(self, session)
+        for symbol in self._by_symbol:
+            if symbol not in before:  # newly loaded by this prefill
+                _count(symbol)
+
     monkeypatch.setattr(prices._BarCache, "bars_asof", _counting_bars_asof)
+    monkeypatch.setattr(prices._BarCache, "prefill", _counting_prefill)
 
     job = create_job("backfill", r_start, r_end)
     summary = run_data_job(job.job_id, config=cfg, engine=engine)
     assert summary["status"] == "ok"
     assert summary["snapshots_created"] == len(in_range)  # K snapshots created over K dates
     assert load_counts, "the bar cache should have loaded at least one symbol"
-    # the invariant: NO symbol is loaded more than once for the whole K-date job
+    # the invariant: NO symbol is loaded more than once for the whole K-date PARALLEL job
     assert max(load_counts.values()) == 1
     assert all(c == 1 for c in load_counts.values())
 

@@ -71,6 +71,12 @@ data_manager:
     fetch_workers: 4                 # J-46: bounded parallel fetch pool size (>= 1; 1 = serial). Per-chunk
                                      # the symbol batch fetches on this many worker threads (network I/O
                                      # only — DB writes stay serialized on the orchestrating thread).
+    backfill_workers: 4              # J-53: bounded parallel BACKFILL pool size (>= 1; 1 = serial). The
+                                     # multi-date snapshot backfill fans the per-date COMPUTE out to this
+                                     # many worker threads (each on its OWN read-only session — pure
+                                     # compute, no DB write), while the orchestrating thread owns every
+                                     # snapshot/forward-return WRITE serially (so SQLite writes stay
+                                     # serialized/transactional and snapshots stay create-once/identical).
 
 # ----------------------------------------------------------------------------------------
 # Datastore. Engine URL from config so SQLite -> Postgres is a config-only switch.
@@ -1110,6 +1116,14 @@ methodology:
       category: universe_data
       definition: "The ticker for the volatility index in the symbols set — it has bars (so it appears in coverage) but is NEVER a universe member or scored name; it feeds the regime score only."
       where: "Data Manager coverage."
+    - term: "stage timings"
+      category: universe_data
+      definition: "Per-stage operational timings on a fetch+backfill job — for each stage that actually ran (fetch, backfill): the elapsed wall-clock, the items processed (symbols for fetch, dates for backfill), and the concurrency used. The backfill stage also shows the per-date-sum, so the multi-date backfill's parallel wall-clock can be read against the sequential per-date baseline. Descriptive job metadata only — never a canonical score; a stage that never ran is shown NA, never a fabricated zero."
+      where: "Data Manager job card."
+    - term: "concurrency"
+      category: universe_data
+      definition: "How many worker threads a job stage used in parallel — the fetch pool fetches symbols concurrently (network I/O), and the multi-date backfill computes per-date snapshots concurrently while all database writes stay serialized on one thread. The pool sizes come from config (fetch_workers / backfill_workers); 1 means serial. A higher backfill concurrency is what makes the multi-date backfill finish materially faster than the per-date sum."
+      where: "Data Manager job card stage timings."
     # --- Forward-testing & Evidence -------------------------------------------------------
     - term: "forward return"
       category: forward_evidence

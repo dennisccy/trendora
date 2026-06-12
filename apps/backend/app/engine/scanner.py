@@ -53,16 +53,17 @@ def get_run_for_date(session: Session, asof: date_cls) -> Optional[ScannerRun]:
     return session.scalar(select(ScannerRun).where(ScannerRun.asof_date == asof))
 
 
-def run_scan(session: Session, asof: date_cls, config: Optional[Config] = None) -> ScannerRun:
-    """Persist (or return the existing) immutable snapshot for `asof`. Calls the canonical engines
-    once; stores faithful copies. Idempotent + immutable — a second call for the same date never
-    creates a duplicate and never mutates the stored rows."""
+def compute_run_payload(session: Session, asof: date_cls, config: Optional[Config] = None) -> dict:
+    """Run the canonical engines ONCE for `asof` and return their outputs as a plain dict — the PURE
+    COMPUTE half of `run_scan`, with NO write to `session` (no `add`/`flush`/`commit`).
+
+    Factored out so the J-53 parallel multi-date backfill can fan the (expensive) per-date COMPUTE out
+    to worker threads — each worker calling this on its OWN read-only session — while the orchestrating
+    thread owns every DB write via `persist_run_payload`. The engines read every bar through `bars_asof`
+    (the J-46 cache seam) and are deterministic, so a payload computed on a worker session is byte-
+    identical to one computed inline (asserted by the parallel-vs-sequential equality test). It
+    RECOMPUTES NOTHING beyond the single canonical engine call each value already comes from."""
     cfg = config or get_config()
-
-    existing = get_run_for_date(session, asof)
-    if existing is not None:
-        return existing  # immutable: never re-create or overwrite an existing run
-
     # Canonical engines — each called ONCE for `asof`. No scoring math is reimplemented here.
     regime = score_regime(session, asof, cfg)
     sector_result = score_sectors(session, asof, cfg)
@@ -71,6 +72,34 @@ def run_scan(session: Session, asof: date_cls, config: Optional[Config] = None) 
     # candidate counts: READ from the SINGLE canonical derivation (counts the per-stock setup
     # statuses) — never recomputed from a second formula here.
     candidate_counts = summarize_candidates(stock_result["rows"])
+    return {
+        "regime": regime,
+        "sector_result": sector_result,
+        "theme_result": theme_result,
+        "stock_result": stock_result,
+        "candidate_counts": candidate_counts,
+    }
+
+
+def persist_run_payload(
+    session: Session, asof: date_cls, payload: dict, config: Optional[Config] = None
+) -> ScannerRun:
+    """Persist (or return the existing) immutable snapshot for `asof` from an already-computed
+    `payload` (the output of `compute_run_payload`). The WRITE-ONLY half of `run_scan`: it owns the
+    create-once / idempotent / concurrency-safe guards (the unique-`asof_date` flush + commit
+    IntegrityError resolution) but performs NO scoring compute, so it can run on the orchestrating
+    thread with a payload a worker computed elsewhere. Stores faithful copies — recomputes nothing."""
+    cfg = config or get_config()
+
+    existing = get_run_for_date(session, asof)
+    if existing is not None:
+        return existing  # immutable: never re-create or overwrite an existing run
+
+    regime = payload["regime"]
+    sector_result = payload["sector_result"]
+    theme_result = payload["theme_result"]
+    stock_result = payload["stock_result"]
+    candidate_counts = payload["candidate_counts"]
 
     run = ScannerRun(
         asof_date=asof,
@@ -183,6 +212,22 @@ def run_scan(session: Session, asof: date_cls, config: Optional[Config] = None) 
             return existing
         raise  # an IntegrityError NOT explained by an existing run for this date is a real error
     return run
+
+
+def run_scan(session: Session, asof: date_cls, config: Optional[Config] = None) -> ScannerRun:
+    """Persist (or return the existing) immutable snapshot for `asof`. Calls the canonical engines
+    once; stores faithful copies. Idempotent + immutable — a second call for the same date never
+    creates a duplicate and never mutates the stored rows.
+
+    Now a thin compose of the two halves (`compute_run_payload` then `persist_run_payload`) — the
+    SAME behavior and identical output as before (a single sequential call computes then persists on
+    the one session). The fast-path returns the existing run WITHOUT computing, exactly as before."""
+    cfg = config or get_config()
+    existing = get_run_for_date(session, asof)
+    if existing is not None:
+        return existing  # immutable: never re-create or overwrite (and never compute) an existing run
+    payload = compute_run_payload(session, asof, cfg)
+    return persist_run_payload(session, asof, payload, cfg)
 
 
 def _bootstrap(session: Session, cfg: Config) -> list[ScannerRun]:

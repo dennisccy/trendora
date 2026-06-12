@@ -1162,10 +1162,15 @@ class ImportChunkingCfg(BaseModel):
       - `fetch_workers` — the bounded parallel fetch-pool size (J-46): symbols within a chunk fetch on
                           this many worker threads (network I/O only — DB writes stay serialized on the
                           orchestrating thread). MUST be `>= 1` (1 = effectively serial, still valid).
+      - `backfill_workers` — the bounded parallel BACKFILL-pool size (J-53): the multi-date snapshot
+                          backfill fans the per-date COMPUTE out to this many worker threads (each on its
+                          own read-only session — pure compute, no DB write), while the orchestrating
+                          thread owns every snapshot/forward-return WRITE serially. MUST be `>= 1`
+                          (1 = effectively serial, the byte-identical sequential baseline — still valid).
 
-    Boot-validated: the four sizes/retries/backoff numbers MUST be positive, `fetch_workers >= 1`, and
-    `cap >= base`; the inter-request sleep MUST be `>= 0` (a zero polite delay is valid). An invalid block
-    raises `ConfigError`, never a silent default."""
+    Boot-validated: the four sizes/retries/backoff numbers MUST be positive, `fetch_workers >= 1`,
+    `backfill_workers >= 1`, and `cap >= base`; the inter-request sleep MUST be `>= 0` (a zero polite
+    delay is valid). An invalid block raises `ConfigError`, never a silent default."""
 
     model_config = ConfigDict(extra="allow")
     symbol_batch_size: int
@@ -1175,6 +1180,7 @@ class ImportChunkingCfg(BaseModel):
     backoff_cap_seconds: float
     inter_request_sleep_seconds: float
     fetch_workers: int
+    backfill_workers: int
 
     @model_validator(mode="after")
     def _validate(self) -> "ImportChunkingCfg":
@@ -1191,6 +1197,10 @@ class ImportChunkingCfg(BaseModel):
         if self.fetch_workers < 1:
             raise ValueError(
                 "data_manager.import_chunking.fetch_workers must be >= 1 (1 = serial, still valid)"
+            )
+        if self.backfill_workers < 1:
+            raise ValueError(
+                "data_manager.import_chunking.backfill_workers must be >= 1 (1 = serial, still valid)"
             )
         if self.inter_request_sleep_seconds < 0:
             raise ValueError(

@@ -16,6 +16,10 @@ faster, so an operator can see the pipeline's speed at any time:
     for the whole job, asserted in ``tests/test_bar_cache.py``) is the deterministic J-46 evidence; this
     wall-clock ratio is advisory and K-dependent. Default K is chosen past the crossover for the seed.
   * Stage C — FORWARD RETURNS: ``backfill_forward_returns`` over the cadence (single timing).
+  * Stage D — MULTI-DATE BACKFILL job (J-53): the real ``run_data_job`` backfill, serial
+    (``backfill_workers: 1``) vs the config parallel pool, over the SAME K dates on a fresh temp DB
+    each. Reports the job's own ``per_date_seconds_sum`` so the ≥~2× speedup is visible as the
+    sequential per-date sum vs the parallel wall-clock — advisory only, never a CI wall-clock gate.
 
 Everything runs against a THROWAWAY temp DB loaded from the committed seed — it NEVER touches the live
 host DB (``apps/backend/data/trendora.db``) or the committed ``data/seed/`` tree, and it computes nothing
@@ -134,6 +138,41 @@ def _time_scan_stage(cfg, engine, dates) -> dict:
     return timings
 
 
+def _time_backfill_stage(cfg, dates) -> dict:
+    """J-53: time the MULTI-DATE snapshot backfill JOB — sequential (backfill_workers=1) vs the config
+    parallel pool — over the SAME K dates, on a fresh temp DB each so neither run reuses the other's
+    snapshots. Runs the real `run_data_job` backfill path (compute fanned out, writes serialized) so the
+    measured wall-clock is exactly what the job's own stage timings report. Also returns the job's own
+    `per_date_seconds_sum` from the parallel run so the ratio (sum vs wall-clock) is visible."""
+    from app.engine.data_manager import create_job, run_data_job  # local import — same module family
+
+    timings: dict = {}
+    extra: dict = {}
+    seq_workers = 1
+    par_workers = cfg.data_manager.import_chunking.backfill_workers
+    r_start, r_end = dates[0], dates[-1]
+    for label, workers in (("serial (workers=1)", seq_workers), (f"pool (workers={par_workers})", par_workers)):
+        ic = cfg.data_manager.import_chunking.model_copy(update={"backfill_workers": workers})
+        run_cfg = cfg.model_copy(
+            update={"data_manager": cfg.data_manager.model_copy(update={"import_chunking": ic})}
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            eng = make_engine(f"sqlite:///{Path(tmp) / 'backfill.db'}")
+            create_db_and_tables(eng)
+            load_seed(eng, run_cfg)
+            job = create_job("backfill", r_start, r_end)
+            t0 = time.perf_counter()
+            summary = run_data_job(job.job_id, config=run_cfg, engine=eng)
+            timings[label] = time.perf_counter() - t0
+            stage = summary.get("stages", {}).get("backfill", {})
+            extra[label] = {
+                "dates_done": summary.get("dates_done"),
+                "per_date_seconds_sum": stage.get("per_date_seconds_sum"),
+                "concurrency": stage.get("concurrency"),
+            }
+    return {"timings": timings, "extra": extra}
+
+
 def _time_forward_returns(cfg) -> float:
     """Time backfill_forward_returns over the cadence on a fresh temp DB (single timing)."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -185,6 +224,7 @@ def main() -> int:
     print(f"fetch stage symbols:     {len(fetch_symbols)} (artificial {args.fetch_latency_ms:.0f} ms/symbol latency)")
     print(f"scan stage dates (K):    {len(scan_dates)}  {[d.isoformat() for d in scan_dates]}")
     print(f"fetch_workers (config):  {cfg.data_manager.import_chunking.fetch_workers}")
+    print(f"backfill_workers (cfg):  {cfg.data_manager.import_chunking.backfill_workers}")
 
     fetch_timings = _time_fetch_stage(cfg, fetch_symbols, args.fetch_latency_ms / 1000.0)
     _print_table("Stage A — symbol FETCH (serial vs parallel pool)", fetch_timings)
@@ -195,16 +235,29 @@ def main() -> int:
     fr_time = _time_forward_returns(cfg)
     _print_table("Stage C — FORWARD RETURNS (cadence backfill)", {"backfill_forward_returns": fr_time})
 
+    # J-53: the multi-date backfill JOB — sequential per-date sum vs the parallel pool (the real win).
+    backfill = _time_backfill_stage(cfg, scan_dates)
+    _print_table(
+        f"Stage D — MULTI-DATE BACKFILL job (serial vs parallel, {len(scan_dates)} dates)",
+        backfill["timings"],
+    )
+    for label, ex in backfill["extra"].items():
+        sumv, conc = ex.get("per_date_seconds_sum"), ex.get("concurrency")
+        if sumv is not None:
+            print(f"    {label}: per-date-sum {sumv:.3f} s · concurrency {conc}× · dates {ex.get('dates_done')}")
+
     if args.json:
         print("\n" + json.dumps({
             "fetch": fetch_timings,
             "scan": scan_timings,
             "forward_returns": {"backfill_forward_returns": fr_time},
+            "backfill": backfill,
             "params": {
                 "dates": len(scan_dates),
                 "fetch_symbols": len(fetch_symbols),
                 "fetch_latency_ms": args.fetch_latency_ms,
                 "fetch_workers": cfg.data_manager.import_chunking.fetch_workers,
+                "backfill_workers": cfg.data_manager.import_chunking.backfill_workers,
             },
         }, indent=2))
     print("\n(advisory only — ratios matter more than absolute wall-clock; never gates CI)")
