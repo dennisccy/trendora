@@ -36,6 +36,7 @@ from app.engine.data_manager import (
     _chunk_plan,
     _missing_data_diagnostic,
     _trading_days,
+    compute_availability,
     compute_coverage,
     compute_provider_availability,
     create_job,
@@ -145,6 +146,94 @@ def test_compute_coverage_empty_db_is_all_none():
     assert cov["price_start"] is None and cov["price_end"] is None
     assert cov["symbol_count"] == 0 and cov["snapshot_count"] == 0
     assert cov["trading_day_count"] == 0 and cov["gap_count"] == 0
+
+
+# ==================================================================================================
+# J-61 — per-trading-date availability derivation (read-only descriptive metadata; same source as
+# compute_coverage — never a second derivation of a coverage figure, never a canonical recompute)
+# ==================================================================================================
+def test_compute_availability_exact_per_date_counts(coverage_engine):
+    """Exact per-trading-date availability on the coverage fixture (SPY on D1..D4, AAA on D1..D2, one
+    snapshot on D2):
+      - D1: SPY+AAA → 2 symbols, no snapshot.
+      - D2: SPY+AAA → 2 symbols, snapshot present (the fully-covered + snapshot day).
+      - D3: SPY only → 1 symbol (a SPARSE day, visually distinct from the 2-symbol days), no snapshot.
+      - D4: SPY only → 1 symbol, no snapshot.
+    total_symbols == the distinct stored-symbol universe (== compute_coverage symbol_count == 2)."""
+    engine, spy_days = coverage_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        avail = compute_availability(session, cfg)
+        cov = compute_coverage(session, cfg)
+
+    # header: total_symbols is the SAME denominator as compute_coverage's symbol_count (no second universe)
+    assert avail["total_symbols"] == cov["symbol_count"] == 2
+    # one cell per benchmark trading day — consistent with compute_coverage's trading_day_count
+    assert avail["trading_day_count"] == cov["trading_day_count"] == 4
+    cells = avail["cells"]
+    assert [c["date"] for c in cells] == [d.isoformat() for d in spy_days]  # ascending, every calendar day
+
+    by_date = {c["date"]: c for c in cells}
+    d1, d2, d3, d4 = (d.isoformat() for d in spy_days)
+    assert by_date[d1]["symbols_with_bars"] == 2 and by_date[d1]["snapshot_exists"] is False
+    assert by_date[d2]["symbols_with_bars"] == 2 and by_date[d2]["snapshot_exists"] is True  # snapshot day
+    assert by_date[d3]["symbols_with_bars"] == 1 and by_date[d3]["snapshot_exists"] is False  # SPARSE day
+    assert by_date[d4]["symbols_with_bars"] == 1 and by_date[d4]["snapshot_exists"] is False
+    # every cell carries total_symbols == the header denominator (so the UI reads "n-of-total" consistently)
+    assert all(c["total_symbols"] == 2 for c in cells)
+
+
+def test_compute_availability_consistent_with_coverage_snapshots(coverage_engine):
+    """The availability snapshot_exists flags are the SAME `ScannerRun.asof_date` set compute_coverage
+    reads — exactly the snapshot dates, and exactly the complement of the backfill gaps (no second
+    derivation of an existing coverage figure)."""
+    engine, _ = coverage_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        avail = compute_availability(session, cfg)
+        cov = compute_coverage(session, cfg)
+
+    snapshot_dates = set(cov["snapshot_dates"])  # ISO strings
+    gap_set = {c["date"] for c in avail["cells"] if not c["snapshot_exists"]}
+    snap_cells = {c["date"] for c in avail["cells"] if c["snapshot_exists"]}
+    assert snap_cells == snapshot_dates  # availability snapshot flags == coverage snapshot dates
+    # the snapshot cells and the no-snapshot cells partition the calendar; the no-snapshot ones are the gaps
+    assert snap_cells.isdisjoint(gap_set)
+    assert snap_cells | gap_set == {c["date"] for c in avail["cells"]}
+    assert cov["gap_count"] == len(gap_set)  # gap COUNT matches (no recomputed coverage figure)
+
+
+def test_compute_availability_zero_bar_trading_day_is_present_and_zero(tmp_path):
+    """A benchmark trading day with NO non-benchmark bars is represented honestly: SPY defines the
+    calendar, so a day where ONLY SPY has a bar is `symbols_with_bars == 1` — and a calendar day is NEVER
+    omitted-as-if-covered. (SPY itself is always counted, so the minimum on a real trading day is 1.)"""
+    engine = make_engine(f"sqlite:///{tmp_path / 'avail_zero.db'}")
+    create_db_and_tables(engine)
+    days = [date(2024, 2, 1), date(2024, 2, 2), date(2024, 2, 5)]
+    with Session(engine) as session:
+        for d in days:
+            session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        # a single non-benchmark bar only on the MIDDLE day → the first/last days are SPY-only (sparse)
+        session.add(DailyPrice(symbol="AAA", date=days[1], open=2.0, high=2.0, low=2.0, close=2.0, volume=2.0))
+        session.commit()
+        avail = compute_availability(session, load_config())
+
+    by_date = {c["date"]: c for c in avail["cells"]}
+    assert len(avail["cells"]) == 3  # every calendar day present — none omitted as covered
+    assert by_date[days[0].isoformat()]["symbols_with_bars"] == 1  # SPY-only (sparse), not omitted
+    assert by_date[days[1].isoformat()]["symbols_with_bars"] == 2  # SPY + AAA
+    assert by_date[days[2].isoformat()]["symbols_with_bars"] == 1  # SPY-only (sparse)
+    assert avail["total_symbols"] == 2  # distinct stored symbols = {SPY, AAA}
+
+
+def test_compute_availability_empty_db_is_empty_but_valid():
+    """An empty / bars-less DB returns an empty-but-valid payload — no fabricated cells, no synthesized
+    covered day, total_symbols 0 (mirrors the honest empty coverage payload)."""
+    engine = make_engine("sqlite:///:memory:")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        avail = compute_availability(session, load_config())
+    assert avail == {"total_symbols": 0, "trading_day_count": 0, "cells": []}
 
 
 # ==================================================================================================

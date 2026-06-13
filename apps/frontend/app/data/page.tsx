@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { useAsOf } from "@/components/asof-provider";
+import { AvailabilityHeatmap } from "@/components/availability-heatmap";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeading } from "@/components/page-heading";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +26,7 @@ import { formatIsoDate, formatIsoDateTime, isValidIsoDate, ISO_DATE_PLACEHOLDER 
 import {
   dismissUnfinishedImport,
   executeDataRemoval,
+  fetchDataAvailability,
   fetchDataCoverage,
   fetchDataJob,
   previewDataRemoval,
@@ -32,6 +34,7 @@ import {
   resumeDataJob,
   retryDataJob,
   startDataJob,
+  type AvailabilityResponse,
   type DataJob,
   type DataJobKind,
   type DataOverviewResponse,
@@ -47,6 +50,13 @@ import {
 type State =
   | { kind: "loading" }
   | { kind: "ok"; data: DataOverviewResponse }
+  | { kind: "error" };
+
+/** The per-trading-date availability heatmap (J-61) fetch state — independent of the coverage overview
+ *  so the heatmap can show its own loading/error without blocking the rest of the page. */
+type AvailabilityState =
+  | { kind: "loading" }
+  | { kind: "ok"; data: AvailabilityResponse }
   | { kind: "error" };
 
 const FIELD =
@@ -182,6 +192,7 @@ function IsoDateInput({
 export default function DataManagerPage() {
   const { refresh } = useAsOf();
   const [state, setState] = useState<State>({ kind: "loading" });
+  const [availability, setAvailability] = useState<AvailabilityState>({ kind: "loading" });
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [kind, setKind] = useState<DataJobKind>("backfill");
@@ -235,11 +246,33 @@ export default function DataManagerPage() {
       });
   }, []);
 
+  // J-61: the per-trading-date availability heatmap reads its OWN endpoint (a read-only derivation over the
+  // SAME stored bars + runs the coverage figures use). It loads on mount and re-reads after any job
+  // completes / a removal (the same reload path as coverage) so the new coverage shows. On a fetch error it
+  // shows no fabricated cells (mirrors the page's coverage "Backend unavailable" treatment).
+  const loadAvailability = useCallback((signal?: AbortSignal) => {
+    fetchDataAvailability(signal)
+      .then((data) => setAvailability({ kind: "ok", data }))
+      .catch(() => {
+        if (!signal?.aborted) setAvailability({ kind: "error" });
+      });
+  }, []);
+
   useEffect(() => {
     const controller = new AbortController();
     loadOverview(controller.signal);
+    loadAvailability(controller.signal);
     return () => controller.abort();
-  }, [loadOverview]);
+  }, [loadOverview, loadAvailability]);
+
+  // J-61: clicking a heatmap day (start == end) or shift-click range prefills the JOB FORM's Start/End —
+  // these are JOB PARAMETERS, never the global as-of control (no setAsOf call here). Marking the range as
+  // user-chosen also stops the one-time gap prefill from overwriting it.
+  const handleHeatmapPrefill = useCallback((s: string, e: string) => {
+    prefilled.current = true;
+    setStart(s);
+    setEnd(e);
+  }, []);
 
   // Default the import source to the first catalog entry (the config default_source, no-key) once the
   // catalog loads — the picker is populated from config, never a hardcoded provider list.
@@ -269,6 +302,7 @@ export default function DataManagerPage() {
             setApiKey(""); // J-33: drop the session-only key as soon as the job finishes
             refresh();
             loadOverview();
+            loadAvailability(); // J-61: re-read the heatmap so the new coverage shows after the job
           }
         })
         .catch(() => {
@@ -279,7 +313,7 @@ export default function DataManagerPage() {
       active = false;
       clearInterval(timer);
     };
-  }, [jobId, jobStatus, refresh, loadOverview, pollIntervalMs]);
+  }, [jobId, jobStatus, refresh, loadOverview, loadAvailability, pollIntervalMs]);
 
   const jobRunning = jobStatus === "running";
 
@@ -315,7 +349,8 @@ export default function DataManagerPage() {
   const onUnfinishedChanged = useCallback(() => {
     refresh();
     loadOverview();
-  }, [refresh, loadOverview]);
+    loadAvailability(); // J-61: a retry/dismiss may change stored coverage — re-read the heatmap too
+  }, [refresh, loadOverview, loadAvailability]);
 
   async function handleStart(event: React.FormEvent) {
     event.preventDefault();
@@ -375,6 +410,15 @@ export default function DataManagerPage() {
       {state.kind === "ok" ? (
         <>
           <CoveragePanel data={state.data} />
+          {/* J-61: the per-trading-date availability heatmap, near the coverage panel. It reads its own
+              endpoint + manages its own loading/error/empty; clicking a day prefills the JOB FORM dates
+              (job parameters — never the global as-of control). */}
+          <AvailabilityHeatmap
+            state={availability}
+            selectedStart={start}
+            selectedEnd={end}
+            onPrefillRange={handleHeatmapPrefill}
+          />
           <MissingDataDiagnosticPanel
             diagnostic={state.data.coverage.diagnostic}
             onPull={handlePull}
@@ -422,6 +466,7 @@ export default function DataManagerPage() {
             onRemoved={() => {
               refresh(); // the removed dates drop out of the global as-of switcher
               loadOverview(); // re-read coverage + the per-symbol table (now smaller)
+              loadAvailability(); // J-61: re-read the heatmap (the removed days drop coverage)
             }}
           />
           <RunHistoryPanel runs={state.data.runs} />

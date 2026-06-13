@@ -333,6 +333,71 @@ def compute_coverage(session: Session, config: Optional[Config] = None) -> dict:
     }
 
 
+def compute_availability(session: Session, config: Optional[Config] = None) -> dict:
+    """J-61 — the per-trading-date availability derivation. READ-ONLY descriptive metadata over the
+    SAME stored bars + stored runs `compute_coverage` reads (never a second derivation of a coverage
+    figure, never a canonical score/return/bucket/setup recompute). For EVERY benchmark (SPY) trading
+    day in `_trading_days` (the SAME calendar `compute_coverage` / the walk-forward use), emit:
+
+      - `date`               — the trading day (ISO `yyyy-MM-dd`),
+      - `symbols_with_bars`  — the DISTINCT count of symbols that have a bar ON THAT DATE (point-in-time,
+                               NOT cumulative). A zero-bar trading day is `0` — present, never omitted as
+                               if covered (honest empty-but-present).
+      - `snapshot_exists`    — whether a `ScannerRun` snapshot exists for that as-of date (the SAME
+                               `ScannerRun.asof_date` set `compute_coverage` reads for snapshot dates/gaps).
+
+    Plus the descriptive header:
+      - `total_symbols`      — the DISTINCT stored-symbol universe (== `compute_coverage`'s `symbol_count`,
+                               all priced symbols incl. ETFs + ^VIX) — the density denominator the existing
+                               coverage surfaces already use, so "3-of-158" reads against the same base.
+      - `trading_day_count`  — `len(cells)` (== `compute_coverage`'s `trading_day_count`).
+
+    Honest empty-DB behavior: an empty / bars-less DB → `cells == []`, `total_symbols == 0` (no fabricated
+    cells, never a synthesized covered day). This function computes NO canonical value; it only counts +
+    flags over the stored bars/runs."""
+    cfg = config or get_config()
+    trading_days = _trading_days(session, cfg)  # benchmark (SPY) bar dates, ascending — the SAME calendar
+    # The density denominator = the DISTINCT stored-symbol universe — identical to compute_coverage's
+    # `symbol_count` (all priced symbols incl. the benchmark/sector/industry ETFs + ^VIX), so the heatmap
+    # "n-of-total" reads against the SAME base the coverage surfaces already show (no second universe).
+    total_symbols = int(session.scalar(select(func.count(func.distinct(DailyPrice.symbol)))) or 0)
+
+    if not trading_days:
+        # Empty / bars-less DB (no benchmark calendar) → an empty-but-valid payload, no fabricated cells.
+        return {"total_symbols": total_symbols, "trading_day_count": 0, "cells": []}
+
+    # ONE grouped pass over daily_prices → {date: distinct-symbol-count-on-that-date}. Restricted to the
+    # benchmark calendar (a stored bar on a non-trading date — there should be none — never invents a cell).
+    cal_min, cal_max = trading_days[0], trading_days[-1]
+    counts_rows = session.exec(
+        select(DailyPrice.date, func.count(func.distinct(DailyPrice.symbol)))
+        .where(DailyPrice.date >= cal_min)
+        .where(DailyPrice.date <= cal_max)
+        .group_by(DailyPrice.date)
+    ).all()
+    symbols_on_date: dict[date_cls, int] = {d: int(n or 0) for d, n in counts_rows}
+
+    # The SAME snapshot/as-of date set compute_coverage reads (ScannerRun.asof_date) — no second source.
+    snapshot_set = set(session.exec(select(ScannerRun.asof_date)).all())
+
+    cells = [
+        {
+            "date": d.isoformat(),
+            # point-in-time distinct symbols WITH a bar on d (0 for a zero-bar trading day — honest, present)
+            "symbols_with_bars": symbols_on_date.get(d, 0),
+            "total_symbols": total_symbols,
+            # the SAME snapshot existence compute_coverage uses for snapshot-dates / gaps
+            "snapshot_exists": d in snapshot_set,
+        }
+        for d in trading_days
+    ]
+    return {
+        "total_symbols": total_symbols,
+        "trading_day_count": len(cells),
+        "cells": cells,
+    }
+
+
 # --------------------------------------------------------------------------------------------------
 # J-39 — seed-safe Remove-data: the seed-vs-user-added classifier + confirm-preview + destructive
 # cascade. The session's FIRST destructive data path.

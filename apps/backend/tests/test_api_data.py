@@ -23,7 +23,15 @@ from pydantic import ValidationError
 from sqlmodel import Session
 
 import app.db as db_module
-from app.api.data import JobCreate, ResumeRequest, data_overview, job_status, resume_job, start_job
+from app.api.data import (
+    JobCreate,
+    ResumeRequest,
+    data_availability,
+    data_overview,
+    job_status,
+    resume_job,
+    start_job,
+)
 from app.config import get_config
 from app.db import create_db_and_tables, make_engine
 from app.engine import data_manager
@@ -82,6 +90,38 @@ def test_get_data_overview_shape(data_api_engine):
     # availability metadata carries only the env-var NAME + a boolean + a reason — never a key value
     for s in sources:
         assert set(s) == {"id", "label", "needs_key", "env_var", "supports_market_cap", "available", "reason"}
+
+
+def test_get_data_availability_shape(data_api_engine):
+    """J-61 — GET /api/data/availability returns the per-trading-date availability payload over the SAME
+    bars `compute_coverage` reads. On the tiny fixture (two SPY days, no other symbols, no snapshots):
+    two cells (one per trading day), each SPY-only (`symbols_with_bars == 1`) with `snapshot_exists`
+    false, and `total_symbols == 1` (== the coverage symbol_count). The `/api/data` overview is unchanged."""
+    with Session(data_api_engine) as session:
+        payload = data_availability(session=session)
+        overview = data_overview(session=session)
+
+    assert set(payload) == {"total_symbols", "trading_day_count", "cells"}
+    assert payload["total_symbols"] == overview["coverage"]["symbol_count"] == 1
+    assert payload["trading_day_count"] == overview["coverage"]["trading_day_count"] == 2
+    cells = payload["cells"]
+    assert len(cells) == 2
+    for c in cells:
+        assert set(c) == {"date", "symbols_with_bars", "total_symbols", "snapshot_exists"}
+        assert c["symbols_with_bars"] == 1  # only SPY in this tiny DB
+        assert c["total_symbols"] == 1
+        assert c["snapshot_exists"] is False  # no snapshots backfilled yet
+    assert [c["date"] for c in cells] == ["2024-01-02", "2024-01-03"]  # ascending calendar order
+
+
+def test_get_data_availability_empty_db_is_graceful(tmp_path):
+    """J-61 — on an empty / bars-less DB the availability endpoint returns an empty-but-valid payload
+    (no 500, no fabricated cells), mirroring the honest empty coverage payload."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'avail_empty.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        payload = data_availability(session=session)
+    assert payload == {"total_symbols": 0, "trading_day_count": 0, "cells": []}
 
 
 def test_post_job_defaults_source_when_omitted(data_api_engine):

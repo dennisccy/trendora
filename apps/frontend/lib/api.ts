@@ -1481,6 +1481,35 @@ export async function fetchDataCoverage(signal?: AbortSignal): Promise<DataOverv
   return getJSON<DataOverviewResponse>("/api/data", signal);
 }
 
+/** J-61: one cell of the per-trading-date availability heatmap — READ-ONLY descriptive metadata derived
+ *  over the SAME stored bars + runs the coverage figures use (never a recomputed score/return). For one
+ *  benchmark trading day: the point-in-time DISTINCT count of symbols with a bar on that date (NOT
+ *  cumulative; a zero-bar day is honestly present with a low/zero count, never omitted as covered), the
+ *  density denominator (== coverage `symbol_count`), and whether an immutable snapshot exists for it. */
+export interface AvailabilityCell {
+  date: string; // yyyy-MM-dd (a benchmark trading day)
+  symbols_with_bars: number; // distinct symbols WITH a bar ON this date (point-in-time)
+  total_symbols: number; // the distinct stored-symbol universe == coverage symbol_count (the denominator)
+  snapshot_exists: boolean; // an immutable ScannerRun snapshot exists for this as-of date
+}
+
+/** J-61: the per-trading-date availability payload (GET /api/data/availability). `cells` is one entry per
+ *  benchmark trading day, ascending. An empty / bars-less DB → `cells: []`, `total_symbols: 0` (no
+ *  fabricated cells). Descriptive metadata only — no canonical value is recomputed. */
+export interface AvailabilityResponse {
+  total_symbols: number;
+  trading_day_count: number;
+  cells: AvailabilityCell[];
+}
+
+/** J-61: GET /api/data/availability — the per-trading-date availability heatmap source. Throws on a
+ *  non-200 so the `/data` page can show no figures rather than fabricated cells (mirrors the coverage
+ *  "Backend unavailable" treatment). The date inputs the heatmap PREFILLS are job parameters — selecting
+ *  a heatmap day never writes the global as-of viewing control. */
+export async function fetchDataAvailability(signal?: AbortSignal): Promise<AvailabilityResponse> {
+  return getJSON<AvailabilityResponse>("/api/data/availability", signal);
+}
+
 /** POST /api/data/jobs — start an async fetch/backfill job over a date range (the date inputs are JOB
  *  PARAMETERS, NOT a viewing as-of control). The optional J-33 `opts` carry the chosen import `source`
  *  and a SESSION-ONLY `api_key` (sent only when non-blank — never stored client-side beyond the request).

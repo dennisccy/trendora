@@ -110,6 +110,17 @@ def data_overview(session: Session = Depends(get_session)) -> dict:
     }
 
 
+@router.get("/data/availability")
+def data_availability(session: Session = Depends(get_session)) -> dict:
+    """J-61 — the per-trading-date availability heatmap source. READ-ONLY descriptive metadata: for every
+    benchmark (SPY) trading day it serves `{date, symbols_with_bars, total_symbols, snapshot_exists}`,
+    derived over the SAME stored bars + stored runs `compute_coverage` reads (never a second derivation of
+    a coverage figure, never a canonical-value recompute). An empty / bars-less DB returns an empty-but-
+    valid payload (`cells: []`, `total_symbols: 0`) — no fabricated cells, no 500. The `/api/data` overview
+    and every existing data endpoint are byte-unchanged; this is one additive read-only route."""
+    return data_manager.compute_availability(session, get_config())
+
+
 @router.post("/data/jobs")
 def start_job(payload: JobCreate, session: Session = Depends(get_session)) -> dict:
     """Validate the request, START the async fetch/backfill job, and return its `job_id` immediately
