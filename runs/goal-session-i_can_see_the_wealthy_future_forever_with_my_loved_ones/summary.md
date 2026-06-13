@@ -1,18 +1,18 @@
 # Goal Session Summary — i_can_see_the_wealthy_future_forever_with_my_loved_ones
 
-**Final verdict:** AWAITING_PUMP
-**Total iterations:** 8
-**Wall time (seconds):** 31759
+**Final verdict:** ABORTED
+**Total iterations:** 9
+**Wall time (seconds):** 1
 **Quota pauses:** 0
 **Started:** 2026-06-10T21:38:27.739257Z
-**Finished:** 2026-06-12T17:13:22.034957Z
+**Finished:** 2026-06-13T00:30:34.433690Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/i_can_see_the_wealthy_future_forever_with_my_loved_ones`. Open a PR with:
 
     gh pr create --base main --head goal/i_can_see_the_wealthy_future_forever_with_my_loved_ones \
-      --title "feat: i_can_see_the_wealthy_future_forever_with_my_loved_ones — AWAITING_PUMP" \
+      --title "feat: i_can_see_the_wealthy_future_forever_with_my_loved_ones — ABORTED" \
       --body-file runs/goal-session-i_can_see_the_wealthy_future_forever_with_my_loved_ones/summary.md
 
 ## Final journey state
@@ -35,7 +35,7 @@ This session pushed iteration commits to `goal/i_can_see_the_wealthy_future_fore
 | J-14 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0 |
 | J-15 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0 |
 | J-16 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5 |
-| J-17 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3 |
+| J-17 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-8 |
 | J-18 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5 |
 | J-19 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0 |
 | J-20 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-6 |
@@ -54,7 +54,7 @@ This session pushed iteration commits to `goal/i_can_see_the_wealthy_future_fore
 | J-33 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3 |
 | J-34 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3 |
 | J-35 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1 |
-| J-36 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-4 |
+| J-36 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-8 |
 | J-37 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3 |
 | J-38 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3 |
 | J-39 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3 |
@@ -62,7 +62,7 @@ This session pushed iteration commits to `goal/i_can_see_the_wealthy_future_fore
 | J-41 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3 |
 | J-42 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-2 |
 | J-43 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5 |
-| J-44 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-6 |
+| J-44 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-8 |
 | J-45 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-6 |
 | J-46 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3 |
 | J-47 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7 |
@@ -71,7 +71,7 @@ This session pushed iteration commits to `goal/i_can_see_the_wealthy_future_fore
 | J-50 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7 |
 | J-51 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7 |
 | J-52 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7 |
-| J-53 | failing | - |
+| J-53 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-8 |
 | J-54 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7 |
 
 ## Anti-goal violations

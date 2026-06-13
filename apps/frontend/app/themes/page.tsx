@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { AlertTriangle, ChevronDown, ChevronRight, Layers } from "lucide-react";
 
-import { useAsOf } from "@/components/asof-provider";
+import { useAsOf, useAsOfHref } from "@/components/asof-provider";
 import { ComponentBreakdown } from "@/components/component-breakdown";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeading } from "@/components/page-heading";
@@ -27,6 +28,9 @@ function fmtSignedPct(value: number | null): string {
 
 export default function ThemesPage() {
   const { asOf } = useAsOf();
+  // J-57: the one shared helper builds every member-ticker href carrying the global as-of date while
+  // historical (clean at latest) — used by the dated new-tab member links in the expanded panel below.
+  const asofHref = useAsOfHref();
   const [state, setState] = useState<State>({ kind: "loading" });
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -110,6 +114,7 @@ export default function ThemesPage() {
                   row={row}
                   open={expanded.has(row.slug)}
                   onToggle={() => toggle(row.slug)}
+                  asofHref={asofHref}
                 />
               ))}
             </tbody>
@@ -120,9 +125,29 @@ export default function ThemesPage() {
   );
 }
 
-function ThemeRows({ row, open, onToggle }: { row: ThemeRow; open: boolean; onToggle: () => void }) {
-  const shownMembers = row.members.slice(0, 6);
-  const extra = row.members.length - shownMembers.length;
+/** J-57 — the member preview limit: the first N members render inline, the remaining N collapse behind
+ *  the expandable `+n` control (a re-display of the already-served member list — nothing refetched). */
+const MEMBER_PREVIEW_LIMIT = 6;
+
+function ThemeRows({
+  row,
+  open,
+  onToggle,
+  asofHref,
+}: {
+  row: ThemeRow;
+  open: boolean;
+  onToggle: () => void;
+  /** J-57: builds each member href carrying the global `?asof` while historical (clean at latest). */
+  asofHref: (path: string) => string;
+}) {
+  // J-57: the member-list expand/collapse, LOCAL to this theme row and INDEPENDENT of the row's own
+  // expand (`open`). The `+n` control reveals EVERY remaining member in place; collapsing folds back to
+  // the preview. A pure view transform over the already-served `row.members` — nothing refetched.
+  const [membersExpanded, setMembersExpanded] = useState(false);
+  const hasOverflow = row.members.length > MEMBER_PREVIEW_LIMIT;
+  const shownMembers = membersExpanded ? row.members : row.members.slice(0, MEMBER_PREVIEW_LIMIT);
+  const extra = row.members.length - MEMBER_PREVIEW_LIMIT;
   return (
     <>
       <tr
@@ -162,16 +187,47 @@ function ThemeRows({ row, open, onToggle }: { row: ThemeRow; open: boolean; onTo
         </td>
       </tr>
       {open ? (
+        // The expanded panel is a SEPARATE, non-clickable <tr> — the member links and the `+n` control
+        // live here, NOT inside the clickable summary row, so they are not nested in a role="button"
+        // element (iter-5 lesson). `stopPropagation` is added defensively so a stray bubble can never
+        // toggle the summary row even if the markup is later reorganized.
         <tr className="border-b border-border bg-bg">
           <td colSpan={8} className="px-4 py-3">
             <div className="mb-3 flex flex-wrap items-center gap-1.5">
               <span className="mr-1 text-xs uppercase tracking-wide text-text-faint">Members</span>
               {shownMembers.map((ticker) => (
-                <Badge key={ticker} variant="default" className="num">
+                // J-57: every member ticker is a dated link OPENING IN A NEW TAB — the href carries the
+                // global `?asof` while historical (J-50), clean at latest; `rel="noopener noreferrer"` for
+                // new-tab safety. `stopPropagation` keeps a member click from toggling the summary row.
+                <Link
+                  key={ticker}
+                  href={asofHref(`/stocks/${ticker}`)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  data-testid="theme-member-link"
+                  className="num rounded-sm border border-border bg-surface px-2 py-0.5 text-xs font-medium text-accent transition-colors hover:border-accent hover:underline focus-visible:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                >
                   {ticker}
-                </Badge>
+                </Link>
               ))}
-              {extra > 0 ? <span className="num text-xs text-text-faint">+{extra}</span> : null}
+              {hasOverflow ? (
+                // The `+n` expand/collapse control — a real <button> (keyboard + click accessible) living
+                // in the non-clickable panel row, so it is NOT nested in a clickable element. It reveals
+                // EVERY remaining member in place / folds back; `stopPropagation` guards the summary row.
+                <button
+                  type="button"
+                  aria-expanded={membersExpanded}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMembersExpanded((v) => !v);
+                  }}
+                  data-testid="theme-members-toggle"
+                  className="num rounded-sm border border-dashed border-border px-2 py-0.5 text-xs text-text-faint transition-colors hover:border-accent hover:text-text focus-visible:text-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+                >
+                  {membersExpanded ? "Show fewer" : `+${extra}`}
+                </button>
+              ) : null}
             </div>
             <p className="mb-2 text-xs text-text-muted">
               {row.name} · Theme Score {row.score.toFixed(2)} (bucket {row.bucket}) · breadth{" "}

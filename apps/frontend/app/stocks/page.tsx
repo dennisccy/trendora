@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, TrendingUp } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Search, TrendingUp } from "lucide-react";
 
 import { useAsOf, useAsOfHref } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
@@ -86,6 +86,12 @@ function parsePatternParam(raw: string | null): string {
   return ALL;
 }
 
+/** J-56 — resolve a theme slug to its shared display name from the derived vocabulary (the SAME label
+ *  the detail/themes page show — never renamed client-side). Falls back to the slug if absent. */
+function themeNameForSlug(options: { slug: string; name: string }[], slug: string): string {
+  return options.find((t) => t.slug === slug)?.name ?? slug;
+}
+
 /** A pattern badge tooltip: the server-built reason + pivot + invalidation note, rendered verbatim
  *  (never assembled client-side — single source of truth). */
 function patternTitle(flag: PatternFlag): string {
@@ -134,6 +140,16 @@ function StocksInner() {
   const [sector, setSector] = useState<string>(() => searchParams.get("sector") ?? ALL);
   const [setup, setSetup] = useState<string>(() => searchParams.get("setup") ?? ALL);
   const [pattern, setPattern] = useState<string>(() => parsePatternParam(searchParams.get("pattern")));
+  // J-56 — the theme filter, init-once from `?theme=`. Like `sector`, the vocabulary is data-derived
+  // (from the served rows' themes), so the raw slug is held verbatim; an unrecognized value never
+  // crashes and fabricates no filter — the `visible` memo treats an out-of-vocabulary slug as inactive
+  // (mirrors parsePatternParam's graceful "fall back to all" handling). Never a date param (J-18).
+  const [theme, setTheme] = useState<string>(() => searchParams.get("theme") ?? ALL);
+  // J-55 — the type-to-filter symbol search, init-once from `?q=`. A pure client-side view transform
+  // (case-insensitive substring on ticker AND company name); no submit, no refetch (the [asOf]-keyed
+  // fetch is untouched). Serialized as `?q=` like the other filter params, omitted when empty, never a
+  // date (J-18). The trimmed/lowercased query is derived in the `visible` memo below.
+  const [query, setQuery] = useState<string>(() => searchParams.get("q") ?? "");
   const [catalog, setCatalog] = useState<MethodologyCatalog | null>(null);
   // J-48: client-side sort state — PURE view transform. Initial state is the scanner's stored rank
   // (the `#` column ascending), so the leaderboard opens in the canonical stored order. Sort state is
@@ -184,9 +200,14 @@ function StocksInner() {
     if (sector !== ALL) params.set("sector", sector);
     if (setup !== ALL) params.set("setup", setup);
     if (pattern !== ALL) params.set("pattern", pattern);
+    if (theme !== ALL) params.set("theme", theme);
+    // J-55: the search query serializes as `?q=` (trimmed) — omitted when empty for a clean URL, and
+    // reflected on change exactly like the other filter params. Never a date/as_of param (J-18).
+    const trimmedQuery = query.trim();
+    if (trimmedQuery) params.set("q", trimmedQuery);
     const qs = params.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [sector, setup, pattern, pathname, router]);
+  }, [sector, setup, pattern, theme, query, pathname, router]);
 
   const rows = state.kind === "ok" ? state.data.rows : [];
 
@@ -224,12 +245,36 @@ function StocksInner() {
     [rows],
   );
 
+  // J-56 — the Theme filter vocabulary: every theme that appears in the served rows' membership chips,
+  // in config order (the order the rows' `themes` arrays already carry — no client re-ordering). Keyed
+  // by slug (the canonical id) with the shared display name (the SAME label the detail/themes page show
+  // — never renamed client-side). A pure re-display of the served `row.themes` — no fetch, no recompute.
+  const themeOptions = useMemo(() => {
+    const seen = new Map<string, string>(); // slug -> name, first occurrence wins (config order)
+    for (const row of rows) {
+      for (const chip of row.themes) {
+        if (!seen.has(chip.slug)) seen.set(chip.slug, chip.name);
+      }
+    }
+    return Array.from(seen, ([slug, name]) => ({ slug, name }));
+  }, [rows]);
+
+  // J-56 graceful degradation: an `?theme=` slug not present in the served vocabulary is treated as
+  // INACTIVE (fabricates no filter — mirrors parsePatternParam falling back to "all"), so an unknown
+  // value never crashes and never hides every row behind a phantom filter. The select itself only ever
+  // offers in-vocabulary slugs, so this only matters for a hand-typed/stale deep-link.
+  const themeActive = theme !== ALL && themeOptions.some((t) => t.slug === theme);
+
   // client-side FILTER only — never re-sorts or recomputes a score/flag (single source of truth). The
   // pattern filter narrows on the SERVER-computed `row.<name>.flagged` (pure re-display, no detection).
   // The `pattern` value is `__all__`, or `<key>__only` / `<key>__none` for a specific detected pattern.
+  // J-55 search (case-insensitive substring on ticker OR company name) and J-56 theme filter (membership
+  // contains the selected slug) compose here as additional narrowing predicates over the SAME served
+  // rows — pure view transforms, no second compute path. The trimmed/lowercased query is derived once.
   const visible = useMemo(() => {
     const [patternKey, patternMode] = pattern === ALL ? [null, null] : pattern.split("__");
     const patternEntry = patternKey ? PATTERNS.find((p) => p.key === patternKey) : null;
+    const q = query.trim().toLowerCase();
     return rows.filter((r) => {
       if (sector !== ALL && r.sector !== sector) return false;
       if (setup !== ALL && r.setup.status !== setup) return false;
@@ -237,9 +282,14 @@ function StocksInner() {
         const flagged = patternEntry.get(r).flagged;
         if (patternMode === "only" ? !flagged : flagged) return false;
       }
+      // J-56 theme filter: keep only rows whose served membership contains the selected slug. An
+      // out-of-vocabulary slug is inactive (themeActive guard), so it narrows nothing (no phantom filter).
+      if (themeActive && !r.themes.some((t) => t.slug === theme)) return false;
+      // J-55 symbol search: case-insensitive substring on the served ticker AND company name.
+      if (q && !r.ticker.toLowerCase().includes(q) && !r.name.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [rows, sector, setup, pattern]);
+  }, [rows, sector, setup, pattern, theme, themeActive, query]);
 
   // client-side SORT only — a PURE, STABLE view transform layered ON TOP of the filter memo above
   // (filter THEN sort compose). It re-orders the already-served, already-filtered rows; it NEVER
@@ -300,6 +350,25 @@ function StocksInner() {
           <Badge variant="default" className="num">
             as of {formatIsoDate(state.data.asof_date)}
           </Badge>
+          {/* J-55 — the type-to-filter symbol search. No submit affordance and no Enter handler: the
+              `value`/`onChange` binding narrows the view per keystroke. `type="search"` gives the native
+              clear "x". It re-displays/narrows the already-served rows only — it never refetches (the
+              [asOf]-keyed fetch above is untouched). */}
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-faint"
+              aria-hidden
+            />
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search ticker or name…"
+              aria-label="Search by ticker or company name"
+              data-testid="stocks-search"
+              className="h-9 w-56 rounded-md border border-border bg-surface-2 pl-8 pr-3 text-sm text-text placeholder:text-text-faint transition-colors hover:border-border-strong focus-visible:border-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+            />
+          </div>
           <label className="flex items-center gap-2 text-xs text-text-muted">
             Sector
             <Select value={sector} onChange={(e) => setSector(e.target.value)} aria-label="Filter by sector">
@@ -334,7 +403,20 @@ function StocksInner() {
               ))}
             </Select>
           </label>
-          <span className="num text-xs text-text-faint">
+          {/* J-56 — the Theme filter. Its vocabulary is the served rows' themes in config order (like the
+              Sector filter derives from rows). Keeps exactly the rows whose membership contains the slug. */}
+          <label className="flex items-center gap-2 text-xs text-text-muted">
+            Theme
+            <Select value={theme} onChange={(e) => setTheme(e.target.value)} aria-label="Filter by theme">
+              <option value={ALL}>All themes</option>
+              {themeOptions.map((t) => (
+                <option key={t.slug} value={t.slug}>
+                  {t.name}
+                </option>
+              ))}
+            </Select>
+          </label>
+          <span className="num text-xs text-text-faint" data-testid="visible-count">
             {visible.length} / {rows.length}
           </span>
         </div>
@@ -365,13 +447,15 @@ function StocksInner() {
 
       {state.kind === "ok" && rows.length > 0 && visible.length === 0 ? (
         <EmptyState
-          icon={TrendingUp}
-          title="No stocks match these filters"
+          icon={query.trim() ? Search : TrendingUp}
+          title={query.trim() ? "No stocks match" : "No stocks match these filters"}
           description={`${
             patternFilterLabel ? `No ${patternFilterLabel} name` : "No stock"
           } is currently ${setup !== ALL ? `“${setup}”` : "shown"}${
             sector !== ALL ? ` in ${sector}` : ""
-          }. No rows are fabricated to fill the view — clear a filter to see more.`}
+          }${themeActive ? ` in the ${themeNameForSlug(themeOptions, theme)} theme` : ""}${
+            query.trim() ? ` matching “${query.trim()}”` : ""
+          }. No rows are fabricated to fill the view — clear a filter or the search to see more.`}
         />
       ) : null}
 
@@ -415,6 +499,11 @@ function StocksInner() {
                   dir={sortDir}
                   onSort={onSort}
                 />
+                {/* J-56 — the Theme column. Non-sortable (a re-display of the served membership chips),
+                    so a plain header (no SortHeader): membership is a set, not an orderable scalar. */}
+                <th className="px-3 py-2 font-medium">
+                  <TermInfo term="Theme Score">Themes</TermInfo>
+                </th>
                 <th className="px-3 py-2 font-medium">
                   <TermInfo term="reason summary">Reason</TermInfo>
                 </th>
@@ -498,12 +587,50 @@ function StockTableRow({
           })}
         </div>
       </td>
+      <td className="px-3 py-2">
+        <ThemeChips themes={row.themes} />
+      </td>
       <td className="max-w-xs px-3 py-2 text-xs text-text-muted">
         <span className="line-clamp-2" title={row.setup.reason}>
           {row.setup.reason}
         </span>
       </td>
     </tr>
+  );
+}
+
+/** J-56 — the Theme cell: re-displays the row's already-served `themes` chips VERBATIM (the same
+ *  config-derived membership the Stock Detail page shows — J-06; nothing fetched or recomputed per row).
+ *  A row in many themes shows the first `THEME_PREVIEW_LIMIT` chips plus a `+n` overflow whose full
+ *  membership is readable IN PLACE via the `title` tooltip — a plain non-interactive <span>, NOT a nested
+ *  interactive element inside any control (iter-5 nested-button lesson). Empty membership renders a dash. */
+const THEME_PREVIEW_LIMIT = 3;
+
+function ThemeChips({ themes }: { themes: StockRow["themes"] }) {
+  if (themes.length === 0) {
+    return <span className="text-xs text-text-faint">—</span>;
+  }
+  const shown = themes.slice(0, THEME_PREVIEW_LIMIT);
+  const overflow = themes.slice(THEME_PREVIEW_LIMIT);
+  return (
+    <div className="flex flex-wrap items-center gap-1" data-testid="theme-chips">
+      {shown.map((chip) => (
+        <Badge key={chip.slug} variant="default" className="whitespace-nowrap text-[11px]">
+          {chip.name}
+        </Badge>
+      ))}
+      {overflow.length > 0 ? (
+        // The `+n` overflow: a plain <span> (NOT a button/link — no nested interactive element), the full
+        // remaining membership readable in place via the native `title` tooltip (iter-5-safe affordance).
+        <span
+          className="num cursor-help text-[11px] text-text-faint"
+          title={`Also in: ${overflow.map((c) => c.name).join(", ")}`}
+          data-testid="theme-overflow"
+        >
+          +{overflow.length}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
