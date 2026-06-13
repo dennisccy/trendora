@@ -142,6 +142,38 @@ It places **no orders** and holds **no broker keys**.
   drill-down listing the exact stored observations behind it — the observation total equals the
   published N and the values are the same stored per-observation inputs the aggregate used — and each
   row's ticker opens the dated stock detail in a new tab (J-51 / J-52).
+- **The leaderboard is findable and theme-aware.** `/stocks` carries a type-to-filter symbol search
+  (ticker or company name, no submit button) and a Theme column + theme filter re-displaying the same
+  served membership chips the detail page shows — all pure client-side view transforms over the
+  already-served snapshot rows (composing with the existing filters and J-48 sorting), never a second
+  compute path (J-55 / J-56).
+- **Member structure is legible everywhere.** The Themes leaderboard's truncated member list expands in
+  place (the `+n` reveals every remaining member) and every member ticker deep-links to the dated stock
+  detail in a new tab; the Sectors leaderboard names and describes every ETF row from config (no more
+  bare "KRE") and lists its universe members the same way — sector members from the existing
+  `stock_sectors` mapping, industry members from a new config-curated stock→industry-group mapping
+  honestly labelled as config-defined (an unmapped ETF shows an explicit empty state, never fabricated
+  members) (J-57 / J-58).
+- **Data jobs are stage-resumable, never re-fetch covered data, and finish reliably.** A job whose
+  fetch completed but whose backfill failed resumes from the backfill stage with **zero provider
+  calls**; a re-run over an already-covered range skips straight to backfill in seconds (never ~45
+  minutes of no-op re-fetching to add `0 new bars`); the multi-date parallel backfill completes without
+  the session/transaction crash and isolates a failing date instead of aborting the stage; every
+  started job appears in Run history immediately (`running` → one honest terminal state; restart
+  orphans marked `interrupted`); and progress is fine-grained and honest — per-symbol/per-date ticks, a
+  current-activity line, a live heartbeat, and counters that can never exceed their totals (J-59 /
+  J-60 / J-66 / J-67).
+- **Data availability is visible per date, and the as-of picker shows it.** The Data Manager renders a
+  per-trading-date availability heatmap (symbols-with-bars count + snapshot marker per date, exact
+  figures on hover, click prefills the job form) built from a read-only descriptive endpoint, and the
+  global as-of switcher becomes a calendar popover marking exactly the selectable snapshot dates — the
+  same single global state, presented better (J-61 / J-62).
+- **Event-study evidence is overlap-honest.** The Setup & Pattern Lab defaults to a **first-trigger
+  episode** view (consecutive signal-days of the same symbol collapse into one observation) with the
+  current pooled per-signal-day view one toggle away (byte-identical to today's figures), both modes
+  disclosing n, unique symbols, and episode count — same stored observations, same builders,
+  count-coherent with the `N=` drill-downs, which now sort/filter client-side and open in a new tab
+  (J-63 / J-64 / J-65).
 
 ## Key Capabilities
 
@@ -157,9 +189,16 @@ It places **no orders** and holds **no broker keys**.
 4. **Market Regime engine** → score 0–100 + label (Strong risk-on / Risk-on / Narrow leadership /
    Choppy / Defensive / Risk-off).
 5. **Sector & industry leadership** scoring from sector/industry ETFs (RS vs SPY over 1/3/6m, MA
-   stack, distance from 52w high, volume trend, internal breadth).
+   stack, distance from 52w high, volume trend, internal breadth). Every ranked ETF row is **named and
+   described from config** (the industry catalog becomes ticker → name/description reference data like
+   `etfs.sector` — no bare tickers like "KRE", no hardcoded name in code) and carries its **universe
+   member list**: sector members derived from the existing `stock_sectors` mapping, industry members
+   from a config-curated stock→industry-group mapping (many-to-many, like themes) honestly labelled
+   config-defined — an ETF with no universe member shows an explicit empty state (J-58).
 6. **Theme engine**: manually-defined themes (config) mapping stocks→themes (many-to-many), with a
-   price-confirmed Theme Score (not news-driven).
+   price-confirmed Theme Score (not news-driven). Membership is visible end-to-end: the stock
+   leaderboard shows each row's theme chips with a theme filter (J-56), and the Themes leaderboard's
+   member list is fully expandable with dated new-tab member links (J-57).
 7. **Three independent stock scores** — Leadership, Entry Quality, Risk — each a weighted sum of
    normalized, **named, explainable components** with weights from config; presented as A–E buckets.
 8. **Setup classification**: Actionable, Pullback-watch, Breakout-watch, Extended, Avoid,
@@ -213,7 +252,10 @@ It places **no orders** and holds **no broker keys**.
     exposes Resume** (continuing from the last completed chunk, no duplicate fetch, surviving a restart),
     and an **Expand-universe** job kind that screens the committed candidate pool from the UI (the
     operator-facing path that unblocks the expanded universe). Beyond growing data it makes the dataset
-    **legible and curatable**: a **plain-language coverage explainer** (defining every figure and the
+    **legible and curatable**: a **per-trading-date availability heatmap** (for every trading day: the
+    count of symbols with a stored bar + whether a snapshot exists, exact figures on hover, click
+    prefills the job form — a read-only descriptive endpoint, J-61); a **plain-language coverage
+    explainer** (defining every figure and the
     **universe-vs-symbols** distinction — universe = the config-screened scored names; symbols = every
     ticker with bars, incl. index/sector/industry ETFs + `^VIX`) plus a **per-symbol / per-universe-member
     coverage table** (in-universe?, has-data?, date range, bar count, thin/missing flag); a **missing-data
@@ -229,12 +271,26 @@ It places **no orders** and holds **no broker keys**.
     derived solely from them** so nothing is left inconsistent, while the **committed seed is never
     deletable**. Every coverage/diagnostic figure is **read-only descriptive metadata** (no canonical
     score/return/bucket recomputed), every threshold comes from config (**no magic numbers**), and the
-    default boot path remains the committed offline seed.
+    default boot path remains the committed offline seed. The job pipeline is **stage-aware and
+    reliable**: the durable checkpoint records per-stage completion (fetch → screen → backfill) so a
+    job that failed or was interrupted after a completed fetch is **resumable from the backfill stage
+    with zero provider calls**, and the fetch planner skips provider calls for (symbol, window)s
+    already fully covered against the trading calendar — a re-run over a covered range reaches the
+    backfill stage in seconds (J-59); the multi-date parallel backfill is **transactionally sound** (no
+    shared-session / invalid-'committed'-state crash; a failing date is isolated and reported while the
+    rest complete — J-67). Every started job is **recorded in Run history immediately** (status
+    `running`, then one honest terminal transition; orphaned rows from a dead process are marked
+    `interrupted` on boot — J-60), and progress is **fine-grained and honest**: per-symbol fetch ticks,
+    per-date backfill ticks, a current-activity line, a last-progress heartbeat, live per-stage
+    timings, and counters that never exceed their totals (J-66).
 21. **Unified as-of date control**: exactly one date selector — the global top-bar as-of switcher —
     governs every date-scoped page, **including Backtest**. Per-page date dropdowns are removed and the
     frontend holds no second, independent date state; "which date am I viewing" has a single source.
     That single state is serialized into the URL as `?asof=yyyy-MM-dd` while historical (Capability 36
-    / J-43) — a deep-linkable serialization restored through the one control, not a second state.
+    / J-43) — a deep-linkable serialization restored through the one control, not a second state. The
+    switcher's presentation is a **calendar popover** marking exactly the available snapshot dates
+    (unavailable days disabled, month navigation, a "Latest" shortcut) instead of one flat all-dates
+    dropdown — a presentation upgrade of the same single state, never a second control (J-62).
 22. **Return attribution / contribution analysis**: beyond aggregate mean returns, the forward-test
     surfaces (a) **per-stock top contributors & detractors** (which individual tickers drove or dragged
     the cohort), (b) a **by-sector** breakdown (separating sector beta from stock selection), (c) a
@@ -270,7 +326,12 @@ It places **no orders** and holds **no broker keys**.
 29. **Setup & Pattern research lab (event study)**: pools every historical occurrence of a setup/pattern
     and reports the forward-return distribution, hit-rate, **expectancy**, **MAE/MFE** (max
     adverse/favorable excursion from post-snapshot daily highs/lows), best exit-horizon, regime/sector
-    slices, and **risk-adjusted return** — all derived once from stored data.
+    slices, and **risk-adjusted return** — all derived once from stored data. It is **overlap-honest**
+    (J-63): the default headline mode collapses consecutive same-symbol signal-days into
+    **first-trigger episodes** (one observation per continuous run), a toggle restores the pooled
+    per-signal-day view (byte-identical to the prior figures), and both modes disclose n, unique
+    symbols, and episode count — the same stored observations through the same builders, never a
+    recompute.
 30. **Volatility as a first-class factor family**: level (ATR%/HV), change/contraction (VCP-style), and
     downside/semivol, each decile/IC-tested and regime-conditioned; the contraction measure
     cross-validates the VCP thesis with forward-test evidence.
@@ -334,7 +395,9 @@ It places **no orders** and holds **no broker keys**.
     to a dedicated read-only samples page reproducing that exact cohort from the same stored
     per-observation data (count-coherent — the observation total equals the published N; same stored
     factor values and realized returns), with each row deep-linking to the dated stock detail in a new
-    tab (J-51 / J-52).
+    tab (J-51 / J-52). The `N=` chips open the drill-down in a **new tab** (J-65), and the samples
+    table is **client-side sortable and ticker-filterable** under the J-48 view-transform contract —
+    a filter narrows the view honestly ("x of N") and never alters the published cohort total (J-64).
 
 ## Non-Goals
 
@@ -400,15 +463,21 @@ It places **no orders** and holds **no broker keys**.
   counts, breadth, last-run time, evidence summary, and the **Major indexes & regime** chart
   (normalized index-ETF % lines over regime background bands, default-on behind a persisted toggle —
   J-44).
-- **Stocks** (`/stocks`) — the Stock Leaderboard (ranked, filterable, **client-side sortable** — J-48).
-  Rows link to Stock Detail (**opens in a new tab**, the href carrying the historical `?asof` —
-  J-54/J-50).
+- **Stocks** (`/stocks`) — the Stock Leaderboard (ranked, filterable, **client-side sortable** — J-48 —
+  with a **type-to-filter symbol search** (J-55) and a **Theme column + theme filter** re-displaying
+  each row's served membership chips (J-56)). Rows link to Stock Detail (**opens in a new tab**, the
+  href carrying the historical `?asof` — J-54/J-50).
 - **Stock Detail** (`/stocks/[ticker]`) — one stock's chart (with a **1D/1h/15m/5m timeframe selector**,
   rendering the full price path **through the latest date** with an as-of marker), score breakdowns,
   theme membership, setup, reason, invalidation, and per-snapshot history. Reached from a leaderboard
   row, not a top-nav tab.
-- **Themes** (`/themes`) — the Theme Leaderboard (ranked, with members + breadth).
-- **Sectors** (`/sectors`) — the Sector/Industry Leaderboard.
+- **Themes** (`/themes`) — the Theme Leaderboard (ranked, with members + breadth). The member list is
+  **fully expandable** (the `+n` overflow reveals every remaining member, collapsible) and each member
+  ticker opens the dated Stock Detail in a **new tab** (J-57).
+- **Sectors** (`/sectors`) — the Sector/Industry Leaderboard. Every ETF row is **named + described from
+  config** (no bare tickers like "KRE") and its expanded panel lists its universe **members** like the
+  Themes page — expandable, with dated new-tab member ticker links; industry membership comes from the
+  config-curated stock→industry-group mapping, honestly labelled config-defined (J-58).
 - **Scanner Runs** (`/scanner-runs`, `/scanner-runs/[runId]`) — history of immutable runs; open one to
   see the exact as-of view for that date.
 - **Watchlist** (`/watchlist`) — user-saved stocks with reason, current state, price-since-added, and
@@ -438,32 +507,47 @@ It places **no orders** and holds **no broker keys**.
   `N=…` figure on `/research` links here, parameterized to reproduce that exact cohort (analysis kind,
   factor(s)/subject, horizon, decile/cohort, regime, sector, and the all-history vs as-of scope, as
   applicable), listing every member observation — ticker, snapshot date, the qualifying stored
-  value(s), and the realized forward return at the stated horizon. Reached from the `N=` chips, not a
-  top-nav tab; deep-linkable; row tickers open the dated Stock Detail in a new tab (J-52).
+  value(s), and the realized forward return at the stated horizon. Reached from the `N=` chips (which
+  open it in a **new tab** — J-65), not a top-nav tab; deep-linkable; the table is **client-side
+  sortable + ticker-filterable** (J-64 — a view transform; the cohort total still equals the published
+  N); row tickers open the dated Stock Detail in a new tab (J-52).
 - **Data Manager** (`/data`) — grow, understand, and curate the dataset on demand: view current coverage
   with **plain-language definitions** (incl. the **universe-vs-symbols** distinction) and a **per-symbol /
   per-universe-member coverage table** (in-universe?, has-data?, date range, bar count, thin/missing
-  flag); read a **missing-data diagnostic** (universe members with no/thin history below the config
+  flag); see **per-date availability at a glance** — the trading-day **availability heatmap**
+  (symbols-with-bars count + snapshot marker per date, exact figures on hover; clicking prefills the
+  job form — J-61); read a **missing-data diagnostic** (universe members with no/thin history below the config
   threshold, plus intra-series date gaps) and **pull the missing data** in one click (fetching exactly the
   gap via the chunked/resumable import); choose an import **source** (paste a **session-only key** if the
   provider needs one), pick a date or date range, fetch price history and/or backfill snapshots and/or
-  **expand the universe** (pool → config screen), and watch the async job's live progress; act on
-  **Unfinished imports** in one unified section — **Resume** a rate-limited pause, **Retry** remaining/
+  **expand the universe** (pool → config screen), and watch the async job's live, **fine-grained**
+  progress (per-symbol/per-date ticks, a current-activity line, a last-progress heartbeat, live stage
+  timings — J-66); act on
+  **Unfinished imports** in one unified section — **Resume** a rate-limited pause or a job stopped
+  after its completed fetch stage (**resumable from the backfill stage, zero provider calls** — J-59),
+  **Retry** remaining/
   failed symbols (idempotent), or **Remove/Dismiss** a stuck record (without touching the immutable run
   audit); **Remove imported data** that was fetched beyond the committed seed (by symbol and/or date
   range) behind a **confirm-preview** that cascades dependent snapshots/forward-returns and **never
-  deletes the committed seed**; and read a history of fetch/backfill/expand/remove runs. The `/data` date
+  deletes the committed seed**; and read a **live history** of fetch/backfill/expand/remove runs that
+  records every job from the moment it starts (`running` → one honest terminal transition; restart
+  orphans marked `interrupted` — J-60). The `/data` date
   and symbol inputs are **job parameters, not the global as-of control**.
 
 A single global **as-of date switcher** in the top bar is the **only** date control. It re-points
 Dashboard, Stocks, Themes, Sectors, Stock Detail, **and Backtest** to a chosen past snapshot (default:
-latest); no page keeps its own separate date picker. That single state is **serialized into the URL**
+latest); no page keeps its own separate date picker. The switcher renders as a **calendar popover**
+marking exactly the available snapshot dates (disabled non-selectable days, month navigation, a
+"Latest" shortcut) rather than one flat all-dates dropdown — a presentation of the same single state,
+never a second control (J-62). That single state is **serialized into the URL**
 (`?asof=yyyy-MM-dd` while historical; date-free at latest) and is restored through the same global
 control on load — deep links, reloads, new tabs, and leaderboard→detail click-throughs all preserve the
 selected as-of view (J-43); the URL is the one state's serialization, never a second control. While
 historical, every in-app navigational link's **href itself embeds `?asof`** (J-50), so new-tab /
-middle-click / copied-link navigation preserves the date too; the stocks-leaderboard tickers and the
-Research-Samples row tickers open Stock Detail in a **new tab** (J-54 / J-52) — all other links stay
+middle-click / copied-link navigation preserves the date too; the stocks-leaderboard tickers, the
+Research-Samples row tickers, and the theme / sector member tickers open Stock Detail in a **new tab**
+(J-54 / J-52 / J-57 / J-58), and the research `N=` chips open the samples drill-down in a new tab
+(J-65) — all other links stay
 same-window. The as-of date resolves to a stored immutable snapshot — created once on first view, then
 never mutated. The **Stock Leaderboard** (`/stocks`) gains a **VCP filter** (and filters for the
 additional detected patterns) and **client-side sortable columns** (J-48 — a view transform; the
@@ -534,6 +618,22 @@ The backend is the single source of truth; every page only displays server-compu
 - **Job stage timings** (fetch stage vs backfill stage: elapsed time, items processed, concurrency
   used) — recorded once by the data-manager job runner into the job progress/status payload;
   descriptive operational metadata, not a canonical score; the `/data` job card only re-formats it.
+- **Per-date availability counts** (per trading date: symbols-with-bars count + snapshot-exists flag) —
+  descriptive read-only metadata derived once from the stored bars + stored runs by the coverage
+  machinery and served by one read-only endpoint; the heatmap and any availability figure only
+  re-format it — no canonical score/return recomputed, never a second derivation (J-61).
+- **Event-study observation set, in both modes** — the pooled per-signal-day observations AND their
+  deterministic **first-trigger episode collapse** come from the same observation builders (one
+  membership rule; the episode collapse is a pure stored-data-only grouping); every aggregate figure
+  and every samples drill-down reads the same set for the same mode, so `N=` chips and drill-down
+  totals stay count-coherent in both modes (J-63).
+- **Industry-group names + memberships** — config-defined reference data (ticker → name/description;
+  stock → industry groups, many-to-many like themes), read verbatim by the Sectors page and any other
+  surface; no name, description, or membership is hardcoded or inferred in code (J-58).
+- **Job lifecycle record** — one run-history record per started job, created at start (`running`) and
+  closed by a single honest terminal transition (`ok` / `partial` / `failed` / `interrupted`); the job
+  card, Run history, and Unfinished imports read the same record — never a second job-bookkeeping
+  path (J-60).
 
 ## Must-have user journeys
 
@@ -889,6 +989,8 @@ The backend is the single source of truth; every page only displays server-compu
     fabricated); a per-horizon return curve and the regime/sector slices render; every figure is derived
     once from the stored per-observation forward returns + price path (read-only — the API/view never
     recomputes returns); low-sample cells show NA honestly and the survivorship-bias label is shown.
+    *(Amended by J-63: the headline default becomes the first-trigger **Episodes** mode; this pooled
+    per-signal-day view remains one toggle away, byte-identical — overlap is disclosed in both modes.)*
 
 - **J-30: Volatility as a return driver — the factor family, risk-adjusted and regime-conditioned**
   - Steps:
@@ -1458,7 +1560,9 @@ The backend is the single source of truth; every page only displays server-compu
     already assemble; it recomputes no factor, return, or membership); it honors the Research
     all-history vs as-of mode (J-32 — the same scoping, no second date state); n=0 cohorts show an
     explicit empty state; the survivorship-bias label is shown, and the table's column headers read
-    the same glossary catalog as every dense surface (J-47).
+    the same glossary catalog as every dense surface (J-47). *(Amended by J-64/J-65: the `N=` chips
+    open this drill-down in a NEW tab, and the samples table gains client-side sorting + a ticker
+    view-filter — the displayed cohort total still equals the published N.)*
 
 - **J-52: From a sample row to the dated stock detail**
   - Steps:
@@ -1516,7 +1620,313 @@ The backend is the single source of truth; every page only displays server-compu
     selected date) is never disturbed; the new-tab behavior applies **only** to the stocks-leaderboard
     tickers and the J-52 samples-table tickers — theme/sector member links and every other in-app
     link stay same-window; J-05 and J-43 are amended, not weakened (the click-through still lands on
-    the same dated, coherent detail view per J-06).
+    the same dated, coherent detail view per J-06). *(Amended by J-57/J-58/J-65: the theme/sector
+    member tickers and the research `N=` chips now also open new tabs — the exclusivity list grows;
+    nothing else changes.)*
+
+- **J-55: Stocks leaderboard symbol search (type-to-filter, no button)**
+  - Steps:
+    1. Visit `/stocks` — a search input renders alongside the existing Sector / Setup / Pattern filters
+    2. Type `nv` — the visible rows narrow **as you type** (no search button, no Enter required) to
+       rows whose ticker or company name contains the text, case-insensitively (e.g. `NVDA` matches)
+    3. With the search active, apply a Sector filter and click a J-48 column header — search, filters,
+       and sort all compose (the searched+filtered rows render in the sorted order)
+    4. Clear the input — every row returns; the active filters and sort are untouched
+    5. Reload the page with `?q=nv` in the URL — the search restores; type a string matching nothing —
+       the honest "no stocks match" empty state renders
+  - Acceptance: the leaderboard carries a **type-to-filter search over the already-served rows** —
+    case-insensitive substring match on ticker AND company name, applied instantly per keystroke with
+    **no submit affordance and no refetch** (the `[asOf]`-keyed fetch is unchanged — J-15 warm load
+    intact); it composes with the existing sector / setup / pattern filters, the J-56 theme filter, and
+    J-48 sorting (filter THEN sort); the active query serializes as `?q=` exactly like the existing
+    filter params (init-once from the URL, reflected on change, omitted when empty, never a date —
+    J-18); the `x / N` visible-count stays honest and a no-match result renders the existing honest
+    empty state (never a fabricated row); this is a **pure client-side view transform** — no new
+    endpoint, no second compute path, every served value (rank, scores, buckets, setup, flags) reads
+    exactly as served (single source of truth).
+
+- **J-56: Stocks leaderboard theme column + theme filter**
+  - Steps:
+    1. Visit `/stocks` — a **Theme** column renders each row's theme membership chips (the `themes`
+       the row already serves)
+    2. A row in many themes shows a compact chip list with a `+n` overflow whose full membership is
+       readable in place (tooltip or expand)
+    3. Pick a theme in the new **Theme** filter — only rows whose membership includes it remain
+    4. Combine with the Sector/Setup/Pattern filters, the J-55 search, and a J-48 sort — all compose;
+       an empty result renders the honest empty state
+    5. Open a filtered row's detail page — its theme chips match the leaderboard exactly (J-06)
+  - Acceptance: the Theme column **re-displays the already-served `themes` chips verbatim** — the same
+    config-derived membership the Stock Detail page shows (one canonical membership, J-06; nothing
+    fetched or recomputed per row); the Theme filter's vocabulary derives from the served rows' themes
+    (config order — like the Sector filter derives from rows) and keeps exactly the rows whose
+    membership contains the selection; the selection serializes as `?theme=` like the other filter
+    params (no date param — J-18); it composes with every existing filter, the J-55 search, and J-48
+    sorting; a pure client-side view transform — no new endpoint, no second compute path, J-02/J-16/
+    J-48 behavior otherwise untouched.
+
+- **J-57: Theme members — expandable `+n`, every member a dated new-tab link (amends J-54)**
+  - Steps:
+    1. Visit `/themes` and expand a theme row whose member count exceeds the preview limit
+    2. Activate the `+n` control — the remaining members render in place; activate again (or a
+       collapse affordance) — the list folds back to the preview
+    3. Click a member ticker — the Stock Detail opens in a **new tab**; the themes tab keeps its
+       expansion state, scroll, and selected date untouched
+    4. Select a historical as-of D and inspect a member link — its `href` itself carries `?asof=D`
+       (J-50); clicking it lands the new tab on as-of D through the single global control
+    5. Return to the latest date — the member hrefs are clean (no param)
+  - Acceptance: the `+n` placeholder becomes a working **expand/collapse control** revealing EVERY
+    remaining member of the theme (a re-display of the already-served member list — nothing refetched
+    or recomputed); every member ticker renders as a link to `/stocks/[ticker]` opening in a **new
+    tab** (`target="_blank"` with `rel="noopener"`-equivalent), the href embedding the global `?asof`
+    while historical and clean at latest (J-50); the originating tab's state (expansion, scroll, date)
+    is never disturbed; the row's expand-on-click behavior is not regressed (activating a member link
+    or the `+n` never accidentally toggles the row); **J-54 is amended, not weakened** — its new-tab
+    list now reads: stocks-leaderboard tickers, J-52 samples-row tickers, and theme/sector member
+    tickers (J-57/J-58); every other in-app link stays same-window; membership remains the same
+    stored/config-derived value everywhere (J-06).
+
+- **J-58: Sectors page — every ETF named and described, with universe members**
+  - Steps:
+    1. Visit `/sectors` — every ranked row (sector AND industry kind) shows a human-readable name
+       beside its ticker; `KRE` no longer reads as a bare ticker
+    2. Expand `KRE` (or any industry row) — a plain-language description renders, plus a **Members**
+       list presented like the Themes page
+    3. Expand a sector row (e.g. `XLF`) — its members are the universe stocks of that GICS sector
+    4. Click a member ticker — the dated Stock Detail opens in a **new tab** (the J-57 link contract)
+    5. Expand an industry ETF with no mapped universe member — an explicit "no universe members
+       mapped" note renders (never fabricated members)
+    6. Confirm the names/descriptions and the stock→industry mapping are **config entries** (visible
+       in config, reflected in the UI with no code change for a new entry)
+  - Acceptance: every ranked ETF row carries a **config-sourced display name** and the expanded panel
+    a **config-sourced plain-language description** — the industry catalog becomes ticker →
+    name/description reference data like `etfs.sector` / `index_chart.symbols` (**no hardcoded
+    name/description in backend or frontend code** — No magic numbers); the expanded panel lists
+    **universe members**: a sector ETF's members derive from the existing `stock_sectors` config
+    mapping and an industry ETF's from a **new config-curated stock→industry-group mapping**
+    (many-to-many like `themes`, validated against the universe), **honestly labelled as a
+    config-defined approximation — NOT the ETF's actual holdings**; an ETF with zero mapped universe
+    members shows an explicit empty note (never fabricated members); member lists reuse the J-57
+    expandable `+n` + dated new-tab ticker links; the served sector scores / ranks / components are
+    **byte-unchanged** — this journey adds reference metadata and display only (no canonical value
+    touched).
+
+- **J-59: Resume from the failed stage — and covered ranges are never re-fetched (extends J-34/J-38)**
+  - Steps:
+    1. Run a `both` job whose fetch completes and whose backfill then fails (provable offline: the
+       injected provider + a forced backfill fault)
+    2. Read `/data` **Unfinished imports** — the job is listed as **failed at backfill — resumable
+       from the backfill stage** (plain-language state + the right action)
+    3. Click **Resume** — the fetch stage is **skipped entirely** (the injected counting provider
+       records **zero calls**), only the backfill runs, and the job completes; snapshots already
+       created before the failure are read, not recreated
+    4. Restart the backend between the failure and the Resume — the stage checkpoint survives; Resume
+       still starts at the backfill stage
+    5. Start a fresh `both` job over an **already fully-fetched range** — the fetch stage completes in
+       seconds with zero provider calls for the covered symbols, then proceeds to backfill
+  - Acceptance: the durable import checkpoint becomes **stage-aware** — it records which pipeline
+    stages (fetch → screen → backfill) completed, so a job that failed or was interrupted AFTER a
+    completed fetch is **resumable from the failed stage**: Resume performs **zero provider calls**
+    (asserted with an injected counting provider) and re-runs only the remaining stage(s), reusing the
+    create-once/idempotent snapshot path (existing snapshots read, never overwritten — J-41/J-53
+    intact); the stage checkpoint **survives a process/server restart** (J-34's durability extended;
+    its rate-limit chunk-resume semantics unchanged); additionally the **fetch planner consults stored
+    coverage against the benchmark trading calendar and skips the provider call for any (symbol,
+    window) already fully covered** — re-running a job over a covered range reaches the backfill stage
+    in seconds, never ~45 minutes of no-op re-fetching to add `0 new bars`, while a partially-covered
+    window still fetches and the per-`(symbol, date)` INSERT-new-only idempotency still guarantees no
+    duplicate row; J-38's Retry stays available and idempotent, and every unfinished state renders
+    with the existing plain-language explanation + single right action; provable offline end-to-end.
+
+- **J-60: Run history records every job from the moment it starts**
+  - Steps:
+    1. Start any `/data` job and read **Run history** immediately — the job is ALREADY listed (status
+       `running`, with its kind, date range, and source)
+    2. Watch it finish — the same record transitions to an honest terminal state (`ok` / `partial` /
+       `failed`) with the final summary; a rate-limited pause shows as `resumable`
+    3. Kill/restart the backend mid-job — after boot, the orphaned record reads **`interrupted`** (an
+       honest terminal state; never stuck `running` forever, never vanished from history)
+    4. Resume/Retry per J-59/J-38 — the subsequent attempt is visible in history too; the audit trail
+       of what ran is complete
+  - Acceptance: starting a job **creates its run-history record immediately** (status `running`,
+    carrying kind / date range / source) instead of only writing history at the terminal `finally`;
+    the Run history list shows in-flight, resumable, and finished jobs (a job can no longer be missing
+    from history because it hasn't finished or because the process died); each record receives an
+    honest lifecycle transition to ONE terminal state (`ok` / `partial` / `failed`, or `interrupted`
+    applied by a boot sweep to `running` rows whose process is gone); the row-lifecycle mechanism is
+    open (transition one row, or append linked attempt rows) but the audit MUST stay complete and
+    truthful: a terminal record is never silently mutated afterwards, nothing is deleted or hidden by
+    this feature (J-38 Dismiss semantics unchanged), no status is ever fabricated, and the record's
+    counts/summary match the job's own payload (one bookkeeping source — J-60 is the same lifecycle
+    the job card reads, not a second one).
+
+- **J-61: Per-date availability heatmap — see exactly which dates have data**
+  - Steps:
+    1. Visit `/data` — an **availability heatmap** renders the trading-day calendar, each day colored
+       by how many symbols have a stored bar on it, with a distinct marker on days that also have an
+       immutable snapshot
+    2. Hover a day — the exact figures render (date, symbols-with-bars / total symbols, snapshot
+       yes/no)
+    3. Find a sparsely-covered day — it is visibly different from a fully-covered day; a trading day
+       with no bars at all is visibly empty
+    4. Click a day (or select a range) — the job form's Start/End prefill with it
+    5. Run a fetch/backfill over a gap and let it finish — the heatmap re-reads and shows the new
+       coverage
+  - Acceptance: a **read-only endpoint** serves per-trading-date availability — for each date of the
+    benchmark trading calendar: the count of symbols with a stored bar and whether a snapshot exists —
+    derived once from stored bars + stored runs (descriptive metadata; no canonical value recomputed;
+    the same single source the existing coverage figures read); `/data` renders it as a calendar-style
+    heatmap with a legend (color = symbols-with-bars; explicit snapshot marker), exact values on
+    hover, and **honest partial-coverage rendering** (a 3-of-158 day MUST be visually distinct from a
+    fully-covered day — fixing the misleading impression a single min→max "Price history" range
+    gives); clicking a day (or range) prefills the job form's date inputs — **job parameters, never
+    the global as-of control** (J-18); the heatmap reflects dataset changes after jobs/removals
+    complete and renders gracefully on an empty DB (no fabricated cells).
+
+- **J-62: The as-of switcher is a calendar that shows what is selectable**
+  - Steps:
+    1. Open the global as-of switcher — a **calendar popover** opens (month grid) instead of one flat
+       all-dates dropdown
+    2. Available snapshot dates are visibly marked and selectable; other days are disabled; month
+       navigation reaches the oldest stored month; a **"Latest"** affordance returns to the latest view
+    3. Pick a historical date — the whole app re-points exactly as today (J-13): historical badge,
+       `?asof` URL serialization, href stamping all unchanged (J-43/J-50)
+    4. Operate it by keyboard — open, navigate months/days, select, dismiss
+    5. Load a URL with an invalid `?asof` — it still degrades to the latest view (J-43)
+  - Acceptance: the top-bar switcher's **presentation** becomes a calendar popover marking exactly the
+    selectable snapshot dates — the **same canonical run-date list the dropdown reads today** (no new
+    date source, no new endpoint semantics) — with disabled non-selectable days, month navigation
+    spanning the stored history, a "Latest" shortcut, and keyboard accessibility; selecting a date
+    drives the **same single global as-of state** (J-13/J-18/J-43/J-50 semantics byte-unchanged); the
+    widget mechanism is open (hand-rolled grid or a small date-picker dependency consistent with the
+    stack) but it MUST hold **no second date state** (the calendar is a renderer of the one global
+    control), MUST render textual dates `yyyy-MM-dd` through the shared formatter (J-42), and MUST
+    degrade gracefully (no dates → disabled control; invalid URL date → latest per J-43).
+
+- **J-63: Event study is overlap-honest — first-trigger episodes by default, pooled one toggle away
+  (amends J-29)**
+  - Steps:
+    1. Visit `/research` → Setup & Pattern Lab — the headline figures read **Episodes** mode by
+       default and an **Episodes ⇄ Pooled** toggle is visible
+    2. Read the disclosure beside the figures: **n** (observations in the current mode), **unique
+       symbols**, and **episodes**
+    3. Pick a subject where one symbol persisted across consecutive snapshots (e.g.
+       Risk-off-watchlist): pooled n exceeds episode n, and the episode-mode samples drill-down shows
+       ONE row for that continuous run (its first trigger date) instead of many overlapping rows
+    4. Flip to **Pooled** — every figure equals today's published values exactly
+    5. Click an `N=` chip in each mode — the drill-down reproduces that exact cohort and its total
+       equals the clicked N (J-51)
+    6. Check `/methodology` — glossary entries explain Episode vs Pooled (J-47)
+  - Acceptance: the event study gains a deterministic **episode collapse**: consecutive stored
+    snapshot dates on which the same symbol matched the same subject (consecutiveness judged on the
+    stored run-date sequence) form ONE episode, observed at its **first trigger date** using that
+    observation's **stored** forward return / MAE / MFE at the stated horizon — a pure grouping of the
+    SAME stored per-observation rows by the SAME observation builders (one membership rule; **no
+    return, excursion, factor, or membership recomputed**); **Episodes is the default mode** and the
+    toggle restores **Pooled** (per-signal-day), whose figures stay **byte-identical** to the current
+    output; EVERY event-study figure (per-horizon distribution, hit-rate, expectancy, MAE/MFE, best
+    exit-horizon, risk-adjusted ratios, by-regime, by-sector) respects the selected mode; both modes
+    disclose **n + unique symbols + episode count** so window overlap is never hidden (extends *Honest
+    limitations surfaced*); the mode is a **cohort parameter** carried by the `N=` chips into the
+    samples drill-down — J-51 count-coherence holds in BOTH modes (the drill-down total equals the
+    clicked N and lists exactly that mode's observations: episode rows in Episodes, signal-day rows in
+    Pooled); the toggle is a MODE, not a date control (J-18/J-32 untouched); Episode/Pooled join the
+    config-backed glossary + term tooltips (J-47); low-sample cells stay NA + n.
+
+- **J-64: Research samples table — sortable and filterable (the J-48 contract)**
+  - Steps:
+    1. Open any `/research/samples` drill-down with rows
+    2. Click the **Forward return** header — rows re-order; click again — the direction toggles;
+       exactly one visible sort indicator
+    3. Sort by **Ticker**, **Snapshot date**, and a qualifying-value column in turn — each re-orders
+       the visible rows
+    4. Type in the **ticker filter** — rows narrow as you type and the header reads "showing x of N";
+       the cohort total still reads N
+    5. Clear the filter and the sort — the served order and the full list return; every value reads
+       exactly as served
+  - Acceptance: the samples table's columns (Ticker, Snapshot date, each qualifying-value column,
+    Forward return) are **click-sortable under the J-48 contract** — asc/desc toggle, exactly one
+    visible indicator, stable ties, a pure client-side view transform over the already-served
+    observation rows (re-orders only; recomputes and refetches nothing); a **ticker type-to-filter**
+    narrows the visible rows (case-insensitive substring) with an honest **"showing x of N
+    observations"** — the displayed cohort total stays the published N (J-51 count-coherence is about
+    the cohort; a view filter narrows the view, never the cohort) and clearing restores every row; an
+    all-filtered-out result shows an honest empty state (never a fabricated row); deep-link/reload
+    behavior (J-51) and the J-52 row-ticker links are unchanged.
+
+- **J-65: `N=` chips open the samples drill-down in a new tab (amends J-51/J-54)**
+  - Steps:
+    1. On `/research`, click any `N=` chip — `/research/samples` opens in a **new tab** showing that
+       exact cohort
+    2. Switch back to the Research tab — its lab, selections, scope, and scroll are exactly as left
+    3. With a historical as-of and the as-of scope active, click a chip — the new tab still resolves
+       the same cohort and date (the href carries the cohort params + scope + `?asof` per J-51/J-50)
+  - Acceptance: every published `N=` sample-size chip (the J-51 set: Factor Lab, Combination Lab,
+    Event Study) opens its drill-down in a **new tab** (`target="_blank"` with `rel="noopener"`-
+    equivalent), the href still built by the same two-step cohort + as-of serialization (J-51/J-50 —
+    deep-linkable, reload-safe, count-coherent, never a second date state); the originating Research
+    tab's state is never disturbed; the drill-down's own "Back to Research" link stays same-window;
+    **J-51's same-window note and J-54's exclusivity list are amended accordingly** — new-tab links
+    are now: stocks-leaderboard tickers (J-54), samples-row tickers (J-52), theme/sector member
+    tickers (J-57/J-58), and the `N=` chips (J-65); every other in-app link stays same-window.
+
+- **J-66: Job progress is fine-grained, live, and honest (extends J-46/J-53)**
+  - Steps:
+    1. Start a multi-chunk fetch (or `both`) job and watch the job card: the symbols bar advances
+       **per symbol** (not in whole-chunk jumps), a **current-activity line** names what is being
+       worked on right now, and an **"updated Ns ago"** heartbeat ticks
+    2. During the backfill stage, the dates bar advances per date and the activity line names the
+       date being scanned (e.g. "scanning 2021-03-11 (12/22)")
+    3. Read the per-stage section — each executed stage shows its own progress + elapsed **live**
+       (the J-53 timings, no longer only in the final summary)
+    4. Run a plan spanning 2+ date windows over the full symbol set — the symbols counter **never
+       exceeds its total** (the observed `318/159` reading is the named defect and must be gone)
+    5. Compare a genuinely stalled job (heartbeat not advancing) against a slow-but-working one —
+       visually distinguishable at a glance
+  - Acceptance: fetch progress ticks at **per-symbol completion granularity** (mechanism open — e.g. a
+    thread-safe completion counter the pool workers tick while ALL DB writes + checkpointing stay on
+    the orchestrating thread; chunk-atomic commit/rollback and the J-34 checkpoint semantics
+    unchanged); backfill progress stays per-date with the current date named; the job payload + card
+    carry a **current-activity message** and a **last-progress heartbeat timestamp** (the UI renders
+    "updated Ns ago") so slow-but-alive is distinguishable from stalled; per-stage progress/timings
+    (J-53) render **live during the run**, not only at completion; **counters are monotone and can
+    never exceed their stated totals** — the symbols figure counts **distinct symbols** completed
+    across date windows (or, if per-(symbol, window) units are surfaced, they are labelled as units
+    against a matching unit total) — fixing the observed `318/159`; every figure remains honest
+    descriptive job metadata (no canonical value recomputed, no fabricated count or timestamp); the
+    UI polling interval and any heartbeat/granularity knob come from config (**no magic numbers**).
+
+- **J-67: Multi-date backfill completes reliably — no more 'committed'-session crash (extends J-53/J-41)**
+  - Steps:
+    1. With bars covering a multi-month range (~90 trading dates), run a `backfill` job over it (or
+       resume a `both` job at its backfill stage per J-59)
+    2. The stage runs to completion — snapshots + forward returns for EVERY pending date; no
+       `This session is in 'committed' state; no further SQL can be emitted within this transaction`
+       failure
+    3. Force one date to fail (offline fault injection) — that date is recorded as failed with its
+       error while the OTHER dates still complete; the job ends in an honest `partial` state
+    4. Re-run the same range — create-once fills only what is missing (no UNIQUE crash, nothing
+       overwritten — J-41/J-53)
+    5. Run the scanner / forward-returns / immutability / no-lookahead suites — green, outputs
+       identical
+  - Acceptance: the parallel multi-date backfill's DB session/transaction management is **made sound**
+    — no Session is shared across concurrent workers mid-transaction and the orchestrating session is
+    never left emitting SQL in an invalid ('committed') state (mechanism open: per-worker sessions
+    with a single serialized writer, orchestrator-owned write batches with correct transaction
+    boundaries, or equivalent — SQLite writes stay serialized/transactional); a multi-month
+    `both`/`backfill` job (the reported ~91-date repro) **completes without the committed-session
+    failure**; a single date's failure is **isolated** — recorded per-date (honest error + counts)
+    while the remaining dates complete, ending in an honest `partial`, never aborting the whole stage
+    and never fabricating a snapshot; canonical outputs stay **byte-identical** to the sequential
+    engine (the existing suites assert it — *Parallel backfill never changes results*); create-once /
+    idempotent / concurrency-safe snapshot creation (J-41) and honest progress (J-66) are preserved;
+    a committed regression test exercises a multi-date parallel backfill end-to-end **including the
+    failure-isolation path**, offline.
+
+**J-55 … J-67 are NOT data-dependent.** Every journey above is buildable and verifiable offline: the
+UI journeys (J-55–J-58, J-61, J-62, J-64, J-65) run against the committed seed; the jobs journeys
+(J-59, J-60, J-66, J-67) are provable with injected/counting providers + fault injection; J-63 derives
+from stored snapshots. None of them may be recorded blocked-NA for provider reasons, and none may halt
+the loop.
 
 **Data-dependent journeys (non-halting).** **J-22**, **J-23**, and **J-24** require a one-shot offline
 fetch of real data the committed seed does not yet contain — expanded-universe daily OHLCV + market-cap
@@ -1746,12 +2156,15 @@ green unconditionally, like backfill.
   single config-backed catalog; no component may hardcode or duplicate a definition; the setup/pattern
   entries stay single-sourced (referenced or hosted by the same catalog, never re-described). *(extends
   Setup & pattern vocabulary is config-driven in the UI too)*
-- **Leaderboard sorting is a view transform.** Column sorting on `/stocks` MUST re-order only the
-  client-rendered rows of the already-served snapshot; it MUST NOT change, recompute, or re-rank any
-  stored value — the rank `#`, scores, buckets, setup statuses, and pattern flags read exactly as
-  served, and the default order remains the scanner's stored rank. Sorting MUST NOT introduce a new
-  endpoint or any second compute path. *(extends Single source of truth + No recompute in the read
-  path)*
+- **Leaderboard sorting, searching, and table filtering are view transforms.** Column sorting on
+  `/stocks` (and on the `/research/samples` table — J-64), the J-55 symbol search, the J-56 theme
+  filter, and the J-64 ticker filter MUST re-order or narrow only the client-rendered rows of the
+  already-served payload; they MUST NOT change, recompute, or re-rank any stored value — the rank `#`,
+  scores, buckets, setup statuses, pattern flags, and theme membership read exactly as served, and the
+  default order remains the scanner's stored rank. A filtered view MUST stay honest about what it
+  hides ("x of N") and MUST NOT alter a published cohort total. Sorting/searching/filtering MUST NOT
+  introduce a new endpoint or any second compute path. *(extends Single source of truth + No recompute
+  in the read path)*
 - **Full-history market context never looks ahead.** The dashboard major-indexes & regime card MAY
   render stored bars and stored regime bands dated after the selected as-of **strictly as
   display-only context** behind a visible as-of marker; that rendering MUST NOT feed any as-of-scoped
@@ -1773,3 +2186,46 @@ green unconditionally, like backfill.
   checkpoints stay consistent). A faster pipeline that changes any stored value is a regression, not
   an optimization. *(extends Vectorized scans are a pure refactor + Parallel import preserves every
   import contract)*
+- **Backfill concurrency is transactionally sound.** No DB session may be shared across concurrent
+  backfill workers mid-transaction, and the orchestrating session MUST never be left emitting SQL in
+  an invalid ('committed') transaction state mid-stage; a per-date failure MUST be isolated and
+  recorded (honest error + counts) while the remaining dates complete — one bad date never aborts the
+  stage, corrupts a transaction, or fabricates a snapshot. *(extends Parallel backfill never changes
+  results — J-67)*
+- **Run history is complete and truthful (live from start).** Every started job MUST have a
+  run-history record from the moment it starts (status `running`), receiving honest lifecycle
+  transitions to exactly ONE terminal state (`ok` / `partial` / `failed` / `interrupted`); a `running`
+  record whose process died MUST be marked `interrupted` by a boot sweep — never left `running`
+  forever and never silently dropped. A terminal record MUST NOT be mutated afterwards (beyond the
+  J-38 soft-dismiss flag), nothing in the audit trail may be deleted or hidden, and no status may ever
+  be fabricated — the append-only identity means the record of what ran is permanent and truthful,
+  which a start-inserted record with honest lifecycle transitions respects. *(amends + extends
+  Unfinished-imports actions are idempotent and audit-preserving — J-60)*
+- **Stage-resume re-fetches nothing.** Resuming or retrying past a completed fetch stage MUST perform
+  ZERO provider calls, and the fetch planner MUST skip the provider call for any (symbol, window)
+  already fully covered against the benchmark trading calendar — re-fetching data the store already
+  holds is a defect, not a safety margin; the per-`(symbol, date)` write idempotency stays the last
+  line of defense, never the only one. *(extends Pull-missing fetches exactly the gap +
+  Unfinished-imports actions are idempotent — J-59)*
+- **Episode mode recomputes nothing.** The event-study episode view MUST be a deterministic collapse
+  (grouping) of the SAME stored per-observation rows the pooled view reads — one membership rule, the
+  same observation builders, no return/excursion/factor recomputed; the pooled figures stay
+  byte-identical; both modes disclose n + unique symbols + episode count; aggregates and samples
+  drill-downs MUST stay count-coherent in both modes. *(extends Research lab is read-only, honest &
+  not predictive + Sample drill-downs are read-only and count-coherent — J-63)*
+- **The calendar is a presentation of the one date state.** The as-of calendar popover MUST render the
+  same canonical snapshot-date list and write the same single global as-of state (and its `?asof`
+  serialization) — it MUST NOT hold, parse, or invent a second date state; a date it cannot offer is
+  disabled, never fabricated; an invalid URL date still degrades to latest. *(extends Exactly one date
+  selector — J-62)*
+- **The availability heatmap is descriptive, read-only metadata.** Per-date availability counts MUST
+  be derived from stored bars + stored runs only (one read-only derivation, one endpoint), MUST NOT
+  restate or recompute any canonical score/return/bucket, and MUST render partial coverage honestly (a
+  sparse date never looks fully covered, an empty date never looks present); clicking it only prefills
+  JOB parameters — never the global as-of control. *(extends Coverage & missing-data are descriptive &
+  honest + Exactly one date selector — J-61)*
+- **Progress is honest at fine grain.** Progress counters MUST be monotone within a run and MUST NEVER
+  exceed their stated totals (a `318/159` reading is a defect, not a display quirk); the
+  current-activity message and the last-progress heartbeat MUST reflect real work (never fabricated,
+  never pre-dated); polling/heartbeat/granularity knobs live in config — no magic numbers. *(extends
+  Parallel import preserves every import contract — J-66)*
