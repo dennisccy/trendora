@@ -197,3 +197,29 @@ one-shot J-22/J-23/J-24 + DIA best-effort fetch.
 **Reasoning:** All three targets have positive, evaluator-viewed evidence on their substantive legs: J-55 typing 'nv' → 4/122 ticker+name matches with the honest count and an honest no-match empty state; J-56 Theme column chips + ?theme=ai_data_centre → 16/122, graceful unknown-slug degradation, and detail-chips==leaderboard-chips (J-06 leg, cross-corroborated via UT-J-05-J-06-nvda-detail.png); J-57 Semiconductors 6-preview + '+21' → all 27 members expanded in place with 'Show fewer', dated new-tab member links, stopPropagation proven by genuinely-unchanged state. Evidence caveats logged, none verdict-changing: UT-J-56-nvda-detail-themes.png is a mislabeled byte-dup of UT-J-55-initial.png (leaderboard, not detail); the J-56 '+n' overflow is DORMANT because config max theme membership = 3 = THEME_PREVIEW_LIMIT (verified from config.yaml — no served row can overflow; implemented as an iter-5-safe non-interactive title-span, review-verified); the search-sort-compose capture shows stored-rank order (sort-compose rests on the code's filter-THEN-sort structure + J-48's separate verification). Browser QA 11/11; review PASS (0 issues); tsc --noEmit clean; no dev-overlay badge in captures. Ten extension journeys remain failing → not a GOAL_ACHIEVED candidate.
 
 **Next-step recommendation:** Iter-10 lean: J-64 + J-65 (samples table client-side sort/filter under the J-48 view-transform contract + N= chips target=_blank) — the same contract just proven on /stocks, lowest-risk continuation. Then per the decomposer's working plan: J-58 (config industry catalog — backend/config touch ⇒ full pytest gate), J-62 (+J-61 if it fits), J-63, then FULL-depth J-59+J-60 and J-66+J-67. Opportunistic J-44 toggle-cycle capture is STILL owed (skipped again in iter-9) — QA should grab it early in the next browser session.
+
+## Iteration 10 — goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10
+
+**Date:** 2026-06-13T03:33:21+01:00
+**Verdict:** CONTINUE
+**Depth dispatched:** lean
+**Journey deltas:**
+- Newly passing: J-64, J-65
+- Newly failing: none
+- Regressed: none
+- Anti-goal violations: none
+
+**Reasoning:** Frontend-only 2-file diff (samples page sort+filter; chip link target attr) delivers
+both target journeys with zero backend diff, COHERENCE-PASS, and zero regressions across the eight
+required-still-passing journeys. Evaluator directly viewed the five J-64 captures (served order, sort
+asc with distinct tickers, AAPL filter 28/2376 with total unchanged, honest "0 of 2376" view-empty on
+no-match, NVDA filter+sort compose 19/2376) and the J-32/J-43/J-50/J-25-26-29 regression captures, and
+source-verified the view-transform contract (filter-THEN-sort memos over data.rows, samples-total reads
+served data.total, fetch keyed only on cohort/asof, SortHeader button/TermInfo siblings, sample-link
+target=_blank + byte-unchanged href). The two governing anti-goals (view transforms; read-only
+count-coherent drill-downs) hold; no fabricated rows.
+
+**Next-step recommendation:** Continue at FULL depth — the lean view-transform vein is exhausted; every
+remaining failing journey (J-58 sectors config catalog; J-61/J-62 heatmap+calendar; J-63 episodes;
+J-59/J-60/J-66/J-67 jobs pipeline) is backend/config-touching and needs a pytest gate. Recommend J-58
+next (smallest backend surface) or the J-59/J-60/J-66/J-67 jobs cluster.

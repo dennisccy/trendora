@@ -244,21 +244,21 @@
       "id": "J-25",
       "name": "Factor Lab — decile sort and rank-IC per factor",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7-evidence/UT-J-25-factor-lab.png",
-      "note": "Re-verified iter-7 (chips→links is a presentation change only): decile table D1-D10 with mean + risk-adjusted columns, Rank-IC +0.04 with n, survivorship banner (evaluator-viewed capture). Aggregates regression-proven by the FULL test_api_research.py 45/45 + suite 710/4/0; evaluator live-checked the factor-lab aggregate (n_total 20954, 10 deciles)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-25-J-26-J-29-research.png",
+      "note": "Re-verified iter-10 (evaluator-viewed UT-J-25-J-26-J-29-research.png): /research Factor Lab heading, decile table with N= chips, Rank-IC +0.03 panel, survivorship banner all render. Frontend-only view-transform diff (samples page + chip link target attr) cannot touch the lab aggregates; backend diff empty."
     },
     "J-26": {
       "id": "J-26",
       "name": "Factor Lab — multi-factor composite cohort",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7-evidence/UT-J-26-combination-lab.png",
-      "note": "Re-verified iter-7 via DOM/API + evaluator live API check (baseline n=16809 +3.79%, composite 3362, strict overlap 606 — figures match QA's modulo one matured snapshot). EVIDENCE CAVEAT: UT-J-26-combination-lab.png is a byte-identical duplicate of UT-J-25-factor-lab.png (md5 17053fd6) and does NOT show the Combination Lab — the verification basis is the QA report's DOM/API assertions corroborated by the evaluator's independent live aggregate+samples queries, not the screenshot."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-25-J-26-J-29-research.png",
+      "note": "Re-verified iter-10: Combination/composite cohort surface unchanged (regression leg green per QA; same shared /research capture). EVIDENCE CAVEAT carried: no dedicated combination-lab screenshot this iter (shared /research Factor Lab bytes). Backend diff empty -> aggregates untouched."
     },
     "J-27": {
       "id": "J-27",
@@ -284,11 +284,11 @@
       "id": "J-29",
       "name": "Setup & Pattern lab — event study",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7-evidence/UT-J-25-factor-lab.png",
-      "note": "Re-verified iter-7 via DOM/API + evaluator live API check: event-study Actionable by_horizon n=70/66/64/54/45 exactly matches QA's reported figures; samples pooled 20d total 54 == agg 54. EVIDENCE CAVEAT: no dedicated event-study screenshot this iter (cited PNG shows the Factor Lab view); basis is DOM/API claims + evaluator live corroboration + suite 710/4/0 on unchanged aggregate code. (J-63 will amend this lab with episode-default mode.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-25-J-26-J-29-research.png",
+      "note": "Re-verified iter-10: Setup & Pattern Lab (Actionable, MAE/MFE) renders per QA. Shared /research capture; backend diff empty -> event-study aggregates untouched."
     },
     "J-30": {
       "id": "J-30",
@@ -314,11 +314,11 @@
       "id": "J-32",
       "name": "Research point-in-time toggle (as-of vs all-history)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7-evidence/UT-J-32-asof-mode.png",
-      "note": "UPGRADED from already_passing — directly re-exercised iter-7: 'As of date' mode active in capture; chip links carry scope=asof&asof=D (24 links); 'Point-in-time: pooling only snapshots dated ≤ 2024-01-03' label; evaluator live-confirmed as_of scoping (factor-lab as_of=2021-01-04: n_total 115, D1 n=11; samples D1 as_of total 11 == 11). Mode, never a second date state (J-18 holds)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-32-asof-mode.png",
+      "note": "Re-verified iter-10 (evaluator-viewed UT-J-32-asof-mode.png): 'As of date' scope mode visibly ACTIVE on /research; QA DOM-asserts all 51 sample-link hrefs gain scope=asof. Mode, never a second date state. Backend diff empty."
     },
     "J-33": {
       "id": "J-33",
@@ -424,11 +424,11 @@
       "id": "J-43",
       "name": "Deep-linkable as-of (?asof URL serialization)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5-evidence/UT-J-43-invalid-asof-degrades.png",
-      "note": "Re-verified iter-5 AFTER hrefs changed app-wide: reload of stocks?asof=2026-06-05 kept the param; click-through carried it via the new href embedding; invalid ?asof=9999-99-99 silently degraded to clean /stocks at latest (122 rows, no crash). Fresh-tab restore re-shown in UT-J-50-fresh-tab-asof.png. asof-provider state semantics untouched (iter-9 diff confirms: only the reflect-effect's q/theme keys added; asof-provider not in diff)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-43-J-50-stocks-historical.png",
+      "note": "Re-verified iter-10 (evaluator-viewed UT-J-43-J-50-stocks-historical.png): /stocks at ?asof=2026-06-05 shows 'Viewing as-of 2026-06-05 (historical)' badge; single global control. asof-provider not in the iter-10 diff (sample-link href construction byte-unchanged)."
     },
     "J-44": {
       "id": "J-44",
@@ -494,31 +494,31 @@
       "id": "J-50",
       "name": "As-of date survives EVERY in-app navigation, including new tabs (extends J-43)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-50-J-54-asof-hrefs.png",
-      "note": "Re-verified iter-9 at ?asof=2026-06-05 post-hydration (capture shows 'Viewing as-of 2026-06-05 (historical)' on /stocks): all 122 stock ticker hrefs + nav hrefs carry ?asof=2026-06-05 (DOM-asserted); the NEW J-57 theme member links carry the same param on /themes?asof=2026-06-05 via the same useAsOfHref helper (code-verified single owner); clean hrefs at latest."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-43-J-50-stocks-historical.png",
+      "note": "Re-verified iter-10 (same historical capture): QA DOM-asserts 122 ticker hrefs + all sidebar nav hrefs carry ?asof=2026-06-05; the J-65 chip hrefs also embed asof while historical via the same useAsOfHref helper (single owner, code-verified). Clean at latest."
     },
     "J-51": {
       "id": "J-51",
       "name": "Every research sample count is a link to its exact samples",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7-evidence/UT-J-51-samples-page.png",
-      "note": "NEWLY PASSING iter-7. All acceptance legs verified: 51 unique /research/samples hrefs across all three labs; deep-linkable + reload-safe; survivorship banner; TermInfo sibling headers; n=0 honest empty state ('This cohort has zero observations... The published N for this slice is also 0', evaluator-viewed); as-of mode carries scope=asof. COUNT-COHERENCE INDEPENDENTLY RE-PROVEN LIVE BY THE EVALUATOR on a fresh backend boot: factor D1 2095==agg 2095, D10 2096==2096, slice=total 20954==n_total==rank-IC n; combination baseline 16809==16809, composite 3362==3362, strict 606==606; event-study Actionable 20d 54==54; as_of D1 11==11; invalid selectors all 422. Structural guarantee: samples.py calls the SAME builders + shared _decile_member_slice/_combination_cohort_members helpers (coherence audit PASS); SELECT-only (no session writes, code-verified). NOTE: absolute Ns drift as warm-up matures forward returns — coherence must be asserted same-instant, both readings internally coherent."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-64-ticker-filter-aapl.png",
+      "note": "Re-verified iter-10: drill-down total == published N same-instant (QA: API total=2376 == D1 chip 'See the 2376 observations'; len(rows)==total). Source unchanged for the cohort-param + fetch contract; the J-64 sort/filter layer over data.rows does not touch data.total (samples-total renders it verbatim). Honest n=0 cohort empty state preserved (distinct from the new view-empty state). EVIDENCE CAVEAT: the UT-J-51-J-52 filename carries /research-page bytes (md5 4cf9a48c) not a samples capture; substance covered by source + the AAPL-filter capture."
     },
     "J-52": {
       "id": "J-52",
       "name": "From a sample row to the dated stock detail",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7-evidence/UT-J-52-stock-detail-new-tab.png",
-      "note": "NEWLY PASSING iter-7. Samples-row ticker anchors: target=_blank + rel='noopener noreferrer', href=/stocks/AAPL?asof=2021-01-04 carrying the ROW's snapshot date (not the page's global as-of); new tab shows 'Viewing as-of 2021-01-04 (historical)' (evaluator-viewed capture); originating samples tab untouched; nav links in the new tab all carry ?asof=2021-01-04 (J-43 single-control semantics). Value-identity covered by unit tests (full suite 710/4/0)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-64-ticker-filter-aapl.png",
+      "note": "Re-verified iter-10: TickerLink keeps target='_blank' + rel='noopener noreferrer', href=/stocks/AAPL?asof=2021-01-04 carrying the ROW's snapshot date (source page.tsx:568-585). The AAPL-filtered capture (UT-J-64-ticker-filter-aapl.png) shows the 28 AAPL rows whose links QA confirmed (28/28). EVIDENCE CAVEAT: UT-J-51-J-52 filename mislabeled (/research bytes)."
     },
     "J-53": {
       "id": "J-53",
@@ -633,22 +633,22 @@
     "J-64": {
       "id": "J-64",
       "name": "Research samples table — sortable and filterable (the J-48 contract)",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
-      "last_evidence_path": null,
-      "note": "Not yet built (pure client-side view transform on /research/samples — same contract J-55/J-56 just proved on /stocks; recommended next lean target bundled with J-65). NOT data-dependent per goal.md."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-64-ticker-filter-aapl.png",
+      "note": "NEWLY PASSING iter-10. Evaluator-viewed captures (Factor Lab Leadership-decile D1 cohort, 2376 rows, many distinct tickers + forward-return spread -> dormant-overflow lesson satisfied): samples-loaded shows served-order table; sort-forward-return-asc re-orders rows with one active indicator and distinct tickers (PLTR/NVDA/...); ticker-filter-aapl narrows to 28 AAPL rows, 'Showing 28 of 2376 observations', samples-total still 2376 (cohort total untouched); filter-empty-state ('AAPLZZZNOMATCH' -> 'Showing 0 of 2376', distinct honest view-empty 'the cohort itself is unchanged', NO fabricated rows); filter-sort-compose ('NVDA' + Leadership sort active -> 19/2376). Source-verified pure view transform: filter-THEN-sort memos over data.rows (page.tsx:338-344), samples-total renders data.total verbatim (:252), fetch effect keyed only on [fetchParams, asofCutoff] (:159 -> no refetch), 3rd-click clears to served order; SortHeader keeps the sort <button> and TermInfo as SIBLINGS in the <th> (:533-555, iter-5 nested-interactive hazard avoided, no dev-overlay badge). Coherence audit PASS (comparators read already-served fields, no recompute). Backend diff empty."
     },
     "J-65": {
       "id": "J-65",
       "name": "N= chips open the samples drill-down in a new tab (amends J-51/J-54)",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
-      "last_evidence_path": null,
-      "note": "Not yet built (target=_blank + rel on the existing N= chip links — the J-57 link contract on a new surface; bundle with J-64). NOT data-dependent per goal.md."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-65-research-historical-chips.png",
+      "note": "NEWLY PASSING iter-10. sample-link.tsx N= chip now target='_blank' + rel='noopener noreferrer' (source-verified :49-50) with the href construction BYTE-UNCHANGED — same two-step buildSamplesHref(cohort, scope) + useAsOfHref (:44-45), so cohort params + scope + ?asof all carry (J-51/J-50 hold). QA DOM-asserted 51/51 chips carry both attrs; hrefs date-free at latest, all 51 gain &asof=2026-06-05 at historical; the samples 'Back to Research' link stays same-window (no target). EVIDENCE CAVEAT: UT-J-65-research-initial.png shares bytes (md5 4cf9a48c) with the J-25/J-26/J-29 and J-51/J-52 captures — all genuinely the /research Factor Lab page (correct surface for J-65-initial); the new-tab attr basis is the source + QA DOM claims, not the static image. Coherence PASS (link target attr only). Backend diff empty."
     },
     "J-66": {
       "id": "J-66",
@@ -672,5 +672,5 @@
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-06-13T02:33:06+01:00"
+  "updated_at": "2026-06-13T03:33:21+01:00"
 }

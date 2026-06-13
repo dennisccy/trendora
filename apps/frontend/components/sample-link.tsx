@@ -18,8 +18,13 @@ import { cn } from "@/lib/utils";
  *   2. `useAsOfHref(...)` (the J-50 helper) merges the single global `?asof=D` while historical — the
  *      ONLY author of the date param, so there is no second date state.
  *
- * It is a plain same-window `<Link>` (every link on this page stays same-window; only the SAMPLES ROW
- * ticker opens a new tab, J-52). Hover/focus underline the chip.
+ * J-65 — the chip opens its drill-down in a NEW tab (`target="_blank"` + `rel="noopener noreferrer"`),
+ * with the href construction BYTE-UNCHANGED from J-51 (same two-step `buildSamplesHref` + `useAsOfHref`
+ * serialization, so cohort params + scope + `?asof` all carry — J-51/J-50 hold). Opening the drill-down
+ * therefore never disturbs the originating Research tab's lab/scope/scroll state. New-tab in-app links are
+ * now: stocks-leaderboard tickers (J-54), samples-row tickers (J-52), theme/sector member tickers
+ * (J-57/J-58), and these `N=` chips (J-65); every OTHER in-app link (incl. the samples page's own "Back to
+ * Research") stays same-window. Hover/focus underline the chip.
  */
 export function SampleLink({
   n,
@@ -41,6 +46,8 @@ export function SampleLink({
   return (
     <Link
       href={href}
+      target="_blank"
+      rel="noopener noreferrer"
       aria-label={label}
       title={label}
       data-testid="sample-link"
