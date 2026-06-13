@@ -679,6 +679,15 @@ def compute_factor_combination(
 # --------------------------------------------------------------------------------------------------
 # Setup & Pattern event study (J-29) — read-only pooled cross-snapshot analytic over stored values
 # --------------------------------------------------------------------------------------------------
+# The two overlap-honesty views (J-63) a cohort can be observed under — a fixed structural vocabulary
+# (not a tunable). `episodes` (the DEFAULT) collapses each continuous run of a symbol triggering a
+# subject into ONE first-trigger observation; `pooled` keeps every per-signal-day observation (the
+# pre-J-63 behaviour, byte-identical). Both endpoints validate `view` against this set (422 otherwise).
+VIEW_EPISODES = "episodes"
+VIEW_POOLED = "pooled"
+ALL_VIEWS = (VIEW_EPISODES, VIEW_POOLED)
+
+
 def subject_catalog(cfg: Config) -> list[dict]:
     """The ordered, config-driven event-study subject catalog: one `{key, label, kind}` per subject —
     every setup status (`setups.ALL_STATUSES`, kind "setup") followed by every detected pattern
@@ -754,6 +763,89 @@ def _event_study_members(
             "sector": res.sector,                     # stored sector (read verbatim)
         })
     return members
+
+
+def _run_position_index(
+    session: Session, as_of: Optional[date_cls] = None
+) -> dict[int, int]:
+    """`run_id → ordinal position` over the GLOBAL ordered stored-snapshot sequence (every immutable
+    `scanner_runs` row, ascending by the canonical `ScannerRun.asof_date` — which is unique per run, so
+    the ordering is total and deterministic). This is the run-date sequence episode-consecutiveness is
+    judged on (J-63): two of a symbol's signal-days are CONSECUTIVE iff their runs' ordinals differ by
+    exactly 1 — i.e. there is no intervening stored run-date between them. Consecutiveness is therefore
+    judged on the run-date SEQUENCE, NOT on raw calendar adjacency (a 50-trading-day gap with no
+    intervening stored run is still consecutive; an intervening stored run on which the symbol did NOT
+    trigger the subject breaks the run). A single SELECT; recomputes nothing.
+
+    `as_of` (J-32) scopes the global sequence to snapshots dated <= D (the SAME single membership filter
+    `_event_study_members` applies), so consecutiveness is judged WITHIN the same point-in-time window the
+    members were pooled from; `as_of=None` indexes every stored run → all-history."""
+    stmt = select(ScannerRun.id, ScannerRun.asof_date)
+    if as_of is not None:
+        stmt = stmt.where(ScannerRun.asof_date <= as_of)
+    ordered = sorted(session.exec(stmt).all(), key=lambda row: row[1])  # ascending by asof_date
+    return {run_id: position for position, (run_id, _asof) in enumerate(ordered)}
+
+
+def _collapse_to_episodes(members: list[dict], run_position: dict[int, int]) -> list[dict]:
+    """Collapse the pooled per-signal-day `members` of ONE (subject, horizon) into first-trigger EPISODES
+    (J-63), a pure in-memory deterministic grouping of the STORED rows — it recomputes NO return /
+    excursion / regime / sector / membership. For each `ticker`, its member signal-days are ordered by
+    their run's GLOBAL ordinal (`run_position`) and split into maximal runs of CONSECUTIVE ordinals
+    (ordinal difference exactly 1 — no intervening stored run-date on which the ticker did not trigger).
+    Each such run collapses to ONE episode observed at its FIRST trigger date, carrying that first
+    observation's stored `return` / `mae` / `mfe` / `regime` / `sector` VERBATIM (the later signal-days of
+    the run are dropped from the count — that is the overlap correction). A break in the ordinal sequence
+    yields a SEPARATE episode. Determinism: the same members + run order always yield the same episodes
+    (ticker grouping + ordinal sort are total orders). Output preserves the input member order of the
+    surviving first-trigger rows so downstream sorts/slices stay stable."""
+    # group members by ticker, remembering each member's global run ordinal
+    by_ticker: dict[str, list[tuple[int, dict]]] = defaultdict(list)
+    for member in members:
+        ordinal = run_position.get(member["run_id"])
+        if ordinal is None:  # defensive: a member whose run is outside the indexed window is dropped
+            continue
+        by_ticker[member["ticker"]].append((ordinal, member))
+
+    # the first-trigger member of each maximal consecutive-ordinal run (the ordinal sort is per-ticker, so
+    # ordinals never collide ACROSS tickers — two tickers triggering on the SAME run-date are independent
+    # episodes). Collect the surviving rows' identities, then re-emit in the ORIGINAL member order (stable).
+    kept_ids: set[int] = set()
+    for occurrences in by_ticker.values():
+        occurrences.sort(key=lambda pair: pair[0])  # ascending by global run ordinal
+        prev_ordinal: Optional[int] = None
+        for ordinal, member in occurrences:
+            if prev_ordinal is None or ordinal != prev_ordinal + 1:
+                kept_ids.add(id(member))  # a NEW episode → its first trigger is this signal-day
+            prev_ordinal = ordinal
+
+    return [member for member in members if id(member) in kept_ids]
+
+
+def _event_study_observation_set(
+    session: Session, subject: dict, horizon: int, view: str, as_of: Optional[date_cls] = None
+) -> list[dict]:
+    """The observation set for (subject, horizon) under the selected `view` (J-63) — the SINGLE membership
+    builder every event-study figure AND the samples drill-down read, so a cohort's drill-down total
+    EQUALS its published n by construction (count-coherence keystone). `view="pooled"` returns the
+    `_event_study_members` list UNCHANGED (byte-identical to the pre-J-63 behaviour); `view="episodes"`
+    (the default) returns its first-trigger episode collapse (`_collapse_to_episodes`). Recomputes nothing
+    — pure SELECT + in-memory grouping. `as_of` scopes both the members and the run-ordinal index to the
+    same point-in-time window."""
+    members = _event_study_members(session, subject, horizon, as_of)
+    if view == VIEW_POOLED:
+        return members  # the unchanged pooled list — byte-identical to pre-J-63
+    run_position = _run_position_index(session, as_of)
+    return _collapse_to_episodes(members, run_position)
+
+
+def _episode_count(session: Session, subject: dict, horizon: int, as_of: Optional[date_cls] = None) -> int:
+    """The number of distinct first-trigger EPISODES for (subject, horizon) — identical in BOTH views
+    (it counts episodes regardless of which view renders, per the J-63 disclosure contract). Derived from
+    the SAME collapse helper, so it never drifts from the episodes-view n."""
+    members = _event_study_members(session, subject, horizon, as_of)
+    run_position = _run_position_index(session, as_of)
+    return len(_collapse_to_episodes(members, run_position))
 
 
 def _expectancy(returns: list[float]) -> dict:
@@ -901,33 +993,50 @@ def _event_study_by_sector(members: list[dict], cfg: Config) -> list[dict]:
 
 def compute_event_study(
     session: Session, subject_key: str, horizon: int, config: Optional[Config] = None, *,
-    as_of: Optional[date_cls] = None,
+    as_of: Optional[date_cls] = None, view: str = VIEW_EPISODES,
 ) -> dict:
-    """The SINGLE canonical Setup & Pattern event study (Data Contract value, J-29) for `subject_key` at
-    the selected `horizon`. Pools EVERY historical occurrence of the subject (a setup OR a detected
-    pattern) across all immutable snapshots and reports, per configured horizon, the forward-return
-    distribution (mean / median / %positive / dispersion) + expectancy + mean MAE / MFE + the downside-
-    only risk-adjusted ratios (return/downside-dev AND return/mean-|MAE|), plus the best exit-horizon and
-    the by-regime + by-sector slices at the selected horizon — each carrying `n` and honest NA.
+    """The SINGLE canonical Setup & Pattern event study (Data Contract value, J-29 / J-63) for `subject_key`
+    at the selected `horizon` under the chosen overlap-honesty `view`. Pools EVERY historical occurrence of
+    the subject (a setup OR a detected pattern) across all immutable snapshots and reports, per configured
+    horizon, the forward-return distribution (mean / median / %positive / dispersion) + expectancy + mean
+    MAE / MFE + the downside-only risk-adjusted ratios (return/downside-dev AND return/mean-|MAE|), plus the
+    best exit-horizon and the by-regime + by-sector slices at the selected horizon — each carrying `n` and
+    honest NA.
+
+    `view` (J-63, default `episodes`) makes the study OVERLAP-HONEST: in `episodes` EVERY figure derives
+    from the FIRST-TRIGGER episode collapse of the subject's signal-days (each continuous run of a symbol
+    triggering the subject counts ONCE, observed at its first trigger date — `_collapse_to_episodes`); in
+    `pooled` every figure derives from the raw per-signal-day pool. **`view="pooled"` routes through the
+    UNCHANGED pre-J-63 path (the `_event_study_members` list used directly), so its output is BYTE-IDENTICAL
+    to the prior published values** — the episode path is purely additive. The payload also carries the
+    three disclosure values for the selected horizon, present in BOTH views: `n` (observations in the
+    current view at the selected horizon — == `n_total`), `unique_symbols` (distinct tickers in that set),
+    and `episode_count` (distinct first-trigger episodes — identical in both views since it counts episodes
+    regardless of which view renders). `view` is a cohort/MODE selector ONLY — orthogonal to `?asof`, the
+    global as-of, and the analysis-mode `mode` state. Raises `ValueError` for an unknown view.
 
     READ-ONLY (the keystone anti-goal): derived ENTIRELY from stored values — `forward_returns`
     (`realized_return` + the iter-14 `mae` / `mfe`, read VERBATIM) JOINED to the stored `scanner_results`
     (setup status + the pattern mirror flags) and `scanner_runs.regime_label` (verbatim). It issues ONLY
-    SELECTs and pure stats; it calls NO scoring / regime / return / excursion / pattern math (no run_scan,
-    score_stocks, backfill*, forward_return, forward_excursions, detect_*, score_regime). It pools the SAME
-    per-observation rows `compute_forward_aggregates` groups, so the pooled mean for a subject at horizon h
-    equals the matching `by_setup` / `by_<pattern>` cohort mean (the consistency invariant, unit-asserted).
-    Risk is downside-only everywhere (never total volatility).
+    SELECTs and pure stats (the episode collapse is a pure in-memory grouping of stored rows — recomputes
+    no return / excursion / score / regime / pattern); it calls NO scoring / regime / return / excursion /
+    pattern math (no run_scan, score_stocks, backfill*, forward_return, forward_excursions, detect_*,
+    score_regime). In `pooled` it pools the SAME per-observation rows `compute_forward_aggregates` groups,
+    so the pooled mean for a subject at horizon h equals the matching `by_setup` / `by_<pattern>` cohort mean
+    (the consistency invariant, unit-asserted). Risk is downside-only everywhere (never total volatility).
 
-    `as_of` (iter-19, J-32) optionally scopes EVERY pooled member to snapshots dated <= D — threaded
-    through the per-horizon LOOP (and the defensive direct-call fallback) so every horizon row, the
-    by-regime and the by-sector slices reflect the SAME point-in-time window (the iter-17 seam —
-    recomputes nothing). The payload echoes the resolved cutoff as `asof_date` (ISO) when scoped, else
-    `null`; `as_of=None` is byte-identical all-history. Raises `ValueError` for an unknown subject (the
-    API pre-validates -> 422)."""
+    `as_of` (iter-19, J-32) optionally scopes EVERY pooled member (and the episode run-ordinal index) to
+    snapshots dated <= D — threaded through the per-horizon LOOP (and the defensive direct-call fallback) so
+    every horizon row, the by-regime and the by-sector slices reflect the SAME point-in-time window (the
+    iter-17 seam — recomputes nothing). The payload echoes the resolved cutoff as `asof_date` (ISO) when
+    scoped, else `null`; `as_of=None` is byte-identical all-history. Raises `ValueError` for an unknown
+    subject (the API pre-validates -> 422)."""
     cfg = config or get_config()
     wf = cfg.walk_forward
     subjects = subject_catalog(cfg)
+
+    if view not in ALL_VIEWS:
+        raise ValueError(f"unknown view {view!r}; valid views are {list(ALL_VIEWS)}")
 
     subject = next((s for s in subjects if s["key"] == subject_key), None)
     if subject is None:
@@ -935,21 +1044,44 @@ def compute_event_study(
             f"unknown subject {subject_key!r}; valid subjects are {[s['key'] for s in subjects]}"
         )
 
+    # the episode collapse needs the GLOBAL ordered run-date sequence (same as-of window); loaded ONCE and
+    # reused across horizons. In the pooled view it is never built, so the pooled path is the UNCHANGED
+    # pre-J-63 code (byte-identity guard). The episode collapse is per-horizon (each horizon's members).
+    run_position = _run_position_index(session, as_of) if view == VIEW_EPISODES else None
+
+    def _view_members(h: int) -> list[dict]:
+        members = _event_study_members(session, subject, h, as_of)
+        if view == VIEW_POOLED:
+            return members  # unchanged pooled list — byte-identical to pre-J-63
+        return _collapse_to_episodes(members, run_position)  # first-trigger episode collapse
+
     by_horizon: list[dict] = []
     selected_members: Optional[list[dict]] = None
+    episode_count = 0
     for h in wf.horizons:
-        members = _event_study_members(session, subject, h, as_of)
+        members = _view_members(h)
         by_horizon.append(_event_study_horizon_row(members, h, wf.min_sample))
         if h == horizon:
             selected_members = members
+            # episode_count is view-independent: the distinct first-trigger episodes at the selected
+            # horizon. In the episodes view `selected_members` ARE the episodes; in pooled, collapse here.
+            episode_count = (
+                len(selected_members) if view == VIEW_EPISODES
+                else len(_collapse_to_episodes(members, _run_position_index(session, as_of)))
+            )
     if selected_members is None:  # horizon not in wf.horizons (API validates; defensive for direct calls)
-        selected_members = _event_study_members(session, subject, horizon, as_of)
+        selected_members = _view_members(horizon)
+        pooled_at_h = _event_study_members(session, subject, horizon, as_of)
+        episode_count = len(_collapse_to_episodes(pooled_at_h, _run_position_index(session, as_of)))
+
+    unique_symbols = len({m["ticker"] for m in selected_members})
 
     return {
         "subject": subject,
         "horizon": horizon,
         # the resolved as-of scoping cutoff echoed (J-32) — ISO date when scoped, null in all-history mode
         "asof_date": as_of.isoformat() if as_of is not None else None,
+        "view": view,  # J-63: the resolved overlap-honesty view (episodes default | pooled)
         "subjects": subjects,
         "horizons": list(wf.horizons),
         "default_horizon": wf.default_horizon,
@@ -957,6 +1089,10 @@ def compute_event_study(
         "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
         "descriptive_caveat": RESEARCH_CAVEAT,
         "n_total": len(selected_members),
+        # J-63 disclosure values for the selected horizon (present in BOTH views) — overlap is never hidden
+        "n": len(selected_members),
+        "unique_symbols": unique_symbols,
+        "episode_count": episode_count,
         "by_horizon": by_horizon,
         "best_exit_horizon": _best_exit_horizon(by_horizon),
         "by_regime": _event_study_by_regime(selected_members, cfg),

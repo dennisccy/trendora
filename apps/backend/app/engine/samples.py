@@ -45,11 +45,13 @@ from sqlmodel import Session, select
 from app.config import Config, get_config
 from app.engine.forward_testing import SURVIVORSHIP_BIAS_LABEL
 from app.engine.research import (
+    ALL_VIEWS,
     RESEARCH_CAVEAT,
+    VIEW_EPISODES,
     _combination_cohort_members,
     _combination_observations,
     _decile_member_slice,
-    _event_study_members,
+    _event_study_observation_set,
     _factor_observations,
     factor_catalog,
     subject_catalog,
@@ -260,12 +262,21 @@ def _combination_samples(
 def _event_study_samples(
     session: Session, cfg: Config, *, subject_key: str, horizon: int, slice_kind: str,
     regime: Optional[str], sector: Optional[str], as_of: Optional[date_cls],
+    view: str = VIEW_EPISODES,
 ) -> dict:
-    """Reproduce an event-study cohort and list its member occurrences. `slice_kind`:
-      - "pooled" → the whole `_event_study_members` pool at this horizon (== per-horizon n / pooled n_total).
-      - "regime" → the pool filtered to the stored `regime` label (== that by-regime row's n).
-      - "sector" → the pool filtered to the stored `sector` (== that by-sector row's n).
+    """Reproduce an event-study cohort and list its member occurrences UNDER THE SELECTED `view` (J-63).
+    `view` (default `episodes`) selects the observation set via the SAME builder `compute_event_study`
+    uses (`_event_study_observation_set`): in `episodes` the rows are the first-trigger episode collapse
+    (one row per continuous run, at its first trigger date); in `pooled` they are every per-signal-day
+    occurrence (byte-identical to the pre-J-63 drill-down). So the drill-down total EQUALS the published
+    `n` for the SAME `(subject, horizon, view)` cohort in BOTH modes (count-coherence keystone — one
+    membership rule, never a second grouping path). `slice_kind`:
+      - "pooled" → the whole observation set at this horizon (== per-horizon n / `n` / pooled n_total).
+      - "regime" → the set filtered to the stored `regime` label (== that by-regime row's n).
+      - "sector" → the set filtered to the stored `sector` (== that by-sector row's n).
     Each row: ticker, snapshot date, the matched setup/pattern (the subject), the realized forward return."""
+    if view not in ALL_VIEWS:
+        raise ValueError(f"unknown view {view!r}; valid views are {list(ALL_VIEWS)}")
     subjects = subject_catalog(cfg)
     subject = next((s for s in subjects if s["key"] == subject_key), None)
     if subject is None:
@@ -273,7 +284,9 @@ def _event_study_samples(
             f"unknown subject {subject_key!r}; valid subjects are {[s['key'] for s in subjects]}"
         )
 
-    members = _event_study_members(session, subject, horizon, as_of)
+    # the SAME observation builder compute_event_study reads — episode collapse in `episodes`, the raw
+    # per-signal-day pool in `pooled` (one membership rule → total == published n in both modes).
+    members = _event_study_observation_set(session, subject, horizon, view, as_of)
 
     if slice_kind == "pooled":
         pass
@@ -311,6 +324,7 @@ def _event_study_samples(
         "slice": slice_kind,
         "horizon": horizon,
         "subject": subject,
+        "view": view,  # J-63: the resolved overlap-honesty view (episodes default | pooled)
         "regime": regime if slice_kind == "regime" else None,
         "sector": sector if slice_kind == "sector" else None,
     }
@@ -331,6 +345,7 @@ def compute_samples(
     single_index: Optional[int] = None,
     # event-study cohort selector
     subject_key: Optional[str] = None,
+    view: Optional[str] = None,
 ) -> dict:
     """The SINGLE canonical Research-samples read (Data Contract value, J-51 / J-52). Reproduces ONE
     published research cohort from the SAME stored per-observation data the aggregate used and returns its
@@ -338,9 +353,13 @@ def compute_samples(
     recomputes no factor / return / regime / membership.
 
     `kind` ∈ {factor, combination, event-study} selects the lab; the per-kind selectors reproduce the exact
-    cohort slice. Raises `ValueError` for any unknown/out-of-range selector (the API → 4xx); a VALID n=0
-    cohort returns an empty `rows` + `total` 0 (never a fabricated row). `as_of` (J-32) optionally scopes
-    every pool to snapshots dated ≤ D (the single global as-of — a mode, not a second date state)."""
+    cohort slice. For the event-study kind, `view` (J-63, default `episodes`) selects the overlap-honesty
+    observation set (the first-trigger episode collapse vs the raw per-signal-day pool) via the SAME builder
+    `compute_event_study` reads — so the drill-down `total` equals the published `n` for the same
+    `(subject, horizon, view)` in BOTH modes. Raises `ValueError` for any unknown/out-of-range selector (the
+    API → 4xx); a VALID n=0 cohort returns an empty `rows` + `total` 0 (never a fabricated row). `as_of`
+    (J-32) optionally scopes every pool to snapshots dated ≤ D (the single global as-of — a mode, not a
+    second date state)."""
     cfg = config or get_config()
 
     if kind == KIND_FACTOR:
@@ -357,6 +376,7 @@ def compute_samples(
         built = _event_study_samples(
             session, cfg, subject_key=subject_key, horizon=horizon,
             slice_kind=slice_kind or "pooled", regime=regime, sector=sector, as_of=as_of,
+            view=view or VIEW_EPISODES,
         )
     else:
         raise ValueError(f"unknown kind {kind!r}; valid kinds are {list(ALL_KINDS)}")

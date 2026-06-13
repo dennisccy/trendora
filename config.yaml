@@ -1351,6 +1351,14 @@ methodology:
       category: forward_evidence
       definition: "Pooling EVERY historical occurrence of a setup or pattern and reporting the forward-return distribution, hit-rate, expectancy, MAE/MFE, best exit-horizon, and regime/sector slices — all derived once from stored data."
       where: "Research → Setup & Pattern lab."
+    - term: "Episode"
+      category: forward_evidence
+      definition: "One overlap-honest observation in the event study: a CONTINUOUS run of the same symbol triggering a setup or pattern across consecutive snapshots is counted ONCE, recorded at its FIRST trigger date. This is the default view — collapsing overlapping signal-days so a name that simply keeps qualifying for weeks does not inflate the sample. The episode carries that first day's stored forward return / MAE / MFE / regime / sector verbatim."
+      where: "Research → Setup & Pattern lab (Episodes view, default)."
+    - term: "Pooled (per-signal-day)"
+      category: forward_evidence
+      definition: "The alternative event-study view that counts EVERY per-signal-day occurrence — each snapshot on which a name triggered the subject is one observation, even within a single continuous run. It is the raw, overlap-unaware tally; the one-click Pooled toggle reproduces the figures exactly as published before episodes were introduced. n, unique symbols, and episode count are always shown so the window overlap is never hidden."
+      where: "Research → Setup & Pattern lab (Pooled toggle)."
     - term: "attribution"
       category: forward_evidence
       definition: "Decomposing a cohort's aggregate return into its sources — by sector, by rank-band, by individual contributor, plus its distribution — so a weak number is diagnosable rather than mysterious."

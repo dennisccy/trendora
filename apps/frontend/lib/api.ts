@@ -1093,7 +1093,12 @@ export interface EventStudyResponse {
   min_sample: number; // figures with n below this are flagged low-sample (render NA + n)
   survivorship_bias: string; // honest caveat, rendered verbatim
   descriptive_caveat: string; // "descriptive, not predictive", rendered verbatim
-  n_total: number; // pooled observations at the selected horizon
+  n_total: number; // pooled observations at the selected horizon (== `n` in the current view)
+  // J-63 overlap-honesty: the resolved view + the three disclosure values (present in BOTH views)
+  view: "episodes" | "pooled"; // the resolved overlap-honesty view (episodes default | pooled)
+  n: number; // observations in the CURRENT view at the selected horizon (== n_total)
+  unique_symbols: number; // distinct tickers in the current view's observation set
+  episode_count: number; // distinct first-trigger episodes — IDENTICAL in both views
   by_horizon: EventStudyHorizonRow[]; // one row per configured horizon (the exit-horizon curve)
   best_exit_horizon: number | null; // argmax horizon of the primary metric among non-low-sample; null = NA
   by_regime: EventStudyRegimeRow[]; // per configured regime label at the selected horizon
@@ -1109,11 +1114,14 @@ export async function fetchEventStudy(
   subject?: string,
   horizon?: number,
   asof?: string,
+  view?: "episodes" | "pooled",
   signal?: AbortSignal,
 ): Promise<EventStudyResponse> {
   const params = new URLSearchParams();
   if (subject) params.set("subject", subject);
   if (horizon !== undefined) params.set("horizon", String(horizon));
+  // J-63: the overlap-honesty view (episodes default | pooled) — a cohort/mode selector, not a date.
+  if (view !== undefined) params.set("view", view);
   const query = params.toString();
   // `asof` (J-32) is appended via `withAsOf` only when a historical cutoff is active (As-of mode + a past date)
   const path = `/api/research/event-study${query ? `?${query}` : ""}`;
@@ -1154,6 +1162,7 @@ export interface SampleCohort {
   regime?: string | null;
   sector?: string | null;
   subject?: EventStudySubject; // event-study kind
+  view?: "episodes" | "pooled"; // J-63: the event-study overlap-honesty view this cohort reproduces
   conditions?: FactorCombinationCondition[]; // combination kind
   single_index?: number | null;
   deciles_count?: number;

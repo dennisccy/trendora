@@ -1190,6 +1190,60 @@ function CombinationSkeleton() {
  *  Re-formats the payload only — recomputes no return/excursion; low-sample / empty cells render NA + n
  *  (never a fabricated number). The subject list comes from the payload (config-driven) — no hard-coded
  *  setup/pattern list here. */
+/** The overlap-honesty view (J-63): Episodes (first-trigger, the DEFAULT) ⇄ Pooled (per-signal-day). A
+ *  cohort/MODE selector — orthogonal to the date and the analysis-mode. */
+type EventStudyView = "episodes" | "pooled";
+
+/** The Episodes ⇄ Pooled segmented toggle (J-63): a button group with an active pill (styled exactly like
+ *  `AnalysisModeToggle` — clicked directly, NOT a `<select>`), defaulting to Episodes. It is a cohort/MODE
+ *  selector ONLY — it never touches `?asof`, the global as-of, or the analysis-mode `scope` (J-18 held). No
+ *  nested interactive element / TermInfo inside the buttons (iter-5 nested-interactive hazard). */
+function EventStudyViewToggle({
+  view,
+  onChange,
+}: {
+  view: EventStudyView;
+  onChange: (view: EventStudyView) => void;
+}) {
+  const options: { key: EventStudyView; label: string }[] = [
+    { key: "episodes", label: "Episodes" },
+    { key: "pooled", label: "Pooled" },
+  ];
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs uppercase tracking-wide text-text-faint">Overlap view</span>
+      <div
+        role="group"
+        aria-label="Event-study overlap view (episodes or pooled)"
+        data-testid="event-study-view-toggle"
+        className="inline-flex h-9 overflow-hidden rounded-md border border-border bg-surface-2"
+      >
+        {options.map((o) => {
+          const active = o.key === view;
+          return (
+            <button
+              key={o.key}
+              type="button"
+              aria-pressed={active}
+              data-testid={`event-study-view-${o.key}`}
+              onClick={() => onChange(o.key)}
+              className={cn(
+                "border-r border-border px-3 text-sm transition-colors last:border-r-0",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                active
+                  ? "bg-accent font-semibold text-bg"
+                  : "text-text-muted hover:bg-surface hover:text-text",
+              )}
+            >
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function EventStudyLab({
   horizon,
   asofCutoff,
@@ -1202,6 +1256,9 @@ function EventStudyLab({
   // `undefined` lets the backend pick the canonical default (first catalog subject). The subject list is
   // built from the loaded payload — config-driven, never a hard-coded frontend list.
   const [subject, setSubject] = useState<string | undefined>(undefined);
+  // J-63: the overlap-honesty view — Episodes (first-trigger, DEFAULT) ⇄ Pooled (per-signal-day). A local
+  // MODE/cohort state, fully INDEPENDENT of `asofCutoff` and the page analysis-mode `scope` (not a date).
+  const [view, setView] = useState<EventStudyView>("episodes");
   const [data, setData] = useState<EventStudyResponse | null>(null);
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
 
@@ -1210,7 +1267,8 @@ function EventStudyLab({
     setStatus("loading");
     // depends on the RESOLVED `asofCutoff` (not raw asOf): All-history mode never refetches on a global
     // date change (cutoff stays null); toggling mode re-points the study to the new window (J-32/J-15).
-    fetchEventStudy(subject, horizon, asofCutoff ?? undefined, controller.signal)
+    // `view` re-points the study to the episodes/pooled observation set (J-63 — orthogonal to the date).
+    fetchEventStudy(subject, horizon, asofCutoff ?? undefined, view, controller.signal)
       .then((d) => {
         if (controller.signal.aborted) return;
         setData(d);
@@ -1220,7 +1278,7 @@ function EventStudyLab({
         if (!controller.signal.aborted) setStatus("error");
       });
     return () => controller.abort();
-  }, [subject, horizon, asofCutoff]);
+  }, [subject, horizon, asofCutoff, view]);
 
   const selectedSubject = subject ?? data?.subject.key ?? "";
   const hasAny = data ? data.by_horizon.some((r) => r.n > 0) : false;
@@ -1239,9 +1297,12 @@ function EventStudyLab({
             value={selectedSubject}
             onChange={(key) => setSubject(key)}
           />
+          <EventStudyViewToggle view={view} onChange={setView} />
           <p className="max-w-md text-xs text-text-faint">
             Re-uses the page&apos;s shared horizon selector and the page-level analysis-mode toggle above —
-            no date control of its own (the single global as-of drives any point-in-time scoping, J-18).
+            no date control of its own (the single global as-of drives any point-in-time scoping, J-18). The
+            Episodes ⇄ Pooled view is a cohort mode, not a date: Episodes (default) counts each continuous
+            run of a symbol once at its first trigger; Pooled counts every signal-day.
           </p>
         </div>
 
@@ -1404,6 +1465,7 @@ function EventStudyBody({
 }) {
   const selectedHorizon = data.horizon;
   const subject = data.subject.key;
+  const view = data.view; // the RESOLVED view the data reflects — drives the chip hrefs (J-63)
   return (
     <div className={cn("space-y-4 transition-opacity", dim && "opacity-60")} aria-busy={dim}>
       <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-text-muted">
@@ -1411,10 +1473,6 @@ function EventStudyBody({
           <span className="text-text-faint">Subject: </span>
           <span className="text-text">{data.subject.label}</span>{" "}
           <span className="text-text-faint">({data.subject.kind})</span>
-        </span>
-        <span>
-          <span className="text-text-faint">Pooled occurrences ({selectedHorizon}d): </span>
-          <span className="num text-text">{data.n_total}</span>
         </span>
         <span>
           <span className="text-text-faint">Best exit-horizon: </span>
@@ -1427,12 +1485,17 @@ function EventStudyBody({
         </span>
       </div>
 
+      {/* J-63 disclosure line (present in BOTH views) — n (current view), unique symbols, episodes — read
+          verbatim from the payload so window overlap is never hidden. */}
+      <EventStudyDisclosure data={data} horizon={selectedHorizon} />
+
       <EventStudyHorizonTable
         rows={data.by_horizon}
         min={data.min_sample}
         bestExit={data.best_exit_horizon}
         subject={subject}
         scope={scope}
+        view={view}
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -1442,6 +1505,7 @@ function EventStudyBody({
           horizon={selectedHorizon}
           subject={subject}
           scope={scope}
+          view={view}
         />
         <EventStudySectorTable
           rows={data.by_sector}
@@ -1449,8 +1513,52 @@ function EventStudyBody({
           horizon={selectedHorizon}
           subject={subject}
           scope={scope}
+          view={view}
         />
       </div>
+    </div>
+  );
+}
+
+/** The J-63 disclosure line beside the figures (BOTH views): the current view's n, the distinct unique
+ *  symbols in that set, and the distinct first-trigger episode count — read VERBATIM from the payload
+ *  (number formatting only). It makes window overlap impossible to hide: in Pooled mode n > episodes when
+ *  a subject persists; in Episodes mode n == episodes. The "Episode"/"Pooled" terms carry a glossary
+ *  tooltip (TermInfo renders its own button — kept OUTSIDE any other interactive element, iter-5). */
+function EventStudyDisclosure({
+  data,
+  horizon,
+}: {
+  data: EventStudyResponse;
+  horizon: number;
+}) {
+  const isEpisodes = data.view === "episodes";
+  return (
+    <div
+      data-testid="event-study-disclosure"
+      className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-text-muted"
+    >
+      <span className="inline-flex items-center gap-1">
+        <span className="text-text-faint">View:</span>
+        <span className="font-semibold text-text">{isEpisodes ? "Episodes" : "Pooled"}</span>
+        <TermInfo term={isEpisodes ? "Episode" : "Pooled (per-signal-day)"} />
+      </span>
+      <span>
+        <span className="text-text-faint">n ({horizon}d, {isEpisodes ? "episodes" : "signal-days"}): </span>
+        <span className="num font-semibold text-text" data-testid="disclosure-n">{data.n}</span>
+      </span>
+      <span>
+        <span className="text-text-faint">Unique symbols: </span>
+        <span className="num font-semibold text-text" data-testid="disclosure-unique-symbols">
+          {data.unique_symbols}
+        </span>
+      </span>
+      <span>
+        <span className="text-text-faint">Episodes: </span>
+        <span className="num font-semibold text-text" data-testid="disclosure-episodes">
+          {data.episode_count}
+        </span>
+      </span>
     </div>
   );
 }
@@ -1465,12 +1573,14 @@ function EventStudyHorizonTable({
   bestExit,
   subject,
   scope,
+  view,
 }: {
   rows: EventStudyHorizonRow[];
   min: number;
   bestExit: number | null;
   subject: string;
   scope: SampleScope;
+  view: EventStudyView;
 }) {
   return (
     <Card className="p-0">
@@ -1537,8 +1647,8 @@ function EventStudyHorizonTable({
                       n={row.n}
                       min={min}
                       scope={scope}
-                      cohort={{ kind: "event-study", subject, horizon: row.horizon, slice: "pooled" }}
-                      label={`See the ${row.n} occurrences at the ${row.horizon}-day horizon`}
+                      cohort={{ kind: "event-study", subject, horizon: row.horizon, slice: "pooled", view }}
+                      label={`See the ${row.n} ${view === "episodes" ? "episodes" : "occurrences"} at the ${row.horizon}-day horizon`}
                     />
                   </td>
                   <td className="px-3 py-2 text-right">
@@ -1587,12 +1697,14 @@ function EventStudyRegimeTable({
   horizon,
   subject,
   scope,
+  view,
 }: {
   rows: EventStudyRegimeRow[];
   min: number;
   horizon: number;
   subject: string;
   scope: SampleScope;
+  view: EventStudyView;
 }) {
   return (
     <Card className="p-0">
@@ -1623,8 +1735,8 @@ function EventStudyRegimeTable({
                       n={row.n}
                       min={min}
                       scope={scope}
-                      cohort={{ kind: "event-study", subject, horizon, slice: "regime", regime: row.regime }}
-                      label={`See the ${row.n} occurrences in the ${row.regime} regime`}
+                      cohort={{ kind: "event-study", subject, horizon, slice: "regime", regime: row.regime, view }}
+                      label={`See the ${row.n} ${view === "episodes" ? "episodes" : "occurrences"} in the ${row.regime} regime`}
                     />
                   </td>
                   <td className="px-3 py-2 text-right">
@@ -1655,12 +1767,14 @@ function EventStudySectorTable({
   horizon,
   subject,
   scope,
+  view,
 }: {
   rows: EventStudySectorRow[];
   min: number;
   horizon: number;
   subject: string;
   scope: SampleScope;
+  view: EventStudyView;
 }) {
   return (
     <Card className="p-0">
@@ -1695,8 +1809,8 @@ function EventStudySectorTable({
                         n={row.n}
                         min={min}
                         scope={scope}
-                        cohort={{ kind: "event-study", subject, horizon, slice: "sector", sector: row.sector }}
-                        label={`See the ${row.n} occurrences in ${row.sector}`}
+                        cohort={{ kind: "event-study", subject, horizon, slice: "sector", sector: row.sector, view }}
+                        label={`See the ${row.n} ${view === "episodes" ? "episodes" : "occurrences"} in ${row.sector}`}
                       />
                     </td>
                     <td className="px-3 py-2 text-right">

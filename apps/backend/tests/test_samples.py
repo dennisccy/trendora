@@ -384,3 +384,116 @@ def test_invalid_selectors_raise(factor_engine):
                              "quantile": cfg.research.factor_lab.combination.quantiles[0].key}],
                 cohort_kind="single", single_index=99,
             )
+
+
+# ==================================================================================================
+# J-63 — Event-study EPISODES ⇄ POOLED count-coherence in the samples drill-down (both modes). The
+# drill-down reuses the SAME episode-collapse builder the aggregate uses, so total == published n in
+# BOTH views (never a second grouping path); a continuous run drills to ONE first-trigger row.
+# ==================================================================================================
+@pytest.fixture()
+def episode_samples_engine(tmp_path):
+    """A VCP subject that PERSISTS across consecutive snapshots so episodes < pooled. Four stored
+    run-dates (global ordinals 0..3): PERSIST is VCP on the first 3 (one continuous run → 1 episode at its
+    first trigger), GAP is VCP on ordinals 0 and 2 (→ 2 episodes), ONESHOT is VCP on ordinal 3 (→ 1).
+    Pooled VCP signal-days = 6; episodes = 4."""
+    engine = _engine(tmp_path, "episode_samples.db")
+    with Session(engine) as session:
+        r1 = _add_run(session, date(2025, 1, 10), regime_label="Risk-on")
+        r2 = _add_run(session, date(2025, 1, 17), regime_label="Risk-on")
+        r3 = _add_run(session, date(2025, 1, 24), regime_label="Risk-off")
+        r4 = _add_run(session, date(2025, 1, 31), regime_label="Risk-on")
+        rows = [
+            ("PERSIST", r1, True,  0.11, "Technology"),
+            ("PERSIST", r2, True,  0.12, "Technology"),
+            ("PERSIST", r3, True,  0.13, "Technology"),
+            ("GAP",     r1, True,  0.31, "Energy"),
+            ("GAP",     r3, True,  0.33, "Energy"),
+            ("ONESHOT", r4, True,  0.40, "Technology"),
+        ]
+        rank = 0
+        for tkr, run, is_vcp, ret, sector in rows:
+            rank += 1
+            _add_result(session, run.id, tkr, rank=rank, setup="Actionable", is_vcp=is_vcp, sector=sector)
+            _add_fr(session, run.id, tkr, ret, mae=-0.05, mfe=0.20)
+        session.commit()
+    return engine
+
+
+def test_event_study_samples_count_coherence_both_views(episode_samples_engine):
+    """Count-coherence in BOTH views (J-63): for the SAME (subject, horizon) the samples pooled total
+    equals the event-study `n` under `view="episodes"` (4) AND under `view="pooled"` (6) — asserted
+    SAME-INSTANT against the live aggregate, never a hardcoded N. Episodes < pooled here (a persisting
+    subject), proving the drill-down honours the mode."""
+    cfg = load_config()
+    with Session(episode_samples_engine) as session:
+        for view, expected in (("episodes", 4), ("pooled", 6)):
+            agg = compute_event_study(session, "vcp", H, cfg, view=view)
+            s = compute_samples(
+                session, kind="event-study", horizon=H, config=cfg,
+                subject_key="vcp", slice_kind="pooled", view=view,
+            )
+            assert agg["n"] == expected               # the aggregate's mode-dependent n
+            assert s["total"] == agg["n"] == expected  # SAME-INSTANT count-coherence in this mode
+            assert s["cohort"]["view"] == view
+
+
+def test_event_study_samples_episodes_drilldown_is_first_trigger_rows(episode_samples_engine):
+    """The episodes-mode drill-down lists the FIRST-TRIGGER rows (one row per continuous run), so the
+    PERSIST continuous run appears as exactly ONE row at its first trigger date (2025-01-10) — NOT three.
+    The pooled-mode drill-down lists all three PERSIST signal-days."""
+    cfg = load_config()
+    with Session(episode_samples_engine) as session:
+        episodes = compute_samples(
+            session, kind="event-study", horizon=H, config=cfg,
+            subject_key="vcp", slice_kind="pooled", view="episodes",
+        )
+        pooled = compute_samples(
+            session, kind="event-study", horizon=H, config=cfg,
+            subject_key="vcp", slice_kind="pooled", view="pooled",
+        )
+    ep_persist = [r for r in episodes["rows"] if r["ticker"] == "PERSIST"]
+    pool_persist = [r for r in pooled["rows"] if r["ticker"] == "PERSIST"]
+    assert len(ep_persist) == 1 and ep_persist[0]["snapshot_date"] == "2025-01-10"  # ONE first-trigger row
+    assert len(pool_persist) == 3  # pooled keeps every signal-day
+    # GAP appears twice in BOTH modes (a real ordinal gap → two genuine episodes)
+    assert len([r for r in episodes["rows"] if r["ticker"] == "GAP"]) == 2
+
+
+def test_event_study_samples_pooled_view_byte_identical_membership(episode_samples_engine):
+    """Byte-identity at the samples layer: `view="pooled"` reproduces the exact pre-J-63 member list
+    (the unchanged `_event_study_members` rows) — same tickers, snapshot dates, and forward returns —
+    so the prior drill-down is preserved one toggle away."""
+    cfg = load_config()
+    with Session(episode_samples_engine) as session:
+        pooled = compute_samples(
+            session, kind="event-study", horizon=H, config=cfg,
+            subject_key="vcp", slice_kind="pooled", view="pooled",
+        )
+    got = sorted((r["ticker"], r["snapshot_date"], round(r["forward_return"], 4)) for r in pooled["rows"])
+    assert got == sorted([
+        ("PERSIST", "2025-01-10", 0.11), ("PERSIST", "2025-01-17", 0.12), ("PERSIST", "2025-01-24", 0.13),
+        ("GAP", "2025-01-10", 0.31), ("GAP", "2025-01-24", 0.33), ("ONESHOT", "2025-01-31", 0.40),
+    ])
+
+
+def test_event_study_samples_default_view_is_episodes(episode_samples_engine):
+    """The samples drill-down DEFAULTS to episodes (matching the aggregate default): no `view` → 4 rows."""
+    cfg = load_config()
+    with Session(episode_samples_engine) as session:
+        default = compute_samples(
+            session, kind="event-study", horizon=H, config=cfg,
+            subject_key="vcp", slice_kind="pooled",
+        )
+    assert default["total"] == 4 and default["cohort"]["view"] == "episodes"
+
+
+def test_event_study_samples_unknown_view_raises(episode_samples_engine):
+    """An unknown event-study `view` raises ValueError (the API → 422), mirroring the aggregate."""
+    cfg = load_config()
+    with Session(episode_samples_engine) as session:
+        with pytest.raises(ValueError, match="unknown view"):
+            compute_samples(
+                session, kind="event-study", horizon=H, config=cfg,
+                subject_key="vcp", slice_kind="pooled", view="bogus",
+            )

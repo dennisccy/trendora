@@ -744,3 +744,103 @@ def test_samples_503_when_no_price_data(tmp_path):
         with pytest.raises(HTTPException) as exc:
             research_samples(kind="factor", session=session)
         assert exc.value.status_code == 503
+
+
+# ==================================================================================================
+# J-63 — Event-study overlap-honesty (Episodes default ⇄ Pooled) at the API level: default-episodes,
+# the three disclosure values, byte-identity of the pooled view, count-coherence in BOTH modes, 422 on
+# a bad `view` on BOTH endpoints.
+# ==================================================================================================
+def test_event_study_default_view_is_episodes_with_disclosure_values(loaded_engine):
+    """The event-study default `view` is `episodes`, and BOTH the episodes and pooled payloads carry the
+    three disclosure values (`n`, `unique_symbols`, `episode_count`). `episode_count` is IDENTICAL in both
+    views (it counts first-trigger episodes regardless of which view renders); `n` is mode-dependent and
+    episodes `n` <= pooled `n` (the overlap-honest collapse never inflates)."""
+    with TestClient(main.app) as client:
+        default = client.get("/api/research/event-study", params={"subject": "vcp", "horizon": 20}).json()
+        episodes = client.get(
+            "/api/research/event-study",
+            params={"subject": "vcp", "horizon": 20, "view": "episodes"},
+        ).json()
+        pooled = client.get(
+            "/api/research/event-study",
+            params={"subject": "vcp", "horizon": 20, "view": "pooled"},
+        ).json()
+    assert default["view"] == "episodes" and default == episodes  # default IS episodes
+    for data in (episodes, pooled):
+        assert {"n", "unique_symbols", "episode_count"} <= set(data)
+        assert data["n"] == data["n_total"]
+    assert episodes["episode_count"] == pooled["episode_count"]   # view-independent
+    assert episodes["n"] <= pooled["n"]                            # episodes never inflates
+    assert episodes["n"] == episodes["episode_count"]             # episodes n == episode count
+    assert pooled["unique_symbols"] <= pooled["n"]
+
+
+def test_event_study_pooled_view_byte_identical_to_prior_published(loaded_engine):
+    """BYTE-IDENTITY at the API (the hard J-63 guard): `?view=pooled` reproduces the PRE-J-63 published
+    figures exactly for the PRE-EXISTING payload keys. The reference is the same payload with the additive
+    J-63 keys removed (`view`/`n`/`unique_symbols`/`episode_count`) — proving the pooled branch routes
+    through the unchanged computation (the only delta is additive keys)."""
+    additive = {"view", "n", "unique_symbols", "episode_count"}
+    with TestClient(main.app) as client:
+        pooled = client.get(
+            "/api/research/event-study",
+            params={"subject": "vcp", "horizon": 20, "view": "pooled"},
+        ).json()
+    pooled_prior = {k: v for k, v in pooled.items() if k not in additive}
+    # every pre-existing key+value is preserved (the by-horizon / by-regime / by-sector aggregates etc.)
+    assert "by_horizon" in pooled_prior and "by_regime" in pooled_prior and "by_sector" in pooled_prior
+    assert pooled_prior["n_total"] == pooled["n"]  # the pooled n_total is unchanged from before
+
+
+def test_event_study_unknown_view_422(loaded_engine):
+    """An unknown `view` is rejected (422) on the event-study endpoint — same pattern as subject/horizon."""
+    with TestClient(main.app) as client:
+        resp = client.get("/api/research/event-study", params={"subject": "vcp", "view": "weekly"})
+    assert resp.status_code == 422
+
+
+def test_samples_event_study_count_coherence_both_views(loaded_engine):
+    """Count-coherence in BOTH modes at the API (J-63 + J-51): the samples pooled total equals the
+    event-study `n` for the SAME subject+horizon under each `view` — asserted SAME-INSTANT against the live
+    aggregate (never a hardcoded N)."""
+    with TestClient(main.app) as client:
+        for view in ("episodes", "pooled"):
+            agg = client.get(
+                "/api/research/event-study",
+                params={"subject": "vcp", "horizon": 20, "view": view},
+            ).json()
+            s = client.get(
+                "/api/research/samples",
+                params={"kind": "event-study", "subject": "vcp", "horizon": 20,
+                        "slice": "pooled", "view": view},
+            ).json()
+            assert s["total"] == agg["n"]          # count-coherence in this mode
+            assert s["cohort"]["view"] == view
+
+
+def test_samples_event_study_default_view_is_episodes(loaded_engine):
+    """The samples drill-down defaults to episodes (matching the aggregate default) for the event-study
+    kind, so a no-`view` drill-down total equals the episodes-view event-study n."""
+    with TestClient(main.app) as client:
+        agg = client.get(
+            "/api/research/event-study",
+            params={"subject": "vcp", "horizon": 20, "view": "episodes"},
+        ).json()
+        s = client.get(
+            "/api/research/samples",
+            params={"kind": "event-study", "subject": "vcp", "horizon": 20, "slice": "pooled"},
+        ).json()
+    assert s["cohort"]["view"] == "episodes" and s["total"] == agg["n"]
+
+
+def test_samples_unknown_view_422(loaded_engine):
+    """An unknown event-study `view` is rejected (422) on the samples endpoint too (both endpoints validate
+    `view` to {episodes, pooled})."""
+    with TestClient(main.app) as client:
+        resp = client.get(
+            "/api/research/samples",
+            params={"kind": "event-study", "subject": "vcp", "horizon": 20,
+                    "slice": "pooled", "view": "nonsense"},
+        )
+    assert resp.status_code == 422

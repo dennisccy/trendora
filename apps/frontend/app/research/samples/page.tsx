@@ -288,9 +288,16 @@ function describeCohort(cohort: SampleCohort): { title: string; detail: string |
   }
   // event-study
   const subject = cohort.subject?.label ?? "subject";
-  if (cohort.slice === "regime") return { title: `Setup & Pattern Lab — ${subject}`, detail: `Regime: ${cohort.regime}` };
-  if (cohort.slice === "sector") return { title: `Setup & Pattern Lab — ${subject}`, detail: `Sector: ${cohort.sector}` };
-  return { title: `Setup & Pattern Lab — ${subject}`, detail: "All occurrences (pooled)" };
+  // J-63: the overlap-honesty view this drill-down reproduces (Episodes = first-trigger; Pooled = per
+  // signal-day). Shown so the operator can see which mode the listed rows belong to.
+  const viewLabel = cohort.view === "pooled" ? "Pooled (per-signal-day)" : "Episodes (first-trigger)";
+  if (cohort.slice === "regime") {
+    return { title: `Setup & Pattern Lab — ${subject}`, detail: `${viewLabel} · Regime: ${cohort.regime}` };
+  }
+  if (cohort.slice === "sector") {
+    return { title: `Setup & Pattern Lab — ${subject}`, detail: `${viewLabel} · Sector: ${cohort.sector}` };
+  }
+  return { title: `Setup & Pattern Lab — ${subject}`, detail: `${viewLabel} · All occurrences` };
 }
 
 function CaveatBanner({ survivorship, descriptive }: { survivorship: string; descriptive: string }) {

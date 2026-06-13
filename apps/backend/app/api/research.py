@@ -35,6 +35,8 @@ from app.config import Config, get_config
 from app.db import get_session
 from app.engine.prices import latest_data_date
 from app.engine.research import (
+    ALL_VIEWS,
+    VIEW_EPISODES,
     compute_event_study,
     compute_factor_combination,
     compute_factor_lab,
@@ -195,20 +197,27 @@ def factor_combination(
 def event_study(
     subject: Optional[str] = Query(default=None, description="subject key (setup or pattern); defaults to the first catalog subject"),
     horizon: Optional[int] = Query(default=None, description="forward window in trading days; defaults to config default_horizon"),
+    view: Optional[str] = Query(
+        default=None,
+        description="overlap-honesty view: episodes (default — first-trigger) | pooled (per-signal-day)",
+    ),
     as_of: Optional[str] = Query(
         default=None,
         description="optional point-in-time cutoff (YYYY-MM-DD) — the single global as-of; omitted = all-history",
     ),
     session: Session = Depends(get_session),
 ) -> dict:
-    """Serve the Setup & Pattern event study (J-29) for the requested `subject` + `horizon` (defaults:
-    the first catalog subject / config default_horizon). Validates `subject` against the config-driven
-    subject catalog (setups + patterns) and `horizon` against `walk_forward.horizons` (422 otherwise);
-    503 when no price data exists — mirroring the factor-lab / factor-combination handlers exactly. The
-    optional `as_of` (J-32) scopes every pooled member to snapshots dated <= D (the single global as-of —
-    a mode, not a second date state); omitted = all-history. The payload is `compute_event_study(...)`
-    verbatim — a read-only aggregation of ALREADY-STORED forward returns + excursions, never recomputed in
-    the view."""
+    """Serve the Setup & Pattern event study (J-29 / J-63) for the requested `subject` + `horizon` + `view`
+    (defaults: the first catalog subject / config default_horizon / `episodes`). Validates `subject` against
+    the config-driven subject catalog (setups + patterns), `horizon` against `walk_forward.horizons`, and
+    `view` against {episodes, pooled} (422 otherwise); 503 when no price data exists — mirroring the
+    factor-lab / factor-combination handlers exactly. `view` (J-63) is a cohort/MODE selector: `episodes`
+    (the default) collapses each continuous run of a symbol triggering the subject into ONE first-trigger
+    observation; `pooled` keeps every per-signal-day occurrence (byte-identical to the prior figures). It is
+    orthogonal to `as_of` and the page analysis-mode — never a second date state (J-18). The optional
+    `as_of` (J-32) scopes every member to snapshots dated <= D (the single global as-of — a mode, not a
+    second date state); omitted = all-history. The payload is `compute_event_study(...)` verbatim — a
+    read-only aggregation of ALREADY-STORED forward returns + excursions, never recomputed in the view."""
     cfg: Config = get_config()
     wf = cfg.walk_forward
 
@@ -230,10 +239,21 @@ def event_study(
             detail=f"unknown horizon {resolved_horizon}; valid horizons are {list(wf.horizons)}",
         )
 
+    # J-63: the optional overlap-honesty view (episodes default | pooled), validated to the two allowed
+    # values (422 on anything else — same pattern as subject/horizon). A cohort/mode selector, not a date.
+    resolved_view = VIEW_EPISODES if view is None else view
+    if resolved_view not in ALL_VIEWS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown view {resolved_view!r}; valid views are {list(ALL_VIEWS)}",
+        )
+
     # iter-19 (J-32): the optional single global as-of scoping cutoff (shared resolver — 422/400; never
     # hand-rolled). Omitted/empty -> all-history. Not a second date state (J-18).
     cutoff = resolved_date(session, as_of, cfg) if as_of else None
-    return compute_event_study(session, resolved_subject, resolved_horizon, cfg, as_of=cutoff)
+    return compute_event_study(
+        session, resolved_subject, resolved_horizon, cfg, as_of=cutoff, view=resolved_view
+    )
 
 
 @router.get("/research/samples")
@@ -252,6 +272,10 @@ def research_samples(
     single_index: Optional[int] = Query(default=None, description="0-based condition index (combination single cohort)"),
     # event-study selector
     subject: Optional[str] = Query(default=None, description="subject key: setup or pattern (event-study kind)"),
+    view: Optional[str] = Query(
+        default=None,
+        description="event-study overlap-honesty view: episodes (default) | pooled (event-study kind)",
+    ),
     as_of: Optional[str] = Query(
         default=None,
         description="optional point-in-time cutoff (YYYY-MM-DD) — the single global as-of; omitted = all-history",
@@ -283,6 +307,17 @@ def research_samples(
             detail=f"unknown horizon {resolved_horizon}; valid horizons are {list(wf.horizons)}",
         )
 
+    # J-63: the event-study overlap-honesty view (episodes default | pooled). Validated to the two allowed
+    # values for the event-study kind (422 otherwise); ignored for other kinds. A cohort/mode, not a date.
+    resolved_view: Optional[str] = None
+    if kind == KIND_EVENT_STUDY:
+        resolved_view = VIEW_EPISODES if view is None else view
+        if resolved_view not in ALL_VIEWS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"unknown view {resolved_view!r}; valid views are {list(ALL_VIEWS)}",
+            )
+
     # parse the combination conditions (each "<factor_key>:<side>:<quantile_key>") up front so a malformed
     # triple is an explicit 422 before the engine runs (mirrors the factor-combination handler exactly).
     conditions: Optional[list[dict]] = None
@@ -313,7 +348,7 @@ def research_samples(
             session, kind=kind, horizon=resolved_horizon, config=cfg, as_of=cutoff,
             factor_key=factor, slice_kind=slice, decile=decile, regime=regime, sector=sector,
             conditions=conditions, cohort_kind=cohort, single_index=single_index,
-            subject_key=subject,
+            subject_key=subject, view=resolved_view,
         )
     except ValueError as exc:
         # an unknown/out-of-range cohort selector is an explicit 4xx — never a silent empty 200 (which is

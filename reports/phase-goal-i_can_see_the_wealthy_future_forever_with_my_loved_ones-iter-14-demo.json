@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-14",
+  "base_url": "http://localhost:3835",
+  "iteration": 14,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Research lab — Episodes mode by default",
+      "narration": "The event study lab now opens in Episodes mode every time, showing a clean segmented toggle with 'Episodes' highlighted. This is the new starting point for all pattern research.",
+      "point_out": "The 'Episodes' button is highlighted in the toggle next to the subject selector — 'Pooled' is visible but inactive.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/research"},
+      "expect": {"text": "Episodes"}
+    },
+    {
+      "n": 2,
+      "title": "Read the three-value disclosure line in Episodes mode",
+      "narration": "Below the event study figures, a disclosure line now shows three labeled values — the observation count, how many distinct stock symbols are represented, and how many first-trigger episodes collapsed into that count.",
+      "point_out": "Look for the muted text line reading 'n … Unique symbols … Episodes …' — all three numbers should be non-zero.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/research"},
+      "expect": {"text": "Unique symbols"}
+    },
+    {
+      "n": 3,
+      "title": "Switch to Pooled mode — n count jumps",
+      "narration": "Clicking 'Pooled' switches the lab to count every signal day instead of collapsing runs into a single episode per stock. The observation count rises immediately — no page reload needed.",
+      "point_out": "Watch the n value in the disclosure line increase after clicking Pooled, and the 'Pooled' button become the active pill.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "click", "target": {"role": "button", "name": "Pooled"}},
+      "expect": {"text": "Pooled"}
+    },
+    {
+      "n": 4,
+      "title": "All figures update in Pooled mode",
+      "narration": "Every chart in the lab — hit-rate, expectancy, MAE/MFE, by-regime breakdown, and by-sector breakdown — recalculates for the pooled observation set. No figure goes blank; the numbers simply reflect a larger, per-signal-day cohort.",
+      "point_out": "Confirm that hit-rate, expectancy, and the by-regime/by-sector panels are all populated with values that differ from the Episodes numbers.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/research"},
+      "expect": {"text": "Pooled"}
+    },
+    {
+      "n": 5,
+      "title": "N= chip carries the active view into its link",
+      "narration": "Every N= chip in the lab dynamically encodes the current mode in its URL. In Episodes mode the link says view=episodes; switch to Pooled and the same chip changes to view=pooled. The drill-down will always match what you were looking at.",
+      "point_out": "Hover over an N= chip and check the URL shown in the browser status bar — it should contain 'view=episodes' when Episodes is active.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/research"},
+      "expect": {"text": "Episodes"}
+    },
+    {
+      "n": 6,
+      "title": "Episodes drill-down — cohort header confirms 'Episodes (first-trigger)'",
+      "narration": "Opening an N= chip from Episodes mode lands on a samples page that names exactly what it shows: 'Episodes (first-trigger)'. The row count on the page matches the N you clicked — no mystery about what the sample represents.",
+      "point_out": "The header line near the top of the samples page should read 'Slice: Episodes (first-trigger) · All occurrences' and the total observation count should match the chip.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/research/samples?kind=event-study&horizon=1&subject=Actionable&slice=pooled&view=episodes"},
+      "expect": {"text": "Episodes (first-trigger)"}
+    },
+    {
+      "n": 7,
+      "title": "Pooled drill-down — cohort header confirms 'Pooled (per-signal-day)'",
+      "narration": "The same drill-down page opened from a Pooled-mode chip shows a larger sample and states 'Pooled (per-signal-day)' in the header. Both views are fully supported — the cohort label removes any ambiguity about which counting method produced the rows.",
+      "point_out": "The header reads 'Slice: Pooled (per-signal-day) · All occurrences' and the total observation count is higher than in the Episodes drill-down.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/research/samples?kind=event-study&horizon=1&subject=Actionable&slice=pooled&view=pooled"},
+      "expect": {"text": "Pooled (per-signal-day)"}
+    },
+    {
+      "n": 8,
+      "title": "Methodology glossary — Episode and Pooled definitions",
+      "narration": "The methodology page now includes two new glossary entries. 'Episode' explains that consecutive same-stock signal days are collapsed into a single first-trigger observation. 'Pooled (per-signal-day)' explains the unrestricted counting method — both definitions are distinct and authored.",
+      "point_out": "Scroll the methodology glossary and confirm both 'Episode' and 'Pooled (per-signal-day)' entries are present with full, non-empty definitions.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/methodology"},
+      "expect": {"text": "Pooled (per-signal-day)"}
+    }
+  ]
+}

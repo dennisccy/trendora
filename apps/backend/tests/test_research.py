@@ -19,19 +19,26 @@ from datetime import date, datetime, timezone
 
 import pytest
 import yaml
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.config import ConfigError, load_config
 from app.db import create_db_and_tables, make_engine
 from app.engine.forward_testing import compute_forward_aggregates
 from app.engine.research import (
+    ALL_VIEWS,
     RESEARCH_CAVEAT,
+    VIEW_EPISODES,
+    VIEW_POOLED,
     _average_ranks,
+    _collapse_to_episodes,
     _downside_deviation,
+    _event_study_members,
+    _event_study_observation_set,
     _factor_observations,
     _quantile_cutoff,
     _rank_ic,
     _risk_adjusted,
+    _run_position_index,
     compute_event_study,
     compute_factor_combination,
     compute_factor_lab,
@@ -1508,3 +1515,259 @@ def test_event_study_as_of_scopes_pool_through_horizon_loop_no_future_leak(asof_
     assert all_history["asof_date"] is None and at_latest["asof_date"] == _LATE.isoformat()
     assert _without_echo(at_latest) == _without_echo(all_history)  # latest == all-history aggregate
     assert early["asof_date"] == _EARLY.isoformat()
+
+
+# ==================================================================================================
+# J-63 — Event study overlap-honesty: first-trigger EPISODES (default) ⇄ POOLED (per-signal-day).
+# The episode collapse is a pure in-memory grouping of the SAME stored `_event_study_members` rows —
+# consecutiveness judged on the GLOBAL ordered ScannerRun.asof_date sequence (NOT calendar adjacency);
+# `view="pooled"` reproduces the prior figures byte-identically (the hard guard).
+# ==================================================================================================
+# the three consecutive run-dates + a 4th GAPPED run-date used by the episode fixtures (a subject NOT
+# triggered on an intervening stored run-date breaks a symbol's run → a separate episode).
+_R1 = date(2025, 1, 10)
+_R2 = date(2025, 1, 17)
+_R3 = date(2025, 1, 24)
+_R4 = date(2025, 1, 31)
+
+
+@pytest.fixture()
+def episode_engine(tmp_path):
+    """A subject that PERSISTS across consecutive snapshots, so episodes < pooled (the J-63 keystone).
+    Four stored run-dates in the GLOBAL ordered sequence (ordinals 0..3). VCP membership per ticker:
+
+      PERSIST: VCP on R1, R2, R3 (a CONTINUOUS run of 3 consecutive ordinals) → ONE episode at R1.
+      GAP:     VCP on R1 and R3  (ordinal 0 then 2 — ordinal 1 has NO VCP for GAP) → TWO episodes.
+      ONESHOT: VCP on R4 only                                                    → ONE episode.
+      NOISE:   NOT a VCP on any run (it exists so R2's global ordinal is well-defined as a run with
+               stored data even if a subject is absent there for some ticker).
+
+    Pooled VCP signal-days: PERSIST×3 + GAP×2 + ONESHOT×1 = 6. Episodes: PERSIST 1 + GAP 2 + ONESHOT 1 = 4.
+    Every VCP row carries distinct stored return/MAE/MFE so the first-trigger VERBATIM carry is checkable."""
+    engine = _engine(tmp_path, "episode.db")
+    with Session(engine) as session:
+        runs = {
+            _R1: _add_run(session, _R1, regime_label="Risk-on"),
+            _R2: _add_run(session, _R2, regime_label="Risk-on"),
+            _R3: _add_run(session, _R3, regime_label="Risk-off"),
+            _R4: _add_run(session, _R4, regime_label="Risk-on"),
+        }
+        # (ticker, run_date, is_vcp, ret, mae, mfe, sector)
+        rows = [
+            ("PERSIST", _R1, True,  0.11, -0.01, 0.21, "Technology"),  # first trigger of the continuous run
+            ("PERSIST", _R2, True,  0.12, -0.02, 0.22, "Technology"),  # collapsed away (overlap)
+            ("PERSIST", _R3, True,  0.13, -0.03, 0.23, "Technology"),  # collapsed away (overlap)
+            ("GAP",     _R1, True,  0.31, -0.04, 0.31, "Energy"),      # episode 1 (R1)
+            ("GAP",     _R3, True,  0.33, -0.06, 0.33, "Energy"),      # episode 2 (R3 — ordinal gap at R2)
+            ("ONESHOT", _R4, True,  0.40, -0.08, 0.40, "Technology"),  # single episode (R4)
+            ("NOISE",   _R2, False, 0.99, -0.50, 0.99, "Energy"),      # not a VCP — never an episode
+        ]
+        rank = 0
+        for tkr, rd, is_vcp, ret, mae, mfe in [(r[0], r[1], r[2], r[3], r[4], r[5]) for r in rows]:
+            rank += 1
+            sector = next(r[6] for r in rows if r[0] == tkr)
+            _add_result(session, runs[rd].id, tkr, rank=rank, setup="Actionable", is_vcp=is_vcp, sector=sector)
+            _add_fr(session, runs[rd].id, tkr, ret, mae=mae, mfe=mfe)
+        session.commit()
+    return engine
+
+
+def _es_subject(cfg, key="vcp"):
+    return next(s for s in subject_catalog(cfg) if s["key"] == key)
+
+
+# --- the BYTE-IDENTITY guard (the hard gate — write & pass FIRST) ----------------------------------
+def test_event_study_pooled_view_is_byte_identical_to_prior_output(episode_engine):
+    """BYTE-IDENTITY GUARD (J-63 hard gate): `view="pooled"` reproduces the PRE-J-63 output exactly. The
+    pre-J-63 reference is reconstructed from the UNCHANGED code path — `_event_study_members` fed straight
+    into `_event_study_horizon_row` / the by-regime / by-sector builders — proving the pooled branch routes
+    through the existing computation untouched (the episode branch is purely additive). Compares every
+    pre-existing payload key; the new additive keys (`view`/`n`/`unique_symbols`/`episode_count`) are
+    excluded from the byte-identity set (they did not exist pre-J-63)."""
+    from app.engine.research import (
+        _best_exit_horizon,
+        _event_study_by_regime,
+        _event_study_by_sector,
+        _event_study_horizon_row,
+    )
+    cfg = _cfg_with(min_sample=2)
+    subject = _es_subject(cfg)
+    with Session(episode_engine) as session:
+        pooled = compute_event_study(session, "vcp", H, cfg, view=VIEW_POOLED)
+
+        # the UNCHANGED pre-J-63 reconstruction (the exact prior code path)
+        wf = cfg.walk_forward
+        ref_by_horizon = []
+        ref_selected = None
+        for h in wf.horizons:
+            members = _event_study_members(session, subject, h, None)
+            ref_by_horizon.append(_event_study_horizon_row(members, h, wf.min_sample))
+            if h == H:
+                ref_selected = members
+        reference = {
+            "subject": subject, "horizon": H, "asof_date": None,
+            "subjects": subject_catalog(cfg), "horizons": list(wf.horizons),
+            "default_horizon": wf.default_horizon, "min_sample": wf.min_sample,
+            "survivorship_bias": pooled["survivorship_bias"],
+            "descriptive_caveat": pooled["descriptive_caveat"],
+            "n_total": len(ref_selected),
+            "by_horizon": ref_by_horizon,
+            "best_exit_horizon": _best_exit_horizon(ref_by_horizon),
+            "by_regime": _event_study_by_regime(ref_selected, cfg),
+            "by_sector": _event_study_by_sector(ref_selected, cfg),
+        }
+    additive = {"view", "n", "unique_symbols", "episode_count"}
+    pooled_prior_keys = {k: v for k, v in pooled.items() if k not in additive}
+    assert pooled_prior_keys == reference  # byte-identical to the prior published output
+    # the pooled selected-horizon n is the full per-signal-day pool (6 VCP signal-days)
+    pooled_row = next(r for r in pooled["by_horizon"] if r["horizon"] == H)
+    assert pooled_row["n"] == 6 and pooled["n_total"] == 6
+
+
+# --- episode-collapse determinism (consecutive collapse + gap split + verbatim carry) --------------
+def test_episode_collapse_consecutive_collapses_and_gap_splits_with_verbatim_carry(episode_engine):
+    """Episode-collapse correctness on the stored run-date sequence: PERSIST's 3 CONSECUTIVE VCP days
+    collapse to ONE episode at its FIRST trigger (_R1) carrying that day's stored return/MAE/MFE/regime/
+    sector verbatim; GAP's ordinal-gapped days (_R1, _R3 with _R2 absent) yield TWO episodes; ONESHOT is one.
+    Episodes = 4, Pooled = 6. The collapse is computed off the SAME members + the GLOBAL run-ordinal index."""
+    cfg = _cfg_with(min_sample=2)
+    subject = _es_subject(cfg)
+    with Session(episode_engine) as session:
+        members = _event_study_members(session, subject, H, None)
+        run_position = _run_position_index(session, None)
+        episodes = _collapse_to_episodes(members, run_position)
+        run_dates = {
+            run.id: run.asof_date
+            for run in session.exec(select(ScannerRun)).all()
+        }
+    assert len(members) == 6 and len(episodes) == 4  # pooled 6 → episodes 4
+    by_ticker = {}
+    for e in episodes:
+        by_ticker.setdefault(e["ticker"], []).append(e)
+    # PERSIST: ONE episode at its first trigger (_R1), stored values VERBATIM
+    assert len(by_ticker["PERSIST"]) == 1
+    persist = by_ticker["PERSIST"][0]
+    assert run_dates[persist["run_id"]] == _R1
+    assert persist["return"] == pytest.approx(0.11) and persist["mae"] == pytest.approx(-0.01)
+    assert persist["mfe"] == pytest.approx(0.21) and persist["regime"] == "Risk-on"
+    assert persist["sector"] == "Technology"
+    # GAP: TWO episodes (the _R2 gap splits the run) at _R1 and _R3
+    assert len(by_ticker["GAP"]) == 2
+    assert sorted(run_dates[e["run_id"]] for e in by_ticker["GAP"]) == [_R1, _R3]
+    # ONESHOT: one episode at _R4
+    assert len(by_ticker["ONESHOT"]) == 1 and run_dates[by_ticker["ONESHOT"][0]["run_id"]] == _R4
+
+
+def test_episode_collapse_is_deterministic(episode_engine):
+    """Determinism: the same members + run order always yield the same episodes (identical row identities
+    and order across repeated calls) — no set-iteration nondeterminism leaks into the observation set."""
+    cfg = _cfg_with(min_sample=2)
+    subject = _es_subject(cfg)
+    with Session(episode_engine) as session:
+        members = _event_study_members(session, subject, H, None)
+        run_position = _run_position_index(session, None)
+        a = _collapse_to_episodes(members, run_position)
+        b = _collapse_to_episodes(members, run_position)
+    assert [(e["ticker"], e["run_id"], e["return"]) for e in a] == [
+        (e["ticker"], e["run_id"], e["return"]) for e in b
+    ]
+
+
+# --- disclosure values (n mode-dependent; unique_symbols + episode_count correct) ------------------
+def test_event_study_disclosure_values_both_views(episode_engine):
+    """The three disclosure values (present in BOTH views): `n` is mode-dependent (episodes 4 vs pooled 6);
+    `unique_symbols` is the distinct tickers in the view's set (episodes {PERSIST,GAP,ONESHOT}=3; pooled
+    same 3 tickers across the 6 signal-days=3); `episode_count` is IDENTICAL in both views (4 — it counts
+    first-trigger episodes regardless of which view renders)."""
+    cfg = _cfg_with(min_sample=2)
+    with Session(episode_engine) as session:
+        episodes = compute_event_study(session, "vcp", H, cfg, view=VIEW_EPISODES)
+        pooled = compute_event_study(session, "vcp", H, cfg, view=VIEW_POOLED)
+    assert episodes["n"] == 4 and episodes["n_total"] == 4   # episodes mode counts episodes
+    assert pooled["n"] == 6 and pooled["n_total"] == 6       # pooled mode counts signal-days
+    assert episodes["unique_symbols"] == 3 and pooled["unique_symbols"] == 3
+    assert episodes["episode_count"] == pooled["episode_count"] == 4  # IDENTICAL in both views
+    assert episodes["view"] == "episodes" and pooled["view"] == "pooled"
+
+
+def test_event_study_default_view_is_episodes(episode_engine):
+    """The DEFAULT view is `episodes` (overlap-honest): a no-`view` call equals the explicit episodes call
+    and counts 4, NOT the pooled 6 — so the lab is conservative by default."""
+    cfg = _cfg_with(min_sample=2)
+    with Session(episode_engine) as session:
+        default = compute_event_study(session, "vcp", H, cfg)
+        episodes = compute_event_study(session, "vcp", H, cfg, view=VIEW_EPISODES)
+    assert default["view"] == "episodes" and default["n"] == 4
+    assert default == episodes  # no-kwarg default IS the episodes view
+
+
+def test_event_study_unknown_view_raises(episode_engine):
+    """An unknown `view` raises ValueError (the API turns it into a 422 — same pattern as subject/horizon)."""
+    cfg = _cfg_with(min_sample=2)
+    with Session(episode_engine) as session:
+        with pytest.raises(ValueError, match="unknown view"):
+            compute_event_study(session, "vcp", H, cfg, view="not-a-view")
+    assert set(ALL_VIEWS) == {"episodes", "pooled"}
+
+
+def test_event_study_episodes_figures_derive_from_episode_set(episode_engine):
+    """Every figure respects the view: in episodes mode the selected-horizon mean is the mean over the 4
+    EPISODE returns (PERSIST@R1 0.11, GAP@R1 0.31, GAP@R3 0.33, ONESHOT 0.40) — NOT the 6-signal-day pooled
+    mean — proving the episode set (not the raw pool) drives the distribution. by-regime/by-sector also sum
+    to the episode n."""
+    from statistics import mean as _mean
+    cfg = _cfg_with(min_sample=2)
+    with Session(episode_engine) as session:
+        episodes = compute_event_study(session, "vcp", H, cfg, view=VIEW_EPISODES)
+        pooled = compute_event_study(session, "vcp", H, cfg, view=VIEW_POOLED)
+    ep_row = next(r for r in episodes["by_horizon"] if r["horizon"] == H)
+    pool_row = next(r for r in pooled["by_horizon"] if r["horizon"] == H)
+    assert ep_row["mean_return"] == pytest.approx(_mean([0.11, 0.31, 0.33, 0.40]))
+    assert pool_row["mean_return"] == pytest.approx(_mean([0.11, 0.12, 0.13, 0.31, 0.33, 0.40]))
+    assert ep_row["mean_return"] != pytest.approx(pool_row["mean_return"])  # episodes ≠ pooled here
+    # by-regime/by-sector sum to the episode n (4) in episodes mode
+    assert sum(r["n"] for r in episodes["by_regime"]) == 4
+    assert sum(r["n"] for r in episodes["by_sector"]) == 4
+    assert sum(r["n"] for r in pooled["by_regime"]) == 6
+
+
+def test_event_study_observation_set_pooled_is_unchanged_members(episode_engine):
+    """The shared observation builder: `_event_study_observation_set(view="pooled")` IS the unchanged
+    `_event_study_members` list (identity of membership), and `view="episodes"` is its first-trigger
+    collapse — one membership rule for both the aggregate and the samples drill-down."""
+    cfg = _cfg_with(min_sample=2)
+    subject = _es_subject(cfg)
+    with Session(episode_engine) as session:
+        members = _event_study_members(session, subject, H, None)
+        pooled_set = _event_study_observation_set(session, subject, H, VIEW_POOLED, None)
+        episode_set = _event_study_observation_set(session, subject, H, VIEW_EPISODES, None)
+    assert [(m["run_id"], m["ticker"]) for m in pooled_set] == [(m["run_id"], m["ticker"]) for m in members]
+    assert len(episode_set) == 4 and len(pooled_set) == 6
+
+
+# --- read-only assertion under the EPISODE path (no recompute) -------------------------------------
+def test_event_study_episode_path_is_read_only(episode_engine, monkeypatch):
+    """Read-only under the NEW episode path: monkeypatch the scoring/return/excursion/pattern/regime
+    engines to RAISE, then assert the EPISODES-view study still returns a full payload — proving the
+    collapse is a pure in-memory grouping of stored SELECTed rows, recomputing nothing."""
+    import app.engine.forward_testing as ft
+    import app.engine.patterns as patterns
+    import app.engine.regime as regime
+    import app.engine.scanner as scanner
+    import app.engine.scoring as scoring
+
+    def _boom(*args, **kwargs):  # pragma: no cover
+        raise AssertionError("episode path must not recompute a score/return/excursion/pattern/regime")
+
+    monkeypatch.setattr(scanner, "run_scan", _boom)
+    monkeypatch.setattr(scoring, "score_stocks", _boom)
+    monkeypatch.setattr(ft, "forward_return", _boom)
+    monkeypatch.setattr(ft, "forward_excursions", _boom)
+    monkeypatch.setattr(patterns, "detect_vcp", _boom)
+    monkeypatch.setattr(regime, "score_regime", _boom)
+
+    cfg = _cfg_with(min_sample=2)
+    with Session(episode_engine) as session:
+        payload = compute_event_study(session, "vcp", H, cfg, view=VIEW_EPISODES)
+    assert payload["view"] == "episodes" and payload["n"] == 4
+    assert payload["episode_count"] == 4

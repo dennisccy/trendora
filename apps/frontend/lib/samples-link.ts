@@ -33,12 +33,16 @@ export interface CombinationCohortParams {
   singleIndex?: number;
 }
 
-/** An event-study cohort chip: pooled n / per-horizon n (slice "pooled"), a by-regime n, or a by-sector n. */
+/** An event-study cohort chip: pooled n / per-horizon n (slice "pooled"), a by-regime n, or a by-sector n.
+ *  `view` (J-63) is the overlap-honesty MODE the chip was clicked under — `episodes` (first-trigger,
+ *  default) or `pooled` (per-signal-day) — so the drill-down reproduces the same mode + cohort. It is a
+ *  cohort/mode selector ONLY: it does NOT touch `?asof` or the analysis-mode `scope`. */
 export interface EventStudyCohortParams {
   kind: "event-study";
   subject: string;
   horizon: number;
   slice: "pooled" | "regime" | "sector";
+  view: "episodes" | "pooled";
   regime?: string;
   sector?: string;
 }
@@ -73,6 +77,9 @@ export function buildSamplesHref(cohort: CohortParams, scope: SampleScope): stri
   } else {
     params.set("subject", cohort.subject);
     params.set("slice", cohort.slice);
+    // J-63: carry the overlap-honesty view so the drill-down reproduces the same mode (a cohort selector,
+    // never the date — `?asof` is still merged separately by `useAsOfHref`).
+    params.set("view", cohort.view);
     if (cohort.slice === "regime" && cohort.regime !== undefined) {
       params.set("regime", cohort.regime);
     }
