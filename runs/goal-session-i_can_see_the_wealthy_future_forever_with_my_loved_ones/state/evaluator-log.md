@@ -223,3 +223,18 @@ count-coherent drill-downs) hold; no fabricated rows.
 remaining failing journey (J-58 sectors config catalog; J-61/J-62 heatmap+calendar; J-63 episodes;
 J-59/J-60/J-66/J-67 jobs pipeline) is backend/config-touching and needs a pytest gate. Recommend J-58
 next (smallest backend surface) or the J-59/J-60/J-66/J-67 jobs cluster.
+
+## Iteration 11 — goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11
+
+**Date:** 2026-06-13T05:40:00+01:00
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: J-58 (Sectors page — every ETF named/described, with universe members)
+- Newly failing: none
+- Regressed: none
+- Anti-goal violations: none
+
+**Reasoning:** Re-run of iter-11 (the prior run fully built + COHERENCE-PASS'd J-58 but aborted at this evaluator step on an operational timeout — the pump blocked 6h on the full pytest suite — not a content failure). J-58 is genuinely passing: browser-QA 14/14 PASS and I directly viewed UT-02 (SMH "Semiconductors (VanEck)" + description + intact component breakdown), UT-04/UT-06 (XLK 58 stock_sectors member chips, +52 reveal), and UT-07 (KRE "Regional Banks (SPDR)" with the explicit "No universe members are mapped" empty state, zero fabricated chips). The full backend suite is green — 738 passed, 4 skipped, 0 failed (/tmp/trendora-iter11-fullsuite-v2.log, 0:46:51); the prior run's lone failure (QA fixture builder not pruning the new stock_industries section) was root-caused and fixed in build_qa_fixture_db.py and re-verified. Review/QA/audit/coherence/closure all PASS; the diff is surgical (config catalog + validator, sectors engine metadata, two SectorScoreRow columns, persist/serve, sectors/page.tsx + lib/api.ts) with no anti-goal violation — the metadata is attached after the score math (audit traced sectors.py:94-164) so canonical sector scores/ranks are byte-identical. No prior-passing journey regressed.
+
+**Next-step recommendation:** Dispatch the jobs-pipeline cluster J-59/J-60/J-66/J-67 at FULL depth (the highest-risk backend surface: stage-aware zero-refetch resume, start-inserted run-history lifecycle with interrupted boot sweep, fine-grained honest progress incl. the 318/159 over-count fix + the iter-8 coherence-WARN speedupFactor residual, and transactionally-sound concurrent backfill). They share data_manager.py + the checkpoint/lifecycle model and are provable offline with injected counting providers + fault injection. Then the smaller offline journeys J-61 (availability heatmap), J-62 (as-of calendar popover), J-63 (event-study episode mode). J-22/J-23/J-24 stay blocked-NA (non-vetoing). Operational: hand the full suite to the pump and gate the evaluator on the flushed summary line — never block the evaluator dispatch on the in-flight suite (the failure mode that aborted this iteration's first run).

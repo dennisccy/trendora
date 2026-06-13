@@ -204,6 +204,14 @@ def build_fixture(
         if not raw["themes"]:
             # keep at least one non-empty theme so the config stays valid
             raw["themes"] = {"qa_fixture_theme": members}
+    # J-58: `_stock_industries_valid` requires every `stock_industries` KEY to be in universe.symbols.
+    # Drop any stock no longer in the narrowed universe; the values are `etfs.industry` tickers (NOT
+    # universe members), so leave them as-is. An empty section is fine (it defaults to `{}`).
+    stock_industries = raw.get("stock_industries")
+    if isinstance(stock_industries, dict):
+        raw["stock_industries"] = {
+            stock: etfs for stock, etfs in stock_industries.items() if stock in member_set
+        }
     fixture_config_path = out_dir / "config.yaml"
     fixture_config_path.write_text(yaml.safe_dump(raw, sort_keys=False))
 

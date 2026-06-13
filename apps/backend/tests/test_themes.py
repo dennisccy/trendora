@@ -86,7 +86,8 @@ _SYNTH_CFG = {
         },
     },
     "universe": {"symbols": ["AAA", "BBB", "CCC", "DDD"], "filters": {"min_market_cap": 1, "min_dollar_vol": 1, "min_price": 1}},
-    "etfs": {"index": ["SPY"], "sector": {"XLK": "Technology"}, "industry": ["SMH"], "volatility": ["^VIX"]},
+    # J-58: etfs.industry is now a catalog (ticker -> {name, description}, name required).
+    "etfs": {"index": ["SPY"], "sector": {"XLK": "Technology"}, "industry": {"SMH": {"name": "Semiconductors", "description": "Chip makers."}}, "volatility": ["^VIX"]},
     "index_chart": {  # J-44 required block (chart symbols/names + range presets from config)
         "symbols": [{"symbol": "SPY", "name": "S&P 500 (SPY)"}],
         "range_presets": [{"key": "all", "label": "All", "days": None}], "default_range": "all",

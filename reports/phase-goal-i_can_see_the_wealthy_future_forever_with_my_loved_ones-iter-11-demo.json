@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
+  "base_url": "http://localhost:3835",
+  "iteration": 11,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Sectors leaderboard loads with ranked ETFs",
+      "narration": "The sectors page shows every tracked ETF ranked from strongest to weakest by a composite momentum score. Both sector-index ETFs and industry-group ETFs appear together in one ordered table.",
+      "point_out": "31 ETF rows ordered by score — SOXX at rank 1 with 93.67, ITB at the bottom with 7.17. Both sector and industry ETFs are interleaved by score.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/sectors" },
+      "expect": { "text": "SOXX" }
+    },
+    {
+      "n": 2,
+      "title": "Expand SMH — human-readable industry name in header",
+      "narration": "Clicking the expand toggle on an industry ETF row now shows a proper display name in the panel header instead of the bare ticker. SMH opens as Semiconductors (VanEck) so you instantly know what group you are looking at.",
+      "point_out": "Panel header reads 'SMH — Semiconductors (VanEck)', not just 'SMH'. The configured display name is shown.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "SMH" } },
+      "expect": { "text": "Semiconductors (VanEck)" }
+    },
+    {
+      "n": 3,
+      "title": "SMH panel shows plain-language description",
+      "narration": "Below the header, a one-line description tells you what the industry group actually covers in plain English — no guesswork about what SMH tracks.",
+      "point_out": "Description reads 'Largest US-listed semiconductor makers and equipment suppliers.' — distinct from the score breakdown table below it.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/sectors" },
+      "expect": { "text": "Largest US-listed semiconductor makers and equipment suppliers." }
+    },
+    {
+      "n": 4,
+      "title": "SMH members list with config-defined label and expand",
+      "narration": "Each industry ETF panel now lists its mapped universe stocks as clickable ticker chips. The section heading 'Members (config-defined)' tells you these memberships come from the portfolio configuration, not an automated sector mapping.",
+      "point_out": "Member chips ADI, AMAT, AMD, ARM, ASML, AVGO appear with a '+21' overflow button. The heading clearly reads 'Members (config-defined)'.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "+21" } },
+      "expect": { "text": "Show fewer" }
+    },
+    {
+      "n": 5,
+      "title": "XLK sector ETF shows universe members",
+      "narration": "Sector-index ETFs like XLK also get the member chip list, showing every universe stock mapped to the Technology sector. Click any chip to jump straight to that stock's detail page in a new tab.",
+      "point_out": "XLK expanded panel shows 6 initial chips (AAPL, ADBE, ADI, AMAT, AMD, ANET) plus a '+52' button. Heading reads 'Members'.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/sectors" },
+      "expect": { "text": "XLK" }
+    },
+    {
+      "n": 6,
+      "title": "KRE unmapped ETF shows honest empty state",
+      "narration": "When an ETF has no stocks mapped to it, the panel says so clearly with a single message — no fabricated names, no blank space, just a straightforward explanation.",
+      "point_out": "KRE panel header reads 'KRE — Regional Banks (SPDR)' and the members section shows 'No universe members are mapped to this ETF (config-defined).' with zero chips.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "KRE" } },
+      "expect": { "text": "No universe members are mapped to this ETF (config-defined)." }
+    },
+    {
+      "n": 7,
+      "title": "Historical snapshot — member chips carry the as-of date",
+      "narration": "When you view the sectors leaderboard at a past date, every member chip link automatically picks up that date. Clicking a chip opens the stock detail at exactly the same historical snapshot, not today's data.",
+      "point_out": "On /sectors?asof=2025-11-28 the ADI chip href reads '/stocks/ADI?asof=2025-11-28' — the date travels with the link.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/sectors?asof=2025-11-28" },
+      "expect": { "text": "2025-11-28" }
+    },
+    {
+      "n": 8,
+      "title": "Score-component breakdown still intact alongside new sections",
+      "narration": "The existing score-component breakdown — relative strength percentiles, moving average stack, distance from 52-week high — is untouched. The new name, description, and member sections sit alongside it, not in place of it.",
+      "point_out": "SMH expanded panel shows RS vs SPY 1m/3m/6m with percentile and contribution values, plus the description and member chips below — all coexisting in the same panel.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/sectors" },
+      "expect": { "text": "SOXX" }
+    }
+  ]
+}

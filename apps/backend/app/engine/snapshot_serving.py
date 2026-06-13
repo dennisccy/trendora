@@ -108,6 +108,11 @@ def _sector_row(row: SectorScoreRow) -> dict:
         "ticker": row.ticker,
         "kind": row.kind,
         "name": row.name,
+        # J-58: config reference metadata echoed VERBATIM from the stored immutable snapshot row —
+        # never recomputed here. A stored run predating the columns has description=NULL / an empty
+        # members list (the `or "[]"` guard makes a legacy NULL render the honest empty state).
+        "description": row.description,
+        "members": json.loads(row.members_json or "[]"),
         "score": row.score,
         "bucket": row.bucket,
         "rs_vs_spy": row.rs_vs_spy,

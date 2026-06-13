@@ -245,27 +245,31 @@ etfs:
     XLB: Materials
     XLRE: Real Estate
     XLC: Communication Services
-  industry:               # industry-group ETFs (used for industry leadership in iter-2+)
-    - SMH
-    - SOXX
-    - IGV
-    - CIBR
-    - HACK
-    - SKYY
-    - BOTZ
-    - ROBO
-    - URA
-    - URNM
-    - ITA
-    - XAR
-    - XHB
-    - ITB
-    - KRE
-    - KBE
-    - XBI
-    - IBB
-    - BKCH
-    - WGMI
+  industry:               # industry-group ETF catalog: ticker -> {name, description} (J-58 reference
+                          # data — the leaderboard reads these instead of showing a bare ticker like
+                          # "KRE"). `name` is REQUIRED (a missing name is a loud ConfigError, never a
+                          # silent default); `description` is a plain-language one-liner. NO name or
+                          # description literal lives in code — this catalog is the single source.
+    SMH:  { name: "Semiconductors (VanEck)",            description: "Largest US-listed semiconductor makers and equipment suppliers." }
+    SOXX: { name: "Semiconductors (iShares)",           description: "Broad iShares basket of chip designers, foundries, and gear makers." }
+    IGV:  { name: "Software (iShares Expanded Tech-Software)", description: "Application and systems software companies, cloud and SaaS heavy." }
+    CIBR: { name: "Cybersecurity (First Trust Nasdaq)", description: "Network, endpoint, and identity security software and hardware vendors." }
+    HACK: { name: "Cybersecurity (Amplify ETF Managers)", description: "Cyber-defense pure-plays spanning software and security services." }
+    SKYY: { name: "Cloud Computing (First Trust)",      description: "Infrastructure, platform, and software cloud-computing providers." }
+    BOTZ: { name: "Robotics & AI (Global X)",           description: "Industrial robotics, automation, and artificial-intelligence enablers." }
+    ROBO: { name: "Robotics & Automation (ROBO Global)", description: "Robotics, automation, and enabling-technology manufacturers worldwide." }
+    URA:  { name: "Uranium Miners (Global X)",          description: "Uranium mining and nuclear-fuel-cycle companies." }
+    URNM: { name: "Uranium Miners (Sprott)",            description: "Physical uranium and uranium-mining pure-plays." }
+    ITA:  { name: "Aerospace & Defense (iShares)",      description: "US aerospace and defense primes and suppliers." }
+    XAR:  { name: "Aerospace & Defense (SPDR)",         description: "Equal-weight aerospace and defense manufacturers." }
+    XHB:  { name: "Homebuilders (SPDR)",                description: "Homebuilders plus building-products and home-improvement names." }
+    ITB:  { name: "Home Construction (iShares)",        description: "US home-construction builders and related suppliers." }
+    KRE:  { name: "Regional Banks (SPDR)",              description: "US regional and mid-size banking institutions." }
+    KBE:  { name: "Banks (SPDR)",                       description: "Broad US banking sector including money-center and regional banks." }
+    XBI:  { name: "Biotechnology (SPDR)",               description: "Equal-weight US biotechnology research and drug-development firms." }
+    IBB:  { name: "Biotechnology (iShares Nasdaq)",     description: "Largest Nasdaq-listed biotechnology companies." }
+    BKCH: { name: "Blockchain (Global X)",              description: "Companies with material exposure to blockchain and digital assets." }
+    WGMI: { name: "Bitcoin Miners (Valkyrie)",          description: "Bitcoin-mining and mining-infrastructure companies." }
   volatility:             # CBOE Volatility Index (regime input in iter-2+)
     - "^VIX"
 
@@ -444,6 +448,118 @@ stock_sectors:
   HD: Consumer Discretionary
   GS: Financials
   ABNB: Consumer Discretionary
+
+# ----------------------------------------------------------------------------------------
+# Stock -> industry-group ETF membership (J-58 reference data). CONFIG-DEFINED, many-to-many
+# (a stock may belong to several industry groups, like `themes`) — NOT a rule-based screen and
+# NOT a scoring magic number. Each KEY must be a universe.symbols entry; each value entry must
+# be a ticker present in `etfs.industry` above (both validated in config.py — a stray ticker is
+# a loud ConfigError, never a silent default). The Sectors leaderboard reads this to list an
+# industry ETF's universe members in its expanded panel; an ETF with no member here renders an
+# explicit empty state (never fabricated). Sector-ETF members come from `stock_sectors`, not here.
+stock_industries:
+  # --- semiconductors -> SMH / SOXX ---
+  NVDA: [SMH, SOXX]
+  AMD:  [SMH, SOXX]
+  AVGO: [SMH, SOXX]
+  MRVL: [SMH, SOXX]
+  MU:   [SMH, SOXX]
+  WDC:  [SMH, SOXX]
+  STX:  [SMH, SOXX]
+  LRCX: [SMH, SOXX]
+  AMAT: [SMH, SOXX]
+  KLAC: [SMH, SOXX]
+  TXN:  [SMH, SOXX]
+  ADI:  [SMH, SOXX]
+  NXPI: [SMH, SOXX]
+  "ON": [SMH, SOXX]
+  MCHP: [SMH, SOXX]
+  QCOM: [SMH, SOXX]
+  INTC: [SMH, SOXX]
+  TSM:  [SMH, SOXX]
+  ASML: [SMH, SOXX]
+  ARM:  [SMH, SOXX]
+  TER:  [SMH, SOXX]
+  ENTG: [SMH, SOXX]
+  COHR: [SMH, SOXX]
+  MPWR: [SMH, SOXX]
+  SWKS: [SMH, SOXX]
+  QRVO: [SMH, SOXX]
+  GFS:  [SMH, SOXX]
+  # --- robotics / AI hardware -> BOTZ / ROBO ---
+  ANET: [BOTZ, ROBO]
+  VRT:  [BOTZ, ROBO]
+  # --- software & cloud -> IGV / SKYY ---
+  MSFT: [IGV, SKYY]
+  ORCL: [IGV, SKYY]
+  NOW:  [IGV, SKYY]
+  CRM:  [IGV, SKYY]
+  ADBE: [IGV, SKYY]
+  INTU: [IGV, SKYY]
+  WDAY: [IGV, SKYY]
+  TEAM: [IGV, SKYY]
+  HUBS: [IGV, SKYY]
+  SNOW: [IGV, SKYY]
+  DDOG: [IGV, SKYY]
+  MDB:  [IGV, SKYY]
+  SHOP: [IGV]
+  PLTR: [IGV]
+  # --- cybersecurity -> CIBR / HACK ---
+  CRWD: [CIBR, HACK]
+  PANW: [CIBR, HACK]
+  ZS:   [CIBR, HACK]
+  FTNT: [CIBR, HACK]
+  S:    [CIBR, HACK]
+  NET:  [CIBR, HACK, SKYY]
+  OKTA: [CIBR, HACK]
+  QLYS: [CIBR, HACK]
+  TENB: [CIBR, HACK]
+  RPD:  [CIBR, HACK]
+  VRNS: [CIBR, HACK]
+  # --- nuclear / uranium -> URA / URNM ---
+  CCJ:  [URA, URNM]
+  LEU:  [URA, URNM]
+  UEC:  [URA, URNM]
+  DNN:  [URA, URNM]
+  # --- aerospace & defense -> ITA / XAR ---
+  LMT:  [ITA, XAR]
+  RTX:  [ITA, XAR]
+  NOC:  [ITA, XAR]
+  GD:   [ITA, XAR]
+  LHX:  [ITA, XAR]
+  HII:  [ITA, XAR]
+  LDOS: [ITA, XAR]
+  AXON: [ITA, XAR]
+  BA:   [ITA, XAR]
+  KTOS: [ITA, XAR]
+  # --- homebuilders -> XHB / ITB ---
+  DHI:  [XHB, ITB]
+  LEN:  [XHB, ITB]
+  PHM:  [XHB, ITB]
+  NVR:  [XHB, ITB]
+  TOL:  [XHB, ITB]
+  KBH:  [XHB, ITB]
+  MTH:  [XHB, ITB]
+  TPH:  [XHB, ITB]
+  BLDR: [XHB, ITB]
+  # --- banks -> KRE / KBE ---
+  JPM:  [KBE]
+  GS:   [KBE]
+  # --- biotech / large-cap pharma -> XBI / IBB ---
+  VKTX: [XBI, IBB]
+  REGN: [XBI, IBB]
+  AMGN: [XBI, IBB]
+  ISRG: [XBI]
+  # --- crypto equities & bitcoin miners -> BKCH / WGMI ---
+  COIN: [BKCH]
+  MSTR: [BKCH]
+  HOOD: [BKCH]
+  MARA: [BKCH, WGMI]
+  RIOT: [BKCH, WGMI]
+  CLSK: [BKCH, WGMI]
+  # NOTE: not every universe symbol is mapped — a stock may belong to no industry group, and an
+  # industry ETF may have no mapped member (e.g. a thinly-covered group), which renders the
+  # explicit "No universe members are mapped to this ETF" empty state. Never fabricated.
 
 # ----------------------------------------------------------------------------------------
 # A-E bucket edges (lower bound of each bucket; E is everything below D). One bucket()

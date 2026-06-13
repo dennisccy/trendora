@@ -39,7 +39,8 @@ MINIMAL_VALID = {
     "etfs": {
         "index": ["SPY"],
         "sector": {"XLK": "Technology"},
-        "industry": ["SMH"],
+        # J-58: etfs.industry is now a {ticker: {name, description}} catalog (name required).
+        "industry": {"SMH": {"name": "Semiconductors", "description": "Chip makers."}},
         "volatility": ["^VIX"],
     },
     # J-44 made `index_chart` required (the major-indexes chart symbols/names + range presets come
@@ -125,6 +126,9 @@ MINIMAL_VALID = {
         "invalidation": {"ma_period": 50},
     },
     "stock_sectors": {"AAA": "Technology", "BBB": "Technology"},
+    # J-58: stock -> industry-group ETF membership (config-defined, many-to-many; each ticker must be
+    # in etfs.industry). Optional (default-empty) but exercised here so the validator path is covered.
+    "stock_industries": {"AAA": ["SMH"]},
     # iter-5 made `scanner` required (bootstrap dates come from config, never code).
     "scanner": {"bootstrap_dates": ["2022-10-07", "2025-04-04"]},
     # iter-28 made `startup` required (fast-ready boot + warm-up tunables come from config, never code).
@@ -278,6 +282,67 @@ def test_theme_member_outside_universe_raises(tmp_path):
 def test_missing_file_raises(tmp_path):
     with pytest.raises(ConfigError):
         load_config(tmp_path / "does_not_exist.yaml")
+
+
+# --- J-58: etfs.industry catalog + stock_industries membership validation -------------------
+def test_industry_catalog_loads_with_name_and_description(tmp_path):
+    """The new etfs.industry catalog (ticker -> {name, description}) loads and exposes typed access."""
+    cfg = load_config(_write(tmp_path, MINIMAL_VALID))
+    assert cfg.etfs.industry["SMH"].name == "Semiconductors"
+    assert cfg.etfs.industry["SMH"].description == "Chip makers."
+
+
+def test_industry_catalog_missing_name_raises(tmp_path):
+    """A malformed industry entry (no `name`) is a loud ConfigError — never a silent default."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["etfs"]["industry"] = {"SMH": {"description": "no name here"}}
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_industry_catalog_blank_name_raises(tmp_path):
+    """An empty-string name is also rejected (min_length=1) — no bare fallback."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["etfs"]["industry"] = {"SMH": {"name": ""}}
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_stock_industries_member_outside_universe_raises(tmp_path):
+    """A stock_industries KEY that is not a universe symbol is a loud error."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["stock_industries"] = {"ZZZ_NOT_IN_UNIVERSE": ["SMH"]}
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_stock_industries_unknown_etf_ticker_raises(tmp_path):
+    """A stock_industries value ticker that is not in the etfs.industry catalog is a loud error."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["stock_industries"] = {"AAA": ["NOT_AN_INDUSTRY_ETF"]}
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_stock_industries_is_optional(tmp_path):
+    """stock_industries is optional (default-empty) — a config omitting it still loads honestly."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    del data["stock_industries"]
+    cfg = load_config(_write(tmp_path, data))
+    assert cfg.stock_industries == {}
+
+
+def test_real_config_industry_catalog_and_memberships(tmp_path):
+    """The REAL config.yaml has a fully-named industry catalog and a valid stock_industries map."""
+    cfg = load_config()
+    # every industry ETF is named (no bare-ticker fallback anywhere)
+    assert all(entry.name and entry.name != ticker for ticker, entry in cfg.etfs.industry.items())
+    # every membership references a real universe symbol + a real catalog ticker
+    universe = set(cfg.universe.symbols)
+    catalog = set(cfg.etfs.industry.keys())
+    for stock, etfs in cfg.stock_industries.items():
+        assert stock in universe
+        assert all(e in catalog for e in etfs)
 
 
 # --- iter-12: methodology section (J-12) ----------------------------------------------------

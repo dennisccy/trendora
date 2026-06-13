@@ -251,6 +251,14 @@ class SectorScoreRow(SQLModel, table=True):
     ticker: str
     kind: str  # sector | industry
     name: str
+    # J-58: config reference metadata, STORED ONCE at run_scan time into this immutable snapshot row
+    # (the stored-copy pattern already on ThemeScoreRow) and served verbatim by /api/sectors — never
+    # recomputed in the read path. `description` is NULL-able (None for sector ETFs and for a stored
+    # run predating the column → the row still renders its ticker/name honestly). `members_json` is the
+    # JSON-encoded universe-member list (empty list → explicit UI empty state; never fabricated). It
+    # defaults to "[]" so a row constructed/read without it renders the honest empty state, not a crash.
+    description: Optional[str] = None
+    members_json: str = "[]"
     score: float
     bucket: str
     rs_vs_spy: Optional[float] = None

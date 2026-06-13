@@ -34,11 +34,11 @@
       "id": "J-04",
       "name": "Sector / industry Leaderboard",
       "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-04-result.png",
-      "note": "Ranked by Sector Score with RS-vs-SPY, dist-from-52w-high, trend label per row; 'RS benchmark: SPY (excluded)' badge satisfies the SPY-reference rule. (J-58 will extend this page with config-sourced names/descriptions + members.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11-evidence/UT-01-result.png",
+      "note": "Required-still-passing in iter-11 and DIRECTLY re-confirmed unchanged: /sectors renders 31 ranked rows (SOXX rank 1 score 93.67 -> ITB rank 31 score 7.17, continuous descending, no dups) with per-row RS-vs-SPY, dist-from-52w-high, trend label, 'RS benchmark: SPY (excluded)' badge — evaluator-viewed UT-01-result.png / UT-02-result.png. The J-58 additions (config name/description + member list) are additive reference metadata attached AFTER the score math (auditor traced sectors.py:94-164 — metadata cannot move a canonical value), so the ranking/scores are byte-identical (test_metadata_does_not_move_any_canonical_value). UT-J-04 baseline capture from iter-0 also stands."
     },
     "J-05": {
       "id": "J-05",
@@ -54,11 +54,11 @@
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-05-J-06-nvda-detail.png",
-      "note": "Re-verified iter-9 incl. the NEW J-56 theme-chip leg: NVDA leaderboard row E/43.14, E/54.05, E/35.80 (evaluator-viewed in UT-J-55-search-nv.png) == detail page values (QA DOM-extracted; same stored values verified live on both API endpoints in iter-3); detail theme chips Ai Data Centre/Semiconductors/Megacap Leaders exactly match the leaderboard Themes-cell chips (both evaluator-viewed). Frontend-only view-transform diff cannot move the compute path (coherence audit PASS)."
+      "note": "Re-confirmed in iter-11 for the Sector-score leg: the J-58 description+members are a STORED-once snapshot copy (run_scan writes them; snapshot_serving._sector_row echoes verbatim via json.loads(members_json or '[]')) — no read-path recompute, no second source (coherence COHERENCE-PASS, audit B1/B4). test_api_sectors_reserved_run_is_byte_identical proves the re-served stored run is byte-identical (snapshot immutability). The prior NVDA score-coherence leg (iter-9: leaderboard E/43.14, E/54.05, E/35.80 == detail page; theme chips match) stands on an unchanged compute path."
     },
     "J-07": {
       "id": "J-07",
@@ -78,7 +78,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-07-result.png",
-      "note": "Older run (2026-03-31, Risk-off 28.11) shown as stored ('Immutable snapshot — never recomputed') and differs from latest (Narrow leadership 61.00). QA's cited UT-J-08-result.png is actually a warming Backtest capture — disregarded; immutability also covered by suite tests (re-green iter-6, 691/4/0)."
+      "note": "Older run (2026-03-31, Risk-off 28.11) shown as stored ('Immutable snapshot — never recomputed') and differs from latest (Narrow leadership 61.00). QA's cited UT-J-08-result.png is actually a warming Backtest capture — disregarded; immutability also covered by suite tests (re-green iter-6, 691/4/0; iter-11 738/4/0)."
     },
     "J-09": {
       "id": "J-09",
@@ -124,11 +124,11 @@
       "id": "J-13",
       "name": "Browse dashboard as of a past date (global as-of switcher)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-6",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-6",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-6-evidence/UT-J-13-themes-historical.png",
-      "note": "Re-verified iter-6 at 2026-05-01: 'Viewing as-of 2026-05-01 (historical)' shown on /, /stocks, /themes, /sectors (themes capture evaluator-viewed: full ranked board at the historical date with the indicator + 'as of 2026-05-01' chip); nav hrefs carry ?asof=2026-05-01; latest restores (UT-J-13-latest-restored.png, indicator absent). Dashboard at the historical date shows regime Risk-on 71.43/100 from that date's stored snapshot. (Iter-9's UT-J-50-J-54 capture incidentally re-shows the historical indicator at 2026-06-05 on /stocks.)"
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11-evidence/UT-04-result.png",
+      "note": "Required-still-passing in iter-11 and re-confirmed on /sectors: navigating to /sectors?asof=2025-11-28 renders the historical snapshot and the member-chip hrefs carry ?asof=2025-11-28 (UT-09); at latest the page is date-free and member hrefs are clean (UT-08) — the single global as-of state still governs the page (asof-provider untouched by the J-58 diff). Prior iter-6 multi-page verification (2026-05-01 indicator on /, /stocks, /themes, /sectors) stands."
     },
     "J-14": {
       "id": "J-14",
@@ -148,7 +148,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": null,
-      "note": "THIN baseline evidence: no timing capture. Carried on snapshot-served read architecture (all read endpoints 200 from stored snapshot while warming) + prior-session verification. QA navigated all pages interactively across iters 2-9 without load complaints; the J-55 per-keystroke search explicitly performs NO refetch (the [asOf]-keyed fetch untouched — code-verified iter-9)."
+      "note": "THIN baseline evidence: no timing capture. Carried on snapshot-served read architecture (all read endpoints 200 from stored snapshot while warming) + prior-session verification. QA navigated all pages interactively across iters 2-11 without load complaints; the J-58 members ride the SAME stored snapshot read (no extra request, served from members_json) so the read path stays snapshot-served."
     },
     "J-16": {
       "id": "J-16",
@@ -178,7 +178,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5-evidence/UT-J-18-backtest-one-date.png",
-      "note": "Re-verified iter-5 after app-wide href changes: exactly 1 select on /backtest (the global 'View as-of date'); switching it serializes to backtest?asof=2026-06-05. The J-50 href embedding reads the same single state (judged on 'no page-local independent date state' per project memory). Iter-9's ?q=/?theme= params are filter serializations, never a date state (code-verified — the reflect-effect only ever writes q/theme/sector/setup/pattern; asof stays owned by asof-provider)."
+      "note": "Re-verified iter-5 after app-wide href changes: exactly 1 select on /backtest (the global 'View as-of date'); switching it serializes to backtest?asof=2026-06-05. The J-50 href embedding reads the same single state (judged on 'no page-local independent date state' per project memory). Iter-9's ?q=/?theme= params are filter serializations, never a date state (code-verified — the reflect-effect only ever writes q/theme/sector/setup/pattern; asof stays owned by asof-provider). iter-11 added no page-local date state (sectors member hrefs reuse useAsOfHref)."
     },
     "J-19": {
       "id": "J-19",
@@ -288,7 +288,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-25-J-26-J-29-research.png",
-      "note": "Re-verified iter-10: Setup & Pattern Lab (Actionable, MAE/MFE) renders per QA. Shared /research capture; backend diff empty -> event-study aggregates untouched."
+      "note": "Re-verified iter-10: Setup & Pattern Lab (Actionable, MAE/MFE) renders per QA. Shared /research capture; backend diff empty -> event-study aggregates untouched. (J-63 will extend this lab with first-trigger episode mode.)"
     },
     "J-30": {
       "id": "J-30",
@@ -348,7 +348,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-dev.md",
-      "note": "Verification basis is API-layer + green suite (browser NOT a gate, per goal.md re-scope). Full pytest green at every subsequent backend-touching iteration (724/4/0 in iter-8)."
+      "note": "Verification basis is API-layer + green suite (browser NOT a gate, per goal.md re-scope). Full pytest green at every subsequent backend-touching iteration (724/4/0 in iter-8; 738/4/0 in iter-11)."
     },
     "J-36": {
       "id": "J-36",
@@ -378,7 +378,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3-ui-test-results.md",
-      "note": "Re-verified iter-3: unified section rendered live; Resume exercised for real on the rate-limited alpha_vantage job; idempotency/audit-preserving contracts green in suite under parallelism."
+      "note": "Re-verified iter-3: unified section rendered live; Resume exercised for real on the rate-limited alpha_vantage job; idempotency/audit-preserving contracts green in suite under parallelism. (J-59 will extend Resume to stage-awareness; J-60 the run-history lifecycle.)"
     },
     "J-39": {
       "id": "J-39",
@@ -398,7 +398,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-6-evidence/UT-J-49-card-historical-marker.png",
-      "note": "Incidentally re-confirmed iter-8: backend restarted for the new stages payload, reached honest 'Ready' (GET /api/health 200, readiness=ready) for all QA/browser captures; dev's cold-start smoke confirmed serve-fast boot with honest stage timings on a live 3-date job. test_warmup.py green in the 724/4/0 suite. (Iter-9 captures show the green 'Ready' top-bar badge throughout.)"
+      "note": "Incidentally re-confirmed iter-8: backend restarted for the new stages payload, reached honest 'Ready' (GET /api/health 200, readiness=ready) for all QA/browser captures; dev's cold-start smoke confirmed serve-fast boot with honest stage timings on a live 3-date job. test_warmup.py green in the 724/4/0 suite. (Iter-9 captures show the green 'Ready' top-bar badge throughout; iter-11 browser-QA likewise ran with 'Ready'.)"
     },
     "J-41": {
       "id": "J-41",
@@ -408,7 +408,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-dev.md",
-      "note": "DIRECTLY re-proven iter-8 under the NEW backfill concurrency: create-once/IntegrityError guards now live in persist_run_payload (owned by the single writer thread); concurrency-safety, worker-exception (explicit failed + no partial snapshot), and idempotent-re-run tests green in the 724/4/0 suite; live re-run of an already-backfilled range returned 0 created with no UNIQUE crash (run id 33)."
+      "note": "DIRECTLY re-proven iter-8 under the NEW backfill concurrency: create-once/IntegrityError guards now live in persist_run_payload (owned by the single writer thread); concurrency-safety, worker-exception (explicit failed + no partial snapshot), and idempotent-re-run tests green in the 724/4/0 suite; live re-run of an already-backfilled range returned 0 created with no UNIQUE crash (run id 33). (J-67 will extend transactional soundness of the concurrent multi-date backfill.)"
     },
     "J-42": {
       "id": "J-42",
@@ -418,7 +418,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-2",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-2-evidence/J-42-iso-dates.png",
-      "note": "Re-verified iter-2; ISO dates re-observed throughout iter-4/5/6/9 captures ('as of 2026-06-10' / 'as-of 2026-06-05' chips in the iter-9 evidence — same shared formatter family)."
+      "note": "Re-verified iter-2; ISO dates re-observed throughout iter-4/5/6/9 captures ('as of 2026-06-10' / 'as-of 2026-06-05' chips in the iter-9 evidence — same shared formatter family). iter-11 /sectors?asof=2025-11-28 capture again shows the ISO as-of in the page + member hrefs."
     },
     "J-43": {
       "id": "J-43",
@@ -428,7 +428,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-43-J-50-stocks-historical.png",
-      "note": "Re-verified iter-10 (evaluator-viewed UT-J-43-J-50-stocks-historical.png): /stocks at ?asof=2026-06-05 shows 'Viewing as-of 2026-06-05 (historical)' badge; single global control. asof-provider not in the iter-10 diff (sample-link href construction byte-unchanged)."
+      "note": "Re-verified iter-10 (evaluator-viewed UT-J-43-J-50-stocks-historical.png): /stocks at ?asof=2026-06-05 shows 'Viewing as-of 2026-06-05 (historical)' badge; single global control. asof-provider not in the iter-10 diff (sample-link href construction byte-unchanged). iter-11 /sectors?asof=2025-11-28 again restores the date from the URL (UT-09)."
     },
     "J-44": {
       "id": "J-44",
@@ -438,7 +438,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-8-evidence/UT-02-UT-04-dashboard-1200h.png",
-      "note": "Re-verified iter-8 with the DIA leg LANDED: legend shows all 5 config-listed lines incl. 'Dow 30 (DIA)'. PERSISTENT SUB-STEP CARRY: the toggle off->reload->still-off cycle was AGAIN not re-exercised in iter-9 (opportunistic, non-gating; QA skipped it); carried from iter-2's full verification on provably untouched code (iter-9 frontend diff = stocks/page.tsx + themes/page.tsx only; major-indexes-card.tsx + usePersistedToggle unchanged)."
+      "note": "Re-verified iter-8 with the DIA leg LANDED: legend shows all 5 config-listed lines incl. 'Dow 30 (DIA)'. PERSISTENT SUB-STEP CARRY: the toggle off->reload->still-off cycle was AGAIN not re-exercised in iter-9 (opportunistic, non-gating; QA skipped it); carried from iter-2's full verification on provably untouched code (iter-9 frontend diff = stocks/page.tsx + themes/page.tsx only; major-indexes-card.tsx + usePersistedToggle unchanged; iter-11 frontend diff = sectors/page.tsx + lib/api.ts only)."
     },
     "J-45": {
       "id": "J-45",
@@ -494,11 +494,11 @@
       "id": "J-50",
       "name": "As-of date survives EVERY in-app navigation, including new tabs (extends J-43)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-43-J-50-stocks-historical.png",
-      "note": "Re-verified iter-10 (same historical capture): QA DOM-asserts 122 ticker hrefs + all sidebar nav hrefs carry ?asof=2026-06-05; the J-65 chip hrefs also embed asof while historical via the same useAsOfHref helper (single owner, code-verified). Clean at latest."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11-evidence/UT-04-result.png",
+      "note": "Required-still-passing in iter-11 and DIRECTLY re-confirmed on the new /sectors member links: the J-58 member chips reuse the SAME useAsOfHref helper (imported from the canonical asof-provider — coherence audit Step 1, audit F1/F2) — UT-08 shows latest-date hrefs clean (href=/stocks/AAPL, no asof), UT-09 shows historical hrefs carry ?asof=2025-11-28 (href=/stocks/ADI?asof=2025-11-28), both target='_blank' + rel='noopener noreferrer'. No second date-carrying path introduced. Prior iter-10 122-href + sidebar-nav verification stands."
     },
     "J-51": {
       "id": "J-51",
@@ -528,7 +528,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
       "last_evidence_path": "reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-8-ui-test-results.md",
-      "note": "NEWLY PASSING iter-8. Parallel multi-date backfill: compute fanned to backfill_workers=4 threads, ALL writes serialized on the orchestrating thread via create-once persist_run_payload. Byte-identical parallel-vs-sequential equality proven by test_data_manager_backfill_parallel.py (row-level ScannerRun/ScannerResult/ForwardReturn equality) inside the green full suite 724/4/0 (PYTEST_EXIT=0, pump log verified). Speedup INDEPENDENTLY reproduced by the evaluator's own benchmark run: Stage D serial 43.98s wall (per-date-sum 33.11s) vs parallel 10.75s wall = 4.09x (dev's run 11.56x on 6 dates) — advisory per goal.md, equality is the hard guard. Stage timings persisted+served (data_provider_runs ids 31-36 stages JSON; GET /api/data/jobs/{id}) and rendered on the /data job card with config-backed J-47 tooltips (DOM 210/223/227 captures). Idempotent re-run proven LIVE: run id 33 re-ran id 32's range -> 0 snapshots created, ok, no UNIQUE crash. EVIDENCE CORRECTIONS: QA TC-02's '4.5x' was an INVERTED ratio (DB shows elapsed 10.27s vs per-date-sum 2.28s = honest 0.22x); browser-QA UT-10's 0.1x FAIL on a tiny early-2021 job is HONEST display (write-dominated micro-job; serialized writes were always serial), not a defect."
+      "note": "NEWLY PASSING iter-8. Parallel multi-date backfill: compute fanned to backfill_workers=4 threads, ALL writes serialized on the orchestrating thread via create-once persist_run_payload. Byte-identical parallel-vs-sequential equality proven by test_data_manager_backfill_parallel.py (row-level ScannerRun/ScannerResult/ForwardReturn equality) inside the green full suite 724/4/0 (PYTEST_EXIT=0, pump log verified). Speedup INDEPENDENTLY reproduced by the evaluator's own benchmark run: Stage D serial 43.98s wall (per-date-sum 33.11s) vs parallel 10.75s wall = 4.09x (dev's run 11.56x on 6 dates) — advisory per goal.md, equality is the hard guard. Stage timings persisted+served (data_provider_runs ids 31-36 stages JSON; GET /api/data/jobs/{id}) and rendered on the /data job card with config-backed J-47 tooltips (DOM 210/223/227 captures). Idempotent re-run proven LIVE: run id 33 re-ran id 32's range -> 0 snapshots created, ok, no UNIQUE crash. EVIDENCE CORRECTIONS: QA TC-02's '4.5x' was an INVERTED ratio (DB shows elapsed 10.27s vs per-date-sum 2.28s = honest 0.22x); browser-QA UT-10's 0.1x FAIL on a tiny early-2021 job is HONEST display (write-dominated micro-job; serialized writes were always serial), not a defect. (J-67 will harden the concurrent backfill's transaction soundness.)"
     },
     "J-54": {
       "id": "J-54",
@@ -538,7 +538,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-50-J-54-asof-hrefs.png",
-      "note": "Re-verified iter-9: ticker anchors target=_blank rel='noopener noreferrer'; at historical href=/stocks/MRVL?asof=2026-06-05, at latest href=/stocks/NVDA (clean); leaderboard tab undisturbed (DOM-asserted; historical-state capture evaluator-viewed). AMENDED by J-57 this iteration: the new-tab exclusivity list now also includes theme member tickers (per the goal.md J-54 amendment note) — verified on /themes."
+      "note": "Re-verified iter-9: ticker anchors target=_blank rel='noopener noreferrer'; at historical href=/stocks/MRVL?asof=2026-06-05, at latest href=/stocks/NVDA (clean); leaderboard tab undisturbed (DOM-asserted; historical-state capture evaluator-viewed). AMENDED by J-57/J-58: the new-tab exclusivity list now also includes theme member tickers (J-57) and sector/industry member tickers (J-58, iter-11 UT-08/UT-09 — verified target='_blank' + ?asof-carrying)."
     },
     "J-55": {
       "id": "J-55",
@@ -568,43 +568,43 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-57-expanded.png",
-      "note": "NEWLY PASSING iter-9. Evaluator-viewed captures: Semiconductors preview 6 members + '+21' button (before-expand), all 27 members revealed in place with 'Show fewer' (expanded). DOM-asserted: member links target=_blank rel='noopener noreferrer'; hrefs carry ?asof=2026-06-05 while historical and are clean at latest (useAsOfHref — code-verified single owner); clicking a member link never toggles the row (before-expand and no-row-toggle captures byte-identical = state genuinely unchanged, here a CORRECT duplicate). Code-verified iter-5 lesson: member links + the '+n' <button> live in the separate NON-clickable expanded-panel <tr> (not nested in the role='button' summary row) with defensive stopPropagation; membersExpanded state is local and independent of the row's own expand."
+      "note": "NEWLY PASSING iter-9. Evaluator-viewed captures: Semiconductors preview 6 members + '+21' button (before-expand), all 27 members revealed in place with 'Show fewer' (expanded). DOM-asserted: member links target=_blank rel='noopener noreferrer'; hrefs carry ?asof=2026-06-05 while historical and are clean at latest (useAsOfHref — code-verified single owner); clicking a member link never toggles the row (before-expand and no-row-toggle captures byte-identical = state genuinely unchanged, here a CORRECT duplicate). Code-verified iter-5 lesson: member links + the '+n' <button> live in the separate NON-clickable expanded-panel <tr> (not nested in the role='button' summary row) with defensive stopPropagation; membersExpanded state is local and independent of the row's own expand. The J-58 /sectors member panel is a verbatim port of this exact pattern (iter-11 audit F2)."
     },
     "J-58": {
       "id": "J-58",
       "name": "Sectors page — every ETF named and described, with universe members",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
-      "last_evidence_path": null,
-      "note": "Not yet built (needs new config reference data — industry catalog + stock->industry mapping — plus backend serving; deferred from iter-9 per spec). NOT data-dependent per goal.md — may never be recorded blocked-NA."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11-evidence/UT-02-result.png",
+      "note": "NEWLY PASSING iter-11 (re-run; the prior run fully built and COHERENCE-PASS'd this but aborted at the evaluator on an OPERATIONAL timeout). Browser-QA 14/14 PASS; evaluator viewed 4 screenshots directly: UT-02 SMH expanded -> header 'SMH — Semiconductors (VanEck)' (config name, not bare ticker) + description 'Largest US-listed semiconductor makers and equipment suppliers.' + intact score-component breakdown + 'MEMBERS (CONFIG-DEFINED)'; UT-04 XLK sector expanded -> 6 member chips (AAPL/ADBE/ADI/AMAT/AMD/ANET) + '+52' (58 stock_sectors members), no description line (sector ETF has none); UT-06 '+52' reveals all 58 chips in place; UT-07 KRE expanded -> 'KRE — Regional Banks (SPDR)' + description + explicit empty state 'No universe members are mapped to this ETF (config-defined).' with ZERO fabricated chips (KRE genuinely member-less). Member hrefs target='_blank' + rel='noopener noreferrer', ?asof=2025-11-28 while historical / clean at latest (UT-08/UT-09, reuse useAsOfHref). Backend: config etfs.industry -> {name,description} catalog + validated stock_industries many-to-many mapping; SectorScoreRow.description+members_json stored once at run_scan, echoed verbatim by snapshot_serving._sector_row (members_json or '[]' legacy guard) — no read-path recompute (audit B1/B4). Byte-identical canonical values proven (test_metadata_does_not_move_any_canonical_value; auditor traced sectors.py:94-164 — metadata attached AFTER the score math). Coherence COHERENCE-PASS (snapshot 23832d73). Review PASS, QA PASS, audit PASS, closure_passed. FULL backend suite GREEN: 738 passed, 4 skipped, 0 failed (/tmp/trendora-iter11-fullsuite-v2.log, 0:46:51) — the prior run's single failure (QA fixture builder not pruning stock_industries) was root-caused + fixed in apps/backend/scripts/build_qa_fixture_db.py and re-verified green."
     },
     "J-59": {
       "id": "J-59",
       "name": "Resume from the failed stage — and covered ranges are never re-fetched (extends J-34/J-38)",
       "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": null,
-      "note": "Not yet built (stage-aware checkpoint + zero-provider-call resume + covered-range fetch planner; FULL-depth backend work per the J-46/J-53 precedent). NOT data-dependent per goal.md (provable offline with the injected counting provider)."
+      "note": "Not yet built (stage-aware checkpoint + zero-provider-call resume + covered-range fetch planner; FULL-depth backend work per the J-46/J-53 precedent). NOT data-dependent per goal.md (provable offline with the injected counting provider). The next-target jobs-pipeline cluster (bundle J-59/J-60/J-66/J-67) per the iter-11 evaluator recommendation."
     },
     "J-60": {
       "id": "J-60",
       "name": "Run history records every job from the moment it starts",
       "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": null,
-      "note": "Not yet built (start-inserted running record + honest single terminal transition + interrupted boot sweep; FULL-depth backend work). NOT data-dependent per goal.md."
+      "note": "Not yet built (start-inserted running record + honest single terminal transition + interrupted boot sweep; FULL-depth backend work). NOT data-dependent per goal.md. Part of the jobs-pipeline cluster (J-59/J-60/J-66/J-67) recommended as the next target."
     },
     "J-61": {
       "id": "J-61",
       "name": "Per-date availability heatmap — see exactly which dates have data",
       "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": null,
@@ -614,7 +614,7 @@
       "id": "J-62",
       "name": "The as-of switcher is a calendar that shows what is selectable",
       "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": null,
@@ -624,7 +624,7 @@
       "id": "J-63",
       "name": "Event study is overlap-honest — first-trigger episodes by default, pooled one toggle away",
       "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": null,
@@ -654,23 +654,23 @@
       "id": "J-66",
       "name": "Job progress is fine-grained, live, and honest (extends J-46/J-53)",
       "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": null,
-      "note": "Not yet built (per-symbol/per-date ticks, current-activity line, heartbeat, counters never exceeding totals incl. the 318/159 fix; FULL-depth). Also carries the iter-8 coherence-WARN residual: move the frontend speedupFactor display division into the backend stages payload when touching data_manager.py/data/page.tsx. NOT data-dependent per goal.md."
+      "note": "Not yet built (per-symbol/per-date ticks, current-activity line, heartbeat, counters never exceeding totals incl. the 318/159 fix; FULL-depth). Also carries the iter-8 coherence-WARN residual: move the frontend speedupFactor display division into the backend stages payload when touching data_manager.py/data/page.tsx. NOT data-dependent per goal.md. Part of the jobs-pipeline cluster (J-59/J-60/J-66/J-67) recommended as the next target."
     },
     "J-67": {
       "id": "J-67",
       "name": "Multi-date backfill completes reliably — no more 'committed'-session crash (extends J-53/J-41)",
       "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": null,
-      "note": "Not yet built (transactionally sound concurrent backfill: no shared mid-transaction session, per-date failure isolation; FULL-depth, bundle with J-66 per the decomposer's working plan). NOT data-dependent per goal.md."
+      "note": "Not yet built (transactionally sound concurrent backfill: no shared mid-transaction session, per-date failure isolation; FULL-depth, bundle with J-66 per the decomposer's working plan). NOT data-dependent per goal.md. Part of the jobs-pipeline cluster (J-59/J-60/J-66/J-67) recommended as the next target."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-06-13T03:33:21+01:00"
+  "updated_at": "2026-06-13T05:40:00+01:00"
 }

@@ -167,6 +167,11 @@ def persist_run_payload(
                 ticker=row["ticker"],
                 kind=row["kind"],
                 name=row["name"],
+                # J-58: store the config reference metadata once into this immutable snapshot row
+                # (mirrors ThemeScoreRow.members_json). Recomputes nothing — it copies what
+                # score_sectors already resolved from config.
+                description=row["description"],
+                members_json=json.dumps(row["members"]),
                 score=row["score"],
                 bucket=row["bucket"],
                 rs_vs_spy=row["rs_vs_spy"],

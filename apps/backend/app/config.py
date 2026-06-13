@@ -61,11 +61,27 @@ class UniverseCfg(BaseModel):
         return self
 
 
+class IndustryETFEntry(BaseModel):
+    """One industry-group ETF's display reference data (J-58): a REQUIRED plain-language `name`
+    (a missing/blank name is a loud `ConfigError`, never a silent default — the leaderboard would
+    otherwise fall back to a bare ticker) and an optional one-line `description`. CONFIG-DEFINED —
+    no name or description literal lives in code. Resolved once by `sectors:score_sectors` and
+    stored on each `SectorScoreRow`; served verbatim by `GET /api/sectors`."""
+
+    model_config = ConfigDict(extra="allow")
+    name: str = Field(min_length=1)
+    description: Optional[str] = None
+
+
 class ETFsCfg(BaseModel):
     model_config = ConfigDict(extra="allow")
     index: list[str] = Field(min_length=1)
     sector: dict[str, str] = Field(min_length=1)
-    industry: list[str] = Field(min_length=1)
+    # J-58: `industry` is now a catalog (ticker -> {name, description}) instead of a bare ticker list,
+    # so each industry ETF reads as a named/described row on the Sectors leaderboard. Iterate `.keys()`
+    # for the ticker set; read `.items()` for (ticker, entry). A malformed entry (e.g. missing `name`)
+    # raises a loud ConfigError via `IndustryETFEntry` — never a silent default.
+    industry: dict[str, IndustryETFEntry] = Field(min_length=1)
     volatility: list[str] = Field(default_factory=list)
 
 
@@ -1292,6 +1308,11 @@ class Config(BaseModel):
     theme_scores: ThemeScoresCfg
     decision_rules: DecisionRulesCfg
     stock_sectors: dict[str, str] = Field(min_length=1)
+    # J-58: stock -> industry-group ETF membership (many-to-many, config-defined reference data, like
+    # `themes`). Each key must be a universe symbol; each value ticker must be in `etfs.industry`. An
+    # unmapped stock / ETF is allowed (renders an explicit empty state) — but a STRAY ticker is a loud
+    # ConfigError (see `_stock_industries_valid`). Default-empty so a config predating it still loads.
+    stock_industries: dict[str, list[str]] = Field(default_factory=dict)
     scanner: ScannerCfg
     startup: StartupCfg  # iter-28 (J-40/J-41) fast-ready boot + warm-up tunables (boot-validated above)
     walk_forward: WalkForwardCfg
@@ -1328,6 +1349,30 @@ class Config(BaseModel):
         bad = sorted(f"{t}={s}" for t, s in self.stock_sectors.items() if s not in valid)
         if bad:
             raise ValueError(f"stock_sectors values must be one of {sorted(valid)}; invalid: {bad}")
+        return self
+
+    @model_validator(mode="after")
+    def _stock_industries_valid(self) -> "Config":
+        """J-58: every `stock_industries` key must be a universe symbol and every value ticker must be
+        an `etfs.industry` catalog ticker — reference data validated like `themes`/`stock_sectors`,
+        never a silent default. Unmapped stocks/ETFs are fine (explicit empty state); a STRAY ticker
+        (a member not in universe, or an ETF not in the catalog) is a loud error."""
+        universe = set(self.universe.symbols)
+        industry_tickers = set(self.etfs.industry.keys())
+        bad_keys = sorted(k for k in self.stock_industries if k not in universe)
+        if bad_keys:
+            raise ValueError(f"stock_industries keys not present in universe.symbols: {bad_keys}")
+        bad_members = sorted(
+            f"{stock}->{etf}"
+            for stock, etfs in self.stock_industries.items()
+            for etf in etfs
+            if etf not in industry_tickers
+        )
+        if bad_members:
+            raise ValueError(
+                f"stock_industries values must be tickers in etfs.industry {sorted(industry_tickers)}; "
+                f"invalid: {bad_members}"
+            )
         return self
 
     @model_validator(mode="after")

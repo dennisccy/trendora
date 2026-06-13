@@ -1,0 +1,38 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-06-13T11:29:26.121651Z",
+  "started_at": "2026-06-13T02:46:19.633175Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "config.yaml",
+    "apps/backend/app/config.py",
+    "apps/backend/app/engine/sectors.py",
+    "apps/backend/app/models.py",
+    "apps/backend/app/engine/scanner.py",
+    "apps/backend/app/engine/snapshot_serving.py",
+    "apps/backend/app/seed_loader.py",
+    "apps/frontend/lib/api.ts",
+    "apps/frontend/app/sectors/page.tsx",
+    "apps/backend/tests/test_config.py",
+    "apps/backend/tests/test_config_engine.py",
+    "apps/backend/tests/test_sectors.py",
+    "apps/backend/tests/test_themes.py",
+    "apps/backend/tests/test_indexes.py",
+    "apps/backend/tests/test_api_engine.py"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "review",
+  "full_suite_handed_to_pump": true,
+  "full_suite_command": "cd apps/backend && .venv/bin/python -m pytest tests/ -q",
+  "verified_modules": [
+    "test_config.py",
+    "test_config_engine.py",
+    "test_sectors.py",
+    "test_themes.py",
+    "test_indexes.py"
+  ]
+}

@@ -39,7 +39,8 @@ _CFG = {
         },
     },
     "universe": {"symbols": ["AAA", "BBB"], "filters": {"min_market_cap": 1, "min_dollar_vol": 1, "min_price": 1}},
-    "etfs": {"index": ["SPY"], "sector": {"XLK": "Technology"}, "industry": ["SMH"], "volatility": ["^VIX"]},
+    # J-58: etfs.industry is now a catalog (ticker -> {name, description}, name required).
+    "etfs": {"index": ["SPY"], "sector": {"XLK": "Technology"}, "industry": {"SMH": {"name": "Semiconductors", "description": "Chip makers."}}, "volatility": ["^VIX"]},
     "index_chart": {
         "symbols": [
             {"symbol": "SPY", "name": "S&P 500 (SPY)"},

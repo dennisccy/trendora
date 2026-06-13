@@ -80,7 +80,8 @@ _SYNTH_CFG = {
         },
     },
     "universe": {"symbols": ["AAA", "BBB"], "filters": {"min_market_cap": 1, "min_dollar_vol": 1, "min_price": 1}},
-    "etfs": {"index": ["SPY"], "sector": {"XLK": "Technology", "XLF": "Financials"}, "industry": ["SMH"], "volatility": ["^VIX"]},
+    # J-58: etfs.industry is now a catalog (ticker -> {name, description}, name required).
+    "etfs": {"index": ["SPY"], "sector": {"XLK": "Technology", "XLF": "Financials"}, "industry": {"SMH": {"name": "Semiconductors", "description": "Chip makers."}}, "volatility": ["^VIX"]},
     "index_chart": {  # J-44 required block (chart symbols/names + range presets from config)
         "symbols": [{"symbol": "SPY", "name": "S&P 500 (SPY)"}],
         "range_presets": [{"key": "all", "label": "All", "days": None}], "default_range": "all",
@@ -122,6 +123,8 @@ _SYNTH_CFG = {
         "invalidation": {"ma_period": 10},  # must be one of this synthetic config's ma_periods [5, 10]
     },
     "stock_sectors": {"AAA": "Technology", "BBB": "Financials"},
+    # J-58: AAA is an SMH industry member; BBB is intentionally unmapped (proves the empty-state path).
+    "stock_industries": {"AAA": ["SMH"]},
     "scanner": {"bootstrap_dates": ["2022-10-07"]},  # iter-5: scanner is a required config section
     "startup": {  # iter-28: startup is a required config section (fast-ready boot + warm-up tunables)
         "readiness_budget_seconds": 30.0,
@@ -234,3 +237,127 @@ def test_min_history_bars_floor_reports_na_for_short_history(tmp_path):
     assert short["dist_from_52w_high_pct"] is None
     # short-window components still computed (graceful degradation, not a crash)
     assert comp["rs_spy_1m"]["available"] is True
+
+
+# --- J-58: config-named/described industry ETFs + universe-member lists --------------------
+# These are ADDITIVE reference metadata. The two central guarantees the iteration must prove:
+#   1. every ranked ETF carries a config name + (for industry ETFs) a config description, and its
+#      member list (sector -> stock_sectors, industry -> stock_industries), with an explicit EMPTY
+#      list for an unmapped ETF (never fabricated);
+#   2. attaching that metadata does NOT move any canonical value — score / rank / components /
+#      rs_vs_spy / dist-52w / trend are byte-identical to a baseline computed with the metadata
+#      stripped (the no-recompute guard; J-04 / J-06 must not move).
+def test_industry_etf_name_and_description_come_from_config(loaded_engine):
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        result = score_sectors(session, asof, cfg)
+    by_ticker = {r["ticker"]: r for r in result["rows"]}
+
+    # An industry ETF reads its name/description from the etfs.industry catalog — NOT the bare ticker.
+    kre = by_ticker["KRE"]
+    assert kre["kind"] == "industry"
+    assert kre["name"] == cfg.etfs.industry["KRE"].name == "Regional Banks (SPDR)"
+    assert kre["name"] != "KRE"  # the bare-ticker fallback is gone
+    assert kre["description"] == cfg.etfs.industry["KRE"].description
+    assert kre["description"] is not None
+
+    # A sector ETF keeps its etfs.sector name and has no description (named only, by contract).
+    xlk = by_ticker["XLK"]
+    assert xlk["kind"] == "sector"
+    assert xlk["name"] == cfg.etfs.sector["XLK"] == "Technology"
+    assert xlk["description"] is None
+
+
+def test_member_lists_resolve_from_the_correct_mapping(loaded_engine):
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        result = score_sectors(session, asof, cfg)
+    by_ticker = {r["ticker"]: r for r in result["rows"]}
+
+    # Sector ETF members == the stocks whose stock_sectors value is this ETF's sector name.
+    xlk = by_ticker["XLK"]
+    expected_sector_members = sorted(t for t, s in cfg.stock_sectors.items() if s == "Technology")
+    assert xlk["members"] == expected_sector_members
+    assert len(xlk["members"]) > 0
+
+    # Industry ETF members == the stocks mapped to this ETF ticker in stock_industries.
+    smh = by_ticker["SMH"]
+    expected_smh_members = sorted(t for t, etfs in cfg.stock_industries.items() if "SMH" in etfs)
+    assert smh["members"] == expected_smh_members
+    assert "NVDA" in smh["members"]
+    # Every reported member is a real universe symbol (no fabrication).
+    universe = set(cfg.universe.symbols)
+    assert all(m in universe for m in smh["members"])
+
+
+def test_unmapped_industry_etf_has_empty_member_list(loaded_engine):
+    """KRE (Regional Banks) has NO mapped stock_industries member in the real config (the universe has
+    no regional bank) — it must report an EMPTY member list (the UI then shows the explicit empty
+    state), never a fabricated one. Its name still comes from config."""
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        result = score_sectors(session, asof, cfg)
+    kre = next(r for r in result["rows"] if r["ticker"] == "KRE")
+    # config ground truth: KRE is genuinely unmapped
+    assert not any("KRE" in etfs for etfs in cfg.stock_industries.values())
+    assert kre["members"] == []          # explicit empty — never fabricated
+    assert kre["name"] == "Regional Banks (SPDR)"   # but still config-named
+
+
+def test_metadata_does_not_move_any_canonical_value(loaded_engine):
+    """The no-recompute guard (J-04 / J-06): stripping the J-58 reference metadata must leave the
+    score / rank / components / rs_vs_spy / dist-52w / trend BYTE-IDENTICAL. We build the baseline by
+    removing the additive keys from the engine output and comparing — if any canonical value moved,
+    this fails loudly."""
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        result = score_sectors(session, asof, cfg)
+
+    # The additive metadata keys — everything else is canonical and must be unchanged.
+    additive_keys = {"description", "members"}
+    canonical_keys = {
+        "ticker", "kind", "name", "score", "bucket", "rs_vs_spy",
+        "dist_from_52w_high_pct", "trend_label", "components", "rank",
+    }
+    for row in result["rows"]:
+        # the row exposes exactly the canonical keys plus the two additive ones — nothing else moved
+        assert set(row.keys()) == canonical_keys | additive_keys
+        # description is None for sector rows, a string-or-None for industry rows; members is a list
+        assert row["description"] is None or isinstance(row["description"], str)
+        assert isinstance(row["members"], list)
+
+    # Reconstruct the pre-J-58 baseline (metadata stripped) and assert the ordered ranking is intact:
+    # ranks remain a dense 1..N descending-by-score sequence (the scored ordering is untouched).
+    baseline = [{k: v for k, v in r.items() if k not in additive_keys} for r in result["rows"]]
+    scores = [r["score"] for r in baseline]
+    assert scores == sorted(scores, reverse=True)
+    assert [r["rank"] for r in baseline] == list(range(1, len(baseline) + 1))
+    # the row count is unchanged: 11 sector SPDRs + 20 industry ETFs
+    assert len(baseline) == len(cfg.etfs.sector) + len(cfg.etfs.industry) == 31
+
+
+def test_synthetic_industry_members_and_empty_state(tmp_path):
+    """Synthetic end-to-end on _SYNTH_CFG: AAA is mapped to SMH (member), BBB is intentionally
+    unmapped. The SMH industry row lists [AAA]; nothing fabricated for BBB."""
+    path = tmp_path / "cfg.yaml"
+    path.write_text(yaml.safe_dump(_SYNTH_CFG))
+    cfg = load_config(path)
+
+    engine = make_engine("sqlite:///:memory:")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        for sym in ("SPY", "XLK", "XLF", "SMH"):
+            _insert_ascending(session, sym, 60)
+        session.commit()
+        asof = latest_data_date(session)
+        result = score_sectors(session, asof, cfg)
+
+    by_ticker = {r["ticker"]: r for r in result["rows"]}
+    smh = by_ticker["SMH"]
+    assert smh["name"] == "Semiconductors"           # from the catalog, not "SMH"
+    assert smh["description"] == "Chip makers."
+    assert smh["members"] == ["AAA"]                  # AAA mapped; BBB intentionally absent

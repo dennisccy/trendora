@@ -40,7 +40,8 @@ VALID = {
     "etfs": {
         "index": ["SPY"],
         "sector": {"XLK": "Technology"},
-        "industry": ["SMH"],
+        # J-58: etfs.industry catalog (ticker -> {name, description}, name required).
+        "industry": {"SMH": {"name": "Semiconductors", "description": "Chip makers."}},
         "volatility": ["^VIX"],
     },
     # J-44 made `index_chart` required (chart symbols/names + range presets from config, never code).
@@ -128,6 +129,8 @@ VALID = {
         "invalidation": {"ma_period": 50},
     },
     "stock_sectors": {"AAA": "Technology", "BBB": "Technology"},
+    # J-58: config-defined stock -> industry-group ETF membership (each ticker must be in etfs.industry).
+    "stock_industries": {"AAA": ["SMH"]},
     "scanner": {"bootstrap_dates": ["2022-10-07", "2025-04-04"]},
     "startup": {
         "readiness_budget_seconds": 30.0,

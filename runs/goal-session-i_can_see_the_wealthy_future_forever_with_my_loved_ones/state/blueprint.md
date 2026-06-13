@@ -52,7 +52,7 @@ heartbeat, counters never exceed totals — the 318/159 fix; live per-stage timi
 transactionally-sound parallel multi-date backfill (no 'committed'-session crash; per-date failure
 isolation → honest `partial`). [TARGET] tags below mark planned iterations; iter-9 delivered
 J-55/J-56/J-57 (frontend-only, no new Data Contract value); iter-10 targets J-64/J-65 (frontend-only
-view transform + new-tab `N=` chips — no new Data Contract value).
+view transform + new-tab `N=` chips — no new Data Contract value); iter-11 targets J-58 (FULL depth — new config reference data: `etfs.industry` ticker→name/description catalog + a new config-curated `stock_industries` stock→industry-group mapping; additive METADATA only on the existing Sector-score row — served scores/ranks/components byte-unchanged).
 -->
 
 ## Information Architecture
@@ -71,7 +71,7 @@ Trendora
 ├── Stocks           /stocks                 (J-02, J-06, J-16/J-28 pattern filters, J-31 deep-link; J-48 sortable columns + J-54 ticker→new-tab [built iter-5]; J-55 type-to-filter search + J-56 Theme column/filter [built iter-9])
 │   └── Stock Detail /stocks/[ticker]        (J-05, J-06, J-16, J-20; J-45 regime bands [built iter-2]; J-24 timeframe — data-walled)  — row-reached
 ├── Themes           /themes                 (J-03; J-57 expandable `+n` members + dated new-tab member links [built iter-9])
-├── Sectors          /sectors                (J-04; J-58 config-sourced ETF names/descriptions + universe members [TARGET])
+├── Sectors          /sectors                (J-04; J-58 config-sourced ETF names/descriptions + universe members [TARGET iter-11])
 ├── Scanner Runs     /scanner-runs           (J-08)
 │   └── Run Detail   /scanner-runs/[runId]   (J-07)  — row-reached
 ├── Backtest         /backtest               (J-09, J-10, J-14, J-18, J-19, J-21; J-47 tooltips)
@@ -100,7 +100,7 @@ recomputed per request. Engine modules live under `apps/backend/app/engine/`.
 |---|---|---|---|
 | Market regime score (0–100) + label (6) + breadth + net new-high/low | `regime:score_regime` | `GET /api/dashboard`, `GET /api/runs/{id}` | built; universe-relative labels |
 | Candidate counts (#Actionable/Breakout/Pullback) + last-scan ts | `setups:summarize_candidates` | `GET /api/dashboard` | built |
-| Sector/industry score (+RS-vs-SPY, dist-52w, trend) | `sectors:score_sector` | `GET /api/sectors` | built; SPY = 0% reference. **J-58 [TARGET]:** ranked rows gain config-sourced display name/description + universe member lists (sector members from `stock_sectors`, industry members from a NEW config-curated stock→industry-group mapping, honestly labelled config-defined; empty state when unmapped) — reference METADATA only, served scores/ranks/components byte-unchanged |
+| Sector/industry score (+RS-vs-SPY, dist-52w, trend) | `sectors:score_sector` | `GET /api/sectors` | built; SPY = 0% reference. **J-58 [TARGET iter-11]:** ranked rows gain config-sourced display **name** + **description** (industry ETFs read a NEW `etfs.industry` ticker→{name,description} catalog — same shape as `etfs.sector`, replacing the bare-ticker fallback at `sectors.py:75`) and a **universe-member list** (sector members from the existing `stock_sectors` mapping; industry members from a NEW config-curated `stock_industries` stock→industry-group mapping, many-to-many like `themes`, honestly labelled config-defined; unmapped ETF → explicit empty state, never fabricated). Resolved ONCE by `score_sector` and frozen into each immutable `SectorScoreRow` via two NEW stored-copy columns `description` + `members_json` (the same pattern `ThemeScoreRow` already uses); served verbatim by `_sector_row`/`sectors_payload` on the SAME `GET /api/sectors` (no new endpoint, no recompute in the read path). Reference METADATA only — served scores/ranks/components/RS/dist/trend byte-UNCHANGED (test-asserted). Config-only names/mappings (no magic numbers / no hardcoded names — invariant 10). Frontend `/sectors` expanded panel mirrors the J-57 Themes member pattern (expandable `+n`, dated new-tab `useAsOfHref` member links in a SEPARATE non-clickable `<tr>` — iter-5 hazard) |
 | Theme score (+members, 1m/3m basket, breadth, trend) | `themes:score_themes` | `GET /api/themes` | built. J-57 expand/collapse + dated new-tab member links are a frontend re-display of this same served member list — no new value |
 | Leadership / Entry Quality / Risk + components + reason + invalidation + theme membership + volatility factor values (`hv`/`vcp_contraction`/`downside_vol`) | `scoring:score_stocks` (bars ≤ D) | `GET /api/stocks` + `GET /api/stocks/{ticker}` (same stored row → J-06) | built. J-55 search + J-56 Theme column/filter are pure client-side view transforms over these same served rows (`ticker`/`name`/`themes`) — no new value, no new endpoint |
 | A–E bucket | `buckets:to_bucket` (config edges) | rides each score | built |

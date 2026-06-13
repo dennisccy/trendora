@@ -38,6 +38,47 @@ def test_api_sectors_equals_engine_output(loaded_engine):
     assert len(served["rows"]) == 31
 
 
+def test_api_sectors_serves_config_name_description_and_members(loaded_engine):
+    """J-58: /api/sectors echoes the stored config name + description + universe-member list verbatim
+    from the immutable snapshot (no read-path recompute). An unmapped industry ETF (KRE) serves an
+    empty member list — never fabricated; a sector ETF serves description=null but a non-empty list."""
+    cfg = load_config()
+    with TestClient(main.app) as client:
+        rows = client.get("/api/sectors").json()["rows"]
+    by_ticker = {r["ticker"]: r for r in rows}
+
+    # industry ETF: config name + description + members from stock_industries
+    smh = by_ticker["SMH"]
+    assert smh["name"] == cfg.etfs.industry["SMH"].name and smh["name"] != "SMH"
+    assert smh["description"] == cfg.etfs.industry["SMH"].description
+    assert "NVDA" in smh["members"]
+
+    # unmapped industry ETF: explicit empty member list, still config-named
+    kre = by_ticker["KRE"]
+    assert kre["name"] == cfg.etfs.industry["KRE"].name
+    assert kre["members"] == []
+
+    # sector ETF: named from etfs.sector, no description, members from stock_sectors
+    xlk = by_ticker["XLK"]
+    assert xlk["description"] is None
+    assert xlk["members"] == sorted(t for t, s in cfg.stock_sectors.items() if s == "Technology")
+    # every served member is a real universe symbol (no fabrication anywhere)
+    universe = set(cfg.universe.symbols)
+    for r in rows:
+        assert all(m in universe for m in r["members"])
+
+
+def test_api_sectors_reserved_run_is_byte_identical(loaded_engine):
+    """Snapshot immutability: serving the SAME stored run twice yields byte-identical payloads
+    (including the J-58 description/members) — the read path never recomputes or mutates."""
+    with TestClient(main.app) as client:
+        first = client.get("/api/sectors").json()
+        second = client.get("/api/sectors").json()
+    assert first == second
+    # the additive fields are present on every row
+    assert all("description" in r and "members" in r for r in first["rows"])
+
+
 def test_api_dashboard_equals_engine_with_real_candidate_counts(loaded_engine):
     cfg = load_config()
     with Session(loaded_engine) as session:

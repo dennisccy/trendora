@@ -12,6 +12,13 @@ SPY is the RS benchmark and is NOT ranked (it lives in `etfs.index`, never in th
 Short-history ETFs (< `config.indicators.min_history_bars` bars) report NA for their long-window
 components (6m RS, 52w-high distance) — handled gracefully, never fabricated. All bars are read
 through `bars_asof` (no lookahead). Numeric literals here are structural only (0/1/2/4/100).
+
+J-58: each ranked row additionally carries CONFIG REFERENCE METADATA — a display `name` (sector from
+`etfs.sector`, industry from the `etfs.industry` catalog), an optional `description` (industry only),
+and a `members` list (sector members from `stock_sectors`; industry members from `stock_industries`,
+config-defined many-to-many). This is ADDITIVE only: it never enters the score/rank/component math —
+the scored values are byte-identical with or without it. An ETF with no mapped member gets an EMPTY
+list (the UI shows an explicit empty state — never fabricated).
 """
 from __future__ import annotations
 
@@ -68,15 +75,33 @@ def score_sectors(session: Session, asof: date_cls, config: Optional[Config] = N
     benchmark = cfg.etfs.index[0]  # SPY — the RS benchmark; excluded from the ranked rows
     bench_closes = closes(bars_asof(session, benchmark, asof))
 
-    targets: list[tuple[str, str, str]] = []
+    # J-58: each ranked ETF carries config reference data — a display `name`, an optional
+    # `description`, and its universe-member list. Sector ETFs are named by `etfs.sector` and their
+    # members are the stocks whose `stock_sectors` value is this ETF's sector name; industry ETFs are
+    # named/described by the `etfs.industry` catalog and their members come from the `stock_industries`
+    # mapping (config-defined, many-to-many). This is additive METADATA only — the score / rank /
+    # components / RS / dist-52w / trend below are byte-identical with or without it (anti-goal:
+    # single source of truth; no recompute; never fabricated — an unmapped ETF gets an EMPTY list).
+    members_by_sector: dict[str, list[str]] = {}
+    for stock, sector_name in cfg.stock_sectors.items():
+        members_by_sector.setdefault(sector_name, []).append(stock)
+    members_by_industry_etf: dict[str, list[str]] = {}
+    for stock, etf_tickers in cfg.stock_industries.items():
+        for etf_ticker in etf_tickers:
+            members_by_industry_etf.setdefault(etf_ticker, []).append(stock)
+
+    # (ticker, kind, name, description, members) — description is None for sector ETFs (named only).
+    targets: list[tuple[str, str, str, Optional[str], list[str]]] = []
     for ticker, sector_name in cfg.etfs.sector.items():
-        targets.append((ticker, "sector", sector_name))
-    for ticker in cfg.etfs.industry:
-        targets.append((ticker, "industry", ticker))
+        members = sorted(members_by_sector.get(sector_name, []))
+        targets.append((ticker, "sector", sector_name, None, members))
+    for ticker, entry in cfg.etfs.industry.items():
+        members = sorted(members_by_industry_etf.get(ticker, []))
+        targets.append((ticker, "industry", entry.name, entry.description, members))
 
     raws = {
         ticker: _raw_components(session, asof, ticker, bench_closes, cfg)
-        for ticker, _, _ in targets
+        for ticker, _, _, _, _ in targets
     }
 
     # cross-sectional percentile per component (only over rows where the component is available)
@@ -86,7 +111,7 @@ def score_sectors(session: Session, asof: date_cls, config: Optional[Config] = N
         percentiles[component] = _percentiles(present)
 
     rows: list[dict] = []
-    for ticker, kind, name in targets:
+    for ticker, kind, name, description, members in targets:
         raw = raws[ticker]
         available = [
             (component, percentiles[component].get(ticker), weight)
@@ -120,6 +145,9 @@ def score_sectors(session: Session, asof: date_cls, config: Optional[Config] = N
             "ticker": ticker,
             "kind": kind,
             "name": name,
+            # J-58 additive reference metadata (never enters the score/rank computation below):
+            "description": description,        # config one-liner (None for sector ETFs / unset entries)
+            "members": members,                # config-derived universe members (may be [] -> empty state)
             "score": score,
             "bucket": to_bucket(score, cfg),
             "rs_vs_spy": round((rs3 - 1) * 100, 2) if rs3 is not None else None,

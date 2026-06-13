@@ -106,6 +106,12 @@ export interface SectorRow {
   ticker: string;
   kind: "sector" | "industry";
   name: string;
+  // J-58: config reference metadata served verbatim from the stored snapshot. `description` is a
+  // plain-language one-liner (null for sector ETFs and for a stored run predating the column);
+  // `members` is the config-derived universe-member list (sector members from stock_sectors,
+  // industry members from stock_industries) — an empty array renders the explicit empty state.
+  description: string | null;
+  members: string[];
   score: number;
   bucket: string; // A | B | C | D | E
   rs_vs_spy: number | null;

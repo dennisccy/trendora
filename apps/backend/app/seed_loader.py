@@ -126,16 +126,19 @@ def load_reference_data(
             session.add(stock)
         stock_id_by_ticker[ticker] = stock.id
 
-    def add_etf(ticker: str, kind: str, tracks_sector_id: Optional[int] = None) -> None:
+    def add_etf(ticker: str, kind: str, tracks_sector_id: Optional[int] = None, name: Optional[str] = None) -> None:
         if session.scalar(select(ETF).where(ETF.ticker == ticker)) is None:
-            session.add(ETF(ticker=ticker, name=ticker, kind=kind, tracks_sector_id=tracks_sector_id))
+            session.add(ETF(ticker=ticker, name=name or ticker, kind=kind, tracks_sector_id=tracks_sector_id))
 
     for ticker in config.etfs.index:
         add_etf(ticker, "index")
     for ticker, sector_name in config.etfs.sector.items():
         add_etf(ticker, "sector", sector_id_by_name.get(sector_name))
-    for ticker in config.etfs.industry:
-        add_etf(ticker, "industry")
+    # J-58: `etfs.industry` is now a {ticker: {name, description}} catalog — seed each industry ETF's
+    # honest config display name (was the bare ticker). The canonical leaderboard name still comes from
+    # the stored SectorScoreRow.name (resolved in score_sectors); this just keeps the ETF table honest.
+    for ticker, entry in config.etfs.industry.items():
+        add_etf(ticker, "industry", name=entry.name)
     for ticker in config.etfs.volatility:
         add_etf(ticker, "volatility")
 
