@@ -84,6 +84,9 @@ _SYNTH_CFG = {
             "fetch_workers": 4,  # J-46: bounded parallel fetch-pool size (>= 1)
             "backfill_workers": 4,  # J-53: bounded parallel backfill-pool size (>= 1)
         },
+        "job_progress": {  # iter-29 (J-66) required block: poll/heartbeat/granularity knobs
+            "poll_interval_seconds": 1.0, "heartbeat_stale_seconds": 20.0, "per_symbol_ticks": True,
+        },
     },
     "universe": {"symbols": ["AAA", "BBB", "CCC", "DDD"], "filters": {"min_market_cap": 1, "min_dollar_vol": 1, "min_price": 1}},
     # J-58: etfs.industry is now a catalog (ticker -> {name, description}, name required).

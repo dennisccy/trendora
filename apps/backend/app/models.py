@@ -105,7 +105,13 @@ class DataProviderRun(SQLModel, table=True):
     finished_at: Optional[datetime] = None
     symbols_ok: int = 0
     symbols_failed: int = 0
-    status: str  # ok | partial | failed
+    # iter-29 (J-60): the lifecycle is now `running` → ONE honest terminal transition. A job's run-history
+    # record is created at START (status `running`, no finished_at) and the SAME row is UPDATEd exactly once
+    # to its terminal state — `ok` | `partial` | `failed`, or `interrupted` (applied by the boot sweep to a
+    # `running` row whose process is gone). A rate-limited pause does NOT write a terminal run (the durable
+    # checkpoint carries `resumable`); the eventual completed resume writes its own record. This is the SAME
+    # single lifecycle the job card / Run history / Unfinished-imports read — never a second bookkeeping path.
+    status: str  # running | ok | partial | failed | interrupted
     message: Optional[str] = None
     # iter-25 (J-38) soft-dismiss flag for the unified Unfinished-imports panel. A MUTABLE job-control
     # column on this already-mutable operational table — NOT a new table and NOT a snapshot column. When
@@ -114,6 +120,12 @@ class DataProviderRun(SQLModel, table=True):
     # append-only Run-history audit (the run still appears there). The immutable snapshot/forward-return
     # rows are untouched. Append-only column addition — a fresh DB carries it (default False) from start.
     dismissed: bool = Field(default=False)
+    # iter-29 (J-60): the in-memory `JobProgress.job_id` of the data-manager job that owns this run-history
+    # record, so the create-at-start row can be looked up and UPDATEd at the terminal transition (one row,
+    # one job). NULL for a plain seed-load row and for legacy rows written before this column. It is a
+    # job-control correlation id — NEVER a key (anti-goal: keys are env-or-session, never persisted).
+    # Append-only column addition — a fresh DB carries it (default None) from start.
+    job_id: Optional[str] = Field(default=None, index=True)
 
 
 class ImportCheckpoint(SQLModel, table=True):
@@ -137,7 +149,17 @@ class ImportCheckpoint(SQLModel, table=True):
       - `next_chunk_index` is the index to resume from — advanced ONLY after a chunk fully completes.
       - `symbol_plan_json` is the deterministic ordered symbol list the chunk plan was built from, so a
         resume rebuilds the SAME plan even if the live universe later changes.
-      - `status` ∈ running | resumable | ok | failed (only `resumable` rows appear in `resumable_imports`).
+      - `status` ∈ running | resumable | ok | failed | failed_backfill (only `resumable` and
+        `failed_backfill` rows appear in the unfinished-imports / Resume surfaces).
+
+    iter-29 (J-59) STAGE-AWARENESS: `completed_stages_json` records which pipeline stages
+    (`fetch` / `screen` / `backfill`) have COMPLETED, so a job that failed or was interrupted AFTER a
+    completed fetch is **resumable from the backfill stage with zero provider calls** (the fetch stage is
+    skipped entirely on Resume). It is a JSON list of stage names — append-only within a job, MUTABLE
+    job-control state (NOT a snapshot). A `failed_backfill` status with `fetch` in `completed_stages`
+    drives the "failed at backfill — resumable from the backfill stage" Unfinished-imports row. The column
+    defaults to "[]" so a legacy/fresh row reads an empty stage set (pre-stage behavior — fetch re-runs),
+    never a crash. NO key value is EVER stored here.
     """
 
     __tablename__ = "import_checkpoints"
@@ -154,7 +176,11 @@ class ImportCheckpoint(SQLModel, table=True):
     symbols_ok: int = 0
     symbols_failed: int = 0
     bars_fetched: int = 0
-    status: str = "running"  # running | resumable | ok | failed  (NO key column — keys never persisted)
+    status: str = "running"  # running | resumable | ok | failed | failed_backfill (NO key column)
+    # iter-29 (J-59): the JSON list of COMPLETED pipeline stages (fetch / screen / backfill). Drives the
+    # zero-provider-call resume-at-backfill path. Append-only within a job; MUTABLE job-control state, NOT
+    # a snapshot. Defaults to "[]" so a fresh/legacy row reads an empty stage set (no crash).
+    completed_stages_json: str = "[]"
     created_at: datetime
     updated_at: datetime
 

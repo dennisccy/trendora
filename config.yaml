@@ -77,6 +77,16 @@ data_manager:
                                      # compute, no DB write), while the orchestrating thread owns every
                                      # snapshot/forward-return WRITE serially (so SQLite writes stay
                                      # serialized/transactional and snapshots stay create-once/identical).
+  # J-66 fine-grained, honest job-progress knobs: every polling / heartbeat / granularity number the
+  # live job card + progress instrumentation reads lives here (anti-goal: No magic numbers — NO poll/
+  # heartbeat literal in the frontend job card or data_manager.py). Boot-validated all-positive.
+  job_progress:
+    poll_interval_seconds: 1.0       # how often the /data live job card re-polls the job status endpoint
+    heartbeat_stale_seconds: 20.0    # "updated Ns ago" beyond this → the UI flags the job as possibly
+                                     # stalled (a slow-but-alive job still ticks its heartbeat under this)
+    per_symbol_ticks: true           # J-66: tick the fetch symbols counter at per-SYMBOL completion
+                                     # granularity (true) — the workers update a thread-safe completion
+                                     # counter as each symbol finishes; false falls back to per-chunk.
 
 # ----------------------------------------------------------------------------------------
 # Datastore. Engine URL from config so SQLite -> Postgres is a config-only switch.

@@ -31,6 +31,11 @@ MINIMAL_VALID = {
             "fetch_workers": 4,  # J-46: bounded parallel fetch-pool size (>= 1)
             "backfill_workers": 4,  # J-53: bounded parallel backfill-pool size (>= 1)
         },
+        # iter-29 (J-66) made `job_progress` required (the poll/heartbeat/granularity knobs come from
+        # config, never code). The smallest valid block: both time knobs positive.
+        "job_progress": {
+            "poll_interval_seconds": 1.0, "heartbeat_stale_seconds": 20.0, "per_symbol_ticks": True,
+        },
     },
     "universe": {
         "symbols": ["AAA", "BBB"],
@@ -510,6 +515,41 @@ def test_backfill_workers_missing_raises(tmp_path):
     import_chunking tunables) — never a silent default."""
     data = copy.deepcopy(MINIMAL_VALID)
     del data["data_manager"]["import_chunking"]["backfill_workers"]
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+# --- iter-29 (J-66): the fine-grained job-progress knobs (poll/heartbeat/granularity) ------------
+def test_job_progress_loads_from_config(tmp_path):
+    """`job_progress` (J-66) is a required typed block — the poll/heartbeat/granularity knobs come from
+    config, never a literal in the frontend job card or data_manager.py. The real committed config and
+    MINIMAL_VALID both load it; the time knobs are positive and `per_symbol_ticks` is a bool."""
+    cfg = load_config(_write(tmp_path, MINIMAL_VALID))
+    jp = cfg.data_manager.job_progress
+    assert jp.poll_interval_seconds == 1.0
+    assert jp.heartbeat_stale_seconds == 20.0
+    assert jp.per_symbol_ticks is True
+    real = load_config()
+    assert real.data_manager.job_progress.poll_interval_seconds > 0
+    assert real.data_manager.job_progress.heartbeat_stale_seconds > 0
+    assert isinstance(real.data_manager.job_progress.per_symbol_ticks, bool)
+
+
+@pytest.mark.parametrize("field", ["poll_interval_seconds", "heartbeat_stale_seconds"])
+def test_job_progress_nonpositive_raises(tmp_path, field):
+    """A non-positive poll/heartbeat time knob fails the boot loudly — never a silent default
+    (anti-goal: No magic numbers — the J-66 progress knobs come from config and are validated)."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["data_manager"]["job_progress"][field] = 0
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_job_progress_missing_raises(tmp_path):
+    """A missing `job_progress` block fails the boot (it is a required typed section, like
+    import_chunking) — never a silent default."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    del data["data_manager"]["job_progress"]
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))
 

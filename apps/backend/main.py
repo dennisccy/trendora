@@ -32,6 +32,7 @@ from app.api import (
 )
 from app.config import load_config
 from app.db import create_db_and_tables, get_engine
+from app.engine.data_manager import sweep_orphaned_runs
 from app.engine.warmup import ensure_latest_snapshot, start_warmup
 from app.seed_loader import load_seed
 
@@ -49,6 +50,15 @@ async def lifespan(app: FastAPI):
     engine = get_engine()
     create_db_and_tables(engine)
     load_seed(engine, config)  # idempotent — no-op once the DB is populated
+    # J-60 boot sweep: mark any orphaned `running` DataProviderRun rows (a Data Manager job whose process
+    # died mid-run) as `interrupted` — a fresh boot owns no in-flight jobs, so a `running` row found here
+    # is by definition orphaned. Idempotent + non-fatal (a sweep failure never blocks the boot).
+    try:
+        swept = sweep_orphaned_runs(engine)
+        if swept:
+            logger.info("boot: swept %d orphaned 'running' job record(s) → 'interrupted'", swept)
+    except Exception:  # noqa: BLE001 — the sweep is non-fatal; the server must still boot
+        logger.warning("boot: orphaned-run sweep failed (non-fatal)", exc_info=True)
     # The SINGLE minimal latest-snapshot step: persist (idempotently) ONLY the latest data date's
     # immutable snapshot so the read pages serve the latest as-of immediately. Instant on a warm DB; one
     # snapshot compute on a fresh DB, soft-bounded by config.startup.readiness_budget_seconds (logged on

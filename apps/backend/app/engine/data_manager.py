@@ -68,6 +68,11 @@ _sleep: Callable[[float], None] = time.sleep
 JOB_KINDS = ("fetch", "backfill", "both", "expand")
 _FETCH_KINDS = ("fetch", "both")
 _BACKFILL_KINDS = ("backfill", "both")
+# J-34/J-59: the durable-checkpoint statuses a Resume can act on. `resumable` is a rate-limited 429 pause
+# (resume re-attempts from the un-fetched chunk); `failed_backfill` (J-59) is a `both` job whose FETCH
+# completed but whose BACKFILL failed — a Resume skips the completed fetch entirely (zero provider calls)
+# and re-runs only the backfill stage.
+RESUMABLE_CHECKPOINT_STATUSES = ("resumable", "failed_backfill")
 # J-35: the expand kind reuses the chunked-fetch engine (over the pool) but is neither a generic fetch
 # (it adds a market-cap fetch + the screen + the universe.json write) nor a backfill — its own branch.
 _EXPAND_KINDS = ("expand",)
@@ -81,6 +86,26 @@ _MAX_OMITTED_SAMPLES = 60
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _compute_speedup(
+    per_date_seconds_sum: Optional[float],
+    elapsed_seconds: Optional[float],
+    *,
+    override: Optional[float] = None,
+) -> Optional[float]:
+    """J-66 — the backfill speedup factor, derived SERVER-SIDE (the sequential per-date compute sum divided
+    by the parallel wall-clock). Returns None (honest NA) when either figure is missing or non-positive —
+    never a fabricated ratio. `override` (rare) supplies a pre-computed value verbatim. Moved here from the
+    frontend `speedupFactor()` so the frontend only re-formats the backend number (coherence: one derivation
+    site)."""
+    if override is not None:
+        return round(float(override), 4)
+    if per_date_seconds_sum is None or elapsed_seconds is None:
+        return None
+    if per_date_seconds_sum <= 0 or elapsed_seconds <= 0:
+        return None
+    return round(per_date_seconds_sum / elapsed_seconds, 4)
 
 
 # --------------------------------------------------------------------------------------------------
@@ -778,6 +803,18 @@ class JobProgress:
     symbols_ok: int = 0
     symbols_failed: int = 0
     bars_fetched: int = 0
+    # J-66: a thread-safe set of DISTINCT symbols that have completed (ok). The fetch progress counter
+    # ticks at per-SYMBOL granularity by recording each completed symbol HERE, and `symbols_ok` is derived
+    # as `len(symbols_done)` so a symbol fetched across MULTIPLE date-windows is counted ONCE — fixing the
+    # observed `318/159` reading (a counter that exceeded its distinct-symbol total). NOT serialized
+    # directly (the derived `symbols_ok` is). Mutated only on the orchestrating thread (workers return
+    # results; the orchestrator records completions), so the set itself needs no lock.
+    symbols_done: set[str] = field(default_factory=set)
+    # J-66: the DISTINCT set of symbols that failed. `symbols_failed` is derived as the count of failed
+    # symbols that never later succeeded (`symbols_failed_set - symbols_done`), so a symbol failing across
+    # windows counts ONCE and one that fails-then-succeeds is OK — the failed counter likewise never
+    # exceeds the distinct-symbol total. Mutated only on the orchestrating thread.
+    symbols_failed_set: set[str] = field(default_factory=set)
     dates_total: int = 0
     dates_done: int = 0
     snapshots_created: int = 0
@@ -802,8 +839,23 @@ class JobProgress:
     #   fetch:    {elapsed_seconds, items_processed (symbols ok+failed), concurrency}
     #   backfill: {elapsed_seconds, items_processed (dates done), concurrency, per_date_seconds_sum}
     stages: dict[str, dict] = field(default_factory=dict)
+    # J-66: a CURRENT-ACTIVITY line naming what the job is working on RIGHT NOW (the symbol/chunk during
+    # fetch, the date being scanned during backfill — e.g. "scanning 2021-03-11 (12/22)") and a
+    # LAST-PROGRESS HEARTBEAT timestamp (the UI renders "updated Ns ago"), so a slow-but-alive job is
+    # visually distinguishable from a stalled one. Honest descriptive metadata — never fabricated. The
+    # heartbeat is stamped on every progress mutation via `_tick`.
+    current_activity: str = ""
+    last_progress_at: datetime = field(default_factory=_utcnow)
+    # J-59: the set of COMPLETED pipeline stages (fetch / screen / backfill), mirrored to the durable
+    # checkpoint's `completed_stages_json` so a Resume can route straight to the backfill stage with ZERO
+    # provider calls. Seeded from the checkpoint on a resume.
+    completed_stages: list[str] = field(default_factory=list)
     message: str = ""
     errors: list[str] = field(default_factory=list)
+    # J-67: per-date backfill failures — the dates that failed (with their honest error) while the rest
+    # completed, so a multi-date backfill ends `partial` with the per-date detail instead of aborting the
+    # whole stage. Each entry is {date, error}. Empty for a clean run. Never a fabricated snapshot.
+    date_failures: list[dict] = field(default_factory=list)
     started_at: datetime = field(default_factory=_utcnow)
     finished_at: Optional[datetime] = None
     # J-53 backfill-stage scratch (NOT serialized — internal accumulators the orchestrator fills during
@@ -813,6 +865,43 @@ class JobProgress:
     _backfill_per_date_seconds_sum: float = 0.0
     _backfill_concurrency: int = 0
 
+    def tick(self, activity: Optional[str] = None) -> None:
+        """J-66 — stamp the last-progress HEARTBEAT (and optionally the current-activity line) on a
+        progress advance. Called on the orchestrating thread whenever a unit of work completes (a symbol
+        fetched, a date backfilled), so the UI's "updated Ns ago" reflects real liveness. Honest metadata
+        only — never a fabricated timestamp."""
+        self.last_progress_at = _utcnow()
+        if activity is not None:
+            self.current_activity = activity
+
+    def _recount_symbols(self) -> None:
+        """Derive the distinct ok / failed counters from the dedup sets (J-66): a symbol that EVER
+        succeeded counts ok (and is removed from the failed tally), so neither counter exceeds the
+        distinct-symbol total and a fail-then-succeed across windows is honestly OK."""
+        self.symbols_ok = len(self.symbols_done)
+        self.symbols_failed = len(self.symbols_failed_set - self.symbols_done)
+
+    def mark_symbol_done(self, symbol: str) -> None:
+        """J-66 — record ONE symbol as completed at per-SYMBOL granularity, deduped across date-windows so
+        the same symbol fetched in multiple windows counts ONCE. `symbols_ok` is derived as the distinct
+        count, so the symbols counter can NEVER exceed `symbols_total` (the distinct-symbol plan size) —
+        fixing the observed `318/159`. Stamps the heartbeat + current-activity line."""
+        self.symbols_done.add(symbol)
+        self._recount_symbols()
+        self.tick(f"fetched {symbol} ({self.symbols_ok}/{self.symbols_total} symbols)")
+
+    def mark_symbol_failed(self, symbol: str) -> None:
+        """J-66 — record ONE symbol as failed (distinct-deduped across windows). Stamps the heartbeat."""
+        self.symbols_failed_set.add(symbol)
+        self._recount_symbols()
+        self.tick(f"failed {symbol}")
+
+    def complete_stage(self, stage: str) -> None:
+        """J-59 — mark a pipeline stage (fetch / screen / backfill) COMPLETED on the live job (mirrored to
+        the durable checkpoint so a Resume can skip a completed fetch entirely — zero provider calls)."""
+        if stage not in self.completed_stages:
+            self.completed_stages.append(stage)
+
     def record_stage(
         self,
         stage: str,
@@ -821,6 +910,7 @@ class JobProgress:
         items_processed: int,
         concurrency: int,
         per_date_seconds_sum: Optional[float] = None,
+        speedup_factor: Optional[float] = None,
     ) -> None:
         """Record one EXECUTED stage's honest timings ONCE (J-53). Called by the job runner on the
         orchestrating thread after a stage finishes (or, for a paused/failed stage, with the honest
@@ -835,6 +925,18 @@ class JobProgress:
         }
         if per_date_seconds_sum is not None:
             entry["per_date_seconds_sum"] = round(float(per_date_seconds_sum), 4)
+            # J-66: compute the backfill SPEEDUP figure SERVER-SIDE (the sequential per-date sum divided
+            # by the parallel wall-clock) and carry it in the stages payload so the frontend only
+            # re-formats it — clearing the iter-8 coherence-WARN residual (no client-side division).
+            # Honest NA (None) when either figure is missing/zero — never a fabricated ratio. Use the
+            # explicit override when given, else derive from the two timings.
+            entry["speedup_factor"] = _compute_speedup(
+                per_date_seconds_sum if speedup_factor is None else None,
+                elapsed_seconds if speedup_factor is None else None,
+                override=speedup_factor,
+            )
+        elif speedup_factor is not None:
+            entry["speedup_factor"] = round(float(speedup_factor), 4)
         self.stages[stage] = entry
 
     def to_dict(self) -> dict:
@@ -859,8 +961,19 @@ class JobProgress:
             "omitted_total": self.omitted_total,  # J-35: exact omitted count (the list below is bounded)
             "omitted": list(self.omitted),  # J-35: bounded [{symbol, reason}] — never fabricated
             # J-53: per-stage operational timings (fetch / backfill: elapsed, items, concurrency; backfill
-            # also per_date_seconds_sum) — only stages that actually RAN appear; absent = never ran (NA).
+            # also per_date_seconds_sum + the J-66 server-computed speedup_factor) — only stages that
+            # actually RAN appear; absent = never ran (NA).
             "stages": {k: dict(v) for k, v in self.stages.items()},
+            # J-66: fine-grained, honest live-progress fields. `current_activity` names what is being worked
+            # on right now; `last_progress_at` is the heartbeat (the UI renders "updated Ns ago"). Both are
+            # honest descriptive metadata — never fabricated.
+            "current_activity": self.current_activity,
+            "last_progress_at": self.last_progress_at.isoformat() if self.last_progress_at else None,
+            # J-59: the completed pipeline stages (so the UI can render "failed at backfill — resumable
+            # from the backfill stage" and the resume routes correctly).
+            "completed_stages": list(self.completed_stages),
+            # J-67: per-date backfill failures (honest error + which dates) on a `partial` job.
+            "date_failures": [dict(f) for f in self.date_failures],
             "message": self.message,
             "errors": list(self.errors),
             "started_at": self.started_at.isoformat(),
@@ -1015,6 +1128,69 @@ def _chunk_plan(
 
 
 # --------------------------------------------------------------------------------------------------
+# J-59 covered-range fetch planner — skip the provider call for any (symbol, window) already FULLY
+# covered against the benchmark trading calendar (a re-run over a covered range reaches backfill in
+# seconds, never ~45min of no-op re-fetching to add `0 new bars`).
+# --------------------------------------------------------------------------------------------------
+def _trading_days_in_window(
+    calendar: list[date_cls], ws: date_cls, we: date_cls
+) -> list[date_cls]:
+    """The benchmark trading days falling inside `[ws, we]` (inclusive) — the EXACT dates a fully-covered
+    fetch would need to have. Built off the benchmark calendar (not a naive min/max range), so a window
+    with internal gaps is judged honestly."""
+    return [d for d in calendar if ws <= d <= we]
+
+
+def _symbol_window_fully_covered(
+    session: Session, symbol: str, ws: date_cls, we: date_cls, calendar: list[date_cls]
+) -> bool:
+    """J-59 — True iff `symbol` already has a stored bar for EVERY benchmark trading day in `[ws, we]`, so
+    a fetch over this window would add `0 new bars` and can be SKIPPED (zero provider calls). Exact: a
+    single missing trading day in the window returns False (the window still fetches). Built off the
+    benchmark calendar intersected with the symbol's stored dates — never a naive range that would mask an
+    internal gap. A window the benchmark calendar does NOT yet cover (no trading day of the calendar falls
+    in it — e.g. we are fetching dates BEYOND the current seed range) is NOT skippable: we cannot prove
+    coverage of dates the calendar does not yet know, so the fetch proceeds (returns False)."""
+    needed = _trading_days_in_window(calendar, ws, we)
+    if not needed:
+        return False  # the calendar doesn't yet cover this window — cannot prove coverage; fetch it
+    have = _existing_dates(session, symbol, ws, we)
+    return all(d in have for d in needed)
+
+
+def _plan_uncovered_chunks(
+    session: Session,
+    cfg: Config,
+    chunks: list[tuple[list[str], tuple[date_cls, date_cls]]],
+    *,
+    start_chunk: int,
+) -> tuple[set[int], list[str]]:
+    """J-59 — for the chunk plan (from `start_chunk` onward), determine which chunks are FULLY covered
+    (every symbol in the batch already has every trading day in the window) and so can be SKIPPED with
+    ZERO provider calls, and which DISTINCT symbols are already fully covered across ALL their windows (so
+    the per-symbol completion counter can credit them honestly without a fetch). Returns
+    `(fully_covered_chunk_indexes, covered_symbols)`. A partially-covered chunk is NOT skipped (it still
+    fetches; the per-(symbol,date) INSERT-new-only guard fills only the missing bars — no duplicate row)."""
+    calendar = _trading_days(session, cfg)
+    fully_covered: set[int] = set()
+    # track, per symbol, whether EVERY window it appears in (from start_chunk on) is fully covered.
+    symbol_all_covered: dict[str, bool] = {}
+    for idx in range(start_chunk, len(chunks)):
+        sym_batch, (ws, we) = chunks[idx]
+        chunk_covered = True
+        for symbol in sym_batch:
+            covered = _symbol_window_fully_covered(session, symbol, ws, we, calendar)
+            if not covered:
+                chunk_covered = False
+            prev = symbol_all_covered.get(symbol, True)
+            symbol_all_covered[symbol] = prev and covered
+        if chunk_covered:
+            fully_covered.add(idx)
+    covered_symbols = [s for s, ok in symbol_all_covered.items() if ok]
+    return fully_covered, covered_symbols
+
+
+# --------------------------------------------------------------------------------------------------
 # J-34 durable checkpoint — MUTABLE job-control state on import_checkpoints (NEVER a key; NOT a snapshot)
 # --------------------------------------------------------------------------------------------------
 def _load_checkpoint(session: Session, import_id: str) -> Optional[ImportCheckpoint]:
@@ -1058,13 +1234,14 @@ def _advance_checkpoint(
     session: Session, checkpoint: ImportCheckpoint, prog: JobProgress, *, next_idx: int, status: str
 ) -> None:
     """Persist the checkpoint after a chunk completes (or on a graceful 429 `resumable` stop / terminal
-    state): the resume point + cumulative counters + status + `updated_at`. Committed so the row survives
-    a backend restart (the durability the Resume affordance depends on)."""
+    state): the resume point + cumulative counters + status + `updated_at` + the J-59 completed stages.
+    Committed so the row survives a backend restart (the durability the Resume affordance depends on)."""
     checkpoint.next_chunk_index = next_idx
     checkpoint.symbols_ok = prog.symbols_ok
     checkpoint.symbols_failed = prog.symbols_failed
     checkpoint.bars_fetched = prog.bars_fetched
     checkpoint.status = status
+    checkpoint.completed_stages_json = json.dumps(list(prog.completed_stages))  # J-59 stage-awareness
     checkpoint.updated_at = _utcnow()
     session.add(checkpoint)
     session.commit()
@@ -1076,6 +1253,22 @@ def _finalize_checkpoint(session: Session, checkpoint: ImportCheckpoint, prog: J
     resumable: a resume of it → 409)."""
     terminal = "failed" if (prog.symbols_total > 0 and prog.symbols_ok == 0) else "ok"
     _advance_checkpoint(session, checkpoint, prog, next_idx=checkpoint.chunk_total, status=terminal)
+
+
+def _mark_checkpoint_failed_backfill(
+    session: Session, checkpoint: ImportCheckpoint, prog: JobProgress
+) -> None:
+    """J-59 — mark a `both` job's durable checkpoint `failed_backfill` after its FETCH stage completed but
+    its BACKFILL stage failed/was interrupted, so the Unfinished-imports surface offers it as **resumable
+    from the backfill stage** (a Resume skips the completed fetch entirely — zero provider calls). Keeps
+    the `completed_stages` (with `fetch`) so the resume routes to backfill. The fetch resume point is left
+    at chunk_total (the fetch is done — never re-fetched)."""
+    checkpoint.next_chunk_index = checkpoint.chunk_total
+    checkpoint.status = "failed_backfill"
+    checkpoint.completed_stages_json = json.dumps(list(prog.completed_stages))
+    checkpoint.updated_at = _utcnow()
+    session.add(checkpoint)
+    session.commit()
 
 
 # --------------------------------------------------------------------------------------------------
@@ -1190,6 +1383,7 @@ def _run_chunked_fetch(
     scrub: Callable[[str], str],
     sleep_fn: Callable[[float], None],
     start_chunk: int,
+    covered_chunks: Optional[set[int]] = None,
 ) -> None:
     """Run the chunk plan from `start_chunk`, persisting the checkpoint AFTER each completed chunk (so
     `next_chunk_index` only advances once a chunk's bars are durably committed). Within EACH chunk the
@@ -1211,9 +1405,23 @@ def _run_chunked_fetch(
     """
     chunking = cfg.data_manager.import_chunking
     workers = chunking.fetch_workers  # the bounded pool size (config — No magic numbers)
+    covered_chunks = covered_chunks or set()
     prog.chunk_index = start_chunk
     for chunk_idx in range(start_chunk, len(chunks)):
         sym_batch, (ws, we) = chunks[chunk_idx]
+        # J-59 covered-range planner: a chunk whose every (symbol, window) is already FULLY covered against
+        # the benchmark trading calendar adds `0 new bars` — SKIP the provider call entirely (zero network
+        # calls), credit the batch's symbols as completed (per-symbol counter stays honest), advance the
+        # durable resume point, and move on in seconds. A partially-covered chunk is NOT in this set, so it
+        # still fetches (the per-(symbol,date) INSERT-new-only guard fills only the missing bars).
+        if chunk_idx in covered_chunks:
+            for symbol in sym_batch:
+                prog.mark_symbol_done(symbol)
+            prog.tick(f"skipped covered window {ws.isoformat()}→{we.isoformat()} (0 new bars)")
+            prog.message = _fetch_message(prog)
+            prog.chunk_index = chunk_idx + 1
+            _advance_checkpoint(session, checkpoint, prog, next_idx=chunk_idx + 1, status="running")
+            continue
         # fetch the whole batch on the bounded pool (network only); results come back in batch order.
         results = _fetch_chunk_symbols(
             provider, sym_batch, ws, we, chunking=chunking, sleep_fn=sleep_fn, workers=workers
@@ -1235,7 +1443,9 @@ def _run_chunked_fetch(
         chunk_rows: list[dict] = []
         for res in results:
             if res.outcome == "failed":
-                prog.symbols_failed += 1
+                # J-66: distinct-dedup the failed symbol across windows (a symbol that succeeds in another
+                # window stays `ok`, not double-counted) so the failed counter never exceeds the total.
+                prog.mark_symbol_failed(res.symbol)
                 _record_error(prog, scrub(res.error or f"{res.symbol}: provider error"))
                 prog.message = _fetch_message(prog)
                 continue
@@ -1251,7 +1461,9 @@ def _run_chunked_fetch(
                         "close": bar.close,
                         "volume": bar.volume,
                     })
-            prog.symbols_ok += 1
+            # J-66: per-SYMBOL completion tick — dedup across windows so symbols_ok counts DISTINCT
+            # symbols and never exceeds symbols_total (the 318/159 fix). Stamps the heartbeat + activity.
+            prog.mark_symbol_done(res.symbol)
             prog.message = _fetch_message(prog)
         # ONE transaction per chunk: a single INSERT of every new row, then a single commit — so the
         # durable resume point only advances once the chunk's bars are committed (a crash before this
@@ -1287,6 +1499,14 @@ def _compute_one_backfill_date(
     return d, payload, time.perf_counter() - t0
 
 
+def _record_date_failure(prog: JobProgress, d: date_cls, error: str) -> None:
+    """J-67 — record ONE per-date backfill failure (honest error + which date) so the stage ends `partial`
+    with the per-date detail instead of aborting the whole stage. The other dates still complete; no
+    snapshot is fabricated for the failed date. Bounded like the per-symbol error list."""
+    if len(prog.date_failures) < _MAX_ERROR_SAMPLES:
+        prog.date_failures.append({"date": d.isoformat(), "error": error})
+
+
 def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engine) -> None:
     """For each in-range trading day with bars but NO snapshot, create the immutable snapshot then INSERT
     its realized forward returns (bars > D). No scan/return math is re-implemented and no snapshot is
@@ -1301,7 +1521,14 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
     path (the worker engines read the same bars). With `backfill_workers == 1` this is the sequential
     baseline (still correct). The stage's per-stage timings are recorded ONCE by the caller (`_run_job`)
     from the figures this populates: `prog._backfill_per_date_seconds_sum` accumulates each date's
-    compute time (the sequential baseline the parallel wall-clock beats)."""
+    compute time (the sequential baseline the parallel wall-clock beats).
+
+    J-67 — per-date FAILURE ISOLATION + transaction soundness: a single date's compute OR persist failure
+    is caught, recorded per-date (honest error), and the orchestrating session is ROLLED BACK to a clean
+    state so the REMAINING dates still write (the failure never leaves the session emitting SQL in an
+    invalid 'committed' state, and never aborts the whole stage). The stage ends `partial` (graded by the
+    caller from `prog.date_failures`); no snapshot is fabricated for a failed date. The worker sessions are
+    independent read-only connections (never shared mid-transaction); only THIS thread writes."""
     trading_days = _trading_days(session, cfg)
     snapshot_dates = set(session.exec(select(ScannerRun.asof_date)).all())
     targets = [d for d in trading_days if prog.start <= d <= prog.end and d not in snapshot_dates]
@@ -1317,8 +1544,11 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
         """Apply ONE date's result on the orchestrating thread (serial, in date order): persist the
         snapshot (or read the existing one — create-once) then INSERT its forward returns. The ONLY
         place a write happens. The pre-filled SHARED cache on THIS session keeps the forward-return reads
-        (and the rare race-fallback compute) load-once."""
+        (and the rare race-fallback compute) load-once. A per-date failure here is isolated by the caller
+        (it ROLLs BACK the session and records the date failed), so a single bad date never aborts the
+        stage nor strands the session in an invalid 'committed' state."""
         prog._backfill_per_date_seconds_sum += per_date_seconds
+        prog.tick(f"scanning {d.isoformat()} ({prog.dates_done + 1}/{prog.dates_total})")
         if payload is None:
             run = scanner.get_run_for_date(session, d)  # already present (worker fast-path) — read, don't write
             if run is None:  # a concurrent date created it between the worker check and here — compute now
@@ -1331,35 +1561,61 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
         prog.dates_done += 1
         prog.message = f"snapshots {prog.dates_done}/{prog.dates_total} dates"
 
+    def _persist_isolated(d: date_cls, payload: Optional[dict], secs: float, compute_error: Optional[str]) -> None:
+        """J-67 — write ONE date with failure isolation: if the worker COMPUTE already failed
+        (`compute_error` set), record it and skip the write; else attempt the persist and, on a write
+        failure, ROLL BACK the orchestrating session (clearing any half-applied SQL so it never lands in
+        an invalid 'committed' state) and record the date failed — the remaining dates still write."""
+        if compute_error is not None:
+            prog._backfill_per_date_seconds_sum += secs
+            _record_date_failure(prog, d, compute_error)
+            return
+        try:
+            _persist(d, payload, secs)
+        except Exception as exc:  # noqa: BLE001 — isolate this date; the stage continues
+            session.rollback()  # clear any half-applied write so the session is usable for the next date
+            _record_date_failure(prog, d, str(exc))
+
     # J-46/J-53: pre-fill ONE shared bar cache on the orchestrating session (every symbol's full series
     # loaded ONCE in one query). Workers ATTACH this same cache (read-only) so the whole K-date job does
     # at most one bar-store load per symbol — load-once-per-job, not once per date NOR once per worker.
     # The orchestrator's own forward-return reads + the race-fallback run_scan also read from it.
     with prefilled_bar_cache(session) as shared_cache:
         if workers <= 1 or len(targets) <= 1:
-            # serial baseline (workers=1) — compute + persist inline, one date at a time, in order.
+            # serial baseline (workers=1) — compute + persist inline, one date at a time, in order. A
+            # per-date compute failure is caught here (isolated), not raised — the rest still run.
             for d in targets:
-                _, payload, secs = _compute_one_backfill_date(eng, cfg, d, shared_cache)
-                _persist(d, payload, secs)
+                compute_error: Optional[str] = None
+                payload: Optional[dict] = None
+                secs = 0.0
+                try:
+                    _, payload, secs = _compute_one_backfill_date(eng, cfg, d, shared_cache)
+                except Exception as exc:  # noqa: BLE001 — isolate this date's compute failure
+                    compute_error = str(exc)
+                _persist_isolated(d, payload, secs, compute_error)
             return
         # PARALLEL: fan out the per-date compute; persist results IN DATE ORDER on this thread as they
-        # arrive (a worker exception surfaces here via future.result() — an explicit per-date failure,
-        # never a deadlock; the `with ThreadPoolExecutor` joins every worker before returning, so no
-        # thread outlives the job — the iter-28 determinism lesson).
-        pending: dict[date_cls, tuple[Optional[dict], float]] = {}
+        # arrive. A worker compute exception is captured PER DATE (never raised out of the drain loop, so
+        # it never aborts the whole stage or deadlocks); the `with ThreadPoolExecutor` joins every worker
+        # before returning, so no thread outlives the job (the iter-28 determinism lesson).
+        pending: dict[date_cls, tuple[Optional[dict], float, Optional[str]]] = {}
         next_idx = 0
         with ThreadPoolExecutor(max_workers=min(workers, len(targets))) as pool:
             future_to_date = {
                 pool.submit(_compute_one_backfill_date, eng, cfg, d, shared_cache): d for d in targets
             }
             for future in as_completed(future_to_date):
-                d, payload, secs = future.result()  # propagate a worker exception as an explicit failure
-                pending[d] = (payload, secs)
+                d = future_to_date[future]
+                try:
+                    _, payload, secs = future.result()
+                    pending[d] = (payload, secs, None)
+                except Exception as exc:  # noqa: BLE001 — capture this date's compute failure, keep draining
+                    pending[d] = (None, 0.0, str(exc))
                 # drain any now-contiguous prefix in target (date) order, so writes are strictly ordered.
                 while next_idx < len(targets) and targets[next_idx] in pending:
                     cur = targets[next_idx]
-                    cur_payload, cur_secs = pending.pop(cur)
-                    _persist(cur, cur_payload, cur_secs)
+                    cur_payload, cur_secs, cur_err = pending.pop(cur)
+                    _persist_isolated(cur, cur_payload, cur_secs, cur_err)
                     next_idx += 1
 
 
@@ -1543,7 +1799,11 @@ def _final_status(prog: JobProgress) -> str:
         else:
             statuses.append("ok")
     if prog.kind in _BACKFILL_KINDS:
-        statuses.append("ok")  # deterministic; an exception is handled separately as `failed`
+        # J-67: a single date's failure is ISOLATED (recorded per-date) — the backfill ends `partial`
+        # (others completed), never aborting the whole stage. With NO per-date failures it is `ok`. A
+        # whole-stage exception (e.g. the trading-calendar read itself) is still graded `failed` by the
+        # `_run_job` except-handler separately.
+        statuses.append("partial" if prog.date_failures else "ok")
     if statuses == ["failed"]:
         return "failed"
     if "failed" in statuses or "partial" in statuses:
@@ -1564,10 +1824,15 @@ def _final_summary(prog: JobProgress) -> str:
             f"of {prog.symbols_total} candidates ({prog.bars_fetched} new bars)"
         )
     if prog.kind in _BACKFILL_KINDS:
-        parts.append(
+        backfill = (
             f"backfill: {prog.snapshots_created} snapshots over {prog.dates_total} dates, "
             f"{prog.forward_returns_inserted} forward returns"
         )
+        if prog.date_failures:  # J-67: surface the per-date failures honestly on a `partial` job
+            failed_dates = ", ".join(f["date"] for f in prog.date_failures[:5])
+            more = "…" if len(prog.date_failures) > 5 else ""
+            backfill += f" ({len(prog.date_failures)} date(s) failed: {failed_dates}{more})"
+        parts.append(backfill)
     summary = "; ".join(parts) if parts else "no work performed"
     if prog.status == "resumable":  # J-34: a graceful 429 pause — surface the resume point honestly
         remaining = max(prog.symbols_total - prog.symbols_ok - prog.symbols_failed, 0)
@@ -1588,10 +1853,10 @@ def _provider_label(prog: JobProgress, cfg: Config) -> str:
     return cfg.provider
 
 
-def _persist_run(engine: Engine, cfg: Config, prog: JobProgress) -> None:
-    """Persist the FINAL job summary ONCE to the append-only `DataProviderRun` (own session; INSERT
-    only — never an UPDATE of an existing row). Structured detail is JSON-encoded in `message`."""
-    detail = {
+def _run_detail(prog: JobProgress) -> dict:
+    """The structured detail JSON encoded into a `DataProviderRun.message` — descriptive job-control
+    values, NEVER a key (anti-goal: keys are env-or-session, never persisted)."""
+    return {
         "kind": prog.kind,
         "start": prog.start.isoformat(),
         "end": prog.end.isoformat(),
@@ -1600,29 +1865,120 @@ def _persist_run(engine: Engine, cfg: Config, prog: JobProgress) -> None:
         "dates_total": prog.dates_total,
         "forward_returns_inserted": prog.forward_returns_inserted,
         "bars_fetched": prog.bars_fetched,
-        # J-35 expand: the screen outcome on the append-only audit row (descriptive job-control values —
-        # NOT a recompute of any canonical score/return/bucket). Present only for an expand kind.
+        # J-35 expand: the screen outcome on the audit row (descriptive job-control values — NOT a recompute
+        # of any canonical score/return/bucket). Present only for an expand kind.
         "passers": prog.passers if prog.kind in _EXPAND_KINDS else None,
         "omitted_total": prog.omitted_total if prog.kind in _EXPAND_KINDS else None,
         # J-53: the per-stage operational timings on the permanent audit row (descriptive metadata, NOT a
         # canonical score) so a completed job's timings survive past the in-memory registry. Only stages
         # that actually ran are present (a stage that never ran is absent — never a fabricated zero).
         "stages": {k: dict(v) for k, v in prog.stages.items()},
+        # J-67: per-date backfill failures (honest error + which dates) on a `partial` job.
+        "date_failures": [dict(f) for f in prog.date_failures],
+        # J-59: which pipeline stages completed (so a `failed`/`interrupted` record stays honest about how
+        # far it got).
+        "completed_stages": list(prog.completed_stages),
         "summary": _final_summary(prog),
     }
+
+
+def _create_run_record(engine: Engine, cfg: Config, prog: JobProgress) -> None:
+    """J-60 — create the job's run-history record IMMEDIATELY at job start (status `running`, carrying
+    kind / date range / source, NO finished_at) so the job appears in Run history from the moment it
+    starts. INSERTs ONE row keyed by `job_id`; the terminal transition (`_finalize_run_record`) UPDATEs
+    THIS SAME row (one record per job, one terminal transition). The key is NEVER persisted onto it."""
     with Session(engine) as session:
         session.add(
             DataProviderRun(
                 provider=_provider_label(prog, cfg),
                 started_at=prog.started_at,
-                finished_at=prog.finished_at,
+                finished_at=None,
                 symbols_ok=prog.symbols_ok,
                 symbols_failed=prog.symbols_failed,
-                status=prog.status,
-                message=json.dumps(detail),
+                status="running",
+                message=json.dumps(_run_detail(prog)),
+                job_id=prog.job_id,
             )
         )
         session.commit()
+
+
+def _open_run_record(session: Session, job_id: Optional[str]) -> Optional[DataProviderRun]:
+    """The OPEN (non-terminal) run-history row for `job_id` — the `running` or `resumable` record this job
+    is currently working under, newest first. None when there is none (a fresh job, or all rows terminal)."""
+    if not job_id:
+        return None
+    return session.exec(
+        select(DataProviderRun)
+        .where(DataProviderRun.job_id == job_id)
+        .where(DataProviderRun.status.in_(["running", "resumable"]))
+        .order_by(DataProviderRun.id.desc())
+    ).first()
+
+
+def _has_open_run_record(engine: Engine, job_id: Optional[str]) -> bool:
+    """True iff an OPEN (running/resumable) run-history row exists for `job_id` — so a resume reuses it
+    instead of writing a second record."""
+    with Session(engine) as session:
+        return _open_run_record(session, job_id) is not None
+
+
+def _finalize_run_record(engine: Engine, cfg: Config, prog: JobProgress) -> None:
+    """J-60 — close the job's run-history record with ONE honest transition. UPDATEs the OPEN (running/
+    resumable) row this job runs under (found by `job_id`) to its new status / finished_at / counts /
+    summary — one record per attempt, never overwriting an already-terminal row. A `resumable` pause UPDATEs
+    the open row to `resumable` (keeping it open + finished_at NULL) so it shows that way and the boot sweep
+    (which only touches `running`) leaves it alone; the eventual completed resume closes THIS SAME row. If
+    no open row exists (a legacy/edge path), INSERT a fresh row so the audit stays complete. Key never
+    persisted."""
+    detail = _run_detail(prog)
+    with Session(engine) as session:
+        row = _open_run_record(session, prog.job_id)
+        if row is not None:
+            row.status = prog.status
+            row.finished_at = prog.finished_at
+            row.symbols_ok = prog.symbols_ok
+            row.symbols_failed = prog.symbols_failed
+            row.message = json.dumps(detail)
+            session.add(row)
+        else:
+            session.add(
+                DataProviderRun(
+                    provider=_provider_label(prog, cfg),
+                    started_at=prog.started_at,
+                    finished_at=prog.finished_at,
+                    symbols_ok=prog.symbols_ok,
+                    symbols_failed=prog.symbols_failed,
+                    status=prog.status,
+                    message=json.dumps(detail),
+                    job_id=prog.job_id,
+                )
+            )
+        session.commit()
+
+
+def sweep_orphaned_runs(engine: Engine) -> int:
+    """J-60 boot sweep — mark any orphaned `running` `DataProviderRun` rows as `interrupted` (an honest
+    terminal state) so a job whose process died mid-run never lingers as a stuck `running` forever and
+    never vanishes from history. A fresh process boot owns NO in-flight jobs (the in-memory `_JOBS`
+    registry is empty), so ANY `running` row found at boot is by definition orphaned from a prior, now-dead
+    process — swept to `interrupted`. Idempotent + non-fatal. Returns the number swept. Never fabricates a
+    status; never touches an immutable snapshot/forward-return row."""
+    swept = 0
+    with Session(engine) as session:
+        rows = session.exec(
+            select(DataProviderRun).where(DataProviderRun.status == "running")
+        ).all()
+        now = _utcnow()
+        for row in rows:
+            row.status = "interrupted"
+            if row.finished_at is None:
+                row.finished_at = now
+            session.add(row)
+            swept += 1
+        if swept:
+            session.commit()
+    return swept
 
 
 def _resolve_live_provider(
@@ -1668,14 +2024,29 @@ def _run_job(
     scrub = _make_scrubber(_resolved_key(cfg, prog.source, api_key))
     paused = False
     is_expand = prog.kind in _EXPAND_KINDS
+    # J-59: a `both`/`backfill` resume whose FETCH stage already completed routes STRAIGHT to the backfill
+    # stage with ZERO provider calls — the fetch stage is skipped entirely.
+    skip_fetch = is_resume and "fetch" in prog.completed_stages
     # Both a generic FETCH and an EXPAND run the SAME chunked/resumable OHLCV fetch engine (J-34, reused
     # not forked); they differ only in the symbol set (all seed symbols vs the committed POOL) and in the
     # EXTRA screen step expand runs afterward.
     pool: list[dict] = []
     checkpoint: Optional[ImportCheckpoint] = None  # hoisted: an expand finalizes it AFTER the screen step
+    backfill_failed = False  # J-59: a `both`/`backfill` backfill-stage failure (drives failed_backfill)
+    # J-60: create the run-history record IMMEDIATELY (status `running`) so the job appears in Run history
+    # from the moment it starts. The SAME row is UPDATEd to its terminal state in `finally` (one record,
+    # one transition). A RESUME of a still-OPEN record (a `resumable` 429-pause whose row stayed
+    # `running`/`resumable`) reuses that row; a resume of an ALREADY-TERMINAL record (a `failed_backfill`
+    # whose `both`-job row finalized to `failed`) is a fresh attempt and writes its OWN honest record
+    # (like J-38 Retry) — so the audit trail of every attempt stays complete.
+    if not is_resume or not _has_open_run_record(eng, prog.job_id):
+        try:
+            _create_run_record(eng, cfg, prog)
+        except Exception as exc:  # noqa: BLE001 — a bookkeeping failure must not crash the worker
+            _record_error(prog, scrub(f"failed to create run record: {exc}"))
     try:
         with Session(eng) as session:
-            if prog.kind in _FETCH_KINDS or is_expand:
+            if (prog.kind in _FETCH_KINDS or is_expand) and not skip_fetch:
                 _fetch_t0 = time.perf_counter()  # J-53: fetch-stage wall-clock (honest even on a pause/fail)
                 live = provider if provider is not None else _resolve_live_provider(cfg, prog.source, api_key)
                 if is_expand:
@@ -1709,10 +2080,22 @@ def _run_job(
                     start_chunk = 0
                     checkpoint = _start_checkpoint(session, cfg, prog, symbols, len(chunks))
                 prog.symbols_total = len(symbols)
+                # J-59 covered-range planner: skip the provider call for any chunk already FULLY covered
+                # against the benchmark trading calendar (a re-run over a covered range reaches backfill in
+                # seconds — never ~45min of no-op re-fetching to add 0 new bars). Partially-covered chunks
+                # still fetch (INSERT-new-only idempotency fills only the missing bars).
+                covered_chunks, _covered_symbols = _plan_uncovered_chunks(
+                    session, cfg, chunks, start_chunk=start_chunk
+                )
                 _run_chunked_fetch(
                     session, cfg, prog, live, chunks=chunks, checkpoint=checkpoint,
                     scrub=scrub, sleep_fn=sleep_fn, start_chunk=start_chunk,
+                    covered_chunks=covered_chunks,
                 )
+                # J-59: record fetch-stage completion (so a `both`/`backfill` resume skips it; the durable
+                # checkpoint mirrors it). Only when the fetch actually completed (not on a graceful pause).
+                if prog.status != "resumable":
+                    prog.complete_stage("fetch")
                 # J-53: record the fetch-stage timing ONCE — honest for the portion that ran (a paused/
                 # failed fetch records its elapsed + the symbols it DID process; `items_processed` = the
                 # symbols accounted ok+failed, `concurrency` = the config fetch pool size).
@@ -1727,8 +2110,23 @@ def _run_job(
                 elif not is_expand:
                     # an EXPAND's checkpoint is finalized only AFTER the screen step completes (so a cap-feed
                     # pause in the screen leaves the durable row `resumable` — see below); a generic fetch
-                    # has no further step, so finalize now.
-                    _finalize_checkpoint(session, checkpoint, prog)
+                    # has no further step. A `both` job's checkpoint is finalized only AFTER its backfill
+                    # stage (so a backfill failure can mark it `failed_backfill` — see below); a fetch-only
+                    # job finalizes now.
+                    if prog.kind not in _BACKFILL_KINDS:
+                        _finalize_checkpoint(session, checkpoint, prog)
+            elif skip_fetch and is_resume:
+                # J-59 resume-at-backfill: the fetch stage already completed (zero provider calls now). Load
+                # the existing checkpoint so the post-backfill finalize/fail-marking has it. NO live provider
+                # is built, NO chunk is fetched.
+                checkpoint = _load_checkpoint(session, prog.job_id)
+                if checkpoint is not None:
+                    prog.chunk_total = checkpoint.chunk_total
+                    checkpoint.status = "running"
+                    checkpoint.updated_at = _utcnow()
+                    session.add(checkpoint)
+                    session.commit()
+                prog.current_activity = "resuming at the backfill stage (fetch already complete)"
             if not paused and is_expand:
                 # screen the pool against the freshly-stored bars + a real market-cap reference, writing
                 # universe.json / CSVs / meta.json (the single screen source — screen_reasons). A persistent
@@ -1744,38 +2142,76 @@ def _run_job(
                         _advance_checkpoint(
                             session, checkpoint, prog, next_idx=checkpoint.next_chunk_index, status="resumable"
                         )
-                elif checkpoint is not None:
-                    _finalize_checkpoint(session, checkpoint, prog)  # expand fully done → terminal checkpoint
+                else:
+                    prog.complete_stage("screen")  # J-59: screen stage done
+                    if checkpoint is not None:
+                        _finalize_checkpoint(session, checkpoint, prog)  # expand fully done → terminal
             if not paused and prog.kind in _BACKFILL_KINDS:
                 _backfill_t0 = time.perf_counter()  # J-53: backfill-stage wall-clock (parallel)
-                _do_backfill(session, cfg, prog, eng=eng)
-                # J-53: record the backfill-stage timing ONCE — elapsed wall-clock, dates processed, the
-                # concurrency the pool actually used, and the SUM of per-date compute seconds (the
-                # sequential baseline the parallel wall-clock beats — so the >=~2x speedup is evidenced
-                # by the job's OWN payload: elapsed_seconds vs per_date_seconds_sum).
-                prog.record_stage(
-                    "backfill",
-                    elapsed_seconds=time.perf_counter() - _backfill_t0,
-                    items_processed=prog.dates_done,
-                    concurrency=prog._backfill_concurrency,
-                    per_date_seconds_sum=prog._backfill_per_date_seconds_sum,
-                )
+                try:
+                    _do_backfill(session, cfg, prog, eng=eng)
+                except Exception:  # noqa: BLE001 — a whole-stage backfill failure (not a per-date one)
+                    backfill_failed = True
+                    raise  # surfaced as an explicit `failed` job by the outer handler
+                else:
+                    if prog.date_failures:
+                        # J-67 + J-59: the backfill ran but ISOLATED one or more failed dates (`partial`).
+                        # For a job carrying a checkpoint (a `both` job whose fetch completed, or a resumed
+                        # backfill) leave the durable row `failed_backfill` so the operator can Resume JUST
+                        # the backfill (zero provider calls) to retry the failed dates — the completed dates
+                        # are create-once, untouched. A pure `backfill` job (no checkpoint) ends `partial`
+                        # without a resume affordance (Retry re-dispatches it).
+                        if checkpoint is not None and "fetch" in prog.completed_stages:
+                            _mark_checkpoint_failed_backfill(session, checkpoint, prog)
+                    else:
+                        prog.complete_stage("backfill")  # J-59: backfill stage cleanly done
+                        # a `both` job's fetch-stage checkpoint is finalized only now (after the backfill ran).
+                        if checkpoint is not None:
+                            _finalize_checkpoint(session, checkpoint, prog)
+                finally:
+                    # J-53: record the backfill-stage timing ONCE — elapsed wall-clock, dates processed, the
+                    # concurrency the pool actually used, and the SUM of per-date compute seconds (the
+                    # sequential baseline the parallel wall-clock beats — so the >=~2x speedup is evidenced
+                    # by the job's OWN payload: elapsed_seconds vs per_date_seconds_sum). The server-computed
+                    # speedup_factor is carried in the stages payload (J-66 — no client-side division).
+                    prog.record_stage(
+                        "backfill",
+                        elapsed_seconds=time.perf_counter() - _backfill_t0,
+                        items_processed=prog.dates_done,
+                        concurrency=prog._backfill_concurrency,
+                        per_date_seconds_sum=prog._backfill_per_date_seconds_sum,
+                    )
         if not paused:
             prog.status = _final_status(prog)
     except Exception as exc:  # noqa: BLE001 — any failure must surface as an explicit failed job (scrubbed)
         prog.status = "failed"
         _record_error(prog, scrub(str(exc)))
-    finally:
-        prog.finished_at = _utcnow()
-        prog.message = _final_summary(prog)
-        # A resumable pause is recorded DURABLY on the checkpoint (it survives a restart and drives
-        # `resumable_imports`); it is NOT a terminal run, so it is not appended to the run-history log —
-        # the eventual completed resume appends its own DataProviderRun.
-        if prog.status != "resumable":
+        # J-59: a `both`/`backfill` job whose FETCH completed but whose BACKFILL failed is marked
+        # `failed_backfill` on its durable checkpoint, so Unfinished-imports offers it as "failed at
+        # backfill — resumable from the backfill stage" (a Resume skips the completed fetch — zero
+        # provider calls). Only when the fetch stage genuinely completed (checkpoint carries it).
+        if backfill_failed and "fetch" in prog.completed_stages:
             try:
-                _persist_run(eng, cfg, prog)
-            except Exception as exc:  # noqa: BLE001 — persistence failure must not crash the worker thread
-                _record_error(prog, scrub(f"failed to persist run summary: {exc}"))
+                with Session(eng) as fsession:
+                    cp = _load_checkpoint(fsession, prog.job_id)
+                    if cp is not None:
+                        _mark_checkpoint_failed_backfill(fsession, cp, prog)
+            except Exception as exc2:  # noqa: BLE001 — bookkeeping failure must not crash the worker
+                _record_error(prog, scrub(f"failed to mark checkpoint resumable-at-backfill: {exc2}"))
+    finally:
+        prog.message = _final_summary(prog)
+        # J-60: close the SAME run-history record this job created at start (one record per job, one
+        # transition). A graceful `resumable` pause is NOT a terminal state — its run row is UPDATEd to
+        # `resumable` (so it shows that way in Run history AND is skipped by the boot sweep, which only
+        # touches `running` rows) but keeps `finished_at` NULL (it has not finished); the durable
+        # checkpoint carries the resume point, and the eventual completed resume closes THIS SAME row to
+        # its terminal state. Every other state is terminal → set finished_at + UPDATE.
+        if prog.status != "resumable":
+            prog.finished_at = _utcnow()
+        try:
+            _finalize_run_record(eng, cfg, prog)
+        except Exception as exc:  # noqa: BLE001 — persistence failure must not crash the worker thread
+            _record_error(prog, scrub(f"failed to persist run summary: {exc}"))
     return prog.to_dict()
 
 
@@ -1834,15 +2270,33 @@ def resume_data_job(
         cp = _load_checkpoint(session, import_id)
         if cp is None:
             raise LookupError(f"unknown import: {import_id}")
-        if cp.status != "resumable":
+        if cp.status not in RESUMABLE_CHECKPOINT_STATUSES:
             raise ValueError(f"import {import_id} is not resumable (status {cp.status})")
         prog = JobProgress(job_id=cp.import_id, kind=cp.kind, start=cp.start, end=cp.end, source=cp.source)
-        prog.symbols_ok = cp.symbols_ok
-        prog.symbols_failed = cp.symbols_failed
+        plan_symbols = json.loads(cp.symbol_plan_json)
+        # J-66: reconstruct the distinct per-symbol completion sets from the COMPLETED chunks so the
+        # per-symbol counter continues from the right point (rather than double-counting or resetting).
+        # The chunks already committed (< next_chunk_index) fetched their symbol batches successfully, so
+        # those distinct symbols are `done`; the persisted failed count is honored as-is (its symbols are
+        # outside the committed batches). This keeps symbols_ok == distinct done across the resume.
+        completed_chunks = _chunk_plan(cfg, plan_symbols, cp.start, cp.end)[: cp.next_chunk_index]
+        for sym_batch, _window in completed_chunks:
+            prog.symbols_done.update(sym_batch)
+        prog.symbols_total = len(plan_symbols)
         prog.bars_fetched = cp.bars_fetched
         prog.chunk_total = cp.chunk_total
         prog.chunk_index = cp.next_chunk_index
-        prog.symbols_total = len(json.loads(cp.symbol_plan_json))
+        # J-59: seed the completed-stages from the durable checkpoint so a resume can skip a completed
+        # fetch stage entirely (zero provider calls) and route straight to the remaining stage(s).
+        try:
+            prog.completed_stages = list(json.loads(cp.completed_stages_json or "[]"))
+        except (ValueError, TypeError):
+            prog.completed_stages = []
+        prog._recount_symbols()
+        # honor any persisted failed count not captured by the reconstructed sets (defensive: a legacy
+        # checkpoint may carry a failed tally without per-symbol detail).
+        if cp.symbols_failed > prog.symbols_failed:
+            prog.symbols_failed = cp.symbols_failed
         prog.message = _fetch_message(prog)
     with _LOCK:
         _JOBS[prog.job_id] = prog
@@ -1979,6 +2433,10 @@ def _summarize_checkpoint(cp: ImportCheckpoint) -> dict:
     except (ValueError, TypeError):
         symbols_total = 0
     symbols_remaining = max(symbols_total - cp.symbols_ok - cp.symbols_failed, 0)
+    try:
+        completed_stages = list(json.loads(cp.completed_stages_json or "[]"))
+    except (ValueError, TypeError):
+        completed_stages = []
     return {
         "import_id": cp.import_id,
         "source": cp.source,
@@ -1992,18 +2450,20 @@ def _summarize_checkpoint(cp: ImportCheckpoint) -> dict:
         "symbols_failed": cp.symbols_failed,
         "symbols_remaining": symbols_remaining,
         "bars_fetched": cp.bars_fetched,
-        "status": cp.status,
+        "status": cp.status,  # resumable | failed_backfill (J-59) | running | ok | failed
+        "completed_stages": completed_stages,  # J-59: which stages completed (drives the resume route)
         "updated_at": cp.updated_at.isoformat() if cp.updated_at else None,
     }
 
 
 def resumable_imports(session: Session, config: Optional[Config] = None) -> list[dict]:
-    """The paused (`status == "resumable"`) chunked imports, newest first — the durable Resume
-    affordance that SURVIVES a backend restart (the in-memory job is gone, but the checkpoint persists).
+    """The resumable chunked imports, newest first — the durable Resume affordance that SURVIVES a backend
+    restart (the in-memory job is gone, but the checkpoint persists). Includes both a `resumable` (429
+    pause) and a `failed_backfill` (J-59: fetch done, backfill failed → resumable from the backfill stage).
     NEVER carries a key value."""
     rows = session.exec(
         select(ImportCheckpoint)
-        .where(ImportCheckpoint.status == "resumable")
+        .where(ImportCheckpoint.status.in_(list(RESUMABLE_CHECKPOINT_STATUSES)))
         .order_by(ImportCheckpoint.updated_at.desc(), ImportCheckpoint.id.desc())
     ).all()
     return [_summarize_checkpoint(cp) for cp in rows]
@@ -2016,7 +2476,15 @@ def resumable_imports(session: Session, config: Optional[Config] = None) -> list
 # canonical score/return/bucket. NEVER carries a key value.
 # --------------------------------------------------------------------------------------------------
 def _resumable_state_text(cp: ImportCheckpoint, symbols_remaining: int) -> str:
-    """The plain-language state for a paused/resumable checkpoint row (J-38)."""
+    """The plain-language state for a resumable checkpoint row (J-38 / J-59). A `failed_backfill` row
+    (J-59: fetch completed, backfill failed) reads "failed at backfill — resumable from the backfill
+    stage" (a Resume skips the completed fetch — zero provider calls); a `resumable` 429 pause reads the
+    chunk-resume text."""
+    if cp.status == "failed_backfill":
+        return (
+            "Failed at backfill — the fetch stage completed but the backfill stage failed. "
+            "Resumable from the backfill stage (the fetch is skipped — zero provider calls)."
+        )
     return (
         f"Paused — hit a provider rate-limit (429); progress saved at chunk "
         f"{cp.next_chunk_index}/{cp.chunk_total} ({symbols_remaining} symbols remaining). Resume to continue."
@@ -2079,14 +2547,17 @@ def _run_unfinished_row(run: DataProviderRun) -> dict:
 def unfinished_imports(session: Session, config: Optional[Config] = None) -> list[dict]:
     """J-38 — the UNIFIED Unfinished-imports list: a read-only union of every import that did NOT finish
     cleanly, newest first, each with a PLAIN-LANGUAGE state + the right action:
-      - paused/resumable `import_checkpoints` (status `resumable`)            → Resume / Remove
+      - resumable `import_checkpoints` (status `resumable` 429-pause OR `failed_backfill` J-59:
+        fetch-done/backfill-failed → resumable from the backfill stage)         → Resume / Remove
       - operational `DataProviderRun` rows with status ∈ {partial, failed}, EXCLUDING soft-dismissed
-        ones (`dismissed == True`) and EXCLUDING the plain seed-load row (a non-job message)  → Retry / Dismiss
+        ones (`dismissed == True`), the plain seed-load row (a non-job message), AND any run whose
+        `job_id` is already offered as a `failed_backfill` checkpoint (so a `both` job stopped at backfill
+        appears ONCE — as the Resume-at-backfill row, not also as a Retry row)  → Retry / Dismiss
     Reads the canonical job-control rows ONLY (it neither recomputes a canonical value nor reads a snapshot);
     NEVER carries a key value (neither the checkpoint nor the run summary has a key column)."""
     cp_rows = session.exec(
         select(ImportCheckpoint)
-        .where(ImportCheckpoint.status == "resumable")
+        .where(ImportCheckpoint.status.in_(list(RESUMABLE_CHECKPOINT_STATUSES)))
         .order_by(ImportCheckpoint.updated_at.desc(), ImportCheckpoint.id.desc())
     ).all()
     run_rows = session.exec(
@@ -2095,10 +2566,15 @@ def unfinished_imports(session: Session, config: Optional[Config] = None) -> lis
         .where(DataProviderRun.dismissed == False)  # noqa: E712 — soft-dismissed runs are not offered
         .order_by(DataProviderRun.started_at.desc(), DataProviderRun.id.desc())
     ).all()
+    # J-59: a `both` job stopped at its backfill stage has BOTH a `failed_backfill` checkpoint (Resume) and
+    # a `failed` run record — offer it ONCE as the Resume-at-backfill row, not also as a duplicate Retry.
+    backfill_resumable_job_ids = {cp.import_id for cp in cp_rows if cp.status == "failed_backfill"}
     # A run only counts as an actionable import if it is a Data Manager JOB (has a JSON `kind` detail) —
     # a plain seed-load failure (raw-text message) is not a retryable import job.
     rows: list[dict] = [_checkpoint_unfinished_row(cp) for cp in cp_rows]
     for run in run_rows:
+        if run.job_id in backfill_resumable_job_ids:
+            continue  # already offered as a Resume-at-backfill checkpoint row (J-59 dedup)
         if summarize_provider_run(run).get("kind") is not None:
             rows.append(_run_unfinished_row(run))
     return rows

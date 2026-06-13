@@ -64,6 +64,13 @@ def set_engine(engine: Engine) -> None:
 # offline-first "no DB regen" guarantee: an existing live DB gains the column in place.
 _ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("data_provider_runs", "dismissed", "ALTER TABLE data_provider_runs ADD COLUMN dismissed BOOLEAN NOT NULL DEFAULT 0"),
+    # iter-29 (J-60): job-control correlation id linking a run-history row to its in-memory JobProgress.
+    # Nullable (NULL for seed-load + legacy rows) — matches `job_id: Optional[str] = Field(default=None, index=True)`.
+    ("data_provider_runs", "job_id", "ALTER TABLE data_provider_runs ADD COLUMN job_id VARCHAR"),
+    # iter-29 (J-59): JSON list of COMPLETED pipeline stages for the zero-provider-call resume-at-backfill
+    # path. NOT NULL DEFAULT '[]' — matches `completed_stages_json: str = "[]"` (a legacy/fresh row reads an
+    # empty stage set, never NULL).
+    ("import_checkpoints", "completed_stages_json", "ALTER TABLE import_checkpoints ADD COLUMN completed_stages_json VARCHAR NOT NULL DEFAULT '[]'"),
 )
 
 

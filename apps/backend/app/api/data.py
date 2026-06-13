@@ -90,6 +90,7 @@ def data_overview(session: Session = Depends(get_session)) -> dict:
     rate-limited import stays discoverable + Resume-able after a backend restart — and it NEVER carries a
     key value (the checkpoint has no key column)."""
     cfg = get_config()
+    jp = cfg.data_manager.job_progress
     return {
         "coverage": data_manager.compute_coverage(session, cfg),
         "runs": data_manager.recent_runs(session, cfg),
@@ -99,6 +100,13 @@ def data_overview(session: Session = Depends(get_session)) -> dict:
         # soft-dismissed), each with a plain-language state + the right action. Generalizes
         # `resumable_imports` (kept for backward compatibility). Reads only job-control rows; carries no key.
         "unfinished_imports": data_manager.unfinished_imports(session, cfg),
+        # J-66: the fine-grained progress knobs from config (No magic numbers) — the live job card reads
+        # the poll interval + the heartbeat-stale threshold from here, never a hardcoded literal.
+        "job_progress": {
+            "poll_interval_seconds": jp.poll_interval_seconds,
+            "heartbeat_stale_seconds": jp.heartbeat_stale_seconds,
+            "per_symbol_ticks": jp.per_symbol_ticks,
+        },
     }
 
 
@@ -167,14 +175,23 @@ def resume_job(
     checkpoint = data_manager.get_checkpoint(session, import_id)
     if checkpoint is None:
         raise HTTPException(status_code=404, detail=f"unknown import: {import_id}")
-    if checkpoint.status != "resumable":
+    if checkpoint.status not in data_manager.RESUMABLE_CHECKPOINT_STATUSES:
         raise HTTPException(
             status_code=409,
             detail=f"import {import_id} is not resumable (status {checkpoint.status})",
         )
     api_key = payload.api_key if payload is not None else None
+    # J-59: a `failed_backfill` resume skips the fetch stage entirely (zero provider calls), so it needs
+    # NO key even for a needs-key source — only a `resumable` 429-pause (which re-fetches the un-fetched
+    # chunk) requires the session key be re-supplied for a needs-key source with no env key.
+    fetch_will_run = checkpoint.status == "resumable"
     entry = cfg.data_manager.provider_by_id(checkpoint.source)
-    if entry is not None and entry.needs_key and not data_manager.resolve_provider_key(entry, api_key):
+    if (
+        fetch_will_run
+        and entry is not None
+        and entry.needs_key
+        and not data_manager.resolve_provider_key(entry, api_key)
+    ):
         raise HTTPException(
             status_code=400,
             detail=f"source {checkpoint.source!r} requires a key; set ${entry.env_var} or paste a session key",

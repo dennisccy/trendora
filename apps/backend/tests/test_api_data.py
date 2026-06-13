@@ -63,7 +63,9 @@ def test_get_data_overview_shape(data_api_engine):
     env-var NAME only — never a key value."""
     with Session(data_api_engine) as session:
         payload = data_overview(session=session)
-    assert set(payload) == {"coverage", "runs", "sources", "resumable_imports", "unfinished_imports"}
+    assert set(payload) == {
+        "coverage", "runs", "sources", "resumable_imports", "unfinished_imports", "job_progress",
+    }
     assert payload["resumable_imports"] == []  # J-34: no paused imports on a fresh DB
     assert payload["unfinished_imports"] == []  # J-38: nothing unfinished on a fresh DB
     cov = payload["coverage"]
@@ -274,6 +276,36 @@ def test_resume_needs_key_source_without_key_is_400(data_api_engine, monkeypatch
             resume_job("paused-tiingo", payload=ResumeRequest(), session=session)
     assert exc.value.status_code == 400
     assert "requires a key" in str(exc.value.detail)
+
+
+def test_resume_failed_backfill_needs_no_key_even_for_key_source(data_api_engine, monkeypatch):
+    """J-59 — a `failed_backfill` resume SKIPS the fetch stage entirely (zero provider calls), so it needs
+    NO key even for a needs-key source (unlike a `resumable` 429-pause which re-fetches). The endpoint
+    accepts it (no 400)."""
+    monkeypatch.delenv("TIINGO_API_KEY", raising=False)
+    with Session(data_api_engine) as session:
+        session.add(ImportCheckpoint(
+            import_id="fb-tiingo", source="tiingo", kind="both",
+            start=date(2099, 1, 1), end=date(2099, 1, 2),
+            symbol_plan_json=json.dumps(["AAA"]), chunk_total=1, next_chunk_index=1, symbols_ok=1,
+            status="failed_backfill", completed_stages_json=json.dumps(["fetch"]),
+            created_at=datetime(2024, 1, 1), updated_at=datetime(2024, 1, 1),
+        ))
+        session.commit()
+        # no key set, no key supplied — but a failed_backfill resume skips the fetch, so it is accepted.
+        resp = resume_job("fb-tiingo", payload=ResumeRequest(), session=session)
+    assert resp["import_id"] == "fb-tiingo" and resp["status"] == "running"
+
+
+def test_overview_exposes_job_progress_config(data_api_engine):
+    """J-66 — the overview payload exposes the config-driven progress knobs (poll interval + heartbeat
+    stale threshold + per-symbol-ticks) so the frontend reads them from config, never a hardcoded literal."""
+    with Session(data_api_engine) as session:
+        overview = data_overview(session=session)
+    jp = overview["job_progress"]
+    assert jp["poll_interval_seconds"] > 0
+    assert jp["heartbeat_stale_seconds"] > 0
+    assert isinstance(jp["per_symbol_ticks"], bool)
 
 
 def test_resumable_imports_in_overview_carries_no_key(data_api_engine):

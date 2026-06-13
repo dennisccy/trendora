@@ -219,18 +219,19 @@ def test_parallel_rerun_is_idempotent(equality_run):
 
 
 # ==================================================================================================
-# worker exception — an explicit failed job, no partial snapshot, no stuck `running`
+# J-67 per-date failure isolation — a per-date compute failure is recorded per-date, no stuck running,
+# no partial snapshot, the stage ends `partial` (others complete) — never aborting the whole stage.
 # ==================================================================================================
-def test_backfill_worker_exception_surfaces_failed(tmp_path, monkeypatch):
-    """A compute exception inside a worker surfaces as an explicit `failed` job (never a deadlock or a
-    job stuck `running`), and leaves NO partially-written snapshot for the failing range (the
-    orchestrating thread never persisted a payload it never received) — transactional writes."""
+def test_backfill_all_dates_fail_isolated_partial(tmp_path, monkeypatch):
+    """J-67 — when the per-date COMPUTE raises for every date, each date is ISOLATED and recorded as a
+    per-date failure (honest error), the job ends `partial` (not a deadlock / stuck `running`), and NO
+    partial snapshot is written for any failing date (the orchestrator persisted nothing it never received,
+    and a per-date persist failure is rolled back) — transactional writes, no fabrication."""
     cfg, engine = _fresh_seed_engine(tmp_path, "boom")
     with Session(engine) as session:
         trading = _trading_days(session, cfg)
     r_start, r_end = trading[305], trading[307]
     in_range = [d for d in trading if r_start <= d <= r_end]
-    runs_before_n = None
     with Session(engine) as session:
         runs_before_n = session.scalar(select(func.count()).select_from(ScannerRun))
 
@@ -243,14 +244,54 @@ def test_backfill_worker_exception_surfaces_failed(tmp_path, monkeypatch):
     job = create_job("backfill", r_start, r_end)
     summary = run_data_job(job.job_id, config=_with_backfill_workers(cfg, 4), engine=engine)
 
-    assert summary["status"] == "failed"  # explicit failure, not a silent partial / stuck running
-    assert summary["errors"], "a failed job must carry an explicit error message"
-    assert any("synthetic compute failure" in e for e in summary["errors"])
+    assert summary["status"] == "partial"  # J-67: isolated per-date failures → partial, never stuck running
+    assert len(summary["date_failures"]) == len(in_range)  # every date recorded as a per-date failure
+    assert all("synthetic compute failure" in f["error"] for f in summary["date_failures"])
+    assert summary["snapshots_created"] == 0  # nothing fabricated for a failed date
     # no snapshot was written for the range (the orchestrator never received a payload to persist).
     with Session(engine) as session:
         for d in in_range:
             assert scanner.get_run_for_date(session, d) is None
         assert session.scalar(select(func.count()).select_from(ScannerRun)) == runs_before_n
+
+
+def test_backfill_single_date_failure_isolated_others_complete(tmp_path, monkeypatch):
+    """J-67 — a SINGLE date's compute failure is isolated: that date is recorded `failed` while the OTHER
+    dates still complete (their snapshots written), and the job ends an honest `partial`, never aborting
+    the whole stage and never fabricating a snapshot for the failed date (the central J-67 contract)."""
+    cfg, engine = _fresh_seed_engine(tmp_path, "one_bad")
+    with Session(engine) as session:
+        trading = _trading_days(session, cfg)
+    r_start, r_end = trading[305], trading[308]
+    in_range = [d for d in trading if r_start <= d <= r_end]
+    assert len(in_range) == 4
+    bad_date = in_range[1]  # fail exactly ONE date
+
+    real_compute = scanner.compute_run_payload
+
+    def _selective(session, asof, config=None):
+        if asof == bad_date:
+            raise RuntimeError(f"synthetic failure for {bad_date.isoformat()}")
+        return real_compute(session, asof, config)
+
+    monkeypatch.setattr(scanner, "compute_run_payload", _selective)
+
+    job = create_job("backfill", r_start, r_end)
+    summary = run_data_job(job.job_id, config=_with_backfill_workers(cfg, 4), engine=engine)
+
+    assert summary["status"] == "partial"  # the bad date isolated; the rest completed
+    assert summary["dates_total"] == len(in_range)
+    assert summary["snapshots_created"] == len(in_range) - 1  # all but the one bad date
+    assert len(summary["date_failures"]) == 1
+    assert summary["date_failures"][0]["date"] == bad_date.isoformat()
+    # the other dates DID get a snapshot; the bad date did NOT (never fabricated).
+    with Session(engine) as session:
+        for d in in_range:
+            run = scanner.get_run_for_date(session, d)
+            if d == bad_date:
+                assert run is None
+            else:
+                assert run is not None
 
 
 def test_backfill_progress_never_exceeds_total(tmp_path):

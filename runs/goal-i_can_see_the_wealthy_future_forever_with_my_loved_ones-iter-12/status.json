@@ -1,0 +1,33 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-12",
+  "status": "blocked",
+  "current_step": "qa_failed",
+  "updated_at": "2026-06-13T13:37:05.512384Z",
+  "started_at": "2026-06-13T12:00:00.241102Z",
+  "cli": "claude",
+  "blockers": [
+    "CRITICAL: job_id column missing from data_provider_runs table. The column was added to DataProviderRun model but NOT registered in _ADDITIVE_COLUMNS in apps/backend/app/db.py. This causes GET /api/data to fail with OperationalError: no such column: data_provider_runs.job_id. All API tests fail until the column is added to the migration registry and the backend restarts. See reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-12-qa.md for details."
+  ],
+  "changed_files": [
+    "config.yaml",
+    "apps/backend/app/config.py",
+    "apps/backend/app/models.py",
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/main.py",
+    "apps/backend/app/api/data.py",
+    "apps/frontend/lib/api.ts",
+    "apps/frontend/app/data/page.tsx",
+    "apps/backend/tests/test_data_manager_jobs_pipeline.py",
+    "apps/backend/tests/test_data_manager_backfill_parallel.py",
+    "apps/backend/tests/test_config.py",
+    "apps/backend/tests/test_config_engine.py",
+    "apps/backend/tests/test_sectors.py",
+    "apps/backend/tests/test_themes.py",
+    "apps/backend/tests/test_indexes.py",
+    "apps/backend/tests/test_api_data.py"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "fix_db_migration",
+  "tests_note": "Targeted modules green this turn: test_data_manager.py (68), test_data_manager_parallel.py (7), test_data_manager_jobs_pipeline.py NEW (14), test_data_manager_backfill_parallel.py (10, incl. parallel-vs-sequential byte-identity + J-67 per-date isolation), test_api_data.py (40), test_config.py + test_config_engine.py + test_sectors.py + test_themes.py + test_indexes.py (124). Frontend tsc --noEmit clean. build_qa_fixture_db.py builds + narrowed config loads with job_progress (iter-11 failure site verified clean). FULL ~46-min suite (incl. test_warmup.py + scanner/forward-test/immutability/no-lookahead) handed to the pump: cd apps/backend && .venv/bin/python -m pytest tests/ -q"
+}

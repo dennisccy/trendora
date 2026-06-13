@@ -1294,7 +1294,9 @@ export interface DataRun {
   kind: string | null; // fetch | backfill | both | expand | null (seed load)
   start: string | null;
   end: string | null;
-  status: string; // ok | partial | failed
+  // J-60: the job lifecycle — running (in-flight, from job start) → ONE terminal transition. interrupted
+  // = a boot sweep marked an orphaned running row whose process died; resumable = a rate-limited pause.
+  status: string; // running | ok | partial | failed | interrupted | resumable
   symbols_ok: number;
   symbols_failed: number;
   snapshots_created: number | null;
@@ -1364,10 +1366,21 @@ export interface UnfinishedImport {
   symbols_failed: number;
   symbols_remaining: number;
   bars_fetched: number | null;
-  status: string; // resumable | partial | failed
+  status: string; // resumable | failed_backfill (J-59) | partial | failed
+  // J-59: which pipeline stages completed (e.g. ["fetch"] for a failed-at-backfill row that is
+  // resumable from the backfill stage). Present on checkpoint rows.
+  completed_stages?: string[];
   updated_at: string | null;
   state: string; // plain-language explanation (rendered verbatim)
   actions: string[]; // e.g. ["resume","remove"] or ["retry","dismiss"]
+}
+
+/** J-66: the fine-grained job-progress knobs from config (No magic numbers) — the live job card reads
+ *  the poll interval + heartbeat-stale threshold from here, never a hardcoded literal. */
+export interface JobProgressConfig {
+  poll_interval_seconds: number;
+  heartbeat_stale_seconds: number;
+  per_symbol_ticks: boolean;
 }
 
 export interface DataOverviewResponse {
@@ -1376,6 +1389,7 @@ export interface DataOverviewResponse {
   sources: ProviderSource[]; // J-33 import-source catalog (config-driven, env-detected availability)
   resumable_imports: ResumableImport[]; // J-34 paused imports (survive a backend restart); never a key
   unfinished_imports: UnfinishedImport[]; // J-38 unified unfinished imports (resumable + partial + failed)
+  job_progress: JobProgressConfig; // J-66 poll/heartbeat/granularity knobs (config-driven)
 }
 
 export type DataJobKind = "fetch" | "backfill" | "both" | "expand";
@@ -1398,6 +1412,16 @@ export interface JobStageTiming {
   items_processed: number;
   concurrency: number;
   per_date_seconds_sum?: number; // backfill only — the sum of per-date compute times (the serial baseline)
+  // J-66: the SERVER-computed backfill speedup figure (per_date_seconds_sum / elapsed_seconds) — the
+  // frontend only re-formats it (no client-side division). null = honest NA (a missing/zero figure).
+  speedup_factor?: number | null;
+}
+
+/** J-67: one per-date backfill failure on a `partial` job — the date that failed (others completed) and
+ *  its honest error. Never a fabricated snapshot for the failed date. */
+export interface JobDateFailure {
+  date: string;
+  error: string;
 }
 
 /** Live progress for one fetch/backfill job (polled from the in-memory job registry). `status` is
@@ -1426,6 +1450,16 @@ export interface DataJob {
   omitted_total?: number; // J-35 expand: EXACT omitted count (the list below is bounded)
   omitted?: ExpandOmission[]; // J-35 expand: bounded [{symbol, reason}] — never fabricated
   stages?: Record<string, JobStageTiming>; // J-53: per-stage timings (only EXECUTED stages present)
+  // J-66: fine-grained, honest live-progress fields. `current_activity` names what is being worked on
+  // RIGHT NOW (the symbol/chunk during fetch, the date being scanned during backfill); `last_progress_at`
+  // is the heartbeat (the UI renders "updated Ns ago"). Honest metadata — never fabricated.
+  current_activity?: string;
+  last_progress_at?: string | null;
+  // J-59: which pipeline stages completed (so the UI can render "failed at backfill — resumable from the
+  // backfill stage" and the resume routes correctly).
+  completed_stages?: string[];
+  // J-67: per-date backfill failures (honest error + which dates) on a `partial` job.
+  date_failures?: JobDateFailure[];
   message: string;
   errors: string[];
   started_at: string;

@@ -1229,6 +1229,41 @@ class ImportChunkingCfg(BaseModel):
         return self
 
 
+class JobProgressCfg(BaseModel):
+    """J-66 fine-grained, honest job-progress knobs (the live job card's poll/heartbeat/granularity
+    settings). EVERY polling/heartbeat/granularity number the progress instrumentation + the `/data`
+    live job card read lives here (anti-goal: No magic numbers — NO poll/heartbeat literal in the
+    frontend job card or `app.engine.data_manager`).
+
+      - `poll_interval_seconds`   — how often the `/data` live job card re-polls the job-status endpoint.
+      - `heartbeat_stale_seconds` — the "updated Ns ago" staleness threshold past which the UI flags the
+                                    job as possibly stalled (a slow-but-alive job ticks its heartbeat
+                                    under this; a genuinely stalled one does not).
+      - `per_symbol_ticks`        — tick the fetch symbols counter at per-SYMBOL completion granularity
+                                    (true) instead of per-chunk; the workers tick a thread-safe distinct-
+                                    symbol completion counter while ALL DB writes stay on the orchestrating
+                                    thread (false = per-chunk fallback).
+
+    Boot-validated: the two time knobs MUST be positive. An invalid block raises `ConfigError`, never a
+    silent default."""
+
+    model_config = ConfigDict(extra="allow")
+    poll_interval_seconds: float
+    heartbeat_stale_seconds: float
+    per_symbol_ticks: bool = True
+
+    @model_validator(mode="after")
+    def _validate(self) -> "JobProgressCfg":
+        positive = {
+            "poll_interval_seconds": self.poll_interval_seconds,
+            "heartbeat_stale_seconds": self.heartbeat_stale_seconds,
+        }
+        nonpositive = sorted(k for k, v in positive.items() if v <= 0)
+        if nonpositive:
+            raise ValueError(f"data_manager.job_progress values must be positive: {nonpositive}")
+        return self
+
+
 class DataManagerCfg(BaseModel):
     """Data Manager job limits / display caps + the import provider catalog (iter-3 / iter-21 CONSUMED,
     J-17 / J-33) + the iter-22 (J-34) chunked-import block. EVERY tunable the on-demand fetch/backfill
@@ -1256,6 +1291,7 @@ class DataManagerCfg(BaseModel):
     gap_preview: int
     run_history_limit: int
     import_chunking: ImportChunkingCfg  # J-34 chunked-import tunables (boot-validated above)
+    job_progress: JobProgressCfg  # J-66 fine-grained progress knobs (poll/heartbeat/granularity)
 
     def provider_ids(self) -> list[str]:
         """The catalog ids, in config order (the import-source vocabulary)."""

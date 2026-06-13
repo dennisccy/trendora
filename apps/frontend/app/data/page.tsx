@@ -63,14 +63,23 @@ function statusVariant(status: string): "ok" | "warn" | "danger" | "accent" | "d
       return "ok";
     case "partial":
     case "resumable":
+    case "failed_backfill": // J-59: resumable from the backfill stage (amber, distinct from a hard red fail)
       return "warn";
     case "failed":
       return "danger";
     case "running":
       return "accent";
+    case "interrupted": // J-60: an orphaned-then-swept job — a muted neutral (distinct from `failed` red)
+      return "default";
     default:
       return "default";
   }
+}
+
+/** A friendlier label for the dense status badges where the raw token reads awkwardly. */
+function statusLabel(status: string): string {
+  if (status === "failed_backfill") return "failed at backfill";
+  return status;
 }
 
 // One date authority for the whole frontend: route through the shared `formatIsoDate` (lib/dates.ts)
@@ -90,14 +99,19 @@ function fmtDuration(seconds: number): string {
   return `${m}m ${s}s`;
 }
 
-/** J-53: the backfill speedup factor read from the job's OWN timings — the sequential per-date sum
- *  divided by the parallel wall-clock. Returns null when either figure is missing/zero (honest NA —
- *  never a fabricated ratio). DISPLAY-only: the frontend re-formats two backend numbers, it computes
- *  no canonical value. */
-function speedupFactor(sumSeconds: number | undefined, elapsedSeconds: number): number | null {
-  if (sumSeconds === undefined || !Number.isFinite(sumSeconds) || sumSeconds <= 0) return null;
-  if (!Number.isFinite(elapsedSeconds) || elapsedSeconds <= 0) return null;
-  return sumSeconds / elapsedSeconds;
+/** J-66: a plain-language "updated Ns ago" heartbeat string from the job's `last_progress_at`. Pure
+ *  DISPLAY formatting (no derived figure beyond elapsed-since). Returns null when there is no timestamp.
+ *  `nowMs` is injectable for testing / a ticking clock. */
+function heartbeatAgo(lastProgressAt: string | null | undefined, nowMs: number): string | null {
+  if (!lastProgressAt) return null;
+  const then = Date.parse(lastProgressAt);
+  if (!Number.isFinite(then)) return null;
+  const secs = Math.max(0, Math.round((nowMs - then) / 1000));
+  if (secs < 1) return "updated just now";
+  if (secs < 60) return `updated ${secs}s ago`;
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  return `updated ${m}m ${s}s ago`;
 }
 
 /**
@@ -183,6 +197,13 @@ export default function DataManagerPage() {
 
   const sources: ProviderSource[] = state.kind === "ok" ? state.data.sources : [];
   const selectedSource = sources.find((s) => s.id === source);
+  // J-66: the live-job-card poll interval + the "updated Ns ago" heartbeat-stale threshold come from
+  // CONFIG (No magic numbers), served on the overview payload — never a hardcoded literal. Fall back to a
+  // safe default only before the first overview load resolves.
+  const pollIntervalMs =
+    state.kind === "ok" ? Math.max(state.data.job_progress.poll_interval_seconds, 0.1) * 1000 : 1000;
+  const heartbeatStaleSeconds =
+    state.kind === "ok" ? state.data.job_progress.heartbeat_stale_seconds : 20;
   const isExpandKind = kind === "expand";
   // Both a fetch/both AND an expand pull from a live import source (expand fetches OHLCV + a market cap).
   const isFetchKind = kind === "fetch" || kind === "both" || isExpandKind;
@@ -253,12 +274,12 @@ export default function DataManagerPage() {
         .catch(() => {
           /* transient poll error — keep polling; a persistent failure surfaces in the job card */
         });
-    }, 1000);
+    }, pollIntervalMs); // J-66: the poll cadence comes from config (No magic numbers)
     return () => {
       active = false;
       clearInterval(timer);
     };
-  }, [jobId, jobStatus, refresh, loadOverview]);
+  }, [jobId, jobStatus, refresh, loadOverview, pollIntervalMs]);
 
   const jobRunning = jobStatus === "running";
 
@@ -382,7 +403,12 @@ export default function DataManagerPage() {
               running={Boolean(jobRunning)}
               error={formError}
             />
-            <JobProgressPanel job={job} sources={sources} onResumed={onResumed} />
+            <JobProgressPanel
+              job={job}
+              sources={sources}
+              onResumed={onResumed}
+              heartbeatStaleSeconds={heartbeatStaleSeconds}
+            />
           </div>
           <UnfinishedImportsPanel
             imports={state.data.unfinished_imports}
@@ -1196,9 +1222,9 @@ function StageTimings({ job }: { job: DataJob }) {
   const backfillStage = stages.backfill;
   if (!fetchStage && !backfillStage) return null; // no executed stage yet → nothing honest to show
 
-  const speedup = backfillStage
-    ? speedupFactor(backfillStage.per_date_seconds_sum, backfillStage.elapsed_seconds)
-    : null;
+  // J-66: the speedup figure is computed SERVER-SIDE and carried in the stages payload — the frontend
+  // only re-formats it (no client-side division). null = honest NA (a missing/zero figure).
+  const speedup = backfillStage?.speedup_factor ?? null;
 
   return (
     <div className="space-y-2 rounded-md border border-border bg-surface-2 p-3" data-testid="stage-timings">
@@ -1257,14 +1283,74 @@ function StageTimings({ job }: { job: DataJob }) {
   );
 }
 
+/** A 1s ticking clock (Date.now()) used ONLY while a job is live so the "updated Ns ago" heartbeat
+ *  advances even between polls. Stops ticking (no interval) when the job is no longer running. */
+function useNow(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [active]);
+  return now;
+}
+
+/** J-66: the live current-activity line + "updated Ns ago" heartbeat for the job card. The activity line
+ *  names what is being worked on right now (the date being scanned during backfill, the symbol/chunk
+ *  during fetch — server-supplied, rendered verbatim); the heartbeat (from `last_progress_at`) ticks so a
+ *  slow-but-alive job is visually distinct from a stalled one (it turns amber past the config
+ *  `heartbeat_stale_seconds`). Hidden when there is nothing live to show (no activity + no heartbeat). */
+function JobLiveActivity({
+  job,
+  heartbeatStaleSeconds,
+}: {
+  job: DataJob;
+  heartbeatStaleSeconds: number;
+}) {
+  const live = job.status === "running" || job.status === "resumable";
+  const now = useNow(live);
+  const ago = heartbeatAgo(job.last_progress_at, now);
+  const activity = job.current_activity?.trim();
+  if (!activity && !ago) return null;
+
+  // staleness: the seconds-since-last-progress vs the config threshold (amber when stale + still running).
+  const then = job.last_progress_at ? Date.parse(job.last_progress_at) : NaN;
+  const staleSecs = Number.isFinite(then) ? (now - then) / 1000 : 0;
+  const stale = live && job.status === "running" && staleSecs > heartbeatStaleSeconds;
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 text-xs" data-testid="job-live-activity">
+      {activity ? (
+        <span className="num text-text-muted" data-testid="current-activity">
+          {activity}
+        </span>
+      ) : (
+        <span />
+      )}
+      {ago ? (
+        <span
+          className={cn("num", stale ? "text-warn" : "text-text-faint")}
+          data-testid="job-heartbeat"
+          title={stale ? "No progress for a while — the job may be stalled" : "The job is making progress"}
+        >
+          {ago}
+          {stale ? " · possibly stalled" : ""}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
 function JobProgressPanel({
   job,
   sources,
   onResumed,
+  heartbeatStaleSeconds,
 }: {
   job: DataJob | null;
   sources: ProviderSource[];
   onResumed: (importId: string) => void;
+  heartbeatStaleSeconds: number;
 }) {
   if (!job) {
     return (
@@ -1310,6 +1396,33 @@ function JobProgressPanel({
           <span className="num text-xs text-text-muted">{job.message}</span>
         </div>
 
+        {/* J-66: the current-activity line ("scanning 2021-03-11 (12/22)" / the symbol being fetched) +
+            the "updated Ns ago" heartbeat — so a slow-but-alive job is visually distinct from a stalled
+            one. Rendered only while there is something live to show (a running/resumable job). */}
+        <JobLiveActivity job={job} heartbeatStaleSeconds={heartbeatStaleSeconds} />
+
+        {/* J-67: per-date failure detail on a `partial` job — which dates failed (honest error), while the
+            rest are reported complete. Never a fabricated snapshot for a failed date. */}
+        {job.date_failures && job.date_failures.length > 0 ? (
+          <div className="rounded-md border border-warn bg-surface-2 p-3" data-testid="date-failures">
+            <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-warn">
+              <AlertTriangle className="h-3.5 w-3.5" aria-hidden />
+              {job.date_failures.length} date{job.date_failures.length === 1 ? "" : "s"} failed (the rest
+              completed — no snapshot was fabricated for a failed date)
+            </p>
+            <ul className="max-h-40 space-y-0.5 overflow-y-auto text-xs">
+              {job.date_failures.map((f, i) => (
+                <li key={`${f.date}-${i}`} className="flex items-baseline justify-between gap-3">
+                  <span className="num font-medium text-text">{fmtDate(f.date)}</span>
+                  <span className="num truncate text-right text-warn" title={f.error}>
+                    {f.error}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
         {paused ? (
           <div
             className="space-y-2 rounded-md border border-warn bg-surface-2 p-3"
@@ -1339,8 +1452,11 @@ function JobProgressPanel({
           <div className="space-y-1">
             <div className="flex items-center justify-between text-xs text-text-muted">
               <span>Symbols fetched</span>
-              <span className="num">
-                {job.symbols_ok + job.symbols_failed}/{job.symbols_total}{" "}
+              <span className="num" data-testid="symbols-counter">
+                {/* J-66: the symbols figure counts DISTINCT symbols and never exceeds its total (the
+                    `318/159` defect is gone). Defensively clamp the DISPLAY too so a stale/odd payload can
+                    never render a value above the total. */}
+                {Math.min(job.symbols_ok + job.symbols_failed, job.symbols_total)}/{job.symbols_total}{" "}
                 <span className="text-pos">({job.symbols_ok} ok</span>
                 <span className="text-neg">, {job.symbols_failed} failed)</span>
               </span>
@@ -1571,7 +1687,7 @@ function UnfinishedImportsPanel({
               <div className="space-y-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={statusVariant(imp.status)} className="capitalize">
-                    {imp.status}
+                    {statusLabel(imp.status)}
                   </Badge>
                   {imp.chunk_total ? (
                     <Badge variant="warn" className="num gap-1">
@@ -2149,8 +2265,13 @@ function RunHistoryPanel({ runs }: { runs: DataRun[] }) {
                 {run.start && run.end ? `${fmtDate(run.start)} → ${fmtDate(run.end)}` : "—"}
               </td>
               <td className="px-3 py-2">
-                <Badge variant={statusVariant(run.status)} className="num">
-                  {run.status}
+                <Badge variant={statusVariant(run.status)} className="num" data-testid="run-status">
+                  {/* J-60: running (in-flight from job start) / interrupted (orphan swept on boot) read
+                      alongside the terminal ok/partial/failed states. */}
+                  {run.status === "running" ? (
+                    <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden />
+                  ) : null}
+                  {statusLabel(run.status)}
                 </Badge>
               </td>
               <td className="num px-3 py-2 text-right">
