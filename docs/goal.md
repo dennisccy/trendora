@@ -1922,6 +1922,95 @@ The backend is the single source of truth; every page only displays server-compu
     a committed regression test exercises a multi-date parallel backfill end-to-end **including the
     failure-isolation path**, offline.
 
+- **J-68: Multi-month / multi-year backfill no longer crashes with a 'committed' session — the real Data Manager reproduction (hardens J-67)**
+  - Steps:
+    1. In **Data Manager** (`/data`), with the committed seed loaded (158 symbols, real bars
+       2021-01-04 → 2026-05-29), start a **backfill** job over a multi-month range — the reported
+       repro is **2026-01-01 → 2026-06-13**; the full-history case is the entire seed range (~1,350
+       trading dates). Also run the same range as a `both` job (fetch+backfill) per J-59.
+    2. The job runs to completion — snapshots + forward returns for every pending date — and does
+       **not** fail with `This session is in 'committed' state; no further SQL can be emitted within
+       this transaction` (the J-67 fix did not hold for this orchestration path).
+    3. Force one date to fail (offline fault injection): that date is recorded failed with its error
+       while the OTHER dates still complete; the job ends in an honest `partial`.
+    4. Re-run the same range — create-once fills only what is missing (no UNIQUE crash, nothing
+       overwritten — J-41/J-53).
+    5. Run the scanner / forward-returns / immutability / no-lookahead suites — green, outputs identical.
+  - Acceptance: the exact reported reproduction — a `backfill` (and `both`) job spanning
+    **2026-01-01 → 2026-06-13** through the Data Manager — **completes without the 'committed'-session
+    failure**, and the **full seed range (2021-01-04 → 2026-05-29, ~1,350 dates) also completes**. The
+    root cause is fixed at the source: no Session is left in a committed/invalid state mid-orchestration
+    — in particular the per-date persist MUST NOT `rollback()` a session that its two internal commits
+    (`scanner.persist_run_payload` + `forward_testing.backfill_run_forward_returns`) have already
+    committed (mechanism open: a fresh session per date, orchestrator-owned transaction boundaries, or
+    per-worker sessions with a single serialized writer — SQLite writes stay serialized + transactional).
+    Per-date failure isolation, create-once idempotency (J-41), honest `partial`, and honest progress
+    (J-66) are preserved; canonical outputs stay **byte-identical** to the sequential engine. A committed
+    **regression test reproduces the ACTUAL job-orchestration path** (driving the same `_do_backfill`
+    orchestration the UI job uses) over a multi-month range end-to-end **offline**, including the
+    failure-isolation branch — explicitly closing the gap that let J-67 pass while the live job still
+    crashed.
+
+- **J-69: Removing imported data is range-scoped and accident-proof (amends J-39)**
+  - Steps:
+    1. In **Data Manager → Remove imported data**, note there is **no symbols field** — removal is
+       scoped purely by date range, covering **all symbols** in that range.
+    2. Enter a **From** and a **To** date; **both are required** — the Remove button stays disabled
+       until both are valid (guards against an accidental delete-everything).
+    3. Click **Remove**: a confirmation appears with a concise warning plus the **impact counts** —
+       removable (user-added) bar count, affected-symbol count, and cascade-removed snapshot count —
+       with the date range restated. It does **not** render the long per-symbol list, so the Confirm
+       button is always visible.
+    4. Click **Confirm**: only user-added bars in the range are deleted (committed seed stays protected
+       — J-39), dependent snapshots/forward-returns cascade, and coverage + the availability heatmap
+       refresh to reflect the removal.
+  - Acceptance: the Remove panel has **no symbols input**; **both From and To are mandatory** (Remove
+    disabled until both are valid ISO dates); the destructive request is sent **range-only / all symbols**
+    (`{start, end}`, no `symbols`) to the existing `POST /api/data/remove`; the confirmation renders
+    **counts only** (removable bar count, affected-symbol count, cascade snapshot count, restated range)
+    sourced from the real backend computation (single source — never fabricated) and a **persistently
+    visible Confirm button** — never a long symbol list that pushes the button off-screen; committed-seed
+    protection and the seed-safe refusal/`reason` (J-39) are unchanged; after Confirm, coverage and the
+    availability heatmap reflect the removal.
+
+- **J-70: The per-date availability heatmap is readable and compact**
+  - Steps:
+    1. In **Data Manager**, open the **Per-date availability** heatmap.
+    2. Every date number is **clearly legible** against its cell — including empty / low-density cells,
+       which previously rendered dark-on-dark-grey.
+    3. Months are ordered **most-recent first** (nearest to furthest back), top to bottom.
+    4. The grid shows **two months per row** on a normal-width viewport, so more history is visible
+       without excessive scrolling.
+  - Acceptance: the day-number text meets a legible contrast against **every** density-bucket background
+    (buckets 0–5), fixing the dark-text-on-dark-grey empty/low-density cells, using the existing design
+    tokens (no hardcoded hex); month bands render in **descending** order (newest month first); month
+    bands lay out **two-up per row** at standard widths (gracefully collapsing to one column on narrow
+    screens). Cells still encode the same density buckets and read the same `GET /api/data/availability`
+    payload — descriptive only, no canonical value recomputed (coherence preserved).
+
+- **J-71: Step the as-of date with the keyboard (extends J-43 / the global as-of calendar)**
+  - Steps:
+    1. Open the **as-of** date control (top of page) so the calendar popover is showing.
+    2. Press **←** to move the as-of date to the **previous available** snapshot date (one trading day
+       older) and **→** to move to the **next available** date (one day newer).
+    3. The as-of date updates **live** as you press — pages re-read at the new date — and the popover
+       stays open so you can keep scrubbing; the viewed month follows the selected date.
+    4. At the oldest available date **←** is a no-op; at the latest **→** is a no-op (rests at Latest).
+  - Acceptance: while the as-of calendar popover is open, **ArrowLeft** selects the previous (older)
+    available snapshot date and **ArrowRight** the next (newer) one, stepping **only among dates that
+    actually have snapshots** (never an arbitrary calendar ±1 onto a non-trading / no-snapshot day);
+    each step **drives the single global as-of control** and stays in sync with the `?asof` URL param
+    (J-43), introducing **no page-local or second date state** (Anti-goal: *exactly one date selector*);
+    stepping is **bounded** (no movement past the oldest/newest available date); the calendar's viewed
+    month follows the selection; Escape / click / Enter still close/commit as today. Handling lives on
+    the existing calendar dialog's `onKeyDown` (which already handles Escape) — **no global window
+    listener**.
+
+**J-68 … J-71 are NOT data-dependent.** All four are buildable and verifiable offline — J-68 with the
+committed seed + injected fault injection (the multi-date orchestration path), J-69 deterministically
+(like J-39, no provider), and J-70/J-71 as seed-driven UI. None may be recorded blocked-NA for provider
+reasons, and none may halt the loop.
+
 **J-55 … J-67 are NOT data-dependent.** Every journey above is buildable and verifiable offline: the
 UI journeys (J-55–J-58, J-61, J-62, J-64, J-65) run against the committed seed; the jobs journeys
 (J-59, J-60, J-66, J-67) are provable with injected/counting providers + fault injection; J-63 derives
