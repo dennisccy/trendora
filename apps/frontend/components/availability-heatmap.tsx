@@ -54,6 +54,19 @@ const BUCKET_CLASS: Record<DensityBucket, string> = {
   5: "bg-accent border border-accent",
 };
 
+/** Per-bucket day-number text token (design tokens only — NO hardcoded hex). The faint/low buckets (0–3)
+ *  sit on dark or low-opacity-accent backgrounds, so the day number must be the high-contrast `text-text`
+ *  (near-white) to stay legible — the old `text-text-muted` rendered dark-on-dark on buckets 0–1. The
+ *  bright buckets (4–5) are saturated teal, so dark `text-bg` reads clearly on them. */
+const BUCKET_TEXT_CLASS: Record<DensityBucket, string> = {
+  0: "text-text",
+  1: "text-text",
+  2: "text-text",
+  3: "text-text",
+  4: "text-bg",
+  5: "text-bg",
+};
+
 const LEGEND: { bucket: DensityBucket; label: string }[] = [
   { bucket: 0, label: "none" },
   { bucket: 1, label: "<25%" },
@@ -124,8 +137,11 @@ export function AvailabilityHeatmap({
   // Shift-click range anchor: the first day of an in-progress range selection.
   const [anchor, setAnchor] = useState<string | null>(null);
 
+  // Month bands DESCENDING (newest month first, top→bottom) so the most recent history is visible without
+  // scrolling. Each month's INTERNAL day order stays ascending (a calendar reads left→right, top→bottom).
   const bands = useMemo(
-    () => (state.kind === "ok" ? toMonthBands(state.data.cells) : []),
+    () =>
+      state.kind === "ok" ? toMonthBands(state.data.cells).slice().reverse() : [],
     [state],
   );
 
@@ -239,9 +255,10 @@ export function AvailabilityHeatmap({
             </div>
           </div>
 
-          {/* Month-banded calendar grid (weeks as rows, Monday-first). Scrolls within the card on a tall
-              history; never truncates a covered day. */}
-          <div className="max-h-[28rem] space-y-5 overflow-auto pr-1">
+          {/* Month-banded calendar grid (weeks as rows, Monday-first). Two month bands per row on a normal
+              viewport (collapsing to one column on narrow screens) so more history is visible without
+              excessive scrolling. Scrolls within the card on a tall history; never truncates a covered day. */}
+          <div className="grid max-h-[28rem] grid-cols-1 gap-x-5 gap-y-5 overflow-auto pr-1 md:grid-cols-2">
             {bands.map((band) => (
               <div key={band.key} data-testid="availability-month" data-month={band.label}>
                 <div className="mb-1 num text-xs font-medium text-text-muted">{band.label}</div>
@@ -279,9 +296,9 @@ export function AvailabilityHeatmap({
                         onBlur={() => setHovered((h) => (h?.date === cell.date ? null : h))}
                         onClick={(e) => handleDayClick(cell, e.shiftKey)}
                         className={cn(
-                          "relative flex h-7 items-center justify-center rounded-sm text-[10px] tabular-nums transition",
+                          "relative flex h-7 items-center justify-center rounded-sm text-[10px] font-medium tabular-nums transition",
                           BUCKET_CLASS[bucket],
-                          bucket >= 4 ? "text-bg" : "text-text-muted",
+                          BUCKET_TEXT_CLASS[bucket],
                           "hover:brightness-110 hover:ring-1 hover:ring-accent",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
                           (selected || isAnchor) && "ring-2 ring-accent ring-offset-1 ring-offset-surface",

@@ -14,10 +14,17 @@ import { formatIsoDate } from "@/lib/dates";
  * state. The only local state is the VIEWED MONTH (a UI navigation cursor — which month panel is on
  * screen), which is not an as-of value and never serializes anywhere.
  *
- * Month navigation spans the stored history: the left/right arrows clamp to the oldest and newest stored
- * months (you can always reach the oldest stored month). Fully keyboard operable: the month-nav buttons,
- * "Latest", and each selectable day are real `<button>`s in tab order; arrows + Enter operate them; the
- * parent closes the popover on Escape / outside-click and on a selection.
+ * Month navigation spans the stored history: the left/right month-nav buttons clamp to the oldest and
+ * newest stored months (you can always reach the oldest stored month). Fully keyboard operable: the
+ * month-nav buttons, "Latest", and each selectable day are real `<button>`s in tab order; Enter operates
+ * them; the parent closes the popover on Escape / outside-click and on a selection.
+ *
+ * J-71 — ArrowLeft / ArrowRight on the open popover SCRUB the single global as-of one AVAILABLE snapshot
+ * date at a time (older / newer), live, via the existing `onSelect`→`setAsOf` — bounded at the oldest and
+ * newest (newest == "Latest", i.e. `onSelect(null)`). The popover stays OPEN while scrubbing; only Escape /
+ * a day click / a click outside close it. The viewed-month cursor follows the landing date. This adds NO
+ * second date state and uses NO global window/document listener — it lives on this dialog's `onKeyDown`
+ * (the dialog is focused on open via `data-autofocus`), preserving the J-18 single-global-as-of invariant.
  *
  * Dates render `yyyy-MM-dd` via the shared formatter (J-42). All date math is UTC (no locale/timezone
  * shift), matching `lib/dates`.
@@ -103,12 +110,40 @@ export function AsOfCalendar({
     return { day, iso, selectable: selectable.has(iso) };
   });
 
-  // Keyboard: Escape closes; ArrowLeft/Right move months (when the focus isn't on a day, the parent's
-  // day buttons handle their own focus order naturally via Tab).
+  // Move the SINGLE GLOBAL as-of (J-71) one AVAILABLE snapshot date in `dir` (-1 = older/ArrowLeft,
+  // +1 = newer/ArrowRight), bounded at the ends. Steps only among `sortedAsc` (never an arbitrary ±1
+  // calendar day onto a non-snapshot day), drives the EXISTING `onSelect`→`setAsOf` (no second date
+  // state), keeps the popover OPEN (no onClose), and slides the local month-view cursor to follow the
+  // landing date. `null`/latest is treated as the newest index, matching the day buttons' Latest semantics.
+  function stepAsOf(dir: -1 | 1) {
+    if (sortedAsc.length === 0) return;
+    const lastIdx = sortedAsc.length - 1;
+    // Current index: the selected date's index, or the newest (last) when at Latest / unknown.
+    const curIdx = asOf ? sortedAsc.indexOf(asOf) : lastIdx;
+    const fromIdx = curIdx < 0 ? lastIdx : curIdx;
+    const nextIdx = fromIdx + dir;
+    if (nextIdx < 0 || nextIdx > lastIdx) return; // bounded: no-op at the oldest/newest
+    const landing = sortedAsc[nextIdx];
+    const isLatest = landing === newest; // newest available == "Latest" (clear the as-of)
+    onSelect(isLatest ? null : landing);
+    // Slide the viewed month (the only local state — a UI cursor, NOT an as-of value) to the landing month.
+    const dt = parseIsoUTC(landing);
+    setView({ year: dt.getUTCFullYear(), month0: dt.getUTCMonth() });
+  }
+
+  // Keyboard: Escape closes; ArrowLeft/Right scrub the global as-of one available snapshot date (J-71),
+  // staying open so the user can keep scrubbing live. Handled here on the dialog's onKeyDown (the dialog
+  // is focused on open via data-autofocus) — NO global window/document listener (J-18 invariant).
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Escape") {
       e.stopPropagation();
       onClose();
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      stepAsOf(-1);
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      stepAsOf(1);
     }
   }
 

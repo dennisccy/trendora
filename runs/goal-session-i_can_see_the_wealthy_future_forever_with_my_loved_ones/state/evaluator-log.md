@@ -298,3 +298,18 @@ next (smallest backend surface) or the J-59/J-60/J-66/J-67 jobs cluster.
 **Reasoning:** J-68 (multi-month backfill 'committed'-session crash fixed at the source — per-date write session owned by the orchestrator) and J-69 (range-only accident-proof removal — symbols input gone, both dates mandatory, counts-only modal with always-visible Confirm) both ship and pass. The evaluator independently re-ran the binding suites green: 19 (J-68 committed-session regression + J-69 remove-range) + 31 (J-53/J-67/J-41/J-59 parallel + jobs-pipeline) + 29 (scanner immutability/no-lookahead + no-magic-numbers + engine remove/scope/cascade) = 79 tests, 0 failures; and live-verified the J-69 endpoint (single-ended/empty -> 400, valid range-only -> 200 with seed-protected counts). Coherence COHERENCE-PASS. NOT GOAL_ACHIEVED because J-70 and J-71 (Must-have journeys appended in commit aefc120) are explicitly deferred to iter-16 and are not yet built (status unknown) — tractable frontend-only work remains.
 
 **Next-step recommendation:** iter-16 (lean) — build J-70 (availability-heatmap: day-number contrast across density buckets 0-5 using design tokens / no hardcoded hex, descending month order, two-up-per-row layout on availability-heatmap.tsx) and J-71 (as-of calendar keyboard ArrowLeft/ArrowRight stepping among snapshot dates, bounded, driving the single global as-of via the existing dialog onKeyDown — NO global window listener, NO second date state per the J-18 anti-goal) on asof-calendar.tsx. Both are pure frontend on the committed seed; verify with browser-QA + tsc --noEmit. After they pass, the appended J-68..J-71 scope is complete and the next evaluation should be GOAL_ACHIEVED. EVIDENCE HYGIENE: instruct browser-QA to md5sum the evidence dir first and re-capture any blank/byte-identical close-ups full-viewport (iter-15 had a cluster of blank 6830-byte modal/button captures).
+
+## Iteration 16 — goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16
+
+**Date:** 2026-06-14T15:30:00Z
+**Verdict:** GOAL_ACHIEVED
+**Depth dispatched:** lean
+**Journey deltas:**
+- Newly passing: J-70, J-71
+- Newly failing: none
+- Regressed: none
+- Anti-goal violations: none
+
+**Reasoning:** The two final appended frontend-polish Must-haves passed on the committed seed. J-70 (availability-heatmap legibility) verified via a directly-viewed 665KB full-viewport capture: descending months (65 bands, 2026-05 first via `.slice().reverse()`), two-up `md:grid-cols-2` grid, and a new `BUCKET_TEXT_CLASS` using design tokens only (`text-text`/`text-bg`, grep-confirmed no hardcoded hex). J-71 (keyboard as-of stepping) verified via the cross-month capture showing a live historical re-read (2021-02-01, regime panel 33.07) with the popover staying open and the month cursor following; the J-18 critical invariant was source-scrutinized — `asof-calendar.tsx` has exactly one `useState` (the month cursor), no global window/document keydown listener, and `stepAsOf` drives the existing `onSelect`→`setAsOf` (provider untouched). All six required-still-passing journeys (J-61/J-62/J-43/J-13/J-18/J-42) re-confirmed PASS, backend diff empty, coherence COHERENCE-PASS. Every buildable Must-have is now passing/already_passing; only the goal-sanctioned non-vetoing data-walled J-22/J-23/J-24 remain unknown.
+
+**Next-step recommendation:** halt — goal achieved. The J-68..J-71 appended scope is complete; J-22/J-23/J-24 stay honest blocked-NA (non-halting per goal.md) and would need a one-shot offline real-data fetch, not build work, to close.

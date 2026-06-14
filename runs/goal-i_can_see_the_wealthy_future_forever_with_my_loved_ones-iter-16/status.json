@@ -1,0 +1,19 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-06-14T13:49:17Z",
+  "started_at": "2026-06-14T13:49:17Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/frontend/components/availability-heatmap.tsx",
+    "apps/frontend/components/asof-calendar.tsx",
+    "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16-dev.md",
+    "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16-frontend.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "browser-qa-agent to verify J-70 (heatmap legibility, descending months, two-up layout) and J-71 (ArrowLeft/ArrowRight as-of scrubbing) against committed seed; required-still-passing J-61/J-62/J-43/J-13/J-18/J-42 smoke",
+  "notes": "LEAN frontend-only iteration. J-70: availability-heatmap.tsx per-bucket day-number text token (BUCKET_TEXT_CLASS, design tokens only — text-text on faint buckets 0-3, text-bg on bright 4-5), descending month order (bands reversed, internal day order ascending), two-up responsive grid (grid-cols-1 md:grid-cols-2). J-71: asof-calendar.tsx onKeyDown extended with ArrowLeft/ArrowRight stepping the single global as-of among available snapshot dates via existing onSelect->setAsOf, bounded, popover stays open, view cursor follows landing date, e.preventDefault on handled arrows. NO second date state, NO global window listener, NO hardcoded hex. Frontend typecheck clean: cd apps/frontend && npx tsc --noEmit -> EXIT=0. No backend change; GET /api/data/availability and as-of resolution read verbatim. All heatmap data-testid/data-* attributes and asof-calendar testids preserved."
+}
