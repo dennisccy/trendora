@@ -473,10 +473,24 @@ def _validate_remove_scope(
     symbols: Optional[list[str]],
     start: Optional[date_cls],
     end: Optional[date_cls],
+    *,
+    require_range: bool = False,
 ) -> None:
     """Reject an invalid removal scope explicitly (the API maps the `ValueError` to a 4xx — never a silent
     no-op or accidental wipe): an empty scope (neither symbols nor a range), an inverted range
-    (start > end), or an unknown symbol (named but with NO stored bars anywhere)."""
+    (start > end), or an unknown symbol (named but with NO stored bars anywhere).
+
+    J-69 — when `require_range=True` (the accident-proof destructive UI flow on `/data`) the scope is
+    range-only over ALL symbols: BOTH `start` and `end` are REQUIRED and a single-ended or empty date
+    scope is rejected explicitly (so a slip can never delete everything). This guard runs FIRST so a
+    single-ended range is rejected before the generic empty-scope check. The internal symbol-scoped
+    pull-missing path keeps `require_range=False` (its default), so it is unaffected."""
+    if require_range and (start is None or end is None):
+        # the destructive range-only flow: both dates mandatory (guards against accidental delete-everything).
+        raise ValueError(
+            "a date range removal requires BOTH a start and an end date "
+            "(both From and To are mandatory)"
+        )
     if not symbols and start is None and end is None:
         raise ValueError("removal scope is empty: provide symbols and/or a date range (start/end)")
     if start is not None and end is not None and start > end:
@@ -561,13 +575,18 @@ def _build_removal_plan(
     start: Optional[date_cls],
     end: Optional[date_cls],
     seed_dir: Optional[str | Path],
+    *,
+    require_range: bool = False,
 ) -> dict:
     """The shared read-only analysis behind both the preview and the destructive removal: validate the
     scope, classify in-scope bars into removable (user-added) vs not-removable (committed seed), and
     determine the cascade. Returns a plan dict carrying the removable bars (objects, for the deleter), the
     committed-seed breakdown, the cascade run-ids/dates/counts, and a `refused` flag (+ reason) when the
-    scope is wholly committed seed (nothing removable). This function DELETES NOTHING."""
-    _validate_remove_scope(session, symbols, start, end)
+    scope is wholly committed seed (nothing removable). This function DELETES NOTHING.
+
+    `require_range` (J-69) enforces the accident-proof destructive range-only contract (both dates
+    mandatory) — see `_validate_remove_scope`."""
+    _validate_remove_scope(session, symbols, start, end, require_range=require_range)
     windows = load_seed_windows(seed_dir)
     bars = _scope_bars(session, symbols, start, end)
     removable, not_removable = _classify_scope(bars, windows)
@@ -626,14 +645,20 @@ def preview_removal(
     start: Optional[date_cls] = None,
     end: Optional[date_cls] = None,
     seed_dir: Optional[str | Path] = None,
+    require_range: bool = False,
 ) -> dict:
     """READ-ONLY confirm-preview for a removal scope (J-39): returns exactly what WOULD be removed —
     removable `(symbol, date)` bar count + range + symbols, the not-removable committed-seed breakdown
     (per symbol, reason `"committed seed"`), and the cascade of dependent snapshot/forward-return rows —
     DELETING NOTHING (the DB is byte-unchanged afterward). A wholly-committed-seed scope returns
     `refused=True` with an explicit reason. Raises `ValueError` for an empty/inverted/unknown scope (the
-    API maps it to 4xx)."""
-    plan = _build_removal_plan(session, config, symbols, start, end, seed_dir)
+    API maps it to 4xx).
+
+    `require_range` (J-69): when True (the destructive UI flow) BOTH `start` and `end` are mandatory and a
+    single-ended/empty date scope is rejected with an explicit `ValueError` (→ 4xx)."""
+    plan = _build_removal_plan(
+        session, config, symbols, start, end, seed_dir, require_range=require_range
+    )
     return _public_plan(plan)
 
 
@@ -680,6 +705,7 @@ def remove_data(
     end: Optional[date_cls] = None,
     seed_dir: Optional[str | Path] = None,
     engine: Optional[Engine] = None,
+    require_range: bool = False,
 ) -> dict:
     """DESTRUCTIVE, seed-safe, cascade-consistent removal (J-39). Deletes ONLY the user-added `DailyPrice`
     rows in scope (whole-row deletes — the committed seed is excluded and un-deletable) and cascade-removes
@@ -689,9 +715,13 @@ def remove_data(
     identity holds: a fully-covered snapshot is left UNTOUCHED). It FABRICATES NOTHING and never recomputes
     a score/return — it only deletes. The removal is recorded on the append-only `DataProviderRun` audit
     log (the audit trail is NOT deleted). A wholly-committed-seed scope is REFUSED (`ValueError`); raises
-    `ValueError` for an empty/inverted/unknown scope too (the API maps these to 4xx)."""
+    `ValueError` for an empty/inverted/unknown scope too (the API maps these to 4xx).
+
+    `require_range` (J-69): when True (the destructive UI flow) BOTH `start` and `end` are mandatory and a
+    single-ended/empty date scope is rejected with an explicit `ValueError` (→ 4xx) — the accident-proof
+    range-only contract."""
     cfg = config or get_config()
-    plan = _build_removal_plan(session, cfg, symbols, start, end, seed_dir)
+    plan = _build_removal_plan(session, cfg, symbols, start, end, seed_dir, require_range=require_range)
     if plan["refused"]:
         raise ValueError(plan["reason"])
 
@@ -1572,6 +1602,31 @@ def _record_date_failure(prog: JobProgress, d: date_cls, error: str) -> None:
         prog.date_failures.append({"date": d.isoformat(), "error": error})
 
 
+def _cleanup_orphan_run(session: Session, d: date_cls) -> None:
+    """J-68 — drop a half-written snapshot for `d` (whole-row): the create-once helpers COMMIT the
+    `ScannerRun` (+ its children) before the forward-return INSERT, so a forward-return failure can leave
+    a committed-but-childless run. This deletes that orphan run + its `ScannerResult` / `SectorScoreRow` /
+    `ThemeScoreRow` children + any partial `ForwardReturn` rows, so a failed date leaves NO inconsistent
+    snapshot and the create-once re-run is clean (no stranded run → no UNIQUE crash). It runs on the
+    per-date write session AFTER its `rollback()` (a fresh transaction) and commits its own delete; if the
+    cleanup itself fails it is swallowed (best-effort — the failed date is already recorded) so it never
+    masks the original per-date error nor aborts the stage."""
+    try:
+        session.rollback()  # clear the failed transaction state on THIS per-date session before cleanup
+        run = scanner.get_run_for_date(session, d)
+        if run is None:
+            return  # nothing committed for this date (the run INSERT itself rolled back) — nothing to clean
+        run_id = run.id
+        session.execute(delete(ForwardReturn).where(ForwardReturn.run_id == run_id))
+        session.execute(delete(ScannerResult).where(ScannerResult.run_id == run_id))
+        session.execute(delete(SectorScoreRow).where(SectorScoreRow.run_id == run_id))
+        session.execute(delete(ThemeScoreRow).where(ThemeScoreRow.run_id == run_id))
+        session.execute(delete(ScannerRun).where(ScannerRun.id == run_id))
+        session.commit()
+    except Exception:  # noqa: BLE001 — best-effort cleanup; never mask the original failure or abort the stage
+        session.rollback()
+
+
 def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engine) -> None:
     """For each in-range trading day with bars but NO snapshot, create the immutable snapshot then INSERT
     its realized forward returns (bars > D). No scan/return math is re-implemented and no snapshot is
@@ -1588,12 +1643,17 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
     from the figures this populates: `prog._backfill_per_date_seconds_sum` accumulates each date's
     compute time (the sequential baseline the parallel wall-clock beats).
 
-    J-67 — per-date FAILURE ISOLATION + transaction soundness: a single date's compute OR persist failure
-    is caught, recorded per-date (honest error), and the orchestrating session is ROLLED BACK to a clean
-    state so the REMAINING dates still write (the failure never leaves the session emitting SQL in an
-    invalid 'committed' state, and never aborts the whole stage). The stage ends `partial` (graded by the
-    caller from `prog.date_failures`); no snapshot is fabricated for a failed date. The worker sessions are
-    independent read-only connections (never shared mid-transaction); only THIS thread writes."""
+    J-67 / J-68 — per-date FAILURE ISOLATION + transaction soundness: every per-date WRITE runs on a
+    FRESH session the orchestrator opens and owns for exactly that date (its own transaction boundary), so
+    a single date's compute OR persist failure is caught, recorded per-date (honest error), and rolls back
+    ONLY that date's own session — never the shared orchestrating `session` (which never writes in this
+    stage). This removes the multi-month `'committed'`-state crash (the old code rolled back the SHARED
+    session after an earlier date had committed on it). The per-date persist is ATOMIC: the create-once
+    helpers commit the run before the forward-return INSERT, so on a forward-return failure the half-written
+    run is cleaned up whole-row (`_cleanup_orphan_run`) — a failed date leaves NO inconsistent snapshot and
+    the create-once re-run is clean. The stage ends `partial` (graded by the caller from
+    `prog.date_failures`); no snapshot is fabricated for a failed date. The worker sessions are independent
+    read-only connections (never shared mid-transaction); only THIS thread writes."""
     trading_days = _trading_days(session, cfg)
     snapshot_dates = set(session.exec(select(ScannerRun.asof_date)).all())
     targets = [d for d in trading_days if prog.start <= d <= prog.end and d not in snapshot_dates]
@@ -1608,29 +1668,67 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
     def _persist(d: date_cls, payload: Optional[dict], per_date_seconds: float) -> None:
         """Apply ONE date's result on the orchestrating thread (serial, in date order): persist the
         snapshot (or read the existing one — create-once) then INSERT its forward returns. The ONLY
-        place a write happens. The pre-filled SHARED cache on THIS session keeps the forward-return reads
-        (and the rare race-fallback compute) load-once. A per-date failure here is isolated by the caller
-        (it ROLLs BACK the session and records the date failed), so a single bad date never aborts the
-        stage nor strands the session in an invalid 'committed' state."""
+        place a write happens.
+
+        J-68 — the per-date write runs on a FRESH write session that the orchestrator OPENS AND OWNS for
+        exactly this date (its own transaction boundary), NOT on the shared orchestrating `session`. This
+        is the fix for the multi-month `'committed'`-state crash: `scanner.persist_run_payload` commits
+        (scanner.py:205) and `forward_testing.backfill_run_forward_returns` commits (forward_testing.py:289)
+        on whatever session they receive; previously both committed on the SHARED `session`, so when a
+        LATER date's persist failed the isolation handler's `session.rollback()` ran on that already-
+        committed shared session — the invalid 'committed' state. With a per-date session, a failure
+        rolls back only THAT date's own session (see `_persist_isolated`), the shared orchestrating
+        session is NEVER rolled back after a commit, and the already-committed earlier dates are untouched.
+
+        Writes stay serialized + transactional: only THIS thread opens per-date write sessions, one date
+        at a time, in date order (the parallel path fans out only the read-only COMPUTE). The shared
+        pre-filled read-only bar cache is ATTACHED to the per-date session (keyed by `id(session)`), so
+        the forward-return reads (and the rare race-fallback compute) stay load-once-per-job — the
+        canonical output is byte-identical to the prior shared-session path (the engines read the same
+        bars). The session is committed by the inner create-once helpers; this context just owns its
+        lifetime and guarantees it is closed."""
         prog._backfill_per_date_seconds_sum += per_date_seconds
         prog.tick(f"scanning {d.isoformat()} ({prog.dates_done + 1}/{prog.dates_total})")
-        if payload is None:
-            run = scanner.get_run_for_date(session, d)  # already present (worker fast-path) — read, don't write
-            if run is None:  # a concurrent date created it between the worker check and here — compute now
-                run = scanner.run_scan(session, d, cfg)
-        else:
-            run = scanner.persist_run_payload(session, d, payload, cfg)  # create-once; recomputes nothing
-        result = forward_testing.backfill_run_forward_returns(session, run, cfg)  # INSERT-only, bars > D
+        # J-68: a FRESH write session per date — the orchestrator owns this date's transaction boundary,
+        # so a failure here can only ever roll back THIS session (never the shared, already-committed one).
+        with Session(eng) as wsession, attach_shared_cache(wsession, shared_cache):
+            existed_before = scanner.get_run_for_date(wsession, d) is not None
+            try:
+                if payload is None:
+                    run = scanner.get_run_for_date(wsession, d)  # already present (worker fast-path) — read, don't write
+                    if run is None:  # a concurrent date created it between the worker check and here — compute now
+                        run = scanner.run_scan(wsession, d, cfg)
+                else:
+                    run = scanner.persist_run_payload(wsession, d, payload, cfg)  # create-once; recomputes nothing
+                result = forward_testing.backfill_run_forward_returns(wsession, run, cfg)  # INSERT-only, bars > D
+            except Exception:  # noqa: BLE001 — make the per-date persist ATOMIC (run + forward returns)
+                # J-68: the snapshot run + its forward returns are ONE per-date transaction. The inner
+                # create-once helpers COMMIT the run before the forward-return INSERT, so a forward-return
+                # failure leaves a committed-but-childless run. If this call CREATED the run (it did not
+                # exist before), delete that orphan WHOLE-ROW (run + its children + any partial forward
+                # returns) so the failed date leaves NO half-written snapshot — the create-once re-run is
+                # then clean (no stranded ScannerRun → no UNIQUE crash) and nothing inconsistent persists.
+                # A run that ALREADY existed before this call is left untouched (immutable; not ours to drop).
+                if not existed_before:
+                    _cleanup_orphan_run(wsession, d)
+                raise
         prog.snapshots_created += 1
         prog.forward_returns_inserted += result["rows_inserted"]
         prog.dates_done += 1
         prog.message = f"snapshots {prog.dates_done}/{prog.dates_total} dates"
 
     def _persist_isolated(d: date_cls, payload: Optional[dict], secs: float, compute_error: Optional[str]) -> None:
-        """J-67 — write ONE date with failure isolation: if the worker COMPUTE already failed
+        """J-67 + J-68 — write ONE date with failure isolation: if the worker COMPUTE already failed
         (`compute_error` set), record it and skip the write; else attempt the persist and, on a write
-        failure, ROLL BACK the orchestrating session (clearing any half-applied SQL so it never lands in
-        an invalid 'committed' state) and record the date failed — the remaining dates still write."""
+        failure, record the date failed — the remaining dates still write.
+
+        J-68: the per-date write owns its OWN session (`_persist` opens one inside its `with` block),
+        which is rolled back and closed automatically when that block exits on the exception. We therefore
+        do NOT (and must not) `rollback()` the shared orchestrating `session` here — that shared session
+        never wrote in this stage and rolling it back after an earlier date had committed on a per-date
+        session is exactly the invalid 'committed'-state path this fix removes. A failed date leaves no
+        half-written snapshot (its per-date transaction was rolled back whole), so the create-once re-run
+        is clean (no stranded ScannerRun → no UNIQUE crash)."""
         if compute_error is not None:
             prog._backfill_per_date_seconds_sum += secs
             _record_date_failure(prog, d, compute_error)
@@ -1638,7 +1736,8 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
         try:
             _persist(d, payload, secs)
         except Exception as exc:  # noqa: BLE001 — isolate this date; the stage continues
-            session.rollback()  # clear any half-applied write so the session is usable for the next date
+            # the per-date write session (owned inside `_persist`) is already rolled back + closed by its
+            # `with` block; the shared orchestrating session is left untouched (never rolled back post-commit).
             _record_date_failure(prog, d, str(exc))
 
     # J-46/J-53: pre-fill ONE shared bar cache on the orchestrating session (every symbol's full series

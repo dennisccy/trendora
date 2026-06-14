@@ -67,13 +67,18 @@ class ResumeRequest(BaseModel):
 
 
 class RemoveScope(BaseModel):
-    """POST body for the seed-safe Remove-data preview/execute (J-39). The scope is `symbols` and/or a
-    `[start, end]` date range — these are ACTION PARAMETERS (which bars to remove), NOT a viewing as-of
-    control (the global as-of switcher is untouched). At least one of symbols / range must be supplied (an
-    empty scope is rejected with 400 — never an accidental wipe). The committed seed is never deletable:
-    bars inside the committed-seed windows are excluded and a wholly-seed scope is refused. This body
-    carries NO provider key — removal is a purely local destructive metadata operation (J-33 carry: the
-    error surface is key-free)."""
+    """POST body for the seed-safe Remove-data preview/execute (J-39 / J-69). These are ACTION PARAMETERS
+    (which bars to remove), NOT a viewing as-of control (the global as-of switcher is untouched).
+
+    J-69 — the destructive UI flow on `/data` is scoped PURELY by the `[start, end]` date range over ALL
+    symbols: BOTH `start` and `end` are MANDATORY (the endpoints pass `require_range=True`); a single-ended
+    or empty date scope is rejected with an honest 400 (guards against an accidental delete-everything).
+    The `symbols` field remains in the schema for the internal symbol-scoped path (the engine still accepts
+    it when `require_range=False`), but the J-69 destructive flow sends `{start, end}` only — no `symbols`.
+
+    The committed seed is never deletable: bars inside the committed-seed windows are excluded and a
+    wholly-seed scope is refused. This body carries NO provider key — removal is a purely local destructive
+    metadata operation (J-33 carry: the error surface is key-free)."""
 
     symbols: Optional[list[str]] = None
     start: Optional[date_cls] = None
@@ -277,8 +282,11 @@ def remove_preview(payload: RemoveScope, session: Session = Depends(get_session)
     The scope is ACTION PARAMETERS (which bars to remove), NOT the global as-of viewing control."""
     cfg = get_config()
     try:
+        # J-69: the destructive UI flow is RANGE-ONLY — both From and To are mandatory; a single-ended or
+        # empty date scope is rejected with an honest 400 (never an accidental delete-everything).
         return data_manager.preview_removal(
             session, cfg, symbols=payload.symbols, start=payload.start, end=payload.end,
+            require_range=True,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -296,9 +304,11 @@ def remove_data_endpoint(payload: RemoveScope, session: Session = Depends(get_se
     no key (J-33 carry)."""
     cfg = get_config()
     try:
+        # J-69: the destructive UI flow is RANGE-ONLY — both From and To are mandatory; a single-ended or
+        # empty date scope is rejected with an honest 400 (never an accidental delete-everything).
         return data_manager.remove_data(
             session, cfg, symbols=payload.symbols, start=payload.start, end=payload.end,
-            engine=get_engine(),
+            engine=get_engine(), require_range=True,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

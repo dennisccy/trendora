@@ -1955,7 +1955,6 @@ function DismissControl({
  *  destructive removal; afterward the page re-reads coverage and the as-of switcher reflects the smaller
  *  dataset. The "dialog" is an in-page modal built from Card + an overlay (there is no Dialog primitive). */
 function RemoveDataPanel({ onRemoved }: { onRemoved: () => void }) {
-  const [symbolsText, setSymbolsText] = useState("");
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [preview, setPreview] = useState<RemovePreview | null>(null);
@@ -1963,34 +1962,30 @@ function RemoveDataPanel({ onRemoved }: { onRemoved: () => void }) {
   const [removing, setRemoving] = useState(false); // destructive removal in-flight
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<RemovePreview | null>(null);
-  // J-42: the two optional date fields are validated ISO text inputs — empty is allowed (optional), but
-  // a NON-EMPTY value must be a valid `yyyy-MM-dd` before a preview can run.
-  const [startValid, setStartValid] = useState(true);
-  const [endValid, setEndValid] = useState(true);
+  // J-69: removal is scoped PURELY by date range over all symbols — there is no symbols input. BOTH date
+  // fields are MANDATORY (guarding against an accidental delete-everything): each must be a non-empty,
+  // valid `yyyy-MM-dd` before a preview is allowed. IsoDateInput reports a required-but-empty field as
+  // invalid, so an empty end (or start) keeps the button disabled.
+  const [startValid, setStartValid] = useState(false);
+  const [endValid, setEndValid] = useState(false);
   const onStartValid = useCallback((v: boolean) => setStartValid(v), []);
   const onEndValid = useCallback((v: boolean) => setEndValid(v), []);
 
   function buildScope(): RemoveScope {
-    const symbols = symbolsText
-      .split(/[\s,]+/)
-      .map((s) => s.trim().toUpperCase())
-      .filter(Boolean);
-    const scope: RemoveScope = {};
-    if (symbols.length > 0) scope.symbols = symbols;
-    if (start) scope.start = start;
-    if (end) scope.end = end;
-    return scope;
+    // J-69: range-only — both dates, no symbols. The destructive flow never sends a symbols field.
+    return { start, end };
   }
 
-  const hasScope = symbolsText.trim().length > 0 || Boolean(start) || Boolean(end);
-  // Both date fields must be valid ISO (or empty) before a preview is allowed.
-  const datesValid = startValid && endValid;
+  // J-69: both date fields must be non-empty AND valid ISO before a preview is allowed (the range is
+  // mandatory). IsoDateInput's required-empty → invalid handles the "both filled" gate.
+  const datesValid = Boolean(start) && Boolean(end) && startValid && endValid;
 
   async function handlePreview() {
-    if (!hasScope || loading || !datesValid) return;
-    // J-42 guard: never preview/POST a malformed date (the button is also disabled while invalid).
-    if ((start && !isValidIsoDate(start)) || (end && !isValidIsoDate(end))) {
-      setError("Enter dates as yyyy-MM-dd (e.g. 2026-05-01).");
+    if (loading || !datesValid) return;
+    // J-42/J-69 guard: never preview/POST a malformed or single-ended date range (the button is also
+    // disabled until both ends are valid ISO).
+    if (!isValidIsoDate(start) || !isValidIsoDate(end)) {
+      setError("Enter both dates as yyyy-MM-dd (e.g. 2026-05-01).");
       return;
     }
     setLoading(true);
@@ -2014,7 +2009,6 @@ function RemoveDataPanel({ onRemoved }: { onRemoved: () => void }) {
       const result = await executeDataRemoval(buildScope());
       setPreview(null);
       setDone(result);
-      setSymbolsText("");
       setStart("");
       setEnd("");
       onRemoved(); // re-read coverage + refresh the as-of switcher (smaller dataset)
@@ -2027,44 +2021,31 @@ function RemoveDataPanel({ onRemoved }: { onRemoved: () => void }) {
 
   return (
     <Card className="p-0" data-testid="remove-data">
-      <PanelTitle hint="Delete imported (user-added) data beyond the committed seed, by symbol and/or date range. A confirm-preview shows exactly what will be removed first. These date inputs are action parameters — they do NOT change the global as-of viewing date. The committed seed is never deletable.">
+      <PanelTitle hint="Delete imported (user-added) data beyond the committed seed by date range — both From and To are required (no symbol entry). A confirm-preview shows exactly what will be removed first. These date inputs are action parameters — they do NOT change the global as-of viewing date. The committed seed is never deletable.">
         Remove imported data
       </PanelTitle>
       <div className="space-y-4 p-4">
         <div className="flex flex-wrap items-end gap-3">
-          <label className="flex flex-col gap-1 text-xs text-text-muted">
-            Symbols (optional, comma/space separated)
-            <input
-              type="text"
-              value={symbolsText}
-              onChange={(e) => setSymbolsText(e.target.value)}
-              aria-label="Symbols to remove"
-              placeholder="e.g. NVDA AMD"
-              className={cn(FIELD, "num w-64")}
-            />
-          </label>
           <IsoDateInput
-            label="From date (optional)"
+            label="From date (required)"
             value={start}
             onChange={setStart}
             onValidityChange={onStartValid}
             ariaLabel="Removal start date"
-            optional
             testId="remove-start-date"
           />
           <IsoDateInput
-            label="To date (optional)"
+            label="To date (required)"
             value={end}
             onChange={setEnd}
             onValidityChange={onEndValid}
             ariaLabel="Removal end date"
-            optional
             testId="remove-end-date"
           />
           <button
             type="button"
             onClick={handlePreview}
-            disabled={!hasScope || loading || !datesValid}
+            disabled={loading || !datesValid}
             data-testid="remove-preview-button"
             className={cn(
               "inline-flex h-9 items-center gap-2 rounded-md border border-neg px-4 text-sm font-semibold text-neg",
@@ -2078,10 +2059,10 @@ function RemoveDataPanel({ onRemoved }: { onRemoved: () => void }) {
           </button>
         </div>
         <p className="text-xs text-text-faint">
-          Removal deletes only user-added bars (fetched beyond the committed seed) and cascade-removes the
-          snapshots and forward returns derived solely from them, leaving the dataset consistent. The
-          committed seed is never deletable; a seed-only scope is refused. Nothing is fabricated — it only
-          deletes.
+          Removal is scoped by date range over all symbols — both From and To are required. It deletes only
+          user-added bars (fetched beyond the committed seed) and cascade-removes the snapshots and forward
+          returns derived solely from them, leaving the dataset consistent. The committed seed is never
+          deletable; a seed-only range is refused. Nothing is fabricated — it only deletes.
         </p>
         {error && !preview ? (
           <p role="alert" className="flex items-center gap-2 text-sm text-neg">
@@ -2121,10 +2102,13 @@ function RemoveDataPanel({ onRemoved }: { onRemoved: () => void }) {
   );
 }
 
-/** The J-39 confirm-preview "dialog" — an in-page modal (Card + a fixed overlay; there is no Dialog
- *  primitive in this project). It enumerates the removable bars + range, the not-removable committed-seed
- *  breakdown with reason, and the cascade of dependent snapshot/forward-return rows BEFORE any deletion.
- *  A refused (wholly-seed) scope disables the destructive confirm and shows the explicit reason. */
+/** The J-39/J-69 confirm-preview "dialog" — an in-page modal (Card + a fixed overlay; there is no Dialog
+ *  primitive in this project). J-69 — the body is COUNTS-ONLY: the removable (user-added) bar count, the
+ *  affected-symbol count, a summary protected-seed bar count, and the cascade snapshot / forward-return
+ *  counts, with the date range restated — NO long enumerated symbol lists (which could push the Confirm
+ *  button off-screen for a large range). The body scrolls within a capped max-height while the footer
+ *  action row stays OUTSIDE that scroll region, so the Confirm button is persistently visible for any
+ *  range. A refused (wholly-seed) scope disables the destructive confirm and shows the explicit reason. */
 function RemoveConfirmModal({
   preview,
   removing,
@@ -2162,7 +2146,9 @@ function RemoveConfirmModal({
             <X className="h-4 w-4" aria-hidden />
           </button>
         </div>
-        <div className="space-y-3 p-4 text-sm">
+        {/* J-69: the body scrolls within a capped max-height so the footer (Confirm) stays visible for
+            any range; it is COUNTS-ONLY — no long enumerated symbol/snapshot lists. */}
+        <div className="max-h-[55vh] space-y-3 overflow-y-auto p-4 text-sm">
           {refused ? (
             <div
               className="flex items-start gap-2 rounded-md border border-warn bg-surface-2 p-3 text-xs text-warn"
@@ -2174,16 +2160,25 @@ function RemoveConfirmModal({
           ) : (
             <div className="rounded-md border border-neg bg-surface-2 p-3" data-testid="remove-removable">
               <p className="text-xs uppercase tracking-wide text-text-faint">Will be removed (user-added)</p>
-              <p className="num mt-1 text-lg font-semibold text-neg">
-                {preview.removable_bar_count} bars
-              </p>
-              <p className="num text-xs text-text-muted">
-                {preview.removable_symbol_count} symbol{preview.removable_symbol_count === 1 ? "" : "s"}
-                {preview.removable_first ? ` · ${fmtDate(preview.removable_first)} → ${fmtDate(preview.removable_last)}` : null}
-              </p>
-              {preview.removable_symbols.length > 0 ? (
-                <p className="num mt-1 truncate text-xs text-text-faint" title={preview.removable_symbols.join(", ")}>
-                  {preview.removable_symbols.join(", ")}
+              <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1">
+                <div>
+                  <p className="num text-lg font-semibold text-neg" data-testid="remove-bar-count">
+                    {preview.removable_bar_count}
+                  </p>
+                  <p className="text-xs text-text-faint">bars</p>
+                </div>
+                <div>
+                  <p className="num text-lg font-semibold text-neg" data-testid="remove-symbol-count">
+                    {preview.removable_symbol_count}
+                  </p>
+                  <p className="text-xs text-text-faint">
+                    affected symbol{preview.removable_symbol_count === 1 ? "" : "s"}
+                  </p>
+                </div>
+              </div>
+              {preview.removable_first ? (
+                <p className="num mt-2 text-xs text-text-muted" data-testid="remove-range">
+                  range: {fmtDate(preview.removable_first)} → {fmtDate(preview.removable_last)}
                 </p>
               ) : null}
             </div>
@@ -2197,16 +2192,6 @@ function RemoveConfirmModal({
               <p className="num mt-1 text-sm text-text-muted">
                 {preview.not_removable_bar_count} bars kept
               </p>
-              <ul className="mt-1 space-y-0.5 text-xs text-text-muted">
-                {preview.not_removable_by_symbol.map((line) => (
-                  <li key={line.symbol} className="flex items-baseline justify-between gap-3">
-                    <span className="num font-medium text-text">{line.symbol}</span>
-                    <span className="num text-text-faint">
-                      {line.bar_count} bars · {line.reason}
-                    </span>
-                  </li>
-                ))}
-              </ul>
             </div>
           ) : null}
 
@@ -2215,20 +2200,10 @@ function RemoveConfirmModal({
               <p className="text-xs uppercase tracking-wide text-text-faint">
                 Cascade — dependent rows removed with the bars
               </p>
-              <p className="num mt-1 text-sm text-text-muted">
+              <p className="num mt-1 text-sm text-text-muted" data-testid="remove-cascade-counts">
                 {preview.cascade.snapshot_count} snapshot{preview.cascade.snapshot_count === 1 ? "" : "s"} ·{" "}
                 {preview.cascade.forward_return_count} forward returns
               </p>
-              {preview.cascade.snapshot_dates.length > 0 ? (
-                <p
-                  className="num mt-1 truncate text-xs text-text-faint"
-                  title={preview.cascade.snapshot_dates.map(fmtDate).join(", ")}
-                >
-                  dates: {preview.cascade.snapshot_dates.map(fmtDate).join(", ")}
-                </p>
-              ) : (
-                <p className="mt-1 text-xs text-text-faint">No dependent snapshots — only bars are removed.</p>
-              )}
               <p className="mt-2 text-xs text-text-faint">
                 Snapshots are removed whole-row (never overwritten in place); a snapshot still holding all its
                 bars is left untouched.

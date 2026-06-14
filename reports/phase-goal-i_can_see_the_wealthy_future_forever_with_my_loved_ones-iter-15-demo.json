@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
+  "base_url": "http://localhost:3835",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Data Manager",
+      "narration": "The Data Manager at /data is your control center for all imported market data. Every section — coverage stats, the availability heatmap, the fetch panel, run history, and the new remove tool — loads cleanly on one page.",
+      "point_out": "Look for the 'Data Manager' heading and the row of panels beneath it, including 'Remove imported data' toward the bottom.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Remove imported data" }
+    },
+    {
+      "n": 2,
+      "title": "Remove panel: only two date fields",
+      "narration": "The Remove imported data panel has been simplified to exactly two inputs — a From date and a To date. The old free-text Symbols box is gone, making it impossible to accidentally scope a removal to the wrong tickers.",
+      "point_out": "Notice there is no 'Symbols' field anywhere in the panel — just From, To, and the Preview removal button.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Remove imported data" }
+    },
+    {
+      "n": 3,
+      "title": "Preview button disabled until both dates are filled",
+      "narration": "The Preview removal button stays grayed out until both a From and a To date carry a valid calendar date. Filling in only one field is not enough — the guard prevents you from launching a half-specified removal.",
+      "point_out": "The Preview removal button should appear disabled (grayed out) right now with the fields empty.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "css": "[data-testid='remove-start-date']" }, "text": "2025-02-01" },
+      "expect": { "text": "Preview removal" }
+    },
+    {
+      "n": 4,
+      "title": "Button enables the moment both dates are valid",
+      "narration": "The moment you complete the To date with a valid ISO date, the Preview removal button activates instantly — no page reload needed. The button tracks the form state live so you always know when you are ready to proceed.",
+      "point_out": "The Preview removal button should now be active and clickable.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "css": "[data-testid='remove-end-date']" }, "text": "2025-02-28" },
+      "expect": { "text": "Preview removal" }
+    },
+    {
+      "n": 5,
+      "title": "Confirmation modal shows counts only",
+      "narration": "Clicking Preview removal opens a compact confirmation that tells you exactly what will be removed: a bar count, how many symbols are affected, how many seed bars are protected, and how many snapshots will cascade away — all as plain numbers, never a long list of ticker names.",
+      "point_out": "The modal body shows numbers like '19 bars', '1 affected symbol', and snapshot counts. There is no scrolling list of tickers.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "css": "[data-testid='remove-preview-button']" } },
+      "expect": { "text": "bars" }
+    },
+    {
+      "n": 6,
+      "title": "Remove button visible without scrolling",
+      "narration": "The Cancel and Remove buttons sit in a fixed footer outside the scrollable modal body. No matter how much detail the summary contains, the action buttons are always visible right in front of you — you never need to scroll down to find them.",
+      "point_out": "Both Cancel and the Remove button should be visible at the bottom of the modal right now, with no scrolling required.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Cancel" } },
+      "expect": { "text": "Remove imported data" }
+    },
+    {
+      "n": 7,
+      "title": "Backfill jobs run to completion without crashing",
+      "narration": "Multi-month and full-history backfill jobs now run reliably to completion. If an individual day fails, that day is isolated with its own error while every other day still finishes — the overall job reaches 'ok' or 'partial', never an unrecoverable crash.",
+      "point_out": "The Run history table should show recent jobs with 'ok' or 'partial' status — no 'error' or 'crash' entries at the job level.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Run history" }
+    },
+    {
+      "n": 8,
+      "title": "Rest of the Data page remains intact",
+      "narration": "All the other Data Manager panels — the per-date availability heatmap, dataset coverage stats, and the fetch panel — continue to work exactly as before. This iteration only touched the remove flow; nothing else regressed.",
+      "point_out": "Scroll down to confirm the availability heatmap grid, coverage stats, and fetch panel are all visible and rendering without any error banners.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Data Manager" }
+    }
+  ]
+}
