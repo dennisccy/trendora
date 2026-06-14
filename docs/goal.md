@@ -462,15 +462,21 @@ It places **no orders** and holds **no broker keys**.
 - **Dashboard** (`/`) — the daily snapshot at a glance: regime, top sectors, top themes, candidate
   counts, breadth, last-run time, evidence summary, and the **Major indexes & regime** chart
   (normalized index-ETF % lines over regime background bands, default-on behind a persisted toggle —
-  J-44).
+  J-44). Its period selector **defaults to All (full history)** (J-78).
 - **Stocks** (`/stocks`) — the Stock Leaderboard (ranked, filterable, **client-side sortable** — J-48 —
   with a **type-to-filter symbol search** (J-55) and a **Theme column + theme filter** re-displaying
   each row's served membership chips (J-56)). Rows link to Stock Detail (**opens in a new tab**, the
-  href carrying the historical `?asof` — J-54/J-50).
+  href carrying the historical `?asof` — J-54/J-50). Each row also carries **five forward-return
+  columns (1/5/10/20/60-day)** — the stock's realized forward return from the as-of date read from the
+  stored `forward_returns` table (NA at/near latest where post-bars are insufficient), sortable per
+  J-48 (J-75).
 - **Stock Detail** (`/stocks/[ticker]`) — one stock's chart (with a **1D/1h/15m/5m timeframe selector**,
   rendering the full price path **through the latest date** with an as-of marker), score breakdowns,
   theme membership, setup, reason, invalidation, and per-snapshot history. Reached from a leaderboard
-  row, not a top-nav tab.
+  row, not a top-nav tab. It also shows a **forward-return panel (1/5/10/20/60-day) for the as-of
+  date** read from the stored `forward_returns` table and matching the leaderboard (J-75), and the
+  price chart shows a **per-bar hover detail box** (date, OHLC, volume, % change, MA values) read from
+  the already-served bars (J-76).
 - **Themes** (`/themes`) — the Theme Leaderboard (ranked, with members + breadth). The member list is
   **fully expandable** (the `+n` overflow reveals every remaining member, collapsible) and each member
   ticker opens the dated Stock Detail in a **new tab** (J-57).
@@ -502,7 +508,12 @@ It places **no orders** and holds **no broker keys**.
   to an all-history aggregate; an optional **"As of date"** mode restricts every figure to snapshots
   dated ≤ the global as-of date (a point-in-time / walk-forward view bound by the single global control —
   a mode, not a second date picker). Every sample-size figure (`N=…`) is a link into **Research
-  Samples** (J-51).
+  Samples** (J-51). A **Regime × Setup × Pattern** study adds a **ranked, sortable table of
+  (regime, setup, pattern) combinations** with per-horizon forward-return stats, drilling down via the
+  same `N=` samples chips and respecting Episodes/Pooled (J-63) + the As-of mode (J-32) — derived once
+  from the same enriched event-study observation set, never recomputed (J-77). Each lab section loads
+  independently and the event-study aggregates are **derived once and cached/precomputed** for fast
+  serving (figures byte-identical — a performance property, J-72).
 - **Research Samples** (`/research/samples`) — the drill-down behind every research sample count: each
   `N=…` figure on `/research` links here, parameterized to reproduce that exact cohort (analysis kind,
   factor(s)/subject, horizon, decile/cohort, regime, sector, and the all-history vs as-of scope, as
@@ -510,7 +521,8 @@ It places **no orders** and holds **no broker keys**.
   value(s), and the realized forward return at the stated horizon. Reached from the `N=` chips (which
   open it in a **new tab** — J-65), not a top-nav tab; deep-linkable; the table is **client-side
   sortable + ticker-filterable** (J-64 — a view transform; the cohort total still equals the published
-  N); row tickers open the dated Stock Detail in a new tab (J-52).
+  N); row tickers open the dated Stock Detail in a new tab (J-52). The drill-down is **also reached
+  from the Regime × Setup × Pattern combination `N=` chips** (J-77).
 - **Data Manager** (`/data`) — grow, understand, and curate the dataset on demand: view current coverage
   with **plain-language definitions** (incl. the **universe-vs-symbols** distinction) and a **per-symbol /
   per-universe-member coverage table** (in-universe?, has-data?, date range, bar count, thin/missing
@@ -542,7 +554,9 @@ marking exactly the available snapshot dates (disabled non-selectable days, mont
 never a second control (J-62). That single state is **serialized into the URL**
 (`?asof=yyyy-MM-dd` while historical; date-free at latest) and is restored through the same global
 control on load — deep links, reloads, new tabs, and leaderboard→detail click-throughs all preserve the
-selected as-of view (J-43); the URL is the one state's serialization, never a second control. While
+selected as-of view (J-43), and that state is **hydrated synchronously from the URL on load so every
+page renders the selected date from first paint — no latest-date flash (J-73)**; the URL is the one
+state's serialization, never a second control. While
 historical, every in-app navigational link's **href itself embeds `?asof`** (J-50), so new-tab /
 middle-click / copied-link navigation preserves the date too; the stocks-leaderboard tickers, the
 Research-Samples row tickers, and the theme / sector member tickers open Stock Detail in a **new tab**
@@ -585,13 +599,20 @@ The backend is the single source of truth; every page only displays server-compu
 - **Forward-return attribution slices** (per-stock contribution, by-sector, by-rank-band, and
   distribution/hit-rate) — derived once from the stored per-observation forward returns and read
   identically wherever shown; never recomputed per request or per view.
+- **Per-stock forward returns (per symbol × horizon)** — each stock's realized forward return at
+  1/5/10/20/60 trading days, read from the stored append-only `forward_returns` table for the resolved
+  as-of run and surfaced **identically on the Stocks leaderboard, Stock Detail, and Backtest** — never
+  recomputed in an endpoint or view; only bars dated > D (no-lookahead); NA where post-bars are
+  insufficient (J-75).
 - **Lab analytics** (factor decile means + rank-IC, multi-factor **composite** cohorts — a rank-blend
   across any number of factors — regime-conditioned slices, event-study distribution / hit-rate /
   expectancy, MAE/MFE, exit-horizon, and the **risk-adjusted ratios** return/vol · return/MAE ·
   Sharpe-like) — each derived once from the stored per-observation forward returns + stored factor
   values + post-snapshot price path, read identically wherever shown; never recomputed in the API or a
   view (the Research **all-history vs as-of-date** mode only filters the observation set to snapshots ≤
-  the as-of date — it never recomputes a figure).
+  the as-of date — it never recomputes a figure). They are additionally **served from a persisted/
+  cached derived aggregate for fast loads** — the cache refreshes on dataset changes and the figures
+  stay **byte-identical** (a performance property, not a recompute) (J-72).
 - **Per-timeframe bars + timeframe-scaled indicators/patterns** (1D/1h/15m/5m) — computed once per
   `(symbol, timeframe, as-of)` and served from storage; the daily timeframe stays the canonical swing
   series.
@@ -626,7 +647,11 @@ The backend is the single source of truth; every page only displays server-compu
   deterministic **first-trigger episode collapse** come from the same observation builders (one
   membership rule; the episode collapse is a pure stored-data-only grouping); every aggregate figure
   and every samples drill-down reads the same set for the same mode, so `N=` chips and drill-down
-  totals stay count-coherent in both modes (J-63).
+  totals stay count-coherent in both modes (J-63). Each observation additionally carries its stored
+  **regime label, setup status, and pattern flags** (read verbatim — no recompute), so the **regime ×
+  setup × pattern** combination study (J-77) is a pure grouping of the SAME observation set; enriching
+  the observation with these stored fields does **not** change any existing event-study figure
+  (byte-identical).
 - **Industry-group names + memberships** — config-defined reference data (ticker → name/description;
   stock → industry groups, many-to-many like themes), read verbatim by the Sectors page and any other
   surface; no name, description, or membership is hardcoded or inferred in code (J-58).
@@ -2005,6 +2030,72 @@ The backend is the single source of truth; every page only displays server-compu
     month follows the selection; Escape / click / Enter still close/commit as today. Handling lives on
     the existing calendar dialog's `onKeyDown` (which already handles Escape) — **no global window
     listener**.
+
+- **J-72: Research page loads fast — Setup & Pattern Lab / event study no longer slow (extends J-29/J-63, J-15 load discipline)**
+  - Steps:
+    1. Visit `/research` at the latest as-of — each lab section (Factor Lab, Combination Lab, Setup & Pattern Lab) shows its own loading state immediately; no single slow fetch blocks the whole page.
+    2. The Setup & Pattern Lab (event study) results render promptly (no multi-second full-page block); re-rendering after changing subject / horizon / Episodes⇄Pooled is fast.
+    3. Confirm every figure is unchanged vs before the optimization (same numbers — a speed change only).
+    4. Run a backfill that adds snapshots (or flip the As-of vs All-history toggle, J-32) — the lab figures refresh correctly, no stale numbers.
+  - Acceptance: the Research page becomes responsive — each lab section fetches independently with its own loading/skeleton state so no one slow query blocks the page, and the event study reaches interactive without a long blocking spinner (held to J-15's warm-load discipline); the event-study computation **no longer re-scans the stored `forward_returns` once per horizon** — it is derived **once** per `(subject, mode, as-of)` over the stored per-observation forward returns (a single batched read + a run-position index computed once for all horizons + a **persisted/cached derived aggregate** are all permitted — the same "derived once… persisted/cached, and read from storage" contract the as-of evidence aggregate already uses); EVERY figure stays **byte-identical** to the current output and is still **derived once from stored data and never recomputed in the view** (low-sample cells still NA + n; survivorship-bias label persists); the cache/precompute **refreshes after dataset changes** (backfill/removal) so it is never stale; the As-of vs All-history toggle still only FILTERS the stored observation set (J-32 — no recompute, no second date state, J-18). A committed test asserts the event-study output is unchanged and that the per-horizon computation issues a single batched read rather than one scan per horizon. *(performance change only — no canonical value changes, coherence preserved.)*
+
+- **J-73: No as-of "date flash" — every page renders the selected date from first paint (extends J-43/J-18/J-50)**
+  - Steps:
+    1. On a page showing a historical as-of date D (URL carries `?asof=D`), click a top-nav link to another date-scoped page.
+    2. The destination renders its data **at D immediately** — it never first shows the latest-date values and then swaps to D a few seconds later.
+    3. Open a `?asof=D` deep link directly (and reload it, and open it in a new tab) — the first data fetch is already at D (no latest→D flash).
+    4. At the latest date (date-free URL), navigation shows the latest view with no flash; an invalid `?asof` still degrades to latest (J-43) without flashing a wrong date.
+  - Acceptance: the single global as-of state is **hydrated synchronously from the `?asof` URL param on first mount** (the URL is the serialization of the one global state, restored through the one global control — **Exactly one date selector** and J-43/J-18/J-50 unchanged; no second or page-local date state is introduced — the fix changes only *when* the one state is read: synchronously from the URL instead of after an async run-list fetch); consequently a date-scoped page's **first** data fetch uses the resolved as-of date and there is **no transient render at the latest date** when arriving at a historical `?asof` URL by any path (in-app navigation, deep link, reload, new tab / middle-click); the historical badge, `?asof` href-stamping (J-50), and the invalid→latest degrade (J-43) are unchanged; at the latest date the latest view renders with no flash.
+
+- **J-74: Availability heatmap — coverage levels are clearly differentiated and every date legible (hardens J-61/J-70)**
+  - Steps:
+    1. In **Data Manager** (`/data`), open the **Per-date availability** heatmap.
+    2. A sparsely-covered day, a moderately-covered day, and a fully-covered day are **obviously different colours** — not a near-uniform teal wash.
+    3. Every date number is **clearly legible** against its cell for **every** density bucket (0–5), including empty / low-density cells.
+    4. A **legend** maps each colour to its coverage level; hover still shows exact figures (date, symbols-with-bars / total, snapshot yes/no).
+    5. Run a fetch/backfill (or a removal) and confirm the heatmap re-reads and re-colours from the new coverage.
+  - Acceptance: the coverage scale becomes a **perceptually-ordered, clearly-separated multi-hue scale** (a low→high progression across distinct hues, e.g. slate→blue→teal→green→amber) so neighbouring density buckets are unambiguously different on the dark background — fixing the single-hue teal-opacity ramp (`bg-accent/15…/70`) where buckets 1–3 were near-identical (the reported "coverage colours are all very similar"); the **day-number text meets a legible contrast against every bucket background (0–5)**, visibly resolving the dark-text-on-dark low-density case (hardening J-70 beyond its prior bar); a **legend** documents the colour→coverage mapping; the scale is defined once from the design-token system (no scattered magic hex in individual cells); the heatmap stays **descriptive only** — it reads the same single-source `GET /api/data/availability` payload and recomputes no canonical value, still marks snapshot days distinctly, still renders honest partial coverage (a 3-of-158 day visibly distinct from a full day) and an empty DB gracefully (J-61/J-70 semantics preserved); the month ordering / two-up layout from J-70 is unchanged.
+
+- **J-75: Forward returns on the stock leaderboard and stock detail (1/5/10/20/60-day)**
+  - Steps:
+    1. Set the global as-of switcher to a historical date D that has post-D bars in the seed.
+    2. On `/stocks`, confirm each row shows **five forward-return columns — 1d / 5d / 10d / 20d / 60d** — each the stock's realized forward return from D over that many trading days, colour-graded by sign.
+    3. Sort by any forward-return column (J-48 contract) and confirm the rows re-order.
+    4. Open a stock's detail page (`/stocks/[ticker]`) — it shows the **same five** forward returns for the as-of date, matching that ticker's leaderboard values.
+    5. Return the switcher to the **latest** date — confirm all five horizons show **NA** (no post-D bars yet), not a fabricated number.
+    6. Step the as-of date progressively further back and confirm more horizons populate (1d/5d before 60d).
+  - Acceptance: on `/stocks` every row carries **five forward-return columns (1/5/10/20/60 trading days)** and the Stock Detail page shows the **same five** forward returns for the resolved as-of date; each value is the stock's realized forward return read from the **stored append-only `forward_returns` table** for the as-of run (single source of truth — the SAME data Backtest/J-21 reads, **never recomputed** in the API or the view) using **only bars dated > D** (no-lookahead); a horizon lacking enough post-snapshot bars shows **NA** — so at/near the latest date the columns are honestly NA, never fabricated (*Honest forward-test for partial windows*); the leaderboard and detail values are **identical** for the same ticker/date/horizon (J-06-style coherence); the columns are **client-side sortable** under the J-48 contract (a view transform — re-orders only, recomputes/refetches nothing; the default order stays the scanner's stored rank) and colour-graded by sign; the single global as-of control still drives the date (no page-local date picker — J-18) and the historical `?asof` href-stamping (J-50) is unchanged. The per-stock forward returns are a **new read surface of existing stored data** (added to the Stocks IA + the canonical-values contract), not a new computation.
+
+- **J-76: Stock-detail price chart — per-bar hover detail box (OHLCV + moving averages)**
+  - Steps:
+    1. Open `/stocks/[ticker]` and move the cursor across the price chart.
+    2. A small detail box tracks the crosshair showing that bar's **date, open, high, low, close, volume**, the bar's **% change**, and each rendered **moving-average value** (e.g. 20/50/150/200-DMA) at that bar.
+    3. Move into the post-as-of forward region (J-20) — the box still reads the hovered bar and labels it a forward/after-as-of bar.
+    4. Move the cursor off the chart — the box disappears.
+  - Acceptance: hovering any bar on the Stock-Detail price chart shows a detail box with that bar's date (the shared `yyyy-MM-dd` formatter, J-42), open/high/low/close, volume, % change, and each rendered moving-average's value at that bar — all read from the **already-served `/api/stocks/{ticker}/bars` data** (no extra request, no recompute; the exact values the chart plots), keyed to the chart's crosshair-move subscription (mirroring the existing `index-regime-chart` tooltip), styled with the existing design tokens, and never obscuring the as-of marker / forward divider (J-20) or the regime bands (J-45); a forward (post-as-of, display-only) bar is labelled as such and stays **visualization only — never an as-of signal** (*No lookahead*); leaving the chart hides the box. No canonical value is computed in the view (coherence preserved); the box works for every timeframe the chart renders.
+
+- **J-77: Research — returns by regime × setup × pattern (ranked combinations study)**
+  - Steps:
+    1. Visit `/research` — a new **Regime × Setup × Pattern** study section renders a **ranked, sortable table** where each row is a combination of a market-regime label, a setup status, and a detected pattern.
+    2. Each row shows the combination's forward-return stats at the selected horizon — **n, mean, median, % positive (hit-rate), expectancy, and a risk-adjusted figure** — for combinations meeting the config min-sample bar; the table is ranked (default by risk-adjusted return) and re-sortable by any column (J-48 contract).
+    3. Change the horizon, flip **Episodes ⇄ Pooled** (J-63), and toggle **As-of vs All-history** (J-32) — every figure re-points consistently.
+    4. Click a row's **N=** chip — `/research/samples` opens that exact combination cohort (new tab, J-65) and its total equals the row's n (J-51 count-coherence).
+    5. Confirm low-sample / empty combinations show **NA + n** (or are honestly held below the min-sample bar), never fabricated, and the survivorship-bias label is present.
+  - Acceptance: a new Research study section renders a **ranked, client-side-sortable table of (regime, setup, pattern) combinations** (J-48 contract — re-orders only, recomputes nothing), each row carrying the combination's per-horizon forward-return stats (n, mean, median, hit-rate, expectancy, and risk-adjusted return/vol · return/MAE) for the selected horizon; **every figure is derived once from the SAME stored event-study observation set** — the existing per-observation forward returns enriched so each observation also carries its stored **regime label, setup status, and pattern flags** (read verbatim from the stored snapshot / `ScannerResult` — **no regime/setup/pattern recomputed**, *Research lab is read-only*), grouped by the (regime, setup, pattern) key by the **same observation builders** the rest of the event study uses (one membership rule); this enrichment is **additive — existing event-study figures (J-29/J-63) stay byte-identical**; the **N= chips drill down** through the same samples machinery and the drill-down total equals the published n in both **Episodes (default) and Pooled** modes (J-63/J-51/J-64 count-coherence); the regime / setup / pattern vocabularies come from the **config-backed catalog** (no hardcoded lists — *config-driven vocabulary*); the **As-of vs All-history** toggle only FILTERS the stored observations (J-32 — no recompute, no second date state, J-18); low-sample combinations show **NA + n** (or are honestly held below the config min-sample threshold — no magic number) and the **survivorship-bias** label persists; the study is **descriptive evidence, never a fitted/predictive model**.
+
+- **J-78: Dashboard major-indexes chart defaults to the full period (All)**
+  - Steps:
+    1. Load the Dashboard (`/`) fresh (no stored preference).
+    2. The **Major indexes & regime** chart's period selector defaults to **All** (full available history), not 6M.
+    3. The other range presets (3M / 6M / 1Y / All) remain selectable and switch the view as before.
+  - Acceptance: on a fresh load the major-indexes chart's default range is **All** (full history), set via the **config** default (`index_chart.default_range`, `6M` → `all`) — a config change with **no magic number in code** and no second code path; all existing range presets still work; the chart still serves **full-history regardless of the global as-of** (J-49) so this is a default-window change only (no backend/contract change, no recompute, no second date state — J-18); the card's enable/disable toggle and its persistence are unchanged.
+
+**J-72 … J-78 are NOT data-dependent.** All seven are buildable and verifiable offline against the
+committed seed — J-72 (perf + cache over the stored forward returns), J-73 (URL-hydration UI), J-74
+(seed-driven heatmap), J-75 (forward returns from the stored `forward_returns` table for historical
+as-of dates), J-76 (seed-driven chart hover box), J-77 (a grouping of the stored event-study
+observation set, enriched with stored setup/pattern fields), and J-78 (a config default). None may be
+recorded blocked-NA for provider reasons, and none may halt the loop.
 
 **J-68 … J-71 are NOT data-dependent.** All four are buildable and verifiable offline — J-68 with the
 committed seed + injected fault injection (the multi-date orchestration path), J-69 deterministically
