@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
+  "base_url": "http://localhost:3835",
+  "iteration": 20,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Stocks leaderboard with forward-return columns",
+      "narration": "At any historical date, the leaderboard now shows five realized forward-return columns — 1d, 5d, 10d, 20d, and 60d. Cells are colour-graded green for positive returns and red for negative; where no post-date data exists the cell shows 'NA' in muted grey.",
+      "point_out": "Five new column headers ('1d', '5d', '10d', '20d', '60d') to the right of the existing score columns, with green and red values filled in for 2021-01-04.",
+      "journey": "J-75",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks?asof=2021-01-04" },
+      "expect": { "text": "1d" }
+    },
+    {
+      "n": 2,
+      "title": "Sort leaderboard by 5-day forward return",
+      "narration": "Clicking a forward-return column header instantly re-orders the leaderboard client-side — no page reload. Rows with no return data always sink to the bottom, so you never have to hunt past NA cells to find the real performers.",
+      "point_out": "The table re-orders with the highest 5d return at the top; any 'NA' rows are pushed to the bottom of the list.",
+      "journey": "J-75",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "columnheader", "name": "5d" } },
+      "expect": { "text": "5d" }
+    },
+    {
+      "n": 3,
+      "title": "Stock Detail — Realized forward returns panel",
+      "narration": "Every stock detail page now opens with a 'Realized forward returns' card above the price chart. It shows five tiles — one per horizon — colour-coded by sign, and the values match exactly what the leaderboard showed for the same date.",
+      "point_out": "The 'Realized forward returns' panel with five horizon tiles (1d, 5d, 10d, 20d, 60d) appears above the price chart, values colour-graded green or red.",
+      "journey": "J-75",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/AAPL?asof=2021-01-04" },
+      "expect": { "text": "Realized forward returns" }
+    },
+    {
+      "n": 4,
+      "title": "Forward returns show 'NA' honestly at the latest date",
+      "narration": "At the latest scan date there are no future bars yet, so all five tiles honestly say 'NA'. The panel never fabricates a number — if the data is not there, it says so clearly.",
+      "point_out": "All five horizon tiles in the 'Realized forward returns' panel display 'NA' in muted grey text — no made-up values.",
+      "journey": "J-75",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/AAPL" },
+      "expect": { "text": "Realized forward returns" }
+    },
+    {
+      "n": 5,
+      "title": "Research page — new Regime x Setup x Pattern study",
+      "narration": "Scrolling down the Research page reveals a brand-new study table: which combinations of market regime, setup status, and detected chart pattern historically produced the strongest risk-adjusted forward returns. Each row shows the group's count, mean, median, hit-rate, and expectancy.",
+      "point_out": "A new sortable table labelled 'Regime x Setup x Pattern' (or similar) appears below the existing Event Study section, with rows showing Regime, Setup, Pattern, N, Mean, Median, Hit-rate, Expectancy columns and a survivorship-bias caveat banner.",
+      "journey": "J-77",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research" },
+      "expect": { "text": "Regime" }
+    },
+    {
+      "n": 6,
+      "title": "Regime x Setup x Pattern — Episodes vs Pooled toggle",
+      "narration": "The new study has its own independent Episodes / Pooled toggle. Switching to Pooled updates only this table — the Event Study and Combination Lab sections stay exactly as they are, with no flash or reload.",
+      "point_out": "The N counts in the Regime x Setup x Pattern table change after switching to 'Pooled'; the Event Study and Combination Lab sections do not move or reload.",
+      "journey": "J-77",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Pooled" } },
+      "expect": { "text": "Pooled" }
+    },
+    {
+      "n": 7,
+      "title": "Research sections load independently",
+      "narration": "Each section of the Research page now has its own loading skeleton and fetches data on its own schedule. A slow event-study computation no longer blocks the Combination Lab or the new Regime x Setup x Pattern table — each section becomes interactive as soon as its own data is ready.",
+      "point_out": "Individual loading skeletons per section; the Combination Lab and Regime x Setup x Pattern sections become interactive before the event study finishes, with no full-page spinner blocking the page.",
+      "journey": "J-72",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research" },
+      "expect": { "text": "Regime" }
+    },
+    {
+      "n": 8,
+      "title": "Drill into a combination's samples",
+      "narration": "Clicking the N= chip on any Regime x Setup x Pattern row opens a drill-down in a new tab. The samples page heading names the exact combination — regime, setup, and pattern — and the row count matches the N published in the table.",
+      "point_out": "The samples page heading names the specific combination (e.g., 'Defensive / Avoid / none — Episodes') and the table's total row count equals the N shown in the chip.",
+      "journey": "J-77",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/samples?kind=regime-setup-pattern&regime=Defensive&setup=Avoid&pattern=none&horizon=5&view=episodes" },
+      "expect": { "text": "Defensive" }
+    }
+  ]
+}

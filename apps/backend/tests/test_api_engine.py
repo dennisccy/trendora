@@ -127,7 +127,18 @@ def test_api_stocks_equals_engine_output(loaded_engine):
         resp = client.get("/api/stocks")
     assert resp.status_code == 200
     served = resp.json()
-    assert served == expected                       # byte-for-byte: served == computed (no drift)
+    # iter-20 (J-75): the snapshot-served rows ADDITIVELY carry `forward_returns` (read verbatim from the
+    # stored forward_returns table) that the live `score_stocks` engine does not produce — a NEW serving
+    # field, NOT a recomputed canonical score. Strip it so the no-drift guarantee is asserted on the
+    # CANONICAL scored payload (every score/bucket/setup/pattern still byte-identical to the live engine).
+    stripped = {
+        **served,
+        "rows": [{k: v for k, v in row.items() if k != "forward_returns"} for row in served["rows"]],
+    }
+    assert stripped == expected                      # byte-for-byte: served canonical == computed (no drift)
+    # the additive J-75 field is present + config-driven (one entry per walk_forward horizon)
+    for row in served["rows"]:
+        assert [fr["horizon"] for fr in row["forward_returns"]] == list(cfg.walk_forward.horizons)
     assert served["benchmark"] == "SPY"
     assert len(served["rows"]) == len(cfg.universe.symbols)
 
@@ -221,7 +232,12 @@ def test_asof_serves_stored_snapshot_matching_run_detail(loaded_engine):
         stocks_asof = client.get(f"/api/stocks?as_of={historical['asof_date']}").json()
         run_detail = client.get(f"/api/runs/{historical['run_id']}").json()
     assert stocks_asof["asof_date"] == historical["asof_date"]
-    assert stocks_asof["rows"] == run_detail["rows"]  # the same stored immutable snapshot
+    # iter-20 (J-75): `/api/stocks` rows ADDITIVELY carry `forward_returns` (a NEW serving field read from
+    # the separate stored forward_returns table); the immutable `/api/runs/{id}` snapshot view deliberately
+    # does NOT (forward returns are not part of the immutable snapshot). Compare the SAME stored canonical
+    # rows modulo that additive field — they remain byte-identical (the J-13/J-15 single-source guarantee).
+    stocks_rows = [{k: v for k, v in r.items() if k != "forward_returns"} for r in stocks_asof["rows"]]
+    assert stocks_rows == run_detail["rows"]  # the same stored immutable snapshot (canonical rows)
 
 
 def test_asof_detail_equals_list_row_for_historical_date(loaded_engine):

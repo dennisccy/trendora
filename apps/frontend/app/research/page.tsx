@@ -20,6 +20,7 @@ import {
   fetchEventStudy,
   fetchFactorCombination,
   fetchFactorLab,
+  fetchRegimeSetupPattern,
   type CohortStats,
   type EventStudyHorizonRow,
   type EventStudyRegimeRow,
@@ -30,6 +31,8 @@ import {
   type FactorDecileRow,
   type FactorLabResponse,
   type RegimeEffectivenessRow,
+  type RegimeSetupPatternResponse,
+  type RegimeSetupPatternRow,
 } from "@/lib/api";
 
 type State =
@@ -151,6 +154,12 @@ export default function ResearchPage() {
           {/* J-29: the Setup & Pattern event study — its own read-only data source, reusing the page's shared
               `horizon` + the shared `asofCutoff` (no second date/horizon state) plus a subject selector. */}
           <EventStudyLab horizon={horizon} asofCutoff={asofCutoff} scope={mode} />
+
+          {/* J-77: the Regime × Setup × Pattern ranked combinations study — its OWN independent read-only
+              data source + loading state (no single slow query blocks the page, J-15/J-72), reusing the
+              page's shared `horizon` + `asofCutoff` (no second date/horizon state) plus its own Episodes ⇄
+              Pooled view toggle. */}
+          <RegimeSetupPatternLab horizon={horizon} asofCutoff={asofCutoff} scope={mode} />
         </>
       )}
     </div>
@@ -1827,5 +1836,332 @@ function EventStudySectorTable({
         </div>
       )}
     </Card>
+  );
+}
+
+// --- Regime × Setup × Pattern ranked combinations study (J-77) ------------------------------------
+/** A combination row's numeric cell: explicit "NA" (muted) when low-sample / empty / null — never a
+ *  fabricated number; otherwise the formatted value (returns + risk-adjusted ratios colour-graded; the
+ *  hit-rate stays neutral so a low rate is not painted "good"). The honest n rides the N= chip column. */
+function RspCell({
+  value,
+  stats,
+  kind,
+}: {
+  value: number | null;
+  stats: RegimeSetupPatternRow["stats"];
+  kind: "pct" | "ratio" | "rate";
+}) {
+  const na = stats.low_sample || stats.n === 0 || value === null;
+  if (na) {
+    return (
+      <span
+        className="num font-semibold text-text-muted"
+        title={stats.low_sample ? "Low sample — n below the minimum; NA, not a fabricated number" : "No observations"}
+      >
+        NA
+      </span>
+    );
+  }
+  return (
+    <span className={cn("num font-semibold", kind === "rate" ? "text-text" : returnClass(value))}>
+      {kind === "ratio" ? fmtRatio(value) : fmtPct(value)}
+    </span>
+  );
+}
+
+/** The client-side sortable column keys for the J-77 table (J-48 view-transform contract — re-orders the
+ *  already-served rows only; never refetches or recomputes a stored value). */
+type RspSortKey =
+  | "regime"
+  | "setup"
+  | "pattern"
+  | "n"
+  | "mean"
+  | "median"
+  | "pct_positive"
+  | "expectancy"
+  | "return_per_downside_dev"
+  | "return_per_mae";
+
+/** Pretty-print a pattern key (snake_case → spaced) and surface the `none` sentinel honestly. */
+function patternLabel(pattern: string, none: string): string {
+  if (pattern === none) return "— (none)";
+  return pattern.replace(/_/g, " ");
+}
+
+/** The Regime × Setup × Pattern study section (J-77): a ranked, client-side-sortable table — each row a
+ *  (regime, setup, pattern) combination with n, mean, median, hit-rate, expectancy, and BOTH downside
+ *  risk-adjusted figures at the selected horizon; default ranked by the downside risk-adjusted return (the
+ *  server order). Reuses the page's shared `horizon` + `asofCutoff` (no second date/horizon state) plus its
+ *  OWN Episodes ⇄ Pooled view toggle (J-63). Its OWN independent read-only data source + loading state, so
+ *  no single slow query blocks the page (J-15/J-72). Each row's N= chip opens the samples drill-down for
+ *  that exact combination in a NEW tab (J-65, `?asof` stamped J-50). Low-sample/empty cells show NA + n;
+ *  the survivorship-bias label persists. Re-formats the payload only — recomputes nothing. */
+function RegimeSetupPatternLab({
+  horizon,
+  asofCutoff,
+  scope,
+}: {
+  horizon: number | undefined;
+  asofCutoff: string | null;
+  scope: SampleScope;
+}) {
+  const [view, setView] = useState<EventStudyView>("episodes");
+  const [data, setData] = useState<RegimeSetupPatternResponse | null>(null);
+  const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
+  // J-48 client-side sort state. Default: the stored server order (ranked by risk-adjusted return) — a
+  // null sortKey means "as served", so the default order stays the engine's rank (a view transform only).
+  const [sortKey, setSortKey] = useState<RspSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setStatus("loading");
+    fetchRegimeSetupPattern(horizon, asofCutoff ?? undefined, view, controller.signal)
+      .then((d) => {
+        if (controller.signal.aborted) return;
+        setData(d);
+        setStatus("ok");
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setStatus("error");
+      });
+    return () => controller.abort();
+  }, [horizon, asofCutoff, view]);
+
+  const hasAny = data ? data.rows.some((r) => r.stats.n > 0) : false;
+
+  // J-48: a pure client-side stable re-order of the ALREADY-SERVED rows (never a refetch/recompute). A
+  // null metric sorts last in either direction so NA never masquerades as a top/bottom value.
+  const sortedRows = (() => {
+    if (!data) return [];
+    if (sortKey === null) return data.rows; // default = the served (risk-adjusted-ranked) order
+    const sign = sortDir === "asc" ? 1 : -1;
+    const value = (r: RegimeSetupPatternRow): string | number | null => {
+      switch (sortKey) {
+        case "regime": return r.regime;
+        case "setup": return r.setup;
+        case "pattern": return r.pattern;
+        case "n": return r.stats.n;
+        default: return r.stats[sortKey];
+      }
+    };
+    return data.rows
+      .map((row, index) => ({ row, index }))
+      .sort((a, b) => {
+        const av = value(a.row);
+        const bv = value(b.row);
+        // NA (null) always sorts last regardless of direction
+        if (av === null && bv === null) return a.index - b.index;
+        if (av === null) return 1;
+        if (bv === null) return -1;
+        let primary: number;
+        if (typeof av === "string" && typeof bv === "string") primary = av.localeCompare(bv) * sign;
+        else primary = ((av as number) - (bv as number)) * sign;
+        return primary !== 0 ? primary : a.index - b.index; // stable tie-break
+      })
+      .map((e) => e.row);
+  })();
+
+  const onSort = (key: RspSortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      // numeric columns default to descending (best-first); label columns ascending.
+      setSortDir(key === "regime" || key === "setup" || key === "pattern" ? "asc" : "desc");
+    }
+  };
+
+  return (
+    <Card className="p-0" data-testid="regime-setup-pattern-section">
+      <PanelTitle
+        hint={`Which (market regime × setup × detected pattern) combinations have historically led to the strongest (downside risk-adjusted) ${data?.horizon ?? ""}-day forward returns? A ranked grouping of the SAME stored event-study observations (one observation per stored snapshot occurrence) — descriptive evidence, never a fitted model. Columns are client-side sortable; combinations with n < ${data?.min_sample ?? "min"} show NA + n, never a fabricated number. Each N= chip opens the exact observations in a new tab.`}
+      >
+        Regime × Setup × Pattern — ranked combinations
+      </PanelTitle>
+      <div className="space-y-4 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <EventStudyViewToggle view={view} onChange={setView} />
+          <p className="max-w-md text-xs text-text-faint">
+            Re-uses the page&apos;s shared horizon selector and analysis-mode toggle above — no date control
+            of its own (the single global as-of drives any point-in-time scoping, J-18). Episodes (default)
+            counts each continuous run of a symbol once at its first trigger; Pooled counts every signal-day.
+            An observation matching two patterns appears under both; one matching none appears under
+            &ldquo;— (none)&rdquo;.
+          </p>
+        </div>
+
+        {data ? (
+          <CaveatBanner survivorship={data.survivorship_bias} descriptive={data.descriptive_caveat} />
+        ) : null}
+
+        {status === "error" ? (
+          <div className="flex items-center gap-3 rounded-md border border-neg bg-surface p-4 text-sm text-neg">
+            <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
+            <div>
+              <p className="font-medium">Backend unavailable</p>
+              <p className="text-text-muted">
+                The combinations study could not load from the API. No figures are shown rather than
+                fabricated values — confirm the backend is running and retry.
+              </p>
+            </div>
+          </div>
+        ) : !data ? (
+          <CombinationSkeleton />
+        ) : !hasAny ? (
+          <EmptyState
+            icon={Microscope}
+            title="No forward-tested combinations for this horizon"
+            description="No stored snapshot has an observation with a realized forward return at this horizon. Pick a shorter horizon — no combination is fabricated to fill the gap."
+          />
+        ) : (
+          <RegimeSetupPatternTable
+            rows={sortedRows}
+            data={data}
+            view={view}
+            scope={scope}
+            sortKey={sortKey}
+            sortDir={sortDir}
+            onSort={onSort}
+            dim={status === "loading"}
+          />
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/** A sortable column header button (J-48): clicking re-orders the already-served rows; the active column
+ *  shows its direction arrow. Kept a plain button (no nested interactive element besides the optional
+ *  glossary TermInfo, which sits OUTSIDE the button). */
+function RspSortHeader({
+  label,
+  col,
+  sortKey,
+  sortDir,
+  onSort,
+  align = "right",
+  term,
+}: {
+  label: string;
+  col: RspSortKey;
+  sortKey: RspSortKey | null;
+  sortDir: "asc" | "desc";
+  onSort: (key: RspSortKey) => void;
+  align?: "left" | "right";
+  term?: string;
+}) {
+  const active = sortKey === col;
+  return (
+    <th className={cn("px-3 py-2 font-medium", align === "right" ? "text-right" : "text-left")}>
+      <span className={cn("inline-flex items-center gap-1", align === "right" && "justify-end")}>
+        <button
+          type="button"
+          onClick={() => onSort(col)}
+          aria-label={`Sort by ${label}`}
+          data-testid={`rsp-sort-${col}`}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-sm hover:text-text",
+            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+            active ? "text-accent" : "text-text-faint",
+          )}
+        >
+          {label}
+          <span aria-hidden className="text-[10px]">{active ? (sortDir === "asc" ? "▲" : "▼") : "↕"}</span>
+        </button>
+        {term ? <TermInfo term={term} /> : null}
+      </span>
+    </th>
+  );
+}
+
+function RegimeSetupPatternTable({
+  rows,
+  data,
+  view,
+  scope,
+  sortKey,
+  sortDir,
+  onSort,
+  dim,
+}: {
+  rows: RegimeSetupPatternRow[];
+  data: RegimeSetupPatternResponse;
+  view: EventStudyView;
+  scope: SampleScope;
+  sortKey: RspSortKey | null;
+  sortDir: "asc" | "desc";
+  onSort: (key: RspSortKey) => void;
+  dim: boolean;
+}) {
+  const min = data.min_sample;
+  const horizon = data.horizon;
+  return (
+    <div className={cn("overflow-x-auto transition-opacity", dim && "opacity-60")} aria-busy={dim}>
+      <table data-testid="regime-setup-pattern-table" className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+            <RspSortHeader label="Regime" col="regime" sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="left" />
+            <RspSortHeader label="Setup" col="setup" sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="left" term="setup status" />
+            <RspSortHeader label="Pattern" col="pattern" sortKey={sortKey} sortDir={sortDir} onSort={onSort} align="left" />
+            <RspSortHeader label="n" col="n" sortKey={sortKey} sortDir={sortDir} onSort={onSort} term="n (sample size)" />
+            <RspSortHeader label="Mean" col="mean" sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            <RspSortHeader label="Median" col="median" sortKey={sortKey} sortDir={sortDir} onSort={onSort} term="median" />
+            <RspSortHeader label="Hit-rate" col="pct_positive" sortKey={sortKey} sortDir={sortDir} onSort={onSort} term="hit-rate" />
+            <RspSortHeader label="Expectancy" col="expectancy" sortKey={sortKey} sortDir={sortDir} onSort={onSort} term="expectancy" />
+            <RspSortHeader label="Return / downside-dev" col="return_per_downside_dev" sortKey={sortKey} sortDir={sortDir} onSort={onSort} term="return / downside-dev" />
+            <RspSortHeader label="Return / MAE" col="return_per_mae" sortKey={sortKey} sortDir={sortDir} onSort={onSort} term="return / MAE" />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr
+              key={`${row.regime}|${row.setup}|${row.pattern}`}
+              className="border-b border-border last:border-b-0"
+            >
+              <td className="px-3 py-2 text-text">{row.regime}</td>
+              <td className="px-3 py-2 text-text">{row.setup}</td>
+              <td className="px-3 py-2 text-text-muted">{patternLabel(row.pattern, data.pattern_none)}</td>
+              <td className="px-3 py-2 text-right">
+                <SampleLink
+                  n={row.stats.n}
+                  min={min}
+                  scope={scope}
+                  cohort={{
+                    kind: "regime-setup-pattern",
+                    horizon,
+                    regime: row.regime,
+                    setup: row.setup,
+                    pattern: row.pattern,
+                    view,
+                  }}
+                  label={`See the ${row.stats.n} observations for ${row.regime} · ${row.setup} · ${patternLabel(row.pattern, data.pattern_none)}`}
+                />
+              </td>
+              <td className="px-3 py-2 text-right">
+                <RspCell value={row.stats.mean} stats={row.stats} kind="pct" />
+              </td>
+              <td className="px-3 py-2 text-right">
+                <RspCell value={row.stats.median} stats={row.stats} kind="pct" />
+              </td>
+              <td className="px-3 py-2 text-right">
+                <RspCell value={row.stats.pct_positive} stats={row.stats} kind="rate" />
+              </td>
+              <td className="px-3 py-2 text-right">
+                <RspCell value={row.stats.expectancy} stats={row.stats} kind="pct" />
+              </td>
+              <td className="px-3 py-2 text-right">
+                <RspCell value={row.stats.return_per_downside_dev} stats={row.stats} kind="ratio" />
+              </td>
+              <td className="px-3 py-2 text-right">
+                <RspCell value={row.stats.return_per_mae} stats={row.stats} kind="ratio" />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

@@ -38,10 +38,12 @@ from __future__ import annotations
 import json
 from collections import defaultdict
 from datetime import date as date_cls
+from datetime import datetime, timezone
 from math import ceil, sqrt
 from statistics import mean, median
 from typing import Optional
 
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.config import Config, get_config, parse_factor_source
@@ -51,7 +53,7 @@ from app.engine.forward_testing import (
     _mean_or_none,
 )
 from app.engine.setups import ALL_STATUSES
-from app.models import ForwardReturn, ScannerResult, ScannerRun
+from app.models import EventStudyCache, ForwardReturn, ScannerResult, ScannerRun
 
 # The honest "descriptive, not predictive / universe-relative" caveat carried on every Factor-Lab
 # payload alongside the (reused, single-source) survivorship-bias label (anti-goals: Research lab is
@@ -707,6 +709,22 @@ def subject_catalog(cfg: Config) -> list[dict]:
     return subjects
 
 
+def pattern_keys(cfg: Config) -> list[str]:
+    """The ordered, config-driven detected-pattern keys (`config.patterns` keys — vcp /
+    pullback_to_rising_dma / flat_base_breakout). The SAME vocabulary `subject_catalog` derives the
+    pattern subjects from, so a config-added pattern flows into the J-77 study with NO code change (no
+    hardcoded pattern list anywhere)."""
+    return list(cfg.patterns.model_dump())
+
+
+def _stored_pattern_flags(res: ScannerResult, keys: list[str]) -> dict[str, bool]:
+    """The stored detected-pattern mirror flags for ONE result, read VERBATIM (J-77): `{pattern_key:
+    bool}` from each `is_<key>` column (the SAME `by_<name>` stored-mirror convention `_subject_member`
+    / `forward_testing` already read), for the config-driven `keys`. Recomputes no pattern — no hardcoded
+    list. Used to enrich each event-study observation additively."""
+    return {key: bool(getattr(res, f"is_{key}")) for key in keys}
+
+
 def _subject_member(res: ScannerResult, subject: dict) -> bool:
     """Whether a stored result belongs to the subject's pooled cohort, read VERBATIM from the snapshot
     (never re-classified): a SETUP subject pools `scanner_results.setup_status == key`; a PATTERN subject
@@ -739,8 +757,12 @@ def _event_study_members(
     fr_rows = session.exec(fr_stmt).all()
     fr_by_run_symbol = {(fr.run_id, fr.symbol): fr for fr in fr_rows}
     runs_with_fr = sorted({fr.run_id for fr in fr_rows})
+    # explicit ascending id order: a TOTAL deterministic member order shared with the batched J-72
+    # builder (`_event_study_members_by_horizon`), so the two produce byte-identical per-horizon lists.
     results = (
-        session.exec(select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr))).all()
+        session.exec(
+            select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr)).order_by(ScannerResult.id)
+        ).all()
         if runs_with_fr else []
     )
     run_rows = (
@@ -748,6 +770,8 @@ def _event_study_members(
         if runs_with_fr else []
     )
     regime_by_run = {run.id: run.regime_label for run in run_rows}  # stored regime label, read VERBATIM
+    # iter-20 (J-77): the config-driven pattern keys resolved ONCE for this build (no per-row get_config).
+    p_keys = pattern_keys(get_config())
 
     members: list[dict] = []
     for res in results:
@@ -761,8 +785,83 @@ def _event_study_members(
             "return": fr.realized_return, "mae": fr.mae, "mfe": fr.mfe,
             "regime": regime_by_run.get(res.run_id),  # stored regime label (read verbatim)
             "sector": res.sector,                     # stored sector (read verbatim)
+            # iter-20 (J-77) ADDITIVE enrichment: the observation's STORED setup status + pattern mirror
+            # flags, read VERBATIM from `scanner_results` (the SAME `is_<pattern>` mirrors `_subject_member`
+            # / `forward_testing` already read) — never recomputed. PURELY ADDITIVE: every existing
+            # event-study figure (J-29 / J-63) and the existing samples drill-downs ignore these keys, so
+            # they stay byte-identical. The regime×setup×pattern study (J-77) groups by these stored fields.
+            "setup_status": res.setup_status,
+            "patterns": _stored_pattern_flags(res, p_keys),
         })
     return members
+
+
+def _event_study_members_by_horizon(
+    session: Session, subject: dict, horizons: list[int], as_of: Optional[date_cls] = None
+) -> dict[int, list[dict]]:
+    """The read-only per-observation pools for (subject, EVERY horizon in `horizons`) built from a SINGLE
+    batched read (J-72 perf): ONE `ForwardReturn` SELECT covering all configured horizons (`horizon IN
+    horizons`), ONE `ScannerResult` SELECT, and ONE `ScannerRun` SELECT — replacing the per-horizon
+    re-scan (`_event_study_members` once per horizon, one `ForwardReturn` scan each). The returned
+    `{horizon: [members]}` is BYTE-IDENTICAL per horizon to calling `_event_study_members(session,
+    subject, h, as_of)` in a loop (the SAME join, the SAME member shape + enrichment, the SAME insertion
+    order — results iterated once, each appended to its horizon's list keyed by the run-symbol pair). It
+    recomputes NO return / excursion / score / regime / pattern.
+
+    `as_of` (J-32) scopes ALL horizons' pools to snapshots dated <= D (the SAME single membership filter);
+    `as_of=None` adds NO clause -> byte-identical all-history."""
+    fr_stmt = select(ForwardReturn).where(ForwardReturn.horizon.in_(horizons))
+    if as_of is not None:
+        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
+            ScannerRun.asof_date <= as_of
+        )
+    fr_rows = session.exec(fr_stmt).all()
+    # (horizon, run_id, symbol) -> ForwardReturn (one row per the unique constraint) for the batched join
+    fr_by_h_run_symbol: dict[int, dict[tuple[int, str], ForwardReturn]] = {h: {} for h in horizons}
+    runs_with_fr_set: set[int] = set()
+    for fr in fr_rows:
+        fr_by_h_run_symbol[fr.horizon][(fr.run_id, fr.symbol)] = fr
+        runs_with_fr_set.add(fr.run_id)
+    runs_with_fr = sorted(runs_with_fr_set)
+    # explicit ascending id order — matches `_event_study_members` so per-horizon lists are byte-identical.
+    results = (
+        session.exec(
+            select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr)).order_by(ScannerResult.id)
+        ).all()
+        if runs_with_fr else []
+    )
+    run_rows = (
+        session.exec(select(ScannerRun).where(ScannerRun.id.in_(runs_with_fr))).all()
+        if runs_with_fr else []
+    )
+    regime_by_run = {run.id: run.regime_label for run in run_rows}
+    p_keys = pattern_keys(get_config())
+
+    # IMPORTANT byte-identity note: `_event_study_members(h)` derives `runs_with_fr` (and thus the
+    # `results` iteration order) from ONLY the rows that exist AT THAT horizon. So a run that has rows at
+    # horizon 60 but not horizon 1 still yields the SAME per-horizon member lists here, because membership
+    # is decided per-horizon by the `fr is None` check below — a result whose (run, symbol) has no row at
+    # horizon h simply contributes nothing at h (n=0), exactly as the per-horizon builder does. The
+    # `results` set here is the UNION across horizons, but each horizon's members are filtered to that
+    # horizon's stored rows, and the per-result ordering (by `ScannerResult.id`) matches the single-query
+    # ordering the per-horizon builder produced from the same `run_id IN (...)` predicate.
+    members_by_h: dict[int, list[dict]] = {h: [] for h in horizons}
+    for res in results:
+        if not _subject_member(res, subject):
+            continue
+        for h in horizons:
+            fr = fr_by_h_run_symbol[h].get((res.run_id, res.ticker))
+            if fr is None:
+                continue
+            members_by_h[h].append({
+                "run_id": res.run_id, "ticker": res.ticker,
+                "return": fr.realized_return, "mae": fr.mae, "mfe": fr.mfe,
+                "regime": regime_by_run.get(res.run_id),
+                "sector": res.sector,
+                "setup_status": res.setup_status,
+                "patterns": _stored_pattern_flags(res, p_keys),
+            })
+    return members_by_h
 
 
 def _run_position_index(
@@ -1044,13 +1143,23 @@ def compute_event_study(
             f"unknown subject {subject_key!r}; valid subjects are {[s['key'] for s in subjects]}"
         )
 
+    # J-72 SINGLE-BATCHED-READ: load EVERY configured horizon's pooled members in ONE batched read
+    # (`_event_study_members_by_horizon`) instead of one `ForwardReturn` scan per horizon. The selected
+    # horizon (when not in `wf.horizons` — a defensive direct-call path) is added to the batch so its
+    # members come from the same single read. The per-horizon lists are byte-identical to the per-horizon
+    # builder (deterministic id-ordered results). The episode collapse stays a pure in-memory grouping of
+    # those SAME stored rows (J-63 untouched).
+    batch_horizons = list(wf.horizons)
+    if horizon not in batch_horizons:
+        batch_horizons = batch_horizons + [horizon]
+    pooled_by_h = _event_study_members_by_horizon(session, subject, batch_horizons, as_of)
     # the episode collapse needs the GLOBAL ordered run-date sequence (same as-of window); loaded ONCE and
-    # reused across horizons. In the pooled view it is never built, so the pooled path is the UNCHANGED
-    # pre-J-63 code (byte-identity guard). The episode collapse is per-horizon (each horizon's members).
-    run_position = _run_position_index(session, as_of) if view == VIEW_EPISODES else None
+    # reused across horizons. Built whenever episodes is the view OR the (view-independent) episode_count
+    # disclosure is needed — a single SELECT, never per-horizon.
+    run_position = _run_position_index(session, as_of)
 
     def _view_members(h: int) -> list[dict]:
-        members = _event_study_members(session, subject, h, as_of)
+        members = pooled_by_h[h]
         if view == VIEW_POOLED:
             return members  # unchanged pooled list — byte-identical to pre-J-63
         return _collapse_to_episodes(members, run_position)  # first-trigger episode collapse
@@ -1067,12 +1176,11 @@ def compute_event_study(
             # horizon. In the episodes view `selected_members` ARE the episodes; in pooled, collapse here.
             episode_count = (
                 len(selected_members) if view == VIEW_EPISODES
-                else len(_collapse_to_episodes(members, _run_position_index(session, as_of)))
+                else len(_collapse_to_episodes(pooled_by_h[h], run_position))
             )
     if selected_members is None:  # horizon not in wf.horizons (API validates; defensive for direct calls)
         selected_members = _view_members(horizon)
-        pooled_at_h = _event_study_members(session, subject, horizon, as_of)
-        episode_count = len(_collapse_to_episodes(pooled_at_h, _run_position_index(session, as_of)))
+        episode_count = len(_collapse_to_episodes(pooled_by_h[horizon], run_position))
 
     unique_symbols = len({m["ticker"] for m in selected_members})
 
@@ -1097,4 +1205,303 @@ def compute_event_study(
         "best_exit_horizon": _best_exit_horizon(by_horizon),
         "by_regime": _event_study_by_regime(selected_members, cfg),
         "by_sector": _event_study_by_sector(selected_members, cfg),
+    }
+
+
+# --------------------------------------------------------------------------------------------------
+# Event-study derived-aggregate cache (J-72) — serve `compute_event_study` from a persisted/cached
+# aggregate that REFRESHES after any dataset change. The figures are BYTE-IDENTICAL to a fresh compute
+# (a cache of the deterministic read-only aggregation, never a recompute, never a second value).
+# --------------------------------------------------------------------------------------------------
+# The all-history sentinel for the cache key's as-of slot (so an all-history aggregate never collides
+# with an as-of-scoped one). A fixed structural label, not a tunable.
+_ASOF_ALL = "all"
+
+
+def _dataset_version(session: Session) -> str:
+    """A stamp derived from the stored state that CHANGES whenever the dataset changes (J-72 cache
+    invalidation). Combines the max `scanner_runs.id` (changes when a backfill adds a snapshot, or the
+    max drops when the newest is removed) with the `forward_returns` row count (changes when returns are
+    added or a removal cascade deletes them). A read computes the CURRENT stamp and looks up the cache by
+    THIS exact stamp — a row keyed to an older stamp is never hit (and is pruned on write), so the cache
+    can never serve a stale figure (it refreshes after any dataset change). A pure read (two scalar
+    SELECTs); recomputes no aggregate."""
+    max_run_id = session.exec(select(func.max(ScannerRun.id))).one()
+    # `func.max` over an empty table is None; `func.count` is 0 — both stringify deterministically.
+    if isinstance(max_run_id, tuple):  # some drivers return a 1-tuple row
+        max_run_id = max_run_id[0]
+    fr_count = session.exec(select(func.count()).select_from(ForwardReturn)).one()
+    if isinstance(fr_count, tuple):
+        fr_count = fr_count[0]
+    return f"r{max_run_id or 0}-f{fr_count or 0}"
+
+
+def _cache_asof_key(as_of: Optional[date_cls]) -> str:
+    """The cache key's as-of slot: the resolved ISO date when scoped, else the all-history sentinel."""
+    return as_of.isoformat() if as_of is not None else _ASOF_ALL
+
+
+def event_study_cached(
+    session: Session, subject_key: str, horizon: int, config: Optional[Config] = None, *,
+    as_of: Optional[date_cls] = None, view: str = VIEW_EPISODES,
+) -> dict:
+    """Serve the event study from the J-72 cache: on a cache HIT for the current
+    `(subject, view, asof_key, dataset_version, horizon)` key, deserialize and return the stored
+    aggregate (NO recompute); on a MISS, compute it ONCE via `compute_event_study`, persist it under the
+    current dataset-version stamp, prune any stale rows for this analysis identity, and return it. The
+    returned payload is BYTE-IDENTICAL to `compute_event_study(...)` — the cache is a pure performance
+    layer (No recompute in the read path). Because the key carries the dataset-version stamp, the cache
+    REFRESHES automatically after any dataset change (a backfill add or a removal) — a stale row is never
+    hit. Validation (unknown subject/view -> ValueError) happens in `compute_event_study`, so an invalid
+    request never writes a cache row (the compute raises before the write)."""
+    cfg = config or get_config()
+    subject_key = subject_key  # validated downstream
+    version = _dataset_version(session)
+    asof_key = _cache_asof_key(as_of)
+
+    hit = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == subject_key,
+            EventStudyCache.view == view,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.dataset_version == version,
+            EventStudyCache.horizon == horizon,
+        )
+    ).first()
+    if hit is not None:
+        return json.loads(hit.payload_json)
+
+    # MISS — compute once (this also validates subject/view, raising before any write) and persist.
+    payload = compute_event_study(session, subject_key, horizon, cfg, as_of=as_of, view=view)
+
+    # prune stale rows for THIS analysis identity (any older dataset_version) so the cache table does not
+    # grow unbounded as the dataset matures; the current-version row is then upserted.
+    stale = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == subject_key,
+            EventStudyCache.view == view,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.horizon == horizon,
+            EventStudyCache.dataset_version != version,
+        )
+    ).all()
+    for row in stale:
+        session.delete(row)
+
+    session.add(EventStudyCache(
+        subject=subject_key, view=view, asof_key=asof_key, dataset_version=version,
+        horizon=horizon, payload_json=json.dumps(payload),
+        created_at=datetime.now(timezone.utc),
+    ))
+    try:
+        session.commit()
+    except Exception:  # a concurrent writer raced us to the same key — the cache is best-effort, not a
+        session.rollback()  # source of truth; the freshly computed payload is still byte-identical, so return it
+    return payload
+
+
+# --------------------------------------------------------------------------------------------------
+# Regime × Setup × Pattern ranked combinations study (J-77) — read-only grouping of the SAME enriched
+# observation set the event study reads. NO new computation: every figure is a pure grouping of stored
+# values (realized return + stored regime + stored setup status + stored pattern mirror flags), so it is
+# the SAME read-only class as the J-25 decile sort / J-29 event study. NOT a fitted/learned/ML model.
+# --------------------------------------------------------------------------------------------------
+# The sentinel pattern value for an observation with NO detected pattern flagged (so a (regime, setup)
+# cohort is still represented honestly rather than dropped). A fixed structural label, not a tunable.
+PATTERN_NONE = "none"
+
+
+def _rsp_member(res: ScannerResult, fr, regime: Optional[str], p_keys: list[str]) -> dict:
+    """One enriched per-observation row for the J-77 study, read VERBATIM from stored values (no
+    recompute): the realized return + stored regime label + stored setup status + stored pattern mirror
+    flags. Mirrors the `_event_study_members` enrichment shape so the same downstream helpers
+    (`_collapse_to_episodes`, the samples builder) consume it identically."""
+    return {
+        "run_id": res.run_id, "ticker": res.ticker,
+        "return": fr.realized_return, "mae": fr.mae, "mfe": fr.mfe,
+        "regime": regime, "sector": res.sector,
+        "setup_status": res.setup_status,
+        "patterns": _stored_pattern_flags(res, p_keys),
+    }
+
+
+def _regime_setup_pattern_observations(
+    session: Session, horizon: int, view: str, cfg: Config, as_of: Optional[date_cls] = None
+) -> list[dict]:
+    """The SINGLE cross-subject observation set the J-77 study and its samples drill-down BOTH read
+    (count-coherence keystone — one membership rule). Pools EVERY stored (run, ticker) that has a realized
+    `ForwardReturn` at `horizon` (the SAME `forward_returns`-joined-to-`scanner_results` pool the event
+    study / forward aggregates read), each row carrying its stored regime + setup status + pattern flags
+    read VERBATIM. SELECT-only + pure grouping; recomputes nothing.
+
+    `view` (J-63): in `episodes` (default) the pool is collapsed to first-trigger episodes per ticker
+    (`_collapse_to_episodes`, the SAME per-ticker run-ordinal collapse the event study uses); in `pooled`
+    every per-signal-day observation survives. `as_of` (J-32) scopes both the members and the run-ordinal
+    index to snapshots dated <= D (a FILTER only — no recompute, no second date state)."""
+    fr_stmt = select(ForwardReturn).where(ForwardReturn.horizon == horizon)
+    if as_of is not None:
+        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
+            ScannerRun.asof_date <= as_of
+        )
+    fr_rows = session.exec(fr_stmt).all()
+    fr_by_run_symbol = {(fr.run_id, fr.symbol): fr for fr in fr_rows}
+    runs_with_fr = sorted({fr.run_id for fr in fr_rows})
+    results = (
+        session.exec(select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr))).all()
+        if runs_with_fr else []
+    )
+    run_rows = (
+        session.exec(select(ScannerRun).where(ScannerRun.id.in_(runs_with_fr))).all()
+        if runs_with_fr else []
+    )
+    regime_by_run = {run.id: run.regime_label for run in run_rows}
+    p_keys = pattern_keys(cfg)
+
+    members: list[dict] = []
+    for res in results:
+        fr = fr_by_run_symbol.get((res.run_id, res.ticker))
+        if fr is None:
+            continue  # no realized return at this horizon for this stock (n=0 contribution)
+        members.append(_rsp_member(res, fr, regime_by_run.get(res.run_id), p_keys))
+
+    if view == VIEW_POOLED:
+        return members
+    run_position = _run_position_index(session, as_of)
+    return _collapse_to_episodes(members, run_position)
+
+
+def _observation_pattern_labels(obs: dict, p_keys: list[str]) -> list[str]:
+    """The pattern dimension value(s) ONE observation contributes to (J-77): one label per flagged
+    pattern key, or the `PATTERN_NONE` sentinel when no pattern is flagged — so an observation matching
+    two patterns honestly appears under BOTH (and the samples filter reproduces that exactly), while an
+    observation matching none is still counted under its (regime, setup) with pattern=none. Pure read of
+    the stored `patterns` flags — recomputes nothing."""
+    flagged = [key for key in p_keys if obs["patterns"].get(key)]
+    return flagged if flagged else [PATTERN_NONE]
+
+
+def _rsp_combination_members(obs: dict, p_keys: list[str]) -> list[tuple[str, str, str]]:
+    """The (regime, setup, pattern) combination keys ONE observation belongs to — the SAME membership
+    rule the aggregate AND the samples drill-down apply, so a combination row's n equals its drill-down
+    total by construction (count-coherence keystone). An observation with a NULL stored regime is keyed
+    under the literal regime value (None → kept honest via the caller's grouping)."""
+    return [
+        (obs["regime"], obs["setup_status"], pattern)
+        for pattern in _observation_pattern_labels(obs, p_keys)
+    ]
+
+
+def _rsp_combination_filter(obs: dict, regime: str, setup: str, pattern: str, p_keys: list[str]) -> bool:
+    """Whether ONE observation belongs to the (regime, setup, pattern) cohort — the SINGLE membership
+    predicate BOTH the study aggregate and the samples drill-down use (never a second rule). Pattern
+    `PATTERN_NONE` matches observations with no flagged pattern; a real pattern key matches observations
+    whose stored `is_<pattern>` mirror is True."""
+    if obs["regime"] != regime or obs["setup_status"] != setup:
+        return False
+    if pattern == PATTERN_NONE:
+        return all(not obs["patterns"].get(key) for key in p_keys)
+    return bool(obs["patterns"].get(pattern))
+
+
+def _rsp_stats(returns: list[float], maes: list[float], min_sample: int) -> dict:
+    """Per-combination descriptive stats over the member realized returns (read-only, J-77): `n`,
+    `low_sample` (`n < min_sample`), `mean`, `median`, `pct_positive` (hit-rate), the expectancy
+    decomposition, and BOTH downside-only risk-adjusted figures (return/downside-dev REUSING
+    `_risk_adjusted`; return/mean-|MAE| REUSING `_return_per_mae`) — never total volatility. An empty
+    cohort yields None for every figure (honest NA, never a fabricated 0). The engine computes every
+    figure; the UI gates low-sample/empty cells to NA + n."""
+    n = len(returns)
+    dist = _distribution(returns)  # {mean_return, median, pct_positive, dispersion, n}
+    return {
+        "n": n,
+        "low_sample": n < min_sample,
+        "mean": dist["mean_return"],
+        "median": dist["median"],
+        "pct_positive": dist["pct_positive"],
+        "expectancy": _expectancy(returns)["expectancy"],
+        "return_per_downside_dev": _risk_adjusted(returns),
+        "return_per_mae": _return_per_mae(returns, maes),
+    }
+
+
+def _rsp_rank_key(row: dict) -> tuple:
+    """The default ranking key for the J-77 table: descending by the risk-adjusted figure
+    (`return_per_downside_dev`), NA last, then by raw mean (NA last), then a deterministic tie-break by
+    the (regime, setup, pattern) label so the order is total + reproducible. Returns a tuple usable with
+    `reverse=True` — a None metric sorts LAST under reverse via the `(is_not_none, value)` pairing."""
+    ra = row["stats"]["return_per_downside_dev"]
+    mean_r = row["stats"]["mean"]
+    return (
+        (ra is not None, ra if ra is not None else 0.0),
+        (mean_r is not None, mean_r if mean_r is not None else 0.0),
+    )
+
+
+def compute_regime_setup_pattern_study(
+    session: Session, horizon: int, config: Optional[Config] = None, *,
+    as_of: Optional[date_cls] = None, view: str = VIEW_EPISODES,
+) -> dict:
+    """The SINGLE canonical Regime × Setup × Pattern ranked combinations study (Data Contract value,
+    J-77). Groups the SAME cross-subject enriched observation set
+    (`_regime_setup_pattern_observations`) — every stored (run, ticker) with a realized forward return at
+    `horizon`, carrying its stored regime label + setup status + pattern mirror flags read VERBATIM — by
+    the (regime, setup, pattern) key, and reports per combination: `n`, `mean`, `median`, `pct_positive`
+    (hit-rate), `expectancy`, and BOTH downside-only risk-adjusted figures (return/downside-dev AND
+    return/mean-|MAE| — downside only, NEVER total volatility). Rows are ranked by the risk-adjusted
+    figure (default); a combination below `config.walk_forward.min_sample` carries its honest `n` + a
+    `low_sample` flag (the UI shows NA + n — never a fabricated number).
+
+    `view` (J-63, default `episodes`) makes the study overlap-honest exactly like the event study; `as_of`
+    (J-32) scopes the pool to snapshots dated <= D (a FILTER only — no recompute, no second date state).
+    The vocabularies (regime labels, setup statuses, pattern keys) come from the EXISTING config-backed
+    catalogs — no hardcoded list. READ-ONLY: SELECT + pure grouping; calls NO scoring/regime/return/
+    excursion/pattern math. Raises `ValueError` for an unknown view (the API pre-validates -> 422)."""
+    cfg = config or get_config()
+    wf = cfg.walk_forward
+
+    if view not in ALL_VIEWS:
+        raise ValueError(f"unknown view {view!r}; valid views are {list(ALL_VIEWS)}")
+
+    p_keys = pattern_keys(cfg)
+    observations = _regime_setup_pattern_observations(session, horizon, view, cfg, as_of)
+
+    # group the observations into (regime, setup, pattern) cohorts — the SAME membership the samples
+    # drill-down reproduces (one rule). Each observation contributes to one cohort per flagged pattern
+    # (or the `none` sentinel), so a two-pattern observation honestly counts under both.
+    grouped: dict[tuple, dict[str, list]] = defaultdict(lambda: {"returns": [], "maes": []})
+    for obs in observations:
+        for key in _rsp_combination_members(obs, p_keys):
+            grouped[key]["returns"].append(obs["return"])
+            if obs["mae"] is not None:
+                grouped[key]["maes"].append(obs["mae"])
+
+    rows = [
+        {
+            "regime": regime,
+            "setup": setup,
+            "pattern": pattern,
+            "stats": _rsp_stats(bucket["returns"], bucket["maes"], wf.min_sample),
+        }
+        for (regime, setup, pattern), bucket in grouped.items()
+    ]
+    # default ranking: descending by the risk-adjusted figure (NA last), then raw mean, then a stable
+    # deterministic label tie-break so the order is total + reproducible.
+    rows.sort(key=lambda r: (r["regime"] or "", r["setup"], r["pattern"]))  # stable inner tie-break first
+    rows.sort(key=_rsp_rank_key, reverse=True)
+
+    return {
+        "horizon": horizon,
+        "asof_date": as_of.isoformat() if as_of is not None else None,
+        "view": view,  # J-63 overlap-honesty view (episodes default | pooled)
+        "horizons": list(wf.horizons),
+        "default_horizon": wf.default_horizon,
+        "min_sample": wf.min_sample,
+        "regime_labels": list(cfg.regime.labels),
+        "setups": list(ALL_STATUSES),
+        "patterns": p_keys,
+        "pattern_none": PATTERN_NONE,
+        "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
+        "descriptive_caveat": RESEARCH_CAVEAT,
+        "n_total": len(observations),
+        "rows": rows,
     }

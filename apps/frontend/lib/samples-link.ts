@@ -47,10 +47,24 @@ export interface EventStudyCohortParams {
   sector?: string;
 }
 
+/** A Regime × Setup × Pattern combination cohort chip (J-77): one (regime, setup, pattern) row's `N=`.
+ *  `view` (J-63) is the overlap-honesty MODE the chip was clicked under — `episodes` (first-trigger,
+ *  default) or `pooled` (per-signal-day) — so the drill-down reproduces the same mode + cohort. The
+ *  `pattern` is a config pattern key OR the `"none"` sentinel (an observation with no flagged pattern). */
+export interface RegimeSetupPatternCohortParams {
+  kind: "regime-setup-pattern";
+  horizon: number;
+  regime: string;
+  setup: string;
+  pattern: string; // a config pattern key, or "none"
+  view: "episodes" | "pooled";
+}
+
 export type CohortParams =
   | FactorCohortParams
   | CombinationCohortParams
-  | EventStudyCohortParams;
+  | EventStudyCohortParams
+  | RegimeSetupPatternCohortParams;
 
 /** Serialize a cohort + the analysis-mode scope into the `/research/samples` path (no `?asof` — that is
  *  merged by `useAsOfHref` at the link site). Repeated `condition` params are preserved. */
@@ -74,6 +88,12 @@ export function buildSamplesHref(cohort: CohortParams, scope: SampleScope): stri
     if (cohort.cohort === "single" && cohort.singleIndex !== undefined) {
       params.set("single_index", String(cohort.singleIndex));
     }
+  } else if (cohort.kind === "regime-setup-pattern") {
+    // J-77: the (regime, setup, pattern) combination cohort selectors + the overlap-honesty view.
+    params.set("regime", cohort.regime);
+    params.set("setup", cohort.setup);
+    params.set("pattern", cohort.pattern);
+    params.set("view", cohort.view);
   } else {
     params.set("subject", cohort.subject);
     params.set("slice", cohort.slice);

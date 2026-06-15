@@ -7,6 +7,7 @@ import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Search, TrendingUp } fr
 
 import { useAsOf, useAsOfHref } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
+import { fmtPct, returnClass } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
@@ -54,12 +55,19 @@ const PATTERNS: { key: string; label: string; badge: string; get: (row: StockRow
  *  Score columns sort by the stored 0–100 number (the A–E bucket rides along, unchanged); `setup` sorts
  *  alphabetically on the served status string; `ticker`/`sector` sort lexicographically. This is a pure
  *  VIEW transform — it only re-orders the already-served rows; it changes/recomputes no displayed value. */
-type SortKey = "rank" | "ticker" | "sector" | "leadership" | "entry_quality" | "risk" | "setup";
+/** A base sortable column, plus the dynamic forward-return columns `fwd_<horizon>` (J-75). */
+type BaseSortKey = "rank" | "ticker" | "sector" | "leadership" | "entry_quality" | "risk" | "setup";
+type SortKey = BaseSortKey | `fwd_${number}`;
 type SortDir = "asc" | "desc";
 
-/** The per-column comparators (ascending). A `string` comparator returns `localeCompare`; a numeric one
- *  returns the raw difference. Ties are broken by stored rank in the stable-sort memo, NOT here. */
-const SORT_COMPARATORS: Record<SortKey, (a: StockRow, b: StockRow) => number> = {
+/** J-75 — a stock's realized forward return at `horizon` from the served `forward_returns` (NA → null).
+ *  Read verbatim; never recomputed. */
+function fwdReturnAt(row: StockRow, horizon: number): number | null {
+  return row.forward_returns.find((fr) => fr.horizon === horizon)?.return ?? null;
+}
+
+/** The base per-column comparators (ascending). Ties are broken by stored rank in the stable-sort memo. */
+const SORT_COMPARATORS: Record<BaseSortKey, (a: StockRow, b: StockRow) => number> = {
   rank: (a, b) => a.rank - b.rank,
   ticker: (a, b) => a.ticker.localeCompare(b.ticker),
   sector: (a, b) => a.sector.localeCompare(b.sector),
@@ -68,6 +76,27 @@ const SORT_COMPARATORS: Record<SortKey, (a: StockRow, b: StockRow) => number> = 
   risk: (a, b) => a.risk.score - b.risk.score,
   setup: (a, b) => a.setup.status.localeCompare(b.setup.status),
 };
+
+/** Resolve a sort key to its comparator — a base column, or a `fwd_<horizon>` forward-return column
+ *  (J-75/J-48 view transform). A null (NA) forward return always sorts LAST (so NA never poses as a
+ *  top/bottom value); the stable memo then tie-breaks by stored rank. Pure re-order of served values. */
+function comparatorFor(key: SortKey, dir: SortDir): (a: StockRow, b: StockRow) => number {
+  if (key.startsWith("fwd_")) {
+    const horizon = Number(key.slice(4));
+    const sign = dir === "asc" ? 1 : -1;
+    return (a, b) => {
+      const av = fwdReturnAt(a, horizon);
+      const bv = fwdReturnAt(b, horizon);
+      if (av === null && bv === null) return 0;
+      if (av === null) return 1; // NA last regardless of direction
+      if (bv === null) return -1;
+      return (av - bv) * sign;
+    };
+  }
+  const cmp = SORT_COMPARATORS[key as BaseSortKey];
+  const sign = dir === "asc" ? 1 : -1;
+  return (a, b) => cmp(a, b) * sign;
+}
 
 /** The default sort: the scanner's stored rank, ascending (`#` column) — the initial state and what a
  *  click on the `#` header restores. */
@@ -299,17 +328,23 @@ function StocksInner() {
   // back to it, so equal-key rows keep their incoming (stored-rank) order — and the default `rank`-asc
   // sort reproduces the stored scanner order exactly. There is no second fetch and no second endpoint.
   const sorted = useMemo(() => {
-    const cmp = SORT_COMPARATORS[sortKey];
-    const sign = sortDir === "asc" ? 1 : -1;
+    const cmp = comparatorFor(sortKey, sortDir); // already applies the direction sign (J-75 NA-last)
     return visible
       .map((row, index) => ({ row, index }))
       .sort((a, b) => {
-        const primary = cmp(a.row, b.row) * sign;
+        const primary = cmp(a.row, b.row);
         // Stable tie-break: preserve the incoming order (which for the unsorted default IS stored rank).
         return primary !== 0 ? primary : a.index - b.index;
       })
       .map((entry) => entry.row);
   }, [visible, sortKey, sortDir]);
+
+  // J-75 — the forward-return column horizons, derived from the SERVED rows (config-driven; no hardcoded
+  // [1,5,10,20,60] in the UI). Read from the first row's `forward_returns` order.
+  const fwdHorizons = useMemo<number[]>(
+    () => (rows.length > 0 ? rows[0].forward_returns.map((fr) => fr.horizon) : []),
+    [rows],
+  );
 
   // Toggle/select sort on a header click: a NEW column adopts that column's natural lead direction
   // (text columns ascend A→Z; the `#`/rank and score columns also start ascending); clicking the
@@ -325,7 +360,8 @@ function StocksInner() {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
       setSortKey(key);
-      setSortDir("asc");
+      // J-75: forward-return columns lead descending (best return first); other columns ascend.
+      setSortDir(key.startsWith("fwd_") ? "desc" : "asc");
     }
   };
 
@@ -499,6 +535,20 @@ function StocksInner() {
                   dir={sortDir}
                   onSort={onSort}
                 />
+                {/* J-75 — five realized forward-return columns (1/5/10/20/60-day from config horizons),
+                    each client-side sortable (view transform, NA-last). The horizons are server-driven
+                    (from the row payload), so no hardcoded horizon list lives in the UI. */}
+                {fwdHorizons.map((h) => (
+                  <SortHeader
+                    key={`fwd_${h}`}
+                    col={`fwd_${h}` as SortKey}
+                    label={`${h}d`}
+                    term="forward return"
+                    activeKey={sortKey}
+                    dir={sortDir}
+                    onSort={onSort}
+                  />
+                ))}
                 {/* J-56 — the Theme column. Non-sortable (a re-display of the served membership chips),
                     so a plain header (no SortHeader): membership is a set, not an orderable scalar. */}
                 <th className="px-3 py-2 font-medium">
@@ -517,6 +567,7 @@ function StocksInner() {
                   href={asofHref(`/stocks/${row.ticker}`)}
                   setupMeaning={setupMeaning.get(row.setup.status)}
                   patternMeaning={patternMeaning}
+                  fwdHorizons={fwdHorizons}
                 />
               ))}
             </tbody>
@@ -527,17 +578,33 @@ function StocksInner() {
   );
 }
 
+/** J-75 — one colour-graded forward-return cell: the served realized return (NA → "NA" muted), read
+ *  verbatim. Positive green / negative red via the shared palette helper (same as the evidence tables). */
+function ForwardReturnCell({ value }: { value: number | null }) {
+  if (value === null || value === undefined) {
+    return (
+      <span className="num text-text-muted" title="No realized forward return at this horizon yet (NA)">
+        NA
+      </span>
+    );
+  }
+  return <span className={cn("num font-semibold", returnClass(value))}>{fmtPct(value)}</span>;
+}
+
 function StockTableRow({
   row,
   href,
   setupMeaning,
   patternMeaning,
+  fwdHorizons,
 }: {
   row: StockRow;
   /** The detail href, pre-built by the J-50 helper so it already carries `?asof=D` while historical. */
   href: string;
   setupMeaning?: string;
   patternMeaning: Map<string, string>;
+  /** J-75 — the server-driven forward-return column horizons (config order), rendered as five cells. */
+  fwdHorizons: number[];
 }) {
   return (
     <tr className="border-b border-border transition-colors hover:bg-surface-2">
@@ -587,6 +654,13 @@ function StockTableRow({
           })}
         </div>
       </td>
+      {/* J-75 — five realized forward-return cells (config horizons, colour-graded, NA where no stored
+          row). Read verbatim from the served row — never recomputed. */}
+      {fwdHorizons.map((h) => (
+        <td key={`fwd_${h}`} className="px-3 py-2 text-right" data-testid={`fwd-${h}`}>
+          <ForwardReturnCell value={fwdReturnAt(row, h)} />
+        </td>
+      ))}
       <td className="px-3 py-2">
         <ThemeChips themes={row.themes} />
       </td>

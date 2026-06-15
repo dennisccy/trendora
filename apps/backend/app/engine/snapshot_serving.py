@@ -22,9 +22,9 @@ from typing import Optional
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from app.config import Config
+from app.config import Config, get_config
 from app.engine.scanner import AsOfError, resolve_as_of_date, resolve_run
-from app.models import ScannerResult, ScannerRun, SectorScoreRow, ThemeScoreRow
+from app.models import ForwardReturn, ScannerResult, ScannerRun, SectorScoreRow, ThemeScoreRow
 
 # Semantic resolution failure -> explicit HTTP status (no fabrication; the API surfaces an honest 4xx).
 _STATUS_BY_KIND = {"no_data": 503, "unparseable": 422, "future": 400, "before_history": 400}
@@ -52,13 +52,61 @@ def resolved_date(session: Session, as_of: Optional[str], config: Optional[Confi
         raise _http(exc)
 
 
-def stored_stock_rows(session: Session, run: ScannerRun) -> list[dict]:
+def _forward_returns_by_symbol(
+    session: Session, run: ScannerRun, config: Optional[Config] = None
+) -> dict[str, dict[int, float]]:
+    """`symbol -> {horizon: realized_return}` for THIS run, read VERBATIM from the stored append-only
+    `forward_returns` table (J-75). The SAME stored rows the Backtest scorecard (J-21) reads — keyed by
+    `run_id` + `symbol` + `horizon` — so the leaderboard / detail / Backtest forward returns are one
+    single source (J-06-style coherence). It RECOMPUTES no return: a single SELECT against
+    `ForwardReturn` for the run, grouped into a per-symbol horizon map. A (symbol, horizon) with no
+    stored row is simply absent from the inner map (the caller renders NA — never a fabricated number;
+    no-lookahead is intrinsic to the stored rows, which only ever measure bars dated > D)."""
+    rows = session.exec(
+        select(ForwardReturn).where(ForwardReturn.run_id == run.id)
+    ).all()
+    by_symbol: dict[str, dict[int, float]] = {}
+    for fr in rows:
+        by_symbol.setdefault(fr.symbol, {})[fr.horizon] = fr.realized_return
+    return by_symbol
+
+
+def _forward_returns_for_row(
+    symbol: str, by_symbol: dict[str, dict[int, float]], horizons: list[int]
+) -> list[dict]:
+    """The ADDITIVE per-stock forward-return list for ONE ticker (J-75): one entry per CONFIGURED horizon
+    (`config.walk_forward.horizons` — NO hardcoded `[1,5,10,20,60]` literal), each `{horizon, return}`
+    where `return` is the stored `realized_return` read verbatim, or `None` (NA) when no stored row exists
+    for that (run, symbol, horizon) — so at/near the latest date all five are honestly NA, never
+    fabricated. The horizons are emitted in config order so the leaderboard columns map to them."""
+    horizon_map = by_symbol.get(symbol.upper(), {}) or by_symbol.get(symbol, {})
+    return [{"horizon": h, "return": horizon_map.get(h)} for h in horizons]
+
+
+def stored_stock_rows(
+    session: Session, run: ScannerRun, config: Optional[Config] = None
+) -> list[dict]:
     """The run's per-stock results rehydrated from `record_json` (the COMPLETE canonical StockRow
-    dict), ordered by rank — the SAME rows `/api/stocks` and `/api/stocks/{ticker}` both serve (J-06)."""
+    dict), ordered by rank — the SAME rows `/api/stocks` and `/api/stocks/{ticker}` both serve (J-06).
+
+    J-75: each row ADDITIVELY carries `forward_returns` — its FIVE realized forward returns
+    (1/5/10/20/60-day, from `config.walk_forward.horizons`) read VERBATIM from the stored
+    `forward_returns` table for this run (NA where no stored row). This is a pure read of stored data
+    attached to the served row — it recomputes NO score / return / bucket, so the leaderboard list row
+    and the detail row stay byte-identical (J-06) and match the Backtest forward returns (J-21)."""
+    cfg = config or get_config()
+    horizons = list(cfg.walk_forward.horizons)
     results = session.exec(
         select(ScannerResult).where(ScannerResult.run_id == run.id).order_by(ScannerResult.rank)
     ).all()
-    return [json.loads(result.record_json) for result in results]
+    by_symbol = _forward_returns_by_symbol(session, run, cfg)
+    rows: list[dict] = []
+    for result in results:
+        row = json.loads(result.record_json)
+        # ADDITIVE J-75 field — read verbatim from the stored forward_returns; never recomputed here.
+        row["forward_returns"] = _forward_returns_for_row(row["ticker"], by_symbol, horizons)
+        rows.append(row)
+    return rows
 
 
 def dashboard_payload(run: ScannerRun) -> dict:
@@ -82,20 +130,24 @@ def dashboard_payload(run: ScannerRun) -> dict:
     }
 
 
-def stocks_payload(session: Session, run: ScannerRun) -> dict:
-    """The `/api/stocks` (list) shape, served from the stored run's per-stock results."""
+def stocks_payload(session: Session, run: ScannerRun, config: Optional[Config] = None) -> dict:
+    """The `/api/stocks` (list) shape, served from the stored run's per-stock results (each row carrying
+    its stored forward returns, J-75)."""
     return {
         "asof_date": run.asof_date.isoformat(),
         "benchmark": run.benchmark,
-        "rows": stored_stock_rows(session, run),
+        "rows": stored_stock_rows(session, run, config),
     }
 
 
-def stock_detail_payload(session: Session, run: ScannerRun, ticker: str) -> dict:
-    """The `/api/stocks/{ticker}` (detail) shape: the SAME stored row the leaderboard serves (J-06).
-    `404` for a ticker absent from this run — never a fabricated row."""
+def stock_detail_payload(
+    session: Session, run: ScannerRun, ticker: str, config: Optional[Config] = None
+) -> dict:
+    """The `/api/stocks/{ticker}` (detail) shape: the SAME stored row the leaderboard serves (J-06),
+    carrying the SAME stored forward returns (J-75). `404` for a ticker absent from this run — never a
+    fabricated row."""
     target = ticker.upper()
-    for row in stored_stock_rows(session, run):
+    for row in stored_stock_rows(session, run, config):
         if row["ticker"].upper() == target:
             return {"asof_date": run.asof_date.isoformat(), "benchmark": run.benchmark, "row": row}
     raise HTTPException(status_code=404, detail=f"unknown ticker: {ticker}")

@@ -46,6 +46,7 @@ from app.config import Config, get_config
 from app.engine.forward_testing import SURVIVORSHIP_BIAS_LABEL
 from app.engine.research import (
     ALL_VIEWS,
+    PATTERN_NONE,
     RESEARCH_CAVEAT,
     VIEW_EPISODES,
     _combination_cohort_members,
@@ -53,9 +54,13 @@ from app.engine.research import (
     _decile_member_slice,
     _event_study_observation_set,
     _factor_observations,
+    _regime_setup_pattern_observations,
+    _rsp_combination_filter,
     factor_catalog,
+    pattern_keys,
     subject_catalog,
 )
+from app.engine.setups import ALL_STATUSES
 from app.models import ScannerRun
 
 # The analysis kinds a sample cohort can belong to (one per research lab) — a fixed structural vocabulary
@@ -63,7 +68,8 @@ from app.models import ScannerRun
 KIND_FACTOR = "factor"
 KIND_COMBINATION = "combination"
 KIND_EVENT_STUDY = "event-study"
-ALL_KINDS = (KIND_FACTOR, KIND_COMBINATION, KIND_EVENT_STUDY)
+KIND_REGIME_SETUP_PATTERN = "regime-setup-pattern"  # J-77 combination drill-down
+ALL_KINDS = (KIND_FACTOR, KIND_COMBINATION, KIND_EVENT_STUDY, KIND_REGIME_SETUP_PATTERN)
 
 # The factor-cohort slice families (which published `N=` chip on the Factor Lab was clicked). `total` is
 # `n_total` / rank-IC n (whole pool); `decile` is one D1…D10 bucket; `regime` is the per-regime split.
@@ -332,6 +338,70 @@ def _event_study_samples(
 
 
 # --------------------------------------------------------------------------------------------------
+# Regime × Setup × Pattern cohort (J-77 — the combination table's per-row N= chip)
+# --------------------------------------------------------------------------------------------------
+def _regime_setup_pattern_samples(
+    session: Session, cfg: Config, *, regime: Optional[str], setup: Optional[str],
+    pattern: Optional[str], horizon: int, as_of: Optional[date_cls], view: str = VIEW_EPISODES,
+) -> dict:
+    """Reproduce ONE (regime, setup, pattern) combination cohort from the J-77 study and list its member
+    observations UNDER THE SELECTED `view` (J-63). Membership is the SAME `_regime_setup_pattern_
+    observations` builder + the SAME `_rsp_combination_filter` predicate `compute_regime_setup_pattern_
+    study` aggregates, so the drill-down `total` EQUALS the row's published `n` in BOTH Episodes and
+    Pooled modes (count-coherence keystone — one membership rule, never a second grouping). Vocabularies
+    are config-backed (regime labels, setup statuses) / the existing pattern keys (+ the `none` sentinel)
+    — validated to those sets (else `ValueError` -> 4xx). Each row: ticker, snapshot date, the matched
+    combination, the realized forward return."""
+    if view not in ALL_VIEWS:
+        raise ValueError(f"unknown view {view!r}; valid views are {list(ALL_VIEWS)}")
+    if regime is None or regime not in cfg.regime.labels:
+        raise ValueError(
+            f"regime {regime!r} is not a configured regime label {list(cfg.regime.labels)}"
+        )
+    if setup is None or setup not in ALL_STATUSES:
+        raise ValueError(f"setup {setup!r} is not a configured setup status {list(ALL_STATUSES)}")
+    p_keys = pattern_keys(cfg)
+    valid_patterns = [*p_keys, PATTERN_NONE]
+    if pattern is None or pattern not in valid_patterns:
+        raise ValueError(f"pattern {pattern!r} is not a configured pattern {valid_patterns}")
+
+    observations = _regime_setup_pattern_observations(session, horizon, view, cfg, as_of)
+    members = [
+        obs for obs in observations
+        if _rsp_combination_filter(obs, regime, setup, pattern, p_keys)
+    ]
+
+    run_dates = _run_date_map(session)
+    rows = [
+        {
+            "ticker": m["ticker"],
+            "snapshot_date": run_dates.get(m["run_id"]),
+            "regime": m["regime"],
+            "sector": m["sector"],
+            "setup": m["setup_status"],
+            "pattern": pattern,
+            # the matched combination is the qualifying "value" — read-only (the member IS an occurrence)
+            "values": [
+                {"key": "regime", "label": "Regime", "value": m["regime"]},
+                {"key": "setup", "label": "Setup", "value": m["setup_status"]},
+                {"key": "pattern", "label": "Pattern", "value": pattern},
+            ],
+            "forward_return": m["return"],
+        }
+        for m in members
+    ]
+    cohort = {
+        "kind": KIND_REGIME_SETUP_PATTERN,
+        "horizon": horizon,
+        "regime": regime,
+        "setup": setup,
+        "pattern": pattern,
+        "view": view,
+    }
+    return {"cohort": cohort, "rows": rows}
+
+
+# --------------------------------------------------------------------------------------------------
 # The single canonical samples read (read-only exposure of the stored observation pools)
 # --------------------------------------------------------------------------------------------------
 def compute_samples(
@@ -346,6 +416,8 @@ def compute_samples(
     # event-study cohort selector
     subject_key: Optional[str] = None,
     view: Optional[str] = None,
+    # regime-setup-pattern cohort selector (J-77)
+    setup: Optional[str] = None, pattern: Optional[str] = None,
 ) -> dict:
     """The SINGLE canonical Research-samples read (Data Contract value, J-51 / J-52). Reproduces ONE
     published research cohort from the SAME stored per-observation data the aggregate used and returns its
@@ -377,6 +449,11 @@ def compute_samples(
             session, cfg, subject_key=subject_key, horizon=horizon,
             slice_kind=slice_kind or "pooled", regime=regime, sector=sector, as_of=as_of,
             view=view or VIEW_EPISODES,
+        )
+    elif kind == KIND_REGIME_SETUP_PATTERN:
+        built = _regime_setup_pattern_samples(
+            session, cfg, regime=regime, setup=setup, pattern=pattern, horizon=horizon,
+            as_of=as_of, view=view or VIEW_EPISODES,
         )
     else:
         raise ValueError(f"unknown kind {kind!r}; valid kinds are {list(ALL_KINDS)}")

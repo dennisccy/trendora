@@ -844,3 +844,156 @@ def test_samples_unknown_view_422(loaded_engine):
                     "slice": "pooled", "view": "nonsense"},
         )
     assert resp.status_code == 422
+
+
+# ==================================================================================================
+# iter-20 J-72 — the event-study endpoint serves the cached aggregate (byte-identical to a fresh compute)
+# ==================================================================================================
+def test_event_study_endpoint_byte_identical_across_repeated_reads(loaded_engine):
+    """J-72: the cached endpoint serves a byte-identical payload on repeated reads (a cache HIT after the
+    first MISS) — same figures, never recomputed differently per request."""
+    with TestClient(main.app) as client:
+        first = client.get(
+            "/api/research/event-study", params={"subject": "vcp", "horizon": 20, "view": "episodes"}
+        ).json()
+        second = client.get(
+            "/api/research/event-study", params={"subject": "vcp", "horizon": 20, "view": "episodes"}
+        ).json()
+    import json as _json
+    assert _json.dumps(first, sort_keys=True) == _json.dumps(second, sort_keys=True)
+
+
+def test_event_study_endpoint_matches_direct_compute(loaded_engine):
+    """J-72: the endpoint payload equals a direct `compute_event_study` (the cache is a pure performance
+    layer — byte-identical figures, the No-recompute-in-the-read-path contract)."""
+    import json as _json
+
+    from app.engine.research import compute_event_study
+    cfg = load_config()
+    with TestClient(main.app) as client:
+        served = client.get(
+            "/api/research/event-study", params={"subject": "vcp", "horizon": 20, "view": "pooled"}
+        ).json()
+    with Session(loaded_engine) as session:
+        direct = compute_event_study(session, "vcp", 20, cfg, view="pooled")
+    assert _json.dumps(served, sort_keys=True) == _json.dumps(direct, sort_keys=True)
+
+
+# ==================================================================================================
+# iter-20 J-75 — five per-stock forward returns served on /api/stocks + detail (identical, config-driven)
+# ==================================================================================================
+def test_stocks_carry_five_forward_returns_config_driven(loaded_engine):
+    """J-75: every /api/stocks row carries a `forward_returns` list, one entry per config horizon (no
+    hardcoded list), each `{horizon, return}` (return float or null NA)."""
+    cfg = load_config()
+    horizons = list(cfg.walk_forward.horizons)
+    # pick a historical run with post-D bars so at least some horizons are populated.
+    with TestClient(main.app) as client:
+        oldest = _oldest_research_date(client)
+        payload = client.get("/api/stocks", params={"as_of": oldest}).json()
+    assert payload["rows"], "expected stored stock rows at the oldest run"
+    for row in payload["rows"]:
+        assert [fr["horizon"] for fr in row["forward_returns"]] == horizons
+        for fr in row["forward_returns"]:
+            assert fr["return"] is None or isinstance(fr["return"], (int, float))
+
+
+def test_stocks_leaderboard_equals_detail_forward_returns(loaded_engine):
+    """J-75 / J-06: the leaderboard list row and the detail row carry IDENTICAL forward returns for the
+    same ticker/date/horizon (single source — the same stored rows, one serving path)."""
+    with TestClient(main.app) as client:
+        oldest = _oldest_research_date(client)
+        payload = client.get("/api/stocks", params={"as_of": oldest}).json()
+        row = payload["rows"][0]
+        detail = client.get(f"/api/stocks/{row['ticker']}", params={"as_of": oldest}).json()
+    assert detail["row"]["forward_returns"] == row["forward_returns"]
+
+
+def test_stocks_forward_returns_match_backtest_stored(loaded_engine):
+    """J-75 / J-21: a /api/stocks row's forward return at a horizon equals the SAME stored
+    `forward_returns` value Backtest reads (one source — never a second computation)."""
+    with TestClient(main.app) as client:
+        oldest = _oldest_research_date(client)
+        stocks = client.get("/api/stocks", params={"as_of": oldest}).json()
+        backtest = client.get("/api/backtest", params={"as_of": oldest}).json()
+    # build {(ticker, horizon): return} from the backtest leadership cohort + from the stocks rows.
+    bt = {}
+    for h in backtest["scorecard"]["by_horizon"]:
+        for c in h["leadership_returns"]["cohort"]:
+            bt[(c["ticker"], h["horizon"])] = c["mean_return"]
+    checked = 0
+    for row in stocks["rows"]:
+        for fr in row["forward_returns"]:
+            key = (row["ticker"], fr["horizon"])
+            if key in bt:
+                assert fr["return"] == bt[key], f"{key}: stocks={fr['return']} backtest={bt[key]}"
+                checked += 1
+    assert checked > 0, "expected at least one overlapping (ticker, horizon) to compare"
+
+
+# ==================================================================================================
+# iter-20 J-77 — the new regime-setup-pattern endpoint + count-coherence with /research/samples
+# ==================================================================================================
+def test_regime_setup_pattern_endpoint_default_payload(loaded_engine):
+    """J-77: the new endpoint returns a ranked combinations table with config-backed vocabularies + the
+    survivorship label + per-row stats; default horizon resolves; rows ranked by the risk-adjusted figure."""
+    cfg = load_config()
+    with TestClient(main.app) as client:
+        payload = client.get("/api/research/regime-setup-pattern").json()
+    assert payload["horizon"] == cfg.walk_forward.default_horizon
+    assert payload["regime_labels"] == list(cfg.regime.labels)
+    assert "survivorship_bias" in payload
+    assert isinstance(payload["rows"], list)
+    for r in payload["rows"]:
+        assert {"regime", "setup", "pattern", "stats"} <= set(r)
+        assert {"n", "mean", "median", "pct_positive", "expectancy",
+                "return_per_downside_dev", "return_per_mae", "low_sample"} <= set(r["stats"])
+
+
+def test_regime_setup_pattern_unknown_horizon_422(loaded_engine):
+    with TestClient(main.app) as client:
+        resp = client.get("/api/research/regime-setup-pattern", params={"horizon": 999})
+    assert resp.status_code == 422
+
+
+def test_regime_setup_pattern_unknown_view_422(loaded_engine):
+    with TestClient(main.app) as client:
+        resp = client.get("/api/research/regime-setup-pattern", params={"view": "nonsense"})
+    assert resp.status_code == 422
+
+
+def test_regime_setup_pattern_count_coherence_same_instant(loaded_engine):
+    """J-77 keystone (SAME-INSTANT): for EVERY non-empty combination row, the published `n` EQUALS the
+    /research/samples drill-down `total` for that exact (regime, setup, pattern) cohort, asserted at the
+    SAME instant against the live aggregate (Ns drift between boots as warm-up matures) in BOTH views."""
+    for view in ("pooled", "episodes"):
+        with TestClient(main.app) as client:
+            study = client.get(
+                "/api/research/regime-setup-pattern", params={"horizon": 20, "view": view}
+            ).json()
+            for r in study["rows"]:
+                if r["stats"]["n"] == 0:
+                    continue
+                s = client.get(
+                    "/api/research/samples",
+                    params={
+                        "kind": "regime-setup-pattern", "horizon": 20, "view": view,
+                        "regime": r["regime"], "setup": r["setup"], "pattern": r["pattern"],
+                    },
+                ).json()
+                assert s["total"] == r["stats"]["n"], (
+                    f"{view} {(r['regime'], r['setup'], r['pattern'])}: "
+                    f"study n={r['stats']['n']} samples total={s['total']}"
+                )
+
+
+def test_samples_regime_setup_pattern_invalid_selector_422(loaded_engine):
+    """J-77: an unknown (regime, setup, pattern) cohort selector on /research/samples is an explicit 4xx
+    (never a silent empty 200)."""
+    with TestClient(main.app) as client:
+        resp = client.get(
+            "/api/research/samples",
+            params={"kind": "regime-setup-pattern", "horizon": 20,
+                    "regime": "Bogus", "setup": "Actionable", "pattern": "vcp"},
+        )
+    assert resp.status_code == 422

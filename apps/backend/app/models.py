@@ -363,6 +363,57 @@ class ForwardReturn(SQLModel, table=True):
     mfe: Optional[float] = Field(default=None)  # max favorable excursion: max(high)/entry_close - 1 (>= ~0)
 
 
+# --- iter-20 event-study derived-aggregate cache (J-72 — a PERFORMANCE cache, not a snapshot) -----
+class EventStudyCache(SQLModel, table=True):
+    """A STANDALONE, create_all-managed cache of the derived event-study aggregate (J-72).
+
+    This is EXPLICITLY NOT a scanner snapshot — the *Snapshots are immutable* critical anti-goal binds
+    ONLY `scanner_runs` / `scanner_results` / `*_scores` / `forward_returns`. Like `data_provider_runs`
+    and `import_checkpoints`, this is legitimately mutable derived/cache state: it stores the SERIALIZED
+    `compute_event_study(...)` payload (the figures are BYTE-IDENTICAL to a fresh compute — a cache of the
+    deterministic read-only aggregation, never a second computation or a hand-authored value) keyed by the
+    analysis identity + a dataset-version stamp, so a read serves the stored aggregate instead of
+    re-deriving it per request (No recompute in the read path / the "derived once… persisted/cached, read
+    from storage" contract the as-of evidence aggregate already follows).
+
+    A STANDALONE table (its own `create_all`-managed table) is used deliberately so the iter-12
+    `_ADDITIVE_COLUMNS` trap does NOT apply — a fresh DB carries it from `create_db_and_tables`, and no
+    existing table gains a column.
+
+    CACHE KEY: `(subject, view, asof_key, dataset_version)`:
+      - `subject` / `view` are the analysis identity; `asof_key` is the resolved as-of cutoff ISO date or
+        the literal "all" sentinel for the all-history aggregate (so all-history and as-of-scoped reads
+        never collide).
+      - `dataset_version` is a stamp derived from the stored state (e.g. max run id + the forward-return
+        row count) that CHANGES whenever the dataset changes (a backfill adds snapshots/returns, or a
+        removal deletes them). A read computes the current stamp and looks up THIS exact key — a stale row
+        keyed to an older stamp is simply never hit (and is pruned), so the cache can NEVER serve a stale
+        figure (it refreshes after any dataset change).
+
+    `payload_json` is the full serialized aggregate; `horizon` is part of the cached payload (one row per
+    (subject, view, asof_key, dataset_version) holds the ALL-horizons payload, re-pointed client-side by
+    the horizon selector — matching how `compute_event_study` returns every horizon's row), so the cache
+    is keyed independent of the requested horizon. Unique on the composite key so a write is an idempotent
+    upsert."""
+
+    __tablename__ = "event_study_cache"
+    __table_args__ = (
+        UniqueConstraint(
+            "subject", "view", "asof_key", "dataset_version", "horizon",
+            name="uq_event_study_cache_key",
+        ),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    subject: str = Field(index=True)
+    view: str
+    asof_key: str  # resolved as-of ISO date, or the "all" sentinel for all-history
+    dataset_version: str  # stamp derived from stored state; changes on any dataset change
+    horizon: int  # the requested horizon echoed into the key (the payload still carries every horizon)
+    payload_json: str  # the serialized compute_event_study(...) aggregate (byte-identical to a fresh compute)
+    created_at: datetime
+
+
 # --- iter-7 watchlist (USER-MUTABLE — the product's FIRST user-write surface; J-11) ----------
 class Watchlist(SQLModel, table=True):
     """One user-saved stock on the persistent research watchlist (iter-7). The product's FIRST

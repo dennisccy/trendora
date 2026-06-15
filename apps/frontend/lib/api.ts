@@ -253,6 +253,18 @@ export interface StockRow {
   pullback_to_rising_dma: PullbackToRisingDma;
   flat_base_breakout: FlatBaseBreakout;
   rank: number;
+  // iter-20 (J-75): the five realized forward returns (1/5/10/20/60-day from config horizons) read
+  // VERBATIM from the stored forward_returns table for the resolved as-of run — the SAME stored data
+  // Backtest reads (never recomputed). `return` is null (NA) where no stored row exists for that horizon
+  // (so at/near the latest date all five are NA — never fabricated). Order maps to config horizons.
+  forward_returns: StockForwardReturn[];
+}
+
+/** One per-stock forward-return entry (J-75): the realized return at `horizon` trading days, or null
+ *  (NA) when no stored row exists. Read verbatim from the stored forward_returns table — never recomputed. */
+export interface StockForwardReturn {
+  horizon: number;
+  return: number | null;
 }
 
 export interface StocksResponse {
@@ -1128,6 +1140,67 @@ export async function fetchEventStudy(
   return getJSON<EventStudyResponse>(withAsOf(path, asof), signal);
 }
 
+// --- research / Regime × Setup × Pattern study (iter-20, J-77) --------------------------------
+/** One (regime, setup, pattern) combination row's stats (J-77). Every figure derives from the SAME
+ *  enriched event-study observation set; risk is downside-only (return ÷ downside-deviation AND
+ *  return ÷ mean-|MAE| — never total volatility). `low_sample`/null cells render NA + n. */
+export interface RegimeSetupPatternStats {
+  n: number;
+  low_sample: boolean;
+  mean: number | null;
+  median: number | null;
+  pct_positive: number | null; // hit-rate (fraction > 0)
+  expectancy: number | null;
+  return_per_downside_dev: number | null; // mean / downside-deviation; null = NA
+  return_per_mae: number | null; // mean / mean-|MAE|; null = NA
+}
+
+/** One ranked combination row: a (regime, setup, pattern) key + its stats. `pattern` is a config pattern
+ *  key OR the `pattern_none` sentinel (an observation with no flagged pattern). */
+export interface RegimeSetupPatternRow {
+  regime: string;
+  setup: string;
+  pattern: string;
+  stats: RegimeSetupPatternStats;
+}
+
+/** GET /api/research/regime-setup-pattern payload (J-77) — the ranked Regime × Setup × Pattern study. A
+ *  grouping of the SAME stored event-study observation set; the page re-formats only and recomputes
+ *  nothing. Vocabularies (`regime_labels` / `setups` / `patterns`) are config-driven. */
+export interface RegimeSetupPatternResponse {
+  horizon: number;
+  view: "episodes" | "pooled";
+  horizons: number[];
+  default_horizon: number;
+  min_sample: number;
+  regime_labels: string[];
+  setups: string[];
+  patterns: string[];
+  pattern_none: string; // the "no pattern flagged" sentinel value
+  survivorship_bias: string;
+  descriptive_caveat: string;
+  n_total: number;
+  rows: RegimeSetupPatternRow[];
+  asof_date?: string | null; // J-32: resolved cutoff (ISO) when scoped; null = all-history
+}
+
+/** Canonical Regime × Setup × Pattern source: GET /api/research/regime-setup-pattern. Throws on non-200
+ *  so the page renders an explicit "Backend unavailable" state (503 no data / 422 bad horizon/view) —
+ *  never fabricated evidence. Both params are optional (defaults: config default horizon / episodes). */
+export async function fetchRegimeSetupPattern(
+  horizon?: number,
+  asof?: string,
+  view?: "episodes" | "pooled",
+  signal?: AbortSignal,
+): Promise<RegimeSetupPatternResponse> {
+  const params = new URLSearchParams();
+  if (horizon !== undefined) params.set("horizon", String(horizon));
+  if (view !== undefined) params.set("view", view);
+  const query = params.toString();
+  const path = `/api/research/regime-setup-pattern${query ? `?${query}` : ""}`;
+  return getJSON<RegimeSetupPatternResponse>(withAsOf(path, asof), signal);
+}
+
 // --- research / samples drill-down (iter-7, J-51 / J-52) -----------------------------------
 /** One displayed qualifying value on a sample row: the catalog `key` + `label` + the STORED `value`
  *  (a numeric factor value, or for an event study the matched setup/pattern label as a string). Read
@@ -1153,7 +1226,7 @@ export interface SampleRow {
 /** The echoed resolved cohort definition (re-formatted into the page header so the drill-down states
  *  exactly which published N it reproduces). Shape varies by `kind`; the page reads the fields it needs. */
 export interface SampleCohort {
-  kind: "factor" | "combination" | "event-study";
+  kind: "factor" | "combination" | "event-study" | "regime-setup-pattern";
   horizon: number;
   slice?: string; // factor: total|decile|regime · event-study: pooled|regime|sector
   cohort?: string; // combination: baseline|single|composite|strict_overlap
@@ -1161,6 +1234,8 @@ export interface SampleCohort {
   decile?: number | null;
   regime?: string | null;
   sector?: string | null;
+  setup?: string | null; // J-77: regime-setup-pattern kind
+  pattern?: string | null; // J-77: regime-setup-pattern kind (a config pattern key or "none")
   subject?: EventStudySubject; // event-study kind
   view?: "episodes" | "pooled"; // J-63: the event-study overlap-honesty view this cohort reproduces
   conditions?: FactorCombinationCondition[]; // combination kind

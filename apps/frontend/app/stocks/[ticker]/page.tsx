@@ -7,6 +7,7 @@ import { AlertTriangle, ArrowLeft, SearchX } from "lucide-react";
 
 import { useAsOf, useAsOfHref } from "@/components/asof-provider";
 import { ComponentBreakdown } from "@/components/component-breakdown";
+import { fmtPct, returnClass } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
 import { PriceChart } from "@/components/price-chart";
 import { ScoreBadge } from "@/components/score-badge";
@@ -175,6 +176,11 @@ function StockDetailBody({ data }: { data: StockDetailResponse }) {
       {NEW_PATTERNS.filter((p) => p.get(row).flagged).map((p) => (
         <PatternCard key={p.key} name={p.name} badge={p.badge} flag={p.get(row)} />
       ))}
+
+      {/* J-75 — the five realized forward returns (1/5/10/20/60-day) for the as-of date, read VERBATIM
+          from the stored forward_returns table — the SAME values the leaderboard + Backtest show (single
+          source; J-06/J-21). NA where no stored row (at/near latest all five NA — never fabricated). */}
+      <ForwardReturnPanel row={row} asofDate={data.asof_date} />
 
       {/* price + moving-average candle chart with volume (server MA series — never recomputed) */}
       <StockChartPanel ticker={row.ticker} />
@@ -468,6 +474,53 @@ function RegimeToggle({ on, onChange }: { on: boolean; onChange: (next: boolean)
       />
       Regime {on ? "on" : "off"}
     </button>
+  );
+}
+
+/** J-75 — the per-stock realized forward-return panel for the resolved as-of date: one cell per config
+ *  horizon (1/5/10/20/60-day), each the stored `realized_return` read VERBATIM (NA where no stored row —
+ *  at/near the latest date all five are NA, never fabricated). These are the SAME stored values the
+ *  leaderboard row and Backtest show for the same ticker/date/horizon (single source of truth — J-06 /
+ *  J-21); the panel re-formats only and recomputes nothing. Measured from the close on the as-of date to
+ *  the close of the h-th post-as-of bar (no-lookahead intrinsic to the stored rows). */
+function ForwardReturnPanel({ row, asofDate }: { row: StockRow; asofDate: string }) {
+  return (
+    <Card data-testid="forward-return-panel">
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardTitle>Realized forward returns</CardTitle>
+        <Badge variant="default" className="num">
+          from {formatIsoDate(asofDate)}
+        </Badge>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-text-faint">
+          The realized return measured from the close on {formatIsoDate(asofDate)} to the close{" "}
+          {row.forward_returns.map((fr) => fr.horizon).join(" / ")} trading days later — read verbatim from
+          the stored walk-forward returns (the SAME values the leaderboard and Backtest show). NA where not
+          enough post-date bars exist yet (never fabricated).
+        </p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          {row.forward_returns.map((fr) => (
+            <div
+              key={fr.horizon}
+              className="rounded-md border border-border bg-surface-2 p-3"
+              data-testid={`detail-fwd-${fr.horizon}`}
+            >
+              <p className="text-xs uppercase tracking-wide text-text-faint">{fr.horizon}-day</p>
+              {fr.return === null || fr.return === undefined ? (
+                <p className="num text-lg font-semibold text-text-muted" title="No realized forward return at this horizon yet (NA)">
+                  NA
+                </p>
+              ) : (
+                <p className={cn("num text-lg font-semibold", returnClass(fr.return))}>
+                  {fmtPct(fr.return)}
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

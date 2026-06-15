@@ -286,6 +286,15 @@ function describeCohort(cohort: SampleCohort): { title: string; detail: string |
       detail: conds || null,
     };
   }
+  // J-77 — the Regime × Setup × Pattern combination cohort.
+  if (cohort.kind === "regime-setup-pattern") {
+    const viewLabel = cohort.view === "pooled" ? "Pooled (per-signal-day)" : "Episodes (first-trigger)";
+    const patternLabel = cohort.pattern === "none" ? "— (no pattern)" : (cohort.pattern ?? "").replace(/_/g, " ");
+    return {
+      title: "Regime × Setup × Pattern",
+      detail: `${viewLabel} · ${cohort.regime} · ${cohort.setup} · ${patternLabel}`,
+    };
+  }
   // event-study
   const subject = cohort.subject?.label ?? "subject";
   // J-63: the overlap-honesty view this drill-down reproduces (Episodes = first-trigger; Pooled = per

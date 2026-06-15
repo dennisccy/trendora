@@ -37,9 +37,10 @@ from app.engine.prices import latest_data_date
 from app.engine.research import (
     ALL_VIEWS,
     VIEW_EPISODES,
-    compute_event_study,
     compute_factor_combination,
     compute_factor_lab,
+    compute_regime_setup_pattern_study,
+    event_study_cached,
     factor_catalog,
     subject_catalog,
 )
@@ -48,6 +49,7 @@ from app.engine.samples import (
     KIND_COMBINATION,
     KIND_EVENT_STUDY,
     KIND_FACTOR,
+    KIND_REGIME_SETUP_PATTERN,
     compute_samples,
 )
 from app.engine.snapshot_serving import resolved_date
@@ -251,8 +253,57 @@ def event_study(
     # iter-19 (J-32): the optional single global as-of scoping cutoff (shared resolver — 422/400; never
     # hand-rolled). Omitted/empty -> all-history. Not a second date state (J-18).
     cutoff = resolved_date(session, as_of, cfg) if as_of else None
-    return compute_event_study(
+    # J-72: serve from the persisted/cached derived aggregate (byte-identical to a fresh compute; the
+    # cache refreshes after any dataset change via the dataset-version key) — never recomputed per request.
+    return event_study_cached(
         session, resolved_subject, resolved_horizon, cfg, as_of=cutoff, view=resolved_view
+    )
+
+
+@router.get("/research/regime-setup-pattern")
+def regime_setup_pattern(
+    horizon: Optional[int] = Query(default=None, description="forward window in trading days; defaults to config default_horizon"),
+    view: Optional[str] = Query(
+        default=None,
+        description="overlap-honesty view: episodes (default — first-trigger) | pooled (per-signal-day)",
+    ),
+    as_of: Optional[str] = Query(
+        default=None,
+        description="optional point-in-time cutoff (YYYY-MM-DD) — the single global as-of; omitted = all-history",
+    ),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Serve the Regime × Setup × Pattern ranked combinations study (J-77) for the requested `horizon` +
+    `view` (defaults: config default_horizon / `episodes`). Validates `horizon` against
+    `walk_forward.horizons` and `view` against {episodes, pooled} (422 otherwise); 503 when no price data
+    exists — mirroring the sibling research handlers exactly. The optional `as_of` (J-32) scopes the pool
+    to snapshots dated <= D (the single global as-of — a mode, not a second date state); omitted =
+    all-history. The payload is `compute_regime_setup_pattern_study(...)` verbatim — a read-only grouping
+    of ALREADY-STORED forward returns + stored regime / setup / pattern flags, never recomputed in the
+    view. Default ranked by the downside risk-adjusted figure."""
+    cfg: Config = get_config()
+    wf = cfg.walk_forward
+
+    if latest_data_date(session) is None:
+        raise HTTPException(status_code=503, detail="no price data available")
+
+    resolved_horizon = wf.default_horizon if horizon is None else horizon
+    if resolved_horizon not in wf.horizons:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown horizon {resolved_horizon}; valid horizons are {list(wf.horizons)}",
+        )
+
+    resolved_view = VIEW_EPISODES if view is None else view
+    if resolved_view not in ALL_VIEWS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown view {resolved_view!r}; valid views are {list(ALL_VIEWS)}",
+        )
+
+    cutoff = resolved_date(session, as_of, cfg) if as_of else None
+    return compute_regime_setup_pattern_study(
+        session, resolved_horizon, cfg, as_of=cutoff, view=resolved_view
     )
 
 
@@ -274,8 +325,11 @@ def research_samples(
     subject: Optional[str] = Query(default=None, description="subject key: setup or pattern (event-study kind)"),
     view: Optional[str] = Query(
         default=None,
-        description="event-study overlap-honesty view: episodes (default) | pooled (event-study kind)",
+        description="overlap-honesty view: episodes (default) | pooled (event-study & regime-setup-pattern kinds)",
     ),
+    # regime-setup-pattern selector (J-77)
+    setup: Optional[str] = Query(default=None, description="setup status (regime-setup-pattern kind)"),
+    pattern: Optional[str] = Query(default=None, description="pattern key or 'none' (regime-setup-pattern kind)"),
     as_of: Optional[str] = Query(
         default=None,
         description="optional point-in-time cutoff (YYYY-MM-DD) — the single global as-of; omitted = all-history",
@@ -307,10 +361,11 @@ def research_samples(
             detail=f"unknown horizon {resolved_horizon}; valid horizons are {list(wf.horizons)}",
         )
 
-    # J-63: the event-study overlap-honesty view (episodes default | pooled). Validated to the two allowed
-    # values for the event-study kind (422 otherwise); ignored for other kinds. A cohort/mode, not a date.
+    # J-63: the overlap-honesty view (episodes default | pooled). Validated to the two allowed values for
+    # the event-study AND regime-setup-pattern kinds (422 otherwise); ignored for other kinds. A cohort/
+    # mode selector, not a date.
     resolved_view: Optional[str] = None
-    if kind == KIND_EVENT_STUDY:
+    if kind in (KIND_EVENT_STUDY, KIND_REGIME_SETUP_PATTERN):
         resolved_view = VIEW_EPISODES if view is None else view
         if resolved_view not in ALL_VIEWS:
             raise HTTPException(
@@ -349,6 +404,7 @@ def research_samples(
             factor_key=factor, slice_kind=slice, decile=decile, regime=regime, sector=sector,
             conditions=conditions, cohort_kind=cohort, single_index=single_index,
             subject_key=subject, view=resolved_view,
+            setup=setup, pattern=pattern,
         )
     except ValueError as exc:
         # an unknown/out-of-range cohort selector is an explicit 4xx — never a silent empty 200 (which is
