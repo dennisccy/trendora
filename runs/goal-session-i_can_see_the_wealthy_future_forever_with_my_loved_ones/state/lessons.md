@@ -141,3 +141,9 @@ recommend a cheap lean re-QA pass with no code rework rather than re-running dev
 unavailable" and the evidence dir is empty — especially lean frontend-only iters whose only gate is the
 browser smoke; confirm :3835/:8835/:9222 reachability before scoring, and never upgrade `unknown` target
 journeys to `passing` on source review alone.
+
+## iter-18 — 2026-06-15T11:00:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The availability-heatmap blank/wrong-frame capture trap recurred a 7th time (iters 3/5/7/9/13/15/17 -> 18): on /data the colored multi-hue grid sits BELOW the fold, so default and naive-scroll screenshots land on either a blank dark frame (the 5742-byte signature) or the per-symbol COVERAGE TABLE (`J-74-fullvp-heatmap-with-legend.png` showed ADI/AMAT/AMD rows, not cells). The J-74 multi-hue PASS was salvageable only because the live DOM computed-CSS rgb values matched the committed `globals.css --heat-0..5` hex to the digit (rgb extraction can't be faked from source alone) — but the spec's screenshot DoD was not met. Future heatmap QA must scroll the colored grid explicitly into the viewport and capture full-viewport, then VIEW the pixels; a coverage-table or blank frame is a rejected capture, not evidence.
+**Applies to:** any iter capturing the `/data` per-date availability heatmap (J-61/J-70/J-74) or any below-the-fold surface — and the general rule that DOM/computed-CSS extraction can substitute for a degraded screenshot ONLY when it carries render-only signal (live rgb/aria values), never on source review alone.

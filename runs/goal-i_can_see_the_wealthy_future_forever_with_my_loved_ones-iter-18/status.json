@@ -1,0 +1,16 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-06-15T01:30:00Z",
+  "started_at": "2026-06-15T01:25:00Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18-dev.md"
+  ],
+  "tests_run": false,
+  "browser_checks_run": false,
+  "next_action": "browser-qa-agent to capture live evidence (this is the primary gate this iteration). FIRST confirm :3835 (frontend), :8835 (backend GET /api/health Ready), and :9222 (Chrome DevTools) are reachable; if any is down, record an honest SKIP (env failure -> CONTINUE) and DO NOT upgrade J-74/J-76 to passing on source review alone. Then: J-74 on /data (multi-hue heatmap scale + legend + per-bucket day-number legibility for live buckets 4-5; buckets 0-3 source-verified per the iter-16 lesson, do not fabricate; snapshot-day ring marker; hover-exact figures; cell-click prefills the job form only and as-of indicator stays 'Latest' / URL stays /data -- J-18; descending months + two-up -- J-70). J-76 on /stocks/NVDA (per-bar hover box: date yyyy-MM-dd + OHLC + volume + %chg + each rendered MA value; set a historical as-of D then capture the box over a forward bar labelled 'after as-of (display only)' -- J-20; box must NOT obscure the as-of marker / forward divider or the J-45 regime bands; box clears off-chart; absent MA reads 'NA'). Required-still-passing smoke: J-61, J-70, J-20, J-45, J-42, J-05, J-06. Evidence hygiene: md5sum the evidence dir first; one distinct full-VIEWPORT capture per claimed surface; verify each filename matches its pixels.",
+  "notes": "NO-OP DEVELOPER TURN -- re-verification only; iter-17 code unchanged. LEAN goal-mode iteration; IN SCOPE is explicitly None for both backend and frontend. J-74 (multi-hue availability heatmap) and J-76 (price-chart per-bar hover box) were already built + source-verified in iter-17 commit 041ac59 (coherence COHERENCE-PASS, review PASS, tsc/build clean, backend diff empty). The ONLY iter-17 gap is live browser evidence -- iter-17 browser-QA SKIPPED entirely (Chrome DevTools :9222 ECONNREFUSED, 0/9 tests, empty evidence dir), so both targets stay 'unknown'. No code was written/edited/deleted this iteration (doing so would violate OUT OF SCOPE). Static pre-handoff confirmation: in-scope source files (availability-heatmap.tsx, price-chart.tsx, tailwind.config.ts, globals.css) committed + working-tree clean; backend diff empty; J-18 invariant re-confirmed -- asof-provider/asof-switcher/asof-calendar byte-untouched (not in iter-17 commit, clean), heatmap cell-click calls onPrefillRange only with ZERO setAsOf usage, price-chart hover box has ZERO setAsOf and ZERO date useState. No pytest gate required (backend diff empty) -- per spec, do NOT gate the evaluator on any pytest run. The live evidence capture is the browser-qa-agent's job downstream."
+}

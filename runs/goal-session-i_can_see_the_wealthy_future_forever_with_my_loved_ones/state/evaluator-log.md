@@ -345,3 +345,21 @@ keeps as-of "Latest"; buckets 0-3 source-verified per iter-16 lesson) and J-76 (
 MA on /stocks/NVDA, forward-bar label under a historical as-of, disappears off-chart), plus the
 required-still-passing smoke (J-61/J-70/J-20/J-45/J-42/J-05/J-06). No code rework needed. After these
 close green: J-78+J-73, then the backend cluster J-72/J-75/J-77 at full depth.
+
+## Iteration 18 — goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18
+
+**Date:** 2026-06-15T11:00:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** lean
+**Journey deltas:**
+- Newly passing: J-74, J-76 (both upgraded unknown -> passing via the iter-18 LIVE browser-QA re-verification — code shipped iter-17, source-verified; iter-17 lacked live evidence only because Chrome was down)
+- Re-verified passing (live): J-61, J-70, J-20, J-45, J-42, J-05, J-06 + the critical J-18 single-date-selector invariant
+- Newly recorded failing: J-72, J-73, J-75, J-77, J-78 (first journey-history entries for the unbuilt remainder of the appended J-72..J-78 extension; all explicitly NOT data-dependent per goal.md:2093)
+- Regressed: none
+- Anti-goal violations: none (no code change this iteration — apps/ diff empty)
+
+**Reasoning:** The env came up (backend :8835, frontend :3835, Chrome :9222 — confirmed live by the genuine 09:57-10:20 captures), browser-QA ran 9/9 PASS, and the apps/ diff is provably empty (matches the no-op dev handoff, review PASS, coherence COHERENCE-PASS). J-76 is unimpeachable: two byte-distinct (082d8867 != 3e0a7414), full-viewport, evaluator-VIEWED captures show the hover box with date(yyyy-MM-dd)/OHLC/volume/%chg/four MAs, the amber "after as-of (display only)" forward label, and no obscuring of the as-of marker / regime bands; source corroborates (formatIsoDate, NA for absent MA, no setAsOf/date state). J-74's substantive multi-hue claim is positively evidenced by LIVE DOM computed-CSS extraction whose six rgb bucket values match the committed globals.css --heat-0..5 hex to the digit (could only come from a running render), plus 1357 snapshot-ring cells, live aria-labels, and the genuine live /data J-18 capture (cell-click kept URL /data + as-of "Latest"); I re-derived every claim against committed source. NOT GOAL_ACHIEVED: J-72/J-73/J-75/J-77/J-78 remain unbuilt (failing), tractable, and non-data-dependent.
+
+**Evidence-hygiene defect (recorded, not verdict-changing):** the cited J-74 heatmap close-up frames (md5 6608b338 cluster, 5742-byte) are BLANK and the "fullvp" frame (e47d8c28) shows the per-symbol coverage TABLE — NOT the colored multi-hue grid. So there is no screenshot frame showing the rendered cells/legend/day-numbers; the J-74 pass rests on the live DOM/CSS extraction (consistent with the iters 3/7/9 DOM-corroborated acceptance pattern). The heatmap sits below the fold on /data — iter-19 QA must scroll the colored grid into view and capture it full-viewport.
+
+**Next-step recommendation:** iter-19 lean — J-78 (one-line config.yaml index_chart.default_range 6M->All, ~line 305; re-smoke J-44/J-49) bundled with J-73 (synchronous ?asof URL hydration — touches asof-provider.tsx, the J-18/J-43/J-50 invariant core; re-smoke J-18/J-43/J-50). Then the backend cluster J-72 (perf+cache with a byte-identity guard on cached-vs-uncached figures) / J-75 (forward returns 1/5/10/20/60d from the stored forward_returns table, no-lookahead/no-recompute gate, matches the leaderboard) / J-77 (regime×setup×pattern ranked grouping of the SAME enriched event-study observation set, count-coherent with the N= chips) at full depth — the audit step earns its cost there. EVIDENCE-HYGIENE directive for iter-19 QA: md5sum the dir first; scroll the heatmap colored grid into view and capture full-viewport; reject any heatmap PASS whose only frame is the coverage table or a blank image.
