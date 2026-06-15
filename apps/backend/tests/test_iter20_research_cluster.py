@@ -374,6 +374,56 @@ def test_j77_unknown_view_raises(study_engine):
 
 
 # ==================================================================================================
+# J-77 — iter-21 _rsp_rank_key no-magic-number refactor: NA-last ordering byte-identical
+# ==================================================================================================
+def _rsp_rank_key_legacy(row: dict) -> tuple:
+    """The PRE-iter-21 sort key (with the 0.0 float-literal sentinels) — kept HERE in a test (calc-code
+    guards don't scan tests) as the oracle the literal-free refactor must reproduce byte-for-byte."""
+    ra = row["stats"]["return_per_downside_dev"]
+    mean_r = row["stats"]["mean"]
+    return (
+        (ra is not None, ra if ra is not None else 0.0),
+        (mean_r is not None, mean_r if mean_r is not None else 0.0),
+    )
+
+
+def test_j77_rsp_rank_key_refactor_orders_identically_to_legacy():
+    """iter-21 (No-magic-numbers fix): the literal-free `_rsp_rank_key` must order rows BYTE-IDENTICALLY
+    to the legacy key that used `0.0` sentinels — across all four cases (both present, ra-only present,
+    mean-only present, both None), NA sorting LAST under `reverse=True`. The sentinel is consulted only
+    between two BOTH-None rows (equal either way), so the published ranking never changes."""
+    from app.engine.research import _rsp_rank_key
+
+    def _row(label, ra, mean):
+        return {"regime": label, "setup": "s", "pattern": "p",
+                "stats": {"return_per_downside_dev": ra, "mean": mean}}
+
+    rows = [
+        _row("a", 0.5, 0.2),     # both present, high ra
+        _row("b", 0.5, 0.1),     # ties on ra, lower mean
+        _row("c", -0.3, 0.9),    # both present, negative ra
+        _row("d", None, 0.4),    # ra NA, mean present  -> NA-last on ra
+        _row("e", None, 0.4),    # ra NA, mean ties      -> both-None ra sentinel path
+        _row("f", None, None),   # both NA               -> deepest NA-last
+        _row("g", None, None),   # both NA, label tie    -> sentinel path on BOTH keys
+        _row("h", 0.0, None),    # ra present (==0), mean NA
+    ]
+
+    def _order(key):
+        ordered = sorted(rows, key=lambda r: (r["regime"], r["setup"], r["pattern"]))
+        ordered.sort(key=key, reverse=True)
+        return [r["regime"] for r in ordered]
+
+    assert _order(_rsp_rank_key) == _order(_rsp_rank_key_legacy)
+    # The two BOTH-None rows (mean also NA) land LAST (present-ra rows first under reverse=True, then
+    # NA-ra rows ordered by mean — present mean before NA mean).
+    refactored = _order(_rsp_rank_key)
+    assert set(refactored[-2:]) == {"f", "g"}
+    # and the literal-free key must carry NO float in its NA fallback: a both-None pair compares EQUAL.
+    assert _rsp_rank_key(_row("x", None, None)) == _rsp_rank_key(_row("y", None, None))
+
+
+# ==================================================================================================
 # J-77 — count-coherence SAME-INSTANT (study row n == samples drill-down total) in BOTH views
 # ==================================================================================================
 def test_j77_count_coherence_same_instant_both_views(study_engine):

@@ -122,8 +122,8 @@ source of truth; the frontend only re-formats server values.
 ```
 Trendora
 ├── Dashboard        /                       (J-01; J-44 Major-indexes & regime card [built iter-2]; J-49 full-history + as-of marker [built iter-6]; J-78 indexes chart default range All [TARGET iter-19])
-├── Stocks           /stocks                 (J-02, J-06, J-16/J-28 pattern filters, J-31 deep-link; J-48 sortable columns + J-54 ticker→new-tab [built iter-5]; J-55 type-to-filter search + J-56 Theme column/filter [built iter-9]; J-75 forward-return columns 1/5/10/20/60d (sortable view-transform) [TARGET iter-20])
-│   └── Stock Detail /stocks/[ticker]        (J-05, J-06, J-16, J-20; J-45 regime bands [built iter-2]; J-76 per-bar price-chart hover box [built iter-17; live re-verify iter-18]; J-75 same five forward-return columns 1/5/10/20/60d [TARGET iter-20]; J-24 timeframe — data-walled)  — row-reached
+├── Stocks           /stocks                 (J-02, J-06, J-16/J-28 pattern filters, J-31 deep-link; J-48 sortable columns + J-54 ticker→new-tab [built iter-5]; J-55 type-to-filter search + J-56 Theme column/filter [built iter-9]; J-75 forward-return columns 1/5/10/20/60d (sortable view-transform) [built iter-20; suite-green iter-21])
+│   └── Stock Detail /stocks/[ticker]        (J-05, J-06, J-16, J-20; J-45 regime bands [built iter-2]; J-76 per-bar price-chart hover box [built iter-17; live re-verify iter-18]; J-75 same five forward-return columns 1/5/10/20/60d [built iter-20; suite-green iter-21]; J-24 timeframe — data-walled)  — row-reached
 ├── Themes           /themes                 (J-03; J-57 expandable `+n` members + dated new-tab member links [built iter-9])
 ├── Sectors          /sectors                (J-04; J-58 config-sourced ETF names/descriptions + universe members [built iter-11])
 ├── Scanner Runs     /scanner-runs           (J-08)
@@ -131,8 +131,8 @@ Trendora
 ├── Backtest         /backtest               (J-09, J-10, J-14, J-18, J-19, J-21; J-47 tooltips)
 ├── Watchlist        /watchlist              (J-11)
 ├── Methodology      /methodology            (J-12, J-22 universe rule; J-47 full Glossary [built iter-4]; J-63 Episode/Pooled glossary entries [built iter-14])
-├── Research         /research               (J-25, J-26, J-27, J-29, J-30, J-31, J-32; J-47 tooltips; J-63 Episodes-default ⇄ Pooled toggle [built iter-14]; J-65 `N=` chips → samples in NEW TAB [built iter-10]; J-72 per-lab independent loading + event-study perf/cache (figures byte-identical) [TARGET iter-20]; J-77 ranked Regime × Setup × Pattern combinations study [TARGET iter-20])
-│   └── Samples      /research/samples       (J-51 sample-count drill-down, J-52 row→dated detail) [built iter-7]; J-64 client-side sort + ticker filter [built iter-10]; J-77 new (regime,setup,pattern) combination cohort selector — count-coherent in Episodes+Pooled [TARGET iter-20]  — link-reached
+├── Research         /research               (J-25, J-26, J-27, J-29, J-30, J-31, J-32; J-47 tooltips; J-63 Episodes-default ⇄ Pooled toggle [built iter-14]; J-65 `N=` chips → samples in NEW TAB [built iter-10]; J-72 per-lab independent loading + event-study perf/cache (figures byte-identical) [built iter-20; suite-green iter-21]; J-77 ranked Regime × Setup × Pattern combinations study [built iter-20; suite-green iter-21])
+│   └── Samples      /research/samples       (J-51 sample-count drill-down, J-52 row→dated detail) [built iter-7]; J-64 client-side sort + ticker filter [built iter-10]; J-77 new (regime,setup,pattern) combination cohort selector — count-coherent in Episodes+Pooled [built iter-20; suite-green iter-21]  — link-reached
 └── Data Manager     /data                   (J-17, J-33–J-39; J-42 ISO date inputs [built iter-1]; J-53 stage timings [built iter-8]; J-59 stage-resume + covered-range skip, J-60 run-history-from-start, J-66 fine-grained progress + speedup-server-side, J-67 reliable parallel backfill [built iter-12]; J-61 availability heatmap [built iter-13]; J-68 multi-month/full-history backfill 'committed'-session fix + J-69 range-only accident-proof removal [TARGET iter-15]; J-70 heatmap readability/two-up/descending-months [built iter-16]; J-74 heatmap multi-hue coverage scale + legend + per-bucket legible day numbers [built iter-17; live re-verify iter-18])
 ```
 

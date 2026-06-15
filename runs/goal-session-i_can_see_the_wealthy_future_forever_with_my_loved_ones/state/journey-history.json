@@ -18,7 +18,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-02-filters.png",
-      "note": "Not in iter-20 scope. Carried passing from iter-9. (iter-20 added forward-return columns to /stocks but did not touch the filter mechanics — J-48 view-transform contract held per TC-09.)"
+      "note": "Not in iter-20 scope. Carried passing from iter-9. (iter-20 added forward-return columns to /stocks but did not touch the filter mechanics \u2014 J-48 view-transform contract held per TC-09.)"
     },
     "J-03": {
       "id": "J-03",
@@ -78,7 +78,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-07-result.png",
-      "note": "Not in iter-20 scope. Carried from iter-15. iter-20 added a SEPARATE event_study_cache table; no scanner_run/result row mutated (immutability critical anti-goal held — coherence PASS)."
+      "note": "Not in iter-20 scope. Carried from iter-15. iter-20 added a SEPARATE event_study_cache table; no scanner_run/result row mutated (immutability critical anti-goal held \u2014 coherence PASS)."
     },
     "J-09": {
       "id": "J-09",
@@ -152,13 +152,13 @@
     },
     "J-16": {
       "id": "J-16",
-      "name": "VCP — detected, explained, filterable, forward-tested",
+      "name": "VCP \u2014 detected, explained, filterable, forward-tested",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-16-vcp-filter.png",
-      "note": "Not in iter-20 scope. Carried passing from iter-9. (J-77 reads VCP/pattern flags VERBATIM into the observation pool — no pattern recompute, coherence PASS.)"
+      "note": "Not in iter-20 scope. Carried passing from iter-9. (J-77 reads VCP/pattern flags VERBATIM into the observation pool \u2014 no pattern recompute, coherence PASS.)"
     },
     "J-17": {
       "id": "J-17",
@@ -208,7 +208,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-09-result.png",
-      "note": "Required-still-passing in iter-20 (J-75 reads the SAME stored forward_returns Backtest reads). Re-verified: TC-23 test_stocks_forward_returns_match_backtest_stored PASSED — leaderboard/detail forward returns match the Backtest-stored values for the same symbol/horizon/date; no recompute in the read path."
+      "note": "Required-still-passing in iter-20 (J-75 reads the SAME stored forward_returns Backtest reads). Re-verified: TC-23 test_stocks_forward_returns_match_backtest_stored PASSED \u2014 leaderboard/detail forward returns match the Backtest-stored values for the same symbol/horizon/date; no recompute in the read path."
     },
     "J-22": {
       "id": "J-22",
@@ -222,7 +222,7 @@
     },
     "J-23": {
       "id": "J-23",
-      "name": "Multi-timeframe bars — intraday seed + pipeline",
+      "name": "Multi-timeframe bars \u2014 intraday seed + pipeline",
       "status": "unknown",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-8",
       "last_passing_iter": null,
@@ -242,7 +242,7 @@
     },
     "J-25": {
       "id": "J-25",
-      "name": "Factor Lab — decile sort and rank-IC per factor",
+      "name": "Factor Lab \u2014 decile sort and rank-IC per factor",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
@@ -252,7 +252,7 @@
     },
     "J-26": {
       "id": "J-26",
-      "name": "Factor Lab — multi-factor composite cohort",
+      "name": "Factor Lab \u2014 multi-factor composite cohort",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
@@ -262,7 +262,7 @@
     },
     "J-27": {
       "id": "J-27",
-      "name": "Factor Lab — regime-conditioned effectiveness",
+      "name": "Factor Lab \u2014 regime-conditioned effectiveness",
       "status": "already_passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
@@ -282,7 +282,7 @@
     },
     "J-29": {
       "id": "J-29",
-      "name": "Setup & Pattern lab — event study",
+      "name": "Setup & Pattern lab \u2014 event study",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
@@ -292,7 +292,7 @@
     },
     "J-30": {
       "id": "J-30",
-      "name": "Volatility factor family — risk-adjusted, regime-conditioned",
+      "name": "Volatility factor family \u2014 risk-adjusted, regime-conditioned",
       "status": "already_passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
@@ -352,7 +352,7 @@
     },
     "J-36": {
       "id": "J-36",
-      "name": "Coverage — per-symbol table + universe-vs-symbols clarity",
+      "name": "Coverage \u2014 per-symbol table + universe-vs-symbols clarity",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
@@ -372,7 +372,7 @@
     },
     "J-38": {
       "id": "J-38",
-      "name": "Unified Unfinished-imports — Resume / Retry / Remove",
+      "name": "Unified Unfinished-imports \u2014 Resume / Retry / Remove",
       "status": "already_passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
@@ -382,7 +382,7 @@
     },
     "J-39": {
       "id": "J-39",
-      "name": "Remove imported data — seed-safe, cascade-consistent",
+      "name": "Remove imported data \u2014 seed-safe, cascade-consistent",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
@@ -402,7 +402,7 @@
     },
     "J-41": {
       "id": "J-41",
-      "name": "Boot resilience — warm-up never takes the app down",
+      "name": "Boot resilience \u2014 warm-up never takes the app down",
       "status": "already_passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
@@ -468,7 +468,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7-evidence/UT-J-51-samples-page.png",
-      "note": "Not in iter-20 scope. Carried passing from iter-7. (J-77 reads the same J-47 glossary for column headers — no glossary change.)"
+      "note": "Not in iter-20 scope. Carried passing from iter-7. (J-77 reads the same J-47 glossary for column headers \u2014 no glossary change.)"
     },
     "J-48": {
       "id": "J-48",
@@ -482,7 +482,7 @@
     },
     "J-49": {
       "id": "J-49",
-      "name": "Major indexes & regime card shows full history — as-of is a marker, not a clamp (amends J-44)",
+      "name": "Major indexes & regime card shows full history \u2014 as-of is a marker, not a clamp (amends J-44)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19",
@@ -562,7 +562,7 @@
     },
     "J-57": {
       "id": "J-57",
-      "name": "Theme members — expandable +n, every member a dated new-tab link (amends J-54)",
+      "name": "Theme members \u2014 expandable +n, every member a dated new-tab link (amends J-54)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
@@ -572,7 +572,7 @@
     },
     "J-58": {
       "id": "J-58",
-      "name": "Sectors page — every ETF named and described, with universe members",
+      "name": "Sectors page \u2014 every ETF named and described, with universe members",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
@@ -582,7 +582,7 @@
     },
     "J-59": {
       "id": "J-59",
-      "name": "Resume from the failed stage — and covered ranges are never re-fetched (extends J-34/J-38)",
+      "name": "Resume from the failed stage \u2014 and covered ranges are never re-fetched (extends J-34/J-38)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
@@ -602,7 +602,7 @@
     },
     "J-61": {
       "id": "J-61",
-      "name": "Per-date availability heatmap — see exactly which dates have data",
+      "name": "Per-date availability heatmap \u2014 see exactly which dates have data",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
@@ -622,7 +622,7 @@
     },
     "J-63": {
       "id": "J-63",
-      "name": "Event study is overlap-honest — first-trigger episodes by default, pooled one toggle away",
+      "name": "Event study is overlap-honest \u2014 first-trigger episodes by default, pooled one toggle away",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
@@ -632,7 +632,7 @@
     },
     "J-64": {
       "id": "J-64",
-      "name": "Research samples table — sortable and filterable (the J-48 contract)",
+      "name": "Research samples table \u2014 sortable and filterable (the J-48 contract)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
@@ -662,7 +662,7 @@
     },
     "J-67": {
       "id": "J-67",
-      "name": "Multi-date backfill completes reliably — no more 'committed'-session crash (extends J-53/J-41)",
+      "name": "Multi-date backfill completes reliably \u2014 no more 'committed'-session crash (extends J-53/J-41)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
@@ -672,7 +672,7 @@
     },
     "J-68": {
       "id": "J-68",
-      "name": "Multi-month / multi-year backfill no longer crashes with a 'committed' session — the real Data Manager reproduction (hardens J-67)",
+      "name": "Multi-month / multi-year backfill no longer crashes with a 'committed' session \u2014 the real Data Manager reproduction (hardens J-67)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
@@ -712,17 +712,17 @@
     },
     "J-72": {
       "id": "J-72",
-      "name": "Research page loads fast — Setup & Pattern Lab / event study no longer slow (extends J-29/J-63, J-15 load discipline)",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
-      "last_passing_iter": null,
+      "name": "Research page loads fast \u2014 Setup & Pattern Lab / event study no longer slow (extends J-29/J-63, J-15 load discipline)",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-21",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-21",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20-evidence/TC-19-research-sections.png",
-      "note": "Built in iter-20 and FUNCTIONALLY correct (byte-identity both views all-windows + single-batched-read + cache-refresh-after-dataset-change all PASS — TC-01/02/03/04; standalone event_study_cache table per coherence PASS; independent per-section /research loading TC-19). HELD failing because the binding DoD / standing iter-19 gate (full backend pytest suite GREEN) is RED: 2 failed / 831 passed. Neither failure is in J-72's own assertions, but the suite is the gate. Flips to passing once iter-21 makes the suite green (the iter-21 fix touches test_db.py expected-tables for the new event_study_cache table — the J-72 cache table)."
+      "note": "Built FUNCTIONALLY correct in iter-20 (byte-identity both views all-windows + single-batched-read + cache-refresh-after-dataset-change all PASS; standalone event_study_cache table per coherence PASS; independent per-section /research loading \u2014 TC-19). FLIPS TO PASSING in iter-21: the binding DoD / standing iter-19 gate (full backend pytest suite GREEN) is now satisfied \u2014 834 passed, 4 skipped, 0 failed, EXIT_CODE=0 (/tmp/trendora-iter21-fullsuite.log). The iter-21 fix added event_study_cache (the J-72 cache table) to test_db.py expected-tables (RESEARCH_CACHE_TABLES); the cache table itself was untouched and serves byte-identical figures. No served-payload change."
     },
     "J-73": {
       "id": "J-73",
-      "name": "No as-of 'date flash' — every page renders the selected date from first paint (extends J-43/J-18/J-50)",
+      "name": "No as-of 'date flash' \u2014 every page renders the selected date from first paint (extends J-43/J-18/J-50)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19",
@@ -743,12 +743,12 @@
     "J-75": {
       "id": "J-75",
       "name": "Forward returns on the stock leaderboard and stock detail (1/5/10/20/60-day)",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-21",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-21",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20-evidence/TC-06-stock-detail-forward-returns.png",
-      "note": "Built in iter-20 and FUNCTIONALLY correct — all five forward-return columns served VERBATIM from the stored forward_returns table; leaderboard==detail==Backtest-stored for the same ticker/date/horizon (TC-05/06/23); NA at latest, never fabricated (TC-07); config-driven horizons, no hardcoded literal (TC-08); view-transform sortable, no refetch (TC-09); no-lookahead intrinsic to the stored rows. NO suite failure is attributable to J-75. HELD failing only because the iteration as a whole does not meet its DoD (full suite RED on two non-J-75 failures). Flips to passing in iter-21 once the suite is green (no J-75 served-payload change needed)."
+      "note": "Built FUNCTIONALLY correct in iter-20 \u2014 all five forward-return columns served VERBATIM from the stored forward_returns table; leaderboard==detail==Backtest-stored for the same ticker/date/horizon (TC-05/06/23); NA at latest, never fabricated (TC-07); config-driven horizons (TC-08); view-transform sortable, no refetch (TC-09); no-lookahead intrinsic to the stored rows. NO suite failure was ever attributable to J-75. FLIPS TO PASSING in iter-21: the iteration DoD (full suite GREEN) is now met (834 passed / 0 failed) with no J-75 served-payload change. Evidence: iter-20 TC-06 stock-detail forward-return panel (evaluator-viewed)."
     },
     "J-76": {
       "id": "J-76",
@@ -762,13 +762,13 @@
     },
     "J-77": {
       "id": "J-77",
-      "name": "Research — returns by regime × setup × pattern (ranked combinations study)",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
-      "last_passing_iter": null,
+      "name": "Research \u2014 returns by regime \u00d7 setup \u00d7 pattern (ranked combinations study)",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-21",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-21",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20-evidence/TC-77-research-page.png",
-      "note": "Built in iter-20 and FUNCTIONALLY correct — pure grouping of the SAME enriched event-study observation set (coherence PASS); existing J-29/J-63 figures byte-identical after the additive enrichment (TC-10); group-by correct (TC-11); count-coherent with the /research/samples drill-down SAME-INSTANT in both Episodes and Pooled (TC-12); low-sample NA+n honesty (TC-13); 4xx on bad inputs (TC-14); config-backed vocabularies, no new validated config section (TC-15). HELD failing because the binding DoD / standing iter-19 gate (full backend pytest suite GREEN) is RED: the J-77 ranked-key helper introduced two `0.0` sort-tie sentinels at apps/backend/app/engine/research.py:1435-1436 that trip test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers (the No-magic-numbers anti-goal guard — blanket-forbids any float literal in CALC_FILES). MINOR, trivially fixable; not a tunable scoring constant. Flips to passing in iter-21 once the sentinels are sourced from a named constant / restructured and the suite is green."
+      "note": "Built FUNCTIONALLY correct in iter-20 \u2014 pure grouping of the SAME enriched event-study observation set (coherence PASS); existing J-29/J-63 figures byte-identical after the additive enrichment (TC-10); group-by correct (TC-11); count-coherent with /research/samples SAME-INSTANT both Episodes and Pooled (TC-12); low-sample NA+n honesty (TC-13); 4xx on bad inputs (TC-14); config-backed vocabularies (TC-15). FLIPS TO PASSING in iter-21: the two `0.0` sort-tie sentinels in `_rsp_rank_key` (apps/backend/app/engine/research.py) were replaced with the structural `is_not_none` boolean fallback \u2014 independently verified 0 float literals in research.py and 200 randomized orderings byte-identical to the legacy 0.0-sentinel key (DEFAULT ranking + published figures unchanged; new oracle test test_j77_rsp_rank_key_refactor_orders_identically_to_legacy pins it). The No-magic-numbers guard (test_no_magic_numbers.py) now passes; full suite GREEN (834 passed / 0 failed)."
     },
     "J-78": {
       "id": "J-78",
@@ -784,11 +784,13 @@
   "anti_goal_violations": [
     {
       "iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
-      "anti_goal": "No magic numbers. Every scoring weight, threshold, decision-rule cutoff, bucket edge, universe entry, and theme definition MUST come from the config file — no such literal in calculation code.",
+      "anti_goal": "No magic numbers. Every scoring weight, threshold, decision-rule cutoff, bucket edge, universe entry, and theme definition MUST come from the config file \u2014 no such literal in calculation code.",
       "severity": "minor",
-      "evidence": "apps/backend/app/engine/research.py:1435-1436 — two `0.0` float literals in `_rsp_rank_key` (J-77 sort-tie sentinels, only consulted after the `is_not_none` boolean partitions None-last under reverse=True; NOT a tunable scoring constant). Trips tests/test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers (the blanket guard forbidding ANY float literal in CALC_FILES). Confirmed in the authoritative full-suite run /tmp/trendora-iter20-fullsuite.log (2 failed, 831 passed). Not marked (critical) in goal.md. Fix: source a named module-level constant or restructure the sort so no float literal is present.",
-      "resolved": false
+      "evidence": "apps/backend/app/engine/research.py:1435-1436 \u2014 two `0.0` float literals in `_rsp_rank_key` (J-77 sort-tie sentinels, only consulted after the `is_not_none` boolean partitions None-last under reverse=True; NOT a tunable scoring constant). Trips tests/test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers (the blanket guard forbidding ANY float literal in CALC_FILES). Confirmed in the authoritative full-suite run /tmp/trendora-iter20-fullsuite.log (2 failed, 831 passed). Not marked (critical) in goal.md. Fix: source a named module-level constant or restructure the sort so no float literal is present.",
+      "resolved": true,
+      "resolved_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-21",
+      "resolution": "iter-21: the two `0.0` float literals in `_rsp_rank_key` were replaced with the structural `is_not_none` boolean fallback (no float literal remains in research.py \u2014 independently tokenizer-verified 0 float-like NUMBER literals). test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers passes; the DEFAULT J-77 ranking is byte-identical (200 randomized orderings match the legacy key; oracle test added). Full suite GREEN (834 passed, 0 failed, EXIT_CODE=0)."
     }
   ],
-  "updated_at": "2026-06-15T15:30:00Z"
+  "updated_at": "2026-06-15T21:05:00Z"
 }

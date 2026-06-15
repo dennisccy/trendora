@@ -1428,12 +1428,21 @@ def _rsp_rank_key(row: dict) -> tuple:
     """The default ranking key for the J-77 table: descending by the risk-adjusted figure
     (`return_per_downside_dev`), NA last, then by raw mean (NA last), then a deterministic tie-break by
     the (regime, setup, pattern) label so the order is total + reproducible. Returns a tuple usable with
-    `reverse=True` — a None metric sorts LAST under reverse via the `(is_not_none, value)` pairing."""
+    `reverse=True` — a None metric sorts LAST under reverse via the `(is_not_none, value)` pairing.
+
+    The `is_not_none` boolean ALREADY partitions present-before-None under `reverse=True` (True > False),
+    so the metric value is only ever compared between two rows that BOTH have it present. For the
+    None case we reuse the `is_not_none` flag itself as the fallback (a structural, non-float comparable
+    that equals itself for the both-None pair and is NEVER cross-compared against a float, because a
+    differing first element short-circuits the tuple comparison). This carries NO float literal — the
+    fallback is structural to the sort, not a tunable scoring value (No magic numbers anti-goal)."""
     ra = row["stats"]["return_per_downside_dev"]
     mean_r = row["stats"]["mean"]
+    ra_present = ra is not None
+    mean_present = mean_r is not None
     return (
-        (ra is not None, ra if ra is not None else 0.0),
-        (mean_r is not None, mean_r if mean_r is not None else 0.0),
+        (ra_present, ra if ra_present else ra_present),
+        (mean_present, mean_r if mean_present else mean_present),
     )
 
 
