@@ -8,7 +8,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-4",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-4-evidence/J-01-dashboard.png",
-      "note": "Not in iter-16 scope (frontend heatmap/calendar polish). Carried passing from iter-4; unchanged code path. Incidentally re-rendered intact in the iter-16 J-71 dashboard captures (Market Regime panel + candidate counts visible)."
+      "note": "Not in iter-17 scope. Carried passing. iter-17 is frontend-only (heatmap + price-chart) and did not touch the dashboard."
     },
     "J-02": {
       "id": "J-02",
@@ -18,7 +18,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-02-filters.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-9; unchanged."
+      "note": "Not in iter-17 scope. Carried passing from iter-9; unchanged."
     },
     "J-03": {
       "id": "J-03",
@@ -28,7 +28,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-03-themes.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-9; unchanged."
+      "note": "Not in iter-17 scope. Carried passing from iter-9; unchanged."
     },
     "J-04": {
       "id": "J-04",
@@ -38,7 +38,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11-evidence/UT-01-result.png",
-      "note": "Not in iter-16 scope. Carried from iter-11."
+      "note": "Not in iter-17 scope. Carried from iter-11."
     },
     "J-05": {
       "id": "J-05",
@@ -48,7 +48,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-05-J-06-nvda-detail.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-9."
+      "note": "Required-still-passing in iter-17. NOT re-verified this iteration (browser-QA SKIPPED — Chrome MCP unavailable). Carried passing from iter-9. iter-17 touches price-chart.tsx (adds a pointer-events-none hover overlay) on the same /stocks/[ticker] page; source review shows scores/breakdowns/setup/reason/invalidation paths untouched (backend diff empty, no read-path change), so the carry is sound, but live re-verification is owed next iteration."
     },
     "J-06": {
       "id": "J-06",
@@ -58,7 +58,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-05-J-06-nvda-detail.png",
-      "note": "Not in iter-16 scope. iter-16 is frontend-only (two presentational components); no scoring/read path touched (backend diff empty). Single-source-of-truth anti-goal held. Coherence COHERENCE-PASS."
+      "note": "Required-still-passing in iter-17. NOT re-verified live (browser-QA SKIPPED). iter-17 is frontend-only (two presentational components); no scoring/read path touched (backend diff empty). Single-source-of-truth anti-goal held; Coherence COHERENCE-PASS. Carried passing from iter-11."
     },
     "J-07": {
       "id": "J-07",
@@ -68,7 +68,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-07-result.png",
-      "note": "Not in iter-16 scope. Carried from baseline."
+      "note": "Not in iter-17 scope. Carried from baseline."
     },
     "J-08": {
       "id": "J-08",
@@ -78,7 +78,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-07-result.png",
-      "note": "Not in iter-16 scope (no backend change). Carried from iter-15. Immutability anti-goal (critical) unaffected by a frontend-only iteration."
+      "note": "Not in iter-17 scope (no backend change). Carried from iter-15. Immutability anti-goal (critical) unaffected by a frontend-only iteration."
     },
     "J-09": {
       "id": "J-09",
@@ -88,7 +88,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-4",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-4-evidence/J-09-backtest.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-4."
+      "note": "Not in iter-17 scope. Carried passing from iter-4."
     },
     "J-10": {
       "id": "J-10",
@@ -98,7 +98,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-09-result.png",
-      "note": "Not in iter-16 scope. Carried from baseline."
+      "note": "Not in iter-17 scope. Carried from baseline."
     },
     "J-11": {
       "id": "J-11",
@@ -108,7 +108,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-11-result.png",
-      "note": "Not in iter-16 scope. Carried from baseline."
+      "note": "Not in iter-17 scope. Carried from baseline."
     },
     "J-12": {
       "id": "J-12",
@@ -118,7 +118,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-4",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-4-evidence/J-12-methodology.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-4."
+      "note": "Not in iter-17 scope. Carried passing from iter-4."
     },
     "J-13": {
       "id": "J-13",
@@ -128,7 +128,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16-evidence/UT-J-71-arrowleft-stepped.png",
-      "note": "Required-still-passing in iter-16 — RE-VERIFIED: browser-QA UT-J-13 confirms /?asof=2026-05-01 renders 'Viewing as-of 2026-05-01 (historical)'; the iter-16 J-71 keyboard scrub additionally exercises historical browsing live (ArrowLeft Latest->2026-05-05 -> dashboard re-reads at the historical date, regime panel re-rendered). No fabricated future data."
+      "note": "Not in iter-17 scope. Carried passing from iter-16. asof-provider untouched this iteration."
     },
     "J-14": {
       "id": "J-14",
@@ -138,7 +138,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-14-result.png",
-      "note": "Not in iter-16 scope. Carried from baseline."
+      "note": "Not in iter-17 scope. Carried from baseline."
     },
     "J-15": {
       "id": "J-15",
@@ -148,7 +148,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": null,
-      "note": "Not in iter-16 scope. THIN baseline evidence carried; snapshot-served read architecture unchanged."
+      "note": "Not in iter-17 scope. THIN baseline evidence carried; snapshot-served read architecture unchanged."
     },
     "J-16": {
       "id": "J-16",
@@ -158,7 +158,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-16-vcp-filter.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-9."
+      "note": "Not in iter-17 scope. Carried passing from iter-9."
     },
     "J-17": {
       "id": "J-17",
@@ -168,7 +168,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15-evidence/UT-13-run-history.png",
-      "note": "Not in iter-16 scope (no backend change). Carried passing from iter-15. Live-fetch leg honestly NA where walled."
+      "note": "Not in iter-17 scope (no backend change). Carried passing from iter-15. Live-fetch leg honestly NA where walled."
     },
     "J-18": {
       "id": "J-18",
@@ -178,7 +178,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16-evidence/UT-J-71-cross-month-step.png",
-      "note": "Required-still-passing in iter-16 — RE-VERIFIED and DIRECTLY scrutinized (this iteration's highest-risk invariant since J-71 adds keyboard as-of stepping). The J-71 handler lives on the asof-calendar dialog's existing onKeyDown calling the already-wired onSelect->setAsOf; the heatmap click prefills the JOB FORM only (asof-indicator stayed 'Latest'). Source-verified: asof-calendar.tsx has exactly ONE useState (the `view` month cursor — NOT an as-of value); NO window/document keydown listener anywhere in the diff; asof-provider.tsx/asof-switcher.tsx untouched. Browser-QA UT-J-18: /backtest has 0 date inputs, 0 selects, 1 asof-trigger. Coherence COHERENCE-PASS (Data Contract + IA checks). 'Exactly one date selector' critical anti-goal held."
+      "note": "Required-still-passing-by-implication in iter-17. Source-verified untouched: the iter-17 diff does NOT modify asof-provider.tsx / asof-switcher.tsx / asof-calendar.tsx; the heatmap cell-click still calls onPrefillRange into the JOB FORM only (never setAsOf — diff-confirmed); the price-chart hover box is a pointer-events-none display overlay holding NO date state. 'Exactly one date selector' critical anti-goal held. Carried passing from iter-16."
     },
     "J-19": {
       "id": "J-19",
@@ -188,7 +188,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-09-result.png",
-      "note": "Not in iter-16 scope. Carried from baseline."
+      "note": "Not in iter-17 scope. Carried from baseline."
     },
     "J-20": {
       "id": "J-20",
@@ -198,7 +198,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-6-evidence/UT-J-49-nvda-chart-clamped-bands.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-6."
+      "note": "Required-still-passing in iter-17. NOT re-verified live (browser-QA SKIPPED). iter-17 edits price-chart.tsx but source review confirms the as-of marker / forward divider drawing is unchanged; the new hover box is pointer-events-none and pinned top-left so it does not obscure the marker (drawn near top-right). Carried passing from iter-6; live re-verification owed next iteration."
     },
     "J-21": {
       "id": "J-21",
@@ -208,7 +208,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-09-result.png",
-      "note": "Not in iter-16 scope. Carried from baseline."
+      "note": "Not in iter-17 scope. Carried from baseline."
     },
     "J-22": {
       "id": "J-22",
@@ -218,7 +218,7 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": null,
-      "note": "Blocked-NA (data-walled). NON-VETOING per goal.md 'Data-dependent journeys (non-halting)' — explicitly may NOT halt the loop or veto completion of the buildable journeys. Unchanged in iter-16 (frontend-only)."
+      "note": "Blocked-NA (data-walled). NON-VETOING per goal.md 'Data-dependent journeys (non-halting)'. Unchanged in iter-17 (frontend-only)."
     },
     "J-23": {
       "id": "J-23",
@@ -228,7 +228,7 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": null,
-      "note": "Blocked-NA (data-walled). NON-VETOING per goal.md. Unchanged in iter-16."
+      "note": "Blocked-NA (data-walled). NON-VETOING per goal.md. Unchanged in iter-17."
     },
     "J-24": {
       "id": "J-24",
@@ -238,7 +238,7 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": null,
-      "note": "Blocked-NA (data-walled, depends on J-23). NON-VETOING per goal.md. Unchanged in iter-16."
+      "note": "Blocked-NA (data-walled, depends on J-23). NON-VETOING per goal.md. Unchanged in iter-17."
     },
     "J-25": {
       "id": "J-25",
@@ -248,7 +248,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-25-J-26-J-29-research.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-10."
+      "note": "Not in iter-17 scope. Carried passing from iter-10."
     },
     "J-26": {
       "id": "J-26",
@@ -258,7 +258,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-25-J-26-J-29-research.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-10."
+      "note": "Not in iter-17 scope. Carried passing from iter-10."
     },
     "J-27": {
       "id": "J-27",
@@ -268,7 +268,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-iter-0-evidence/J-25-J-32-research.png",
-      "note": "Not in iter-16 scope. THIN baseline carried."
+      "note": "Not in iter-17 scope. THIN baseline carried."
     },
     "J-28": {
       "id": "J-28",
@@ -278,7 +278,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-02-result.png",
-      "note": "Not in iter-16 scope. Carried from baseline."
+      "note": "Not in iter-17 scope. Carried from baseline."
     },
     "J-29": {
       "id": "J-29",
@@ -288,7 +288,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-25-J-26-J-29-research.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-10."
+      "note": "Not in iter-17 scope. Carried passing from iter-10."
     },
     "J-30": {
       "id": "J-30",
@@ -298,7 +298,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-iter-0-evidence/J-25-J-32-research.png",
-      "note": "Not in iter-16 scope. THIN baseline carried."
+      "note": "Not in iter-17 scope. THIN baseline carried."
     },
     "J-31": {
       "id": "J-31",
@@ -308,7 +308,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-iter-0-evidence/J-25-J-32-research.png",
-      "note": "Not in iter-16 scope. THIN baseline carried."
+      "note": "Not in iter-17 scope. THIN baseline carried."
     },
     "J-32": {
       "id": "J-32",
@@ -318,7 +318,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-32-asof-mode.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-10."
+      "note": "Not in iter-17 scope. Carried passing from iter-10."
     },
     "J-33": {
       "id": "J-33",
@@ -328,7 +328,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3-evidence/UT-03-before.png",
-      "note": "Not in iter-16 scope. Carried from iter-3. Live-fetch SUCCESS leg honestly NA (provider-walled)."
+      "note": "Not in iter-17 scope. Carried from iter-3. Live-fetch SUCCESS leg honestly NA (provider-walled)."
     },
     "J-34": {
       "id": "J-34",
@@ -338,7 +338,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3-ui-test-results.md",
-      "note": "Not in iter-16 scope. Carried passing from iter-3."
+      "note": "Not in iter-17 scope. Carried passing from iter-3."
     },
     "J-35": {
       "id": "J-35",
@@ -348,7 +348,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-dev.md",
-      "note": "Not in iter-16 scope. Carried; verification basis API-layer + green suite. Live-fetch leg NA (walled)."
+      "note": "Not in iter-17 scope. Carried; verification basis API-layer + green suite. Live-fetch leg NA (walled)."
     },
     "J-36": {
       "id": "J-36",
@@ -358,7 +358,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16-evidence/UT-J-70-heatmap-viewport.png",
-      "note": "Incidentally re-rendered intact in iter-16: the J-70 full-viewport /data capture shows the coverage panel + per-symbol coverage table (in-universe / has-data / date-range / bar-count columns) alongside the heatmap. Carried passing."
+      "note": "Not in iter-17 scope (the per-symbol coverage table is not touched by the heatmap restyle). Carried passing from iter-16."
     },
     "J-37": {
       "id": "J-37",
@@ -368,7 +368,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3-dev.md",
-      "note": "Not in iter-16 scope (no backend change). Carried from iter-15. The Missing-data diagnostic panel is incidentally visible in the iter-16 J-70 /data full-viewport capture."
+      "note": "Not in iter-17 scope (no backend change). Carried from iter-15."
     },
     "J-38": {
       "id": "J-38",
@@ -378,7 +378,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3-ui-test-results.md",
-      "note": "Not in iter-16 scope. Carried from iter-3."
+      "note": "Not in iter-17 scope. Carried from iter-3."
     },
     "J-39": {
       "id": "J-39",
@@ -388,7 +388,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15-evidence/UT-09-modal.png",
-      "note": "Not in iter-16 scope (no backend change). Carried passing from iter-15. Seed-safe removal + committed-seed protection (critical anti-goal) unaffected by a frontend-only iteration."
+      "note": "Not in iter-17 scope (no backend change). Carried passing from iter-15. Seed-safe protection (critical anti-goal) unaffected by a frontend-only iteration."
     },
     "J-40": {
       "id": "J-40",
@@ -398,7 +398,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16-evidence/UT-J-70-click-prefill.png",
-      "note": "Incidentally re-confirmed iter-16: the /data and dashboard captures show the top-bar readiness badge 'Ready' + 'provider: seed' + 'seed 2026-05-28' + '159 symbols' (backend serving normally during browser-QA). Carried."
+      "note": "Not in iter-17 scope (no backend change). Carried from iter-16."
     },
     "J-41": {
       "id": "J-41",
@@ -408,7 +408,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-1-dev.md",
-      "note": "Not in iter-16 scope (no backend change). Carried from iter-15."
+      "note": "Not in iter-17 scope (no backend change). Carried from iter-15."
     },
     "J-42": {
       "id": "J-42",
@@ -418,7 +418,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16-evidence/UT-J-70-heatmap-viewport.png",
-      "note": "Required-still-passing in iter-16 — RE-VERIFIED: browser-QA UT-J-42 confirms all 4 /data date inputs carry placeholder 'yyyy-MM-dd', all page dates (coverage ranges, run-history, heatmap cell data-date, as-of indicator '2026-05-05') match \\d{4}-\\d{2}-\\d{2}, no locale-rendered dates. asof-calendar.tsx still uses the shared formatIsoDate (coherence advisory). No per-component format literal introduced."
+      "note": "Required-still-passing in iter-17. NOT re-verified live (browser-QA SKIPPED). Source-verified: the new J-76 hover box renders its date via the shared formatIsoDate (price-chart.tsx, formatIsoDate import + BarTooltip use), never a locale path; no per-component format literal introduced. Carried passing from iter-16."
     },
     "J-43": {
       "id": "J-43",
@@ -428,7 +428,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16-evidence/UT-J-71-arrowleft-stepped.png",
-      "note": "Required-still-passing in iter-16 — RE-VERIFIED and exercised by J-71: each keyboard step updates the ?asof URL param in sync with the single global as-of (ArrowLeft Latest->?asof=2026-05-05; ArrowRight->clean URL at Latest). Browser-QA UT-J-43: /stocks?asof=2026-05-05 and /?asof=2026-05-01 restore the historical indicator; URL clean at Latest. asof-provider.tsx (the sole ?asof owner) untouched."
+      "note": "Not in iter-17 scope. asof-provider.tsx (the sole ?asof owner) untouched (diff-confirmed). Carried passing from iter-16."
     },
     "J-44": {
       "id": "J-44",
@@ -438,7 +438,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-8",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16-evidence/UT-J-71-cross-month-step.png",
-      "note": "Incidentally re-rendered intact in iter-16: the J-71 dashboard captures show the 'Major Indexes & regime' card with normalized index % lines over regime background bands, and (J-49) a vertical as-of marker when historical. Carried passing. PERSISTENT non-gating sub-step debt (toggle-off persistence) on provably untouched code (major-indexes-card.tsx not in the iter-16 diff)."
+      "note": "Not in iter-17 scope (major-indexes-card.tsx not in the iter-17 diff). Carried passing from iter-16. PERSISTENT non-gating sub-step debt (toggle-off persistence) unchanged."
     },
     "J-45": {
       "id": "J-45",
@@ -448,7 +448,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-6-evidence/UT-J-49-nvda-chart-clamped-bands.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-6."
+      "note": "Required-still-passing in iter-17. NOT re-verified live (browser-QA SKIPPED). iter-17 edits price-chart.tsx but source review confirms the regime-band drawing (bandPoints / addAreaSeries path) is unchanged; the new hover box is pointer-events-none so it does not obscure the bands. Carried passing from iter-6; live re-verification owed next iteration."
     },
     "J-46": {
       "id": "J-46",
@@ -458,7 +458,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3-ui-test-results.md",
-      "note": "Not in iter-16 scope (no backend change). Carried passing from iter-15."
+      "note": "Not in iter-17 scope (no backend change). Carried passing from iter-15."
     },
     "J-47": {
       "id": "J-47",
@@ -468,7 +468,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7-evidence/UT-J-51-samples-page.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-7."
+      "note": "Not in iter-17 scope. Carried passing from iter-7."
     },
     "J-48": {
       "id": "J-48",
@@ -478,7 +478,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-48-stocks-default.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-9."
+      "note": "Not in iter-17 scope. Carried passing from iter-9."
     },
     "J-49": {
       "id": "J-49",
@@ -488,7 +488,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-6",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16-evidence/UT-J-71-arrowleft-stepped.png",
-      "note": "Incidentally re-confirmed iter-16: the J-71 historical dashboard capture (as-of 2026-05-05) shows the Major Indexes & regime card still charting full history with a vertical as-of marker at the historical date (display-only context). Carried passing from iter-6."
+      "note": "Not in iter-17 scope. Carried passing from iter-16."
     },
     "J-50": {
       "id": "J-50",
@@ -498,7 +498,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11-evidence/UT-04-result.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-11."
+      "note": "Not in iter-17 scope. Carried passing from iter-11."
     },
     "J-51": {
       "id": "J-51",
@@ -508,7 +508,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-64-ticker-filter-aapl.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-10."
+      "note": "Not in iter-17 scope. Carried passing from iter-10."
     },
     "J-52": {
       "id": "J-52",
@@ -518,7 +518,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-64-ticker-filter-aapl.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-10."
+      "note": "Not in iter-17 scope. Carried passing from iter-10."
     },
     "J-53": {
       "id": "J-53",
@@ -528,7 +528,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
       "last_evidence_path": "reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-8-ui-test-results.md",
-      "note": "Not in iter-16 scope (no backend change). Carried passing from iter-15."
+      "note": "Not in iter-17 scope (no backend change). Carried passing from iter-15."
     },
     "J-54": {
       "id": "J-54",
@@ -538,7 +538,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-50-J-54-asof-hrefs.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-9."
+      "note": "Not in iter-17 scope. Carried passing from iter-9."
     },
     "J-55": {
       "id": "J-55",
@@ -548,7 +548,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-55-search-nv.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-9."
+      "note": "Not in iter-17 scope. Carried passing from iter-9."
     },
     "J-56": {
       "id": "J-56",
@@ -558,7 +558,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-56-theme-filter.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-9."
+      "note": "Not in iter-17 scope. Carried passing from iter-9."
     },
     "J-57": {
       "id": "J-57",
@@ -568,7 +568,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-57-expanded.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-9."
+      "note": "Not in iter-17 scope. Carried passing from iter-9."
     },
     "J-58": {
       "id": "J-58",
@@ -578,7 +578,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11-evidence/UT-02-result.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-11."
+      "note": "Not in iter-17 scope. Carried passing from iter-11."
     },
     "J-59": {
       "id": "J-59",
@@ -588,7 +588,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-12-evidence/UT-11-stage-timings-live.png",
-      "note": "Not in iter-16 scope (no backend change). Carried passing from iter-15."
+      "note": "Not in iter-17 scope (no backend change). Carried passing from iter-15."
     },
     "J-60": {
       "id": "J-60",
@@ -598,7 +598,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15-evidence/UT-13-run-history.png",
-      "note": "Not in iter-16 scope (no backend change). Carried passing from iter-15. Run history panel incidentally visible in the iter-16 J-70 /data full-viewport capture (running->ok lifecycle rows, ISO dates)."
+      "note": "Not in iter-17 scope (no backend change). Carried passing from iter-15."
     },
     "J-61": {
       "id": "J-61",
@@ -608,7 +608,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16-evidence/UT-J-70-heatmap-viewport.png",
-      "note": "Required-still-passing in iter-16 — RE-VERIFIED: browser-QA UT-J-61 confirms 65 month bands + 1356 cells rendered from GET /api/data/availability (matching 1356 trading days), all cell data-date/data-bucket/data-total/data-symbols/data-snapshot populated; a cell click prefills the job-form Start/End (2026-05-01) and NEVER changes the global as-of (indicator stayed 'Latest', URL stayed /data). The J-70 restyle (BUCKET_TEXT_CLASS) + relayout (descending, two-up) is a pure re-render of the SAME payload — coherence Data Contract PASS (.reverse() + layout tokens only, canonical endpoint unchanged). No new derivation."
+      "note": "Required-still-passing in iter-17 (the J-74 surface). NOT re-verified live this iteration (browser-QA SKIPPED — Chrome MCP unavailable). Source-verified: the J-74 restyle changes ONLY BUCKET_CLASS / BUCKET_TEXT_CLASS / legend swatch / footer caption; the GET /api/data/availability fetch, ALL data-* attributes (data-testid availability-cell, data-bucket/date/symbols/total/snapshot, availability-month), the hover-exact-figures readout, the snapshot ring marker, and the cell-click→onPrefillRange-into-the-JOB-FORM (never setAsOf, J-18) are diff-confirmed unchanged. Coherence COHERENCE-PASS (Data Contract: same payload, no recompute). Carried passing from iter-16; live re-verification owed next iteration."
     },
     "J-62": {
       "id": "J-62",
@@ -618,7 +618,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16-evidence/UT-J-62-calendar-popover.png",
-      "note": "Required-still-passing in iter-16 — RE-VERIFIED: browser-QA UT-J-62 confirms the as-of switcher opens as a calendar popover (data-testid asof-calendar) with exactly the 4 May-2026 snapshot dates enabled, non-snapshot days disabled, the 'Latest · 2026-05-28' shortcut present, Escape closes, click-day selects+closes. The J-71 keyboard stepping is ADDED to this calendar (onKeyDown ArrowLeft/Right) without changing any existing select/Latest/Escape/click behaviour. Coherence COHERENCE-PASS (no new state, no global listener)."
+      "note": "Not in iter-17 scope. asof-calendar.tsx untouched (diff-confirmed). Carried passing from iter-16."
     },
     "J-63": {
       "id": "J-63",
@@ -628,7 +628,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-14",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-14-evidence/UT-03-result.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-14."
+      "note": "Not in iter-17 scope. Carried passing from iter-14."
     },
     "J-64": {
       "id": "J-64",
@@ -638,7 +638,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-64-ticker-filter-aapl.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-10."
+      "note": "Not in iter-17 scope. Carried passing from iter-10."
     },
     "J-65": {
       "id": "J-65",
@@ -648,7 +648,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-65-research-historical-chips.png",
-      "note": "Not in iter-16 scope. Carried passing from iter-10."
+      "note": "Not in iter-17 scope. Carried passing from iter-10."
     },
     "J-66": {
       "id": "J-66",
@@ -658,7 +658,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-12-evidence/UT-02-live-job-card-active.png",
-      "note": "Not in iter-16 scope (no backend change). Carried passing from iter-15."
+      "note": "Not in iter-17 scope (no backend change). Carried passing from iter-15."
     },
     "J-67": {
       "id": "J-67",
@@ -668,7 +668,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-12-evidence/UT-11-stage-timings-live.png",
-      "note": "Not in iter-16 scope (no backend change). Carried passing from iter-15 (hardened by the J-68 per-date write session)."
+      "note": "Not in iter-17 scope (no backend change). Carried passing from iter-15."
     },
     "J-68": {
       "id": "J-68",
@@ -678,7 +678,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "last_evidence_path": "apps/backend/tests/test_data_manager_backfill_committed_session.py",
-      "note": "Not in iter-16 scope (no backend change). Carried passing from iter-15 (per-date fresh-session fix; 19-test regression suite re-run green by the iter-15 evaluator). Immutability / create-once anti-goal held."
+      "note": "Not in iter-17 scope (no backend change). Carried passing from iter-15."
     },
     "J-69": {
       "id": "J-69",
@@ -688,7 +688,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15-evidence/UT-01-result.png",
-      "note": "Not in iter-16 scope (no backend change). Carried passing from iter-15 (range-only, accident-proof; live-backend re-verified by the iter-15 evaluator). Seed-safe protection (critical anti-goal) held."
+      "note": "Not in iter-17 scope (no backend change). Carried passing from iter-15. Seed-safe protection (critical anti-goal) held."
     },
     "J-70": {
       "id": "J-70",
@@ -698,7 +698,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16-evidence/UT-J-70-heatmap-viewport.png",
-      "note": "NEWLY PASSING iter-16. Pure frontend on availability-heatmap.tsx. VERIFIED: (a) Descending month order — browser-QA confirms all 65 availability-month data-month attributes read 2026-05, 2026-04, ... 2021-01 (newest first), achieved by `toMonthBands(...).slice().reverse()` (diff-confirmed); each month's internal day order stays ascending. (b) Two-up layout — container class `grid grid-cols-1 gap-x-5 gap-y-5 overflow-auto pr-1 md:grid-cols-2` (two columns at normal width, one at narrow). (c) Legible day-number contrast across buckets 0-5 via new BUCKET_TEXT_CLASS: design tokens ONLY (`text-text` buckets 0-3, `text-bg` buckets 4-5) — NO hardcoded hex (grep-confirmed; coherence invariant 10 PASS); `font-medium` added. The committed seed exercises only buckets 4-5 visually (full-coverage 150-159 symbols/day), so the bucket 0-3 token is verified at source level (lines 62-67) — acceptable since the criterion is contrast-correctness which is a static className map. (d) Same GET /api/data/availability payload, all data-* attributes preserved, cell click still prefills the job form (never the as-of, J-18). EVIDENCE: full-viewport UT-J-70-heatmap-viewport.png (665KB, non-blank, MD5 d17eda29..) shows the legible two-up descending grid; the evaluator directly viewed it. Coherence COHERENCE-PASS. Review PASS. Browser-QA PASS."
+      "note": "Required-still-passing in iter-17 (the J-74 surface). NOT re-verified live (browser-QA SKIPPED). Source-verified: the J-74 restyle PRESERVES the J-70 descending-month order + two-up layout (the container grid + .reverse() are untouched in the diff) and HARDENS the per-bucket day-number contrast (BUCKET_TEXT_CLASS now text-heat-text-N, near-white on dark buckets 0-1, dark on bright 2-5 — all design tokens, no hex; coherence invariant 10 PASS). Carried passing from iter-16; live re-verification owed next iteration."
     },
     "J-71": {
       "id": "J-71",
@@ -708,9 +708,29 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16-evidence/UT-J-71-cross-month-step.png",
-      "note": "NEWLY PASSING iter-16. Pure frontend on asof-calendar.tsx. VERIFIED: ArrowLeft/ArrowRight on the open calendar popover step among AVAILABLE snapshot dates only (browser-QA: Latest->2026-05-05->Latest; cross-month 2021-01-29->2021-02-01 with asof-cal-month following from '2021-01' to '2021-02', evaluator-viewed UT-J-71-cross-month-step.png shows indicator 'Viewing as-of 2021-02-01 (historical)' + the Market Regime panel re-read to 33.07 for that date = pages re-read live). Bounded: ArrowRight no-op at Latest, ArrowLeft no-op at oldest (2021-01-04). Popover STAYS OPEN on a step; Escape closes, click-day selects+closes (J-62 preserved). Each step calls the EXISTING onSelect->setAsOf and updates ?asof in sync (J-43). CRITICAL INVARIANT (J-18) source-verified by the evaluator: asof-calendar.tsx has exactly ONE useState (`view` month cursor — NOT an as-of value); NO window/document keydown listener in the diff (grep-confirmed); asof-provider.tsx/asof-switcher.tsx untouched; handler lives on the dialog's existing onKeyDown. Coherence COHERENCE-PASS. Review PASS. Browser-QA PASS. 'Exactly one date selector' critical anti-goal held."
+      "note": "Not in iter-17 scope. asof-calendar.tsx untouched. Carried passing from iter-16. 'Exactly one date selector' critical anti-goal held."
+    },
+    "J-74": {
+      "id": "J-74",
+      "name": "Availability heatmap multi-hue legibility (scale + legend + per-bucket day numbers)",
+      "status": "unknown",
+      "last_verified_iter": null,
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-17",
+      "last_evidence_path": null,
+      "note": "TARGET of iter-17. Code is IN PLACE and SOURCE-VERIFIED by the evaluator against the spec: globals.css defines --heat-0..--heat-5 (slate->blue->cyan->teal-green->green->amber) + --heat-text-0..--heat-text-5 as the ONLY hex source; tailwind.config.ts registers heat/heat-text tokens; availability-heatmap.tsx BUCKET_CLASS -> bg-heat-N (no per-cell hex), BUCKET_TEXT_CLASS -> text-heat-text-N, legend reuses the bucket class map (colour->level key), snapshot swatch -> bg-heat-3, footer caption describes the multi-hue scale; ALL J-61/J-70 data-* + behaviours preserved. tsc --noEmit EXIT 0; npm run build EXIT 0 (heat classes confirmed in generated CSS by dev). Coherence COHERENCE-PASS. Review PASS. BUT browser-QA was SKIPPED (Chrome MCP / DevTools port 9222 unavailable) so there is ZERO live screenshot proof of the rendered multi-hue cells (buckets 4-5), the legend, or the per-bucket day-number legibility. Per the strict rule (no GOAL_ACHIEVED on an unverified Must-have), status is UNKNOWN pending a live browser-QA re-run. The seed-unreachable buckets 0-3 are acceptably source-verified per the iter-16 lesson; buckets 4-5 + the legend still REQUIRE a live full-viewport capture."
+    },
+    "J-76": {
+      "id": "J-76",
+      "name": "Stock-detail price-chart per-bar hover detail box",
+      "status": "unknown",
+      "last_verified_iter": null,
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-17",
+      "last_evidence_path": null,
+      "note": "TARGET of iter-17. Code is IN PLACE and SOURCE-VERIFIED by the evaluator against the spec: price-chart.tsx adds a subscribeCrosshairMove handler (mirroring index-regime-chart.tsx) + a pointer-events-none BarTooltip pinned top-left showing formatIsoDate(date) (J-42 shared formatter) + OHLC + volume + %chg (display derivation of two served closes, NA at the first bar) + each rendered MA value (read from the SAME server ma[period] arrays, NO extra request, NO recompute; absent MA -> 'NA', never fabricated); a forward (is_forward) bar carries the 'after as-of (display only)' label (J-20 visualization-only, no lookahead); handler unsubscribes on cleanup and the box clears off-chart. tsc --noEmit EXIT 0. Coherence COHERENCE-PASS (% change pre-registered as acceptable presentation math). Review PASS. BUT browser-QA was SKIPPED (Chrome MCP unavailable) so there is ZERO live screenshot proof that the box renders on hover, shows the values, labels a forward bar past a historical as-of, and disappears off-chart. Per the strict rule, status is UNKNOWN pending a live browser-QA re-run."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-06-14T15:30:00Z"
+  "updated_at": "2026-06-15T01:10:00Z"
 }

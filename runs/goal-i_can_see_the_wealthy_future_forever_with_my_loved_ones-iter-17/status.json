@@ -1,0 +1,21 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-17",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-06-15T00:55:00Z",
+  "started_at": "2026-06-15T00:45:00Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/frontend/app/globals.css",
+    "apps/frontend/tailwind.config.ts",
+    "apps/frontend/components/availability-heatmap.tsx",
+    "apps/frontend/components/price-chart.tsx",
+    "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-17-dev.md",
+    "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-17-frontend.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "browser-qa-agent to verify J-74 (heatmap multi-hue scale + legend + per-bucket day-number legibility; buckets 0-3 verified at source on the BUCKET_CLASS/BUCKET_TEXT_CLASS token maps per the iter-16 lesson, buckets 4-5 live full-viewport) and J-76 (price-chart per-bar hover box: date/OHLCV/%chg/MA values, forward-bar label past a historical as-of, disappears off-chart); required-still-passing J-61/J-70/J-20/J-45/J-42/J-05/J-06 smoke",
+  "notes": "LEAN frontend-only iteration. Backend diff empty (verified). J-74: new perceptually-ordered multi-hue density scale defined ONCE from the design-token system — added heat-0..heat-5 (slate->blue->cyan->teal-green->green->amber) + heat-text-0..heat-text-5 CSS vars in globals.css, registered as heat/heat-text Tailwind tokens in tailwind.config.ts; availability-heatmap.tsx BUCKET_CLASS now bg-heat-N (no per-cell hex, no accent-opacity ramp) and BUCKET_TEXT_CLASS now text-heat-text-N (near-white on dark buckets 0-1, dark on bright 2-5); legend swatches reuse BUCKET_CLASS so the colour->coverage-level key updates automatically; all J-61/J-70 data-* attrs + month order + two-up layout + hover readout + click-prefill (never setAsOf) preserved verbatim. J-76: price-chart.tsx adds a crosshair-tracking BarTooltip mirroring index-regime-chart's subscribeCrosshairMove pattern — shows formatIsoDate(date) + OHLC + volume + %chg (close vs prev close, presentation math like the index tooltip) + each rendered MA value (read from the SAME server ma[] arrays the chart plots; absent MA -> 'NA'); a post-as-of bar carries an 'after as-of (display only)' label (J-20, visualization-only); box is pointer-events-none top-left so it never obscures the as-of marker (J-20) or regime bands (J-45); clears off-chart. Gates: cd apps/frontend && npx tsc --noEmit -> EXIT 0; npm run build -> EXIT 0 with bg-heat-*/text-heat-text-* classes present in generated CSS. Cleared the prod .next afterward to avoid the dev dead-shell trap for browser QA. No asof-provider/asof-switcher/asof-calendar touch (J-18/J-43 invariant untouched)."
+}

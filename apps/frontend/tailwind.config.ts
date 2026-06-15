@@ -23,6 +23,24 @@ const config: Config = {
         neg: "var(--neg)",
         warn: "var(--warn)",
         text: { DEFAULT: "var(--text)", muted: "var(--text-muted)", faint: "var(--text-faint)" },
+        // J-74 availability-heatmap density scale (six perceptually-ordered multi-hue buckets) +
+        // the per-bucket day-number text-contrast tokens. One source: globals.css CSS vars (no cell hex).
+        heat: {
+          0: "var(--heat-0)",
+          1: "var(--heat-1)",
+          2: "var(--heat-2)",
+          3: "var(--heat-3)",
+          4: "var(--heat-4)",
+          5: "var(--heat-5)",
+        },
+        "heat-text": {
+          0: "var(--heat-text-0)",
+          1: "var(--heat-text-1)",
+          2: "var(--heat-text-2)",
+          3: "var(--heat-text-3)",
+          4: "var(--heat-text-4)",
+          5: "var(--heat-text-5)",
+        },
         // shadcn/ui semantic aliases (so generated primitives theme correctly)
         background: "var(--bg)",
         foreground: "var(--text)",

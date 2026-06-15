@@ -13,11 +13,21 @@ import type { AvailabilityCell, AvailabilityResponse } from "@/lib/api";
  * J-61 — the per-trading-date availability heatmap on `/data`.
  *
  * READ-ONLY presentation of the `GET /api/data/availability` payload (one cell per benchmark trading
- * day): a month-banded calendar grid colored by `symbols_with_bars` density (a sequential ramp), a
- * distinct ring marker on days that also have an immutable snapshot, a legend, and exact figures on
+ * day): a month-banded calendar grid colored by `symbols_with_bars` density on a J-74 PERCEPTUALLY-
+ * ORDERED MULTI-HUE scale (slate → blue → teal → green → amber across the six density buckets, so
+ * neighbouring buckets are unambiguously different on the dark background — replacing the old single-hue
+ * teal-opacity ramp where buckets 1–3 were near-identical), a distinct ring marker on days that also
+ * have an immutable snapshot, a legend mapping each colour to its coverage level, and exact figures on
  * hover (date, symbols-with-bars / total, snapshot yes/no). A SPARSE day (e.g. 3-of-158) is visually
- * distinct from a FULL day; a low-coverage day is visibly muted. All dates render `yyyy-MM-dd` via the
- * shared `formatIsoDate` (J-42).
+ * distinct from a FULL day; a low-coverage day is a clearly different hue, not just muted. The day-number
+ * stays legible in EVERY bucket (a per-bucket text-contrast token, J-70). All dates render `yyyy-MM-dd`
+ * via the shared `formatIsoDate` (J-42).
+ *
+ * J-74: the colour scale + the per-bucket day-number text-contrast classes are defined ONCE here from the
+ * design-token system (the `heat-*` / `heat-text-*` Tailwind tokens registered in tailwind.config.ts,
+ * backed by globals.css CSS vars) — NO hardcoded hex lives in an individual cell (anti-goal: No magic
+ * numbers / coherence invariant 10). This is a pure re-style of the SAME payload: no new fetch, no
+ * recompute, all J-61/J-70 data-* attributes and behaviours preserved verbatim.
  *
  * Clicking a day, or shift-clicking a second day to select a range, calls `onPrefillRange(start, end)`
  * — the page wires that into the JOB FORM's Start/End inputs. These are JOB PARAMETERS, NEVER the global
@@ -43,30 +53,35 @@ function densityBucket(withBars: number, total: number): DensityBucket {
   return 1;
 }
 
-/** The sequential color ramp (low → full). A muted surface for empty/sparse, an increasingly saturated
- *  accent for denser coverage — so a sparse 3-of-158 day reads clearly fainter than a full day. */
+/** J-74 — the perceptually-ordered MULTI-HUE density scale (low → full), defined ONCE from the design-token
+ *  system: each `bg-heat-N` is a distinct hue (slate → blue → cyan → teal-green → green → amber) registered
+ *  in tailwind.config.ts (CSS vars in globals.css) — NO per-cell hex. Neighbouring buckets are clearly
+ *  different hues on the dark background, so a sparse 3-of-158 day reads as an obviously different colour
+ *  from a full day (not merely a fainter teal as before). Each bucket carries a matching-hue border. */
 const BUCKET_CLASS: Record<DensityBucket, string> = {
-  0: "bg-surface-2 border border-border",
-  1: "bg-accent/15 border border-accent/20",
-  2: "bg-accent/30 border border-accent/30",
-  3: "bg-accent/50 border border-accent/40",
-  4: "bg-accent/70 border border-accent/50",
-  5: "bg-accent border border-accent",
+  0: "bg-heat-0 border border-border",
+  1: "bg-heat-1 border border-heat-1",
+  2: "bg-heat-2 border border-heat-2",
+  3: "bg-heat-3 border border-heat-3",
+  4: "bg-heat-4 border border-heat-4",
+  5: "bg-heat-5 border border-heat-5",
 };
 
-/** Per-bucket day-number text token (design tokens only — NO hardcoded hex). The faint/low buckets (0–3)
- *  sit on dark or low-opacity-accent backgrounds, so the day number must be the high-contrast `text-text`
- *  (near-white) to stay legible — the old `text-text-muted` rendered dark-on-dark on buckets 0–1. The
- *  bright buckets (4–5) are saturated teal, so dark `text-bg` reads clearly on them. */
+/** J-70/J-74 — per-bucket day-number text token (design tokens only — NO hardcoded hex). The darkest
+ *  buckets (0–1, slate/blue) take near-white `text-heat-text-N` (== `--text`); the brighter saturated
+ *  buckets (2–5, cyan→amber) take the dark base (== `--bg`) so the number reads with strong contrast on
+ *  every fill — including the dark-on-dark empty/low-density case. Defined ONCE here. */
 const BUCKET_TEXT_CLASS: Record<DensityBucket, string> = {
-  0: "text-text",
-  1: "text-text",
-  2: "text-text",
-  3: "text-text",
-  4: "text-bg",
-  5: "text-bg",
+  0: "text-heat-text-0",
+  1: "text-heat-text-1",
+  2: "text-heat-text-2",
+  3: "text-heat-text-3",
+  4: "text-heat-text-4",
+  5: "text-heat-text-5",
 };
 
+/** The legend rows — each maps a density bucket's COLOUR to its coverage level (the figures themselves
+ *  are on hover; this is the colour→level key J-74 adds). */
 const LEGEND: { bucket: DensityBucket; label: string }[] = [
   { bucket: 0, label: "none" },
   { bucket: 1, label: "<25%" },
@@ -227,7 +242,7 @@ export function AvailabilityHeatmap({
               </div>
               <span className="ml-2 flex items-center gap-1 text-[10px] text-text-faint">
                 <span className="relative inline-flex h-3 w-3 items-center justify-center" aria-hidden>
-                  <span className="h-3 w-3 rounded-sm bg-accent/50 ring-2 ring-pos ring-offset-0" />
+                  <span className="h-3 w-3 rounded-sm bg-heat-3 ring-2 ring-pos ring-offset-0" />
                 </span>
                 snapshot
               </span>
@@ -318,8 +333,9 @@ export function AvailabilityHeatmap({
 
           <p className="border-t border-border pt-2 text-[11px] text-text-faint">
             Cell density = symbols with a bar on that day ÷ total stored symbols ({state.data.total_symbols}).
-            A sparser day is fainter; a day with an immutable snapshot carries a ring. A trading day with no
-            non-benchmark bars is shown honestly (low/empty), never omitted as if covered.
+            Each coverage level is a distinct hue (slate → blue → teal → green → amber; see the legend
+            above); a day with an immutable snapshot carries a ring. A trading day with no non-benchmark
+            bars is shown honestly (the lowest level), never omitted as if covered.
           </p>
         </div>
       ) : null}

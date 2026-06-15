@@ -313,3 +313,35 @@ next (smallest backend surface) or the J-59/J-60/J-66/J-67 jobs cluster.
 **Reasoning:** The two final appended frontend-polish Must-haves passed on the committed seed. J-70 (availability-heatmap legibility) verified via a directly-viewed 665KB full-viewport capture: descending months (65 bands, 2026-05 first via `.slice().reverse()`), two-up `md:grid-cols-2` grid, and a new `BUCKET_TEXT_CLASS` using design tokens only (`text-text`/`text-bg`, grep-confirmed no hardcoded hex). J-71 (keyboard as-of stepping) verified via the cross-month capture showing a live historical re-read (2021-02-01, regime panel 33.07) with the popover staying open and the month cursor following; the J-18 critical invariant was source-scrutinized — `asof-calendar.tsx` has exactly one `useState` (the month cursor), no global window/document keydown listener, and `stepAsOf` drives the existing `onSelect`→`setAsOf` (provider untouched). All six required-still-passing journeys (J-61/J-62/J-43/J-13/J-18/J-42) re-confirmed PASS, backend diff empty, coherence COHERENCE-PASS. Every buildable Must-have is now passing/already_passing; only the goal-sanctioned non-vetoing data-walled J-22/J-23/J-24 remain unknown.
 
 **Next-step recommendation:** halt — goal achieved. The J-68..J-71 appended scope is complete; J-22/J-23/J-24 stay honest blocked-NA (non-halting per goal.md) and would need a one-shot offline real-data fetch, not build work, to close.
+
+## Iteration 17 — goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-17
+
+**Date:** 2026-06-15T01:10:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** lean
+**Journey deltas:**
+- Newly passing: none
+- Newly failing: none
+- Regressed: none
+- Target journeys J-74, J-76: UNKNOWN (code in place + source-verified, but browser-QA SKIPPED — no live evidence)
+- Anti-goal violations: none
+
+**Reasoning:** Two pure-frontend polishes (J-74 multi-hue availability-heatmap scale+legend+legible day
+numbers; J-76 stock-detail price-chart per-bar hover box) landed correctly: diffs source-verified against
+the spec, coherence COHERENCE-PASS, review PASS, tsc --noEmit EXIT 0, backend diff empty, no anti-goal
+violated (heat hues defined once as design tokens — no per-cell hex; hover box reads served bars/MA with
+no recompute and labels a forward bar display-only; asof-provider/switcher/calendar untouched so J-18
+held). BUT browser-QA was SKIPPED entirely (0/9 tests; Chrome MCP / DevTools port 9222 unavailable —
+ECONNREFUSED) and the iter-17 evidence dir is empty — zero live screenshots for either target journey or
+any regression smoke. I independently confirmed the env is down (backend/frontend/9222 all unreachable),
+so I could not run browser-QA myself either. Per the strict rule (no Must-have marked passing without
+positive evidence; no GOAL_ACHIEVED on an unverified journey), J-74/J-76 stay `unknown` and the iteration
+cannot be GOAL_ACHIEVED. This is an environment failure, not a code failure → CONTINUE (not REGRESSION,
+not STALLED).
+
+**Next-step recommendation:** lean re-verification pass — bring up backend :8835 + frontend :3835 +
+Chrome DevTools :9222, then browser-QA J-74 (live heatmap multi-hue + legend + buckets 4-5 + click-prefill
+keeps as-of "Latest"; buckets 0-3 source-verified per iter-16 lesson) and J-76 (hover box date/OHLCV/%chg/
+MA on /stocks/NVDA, forward-bar label under a historical as-of, disappears off-chart), plus the
+required-still-passing smoke (J-61/J-70/J-20/J-45/J-42/J-05/J-06). No code rework needed. After these
+close green: J-78+J-73, then the backend cluster J-72/J-75/J-77 at full depth.

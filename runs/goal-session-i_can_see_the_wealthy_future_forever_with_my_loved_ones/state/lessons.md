@@ -126,3 +126,18 @@ must-explain regression signal even when every journey leg passes.
 **Verdict:** GOAL_ACHIEVED
 **Lesson:** A "two isolated frontend files" lean iteration can still carry a critical anti-goal at its center — J-71 added keyboard as-of stepping, the exact surface the J-18 single-global-as-of invariant guards. The cheap, decisive check was static, not visual: `grep` the diff for `window/document.addEventListener` keydown (must be none) and confirm `asof-calendar.tsx` keeps exactly ONE `useState` (the `view` month cursor, not an as-of value) with `asof-provider.tsx`/`asof-switcher.tsx` byte-untouched. Also: when the committed seed only exercises a subset of a styling map's branches (here density buckets 4-5; buckets 0-3 never appear because every day has full coverage), verify the unexercised branches at source level (the `BUCKET_TEXT_CLASS` map) rather than recording the journey partial — a static className map's correctness is provable without a live render of every branch.
 **Applies to:** any future iter touching the as-of control (`asof-calendar.tsx` / `asof-switcher.tsx` / `asof-provider.tsx`) or adding keyboard/interaction handlers near the global date state; and any UI-styling iter whose density/bucket branches aren't all reachable from the committed seed.
+
+## iter-17 — 2026-06-15T01:10:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Browser-QA can hard-SKIP (0/9, empty evidence dir) when Chrome DevTools :9222 is unreachable
+(ECONNREFUSED) — the pipeline then stops at `dev_complete` with `browser_checks_run:false` and the
+evaluator gets NO live screenshots. Even a perfectly source-verified, COHERENCE-PASS, review-PASS,
+tsc-clean frontend iteration CANNOT be GOAL_ACHIEVED in that state: the strict rule forbids marking a
+Must-have passing without positive live evidence, so target journeys stay `unknown` and the correct call
+is CONTINUE (env failure, not code failure) — verify the env is actually down before concluding, then
+recommend a cheap lean re-QA pass with no code rework rather than re-running dev.
+**Applies to:** any iteration where `reports/phase-<iter>-ui-test-results.md` reads "SKIPPED / Chrome MCP
+unavailable" and the evidence dir is empty — especially lean frontend-only iters whose only gate is the
+browser smoke; confirm :3835/:8835/:9222 reachability before scoring, and never upgrade `unknown` target
+journeys to `passing` on source review alone.
