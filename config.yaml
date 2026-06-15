@@ -302,7 +302,7 @@ index_chart:
     - { key: "6M", label: "6M", days: 183 }
     - { key: "1Y", label: "1Y", days: 366 }
     - { key: "all", label: "All", days: null }
-  default_range: "6M"
+  default_range: "all"   # J-78: dashboard major-indexes chart defaults to full history (was "6M")
 
 # ----------------------------------------------------------------------------------------
 # Themes: manually-defined, many-to-many (a stock may appear in several). Price-confirmed,

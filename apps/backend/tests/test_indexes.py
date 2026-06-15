@@ -421,3 +421,53 @@ def test_full_mode_unknown_range_still_raises(tmp_path):
         session.commit()
         with pytest.raises(UnknownRangeError):
             compute_index_series(session, as_of=None, range_key="bogus", config=cfg, full=True)
+
+
+def _cfg_with_default_range(tmp_path, default_range: str):
+    """Load a synthetic config identical to `_CFG` but with `index_chart.default_range` overridden —
+    used to exercise the J-78 default-range-of-`all` change against the existing config validator and
+    `_resolve_preset` without coupling the test to the project-wide `config.yaml` value."""
+    import copy
+
+    data = copy.deepcopy(_CFG)
+    data["index_chart"]["default_range"] = default_range
+    path = tmp_path / "cfg_default_range.yaml"
+    path.write_text(yaml.safe_dump(data))
+    return load_config(path)
+
+
+def test_default_range_all_validates_and_resolves_to_full_history(tmp_path):
+    """J-78: setting `index_chart.default_range = "all"` (a valid preset key whose `days is None`) both
+    (1) passes the config validator and (2) makes `compute_index_series` with NO requested range serve the
+    FULL history — no bar is dropped by a trailing-window clamp. (No code change: `_resolve_preset` reads
+    the default from config, the `all` preset's `days is None` disables the lower bound.)"""
+    cfg = _cfg_with_default_range(tmp_path, "all")
+    # (1) the validator accepted `all` as the default (load_config would have raised ConfigError otherwise)
+    assert cfg.index_chart.default_range == "all"
+    all_preset = next(p for p in cfg.index_chart.range_presets if p.key == "all")
+    assert all_preset.days is None  # the all-history preset has no trailing-day clamp
+
+    engine = _engine_with_bars()
+    # bars span ~1 year — far wider than the synthetic `med` (20-day) preset's trailing window; only an
+    # all-history default keeps every one of them in the rebased series.
+    closes = [100.0 + i for i in range(40)]
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", closes)
+        session.commit()
+        # range_key=None => the engine resolves the config default (`all`) — full history, not a 20-day clamp.
+        result = compute_index_series(session, as_of=None, range_key=None, config=cfg)
+
+    assert result["range"]["key"] == "all"
+    spy = next(s for s in result["series"] if s["symbol"] == "SPY")
+    # every stored bar survives (no trailing-window drop) and the series rebases to exactly 0% at the start.
+    assert len(spy["points"]) == len(closes)
+    assert spy["points"][0]["pct"] == 0.0
+
+
+def test_default_range_non_preset_value_still_rejected(tmp_path):
+    """J-78 no-magic-number guard intact: a `default_range` that is NOT one of the preset keys is still
+    rejected by the existing `config.py` validator (the change only swaps one VALID key for another)."""
+    from app.config import ConfigError
+
+    with pytest.raises(ConfigError):
+        _cfg_with_default_range(tmp_path, "definitely-not-a-preset")

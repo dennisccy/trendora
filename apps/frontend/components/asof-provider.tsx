@@ -54,10 +54,33 @@ const AsOfContext = createContext<AsOfContextValue | null>(null);
 /** The single URL query key that serializes the global as-of state (J-43). One name, one owner. */
 const ASOF_PARAM = "asof";
 
+/**
+ * J-73 — read the deep-linked `?asof` date from the current URL SYNCHRONOUSLY, for the lazy initializer
+ * of the ONE global as-of state (below). This is NOT a second date state: it only seeds the EXISTING
+ * `asOf` `useState` on first mount so a `?asof=D` arrival's first data fetch is already at D (no
+ * latest→D flash). It is shape-validated only (a real `yyyy-MM-dd`); the run-list `ready` step still
+ * VALIDATES it against the known dates and degrades unknown/latest values to the latest view (J-43).
+ *
+ * Server-safe: during SSR `window` is undefined, so it returns null (the server cannot know the URL);
+ * the client's lazy initializer then reads `window.location.search` on hydration. The asof-provider
+ * remains the SOLE reader/writer of `?asof` — this is the same single owner reading the same one param.
+ */
+function readAsofFromUrl(): string | null {
+  if (typeof window === "undefined") return null; // SSR: no URL to read yet → latest until client hydrates
+  const raw = new URLSearchParams(window.location.search).get(ASOF_PARAM);
+  // Only a well-formed ISO date is hydrated; anything else seeds null (→ latest) and, if present in the
+  // URL, is stripped by the run-list validation step exactly as J-43 already does (no fabricated date).
+  return raw && isValidIsoDate(raw) ? raw : null;
+}
+
 export function AsOfProvider({ children }: { children: React.ReactNode }) {
   const [dates, setDates] = useState<string[]>([]);
   const [latest, setLatest] = useState<string | null>(null);
-  const [asOf, setAsOfState] = useState<string | null>(null);
+  // J-73: hydrate the SINGLE global as-of state synchronously from `?asof` on first mount (a lazy
+  // initializer on the EXISTING state — not a second date state) so a historical deep-link/reload/new-tab
+  // renders at D from first paint with no latest→D flash. The run-list `ready` step below still validates
+  // and degrades unknown/latest/malformed values to the latest view (J-43 unchanged).
+  const [asOf, setAsOfState] = useState<string | null>(readAsofFromUrl);
   const [ready, setReady] = useState(false);
 
   // Single canonical loader for the run list. The mount effect runs it (with an abort guard); the
@@ -153,18 +176,23 @@ function AsOfUrlSync({
   // be answered). Guards against a re-restore that would fight the user's later selection.
   const restored = useRef(false);
 
-  // (1) Restore `?asof` into the one global control once the run list is ready.
+  // (1) VALIDATE the synchronously-hydrated `?asof` against the one global control, once the run list is
+  // ready. J-73: the state was already SEEDED from the URL on first mount (a lazy initializer on the one
+  // `asOf` state — no second state), so the deep-linked page already fetched at D with no flash. This step
+  // is now purely the J-43 validate/degrade pass: confirm D is a real historical run date, else degrade to
+  // latest (reset the one state to null AND strip the stale param) — no fabricated date.
   useEffect(() => {
     if (!ready || restored.current) return;
     restored.current = true;
     const raw = searchParams.get(ASOF_PARAM);
-    if (!raw) return; // date-free URL → latest view (nothing to restore)
-    // A valid, KNOWN historical run date restores; anything else (malformed, latest, or unknown date)
-    // degrades to latest and the stale param is stripped below by the serialize effect.
+    if (!raw) return; // date-free URL → latest view (nothing to restore/validate)
+    // A valid, KNOWN historical run date is confirmed (setAsOf(raw) is a no-op when the lazy initializer
+    // already seeded it). Anything else (malformed, the latest date, or an unknown date) degrades to
+    // latest: reset the ONE state to null so a seeded-but-invalid date doesn't stick, and strip the param.
     if (isValidIsoDate(raw) && raw !== latest && dates.includes(raw)) {
       setAsOf(raw);
     } else {
-      // Strip the invalid/unknown param immediately so the URL doesn't keep lying about the state.
+      setAsOf(null); // J-73: undo a synchronously-seeded date that proved unknown/latest (J-43 degrade)
       writeAsofParam(router, pathname, searchParams, null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
