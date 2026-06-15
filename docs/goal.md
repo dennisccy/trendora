@@ -469,7 +469,9 @@ It places **no orders** and holds **no broker keys**.
   href carrying the historical `?asof` — J-54/J-50). Each row also carries **five forward-return
   columns (1/5/10/20/60-day)** — the stock's realized forward return from the as-of date read from the
   stored `forward_returns` table (NA at/near latest where post-bars are insufficient), sortable per
-  J-48 (J-75).
+  J-48 (J-75). The page header also shows the as-of date's **market-regime label + score** (the same
+  stored regime the Dashboard shows) and a **theme ranking** — a ranked Top-Themes strip plus `#n` rank
+  badges on the theme chips / filter, re-displaying the `/themes` scores (J-80).
 - **Stock Detail** (`/stocks/[ticker]`) — one stock's chart (with a **1D/1h/15m/5m timeframe selector**,
   rendering the full price path **through the latest date** with an as-of marker), score breakdowns,
   theme membership, setup, reason, invalidation, and per-snapshot history. Reached from a leaderboard
@@ -479,11 +481,17 @@ It places **no orders** and holds **no broker keys**.
   the already-served bars (J-76).
 - **Themes** (`/themes`) — the Theme Leaderboard (ranked, with members + breadth). The member list is
   **fully expandable** (the `+n` overflow reveals every remaining member, collapsible) and each member
-  ticker opens the dated Stock Detail in a **new tab** (J-57).
+  ticker opens the dated Stock Detail in a **new tab** (J-57). Each theme row also carries **five
+  forward-return columns (1/5/10/20/60-day)** — the equal-weight forward return of its member basket for
+  the as-of date, read from the stored `forward_returns` table via the same builder Backtest uses,
+  sortable per J-48 and NA-honest at/near latest (J-81).
 - **Sectors** (`/sectors`) — the Sector/Industry Leaderboard. Every ETF row is **named + described from
   config** (no bare tickers like "KRE") and its expanded panel lists its universe **members** like the
   Themes page — expandable, with dated new-tab member ticker links; industry membership comes from the
-  config-curated stock→industry-group mapping, honestly labelled config-defined (J-58).
+  config-curated stock→industry-group mapping, honestly labelled config-defined (J-58). Each ETF row
+  also carries **five forward-return columns (1/5/10/20/60-day)** — the sector / industry ETF's own
+  forward return for the as-of date, read from the stored `forward_returns` table (the same value
+  Backtest's Top Sectors shows), sortable per J-48 and NA-honest at/near latest (J-81).
 - **Scanner Runs** (`/scanner-runs`, `/scanner-runs/[runId]`) — history of immutable runs; open one to
   see the exact as-of view for that date.
 - **Watchlist** (`/watchlist`) — user-saved stocks with reason, current state, price-since-added, and
@@ -511,7 +519,9 @@ It places **no orders** and holds **no broker keys**.
   Samples** (J-51). A **Regime × Setup × Pattern** study adds a **ranked, sortable table of
   (regime, setup, pattern) combinations** with per-horizon forward-return stats, drilling down via the
   same `N=` samples chips and respecting Episodes/Pooled (J-63) + the As-of mode (J-32) — derived once
-  from the same enriched event-study observation set, never recomputed (J-77). Each lab section loads
+  from the same enriched event-study observation set, never recomputed (J-77); its table **filters by
+  regime / setup / pattern**, sorts **NA-last** in every column, **defaults to Pooled**, and every row's
+  `N=` chip drills into the exact cohort without error (J-82). Each lab section loads
   independently and the event-study aggregates are **derived once and cached/precomputed** for fast
   serving (figures byte-identical — a performance property, J-72).
 - **Research Samples** (`/research/samples`) — the drill-down behind every research sample count: each
@@ -551,7 +561,10 @@ Dashboard, Stocks, Themes, Sectors, Stock Detail, **and Backtest** to a chosen p
 latest); no page keeps its own separate date picker. The switcher renders as a **calendar popover**
 marking exactly the available snapshot dates (disabled non-selectable days, month navigation, a
 "Latest" shortcut) rather than one flat all-dates dropdown — a presentation of the same single state,
-never a second control (J-62). That single state is **serialized into the URL**
+never a second control (J-62). The same single state can also be stepped to the previous / next
+available snapshot date **with the popover closed** — via top-bar **◀ ▶** buttons and (behind a
+persisted, default-off checkbox) the **← →** keys — and the popover adds **Year + Month** quick-jump
+dropdowns; all of these drive the one global state, never a second one (J-79). That single state is **serialized into the URL**
 (`?asof=yyyy-MM-dd` while historical; date-free at latest) and is restored through the same global
 control on load — deep links, reloads, new tabs, and leaderboard→detail click-throughs all preserve the
 selected as-of view (J-43), and that state is **hydrated synchronously from the URL on load so every
@@ -579,9 +592,11 @@ The backend is the single source of truth; every page only displays server-compu
 
 ### Canonical values (single source of truth — computed once, displayed identically everywhere)
 
-- **Market Regime Score + label** — computed once per scanner run by the regime engine.
+- **Market Regime Score + label** — computed once per scanner run by the regime engine; the Stocks
+  leaderboard header re-displays this stored value for the as-of date, identical to the Dashboard (J-80).
 - **Sector Score** (per sector/industry ETF) — computed once per run.
-- **Theme Score** (per theme) — computed once per run.
+- **Theme Score** (per theme) — computed once per run; the Stocks leaderboard re-displays the same
+  ranking (a Top-Themes strip + `#n` chip / filter badges) it serves to the Themes page (J-80).
 - **Leadership Score, Entry Quality Score, Risk Score** (per stock) — each computed once per run by the
   scoring engine; the dashboard, leaderboard, and detail page all read the same stored value.
 - **A–E bucket** — derived once from a score by the single bucketing function (config edges).
@@ -603,7 +618,10 @@ The backend is the single source of truth; every page only displays server-compu
   1/5/10/20/60 trading days, read from the stored append-only `forward_returns` table for the resolved
   as-of run and surfaced **identically on the Stocks leaderboard, Stock Detail, and Backtest** — never
   recomputed in an endpoint or view; only bars dated > D (no-lookahead); NA where post-bars are
-  insufficient (J-75).
+  insufficient (J-75). The **Themes and Sectors leaderboards' forward-return columns** read the SAME
+  stored `forward_returns` through the SAME `leadership_returns` builder Backtest uses — sector = the
+  ETF's own stored return, theme = the equal-weight member basket — so a theme / sector forward return
+  reads **identically on its leaderboard and on Backtest** for the same date + horizon (J-81).
 - **Lab analytics** (factor decile means + rank-IC, multi-factor **composite** cohorts — a rank-blend
   across any number of factors — regime-conditioned slices, event-study distribution / hit-rate /
   expectancy, MAE/MFE, exit-horizon, and the **risk-adjusted ratios** return/vol · return/MAE ·
@@ -2089,6 +2107,49 @@ The backend is the single source of truth; every page only displays server-compu
     2. The **Major indexes & regime** chart's period selector defaults to **All** (full available history), not 6M.
     3. The other range presets (3M / 6M / 1Y / All) remain selectable and switch the view as before.
   - Acceptance: on a fresh load the major-indexes chart's default range is **All** (full history), set via the **config** default (`index_chart.default_range`, `6M` → `all`) — a config change with **no magic number in code** and no second code path; all existing range presets still work; the chart still serves **full-history regardless of the global as-of** (J-49) so this is a default-window change only (no backend/contract change, no recompute, no second date state — J-18); the card's enable/disable toggle and its persistence are unchanged.
+
+- **J-79: Step the as-of date without the panel blocking the view — buttons + opt-in arrows + quick year/month jump (amends J-71 / J-62)**
+  - Steps:
+    1. At a historical as-of date, click the top-bar **◀ / ▶** buttons beside the as-of control: the date moves to the previous / next **available snapshot date** with the **calendar popover closed** — the page re-reads and the view is never covered.
+    2. Tick the top-bar **"← → steps date"** checkbox; now **←** / **→** step the as-of date the same way globally while the panel is closed. Untick to disable (the setting persists).
+    3. Open the calendar and use the new **Year** and **Month** dropdowns to jump the viewed month directly instead of clicking the chevrons month-by-month.
+    4. At the oldest available date **◀ / ←** is a no-op; at the latest **▶ / →** rests at Latest.
+    5. Focus the `/stocks` symbol-search box and press **← / →** — the text caret moves and the as-of date does **not** change (keys are ignored while typing in a field).
+  - Acceptance: the as-of date is steppable **with the calendar popover closed** via always-visible **◀ ▶** prev/next buttons in the top bar **and** — when a **persisted, default-off** "← → steps date" checkbox is on — the **← / →** arrow keys; every step moves **only among dates that actually have snapshots** (never an arbitrary calendar ±1 onto a non-trading / no-snapshot day), is **bounded** (no movement past the oldest / newest available date), drives the **single global as-of** control, and stays in sync with the `?asof` URL param (J-43 / J-50) — introducing **no page-local or second date state** (Anti-goal: *exactly one date selector*); the keyboard handler is **guarded** so it never fires while focus is in an input / textarea / select / contenteditable and never hijacks scrolling when the checkbox is off; the calendar gains **Year + Month dropdowns** that navigate the **viewed month only** (a presentation aid, not a second date state); the calendar's selectable-day / disabled-day / "Latest" affordances (J-62) and Escape / click-to-commit are unchanged. This **supersedes J-71's** "handling lives only on the open dialog's `onKeyDown` — no global window listener": the **opt-in** checkbox now permits a field-guarded global key handler, and stepping no longer requires the panel to be open.
+
+- **J-80: Stocks leaderboard shows the selected date's market regime + theme ranking**
+  - Steps:
+    1. Visit `/stocks` at any as-of date.
+    2. Read the **market-regime label + 0–100 score** for that date in the page header.
+    3. Read the **ranked Top-Themes strip** beside it (themes in descending Theme Score: 1 · …, 2 · …, …); click a theme to open `/themes`.
+    4. Note the **`#n` rank badge** on each row's theme chips and on the theme-filter options.
+    5. Change the global as-of date — the regime label, the ranked strip, and the chip badges all re-point to the new date.
+  - Acceptance: `/stocks` displays the resolved as-of date's **regime label + score** read from the **same stored canonical regime the Dashboard shows** (the run's stored `regime_label` / the `/api/dashboard` regime) and **identical** to the Dashboard for that date (J-06 coherence) — **never recomputed**; and a **theme ranking** presented **both** as a header **ranked Top-Themes strip** **and** as **`#n` rank badges** on the per-row theme chips + the theme filter, read from the **same `/api/themes` theme scores / ranks** the Themes leaderboard uses and in the **same descending order** — a pure re-display of served canonical values, **no second compute path** (*Single source of truth*). Both re-point with the single global as-of (J-18), show an **honest empty state** when a date has no ranked themes, and leave the existing leaderboard rows, filters, symbol search (J-55), column sorting (J-48), theme chips (J-56), and forward-return columns (J-75) unchanged.
+
+- **J-81: Forward-return columns on the Themes and Sectors leaderboards (1/5/10/20/60-day; mirrors J-75)**
+  - Steps:
+    1. Set the global as-of to a historical date D that has post-D bars in the seed.
+    2. On `/themes`, confirm each row shows **five forward-return columns — 1d / 5d / 10d / 20d / 60d** — the **equal-weight forward return of the theme's member basket** at D, colour-graded by sign; sort by any of them (J-48).
+    3. On `/sectors`, confirm each row shows the **same five columns** — the **sector / industry ETF's own forward return** at D — also sortable.
+    4. Cross-check a theme and a sector value against the **Backtest** page's Top Themes / Top Sectors at the same date + horizon — they are identical.
+    5. Return the switcher to **latest** — every horizon shows **NA** (no post-D bars yet), never a fabricated number.
+  - Acceptance: `/themes` and `/sectors` each carry **five forward-return columns (1 / 5 / 10 / 20 / 60 trading days)** for the resolved as-of date, mirroring J-75 on `/stocks` (colour-graded by sign, **client-side sortable** under the J-48 view-transform contract, NA-honest at / near latest); the **theme** value is the **equal-weight average of its member stocks' realized forward returns** and the **sector** value is the **ETF's own realized forward return**, **both read from the stored append-only `forward_returns` table via the SAME `leadership_returns` builder the Backtest page already uses** — so the columns are **identical** to Backtest's Top Themes / Top Sectors for the same date + horizon (J-06 coherence), use **only bars dated > D** (no-lookahead), and show **NA** where post-snapshot bars are insufficient (never fabricated — *Honest forward-test for partial windows*); they are a **new read surface of existing stored / derived data** (like J-75), **not** a new computation; the single global as-of drives the date (J-18) and the historical `?asof` href-stamping (J-50) is unchanged.
+
+- **J-82: Regime × Setup × Pattern table — correct NA sorting, column filters, working N= drill-down, Pooled default (amends J-77)**
+  - Steps:
+    1. On `/research`, sort any numeric column of the **Regime × Setup × Pattern** table — rows shown as **NA** sink to the bottom in **both** ascending and descending order (they no longer scatter among the real values).
+    2. Use the new **Regime**, **Setup**, and **Pattern** filter dropdowns to narrow the table; combine them with a column sort.
+    3. Click any row's **N=** chip — `/research/samples` opens that exact `(regime, setup, pattern)` combination (new tab) **without error**, its total equal to the row's n.
+    4. Confirm the section's view toggle now defaults to **Pooled** (Episodes still one click away).
+  - Acceptance: four corrections to the J-77 section, every one a **read-only view / serve fix — no canonical value changes**: (a) **sorting treats a cell as NA using the SAME predicate the cell display uses** (`low_sample` OR `n === 0` OR `value === null`) so every displayed-NA row sorts **last in both directions** while present values sort numerically and the label columns lexically (a stable tie-break preserves the served rank) — fixing the low-sample rows that currently sort by a hidden number the UI is masking behind "NA"; (b) **client-side filter dropdowns for Regime, Setup, and Pattern**, built from the **config-driven vocabulary already in the payload** (`regime_labels` / `setups` / `patterns` / `pattern_none`), each defaulting to "All" — **pure view transforms** over the served rows that **compose with the sort and recompute nothing** (the J-56 / J-48 contract); (c) clicking the **N=** chip on **any** displayed row opens the samples drill-down for that exact `(regime, setup, pattern)` cohort **without error**, with **total == the row's n**, in **both Episodes and Pooled** modes and **both All-history and As-of** scopes (J-51 / J-65 count-coherence) — **including the pattern = none rows** — so the samples validation / vocabulary must accept **every** combination the study itself emits (no displayable row may return a 4xx); (d) **this section's Episodes ⇄ Pooled toggle defaults to Pooled** (Episodes still one click away), while the rest of the event study keeps its J-63 **Episodes** default. The J-77 derivation (one enriched observation set, no recompute, the survivorship-bias label) is otherwise unchanged.
+
+**J-79 … J-82 are NOT data-dependent.** All four are buildable and verifiable offline against the
+committed seed — J-79 (seed-driven as-of UI: prev/next buttons + opt-in arrow keys + year/month
+dropdowns), J-80 (re-display of the stored regime + stored theme scores already served), J-81 (theme /
+sector forward returns read from the stored `forward_returns` table for historical as-of dates, via the
+same `leadership_returns` builder Backtest uses), and J-82 (a sort / filter view fix + a
+samples-validation reconciliation over the stored event-study observation set). None may be recorded
+blocked-NA for provider reasons, and none may halt the loop.
 
 **J-72 … J-78 are NOT data-dependent.** All seven are buildable and verifiable offline against the
 committed seed — J-72 (perf + cache over the stored forward returns), J-73 (URL-hydration UI), J-74
