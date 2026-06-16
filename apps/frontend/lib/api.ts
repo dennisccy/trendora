@@ -119,6 +119,11 @@ export interface SectorRow {
   trend_label: string;
   components: ScoreComponent[];
   rank: number;
+  // iter-23 (J-81): the five realized forward returns (1/5/10/20/60-day from config horizons) — the
+  // sector/industry ETF's OWN stored return per horizon, read VERBATIM via the SAME _leadership_returns
+  // builder Backtest's Top Sectors uses (never recomputed). `return` is null (NA) where no stored row
+  // exists (industry ETFs without a stored bar, or at/near latest) — never fabricated. Config order.
+  forward_returns: ForwardReturnEntry[];
 }
 
 export interface SectorsResponse {
@@ -260,12 +265,16 @@ export interface StockRow {
   forward_returns: StockForwardReturn[];
 }
 
-/** One per-stock forward-return entry (J-75): the realized return at `horizon` trading days, or null
- *  (NA) when no stored row exists. Read verbatim from the stored forward_returns table — never recomputed. */
-export interface StockForwardReturn {
+/** One forward-return entry: the realized return at `horizon` trading days, or null (NA) when no stored
+ *  row exists. Read verbatim from the stored forward_returns table — never recomputed. The SHARED shape
+ *  used by the per-stock (J-75) and the per-theme / per-sector (J-81) leaderboard forward-return lists. */
+export interface ForwardReturnEntry {
   horizon: number;
   return: number | null;
 }
+
+/** Alias preserved for the J-75 per-stock callsites (the same `{horizon, return}` shape as J-81). */
+export type StockForwardReturn = ForwardReturnEntry;
 
 export interface StocksResponse {
   asof_date: string;
@@ -437,6 +446,11 @@ export interface ThemeRow {
   trend_label: string;
   components: ScoreComponent[];
   rank: number;
+  // iter-23 (J-81): the five realized forward returns (1/5/10/20/60-day from config horizons) — the
+  // EQUAL-WEIGHT mean of the theme's member stocks' stored returns over only members that HAVE a stored
+  // return, read VERBATIM via the SAME _leadership_returns builder Backtest's Top Themes uses (never
+  // recomputed). `return` is null (NA) where no member has a stored return (or at/near latest). Config order.
+  forward_returns: ForwardReturnEntry[];
 }
 
 export interface ThemesResponse {

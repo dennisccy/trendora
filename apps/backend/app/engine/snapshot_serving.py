@@ -23,6 +23,7 @@ from fastapi import HTTPException
 from sqlmodel import Session, select
 
 from app.config import Config, get_config
+from app.engine.forward_testing import _leadership_returns
 from app.engine.scanner import AsOfError, resolve_as_of_date, resolve_run
 from app.models import ForwardReturn, ScannerResult, ScannerRun, SectorScoreRow, ThemeScoreRow
 
@@ -81,6 +82,49 @@ def _forward_returns_for_row(
     fabricated. The horizons are emitted in config order so the leaderboard columns map to them."""
     horizon_map = by_symbol.get(symbol.upper(), {}) or by_symbol.get(symbol, {})
     return [{"horizon": h, "return": horizon_map.get(h)} for h in horizons]
+
+
+def _leadership_returns_by_horizon(
+    session: Session, run: ScannerRun, cfg: Config
+) -> dict[int, dict]:
+    """The J-21 `forward_testing:_leadership_returns` projection for THIS run, computed ONCE per CONFIGURED
+    horizon (J-81). For each horizon it builds `ret_by_symbol` (symbol -> the stored `realized_return` for
+    this run+horizon) from the SINGLE `forward_returns` SELECT and calls the SAME `_leadership_returns`
+    builder Backtest's Top Themes / Top Sectors already use — so a theme's / sector's forward return on the
+    leaderboard is BYTE-IDENTICAL to Backtest's for the same date+horizon (J-06 single-source). It reads
+    VERBATIM from the stored append-only `forward_returns` table and recomputes NO return; absent members
+    are skipped (never counted as 0), `None`/NA when no member / no stored row.
+
+    Returns `{horizon: {"themes": {slug: mean_return}, "sectors": {sector_etf: mean_return}}}` — the
+    per-horizon projection indexed for O(1) per-row lookup, so neither `themes_payload` nor `sectors_payload`
+    issues a second query per horizon per row (one SELECT total for the run)."""
+    fr_rows = session.exec(
+        select(ForwardReturn).where(ForwardReturn.run_id == run.id)
+    ).all()
+    by_horizon: dict[int, dict] = {}
+    for horizon in cfg.walk_forward.horizons:
+        ret_by_symbol = {fr.symbol: fr.realized_return for fr in fr_rows if fr.horizon == horizon}
+        proj = _leadership_returns(ret_by_symbol, cfg)  # SAME builder Backtest reads (J-06)
+        by_horizon[horizon] = {
+            "themes": {t["slug"]: t["mean_return"] for t in proj["themes"]},
+            "sectors": {s["sector_etf"]: s["mean_return"] for s in proj["sectors"]},
+        }
+    return by_horizon
+
+
+def _forward_returns_from_projection(
+    key: str, dimension: str, leadership_by_horizon: dict[int, dict], horizons: list[int]
+) -> list[dict]:
+    """The ADDITIVE per-row forward-return list for ONE theme (`dimension="themes"`, `key`=slug) or ONE
+    sector/industry ETF (`dimension="sectors"`, `key`=ticker) — one entry per CONFIGURED horizon
+    (`config.walk_forward.horizons` — NO hardcoded `[1,5,10,20,60]` literal), each `{horizon, return}`
+    where `return` is the `_leadership_returns` projection value read verbatim (theme = equal-weight member
+    basket; sector = the ETF's own stored return), or `None` (NA) when no stored return — so at/near latest
+    all five are honestly NA, never fabricated (J-81)."""
+    return [
+        {"horizon": h, "return": leadership_by_horizon[h][dimension].get(key)}
+        for h in horizons
+    ]
 
 
 def stored_stock_rows(
@@ -153,9 +197,10 @@ def stock_detail_payload(
     raise HTTPException(status_code=404, detail=f"unknown ticker: {ticker}")
 
 
-def _sector_row(row: SectorScoreRow) -> dict:
+def _sector_row(row: SectorScoreRow, forward_returns: list[dict]) -> dict:
     """Reshape one stored `SectorScoreRow` into the canonical `score_sectors` row dict (verbatim
-    columns + the stored component breakdown)."""
+    columns + the stored component breakdown), ADDITIVELY carrying its five stored forward returns
+    (J-81 — the ETF's OWN realized return per horizon, read verbatim via `_leadership_returns`)."""
     return {
         "ticker": row.ticker,
         "kind": row.kind,
@@ -172,24 +217,44 @@ def _sector_row(row: SectorScoreRow) -> dict:
         "trend_label": row.trend_label,
         "components": json.loads(row.components_json),
         "rank": row.rank,
+        # ADDITIVE J-81 field — the ETF's own stored forward return per horizon, read verbatim from the
+        # `_leadership_returns` projection (the SAME value Backtest's Top Sectors shows); NA where no row.
+        "forward_returns": forward_returns,
     }
 
 
-def sectors_payload(session: Session, run: ScannerRun) -> dict:
-    """The `/api/sectors` shape, served from the stored `SectorScoreRow` children (echoing asof_date)."""
+def sectors_payload(session: Session, run: ScannerRun, config: Optional[Config] = None) -> dict:
+    """The `/api/sectors` shape, served from the stored `SectorScoreRow` children (echoing asof_date).
+
+    J-81: each ETF row ADDITIVELY carries `forward_returns` — its five realized forward returns
+    (1/5/10/20/60-day, from `config.walk_forward.horizons`) read VERBATIM via the SAME
+    `forward_testing:_leadership_returns` builder Backtest's Top Sectors uses (sector = the ETF's OWN
+    stored return), so a sector forward return reads identically on its leaderboard and on Backtest for
+    the same date+horizon (J-06). Recomputes NO return; one `forward_returns` SELECT for the whole run."""
+    cfg = config or get_config()
+    horizons = list(cfg.walk_forward.horizons)
+    leadership_by_horizon = _leadership_returns_by_horizon(session, run, cfg)
     rows = session.exec(
         select(SectorScoreRow).where(SectorScoreRow.run_id == run.id).order_by(SectorScoreRow.rank)
     ).all()
     return {
         "asof_date": run.asof_date.isoformat(),
         "benchmark": run.benchmark,
-        "rows": [_sector_row(row) for row in rows],
+        "rows": [
+            _sector_row(
+                row,
+                _forward_returns_from_projection(row.ticker, "sectors", leadership_by_horizon, horizons),
+            )
+            for row in rows
+        ],
     }
 
 
-def _theme_row(row: ThemeScoreRow) -> dict:
+def _theme_row(row: ThemeScoreRow, forward_returns: list[dict]) -> dict:
     """Reshape one stored `ThemeScoreRow` into the canonical `score_themes` row dict (verbatim columns
-    + the stored member list + component breakdown)."""
+    + the stored member list + component breakdown), ADDITIVELY carrying its five stored forward returns
+    (J-81 — the EQUAL-WEIGHT member-basket realized return per horizon, read verbatim via
+    `_leadership_returns`)."""
     return {
         "slug": row.slug,
         "name": row.name,
@@ -203,15 +268,35 @@ def _theme_row(row: ThemeScoreRow) -> dict:
         "trend_label": row.trend_label,
         "components": json.loads(row.components_json),
         "rank": row.rank,
+        # ADDITIVE J-81 field — the equal-weight member-basket stored forward return per horizon, read
+        # verbatim from the `_leadership_returns` projection (the SAME value Backtest's Top Themes shows);
+        # absent members skipped (never 0), NA where no member has a stored return.
+        "forward_returns": forward_returns,
     }
 
 
-def themes_payload(session: Session, run: ScannerRun) -> dict:
-    """The `/api/themes` shape, served from the stored `ThemeScoreRow` children (echoing asof_date)."""
+def themes_payload(session: Session, run: ScannerRun, config: Optional[Config] = None) -> dict:
+    """The `/api/themes` shape, served from the stored `ThemeScoreRow` children (echoing asof_date).
+
+    J-81: each theme row ADDITIVELY carries `forward_returns` — its five realized forward returns
+    (1/5/10/20/60-day, from `config.walk_forward.horizons`) read VERBATIM via the SAME
+    `forward_testing:_leadership_returns` builder Backtest's Top Themes uses (theme = the EQUAL-WEIGHT mean
+    of its member stocks' stored returns over only members that HAVE a stored return), so a theme forward
+    return reads identically on its leaderboard and on Backtest for the same date+horizon (J-06).
+    Recomputes NO return; one `forward_returns` SELECT for the whole run."""
+    cfg = config or get_config()
+    horizons = list(cfg.walk_forward.horizons)
+    leadership_by_horizon = _leadership_returns_by_horizon(session, run, cfg)
     rows = session.exec(
         select(ThemeScoreRow).where(ThemeScoreRow.run_id == run.id).order_by(ThemeScoreRow.rank)
     ).all()
     return {
         "asof_date": run.asof_date.isoformat(),
-        "rows": [_theme_row(row) for row in rows],
+        "rows": [
+            _theme_row(
+                row,
+                _forward_returns_from_projection(row.slug, "themes", leadership_by_horizon, horizons),
+            )
+            for row in rows
+        ],
     }

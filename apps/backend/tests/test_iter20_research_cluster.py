@@ -447,20 +447,30 @@ def test_j77_count_coherence_same_instant_both_views(study_engine):
 
 
 def test_j77_samples_invalid_selectors_raise(study_engine):
-    """An invalid (regime, setup, pattern) cohort selector raises ValueError (the API -> 4xx); a VALID
-    n=0 combination returns an honest empty drill-down (total 0, no fabricated row)."""
+    """J-82(c) (UPDATED contract): the samples drill-down accepts EXACTLY the combinations the study
+    EMITS — a genuinely non-emitted (regime, setup, pattern) combination raises ValueError (the API ->
+    4xx), whether the offending coordinate is an unknown vocabulary value OR a config-valid value the
+    study simply never groups on (the study only emits rows that have observations, so there is no N=
+    chip — and thus no published N — for a combination it does not render). Acceptance is WIDENED to
+    emitted combinations, NOT disabled.
+
+    Note this SUPERSEDES the iter-20 "valid-vocabulary n=0 returns an empty 200" premise: under the J-82
+    reconciliation a non-emitted combination 4xxes by construction (there is no row whose `n` it could be
+    coherent with), which is the honest behaviour for an N= chip that never appears. An EMITTED
+    combination (covered by `test_j77_count_coherence_same_instant_both_views`) stays count-coherent."""
     cfg = load_config()
     with Session(study_engine) as session:
-        with pytest.raises(ValueError):  # unknown regime
+        with pytest.raises(ValueError):  # unknown regime — never emitted
             compute_samples(session, kind=KIND_REGIME_SETUP_PATTERN, horizon=H, config=cfg,
                             regime="Bogus", setup="Actionable", pattern="vcp")
-        with pytest.raises(ValueError):  # unknown setup
+        with pytest.raises(ValueError):  # unknown setup — never emitted
             compute_samples(session, kind=KIND_REGIME_SETUP_PATTERN, horizon=H, config=cfg,
                             regime="Risk-on", setup="Bogus", pattern="vcp")
-        with pytest.raises(ValueError):  # unknown pattern
+        with pytest.raises(ValueError):  # unknown pattern — never emitted
             compute_samples(session, kind=KIND_REGIME_SETUP_PATTERN, horizon=H, config=cfg,
                             regime="Risk-on", setup="Actionable", pattern="bogus")
-        # VALID but empty (no observation in this combination) -> total 0, empty rows (honest, not 4xx).
-        empty = compute_samples(session, kind=KIND_REGIME_SETUP_PATTERN, horizon=H, config=cfg,
-                                regime="Choppy", setup="Avoid", pattern=PATTERN_NONE)
-        assert empty["total"] == 0 and empty["rows"] == []
+        # Config-valid coordinates, but this combination has NO observation in study_engine (the study
+        # never emits a (Choppy, Avoid, none) row) -> genuinely non-emitted -> honest 4xx (J-82c).
+        with pytest.raises(ValueError):
+            compute_samples(session, kind=KIND_REGIME_SETUP_PATTERN, horizon=H, config=cfg,
+                            regime="Choppy", setup="Avoid", pattern=PATTERN_NONE)

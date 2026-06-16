@@ -46,7 +46,6 @@ from app.config import Config, get_config
 from app.engine.forward_testing import SURVIVORSHIP_BIAS_LABEL
 from app.engine.research import (
     ALL_VIEWS,
-    PATTERN_NONE,
     RESEARCH_CAVEAT,
     VIEW_EPISODES,
     _combination_cohort_members,
@@ -56,11 +55,11 @@ from app.engine.research import (
     _factor_observations,
     _regime_setup_pattern_observations,
     _rsp_combination_filter,
+    _rsp_combination_members,
     factor_catalog,
     pattern_keys,
     subject_catalog,
 )
-from app.engine.setups import ALL_STATUSES
 from app.models import ScannerRun
 
 # The analysis kinds a sample cohort can belong to (one per research lab) — a fixed structural vocabulary
@@ -348,24 +347,33 @@ def _regime_setup_pattern_samples(
     observations UNDER THE SELECTED `view` (J-63). Membership is the SAME `_regime_setup_pattern_
     observations` builder + the SAME `_rsp_combination_filter` predicate `compute_regime_setup_pattern_
     study` aggregates, so the drill-down `total` EQUALS the row's published `n` in BOTH Episodes and
-    Pooled modes (count-coherence keystone — one membership rule, never a second grouping). Vocabularies
-    are config-backed (regime labels, setup statuses) / the existing pattern keys (+ the `none` sentinel)
-    — validated to those sets (else `ValueError` -> 4xx). Each row: ticker, snapshot date, the matched
-    combination, the realized forward return."""
+    Pooled modes (count-coherence keystone — one membership rule, never a second grouping).
+
+    J-82(c) — VALIDATION RECONCILIATION: acceptance is reconciled to EXACTLY the set of combinations
+    `compute_regime_setup_pattern_study` actually EMITS (the same observation set keyed by the SAME
+    `_rsp_combination_members` rule the study groups by) — NOT a re-derived vocabulary cross-product. This
+    accepts every row the study renders, INCLUDING a `pattern = none` (PATTERN_NONE) row and any groupable
+    regime value the study tie-breaks on (the study uses `r["regime"] or ""`, so an empty/None displayable
+    regime must not 4xx), while a genuinely non-emitted combination still raises `ValueError` -> an honest
+    4xx (acceptance widened, validation NOT disabled). Vocabularies stay config-backed (the keys come from
+    the stored observations' verbatim regime / setup / pattern flags); recomputes nothing. Each row:
+    ticker, snapshot date, the matched combination, the realized forward return."""
     if view not in ALL_VIEWS:
         raise ValueError(f"unknown view {view!r}; valid views are {list(ALL_VIEWS)}")
-    if regime is None or regime not in cfg.regime.labels:
-        raise ValueError(
-            f"regime {regime!r} is not a configured regime label {list(cfg.regime.labels)}"
-        )
-    if setup is None or setup not in ALL_STATUSES:
-        raise ValueError(f"setup {setup!r} is not a configured setup status {list(ALL_STATUSES)}")
-    p_keys = pattern_keys(cfg)
-    valid_patterns = [*p_keys, PATTERN_NONE]
-    if pattern is None or pattern not in valid_patterns:
-        raise ValueError(f"pattern {pattern!r} is not a configured pattern {valid_patterns}")
 
+    p_keys = pattern_keys(cfg)
     observations = _regime_setup_pattern_observations(session, horizon, view, cfg, as_of)
+
+    # The EXACT set of (regime, setup, pattern) combinations the study emits — derived ONCE from the SAME
+    # observation set via the SAME `_rsp_combination_members` rule the study groups by (count-coherence by
+    # construction). A requested combination not in this set is genuinely non-emitted -> honest 4xx.
+    emitted = {key for obs in observations for key in _rsp_combination_members(obs, p_keys)}
+    if (regime, setup, pattern) not in emitted:
+        raise ValueError(
+            f"combination (regime={regime!r}, setup={setup!r}, pattern={pattern!r}) is not emitted by "
+            f"the regime-setup-pattern study for horizon {horizon} (view={view})"
+        )
+
     members = [
         obs for obs in observations
         if _rsp_combination_filter(obs, regime, setup, pattern, p_keys)

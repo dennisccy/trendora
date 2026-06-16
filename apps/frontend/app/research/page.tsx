@@ -1884,10 +1884,93 @@ type RspSortKey =
   | "return_per_downside_dev"
   | "return_per_mae";
 
+/** The "All" sentinel for the J-82(b) Regime / Setup / Pattern filter dropdowns — a structural value
+ *  (never a real regime/setup/pattern), so it can never collide with a config vocabulary entry. */
+const RSP_FILTER_ALL = "__all__";
+
 /** Pretty-print a pattern key (snake_case → spaced) and surface the `none` sentinel honestly. */
 function patternLabel(pattern: string, none: string): string {
   if (pattern === none) return "— (none)";
   return pattern.replace(/_/g, " ");
+}
+
+/** J-82(b) — the three "All"-default Regime / Setup / Pattern filter dropdowns. The vocabulary is the
+ *  config-driven payload (`regime_labels` / `setups` / `patterns` + the `pattern_none` sentinel) — no
+ *  hardcoded list. Pure view-transform controls (the parent filters the served rows); recomputes nothing. */
+function RspFilters({
+  data,
+  regime,
+  setup,
+  pattern,
+  onRegime,
+  onSetup,
+  onPattern,
+}: {
+  data: RegimeSetupPatternResponse;
+  regime: string;
+  setup: string;
+  pattern: string;
+  onRegime: (v: string) => void;
+  onSetup: (v: string) => void;
+  onPattern: (v: string) => void;
+}) {
+  return (
+    <>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs uppercase tracking-wide text-text-faint">Regime</span>
+        <Select
+          data-testid="rsp-regime-filter"
+          aria-label="Filter by regime"
+          value={regime}
+          onChange={(e) => onRegime(e.target.value)}
+          className="w-44"
+        >
+          <option value={RSP_FILTER_ALL}>All regimes</option>
+          {data.regime_labels.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs uppercase tracking-wide text-text-faint">Setup</span>
+        <Select
+          data-testid="rsp-setup-filter"
+          aria-label="Filter by setup"
+          value={setup}
+          onChange={(e) => onSetup(e.target.value)}
+          className="w-44"
+        >
+          <option value={RSP_FILTER_ALL}>All setups</option>
+          {data.setups.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </Select>
+      </label>
+      <label className="flex flex-col gap-1">
+        <span className="text-xs uppercase tracking-wide text-text-faint">Pattern</span>
+        <Select
+          data-testid="rsp-pattern-filter"
+          aria-label="Filter by pattern"
+          value={pattern}
+          onChange={(e) => onPattern(e.target.value)}
+          className="w-44"
+        >
+          <option value={RSP_FILTER_ALL}>All patterns</option>
+          {/* config pattern keys + the `none` sentinel (rendered honestly as "— (none)"). */}
+          {data.patterns.map((p) => (
+            <option key={p} value={p}>
+              {patternLabel(p, data.pattern_none)}
+            </option>
+          ))}
+          <option value={data.pattern_none}>{patternLabel(data.pattern_none, data.pattern_none)}</option>
+        </Select>
+      </label>
+    </>
+  );
 }
 
 /** The Regime × Setup × Pattern study section (J-77): a ranked, client-side-sortable table — each row a
@@ -1907,13 +1990,23 @@ function RegimeSetupPatternLab({
   asofCutoff: string | null;
   scope: SampleScope;
 }) {
-  const [view, setView] = useState<EventStudyView>("episodes");
+  // J-82(d): the RSP section defaults to POOLED (Episodes one click away) — scoped to THIS section's own
+  // toggle initial state only; the rest of /research (the event study, J-29/J-63) keeps its Episodes
+  // default, and the canonical `compute_regime_setup_pattern_study` default param is untouched.
+  const [view, setView] = useState<EventStudyView>("pooled");
   const [data, setData] = useState<RegimeSetupPatternResponse | null>(null);
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
   // J-48 client-side sort state. Default: the stored server order (ranked by risk-adjusted return) — a
   // null sortKey means "as served", so the default order stays the engine's rank (a view transform only).
   const [sortKey, setSortKey] = useState<RspSortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  // J-82(b): three client-side filter dropdowns (Regime / Setup / Pattern), each defaulting to "All"
+  // (the RSP_FILTER_ALL sentinel). Pure view transforms (J-56/J-48 contract) over the already-served rows
+  // — they compose with the sort and recompute/refetch nothing. The vocabulary comes from the config-driven
+  // payload fields (`regime_labels` / `setups` / `patterns` / `pattern_none`) — no hardcoded list.
+  const [regimeFilter, setRegimeFilter] = useState<string>(RSP_FILTER_ALL);
+  const [setupFilter, setSetupFilter] = useState<string>(RSP_FILTER_ALL);
+  const [patternFilter, setPatternFilter] = useState<string>(RSP_FILTER_ALL);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1932,27 +2025,52 @@ function RegimeSetupPatternLab({
 
   const hasAny = data ? data.rows.some((r) => r.stats.n > 0) : false;
 
-  // J-48: a pure client-side stable re-order of the ALREADY-SERVED rows (never a refetch/recompute). A
-  // null metric sorts last in either direction so NA never masquerades as a top/bottom value.
+  // J-82(b): apply the three "All"-default filter dropdowns FIRST — a pure view transform (J-56/J-48
+  // contract) over the already-served rows. An "All" sentinel passes every row; a selected value narrows
+  // to the matching regime / setup / pattern. Composes with the sort below; recomputes/refetches nothing.
+  const filteredRows = data
+    ? data.rows.filter(
+        (r) =>
+          (regimeFilter === RSP_FILTER_ALL || r.regime === regimeFilter) &&
+          (setupFilter === RSP_FILTER_ALL || r.setup === setupFilter) &&
+          (patternFilter === RSP_FILTER_ALL || r.pattern === patternFilter),
+      )
+    : [];
+
+  // J-48 + J-82(a): a pure client-side stable re-order of the FILTERED served rows (never a refetch/
+  // recompute). The label columns (regime/setup/pattern) and the always-present `n` sort directly; every
+  // NUMERIC STAT column treats a cell as NA using the SAME predicate the cell DISPLAY (`RspCell`) uses —
+  // `low_sample || n === 0 || value === null` — so every DISPLAYED-NA row sinks LAST in both directions
+  // (a low-sample row whose raw mean is a real number still DISPLAYS NA, so it must SORT NA too — the
+  // J-82(a) reconciliation). Present values sort numerically, labels lexically, with a stable tie-break
+  // preserving the served rank.
   const sortedRows = (() => {
     if (!data) return [];
-    if (sortKey === null) return data.rows; // default = the served (risk-adjusted-ranked) order
+    if (sortKey === null) return filteredRows; // default = the served (risk-adjusted-ranked) order
     const sign = sortDir === "asc" ? 1 : -1;
-    const value = (r: RegimeSetupPatternRow): string | number | null => {
+    // The displayed value for the active column, or `null` when the cell DISPLAYS as NA (same predicate
+    // as `RspCell`). Label columns and `n` are never display-NA. A numeric stat is NA when the row is
+    // low-sample, empty, or the value itself is null.
+    const displayedValue = (r: RegimeSetupPatternRow): string | number | null => {
       switch (sortKey) {
         case "regime": return r.regime;
         case "setup": return r.setup;
         case "pattern": return r.pattern;
         case "n": return r.stats.n;
-        default: return r.stats[sortKey];
+        default: {
+          const raw = r.stats[sortKey];
+          // SAME NA predicate as the cell display (RspCell) — a low-sample / empty / null cell is NA.
+          if (r.stats.low_sample || r.stats.n === 0 || raw === null) return null;
+          return raw;
+        }
       }
     };
-    return data.rows
+    return filteredRows
       .map((row, index) => ({ row, index }))
       .sort((a, b) => {
-        const av = value(a.row);
-        const bv = value(b.row);
-        // NA (null) always sorts last regardless of direction
+        const av = displayedValue(a.row);
+        const bv = displayedValue(b.row);
+        // displayed-NA (null) always sorts last regardless of direction
         if (av === null && bv === null) return a.index - b.index;
         if (av === null) return 1;
         if (bv === null) return -1;
@@ -1984,12 +2102,25 @@ function RegimeSetupPatternLab({
       <div className="space-y-4 p-4">
         <div className="flex flex-wrap items-end gap-3">
           <EventStudyViewToggle view={view} onChange={setView} />
+          {/* J-82(b): the three "All"-default Regime / Setup / Pattern filter dropdowns — config-driven
+              vocabulary from the payload; pure view transforms composing with the sort. */}
+          {data ? (
+            <RspFilters
+              data={data}
+              regime={regimeFilter}
+              setup={setupFilter}
+              pattern={patternFilter}
+              onRegime={setRegimeFilter}
+              onSetup={setSetupFilter}
+              onPattern={setPatternFilter}
+            />
+          ) : null}
           <p className="max-w-md text-xs text-text-faint">
             Re-uses the page&apos;s shared horizon selector and analysis-mode toggle above — no date control
-            of its own (the single global as-of drives any point-in-time scoping, J-18). Episodes (default)
-            counts each continuous run of a symbol once at its first trigger; Pooled counts every signal-day.
-            An observation matching two patterns appears under both; one matching none appears under
-            &ldquo;— (none)&rdquo;.
+            of its own (the single global as-of drives any point-in-time scoping, J-18). Pooled (default for
+            this section) counts every signal-day; Episodes counts each continuous run of a symbol once at
+            its first trigger. An observation matching two patterns appears under both; one matching none
+            appears under &ldquo;— (none)&rdquo;.
           </p>
         </div>
 
@@ -2015,6 +2146,15 @@ function RegimeSetupPatternLab({
             icon={Microscope}
             title="No forward-tested combinations for this horizon"
             description="No stored snapshot has an observation with a realized forward return at this horizon. Pick a shorter horizon — no combination is fabricated to fill the gap."
+          />
+        ) : sortedRows.length === 0 ? (
+          // J-82(b): an honest empty-after-filter state — the served set has rows, but the active
+          // Regime/Setup/Pattern filters match none. The published cohort total is unchanged; clearing
+          // a filter restores rows. Never a fabricated row.
+          <EmptyState
+            icon={Microscope}
+            title="No combinations match these filters"
+            description="No (regime, setup, pattern) combination matches the current filter selection. Reset a filter to “All” to widen the view — nothing is fabricated to fill the gap."
           />
         ) : (
           <RegimeSetupPatternTable
