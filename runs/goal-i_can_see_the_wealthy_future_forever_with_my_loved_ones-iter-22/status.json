@@ -1,0 +1,34 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-06-16T01:05:00Z",
+  "started_at": "2026-06-16T00:25:00Z",
+  "cli": "claude",
+  "depth": "lean",
+  "frontend_present": true,
+  "target_journeys": ["J-79", "J-80"],
+  "blockers": [],
+  "changed_files": [
+    "apps/frontend/lib/asof-step.ts",
+    "apps/frontend/lib/asof-step.test.ts",
+    "apps/frontend/lib/regime-variant.ts",
+    "apps/frontend/components/asof-provider.tsx",
+    "apps/frontend/components/asof-switcher.tsx",
+    "apps/frontend/components/asof-calendar.tsx",
+    "apps/frontend/app/page.tsx",
+    "apps/frontend/app/stocks/page.tsx",
+    "apps/frontend/tsconfig.json",
+    "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-dev.md",
+    "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-frontend.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "targeted_tests": {
+    "frontend_unit_asof_step": "13 passed (node lib/asof-step.test.ts)",
+    "tsc_noEmit": "exit 0 (no type errors)",
+    "dev_server_boot": "/, /stocks, /themes all HTTP 200, compiled, no errors (killed by port 3835)"
+  },
+  "backend_diff": "none — git status shows zero apps/backend changes; both J-80 endpoints (/api/dashboard, /api/themes) already shipped, so the pytest suite is unchanged (full run skipped per zero-diff + ~34min/subagent-cap constraint)",
+  "next_action": "review"
+}

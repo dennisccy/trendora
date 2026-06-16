@@ -14,6 +14,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { fetchRuns } from "@/lib/api";
 import { isValidIsoDate } from "@/lib/dates";
+import { canStepNext, canStepPrev, resolveStep } from "@/lib/asof-step";
 
 /**
  * Global as-of date state (iter-8, J-13). A single client context, mounted in the app shell so it
@@ -244,6 +245,38 @@ export function useAsOf(): AsOfContextValue {
   const ctx = useContext(AsOfContext);
   if (!ctx) throw new Error("useAsOf must be used within <AsOfProvider>");
   return ctx;
+}
+
+/**
+ * J-79 — step the ONE global as-of date one available snapshot at a time, bounded.
+ *
+ * The single hook every J-79 affordance uses (the top-bar ◀ ▶ buttons and the opt-in ← → keys): it reads
+ * the same global state and drives the SAME `setAsOf` the calendar already calls — so stepping introduces
+ * NO second/page-local date state and stays in sync with the `?asof` URL serialization (the provider stays
+ * the sole owner). The landing date is computed by the pure `resolveStep` authority (snapshot-only,
+ * bounded, Latest-normalised). `canPrev`/`canNext` drive the buttons' disabled state at the ends.
+ */
+export function useAsOfStep(): {
+  stepPrev: () => void;
+  stepNext: () => void;
+  canPrev: boolean;
+  canNext: boolean;
+} {
+  const { asOf, setAsOf, dates } = useAsOf();
+  const stepPrev = useCallback(() => {
+    const { changed, next } = resolveStep(dates, asOf, -1);
+    if (changed) setAsOf(next);
+  }, [dates, asOf, setAsOf]);
+  const stepNext = useCallback(() => {
+    const { changed, next } = resolveStep(dates, asOf, 1);
+    if (changed) setAsOf(next);
+  }, [dates, asOf, setAsOf]);
+  return {
+    stepPrev,
+    stepNext,
+    canPrev: canStepPrev(dates, asOf),
+    canNext: canStepNext(dates, asOf),
+  };
 }
 
 /**

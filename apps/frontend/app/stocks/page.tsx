@@ -16,13 +16,19 @@ import { Select } from "@/components/ui/select";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { TermInfo } from "@/components/ui/term-info";
 import { formatIsoDate } from "@/lib/dates";
+import { regimeVariant } from "@/lib/regime-variant";
 import { cn } from "@/lib/utils";
 import {
+  fetchDashboard,
   fetchMethodology,
   fetchStocks,
+  fetchThemes,
+  type DashboardResponse,
   type MethodologyCatalog,
   type StockRow,
   type StocksResponse,
+  type ThemeRow,
+  type ThemesResponse,
 } from "@/lib/api";
 
 type State =
@@ -180,6 +186,13 @@ function StocksInner() {
   // date (J-18). The trimmed/lowercased query is derived in the `visible` memo below.
   const [query, setQuery] = useState<string>(() => searchParams.get("q") ?? "");
   const [catalog, setCatalog] = useState<MethodologyCatalog | null>(null);
+  // J-80 — the as-of date's market regime (from /api/dashboard) and theme ranking (from /api/themes),
+  // re-displayed in the header. BOTH are read-only re-displays of canonical served values — the SAME
+  // endpoints the Dashboard (J-06) and Themes pages read — never recomputed/re-ranked client-side. They
+  // are keyed to [asOf] like the leaderboard fetch so changing the global as-of re-points all three.
+  // Fetched NON-blocking: a failure renders an honest empty state and never breaks the leaderboard.
+  const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
+  const [themes, setThemes] = useState<ThemesResponse | null>(null);
   // J-48: client-side sort state — PURE view transform. Initial state is the scanner's stored rank
   // (the `#` column ascending), so the leaderboard opens in the canonical stored order. Sort state is
   // deliberately NOT serialized to the URL (out of scope) — it is local view ergonomics only.
@@ -196,6 +209,27 @@ function StocksInner() {
       .then((data) => setState({ kind: "ok", data }))
       .catch(() => {
         if (!controller.signal.aborted) setState({ kind: "error" });
+      });
+    return () => controller.abort();
+  }, [asOf]);
+
+  // J-80 — fetch the as-of date's regime (/api/dashboard) and theme ranking (/api/themes), keyed to the
+  // SAME [asOf] as the leaderboard so all three re-point together. Non-blocking and independent: each
+  // failure clears only its own header section (honest empty state), never the leaderboard. These are the
+  // SAME canonical endpoints the Dashboard / Themes pages read — a pure re-display, no recompute/re-rank.
+  useEffect(() => {
+    const controller = new AbortController();
+    setDashboard(null);
+    setThemes(null);
+    fetchDashboard(asOf ?? undefined, controller.signal)
+      .then((data) => setDashboard(data))
+      .catch(() => {
+        if (!controller.signal.aborted) setDashboard(null);
+      });
+    fetchThemes(asOf ?? undefined, controller.signal)
+      .then((data) => setThemes(data))
+      .catch(() => {
+        if (!controller.signal.aborted) setThemes(null);
       });
     return () => controller.abort();
   }, [asOf]);
@@ -294,6 +328,20 @@ function StocksInner() {
   // offers in-vocabulary slugs, so this only matters for a hand-typed/stale deep-link.
   const themeActive = theme !== ALL && themeOptions.some((t) => t.slug === theme);
 
+  // J-80 — the served theme ranking, read VERBATIM from /api/themes (the SAME `rank`/`score` the Themes
+  // leaderboard uses, in the SAME descending order). `rankedThemes` (rank ascending) drives the header
+  // Top-Themes strip; `themeRank` (slug → served rank) drives the `#n` badges on the row theme chips and
+  // the theme-filter options. NO client re-ranking — the served `rank` is surfaced as-is.
+  const rankedThemes = useMemo(
+    () => (themes ? [...themes.rows].sort((a, b) => a.rank - b.rank) : []),
+    [themes],
+  );
+  const themeRank = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const t of themes?.rows ?? []) map.set(t.slug, t.rank);
+    return map;
+  }, [themes]);
+
   // client-side FILTER only — never re-sorts or recomputes a score/flag (single source of truth). The
   // pattern filter narrows on the SERVER-computed `row.<name>.flagged` (pure re-display, no detection).
   // The `pattern` value is `__all__`, or `<key>__only` / `<key>__none` for a specific detected pattern.
@@ -381,6 +429,14 @@ function StocksInner() {
         subtitle="Stock Leaderboard — ranked by Leadership, with independent Entry Quality and Risk (danger) scores, a setup status and a reason"
       />
 
+      {/* J-80 — the as-of date's market regime + ranked Top-Themes strip. A pure re-display of the
+          canonical /api/dashboard regime and /api/themes ranking (identical to the Dashboard/Themes for
+          this date) — never recomputed. Hidden while the leaderboard itself errored (the regime/theme
+          context has no meaning without the leaderboard). */}
+      {state.kind !== "error" ? (
+        <RegimeThemeHeader dashboard={dashboard} rankedThemes={rankedThemes} asofHref={asofHref} />
+      ) : null}
+
       {state.kind === "ok" && rows.length > 0 ? (
         <div className="flex flex-wrap items-center gap-3">
           <Badge variant="default" className="num">
@@ -445,11 +501,16 @@ function StocksInner() {
             Theme
             <Select value={theme} onChange={(e) => setTheme(e.target.value)} aria-label="Filter by theme">
               <option value={ALL}>All themes</option>
-              {themeOptions.map((t) => (
-                <option key={t.slug} value={t.slug}>
-                  {t.name}
-                </option>
-              ))}
+              {themeOptions.map((t) => {
+                // J-80 — prefix the served `#n` rank (from /api/themes) when known; the option value/order
+                // (J-56 config order) is unchanged — only the visible label gains the rank badge.
+                const rank = themeRank.get(t.slug);
+                return (
+                  <option key={t.slug} value={t.slug}>
+                    {rank != null ? `#${rank} · ${t.name}` : t.name}
+                  </option>
+                );
+              })}
             </Select>
           </label>
           <span className="num text-xs text-text-faint" data-testid="visible-count">
@@ -568,6 +629,7 @@ function StocksInner() {
                   setupMeaning={setupMeaning.get(row.setup.status)}
                   patternMeaning={patternMeaning}
                   fwdHorizons={fwdHorizons}
+                  themeRank={themeRank}
                 />
               ))}
             </tbody>
@@ -575,6 +637,81 @@ function StocksInner() {
         </Card>
       ) : null}
     </div>
+  );
+}
+
+/** J-80 — how many ranked themes the header Top-Themes strip shows (mirrors the Dashboard's Top Themes
+ *  slice of 5). The `#n` rank badges on the row chips / theme filter still use the FULL served ranking. */
+const TOP_THEMES_STRIP_LIMIT = 5;
+
+/** J-80 — the Stocks header band: the as-of date's market-regime label + 0–100 score (re-displayed from
+ *  /api/dashboard, identical to the Dashboard for this date — J-06) and a ranked Top-Themes strip
+ *  (re-displayed from /api/themes in the SAME descending order the Themes page uses). Pure re-display of
+ *  served canonical values — nothing recomputed or re-ranked here. Each section shows an honest empty
+ *  state when its data is absent (a date with no ranked themes never fabricates a #1 theme). */
+function RegimeThemeHeader({
+  dashboard,
+  rankedThemes,
+  asofHref,
+}: {
+  dashboard: DashboardResponse | null;
+  /** The served themes, rank ascending (the SAME `rank`/`score` /api/themes serves). */
+  rankedThemes: ThemeRow[];
+  /** The J-50 href builder — stamps `?asof=D` onto the `/themes` link while historical. */
+  asofHref: (path: string) => string;
+}) {
+  const regime = dashboard?.regime ?? null;
+  const topThemes = rankedThemes.slice(0, TOP_THEMES_STRIP_LIMIT);
+  return (
+    <Card className="flex flex-wrap items-center gap-x-6 gap-y-3 p-4" data-testid="stocks-regime-theme-header">
+      {/* Market regime — label + 0–100 score, the SAME stored value the Dashboard shows (J-06). */}
+      <div className="flex items-center gap-2" data-testid="stocks-regime">
+        <span className="text-xs uppercase tracking-wide text-text-faint">
+          <TermInfo term="market regime">Market regime</TermInfo>
+        </span>
+        {regime ? (
+          <>
+            <Badge variant={regimeVariant(regime.label)}>{regime.label}</Badge>
+            <span className="num text-sm font-semibold text-text" data-testid="stocks-regime-score">
+              {regime.score.toFixed(2)}
+            </span>
+          </>
+        ) : (
+          <span className="text-xs text-text-muted" data-testid="stocks-regime-empty">
+            No regime for this date
+          </span>
+        )}
+      </div>
+
+      {/* Ranked Top-Themes strip — descending Theme Score (1 · …, 2 · …); each links to /themes. */}
+      <div className="flex flex-wrap items-center gap-2" data-testid="stocks-top-themes">
+        <span className="text-xs uppercase tracking-wide text-text-faint">
+          <TermInfo term="Theme Score">Top themes</TermInfo>
+        </span>
+        {topThemes.length > 0 ? (
+          topThemes.map((t) => (
+            <Link
+              key={t.slug}
+              href={asofHref("/themes")}
+              data-testid="stocks-top-theme"
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-2 px-2 py-0.5 text-xs text-text-muted",
+                "transition-colors hover:border-border-strong hover:text-text",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+              )}
+            >
+              <span className="num text-text-faint">{t.rank}</span>
+              <span className="text-text-faint">·</span>
+              <span className="whitespace-nowrap text-text">{t.name}</span>
+            </Link>
+          ))
+        ) : (
+          <span className="text-xs text-text-muted" data-testid="stocks-top-themes-empty">
+            No ranked themes for this date
+          </span>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -597,6 +734,7 @@ function StockTableRow({
   setupMeaning,
   patternMeaning,
   fwdHorizons,
+  themeRank,
 }: {
   row: StockRow;
   /** The detail href, pre-built by the J-50 helper so it already carries `?asof=D` while historical. */
@@ -605,6 +743,8 @@ function StockTableRow({
   patternMeaning: Map<string, string>;
   /** J-75 — the server-driven forward-return column horizons (config order), rendered as five cells. */
   fwdHorizons: number[];
+  /** J-80 — served theme `rank` by slug (from /api/themes), for the `#n` chip badge. */
+  themeRank: Map<string, number>;
 }) {
   return (
     <tr className="border-b border-border transition-colors hover:bg-surface-2">
@@ -662,7 +802,7 @@ function StockTableRow({
         </td>
       ))}
       <td className="px-3 py-2">
-        <ThemeChips themes={row.themes} />
+        <ThemeChips themes={row.themes} themeRank={themeRank} />
       </td>
       <td className="max-w-xs px-3 py-2 text-xs text-text-muted">
         <span className="line-clamp-2" title={row.setup.reason}>
@@ -680,7 +820,14 @@ function StockTableRow({
  *  interactive element inside any control (iter-5 nested-button lesson). Empty membership renders a dash. */
 const THEME_PREVIEW_LIMIT = 3;
 
-function ThemeChips({ themes }: { themes: StockRow["themes"] }) {
+function ThemeChips({
+  themes,
+  themeRank,
+}: {
+  themes: StockRow["themes"];
+  /** J-80 — served theme `rank` by slug (from /api/themes); a chip with a known rank gets a `#n` badge. */
+  themeRank: Map<string, number>;
+}) {
   if (themes.length === 0) {
     return <span className="text-xs text-text-faint">—</span>;
   }
@@ -688,11 +835,21 @@ function ThemeChips({ themes }: { themes: StockRow["themes"] }) {
   const overflow = themes.slice(THEME_PREVIEW_LIMIT);
   return (
     <div className="flex flex-wrap items-center gap-1" data-testid="theme-chips">
-      {shown.map((chip) => (
-        <Badge key={chip.slug} variant="default" className="whitespace-nowrap text-[11px]">
-          {chip.name}
-        </Badge>
-      ))}
+      {shown.map((chip) => {
+        const rank = themeRank.get(chip.slug);
+        return (
+          <Badge key={chip.slug} variant="default" className="whitespace-nowrap text-[11px]">
+            {/* J-80 — the served `#n` rank badge (omitted when the theme has no served rank — never a
+                fabricated rank). The chip name is unchanged (J-56). */}
+            {rank != null ? (
+              <span className="num text-text-faint" data-testid="theme-chip-rank">
+                #{rank}
+              </span>
+            ) : null}
+            {chip.name}
+          </Badge>
+        );
+      })}
       {overflow.length > 0 ? (
         // The `+n` overflow: a plain <span> (NOT a button/link — no nested interactive element), the full
         // remaining membership readable in place via the native `title` tooltip (iter-5-safe affordance).

@@ -14,21 +14,21 @@
       "id": "J-02",
       "name": "Stock Leaderboard with working filters",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-02-filters.png",
-      "note": "Not in iter-20 scope. Carried passing from iter-9. (iter-20 added forward-return columns to /stocks but did not touch the filter mechanics \u2014 J-48 view-transform contract held per TC-09.)"
+      "note": "Required-still-passing in iter-22. Re-verified: UT-J-02 122 ranked rows with bucketed scores + setup; Technology filter 58/122; Actionable at latest 0/122. The new #n theme-chip badges (J-80) did not alter filter mechanics."
     },
     "J-03": {
       "id": "J-03",
       "name": "Theme Leaderboard",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-03-themes.png",
-      "note": "Not in iter-20 scope. Carried passing from iter-9."
+      "note": "Required-still-passing in iter-22. Re-verified: UT-J-03 themes ranked by Theme Score with 1M/3M/Breadth/Trend columns (>=5 themes). The /stocks Top-Themes strip re-displays this same descending order."
     },
     "J-04": {
       "id": "J-04",
@@ -54,11 +54,11 @@
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20-evidence/TC-06-stock-detail-forward-returns.png",
-      "note": "Required-still-passing in iter-20. Re-verified: TC-06 AAPL 2021-01-04 leaderboard forward returns [h1=0.0124,h5=-0.0033,h10=-0.0122,h20=0.0431,h60=-0.0547] == detail exact; TC-22 MU score 94.5==94.5; test_api_engine fixed to compare canonical rows MODULO the additive forward_returns field (no-drift preserved). Single source of truth held under the J-75 additive serving."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-80-stocks-header.png",
+      "note": "Required-still-passing in iter-22 (J-80 re-displays the stored regime + theme rank \u2014 the central coherence point). Re-verified: UT-J-06 NVDA leaderboard E/40.54, D/69.55, E/32.59 == detail; UT-J-80 /stocks regime 'Narrow leadership/57.10' == Dashboard 57.10 same date; theme order on /stocks matches /themes. Coherence Step 1 confirms byte re-displays of /api/dashboard + /api/themes \u2014 no client-side recompute/re-rank. Single source of truth held."
     },
     "J-07": {
       "id": "J-07",
@@ -124,11 +124,11 @@
       "id": "J-13",
       "name": "Browse dashboard as of a past date (global as-of switcher)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19-evidence/UT-J-13-historical-browse.png",
-      "note": "Not in iter-20 scope. Carried passing from iter-19."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-79-historical-selected.png",
+      "note": "Required-still-passing in iter-22. Re-verified: UT-J-13 /?asof=2026-06-10 \u2192 historical badge + date-appropriate data (Narrow leadership / 57.10, distinct from latest Risk-on / 73.26)."
     },
     "J-14": {
       "id": "J-14",
@@ -174,11 +174,11 @@
       "id": "J-18",
       "name": "One date control (no duplicate)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19-evidence/UT-J-18-backtest-no-local-date.png",
-      "note": "Required-still-passing in iter-20. The new J-77 study section reuses the page's shared horizon + analysis-mode (J-18/J-32) and adds NO page-local date state (review PASS + coherence PASS confirm). 'Exactly one date selector' critical anti-goal held under the iter-20 additive UI."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-80-stocks-header.png",
+      "note": "Required-still-passing in iter-22 (J-79 stepping is the central risk for the 'exactly one date selector' critical anti-goal). Re-verified PASS: UT-J-18 /backtest has 0 page-local <select>; UT-J-79 confirms buttons/opt-in keys/year-month dropdowns all drive the single setAsOf via the asof-provider (sole ?asof owner) with NO second/page-local date state (year/month dropdowns move the viewed-month cursor only \u2014 URL stayed ?asof=2026-06-10). Coherence Step 1+2 PASS. 'Exactly one date selector' critical anti-goal held."
     },
     "J-19": {
       "id": "J-19",
@@ -424,11 +424,11 @@
       "id": "J-43",
       "name": "Deep-linkable as-of (?asof URL serialization)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19-evidence/UT-J-43-asof-survives-latest-clean.png",
-      "note": "Not in iter-20 scope. Carried passing from iter-19."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-79-historical-selected.png",
+      "note": "Required-still-passing in iter-22. Re-verified: UT-J-43 /stocks?asof=2026-06-10 \u2192 'Viewing as-of 2026-06-10 (historical)', NVDA href=/stocks/NVDA?asof=2026-06-10. The new \u25c0/\u25b6 stepper stays in sync with ?asof via the asof-provider."
     },
     "J-44": {
       "id": "J-44",
@@ -474,11 +474,11 @@
       "id": "J-48",
       "name": "Stocks leaderboard column sorting (sort the view, never the scores)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20-evidence/TC-09-sort-1d.png",
-      "note": "Required-still-passing in iter-20 (the five new forward-return columns are sortable under the J-48 contract). Re-verified: TC-09 1d-header click re-orders the table client-side (NA-last, default order = stored rank), no network refetch; review PASS confirms re-order-only, no recompute/refetch."
+      "note": "Required-still-passing in iter-22. Re-verified: UT-J-48 LEADERSHIP header click re-orders client-side (asc COIN/MSTR/INTU, desc MRVL/ARM/MU), aria-sort updated, no refetch. The #n chip badges (J-80) are display-only and do not affect sort."
     },
     "J-49": {
       "id": "J-49",
@@ -494,11 +494,11 @@
       "id": "J-50",
       "name": "As-of date survives EVERY in-app navigation, including new tabs (extends J-43)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19-evidence/UT-J-50-href-stamping.png",
-      "note": "Required-still-passing in iter-20 (the new J-77 N= chips must href-stamp ?asof into the new-tab samples drill-down). Code-verified: the chips open /research/samples via the shared SampleLink/useAsOfHref (sole ?asof author) with the regime/setup/pattern cohort params. Browser new-tab click was TC-18 SKIPPED (Chrome MCP unavailable) but the link code + samples API contract are verified; carried passing on the unchanged useAsOfHref author."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-80-stocks-header.png",
+      "note": "Required-still-passing in iter-22. Re-verified: UT-J-50 all 10 nav links carry ?asof=2026-06-10 while historical; date-free at latest. The new Top-Themes strip links href-stamp ?asof per J-50."
     },
     "J-51": {
       "id": "J-51",
@@ -544,21 +544,21 @@
       "id": "J-55",
       "name": "Stocks leaderboard symbol search (type-to-filter, no button)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-55-search-nv.png",
-      "note": "Not in iter-20 scope. Carried passing from iter-9."
+      "note": "Required-still-passing in iter-22. Re-verified: UT-J-55 type 'nv' \u2192 4/122 (NVT/NVO/NVR/NVDA) instant, no submit. Also serves as the J-79 field-guard target (UT-J-79 Step 5: \u2190/\u2192 in the search box move the caret, do NOT change the as-of date)."
     },
     "J-56": {
       "id": "J-56",
       "name": "Stocks leaderboard theme column + theme filter",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-56-theme-filter.png",
-      "note": "Not in iter-20 scope. Carried passing from iter-9."
+      "note": "Required-still-passing in iter-22. Re-verified: UT-J-56 theme column shows #n-badged chips; Cybersecurity filter \u2192 11/122. The J-80 #n badges thread through StockTableRow\u2192ThemeChips from the served /api/themes rank (no fabricated badge when rank absent)."
     },
     "J-57": {
       "id": "J-57",
@@ -614,11 +614,11 @@
       "id": "J-62",
       "name": "The as-of switcher is a calendar that shows what is selectable",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16-evidence/UT-J-62-calendar-popover.png",
-      "note": "Not in iter-20 scope. Carried passing from iter-16."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-79-calendar-open.png",
+      "note": "Required-still-passing in iter-22 (J-79 adds Year/Month dropdowns to the calendar). Re-verified: UT-J-62 calendar opens role=dialog, 1368 selectable dates, weekends absent, 'Latest' affordance, click commits ?asof=2026-06-09. Year/Month dropdowns are a presentation cursor only (J-62 selectable-day/disabled/Latest/Escape affordances unchanged)."
     },
     "J-63": {
       "id": "J-63",
@@ -704,11 +704,11 @@
       "id": "J-71",
       "name": "Step the as-of date with the keyboard (extends J-43 / the global as-of calendar)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16-evidence/UT-J-71-cross-month-step.png",
-      "note": "Not in iter-20 scope. Carried passing from iter-16. 'Exactly one date selector' critical anti-goal held."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-79-calendar-open.png",
+      "note": "Required-still-passing in iter-22 (J-79 explicitly supersedes the J-71 'no global window listener' wording ONLY behind the opt-in, default-off, persisted checkbox). Re-verified: UT-J-71 ArrowLeft with the popover OPEN steps 2026-06-10\u21922026-06-09, popover stays open; the panel-open onKeyDown is unchanged and now shares the one resolveStep authority (lib/asof-step.ts). 'Exactly one date selector' critical anti-goal held."
     },
     "J-72": {
       "id": "J-72",
@@ -744,11 +744,11 @@
       "id": "J-75",
       "name": "Forward returns on the stock leaderboard and stock detail (1/5/10/20/60-day)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-21",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-21",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20-evidence/TC-06-stock-detail-forward-returns.png",
-      "note": "Built FUNCTIONALLY correct in iter-20 \u2014 all five forward-return columns served VERBATIM from the stored forward_returns table; leaderboard==detail==Backtest-stored for the same ticker/date/horizon (TC-05/06/23); NA at latest, never fabricated (TC-07); config-driven horizons (TC-08); view-transform sortable, no refetch (TC-09); no-lookahead intrinsic to the stored rows. NO suite failure was ever attributable to J-75. FLIPS TO PASSING in iter-21: the iteration DoD (full suite GREEN) is now met (834 passed / 0 failed) with no J-75 served-payload change. Evidence: iter-20 TC-06 stock-detail forward-return panel (evaluator-viewed)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-75-fwd-returns.png",
+      "note": "Required-still-passing in iter-22. Re-verified: UT-J-75 1D/5D/10D/20D/60D columns present at ?asof=2026-06-09 (MRVL 1D=-5.35%, longer horizons NA), all NA at latest. Unchanged by the additive J-80 header."
     },
     "J-76": {
       "id": "J-76",
@@ -779,6 +779,26 @@
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19-evidence/UT-J-78-default-all.png",
       "note": "Not in iter-20 scope. Carried passing from iter-19 (NEWLY PASSING in iter-19)."
+    },
+    "J-79": {
+      "id": "J-79",
+      "name": "Step the as-of date with the popover closed \u2014 \u25c0 \u25b6 buttons + opt-in \u2190 \u2192 keys + year/month jump (amends J-71/J-62)",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-79-step-buttons-pass.png",
+      "note": "NEWLY PASSING in iter-22 (lean, frontend-only, zero backend diff). UT-J-79 PASS: \u25c0/\u25b6 step 2026-06-10\u2194\u25b6 prev/next snapshot date with the popover closed; opt-in '\u2190 \u2192 steps date' checkbox default-off, persisted across reload; \u2190/\u2192 step when enabled; field-guard blocks keys while the /stocks search box has focus (caret moves, date unchanged \u2014 Step 5); Year/Month dropdowns move the viewed-month cursor only (URL stayed ?asof=2026-06-10); bounded no-op at oldest, \u25b6 disabled at latest. One pure authority lib/asof-step.ts (13 unit checks PASS) shared by buttons/opt-in keys/J-71 popover scrub. Coherence PASS (single global as-of state). Review PASS."
+    },
+    "J-80": {
+      "id": "J-80",
+      "name": "Stocks leaderboard header \u2014 selected-date regime label+score + ranked Top-Themes strip + #n chip badges",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-80-stocks-header.png",
+      "note": "NEWLY PASSING in iter-22 (lean, frontend-only, zero backend diff). UT-J-80 PASS: at 2026-06-10 /stocks header 'Narrow leadership / 57.10' == Dashboard same date (UT-J-06 coherence); Top-Themes strip '1\u00b7Cybersecurity, 2\u00b7Semiconductors, 3\u00b7Ai Data Centre, 4\u00b7Software Cloud, 5\u00b7Homebuilders' == /themes descending order; #n badges on every row theme chip + filter options; at latest re-points to 'Risk-on / 73.26' with re-ranked themes. Byte re-displays of /api/dashboard (regime.label/score) + /api/themes (rank/score) \u2014 no client-side recompute/re-rank (coherence Step 1 PASS); honest empty states, no fabricated #1."
     }
   },
   "anti_goal_violations": [
@@ -792,5 +812,5 @@
       "resolution": "iter-21: the two `0.0` float literals in `_rsp_rank_key` were replaced with the structural `is_not_none` boolean fallback (no float literal remains in research.py \u2014 independently tokenizer-verified 0 float-like NUMBER literals). test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers passes; the DEFAULT J-77 ranking is byte-identical (200 randomized orderings match the legacy key; oracle test added). Full suite GREEN (834 passed, 0 failed, EXIT_CODE=0)."
     }
   ],
-  "updated_at": "2026-06-15T21:05:00Z"
+  "updated_at": "2026-06-16T00:18:22Z"
 }

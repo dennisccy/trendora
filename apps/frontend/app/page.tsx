@@ -12,6 +12,7 @@ import { TermInfo } from "@/components/ui/term-info";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatIsoDate } from "@/lib/dates";
+import { regimeVariant } from "@/lib/regime-variant";
 import { cn } from "@/lib/utils";
 import {
   fetchDashboard,
@@ -31,12 +32,6 @@ type State =
       themes: ThemesResponse | null;
     }
   | { kind: "error" };
-
-function regimeVariant(label: string): "ok" | "warn" | "danger" | "default" {
-  if (label === "Strong risk-on" || label === "Risk-on") return "ok";
-  if (label === "Defensive" || label === "Risk-off") return "danger";
-  return "warn"; // Narrow leadership · Choppy
-}
 
 function fmtPct(value: number | null | undefined): string {
   return typeof value === "number" ? `${value.toFixed(2)}%` : "NA";
