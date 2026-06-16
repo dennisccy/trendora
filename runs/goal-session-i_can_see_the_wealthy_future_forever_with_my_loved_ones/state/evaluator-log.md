@@ -439,3 +439,18 @@ close green: J-78+J-73, then the backend cluster J-72/J-75/J-77 at full depth.
 **Reasoning:** J-81 and J-82 both landed correct and coherent — browser QA a clean 23/23, 12/12 targeted backend tests proving the J-06 single-source byte-identity of the new forward returns to Backtest's `_leadership_returns` (themes=equal-weight basket, sectors=ETF own return, NA-honest at latest), coherence COHERENCE-PASS. BUT the standing GOAL_ACHIEVED gate (a GREEN full backend suite) is unmet: the flushed authoritative result is `2 failed, 844 passed, 4 skipped, EXIT_CODE=1`. The two failures (`test_api_engine.py::test_api_themes_equals_engine_output`, `::test_api_sectors_equals_engine_output`) assert `served == score_themes/score_sectors` byte-for-byte; J-81's additive `forward_returns` key (never produced by the engine score functions — forward returns come from the separate append-only table, byte-identical to Backtest) breaks the equality. The dev correctly updated `test_iter20_research_cluster.py` for the J-82c contract but MISSED these two `test_api_engine.py` guards for the J-81 additive field. This is the exact iter-20→iter-21 pattern (a correct additive feature trips a pre-existing blanket guard; suite goes red; GOAL_ACHIEVED held one consolidation iter). Not a REGRESSION: COHERENCE-PASS + the passing J-06 byte-identity tests prove this is an over-strict stale test, not a single-source drift.
 
 **Next-step recommendation:** iter-24 (full) — reconcile the two `test_api_engine.py` guards to compare modulo the additive `forward_returns` key (strip/pop it before the byte-equality assert, and separately assert the field + configured horizons exist), mirroring iter-21's J-77 fix and the dev's own update of `test_iter20_research_cluster.py` this iter. Then re-run the FULL backend pytest suite to EXIT_CODE=0 (handed to the pump, nohup-async, never blocking the evaluator). After the suite is GREEN with zero regressions, every buildable Must-have is passing and J-22/J-23/J-24 stay honestly blocked-NA — GOAL_ACHIEVED is then appropriate.
+
+## Iteration 24 — goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-24
+
+**Date:** 2026-06-16T04:00:55Z
+**Verdict:** GOAL_ACHIEVED
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: <none — test-only consolidation; no served/UI change>
+- Newly failing: <none>
+- Regressed: <none>
+- Anti-goal violations: <none new; the lone ever-recorded violation (iter-20, minor magic-number) stays resolved>
+
+**Reasoning:** Verified the diff is confined to apps/backend/tests/test_api_engine.py (git diff --name-only — no apps/backend/app or apps/frontend change). The two stale guards now strip ONLY the additive forward_returns key, keep the canonical `stripped == expected` byte-equality (drift still detected), and separately assert per-row horizons == config.walk_forward.horizons — the verbatim mirror of the blessed test_api_stocks_equals_engine_output precedent. Confirmed the full backend suite GREEN myself from the log tail: `846 passed, 4 skipped in 3661.07s` then `FULL_SUITE_EXIT_CODE=0` — the two iter-23 failures reconciled, zero regression. Coherence COHERENCE-PASS (no structural veto). Every buildable Must-have (J-01..J-21, J-25..J-82) is passing/already_passing with verified evidence; J-22/J-23/J-24 stay honestly blocked-NA (data-walled), which goal.md (lines 105-109) designates non-vetoing. All GOAL_ACHIEVED criteria met.
+
+**Next-step recommendation:** Halt — goal achieved. No tractable code work remains for the buildable journeys. J-22/J-23/J-24 require a successful real EOD provider fetch (provider-walled today), best handled by a future in-place resume scoped to a data fetch (lean), not a code iteration.

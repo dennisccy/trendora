@@ -33,7 +33,19 @@ def test_api_sectors_equals_engine_output(loaded_engine):
         resp = client.get("/api/sectors")
     assert resp.status_code == 200
     served = resp.json()
-    assert served == expected  # byte-for-byte: served value == computed value (no drift)
+    # iter-23 (J-81): the snapshot-served sector rows ADDITIVELY carry `forward_returns` (read verbatim
+    # from the stored forward_returns table via the same `_leadership_returns` builder Backtest uses) that
+    # the live `score_sectors` engine does not produce — a NEW serving field, NOT a recomputed canonical
+    # score. Strip it so the no-drift guarantee is asserted on the CANONICAL scored payload (every
+    # score/rank/component/breadth/trend/member still byte-identical to the live engine).
+    stripped = {
+        **served,
+        "rows": [{k: v for k, v in row.items() if k != "forward_returns"} for row in served["rows"]],
+    }
+    assert stripped == expected  # byte-for-byte: served canonical == computed (no drift)
+    # the additive J-81 field is present + config-driven (one entry per walk_forward horizon)
+    for row in served["rows"]:
+        assert [fr["horizon"] for fr in row["forward_returns"]] == list(cfg.walk_forward.horizons)
     assert served["benchmark"] == "SPY"
     assert len(served["rows"]) == 31
 
@@ -178,7 +190,20 @@ def test_api_themes_equals_engine_output(loaded_engine):
         resp = client.get("/api/themes")
     assert resp.status_code == 200
     served = resp.json()
-    assert served == expected
+    # iter-23 (J-81): the snapshot-served theme rows ADDITIVELY carry `forward_returns` (the equal-weight
+    # member-basket return read verbatim from the stored forward_returns table via the same
+    # `_leadership_returns` builder Backtest uses) that the live `score_themes` engine does not produce — a
+    # NEW serving field, NOT a recomputed canonical score. Strip it so the no-drift guarantee is asserted
+    # on the CANONICAL scored payload (every score/rank/component/breadth/member still byte-identical to
+    # the live engine).
+    stripped = {
+        **served,
+        "rows": [{k: v for k, v in row.items() if k != "forward_returns"} for row in served["rows"]],
+    }
+    assert stripped == expected  # byte-for-byte: served canonical == computed (no drift)
+    # the additive J-81 field is present + config-driven (one entry per walk_forward horizon)
+    for row in served["rows"]:
+        assert [fr["horizon"] for fr in row["forward_returns"]] == list(cfg.walk_forward.horizons)
     assert len(served["rows"]) == len(cfg.themes)
 
 
