@@ -13,7 +13,7 @@ import {
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { fetchRuns } from "@/lib/api";
-import { isValidIsoDate } from "@/lib/dates";
+import { ASOF_PARAM, isValidIsoDate } from "@/lib/dates";
 import { canStepNext, canStepPrev, resolveStep } from "@/lib/asof-step";
 
 /**
@@ -52,8 +52,8 @@ export interface AsOfContextValue {
 
 const AsOfContext = createContext<AsOfContextValue | null>(null);
 
-/** The single URL query key that serializes the global as-of state (J-43). One name, one owner. */
-const ASOF_PARAM = "asof";
+// `ASOF_PARAM` (the one `?asof` query key) lives in `@/lib/dates` so the App-Router middleware (J-83,
+// Edge runtime, no `"use client"`) and this provider share the SAME literal — one name, one owner.
 
 /**
  * J-73 — read the deep-linked `?asof` date from the current URL SYNCHRONOUSLY, for the lazy initializer
@@ -65,6 +65,10 @@ const ASOF_PARAM = "asof";
  * Server-safe: during SSR `window` is undefined, so it returns null (the server cannot know the URL);
  * the client's lazy initializer then reads `window.location.search` on hydration. The asof-provider
  * remains the SOLE reader/writer of `?asof` — this is the same single owner reading the same one param.
+ *
+ * J-83: this stays the CLIENT FALLBACK only. The lazy initializer now PREFERS the server-forwarded
+ * `initialAsOf` (the same `?asof` value, read from the `x-asof` header in the server-component layout)
+ * so the server-rendered HTML and the client's first paint seed IDENTICALLY — no hydration mismatch.
  */
 function readAsofFromUrl(): string | null {
   if (typeof window === "undefined") return null; // SSR: no URL to read yet → latest until client hydrates
@@ -74,14 +78,32 @@ function readAsofFromUrl(): string | null {
   return raw && isValidIsoDate(raw) ? raw : null;
 }
 
-export function AsOfProvider({ children }: { children: React.ReactNode }) {
+export function AsOfProvider({
+  children,
+  initialAsOf = null,
+}: {
+  children: React.ReactNode;
+  /**
+   * J-83 — the server-forwarded `?asof` value (from the `x-asof` request header the middleware sets and
+   * the server-component root layout reads). When present and shape-valid it SEEDS the one `asOf` state
+   * identically on the server and the client, eliminating the SSR/client hydration mismatch. Optional and
+   * `null` by default (latest / no deep link). NOT a second date state — it only chooses the seed for the
+   * EXISTING single state's lazy initializer; the asof-provider stays the sole `?asof` reader/writer.
+   */
+  initialAsOf?: string | null;
+}) {
   const [dates, setDates] = useState<string[]>([]);
   const [latest, setLatest] = useState<string | null>(null);
-  // J-73: hydrate the SINGLE global as-of state synchronously from `?asof` on first mount (a lazy
-  // initializer on the EXISTING state — not a second date state) so a historical deep-link/reload/new-tab
-  // renders at D from first paint with no latest→D flash. The run-list `ready` step below still validates
-  // and degrades unknown/latest/malformed values to the latest view (J-43 unchanged).
-  const [asOf, setAsOfState] = useState<string | null>(readAsofFromUrl);
+  // J-73/J-83: hydrate the SINGLE global as-of state synchronously on first mount (a lazy initializer on
+  // the EXISTING state — not a second date state) so a historical deep-link/reload/new-tab renders at D
+  // from first paint with no latest→D flash. PREFER the server-forwarded `initialAsOf` (present and
+  // identical on both server and client, so the SSR HTML matches hydration — no React-19 mismatch); fall
+  // back to the client-only URL read when the header is absent (e.g. SPA navigations that don't re-run
+  // middleware). Both are shape-validated; the run-list `ready` step below still validates against the
+  // known dates and degrades unknown/latest/malformed values to the latest view (J-43 unchanged).
+  const [asOf, setAsOfState] = useState<string | null>(
+    () => (initialAsOf && isValidIsoDate(initialAsOf) ? initialAsOf : readAsofFromUrl()),
+  );
   const [ready, setReady] = useState(false);
 
   // Single canonical loader for the run list. The mount effect runs it (with an abort guard); the

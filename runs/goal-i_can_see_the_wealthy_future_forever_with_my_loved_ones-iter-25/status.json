@@ -1,0 +1,18 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-06-16T23:17:10.126597Z",
+  "started_at": "2026-06-16T23:00:00.000000Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/frontend/middleware.ts",
+    "apps/frontend/app/layout.tsx",
+    "apps/frontend/components/asof-provider.tsx",
+    "apps/frontend/lib/dates.ts"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "browser-qa-J-83-hydration-console-check"
+}

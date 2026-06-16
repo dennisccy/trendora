@@ -78,7 +78,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0-evidence/UT-J-07-result.png",
-      "note": "Not in iter-20 scope. Carried from iter-15. iter-20 added a SEPARATE event_study_cache table; no scanner_run/result row mutated (immutability critical anti-goal held \u2014 coherence PASS)."
+      "note": "Not in iter-20 scope. Carried from iter-15. iter-20 added a SEPARATE event_study_cache table; no scanner_run/result row mutated (immutability critical anti-goal held — coherence PASS)."
     },
     "J-09": {
       "id": "J-09",
@@ -124,11 +124,11 @@
       "id": "J-13",
       "name": "Browse dashboard as of a past date (global as-of switcher)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-79-historical-selected.png",
-      "note": "Required-still-passing in iter-22. Re-verified: UT-J-13 /?asof=2026-06-10 \u2192 historical badge + date-appropriate data (Narrow leadership / 57.10, distinct from latest Risk-on / 73.26)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25-evidence/UT-J-13-pass.png",
+      "note": "Required-still-passing in iter-25. Re-verified: calendar on / -> 12 selectable snapshot dates; clicked 'View as-of 2026-06-10' -> ?asof=2026-06-10, badge 'historical', 'Data as-of 2026-06-10', regime 'Narrow leadership'."
     },
     "J-14": {
       "id": "J-14",
@@ -152,13 +152,13 @@
     },
     "J-16": {
       "id": "J-16",
-      "name": "VCP \u2014 detected, explained, filterable, forward-tested",
+      "name": "VCP — detected, explained, filterable, forward-tested",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-16-vcp-filter.png",
-      "note": "Not in iter-20 scope. Carried passing from iter-9. (J-77 reads VCP/pattern flags VERBATIM into the observation pool \u2014 no pattern recompute, coherence PASS.)"
+      "note": "Not in iter-20 scope. Carried passing from iter-9. (J-77 reads VCP/pattern flags VERBATIM into the observation pool — no pattern recompute, coherence PASS.)"
     },
     "J-17": {
       "id": "J-17",
@@ -174,11 +174,11 @@
       "id": "J-18",
       "name": "One date control (no duplicate)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-80-stocks-header.png",
-      "note": "Required-still-passing in iter-22 (J-79 stepping is the central risk for the 'exactly one date selector' critical anti-goal). Re-verified PASS: UT-J-18 /backtest has 0 page-local <select>; UT-J-79 confirms buttons/opt-in keys/year-month dropdowns all drive the single setAsOf via the asof-provider (sole ?asof owner) with NO second/page-local date state (year/month dropdowns move the viewed-month cursor only \u2014 URL stayed ?asof=2026-06-10). Coherence Step 1+2 PASS. 'Exactly one date selector' critical anti-goal held."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25-evidence/UT-J-18-pass.png",
+      "note": "Required-still-passing in iter-25 (J-83 edits the asof-provider seeding core — the 'exactly one date selector' critical anti-goal is the load-bearing protect). Re-verified: /backtest?asof=2026-06-10 has 0 page-local <select>/date inputs; global asof-trigger button + badge 'Viewing as-of 2026-06-10 (historical)'. git diff confirms exactly ONE asOf useState (lazy initializer just gained an initialAsOf preference), NO new date useState, NO window/document keydown listener. Critical anti-goal held."
     },
     "J-19": {
       "id": "J-19",
@@ -194,11 +194,11 @@
       "id": "J-20",
       "name": "Chart shows full path through latest with as-of marker",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18-evidence/J-20-NVDA-full-path-asof-marker.png",
-      "note": "Not in iter-20 scope. Carried passing from iter-18."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25-evidence/UT-J-20-stock-detail.png",
+      "note": "Required-still-passing in iter-25. Re-verified: NVDA detail at ?asof=2026-06-10 — 7 chart canvases, 'Full path through 2026-06-16', 'Bars after the as-of date 2026-06-10 are display-only', 'Forward — after as-of 2026-06-10 (display only)' label."
     },
     "J-21": {
       "id": "J-21",
@@ -222,7 +222,7 @@
     },
     "J-23": {
       "id": "J-23",
-      "name": "Multi-timeframe bars \u2014 intraday seed + pipeline",
+      "name": "Multi-timeframe bars — intraday seed + pipeline",
       "status": "unknown",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-8",
       "last_passing_iter": null,
@@ -242,7 +242,7 @@
     },
     "J-25": {
       "id": "J-25",
-      "name": "Factor Lab \u2014 decile sort and rank-IC per factor",
+      "name": "Factor Lab — decile sort and rank-IC per factor",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
@@ -252,7 +252,7 @@
     },
     "J-26": {
       "id": "J-26",
-      "name": "Factor Lab \u2014 multi-factor composite cohort",
+      "name": "Factor Lab — multi-factor composite cohort",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
@@ -262,7 +262,7 @@
     },
     "J-27": {
       "id": "J-27",
-      "name": "Factor Lab \u2014 regime-conditioned effectiveness",
+      "name": "Factor Lab — regime-conditioned effectiveness",
       "status": "already_passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
@@ -282,7 +282,7 @@
     },
     "J-29": {
       "id": "J-29",
-      "name": "Setup & Pattern lab \u2014 event study",
+      "name": "Setup & Pattern lab — event study",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-23",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
@@ -292,7 +292,7 @@
     },
     "J-30": {
       "id": "J-30",
-      "name": "Volatility factor family \u2014 risk-adjusted, regime-conditioned",
+      "name": "Volatility factor family — risk-adjusted, regime-conditioned",
       "status": "already_passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
@@ -318,7 +318,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-10-evidence/UT-J-32-asof-mode.png",
-      "note": "Required-still-passing in iter-23. Re-verified: test_rsp_samples_count_coherent_as_of_scoped PASS \u2014 RSP As-of (point-in-time) scope is a filter mode, count-coherent, no second date state."
+      "note": "Required-still-passing in iter-23. Re-verified: test_rsp_samples_count_coherent_as_of_scoped PASS — RSP As-of (point-in-time) scope is a filter mode, count-coherent, no second date state."
     },
     "J-33": {
       "id": "J-33",
@@ -352,7 +352,7 @@
     },
     "J-36": {
       "id": "J-36",
-      "name": "Coverage \u2014 per-symbol table + universe-vs-symbols clarity",
+      "name": "Coverage — per-symbol table + universe-vs-symbols clarity",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-16",
@@ -372,7 +372,7 @@
     },
     "J-38": {
       "id": "J-38",
-      "name": "Unified Unfinished-imports \u2014 Resume / Retry / Remove",
+      "name": "Unified Unfinished-imports — Resume / Retry / Remove",
       "status": "already_passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
@@ -382,7 +382,7 @@
     },
     "J-39": {
       "id": "J-39",
-      "name": "Remove imported data \u2014 seed-safe, cascade-consistent",
+      "name": "Remove imported data — seed-safe, cascade-consistent",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
@@ -402,7 +402,7 @@
     },
     "J-41": {
       "id": "J-41",
-      "name": "Boot resilience \u2014 warm-up never takes the app down",
+      "name": "Boot resilience — warm-up never takes the app down",
       "status": "already_passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-3",
@@ -414,21 +414,21 @@
       "id": "J-42",
       "name": "Every user-facing date reads yyyy-MM-dd (locale-proof)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19-evidence/UT-J-42-iso-dates.png",
-      "note": "Not in iter-20 scope. Carried passing from iter-19."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25-evidence/UT-J-42-pass.png",
+      "note": "Required-still-passing in iter-25. Re-verified: all visible dates ISO yyyy-MM-dd (2026-06-10, 2026-06-16); zero locale-formatted dates. (ASOF_PARAM/ASOF_HEADER constants moved into @/lib/dates alongside the existing date authority — no format change.)"
     },
     "J-43": {
       "id": "J-43",
       "name": "Deep-linkable as-of (?asof URL serialization)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-79-historical-selected.png",
-      "note": "Required-still-passing in iter-22. Re-verified: UT-J-43 /stocks?asof=2026-06-10 \u2192 'Viewing as-of 2026-06-10 (historical)', NVDA href=/stocks/NVDA?asof=2026-06-10. The new \u25c0/\u25b6 stepper stays in sync with ?asof via the asof-provider."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25-evidence/UT-J-43-pass.png",
+      "note": "Required-still-passing in iter-25. Re-verified: /stocks?asof=2026-06-10 carries param + correct badge; invalid ?asof=not-a-date strips to / (latest); well-formed-unknown ?asof=2020-01-01 degrades to latest. The middleware shape-gates only valid ISO before forwarding; the J-43 run-list ready validate/degrade pass is untouched."
     },
     "J-44": {
       "id": "J-44",
@@ -444,11 +444,11 @@
       "id": "J-45",
       "name": "Market-regime bands behind the stock-detail chart",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18-evidence/J-20-NVDA-full-path-asof-marker.png",
-      "note": "Not in iter-20 scope. Carried passing from iter-18."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25-evidence/UT-J-45-regime-bands.png",
+      "note": "Required-still-passing in iter-25. Re-verified: NVDA detail regime band legends Risk-on/Neutral/Risk-off present; 'Regime on'; bands clamped at as-of 2026-06-10."
     },
     "J-46": {
       "id": "J-46",
@@ -468,7 +468,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-7-evidence/UT-J-51-samples-page.png",
-      "note": "Not in iter-20 scope. Carried passing from iter-7. (J-77 reads the same J-47 glossary for column headers \u2014 no glossary change.)"
+      "note": "Not in iter-20 scope. Carried passing from iter-7. (J-77 reads the same J-47 glossary for column headers — no glossary change.)"
     },
     "J-48": {
       "id": "J-48",
@@ -482,7 +482,7 @@
     },
     "J-49": {
       "id": "J-49",
-      "name": "Major indexes & regime card shows full history \u2014 as-of is a marker, not a clamp (amends J-44)",
+      "name": "Major indexes & regime card shows full history — as-of is a marker, not a clamp (amends J-44)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19",
@@ -494,11 +494,11 @@
       "id": "J-50",
       "name": "As-of date survives EVERY in-app navigation, including new tabs (extends J-43)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-80-stocks-header.png",
-      "note": "Required-still-passing in iter-22. Re-verified: UT-J-50 all 10 nav links carry ?asof=2026-06-10 while historical; date-free at latest. The new Top-Themes strip links href-stamp ?asof per J-50."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25-evidence/UT-J-50-pass.png",
+      "note": "Required-still-passing in iter-25. Re-verified: on /stocks?asof=2026-06-10 all 10 nav links carry ?asof=2026-06-10 (0 missing) and 122 stock-detail row links carry ?asof (0 missing) — now correct in the server-rendered HTML itself (no latest->D href flip on hydration)."
     },
     "J-51": {
       "id": "J-51",
@@ -548,7 +548,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-55-search-nv.png",
-      "note": "Required-still-passing in iter-22. Re-verified: UT-J-55 type 'nv' \u2192 4/122 (NVT/NVO/NVR/NVDA) instant, no submit. Also serves as the J-79 field-guard target (UT-J-79 Step 5: \u2190/\u2192 in the search box move the caret, do NOT change the as-of date)."
+      "note": "Required-still-passing in iter-22. Re-verified: UT-J-55 type 'nv' → 4/122 (NVT/NVO/NVR/NVDA) instant, no submit. Also serves as the J-79 field-guard target (UT-J-79 Step 5: ←/→ in the search box move the caret, do NOT change the as-of date)."
     },
     "J-56": {
       "id": "J-56",
@@ -558,11 +558,11 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9-evidence/UT-J-56-theme-filter.png",
-      "note": "Required-still-passing in iter-22. Re-verified: UT-J-56 theme column shows #n-badged chips; Cybersecurity filter \u2192 11/122. The J-80 #n badges thread through StockTableRow\u2192ThemeChips from the served /api/themes rank (no fabricated badge when rank absent)."
+      "note": "Required-still-passing in iter-22. Re-verified: UT-J-56 theme column shows #n-badged chips; Cybersecurity filter → 11/122. The J-80 #n badges thread through StockTableRow→ThemeChips from the served /api/themes rank (no fabricated badge when rank absent)."
     },
     "J-57": {
       "id": "J-57",
-      "name": "Theme members \u2014 expandable +n, every member a dated new-tab link (amends J-54)",
+      "name": "Theme members — expandable +n, every member a dated new-tab link (amends J-54)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
@@ -572,7 +572,7 @@
     },
     "J-58": {
       "id": "J-58",
-      "name": "Sectors page \u2014 every ETF named and described, with universe members",
+      "name": "Sectors page — every ETF named and described, with universe members",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
@@ -582,7 +582,7 @@
     },
     "J-59": {
       "id": "J-59",
-      "name": "Resume from the failed stage \u2014 and covered ranges are never re-fetched (extends J-34/J-38)",
+      "name": "Resume from the failed stage — and covered ranges are never re-fetched (extends J-34/J-38)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
@@ -602,7 +602,7 @@
     },
     "J-61": {
       "id": "J-61",
-      "name": "Per-date availability heatmap \u2014 see exactly which dates have data",
+      "name": "Per-date availability heatmap — see exactly which dates have data",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
@@ -614,15 +614,15 @@
       "id": "J-62",
       "name": "The as-of switcher is a calendar that shows what is selectable",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-79-calendar-open.png",
-      "note": "Required-still-passing in iter-22 (J-79 adds Year/Month dropdowns to the calendar). Re-verified: UT-J-62 calendar opens role=dialog, 1368 selectable dates, weekends absent, 'Latest' affordance, click commits ?asof=2026-06-09. Year/Month dropdowns are a presentation cursor only (J-62 selectable-day/disabled/Latest/Escape affordances unchanged)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25-evidence/UT-J-62-calendar.png",
+      "note": "Required-still-passing in iter-25. Re-verified: calendar popover opens with 12 'View as-of' date buttons (2026-06-01..2026-06-16), 'View as-of 2026-06-16 (latest)' affordance, year/month dropdown present, Escape closes cleanly."
     },
     "J-63": {
       "id": "J-63",
-      "name": "Event study is overlap-honest \u2014 first-trigger episodes by default, pooled one toggle away",
+      "name": "Event study is overlap-honest — first-trigger episodes by default, pooled one toggle away",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-23",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
@@ -632,7 +632,7 @@
     },
     "J-64": {
       "id": "J-64",
-      "name": "Research samples table \u2014 sortable and filterable (the J-48 contract)",
+      "name": "Research samples table — sortable and filterable (the J-48 contract)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
@@ -662,7 +662,7 @@
     },
     "J-67": {
       "id": "J-67",
-      "name": "Multi-date backfill completes reliably \u2014 no more 'committed'-session crash (extends J-53/J-41)",
+      "name": "Multi-date backfill completes reliably — no more 'committed'-session crash (extends J-53/J-41)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
@@ -672,7 +672,7 @@
     },
     "J-68": {
       "id": "J-68",
-      "name": "Multi-month / multi-year backfill no longer crashes with a 'committed' session \u2014 the real Data Manager reproduction (hardens J-67)",
+      "name": "Multi-month / multi-year backfill no longer crashes with a 'committed' session — the real Data Manager reproduction (hardens J-67)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
@@ -708,27 +708,27 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-15",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-79-calendar-open.png",
-      "note": "Required-still-passing in iter-22 (J-79 explicitly supersedes the J-71 'no global window listener' wording ONLY behind the opt-in, default-off, persisted checkbox). Re-verified: UT-J-71 ArrowLeft with the popover OPEN steps 2026-06-10\u21922026-06-09, popover stays open; the panel-open onKeyDown is unchanged and now shares the one resolveStep authority (lib/asof-step.ts). 'Exactly one date selector' critical anti-goal held."
+      "note": "Required-still-passing in iter-22 (J-79 explicitly supersedes the J-71 'no global window listener' wording ONLY behind the opt-in, default-off, persisted checkbox). Re-verified: UT-J-71 ArrowLeft with the popover OPEN steps 2026-06-10→2026-06-09, popover stays open; the panel-open onKeyDown is unchanged and now shares the one resolveStep authority (lib/asof-step.ts). 'Exactly one date selector' critical anti-goal held."
     },
     "J-72": {
       "id": "J-72",
-      "name": "Research page loads fast \u2014 Setup & Pattern Lab / event study no longer slow (extends J-29/J-63, J-15 load discipline)",
+      "name": "Research page loads fast — Setup & Pattern Lab / event study no longer slow (extends J-29/J-63, J-15 load discipline)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-21",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-21",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20-evidence/TC-19-research-sections.png",
-      "note": "Built FUNCTIONALLY correct in iter-20 (byte-identity both views all-windows + single-batched-read + cache-refresh-after-dataset-change all PASS; standalone event_study_cache table per coherence PASS; independent per-section /research loading \u2014 TC-19). FLIPS TO PASSING in iter-21: the binding DoD / standing iter-19 gate (full backend pytest suite GREEN) is now satisfied \u2014 834 passed, 4 skipped, 0 failed, EXIT_CODE=0 (/tmp/trendora-iter21-fullsuite.log). The iter-21 fix added event_study_cache (the J-72 cache table) to test_db.py expected-tables (RESEARCH_CACHE_TABLES); the cache table itself was untouched and serves byte-identical figures. No served-payload change."
+      "note": "Built FUNCTIONALLY correct in iter-20 (byte-identity both views all-windows + single-batched-read + cache-refresh-after-dataset-change all PASS; standalone event_study_cache table per coherence PASS; independent per-section /research loading — TC-19). FLIPS TO PASSING in iter-21: the binding DoD / standing iter-19 gate (full backend pytest suite GREEN) is now satisfied — 834 passed, 4 skipped, 0 failed, EXIT_CODE=0 (/tmp/trendora-iter21-fullsuite.log). The iter-21 fix added event_study_cache (the J-72 cache table) to test_db.py expected-tables (RESEARCH_CACHE_TABLES); the cache table itself was untouched and serves byte-identical figures. No served-payload change."
     },
     "J-73": {
       "id": "J-73",
-      "name": "No as-of 'date flash' \u2014 every page renders the selected date from first paint (extends J-43/J-18/J-50)",
+      "name": "No as-of 'date flash' — every page renders the selected date from first paint (extends J-43/J-18/J-50)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-19-evidence/UT-J-73-mode-a-deeplink.png",
-      "note": "Not in iter-20 scope. Carried passing from iter-19 (NEWLY PASSING in iter-19)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25-evidence/UT-J-73-pass.png",
+      "note": "Required-still-passing in iter-25 (J-83 hardens J-73). Re-verified live: 'Data as-of 2026-06-10' on the dashboard for the ?asof=2026-06-10 deep link (first data fetch already at D, no latest->D flash); History icon from first paint; no hydration error."
     },
     "J-74": {
       "id": "J-74",
@@ -748,7 +748,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-75-fwd-returns.png",
-      "note": "Required-still-passing in iter-23. Re-verified: J-81 reuses the shared @/components/forward-return helper and the _forward_returns_by_symbol read pattern \u2014 the mirror discipline J-75 established; /stocks+detail fwd-return columns unchanged."
+      "note": "Required-still-passing in iter-23. Re-verified: J-81 reuses the shared @/components/forward-return helper and the _forward_returns_by_symbol read pattern — the mirror discipline J-75 established; /stocks+detail fwd-return columns unchanged."
     },
     "J-76": {
       "id": "J-76",
@@ -762,7 +762,7 @@
     },
     "J-77": {
       "id": "J-77",
-      "name": "Research \u2014 returns by regime \u00d7 setup \u00d7 pattern (ranked combinations study)",
+      "name": "Research — returns by regime × setup × pattern (ranked combinations study)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-23",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-21",
@@ -782,27 +782,27 @@
     },
     "J-79": {
       "id": "J-79",
-      "name": "Step the as-of date with the popover closed \u2014 \u25c0 \u25b6 buttons + opt-in \u2190 \u2192 keys + year/month jump (amends J-71/J-62)",
+      "name": "Step the as-of date with the popover closed — ◀ ▶ buttons + opt-in ← → keys + year/month jump (amends J-71/J-62)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-79-step-buttons-pass.png",
-      "note": "NEWLY PASSING in iter-22 (lean, frontend-only, zero backend diff). UT-J-79 PASS: \u25c0/\u25b6 step 2026-06-10\u2194\u25b6 prev/next snapshot date with the popover closed; opt-in '\u2190 \u2192 steps date' checkbox default-off, persisted across reload; \u2190/\u2192 step when enabled; field-guard blocks keys while the /stocks search box has focus (caret moves, date unchanged \u2014 Step 5); Year/Month dropdowns move the viewed-month cursor only (URL stayed ?asof=2026-06-10); bounded no-op at oldest, \u25b6 disabled at latest. One pure authority lib/asof-step.ts (13 unit checks PASS) shared by buttons/opt-in keys/J-71 popover scrub. Coherence PASS (single global as-of state). Review PASS."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25-evidence/UT-J-79-stepping.png",
+      "note": "Required-still-passing in iter-25. Re-verified: <- stepped 2026-06-10->2026-06-09 (URL updated); -> stepped 2026-06-10->2026-06-11 (URL ?asof=2026-06-11); opt-in '<- -> steps date' checkbox present. Client-side stepping unchanged by the SSR-seeding edit."
     },
     "J-80": {
       "id": "J-80",
-      "name": "Stocks leaderboard header \u2014 selected-date regime label+score + ranked Top-Themes strip + #n chip badges",
+      "name": "Stocks leaderboard header — selected-date regime label+score + ranked Top-Themes strip + #n chip badges",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22-evidence/UT-J-80-stocks-header.png",
-      "note": "NEWLY PASSING in iter-22 (lean, frontend-only, zero backend diff). UT-J-80 PASS: at 2026-06-10 /stocks header 'Narrow leadership / 57.10' == Dashboard same date (UT-J-06 coherence); Top-Themes strip '1\u00b7Cybersecurity, 2\u00b7Semiconductors, 3\u00b7Ai Data Centre, 4\u00b7Software Cloud, 5\u00b7Homebuilders' == /themes descending order; #n badges on every row theme chip + filter options; at latest re-points to 'Risk-on / 73.26' with re-ranked themes. Byte re-displays of /api/dashboard (regime.label/score) + /api/themes (rank/score) \u2014 no client-side recompute/re-rank (coherence Step 1 PASS); honest empty states, no fabricated #1."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25-evidence/UT-J-80-pass.png",
+      "note": "Required-still-passing in iter-25. Re-verified: /stocks?asof=2026-06-10 regime 'Narrow leadership' (== dashboard same-date 57.10, J-06 single source); Top-Themes strip #1 Cybersecurity #2 Semiconductors #3 Ai Data Centre #4 Software Cloud #5 Homebuilders."
     },
     "J-81": {
       "id": "J-81",
-      "name": "Themes & Sectors leaderboards \u2014 five forward-return columns (1/5/10/20/60-day) from the SAME stored forward_returns Backtest reads",
+      "name": "Themes & Sectors leaderboards — five forward-return columns (1/5/10/20/60-day) from the SAME stored forward_returns Backtest reads",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-24",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-24",
@@ -812,27 +812,67 @@
     },
     "J-82": {
       "id": "J-82",
-      "name": "Research Regime x Setup x Pattern table \u2014 NA-last sort + Regime/Setup/Pattern filters + every-emitted-combination N= drill-down + Pooled default",
+      "name": "Research Regime x Setup x Pattern table — NA-last sort + Regime/Setup/Pattern filters + every-emitted-combination N= drill-down + Pooled default",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-24",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-24",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-23",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-23-evidence/UT-14-samples-none-pattern.png",
       "note": "passing. Carried from iter-23 (browser UT-03/08..16/19/23 PASS; backend J-82 tests count-coherent). iter-24 turned the full suite GREEN (846 passed, EXIT_CODE=0) with no served change; J-82 unaffected."
+    },
+    "J-83": {
+      "id": "J-83",
+      "name": "As-of deep link renders with no React hydration mismatch (server-aware SSR seeding; hardens J-73)",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25-evidence/UT-J-83-final.png",
+      "note": "NEWLY PASSING in iter-25 (lean, frontend-only, ZERO backend code diff — git diff --stat HEAD -- apps/backend shows only the pre-existing out-of-scope J-84 seed artifacts meta.json/universe.json, no backend code touched). Mechanism: new apps/frontend/middleware.ts forwards a shape-valid ?asof as the x-asof REQUEST header (isValidIsoDate-gated, no secret/other-param); app/layout.tsx (stays a server component, only became async) reads it via next/headers and passes initialAsOf into <AsOfProvider>; asof-provider.tsx's EXISTING single asOf lazy useState initializer now PREFERS initialAsOf over the client-only readAsofFromUrl() so server HTML and client first-paint seed identically. ASOF_PARAM/ASOF_HEADER moved (not duplicated) into @/lib/dates so the Edge middleware and the client provider share one literal. Browser-QA UT-J-83 PASS (live console check — the load-bearing runtime-only evidence): nextjs-portal shadow root had no error dialog; 'Hydration failed'/'server rendered HTML'/'did not match' all ABSENT on direct-open + reload + new-tab; badge 'Viewing as-of 2026-06-10 (historical)' with lucide-history (not Clock) from first paint; all 10 sidebar links carry ?asof=2026-06-10 from server HTML; latest / clean (Clock, no ?asof); invalid ?asof=not-a-date and well-formed-unknown ?asof=2020-01-01 both degrade to latest with no hydration error and no fabricated date. Critical J-18 invariant held (exactly one asOf useState, no second/page-local date state, no window/document listener; asof-provider sole ?asof owner). Coherence COHERENCE-PASS; review PASS; tsc --noEmit EXIT 0. Evidence-hygiene: UT-J-83-final.png is byte-identical (md5 42ae47f9) to UT-J-73-pass.png — both legitimately render the same dashboard at the same date; the J-83 PASS rests on the distinct DOM/console assertions in the results table."
+    },
+    "J-84": {
+      "id": "J-84",
+      "name": "Expand-universe market-cap fetch authenticates with Yahoo (cookie + crumb); systemic auth failure pauses resumable (unblocks J-22 via J-35)",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_evidence_path": null,
+      "note": "First journey-history entry. QUEUED buildable Must-have in goal.md (commit e06b7a8, line 2154); NOT yet built (deferred from this lean J-83-only iteration per the iter-25 spec OUT OF SCOPE). Partly data-dependent / NON-HALTING (goal.md lines 2186-2191): its Yahoo cookie+crumb auth, batched /v7/finance/quote call, and pause-resumable-on-systemic-failure behavior are buildable+testable OFFLINE with an injected provider stub (returns caps, or raises 401/429); only an actual successful REAL Yahoo market-cap screen (and thus J-22 fully passing) is provider-walled. Recorded failing (unbuilt), not blocked-NA. The pre-existing uncommitted seed artifacts meta.json/universe.json (members:0) are the J-84 401 premise and J-84 owns them."
+    },
+    "J-85": {
+      "id": "J-85",
+      "name": "Expanding the universe makes new members appear — confirm-gated regenerate-from-scratch snapshot rebuild + coverage diagnostic",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_evidence_path": null,
+      "note": "First journey-history entry. QUEUED buildable Must-have in goal.md (commit e06b7a8, line 2163); NOT yet built (deferred from this lean iteration). NOT data-dependent (goal.md line 2182): a deterministic regenerate-from-scratch snapshot rebuild (create-once over a cleared snapshot set, never an in-place UPDATE — reconciles with 'Snapshots are immutable'; committed PRICE seed never deleted; strict no-lookahead preserved) + a read-only coverage diagnostic, all buildable+verifiable against the committed seed. The full pytest gate (scanner/forward-test determinism + immutability) applies."
+    },
+    "J-86": {
+      "id": "J-86",
+      "name": "Max-drawdown columns beside the forward returns everywhere (1/5/10/20/60-day; mirrors J-75/J-81)",
+      "status": "failing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_evidence_path": null,
+      "note": "First journey-history entry. QUEUED buildable Must-have in goal.md (commit e06b7a8, line 2172); NOT yet built (deferred from this lean iteration). NOT data-dependent (goal.md lines 2182-2185): a max-drawdown computed once per (run,symbol,horizon) over the STORED seed bars in the forward-returns pass, stored in the append-only forward_returns table, read (never recomputed in API/view — 'Single source of truth'/'No recompute in the read path') on /stocks, /themes, /sectors, Stock-Detail, Backtest aggregates, and Research; NA-honest for partial windows; horizons from config.walk_forward.horizons (no hardcoded [1,5,10,20,60]). Buildable+verifiable against the committed seed; full pytest gate applies."
     }
   },
   "anti_goal_violations": [
     {
       "iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
-      "anti_goal": "No magic numbers. Every scoring weight, threshold, decision-rule cutoff, bucket edge, universe entry, and theme definition MUST come from the config file \u2014 no such literal in calculation code.",
+      "anti_goal": "No magic numbers. Every scoring weight, threshold, decision-rule cutoff, bucket edge, universe entry, and theme definition MUST come from the config file — no such literal in calculation code.",
       "severity": "minor",
-      "evidence": "apps/backend/app/engine/research.py:1435-1436 \u2014 two `0.0` float literals in `_rsp_rank_key` (J-77 sort-tie sentinels, only consulted after the `is_not_none` boolean partitions None-last under reverse=True; NOT a tunable scoring constant). Trips tests/test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers (the blanket guard forbidding ANY float literal in CALC_FILES). Confirmed in the authoritative full-suite run /tmp/trendora-iter20-fullsuite.log (2 failed, 831 passed). Not marked (critical) in goal.md. Fix: source a named module-level constant or restructure the sort so no float literal is present.",
+      "evidence": "apps/backend/app/engine/research.py:1435-1436 — two `0.0` float literals in `_rsp_rank_key` (J-77 sort-tie sentinels, only consulted after the `is_not_none` boolean partitions None-last under reverse=True; NOT a tunable scoring constant). Trips tests/test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers (the blanket guard forbidding ANY float literal in CALC_FILES). Confirmed in the authoritative full-suite run /tmp/trendora-iter20-fullsuite.log (2 failed, 831 passed). Not marked (critical) in goal.md. Fix: source a named module-level constant or restructure the sort so no float literal is present.",
       "resolved": true,
       "resolved_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-21",
-      "resolution": "iter-21: the two `0.0` float literals in `_rsp_rank_key` were replaced with the structural `is_not_none` boolean fallback (no float literal remains in research.py \u2014 independently tokenizer-verified 0 float-like NUMBER literals). test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers passes; the DEFAULT J-77 ranking is byte-identical (200 randomized orderings match the legacy key; oracle test added). Full suite GREEN (834 passed, 0 failed, EXIT_CODE=0)."
+      "resolution": "iter-21: the two `0.0` float literals in `_rsp_rank_key` were replaced with the structural `is_not_none` boolean fallback (no float literal remains in research.py — independently tokenizer-verified 0 float-like NUMBER literals). test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers passes; the DEFAULT J-77 ranking is byte-identical (200 randomized orderings match the legacy key; oracle test added). Full suite GREEN (834 passed, 0 failed, EXIT_CODE=0)."
     }
   ],
-  "updated_at": "2026-06-16T04:00:55Z",
+  "updated_at": "2026-06-16T23:46:13Z",
   "open_items": [
     {
       "id": "iter23-stale-api-engine-tests",

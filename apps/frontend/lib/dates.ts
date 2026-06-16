@@ -14,6 +14,23 @@
 /** The one displayed date format token (lowercase `yyyy-MM-dd`, e.g. `2026-05-01`). One source of truth. */
 export const ISO_DATE_FORMAT = "yyyy-MM-dd" as const;
 
+/**
+ * The single URL query key that serializes the ONE global as-of state (J-43). One name, one owner —
+ * defined here (a server/edge-safe, dependency-free module) so the App-Router middleware (J-83, Edge
+ * runtime) and the client `asof-provider` (the sole `?asof` reader/writer) share the SAME literal with
+ * no `"use client"` import and no second param name. Changing the param is a one-line edit here.
+ */
+export const ASOF_PARAM = "asof" as const;
+
+/**
+ * The request header the J-83 middleware forwards the shape-valid `?asof` value on, so the server-component
+ * root layout can seed `AsOfProvider` with the SAME as-of the client will read from the URL — eliminating
+ * the SSR/client hydration mismatch (server's lazy initializer otherwise sees no `window`). Forwarding
+ * ONLY this one header for ONLY a shape-valid date keeps the asof-provider the sole `?asof` owner and
+ * never leaks a provider key or any other query param into a header.
+ */
+export const ASOF_HEADER = "x-asof" as const;
+
 /** Placeholder shown for an absent date (e.g. an empty coverage range). */
 export const ISO_DATE_PLACEHOLDER = "yyyy-MM-dd" as const;
 
