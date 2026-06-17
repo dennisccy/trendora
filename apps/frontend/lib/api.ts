@@ -266,11 +266,14 @@ export interface StockRow {
 }
 
 /** One forward-return entry: the realized return at `horizon` trading days, or null (NA) when no stored
- *  row exists. Read verbatim from the stored forward_returns table — never recomputed. The SHARED shape
- *  used by the per-stock (J-75) and the per-theme / per-sector (J-81) leaderboard forward-return lists. */
+ *  row exists, paired with the realized max-drawdown (iter-27, J-86 — the true peak-to-trough decline,
+ *  <= 0 or null/NA, read VERBATIM from the same stored row). Read verbatim from the stored forward_returns
+ *  table — never recomputed. The SHARED shape used by the per-stock (J-75) and the per-theme / per-sector
+ *  (J-81) leaderboard forward-return lists. `max_drawdown` is NA exactly when `return` is NA. */
 export interface ForwardReturnEntry {
   horizon: number;
   return: number | null;
+  max_drawdown: number | null;
 }
 
 /** Alias preserved for the J-75 per-stock callsites (the same `{horizon, return}` shape as J-81). */
@@ -525,6 +528,11 @@ export async function fetchRun(runId: string | number, signal?: AbortSignal): Pr
  *  Re-formatted only — the page never recomputes a return. */
 export interface ForwardGroupRow {
   mean_return: number | null;
+  // iter-27 (J-86): the aggregate mean max-drawdown beside the return stat (read-only over the stored
+  // values; <= 0 or null/NA). Present on the grouped Backtest aggregate rows (by_bucket/setup/regime/vcp/
+  // overall). Optional because some rows that share this base shape (e.g. control-group cohorts) do not
+  // carry it.
+  mean_max_drawdown?: number | null;
   n: number;
 }
 
@@ -658,16 +666,19 @@ export interface ScorecardExcess {
 export interface LeadershipSectorReturn extends ForwardGroupRow {
   sector_etf: string; // sector ETF ticker (join key = /api/sectors row.ticker)
   sector: string; // sector name
+  max_drawdown?: number | null; // iter-27 (J-86): the ETF's OWN stored drawdown at the horizon (<= 0 / NA)
 }
 /** One Top-Themes row's realized forward return = the equal-weight mean of its members' stored returns
  *  at the horizon. `slug` is the join key onto a `/api/themes` row (`row.slug`). */
 export interface LeadershipThemeReturn extends ForwardGroupRow {
   slug: string; // theme slug (join key = /api/themes row.slug)
+  max_drawdown?: number | null; // iter-27 (J-86): equal-weight member-basket stored drawdown (<= 0 / NA)
 }
 /** One Ranked-Cohort row's realized forward return = the stock's OWN stored return at the horizon.
  *  `ticker` is the join key onto a `/api/stocks` row (`row.ticker`). */
 export interface LeadershipCohortReturn extends ForwardGroupRow {
   ticker: string; // universe ticker (join key = /api/stocks row.ticker)
+  max_drawdown?: number | null; // iter-27 (J-86): the cohort symbol's OWN stored drawdown (<= 0 / NA)
 }
 
 /** The J-21 read-only leadership-return projection riding each scorecard horizon row: the realized
@@ -1078,6 +1089,7 @@ export interface EventStudyHorizonRow {
   expectancy: EventStudyExpectancy;
   mean_mae: number | null; // mean max-adverse excursion (fraction, <= ~0); null = NA
   mean_mfe: number | null; // mean max-favorable excursion (fraction, >= ~0); null = NA
+  mean_max_drawdown: number | null; // iter-27 (J-86): mean max-drawdown (fraction, <= 0); null = NA
   return_per_downside_dev: number | null; // mean / downside-deviation; null = NA (no downside / n<2)
   return_per_mae: number | null; // mean / mean-|MAE|; null = NA (no adverse excursion / n<2)
 }
@@ -1165,6 +1177,7 @@ export interface RegimeSetupPatternStats {
   median: number | null;
   pct_positive: number | null; // hit-rate (fraction > 0)
   expectancy: number | null;
+  mean_max_drawdown: number | null; // iter-27 (J-86): mean max-drawdown (fraction, <= 0); null = NA
   return_per_downside_dev: number | null; // mean / downside-deviation; null = NA
   return_per_mae: number | null; // mean / mean-|MAE|; null = NA
 }
@@ -1382,6 +1395,20 @@ export interface DataCoverage {
   per_symbol: PerSymbolCoverage[];
   // J-37: the Missing-data diagnostic (three honest categories with exact shortfalls). Read-only.
   diagnostic: MissingDataDiagnostic;
+  // J-85: the universe-vs-latest-snapshot coverage diagnostic — the count of resolved-universe members
+  // ABSENT from the latest scanner snapshot's scored set (the operator-facing "rebuild to include the new
+  // members" signal). Read-only descriptive derivation; absent_count 0 → the UI shows NO banner.
+  absent_from_latest_snapshot: AbsentFromLatestSnapshot;
+}
+
+/** J-85 — the universe-vs-latest-snapshot coverage diagnostic. `absent_count` is the count of resolved
+ *  universe members NOT scored in the latest snapshot; `absent_preview` a bounded sample; the UI shows the
+ *  "N members absent — rebuild to include them" banner ONLY when `absent_count > 0`. */
+export interface AbsentFromLatestSnapshot {
+  absent_count: number;
+  absent_preview: string[];
+  latest_snapshot_date: string | null;
+  universe_count: number;
 }
 
 /** One row of the fetch/backfill run history (from the append-only DataProviderRun log). A Data Manager
@@ -1490,7 +1517,7 @@ export interface DataOverviewResponse {
   job_progress: JobProgressConfig; // J-66 poll/heartbeat/granularity knobs (config-driven)
 }
 
-export type DataJobKind = "fetch" | "backfill" | "both" | "expand";
+export type DataJobKind = "fetch" | "backfill" | "both" | "expand" | "rebuild";
 
 /** One omitted candidate from a J-35 expand screen — the symbol + the plain-language reason it did NOT
  *  become a universe member (e.g. "market_cap … < …", "price … < …", "no_market_cap", "fetch_failed").

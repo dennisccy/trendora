@@ -65,9 +65,13 @@ from app.seed_loader import all_seed_symbols
 # their own recorder so backoff/sleep add NO wall-clock (MEMORY: backend-test-suite-runtime).
 _sleep: Callable[[float], None] = time.sleep
 
-JOB_KINDS = ("fetch", "backfill", "both", "expand")
+JOB_KINDS = ("fetch", "backfill", "both", "expand", "rebuild")
 _FETCH_KINDS = ("fetch", "both")
 _BACKFILL_KINDS = ("backfill", "both")
+# J-85: the confirm-gated regenerate-from-scratch snapshot rebuild. It is neither a fetch nor a generic
+# backfill — it CLEARS the entire snapshot set first, then drives the EXISTING create-once backfill over
+# every covered trading date. Its own branch in `_run_job` (reusing `_do_backfill` + the J-66 progress).
+_REBUILD_KINDS = ("rebuild",)
 # J-34/J-59: the durable-checkpoint statuses a Resume can act on. `resumable` is a rate-limited 429 pause
 # (resume re-attempts from the un-fetched chunk); `failed_backfill` (J-59) is a `both` job whose FETCH
 # completed but whose BACKFILL failed — a Resume skips the completed fetch entirely (zero provider calls)
@@ -289,6 +293,56 @@ def _missing_data_diagnostic(session: Session, cfg: Config) -> dict:
     }
 
 
+def _coverage_diagnostic_absent(session: Session, cfg: Config) -> dict:
+    """J-85 — the universe-vs-latest-snapshot coverage diagnostic: the resolved-universe members
+    (`config.universe.symbols` — the one canonical screen result) that are ABSENT from the LATEST scanner
+    snapshot's scored set (`scanner_results.ticker` for the newest `ScannerRun`). This is a READ-ONLY
+    descriptive derivation over stored rows + the resolved universe (no canonical score/return/bucket is
+    recomputed). It surfaces the operator-facing signal "N members are not yet in the latest snapshot —
+    rebuild to include them" after a universe expansion (J-84).
+
+    Returns `{absent_count, absent_preview, latest_snapshot_date, universe_count}`:
+      - `absent_count`        — the EXACT count of universe members absent from the latest snapshot's
+                                scored tickers (0 when every member is present → the UI shows NO banner).
+      - `absent_preview`      — a bounded, sorted sample of the absent tickers (`data_manager.gap_preview`).
+      - `latest_snapshot_date`— the newest `ScannerRun.asof_date` (ISO), or None when no snapshot exists.
+      - `universe_count`      — `len(config.universe.symbols)` (the same denominator coverage already shows).
+
+    Honest edge cases: NO snapshot yet → `absent_count == universe_count` (every member is absent because
+    there is nothing scored), `latest_snapshot_date` None. An empty universe → `absent_count == 0`.
+    Comparison is case-normalized (uppercased) so a stored lowercase ticker is matched honestly."""
+    universe = list(cfg.universe.symbols)
+    universe_count = len(universe)
+    latest_date = session.scalar(select(func.max(ScannerRun.asof_date)))
+    if latest_date is None:
+        # no snapshot at all → every universe member is absent (nothing scored), no fabricated coverage.
+        preview = cfg.data_manager.gap_preview
+        absent_sorted = sorted(universe)
+        return {
+            "absent_count": universe_count,
+            "absent_preview": absent_sorted[:preview],
+            "latest_snapshot_date": None,
+            "universe_count": universe_count,
+        }
+    latest_run_id = session.scalar(
+        select(ScannerRun.id).where(ScannerRun.asof_date == latest_date)
+    )
+    scored = {
+        t.upper()
+        for t in session.exec(
+            select(ScannerResult.ticker).where(ScannerResult.run_id == latest_run_id)
+        ).all()
+    }
+    absent = sorted(sym for sym in universe if sym.upper() not in scored)
+    preview = cfg.data_manager.gap_preview
+    return {
+        "absent_count": len(absent),
+        "absent_preview": absent[:preview],
+        "latest_snapshot_date": latest_date.isoformat(),
+        "universe_count": universe_count,
+    }
+
+
 def compute_coverage(session: Session, config: Optional[Config] = None) -> dict:
     """Current dataset coverage — purely descriptive, recomputing NO canonical value:
       - price-history date range (min/max `DailyPrice.date`) and distinct symbol count,
@@ -330,6 +384,11 @@ def compute_coverage(session: Session, config: Optional[Config] = None) -> dict:
         # for analysis (no-history / thin / intra-series gap), each with its EXACT shortfall, derived from
         # the SAME stored bars + threshold + calendar above. Recomputes no canonical value; fabricates nothing.
         "diagnostic": _missing_data_diagnostic(session, cfg),
+        # J-85: the universe-vs-latest-snapshot coverage diagnostic — the count of resolved-universe
+        # members ABSENT from the latest scanner snapshot's scored set (the operator-facing "rebuild to
+        # include the new members" signal). Read-only descriptive derivation; 0 absent → the UI shows no
+        # banner. Served on the SAME coverage block (no new endpoint).
+        "absent_from_latest_snapshot": _coverage_diagnostic_absent(session, cfg),
     }
 
 
@@ -760,6 +819,40 @@ def remove_data(
 
 
 # --------------------------------------------------------------------------------------------------
+# J-85 — confirm-gated regenerate-from-scratch snapshot rebuild: CLEAR the entire snapshot set then
+# CREATE-ONCE recompute every covered trading date over the resolved universe. The committed PRICE seed
+# is NEVER deleted; no canonical formula changes (only the membership scanned over). It is a wholesale
+# rebuild (every snapshot is cleared then recomputed deterministically) — never an in-place UPDATE of a
+# live snapshot row (anti-goal: Snapshots are immutable; a wholesale create-once rebuild is permitted).
+# --------------------------------------------------------------------------------------------------
+def clear_snapshot_set(session: Session) -> dict:
+    """DELETE every row of the scanner snapshot layer (whole-row deletes only) so the subsequent backfill
+    recomputes the entire set FROM SCRATCH over the current resolved universe (J-85). Clears
+    `forward_returns` → `scanner_results` / `sector_scores` / `theme_scores` → `scanner_runs` (children
+    before parents). It NEVER touches `daily_prices` (the committed PRICE seed is un-deletable — this
+    function does not even reference it) and NEVER an in-place UPDATE (whole-row deletes only). Returns
+    `{runs_cleared, bars_before, bars_after}` so the caller can ASSERT the price seed was untouched
+    (`bars_before == bars_after`) — a hard guarantee the rebuild refuses to delete the committed seed.
+    The orphaned-run boot sweep / append-only run-history audit are unaffected (different tables)."""
+    bars_before = int(session.scalar(select(func.count()).select_from(DailyPrice)) or 0)
+    runs_cleared = int(session.scalar(select(func.count()).select_from(ScannerRun)) or 0)
+    # children first (FK order), then the parent runs. Whole-row deletes; the price seed is never referenced.
+    session.execute(delete(ForwardReturn))
+    session.execute(delete(ScannerResult))
+    session.execute(delete(SectorScoreRow))
+    session.execute(delete(ThemeScoreRow))
+    session.execute(delete(ScannerRun))
+    session.commit()
+    bars_after = int(session.scalar(select(func.count()).select_from(DailyPrice)) or 0)
+    # hard seed-safety invariant: the rebuild's clear step MUST leave the committed price seed intact.
+    if bars_after != bars_before:
+        raise RuntimeError(
+            f"rebuild clear corrupted the price seed: {bars_before} bars before, {bars_after} after"
+        )
+    return {"runs_cleared": runs_cleared, "bars_before": bars_before, "bars_after": bars_after}
+
+
+# --------------------------------------------------------------------------------------------------
 # Import provider catalog + env-detected availability (J-33) — descriptive metadata, NO key value
 # --------------------------------------------------------------------------------------------------
 # iter-26: the deterministic, OFFLINE `seed` import source — the browser-capture enabler for the
@@ -1116,6 +1209,12 @@ def validate_job_request(
     cfg = config or get_config()
     if kind not in JOB_KINDS:
         raise ValueError(f"unknown job kind {kind!r}; expected one of {list(JOB_KINDS)}")
+    # J-85: a rebuild ignores the supplied date range entirely — it CLEARS then create-once recomputes the
+    # snapshot set over EVERY covered trading day (the full calendar by design), reading the committed seed
+    # offline (no source/key, no span cap). So it bypasses the range-span + source/key gates below; only the
+    # unknown-kind guard above applies. The endpoint still passes the latest data date as start==end.
+    if kind in _REBUILD_KINDS:
+        return
     if start > end:
         raise ValueError(f"start date {start.isoformat()} must be on or before end date {end.isoformat()}")
     span_days = (end - start).days + 1
@@ -1995,11 +2094,11 @@ def _final_status(prog: JobProgress) -> str:
             statuses.append("partial")
         else:
             statuses.append("ok")
-    if prog.kind in _BACKFILL_KINDS:
-        # J-67: a single date's failure is ISOLATED (recorded per-date) — the backfill ends `partial`
-        # (others completed), never aborting the whole stage. With NO per-date failures it is `ok`. A
-        # whole-stage exception (e.g. the trading-calendar read itself) is still graded `failed` by the
-        # `_run_job` except-handler separately.
+    if prog.kind in _BACKFILL_KINDS or prog.kind in _REBUILD_KINDS:
+        # J-67: a single date's failure is ISOLATED (recorded per-date) — the backfill/rebuild ends
+        # `partial` (others completed), never aborting the whole stage. With NO per-date failures it is
+        # `ok`. A whole-stage exception (e.g. the trading-calendar read itself) is still graded `failed` by
+        # the `_run_job` except-handler separately. A rebuild grades on its create-once backfill outcome.
         statuses.append("partial" if prog.date_failures else "ok")
     if statuses == ["failed"]:
         return "failed"
@@ -2020,9 +2119,10 @@ def _final_summary(prog: JobProgress) -> str:
             f"expand: {prog.passers} passers, {prog.omitted_total} omitted "
             f"of {prog.symbols_total} candidates ({prog.bars_fetched} new bars)"
         )
-    if prog.kind in _BACKFILL_KINDS:
+    if prog.kind in _BACKFILL_KINDS or prog.kind in _REBUILD_KINDS:
+        label = "rebuild" if prog.kind in _REBUILD_KINDS else "backfill"
         backfill = (
-            f"backfill: {prog.snapshots_created} snapshots over {prog.dates_total} dates, "
+            f"{label}: {prog.snapshots_created} snapshots over {prog.dates_total} dates, "
             f"{prog.forward_returns_inserted} forward returns"
         )
         if prog.date_failures:  # J-67: surface the per-date failures honestly on a `partial` job
@@ -2351,6 +2451,35 @@ def _run_job(
                     prog.complete_stage("screen")  # J-59: screen stage done
                     if checkpoint is not None:
                         _finalize_checkpoint(session, checkpoint, prog)  # expand fully done → terminal
+            if prog.kind in _REBUILD_KINDS:
+                # J-85: a wholesale regenerate-from-scratch. (1) CLEAR the entire snapshot set (whole-row
+                # deletes — the committed PRICE seed is never touched / referenced). (2) widen the range to
+                # the FULL trading calendar so `_do_backfill` (the EXISTING create-once path) recomputes a
+                # snapshot + forward returns for EVERY covered trading day over the resolved universe. No
+                # canonical formula changes — only the membership scanned over. The J-66 progress machinery
+                # (per-date ticks, counters) and the J-41 create-once/concurrency guards are intact.
+                cleared = clear_snapshot_set(session)
+                prog.current_activity = (
+                    f"cleared {cleared['runs_cleared']} snapshot(s); rebuilding all covered dates "
+                    f"(price seed intact: {cleared['bars_after']} bars)"
+                )
+                calendar = _trading_days(session, cfg)
+                if calendar:
+                    prog.start, prog.end = calendar[0], calendar[-1]  # the FULL covered calendar
+                _backfill_t0 = time.perf_counter()  # J-53: backfill-stage wall-clock (parallel)
+                try:
+                    _do_backfill(session, cfg, prog, eng=eng)
+                except Exception:  # noqa: BLE001 — a whole-stage rebuild failure surfaces as `failed`
+                    backfill_failed = True
+                    raise
+                finally:
+                    prog.record_stage(
+                        "backfill",
+                        elapsed_seconds=time.perf_counter() - _backfill_t0,
+                        items_processed=prog.dates_done,
+                        concurrency=prog._backfill_concurrency,
+                        per_date_seconds_sum=prog._backfill_per_date_seconds_sum,
+                    )
             if not paused and prog.kind in _BACKFILL_KINDS:
                 _backfill_t0 = time.perf_counter()  # J-53: backfill-stage wall-clock (parallel)
                 try:

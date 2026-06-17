@@ -7,7 +7,7 @@ import { AlertTriangle, ArrowLeft, SearchX } from "lucide-react";
 
 import { useAsOf, useAsOfHref } from "@/components/asof-provider";
 import { ComponentBreakdown } from "@/components/component-breakdown";
-import { fmtPct, returnClass } from "@/components/forward-return";
+import { fmtMdd, fmtPct, mddClass, returnClass } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
 import { PriceChart } from "@/components/price-chart";
 import { ScoreBadge } from "@/components/score-badge";
@@ -496,8 +496,9 @@ function ForwardReturnPanel({ row, asofDate }: { row: StockRow; asofDate: string
         <p className="text-xs text-text-faint">
           The realized return measured from the close on {formatIsoDate(asofDate)} to the close{" "}
           {row.forward_returns.map((fr) => fr.horizon).join(" / ")} trading days later — read verbatim from
-          the stored walk-forward returns (the SAME values the leaderboard and Backtest show). NA where not
-          enough post-date bars exist yet (never fabricated).
+          the stored walk-forward returns (the SAME values the leaderboard and Backtest show). Each return is
+          paired with its max drawdown (J-86 — the worst peak-to-trough decline over that window, &le; 0). NA
+          where not enough post-date bars exist yet (never fabricated).
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {row.forward_returns.map((fr) => (
@@ -516,6 +517,19 @@ function ForwardReturnPanel({ row, asofDate }: { row: StockRow; asofDate: string
                   {fmtPct(fr.return)}
                 </p>
               )}
+              {/* J-86 — the paired max-drawdown beside the realized return (read verbatim; <= 0 or NA). */}
+              <p className="mt-1 text-[10px] uppercase tracking-wide text-text-faint">Max drawdown</p>
+              <p
+                className={cn("num text-sm font-semibold", mddClass(fr.max_drawdown))}
+                data-testid={`detail-mdd-${fr.horizon}`}
+                title={
+                  fr.max_drawdown === null || fr.max_drawdown === undefined
+                    ? "No realized max drawdown at this horizon yet (NA)"
+                    : undefined
+                }
+              >
+                {fmtMdd(fr.max_drawdown)}
+              </p>
             </div>
           ))}
         </div>

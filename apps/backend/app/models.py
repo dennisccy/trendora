@@ -341,7 +341,20 @@ class ForwardReturn(SQLModel, table=True):
     fabricated excursion). They are forward-side only: no `scanner_runs`/`scanner_results`/`*_scores`
     row is ever UPDATEd. `Optional[float]` so they are backward-compatible (default `None`); a fresh
     frozen-seed DB carries them from the start. Read VERBATIM only by the read-only event study
-    (`app.engine.research.compute_event_study`) — never recomputed in the read path."""
+    (`app.engine.research.compute_event_study`) — never recomputed in the read path.
+
+    `max_drawdown` (iter-27, J-86) is the NEW append-only post-snapshot MAXIMUM-DRAWDOWN column — the
+    worst peak-to-trough decline over the FIRST `horizon` post-snapshot bars (date > D, via
+    `bars_after`): `MDD = min over j of ( low_j / max(entry_close, high_1..high_j) - 1 )` with the
+    running peak seeded at the as-of-D `entry_close` — a true peak-to-trough drop (<= 0). Computed
+    ONCE in the SAME `_insert_run_forward_returns` INSERT path via the pure `max_drawdown` helper,
+    which shares the EXACT no-lookahead NA gate as `forward_return`/`forward_excursions` (so a row's
+    `max_drawdown` is non-None iff `realized_return` exists — `< horizon` post-bars yields NO row,
+    never a fabricated 0). Forward-side only — no snapshot row is ever UPDATEd. `Optional[float]`,
+    default `None` (backward-compatible; a fresh frozen-seed DB carries it from the start; an existing
+    live DB gains it via the `db._ADDITIVE_COLUMNS` ALTER). Read VERBATIM by the read path
+    (`/api/stocks`, `/api/stocks/{ticker}`, `/api/themes`, `/api/sectors`) and aggregated read-only by
+    Backtest + the Research event study — never recomputed when served."""
 
     __tablename__ = "forward_returns"
     __table_args__ = (
@@ -361,6 +374,11 @@ class ForwardReturn(SQLModel, table=True):
     # same no-lookahead NA gate; None on short history. Read verbatim by the read-only event study.
     mae: Optional[float] = Field(default=None)  # max adverse excursion: min(low)/entry_close - 1 (<= ~0)
     mfe: Optional[float] = Field(default=None)  # max favorable excursion: max(high)/entry_close - 1 (>= ~0)
+    # iter-27 (J-86) append-only max-drawdown column — the worst peak-to-trough decline over the first
+    # `horizon` post-snapshot bars: min_j( low_j / max(entry_close, high_1..high_j) - 1 ), <= 0.
+    # Computed once with realized_return, same no-lookahead NA gate; None on short history. Read verbatim
+    # by the stocks/themes/sectors/detail read path and aggregated read-only by Backtest + Research.
+    max_drawdown: Optional[float] = Field(default=None)  # true peak-to-trough drawdown over first h post-bars (<= 0)
 
 
 # --- iter-20 event-study derived-aggregate cache (J-72 — a PERFORMANCE cache, not a snapshot) -----

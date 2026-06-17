@@ -30,6 +30,7 @@ from app.engine.forward_testing import (
     compute_forward_aggregates,
     forward_excursions,
     forward_return,
+    max_drawdown,
     walk_forward_asof_dates,
 )
 from app.engine.prices import bars_after, bars_asof, close_on, latest_data_date
@@ -199,6 +200,58 @@ def test_forward_excursions_band_contains_realized_return():
     assert realized == pytest.approx(0.21)
     assert ex["mae"] <= realized <= ex["mfe"]
     assert ex["mfe"] == pytest.approx(130 / 100 - 1) and ex["mae"] == pytest.approx(92 / 100 - 1)
+
+
+# ==================================================================================================
+# max_drawdown — pure no-lookahead true peak-to-trough math (iter-27, J-86)
+# ==================================================================================================
+def test_max_drawdown_running_peak_seeded_at_entry():
+    """The running peak is seeded at the as-of-D entry_close, so the FIRST bar's drawdown is measured
+    from the entry; a later bar that prints a new HIGH raises the peak for subsequent bars only — the
+    worst (most negative) peak-to-trough drop is returned."""
+    # entry 100; bar1 high110/low95; bar2 high120/low90; bar3 high118/low80
+    post = _ex_bars([(110, 95, 100), (120, 90, 115), (118, 80, 100)])
+    # h=1: peak max(100,110)=110, trough low 95 -> 95/110-1
+    assert max_drawdown(post, 100.0, 1) == pytest.approx(95 / 110 - 1)
+    # h=3: running peak rises to 120 by bar2; bar3 low 80 against peak 120 is the worst -> 80/120-1
+    assert max_drawdown(post, 100.0, 3) == pytest.approx(80 / 120 - 1)
+
+
+def test_max_drawdown_is_always_non_positive():
+    """MDD is <= 0 always: a flat/rising path whose low never dips below its running peak yields exactly
+    0.0 (never a positive 'drawdown')."""
+    flat = _ex_bars([(100, 100, 100)])  # peak 100, low 100 -> 100/100-1 == 0.0
+    assert max_drawdown(flat, 100.0, 1) == 0.0
+    rising = _ex_bars([(110, 100, 108), (130, 120, 128)])  # every low == prior peak; no dip below peak
+    assert max_drawdown(rising, 100.0, 2) <= 0.0
+
+
+def test_max_drawdown_na_when_fewer_than_h_post_bars_or_no_entry():
+    """Shares the EXACT no-lookahead NA gate as forward_return/forward_excursions: None (NA) — never a
+    fabricated 0 — when fewer than `horizon` post-bars exist or the entry is missing/zero."""
+    post = _ex_bars([(110, 95, 105), (120, 90, 115)])
+    assert max_drawdown(post, 100.0, 3) is None      # < horizon post-bars
+    assert max_drawdown([], 100.0, 1) is None         # no post-bar
+    assert max_drawdown(post, None, 1) is None         # no entry
+    assert max_drawdown(post, 0.0, 1) is None          # zero entry
+
+
+def test_max_drawdown_unchanged_when_later_bars_removed():
+    """No-lookahead (the keystone proof): removing bars dated > d+h does not change the h-day MDD — the
+    future tail can never influence the as-of-h drawdown."""
+    full = _ex_bars([(110, 95, 105), (120, 90, 115), (300, 5, 200), (90, 80, 85)])
+    truncated = _ex_bars([(110, 95, 105), (120, 90, 115)])
+    assert max_drawdown(full, 100.0, 2) == max_drawdown(truncated, 100.0, 2)
+
+
+def test_max_drawdown_within_mae_relationship():
+    """For a single-running-peak window the MDD is at least as adverse as the MAE (MDD <= MAE <= 0): the
+    drawdown measures from the RUNNING PEAK (>= entry), so its denominator is never smaller than the
+    entry the MAE divides by — the trough/peak ratio is <= trough/entry."""
+    post = _ex_bars([(130, 95, 120), (140, 88, 100)])  # peak rises to 140; trough 88
+    mdd = max_drawdown(post, 100.0, 2)
+    ex = forward_excursions(post, 100.0, 2)
+    assert mdd <= ex["mae"] <= 0
 
 
 # ==================================================================================================
@@ -722,6 +775,23 @@ def test_backfill_populates_mae_mfe_within_band(backfilled_engine):
     for r in rows:
         assert r.mae <= r.realized_return <= r.mfe  # close-to-close return within the excursion band
         assert r.mae <= r.mfe  # adverse (min-low) <= favorable (max-high)
+
+
+def test_backfill_populates_max_drawdown_same_na_gate(backfilled_engine):
+    """iter-27 (J-86): every INSERTed forward return carries a non-None max_drawdown (computed ONCE with
+    the realized return on the SAME post_bars, sharing forward_return's NA gate — a row's max_drawdown is
+    non-None iff realized_return is), the drawdown is <= 0 (a true peak-to-trough drop), and it is at
+    least as adverse as the MAE (MDD <= MAE <= 0, since the drawdown denominator is the running peak >=
+    the entry the MAE divides by). Proves the column is stored, lookahead-free, and honest."""
+    engine, cfg, latest, pre_id, before, first = backfilled_engine
+    with Session(engine) as session:
+        rows = session.exec(select(ForwardReturn)).all()
+    assert rows  # the backfill inserted realized returns
+    # populated on fresh INSERT — a row exists iff realized_return does, so max_drawdown is never NULL here
+    assert all(r.max_drawdown is not None for r in rows)
+    for r in rows:
+        assert r.max_drawdown <= 1e-12  # <= 0 (true peak-to-trough drop; tolerate float noise at 0)
+        assert r.max_drawdown <= r.mae + 1e-12  # MDD is at least as adverse as the MAE
 
 
 def test_backfill_latest_run_has_zero_post_bars(backfilled_engine):

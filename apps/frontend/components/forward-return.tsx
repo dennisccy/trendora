@@ -46,3 +46,30 @@ export function Return({ value, n, min }: { value: number | null; n: number; min
     </span>
   );
 }
+
+/**
+ * Max-drawdown display helpers (iter-27, J-86). A max drawdown is a true peak-to-trough decline read
+ * VERBATIM from the stored `forward_returns.max_drawdown` — it is <= 0 always (or NA), so it grades on
+ * the negative/red scale: a worse (more negative) drawdown reads redder; exactly 0 / NA is muted. These
+ * RE-FORMAT a stored figure; they never compute a drawdown client-side.
+ */
+
+/** Format a drawdown fraction (-0.083 -> "-8.30%"); null/NA renders an em dash. Always <= 0 when present. */
+export function fmtMdd(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  const pct = value * 100;
+  // a drawdown is <= 0; print its sign honestly (0 -> "0.00%", never "+").
+  return `${pct.toFixed(2)}%`;
+}
+
+/** Drawdown colour: a real (negative) drawdown is red; exactly 0 or NA is muted (never green — it is risk). */
+export function mddClass(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "text-text-muted";
+  if (value < 0) return "text-neg";
+  return "text-text-muted";
+}
+
+/** A max-drawdown figure cell — paired beside a forward-return cell (J-86). NA renders an em dash. */
+export function MaxDrawdown({ value }: { value: number | null | undefined }) {
+  return <span className={cn("num font-semibold", mddClass(value))}>{fmtMdd(value)}</span>;
+}

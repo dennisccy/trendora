@@ -1,7 +1,7 @@
 import { ShieldAlert } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
-import { fmtPct, Return, returnClass } from "@/components/forward-return";
+import { fmtMdd, fmtPct, MaxDrawdown, mddClass, Return, returnClass } from "@/components/forward-return";
 import { bucketVariant } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -32,13 +32,13 @@ function BucketPanel({
   min,
   horizon,
 }: {
-  rows: { bucket: string; mean_return: number | null; n: number }[];
+  rows: { bucket: string; mean_return: number | null; mean_max_drawdown?: number | null; n: number }[];
   min: number;
   horizon: number;
 }) {
   return (
     <Card className="p-0">
-      <PanelTitle hint={`Mean realized ${horizon}-day forward return per leadership bucket`}>
+      <PanelTitle hint={`Mean realized ${horizon}-day forward return + mean max drawdown per leadership bucket`}>
         Forward return by score bucket
       </PanelTitle>
       <table className="w-full border-collapse text-sm">
@@ -46,6 +46,8 @@ function BucketPanel({
           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
             <th className="px-4 py-2 font-medium">Bucket</th>
             <th className="px-4 py-2 text-right font-medium">Mean fwd return</th>
+            {/* J-86 — the aggregate mean max-drawdown beside the return stat (read-only over stored values) */}
+            <th className="px-4 py-2 text-right font-medium">Mean MDD</th>
           </tr>
         </thead>
         <tbody>
@@ -58,6 +60,9 @@ function BucketPanel({
               </td>
               <td className="px-4 py-2 text-right">
                 <Return value={row.mean_return} n={row.n} min={min} />
+              </td>
+              <td className="px-4 py-2 text-right">
+                <MaxDrawdown value={row.mean_max_drawdown ?? null} />
               </td>
             </tr>
           ))}
@@ -120,7 +125,7 @@ function BreakdownPanel({
   emptyLabel,
 }: {
   title: string;
-  rows: { label: string; mean_return: number | null; n: number }[];
+  rows: { label: string; mean_return: number | null; mean_max_drawdown?: number | null; n: number }[];
   min: number;
   emptyLabel: string;
 }) {
@@ -131,12 +136,23 @@ function BreakdownPanel({
         <p className="px-4 py-4 text-sm text-text-muted">{emptyLabel}</p>
       ) : (
         <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+              <th className="px-4 py-2 font-medium" />
+              <th className="px-4 py-2 text-right font-medium">Mean fwd return</th>
+              {/* J-86 — the aggregate mean max-drawdown beside the return stat */}
+              <th className="px-4 py-2 text-right font-medium">Mean MDD</th>
+            </tr>
+          </thead>
           <tbody>
             {rows.map((row) => (
               <tr key={row.label} className="border-b border-border last:border-b-0">
                 <td className="px-4 py-2 text-text">{row.label}</td>
                 <td className="px-4 py-2 text-right">
                   <Return value={row.mean_return} n={row.n} min={min} />
+                </td>
+                <td className="px-4 py-2 text-right">
+                  <MaxDrawdown value={row.mean_max_drawdown ?? null} />
                 </td>
               </tr>
             ))}
@@ -261,6 +277,13 @@ export function EvidenceAggregateSection({
                 {fmtPct(evidence.overall.mean_return)}
               </span>{" "}
               <span className="num text-text-faint">(n={evidence.overall.n})</span>
+            </span>
+            {/* J-86 — the overall aggregate mean max-drawdown beside the overall mean return. */}
+            <span>
+              <span className="text-text-faint">Mean max drawdown ({horizon}d): </span>
+              <span className={cn("num", mddClass(evidence.overall.mean_max_drawdown ?? null))}>
+                {fmtMdd(evidence.overall.mean_max_drawdown ?? null)}
+              </span>
             </span>
             <span className="text-text-faint">
               Figures with <span className="text-warn">n &lt; {min} ⚠</span> are low-sample.

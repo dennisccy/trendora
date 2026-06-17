@@ -148,6 +148,40 @@ def forward_excursions(
     return {"mae": low / entry_close - 1, "mfe": high / entry_close - 1}
 
 
+def max_drawdown(bars_after_list: list, entry_close: Optional[float], horizon: int) -> Optional[float]:
+    """The TRUE max drawdown (worst peak-to-trough decline, J-86) over the FIRST `horizon` post-snapshot
+    bars (date > D, from `bars_after`):
+
+        MDD = min over j of ( low_j / max(entry_close, high_1..high_j) - 1 )
+
+    i.e. for each post-snapshot bar j we measure the drop from the RUNNING PEAK (the highest high seen so
+    far, seeded at the as-of-D `entry_close`) down to that bar's low, and keep the worst (most negative)
+    such drop. The running peak is seeded at `entry_close` so the very first bar's drawdown is measured
+    from the entry, and a bar that prints a new high raises the peak for subsequent bars only. The result
+    is <= 0 always (a flat/rising series with no low below its running peak yields 0.0 — never positive).
+
+    Forward-side only and shares the EXACT no-lookahead NA gate as `forward_return`/`forward_excursions`:
+    returns None (NA) — NEVER a fabricated 0 — when `entry_close` is missing or zero, or when fewer than
+    `horizon` post-snapshot bars exist. Only the first `horizon` post-bars matter (the running peak +
+    trough scan stops at bar `horizon`), so the result is unchanged when later bars are removed (the
+    keystone no-lookahead-of-the-future-tail property)."""
+    if entry_close is None or entry_close == 0:
+        return None
+    if len(bars_after_list) < horizon:
+        return None
+    window = bars_after_list[:horizon]
+    running_peak = entry_close  # the running peak seeded at the as-of-D close (the entry)
+    drawdowns: list[float] = []
+    for bar in window:
+        if bar.high > running_peak:
+            running_peak = bar.high
+        # drop from the running peak to this bar's low. Since low <= high <= running_peak (the running max
+        # high, >= entry_close), `low / running_peak - 1` is intrinsically <= 0 for every bar — so the
+        # min over them is <= 0 WITHOUT any seed literal (the window is non-empty: len >= horizon >= 1).
+        drawdowns.append(bar.low / running_peak - 1)
+    return min(drawdowns)
+
+
 # --------------------------------------------------------------------------------------------------
 # Walk-forward as-of date set (cadence intersected with real seed trading days)
 # --------------------------------------------------------------------------------------------------
@@ -255,6 +289,10 @@ def _insert_run_forward_returns(
             # iter-14 (J-29): the SAME post_bars/entry_close/horizon already in hand, no extra query —
             # excursions share forward_return's NA gate, so they are non-None whenever realized is.
             excursions = forward_excursions(post_bars, entry_close, horizon)
+            # iter-27 (J-86): the max-drawdown over the SAME first-`horizon` post-bars window, computed
+            # once here beside mae/mfe via the pure helper that shares the EXACT NA gate — so a row's
+            # max_drawdown is non-None iff realized_return is (never a fabricated 0 for a short window).
+            mdd = max_drawdown(post_bars, entry_close, horizon)
             session.add(
                 ForwardReturn(
                     run_id=run.id,
@@ -266,6 +304,7 @@ def _insert_run_forward_returns(
                     realized_return=realized,
                     mae=excursions["mae"] if excursions else None,
                     mfe=excursions["mfe"] if excursions else None,
+                    max_drawdown=mdd,
                 )
             )
             existing.add((run.id, symbol, horizon))
@@ -353,28 +392,56 @@ def _mean_or_none(values: list[float]) -> Optional[float]:
     return mean(values) if values else None
 
 
+def _group_mdd(observations: list[dict], group_attr: str) -> dict[str, list[float]]:
+    """`group value -> [stored max_drawdown over the group's observations that HAVE one]` (iter-27, J-86).
+    A group's mean-MDD is the mean over only the observations whose stored `max_drawdown` is non-None
+    (absent ones excluded — never counted as a fabricated 0); the SAME observation set the mean return
+    groups, intersected with "has a stored drawdown" (which is the same set whenever the return exists,
+    since both share the NA gate)."""
+    by_group: dict[str, list[float]] = defaultdict(list)
+    for obs in observations:
+        value = obs.get(group_attr)
+        if value is not None and obs.get("max_drawdown") is not None:
+            by_group[value].append(obs["max_drawdown"])
+    return by_group
+
+
 def _group_means(observations: list[dict], group_attr: str, label_key: str, order, pad: bool) -> list[dict]:
     """Mean realized return + n per stored group value (`group_attr`), ordered by `order` first then any
     extras. With `pad`, every value in `order` is emitted even at n=0 (mean None) so the table is
-    complete (used for the A-E bucket rows); otherwise only non-empty groups appear."""
+    complete (used for the A-E bucket rows); otherwise only non-empty groups appear.
+
+    iter-27 (J-86): each row ADDITIVELY carries `mean_max_drawdown` — the mean of the group's stored
+    max-drawdowns (read-only, over only observations with a stored drawdown; None when the group has none),
+    beside the existing `mean_return`. A purely additive key — every existing reader (which keys off
+    `mean_return` / `n` / the label) is unaffected."""
     buckets: dict[str, list[float]] = defaultdict(list)
     for obs in observations:
         value = obs.get(group_attr)
         if value is not None:
             buckets[value].append(obs["return"])
+    mdd_buckets = _group_mdd(observations, group_attr)
+
+    def _row(value, returns: list[float]) -> dict:
+        return {
+            label_key: value,
+            "mean_return": mean(returns) if returns else None,
+            "mean_max_drawdown": _mean_or_none(mdd_buckets.get(value, [])),
+            "n": len(returns),
+        }
 
     rows: list[dict] = []
     emitted: set = set()
     for value in order:
         if value in buckets:
-            rows.append({label_key: value, "mean_return": mean(buckets[value]), "n": len(buckets[value])})
+            rows.append(_row(value, buckets[value]))
             emitted.add(value)
         elif pad:
-            rows.append({label_key: value, "mean_return": None, "n": 0})
+            rows.append(_row(value, []))
             emitted.add(value)
     for value in sorted(buckets):
         if value not in emitted:
-            rows.append({label_key: value, "mean_return": mean(buckets[value]), "n": len(buckets[value])})
+            rows.append(_row(value, buckets[value]))
     return rows
 
 
@@ -516,7 +583,11 @@ def _attribution_slices(stock_obs: list[dict], cfg: Config) -> dict:
     }
 
 
-def _leadership_returns(ret_by_symbol: dict[str, float], cfg: Config) -> dict:
+def _leadership_returns(
+    ret_by_symbol: dict[str, float],
+    cfg: Config,
+    mdd_by_symbol: Optional[dict[str, Optional[float]]] = None,
+) -> dict:
     """The READ-ONLY leadership-return projection (J-21): the realized forward return of each Top Sector
     / Top Theme / Ranked-Cohort row at ONE horizon, derived ENTIRELY from the already-built
     `ret_by_symbol` (symbol -> the stored `realized_return` for this run+horizon) + config. It issues NO
@@ -534,32 +605,51 @@ def _leadership_returns(ret_by_symbol: dict[str, float], cfg: Config) -> dict:
       - `cohort`:  one row per universe ticker (the stored `scanner_results` set) -> its OWN stored
         return; `n` 1 if present else 0.
     A (row, horizon) with no stored return -> `mean_return` None / `n` 0 (honest NA — never a fabricated
-    0%, anti-goal: No fabricated data)."""
-    sectors = [
-        {
+    0%, anti-goal: No fabricated data).
+
+    iter-27 (J-86): when `mdd_by_symbol` (symbol -> the stored `max_drawdown` for this run+horizon, read
+    VERBATIM) is supplied, EACH row ADDITIVELY carries `max_drawdown` paired to its `mean_return`, derived
+    by the SAME projection rule (sector = the ETF's OWN stored drawdown; theme = the equal-weight mean of
+    its members' stored drawdowns over ONLY members that have one; cohort = its OWN stored drawdown). It
+    recomputes NO drawdown — a pure projection of the SAME stored values. A row with no stored drawdown ->
+    `max_drawdown` None (honest NA). `mdd_by_symbol=None` keeps the pre-J-86 shape (no `max_drawdown` key),
+    so the Backtest scorecard path is byte-identical until it opts in."""
+    mdd = mdd_by_symbol  # alias; None means "do not project max_drawdown" (pre-J-86 callers)
+    sectors = []
+    for etf, name in cfg.etfs.sector.items():
+        row = {
             "sector_etf": etf,
             "sector": name,
             "mean_return": ret_by_symbol.get(etf),
             "n": 1 if etf in ret_by_symbol else 0,
         }
-        for etf, name in cfg.etfs.sector.items()
-    ]
+        if mdd is not None:
+            row["max_drawdown"] = mdd.get(etf)  # the ETF's OWN stored drawdown (verbatim); NA when absent
+        sectors.append(row)
     themes = []
     for slug, members in cfg.themes.items():
         member_returns = [ret_by_symbol[m] for m in members if m in ret_by_symbol]
-        themes.append({
+        row = {
             "slug": slug,
             "mean_return": _mean_or_none(member_returns),  # equal-weight; None when no member has a return
             "n": len(member_returns),
-        })
-    cohort = [
-        {
+        }
+        if mdd is not None:
+            # equal-weight member-basket drawdown over ONLY members with a stored drawdown (absent members
+            # skipped, never counted as 0); None when no member has one — the SAME rule as the basket return.
+            member_mdds = [mdd[m] for m in members if mdd.get(m) is not None]
+            row["max_drawdown"] = _mean_or_none(member_mdds)
+        themes.append(row)
+    cohort = []
+    for ticker in cfg.universe.symbols:
+        row = {
             "ticker": ticker,
             "mean_return": ret_by_symbol.get(ticker),
             "n": 1 if ticker in ret_by_symbol else 0,
         }
-        for ticker in cfg.universe.symbols
-    ]
+        if mdd is not None:
+            row["max_drawdown"] = mdd.get(ticker)  # the cohort symbol's OWN stored drawdown (verbatim)
+        cohort.append(row)
     return {"sectors": sectors, "themes": themes, "cohort": cohort}
 
 
@@ -602,6 +692,9 @@ def compute_forward_aggregates(
         )
     fr_rows = session.exec(fr_stmt).all()
     ret_by_run_symbol = {(fr.run_id, fr.symbol): fr.realized_return for fr in fr_rows}
+    # iter-27 (J-86): the stored max_drawdown for each (run, symbol) at this horizon, read VERBATIM — so
+    # the aggregate mean-MDD is a read-only grouping of the SAME stored values (no recomputed drawdown).
+    mdd_by_run_symbol = {(fr.run_id, fr.symbol): fr.max_drawdown for fr in fr_rows}
     runs_with_fr = sorted({fr.run_id for fr in fr_rows})
 
     results = (
@@ -625,6 +718,9 @@ def compute_forward_aggregates(
             "run_id": res.run_id,
             "ticker": res.ticker,
             "return": realized,
+            # iter-27 (J-86): the stored max_drawdown for this observation (read verbatim) — paired to the
+            # return so the aggregate mean-MDD groups exactly the same observation set as the mean return.
+            "max_drawdown": mdd_by_run_symbol.get((res.run_id, res.ticker)),
             "bucket": res.leadership_bucket,   # stored canonical A-E (verbatim — no re-bucketing)
             "setup": res.setup_status,         # stored canonical setup status (verbatim)
             "sector": res.sector,
@@ -638,6 +734,10 @@ def compute_forward_aggregates(
 
     stock_returns = [o["return"] for o in stock_obs]
     overall_mean = _mean_or_none(stock_returns)
+    # iter-27 (J-86): the overall mean max-drawdown over only observations with a stored drawdown (the same
+    # NA discipline the return aggregate uses) — read-only over the SAME stored values, recomputes nothing.
+    overall_mdds = [o["max_drawdown"] for o in stock_obs if o["max_drawdown"] is not None]
+    overall_mean_mdd = _mean_or_none(overall_mdds)
     spy_returns = [ret_by_run_symbol[(r, bm["spy"])] for r in runs_with_fr if (r, bm["spy"]) in ret_by_run_symbol]
     qqq_returns = [ret_by_run_symbol[(r, bm["qqq"])] for r in runs_with_fr if (r, bm["qqq"]) in ret_by_run_symbol]
     spy_mean = _mean_or_none(spy_returns)
@@ -669,7 +769,8 @@ def compute_forward_aggregates(
     # cohorts always emitted (padded to n=0 / mean None when empty); each carries `n` so the UI flags
     # n < min_sample and shows NA honestly. No new endpoint, no second formula — one grouping path.
     by_vcp = [
-        {"vcp": VCP_LABELS[row["vcp"]], "mean_return": row["mean_return"], "n": row["n"]}
+        {"vcp": VCP_LABELS[row["vcp"]], "mean_return": row["mean_return"],
+         "mean_max_drawdown": row["mean_max_drawdown"], "n": row["n"]}
         for row in _group_means(stock_obs, "is_vcp", "vcp", [True, False], pad=True)
     ]
     # by_<name> (iter-9, J-28): the SAME stored-mirror grouping as by_vcp for the two new detected
@@ -677,11 +778,13 @@ def compute_forward_aggregates(
     # emitted (padded n=0 / mean None when empty), each carrying `n` so the UI shows honest NA below
     # min_sample. No new endpoint, no second formula — one grouping path.
     by_pullback_to_rising_dma = [
-        {"pullback_to_rising_dma": PULLBACK_LABELS[row["pullback_to_rising_dma"]], "mean_return": row["mean_return"], "n": row["n"]}
+        {"pullback_to_rising_dma": PULLBACK_LABELS[row["pullback_to_rising_dma"]], "mean_return": row["mean_return"],
+         "mean_max_drawdown": row["mean_max_drawdown"], "n": row["n"]}
         for row in _group_means(stock_obs, "is_pullback_to_rising_dma", "pullback_to_rising_dma", [True, False], pad=True)
     ]
     by_flat_base_breakout = [
-        {"flat_base_breakout": FLAT_BASE_LABELS[row["flat_base_breakout"]], "mean_return": row["mean_return"], "n": row["n"]}
+        {"flat_base_breakout": FLAT_BASE_LABELS[row["flat_base_breakout"]], "mean_return": row["mean_return"],
+         "mean_max_drawdown": row["mean_max_drawdown"], "n": row["n"]}
         for row in _group_means(stock_obs, "is_flat_base_breakout", "flat_base_breakout", [True, False], pad=True)
     ]
 
@@ -693,7 +796,7 @@ def compute_forward_aggregates(
         "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
         "n_runs": len(runs_with_fr),
         "asof_dates": asof_dates,
-        "overall": {"mean_return": overall_mean, "n": len(stock_returns)},
+        "overall": {"mean_return": overall_mean, "mean_max_drawdown": overall_mean_mdd, "n": len(stock_returns)},
         "by_bucket": _group_means(stock_obs, "bucket", "bucket", BUCKET_ORDER, pad=True),
         "by_setup": _group_means(stock_obs, "setup", "setup", ALL_STATUSES, pad=False),
         "by_regime": _group_means(stock_obs, "regime", "regime", cfg.regime.labels, pad=False),
@@ -774,6 +877,9 @@ def compute_run_scorecard(session: Session, run: ScannerRun, config: Optional[Co
     for horizon in wf.horizons:
         fr_at_h = [fr for fr in fr_rows if fr.horizon == horizon]
         ret_by_symbol = {fr.symbol: fr.realized_return for fr in fr_at_h}
+        # iter-27 (J-86): the SAME stored rows' max_drawdown (read verbatim) so the Top Sector / Top Theme
+        # / cohort leadership-return projection carries a paired MDD identical to the leaderboard (J-06).
+        mdd_by_symbol = {fr.symbol: fr.max_drawdown for fr in fr_at_h}
         ret_by_run_symbol = {(run.id, sym): ret for sym, ret in ret_by_symbol.items()}
         runs_with_fr = sorted({fr.run_id for fr in fr_at_h})  # [] or [run.id]
 
@@ -813,7 +919,9 @@ def compute_run_scorecard(session: Session, run: ScannerRun, config: Optional[Co
             "attribution": _attribution_slices(stock_obs, cfg),
             # J-21: the read-only leadership-return projection (sector ETF / theme members / cohort
             # symbol) over the SAME stored `ret_by_symbol` — no recomputed return, no second query.
-            "leadership_returns": _leadership_returns(ret_by_symbol, cfg),
+            # iter-27 (J-86): paired with the stored max_drawdown projection (the SAME builder the
+            # leaderboard reads), so a sector/theme MDD reads identically on Backtest and its leaderboard.
+            "leadership_returns": _leadership_returns(ret_by_symbol, cfg, mdd_by_symbol),
         })
 
     return {

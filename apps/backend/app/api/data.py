@@ -43,9 +43,15 @@ class JobCreate(BaseModel):
 
     `expand` (J-35) is the operator-facing universe-screen job: it screens the committed candidate pool
     over the selected source (which MUST be `supports_market_cap: true` — the engine rejects an ineligible
-    source) and grows the scored universe; its `start`/`end` are the OHLCV-fetch window job parameters."""
+    source) and grows the scored universe; its `start`/`end` are the OHLCV-fetch window job parameters.
 
-    kind: Literal["fetch", "backfill", "both", "expand"]
+    `rebuild` (J-85) is the confirm-gated regenerate-from-scratch snapshot rebuild: it CLEARS the entire
+    snapshot set then create-once recomputes a snapshot + forward returns for EVERY covered trading day
+    over the resolved universe (reading the committed seed offline — no source/key). It IGNORES the
+    supplied `start`/`end` (the rebuild scope is the full covered calendar, not a range); the endpoint
+    passes the latest data date for both as a structural placeholder."""
+
+    kind: Literal["fetch", "backfill", "both", "expand", "rebuild"]
     start: date_cls
     end: date_cls
     source: Optional[str] = None

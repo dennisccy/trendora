@@ -55,33 +55,48 @@ def resolved_date(session: Session, as_of: Optional[str], config: Optional[Confi
 
 def _forward_returns_by_symbol(
     session: Session, run: ScannerRun, config: Optional[Config] = None
-) -> dict[str, dict[int, float]]:
-    """`symbol -> {horizon: realized_return}` for THIS run, read VERBATIM from the stored append-only
-    `forward_returns` table (J-75). The SAME stored rows the Backtest scorecard (J-21) reads — keyed by
-    `run_id` + `symbol` + `horizon` — so the leaderboard / detail / Backtest forward returns are one
-    single source (J-06-style coherence). It RECOMPUTES no return: a single SELECT against
-    `ForwardReturn` for the run, grouped into a per-symbol horizon map. A (symbol, horizon) with no
-    stored row is simply absent from the inner map (the caller renders NA — never a fabricated number;
-    no-lookahead is intrinsic to the stored rows, which only ever measure bars dated > D)."""
+) -> dict[str, dict[int, dict]]:
+    """`symbol -> {horizon: {"return": realized_return, "max_drawdown": max_drawdown}}` for THIS run, read
+    VERBATIM from the stored append-only `forward_returns` table (J-75 + J-86). The SAME stored rows the
+    Backtest scorecard (J-21) reads — keyed by `run_id` + `symbol` + `horizon` — so the leaderboard /
+    detail / Backtest forward returns are one single source (J-06-style coherence). It RECOMPUTES no
+    return / drawdown: a single SELECT against `ForwardReturn` for the run, grouped into a per-symbol
+    horizon map. A (symbol, horizon) with no stored row is simply absent from the inner map (the caller
+    renders NA — never a fabricated number; no-lookahead is intrinsic to the stored rows, which only ever
+    measure bars dated > D)."""
     rows = session.exec(
         select(ForwardReturn).where(ForwardReturn.run_id == run.id)
     ).all()
-    by_symbol: dict[str, dict[int, float]] = {}
+    by_symbol: dict[str, dict[int, dict]] = {}
     for fr in rows:
-        by_symbol.setdefault(fr.symbol, {})[fr.horizon] = fr.realized_return
+        # iter-27 (J-86): carry the stored max_drawdown beside the stored realized_return — both read
+        # VERBATIM (no recompute). An older row predating the column reads max_drawdown=None (honest NA).
+        by_symbol.setdefault(fr.symbol, {})[fr.horizon] = {
+            "return": fr.realized_return,
+            "max_drawdown": fr.max_drawdown,
+        }
     return by_symbol
 
 
 def _forward_returns_for_row(
-    symbol: str, by_symbol: dict[str, dict[int, float]], horizons: list[int]
+    symbol: str, by_symbol: dict[str, dict[int, dict]], horizons: list[int]
 ) -> list[dict]:
-    """The ADDITIVE per-stock forward-return list for ONE ticker (J-75): one entry per CONFIGURED horizon
-    (`config.walk_forward.horizons` — NO hardcoded `[1,5,10,20,60]` literal), each `{horizon, return}`
-    where `return` is the stored `realized_return` read verbatim, or `None` (NA) when no stored row exists
-    for that (run, symbol, horizon) — so at/near the latest date all five are honestly NA, never
-    fabricated. The horizons are emitted in config order so the leaderboard columns map to them."""
+    """The ADDITIVE per-stock forward-return list for ONE ticker (J-75 + J-86): one entry per CONFIGURED
+    horizon (`config.walk_forward.horizons` — NO hardcoded `[1,5,10,20,60]` literal), each
+    `{horizon, return, max_drawdown}` where `return` is the stored `realized_return` and `max_drawdown`
+    is the stored max-drawdown, BOTH read verbatim, or `None` (NA) when no stored row exists for that
+    (run, symbol, horizon) — so at/near the latest date all are honestly NA, never fabricated. The
+    horizons are emitted in config order so the leaderboard columns map to them; `max_drawdown` is paired
+    to each `return` so a row's drawdown is NA exactly when its return is."""
     horizon_map = by_symbol.get(symbol.upper(), {}) or by_symbol.get(symbol, {})
-    return [{"horizon": h, "return": horizon_map.get(h)} for h in horizons]
+    return [
+        {
+            "horizon": h,
+            "return": horizon_map.get(h, {}).get("return") if h in horizon_map else None,
+            "max_drawdown": horizon_map.get(h, {}).get("max_drawdown") if h in horizon_map else None,
+        }
+        for h in horizons
+    ]
 
 
 def _leadership_returns_by_horizon(
@@ -95,19 +110,25 @@ def _leadership_returns_by_horizon(
     VERBATIM from the stored append-only `forward_returns` table and recomputes NO return; absent members
     are skipped (never counted as 0), `None`/NA when no member / no stored row.
 
-    Returns `{horizon: {"themes": {slug: mean_return}, "sectors": {sector_etf: mean_return}}}` — the
-    per-horizon projection indexed for O(1) per-row lookup, so neither `themes_payload` nor `sectors_payload`
-    issues a second query per horizon per row (one SELECT total for the run)."""
+    Returns `{horizon: {"themes": {slug: {return, max_drawdown}}, "sectors": {sector_etf: {return,
+    max_drawdown}}}}` — the per-horizon projection indexed for O(1) per-row lookup, so neither
+    `themes_payload` nor `sectors_payload` issues a second query per horizon per row (one SELECT total for
+    the run). iter-27 (J-86): each projected row ADDITIVELY carries `max_drawdown` (theme = equal-weight
+    member-basket drawdown; sector = the ETF's own drawdown) read VERBATIM via the SAME `_leadership_returns`
+    builder Backtest uses — recomputes nothing."""
     fr_rows = session.exec(
         select(ForwardReturn).where(ForwardReturn.run_id == run.id)
     ).all()
     by_horizon: dict[int, dict] = {}
     for horizon in cfg.walk_forward.horizons:
         ret_by_symbol = {fr.symbol: fr.realized_return for fr in fr_rows if fr.horizon == horizon}
-        proj = _leadership_returns(ret_by_symbol, cfg)  # SAME builder Backtest reads (J-06)
+        # iter-27 (J-86): the SAME stored rows' max_drawdown, read verbatim — passed to the SAME builder so
+        # the leaderboard MDD is byte-identical to Backtest's for the same date+horizon (J-06).
+        mdd_by_symbol = {fr.symbol: fr.max_drawdown for fr in fr_rows if fr.horizon == horizon}
+        proj = _leadership_returns(ret_by_symbol, cfg, mdd_by_symbol)  # SAME builder Backtest reads (J-06)
         by_horizon[horizon] = {
-            "themes": {t["slug"]: t["mean_return"] for t in proj["themes"]},
-            "sectors": {s["sector_etf"]: s["mean_return"] for s in proj["sectors"]},
+            "themes": {t["slug"]: {"return": t["mean_return"], "max_drawdown": t["max_drawdown"]} for t in proj["themes"]},
+            "sectors": {s["sector_etf"]: {"return": s["mean_return"], "max_drawdown": s["max_drawdown"]} for s in proj["sectors"]},
         }
     return by_horizon
 
@@ -117,12 +138,17 @@ def _forward_returns_from_projection(
 ) -> list[dict]:
     """The ADDITIVE per-row forward-return list for ONE theme (`dimension="themes"`, `key`=slug) or ONE
     sector/industry ETF (`dimension="sectors"`, `key`=ticker) — one entry per CONFIGURED horizon
-    (`config.walk_forward.horizons` — NO hardcoded `[1,5,10,20,60]` literal), each `{horizon, return}`
-    where `return` is the `_leadership_returns` projection value read verbatim (theme = equal-weight member
-    basket; sector = the ETF's own stored return), or `None` (NA) when no stored return — so at/near latest
-    all five are honestly NA, never fabricated (J-81)."""
+    (`config.walk_forward.horizons` — NO hardcoded `[1,5,10,20,60]` literal), each
+    `{horizon, return, max_drawdown}` where `return` is the `_leadership_returns` projection value read
+    verbatim (theme = equal-weight member basket; sector = the ETF's own stored return) and `max_drawdown`
+    is the paired projected drawdown (J-86), or `None` (NA) when no stored value — so at/near latest all
+    are honestly NA, never fabricated (J-81)."""
     return [
-        {"horizon": h, "return": leadership_by_horizon[h][dimension].get(key)}
+        {
+            "horizon": h,
+            "return": leadership_by_horizon[h][dimension].get(key, {}).get("return"),
+            "max_drawdown": leadership_by_horizon[h][dimension].get(key, {}).get("max_drawdown"),
+        }
         for h in horizons
     ]
 

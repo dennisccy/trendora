@@ -4,7 +4,7 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlmodel import Session, SQLModel
 
-from app.models import DailyPrice, DataProviderRun, ImportCheckpoint, Stock, ThemeMember
+from app.models import DailyPrice, DataProviderRun, ForwardReturn, ImportCheckpoint, Stock, ThemeMember
 from app.seed_loader import load_seed
 
 ITER1_TABLES = {
@@ -156,6 +156,46 @@ def test_additive_migration_backfills_job_id_and_completed_stages_on_existing_db
     create_db_and_tables(make_engine(f"sqlite:///{db}"))  # idempotent — a second run must not error
 
 
+def test_additive_migration_backfills_max_drawdown_on_existing_forward_returns(tmp_path):
+    """iter-27 (J-86) REGRESSION: the new `forward_returns.max_drawdown` column added to the ALREADY-CREATED
+    forward_returns table must be registered in `_ADDITIVE_COLUMNS`, else an existing offline-first DB never
+    gains it and every `/api/stocks` read 500s with `no such column`. Build a LEGACY forward_returns table
+    (no max_drawdown), then assert create_db_and_tables backfills it in place (nullable, idempotent), and an
+    existing row reads NULL (honest NA — never a fabricated 0)."""
+    from sqlalchemy import inspect, text
+
+    from app.db import _ADDITIVE_COLUMNS, create_db_and_tables, make_engine
+
+    # the column is registered in the additive registry
+    registered = {(t, c) for t, c, _ddl in _ADDITIVE_COLUMNS}
+    assert ("forward_returns", "max_drawdown") in registered
+
+    db = tmp_path / "legacy_iter27.db"
+    engine = make_engine(f"sqlite:///{db}")
+    with engine.begin() as conn:
+        # LEGACY forward_returns WITHOUT max_drawdown (but WITH the iter-14 mae/mfe columns).
+        conn.execute(text(
+            "CREATE TABLE forward_returns ("
+            "id INTEGER PRIMARY KEY, run_id INTEGER, symbol TEXT, horizon INTEGER, asof_date DATE, "
+            "entry_close FLOAT, measured_date DATE, realized_return FLOAT, mae FLOAT, mfe FLOAT)"
+        ))
+        conn.execute(text(
+            "INSERT INTO forward_returns (run_id, symbol, horizon, asof_date, entry_close, measured_date, "
+            "realized_return, mae, mfe) VALUES "
+            "(1, 'AAA', 5, '2024-01-05', 100.0, '2024-01-12', 0.05, -0.02, 0.07)"
+        ))
+    before = {c["name"] for c in inspect(engine).get_columns("forward_returns")}
+    assert "max_drawdown" not in before
+
+    create_db_and_tables(engine)  # applies the additive backfill
+
+    after = {c["name"] for c in inspect(make_engine(f"sqlite:///{db}")).get_columns("forward_returns")}
+    assert "max_drawdown" in after
+    with engine.begin() as conn:
+        assert conn.execute(text("SELECT max_drawdown FROM forward_returns")).scalar() is None  # honest NA
+    create_db_and_tables(make_engine(f"sqlite:///{db}"))  # idempotent — a second run must not error
+
+
 def test_every_model_column_on_existing_table_is_covered_by_additive_registry(tmp_path):
     """GUARD against the iter-29 class of bug: for each table that already exists in an OLDER DB, every
     column the current SQLModel defines must EITHER be creatable on a pre-existing table via an
@@ -177,10 +217,12 @@ def test_every_model_column_on_existing_table_is_covered_by_additive_registry(tm
     for table, column, _ddl in _ADDITIVE_COLUMNS:
         registry_by_table.setdefault(table, set()).add(column)
 
-    # The two mutable job-control tables that gained columns this/prior iterations.
+    # The tables that gained columns this/prior iterations (mutable job-control + the append-only
+    # forward_returns table, which gained iter-27's max_drawdown).
     for table, model_cls in (
         ("data_provider_runs", DataProviderRun),
         ("import_checkpoints", ImportCheckpoint),
+        ("forward_returns", ForwardReturn),
     ):
         live_cols = {c["name"] for c in insp.get_columns(table)}
         model_cols = {c.name for c in model_cls.__table__.columns}
@@ -199,6 +241,8 @@ def test_every_model_column_on_existing_table_is_covered_by_additive_registry(tm
 NEW_COLUMNS_THIS_SESSION = {
     "data_provider_runs": {"job_id"},
     "import_checkpoints": {"completed_stages_json"},
+    # iter-27 (J-86): the append-only max-drawdown column added to the existing forward_returns table.
+    "forward_returns": {"max_drawdown"},
 }
 
 

@@ -71,6 +71,13 @@ _ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # path. NOT NULL DEFAULT '[]' — matches `completed_stages_json: str = "[]"` (a legacy/fresh row reads an
     # empty stage set, never NULL).
     ("import_checkpoints", "completed_stages_json", "ALTER TABLE import_checkpoints ADD COLUMN completed_stages_json VARCHAR NOT NULL DEFAULT '[]'"),
+    # iter-27 (J-86): the append-only max-drawdown column on the forward_returns table — the worst
+    # peak-to-trough decline over the first `horizon` post-snapshot bars (<= 0). NULLABLE FLOAT (matches
+    # `max_drawdown: Optional[float] = Field(default=None)` — a fresh DB carries it from the model; an
+    # existing live DB gains it in place so a non-fresh read of /api/stocks does not 500). It NEVER drops
+    # or rewrites data; existing forward_returns rows read NULL until the next confirm-gated rebuild
+    # repopulates them (the J-85 rebuild is the create-once path that recomputes forward returns).
+    ("forward_returns", "max_drawdown", "ALTER TABLE forward_returns ADD COLUMN max_drawdown FLOAT"),
 )
 
 

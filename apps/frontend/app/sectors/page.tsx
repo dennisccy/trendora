@@ -9,7 +9,7 @@ import { ComponentBreakdown } from "@/components/component-breakdown";
 import { EmptyState } from "@/components/empty-state";
 // J-81: the SHARED forward-return formatter/colour helper (the same one /stocks J-75 + the evidence
 // tables use) — aliased so it does not collide with this page's local no-sign `fmtPct` (dist-from-high).
-import { fmtPct as fmtFwdPct, returnClass } from "@/components/forward-return";
+import { fmtMdd, fmtPct as fmtFwdPct, mddClass, returnClass } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
@@ -38,13 +38,19 @@ function fmtPct(value: number | null): string {
 // forward-return columns `fwd_<horizon>`. A pure VIEW transform — sorting only re-orders the served rows;
 // it recomputes/refetches nothing and never changes a displayed value.
 type BaseSortKey = "rank" | "score";
-type SortKey = BaseSortKey | `fwd_${number}`;
+type SortKey = BaseSortKey | `fwd_${number}` | `mdd_${number}`;
 type SortDir = "asc" | "desc";
 
 /** J-81 — a sector ETF's realized forward return at `horizon` from the served `forward_returns`
  *  (NA → null). Read verbatim; never recomputed. */
 function fwdReturnAt(row: SectorRow, horizon: number): number | null {
   return row.forward_returns.find((fr) => fr.horizon === horizon)?.return ?? null;
+}
+
+/** J-86 — a sector ETF's realized max-drawdown at `horizon` from the served `forward_returns`
+ *  (NA → null; <= 0 where present). Read verbatim; never recomputed. */
+function fwdMddAt(row: SectorRow, horizon: number): number | null {
+  return row.forward_returns.find((fr) => fr.horizon === horizon)?.max_drawdown ?? null;
 }
 
 const BASE_COMPARATORS: Record<BaseSortKey, (a: SectorRow, b: SectorRow) => number> = {
@@ -55,12 +61,13 @@ const BASE_COMPARATORS: Record<BaseSortKey, (a: SectorRow, b: SectorRow) => numb
 /** Resolve a sort key to its comparator. A null (NA) forward return ALWAYS sorts LAST regardless of
  *  direction; the stable memo then tie-breaks by stored rank. Pure re-order of served values. */
 function comparatorFor(key: SortKey, dir: SortDir): (a: SectorRow, b: SectorRow) => number {
-  if (key.startsWith("fwd_")) {
+  if (key.startsWith("fwd_") || key.startsWith("mdd_")) {
     const horizon = Number(key.slice(4));
+    const valueAt = key.startsWith("mdd_") ? fwdMddAt : fwdReturnAt; // J-86 MDD column shares the view-transform
     const sign = dir === "asc" ? 1 : -1;
     return (a, b) => {
-      const av = fwdReturnAt(a, horizon);
-      const bv = fwdReturnAt(b, horizon);
+      const av = valueAt(a, horizon);
+      const bv = valueAt(b, horizon);
       if (av === null && bv === null) return 0;
       if (av === null) return 1; // NA last regardless of direction
       if (bv === null) return -1;
@@ -95,7 +102,7 @@ function SortHeader({
       ? "ascending"
       : "descending"
     : "none";
-  const isFwd = col.startsWith("fwd_");
+  const isFwd = col.startsWith("fwd_") || col.startsWith("mdd_");
   return (
     <th className={cn("px-3 py-2 font-medium", isFwd && "text-right")} aria-sort={ariaSort}>
       <button
@@ -136,6 +143,19 @@ function ForwardReturnCell({ value }: { value: number | null }) {
     );
   }
   return <span className={cn("num font-semibold", returnClass(value))}>{fmtFwdPct(value)}</span>;
+}
+
+/** J-86 — one colour-graded max-drawdown cell: the served realized drawdown (<= 0; NA → "NA" muted), read
+ *  verbatim. A real (negative) drawdown reads red via the shared `mddClass` helper. */
+function MaxDrawdownCell({ value }: { value: number | null }) {
+  if (value === null || value === undefined) {
+    return (
+      <span className="num text-text-muted" title="No realized max drawdown at this horizon yet (NA)">
+        NA
+      </span>
+    );
+  }
+  return <span className={cn("num font-semibold", mddClass(value))}>{fmtMdd(value)}</span>;
 }
 
 export default function SectorsPage() {
@@ -262,6 +282,18 @@ export default function SectorsPage() {
                     onSort={onSort}
                   />
                 ))}
+                {/* J-86 — five PAIRED max-drawdown columns to the RIGHT of the forward returns; the ETF's
+                    OWN drawdown Backtest's Top Sectors shows for the same date+horizon (<= 0, sortable). */}
+                {fwdHorizons.map((h) => (
+                  <SortHeader
+                    key={`mdd_${h}`}
+                    col={`mdd_${h}` as SortKey}
+                    label={`${h}d MDD`}
+                    activeKey={sortKey}
+                    dir={sortDir}
+                    onSort={onSort}
+                  />
+                ))}
                 <th className="px-3 py-2 font-medium">Trend</th>
                 <th className="px-3 py-2" aria-label="expand" />
               </tr>
@@ -314,8 +346,9 @@ function SectorRows({
   const extra = row.members.length - MEMBER_PREVIEW_LIMIT;
   // Industry membership is config-curated reference data; label it honestly so the source is clear.
   const membersLabel = row.kind === "industry" ? "Members (config-defined)" : "Members";
-  // the expanded panel spans every column: rank + ticker + kind + score + RS + dist + N fwd + trend + chevron
-  const colSpan = 6 + fwdHorizons.length + 2;
+  // the expanded panel spans every column: rank + ticker + kind + score + RS + dist + N fwd + N mdd
+  // (J-86) + trend + chevron
+  const colSpan = 6 + fwdHorizons.length * 2 + 2;
   return (
     <>
       <tr
@@ -359,6 +392,12 @@ function SectorRows({
         {fwdHorizons.map((h) => (
           <td key={`fwd_${h}`} className="px-3 py-2 text-right" data-testid={`sector-fwd-${h}`}>
             <ForwardReturnCell value={row.forward_returns.find((fr) => fr.horizon === h)?.return ?? null} />
+          </td>
+        ))}
+        {/* J-86 — five paired max-drawdown cells (to the right of the forward returns; <= 0, NA-honest). */}
+        {fwdHorizons.map((h) => (
+          <td key={`mdd_${h}`} className="px-3 py-2 text-right" data-testid={`sector-mdd-${h}`}>
+            <MaxDrawdownCell value={row.forward_returns.find((fr) => fr.horizon === h)?.max_drawdown ?? null} />
           </td>
         ))}
         <td className="px-3 py-2 text-text-muted">{row.trend_label}</td>

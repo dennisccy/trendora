@@ -7,7 +7,7 @@ import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, ChevronRig
 import { useAsOf, useAsOfHref } from "@/components/asof-provider";
 import { ComponentBreakdown } from "@/components/component-breakdown";
 import { EmptyState } from "@/components/empty-state";
-import { fmtPct, returnClass } from "@/components/forward-return";
+import { fmtMdd, fmtPct, mddClass, returnClass } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
@@ -31,13 +31,19 @@ function fmtSignedPct(value: number | null): string {
 // forward-return columns `fwd_<horizon>`. A pure VIEW transform — sorting only re-orders the served
 // rows; it recomputes/refetches nothing and never changes a displayed value.
 type BaseSortKey = "rank" | "score";
-type SortKey = BaseSortKey | `fwd_${number}`;
+type SortKey = BaseSortKey | `fwd_${number}` | `mdd_${number}`;
 type SortDir = "asc" | "desc";
 
 /** J-81 — a theme's realized forward return at `horizon` from the served `forward_returns` (NA → null).
  *  Read verbatim; never recomputed. */
 function fwdReturnAt(row: ThemeRow, horizon: number): number | null {
   return row.forward_returns.find((fr) => fr.horizon === horizon)?.return ?? null;
+}
+
+/** J-86 — a theme's realized max-drawdown at `horizon` from the served `forward_returns` (NA → null;
+ *  <= 0 where present — the equal-weight member-basket drawdown). Read verbatim; never recomputed. */
+function fwdMddAt(row: ThemeRow, horizon: number): number | null {
+  return row.forward_returns.find((fr) => fr.horizon === horizon)?.max_drawdown ?? null;
 }
 
 const BASE_COMPARATORS: Record<BaseSortKey, (a: ThemeRow, b: ThemeRow) => number> = {
@@ -49,12 +55,13 @@ const BASE_COMPARATORS: Record<BaseSortKey, (a: ThemeRow, b: ThemeRow) => number
  *  direction (NA never poses as a top/bottom value); the stable memo then tie-breaks by stored rank.
  *  Pure re-order of served values (J-81/J-48 view-transform contract). */
 function comparatorFor(key: SortKey, dir: SortDir): (a: ThemeRow, b: ThemeRow) => number {
-  if (key.startsWith("fwd_")) {
+  if (key.startsWith("fwd_") || key.startsWith("mdd_")) {
     const horizon = Number(key.slice(4));
+    const valueAt = key.startsWith("mdd_") ? fwdMddAt : fwdReturnAt; // J-86 MDD column shares the view-transform
     const sign = dir === "asc" ? 1 : -1;
     return (a, b) => {
-      const av = fwdReturnAt(a, horizon);
-      const bv = fwdReturnAt(b, horizon);
+      const av = valueAt(a, horizon);
+      const bv = valueAt(b, horizon);
       if (av === null && bv === null) return 0;
       if (av === null) return 1; // NA last regardless of direction
       if (bv === null) return -1;
@@ -193,6 +200,19 @@ export default function ThemesPage() {
                     onSort={onSort}
                   />
                 ))}
+                {/* J-86 — five PAIRED max-drawdown columns to the RIGHT of the forward returns; the
+                    equal-weight member-basket drawdown Backtest's Top Themes shows for the same
+                    date+horizon (<= 0, sortable, NA-honest). */}
+                {fwdHorizons.map((h) => (
+                  <SortHeader
+                    key={`mdd_${h}`}
+                    col={`mdd_${h}` as SortKey}
+                    label={`${h}d MDD`}
+                    activeKey={sortKey}
+                    dir={sortDir}
+                    onSort={onSort}
+                  />
+                ))}
                 <th className="px-3 py-2 font-medium">Trend</th>
                 <th className="px-3 py-2" aria-label="expand" />
               </tr>
@@ -238,7 +258,7 @@ function SortHeader({
       : "descending"
     : "none";
   // forward-return columns are right-aligned numeric (match the 1m/3m/Breadth cells); base columns left.
-  const isFwd = col.startsWith("fwd_");
+  const isFwd = col.startsWith("fwd_") || col.startsWith("mdd_");
   return (
     <th className={cn("px-3 py-2 font-medium", isFwd && "text-right")} aria-sort={ariaSort}>
       <button
@@ -281,6 +301,19 @@ function ForwardReturnCell({ value }: { value: number | null }) {
   return <span className={cn("num font-semibold", returnClass(value))}>{fmtPct(value)}</span>;
 }
 
+/** J-86 — one colour-graded max-drawdown cell: the served realized drawdown (<= 0; NA → "NA" muted), read
+ *  verbatim. A real (negative) drawdown reads red via the shared `mddClass` helper. */
+function MaxDrawdownCell({ value }: { value: number | null }) {
+  if (value === null || value === undefined) {
+    return (
+      <span className="num text-text-muted" title="No realized max drawdown at this horizon yet (NA)">
+        NA
+      </span>
+    );
+  }
+  return <span className={cn("num font-semibold", mddClass(value))}>{fmtMdd(value)}</span>;
+}
+
 /** J-57 — the member preview limit: the first N members render inline, the remaining N collapse behind
  *  the expandable `+n` control (a re-display of the already-served member list — nothing refetched). */
 const MEMBER_PREVIEW_LIMIT = 6;
@@ -308,7 +341,7 @@ function ThemeRows({
   const shownMembers = membersExpanded ? row.members : row.members.slice(0, MEMBER_PREVIEW_LIMIT);
   const extra = row.members.length - MEMBER_PREVIEW_LIMIT;
   // the expanded panel spans every column: rank + theme + score + 1m + 3m + breadth + N fwd + trend + chevron
-  const colSpan = 7 + fwdHorizons.length + 1;
+  const colSpan = 7 + fwdHorizons.length * 2 + 1;  // J-86: + the paired MDD columns
   return (
     <>
       <tr
@@ -347,6 +380,12 @@ function ThemeRows({
         {fwdHorizons.map((h) => (
           <td key={`fwd_${h}`} className="px-3 py-2 text-right" data-testid={`theme-fwd-${h}`}>
             <ForwardReturnCell value={row.forward_returns.find((fr) => fr.horizon === h)?.return ?? null} />
+          </td>
+        ))}
+        {/* J-86 — five paired max-drawdown cells (to the right of the forward returns; <= 0, NA-honest). */}
+        {fwdHorizons.map((h) => (
+          <td key={`mdd_${h}`} className="px-3 py-2 text-right" data-testid={`theme-mdd-${h}`}>
+            <MaxDrawdownCell value={row.forward_returns.find((fr) => fr.horizon === h)?.max_drawdown ?? null} />
           </td>
         ))}
         <td className="px-3 py-2 text-text-muted">{row.trend_label}</td>

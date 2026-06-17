@@ -783,6 +783,9 @@ def _event_study_members(
         members.append({
             "run_id": res.run_id, "ticker": res.ticker,
             "return": fr.realized_return, "mae": fr.mae, "mfe": fr.mfe,
+            # iter-27 (J-86): the stored max_drawdown read VERBATIM — aggregated read-only by the event
+            # study (mean-MDD beside the return stats); never recomputed. None on a short window.
+            "max_drawdown": fr.max_drawdown,
             "regime": regime_by_run.get(res.run_id),  # stored regime label (read verbatim)
             "sector": res.sector,                     # stored sector (read verbatim)
             # iter-20 (J-77) ADDITIVE enrichment: the observation's STORED setup status + pattern mirror
@@ -856,6 +859,7 @@ def _event_study_members_by_horizon(
             members_by_h[h].append({
                 "run_id": res.run_id, "ticker": res.ticker,
                 "return": fr.realized_return, "mae": fr.mae, "mfe": fr.mfe,
+                "max_drawdown": fr.max_drawdown,  # iter-27 (J-86) stored MDD read verbatim
                 "regime": regime_by_run.get(res.run_id),
                 "sector": res.sector,
                 "setup_status": res.setup_status,
@@ -991,6 +995,8 @@ def _event_study_horizon_row(members: list[dict], horizon: int, min_sample: int)
     returns = [m["return"] for m in members]
     maes = [m["mae"] for m in members if m["mae"] is not None]
     mfes = [m["mfe"] for m in members if m["mfe"] is not None]
+    # iter-27 (J-86): the stored max-drawdowns over only members with one (same NA discipline as mae/mfe).
+    mdds = [m["max_drawdown"] for m in members if m.get("max_drawdown") is not None]
     n = len(returns)
     dist = _distribution(returns)  # {mean_return, median, pct_positive, dispersion, n}
     return {
@@ -1004,6 +1010,8 @@ def _event_study_horizon_row(members: list[dict], horizon: int, min_sample: int)
         "expectancy": _expectancy(returns),
         "mean_mae": _mean_or_none(maes),
         "mean_mfe": _mean_or_none(mfes),
+        # J-86: the aggregate mean max-drawdown beside the return stats (read-only over stored values).
+        "mean_max_drawdown": _mean_or_none(mdds),
         "return_per_downside_dev": _risk_adjusted(returns),
         "return_per_mae": _return_per_mae(returns, maes),
     }
@@ -1319,6 +1327,7 @@ def _rsp_member(res: ScannerResult, fr, regime: Optional[str], p_keys: list[str]
     return {
         "run_id": res.run_id, "ticker": res.ticker,
         "return": fr.realized_return, "mae": fr.mae, "mfe": fr.mfe,
+        "max_drawdown": fr.max_drawdown,  # iter-27 (J-86) stored MDD read verbatim
         "regime": regime, "sector": res.sector,
         "setup_status": res.setup_status,
         "patterns": _stored_pattern_flags(res, p_keys),
@@ -1403,10 +1412,11 @@ def _rsp_combination_filter(obs: dict, regime: str, setup: str, pattern: str, p_
     return bool(obs["patterns"].get(pattern))
 
 
-def _rsp_stats(returns: list[float], maes: list[float], min_sample: int) -> dict:
+def _rsp_stats(returns: list[float], maes: list[float], mdds: list[float], min_sample: int) -> dict:
     """Per-combination descriptive stats over the member realized returns (read-only, J-77): `n`,
     `low_sample` (`n < min_sample`), `mean`, `median`, `pct_positive` (hit-rate), the expectancy
-    decomposition, and BOTH downside-only risk-adjusted figures (return/downside-dev REUSING
+    decomposition, the aggregate mean max-drawdown (iter-27, J-86 — beside the return stats, read-only
+    over the stored values), and BOTH downside-only risk-adjusted figures (return/downside-dev REUSING
     `_risk_adjusted`; return/mean-|MAE| REUSING `_return_per_mae`) — never total volatility. An empty
     cohort yields None for every figure (honest NA, never a fabricated 0). The engine computes every
     figure; the UI gates low-sample/empty cells to NA + n."""
@@ -1419,6 +1429,7 @@ def _rsp_stats(returns: list[float], maes: list[float], min_sample: int) -> dict
         "median": dist["median"],
         "pct_positive": dist["pct_positive"],
         "expectancy": _expectancy(returns)["expectancy"],
+        "mean_max_drawdown": _mean_or_none(mdds),  # J-86 aggregate mean MDD (same NA discipline)
         "return_per_downside_dev": _risk_adjusted(returns),
         "return_per_mae": _return_per_mae(returns, maes),
     }
@@ -1477,19 +1488,21 @@ def compute_regime_setup_pattern_study(
     # group the observations into (regime, setup, pattern) cohorts — the SAME membership the samples
     # drill-down reproduces (one rule). Each observation contributes to one cohort per flagged pattern
     # (or the `none` sentinel), so a two-pattern observation honestly counts under both.
-    grouped: dict[tuple, dict[str, list]] = defaultdict(lambda: {"returns": [], "maes": []})
+    grouped: dict[tuple, dict[str, list]] = defaultdict(lambda: {"returns": [], "maes": [], "mdds": []})
     for obs in observations:
         for key in _rsp_combination_members(obs, p_keys):
             grouped[key]["returns"].append(obs["return"])
             if obs["mae"] is not None:
                 grouped[key]["maes"].append(obs["mae"])
+            if obs.get("max_drawdown") is not None:  # iter-27 (J-86): stored MDD over the cohort
+                grouped[key]["mdds"].append(obs["max_drawdown"])
 
     rows = [
         {
             "regime": regime,
             "setup": setup,
             "pattern": pattern,
-            "stats": _rsp_stats(bucket["returns"], bucket["maes"], wf.min_sample),
+            "stats": _rsp_stats(bucket["returns"], bucket["maes"], bucket["mdds"], wf.min_sample),
         }
         for (regime, setup, pattern), bucket in grouped.items()
     ]

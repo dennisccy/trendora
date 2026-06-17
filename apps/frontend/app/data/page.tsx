@@ -24,6 +24,7 @@ import { TermInfo } from "@/components/ui/term-info";
 import { cn } from "@/lib/utils";
 import { formatIsoDate, formatIsoDateTime, isValidIsoDate, ISO_DATE_PLACEHOLDER } from "@/lib/dates";
 import {
+  type AbsentFromLatestSnapshot,
   dismissUnfinishedImport,
   executeDataRemoval,
   fetchDataAvailability,
@@ -410,6 +411,16 @@ export default function DataManagerPage() {
       {state.kind === "ok" ? (
         <>
           <CoveragePanel data={state.data} />
+          {/* J-85: the universe-vs-latest-snapshot coverage diagnostic banner (only when members are
+              absent) + the confirm-gated "Rebuild snapshots for current universe" action. The rebuild
+              POSTs kind="rebuild" and surfaces its progress through the SAME live job card / poll path
+              (setJob) — no second progress surface. The rebuild ignores dates (the full covered calendar). */}
+          <RebuildPanel
+            absent={state.data.coverage.absent_from_latest_snapshot}
+            latestDate={state.data.coverage.snapshot_dates[0] ?? state.data.coverage.price_end}
+            running={Boolean(jobRunning)}
+            onStarted={setJob}
+          />
           {/* J-61: the per-trading-date availability heatmap, near the coverage panel. It reads its own
               endpoint + manages its own loading/error/empty; clicking a day prefills the JOB FORM dates
               (job parameters — never the global as-of control). */}
@@ -585,6 +596,204 @@ function CoveragePanel({ data }: { data: DataOverviewResponse }) {
       </p>
       <PerSymbolCoverageTable rows={c.per_symbol} symbolCount={c.symbol_count} universeCount={c.universe_count} />
     </Card>
+  );
+}
+
+/** J-85 — the universe-vs-latest-snapshot coverage diagnostic banner + the confirm-gated
+ *  "Rebuild snapshots for current universe" action. The amber banner appears ONLY when members are absent
+ *  from the latest snapshot (`absent.absent_count > 0`); at 0 absent it renders an honest "all members in
+ *  the latest snapshot" note (no alarming banner). The rebuild is CONFIRM-GATED via the J-69 modal pattern
+ *  (Card + fixed overlay; a persistently-visible Confirm button outside any scroll region). Confirming
+ *  POSTs kind="rebuild" — a wholesale regenerate-from-scratch over the FULL covered calendar (dates are
+ *  ignored by the rebuild) — and surfaces its progress through the SAME live job card via `onStarted`
+ *  (no second progress surface; J-66). The committed price seed is never deleted by a rebuild. */
+function RebuildPanel({
+  absent,
+  latestDate,
+  running,
+  onStarted,
+}: {
+  absent: AbsentFromLatestSnapshot;
+  latestDate: string | null;
+  running: boolean;
+  onStarted: (job: DataJob) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const hasAbsent = absent.absent_count > 0;
+
+  async function handleConfirm() {
+    if (starting || running) return;
+    setStarting(true);
+    setError(null);
+    try {
+      // The rebuild IGNORES the supplied dates (the full covered calendar by design); the API still
+      // requires a start/end, so pass the latest snapshot/price date as a structural placeholder for both.
+      const placeholder = latestDate ?? new Date().toISOString().slice(0, 10);
+      const resp = await startDataJob("rebuild", placeholder, placeholder);
+      const snap = await fetchDataJob(resp.job_id); // seed the live job card
+      onStarted(snap);
+      setConfirming(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start the rebuild.");
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  return (
+    <Card className="p-0" data-testid="rebuild-panel">
+      <PanelTitle hint="Regenerate every immutable snapshot from scratch over the current resolved universe — so newly-expanded members appear in every read surface. The committed price seed is never deleted; no canonical formula changes (only the universe scanned over). Dates are not a parameter — the rebuild covers the full calendar.">
+        Rebuild snapshots for current universe
+      </PanelTitle>
+      <div className="space-y-3 p-4 text-sm">
+        {hasAbsent ? (
+          <div
+            className="flex items-start gap-2 rounded-md border border-warn bg-surface-2 p-3 text-xs text-warn"
+            data-testid="coverage-absent-banner"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <span>
+              <span className="num font-semibold">{absent.absent_count}</span> universe member
+              {absent.absent_count === 1 ? "" : "s"} (of {absent.universe_count}){" "}
+              {absent.absent_count === 1 ? "is" : "are"} absent from the latest snapshot
+              {absent.latest_snapshot_date ? ` (${formatIsoDate(absent.latest_snapshot_date)})` : ""} —
+              rebuild to include {absent.absent_count === 1 ? "it" : "them"}.
+              {absent.absent_preview.length > 0 ? (
+                <span className="num"> e.g. {absent.absent_preview.join(", ")}</span>
+              ) : null}
+            </span>
+          </div>
+        ) : (
+          <p className="text-xs text-text-muted" data-testid="coverage-absent-none">
+            All {absent.universe_count} resolved-universe members are present in the latest snapshot
+            {absent.latest_snapshot_date ? ` (${formatIsoDate(absent.latest_snapshot_date)})` : ""}. A
+            rebuild is optional — it deterministically regenerates the whole snapshot set from scratch.
+          </p>
+        )}
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          disabled={running || starting}
+          data-testid="rebuild-button"
+          className={cn(
+            "inline-flex h-9 items-center gap-2 rounded-md border px-4 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+            running || starting
+              ? "cursor-not-allowed border-border text-text-faint"
+              : "border-warn text-warn hover:bg-surface-2",
+          )}
+        >
+          <RotateCcw className="h-4 w-4" aria-hidden />
+          Rebuild snapshots for current universe
+        </button>
+        {running ? (
+          <p className="text-xs text-text-faint">A job is already running — wait for it to finish before rebuilding.</p>
+        ) : null}
+      </div>
+      {confirming ? (
+        <RebuildConfirmModal
+          absent={absent}
+          starting={starting}
+          error={error}
+          onCancel={() => {
+            setConfirming(false);
+            setError(null);
+          }}
+          onConfirm={handleConfirm}
+        />
+      ) : null}
+    </Card>
+  );
+}
+
+/** The J-69-pattern confirm modal for the J-85 rebuild — an in-page modal (Card + fixed overlay; no Dialog
+ *  primitive in this project), with a persistently-visible Confirm button OUTSIDE any scroll region. It
+ *  restates what the rebuild does (a from-scratch regenerate; the price seed is never deleted) so the
+ *  destructive-sounding action is never a surprise. */
+function RebuildConfirmModal({
+  absent,
+  starting,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  absent: AbsentFromLatestSnapshot;
+  starting: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(10,14,20,0.8)] p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Confirm snapshot rebuild"
+      data-testid="rebuild-confirm-modal"
+    >
+      <Card className="w-full max-w-lg p-0 shadow-xl">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-warn">
+            <RotateCcw className="h-4 w-4" aria-hidden />
+            Confirm snapshot rebuild
+          </h2>
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="Cancel"
+            className="rounded p-1 text-text-faint transition hover:bg-surface-2 hover:text-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
+        <div className="max-h-[55vh] space-y-3 overflow-y-auto p-4 text-sm">
+          <p className="text-text-muted">
+            This clears the entire snapshot set and recomputes a snapshot + forward returns for EVERY
+            covered trading day, over the current resolved universe ({absent.universe_count} members).
+          </p>
+          <ul className="list-disc space-y-1 pl-5 text-xs text-text-faint">
+            <li>The committed price seed is never deleted — only the derived snapshots are regenerated.</li>
+            <li>No canonical score/return formula changes — only the universe membership scanned over.</li>
+            <li>It can take several minutes; progress shows in the job card below.</li>
+            {absent.absent_count > 0 ? (
+              <li className="text-warn">
+                After it completes, the {absent.absent_count} currently-absent member
+                {absent.absent_count === 1 ? "" : "s"} will appear in every read surface.
+              </li>
+            ) : null}
+          </ul>
+          {error ? (
+            <p role="alert" className="flex items-center gap-2 text-xs text-neg">
+              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+              {error}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="inline-flex h-9 items-center rounded-md border border-border px-4 text-sm text-text-muted transition hover:border-border-strong hover:text-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={starting}
+            data-testid="rebuild-confirm-button"
+            className={cn(
+              "inline-flex h-9 items-center gap-2 rounded-md border border-warn bg-warn/10 px-4 text-sm font-semibold text-warn transition hover:bg-warn/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+              starting && "cursor-not-allowed opacity-60",
+            )}
+          >
+            {starting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RotateCcw className="h-4 w-4" aria-hidden />}
+            {starting ? "Starting…" : "Rebuild snapshots"}
+          </button>
+        </div>
+      </Card>
+    </div>
   );
 }
 

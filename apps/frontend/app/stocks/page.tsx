@@ -7,7 +7,7 @@ import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Search, TrendingUp } fr
 
 import { useAsOf, useAsOfHref } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
-import { fmtPct, returnClass } from "@/components/forward-return";
+import { fmtMdd, fmtPct, mddClass, returnClass } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
@@ -61,15 +61,22 @@ const PATTERNS: { key: string; label: string; badge: string; get: (row: StockRow
  *  Score columns sort by the stored 0–100 number (the A–E bucket rides along, unchanged); `setup` sorts
  *  alphabetically on the served status string; `ticker`/`sector` sort lexicographically. This is a pure
  *  VIEW transform — it only re-orders the already-served rows; it changes/recomputes no displayed value. */
-/** A base sortable column, plus the dynamic forward-return columns `fwd_<horizon>` (J-75). */
+/** A base sortable column, plus the dynamic forward-return columns `fwd_<horizon>` (J-75) and the paired
+ *  max-drawdown columns `mdd_<horizon>` (J-86). */
 type BaseSortKey = "rank" | "ticker" | "sector" | "leadership" | "entry_quality" | "risk" | "setup";
-type SortKey = BaseSortKey | `fwd_${number}`;
+type SortKey = BaseSortKey | `fwd_${number}` | `mdd_${number}`;
 type SortDir = "asc" | "desc";
 
 /** J-75 — a stock's realized forward return at `horizon` from the served `forward_returns` (NA → null).
  *  Read verbatim; never recomputed. */
 function fwdReturnAt(row: StockRow, horizon: number): number | null {
   return row.forward_returns.find((fr) => fr.horizon === horizon)?.return ?? null;
+}
+
+/** J-86 — a stock's realized max-drawdown at `horizon` from the served `forward_returns` (NA → null).
+ *  Read verbatim; never recomputed (<= 0 where present). */
+function fwdMddAt(row: StockRow, horizon: number): number | null {
+  return row.forward_returns.find((fr) => fr.horizon === horizon)?.max_drawdown ?? null;
 }
 
 /** The base per-column comparators (ascending). Ties are broken by stored rank in the stable-sort memo. */
@@ -87,12 +94,13 @@ const SORT_COMPARATORS: Record<BaseSortKey, (a: StockRow, b: StockRow) => number
  *  (J-75/J-48 view transform). A null (NA) forward return always sorts LAST (so NA never poses as a
  *  top/bottom value); the stable memo then tie-breaks by stored rank. Pure re-order of served values. */
 function comparatorFor(key: SortKey, dir: SortDir): (a: StockRow, b: StockRow) => number {
-  if (key.startsWith("fwd_")) {
+  if (key.startsWith("fwd_") || key.startsWith("mdd_")) {
     const horizon = Number(key.slice(4));
+    const valueAt = key.startsWith("mdd_") ? fwdMddAt : fwdReturnAt; // J-86 MDD column shares the view-transform
     const sign = dir === "asc" ? 1 : -1;
     return (a, b) => {
-      const av = fwdReturnAt(a, horizon);
-      const bv = fwdReturnAt(b, horizon);
+      const av = valueAt(a, horizon);
+      const bv = valueAt(b, horizon);
       if (av === null && bv === null) return 0;
       if (av === null) return 1; // NA last regardless of direction
       if (bv === null) return -1;
@@ -610,6 +618,20 @@ function StocksInner() {
                     onSort={onSort}
                   />
                 ))}
+                {/* J-86 — five PAIRED max-drawdown columns (1/5/10/20/60-day), to the RIGHT of the forward
+                    returns, each client-side sortable (view transform, NA-last). MDD is <= 0, read verbatim
+                    from the stored forward_returns. Server-driven horizons (no hardcoded list). */}
+                {fwdHorizons.map((h) => (
+                  <SortHeader
+                    key={`mdd_${h}`}
+                    col={`mdd_${h}` as SortKey}
+                    label={`${h}d MDD`}
+                    term="max drawdown"
+                    activeKey={sortKey}
+                    dir={sortDir}
+                    onSort={onSort}
+                  />
+                ))}
                 {/* J-56 — the Theme column. Non-sortable (a re-display of the served membership chips),
                     so a plain header (no SortHeader): membership is a set, not an orderable scalar. */}
                 <th className="px-3 py-2 font-medium">
@@ -728,6 +750,19 @@ function ForwardReturnCell({ value }: { value: number | null }) {
   return <span className={cn("num font-semibold", returnClass(value))}>{fmtPct(value)}</span>;
 }
 
+/** J-86 — one colour-graded max-drawdown cell: the served realized drawdown (<= 0; NA → "NA" muted), read
+ *  verbatim. A real (negative) drawdown reads red via the shared `mddClass` helper. */
+function MaxDrawdownCell({ value }: { value: number | null }) {
+  if (value === null || value === undefined) {
+    return (
+      <span className="num text-text-muted" title="No realized max drawdown at this horizon yet (NA)">
+        NA
+      </span>
+    );
+  }
+  return <span className={cn("num font-semibold", mddClass(value))}>{fmtMdd(value)}</span>;
+}
+
 function StockTableRow({
   row,
   href,
@@ -799,6 +834,13 @@ function StockTableRow({
       {fwdHorizons.map((h) => (
         <td key={`fwd_${h}`} className="px-3 py-2 text-right" data-testid={`fwd-${h}`}>
           <ForwardReturnCell value={fwdReturnAt(row, h)} />
+        </td>
+      ))}
+      {/* J-86 — five PAIRED max-drawdown cells (to the right of the forward returns), colour-graded on the
+          negative scale (<= 0), NA where the return is NA. Read verbatim — never recomputed. */}
+      {fwdHorizons.map((h) => (
+        <td key={`mdd_${h}`} className="px-3 py-2 text-right" data-testid={`mdd-${h}`}>
+          <MaxDrawdownCell value={fwdMddAt(row, h)} />
         </td>
       ))}
       <td className="px-3 py-2">

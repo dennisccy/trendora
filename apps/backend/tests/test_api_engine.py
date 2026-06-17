@@ -46,6 +46,11 @@ def test_api_sectors_equals_engine_output(loaded_engine):
     # the additive J-81 field is present + config-driven (one entry per walk_forward horizon)
     for row in served["rows"]:
         assert [fr["horizon"] for fr in row["forward_returns"]] == list(cfg.walk_forward.horizons)
+        # iter-27 (J-86): each entry ADDITIVELY carries a paired `max_drawdown` (<= 0 or NA — never a
+        # fabricated positive); stripping `forward_returns` above keeps the canonical byte-equality green.
+        for fr in row["forward_returns"]:
+            assert "max_drawdown" in fr
+            assert fr["max_drawdown"] is None or fr["max_drawdown"] <= 1e-12
     assert served["benchmark"] == "SPY"
     assert len(served["rows"]) == 31
 
@@ -151,6 +156,10 @@ def test_api_stocks_equals_engine_output(loaded_engine):
     # the additive J-75 field is present + config-driven (one entry per walk_forward horizon)
     for row in served["rows"]:
         assert [fr["horizon"] for fr in row["forward_returns"]] == list(cfg.walk_forward.horizons)
+        # iter-27 (J-86): each entry ADDITIVELY carries a paired `max_drawdown` (<= 0 or NA).
+        for fr in row["forward_returns"]:
+            assert "max_drawdown" in fr
+            assert fr["max_drawdown"] is None or fr["max_drawdown"] <= 1e-12
     assert served["benchmark"] == "SPY"
     assert len(served["rows"]) == len(cfg.universe.symbols)
 
@@ -204,6 +213,10 @@ def test_api_themes_equals_engine_output(loaded_engine):
     # the additive J-81 field is present + config-driven (one entry per walk_forward horizon)
     for row in served["rows"]:
         assert [fr["horizon"] for fr in row["forward_returns"]] == list(cfg.walk_forward.horizons)
+        # iter-27 (J-86): each entry ADDITIVELY carries a paired `max_drawdown` (<= 0 or NA).
+        for fr in row["forward_returns"]:
+            assert "max_drawdown" in fr
+            assert fr["max_drawdown"] is None or fr["max_drawdown"] <= 1e-12
     assert len(served["rows"]) == len(cfg.themes)
 
 

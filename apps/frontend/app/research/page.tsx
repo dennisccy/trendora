@@ -1625,6 +1625,10 @@ function EventStudyHorizonTable({
               <th className="px-3 py-2 text-right font-medium">
                 <span className="inline-flex items-center gap-1">Mean MFE<TermInfo term="MFE" /></span>
               </th>
+              {/* J-86 — the aggregate mean max-drawdown beside the excursion stats (read-only over stored values) */}
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Mean MDD<TermInfo term="max drawdown" /></span>
+              </th>
               <th className="px-3 py-2 text-right font-medium">
                 <span className="inline-flex items-center gap-1">Return / downside-dev<TermInfo term="return / downside-dev" /></span>
               </th>
@@ -1680,6 +1684,10 @@ function EventStudyHorizonTable({
                   </td>
                   <td className="px-3 py-2 text-right">
                     <EsValue value={row.mean_mfe} na={na} kind="pct" />
+                  </td>
+                  {/* J-86 — the aggregate mean max-drawdown cell (NA + low-sample gated like the others). */}
+                  <td className="px-3 py-2 text-right">
+                    <EsValue value={row.mean_max_drawdown} na={na} kind="pct" />
                   </td>
                   <td className="px-3 py-2 text-right">
                     <EsValue value={row.return_per_downside_dev} na={na} kind="ratio" />
@@ -2251,6 +2259,10 @@ function RegimeSetupPatternTable({
             <RspSortHeader label="Median" col="median" sortKey={sortKey} sortDir={sortDir} onSort={onSort} term="median" />
             <RspSortHeader label="Hit-rate" col="pct_positive" sortKey={sortKey} sortDir={sortDir} onSort={onSort} term="hit-rate" />
             <RspSortHeader label="Expectancy" col="expectancy" sortKey={sortKey} sortDir={sortDir} onSort={onSort} term="expectancy" />
+            {/* J-86 — the aggregate mean max-drawdown column (non-sortable; read-only over stored values). */}
+            <th className="px-3 py-2 text-right font-medium">
+              <span className="inline-flex items-center justify-end gap-1">Mean MDD<TermInfo term="max drawdown" /></span>
+            </th>
             <RspSortHeader label="Return / downside-dev" col="return_per_downside_dev" sortKey={sortKey} sortDir={sortDir} onSort={onSort} term="return / downside-dev" />
             <RspSortHeader label="Return / MAE" col="return_per_mae" sortKey={sortKey} sortDir={sortDir} onSort={onSort} term="return / MAE" />
           </tr>
@@ -2291,6 +2303,10 @@ function RegimeSetupPatternTable({
               </td>
               <td className="px-3 py-2 text-right">
                 <RspCell value={row.stats.expectancy} stats={row.stats} kind="pct" />
+              </td>
+              {/* J-86 — the aggregate mean max-drawdown cell (NA + low-sample gated like the others). */}
+              <td className="px-3 py-2 text-right">
+                <RspCell value={row.stats.mean_max_drawdown} stats={row.stats} kind="pct" />
               </td>
               <td className="px-3 py-2 text-right">
                 <RspCell value={row.stats.return_per_downside_dev} stats={row.stats} kind="ratio" />
