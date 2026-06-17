@@ -1,3 +1,4 @@
+import { mddColorClass } from "@/lib/mdd-color";
 import { cn } from "@/lib/utils";
 
 /**
@@ -48,10 +49,10 @@ export function Return({ value, n, min }: { value: number | null; n: number; min
 }
 
 /**
- * Max-drawdown display helpers (iter-27, J-86). A max drawdown is a true peak-to-trough decline read
- * VERBATIM from the stored `forward_returns.max_drawdown` — it is <= 0 always (or NA), so it grades on
- * the negative/red scale: a worse (more negative) drawdown reads redder; exactly 0 / NA is muted. These
- * RE-FORMAT a stored figure; they never compute a drawdown client-side.
+ * Max-drawdown display helpers (iter-27/28, J-86). A max drawdown is a true peak-to-trough decline read
+ * VERBATIM from the stored `forward_returns.max_drawdown` — it is <= 0 always (or NA). It grades on the
+ * negative/red scale BY MAGNITUDE: a deeper (more negative) drawdown reads visibly more severe; exactly
+ * 0 / NA is muted. These RE-FORMAT a stored figure; they never compute a drawdown client-side.
  */
 
 /** Format a drawdown fraction (-0.083 -> "-8.30%"); null/NA renders an em dash. Always <= 0 when present. */
@@ -62,11 +63,15 @@ export function fmtMdd(value: number | null | undefined): string {
   return `${pct.toFixed(2)}%`;
 }
 
-/** Drawdown colour: a real (negative) drawdown is red; exactly 0 or NA is muted (never green — it is risk). */
+/**
+ * Drawdown colour — the SINGLE source of truth for MDD severity colour across `/stocks`,
+ * `/stocks/[ticker]`, `/themes`, `/sectors`, and the evidence panels (all import this one helper). It
+ * delegates to the magnitude-graded scale in `lib/mdd-color` so a deeper drawdown reads more severe;
+ * exactly 0 or NA stays muted (never green — a drawdown is risk; never a graded red for NA — honest
+ * partial-window discipline). The scale is built from existing design tokens only (no hardcoded hex).
+ */
 export function mddClass(value: number | null | undefined): string {
-  if (value === null || value === undefined) return "text-text-muted";
-  if (value < 0) return "text-neg";
-  return "text-text-muted";
+  return mddColorClass(value);
 }
 
 /** A max-drawdown figure cell — paired beside a forward-return cell (J-86). NA renders an em dash. */

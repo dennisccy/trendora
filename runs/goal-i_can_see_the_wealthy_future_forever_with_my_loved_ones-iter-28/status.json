@@ -1,0 +1,18 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-06-17T08:30:00.000000Z",
+  "started_at": "2026-06-17T08:16:00.000000Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/frontend/lib/mdd-color.ts",
+    "apps/frontend/lib/mdd-color.test.ts",
+    "apps/frontend/components/forward-return.tsx"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "full_suite_in_progress": false,
+  "dev_notes": "J-86 final UI fix: mddClass now magnitude-graded via new lib/mdd-color.ts (4 severity bands as color-mix over the existing --neg/--text-muted tokens; NA/0 muted). Verified text-neg/40 opacity modifier is a no-op in this Tailwind+CSS-var config, so used color-mix (real graded colour, no new hex). Single shared mddClass flows to /stocks, /stocks/[ticker], /themes, /sectors, evidence-panels. Sort code (comparatorFor/onSort/SortHeader/sorted memo) byte-unchanged (iter-27 'no-op' was an XPath text() selector false-negative; QA must re-verify by aria-label). Frontend unit tests 9/9 pass; tsc --noEmit clean; no apps/backend diff; no as-of component touched. Backend suite NOT re-run (GREEN at iter-27). See docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28-dev.md"
+}

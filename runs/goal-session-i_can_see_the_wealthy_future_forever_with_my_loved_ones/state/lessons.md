@@ -195,3 +195,15 @@ journeys to `passing` on source review alone.
 **Verdict:** CONTINUE
 **Lesson:** A browser-QA "sort does not reorder" FAIL can be a SELECTOR false-negative, not a code defect: the iter-27 run drove `//th//button[normalize-space(text())='5d']`, but the `SortHeader` button's label lives in a nested `<span>`, so XPath `text()` matches nothing — and even a fallback JS `.click()` can resolve the wrong node. Always resolve sort buttons by their `aria-label` ("Sort by 5d", "Sort by 5d MDD"), and before calling sort a regression, check the git diff: if `onSort`/`SortHeader`/the sort memo are byte-unchanged (iter-27 only added an additive `mdd_` comparator branch), a "new" sort failure is far more likely a test artifact than a regression. SEPARATELY real and source-confirmable: `forward-return.tsx mddClass()` returns a flat `text-neg` for all negatives, so the spec's "colour-graded by magnitude" leg genuinely fails — verify colour-grading claims against the helper source, not a screenshot.
 **Applies to:** any iter adding/verifying client-side sortable columns under the J-48 view-transform contract (`SortHeader` + `comparatorFor`); any iter whose browser-QA resolves table-header buttons by visible text; any colour-grading acceptance leg (check the `*Class()` helper source).
+
+## iter-28 — 2026-06-17T09:00:00Z
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** Tailwind v3.4 opacity modifiers (`text-neg/40`) are a silent NO-OP when the palette token is a plain hex CSS var with no `<alpha-value>` channel — they generate ZERO CSS rule, so a "graded" colour built that way renders flat. The token-faithful way to grade a single design token by intensity is a `color-mix(in_srgb,var(--neg)_N%,var(--text-muted))` arbitrary-value utility (compiles to real per-band rgb, no new hex). The dev caught this empirically against the built `layout.css` rather than trusting the spec's suggested `text-neg/40` wording.
+**Applies to:** any future iter that proposes Tailwind opacity-modifier utilities (`text-x/NN`, `bg-x/NN`) for a graded/intensity colour scale on this frontend — verify the modifier actually emits CSS, or use `color-mix` over the design token instead.
+
+## iter-28b — 2026-06-17T09:00:00Z
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** A browser-QA "sort does not reorder" FAIL on this leaderboard was AGAIN a selector false-negative (iter-27 -> iter-28): `SortHeader` labels live in a nested `<span>`, so XPath `//th//button[text()='5d']` matches nothing while `button[aria-label^="Sort by 5d"]` resolves correctly. Before recording a sort regression, confirm (a) the sort code path (comparatorFor/onSort/SortHeader/sorted memo) is byte-unchanged in the git diff and (b) QA resolved the header by `aria-label`, not visible `text()`.
+**Applies to:** any iter that re-verifies or touches leaderboard column sorting on /stocks, /themes, /sectors, or /research/samples.
