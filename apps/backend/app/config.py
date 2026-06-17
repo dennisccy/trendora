@@ -933,6 +933,148 @@ class ResearchCfg(BaseModel):
     factor_lab: FactorLabCfg
 
 
+# iter-29 (J-87 / J-88) — the named severity-component weight set. The deterministic drawdown-severity
+# score blends EXACTLY these five named components, so `config.market_phase.weights` MUST cover this
+# set (completeness) and sum ~1.0 (mirroring `regime.weights` / `scores.<block>.weights`). Each weight
+# lives in config, never invented in code (anti-goal: No magic numbers).
+MARKET_PHASE_WEIGHT_KEYS = {
+    "drawdown_depth",        # trailing-peak peak-to-trough drawdown depth of the benchmark
+    "time_underwater",       # fraction of the lookback window spent below the trailing peak
+    "regime_risk",           # the STORED regime score inverted to a risk reading (read verbatim)
+    "breadth_below_200dma",  # fraction of the universe BELOW its 200-DMA (1 - stored breadth)
+    "vix_gate",              # the ^VIX stress reading relative to the configured gate threshold
+}
+# The two regime-switching states (J-88). A fixed structural vocabulary (not a tunable) — the config
+# carries the transition probabilities + per-state emission params keyed by these names.
+REGIME_SWITCHING_STATES = ("bear", "risk_on")
+
+
+class MarketPhaseCfg(BaseModel):
+    """Market Phase & drawdown-Severity config (iter-29, J-87 — consumed by `app.engine.market_phase`).
+
+    Every number the read-only phase/severity derivation uses lives here (anti-goal: No magic numbers —
+    no edge/weight/threshold/gate literal in `app/engine/market_phase.py`):
+      - `labels` / `phase_edges` — the discrete phase vocabulary (Expansion / Pullback / Correction /
+        Bear / Recovery) and the SEVERITY -> phase cutoffs (`severity >= min -> label`, descending,
+        covering 0..100 — the SAME shape `regime.label_edges` uses, validated by the shared helper).
+      - `weights` — the five named severity components (drawdown depth, time-underwater, regime-risk,
+        breadth-below-200DMA, ^VIX gate), summing ~1.0 (validated like `regime.weights`).
+      - `lookback_days` — the trailing window (calendar days) the trailing peak + time-underwater are
+        measured over (a finite causal window <= D).
+      - `drawdown_full_severity_pct` — the peak-to-trough drawdown magnitude (%) that maps the drawdown
+        component to its full 1.0; a shallower drawdown scales linearly, a deeper one clamps at 1.0.
+      - `vix_gate` — the ^VIX level that maps the VIX component to its full 1.0 (a calmer tape scales
+        below it, a more stressed tape clamps at 1.0).
+      - `recovery_min_off_trough_pct` — once OFF the trough by this %, a still-underwater tape reads
+        Recovery rather than Bear/Correction (the rebound leg of the cycle).
+      - `min_history_bars` — below this many benchmark bars <= D the window is insufficient -> NA/partial
+        (never a fabricated phase/severity).
+      - `observation_disclosure_limit` — how many of the MOST RECENT filter observations the served
+        payload discloses (the deterministic forward filter still consumes EVERY observation <= D — this
+        only bounds the disclosed tail so a daily-history host doesn't serve thousands of chips; the
+        served P(bear) is unchanged). MUST be `>= 1`."""
+
+    model_config = ConfigDict(extra="allow")
+    labels: list[str] = Field(min_length=1)
+    phase_edges: list[LabelEdge] = Field(min_length=1)
+    weights: dict[str, float] = Field(min_length=1)
+    lookback_days: int
+    drawdown_full_severity_pct: float
+    vix_gate: float
+    recovery_min_off_trough_pct: float
+    min_history_bars: int
+    observation_disclosure_limit: int
+
+    @model_validator(mode="after")
+    def _validate(self) -> "MarketPhaseCfg":
+        _require_complete_weights(self.weights, MARKET_PHASE_WEIGHT_KEYS, "market_phase.weights")
+        labelset = set(self.labels)
+        unknown = [e.label for e in self.phase_edges if e.label not in labelset]
+        if unknown:
+            raise ValueError(f"market_phase.phase_edges reference unknown labels: {unknown}")
+        _validate_edges_descending_and_cover_zero(self.phase_edges, "market_phase.phase_edges")
+        positive = {
+            "lookback_days": self.lookback_days,
+            "drawdown_full_severity_pct": self.drawdown_full_severity_pct,
+            "vix_gate": self.vix_gate,
+            "recovery_min_off_trough_pct": self.recovery_min_off_trough_pct,
+            "min_history_bars": self.min_history_bars,
+        }
+        nonpositive = sorted(k for k, v in positive.items() if v <= 0)
+        if nonpositive:
+            raise ValueError(f"market_phase values must be positive: {nonpositive}")
+        if self.observation_disclosure_limit < 1:
+            raise ValueError("market_phase.observation_disclosure_limit must be >= 1")
+        return self
+
+
+class RegimeSwitchingEmission(BaseModel):
+    """One state's emission parameters for the J-88 2-state filter (consumed VERBATIM — NEVER EM-fit at
+    serve time). The per-observation likelihood of belonging to this state is a Gaussian on the stored
+    observation reading (the same severity-style stress reading the filter runs over): `mean` is the
+    state's central reading and `std` its spread (positive). Both come from a committed deterministic
+    offline calibration (running that calibration live is out of scope; only these committed params are
+    read)."""
+
+    model_config = ConfigDict(extra="allow")
+    mean: float
+    std: float
+
+    @model_validator(mode="after")
+    def _validate(self) -> "RegimeSwitchingEmission":
+        if self.std <= 0:
+            raise ValueError("regime_switching emission std must be positive")
+        return self
+
+
+class RegimeSwitchingCfg(BaseModel):
+    """The deterministic 2-state regime-switching params for the forward FILTERED P(bear) (iter-29,
+    J-88 — consumed by `app.engine.market_phase`). EVERY number is read VERBATIM from config; the filter
+    is a closed-form Hamilton recursion, NEVER EM-fit at serve time (anti-goal: No magic numbers + the
+    filter is deterministic).
+
+      - `transition` — the 2x2 Markov transition matrix as a nested dict keyed by the two states
+        (`bear`/`risk_on`): `transition[from][to]` is P(next=to | current=from). Each row must sum ~1.0
+        and reference exactly the two states (validated below).
+      - `initial_bear` — the prior P(state=bear) at the first observation (in [0, 1]).
+      - `emissions` — the per-state Gaussian emission params (mean + std) keyed by the two states.
+
+    The observation the filter ingests per date is the SAME stress reading severity is built from (a
+    causal [0,1] reading <= D), so 2022 (deep drawdown, high VIX, low breadth) drives P(bear) toward 1
+    and a calm 2024/2026 tape pulls it back — deterministically, from committed params only."""
+
+    model_config = ConfigDict(extra="allow")
+    transition: dict[str, dict[str, float]] = Field(min_length=1)
+    initial_bear: float
+    emissions: dict[str, RegimeSwitchingEmission] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "RegimeSwitchingCfg":
+        states = set(REGIME_SWITCHING_STATES)
+        if set(self.transition) != states:
+            raise ValueError(
+                f"regime_switching.transition must have exactly the states {sorted(states)}; "
+                f"got {sorted(self.transition)}"
+            )
+        for from_state, row in self.transition.items():
+            if set(row) != states:
+                raise ValueError(
+                    f"regime_switching.transition[{from_state!r}] must reference exactly "
+                    f"{sorted(states)}; got {sorted(row)}"
+                )
+            total = sum(row.values())
+            if abs(total - 1.0) > _WEIGHT_SUM_TOLERANCE:
+                raise ValueError(
+                    f"regime_switching.transition[{from_state!r}] must sum to ~1.0, got {total}"
+                )
+        if not (0 <= self.initial_bear <= 1):
+            raise ValueError(f"regime_switching.initial_bear must be in [0, 1], got {self.initial_bear}")
+        missing = states - set(self.emissions)
+        if missing:
+            raise ValueError(f"regime_switching.emissions missing states: {sorted(missing)}")
+        return self
+
+
 class MethodologyThreshold(BaseModel):
     """One row of a methodology entry's threshold list (iter-12). EITHER a config-referenced numeric
     row ({label, ref, cmp?, unit?}) whose displayed value resolves LIVE from the canonical config
@@ -1355,6 +1497,12 @@ class Config(BaseModel):
     patterns: PatternsCfg
     methodology: MethodologyCfg
     research: ResearchCfg
+    # iter-29 (J-87 / J-88) — the read-only Market Phase & Severity layer's typed/validated config:
+    # the phase vocabulary + severity weights/thresholds (`market_phase`) and the deterministic 2-state
+    # regime-switching params for the forward filtered P(bear) (`regime_switching`). Consumed VERBATIM by
+    # `app.engine.market_phase`; no literal lives in that module.
+    market_phase: MarketPhaseCfg
+    regime_switching: RegimeSwitchingCfg
 
     @field_validator("themes")
     @classmethod

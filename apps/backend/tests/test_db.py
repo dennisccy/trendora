@@ -43,6 +43,13 @@ IMPORT_TABLES = {"import_checkpoints"}
 # and no existing table gains a column. The cached figures are byte-identical to a fresh compute.
 RESEARCH_CACHE_TABLES = {"event_study_cache"}
 
+# iter-29 (J-87 / J-88) standalone, create_all-managed Market Phase & Severity aggregate cache. Same
+# reasoning as RESEARCH_CACHE_TABLES: legitimately MUTABLE derived/cache state (NOT a snapshot — the
+# *Snapshots are immutable* anti-goal binds only scanner_runs/results/scores/forward_returns), a
+# standalone table so a fresh DB carries it and no existing table gains a column. Figures byte-identical
+# to a fresh compute; the cache key carries the SAME dataset_version stamp J-72 uses (single-sourced).
+MARKET_PHASE_CACHE_TABLES = {"market_phase_cache"}
+
 # iter-25 (J-38): `DataProviderRun.dismissed` is a MUTABLE job-control COLUMN added to the existing
 # data_provider_runs table — it adds NO new table, so the expected-tables set below is unchanged. The
 # explicit assertion in test_data_provider_run_has_dismissed_column verifies the column exists.
@@ -51,7 +58,8 @@ RESEARCH_CACHE_TABLES = {"event_study_cache"}
 def test_create_all_produces_expected_tables():
     assert (
         set(SQLModel.metadata.tables.keys())
-        == ITER1_TABLES | SNAPSHOT_TABLES | WATCHLIST_TABLES | IMPORT_TABLES | RESEARCH_CACHE_TABLES
+        == ITER1_TABLES | SNAPSHOT_TABLES | WATCHLIST_TABLES | IMPORT_TABLES
+        | RESEARCH_CACHE_TABLES | MARKET_PHASE_CACHE_TABLES
     )
 
 

@@ -432,6 +432,46 @@ class EventStudyCache(SQLModel, table=True):
     created_at: datetime
 
 
+# --- iter-29 market-phase derived-aggregate cache (J-87 / J-88 — a PERFORMANCE cache, not a snapshot) ---
+class MarketPhaseCache(SQLModel, table=True):
+    """A STANDALONE, create_all-managed cache of the derived Market Phase & Severity layer (J-87 / J-88).
+
+    Like `EventStudyCache`, this is EXPLICITLY NOT a scanner snapshot — the *Snapshots are immutable*
+    critical anti-goal binds ONLY `scanner_runs` / `scanner_results` / `*_scores` / `forward_returns`.
+    This is legitimately mutable derived/cache state: it stores the SERIALIZED `compute_market_phase(...)`
+    payload (phase label + 0-100 severity + named component breakdown + forward FILTERED P(bear) + the
+    observation vector) keyed by the resolved as-of cutoff + a dataset-version stamp, so a read serves the
+    stored aggregate instead of re-deriving it per request (No recompute in the read path). The cached
+    figures are BYTE-IDENTICAL to a fresh compute — a cache of the deterministic read-only derivation,
+    never a second computation.
+
+    A STANDALONE table (its own `create_all`-managed table) is used deliberately so the iter-12
+    `_ADDITIVE_COLUMNS` trap does NOT apply — a fresh DB carries it from `create_db_and_tables`, and no
+    existing table gains a column.
+
+    CACHE KEY: `(asof_key, dataset_version)`:
+      - `asof_key` is the resolved as-of cutoff ISO date (the single global as-of the read resolved to).
+      - `dataset_version` is the SAME stamp `app.engine.research._dataset_version` produces (single-sourced
+        with J-72 — derived from max run id + the forward-return row count), so the layer's cache
+        invalidates in lockstep with the event-study cache: a read computes the current stamp and looks up
+        THIS exact key; a stale row keyed to an older stamp is never hit (and is pruned on write), so the
+        cache can NEVER serve a stale figure (it refreshes after any dataset change).
+
+    `payload_json` is the full serialized derivation. Unique on the composite key so a write is an
+    idempotent upsert."""
+
+    __tablename__ = "market_phase_cache"
+    __table_args__ = (
+        UniqueConstraint("asof_key", "dataset_version", name="uq_market_phase_cache_key"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    asof_key: str = Field(index=True)  # resolved as-of ISO cutoff date (the single global as-of)
+    dataset_version: str  # the SAME stamp research._dataset_version produces; changes on any dataset change
+    payload_json: str  # the serialized compute_market_phase(...) derivation (byte-identical to a fresh compute)
+    created_at: datetime
+
+
 # --- iter-7 watchlist (USER-MUTABLE — the product's FIRST user-write surface; J-11) ----------
 class Watchlist(SQLModel, table=True):
     """One user-saved stock on the persistent research watchlist (iter-7). The product's FIRST

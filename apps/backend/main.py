@@ -21,6 +21,7 @@ from app.api import (
     data,
     health,
     indexes,
+    market_phase,
     methodology,
     regime_history,
     research,
@@ -109,3 +110,4 @@ app.include_router(data.router, prefix="/api")
 app.include_router(research.router, prefix="/api")
 app.include_router(regime_history.router, prefix="/api")
 app.include_router(indexes.router, prefix="/api")
+app.include_router(market_phase.router, prefix="/api")

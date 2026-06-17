@@ -435,6 +435,68 @@ export async function fetchIndexes(
   return getJSON<IndexesResponse>(path, signal);
 }
 
+// --- market phase & severity (iter-29, J-87 + J-88) ----------------------------------------
+/** One named severity component (drawdown depth / time-underwater / regime-risk / breadth-below-200DMA /
+ *  VIX gate). `value` is the [0,1] component reading, `weight` its config weight, `contribution` its
+ *  points contributed to the 0-100 severity. `available: false` -> the component is NA (excluded from the
+ *  blend, never fabricated). The values are computed once in the backend engine and only re-formatted here. */
+export interface MarketPhaseComponent {
+  name: string;
+  value: number | null;
+  weight: number;
+  contribution: number | null;
+  available: boolean;
+}
+
+/** One disclosed filter observation (J-88): the [0,1] stress reading on a stored snapshot date <= D plus
+ *  the filtered P(bear) at that step. The payload discloses the most-recent tail (the filter still
+ *  consumed every observation <= D). */
+export interface MarketPhaseObservation {
+  date: string; // ISO yyyy-MM-dd
+  reading: number; // [0,1] stress reading the Hamilton filter ingested at this date
+  p_bear: number; // the forward-filtered P(bear) after ingesting this observation (causal)
+}
+
+/** The optional ^VIX raw-level disclosure beside the scaled vix_gate component. */
+export interface MarketPhaseVixLevel {
+  name: string;
+  value: number | null;
+  threshold: number;
+  available: boolean;
+}
+
+/** GET /api/market-phase payload (J-87 + J-88). The discrete `phase` (Expansion/Pullback/Correction/
+ *  Bear/Recovery), the 0-100 `severity` with its named `components` breakdown, the cycle legs
+ *  (`drawdown_pct`/`off_trough_pct`), and the forward FILTERED `p_bear` (0-1) with its disclosed
+ *  `observations` vector. `available: false` -> insufficient history (NA/partial — phase/severity/p_bear
+ *  null), an honest empty treatment, never a fabricated figure. `asof_date` is the resolved single global
+ *  as-of (the panel re-points with it — no second date state). */
+export interface MarketPhaseResponse {
+  asof_date: string;
+  available: boolean;
+  phase: string | null;
+  severity: number | null;
+  p_bear: number | null;
+  drawdown_pct: number | null;
+  off_trough_pct: number | null;
+  components: MarketPhaseComponent[];
+  vix_level?: MarketPhaseVixLevel;
+  observations: MarketPhaseObservation[]; // the disclosed most-recent tail (the filter consumed all <= D)
+  total_observations?: number; // the FULL causal observation count (>= observations.length)
+  min_history_bars: number;
+  labels: string[];
+}
+
+/** The Market Phase & Severity layer for the dashboard panel (J-87 + J-88). `asof` re-points it to a
+ *  historical date (the single global as-of); the latest view passes nothing. The frontend only
+ *  re-formats these server-computed values — it never recomputes a phase / severity / probability. */
+export async function fetchMarketPhase(
+  asof?: string,
+  signal?: AbortSignal,
+): Promise<MarketPhaseResponse> {
+  return getJSON<MarketPhaseResponse>(withAsOf("/api/market-phase", asof), signal);
+}
+
 // --- themes (iter-3) -----------------------------------------------------------------------
 export interface ThemeRow {
   slug: string;

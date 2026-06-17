@@ -40,6 +40,12 @@ CALC_FILES = [
     # numbers in the new expectancy / MAE-risk / by-regime/by-sector math are the structural `> 0` win/loss
     # boundary and the n<2 sample guard (rank/index 1's) — no new threshold literal is introduced.
     "research.py",
+    # iter-29 (J-87 / J-88) Market Phase & Severity derivation — EVERY phase edge / severity weight /
+    # drawdown-and-VIX threshold / transition-matrix entry / emission parameter comes from
+    # config.market_phase + config.regime_switching (no literal here). The only numbers in the drawdown /
+    # time-underwater / VIX-gate / Hamilton-filter math are structural: 0/1 (NA/full clamps, indexing,
+    # 1-fraction complements), 2 (the Gaussian exponent + squares), and 100 (the percent unit).
+    "market_phase.py",
 ]
 
 # The union of every NUMERIC tunable currently in config.yaml (periods, windows, bucket edges,

@@ -161,6 +161,39 @@ _CFG = {
             },
         ],
     },
+    # iter-29: market_phase + regime_switching are required config sections (the read-only Market Phase
+    # & Severity layer's edges/weights/thresholds + the deterministic 2-state filter params come from
+    # config, never code). Smallest valid blocks added so a from-scratch valid config still loads.
+    "market_phase": {
+        "labels": ["Expansion", "Pullback", "Correction", "Bear", "Recovery"],
+        "phase_edges": [
+            {"min": 70, "label": "Bear"},
+            {"min": 45, "label": "Correction"},
+            {"min": 25, "label": "Pullback"},
+            {"min": 0, "label": "Expansion"},
+        ],
+        "weights": {
+            "drawdown_depth": 0.35, "time_underwater": 0.15, "regime_risk": 0.20,
+            "breadth_below_200dma": 0.15, "vix_gate": 0.15,
+        },
+        "lookback_days": 365,
+        "drawdown_full_severity_pct": 25.0,
+        "vix_gate": 30.0,
+        "recovery_min_off_trough_pct": 8.0,
+        "min_history_bars": 200,
+        "observation_disclosure_limit": 60,
+    },
+    "regime_switching": {
+        "transition": {
+            "bear": {"bear": 0.92, "risk_on": 0.08},
+            "risk_on": {"bear": 0.06, "risk_on": 0.94},
+        },
+        "initial_bear": 0.5,
+        "emissions": {
+            "bear": {"mean": 0.75, "std": 0.18},
+            "risk_on": {"mean": 0.20, "std": 0.18},
+        },
+    },
 }
 
 _BASE = date(2026, 1, 1)

@@ -846,6 +846,62 @@ research:
         - { factor: atr_pct,   side: bottom, quantile: tertile }
 
 # ----------------------------------------------------------------------------------------
+# iter-29 CONSUMED — Market Phase & drawdown-Severity layer (J-87). The read-only derivation
+# (app/engine/market_phase.py) reads EVERY edge/weight/threshold/gate here (anti-goal: No magic numbers
+# — no literal in that module). It is strictly causal (inputs <= D): the benchmark's trailing-peak
+# drawdown + time-underwater over the lookback window, the STORED regime score (read verbatim from the
+# scanner_runs row, never recomputed), the universe breadth-below-200DMA (1 - the stored breadth), and
+# the ^VIX stress gate. The five severity weights cover the named component set and sum ~1.0 (validated
+# like regime.weights); the phase edges map the 0-100 severity to a discrete phase (descending, cover
+# 0..100, same shape as regime.label_edges). Values are illustrative hypotheses tuned against the
+# committed 2021-2026 seed (which holds the 2022 bear, SPY ~ -24.5% peak-to-trough, and ^VIX) so a
+# 2022-window as-of reads Bear/high severity and a 2024/2026 as-of reads Expansion/Recovery — never
+# loosened to fabricate a phase.
+market_phase:
+  labels: [Expansion, Pullback, Correction, Bear, Recovery]   # the discrete phase vocabulary
+  # SEVERITY -> phase: severity >= min -> label; descending; must cover 0..100. Higher severity = deeper
+  # stress. Recovery is NOT an edge band — it is a state override (still underwater but off the trough by
+  # recovery_min_off_trough_pct), applied after the edge lookup; it is listed in `labels` so phase_edges
+  # may reference it but its threshold here is the deep band it overrides FROM.
+  phase_edges:
+    - { min: 70, label: "Bear" }          # deep, sustained stress
+    - { min: 50, label: "Correction" }    # a meaningful pullback
+    - { min: 30, label: "Pullback" }      # a shallow dip
+    - { min: 0,  label: "Expansion" }     # calm uptrend (low baseline severity at/near a fresh high)
+  weights:                                # the five named severity components; must sum ~1.0
+    drawdown_depth: 0.40                   # trailing-peak peak-to-trough drawdown magnitude (the headline driver)
+    time_underwater: 0.10                  # fraction of the lookback spent below the running high-water mark
+    regime_risk: 0.20                      # the STORED regime score inverted (read verbatim)
+    breadth_below_200dma: 0.15             # fraction of the universe BELOW its 200-DMA (1 - stored breadth)
+    vix_gate: 0.15                         # ^VIX stress relative to the gate threshold
+  lookback_days: 365                       # trailing calendar-day window the peak + time-underwater span
+  drawdown_full_severity_pct: 25.0         # a 25% peak-to-trough drawdown maps drawdown_depth to 1.0 (deeper clamps)
+  vix_gate: 30.0                           # a ^VIX of 30 maps the vix_gate component to 1.0 (calmer scales below)
+  recovery_min_off_trough_pct: 8.0         # once >= 8% off the trough (still underwater) the phase reads Recovery
+  min_history_bars: 200                    # below this many benchmark bars <= D the window is insufficient -> NA/partial
+  observation_disclosure_limit: 60         # how many MOST-RECENT filter observations the payload discloses (the filter still consumes ALL <= D)
+
+# ----------------------------------------------------------------------------------------
+# iter-29 CONSUMED — Deterministic 2-state regime-switching params for the forward FILTERED P(bear)
+# (J-88, app/engine/market_phase.py). EVERY number is read VERBATIM; the filter is a closed-form
+# Hamilton recursion over observations <= D and is NEVER EM-fit at serve time (anti-goal: No magic
+# numbers + deterministic). The observation per date is the SAME [0,1] stress reading severity is built
+# from. `transition[from][to]` is P(next=to | current=from) — each row sums ~1.0; both states are
+# persistent (high self-transition). `initial_bear` is the prior at the first observation. `emissions`
+# are per-state Gaussians on the stress reading (bear = a high mean, risk_on = a low mean) so 2022's
+# high-stress observations drive P(bear) -> 1 and a calm 2026 tape pulls it back. (These params come
+# from a committed deterministic calibration over the seed; running that calibration live is out of
+# scope — only these committed params are consumed.)
+regime_switching:
+  transition:
+    bear:    { bear: 0.92, risk_on: 0.08 }   # bear is persistent; small chance of exiting per step
+    risk_on: { bear: 0.06, risk_on: 0.94 }   # risk-on is persistent; small chance of breaking down
+  initial_bear: 0.5                           # uninformed prior at the first observation
+  emissions:
+    bear:    { mean: 0.75, std: 0.18 }        # a bear state emits a HIGH stress reading
+    risk_on: { mean: 0.20, std: 0.18 }        # a risk-on state emits a LOW stress reading
+
+# ----------------------------------------------------------------------------------------
 # iter-5 CONSUMED — Scanner snapshots. The historical as-of dates the scanner persists an
 # immutable snapshot for on first boot (the LATEST data date is added programmatically in
 # bootstrap_runs, NOT listed here). Both dates below are real seed dates the regime engine

@@ -6,6 +6,7 @@ import { AlertTriangle, Clock } from "lucide-react";
 import { useAsOf } from "@/components/asof-provider";
 import { ComponentBreakdown } from "@/components/component-breakdown";
 import { MajorIndexesCard } from "@/components/major-indexes-card";
+import { MarketPhaseCard } from "@/components/market-phase-card";
 import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
 import { TermInfo } from "@/components/ui/term-info";
@@ -162,6 +163,10 @@ function DashboardBody({
 
       {/* J-44: Major indexes & regime — normalized % index lines over stored-regime bands (default ON). */}
       <MajorIndexesCard />
+
+      {/* J-87 + J-88: Market Phase & Severity — discrete phase + 0-100 severity (named breakdown) +
+          deterministic filtered P(bear), for the single global as-of (read-only market-cycle context). */}
+      <MarketPhaseCard />
 
       {/* Top sectors + pending placeholders */}
       <div className="grid gap-4 lg:grid-cols-3">
