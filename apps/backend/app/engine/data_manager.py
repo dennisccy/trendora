@@ -1803,6 +1803,9 @@ def _write_universe_csv(seed_dir: Path, symbol: str, bars: list[DailyPrice]) -> 
             })
 
 
+_CAP_NOT_PREFETCHED = object()  # sentinel: this candidate's cap was NOT supplied by a batched pre-fetch
+
+
 def _screen_one_candidate(
     session: Session,
     cfg: Config,
@@ -1811,13 +1814,16 @@ def _screen_one_candidate(
     symbol: str,
     *,
     scrub: Callable[[str], str],
+    prefetched_cap: object = _CAP_NOT_PREFETCHED,
 ) -> tuple[Optional[dict], Optional[str]]:
     """Screen ONE pool candidate against REAL committed bars + a REAL market-cap reference, returning
     either `(member_dict, None)` for a passer or `(None, reason)` for an omission. The reference values
-    come from stored `DailyPrice` bars (the OHLCV fetch already INSERTed them); the cap comes from the
-    provider's market-cap capability. A fetch failure / empty series / missing cap / threshold failure is
-    an OMISSION (a reason string) — never a fabricated member/cap/bar. Re-raises `RateLimitError` so the
-    caller pauses the WHOLE expand gracefully (the live feed is rate-limited)."""
+    come from stored `DailyPrice` bars (the OHLCV fetch already INSERTed them); the cap comes from either
+    a BATCHED pre-fetch (`prefetched_cap` — Yahoo's cookie+crumb `get_market_caps`, J-84) when supplied,
+    or the per-symbol `get_market_cap` capability otherwise (the per-symbol providers, e.g. Tiingo). A
+    fetch failure / empty series / missing cap / threshold failure is an OMISSION (a reason string) —
+    never a fabricated member/cap/bar. Re-raises `RateLimitError` so the caller pauses the WHOLE expand
+    gracefully (the live feed is rate-limited)."""
     filters = cfg.universe.filters
     bars = bars_asof(session, symbol, asof)
     if not bars:
@@ -1825,12 +1831,18 @@ def _screen_one_candidate(
     reference_close = bars[-1].close
     adv_rows = bars[-filters.adv_window_days:]
     adv_dollar = sum(b.close * b.volume for b in adv_rows) / len(adv_rows)
-    try:
-        market_cap = provider.get_market_cap(symbol)  # REAL cap or None — never fabricated
-    except RateLimitError:
-        raise  # persistent rate-limit on the cap feed → caller pauses the expand resumable
-    except ProviderUnavailableError as exc:
-        return None, scrub(f"market_cap_fetch_failed: {exc}")
+    if prefetched_cap is not _CAP_NOT_PREFETCHED:
+        # the batched cookie+crumb pre-fetch already resolved this symbol's cap (a systemic auth/limit
+        # failure was raised UPFRONT before the loop, pausing the whole expand — so here it is a REAL cap
+        # or an honest per-candidate absence (`None` → `no_market_cap`), never fabricated.
+        market_cap = prefetched_cap  # type: ignore[assignment]
+    else:
+        try:
+            market_cap = provider.get_market_cap(symbol)  # REAL cap or None — never fabricated
+        except RateLimitError:
+            raise  # persistent rate-limit on the cap feed → caller pauses the expand resumable
+        except ProviderUnavailableError as exc:
+            return None, scrub(f"market_cap_fetch_failed: {exc}")
     reasons = screen_reasons(
         reference_close, adv_dollar, market_cap,
         min_price=filters.min_price, min_dollar_vol=filters.min_dollar_vol,
@@ -1917,12 +1929,33 @@ def _run_expand_screen(
     members: list[dict] = []
     sector_by_symbol = {row["symbol"]: row.get("sector") for row in pool}
     source_by_symbol = {row["symbol"]: row.get("source") for row in pool}
+    pool_symbols = [row["symbol"] for row in pool]
+
+    # J-84: BATCHED market-cap pre-fetch (cookie+crumb acquired ONCE, reused). A provider that supports
+    # batching (Yahoo) returns a {symbol: cap|None} map and raises `RateLimitError` UPFRONT on a SYSTEMIC
+    # auth/limit failure (cookie/crumb step or a 401/429 on the batched quote) — so a whole-batch auth
+    # outage pauses the expand resumable WITHOUT recording every candidate omitted. A provider with no
+    # batch capability returns `None` → the per-candidate `get_market_cap` path is used (unchanged).
+    try:
+        cap_map = provider.get_market_caps(pool_symbols)
+    except RateLimitError:
+        prog.status = "resumable"
+        prog.message = _final_summary(prog)
+        return
+
     for row in pool:
         symbol = row["symbol"]
         try:
-            member, reason = _screen_one_candidate(session, cfg, provider, asof, symbol, scrub=scrub)
+            if cap_map is not None:
+                member, reason = _screen_one_candidate(
+                    session, cfg, provider, asof, symbol, scrub=scrub,
+                    prefetched_cap=cap_map.get(symbol),
+                )
+            else:
+                member, reason = _screen_one_candidate(session, cfg, provider, asof, symbol, scrub=scrub)
         except RateLimitError:
-            # the cap feed is persistently rate-limited → pause the expand resumable (honest, non-fab).
+            # the (per-symbol) cap feed is persistently rate-limited → pause the expand resumable
+            # (honest, non-fab). The batched path raises upfront above; this covers the per-symbol path.
             prog.status = "resumable"
             prog.message = _final_summary(prog)
             return
@@ -2280,9 +2313,12 @@ def _run_job(
                     if prog.kind not in _BACKFILL_KINDS:
                         _finalize_checkpoint(session, checkpoint, prog)
             elif skip_fetch and is_resume:
-                # J-59 resume-at-backfill: the fetch stage already completed (zero provider calls now). Load
-                # the existing checkpoint so the post-backfill finalize/fail-marking has it. NO live provider
-                # is built, NO chunk is fetched.
+                # J-59 resume-at-backfill (and J-84 resume-at-screen): the fetch stage already completed, so
+                # NO OHLCV chunk is fetched now (zero duplicate provider calls). Load the existing checkpoint
+                # so the post-stage finalize/fail-marking has it. For an EXPAND whose SCREEN step paused
+                # resumable (a systemic cap-auth/limit failure — J-84), the screen step below re-runs and
+                # needs the live provider + the committed pool, so bind them here too (the screen re-fetches
+                # the market caps — that is exactly what the resume retries; the OHLCV chunks stay covered).
                 checkpoint = _load_checkpoint(session, prog.job_id)
                 if checkpoint is not None:
                     prog.chunk_total = checkpoint.chunk_total
@@ -2290,7 +2326,12 @@ def _run_job(
                     checkpoint.updated_at = _utcnow()
                     session.add(checkpoint)
                     session.commit()
-                prog.current_activity = "resuming at the backfill stage (fetch already complete)"
+                if is_expand:
+                    live = provider if provider is not None else _resolve_live_provider(cfg, prog.source, api_key)
+                    pool = read_pool(seed_dir)
+                    prog.current_activity = "resuming at the screen stage (fetch already complete)"
+                else:
+                    prog.current_activity = "resuming at the backfill stage (fetch already complete)"
             if not paused and is_expand:
                 # screen the pool against the freshly-stored bars + a real market-cap reference, writing
                 # universe.json / CSVs / meta.json (the single screen source — screen_reasons). A persistent

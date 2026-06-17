@@ -10,7 +10,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date as date_cls
-from typing import Optional
+from typing import Optional, Sequence
 
 
 class ProviderUnavailableError(Exception):
@@ -68,3 +68,24 @@ class PriceProvider(ABC):
         raise ProviderUnavailableError(
             f"{type(self).__name__} does not provide a market-cap reference for {symbol!r}"
         )
+
+    def get_market_caps(self, symbols: Sequence[str]) -> Optional[dict[str, Optional[float]]]:
+        """OPTIONAL *batched* market-cap-reference capability (J-84) — used ONLY by the expand path.
+
+        A provider that can serve many symbols in one authenticated request (Yahoo's cookie+crumb
+        `/v7/finance/quote`, fetched ONCE per session and reused across the batch) OVERRIDES this to
+        return a `{symbol: REAL cap | None}` map: a symbol present in a 200 response WITH a positive
+        `marketCap` maps to that real float; a symbol present-but-without a cap (a per-candidate absence)
+        maps to `None` (the expand caller omits it `no_market_cap` — never fabricated). A SYSTEMIC
+        auth/limit failure of the whole batch — the cookie/crumb acquisition itself failing, or the
+        batched quote returning a persistent 401/429 — RAISES `RateLimitError`, so it flows through the
+        expand's existing resumable-pause branch (a whole-universe auth outage is NOT silently recorded
+        as "every candidate omitted"). It MUST NOT synthesize a cap (anti-goals: No fabricated data; Live
+        fetch is real-data-only); the request URL carries the crumb as a query param, so any raised error
+        is built from the REDACTED URL (`_http`/`_provider_error`) — the crumb/cookie never leaks.
+
+        The DEFAULT returns `None` to mean "no batch capability — fall back to the per-symbol
+        `get_market_cap` path" (preserving every per-symbol provider, e.g. Tiingo/Finnhub, and the
+        per-candidate `market_cap_fetch_failed` / `no_market_cap` reasons exactly as before). It does NOT
+        raise — the caller treats `None` as "use per-symbol"."""
+        return None

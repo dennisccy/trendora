@@ -1,0 +1,34 @@
+You are the ui-impact-analyst for phased development.
+
+Phase: goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-26
+Phase spec: /home/dennisccy/Git/trendora/docs/phases/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-26.md
+Agent instructions: .claude/agents/ui-impact-analyst.md  <-- read this first
+(CLAUDE.md is already in your system prompt — do not Read it again.)
+Skills to use:
+  - .claude/skills/diff-to-ui-impact.md
+  - .claude/skills/visible-change-summarizer.md
+  - .claude/skills/ui-workflow-inference.md
+
+Execution plan: /home/dennisccy/Git/trendora/runs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-26/plan.md
+Dev handoff: /home/dennisccy/Git/trendora/docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-26-dev.md  <-- read to understand what was built
+Frontend handoff: /home/dennisccy/Git/trendora/docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-26-frontend.md
+Implementation summary: /home/dennisccy/Git/trendora/reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-26-implementation-summary.md  <-- read this for context on what was built
+
+Frontend Present: yes
+
+Your job:
+1. Read the agent instructions and skills above
+2. Identify all changed files from the dev handoff
+3. Classify each file's UI impact using diff-to-ui-impact skill
+4. Map code changes to user-visible UI surfaces
+5. Identify what users can now do vs what is backend-only
+
+Write these two reports:
+  - /home/dennisccy/Git/trendora/reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-26-user-visible-changes.md
+  - /home/dennisccy/Git/trendora/reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-26-ui-surface-map.md
+
+Use the templates at templates/user-visible-changes.md and templates/ui-surface-map.md.
+
+Every entry in the surface map MUST have a specific 'What to Test' action (not vague phrases like 'verify it works').
+
+Then STOP.

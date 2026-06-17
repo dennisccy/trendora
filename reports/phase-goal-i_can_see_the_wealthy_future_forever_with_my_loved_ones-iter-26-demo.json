@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-26",
+  "base_url": "http://localhost:3835",
+  "iteration": 26,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Data Manager loads cleanly",
+      "narration": "We open the Data Manager — the central hub for importing and managing price history. The page shows a live backend status, the committed symbol count, and all import sections without any errors.",
+      "point_out": "The 'Data Manager' heading and the backend status line reading 'Ready · provider: seed · 585 symbols' are both visible immediately.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Data Manager" }
+    },
+    {
+      "n": 2,
+      "title": "Unfinished-imports panel surfaces the paused job",
+      "narration": "When an Expand-universe job hits a Yahoo authentication wall, it no longer vanishes silently. The Unfinished Imports section appears with an amber 'Resumable' badge and a plain-English explanation of exactly what paused the job.",
+      "point_out": "Look for the 'Unfinished imports' heading and the amber 'Resumable' badge on the job row — this is new behaviour replacing the old silent '0 passers' ghost completion.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Resumable" }
+    },
+    {
+      "n": 3,
+      "title": "Job card shows an honest, human-readable message",
+      "narration": "The card explains that the job paused due to a provider rate-limit, shows exactly how far it got (chunk 22 of 22, 548 symbols processed), and tells the operator what to do next — all in plain English, with no raw URLs or secret tokens leaking through.",
+      "point_out": "The message 'Paused — hit a provider rate-limit (429); progress saved at chunk 22/22 (0 symbols remaining). Resume to continue.' is displayed. There are no long alphanumeric strings or Yahoo URLs in the card.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Resume to continue" }
+    },
+    {
+      "n": 4,
+      "title": "Click Resume to hand the job back to the queue",
+      "narration": "One click on the Resume button is all it takes. The job immediately transitions from 'Resumable' to 'Running', picking up exactly where it left off — no duplicate downloads, no data loss.",
+      "point_out": "After clicking Resume the badge on that job row changes to indicate a running state. The page stays on /data and shows no error banners.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Resume" } },
+      "expect": { "text": "running" }
+    },
+    {
+      "n": 5,
+      "title": "As-of date switcher stays independent of job form",
+      "narration": "Switching the global as-of date to a historical snapshot updates the page URL and the header — but the Expand job date inputs are untouched. The two controls are completely independent, so a historical browse never accidentally populates a job form.",
+      "point_out": "The URL now includes ?asof=2026-06-15 and the header reads 'Viewing as-of 2026-06-15 (historical)'. All job form date fields remain empty.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "css": "[data-testid='asof-step-prev']" } },
+      "expect": { "text": "Viewing as-of" }
+    },
+    {
+      "n": 6,
+      "title": "Stocks page still loads all 122 members",
+      "narration": "The iter-26 backend changes also repaired a corrupted seed manifest. The Stocks page confirms the fix: all 122 universe members load with full leadership, sector, and theme data intact.",
+      "point_out": "The Stocks page shows 122 stocks with their sector, setup, and theme columns populated — no blank screen or 'backend unavailable' message.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "122" }
+    }
+  ]
+}

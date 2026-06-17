@@ -1341,6 +1341,193 @@ def test_expand_cap_fetch_real_httpx_key_scrubbed_end_to_end(tmp_path, caplog):
 
 
 # ==================================================================================================
+# J-84 — Expand market-cap via the BATCHED cookie+crumb path; systemic auth/limit failure → resumable
+#
+# The batched provider mirrors YahooProvider's J-84 contract: `get_market_caps(symbols)` returns a
+# {symbol: cap|None} map (cookie+crumb acquired ONCE, conceptually), and raises `RateLimitError` UPFRONT
+# on a SYSTEMIC auth/limit failure — so a whole-batch auth outage pauses the expand resumable WITHOUT
+# recording every candidate omitted. The single-symbol `get_market_cap` is NOT used by these (the engine
+# prefers the batch map). Drives the REAL `_run_expand_screen` orchestration via run/resume_data_job.
+# ==================================================================================================
+class _BatchedCapProvider(PriceProvider):
+    """An injected expand provider with a BATCHED market-cap capability (J-84). `get_daily` stores one
+    bar (counting fetches, to prove resume's zero-duplicate-OHLCV-fetch); `get_market_caps` returns the
+    canned {symbol: cap|None} map, OR raises a SYSTEMIC `RateLimitError` when `systemic` is set (the
+    cookie/crumb step or a batched 401/429). It records each batch call so a test can prove caps are
+    fetched in ONE batch and not per-symbol."""
+
+    # per-symbol close (so the price screen verdict is known by construction; volume sized so ADV clears
+    # $50M for any >$10 name). CHEAP's $4 close fails the min-price screen.
+    _PRICE = {"PASSER1": 150.0, "PASSER2": 80.0, "SMALLCAP": 60.0, "CHEAP": 4.0, "NOCAP": 90.0}
+
+    def __init__(self, caps: dict, *, systemic: bool = False):
+        self._caps = caps
+        self._systemic = systemic
+        self.fetched: list[str] = []          # OHLCV get_daily calls
+        self.cap_batches: list[list] = []      # each get_market_caps invocation's symbol list
+        self.per_symbol_cap_calls: list[str] = []  # MUST stay empty — the engine uses the batch map
+
+    def get_daily(self, symbol, start=None, end=None):
+        self.fetched.append(symbol)
+        px = self._PRICE.get(symbol, 100.0)
+        return [Bar(date=start or date(2024, 3, 1), open=px, high=px, low=px, close=px, volume=1_000_000.0)]
+
+    def get_market_caps(self, symbols):
+        self.cap_batches.append(list(symbols))
+        if self._systemic:
+            raise RateLimitError("yahoo market-cap crumb systemic auth/limit failure: HTTP 401")
+        return {s: self._caps.get(s) for s in symbols}
+
+    def get_market_cap(self, symbol):  # pragma: no cover - the batch map is preferred; recorded if hit
+        self.per_symbol_cap_calls.append(symbol)
+        return self._caps.get(symbol)
+
+
+def test_expand_batched_caps_screens_real_passers_one_batch_not_per_symbol(tmp_path):
+    """J-84 happy path: the batched cap provider screens the pool, writes universe.json with EXACTLY the
+    expected passers/omissions, and resolves the caps in ONE batch call (cookie+crumb-once semantics) —
+    never per-symbol. PASSER1/PASSER2 pass; SMALLCAP/CHEAP/NOCAP omitted with their honest reasons."""
+    cfg = load_config()
+    seed_dir = tmp_path / "seed"
+    _write_pool(seed_dir, rows=[r for r in _POOL_ROWS if r[0] != "FETCHFAIL"])  # all OHLCV-fetchable
+    engine = make_engine(f"sqlite:///{tmp_path / 'batch_caps.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 3, 1), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    caps = {"PASSER1": 3.0e12, "PASSER2": 5.0e11, "SMALLCAP": 1.0e9, "CHEAP": 9.0e9, "NOCAP": None}
+    provider = _BatchedCapProvider(caps)
+    job = create_job("expand", date(2024, 3, 1), date(2024, 3, 1), source="yahoo")
+    summary = run_data_job(
+        job.job_id, config=cfg, engine=engine, provider=provider, sleep_fn=_noop_sleep, seed_dir=seed_dir,
+    )
+    assert summary["status"] == "ok"
+    assert summary["passers"] == 2
+    universe = json.loads((seed_dir / "universe.json").read_text())
+    assert {m["symbol"] for m in universe["members"]} == {"PASSER1", "PASSER2"}
+    omit = {o["symbol"]: o["reason"] for o in universe["omitted"]}
+    assert "market_cap" in omit["SMALLCAP"] and "price" in omit["CHEAP"]
+    assert omit["NOCAP"] == "no_market_cap"  # a present-but-capless symbol → honest omission, never fab
+    p1 = next(m for m in universe["members"] if m["symbol"] == "PASSER1")
+    assert p1["market_cap"] == 3.0e12  # the REAL cap from the batch
+    # caps resolved in ONE batch (cookie+crumb-once), NEVER per-symbol
+    assert len(provider.cap_batches) == 1
+    assert set(provider.cap_batches[0]) == {"PASSER1", "PASSER2", "SMALLCAP", "CHEAP", "NOCAP"}
+    assert provider.per_symbol_cap_calls == []
+
+
+def test_expand_systemic_cap_auth_failure_pauses_resumable_not_all_omitted(tmp_path):
+    """J-84 crux: a SYSTEMIC market-cap auth/limit failure (cookie/crumb step or a batched 401/429) raised
+    by `get_market_caps` pauses the expand GRACEFULLY `resumable` (NOT failed), records NO universe.json,
+    and does NOT record every candidate omitted (the bug J-84 fixes: 0-passers / 548-omitted). The durable
+    checkpoint (from the OHLCV fetch) makes it Resume-able and SURVIVES a fresh DB session (restart)."""
+    cfg = load_config()
+    seed_dir = tmp_path / "seed"
+    _write_pool(seed_dir, rows=[("PASSER1", "Technology", "test"), ("PASSER2", "Health Care", "test")])
+    engine = make_engine(f"sqlite:///{tmp_path / 'sys_auth.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 3, 1), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    job = create_job("expand", date(2024, 3, 1), date(2024, 3, 1), source="yahoo")
+    summary = run_data_job(
+        job.job_id, config=cfg, engine=engine,
+        provider=_BatchedCapProvider({}, systemic=True), sleep_fn=_noop_sleep, seed_dir=seed_dir,
+    )
+    assert summary["status"] == "resumable"            # graceful pause, NOT failed
+    assert summary["passers"] == 0
+    assert summary["omitted_total"] == 0               # NOT "548 omitted" — the J-84 fix
+    assert not (seed_dir / "universe.json").exists()   # nothing fabricated/written on the pause
+    # the durable checkpoint survives a fresh session (restart-survival the Resume depends on)
+    with Session(engine) as fresh:
+        listed = resumable_imports(fresh, cfg)
+        assert [r["import_id"] for r in listed] == [job.job_id]
+
+
+def test_expand_resume_after_systemic_pause_zero_duplicate_ohlcv_fetch_then_completes(tmp_path):
+    """J-84 resume: after a systemic cap-auth pause, Resume with a RECOVERED batched provider completes
+    with ZERO duplicate OHLCV fetch (the fetch stage already covered — J-59) and writes the real
+    universe.json. Asserts the recovered provider's `get_daily` is NEVER called on resume (covered chunks
+    skipped) while the cap batch DOES re-run (that is the point of resuming)."""
+    cfg = load_config()
+    seed_dir = tmp_path / "seed"
+    _write_pool(seed_dir, rows=[("PASSER1", "Technology", "test"), ("PASSER2", "Health Care", "test")])
+    engine = make_engine(f"sqlite:///{tmp_path / 'resume_sys.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 3, 1), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    job = create_job("expand", date(2024, 3, 1), date(2024, 3, 1), source="yahoo")
+    paused = _BatchedCapProvider({}, systemic=True)
+    summary1 = run_data_job(
+        job.job_id, config=cfg, engine=engine, provider=paused, sleep_fn=_noop_sleep, seed_dir=seed_dir,
+    )
+    assert summary1["status"] == "resumable"
+    fetched_during_pause = list(paused.fetched)
+    assert set(fetched_during_pause) == {"PASSER1", "PASSER2"}  # OHLCV fetched before the cap step walled
+
+    # --- Resume with a recovered provider: OHLCV already covered (zero re-fetch); cap batch now succeeds
+    recovered = _BatchedCapProvider({"PASSER1": 3.0e12, "PASSER2": 5.0e11})
+    summary2 = resume_data_job(
+        job.job_id, config=cfg, engine=engine, provider=recovered, sleep_fn=_noop_sleep, seed_dir=seed_dir,
+    )
+    assert summary2["status"] == "ok"
+    assert recovered.fetched == []          # ZERO duplicate OHLCV fetch — the covered fetch stage skipped
+    assert len(recovered.cap_batches) == 1  # the cap batch re-ran on resume (that is what was retried)
+    universe = json.loads((seed_dir / "universe.json").read_text())
+    assert {m["symbol"] for m in universe["members"]} == {"PASSER1", "PASSER2"}
+    # no duplicate (symbol, date) bar from the resume
+    with Session(engine) as session:
+        per_symbol = {}
+        for r in session.exec(select(DailyPrice).where(DailyPrice.date == date(2024, 3, 1))).all():
+            per_symbol[r.symbol] = per_symbol.get(r.symbol, 0) + 1
+    assert all(c == 1 for c in per_symbol.values())
+
+
+def test_expand_systemic_pause_crumb_never_leaks_in_any_response_or_row(tmp_path):
+    """J-84 secret-redaction guard: a systemic cap-auth failure whose error EMBEDS a crumb-like token must
+    NOT leak the crumb into the job snapshot, `GET /api/data/jobs/{id}`, the `resumable_imports` rows, the
+    written artifacts, or any `DataProviderRun` row. Grep the RESPONSE, not just the DB (MEMORY:
+    httpx-error-leaks-url-query-key)."""
+    crumb = "CRUMB-SECRET-NEVER-LEAKS-9z1"
+
+    class _CrumbLeakingProvider(PriceProvider):
+        def get_daily(self, symbol, start=None, end=None):
+            return [Bar(date=start or date(2024, 3, 1), open=100.0, high=100.0, low=100.0, close=100.0, volume=1_000_000.0)]
+
+        def get_market_caps(self, symbols):
+            # a misbehaving provider that (wrongly) put the crumb in its error string — the engine scrub
+            # + the message plumbing MUST still not surface it anywhere the operator/DB can read.
+            raise RateLimitError(f"systemic auth failure with crumb={crumb}")
+
+    cfg = load_config()
+    seed_dir = tmp_path / "seed"
+    _write_pool(seed_dir, rows=[("PASSER1", "Technology", "test")])
+    engine = make_engine(f"sqlite:///{tmp_path / 'crumbleak.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 3, 1), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    job = create_job("expand", date(2024, 3, 1), date(2024, 3, 1), source="yahoo")
+    summary = run_data_job(
+        job.job_id, config=cfg, engine=engine, provider=_CrumbLeakingProvider(),
+        sleep_fn=_noop_sleep, seed_dir=seed_dir,
+    )
+    assert summary["status"] == "resumable"
+    # the crumb is ABSENT from every operator/DB-readable surface
+    assert crumb not in json.dumps(summary)
+    assert crumb not in json.dumps(get_job(job.job_id))
+    with Session(engine) as session:
+        assert crumb not in json.dumps(resumable_imports(session, cfg))
+        runs = session.exec(select(DataProviderRun)).all()
+    assert crumb not in json.dumps([{c: str(getattr(r, c)) for c in ("provider", "status", "message")} for r in runs])
+
+
+# ==================================================================================================
 # J-39 — seed-safe Remove-data: classifier + confirm-preview + destructive cascade + audit
 #
 # The session's FIRST destructive data path. The cascade MUST be a whole-row delete of user-added bars

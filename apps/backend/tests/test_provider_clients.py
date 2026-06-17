@@ -29,14 +29,20 @@ def _unix(d: date) -> int:
 
 
 class _FakeResponse:
-    def __init__(self, payload=None, *, status_code: int = 200):
+    def __init__(self, payload=None, *, status_code: int = 200, text: str = "", url: str = "http://x"):
         self._payload = payload
         self.status_code = status_code
+        self.text = text
+        self._url = url
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
+            # carry a REAL request + response so a caller can read `exc.response.status_code` (J-84's
+            # systemic 401/429 classification) and so the redaction (`_redacted_url`) has a URL to strip.
+            request = httpx.Request("GET", self._url)
             raise httpx.HTTPStatusError(
-                f"HTTP {self.status_code}", request=httpx.Request("GET", "http://x"), response=None
+                f"HTTP {self.status_code}", request=request,
+                response=httpx.Response(self.status_code, request=request),
             )
 
     def json(self):
@@ -358,23 +364,141 @@ def test_base_provider_get_market_cap_raises_by_default():
         _BarsOnly().get_market_cap("AAPL")
 
 
-def test_yahoo_get_market_cap_returns_real_value():
-    """Yahoo's market-cap capability returns the REAL `marketCap` from the no-key quote endpoint."""
-    client = _FakeClient(payload={"quoteResponse": {"result": [{"symbol": "AAPL", "marketCap": 3.0e12}]}})
-    assert YahooProvider(client=client).get_market_cap("AAPL") == 3.0e12
+def test_base_provider_get_market_caps_default_is_none_fallback():
+    """The base BATCHED `get_market_caps` returns `None` to mean "no batch capability — fall back to the
+    per-symbol path" (J-84). It does NOT raise — a per-symbol provider keeps its per-candidate semantics."""
+
+    class _BarsOnly(PriceProvider):
+        def get_daily(self, symbol, start=None, end=None):
+            return []
+
+    assert _BarsOnly().get_market_caps(["AAPL", "MSFT"]) is None
+
+
+# --------------------------------------------------------------------------------------------------
+# J-84: Yahoo market-cap via the no-key cookie + crumb flow (batched), with systemic-failure classifying.
+# --------------------------------------------------------------------------------------------------
+_YAHOO_COOKIE = "https://finance.yahoo.com/"
+_YAHOO_CRUMB = "https://query1.finance.yahoo.com/v1/test/getcrumb"
+_YAHOO_QUOTE = "https://query1.finance.yahoo.com/v7/finance/quote"
+
+
+class _YahooCapClient:
+    """A URL-aware fake httpx client for the J-84 cookie→crumb→quote flow. Each URL gets its own canned
+    response (status + text/JSON). Records every GET so a test can assert the cookie+crumb are fetched
+    ONCE and reused across the batch, and that the quote carries `crumb=…`."""
+
+    def __init__(self, *, crumb_status=200, crumb_text="CRUMB-XYZ", quote_status=200, quote_payload=None,
+                 cookie_status=200):
+        self._crumb_status = crumb_status
+        self._crumb_text = crumb_text
+        self._quote_status = quote_status
+        self._quote_payload = quote_payload if quote_payload is not None else {"quoteResponse": {"result": []}}
+        self._cookie_status = cookie_status
+        self.calls: list[dict] = []
+
+    def get(self, url, params=None, headers=None, timeout=None):
+        self.calls.append({"url": url, "params": params, "headers": headers})
+        if url == _YAHOO_COOKIE:
+            return _FakeResponse(None, status_code=self._cookie_status, url=url)
+        if url == _YAHOO_CRUMB:
+            return _FakeResponse(None, status_code=self._crumb_status, text=self._crumb_text, url=url)
+        if url == _YAHOO_QUOTE:
+            return _FakeResponse(self._quote_payload, status_code=self._quote_status, url=url)
+        raise AssertionError(f"unexpected URL {url!r}")
+
+    def url_calls(self, url):
+        return [c for c in self.calls if c["url"] == url]
+
+
+def test_yahoo_get_market_caps_cookie_crumb_flow_batched_with_crumb():
+    """J-84 cookie→crumb→quote flow: the cookie (`finance.yahoo.com`) then the crumb (`/v1/test/getcrumb`)
+    are fetched, then `/v7/finance/quote` is called WITH `crumb=…` for the BATCH. A 200 with `marketCap` →
+    a real float; a 200 without it → None (absent, never fabricated)."""
+    payload = {"quoteResponse": {"result": [
+        {"symbol": "AAPL", "marketCap": 3.0e12},
+        {"symbol": "MSFT"},  # present but capless → None
+    ]}}
+    client = _YahooCapClient(quote_payload=payload)
+    caps = YahooProvider(client=client).get_market_caps(["AAPL", "MSFT", "NVDA"])
+    assert caps["AAPL"] == 3.0e12
+    assert caps["MSFT"] is None  # present-but-capless → absent, never fabricated
+    assert caps["NVDA"] is None  # not returned by Yahoo at all → absent, never fabricated
+    # the quote carried the crumb
+    quote_call = client.url_calls(_YAHOO_QUOTE)[0]
+    assert quote_call["params"]["crumb"] == "CRUMB-XYZ"
+    assert quote_call["params"]["symbols"] == "AAPL,MSFT,NVDA"  # batched in one request
+
+
+def test_yahoo_get_market_caps_acquires_cookie_crumb_once_reused_across_batch():
+    """J-84: the cookie + crumb are acquired ONCE per provider session and reused across the whole batch —
+    a SECOND `get_market_caps` (or a second batch) does NOT re-fetch the crumb (the instance caches it)."""
+    payload = {"quoteResponse": {"result": [{"symbol": "AAPL", "marketCap": 3.0e12}]}}
+    provider = YahooProvider(client=_YahooCapClient(quote_payload=payload))
+    provider.get_market_caps(["AAPL"])
+    provider.get_market_caps(["AAPL"])
+    client = provider._client
+    assert len(client.url_calls(_YAHOO_CRUMB)) == 1  # crumb fetched once, reused on the second call
+    assert len(client.url_calls(_YAHOO_COOKIE)) == 1
+
+
+def test_yahoo_get_market_cap_single_delegates_to_batched():
+    """The single-symbol `get_market_cap` delegates to the batched cookie+crumb path (one auth code path)."""
+    payload = {"quoteResponse": {"result": [{"symbol": "AAPL", "marketCap": 3.0e12}]}}
+    assert YahooProvider(client=_YahooCapClient(quote_payload=payload)).get_market_cap("AAPL") == 3.0e12
 
 
 def test_yahoo_get_market_cap_absent_returns_none_never_fabricates():
     """A symbol with no `marketCap` field yields None (the expand caller omits it) — never a fabricated cap."""
-    client = _FakeClient(payload={"quoteResponse": {"result": [{"symbol": "AAPL"}]}})
-    assert YahooProvider(client=client).get_market_cap("AAPL") is None
+    payload = {"quoteResponse": {"result": [{"symbol": "AAPL"}]}}
+    assert YahooProvider(client=_YahooCapClient(quote_payload=payload)).get_market_cap("AAPL") is None
+
+
+def test_yahoo_get_market_caps_systemic_401_on_crumb_raises_rate_limit():
+    """J-84 systemic classification: a 401 on the SHARED crumb acquisition is a whole-batch auth failure →
+    `RateLimitError` (the expand pauses resumable — NOT a per-candidate omission, NOT a fabricated cap)."""
+    client = _YahooCapClient(crumb_status=401)
+    with pytest.raises(RateLimitError):
+        YahooProvider(client=client).get_market_caps(["AAPL", "MSFT"])
+
+
+def test_yahoo_get_market_caps_empty_crumb_body_is_systemic_rate_limit():
+    """An empty / throttled crumb body (200 but no token) is a systemic auth/limit failure → RateLimitError."""
+    client = _YahooCapClient(crumb_text="   ")
+    with pytest.raises(RateLimitError):
+        YahooProvider(client=client).get_market_caps(["AAPL"])
+
+
+def test_yahoo_get_market_caps_systemic_401_on_quote_raises_rate_limit_redacted():
+    """J-84: a 401 on the BATCHED quote (after a good crumb) is also systemic → `RateLimitError`, and the
+    error is built from the REDACTED URL so the `crumb=…` query param can NEVER leak."""
+    client = _YahooCapClient(quote_status=401)
+    with pytest.raises(RateLimitError) as exc:
+        YahooProvider(client=client).get_market_caps(["AAPL", "MSFT"])
+    msg = str(exc.value)
+    assert "CRUMB-XYZ" not in msg and "crumb=" not in msg and "?" not in msg  # the crumb never leaks
+    assert "HTTP 401" in msg  # the systemic status is surfaced (useful, non-secret)
+
+
+def test_yahoo_get_market_caps_systemic_429_on_quote_raises_rate_limit():
+    """A 429 on the batched quote is systemic → RateLimitError (the existing rate-limit pause path)."""
+    client = _YahooCapClient(quote_status=429)
+    with pytest.raises(RateLimitError):
+        YahooProvider(client=client).get_market_caps(["AAPL"])
 
 
 def test_yahoo_get_market_cap_http_error_raises():
-    """A transport/HTTP failure on the cap fetch RAISES (redacted) — it never returns a fabricated cap."""
-    provider = YahooProvider(client=_FakeClient(exc=httpx.ConnectError("offline")))
+    """A transport/HTTP failure on the cap fetch RAISES — it never returns a fabricated cap."""
+    provider = YahooProvider(client=_YahooCapClient(quote_status=500))
     with pytest.raises(ProviderUnavailableError):
         provider.get_market_cap("AAPL")
+
+
+def test_yahoo_get_market_caps_unparseable_quote_body_raises():
+    """A 200 quote with an unparseable body → ProviderUnavailableError (surfaced, never fabricated)."""
+    client = _YahooCapClient(quote_payload=_UNPARSEABLE)
+    with pytest.raises(ProviderUnavailableError):
+        YahooProvider(client=client).get_market_caps(["AAPL"])
 
 
 def test_tiingo_get_market_cap_returns_real_value_and_no_key_raises():
