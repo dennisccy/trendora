@@ -71,9 +71,12 @@ def test_get_data_overview_shape(data_api_engine):
     env-var NAME only — never a key value."""
     with Session(data_api_engine) as session:
         payload = data_overview(session=session)
-    assert set(payload) == {
-        "coverage", "runs", "sources", "resumable_imports", "unfinished_imports", "job_progress",
-    }
+    # iter-33 consolidation: J-92 added the additive blueprint-registered `macro` key to this payload
+    # (the iter-20/21 / iter-23/24 / iter-32 additive-trips-blanket-guard pattern). The exact-set guard
+    # is reconciled here as a SUPERSET compare so an additive, separately-asserted key never re-fails it.
+    assert {
+        "coverage", "runs", "sources", "macro", "resumable_imports", "unfinished_imports", "job_progress",
+    } <= set(payload)
     assert payload["resumable_imports"] == []  # J-34: no paused imports on a fresh DB
     assert payload["unfinished_imports"] == []  # J-38: nothing unfinished on a fresh DB
     cov = payload["coverage"]

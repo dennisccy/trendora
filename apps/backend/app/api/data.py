@@ -26,7 +26,7 @@ from sqlmodel import Session
 
 from app.config import get_config
 from app.db import get_engine, get_session
-from app.engine import data_manager
+from app.engine import data_manager, scanner
 from app.engine.prices import latest_data_date
 
 router = APIRouter(tags=["data"])
@@ -92,18 +92,31 @@ class RemoveScope(BaseModel):
 
 
 @router.get("/data")
-def data_overview(session: Session = Depends(get_session)) -> dict:
+def data_overview(
+    as_of: Optional[str] = None, session: Session = Depends(get_session)
+) -> dict:
     """Current dataset coverage + recent run history + the import provider catalog (J-33) + the paused
     resumable imports (J-34). Coverage is descriptive metadata (no canonical value recomputed); it serves
     gracefully even on an empty DB (null range / zero counts). `sources` is the config catalog with
     env-detected availability — it carries the env-var NAME + a boolean only, never a key value.
     `resumable_imports` are the durable checkpoints with `status == "resumable"` (newest first) so a
     rate-limited import stays discoverable + Resume-able after a backend restart — and it NEVER carries a
-    key value (the checkpoint has no key column)."""
+    key value (the checkpoint has no key column).
+
+    J-93/J-94: `?as_of=` is the SINGLE GLOBAL as-of (the same control every date-scoped page reads — NOT a
+    second date state). The coverage block's dynamic `universe_count` + per-date `universe_diagnostic` are
+    resolved at this date. An absent/invalid `as_of` gracefully falls back to the latest stored run date
+    (coverage still serves — never a 4xx for a bad as-of here, since this is descriptive metadata)."""
     cfg = get_config()
     jp = cfg.data_manager.job_progress
+    resolved_asof: Optional[date_cls] = None
+    if as_of:
+        try:
+            resolved_asof = scanner.resolve_as_of_date(session, as_of, cfg)
+        except scanner.AsOfError:
+            resolved_asof = None  # graceful: descriptive coverage falls back to the latest stored date
     return {
-        "coverage": data_manager.compute_coverage(session, cfg),
+        "coverage": data_manager.compute_coverage(session, cfg, as_of=resolved_asof),
         "runs": data_manager.recent_runs(session, cfg),
         "sources": data_manager.compute_provider_availability(cfg),
         # J-92: the OPTIONAL FRED macro feed catalog + availability (env-detected; committed-seed coverage;

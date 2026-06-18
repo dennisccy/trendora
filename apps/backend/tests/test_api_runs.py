@@ -35,7 +35,9 @@ def test_api_runs_lists_runs_descending_by_date(loaded_engine):
     assert _RUN_SUMMARY_FIELDS <= set(top)
     assert top["regime"]["label"]
     assert isinstance(top["regime"]["score"], (int, float))
-    assert top["n_stocks"] == len(load_config().universe.symbols)
+    # iter-33 (J-93): n_stocks is the POINT-IN-TIME-RESOLVED member count at the run's date (a non-empty
+    # subset of the static universe at a full-universe bootstrap date), not the static universe size.
+    assert 0 < top["n_stocks"] <= len(load_config().universe.symbols)
     # candidate counts carry the canonical statuses (a number always renders)
     assert isinstance(top["candidate_counts"].get("Actionable"), int)
 
@@ -52,7 +54,8 @@ def test_api_run_detail_returns_stored_snapshot(loaded_engine):
     assert detail["regime"]["label"] == oldest["regime"]["label"]
     assert detail["regime"]["components"]  # the regime panel carries its component breakdown
     assert detail["breadth"]["label"] == "universe-relative"
-    assert len(detail["rows"]) == len(load_config().universe.symbols)
+    # iter-33 (J-93): one row per resolved member at the run's date (a non-empty subset of the static universe).
+    assert 0 < len(detail["rows"]) <= len(load_config().universe.symbols)
 
     # the stored rows are the canonical StockRow shape (so the detail page reuses the leaderboard row)
     row = detail["rows"][0]

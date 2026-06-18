@@ -48,7 +48,13 @@ from app.data_providers.seed_provider import symbol_to_filename
 from app.db import get_engine
 from app.engine import forward_testing, scanner
 from app.engine.prices import attach_shared_cache, bar_cache, bars_asof, latest_data_date, prefilled_bar_cache
-from app.engine.universe_screen import DEFAULT_SEED_DIR, read_pool, screen_reasons
+from app.engine import universe_resolver
+from app.engine.universe_screen import (
+    DEFAULT_SEED_DIR,
+    pool_survivorship,
+    read_pool,
+    screen_reasons,
+)
 from app.models import (
     DailyPrice,
     DataProviderRun,
@@ -294,7 +300,43 @@ def _missing_data_diagnostic(session: Session, cfg: Config) -> dict:
     }
 
 
-def _coverage_diagnostic_absent(session: Session, cfg: Config) -> dict:
+def _resolve_coverage_asof(session: Session, as_of: Optional[date_cls], cfg: Config) -> Optional[date_cls]:
+    """The as-of date the coverage block resolves the dynamic universe at (J-93). A provided in-range
+    `as_of` is used verbatim; `None` falls back to the latest STORED run date, then the latest data date.
+    Returns None only on a wholly-empty DB (no bars at all). NEVER fabricates a date — it only picks an
+    existing reference date so `universe_count` reflects a real point-in-time resolution."""
+    if as_of is not None:
+        return as_of
+    latest_run = session.scalar(select(func.max(ScannerRun.asof_date)))
+    if latest_run is not None:
+        return latest_run
+    return latest_data_date(session)
+
+
+def _resolved_universe(
+    session: Session, as_of: Optional[date_cls], cfg: Config
+) -> dict:
+    """The as-of-resolved universe contract (J-93/J-94) the coverage block + methodology read from ONE
+    place: the members resolved AT the resolved as-of date, the candidate-pool denominator, and the
+    per-date excluded-by-reason counts. Returns the resolver's descriptive payload PLUS the resolved
+    `asof` (or an honest empty shape on a wholly-empty DB — no fabricated members/date)."""
+    resolved_asof = _resolve_coverage_asof(session, as_of, cfg)
+    if resolved_asof is None:
+        pool = read_pool()
+        return {
+            "asof": None,
+            "candidate_pool_count": len({row["symbol"] for row in pool}),
+            "admitted": [],
+            "admitted_count": 0,
+            "excluded_counts": {r: 0 for r in universe_resolver.EXCLUSION_REASONS},
+            "resolutions": [],
+        }
+    return universe_resolver.resolve_with_reasons(session, resolved_asof, cfg)
+
+
+def _coverage_diagnostic_absent(
+    session: Session, cfg: Config, *, universe: Optional[list[str]] = None
+) -> dict:
     """J-85 — the universe-vs-latest-snapshot coverage diagnostic: the resolved-universe members
     (`config.universe.symbols` — the one canonical screen result) that are ABSENT from the LATEST scanner
     snapshot's scored set (`scanner_results.ticker` for the newest `ScannerRun`). This is a READ-ONLY
@@ -307,16 +349,24 @@ def _coverage_diagnostic_absent(session: Session, cfg: Config) -> dict:
                                 scored tickers (0 when every member is present → the UI shows NO banner).
       - `absent_preview`      — a bounded, sorted sample of the absent tickers (`data_manager.gap_preview`).
       - `latest_snapshot_date`— the newest `ScannerRun.asof_date` (ISO), or None when no snapshot exists.
-      - `universe_count`      — `len(config.universe.symbols)` (the same denominator coverage already shows).
+      - `universe_count`      — J-93: the members RESOLVED at the latest snapshot date (the as-of-dependent
+                                membership, the same denominator coverage shows for that date), NOT the
+                                static pool size.
+      - `candidate_pool_count`— the full candidate-pool size carried beside the resolved count (J-93).
 
-    Honest edge cases: NO snapshot yet → `absent_count == universe_count` (every member is absent because
-    there is nothing scored), `latest_snapshot_date` None. An empty universe → `absent_count == 0`.
-    Comparison is case-normalized (uppercased) so a stored lowercase ticker is matched honestly."""
-    universe = list(cfg.universe.symbols)
+    J-93: the resolved universe at the latest snapshot date is computed via `universe_resolver` (the SINGLE
+    membership path) — passed in by the caller as `universe` so it is resolved ONCE per coverage call (no
+    second resolution). Honest edge cases: NO snapshot yet → `absent_count == universe_count` (every
+    resolved member is absent because there is nothing scored), `latest_snapshot_date` None. An empty
+    (pre-warm-up) resolved universe → `absent_count == 0`. Comparison is case-normalized (uppercased)."""
+    pool_count = len({row["symbol"] for row in read_pool()})
+    if universe is None:
+        # standalone call (tests / fallback): resolve at the latest snapshot/data date once.
+        universe = _resolved_universe(session, None, cfg)["admitted"]
     universe_count = len(universe)
     latest_date = session.scalar(select(func.max(ScannerRun.asof_date)))
     if latest_date is None:
-        # no snapshot at all → every universe member is absent (nothing scored), no fabricated coverage.
+        # no snapshot at all → every resolved member is absent (nothing scored), no fabricated coverage.
         preview = cfg.data_manager.gap_preview
         absent_sorted = sorted(universe)
         return {
@@ -324,6 +374,7 @@ def _coverage_diagnostic_absent(session: Session, cfg: Config) -> dict:
             "absent_preview": absent_sorted[:preview],
             "latest_snapshot_date": None,
             "universe_count": universe_count,
+            "candidate_pool_count": pool_count,
         }
     latest_run_id = session.scalar(
         select(ScannerRun.id).where(ScannerRun.asof_date == latest_date)
@@ -341,18 +392,163 @@ def _coverage_diagnostic_absent(session: Session, cfg: Config) -> dict:
         "absent_preview": absent[:preview],
         "latest_snapshot_date": latest_date.isoformat(),
         "universe_count": universe_count,
+        "candidate_pool_count": pool_count,
     }
 
 
-def compute_coverage(session: Session, config: Optional[Config] = None) -> dict:
+def _universe_diagnostic(resolved: dict, cfg: Config) -> dict:
+    """J-94 — the per-date coverage diagnostic for the resolved as-of: the admitted count and the
+    excluded-by-reason counts (below_history / below_price / below_adv) against the candidate-pool
+    denominator. A read-only re-projection of the already-computed `resolved` resolver payload (no
+    second resolution, no canonical-value recompute). Carries the config thresholds VERBATIM so the UI
+    states the exact cutoffs (No magic number — the values are config reads, not literals)."""
+    filters = cfg.universe.filters
+    excluded = resolved["excluded_counts"]
+    return {
+        "asof": resolved["asof"],
+        "candidate_pool_count": resolved["candidate_pool_count"],
+        "admitted_count": resolved["admitted_count"],
+        "excluded_total": sum(excluded.values()),
+        "excluded": {
+            universe_resolver.REASON_BELOW_HISTORY: excluded[universe_resolver.REASON_BELOW_HISTORY],
+            universe_resolver.REASON_BELOW_PRICE: excluded[universe_resolver.REASON_BELOW_PRICE],
+            universe_resolver.REASON_BELOW_ADV: excluded[universe_resolver.REASON_BELOW_ADV],
+        },
+        # the exact cutoffs the resolver gated on (config reads — surfaced so the UI never re-types them).
+        "thresholds": {
+            "min_history_bars": cfg.indicators.min_history_bars,
+            "min_price": filters.min_price,
+            "min_dollar_vol": filters.min_dollar_vol,
+            "adv_window_days": filters.adv_window_days,
+        },
+    }
+
+
+def _warmup_boundary_date(session: Session, cfg: Config) -> Optional[date_cls]:
+    """J-94 — the deterministic warm-up boundary: the FIRST benchmark (SPY) trading day on/after which a
+    name starting at the seed price-start could have >= `indicators.min_history_bars` trailing bars.
+    Computed structurally from the trading calendar (the seed-start + (min_history_bars - 1) trading
+    days) — NOT a magic literal; None on a calendar shorter than the threshold (warm-up never reached)."""
+    calendar = _trading_days(session, cfg)
+    min_bars = cfg.indicators.min_history_bars
+    if len(calendar) < min_bars:
+        return None
+    return calendar[min_bars - 1]  # the date on which the (min_bars)-th bar exists (0-indexed offset)
+
+
+def _membership_labels(session: Session, cfg: Config) -> dict:
+    """J-96 — the three HONEST labels carried verbatim beside the membership timeline (single source —
+    the UI re-types none of this copy):
+      - `survivorship`     — the candidate-pool current-constituent caveat (J-95b),
+      - `warmup`           — the deterministic warm-up boundary (the date the universe can first be full),
+      - `universe_relative`— the breadth/walk-forward universe-relative + dynamic-vs-static caveat.
+    Plain-language, descriptive metadata — recomputes no canonical value."""
+    boundary = _warmup_boundary_date(session, cfg)
+    min_bars = cfg.indicators.min_history_bars
+    return {
+        "survivorship": pool_survivorship(),
+        "warmup": {
+            "min_history_bars": min_bars,
+            "boundary_date": boundary.isoformat() if boundary else None,
+            "label": (
+                f"Warm-up: a name is admitted at a date only once it has at least {min_bars} trailing "
+                f"bars from that date. Before the warm-up boundary"
+                + (f" (~{boundary.isoformat()})" if boundary else "")
+                + " the resolved universe is honestly smaller or empty — not an error."
+            ),
+        },
+        "universe_relative": (
+            "Breadth and walk-forward evidence are universe-relative. The dynamic point-in-time universe "
+            "REDUCES survivorship versus the static current-membership universe (a 30-bar name is never "
+            "ranked against a 1000-bar peer), while residual pool-survivorship remains until a true "
+            "point-in-time index-constituent feed is added."
+        ),
+    }
+
+
+def _membership_timeline(
+    session: Session, cfg: Config, snapshot_dates: list[date_cls]
+) -> dict:
+    """J-96 — the dynamic-universe membership timeline: a READ-ONLY descriptive derivation over the
+    stored per-snapshot `ScannerResult` membership (the persisted scored-ticker sets that ARE the
+    membership — recomputes NO score/return/membership) producing, per snapshot date (ascending):
+      - `size`            — the resolved universe size (the stored scored-ticker count) → a step function,
+      - `entries`         — names appearing for the FIRST time across the timeline (first date a name is
+                            in a snapshot's scored set),
+      - `exits`           — names that disappear (present on the prior observed date, absent now),
+      - `excluded`        — the per-date excluded-by-reason counts (below_history / below_price /
+                            below_adv) from the resolver over the SAME candidate pool + bars <= that date.
+
+    Strictly causal: each date is observed from its OWN <= D snapshot + bars <= D (no future leakage).
+    Deterministic. An empty DB / no snapshots → an empty-but-valid timeline (no fabricated dates/members)."""
+    dates = sorted(snapshot_dates)
+    pool_count = len({row["symbol"] for row in read_pool()})
+    points: list[dict] = []
+    seen: set[str] = set()
+    prev_members: set[str] = set()
+
+    # one query: every (run.asof_date, ticker) so each snapshot's scored set is read once (no per-date
+    # round-trip). Reads the persisted membership — the SINGLE source — never a re-resolution.
+    rows = session.exec(
+        select(ScannerRun.asof_date, ScannerResult.ticker)
+        .join(ScannerResult, ScannerResult.run_id == ScannerRun.id)
+    ).all()
+    members_by_date: dict[date_cls, set[str]] = {}
+    for asof_date, ticker in rows:
+        members_by_date.setdefault(asof_date, set()).add(ticker.upper())
+
+    # J-46 load-once bar cache: the per-date resolver re-reads the SAME pool symbols across every snapshot
+    # date, so caching each symbol's full series once turns each `bars_asof` into an in-memory slice (a
+    # whole-calendar rebuild's timeline stays tractable). The cache reads the committed bars (adds none)
+    # and dies with this block — never serving a stale series.
+    with bar_cache(session):
+        for d in dates:
+            members = members_by_date.get(d, set())
+            # entries = members never seen on any earlier observed date; exits = prior members now gone.
+            entries = sorted(m for m in members if m not in seen)
+            exits = sorted(m for m in prev_members if m not in members)
+            seen |= members
+            prev_members = members
+            # the per-date excluded-by-reason counts from the resolver over bars <= d (causal). This is a
+            # read-only descriptive derivation (no canonical-value recompute) over the candidate pool.
+            diag = universe_resolver.resolve_with_reasons(session, d, cfg)
+            points.append({
+                "date": d.isoformat(),
+                "size": len(members),
+                "entries": entries,
+                "exits": exits,
+                "excluded": dict(diag["excluded_counts"]),
+            })
+
+    return {
+        "candidate_pool_count": pool_count,
+        "points": points,
+        # J-95(b)/J-96: the three honest labels carried VERBATIM beside the timeline (single source).
+        "labels": _membership_labels(session, cfg),
+    }
+
+
+def compute_coverage(
+    session: Session, config: Optional[Config] = None, *, as_of: Optional[date_cls] = None
+) -> dict:
     """Current dataset coverage — purely descriptive, recomputing NO canonical value:
       - price-history date range (min/max `DailyPrice.date`) and distinct symbol count,
       - the set of snapshot/as-of dates (`ScannerRun.asof_date`), newest first,
       - GAPS = trading days (bars present) with no snapshot — the actionable backfill targets — with a
         count plus a bounded preview (`config.data_manager.gap_preview`),
       - (J-36) `per_symbol` — the per-symbol / per-universe-member coverage table (see
-        `_per_symbol_coverage`), consistency-bound to the aggregates below: the distinct-symbol (has-data)
-        row count == `symbol_count` and the in-universe row count == `universe_count` (same sources)."""
+        `_per_symbol_coverage`), consistency-bound: the distinct-symbol (has-data) row count ==
+        `symbol_count` and the in-universe row count == `candidate_universe_count` (the static
+        `config.universe.symbols` count — the data-table membership view).
+
+    J-93/J-94: the universe contract is now AS-OF-DEPENDENT. `universe_count` is the members RESOLVED at
+    `as_of` (the single global as-of; falls back to the latest stored run date when None) — the dynamic
+    point-in-time membership the scored snapshot for that date scores — NOT the static pool size. The
+    full-pool denominator (`candidate_pool_count`) and the static candidate-universe count
+    (`candidate_universe_count`) are carried beside it. `universe_diagnostic` (J-94) is the per-date
+    admitted + excluded-by-reason counts at `as_of`; `membership_timeline` (J-96) is the per-snapshot-date
+    resolved-size step function + entries/exits + per-date excluded counts. Every figure is read-only
+    descriptive metadata over the stored bars + config thresholds (recomputes no canonical score/return)."""
     cfg = config or get_config()
     price_min = session.scalar(select(func.min(DailyPrice.date)))
     price_max = session.scalar(select(func.max(DailyPrice.date)))
@@ -364,14 +560,26 @@ def compute_coverage(session: Session, config: Optional[Config] = None) -> dict:
     gaps = [d for d in trading_days if d not in snapshot_set]
     preview = cfg.data_manager.gap_preview
 
+    # J-93/J-94: resolve the dynamic universe at the as-of (single global as-of; None ⇒ latest stored run
+    # date) ONCE — the SINGLE membership resolution this coverage call reads from (no second resolution).
+    resolved = _resolved_universe(session, as_of, cfg)
+    resolved_admitted = resolved["admitted"]
+
     return {
         "price_start": price_min.isoformat() if price_min else None,
         "price_end": price_max.isoformat() if price_max else None,
         "symbol_count": int(symbol_count or 0),
-        # the RESOLVED UNIVERSE size — the one canonical `config.universe.symbols` (the committed screen
-        # result), read live here and on /api/methodology so the two surfaces never drift (J-22, single
-        # source / no recompute). Distinct from `symbol_count` (DISTINCT priced symbols, incl. ETFs+^VIX).
-        "universe_count": len(cfg.universe.symbols),
+        # J-93: the AS-OF-RESOLVED universe size — the members the point-in-time resolver admits at the
+        # resolved as-of (the dynamic membership the scored snapshot scores). Distinct from `symbol_count`
+        # (distinct priced symbols incl. ETFs+^VIX) and from the static counts below.
+        "universe_count": len(resolved_admitted),
+        # J-93: the resolved as-of (ISO) the dynamic `universe_count` was computed at (None on an empty DB).
+        "universe_asof": resolved["asof"],
+        # the full candidate-pool denominator (the read_pool listing) the resolver screens — J-93.
+        "candidate_pool_count": resolved["candidate_pool_count"],
+        # the STATIC candidate-universe count (`len(config.universe.symbols)`) the per-symbol coverage
+        # table's `in_universe` rows count (the data-table membership view — NOT date-scoped).
+        "candidate_universe_count": len(cfg.universe.symbols),
         "snapshot_count": len(snapshot_dates),
         "snapshot_dates": [d.isoformat() for d in sorted(snapshot_dates, reverse=True)],
         "trading_day_count": len(trading_days),
@@ -385,6 +593,14 @@ def compute_coverage(session: Session, config: Optional[Config] = None) -> dict:
         # for analysis (no-history / thin / intra-series gap), each with its EXACT shortfall, derived from
         # the SAME stored bars + threshold + calendar above. Recomputes no canonical value; fabricates nothing.
         "diagnostic": _missing_data_diagnostic(session, cfg),
+        # J-94: the per-date coverage diagnostic — for the resolved as-of, the admitted count + the
+        # excluded-by-reason counts (below_history / below_price / below_adv) against the candidate-pool
+        # denominator. Read-only descriptive derivation over the SAME stored bars + config thresholds.
+        "universe_diagnostic": _universe_diagnostic(resolved, cfg),
+        # J-96: the dynamic-universe membership timeline — per snapshot date the resolved size (step
+        # function) + entries/exits + per-date excluded-by-reason counts. Strictly causal (each date
+        # observed from its own <= D snapshot). Read-only over the stored ScannerResult membership + bars.
+        "membership_timeline": _membership_timeline(session, cfg, snapshot_dates),
         # J-85: the universe-vs-latest-snapshot coverage diagnostic — the count of resolved-universe
         # members ABSENT from the latest scanner snapshot's scored set (the operator-facing "rebuild to
         # include the new members" signal). Read-only descriptive derivation; 0 absent → the UI shows no

@@ -545,8 +545,13 @@ function StocksInner() {
       {state.kind === "ok" && rows.length === 0 ? (
         <EmptyState
           icon={TrendingUp}
-          title="No ranked stocks"
-          description="The backend returned no stock rows for the current data date."
+          title="No ranked stocks at this date"
+          description={
+            "The point-in-time universe is honestly EMPTY at this as-of — no candidate yet has the required " +
+            "history, price, and liquidity from bars on or before this date (a warm-up date; the universe " +
+            "fills out as history accrues). No rows are fabricated. Step the global as-of forward to a later " +
+            "date, or see Data Manager → Universe resolution for the per-date admitted/excluded breakdown."
+          }
         />
       ) : null}
 

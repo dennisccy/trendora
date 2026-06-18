@@ -87,12 +87,42 @@ def benchmark_symbols(cfg: Config) -> dict:
 
 
 def forward_symbols(cfg: Config) -> list[str]:
-    """Every symbol a forward return is stored for: the universe stocks AND the benchmark ETFs
-    (SPY, QQQ, the 11 sector ETFs), de-duplicated and order-preserving."""
+    """Every benchmark symbol a forward return is ALWAYS stored for (the excess-return controls): the
+    index ETFs SPY + QQQ and the sector ETFs, de-duplicated and order-preserving. PLUS the full static
+    `config.universe.symbols` list as a back-compat superset.
+
+    J-93: the WRITE paths no longer apply this list uniformly to every run — they call
+    `forward_symbols_for_run(run, cfg)` so each run stores forward returns for the names that run
+    ACTUALLY scored (its point-in-time-resolved membership) ∪ the benchmarks. Kept here as the
+    order-preserving union for callers that still want the global superset and for the benchmark base."""
     bm = benchmark_symbols(cfg)
     ordered: list[str] = []
     seen: set[str] = set()
     for symbol in [*cfg.universe.symbols, bm["spy"], bm["qqq"], *bm["sector_etfs"]]:
+        if symbol not in seen:
+            seen.add(symbol)
+            ordered.append(symbol)
+    return ordered
+
+
+def forward_symbols_for_run(session: Session, run: "ScannerRun", cfg: Config) -> list[str]:
+    """J-93: the forward-return symbol set for ONE run = that run's STORED `ScannerResult` tickers
+    (its point-in-time-resolved membership — the SINGLE source, never a second universe computation)
+    UNION the benchmark ETFs (SPY/QQQ/sector ETFs always present, so the excess-return math has its
+    controls on every run). De-duplicated, order-preserving (the run's scored members first, then the
+    benchmarks). The no-lookahead boundary is unchanged: each (symbol, horizon) still reads `close_on`
+    on D and `bars_after` (date > D) — only WHICH symbols are iterated narrows to the run's membership,
+    so a name not resolved at the run's date stores no return for it (honest n=0), and a name that WAS
+    resolved stores byte-identical returns to before."""
+    bm = benchmark_symbols(cfg)
+    scored = list(
+        session.exec(
+            select(ScannerResult.ticker).where(ScannerResult.run_id == run.id).order_by(ScannerResult.rank)
+        ).all()
+    )
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for symbol in [*scored, bm["spy"], bm["qqq"], *bm["sector_etfs"]]:
         if symbol not in seen:
             seen.add(symbol)
             ordered.append(symbol)
@@ -338,7 +368,6 @@ def _backfill(session: Session, cfg: Config) -> dict:
     wf = cfg.walk_forward
     horizons = wf.horizons
     max_h = max(horizons)
-    symbols = forward_symbols(cfg)
 
     # (1)+(2): ensure a persisted immutable snapshot for every cadence as-of date. run_scan is
     # idempotent and recomputes nothing — the snapshot is the canonical bucket/setup/sector source.
@@ -358,6 +387,9 @@ def _backfill(session: Session, cfg: Config) -> dict:
     rows_inserted = 0
     runs_with_returns = 0
     for run in runs:
+        # J-93: each run stores forward returns for ITS OWN resolved membership ∪ benchmarks (the run's
+        # stored ScannerResult tickers — the single source) rather than the global universe list.
+        symbols = forward_symbols_for_run(session, run, cfg)
         run_inserted = _insert_run_forward_returns(session, run, symbols, horizons, max_h, existing)
         rows_inserted += run_inserted
         if run_inserted:
@@ -827,7 +859,9 @@ def backfill_run_forward_returns(
     wf = cfg.walk_forward
     horizons = wf.horizons
     max_h = max(horizons)
-    symbols = forward_symbols(cfg)
+    # J-93: this run's OWN resolved membership ∪ benchmarks (its stored ScannerResult tickers — single
+    # source), not the global universe list. A name absent from the run's snapshot stores no return (n=0).
+    symbols = forward_symbols_for_run(session, run, cfg)
     existing = {
         (fr.run_id, fr.symbol, fr.horizon)
         for fr in session.exec(select(ForwardReturn).where(ForwardReturn.run_id == run.id)).all()

@@ -203,7 +203,11 @@ def test_coverage_diagnostic_zero_when_universe_fully_scored(warm_engine):
     with Session(engine) as session:
         diag = _coverage_diagnostic_absent(session, cfg)
         cov = compute_coverage(session, cfg)
-    assert diag["universe_count"] == len(cfg.universe.symbols)
+    # iter-33 (J-93): universe_count is now the members RESOLVED at the latest snapshot date (the dynamic
+    # point-in-time membership), a subset of the static candidate universe; the candidate-pool denominator
+    # is carried beside it. Every resolved member IS in the latest snapshot, so absent_count is still 0.
+    assert 0 < diag["universe_count"] <= len(cfg.universe.symbols)
+    assert diag["candidate_pool_count"] >= diag["universe_count"]
     assert diag["absent_count"] == 0  # every resolved-universe member is in the latest snapshot
     assert diag["absent_preview"] == []
     assert diag["latest_snapshot_date"] is not None
@@ -238,7 +242,9 @@ def test_coverage_diagnostic_counts_absent_members():
             risk_score=1.0, risk_bucket="A", setup_status="Actionable", rank=1, record_json="{}",
         ))
         session.commit()
-        diag = _coverage_diagnostic_absent(session, cfg)
+        # iter-33 (J-93): pass the explicit hand-made universe — this test exercises the absent-COMPARISON
+        # logic against a known set, not the point-in-time resolver (which would read the real seed pool).
+        diag = _coverage_diagnostic_absent(session, cfg, universe=list(cfg.universe.symbols))
     assert diag["absent_count"] == 1
     assert diag["absent_preview"] == ["BBB"]
     assert diag["latest_snapshot_date"] == "2024-01-05"
@@ -252,7 +258,7 @@ def test_coverage_diagnostic_all_absent_when_no_snapshot():
     engine = make_engine("sqlite:///:memory:")
     create_db_and_tables(engine)
     with Session(engine) as session:
-        diag = _coverage_diagnostic_absent(session, cfg)
+        diag = _coverage_diagnostic_absent(session, cfg, universe=list(cfg.universe.symbols))
     assert diag["absent_count"] == 3
     assert diag["latest_snapshot_date"] is None
 

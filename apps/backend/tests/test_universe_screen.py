@@ -63,16 +63,33 @@ def test_screen_reads_only_passed_thresholds():
 
 # --- SINGLE SOURCE / consistency over the committed config + seed --------------------------------
 def test_universe_size_is_one_value_across_methodology_and_data(loaded_engine, config):
-    """The resolved universe size is read identically by /api/methodology (resolved_size), /api/data
-    (universe_count), and len(config.universe.symbols) — one source, no drift (J-22 / no recompute)."""
-    resolved = len(config.universe.symbols)
+    """iter-33 (J-93): the universe is now POINT-IN-TIME. The STATIC candidate-universe size is read
+    identically by /api/methodology (resolved_size) and /api/data (candidate_universe_count) ==
+    len(config.universe.symbols) — one source, no drift. The DYNAMIC `universe_count` is the members
+    RESOLVED at the as-of (a subset of the candidate universe — names that clear the per-date price/ADV/
+    min-history gate), which by construction is <= the candidate count and matches the latest snapshot's
+    scored set."""
+    candidate = len(config.universe.symbols)
     methodology_size = build_catalog(config)["universe_selection"]["resolved_size"]
     with Session(loaded_engine) as session:
         coverage = compute_coverage(session, config)
-    assert methodology_size == resolved
-    assert coverage["universe_count"] == resolved
+        # the dynamic count == the members in the LATEST snapshot's scored set (single source — the
+        # persisted ScannerResult rows ARE the membership the resolver admits at that date).
+        from app.engine.scanner import _latest_stored_run_date
+        from app.models import ScannerRun, ScannerResult
+        from sqlmodel import select as _select, func as _func
+        latest = _latest_stored_run_date(session)
+        latest_run_id = session.scalar(_select(ScannerRun.id).where(ScannerRun.asof_date == latest))
+        scored_n = session.scalar(
+            _select(_func.count()).select_from(ScannerResult).where(ScannerResult.run_id == latest_run_id)
+        )
+    # methodology + the static coverage count are the candidate-universe (no drift).
+    assert methodology_size == candidate == coverage["candidate_universe_count"]
+    # the dynamic universe_count is the as-of-resolved membership == the latest snapshot's scored rows.
+    assert coverage["universe_count"] == scored_n
+    assert 0 < coverage["universe_count"] <= candidate  # a non-empty subset at a fully-warm date
     # universe_count is the screened universe, NOT the distinct priced-symbol count (which includes ETFs)
-    assert coverage["symbol_count"] >= resolved
+    assert coverage["symbol_count"] >= candidate
 
 
 def test_committed_universe_members_all_pass_screen():

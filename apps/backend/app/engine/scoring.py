@@ -3,8 +3,10 @@ setup status (Data Contract: app.engine.scoring), served by `GET /api/stocks` (l
 `GET /api/stocks/{ticker}` (detail) from the SAME computation (anti-goal: Single source of
 truth → J-06). The dashboard's candidate counts count THESE rows' statuses.
 
-`score_stocks(session, asof)` produces, for every `config.universe.symbols` stock, its COMPLETE
-canonical record in ONE pass: three independent scores, each a config-weighted blend of named,
+`score_stocks(session, asof)` produces, for every POINT-IN-TIME-RESOLVED universe member at `asof`
+(J-93: `universe_resolver.resolve_members` screens the committed candidate pool on price + ADV +
+>= `indicators.min_history_bars` trailing bars from bars <= D — NOT the static `config.universe.symbols`
+list), its COMPLETE canonical record in ONE pass: three independent scores, each a config-weighted blend of named,
 cross-sectionally-normalized components, plus the setup status + reason, the invalidation level,
 theme chips, and the VCP pattern flag. The VCP flag (iter-11) is composed onto the row ALONGSIDE
 the setup status via `patterns.detect_vcp` — it is a separate DETECTED PATTERN, never a setup status
@@ -43,6 +45,7 @@ from app.engine.patterns import detect_flat_base_breakout, detect_pullback_to_ri
 from app.engine.prices import bars_asof, closes, highs, lows, volumes
 from app.engine.regime import score_regime
 from app.engine.sectors import score_sectors
+from app.engine.universe_resolver import resolve_members
 from app.engine.setups import classify_setup
 from app.engine.themes import basket_return, theme_name, total_return
 from app.models import Sector, Stock
@@ -227,11 +230,23 @@ def _enriched_reason(base_reason: str, leadership_components: list[dict]) -> str
 
 
 def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = None) -> dict:
-    """Compute every universe stock's complete canonical record as of `asof`. Deterministic on
-    the frozen seed. The ONE producer read by `/api/stocks`, `/api/stocks/{ticker}`, and the
-    dashboard's candidate counts — so no view can diverge (single source / J-06)."""
+    """Compute every POINT-IN-TIME-RESOLVED universe member's complete canonical record as of `asof`.
+    Deterministic on the frozen seed. The ONE producer read by `/api/stocks`, `/api/stocks/{ticker}`,
+    and the dashboard's candidate counts — so no view can diverge (single source / J-06).
+
+    J-93: the iterated membership set is `universe_resolver.resolve_members(session, asof)` — the
+    committed candidate pool screened, FROM BARS <= D ONLY, on price + ADV + >= `min_history_bars`
+    trailing bars (the market-cap criterion is dropped per-date). An early date before the warm-up
+    boundary honestly yields a small/empty set (no fabricated members). No canonical scoring formula
+    changes — ONLY which names are in the scanned set. The returned `members` / `candidate_pool_count`
+    expose the resolved-at-D contract the coverage/methodology surfaces read (single source — no second
+    universe computation)."""
     cfg = config or get_config()
     icfg = cfg.indicators
+    # J-93: resolve the point-in-time membership ONCE for this as-of (the SINGLE membership the run
+    # scores + persists). Reads only bars <= D — no lookahead. Used as the iterated set below and
+    # surfaced on the result so coverage/methodology read the resolved-at-D count from one place.
+    resolved = resolve_members(session, asof, cfg)
     benchmark = cfg.etfs.index[0]  # SPY
     spy_closes = closes(bars_asof(session, benchmark, asof))
     # invalidation MA basis from config (one of indicators.ma_periods) — no literal in calc code
@@ -277,9 +292,9 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
         for member in members:
             themes_by_ticker.setdefault(member, []).append(slug)
 
-    # pass 1: oriented raw components per stock
+    # pass 1: oriented raw components per stock (over the resolved-at-D members — J-93)
     raws_by_ticker: dict[str, dict] = {}
-    for ticker in cfg.universe.symbols:
+    for ticker in resolved:
         sector_etf = stock_sector_etf.get(ticker)
         slug = primary_theme.get(ticker)
         raws_by_ticker[ticker] = _raw_components(
@@ -302,9 +317,9 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
         present = {t: raws[component] for t, raws in raws_by_ticker.items() if raws.get(component) is not None}
         percentiles[component] = cross_sectional_percentiles(present)
 
-    # pass 3: assemble each stock's complete canonical record
+    # pass 3: assemble each stock's complete canonical record (over the resolved-at-D members — J-93)
     rows: list[dict] = []
-    for ticker in cfg.universe.symbols:
+    for ticker in resolved:
         raws = raws_by_ticker[ticker]
         leadership = _build_score(ticker, cfg.scores.leadership.weights, raws, percentiles)
         entry_quality = _build_score(ticker, cfg.scores.entry_quality.weights, raws, percentiles)
@@ -381,4 +396,12 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
     for index, row in enumerate(rows):
         row["rank"] = index + 1
 
-    return {"asof_date": asof.isoformat(), "benchmark": benchmark, "rows": rows}
+    # J-93: surface the resolved-at-D membership contract alongside the rows — the SINGLE place the
+    # members + candidate-pool denominator are computed (coverage/methodology read these, never a second
+    # resolution). `members` == the scored tickers (one row per member); no second universe computation.
+    return {
+        "asof_date": asof.isoformat(),
+        "benchmark": benchmark,
+        "rows": rows,
+        "members": list(resolved),
+    }

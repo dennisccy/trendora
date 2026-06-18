@@ -46,6 +46,10 @@ CALC_FILES = [
     # time-underwater / VIX-gate / Hamilton-filter math are structural: 0/1 (NA/full clamps, indexing,
     # 1-fraction complements), 2 (the Gaussian exponent + squares), and 100 (the percent unit).
     "market_phase.py",
+    # iter-33 (J-93/J-94) per-as-of-date universe resolver — EVERY cutoff (min_history_bars, min_price,
+    # min_dollar_vol, adv_window_days) is sourced from config; the only numbers in the resolver are
+    # structural (0/1 indexing, the empty-shortcut). The market-cap criterion is dropped (no literal).
+    "universe_resolver.py",
 ]
 
 # The union of every NUMERIC tunable currently in config.yaml (periods, windows, bucket edges,

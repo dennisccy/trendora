@@ -54,8 +54,8 @@
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32-evidence/UT-18-dashboard.png",
       "note": "Required-still-passing in iter-32; re-verified PASS via live browser-QA 23/23. iter-32 was additive (J-91/J-92) over the research + /data surfaces; no canonical score/regime/scanner path touched. Carried passing."
@@ -64,8 +64,8 @@
       "id": "J-07",
       "name": "Risk-Off regime suppresses Actionable",
       "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31-evidence/UT-J-13-historical-asof-indicator.png",
       "note": "Required-still-passing in iter-31 (lean live re-verification); re-verified PASS via live browser-QA 13/13. Backend diff was a no-op import-alias cleanup in market_phase.py; no regression. Carried already_passing."
@@ -174,8 +174,8 @@
       "id": "J-18",
       "name": "One date control (no duplicate)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32-evidence/UT-19-date-controls.png",
       "note": "Required-still-passing in iter-32; re-verified PASS via live browser-QA 23/23. iter-32 was additive (J-91/J-92) over the research + /data surfaces; no canonical score/regime/scanner path touched. Carried passing."
@@ -923,41 +923,41 @@
     "J-93": {
       "id": "J-93",
       "name": "Per-as-of-date universe resolver - price + ADV + min-history screening (point-in-time)",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
+      "status": "partial",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
-      "last_evidence_path": null,
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33-evidence/TC-14-stocks-current.png",
       "note": "First journey-history entry - UNBUILT as of iter-29 (iter-29 scope was the J-87+J-88 foundational cluster only). No positive evidence; recorded failing. Per the iter-22 lesson these queued buildable Must-haves block GOAL_ACHIEVED until built. Most are NOT data-dependent (provable offline against the committed 2021-2026 seed incl. the 2022 bear + ^VIX); J-95 carries a data-dependent/non-halting envelope per goal.md."
     },
     "J-94": {
       "id": "J-94",
       "name": "Min-history sufficiency gate + honest warm-up",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
+      "status": "partial",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
-      "last_evidence_path": null,
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33-evidence/TC-16-data-coverage.png",
       "note": "First journey-history entry - UNBUILT as of iter-29 (iter-29 scope was the J-87+J-88 foundational cluster only). No positive evidence; recorded failing. Per the iter-22 lesson these queued buildable Must-haves block GOAL_ACHIEVED until built. Most are NOT data-dependent (provable offline against the committed 2021-2026 seed incl. the 2022 bear + ^VIX); J-95 carries a data-dependent/non-halting envelope per goal.md."
     },
     "J-95": {
       "id": "J-95",
       "name": "Data-dependent backward-history / point-in-time-membership envelope",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
+      "status": "partial",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
-      "last_evidence_path": null,
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33-evidence/TC-16-data-coverage.png",
       "note": "First journey-history entry - UNBUILT as of iter-29 (iter-29 scope was the J-87+J-88 foundational cluster only). No positive evidence; recorded failing. Per the iter-22 lesson these queued buildable Must-haves block GOAL_ACHIEVED until built. Most are NOT data-dependent (provable offline against the committed 2021-2026 seed incl. the 2022 bear + ^VIX); J-95 carries a data-dependent/non-halting envelope per goal.md."
     },
     "J-96": {
       "id": "J-96",
       "name": "Membership timeline + survivorship/coverage labels",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
+      "status": "partial",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33",
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
-      "last_evidence_path": null,
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33-evidence/TC-16-data-coverage.png",
       "note": "First journey-history entry - UNBUILT as of iter-29 (iter-29 scope was the J-87+J-88 foundational cluster only). No positive evidence; recorded failing. Per the iter-22 lesson these queued buildable Must-haves block GOAL_ACHIEVED until built. Most are NOT data-dependent (provable offline against the committed 2021-2026 seed incl. the 2022 bear + ^VIX); J-95 carries a data-dependent/non-halting envelope per goal.md."
     }
   },
@@ -972,7 +972,7 @@
       "resolution": "iter-21: the two `0.0` float literals in `_rsp_rank_key` were replaced with the structural `is_not_none` boolean fallback (no float literal remains in research.py \u2014 independently tokenizer-verified 0 float-like NUMBER literals). test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers passes; the DEFAULT J-77 ranking is byte-identical (200 randomized orderings match the legacy key; oracle test added). Full suite GREEN (834 passed, 0 failed, EXIT_CODE=0)."
     }
   ],
-  "updated_at": "2026-06-18T05:40:00Z",
+  "updated_at": "2026-06-18T19:57:11.010680Z",
   "open_items": [
     {
       "id": "iter23-stale-api-engine-tests",

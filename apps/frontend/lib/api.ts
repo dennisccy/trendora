@@ -1648,10 +1648,17 @@ export interface DataCoverage {
   price_start: string | null;
   price_end: string | null;
   symbol_count: number;
-  // the RESOLVED UNIVERSE size — the one canonical universe (the committed screen result), the SAME
-  // value /api/methodology reports as universe_selection.resolved_size (J-22; single source, no drift).
-  // Distinct from symbol_count (DISTINCT priced symbols, which includes the benchmark ETFs + ^VIX).
+  // iter-33 (J-93): the AS-OF-RESOLVED universe size — the members the point-in-time resolver admits at
+  // the single global as-of (the dynamic membership the scored snapshot scores for that date). Distinct
+  // from symbol_count (DISTINCT priced symbols incl. ETFs+^VIX) and from the static counts below.
   universe_count: number;
+  // J-93: the resolved as-of (ISO) the dynamic universe_count was computed at (null on an empty DB).
+  universe_asof: string | null;
+  // J-93: the full candidate-pool denominator (the read_pool listing the resolver screens).
+  candidate_pool_count: number;
+  // J-93: the STATIC candidate-universe count (len(config.universe.symbols)) the per-symbol table's
+  // `in_universe` rows count (the data-table membership view — NOT date-scoped).
+  candidate_universe_count: number;
   snapshot_count: number;
   snapshot_dates: string[]; // newest first
   trading_day_count: number;
@@ -1660,24 +1667,82 @@ export interface DataCoverage {
   gap_last: string | null;
   gaps_preview: string[]; // ascending; bounded by config.data_manager.gap_preview
   // J-36: the per-symbol / per-universe-member coverage table (universe members first, then priced
-  // symbols; the UI re-sorts/filters only). distinct has-data rows == symbol_count; in-universe == universe_count.
+  // symbols; the UI re-sorts/filters only). distinct has-data rows == symbol_count;
+  // in-universe == candidate_universe_count.
   per_symbol: PerSymbolCoverage[];
   // J-37: the Missing-data diagnostic (three honest categories with exact shortfalls). Read-only.
   diagnostic: MissingDataDiagnostic;
+  // J-94: the per-date coverage diagnostic — for the resolved as-of, the admitted count + the
+  // excluded-by-reason counts (below_history / below_price / below_adv) against the candidate pool.
+  universe_diagnostic: UniverseDiagnostic;
+  // J-96: the dynamic-universe membership timeline — per-snapshot-date resolved size (step function) +
+  // entries/exits + per-date excluded counts, with the three honest labels. Read-only descriptive.
+  membership_timeline: MembershipTimeline;
   // J-85: the universe-vs-latest-snapshot coverage diagnostic — the count of resolved-universe members
   // ABSENT from the latest scanner snapshot's scored set (the operator-facing "rebuild to include the new
   // members" signal). Read-only descriptive derivation; absent_count 0 → the UI shows NO banner.
   absent_from_latest_snapshot: AbsentFromLatestSnapshot;
 }
 
+/** J-94 — the per-date coverage diagnostic. For the resolved as-of: the admitted count + the excluded-
+ *  by-reason counts (below_history / below_price / below_adv) against the candidate-pool denominator, plus
+ *  the exact config thresholds the resolver gated on (the UI states them, never re-types them). */
+export interface UniverseDiagnostic {
+  asof: string | null;
+  candidate_pool_count: number;
+  admitted_count: number;
+  excluded_total: number;
+  excluded: { below_history: number; below_price: number; below_adv: number };
+  thresholds: {
+    min_history_bars: number;
+    min_price: number;
+    min_dollar_vol: number;
+    adv_window_days: number;
+  };
+}
+
+/** J-96 — one point of the membership timeline: the resolved size (step function) + the deterministic
+ *  entries/exits + the per-date excluded-by-reason counts, observed causally from that date's snapshot. */
+export interface MembershipTimelinePoint {
+  date: string;
+  size: number;
+  entries: string[];
+  exits: string[];
+  excluded: { below_history: number; below_price: number; below_adv: number };
+}
+
+/** J-95(b) — the candidate pool's honest survivorship descriptor (current-constituent caveat). */
+export interface PoolSurvivorship {
+  label: string;
+  basis: string; // "current_constituent"
+  pool_count: number;
+  point_in_time_feed_available: boolean; // always false — the data-walled enhancement, never faked
+}
+
+/** J-96 — the three honest labels carried VERBATIM beside the timeline (the UI re-types none of this). */
+export interface MembershipLabels {
+  survivorship: PoolSurvivorship;
+  warmup: { min_history_bars: number; boundary_date: string | null; label: string };
+  universe_relative: string;
+}
+
+/** J-96 — the dynamic-universe membership timeline served on the Data Manager coverage surface. */
+export interface MembershipTimeline {
+  candidate_pool_count: number;
+  points: MembershipTimelinePoint[];
+  labels: MembershipLabels;
+}
+
 /** J-85 — the universe-vs-latest-snapshot coverage diagnostic. `absent_count` is the count of resolved
  *  universe members NOT scored in the latest snapshot; `absent_preview` a bounded sample; the UI shows the
- *  "N members absent — rebuild to include them" banner ONLY when `absent_count > 0`. */
+ *  "N members absent — rebuild to include them" banner ONLY when `absent_count > 0`. `universe_count` is
+ *  now the members RESOLVED at the latest snapshot date (J-93); `candidate_pool_count` the full pool. */
 export interface AbsentFromLatestSnapshot {
   absent_count: number;
   absent_preview: string[];
   latest_snapshot_date: string | null;
   universe_count: number;
+  candidate_pool_count: number;
 }
 
 /** One row of the fetch/backfill run history (from the append-only DataProviderRun log). A Data Manager
@@ -1899,9 +1964,14 @@ export interface StartJobResponse {
 }
 
 /** Canonical Data Manager coverage + run-history source: GET /api/data. Throws on non-200 so the page
- *  renders an explicit "Backend unavailable" state — never fabricated coverage. */
-export async function fetchDataCoverage(signal?: AbortSignal): Promise<DataOverviewResponse> {
-  return getJSON<DataOverviewResponse>("/api/data", signal);
+ *  renders an explicit "Backend unavailable" state — never fabricated coverage.
+ *
+ *  iter-33 (J-93/J-94): `asof` is the SINGLE GLOBAL as-of (read from `useAsOf`, NOT a second date
+ *  state) — the coverage block's dynamic `universe_count` + per-date `universe_diagnostic` are resolved
+ *  at this date. Omitting it serves the latest stored date's resolution. The backend falls back
+ *  gracefully on a bad as-of (descriptive coverage never 4xx's). */
+export async function fetchDataCoverage(asof?: string, signal?: AbortSignal): Promise<DataOverviewResponse> {
+  return getJSON<DataOverviewResponse>(withAsOf("/api/data", asof), signal);
 }
 
 /** J-61: one cell of the per-trading-date availability heatmap — READ-ONLY descriptive metadata derived

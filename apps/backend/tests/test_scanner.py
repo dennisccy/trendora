@@ -24,6 +24,7 @@ from app.engine.prices import latest_data_date
 from app.engine.regime import score_regime
 from app.engine.scoring import score_stocks
 from app.engine.scanner import bootstrap_runs, run_scan
+from app.engine.universe_resolver import resolve_members
 from app.models import DailyPrice, ScannerResult, ScannerRun, SectorScoreRow, ThemeScoreRow
 from app.seed_loader import load_seed
 
@@ -89,8 +90,12 @@ def test_run_scan_persists_complete_snapshot(scanner_engine, config):
         sectors = session.exec(select(SectorScoreRow).where(SectorScoreRow.run_id == run.id)).all()
         themes = session.exec(select(ThemeScoreRow).where(ThemeScoreRow.run_id == run.id)).all()
 
-    # one result per universe stock; sectors = 11 GICS + industry ETFs; one theme row per theme
-    assert len(results) == len(config.universe.symbols)
+    # iter-33 (J-93): one result per POINT-IN-TIME-RESOLVED member at the as-of (not the static universe);
+    # sectors = 11 GICS + industry ETFs; one theme row per theme.
+    with Session(scanner_engine) as session:
+        expected_members = len(resolve_members(session, asof, config))
+    assert len(results) == expected_members > 0  # a non-empty resolved set at a full-universe date
+    assert len(results) <= len(config.universe.symbols)
     assert len(sectors) == len(config.etfs.sector) + len(config.etfs.industry)
     assert len(themes) == len(config.themes)
 
@@ -191,9 +196,12 @@ def test_risk_off_run_has_zero_actionable(scanner_engine, config):
         run = run_scan(session, riskoff, config)
         results = session.exec(select(ScannerResult).where(ScannerResult.run_id == run.id)).all()
         label = run.regime_label
+        expected_members = len(resolve_members(session, riskoff, config))
 
     assert label == "Risk-off"
-    assert len(results) == len(config.universe.symbols)
+    # iter-33 (J-93): one result per resolved member at the Risk-off date (the gate is independent of the
+    # count — the J-07 invariant below is what matters). The membership scanned over changed; the gate did not.
+    assert len(results) == expected_members > 0
     assert sum(1 for r in results if r.setup_status == "Actionable") == 0
 
 
@@ -205,7 +213,7 @@ def test_is_vcp_mirrors_record_json_flag(scanner_engine, config):
         asof = latest_data_date(session)
         run = run_scan(session, asof, config)
         results = session.exec(select(ScannerResult).where(ScannerResult.run_id == run.id)).all()
-    assert len(results) == len(config.universe.symbols)
+    assert 0 < len(results) <= len(config.universe.symbols)  # iter-33 (J-93): resolved-at-D subset
     for r in results:
         assert isinstance(r.is_vcp, bool)
         assert r.is_vcp == json.loads(r.record_json)["vcp"]["flagged"]  # faithful mirror
@@ -219,7 +227,7 @@ def test_new_pattern_mirrors_match_record_json(scanner_engine, config):
         asof = latest_data_date(session)
         run = run_scan(session, asof, config)
         results = session.exec(select(ScannerResult).where(ScannerResult.run_id == run.id)).all()
-    assert len(results) == len(config.universe.symbols)
+    assert 0 < len(results) <= len(config.universe.symbols)  # iter-33 (J-93): resolved-at-D subset
     for r in results:
         record = json.loads(r.record_json)
         assert isinstance(r.is_pullback_to_rising_dma, bool)

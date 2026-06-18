@@ -48,6 +48,41 @@ def screen_reasons(
     return reasons
 
 
+# J-95(b): the candidate pool's EXPLICIT survivorship-bias caveat. The committed `universe_pool.csv`
+# is a CURRENT-constituent listing (today's S&P 500 ∪ Nasdaq-100 ∪ prior universe) — NOT an as-of-date
+# constituent set. A true point-in-time index-membership feed is offered only as a data-dependent,
+# non-halting enhancement and is NEVER faked; when absent the pool stays this documented current-
+# constituent listing with this honest label, and the as-of-dependent membership (J-93) is screened
+# from it. This caveat is served verbatim beside the membership timeline (no re-typed copy in the UI).
+POOL_SURVIVORSHIP_LABEL = (
+    "Candidate pool = CURRENT index constituents (today's S&P 500 ∪ Nasdaq-100 ∪ the prior committed "
+    "universe), not as-of-date constituents. The point-in-time resolver REDUCES survivorship bias by "
+    "admitting a name only once it has the required history/price/liquidity from bars on or before each "
+    "date, but residual pool-survivorship remains: a name delisted before today is not in this pool. A "
+    "true point-in-time index-membership feed would remove that residual; it is a data-dependent "
+    "enhancement and is never fabricated."
+)
+
+
+def pool_survivorship(seed_dir: Path | None = None) -> dict:
+    """J-95(b): the candidate pool's honest survivorship descriptor served on the coverage surface — the
+    explicit current-constituent caveat + the pool size + whether a true point-in-time constituent feed
+    is present (always False here — it is the data-walled enhancement, never faked). Read-only; no key."""
+    try:
+        pool = read_pool(seed_dir)
+        pool_count = len({row["symbol"] for row in pool})
+    except FileNotFoundError:
+        pool_count = 0
+    return {
+        "label": POOL_SURVIVORSHIP_LABEL,
+        "basis": "current_constituent",  # not as_of_date_constituent
+        "pool_count": pool_count,
+        # the true point-in-time index-membership feed is the data-dependent, non-halting J-95 enhancement.
+        # It is NEVER fabricated; absent → the pool stays the documented current-constituent listing.
+        "point_in_time_feed_available": False,
+    }
+
+
 def read_pool(seed_dir: Path | None = None) -> list[dict]:
     """Read the committed, documented candidate pool (`universe_pool.csv`) → a list of
     `{symbol, sector, source}` dicts (comment lines stripped). This is the membership-rule half of the

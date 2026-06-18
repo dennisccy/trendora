@@ -242,7 +242,10 @@ def test_bootstrap_snapshots_equal_with_cache(seed_engine):
     engine, cfg, trading = seed_engine
     from app.engine import scanner
     from app.models import ScannerResult
-    d = trading[150]
+    # iter-33 (J-93): the universe is point-in-time, so use a date PAST the deterministic warm-up boundary
+    # (seed-start + min_history_bars) where the resolved universe is non-empty (day 150 ~2021-08 is still
+    # in warm-up → 0 members). day 300 (~2022-03) is comfortably full.
+    d = trading[300]
     with Session(engine) as session:
         run = scanner.run_scan(session, d, cfg)  # uses bars (cache inactive here — single date)
         stored = {

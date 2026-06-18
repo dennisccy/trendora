@@ -34,7 +34,10 @@ def test_each_stock_has_three_bucketed_explainable_scores(loaded_engine):
         result = score_stocks(session, asof, cfg)
 
     rows = result["rows"]
-    assert len(rows) == len(cfg.universe.symbols)
+    # iter-33 (J-93): one row per POINT-IN-TIME-RESOLVED member (the scored set == result["members"]),
+    # a non-empty subset of the static universe at a full-universe date — not the static universe size.
+    assert len(rows) == len(result["members"])
+    assert 0 < len(rows) <= len(cfg.universe.symbols)
     assert result["benchmark"] == "SPY"
     assert [r["rank"] for r in rows] == list(range(1, len(rows) + 1))
     # ranked by leadership, non-increasing
@@ -145,19 +148,30 @@ def test_invalidation_level_is_canonical_sma_and_note_built_server_side(loaded_e
     assert inv["note"] == f"Invalid below the {inv_period}-DMA at ${expected_level:.2f}"
 
 
-def test_invalidation_na_on_short_history_is_honest_never_fabricated(loaded_engine):
-    """At the earliest as-of date no stock has `ma_period` bars yet, so the invalidation level is
-    NA: `level is None` with an honest note and no fabricated price-derived number."""
+def test_earliest_date_universe_is_honestly_empty_warmup(loaded_engine):
+    """iter-33 (J-93): at the earliest as-of date the POINT-IN-TIME universe is honestly EMPTY — no
+    candidate yet has the required >= `min_history_bars` trailing bars (a deterministic warm-up). The
+    scored rows are empty (no fabricated members), and `members` is empty — not an error."""
     cfg = load_config()
     with Session(loaded_engine) as session:
         dates = list(session.exec(select(DailyPrice.date).distinct().order_by(DailyPrice.date)).all())
         earliest = score_stocks(session, dates[0], cfg)
+    assert earliest["rows"] == []  # warm-up: no member resolves on day one (no fabricated rows)
+    assert earliest["members"] == []
 
-    na_rows = [r for r in earliest["rows"] if r["invalidation"]["level"] is None]
-    assert na_rows  # nobody has a full 50-bar window on day one
-    for row in na_rows:
-        assert row["invalidation"]["note"] == "Invalidation level NA — insufficient history"
-        assert row["invalidation"]["ma_period"] == cfg.decision_rules.invalidation.ma_period
+
+def test_invalidation_na_is_honest_never_fabricated_unit():
+    """The invalidation level is an honest NA (`level is None` + the honest note, no fabricated price)
+    whenever the canonical 50-DMA is unavailable — a UNIT assertion on the single `_invalidation`
+    composer. (Post-J-93 a RESOLVED member always has >= 200 bars, so it always has the 50-DMA; the
+    honest-NA contract is exercised here directly so it can never silently regress.)"""
+    from app.engine.scoring import _invalidation
+    cfg = load_config()
+    ma_period = cfg.decision_rules.invalidation.ma_period
+    inv = _invalidation(f"{ma_period}-DMA", ma_period, None, 123.45)  # level None (short history)
+    assert inv["level"] is None
+    assert inv["note"] == "Invalidation level NA — insufficient history"
+    assert inv["ma_period"] == ma_period
 
 
 def test_themes_are_the_reverse_of_config_themes(loaded_engine):

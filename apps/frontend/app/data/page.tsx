@@ -5,11 +5,13 @@ import {
   Activity,
   AlertTriangle,
   Database,
+  History,
   KeyRound,
   Loader2,
   Play,
   RotateCcw,
   Search,
+  TrendingUp,
   Trash2,
   X,
 } from "lucide-react";
@@ -42,12 +44,15 @@ import {
   type DataOverviewResponse,
   type DataRun,
   type MacroAvailability,
+  type MembershipTimeline,
   type MissingDataDiagnostic,
   type PerSymbolCoverage,
+  type PoolSurvivorship,
   type ProviderSource,
   type RemovePreview,
   type RemoveScope,
   type UnfinishedImport,
+  type UniverseDiagnostic,
 } from "@/lib/api";
 
 type State =
@@ -193,7 +198,11 @@ function IsoDateInput({
 }
 
 export default function DataManagerPage() {
-  const { refresh } = useAsOf();
+  // iter-33 (J-93/J-94): the coverage block's dynamic universe_count + per-date diagnostic are resolved
+  // at the SINGLE GLOBAL as-of (the same `useAsOf` control every date-scoped page reads — NOT a second
+  // date state). `asOf` (null ⇒ latest) is threaded to GET /api/data so stepping the global switcher
+  // slides the resolved-universe figures. The job-form date inputs remain job PARAMETERS (unrelated).
+  const { refresh, asOf } = useAsOf();
   const [state, setState] = useState<State>({ kind: "loading" });
   const [availability, setAvailability] = useState<AvailabilityState>({ kind: "loading" });
   const [start, setStart] = useState("");
@@ -230,7 +239,7 @@ export default function DataManagerPage() {
   const keyFieldVisible = isFetchKind && Boolean(selectedSource?.needs_key) && selectedSource?.available === false;
 
   const loadOverview = useCallback((signal?: AbortSignal) => {
-    fetchDataCoverage(signal)
+    fetchDataCoverage(asOf ?? undefined, signal)
       .then((data) => {
         setState({ kind: "ok", data });
         // Prefill the range ONCE from the actual backfill gaps so the default Start is a valid,
@@ -247,7 +256,7 @@ export default function DataManagerPage() {
       .catch(() => {
         if (!signal?.aborted) setState({ kind: "error" });
       });
-  }, []);
+  }, [asOf]);
 
   // J-61: the per-trading-date availability heatmap reads its OWN endpoint (a read-only derivation over the
   // SAME stored bars + runs the coverage figures use). It loads on mount and re-reads after any job
@@ -420,6 +429,23 @@ export default function DataManagerPage() {
           <RebuildPanel
             absent={state.data.coverage.absent_from_latest_snapshot}
             latestDate={state.data.coverage.snapshot_dates[0] ?? state.data.coverage.price_end}
+            running={Boolean(jobRunning)}
+            onStarted={setJob}
+          />
+          {/* J-94: the per-date coverage diagnostic — the admitted count + excluded-by-reason counts at
+              the current global as-of, explaining the warm-up window. Reads the single global as-of. */}
+          <UniverseDiagnosticPanel
+            diagnostic={state.data.coverage.universe_diagnostic}
+            asof={state.data.coverage.universe_asof}
+          />
+          {/* J-96: the dynamic-universe membership timeline — per-snapshot-date resolved size (step
+              function) + entries/exits + excluded counts + the three honest survivorship/warm-up labels. */}
+          <MembershipTimelinePanel timeline={state.data.coverage.membership_timeline} />
+          {/* J-95: the confirm-gated "extend history backward" control (reuses the rebuild confirm chrome
+              + the live job card). The real backward-history fetch is data-walled → honest blocked-NA. */}
+          <BackwardHistoryPanel
+            survivorship={state.data.coverage.membership_timeline.labels.survivorship}
+            priceStart={state.data.coverage.price_start}
             running={Boolean(jobRunning)}
             onStarted={setJob}
           />
@@ -637,11 +663,20 @@ function CoveragePanel({ data }: { data: DataOverviewResponse }) {
           definition="The earliest and latest dates with any stored daily price bar."
         />
         <DefinedMetric
-          label="Universe"
+          label="Universe (as of date)"
           term="universe"
           testId="universe-count-defined"
           value={<span data-testid="universe-count">{c.universe_count}</span>}
-          definition="The config-screened, SCORED names (the liquidity/price/market-cap screen result). This is the universe — distinct from symbols below."
+          definition={
+            "The point-in-time SCORED universe resolved at the current as-of" +
+            (c.universe_asof ? ` (${formatIsoDate(c.universe_asof)})` : "") +
+            ` — names with ≥ ${c.universe_diagnostic.thresholds.min_history_bars} bars, price, and liquidity from bars on/before that date. Step the global as-of to slide it. Of ${c.candidate_universe_count} candidate names / ${c.candidate_pool_count} pool.`
+          }
+        />
+        <DefinedMetric
+          label="Candidate universe"
+          value={<span data-testid="candidate-universe-count">{c.candidate_universe_count}</span>}
+          definition="The static screened candidate universe (market-cap/ADV/price pool) the per-date resolver screens. Not date-scoped — the date-resolved subset is shown above."
         />
         <DefinedMetric
           label="Symbols"
@@ -667,10 +702,13 @@ function CoveragePanel({ data }: { data: DataOverviewResponse }) {
         />
       </div>
       <p className="border-t border-border px-4 py-2 text-xs text-text-muted">
-        <span className="font-medium text-text-muted">Universe vs symbols: </span>
-        the <span className="text-text">universe</span> ({c.universe_count}) is the set of config-screened,
-        scored names; <span className="text-text">symbols</span> ({c.symbol_count}) is every ticker with
-        bars, which additionally includes the benchmark/sector/industry ETFs and <span className="num">^VIX</span>.
+        <span className="font-medium text-text-muted">Dynamic universe (J-93): </span>
+        the <span className="text-text">universe</span> ({c.universe_count}) is now POINT-IN-TIME — the
+        candidate names that clear the price / liquidity / minimum-history gate from bars on or before the
+        current as-of, a subset of the {c.candidate_universe_count} candidate names. Step the global as-of
+        and it slides (early dates are honestly smaller or empty during warm-up).{" "}
+        <span className="text-text">symbols</span> ({c.symbol_count}) is every ticker with bars (incl. the
+        ETFs and <span className="num">^VIX</span>).
         {c.gap_count > 0 ? (
           <>
             {" "}
@@ -681,7 +719,7 @@ function CoveragePanel({ data }: { data: DataOverviewResponse }) {
           " Every trading day with bars already has an immutable snapshot — no backfill gaps."
         )}
       </p>
-      <PerSymbolCoverageTable rows={c.per_symbol} symbolCount={c.symbol_count} universeCount={c.universe_count} />
+      <PerSymbolCoverageTable rows={c.per_symbol} symbolCount={c.symbol_count} universeCount={c.candidate_universe_count} />
     </Card>
   );
 }
@@ -877,6 +915,470 @@ function RebuildConfirmModal({
           >
             {starting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <RotateCcw className="h-4 w-4" aria-hidden />}
             {starting ? "Starting…" : "Rebuild snapshots"}
+          </button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/** J-94 — the per-date coverage diagnostic. For the SINGLE GLOBAL as-of (read from the coverage payload,
+ *  resolved server-side; NOT a second date state) it shows the ADMITTED member count + the excluded-by-
+ *  reason counts (below history / below price / below liquidity) against the candidate-pool denominator,
+ *  plus the exact config thresholds — so the small/empty warm-up window is explained, never mysterious. A
+ *  resolved as-of before the warm-up boundary renders an explicit honest empty-universe state. Read-only;
+ *  the page re-formats backend values (it computes no count). */
+function UniverseDiagnosticPanel({
+  diagnostic,
+  asof,
+}: {
+  diagnostic: UniverseDiagnostic;
+  asof: string | null;
+}) {
+  const t = diagnostic.thresholds;
+  const empty = diagnostic.admitted_count === 0;
+  const reasons: { key: string; label: string; value: number; defn: string }[] = [
+    {
+      key: "below_history",
+      label: "Below min history",
+      value: diagnostic.excluded.below_history,
+      defn: `Fewer than ${t.min_history_bars} trailing bars on/before the as-of (incl. un-fetched pool names).`,
+    },
+    {
+      key: "below_price",
+      label: "Below min price",
+      value: diagnostic.excluded.below_price,
+      defn: `As-of close under $${t.min_price}.`,
+    },
+    {
+      key: "below_adv",
+      label: "Below min liquidity",
+      value: diagnostic.excluded.below_adv,
+      defn: `${t.adv_window_days}-day average daily dollar volume under $${Number(t.min_dollar_vol).toLocaleString()}.`,
+    },
+  ];
+  return (
+    <Card className="p-0" data-testid="universe-diagnostic-panel">
+      <PanelTitle
+        hint={`Why the scored universe is the size it is at the current as-of${
+          asof ? ` (${formatIsoDate(asof)})` : ""
+        } — the point-in-time resolver admits a candidate only with ≥ ${t.min_history_bars} bars, price ≥ $${t.min_price}, and ${t.adv_window_days}-day liquidity, all from bars on/before the date. Reads the single global as-of (no second date control).`}
+      >
+        <span className="inline-flex items-center gap-2">
+          <Search className="h-4 w-4 text-text-faint" aria-hidden />
+          Universe resolution {asof ? `as of ${formatIsoDate(asof)}` : "(latest)"}
+        </span>
+      </PanelTitle>
+      <div className="space-y-3 p-4">
+        {empty ? (
+          <div
+            className="flex items-start gap-2 rounded-md border border-warn bg-surface-2 p-3 text-xs text-warn"
+            data-testid="universe-diagnostic-empty"
+          >
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+            <span>
+              No candidate clears the screen at this date — the resolved universe is honestly EMPTY (a
+              warm-up date, before any name has {t.min_history_bars} bars). This is expected, not an error.
+            </span>
+          </div>
+        ) : null}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <DefinedMetric
+            label="Admitted"
+            tone="text-pos"
+            testId="universe-diagnostic-admitted"
+            value={diagnostic.admitted_count}
+            definition={`Members resolved at the as-of (of ${diagnostic.candidate_pool_count} candidate-pool names).`}
+          />
+          {reasons.map((r) => (
+            <DefinedMetric
+              key={r.key}
+              label={r.label}
+              tone={r.value > 0 ? "text-text" : "text-text-faint"}
+              testId={`universe-diagnostic-${r.key}`}
+              value={r.value}
+              definition={r.defn}
+            />
+          ))}
+        </div>
+        <p className="text-xs text-text-muted">
+          A sub-threshold or short-history candidate is honestly EXCLUDED with a reason — never scored on
+          fabricated or padded values. Excluded total:{" "}
+          <span className="num text-text">{diagnostic.excluded_total}</span> of{" "}
+          <span className="num text-text">{diagnostic.candidate_pool_count}</span> pool candidates.
+        </p>
+      </div>
+    </Card>
+  );
+}
+
+/** J-96 — the dynamic-universe membership timeline. Renders the resolved universe SIZE across the snapshot
+ *  dates as a step-function chart (the J-44/J-49 overlay treatment), the per-date entries / exits, and the
+ *  per-date excluded-by-reason counts, plus the three HONEST labels verbatim (the candidate-pool
+ *  survivorship caveat, the warm-up boundary, and the universe-relative breadth caveat). Read-only
+ *  descriptive metadata over the stored membership; an empty DB renders an honest empty timeline. */
+function MembershipTimelinePanel({ timeline }: { timeline: MembershipTimeline }) {
+  const points = timeline.points;
+  const labels = timeline.labels;
+  const maxSize = Math.max(1, ...points.map((p) => p.size));
+  // a compact step-function SVG sparkline of the resolved size over the snapshot dates.
+  const W = 640;
+  const H = 120;
+  const padX = 8;
+  const padY = 10;
+  const innerW = W - padX * 2;
+  const innerH = H - padY * 2;
+  const stepPoints: string[] = [];
+  if (points.length > 0) {
+    points.forEach((p, i) => {
+      const x0 = padX + (points.length === 1 ? innerW / 2 : (i / points.length) * innerW);
+      const x1 = padX + (points.length === 1 ? innerW : ((i + 1) / points.length) * innerW);
+      const y = padY + innerH - (p.size / maxSize) * innerH;
+      stepPoints.push(`${x0.toFixed(1)},${y.toFixed(1)}`);
+      stepPoints.push(`${x1.toFixed(1)},${y.toFixed(1)}`); // hold the level → step function
+    });
+  }
+  return (
+    <Card className="p-0" data-testid="membership-timeline-panel">
+      <PanelTitle hint="How the point-in-time scored universe grew across the snapshot dates — its size at each date (a step function), which names entered/exited on which date, and why a date's size is what it is. Read-only; observed causally from each date's own snapshot.">
+        <span className="inline-flex items-center gap-2">
+          <TrendingUp className="h-4 w-4 text-text-faint" aria-hidden />
+          Dynamic-universe membership timeline
+        </span>
+      </PanelTitle>
+      <div className="space-y-4 p-4">
+        {/* the three honest labels — carried VERBATIM from the backend (the UI re-types none of this) */}
+        <div className="space-y-2 text-xs">
+          <p
+            className="rounded-md border border-border bg-surface-2 px-3 py-2 text-text-muted"
+            data-testid="timeline-label-survivorship"
+          >
+            <span className="font-semibold text-text">Survivorship: </span>
+            {labels.survivorship.label}
+          </p>
+          <p
+            className="rounded-md border border-border bg-surface-2 px-3 py-2 text-text-muted"
+            data-testid="timeline-label-warmup"
+          >
+            <span className="font-semibold text-text">Warm-up: </span>
+            {labels.warmup.label}
+          </p>
+          <p
+            className="rounded-md border border-border bg-surface-2 px-3 py-2 text-text-muted"
+            data-testid="timeline-label-universe-relative"
+          >
+            <span className="font-semibold text-text">Universe-relative: </span>
+            {labels.universe_relative}
+          </p>
+        </div>
+
+        {points.length === 0 ? (
+          <EmptyState
+            icon={TrendingUp}
+            title="No snapshots yet"
+            description="Once snapshots exist, the resolved-universe size over time appears here. No fabricated dates or members are shown."
+          />
+        ) : (
+          <>
+            {/* the resolved-size step function (J-44/J-49 overlay treatment; design-token palette) */}
+            <div className="rounded-md border border-border bg-surface-2 p-3" data-testid="timeline-step-chart">
+              <div className="mb-1 flex items-center justify-between text-xs text-text-faint">
+                <span>Resolved universe size</span>
+                <span className="num">max {maxSize}</span>
+              </div>
+              <svg
+                viewBox={`0 0 ${W} ${H}`}
+                className="h-32 w-full"
+                preserveAspectRatio="none"
+                role="img"
+                aria-label="Resolved universe size step function over the snapshot dates"
+              >
+                <polyline
+                  points={stepPoints.join(" ")}
+                  fill="none"
+                  stroke="var(--accent)"
+                  strokeWidth={2}
+                  vectorEffect="non-scaling-stroke"
+                />
+              </svg>
+              <div className="mt-1 flex items-center justify-between text-[10px] text-text-faint">
+                <span className="num">{formatIsoDate(points[0].date)}</span>
+                <span className="num">{formatIsoDate(points[points.length - 1].date)}</span>
+              </div>
+            </div>
+
+            {/* the per-date table: size + entries/exits + excluded-by-reason counts */}
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-sm" data-testid="timeline-table">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+                    <th className="px-3 py-2 font-medium">Snapshot date</th>
+                    <th className="px-3 py-2 text-right font-medium">Size</th>
+                    <th className="px-3 py-2 font-medium">Entries</th>
+                    <th className="px-3 py-2 font-medium">Exits</th>
+                    <th className="px-3 py-2 text-right font-medium">Excl. hist / price / liq</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {points
+                    .slice()
+                    .reverse()
+                    .map((p) => (
+                      <tr
+                        key={p.date}
+                        className="border-b border-border last:border-b-0"
+                        data-testid={`timeline-row-${p.date}`}
+                      >
+                        <td className="px-3 py-2 num text-text">{formatIsoDate(p.date)}</td>
+                        <td className="px-3 py-2 num text-right font-semibold text-text">{p.size}</td>
+                        <td className="px-3 py-2 text-xs text-pos">
+                          {p.entries.length > 0 ? (
+                            <span className="num">
+                              +{p.entries.length}
+                              <span className="ml-1 text-text-faint">
+                                {p.entries.slice(0, 6).join(", ")}
+                                {p.entries.length > 6 ? "…" : ""}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-text-faint">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-neg">
+                          {p.exits.length > 0 ? (
+                            <span className="num">
+                              −{p.exits.length}
+                              <span className="ml-1 text-text-faint">
+                                {p.exits.slice(0, 6).join(", ")}
+                                {p.exits.length > 6 ? "…" : ""}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-text-faint">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 num text-right text-xs text-text-muted">
+                          {p.excluded.below_history} / {p.excluded.below_price} / {p.excluded.below_adv}
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/** J-95 — the confirm-gated "extend history backward" control. It reuses the rebuild confirm chrome + the
+ *  live job card (no second progress surface). Extending history backward is a best-effort `both` job over
+ *  an earlier price start; the real backward-history fetch is DATA-WALLED on this host, so the panel states
+ *  the honest blocked/limited-coverage (NA) outcome up front and carries the candidate-pool survivorship
+ *  caveat. Once earlier bars DO land, the point-in-time resolver admits names earlier automatically (no
+ *  separate membership recompute). The committed price seed is never deleted by the clear step. */
+function BackwardHistoryPanel({
+  survivorship,
+  priceStart,
+  running,
+  onStarted,
+}: {
+  survivorship: PoolSurvivorship;
+  priceStart: string | null;
+  running: boolean;
+  onStarted: (job: DataJob) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [naNote, setNaNote] = useState<string | null>(null);
+  // a sensible earlier target start: one calendar year before the current price start (a placeholder the
+  // operator can interpret; the actual fetch is provider-gated and best-effort).
+  const targetStart = priceStart
+    ? `${(parseInt(priceStart.slice(0, 4), 10) - 1).toString()}${priceStart.slice(4)}`
+    : null;
+
+  async function handleConfirm() {
+    if (starting || running) return;
+    setStarting(true);
+    setError(null);
+    setNaNote(null);
+    try {
+      if (!targetStart || !priceStart) {
+        setNaNote("No committed price start yet — nothing to extend backward.");
+        setConfirming(false);
+        return;
+      }
+      // a best-effort `both` job over the earlier window (fetch earlier bars, then backfill snapshots).
+      // The fetch is data-walled on this host → the live job card surfaces the honest blocked / partial
+      // (NA) outcome; this is non-halting (it never drives a STALLED state).
+      const resp = await startDataJob("both", targetStart, priceStart);
+      const snap = await fetchDataJob(resp.job_id);
+      onStarted(snap);
+      setConfirming(false);
+      setNaNote(
+        "Backward-history fetch started (best-effort). If the provider is unreachable on this host, the " +
+          "job card will show an honest blocked / limited-coverage (NA) outcome — no fabricated bars, and " +
+          "the loop is never halted. Once earlier bars land, the universe resolves further back automatically.",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not start the backward-history extension.");
+    } finally {
+      setStarting(false);
+    }
+  }
+
+  return (
+    <Card className="p-0" data-testid="backward-history-panel">
+      <PanelTitle hint="Extend committed price history backward (an earlier start) so the point-in-time universe resolves further into the past — reusing the chunked import + rebuild path. Best-effort: a walled provider yields an honest blocked / limited-coverage (NA) state, never fabricated bars. The committed price seed is never deleted.">
+        <span className="inline-flex items-center gap-2">
+          <History className="h-4 w-4 text-text-faint" aria-hidden />
+          Extend history backward
+        </span>
+      </PanelTitle>
+      <div className="space-y-3 p-4 text-sm">
+        <p
+          className="rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-text-muted"
+          data-testid="backward-history-survivorship"
+        >
+          <span className="font-semibold text-text">Survivorship caveat: </span>
+          {survivorship.label}
+        </p>
+        <Metric
+          label="Current price start"
+          value={priceStart ? formatIsoDate(priceStart) : "—"}
+        />
+        <p className="text-xs text-text-muted">
+          Extending backward fetches earlier real EOD bars (best-effort) then rebuilds snapshots; the
+          point-in-time resolver then admits names from earlier dates automatically. A true point-in-time
+          index-constituent feed is a separate, data-dependent enhancement — never fabricated when absent.
+        </p>
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          disabled={running || starting || !priceStart}
+          data-testid="backward-history-button"
+          className={cn(
+            "inline-flex h-9 items-center gap-2 rounded-md border px-4 text-sm font-medium transition focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+            running || starting || !priceStart
+              ? "cursor-not-allowed border-border text-text-faint"
+              : "border-accent text-accent hover:bg-surface-2",
+          )}
+        >
+          <History className="h-4 w-4" aria-hidden />
+          Extend history backward
+        </button>
+        {naNote ? (
+          <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-text-muted" data-testid="backward-history-na">
+            {naNote}
+          </p>
+        ) : null}
+        {error ? (
+          <p role="alert" className="flex items-center gap-2 text-xs text-neg">
+            <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+            {error}
+          </p>
+        ) : null}
+      </div>
+      {confirming ? (
+        <BackwardHistoryConfirmModal
+          targetStart={targetStart}
+          priceStart={priceStart}
+          starting={starting}
+          error={error}
+          onCancel={() => {
+            setConfirming(false);
+            setError(null);
+          }}
+          onConfirm={handleConfirm}
+        />
+      ) : null}
+    </Card>
+  );
+}
+
+/** The confirm modal for the J-95 backward-history extension — the rebuild-modal chrome, restating the
+ *  best-effort / data-walled / seed-never-deleted contract so the action is never a surprise. */
+function BackwardHistoryConfirmModal({
+  targetStart,
+  priceStart,
+  starting,
+  error,
+  onCancel,
+  onConfirm,
+}: {
+  targetStart: string | null;
+  priceStart: string | null;
+  starting: boolean;
+  error: string | null;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(10,14,20,0.8)] p-4 backdrop-blur-sm"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Confirm backward-history extension"
+      data-testid="backward-history-confirm-modal"
+    >
+      <Card className="w-full max-w-lg p-0 shadow-xl">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-accent">
+            <History className="h-4 w-4" aria-hidden />
+            Confirm backward-history extension
+          </h2>
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="Cancel"
+            className="rounded p-1 text-text-faint transition hover:bg-surface-2 hover:text-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
+        <div className="max-h-[55vh] space-y-3 overflow-y-auto p-4 text-sm">
+          <p className="text-text-muted">
+            This attempts a best-effort fetch of earlier real EOD bars
+            {targetStart && priceStart ? ` (${formatIsoDate(targetStart)} → ${formatIsoDate(priceStart)})` : ""}
+            , then rebuilds snapshots over the resolved universe.
+          </p>
+          <ul className="list-disc space-y-1 pl-5 text-xs text-text-faint">
+            <li>The committed price seed is never deleted — only earlier bars are added + snapshots regenerated.</li>
+            <li>No canonical formula changes — only how far back the point-in-time universe can resolve.</li>
+            <li>
+              If the provider is unreachable on this host, the job ends in an honest blocked / limited-coverage
+              (NA) state — no fabricated bars, and the loop is never halted.
+            </li>
+          </ul>
+          {error ? (
+            <p role="alert" className="flex items-center gap-2 text-xs text-neg">
+              <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
+              {error}
+            </p>
+          ) : null}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="inline-flex h-9 items-center rounded-md border border-border px-4 text-sm text-text-muted transition hover:border-border-strong hover:text-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={starting}
+            data-testid="backward-history-confirm-button"
+            className={cn(
+              "inline-flex h-9 items-center gap-2 rounded-md border border-accent bg-accent/10 px-4 text-sm font-semibold text-accent transition hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+              starting && "cursor-not-allowed opacity-60",
+            )}
+          >
+            {starting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : <History className="h-4 w-4" aria-hidden />}
+            {starting ? "Starting…" : "Extend history backward"}
           </button>
         </div>
       </Card>

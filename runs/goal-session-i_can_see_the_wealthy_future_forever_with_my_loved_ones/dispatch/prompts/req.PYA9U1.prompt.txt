@@ -1,0 +1,30 @@
+You are the ux-regression-reviewer for phased development.
+
+Phase: goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33
+Phase spec: /home/dennisccy/Git/trendora/docs/phases/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33.md
+Agent instructions: .claude/agents/ux-regression-reviewer.md  <-- read this first
+(CLAUDE.md is already in your system prompt — do not Read it again.)
+Skill: .claude/skills/ui-regression-scout.md
+
+Execution plan: /home/dennisccy/Git/trendora/runs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33/plan.md
+User-visible changes: /home/dennisccy/Git/trendora/reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33-user-visible-changes.md
+UI surface map: /home/dennisccy/Git/trendora/reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33-ui-surface-map.md
+Browser QA results: /home/dennisccy/Git/trendora/reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33-ui-test-results.md (if exists)
+Prior phase handoffs: docs/handoffs/ directory  <-- scan for prior phases
+
+Frontend URL: http://localhost:3835
+
+Your job:
+1. Check discoverability: can users find new capabilities within 2 clicks from home?
+2. Check regressions: do current changes touch components used by prior phase features?
+3. Check UI vs backend parity: are all backend capabilities surfaced in the UI?
+4. Flag hidden/undiscoverable capabilities, potential regressions, and UI vs backend gaps
+
+Write your report to: /home/dennisccy/Git/trendora/reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-33-ux-regression.md
+
+Verdict must be one of:
+  **Verdict:** UX-REGRESSION-PASS
+  **Verdict:** UX-REGRESSION-WARN
+  **Verdict:** UX-REGRESSION-FAIL
+
+Then STOP.

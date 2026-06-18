@@ -322,7 +322,9 @@ def test_coverage_per_symbol_exact_values(persymbol_engine):
 
 def test_coverage_per_symbol_consistency_with_aggregates(persymbol_engine):
     """The table can never present two drifting truths: the distinct-symbol row count equals the existing
-    `symbol_count` aggregate, and the in-universe row count equals `universe_count`."""
+    `symbol_count` aggregate, and the in-universe row count equals `candidate_universe_count` (the static
+    `config.universe.symbols` count — the data-table membership view; iter-33 J-93 migrated the dynamic
+    `universe_count` to the members RESOLVED at the as-of, a separate as-of-dependent figure)."""
     cfg = _persymbol_cfg()
     with Session(persymbol_engine) as session:
         cov = compute_coverage(session, cfg)
@@ -336,9 +338,9 @@ def test_coverage_per_symbol_consistency_with_aggregates(persymbol_engine):
     priced = [r for r in rows if r["has_data"]]
     assert len(priced) == cov["symbol_count"] == 4
 
-    # in-universe rows == universe_count (AAA,BBB,CCC = 3) — reads the SAME config.universe.symbols.
+    # in-universe rows == candidate_universe_count (AAA,BBB,CCC = 3) — reads the SAME config.universe.symbols.
     in_universe = [r for r in rows if r["in_universe"]]
-    assert len(in_universe) == cov["universe_count"] == 3
+    assert len(in_universe) == cov["candidate_universe_count"] == 3
     assert {r["symbol"] for r in in_universe} == {"AAA", "BBB", "CCC"}
 
     # every universe member appears with data-or-missing — none silently absent.
@@ -376,8 +378,10 @@ def test_coverage_per_symbol_empty_dataset_is_members_only(persymbol_engine, tmp
     for r in rows.values():
         assert r["in_universe"] is True and r["has_data"] is False and r["missing"] is True
         assert r["bar_count"] == 0 and r["first"] is None and r["last"] is None
-    # aggregate consistency still holds on the empty dataset.
-    assert len([r for r in cov["per_symbol"] if r["in_universe"]]) == cov["universe_count"] == 3
+    # aggregate consistency still holds on the empty dataset (in-universe rows == the STATIC candidate
+    # count; the as-of-dependent `universe_count` is 0 here — nothing clears the warm-up gate on an empty DB).
+    assert len([r for r in cov["per_symbol"] if r["in_universe"]]) == cov["candidate_universe_count"] == 3
+    assert cov["universe_count"] == 0  # J-93: no member resolves on a bars-less DB (honest empty universe)
 
 
 # ==================================================================================================

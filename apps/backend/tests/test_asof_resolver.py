@@ -120,7 +120,9 @@ def test_resolve_run_create_once_then_immutable(tmp_path, config, seed_dir):
         )
 
     assert runs_for_date_1 == runs_for_date_2 == 1  # exactly one run for the date (create-once)
-    assert results_1 == results_2 == len(config.universe.symbols)  # no duplicate child rows
+    # iter-33 (J-93): the child-row count is the resolved-at-D membership (stable across the two views —
+    # no duplicate child rows), a non-empty subset of the static universe at a full-universe date.
+    assert results_1 == results_2 and 0 < results_1 <= len(config.universe.symbols)
 
 
 def test_resolve_run_on_demand_has_no_lookahead(tmp_path, config, seed_dir):

@@ -140,6 +140,11 @@ def test_api_stocks_equals_engine_output(loaded_engine):
     with Session(loaded_engine) as session:
         asof = latest_data_date(session)
         expected = score_stocks(session, asof, cfg)
+    # iter-33 (J-93): `score_stocks` ADDITIVELY returns a wrapper-level `members` key (the resolved
+    # membership contract) that the snapshot-served `/api/stocks` payload does not carry. Strip it so the
+    # no-drift guarantee is asserted on the CANONICAL scored payload (rows/asof/benchmark) — the membership
+    # is separately asserted below (served rows == resolved members). (iter-20/23/32 additive-key lesson.)
+    expected = {k: v for k, v in expected.items() if k != "members"}
     with TestClient(main.app) as client:
         resp = client.get("/api/stocks")
     assert resp.status_code == 200
@@ -161,7 +166,8 @@ def test_api_stocks_equals_engine_output(loaded_engine):
             assert "max_drawdown" in fr
             assert fr["max_drawdown"] is None or fr["max_drawdown"] <= 1e-12
     assert served["benchmark"] == "SPY"
-    assert len(served["rows"]) == len(cfg.universe.symbols)
+    # iter-33 (J-93): one row per point-in-time-resolved member (a non-empty subset of the static universe).
+    assert 0 < len(served["rows"]) <= len(cfg.universe.symbols)
 
 
 def test_api_stock_detail_equals_list_row_single_source_j06(loaded_engine):

@@ -124,15 +124,40 @@ def _glossary(config: Config) -> dict:
 
 
 def _universe_selection(config: Config) -> dict:
-    """The Universe Selection section (J-22): the membership-rule prose, the three screen thresholds
-    resolved LIVE from `universe.filters` (never re-typed — the matching-config keystone), and the
-    resolved member count read from the ONE canonical `config.universe.symbols` (a read, not a literal —
-    no magic number). The API/frontend reads this verbatim; neither recomputes membership."""
+    """The Universe Selection section (J-22 / J-93): the membership-rule prose + the screen thresholds
+    resolved LIVE from config (never re-typed — the matching-config keystone). The universe is now a
+    TWO-LAYER screen, both documented here from config refs (no magic number):
+
+      (1) the CANDIDATE-POOL screen — the index-membership union gated by market-cap / ADV / price
+          (`universe.filters.*`) — which builds `config.universe.symbols` (the offline `expand` screen);
+      (2) the PER-AS-OF-DATE membership resolver (J-93) — that pool screened, FROM BARS <= D ONLY, on
+          price + ADV + >= `indicators.min_history_bars` trailing bars (the market-cap criterion is
+          DROPPED per-date — a current-only scalar has no point-in-time series; applying it per
+          historical date would be lookahead/fabrication).
+
+    `resolved_size` is the CANDIDATE-UNIVERSE size (`len(config.universe.symbols)` — the rule's static
+    pool, NOT date-scoped, since methodology describes the rule, not a snapshot); `candidate_pool_size`
+    is the same read for clarity. The as-of-DEPENDENT resolved member count (members-resolved-at-D) is
+    served on `GET /api/data` (`universe_count` / `universe_diagnostic`) — pointed to via `per_date_note`.
+    The API/frontend reads this verbatim; neither recomputes membership."""
     section = config.methodology.universe_selection
+    candidate_size = len(config.universe.symbols)
     return {
         "membership_rule": section.membership_rule,
         "thresholds": [_threshold_row(threshold, config) for threshold in section.thresholds],
-        # the resolved universe is `config.universe.symbols` (the committed screen result) — read once,
-        # here and on /api/data, so the two surfaces never drift (single source, no recompute).
-        "resolved_size": len(config.universe.symbols),
+        # the candidate-universe (static pool) size — read once, here and on /api/data
+        # (`candidate_universe_count`), so the two surfaces never drift (single source, no recompute).
+        "resolved_size": candidate_size,
+        "candidate_pool_size": candidate_size,
+        # J-93: the per-date rule + where its as-of-dependent resolved count is served (the market-cap
+        # criterion is dropped per-date — documented, never silently asserted at a historical date).
+        "per_date_rule": (
+            f"As of any date D the scored membership is this candidate pool screened — from bars dated "
+            f"on or before D only — on price ≥ the minimum share price, average daily dollar volume ≥ the "
+            f"minimum, and at least {config.indicators.min_history_bars} trailing bars of history (the "
+            f"warm-up gate). The market-cap filter screens the candidate pool, not the per-date membership "
+            f"(market cap has no point-in-time series). The resolved count for a date is shown on Data "
+            f"Manager (universe_count)."
+        ),
+        "per_date_min_history_bars": config.indicators.min_history_bars,
     }
