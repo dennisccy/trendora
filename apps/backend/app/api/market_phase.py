@@ -22,17 +22,33 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
 from app.db import get_session
-from app.engine.market_phase import market_phase_cached
+from app.engine.market_phase import market_phase_cached, retrospective_cached
 from app.engine.snapshot_serving import resolved_date
 
 router = APIRouter(tags=["market-phase"])
 
 
 @router.get("/market-phase")
-def market_phase(as_of: Optional[str] = None, session: Session = Depends(get_session)) -> dict:
+def market_phase(
+    as_of: Optional[str] = None,
+    retrospective: bool = False,
+    session: Session = Depends(get_session),
+) -> dict:
     """Serve the Market Phase & Severity derivation for the resolved as-of date. `as_of=None` resolves to
     the latest stored date; a provided date is validated by the shared resolver (4xx/503 on an invalid /
     out-of-range date — never a fabricated date). The payload is `market_phase_cached(...)` verbatim
-    (byte-identical to a fresh compute; cached behind the dataset-version stamp)."""
+    (byte-identical to a fresh compute; cached behind the dataset-version stamp) — it carries the CAUSAL
+    timeline series + dated downtrend episodes + the recovery-turn signal (J-89 / J-90), all read from the
+    SAME single causal derivation.
+
+    iter-30 (J-89): the FENCED retrospective (full-sample / analysis-only) sub-view — the SMOOTHED P(bear)
+    series + the peak-to-trough true-bear dating — is served ONLY when `retrospective=true`, behind the
+    SEPARATE structural `retrospective` field (a sibling cached read under the SAME engine + dataset_version
+    stamp). The smoothed probability is lookahead by construction and NEVER feeds any as-of value (the J-49
+    fence); the fence is structural — `retrospective_cached` is a different code path that no causal field
+    reads. When `retrospective=false` (the default) the heavy backward-smoother is not computed at all."""
     resolved = resolved_date(session, as_of, None)
-    return market_phase_cached(session, resolved)
+    payload = market_phase_cached(session, resolved)
+    if retrospective:
+        payload = {**payload, "retrospective": retrospective_cached(session, resolved)}
+    return payload

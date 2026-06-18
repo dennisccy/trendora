@@ -972,7 +972,25 @@ class MarketPhaseCfg(BaseModel):
       - `observation_disclosure_limit` — how many of the MOST RECENT filter observations the served
         payload discloses (the deterministic forward filter still consumes EVERY observation <= D — this
         only bounds the disclosed tail so a daily-history host doesn't serve thousands of chips; the
-        served P(bear) is unchanged). MUST be `>= 1`."""
+        served P(bear) is unchanged). MUST be `>= 1`.
+
+    iter-30 (J-89 / J-90) ADDITIVE downtrend-history + recovery-turn keys (consumed by the new read-only
+    timeline / episode / retrospective / recovery-turn-signal derivations — every threshold from config,
+    No magic numbers; `market_phase.py` stays in `test_no_magic_numbers`'s `CALC_FILES`):
+      - `downtrend_pbear_threshold` — a per-date filtered P(bear) at/above this (OR a Bear/Correction
+        phase) opens a CAUSAL downtrend episode (J-89). In [0, 1].
+      - `recovery_signal_pbear_exit` — the filtered P(bear) the as-of must cross BELOW (a downtrend-exit
+        transition) for the causal recovery/turn signal to fire (J-90), gated by the trailing-MA reclaim.
+        In [0, 1]; MUST be `<= downtrend_pbear_threshold` (you cannot signal a recovery at a P(bear) that
+        still opens a downtrend).
+      - `recovery_trailing_ma_days` — the trailing moving-average window (calendar days) the index close
+        must RECLAIM (close above its trailing MA) to confirm the recovery turn (J-90). Positive.
+      - `bry_boschan_min_phase_days` — the FENCED retrospective true-bear dater's minimum phase length
+        (calendar days) — a peak->trough decline shorter than this is not a true-bear phase (a Bry-Boschan/
+        NBER-style minimum-duration censoring rule). Positive. Retrospective ONLY (never an as-of value).
+      - `bry_boschan_min_amplitude_pct` — the retrospective true-bear dater's minimum peak-to-trough
+        DRAWDOWN amplitude (%) — a decline shallower than this is not a true-bear phase. Positive.
+        Retrospective ONLY."""
 
     model_config = ConfigDict(extra="allow")
     labels: list[str] = Field(min_length=1)
@@ -984,6 +1002,12 @@ class MarketPhaseCfg(BaseModel):
     recovery_min_off_trough_pct: float
     min_history_bars: int
     observation_disclosure_limit: int
+    # iter-30 (J-89 / J-90) — downtrend-history + recovery-turn thresholds (every threshold from config).
+    downtrend_pbear_threshold: float
+    recovery_signal_pbear_exit: float
+    recovery_trailing_ma_days: int
+    bry_boschan_min_phase_days: int
+    bry_boschan_min_amplitude_pct: float
 
     @model_validator(mode="after")
     def _validate(self) -> "MarketPhaseCfg":
@@ -999,12 +1023,32 @@ class MarketPhaseCfg(BaseModel):
             "vix_gate": self.vix_gate,
             "recovery_min_off_trough_pct": self.recovery_min_off_trough_pct,
             "min_history_bars": self.min_history_bars,
+            # iter-30 (J-89 / J-90) positive scalars
+            "recovery_trailing_ma_days": self.recovery_trailing_ma_days,
+            "bry_boschan_min_phase_days": self.bry_boschan_min_phase_days,
+            "bry_boschan_min_amplitude_pct": self.bry_boschan_min_amplitude_pct,
         }
         nonpositive = sorted(k for k, v in positive.items() if v <= 0)
         if nonpositive:
             raise ValueError(f"market_phase values must be positive: {nonpositive}")
         if self.observation_disclosure_limit < 1:
             raise ValueError("market_phase.observation_disclosure_limit must be >= 1")
+        # iter-30 (J-89 / J-90): the two probability thresholds must be valid [0, 1] probabilities, and a
+        # recovery-exit threshold ABOVE the downtrend-open threshold would be incoherent (you cannot signal
+        # a recovery turn at a P(bear) that still opens a downtrend episode) — rejected at load.
+        in_unit = {
+            "downtrend_pbear_threshold": self.downtrend_pbear_threshold,
+            "recovery_signal_pbear_exit": self.recovery_signal_pbear_exit,
+        }
+        out_of_range = sorted(k for k, v in in_unit.items() if not (0 <= v <= 1))
+        if out_of_range:
+            raise ValueError(f"market_phase P(bear) thresholds must be in [0, 1]: {out_of_range}")
+        if self.recovery_signal_pbear_exit > self.downtrend_pbear_threshold:
+            raise ValueError(
+                "market_phase.recovery_signal_pbear_exit "
+                f"({self.recovery_signal_pbear_exit}) must be <= downtrend_pbear_threshold "
+                f"({self.downtrend_pbear_threshold})"
+            )
         return self
 
 

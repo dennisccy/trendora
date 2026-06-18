@@ -1,0 +1,33 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
+  "status": "complete",
+  "current_step": "qa_complete",
+  "updated_at": "2026-06-18T00:55:00.000000Z",
+  "started_at": "2026-06-17T22:30:02.196293Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/market_phase.py",
+    "apps/backend/app/engine/research.py",
+    "apps/backend/app/engine/samples.py",
+    "apps/backend/app/api/market_phase.py",
+    "apps/backend/app/api/research.py",
+    "apps/backend/app/config.py",
+    "config.yaml",
+    "apps/backend/tests/test_market_phase.py",
+    "apps/backend/tests/test_research.py",
+    "apps/backend/tests/test_config.py",
+    "apps/backend/tests/test_config_engine.py",
+    "apps/backend/tests/test_indexes.py",
+    "apps/backend/tests/test_sectors.py",
+    "apps/backend/tests/test_themes.py",
+    "apps/frontend/components/market-phase-card.tsx",
+    "apps/frontend/app/research/page.tsx",
+    "apps/frontend/app/research/samples/page.tsx",
+    "apps/frontend/lib/api.ts",
+    "apps/frontend/lib/samples-link.ts"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "review"
+}

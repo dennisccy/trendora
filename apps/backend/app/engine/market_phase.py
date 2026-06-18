@@ -57,6 +57,13 @@ from app.models import MarketPhaseCache, ScannerRun
 # the threshold that triggers it is config (`market_phase.recovery_min_off_trough_pct`).
 PHASE_RECOVERY = "Recovery"
 
+# iter-30 (J-89) — the two "deep" phase labels a CAUSAL downtrend episode groups on (Bear / Correction).
+# Fixed structural labels (each is one of the configured `market_phase.labels`), referenced by name the
+# SAME way `PHASE_RECOVERY` is — NOT a numeric tunable (the numbers that DEFINE these bands live in the
+# config `phase_edges`; these constants only name the labels the edge lookup produces).
+_PHASE_BEAR = "Bear"
+_PHASE_CORRECTION = "Correction"
+
 # The two regime-switching states, in a FIXED order (the filter's state vector index order). Read from
 # the config-level vocabulary so there is no hard-coded state string in the recursion.
 _BEAR, _RISK_ON = REGIME_SWITCHING_STATES
@@ -277,6 +284,236 @@ def _stored_runs_through(session: Session, d: date_cls) -> list[ScannerRun]:
     )
 
 
+# ==================================================================================================
+# iter-30 (J-89) — the CAUSAL market-phase history timeline + dated downtrend episodes, and (J-90) the
+# causal recovery/turn signal. All three are STRICTLY causal derivations over the SAME single per-date
+# series `compute_market_phase` already builds (the SAME `_filtered_bear_path` p_bear at each step + the
+# SAME `_phase_for` phase per reading). They read no future bar, recompute no canonical value, and carry
+# no threshold literal (every cutoff is a `config.market_phase` key). The SMOOTHED retrospective is a
+# SEPARATE backward pass below — fenced, never consumed here.
+# ==================================================================================================
+def _timeline_series(
+    readings: list[dict], filtered_path: list[float], cfg: Config
+) -> list[dict]:
+    """The per-snapshot-date CAUSAL timeline series `[{date, phase, p_bear, severity}]` (J-89). It reads
+    the SAME single derivation the served panel value reads — the per-date FILTERED `p_bear` is the i-th
+    element of the EXACT `_filtered_bear_path` the panel's served P(bear) is the LAST element of (single
+    source: the timeline and the panel read ONE series, never a second computation), and the per-date
+    `phase`/`severity` are the SAME `_phase_for(_severity_reading)` the served-date phase is. `readings`
+    is the per-valid-run `{date, reading_obj}` list (ascending by date, ALL dated <= D); it is the SAME
+    set, in the SAME order, the `observations`/`filtered_path` are built from, so element i of each lines
+    up. Pure in-memory mapping over already-computed values; recomputes nothing."""
+    series: list[dict] = []
+    for index, entry in enumerate(readings):
+        reading = entry["reading_obj"]
+        severity = round(reading["reading"] * 100, 2)
+        phase = _phase_for(severity, reading["off_trough_pct"], reading["drawdown_pct"], cfg)
+        series.append({
+            "date": entry["date"],
+            "phase": phase,
+            "p_bear": round(filtered_path[index], 6),
+            "severity": severity,
+        })
+    return series
+
+
+def _is_downtrend_date(point: dict, cfg: Config) -> bool:
+    """Whether ONE causal timeline point is IN a downtrend (J-89): its phase is one of the deep phases
+    (Bear / Correction) OR its filtered P(bear) is at/above `market_phase.downtrend_pbear_threshold`. A
+    fixed structural phase membership test (the deep-phase labels come from the config edges) + the config
+    P(bear) threshold — no magic number. Observed from the point's own (<= its date) information only."""
+    mp = cfg.market_phase
+    if point["phase"] in (_PHASE_BEAR, _PHASE_CORRECTION):
+        return True
+    return point["p_bear"] >= mp.downtrend_pbear_threshold
+
+
+def _downtrend_episodes(timeline: list[dict], as_of: date_cls, cfg: Config) -> list[dict]:
+    """The dated CAUSAL downtrend episodes (J-89): a deterministic grouping of the (<= D) timeline into
+    MAXIMAL consecutive runs of downtrend dates (`_is_downtrend_date`). Each episode carries its
+    `first_trigger_date`, the `severity_at_trigger` (the severity on that first date — observed on its
+    own information only), the `last_date` (the most recent downtrend date in the run), the worst-seen
+    `peak_p_bear` / `peak_severity` over the run, and whether it is `open` at D (its last date is the
+    LATEST timeline date — i.e. still in a downtrend as of the resolved as-of) or `closed`. Empty/early
+    history -> honest empty list (never a fabricated episode). Pure in-memory grouping of the already-
+    derived causal series; recomputes nothing, reads no future bar (the timeline is already <= D)."""
+    if not timeline:
+        return []
+    latest_date = timeline[-1]["date"]
+    episodes: list[dict] = []
+    current: Optional[dict] = None
+    for point in timeline:
+        if _is_downtrend_date(point, cfg):
+            if current is None:
+                current = {
+                    "first_trigger_date": point["date"],
+                    "severity_at_trigger": point["severity"],
+                    "last_date": point["date"],
+                    "peak_p_bear": point["p_bear"],
+                    "peak_severity": point["severity"],
+                }
+            else:
+                current["last_date"] = point["date"]
+                current["peak_p_bear"] = max(current["peak_p_bear"], point["p_bear"])
+                current["peak_severity"] = max(current["peak_severity"], point["severity"])
+        else:
+            if current is not None:
+                episodes.append(current)
+                current = None
+    if current is not None:
+        episodes.append(current)
+
+    # an episode is OPEN at D iff its last downtrend date is the latest timeline date (still in a downtrend
+    # as of the resolved as-of); otherwise it CLOSED on its last date (the tape left the downtrend after).
+    for episode in episodes:
+        episode["open"] = episode["last_date"] == latest_date
+    return episodes
+
+
+def _trailing_ma_reclaimed(session: Session, as_of: date_cls, cfg: Config) -> Optional[bool]:
+    """Whether the benchmark close on/before D has RECLAIMED its trailing moving average over the config
+    `recovery_trailing_ma_days` window (J-90 confirmation leg). Reads ONLY bars dated <= D via `bars_asof`
+    (no lookahead): the last close vs the mean close over the trailing window. None when there is no bar
+    on/before D (an honest gap — the caller treats a missing reclaim as no-signal, never fabricated). A
+    pure causal read; recomputes nothing, carries no literal (the window is the config key)."""
+    mp = cfg.market_phase
+    bench = cfg.etfs.index[0]
+    start = as_of - timedelta(days=mp.recovery_trailing_ma_days)
+    window = [bar for bar in bars_asof(session, bench, as_of) if bar.date >= start]
+    series = closes(window)
+    if not series:
+        return None
+    trailing_ma = sum(series) / len(series)
+    return series[-1] >= trailing_ma
+
+
+def _recovery_turn_signal(
+    session: Session, timeline: list[dict], as_of: date_cls, cfg: Config
+) -> dict:
+    """The CAUSAL recovery/turn signal for the resolved as-of D (J-90), computed from data <= D ONLY (no
+    future bar). The signal is a config-defined downtrend-EXIT transition: the latest timeline date's
+    filtered P(bear) has crossed BELOW `market_phase.recovery_signal_pbear_exit` while the PRIOR date was
+    still at/above it (a fresh exit, not a sustained calm) AND the benchmark has reclaimed its trailing MA
+    (`_trailing_ma_reclaimed`). Returns `{is_recovery_turn, available, reason, p_bear, prev_p_bear,
+    exit_threshold, ma_reclaimed, ma_window_days}` — explainable (the triggering reason in words), never a
+    bare flag. A single-date timeline (no prior date) or a missing benchmark bar -> honest non-signal with
+    its reason. Reads the SAME causal series + a causal trailing-MA read; recomputes no canonical value and
+    carries no threshold literal (every cutoff is a config key)."""
+    mp = cfg.market_phase
+    exit_threshold = mp.recovery_signal_pbear_exit
+    base = {
+        "is_recovery_turn": False,
+        "available": True,
+        "exit_threshold": exit_threshold,
+        "ma_window_days": mp.recovery_trailing_ma_days,
+    }
+    if not timeline:
+        return {**base, "available": False, "reason": "No causal timeline at this date.",
+                "p_bear": None, "prev_p_bear": None, "ma_reclaimed": None}
+    last = timeline[-1]
+    p_bear = last["p_bear"]
+    if len(timeline) < 2:
+        return {**base, "reason": "Only one snapshot date — no prior P(bear) to confirm a downtrend exit.",
+                "p_bear": p_bear, "prev_p_bear": None, "ma_reclaimed": None}
+    prev_p_bear = timeline[-2]["p_bear"]
+    ma_reclaimed = _trailing_ma_reclaimed(session, as_of, cfg)
+
+    # a FRESH downtrend exit: P(bear) now below the exit threshold while the prior date was still at/above
+    # it (a crossing, not a sustained calm), confirmed by the trailing-MA reclaim.
+    crossed_below = p_bear < exit_threshold <= prev_p_bear
+    is_turn = crossed_below and bool(ma_reclaimed)
+
+    if is_turn:
+        reason = (
+            f"Filtered P(bear) crossed below the recovery exit ({exit_threshold:.2f}) — "
+            f"{prev_p_bear:.2f} → {p_bear:.2f} — and the index reclaimed its "
+            f"{mp.recovery_trailing_ma_days}-day trailing MA: a causal downtrend-exit / recovery turn."
+        )
+    elif crossed_below and ma_reclaimed is False:
+        reason = (
+            f"P(bear) crossed below the exit ({exit_threshold:.2f}) but the index has NOT reclaimed its "
+            f"{mp.recovery_trailing_ma_days}-day trailing MA — not yet a confirmed recovery turn."
+        )
+    elif crossed_below and ma_reclaimed is None:
+        reason = (
+            f"P(bear) crossed below the exit ({exit_threshold:.2f}) but no benchmark bar is available to "
+            "confirm the trailing-MA reclaim — not signalled (never fabricated)."
+        )
+    else:
+        reason = (
+            f"No fresh downtrend exit: P(bear) {p_bear:.2f} (prior {prev_p_bear:.2f}) vs the exit "
+            f"threshold {exit_threshold:.2f}."
+        )
+
+    return {
+        **base,
+        "is_recovery_turn": is_turn,
+        "reason": reason,
+        "p_bear": p_bear,
+        "prev_p_bear": prev_p_bear,
+        "ma_reclaimed": ma_reclaimed,
+    }
+
+
+def _recovery_turn_dates_with_context(
+    session: Session, timeline: list[dict], cfg: Config
+) -> dict[str, dict]:
+    """The set of CAUSAL recovery-turn signal DATES over the timeline (J-90), each mapped to its causal
+    context `{phase, severity, p_bear, prev_p_bear}` AT THE SIGNAL DATE (read from the SAME single timeline
+    derivation, <= that date — never recomputed). A date `timeline[i]` is a recovery turn iff the SAME
+    rule `_recovery_turn_signal` applies at that point: a fresh P(bear) crossing below the config exit
+    (`timeline[i].p_bear < exit <= timeline[i-1].p_bear`) confirmed by the trailing-MA reclaim of the
+    benchmark on that date. The first timeline date can never be a turn (no prior P(bear)). Keyed by the
+    ISO signal date so the J-90 edge study can join the stored `forward_returns` of THOSE dates' runs.
+    Reads the SAME causal series + a causal trailing-MA read; recomputes no canonical value, no future bar."""
+    mp = cfg.market_phase
+    exit_threshold = mp.recovery_signal_pbear_exit
+    out: dict[str, dict] = {}
+    from datetime import date as _date  # local import to parse the ISO timeline dates for the MA read
+    for i in range(1, len(timeline)):
+        point = timeline[i]
+        prev = timeline[i - 1]
+        if not (point["p_bear"] < exit_threshold <= prev["p_bear"]):
+            continue
+        d = _date.fromisoformat(point["date"])
+        if not _trailing_ma_reclaimed(session, d, cfg):
+            continue
+        out[point["date"]] = {
+            "phase": point["phase"],
+            "severity": point["severity"],
+            "p_bear": point["p_bear"],
+            "prev_p_bear": prev["p_bear"],
+        }
+    return out
+
+
+def recovery_turn_dates(
+    session: Session, as_of: Optional[date_cls] = None, config: Optional[Config] = None
+) -> dict[str, dict]:
+    """The public read-only accessor the J-90 Recovery-Turn Edge study calls: the CAUSAL recovery-turn
+    signal dates (with their causal context) over the stored snapshot history, optionally scoped to runs
+    dated <= `as_of` (the J-32 point-in-time mode — a FILTER, never a second date state). Builds the SAME
+    single causal timeline `compute_market_phase` reads (the SAME `_filtered_bear_path` + `_phase_for`),
+    then derives the turn dates from it (`_recovery_turn_dates_with_context`). `as_of=None` -> all stored
+    runs (all-history). Recomputes nothing the panel doesn't already compute; reads no future bar."""
+    cfg = config or get_config()
+    runs = _stored_runs_through(session, as_of) if as_of is not None else list(
+        session.exec(select(ScannerRun).order_by(ScannerRun.asof_date)).all()
+    )
+    readings: list[dict] = []
+    observations: list[float] = []
+    with bar_cache(session):
+        for run in runs:
+            reading = _severity_reading(session, run, cfg)
+            if reading is None:
+                continue
+            readings.append({"date": run.asof_date.isoformat(), "reading_obj": reading})
+            observations.append(round(reading["reading"], 6))
+    filtered_path = _filtered_bear_path(observations, cfg)
+    timeline = _timeline_series(readings, filtered_path, cfg)
+    return _recovery_turn_dates_with_context(session, timeline, cfg)
+
+
 def compute_market_phase(
     session: Session, as_of: date_cls, config: Optional[Config] = None
 ) -> dict:
@@ -302,6 +539,7 @@ def compute_market_phase(
     # (daily-history backfill) does NOT issue one full-series query per run — byte-identical to the
     # uncached per-request path (the cache only changes WHERE the bars are loaded, never WHICH bars).
     observations: list[dict] = []
+    readings: list[dict] = []  # the FULL per-valid-run reading (for the per-date timeline phase, J-89)
     latest_reading: Optional[dict] = None
     with bar_cache(session):
         for run in runs:
@@ -311,6 +549,7 @@ def compute_market_phase(
             observations.append(
                 {"date": run.asof_date.isoformat(), "reading": round(reading["reading"], 6)}
             )
+            readings.append({"date": run.asof_date.isoformat(), "reading_obj": reading})
             latest_reading = reading  # the last valid reading is the served-date severity source
 
     asof_iso = as_of.isoformat()
@@ -329,6 +568,15 @@ def compute_market_phase(
             "observations": [],
             "min_history_bars": cfg.market_phase.min_history_bars,
             "labels": list(cfg.market_phase.labels),
+            # iter-30 (J-89 / J-90): an honest empty timeline / episode list and an honest non-signal on a
+            # window with no derivable phase — never a fabricated episode/probability/signal.
+            "timeline": [],
+            "episodes": [],
+            "recovery_turn": {
+                "is_recovery_turn": False,
+                "available": False,
+                "reason": "No derivable market phase for this date (insufficient history).",
+            },
         }
 
     severity = round(latest_reading["reading"] * 100, 2)
@@ -352,6 +600,24 @@ def compute_market_phase(
         for index, obs in enumerate(observations)
     ][-limit:]
 
+    # iter-30 (J-89): the per-snapshot-date CAUSAL timeline series {date, phase, p_bear} — the SAME single
+    # derived series the panel reads (the SAME `_filtered_bear_path` p_bear at each step + the SAME
+    # `_phase_for` phase per reading). The timeline and the panel read ONE derivation, never a second
+    # computation (single source). Bounded to the SAME most-recent disclosure tail so a daily-history host
+    # serves a readable series; `total_timeline_dates` discloses the full causal count.
+    timeline_full = _timeline_series(readings, filtered_path, cfg)
+    timeline = timeline_full[-limit:]
+
+    # iter-30 (J-89): the dated CAUSAL downtrend episodes grouped from the FULL (un-truncated) timeline —
+    # each {first_trigger_date, severity_at_trigger, last_date, open|closed at D}. Observed on its dates
+    # only (no future bar); empty/early history -> honest empty list. Disclose the FULL set (episodes are
+    # few even on a daily-history host).
+    episodes = _downtrend_episodes(timeline_full, as_of, cfg)
+
+    # iter-30 (J-90): the causal recovery/turn signal for the resolved as-of D, computed from data <= D
+    # only (the filtered P(bear) crossing below the config exit while the index reclaims its trailing MA).
+    recovery_turn = _recovery_turn_signal(session, timeline_full, as_of, cfg)
+
     return {
         "asof_date": asof_iso,
         "available": True,
@@ -368,6 +634,13 @@ def compute_market_phase(
         "total_observations": len(observations),
         "min_history_bars": cfg.market_phase.min_history_bars,
         "labels": list(cfg.market_phase.labels),
+        # iter-30 (J-89 / J-90) ADDITIVE causal fields (read from the SAME single derived series above —
+        # no second computation, no second value). The SMOOTHED retrospective lives ONLY behind the separate
+        # `retrospective` field (a sibling read), never here.
+        "timeline": timeline,
+        "total_timeline_dates": len(timeline_full),
+        "episodes": episodes,
+        "recovery_turn": recovery_turn,
     }
 
 
@@ -418,4 +691,285 @@ def market_phase_cached(
         session.commit()
     except Exception:  # a concurrent writer raced us to the same key — the cache is best-effort, not a
         session.rollback()  # source of truth; the freshly computed payload is byte-identical, so return it
+    return payload
+
+
+# ==================================================================================================
+# iter-30 (J-89) — the FENCED RETROSPECTIVE (full-sample / analysis-only) sub-view: the SMOOTHED P(bear)
+# and the peak-to-trough "true bear dating". The SMOOTHED probability is LOOKAHEAD BY CONSTRUCTION (a
+# backward pass conditions on FUTURE observations) and the peak-to-trough dating is future-aware (a trough
+# is only known after the fact). Both live ONLY here, served behind a SEPARATE explicitly-named
+# `retrospective` field/endpoint — NEVER consumed by `compute_market_phase`'s phase/severity/filtered-
+# p_bear, the timeline, the episodes, the J-90 recovery-turn signal, or the J-90 edge study (the J-49
+# fenced-context precedent). The fence is STRUCTURAL: no function above reads anything this section
+# produces. The backward smoother reads the SAME `config.regime_switching` params VERBATIM (never EM-fit);
+# the Bry-Boschan dater's cutoffs are config keys (no literal).
+# ==================================================================================================
+def _smoothed_bear_path(observations: list[float], cfg: Config) -> list[float]:
+    """The deterministic full-sample SMOOTHED P(state=bear | ALL observations) via the Hamilton-Kim
+    fixed-interval smoother over the [0, 1] stress `observations` (ascending by date) + the SAME
+    `config.regime_switching` params VERBATIM (NEVER EM-fit). This is LOOKAHEAD BY CONSTRUCTION — the
+    smoothed value at step t conditions on observations AFTER t — so it is served ONLY on the fenced
+    retrospective surface and NEVER feeds any as-of value (the J-49 fence). Implementation: a forward
+    filter pass (storing each step's filtered posterior + its one-step predicted distribution), then a
+    backward recursion `smoothed[t] = filtered[t] * Σ_s smoothed[t+1][s] * trans[t->s] / predicted[t+1][s]`
+    (the standard Kim smoother), returning the per-step smoothed P(bear). Empty in -> empty out. The only
+    numbers are structural (0/1 probabilities, indexing); every param is config."""
+    rs = cfg.regime_switching
+    trans = rs.transition
+    em = rs.emissions
+    prior = {_BEAR: rs.initial_bear, _RISK_ON: 1 - rs.initial_bear}
+
+    n = len(observations)
+    if n == 0:
+        return []
+
+    # forward pass: store each step's filtered posterior + the one-step predicted distribution that fed it.
+    filtered: list[dict] = []
+    predicted_seq: list[dict] = []
+    posterior = prior
+    for index, obs in enumerate(observations):
+        predicted = (
+            prior if index == 0
+            else {
+                s: sum(posterior[prev] * trans[prev][s] for prev in REGIME_SWITCHING_STATES)
+                for s in REGIME_SWITCHING_STATES
+            }
+        )
+        likelihood = {s: _gaussian_kernel(obs, em[s].mean, em[s].std) for s in REGIME_SWITCHING_STATES}
+        unnormalized = {s: predicted[s] * likelihood[s] for s in REGIME_SWITCHING_STATES}
+        total = sum(unnormalized.values())
+        posterior = (
+            {s: unnormalized[s] / total for s in REGIME_SWITCHING_STATES} if total > 0 else predicted
+        )
+        filtered.append(posterior)
+        predicted_seq.append(predicted)
+
+    # backward pass: the last smoothed equals the last filtered; earlier steps mix in the future via the
+    # Kim recursion. predicted_seq[t+1][s] is the prior P(state at t+1 = s | obs <= t) the smoother divides
+    # by; a degenerate (0) predicted entry is skipped (its transition contribution is 0 anyway).
+    smoothed: list[dict] = [dict(filtered[-1])]
+    for t in range(n - 2, -1, -1):
+        future = smoothed[0]
+        pred_next = predicted_seq[t + 1]
+        smoothed_t = {}
+        for s in REGIME_SWITCHING_STATES:
+            ratio_sum = 0  # structural accumulator (int 0 like the rest of the engine — No magic numbers)
+            for s_next in REGIME_SWITCHING_STATES:
+                denom = pred_next[s_next]
+                if denom > 0:
+                    ratio_sum += future[s_next] * trans[s][s_next] / denom
+            smoothed_t[s] = filtered[t][s] * ratio_sum
+        # renormalize (the Kim recursion preserves a proper distribution up to numerical drift) — honest,
+        # deterministic; a degenerate all-zero step falls back to the filtered posterior (never fabricated).
+        norm = sum(smoothed_t.values())
+        smoothed_t = (
+            {s: smoothed_t[s] / norm for s in REGIME_SWITCHING_STATES} if norm > 0 else dict(filtered[t])
+        )
+        smoothed.insert(0, smoothed_t)
+    return [round(step[_BEAR], 6) for step in smoothed]
+
+
+def _true_bear_episodes(dated_closes: list[dict], cfg: Config) -> list[dict]:
+    """The peak-to-trough "true bear dating" over the benchmark closes at each snapshot date (J-89,
+    retrospective / Bry-Boschan-NBER-style). `dated_closes` is `[{date, close}]` ascending by date (the
+    benchmark close AS OF each stored snapshot date). FUTURE-AWARE BY CONSTRUCTION (a trough is only known
+    once the tape rebounds), so this lives ONLY on the fenced retrospective surface. Deterministic dating:
+    scan for each local peak the deepest subsequent trough BEFORE the close recovers back above the peak,
+    emit a candidate `{peak_date, trough_date, peak_close, trough_close, drawdown_pct, duration_days}`,
+    then CENSOR candidates shorter than `bry_boschan_min_phase_days` (calendar days, peak->trough) or
+    shallower than `bry_boschan_min_amplitude_pct` (peak-to-trough drawdown %). Overlapping candidates are
+    de-duplicated by keeping the FIRST (earliest-peak) of any pair whose spans overlap, so the 2022 bear
+    surfaces as ONE dated phase. Pure in-memory arithmetic; the only literals are structural (0/1 indexing
+    + the 100 percent unit) — the two cutoffs are config keys. Empty/short history -> honest empty list."""
+    mp = cfg.market_phase
+    n = len(dated_closes)
+    if n < 2:
+        return []
+
+    closes_list = [d["close"] for d in dated_closes]
+    candidates: list[dict] = []
+    i = 0
+    while i < n - 1:
+        peak_close = closes_list[i]
+        # require a local peak: the close is not lower than its immediate predecessor (a rising-into-peak
+        # filter that avoids dating from mid-decline points). The very first bar is always a candidate peak.
+        if i > 0 and closes_list[i] < closes_list[i - 1]:
+            i += 1
+            continue
+        # find the deepest trough AFTER i, up to (and including) the bar where the close first recovers
+        # back to/above the peak (the phase ends when the drawdown is fully retraced).
+        trough_index = i
+        trough_close = peak_close
+        j = i + 1
+        while j < n:
+            if closes_list[j] >= peak_close:
+                break  # the close recovered to/above the peak — the decline phase has ended
+            if closes_list[j] < trough_close:
+                trough_close = closes_list[j]
+                trough_index = j
+            j += 1
+        if trough_index > i:
+            drawdown_pct = (trough_close / peak_close - 1) * 100 if peak_close > 0 else 0
+            duration_days = (dated_closes[trough_index]["date_obj"] - dated_closes[i]["date_obj"]).days
+            candidates.append({
+                "peak_date": dated_closes[i]["date"],
+                "trough_date": dated_closes[trough_index]["date"],
+                "peak_close": round(peak_close, 4),
+                "trough_close": round(trough_close, 4),
+                "drawdown_pct": round(drawdown_pct, 2),
+                "duration_days": duration_days,
+                "_peak_index": i,
+                "_trough_index": trough_index,
+            })
+            i = trough_index + 1  # continue scanning after this decline's trough
+        else:
+            i += 1
+
+    # CENSOR by the config Bry-Boschan cutoffs: a true-bear phase must be deep enough AND long enough.
+    censored = [
+        c for c in candidates
+        if abs(c["drawdown_pct"]) >= mp.bry_boschan_min_amplitude_pct
+        and c["duration_days"] >= mp.bry_boschan_min_phase_days
+    ]
+    # strip the internal index helpers from the served rows (kept above only for the scan continuation).
+    return [
+        {k: v for k, v in c.items() if not k.startswith("_")}
+        for c in censored
+    ]
+
+
+def _benchmark_close_on_or_before(session: Session, d: date_cls, cfg: Config) -> Optional[float]:
+    """The benchmark (SPY) close on/before D (date <= D, no lookahead) — the SAME first index ETF the
+    severity drawdown leg reads. None when no bar exists. A pure causal read used to build the
+    retrospective's per-snapshot-date close series; recomputes nothing."""
+    bench = cfg.etfs.index[0]
+    series = closes(bars_asof(session, bench, d))
+    return series[-1] if series else None
+
+
+def compute_retrospective(
+    session: Session, as_of: date_cls, config: Optional[Config] = None
+) -> dict:
+    """The FENCED RETROSPECTIVE (full-sample / analysis-only) derivation (Data Contract value, J-89 — the
+    SEPARATE retrospective field). For the resolved as-of D it returns the per-snapshot-date SMOOTHED
+    P(bear) series (`_smoothed_bear_path`, lookahead by construction) and the peak-to-trough true-bear
+    dating (`_true_bear_episodes`, future-aware). BOTH are analysis-only and are NEVER consumed by any
+    as-of value — this is the single place the smoothed probability and the true-bear dating are computed,
+    behind the structural fence. Strictly bounded to the SAME stored runs <= D the causal layer reads
+    (so a historical as-of's retrospective is the full-sample analysis over the window UP TO D — the
+    retrospective is "full-sample within the resolved window", future-aware WITHIN that window, never
+    reading a run dated > D). Honest empty/NA on short history (never a fabricated smoothed value/episode).
+
+    Returns `{asof_date, available, analysis_only, smoothed[], true_bear_episodes[], min_history_bars,
+    min_phase_days, min_amplitude_pct}`. `analysis_only` is always True (a structural disclosure flag for
+    the UI fence). Recomputes no canonical value; reads no run dated > D."""
+    cfg = config or get_config()
+    runs = _stored_runs_through(session, as_of)
+
+    # the SAME causal observation vector + per-date benchmark close the causal layer reads (<= D only).
+    observations: list[dict] = []
+    dated_closes: list[dict] = []
+    with bar_cache(session):
+        for run in runs:
+            reading = _severity_reading(session, run, cfg)
+            if reading is None:
+                continue
+            observations.append({"date": run.asof_date.isoformat(), "reading": reading["reading"]})
+            close = _benchmark_close_on_or_before(session, run.asof_date, cfg)
+            if close is not None:
+                dated_closes.append({
+                    "date": run.asof_date.isoformat(),
+                    "date_obj": run.asof_date,
+                    "close": close,
+                })
+
+    asof_iso = as_of.isoformat()
+    if not observations:
+        return {
+            "asof_date": asof_iso,
+            "available": False,
+            "analysis_only": True,
+            "smoothed": [],
+            "true_bear_episodes": [],
+            "min_history_bars": cfg.market_phase.min_history_bars,
+            "min_phase_days": cfg.market_phase.bry_boschan_min_phase_days,
+            "min_amplitude_pct": cfg.market_phase.bry_boschan_min_amplitude_pct,
+        }
+
+    obs_values = [o["reading"] for o in observations]
+    smoothed_path = _smoothed_bear_path(obs_values, cfg)
+    smoothed = [
+        {"date": observations[index]["date"], "p_bear_smoothed": smoothed_path[index]}
+        for index in range(len(observations))
+    ]
+    # bound the disclosed smoothed tail to the SAME most-recent disclosure limit the causal series uses.
+    limit = cfg.market_phase.observation_disclosure_limit
+    smoothed_disclosed = smoothed[-limit:]
+
+    true_bear = _true_bear_episodes(dated_closes, cfg)
+
+    return {
+        "asof_date": asof_iso,
+        "available": True,
+        "analysis_only": True,
+        "smoothed": smoothed_disclosed,
+        "total_smoothed_dates": len(smoothed),
+        "true_bear_episodes": true_bear,
+        "min_history_bars": cfg.market_phase.min_history_bars,
+        "min_phase_days": cfg.market_phase.bry_boschan_min_phase_days,
+        "min_amplitude_pct": cfg.market_phase.bry_boschan_min_amplitude_pct,
+    }
+
+
+# The namespace prefix for the FENCED retrospective cache rows in the SHARED `MarketPhaseCache` table —
+# so a retrospective payload never collides with the causal payload for the SAME as-of (the causal key is
+# the bare ISO date). A fixed structural prefix (not a tunable); reusing the same table keeps the cache
+# machinery single-sourced (no second cache mechanism, no new table — iter-20 lesson).
+_RETRO_KEY_PREFIX = "retro:"
+
+
+def retrospective_cached(
+    session: Session, as_of: date_cls, config: Optional[Config] = None
+) -> dict:
+    """Serve the FENCED retrospective (J-89) from the SHARED `MarketPhaseCache` (mirrors
+    `market_phase_cached`), keyed by `(_RETRO_KEY_PREFIX + asof_key, dataset_version)` so it reuses the
+    SAME cache table + the SAME `_dataset_version` stamp (single-sourced, J-72) WITHOUT colliding with the
+    causal payload for the same as-of. On a HIT, return the stored payload (NO recompute); on a MISS,
+    compute it ONCE via `compute_retrospective`, persist under the current stamp, prune stale rows for THIS
+    retrospective key, and return it. BYTE-IDENTICAL to a fresh compute (a pure performance layer). The
+    SMOOTHED series + true-bear dating served here are analysis-only and never consumed by an as-of value
+    (the structural fence)."""
+    cfg = config or get_config()
+    version = _dataset_version(session)
+    asof_key = _RETRO_KEY_PREFIX + as_of.isoformat()
+
+    hit = session.exec(
+        select(MarketPhaseCache).where(
+            MarketPhaseCache.asof_key == asof_key,
+            MarketPhaseCache.dataset_version == version,
+        )
+    ).first()
+    if hit is not None:
+        return json.loads(hit.payload_json)
+
+    payload = compute_retrospective(session, as_of, cfg)
+
+    stale = session.exec(
+        select(MarketPhaseCache).where(
+            MarketPhaseCache.asof_key == asof_key,
+            MarketPhaseCache.dataset_version != version,
+        )
+    ).all()
+    for row in stale:
+        session.delete(row)
+
+    session.add(MarketPhaseCache(
+        asof_key=asof_key, dataset_version=version,
+        payload_json=json.dumps(payload), created_at=datetime.now(timezone.utc),
+    ))
+    try:
+        session.commit()
+    except Exception:  # best-effort cache; a concurrent writer raced us — the payload is byte-identical
+        session.rollback()
     return payload

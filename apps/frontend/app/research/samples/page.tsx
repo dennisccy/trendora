@@ -295,6 +295,15 @@ function describeCohort(cohort: SampleCohort): { title: string; detail: string |
       detail: `${viewLabel} · ${cohort.regime} · ${cohort.setup} · ${patternLabel}`,
     };
   }
+  // J-90 — the Recovery-Turn Edge cohort (the forward returns of causal recovery-turn dates).
+  if (cohort.kind === "recovery-turn") {
+    const viewLabel = cohort.view === "pooled" ? "Pooled (per-signal-day)" : "Episodes (first-trigger)";
+    const sliceDetail = cohort.slice === "phase" ? `Phase at signal: ${cohort.phase}` : "All recovery-turn dates";
+    return {
+      title: "Recovery-Turn Edge",
+      detail: `${viewLabel} · ${sliceDetail}`,
+    };
+  }
   // event-study
   const subject = cohort.subject?.label ?? "subject";
   // J-63: the overlap-honesty view this drill-down reproduces (Episodes = first-trigger; Pooled = per

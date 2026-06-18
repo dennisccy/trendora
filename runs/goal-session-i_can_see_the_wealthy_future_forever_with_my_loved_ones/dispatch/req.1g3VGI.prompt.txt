@@ -2,10 +2,10 @@ You are the goal-decomposer agent for goal-mode iteration planning.
 
 Mode: next
 Session ID: i_can_see_the_wealthy_future_forever_with_my_loved_ones
-Iteration index: 29
-Iter name: goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29
-Prior verdict: GOAL_ACHIEVED
-Prior depth: lean
+Iteration index: 30
+Iter name: goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30
+Prior verdict: CONTINUE
+Prior depth: full
 
 Project template: .claude/project-template.md
 Project goal: /home/dennisccy/Git/trendora/docs/goal.md  <-- read 'Must-have user journeys' and 'Anti-goals'
@@ -14,23 +14,6 @@ Agent instructions: .claude/agents/goal-decomposer.md  <-- read this first
 
 Recent evaluator log entries (last 3, pre-trimmed):
 ```
-- Regressed: none
-- Target journeys J-74, J-76: UNKNOWN (code in place + source-verified, but browser-QA SKIPPED — no live evidence)
-- Anti-goal violations: none
-
-**Reasoning:** Two pure-frontend polishes (J-74 multi-hue availability-heatmap scale+legend+legible day
-numbers; J-76 stock-detail price-chart per-bar hover box) landed correctly: diffs source-verified against
-the spec, coherence COHERENCE-PASS, review PASS, tsc --noEmit EXIT 0, backend diff empty, no anti-goal
-violated (heat hues defined once as design tokens — no per-cell hex; hover box reads served bars/MA with
-no recompute and labels a forward bar display-only; asof-provider/switcher/calendar untouched so J-18
-held). BUT browser-QA was SKIPPED entirely (0/9 tests; Chrome MCP / DevTools port 9222 unavailable —
-ECONNREFUSED) and the iter-17 evidence dir is empty — zero live screenshots for either target journey or
-any regression smoke. I independently confirmed the env is down (backend/frontend/9222 all unreachable),
-so I could not run browser-QA myself either. Per the strict rule (no Must-have marked passing without
-positive evidence; no GOAL_ACHIEVED on an unverified journey), J-74/J-76 stay `unknown` and the iteration
-cannot be GOAL_ACHIEVED. This is an environment failure, not a code failure → CONTINUE (not REGRESSION,
-not STALLED).
-
 **Next-step recommendation:** lean re-verification pass — bring up backend :8835 + frontend :3835 +
 Chrome DevTools :9222, then browser-QA J-74 (live heatmap multi-hue + legend + buckets 4-5 + click-prefill
 keeps as-of "Latest"; buckets 0-3 source-verified per iter-16 lesson) and J-76 (hover box date/OHLCV/%chg/
@@ -214,15 +197,26 @@ close green: J-78+J-73, then the backend cluster J-72/J-75/J-77 at full depth.
 **Reasoning:** J-86's two open iter-27 UI legs both close. (1) Colour grading is now magnitude-graded: a NEW shared lib/mdd-color.ts maps |drawdown| to four severity bands via color-mix over the EXISTING --neg/--text-muted design tokens (40/60/80/100% --neg), NA/0 -> text-text-muted; forward-return.tsx mddClass delegates to it so all four surfaces grade from one source. I independently grepped the 3-file diff (ZERO hardcoded hex), ran the 9 unit tests GREEN (NA/0 muted, monotonic magnitude, catastrophic -50% deepest band, >=4 bands, every band mixes --neg), and browser-QA computed-CSS confirms FOUR distinct colours on /stocks. (2) The iter-27 "sort no-op" was a browser-QA XPath text() selector false-negative on the BYTE-UNCHANGED sort path (git status confirms stocks/themes/sectors page.tsx not in the diff) — sort is now CONFIRMED working on all five MDD columns + five forward-return columns by aria-label (5d MDD asc KBH -12.73% first; 60d MDD RPD -63.21% first; NA last; indicator flips). Backend diff is provably empty, so the iter-27 GREEN suite (878 passed, 0 failed) remains the valid standing gate for the byte-unchanged backend. I VIEWED UT-J-86-stocks-mdd-color-graded.png (full-page leaderboard, varied red intensities), UT-J-86-stocks-5d-mdd-sort-asc.png (historical badge 2025-12-16 + graded MDD cells), UT-J-06-nvda-detail-scores.png (Realized-forward-returns panel: 1d/5d/10d -4.17%, 20d -6.63%, 60d -12.06% matching the leaderboard exactly — J-06 single source held), and the themes/sectors sort captures. Coherence COHERENCE-PASS (one deferred presentational WARN, non-blocking); review PASS; tsc --noEmit EXIT 0. Every buildable Must-have (J-01..J-21, J-25..J-86) is now passing/already_passing; J-22/J-23/J-24 stay honestly blocked-NA (data-walled), which goal.md (lines 105-108) designates non-vetoing. All three GOAL_ACHIEVED conditions hold: every Must-have positive-evidenced, zero unresolved anti-goal violations, COHERENCE-PASS.
 
 **Next-step recommendation:** Halt — goal achieved. The J-83..J-86 extension is complete; no tractable code work remains for the buildable journeys. J-22 (real >=500-member Yahoo screen) auto-unblocks via the already-built J-84 cookie+crumb expand path once a cap-capable provider is reachable (no code change); J-23/J-24 via the committed intraday runbook. If the owner extends goal.md with new journeys and resumes in-place (as in prior extensions), regenerate/re-approve the blueprint on resume; a presentation-only follow-up like this one warrants lean depth.
+
+## Iteration 29 — goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29
+
+**Date:** 2026-06-17T23:30:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: J-87 (Dashboard Market Phase & Severity panel — phase + 0–100 severity + named breakdown, strictly causal ≤D), J-88 (deterministic forward Hamilton FILTERED P(bear) + disclosed observation vector, same module/endpoint)
+- Re-verified passing (live browser-QA 16/16 + source + targeted tests): J-01, J-06, J-07 (Risk-Off gate), J-13, J-18 (single date selector CRITICAL), J-43, J-44, J-49, J-50, J-72 (shared `_dataset_version` cache)
+- Newly recorded failing: J-89, J-90, J-91, J-92, J-93, J-94, J-95, J-96 (first journey-history entries for the unbuilt remainder of the queued J-87..J-96 extension; most NOT data-dependent, J-95 carries a data-dependent/non-halting envelope)
+- Regressed: none
+- Anti-goal violations: none new (the lone ever-recorded iter-20 minor magic-number stays resolved since iter-21)
+- Data-walled (non-vetoing): J-22/J-23/J-24 unchanged blocked-NA
+
+**Reasoning:** J-87 and J-88 are genuinely passing with primary, evaluator-verified evidence. The git diff is exactly the claimed additive set (new `app/engine/market_phase.py`, `app/api/market_phase.py`, `MarketPhaseCache` model, Dashboard `market-phase-card.tsx`, two new validated config sections, 5 config-fixture test files + test_db + test_no_magic_numbers + test_market_phase) with NO canonical scanner/regime/research engine touched — provably read-only/additive. Anti-goals hold by direct inspection: the engine reads `ScannerRun.regime_score` VERBATIM (market_phase.py:146, no `score_regime` call), uses `bars_asof` (≤ D), is never EM-fit at serve time, and does NOT compute/serve the SMOOTHED probability; the frontend panel has only `data`/`status` useStates and reads `useAsOf()` with no window/document/keydown listener (J-18 critical invariant held by construction). I independently RAN the load-bearing fast tests GREEN — 18 passed (no-lookahead tail-invariance, determinism byte-identity, filter causality, disclosure-cap-but-filter-consumes-all, recovery override, components-explainable, all six config-validation legs) + test_no_magic_numbers + test_db expected-tables (market_phase_cache registered, iter-12/20 trap avoided). Evaluator VIEWED four byte-distinct full-viewport captures: UT-01 (Expansion/28.75/5-row breakdown), UT-05 (Bear/92.45/drawdown −23.18% at 2022-10-07 reproducing the seed bear), UT-16 (Pullback/38.57 amber at 2024-12-31), UT-07 (explicit NA honest empty state at 2021-01-05, no fabricated phase/probability). Browser-QA 16/16 PASS; coherence COHERENCE-PASS; review PASS; QA PASS; gate-invariance (Risk-Off zero Actionable) confirmed (TC-17). The full backend suite (the standing GOAL_ACHIEVED gate) is NOT load-bearing here — this iteration is explicitly NOT a GOAL_ACHIEVED candidate (J-89..J-96 unbuilt). NOT GOAL_ACHIEVED: per the iter-22 lesson, goal.md's queued buildable Must-haves J-89..J-96 (no positive evidence) block done. Progress made (J-87/J-88 newly passing), zero regressions, COHERENCE-PASS → CONTINUE.
+
+**Next-step recommendation:** Run J-89 + J-90 at FULL depth — both consume this iteration's market-phase layer. J-89 = market-phase history timeline + the fenced retrospective/SMOOTHED view (the smoothed probability deliberately kept off the live causal path this iteration must live behind a clear future-aware marker per the J-49 precedent, never feeding an as-of value). J-90 = recovery-turn signal + downtrend-exit edge study. Both offline-provable on the seed (2022 bear + ^VIX); neither data-walled. Then J-91, J-92 (FRED + MacroSeries) at full, then the J-93/J-94/J-96 dynamic point-in-time universe cluster with J-95's data-dependent envelope. Suite-gate operational note: iter-29's /tmp/mp_full_suite.log shows exit=137 (SIGKILL of the nohup wrapper — the known background-helper harness-kill, NOT a test failure); when J-89..J-96 are all built, launch the full suite via `nohup` and gate the GOAL_ACHIEVED candidacy on the FLUSHED `0 failed, EXIT 0` line (iter-11 lesson — never block the evaluator on the in-flight suite).
 ```
 Lessons learned (full file, append-only):
 ```
-
-## iter-0 — 2026-06-11T08:41:43+01:00
-
-**Verdict:** CONTINUE
-**Lesson:** The browser-qa agent invented its own journey list instead of reading docs/goal.md — ~20 IDs got fabricated descriptions (J-22/23/24 graded as "broker/orders/portfolio", J-14 as "Research page") and some evidence was recycled byte-identical or misfiled (UT-J-17-data-manager.png is actually the Research Factor Lab; the real Data Manager/VCP captures landed in stray reports/qa/goal-iter-0-evidence/). The raw screenshots were mostly genuine and sufficient, but every verdict had to be re-derived from them + the dev source-scan; J-42's PASS was an overclaim (only the displayed-dates leg was checked — /data still has native type="date" inputs).
-**Applies to:** every future browser-qa dispatch (pass the goal.md journey text verbatim into the QA prompt; evaluator must md5-spot-check evidence and grade against goal.md acceptance, never the QA table) and any iter touching J-42 (acceptance includes validated ISO text inputs + one shared formatter, not just ISO-looking output). Also: the full pytest suite (~14 min) was skipped at baseline (collect-only) — iter-1's gate must run it once.
 
 ## iter-1 — 2026-06-11T10:55:47+01:00
 
@@ -417,14 +411,20 @@ journeys to `passing` on source review alone.
 **Verdict:** GOAL_ACHIEVED
 **Lesson:** A browser-QA "sort does not reorder" FAIL on this leaderboard was AGAIN a selector false-negative (iter-27 -> iter-28): `SortHeader` labels live in a nested `<span>`, so XPath `//th//button[text()='5d']` matches nothing while `button[aria-label^="Sort by 5d"]` resolves correctly. Before recording a sort regression, confirm (a) the sort code path (comparatorFor/onSort/SortHeader/sorted memo) is byte-unchanged in the git diff and (b) QA resolved the header by `aria-label`, not visible `text()`.
 **Applies to:** any iter that re-verifies or touches leaderboard column sorting on /stocks, /themes, /sectors, or /research/samples.
+
+## iter-29 — 2026-06-17T23:30:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** On this 1369-run daily-history host, any `test_market_phase.py` test using the `loaded_engine` seed fixture (line 318+: 2022-bear reproduction, gate-invariance, cache, API repoint/error) boots the heavy backend and cannot finish under a subagent Bash cap (saw SIGTERM/143 and a SIGKILL `exit=137` on the nohup full-suite wrapper). The fix that worked: independently re-run ONLY the FAST synthetic + config-validation tests (test_market_phase.py lines 92–307: no-lookahead tail-invariance, determinism, filter causality, disclosure-cap, the six config-validation legs) + `test_no_magic_numbers` + `test_db::test_create_all_produces_expected_tables` — these (18+1+1 here) cover every anti-goal-critical leg in ~20s with no backend boot, and verify the dev's green claims without trusting the killed suite. `exit=137` in `/tmp/mp_full_suite.log` is the known background-helper harness-kill, NOT a test failure — do not treat it as RED.
+**Applies to:** any goal-mode iter on this daily-history host that adds backend tests gated by a seed-loading fixture (`loaded_engine`-style) and whose full pytest suite is the GOAL_ACHIEVED gate — split fast (no-boot) vs slow (seed-boot) tests; verify anti-goal legs via the fast set; on a GOAL_ACHIEVED-candidate iteration, additionally require a flushed `0 failed, EXIT 0` from a `nohup`-launched full suite via the pump.
 ```
 Journey history: /home/dennisccy/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever_with_my_loved_ones/state/journey-history.json  <-- read for full journey state
 
-Last iteration eval: /home/dennisccy/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever_with_my_loved_ones/iter-28/eval.md
+Last iteration eval: /home/dennisccy/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever_with_my_loved_ones/iter-29/eval.md
 
 Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
 
-Write the iteration spec to: docs/phases/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29.md
+Write the iteration spec to: docs/phases/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30.md
 Also keep /home/dennisccy/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever_with_my_loved_ones/state/blueprint.md current per your agent instructions: register any new displayed value in the Data Contract and place new pages under an existing Information-Architecture home (additive edits only). For a nav-skeleton change, make the edit AND write a one-line reason to /home/dennisccy/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever_with_my_loved_ones/state/blueprint.reapproval-requested.
 
 The spec MUST include a 'Goal Mode Metadata' section with at minimum:

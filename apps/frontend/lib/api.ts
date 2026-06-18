@@ -471,6 +471,67 @@ export interface MarketPhaseVixLevel {
  *  `observations` vector. `available: false` -> insufficient history (NA/partial — phase/severity/p_bear
  *  null), an honest empty treatment, never a fabricated figure. `asof_date` is the resolved single global
  *  as-of (the panel re-points with it — no second date state). */
+/** iter-30 (J-89): one CAUSAL timeline point — the per-snapshot-date FILTERED phase + P(bear) + severity.
+ *  The SAME single derived series the panel value reads (the timeline and the panel are ONE derivation). */
+export interface MarketPhaseTimelinePoint {
+  date: string; // ISO yyyy-MM-dd
+  phase: string;
+  p_bear: number; // the FILTERED (causal) P(bear) at this date (never the smoothed value)
+  severity: number;
+}
+
+/** iter-30 (J-89): one dated CAUSAL downtrend episode — observed on its dates only (no future bar). */
+export interface MarketPhaseEpisode {
+  first_trigger_date: string;
+  severity_at_trigger: number;
+  last_date: string;
+  peak_p_bear: number;
+  peak_severity: number;
+  open: boolean; // still in the downtrend as of the resolved as-of (else closed on last_date)
+}
+
+/** iter-30 (J-90): the CAUSAL recovery/turn signal for the resolved as-of — explainable, never a bare flag. */
+export interface MarketPhaseRecoveryTurn {
+  is_recovery_turn: boolean;
+  available: boolean;
+  reason: string; // the config-defined triggering reason in words
+  p_bear?: number | null;
+  prev_p_bear?: number | null;
+  exit_threshold?: number;
+  ma_reclaimed?: boolean | null;
+  ma_window_days?: number;
+}
+
+/** iter-30 (J-89): one fenced retrospective smoothed-P(bear) point (full-sample / analysis-only). */
+export interface MarketPhaseSmoothedPoint {
+  date: string;
+  p_bear_smoothed: number; // lookahead by construction — analysis-only, never an as-of value
+}
+
+/** iter-30 (J-89): one peak-to-trough true-bear phase (retrospective / Bry-Boschan-NBER-style). */
+export interface MarketPhaseTrueBearEpisode {
+  peak_date: string;
+  trough_date: string;
+  peak_close: number;
+  trough_close: number;
+  drawdown_pct: number;
+  duration_days: number;
+}
+
+/** iter-30 (J-89): the FENCED retrospective sub-view payload (only served with `?retrospective=true`). The
+ *  SMOOTHED series + true-bear dating are future-aware (analysis-only) — they NEVER feed any as-of value. */
+export interface MarketPhaseRetrospective {
+  asof_date: string;
+  available: boolean;
+  analysis_only: boolean; // always true — the structural fence disclosure
+  smoothed: MarketPhaseSmoothedPoint[];
+  total_smoothed_dates?: number;
+  true_bear_episodes: MarketPhaseTrueBearEpisode[];
+  min_history_bars: number;
+  min_phase_days: number;
+  min_amplitude_pct: number;
+}
+
 export interface MarketPhaseResponse {
   asof_date: string;
   available: boolean;
@@ -485,16 +546,27 @@ export interface MarketPhaseResponse {
   total_observations?: number; // the FULL causal observation count (>= observations.length)
   min_history_bars: number;
   labels: string[];
+  // iter-30 (J-89 / J-90) additive CAUSAL fields (read from the SAME single derived series)
+  timeline?: MarketPhaseTimelinePoint[]; // the per-date step-function series (bounded disclosure tail)
+  total_timeline_dates?: number; // the FULL causal timeline-date count (>= timeline.length)
+  episodes?: MarketPhaseEpisode[]; // the dated causal downtrend episodes
+  recovery_turn?: MarketPhaseRecoveryTurn; // the causal recovery/turn signal for the resolved as-of
+  // the FENCED retrospective — present ONLY when fetched with retrospective=true (a sibling cached read)
+  retrospective?: MarketPhaseRetrospective;
 }
 
-/** The Market Phase & Severity layer for the dashboard panel (J-87 + J-88). `asof` re-points it to a
- *  historical date (the single global as-of); the latest view passes nothing. The frontend only
- *  re-formats these server-computed values — it never recomputes a phase / severity / probability. */
+/** The Market Phase & Severity layer for the dashboard panel (J-87 + J-88 + J-89 + J-90). `asof` re-points
+ *  it to a historical date (the single global as-of); the latest view passes nothing. `retrospective=true`
+ *  ADDITIVELY requests the fenced full-sample / analysis-only sub-view (the SMOOTHED series + true-bear
+ *  dating — lookahead by construction, never an as-of value). The frontend only re-formats these
+ *  server-computed values — it never recomputes a phase / severity / probability / signal. */
 export async function fetchMarketPhase(
   asof?: string,
   signal?: AbortSignal,
+  retrospective?: boolean,
 ): Promise<MarketPhaseResponse> {
-  return getJSON<MarketPhaseResponse>(withAsOf("/api/market-phase", asof), signal);
+  const base = retrospective ? "/api/market-phase?retrospective=true" : "/api/market-phase";
+  return getJSON<MarketPhaseResponse>(withAsOf(base, asof), signal);
 }
 
 // --- themes (iter-3) -----------------------------------------------------------------------
@@ -1290,6 +1362,79 @@ export async function fetchRegimeSetupPattern(
   return getJSON<RegimeSetupPatternResponse>(withAsOf(path, asof), signal);
 }
 
+// --- research / Recovery-Turn Edge study (iter-30, J-90) --------------------------------------
+/** One per-horizon row of the Recovery-Turn Edge study (J-90) — identical shape to the event-study row:
+ *  the forward-return distribution + expectancy + mean MAE/MFE + aggregate max-drawdown + BOTH
+ *  downside-only risk-adjusted ratios, with `n` + `low_sample`. Re-formatted from stored values only. */
+export interface RecoveryTurnEdgeHorizonRow {
+  horizon: number;
+  n: number;
+  low_sample: boolean;
+  mean_return: number | null;
+  median: number | null;
+  pct_positive: number | null;
+  dispersion: number | null;
+  expectancy: EventStudyExpectancy;
+  mean_mae: number | null;
+  mean_mfe: number | null;
+  mean_max_drawdown: number | null; // aggregate max-drawdown (fraction, <= 0); null = NA
+  return_per_downside_dev: number | null;
+  return_per_mae: number | null;
+}
+
+/** One by-signal-phase row (selected horizon): per configured market-phase label, the per-phase n,
+ *  mean_return, hit_rate, and downside risk_adjusted — conditioning the recovery-turn edge on the causal
+ *  phase at the signal date. The phase list is SERVER-driven (config.market_phase.labels). */
+export interface RecoveryTurnEdgePhaseRow {
+  phase: string;
+  n: number;
+  low_sample: boolean;
+  mean_return: number | null;
+  hit_rate: number | null;
+  risk_adjusted: number | null;
+}
+
+/** GET /api/research/recovery-turn-edge payload (J-90) — the per-horizon forward-return edge of entering
+ *  at CAUSAL recovery-turn signal dates, conditioned on the causal phase/severity/P(bear). Every figure is
+ *  read VERBATIM from the stored forward returns; the page re-formats only (recomputes nothing). `as_of`
+ *  (J-32) scopes the pool; `view` (J-63) is the overlap-honesty mode. No order/execution affordance. */
+export interface RecoveryTurnEdgeResponse {
+  horizon: number;
+  asof_date: string | null;
+  view: "episodes" | "pooled";
+  horizons: number[];
+  default_horizon: number;
+  min_sample: number;
+  phase_labels: string[];
+  survivorship_bias: string;
+  descriptive_caveat: string;
+  n_total: number;
+  n: number;
+  unique_symbols: number;
+  signal_dates: string[]; // the causal recovery-turn signal dates (entry dates studied)
+  signal_count: number;
+  by_horizon: RecoveryTurnEdgeHorizonRow[];
+  best_exit_horizon: number | null;
+  by_phase: RecoveryTurnEdgePhaseRow[];
+}
+
+/** Canonical Recovery-Turn Edge source: GET /api/research/recovery-turn-edge. Throws on non-200 so the
+ *  page renders an explicit "Backend unavailable" state (503 no data / 422 bad horizon/view) — never
+ *  fabricated evidence. All params optional (defaults: config default horizon / episodes / all-history). */
+export async function fetchRecoveryTurnEdge(
+  horizon?: number,
+  asof?: string,
+  view?: "episodes" | "pooled",
+  signal?: AbortSignal,
+): Promise<RecoveryTurnEdgeResponse> {
+  const params = new URLSearchParams();
+  if (horizon !== undefined) params.set("horizon", String(horizon));
+  if (view !== undefined) params.set("view", view);
+  const query = params.toString();
+  const path = `/api/research/recovery-turn-edge${query ? `?${query}` : ""}`;
+  return getJSON<RecoveryTurnEdgeResponse>(withAsOf(path, asof), signal);
+}
+
 // --- research / samples drill-down (iter-7, J-51 / J-52) -----------------------------------
 /** One displayed qualifying value on a sample row: the catalog `key` + `label` + the STORED `value`
  *  (a numeric factor value, or for an event study the matched setup/pattern label as a string). Read
@@ -1315,9 +1460,9 @@ export interface SampleRow {
 /** The echoed resolved cohort definition (re-formatted into the page header so the drill-down states
  *  exactly which published N it reproduces). Shape varies by `kind`; the page reads the fields it needs. */
 export interface SampleCohort {
-  kind: "factor" | "combination" | "event-study" | "regime-setup-pattern";
+  kind: "factor" | "combination" | "event-study" | "regime-setup-pattern" | "recovery-turn";
   horizon: number;
-  slice?: string; // factor: total|decile|regime · event-study: pooled|regime|sector
+  slice?: string; // factor: total|decile|regime · event-study: pooled|regime|sector · recovery-turn: total|phase
   cohort?: string; // combination: baseline|single|composite|strict_overlap
   factor?: FactorLabFactor; // factor kind
   decile?: number | null;
@@ -1325,6 +1470,7 @@ export interface SampleCohort {
   sector?: string | null;
   setup?: string | null; // J-77: regime-setup-pattern kind
   pattern?: string | null; // J-77: regime-setup-pattern kind (a config pattern key or "none")
+  phase?: string | null; // J-90: recovery-turn by-phase cohort (a market-phase label)
   subject?: EventStudySubject; // event-study kind
   view?: "episodes" | "pooled"; // J-63: the event-study overlap-honesty view this cohort reproduces
   conditions?: FactorCombinationCondition[]; // combination kind
@@ -1339,7 +1485,7 @@ export interface SampleCohort {
  *  — it recomputes no value/membership. `asof_date` (J-32) echoes the resolved point-in-time cutoff (ISO)
  *  when scoped; null = all-history. */
 export interface SamplesResponse {
-  kind: "factor" | "combination" | "event-study";
+  kind: "factor" | "combination" | "event-study" | "regime-setup-pattern" | "recovery-turn";
   horizon: number;
   asof_date: string | null;
   cohort: SampleCohort;

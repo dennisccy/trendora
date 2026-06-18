@@ -60,11 +60,23 @@ export interface RegimeSetupPatternCohortParams {
   view: "episodes" | "pooled";
 }
 
+/** A Recovery-Turn Edge cohort chip (J-90): the whole signal-date pool (slice "total") or a by-signal-phase
+ *  cohort (slice "phase"). `view` (J-63) is the overlap-honesty MODE — episodes (default) or pooled — so the
+ *  drill-down reproduces the same mode + cohort. `phase` is a market-phase label (by-phase cohort only). */
+export interface RecoveryTurnCohortParams {
+  kind: "recovery-turn";
+  horizon: number;
+  slice: "total" | "phase";
+  view: "episodes" | "pooled";
+  phase?: string;
+}
+
 export type CohortParams =
   | FactorCohortParams
   | CombinationCohortParams
   | EventStudyCohortParams
-  | RegimeSetupPatternCohortParams;
+  | RegimeSetupPatternCohortParams
+  | RecoveryTurnCohortParams;
 
 /** Serialize a cohort + the analysis-mode scope into the `/research/samples` path (no `?asof` — that is
  *  merged by `useAsOfHref` at the link site). Repeated `condition` params are preserved. */
@@ -94,6 +106,13 @@ export function buildSamplesHref(cohort: CohortParams, scope: SampleScope): stri
     params.set("setup", cohort.setup);
     params.set("pattern", cohort.pattern);
     params.set("view", cohort.view);
+  } else if (cohort.kind === "recovery-turn") {
+    // J-90: the recovery-turn-edge cohort (total | by-signal-phase) + the overlap-honesty view.
+    params.set("slice", cohort.slice);
+    params.set("view", cohort.view);
+    if (cohort.slice === "phase" && cohort.phase !== undefined) {
+      params.set("phase", cohort.phase);
+    }
   } else {
     params.set("subject", cohort.subject);
     params.set("slice", cohort.slice);

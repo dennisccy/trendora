@@ -880,6 +880,17 @@ market_phase:
   recovery_min_off_trough_pct: 8.0         # once >= 8% off the trough (still underwater) the phase reads Recovery
   min_history_bars: 200                    # below this many benchmark bars <= D the window is insufficient -> NA/partial
   observation_disclosure_limit: 60         # how many MOST-RECENT filter observations the payload discloses (the filter still consumes ALL <= D)
+  # iter-30 CONSUMED — J-89 downtrend-history + J-90 recovery-turn thresholds (every threshold from
+  # config; market_phase.py stays in test_no_magic_numbers's CALC_FILES). Tuned against the committed
+  # 2021-2026 seed so the 2022 bear (filtered P(bear) -> ~1) opens ONE causal downtrend episode and the
+  # 2022->2023 turn (P(bear) crosses back below the exit + SPY reclaims its trailing MA) fires the
+  # recovery-turn signal. The two retrospective Bry-Boschan cutoffs are FENCED (analysis-only — they feed
+  # only the J-89 retrospective true-bear dating, never any as-of value).
+  downtrend_pbear_threshold: 0.50          # filtered P(bear) >= 0.50 (or a Bear/Correction phase) opens a causal downtrend episode
+  recovery_signal_pbear_exit: 0.40         # the as-of must cross filtered P(bear) below 0.40 (<= downtrend) for the recovery-turn signal
+  recovery_trailing_ma_days: 50            # the index close must reclaim its 50-calendar-day trailing MA to confirm the turn
+  bry_boschan_min_phase_days: 90           # retrospective: a peak->trough decline shorter than 90 calendar days is not a true-bear phase
+  bry_boschan_min_amplitude_pct: 20.0      # retrospective: a peak-to-trough drawdown shallower than 20% is not a true-bear phase
 
 # ----------------------------------------------------------------------------------------
 # iter-29 CONSUMED — Deterministic 2-state regime-switching params for the forward FILTERED P(bear)

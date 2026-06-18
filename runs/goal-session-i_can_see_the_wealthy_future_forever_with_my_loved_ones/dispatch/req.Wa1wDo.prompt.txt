@@ -1,7 +1,7 @@
 You are acting as the orchestrator for phased development.
 
-Phase: goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29
-Phase spec: /home/dennisccy/Git/trendora/docs/phases/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29.md
+Phase: goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30
+Phase spec: /home/dennisccy/Git/trendora/docs/phases/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30.md
 Agent instructions: .claude/agents/orchestrator.md  <-- read this first
 (CLAUDE.md is already in your system prompt — do not Read it again.)
 
@@ -19,7 +19,7 @@ Before writing the plan, study the project context:
 
 Do NOT read .claude/architecture/*.md — those are framework reference docs, not project state.
 
-Write a concise execution plan to: /home/dennisccy/Git/trendora/runs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29/plan.md
+Write a concise execution plan to: /home/dennisccy/Git/trendora/runs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30/plan.md
 
 The plan must include these sections:
 1. What to Build (bullet list)

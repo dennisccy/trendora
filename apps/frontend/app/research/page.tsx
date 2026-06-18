@@ -20,6 +20,7 @@ import {
   fetchEventStudy,
   fetchFactorCombination,
   fetchFactorLab,
+  fetchRecoveryTurnEdge,
   fetchRegimeSetupPattern,
   type CohortStats,
   type EventStudyHorizonRow,
@@ -30,6 +31,9 @@ import {
   type FactorCombinationResponse,
   type FactorDecileRow,
   type FactorLabResponse,
+  type RecoveryTurnEdgeHorizonRow,
+  type RecoveryTurnEdgePhaseRow,
+  type RecoveryTurnEdgeResponse,
   type RegimeEffectivenessRow,
   type RegimeSetupPatternResponse,
   type RegimeSetupPatternRow,
@@ -160,6 +164,12 @@ export default function ResearchPage() {
               page's shared `horizon` + `asofCutoff` (no second date/horizon state) plus its own Episodes ⇄
               Pooled view toggle. */}
           <RegimeSetupPatternLab horizon={horizon} asofCutoff={asofCutoff} scope={mode} />
+
+          {/* J-90: the Recovery-Turn Edge lab — the per-horizon forward-return edge of entering at causal
+              recovery-turn dates (conditioned on the causal signal-date phase), with its OWN read-only data
+              source + loading state, reusing the page's shared `horizon` + `asofCutoff` (no second
+              date/horizon state) plus its own Episodes ⇄ Pooled view toggle. */}
+          <RecoveryTurnEdgeLab horizon={horizon} asofCutoff={asofCutoff} scope={mode} />
         </>
       )}
     </div>
@@ -2319,5 +2329,404 @@ function RegimeSetupPatternTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+// ==================================================================================================
+// J-90 — Recovery-Turn Edge lab. The per-horizon forward-return edge of ENTERING at causal recovery-turn
+// dates (from the read-only market_phase derivation, never recomputed), conditioned on the causal
+// signal-date phase. Its OWN read-only data source + loading state, reusing the page's shared `horizon` +
+// `asofCutoff` (no second date/horizon state) plus its own Episodes ⇄ Pooled view toggle. Forward-return
+// evidence only — NO order/execution affordance.
+// ==================================================================================================
+function RecoveryTurnEdgeLab({
+  horizon,
+  asofCutoff,
+  scope,
+}: {
+  horizon: number | undefined;
+  asofCutoff: string | null;
+  scope: SampleScope;
+}) {
+  // J-63: the overlap-honesty view — Episodes (first-trigger, DEFAULT) ⇄ Pooled. A local MODE/cohort state,
+  // fully INDEPENDENT of `asofCutoff` and the page analysis-mode `scope` (NOT a date — no second date state).
+  const [view, setView] = useState<EventStudyView>("episodes");
+  const [data, setData] = useState<RecoveryTurnEdgeResponse | null>(null);
+  const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setStatus("loading");
+    fetchRecoveryTurnEdge(horizon, asofCutoff ?? undefined, view, controller.signal)
+      .then((d) => {
+        if (controller.signal.aborted) return;
+        setData(d);
+        setStatus("ok");
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setStatus("error");
+      });
+    return () => controller.abort();
+  }, [horizon, asofCutoff, view]);
+
+  const hasAny = data ? data.by_horizon.some((r) => r.n > 0) : false;
+
+  return (
+    <Card className="p-0" data-testid="recovery-turn-edge-section">
+      <PanelTitle
+        hint={`When the market causally turns up out of a downtrend (filtered P(bear) crosses below the recovery exit while the index reclaims its trailing MA), what forward-return edge has entering at those dates historically shown? A read-only aggregation of the stored forward returns of the recovery-turn signal dates, conditioned on the causal phase at the signal date — descriptive evidence, never a forecast and never an order. Columns are client-side sortable; cohorts with n < ${data?.min_sample ?? "min"} show NA + n. Each N= chip opens the exact observations in a new tab.`}
+      >
+        Recovery-Turn Edge — forward returns after a causal turn
+      </PanelTitle>
+      <div className="space-y-4 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <EventStudyViewToggle view={view} onChange={setView} />
+          <p className="max-w-md text-xs text-text-faint">
+            Re-uses the page&apos;s shared horizon selector and analysis-mode toggle above — no date control
+            of its own (the single global as-of drives any point-in-time scoping, J-18). Episodes (default)
+            counts each continuous run of a symbol once at its first trigger; Pooled counts every signal-day.
+            Forward-return evidence only — there is no order or execution affordance.
+          </p>
+        </div>
+
+        {data ? (
+          <RecoveryTurnDisclosure data={data} />
+        ) : null}
+
+        {data ? (
+          <CaveatBanner survivorship={data.survivorship_bias} descriptive={data.descriptive_caveat} />
+        ) : null}
+
+        {status === "error" ? (
+          <div className="flex items-center gap-3 rounded-md border border-neg bg-surface p-4 text-sm text-neg">
+            <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
+            <div>
+              <p className="font-medium">Backend unavailable</p>
+              <p className="text-text-muted">
+                The Recovery-Turn Edge study could not load from the API. No figures are shown rather than
+                fabricated values — confirm the backend is running and retry.
+              </p>
+            </div>
+          </div>
+        ) : !data ? (
+          <CombinationSkeleton />
+        ) : data.signal_count === 0 || !hasAny ? (
+          <EmptyState
+            icon={Microscope}
+            title="No causal recovery turns with forward-tested returns yet"
+            description="No stored snapshot is a causal recovery-turn signal date with a realized forward return at this horizon / window. Pick a shorter horizon or widen the analysis mode — no edge is fabricated to fill the gap."
+          />
+        ) : (
+          <RecoveryTurnEdgeBody data={data} dim={status === "loading"} scope={scope} view={data.view} />
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/** The disclosure line for the Recovery-Turn Edge study: the resolved view, the cohort n at the selected
+ *  horizon, the distinct unique symbols, and the count of distinct causal recovery-turn signal dates —
+ *  read VERBATIM from the payload (number formatting only). */
+function RecoveryTurnDisclosure({ data }: { data: RecoveryTurnEdgeResponse }) {
+  const isEpisodes = data.view === "episodes";
+  return (
+    <div
+      data-testid="recovery-turn-disclosure"
+      className="flex flex-wrap items-center gap-x-6 gap-y-1 rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-text-muted"
+    >
+      <span className="inline-flex items-center gap-1">
+        <span className="text-text-faint">View:</span>
+        <span className="font-semibold text-text">{isEpisodes ? "Episodes" : "Pooled"}</span>
+      </span>
+      <span>
+        <span className="text-text-faint">n ({data.horizon}d): </span>
+        <span className="num font-semibold text-text" data-testid="recovery-disclosure-n">{data.n}</span>
+      </span>
+      <span>
+        <span className="text-text-faint">Unique symbols: </span>
+        <span className="num font-semibold text-text">{data.unique_symbols}</span>
+      </span>
+      <span>
+        <span className="text-text-faint">Recovery-turn signal dates: </span>
+        <span className="num font-semibold text-text" data-testid="recovery-signal-count">
+          {data.signal_count}
+        </span>
+      </span>
+      <span>
+        <span className="text-text-faint">Best exit-horizon: </span>
+        <span className="num font-semibold text-text">
+          {data.best_exit_horizon === null ? "NA" : `${data.best_exit_horizon}d`}
+        </span>
+      </span>
+    </div>
+  );
+}
+
+function RecoveryTurnEdgeBody({
+  data,
+  dim,
+  scope,
+  view,
+}: {
+  data: RecoveryTurnEdgeResponse;
+  dim: boolean;
+  scope: SampleScope;
+  view: EventStudyView;
+}) {
+  return (
+    <div className={cn("space-y-4 transition-opacity", dim && "opacity-60")} aria-busy={dim}>
+      <p className="text-xs text-text-faint">
+        Rows with <span className="text-warn">n &lt; {data.min_sample} ⚠</span> render NA. Risk is
+        downside-only everywhere (return ÷ downside-deviation and return ÷ mean-|MAE| — never total
+        volatility); the aggregate max-drawdown column is read verbatim from the stored excursions.
+      </p>
+      <RecoveryTurnHorizonTable
+        rows={data.by_horizon}
+        min={data.min_sample}
+        bestExit={data.best_exit_horizon}
+        scope={scope}
+        view={view}
+      />
+      <RecoveryTurnPhaseTable
+        rows={data.by_phase}
+        min={data.min_sample}
+        horizon={data.horizon}
+        scope={scope}
+        view={view}
+      />
+    </div>
+  );
+}
+
+/** The per-horizon distribution / exit-horizon curve for the recovery-turn cohort — identical column set to
+ *  the event-study horizon table (reusing `EsValue`), with each row's `n` a SampleLink into the recovery-turn
+ *  drill-down at that horizon (J-65 — new tab, count-coherent). The best exit-horizon row is highlighted. */
+function RecoveryTurnHorizonTable({
+  rows,
+  min,
+  bestExit,
+  scope,
+  view,
+}: {
+  rows: RecoveryTurnEdgeHorizonRow[];
+  min: number;
+  bestExit: number | null;
+  scope: SampleScope;
+  view: EventStudyView;
+}) {
+  return (
+    <Card className="p-0">
+      <PanelTitle hint="One row per forward horizon (the exit-horizon curve) for the recovery-turn cohort: the forward-return distribution, per-occurrence expectancy, mean MAE / MFE, the aggregate max-drawdown, and BOTH downside-only risk-adjusted ratios. The best exit-horizon (highest downside-risk-adjusted return among non-low-sample horizons) is highlighted; rows with n below the minimum render NA + n. Each N= chip opens the exact observations in a new tab.">
+        Per-horizon edge &amp; exit-horizon curve
+      </PanelTitle>
+      <div className="overflow-x-auto">
+        <table data-testid="recovery-turn-horizon-table" className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+              <th className="px-3 py-2 font-medium">
+                <span className="inline-flex items-center gap-1">Horizon<TermInfo term="horizon" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">n<TermInfo term="n (sample size)" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">Mean</th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Median<TermInfo term="median" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">% Positive<TermInfo term="% positive" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Expectancy<TermInfo term="expectancy" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Mean MAE<TermInfo term="MAE" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Mean MFE<TermInfo term="MFE" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Mean MDD<TermInfo term="max drawdown" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Return / downside-dev<TermInfo term="return / downside-dev" /></span>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <span className="inline-flex items-center gap-1">Return / MAE<TermInfo term="return / MAE" /></span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const na = row.low_sample || row.n === 0;
+              const best = bestExit !== null && row.horizon === bestExit;
+              return (
+                <tr
+                  key={row.horizon}
+                  className={cn("border-b border-border last:border-b-0", best && "bg-surface-2")}
+                >
+                  <td className="px-3 py-2">
+                    <span className="num font-semibold text-text">{row.horizon}d</span>
+                    {best ? (
+                      <span className="ml-2 rounded border border-accent px-1.5 py-0.5 text-xs font-medium text-accent">
+                        best exit
+                      </span>
+                    ) : null}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <SampleLink
+                      n={row.n}
+                      min={min}
+                      scope={scope}
+                      cohort={{ kind: "recovery-turn", horizon: row.horizon, slice: "total", view }}
+                      label={`See the ${row.n} recovery-turn observations at the ${row.horizon}-day horizon`}
+                    />
+                  </td>
+                  <td className="px-3 py-2 text-right"><EsValue value={row.mean_return} na={na} kind="pct" /></td>
+                  <td className="px-3 py-2 text-right"><EsValue value={row.median} na={na} kind="pct" /></td>
+                  <td className="px-3 py-2 text-right"><EsValue value={row.pct_positive} na={na} kind="rate" /></td>
+                  <td className="px-3 py-2 text-right"><EsValue value={row.expectancy.expectancy} na={na} kind="pct" /></td>
+                  <td className="px-3 py-2 text-right"><EsValue value={row.mean_mae} na={na} kind="pct" /></td>
+                  <td className="px-3 py-2 text-right"><EsValue value={row.mean_mfe} na={na} kind="pct" /></td>
+                  <td className="px-3 py-2 text-right"><EsValue value={row.mean_max_drawdown} na={na} kind="pct" /></td>
+                  <td className="px-3 py-2 text-right"><EsValue value={row.return_per_downside_dev} na={na} kind="ratio" /></td>
+                  <td className="px-3 py-2 text-right"><EsValue value={row.return_per_mae} na={na} kind="ratio" /></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+type RecoveryPhaseSortKey = "phase" | "n" | "mean_return" | "hit_rate" | "risk_adjusted";
+
+/** The by-signal-phase conditioning table (selected horizon): one row per CONFIGURED market-phase label
+ *  (server-driven), each with its n (a SampleLink into the by-phase drill-down — count-coherent, new tab),
+ *  mean, hit-rate, and downside risk-adjusted. Client-side sortable (J-48 view transform). Low-sample /
+ *  null cells render NA + n. */
+function RecoveryTurnPhaseTable({
+  rows,
+  min,
+  horizon,
+  scope,
+  view,
+}: {
+  rows: RecoveryTurnEdgePhaseRow[];
+  min: number;
+  horizon: number;
+  scope: SampleScope;
+  view: EventStudyView;
+}) {
+  const [sortKey, setSortKey] = useState<RecoveryPhaseSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const onSort = (key: RecoveryPhaseSortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "phase" ? "asc" : "desc");
+    }
+  };
+
+  const sorted = (() => {
+    if (sortKey === null) return rows; // server order (config.market_phase.labels)
+    const sign = sortDir === "asc" ? 1 : -1;
+    const value = (r: RecoveryTurnEdgePhaseRow): string | number | null => {
+      switch (sortKey) {
+        case "phase": return r.phase;
+        case "n": return r.n;
+        default: {
+          const raw = r[sortKey];
+          if (r.low_sample || r.n === 0 || raw === null) return null; // SAME NA predicate as the cell
+          return raw;
+        }
+      }
+    };
+    return rows
+      .map((row, index) => ({ row, index }))
+      .sort((a, b) => {
+        const av = value(a.row);
+        const bv = value(b.row);
+        if (av === null && bv === null) return a.index - b.index;
+        if (av === null) return 1; // NA always last
+        if (bv === null) return -1;
+        let primary: number;
+        if (typeof av === "string" && typeof bv === "string") primary = av.localeCompare(bv) * sign;
+        else primary = ((av as number) - (bv as number)) * sign;
+        return primary !== 0 ? primary : a.index - b.index;
+      })
+      .map((e) => e.row);
+  })();
+
+  const header = (label: string, col: RecoveryPhaseSortKey, align: "left" | "right" = "right", term?: string) => {
+    const active = sortKey === col;
+    return (
+      <th className={cn("px-3 py-2 font-medium", align === "right" ? "text-right" : "text-left")}>
+        <span className={cn("inline-flex items-center gap-1", align === "right" && "justify-end")}>
+          <button
+            type="button"
+            onClick={() => onSort(col)}
+            aria-label={`Sort by ${label}`}
+            data-testid={`recovery-phase-sort-${col}`}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-sm hover:text-text",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+              active ? "text-accent" : "text-text-faint",
+            )}
+          >
+            {label}
+            <span aria-hidden className="text-[10px]">{active ? (sortDir === "asc" ? "▲" : "▼") : "↕"}</span>
+          </button>
+          {term ? <TermInfo term={term} /> : null}
+        </span>
+      </th>
+    );
+  };
+
+  return (
+    <Card className="p-0">
+      <PanelTitle hint="Conditions the recovery-turn edge on the CAUSAL market phase at the signal date: one row per configured phase label, each with its n, mean, hit-rate, and downside risk-adjusted return at the selected horizon. Columns are client-side sortable; low-sample cells render NA + n. Each N= chip opens the exact observations in a new tab.">
+        Edge by phase at the signal date ({horizon}d)
+      </PanelTitle>
+      <div className="overflow-x-auto">
+        <table data-testid="recovery-turn-phase-table" className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+              {header("Phase at signal", "phase", "left")}
+              {header("n", "n", "right", "n (sample size)")}
+              {header("Mean", "mean_return", "right")}
+              {header("Hit-rate", "hit_rate", "right", "hit-rate")}
+              {header("Return / downside-dev", "risk_adjusted", "right", "return / downside-dev")}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((row) => {
+              const na = row.low_sample || row.n === 0;
+              return (
+                <tr key={row.phase} className="border-b border-border last:border-b-0">
+                  <td className="px-3 py-2 text-text">{row.phase}</td>
+                  <td className="px-3 py-2 text-right">
+                    <SampleLink
+                      n={row.n}
+                      min={min}
+                      scope={scope}
+                      cohort={{ kind: "recovery-turn", horizon, slice: "phase", phase: row.phase, view }}
+                      label={`See the ${row.n} recovery-turn observations with a ${row.phase} phase at the signal date`}
+                    />
+                  </td>
+                  <td className="px-3 py-2 text-right"><EsValue value={row.mean_return} na={na} kind="pct" /></td>
+                  <td className="px-3 py-2 text-right"><EsValue value={row.hit_rate} na={na} kind="rate" /></td>
+                  <td className="px-3 py-2 text-right"><EsValue value={row.risk_adjusted} na={na} kind="ratio" /></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
   );
 }

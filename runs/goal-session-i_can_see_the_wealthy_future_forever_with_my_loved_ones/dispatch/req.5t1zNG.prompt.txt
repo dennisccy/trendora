@@ -1,8 +1,8 @@
 You are the qa agent operating in TEST PLAN GENERATION mode for phased development.
 
-Phase: goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29
-Phase spec: /home/dennisccy/Git/trendora/docs/phases/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29.md
-Execution plan: /home/dennisccy/Git/trendora/runs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29/plan.md
+Phase: goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30
+Phase spec: /home/dennisccy/Git/trendora/docs/phases/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30.md
+Execution plan: /home/dennisccy/Git/trendora/runs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30/plan.md
 Agent instructions: .claude/agents/qa.md  <-- read this first, follow MODE 1 instructions
 
 Frontend Present for this phase: yes
@@ -10,7 +10,7 @@ Frontend Present for this phase: yes
 Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
 Do not ask questions — derive all test cases from the phase spec.
 
-Write the functional test plan to: /home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29-test-plan.md
+Write the functional test plan to: /home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30-test-plan.md
 
 The plan must include:
 - Phase goal summary

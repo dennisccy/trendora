@@ -247,6 +247,12 @@ MINIMAL_VALID = {
         "recovery_min_off_trough_pct": 8.0,
         "min_history_bars": 200,
         "observation_disclosure_limit": 60,
+        # iter-30 (J-89 / J-90): downtrend-history + recovery-turn thresholds (every threshold from config).
+        "downtrend_pbear_threshold": 0.50,
+        "recovery_signal_pbear_exit": 0.40,
+        "recovery_trailing_ma_days": 50,
+        "bry_boschan_min_phase_days": 90,
+        "bry_boschan_min_amplitude_pct": 20.0,
     },
     "regime_switching": {
         "transition": {

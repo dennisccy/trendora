@@ -1527,3 +1527,263 @@ def compute_regime_setup_pattern_study(
         "n_total": len(observations),
         "rows": rows,
     }
+
+
+# --------------------------------------------------------------------------------------------------
+# Recovery-Turn Edge study (J-90) — read-only over the SAME stored `forward_returns` the event study reads,
+# pooled over the CAUSAL recovery-turn signal dates (from the read-only `market_phase` derivation, never
+# recomputed) and tagged with the causal phase/severity/P(bear) at the signal date. NO new computation:
+# every figure is a pure aggregation of stored values (realized return + MAE/MFE + max_drawdown) — the SAME
+# read-only class as the J-29 event study. NOT a fitted/learned/ML model. NO order/execution affordance.
+# --------------------------------------------------------------------------------------------------
+def _recovery_turn_observation_set(
+    session: Session, horizon: int, view: str, cfg: Config, as_of: Optional[date_cls] = None
+) -> list[dict]:
+    """The SINGLE observation set the Recovery-Turn Edge study AND its samples drill-down BOTH read
+    (count-coherence keystone — one membership rule). The CAUSAL recovery-turn signal dates come from the
+    read-only `market_phase.recovery_turn_dates` derivation (the SAME single timeline the panel reads, <=
+    `as_of` when scoped — never recomputed). For each signal date's run, pool EVERY stored `ForwardReturn`
+    at `horizon` (its realized return + MAE/MFE + `max_drawdown`, read VERBATIM) joined to its stored
+    `ScannerResult` (by run_id + ticker), each tagged with the CAUSAL phase / severity / P(bear) at the
+    signal date (read from the derivation, never recomputed). SELECT-only + the read-only derivation; it
+    recomputes NO return / excursion / score / regime / signal.
+
+    `view` (J-63): in `episodes` (default) the pooled per-signal-day members are collapsed to first-trigger
+    episodes per ticker (`_collapse_to_episodes`, the SAME per-ticker run-ordinal collapse the event study
+    uses); in `pooled` every per-signal-day observation survives. `as_of` (J-32) scopes BOTH the signal
+    dates and the run-ordinal index to snapshots dated <= D (a FILTER only — no recompute, no second date
+    state); `as_of=None` => all-history."""
+    from app.engine.market_phase import recovery_turn_dates  # lazy import (avoids a config/research cycle)
+
+    signal_context = recovery_turn_dates(session, as_of, cfg)  # {iso_date: {phase, severity, p_bear, ...}}
+    if not signal_context:
+        return []
+
+    # the runs whose snapshot date is a recovery-turn signal date (those are the entry dates we study).
+    signal_dates = set(signal_context)
+    run_rows = session.exec(
+        select(ScannerRun).where(ScannerRun.asof_date <= as_of)
+        if as_of is not None else select(ScannerRun)
+    ).all()
+    signal_runs = {run.id: run for run in run_rows if run.asof_date.isoformat() in signal_dates}
+    if not signal_runs:
+        return []
+    signal_run_ids = sorted(signal_runs)
+
+    # the stored forward returns at this horizon for ONLY the signal-date runs (read verbatim).
+    fr_rows = session.exec(
+        select(ForwardReturn).where(
+            ForwardReturn.horizon == horizon,
+            ForwardReturn.run_id.in_(signal_run_ids),
+        )
+    ).all()
+    fr_by_run_symbol = {(fr.run_id, fr.symbol): fr for fr in fr_rows}
+    runs_with_fr = sorted({fr.run_id for fr in fr_rows})
+    results = (
+        session.exec(
+            select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr)).order_by(ScannerResult.id)
+        ).all()
+        if runs_with_fr else []
+    )
+
+    members: list[dict] = []
+    for res in results:
+        fr = fr_by_run_symbol.get((res.run_id, res.ticker))
+        if fr is None:
+            continue  # no realized return at this horizon for this signal-date stock (n=0 contribution)
+        run = signal_runs[res.run_id]
+        context = signal_context[run.asof_date.isoformat()]
+        members.append({
+            "run_id": res.run_id, "ticker": res.ticker,
+            "return": fr.realized_return, "mae": fr.mae, "mfe": fr.mfe,
+            "max_drawdown": fr.max_drawdown,  # stored MDD read verbatim (J-86)
+            "regime": run.regime_label,       # stored regime label (read verbatim)
+            "sector": res.sector,             # stored sector (read verbatim)
+            "setup_status": res.setup_status,
+            # the CAUSAL market-phase context at the signal date (read from the derivation, never recomputed)
+            "signal_date": run.asof_date.isoformat(),
+            "signal_phase": context["phase"],
+            "signal_severity": context["severity"],
+            "signal_p_bear": context["p_bear"],
+        })
+
+    if view == VIEW_POOLED:
+        return members
+    run_position = _run_position_index(session, as_of)
+    return _collapse_to_episodes(members, run_position)
+
+
+def _recovery_turn_horizon_row(members: list[dict], horizon: int, min_sample: int) -> dict:
+    """One per-horizon row of the Recovery-Turn Edge study over the signal-date members: the distribution
+    (mean / median / %positive / dispersion, REUSING `_distribution`), the expectancy decomposition, the
+    mean stored MAE / MFE, the aggregate mean `max_drawdown` (read VERBATIM, J-86), and BOTH downside-only
+    risk-adjusted ratios (return/downside-dev REUSING `_risk_adjusted`; return/mean-|MAE| REUSING
+    `_return_per_mae`). Carries `n` + `low_sample`. NO total volatility anywhere. Identical shape to
+    `_event_study_horizon_row` so the frontend reuses the same renderer."""
+    returns = [m["return"] for m in members]
+    maes = [m["mae"] for m in members if m["mae"] is not None]
+    mfes = [m["mfe"] for m in members if m["mfe"] is not None]
+    mdds = [m["max_drawdown"] for m in members if m.get("max_drawdown") is not None]
+    n = len(returns)
+    dist = _distribution(returns)
+    return {
+        "horizon": horizon,
+        "n": n,
+        "low_sample": n < min_sample,
+        "mean_return": dist["mean_return"],
+        "median": dist["median"],
+        "pct_positive": dist["pct_positive"],
+        "dispersion": dist["dispersion"],
+        "expectancy": _expectancy(returns),
+        "mean_mae": _mean_or_none(maes),
+        "mean_mfe": _mean_or_none(mfes),
+        "mean_max_drawdown": _mean_or_none(mdds),
+        "return_per_downside_dev": _risk_adjusted(returns),
+        "return_per_mae": _return_per_mae(returns, maes),
+    }
+
+
+def _recovery_turn_by_phase(members: list[dict], cfg: Config) -> list[dict]:
+    """The by-signal-phase slice at the selected horizon: one row per CONFIGURED phase label
+    (`config.market_phase.labels` order — no hard-coded phase list), each with its per-phase `n`,
+    `low_sample`, `mean_return`, `hit_rate`, and downside `risk_adjusted`. Members are grouped by their
+    CAUSAL signal-date phase (read from the derivation, never recomputed). Every label emits a row even at
+    n=0 (honest NA — never omitted). Conditions the edge on the causal phase/severity/P(bear) at the
+    signal date (the study's conditioning leg)."""
+    min_sample = cfg.walk_forward.min_sample
+    by_phase: dict[str, list[float]] = defaultdict(list)
+    for member in members:
+        by_phase[member["signal_phase"]].append(member["return"])
+    rows: list[dict] = []
+    for label in cfg.market_phase.labels:
+        returns = by_phase.get(label, [])
+        n = len(returns)
+        rows.append({
+            "phase": label,
+            "n": n,
+            "low_sample": n < min_sample,
+            "mean_return": _mean_or_none(returns),
+            "hit_rate": (sum(1 for r in returns if r > 0) / n) if returns else None,
+            "risk_adjusted": _risk_adjusted(returns),
+        })
+    return rows
+
+
+def compute_recovery_turn_edge(
+    session: Session, horizon: int, config: Optional[Config] = None, *,
+    as_of: Optional[date_cls] = None, view: str = VIEW_EPISODES,
+) -> dict:
+    """The SINGLE canonical Recovery-Turn Edge study (Data Contract value, J-90) for the selected `horizon`
+    under the chosen overlap-honesty `view`. Pools EVERY stored (run, ticker) observation whose run's
+    snapshot date is a CAUSAL recovery-turn signal date (from the read-only `market_phase` derivation —
+    never recomputed) and reports, per configured horizon, the forward-return distribution (mean / median /
+    %positive / dispersion) + expectancy + mean MAE/MFE + the downside-only risk-adjusted ratios + the
+    aggregate mean max-drawdown, plus the best exit-horizon and the by-signal-phase slice at the selected
+    horizon (the causal-phase conditioning leg). Each carries `n` and honest NA.
+
+    READ-ONLY (the keystone anti-goal): every figure is derived ENTIRELY from stored values —
+    `forward_returns` (realized return + MAE/MFE + `max_drawdown`, read VERBATIM) JOINED to stored
+    `scanner_results` + the read-only recovery-turn derivation — it recomputes NO return / excursion /
+    score / regime / signal. Risk is downside-only everywhere (never total volatility). `view` (J-63,
+    default `episodes`) makes the study overlap-honest; `as_of` (J-32) scopes the pool to snapshots dated
+    <= D (a FILTER only). The payload echoes the resolved cutoff as `asof_date` (ISO) when scoped, else
+    null. Raises `ValueError` for an unknown view (the API pre-validates -> 422). NO order/execution path
+    (recovery-only descriptive evidence)."""
+    cfg = config or get_config()
+    wf = cfg.walk_forward
+
+    if view not in ALL_VIEWS:
+        raise ValueError(f"unknown view {view!r}; valid views are {list(ALL_VIEWS)}")
+
+    by_horizon: list[dict] = []
+    selected_members: list[dict] = []
+    for h in wf.horizons:
+        members = _recovery_turn_observation_set(session, h, view, cfg, as_of)
+        by_horizon.append(_recovery_turn_horizon_row(members, h, wf.min_sample))
+        if h == horizon:
+            selected_members = members
+    if horizon not in wf.horizons:  # a defensive direct-call path (API validates horizon)
+        selected_members = _recovery_turn_observation_set(session, horizon, view, cfg, as_of)
+
+    unique_symbols = len({m["ticker"] for m in selected_members})
+    signal_dates = sorted({m["signal_date"] for m in selected_members})
+
+    return {
+        "horizon": horizon,
+        "asof_date": as_of.isoformat() if as_of is not None else None,
+        "view": view,  # J-63 overlap-honesty view (episodes default | pooled)
+        "horizons": list(wf.horizons),
+        "default_horizon": wf.default_horizon,
+        "min_sample": wf.min_sample,
+        "phase_labels": list(cfg.market_phase.labels),
+        "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
+        "descriptive_caveat": RESEARCH_CAVEAT,
+        "n_total": len(selected_members),
+        "n": len(selected_members),
+        "unique_symbols": unique_symbols,
+        "signal_dates": signal_dates,
+        "signal_count": len(signal_dates),
+        "by_horizon": by_horizon,
+        "best_exit_horizon": _best_exit_horizon(by_horizon),
+        "by_phase": _recovery_turn_by_phase(selected_members, cfg),
+    }
+
+
+# The sentinel `subject` slot the Recovery-Turn Edge study reuses in the SHARED `EventStudyCache` table —
+# so its cache rows never collide with a real event-study subject (every real subject is a setup status or
+# a pattern key; the leading `__` makes this impossible to clash). Reusing the same cache table keeps the
+# cache machinery single-sourced (no second cache mechanism, no new table — iter-20 lesson).
+_RECOVERY_TURN_EDGE_SUBJECT = "__recovery_turn_edge__"
+
+
+def recovery_turn_edge_cached(
+    session: Session, horizon: int, config: Optional[Config] = None, *,
+    as_of: Optional[date_cls] = None, view: str = VIEW_EPISODES,
+) -> dict:
+    """Serve the Recovery-Turn Edge study from the J-72 cache (mirrors `event_study_cached`), reusing the
+    SHARED `EventStudyCache` table under the `_RECOVERY_TURN_EDGE_SUBJECT` sentinel so it never collides
+    with a real event-study subject. On a HIT for the current `(sentinel, view, asof_key, dataset_version,
+    horizon)` key, return the stored payload (NO recompute); on a MISS, compute it ONCE via
+    `compute_recovery_turn_edge` (which validates the view, raising before any write), persist under the
+    current stamp, prune stale rows for this identity, and return it. BYTE-IDENTICAL to a fresh compute
+    (a pure performance layer); the cache REFRESHES after any dataset change via the dataset-version key."""
+    cfg = config or get_config()
+    version = _dataset_version(session)
+    asof_key = _cache_asof_key(as_of)
+
+    hit = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == _RECOVERY_TURN_EDGE_SUBJECT,
+            EventStudyCache.view == view,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.dataset_version == version,
+            EventStudyCache.horizon == horizon,
+        )
+    ).first()
+    if hit is not None:
+        return json.loads(hit.payload_json)
+
+    payload = compute_recovery_turn_edge(session, horizon, cfg, as_of=as_of, view=view)
+
+    stale = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == _RECOVERY_TURN_EDGE_SUBJECT,
+            EventStudyCache.view == view,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.horizon == horizon,
+            EventStudyCache.dataset_version != version,
+        )
+    ).all()
+    for row in stale:
+        session.delete(row)
+
+    session.add(EventStudyCache(
+        subject=_RECOVERY_TURN_EDGE_SUBJECT, view=view, asof_key=asof_key, dataset_version=version,
+        horizon=horizon, payload_json=json.dumps(payload),
+        created_at=datetime.now(timezone.utc),
+    ))
+    try:
+        session.commit()
+    except Exception:  # best-effort cache; a concurrent writer raced us — the payload is byte-identical
+        session.rollback()
+    return payload

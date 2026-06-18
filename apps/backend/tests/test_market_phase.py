@@ -36,8 +36,13 @@ from app.db import create_db_and_tables, make_engine
 from app.engine.market_phase import (
     PHASE_RECOVERY,
     _filtered_bear_path,
+    _smoothed_bear_path,
+    _true_bear_episodes,
     compute_market_phase,
+    compute_retrospective,
     market_phase_cached,
+    recovery_turn_dates,
+    retrospective_cached,
 )
 from app.engine.research import _dataset_version
 from app.models import DailyPrice, ForwardReturn, MarketPhaseCache, ScannerResult, ScannerRun
@@ -247,6 +252,252 @@ def test_components_breakdown_disclosed_and_explainable():
     assert names == set(cfg.market_phase.weights)  # every configured component disclosed
     contribs = [c["contribution"] for c in result["components"] if c["available"]]
     assert abs(sum(contribs) - result["severity"]) < 0.1  # contributions reconstruct the severity
+
+
+# --------------------------------------------------------------------------------------------------
+# iter-30 (J-89 / J-90) — timeline series, dated downtrend episodes, the FENCED retrospective, and the
+# causal recovery-turn signal. FAST synthetic tests (no seed boot) — the anti-goal-critical legs.
+# --------------------------------------------------------------------------------------------------
+def _v_shape_engine(cfg):
+    """A synthetic V-shaped tape: a 30-day decline 100 -> 60 (a deep "bear"), then a 30-day rally 60 ->
+    ~105 (a recovery). Runs every 6 days (10 runs) carry a high regime risk / low breadth through the
+    decline and a calm regime / high breadth through the recovery. Returns (engine, dates)."""
+    engine = _engine()
+    down = [100.0 - 40 * i / 29 for i in range(30)]
+    up = [60.0 + 45 * i / 29 for i in range(30)]
+    dates = [_BASE + timedelta(days=6 * i) for i in range(10)]
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", down + up)
+        for i, d in enumerate(dates):
+            in_bear = i < 5
+            _insert_run(
+                session, d, "Risk-off" if in_bear else "Risk-on",
+                15.0 if in_bear else 70.0, breadth_200=20.0 if in_bear else 65.0,
+            )
+        session.commit()
+    return engine, dates
+
+
+def test_timeline_filtered_byte_identity_with_filtered_path(loaded_engine=None):
+    """FILTERED byte-identity (single source, J-89): the per-date filtered P(bear) the timeline serves
+    equals the existing `_filtered_bear_path` value at each date, AND the served P(bear)/phase/severity
+    for the latest date equal the LAST timeline element (the panel and the timeline read ONE series)."""
+    cfg = _small_config()
+    engine, dates = _v_shape_engine(cfg)
+    with Session(engine) as session:
+        result = compute_market_phase(session, dates[-1], cfg)
+    # the served panel value IS the last timeline element (one derived series, never a second computation)
+    assert result["p_bear"] == result["timeline"][-1]["p_bear"]
+    assert result["phase"] == result["timeline"][-1]["phase"]
+    assert result["severity"] == result["timeline"][-1]["severity"]
+    # the per-date timeline p_bear is the `_filtered_bear_path` over the disclosed observations
+    obs_values = [o["reading"] for o in result["observations"]]
+    filtered = _filtered_bear_path(obs_values, cfg)
+    timeline_pbears = [t["p_bear"] for t in result["timeline"]]
+    assert timeline_pbears == [round(p, 6) for p in filtered]
+
+
+def test_timeline_episode_recovery_no_lookahead_tail_invariance():
+    """CRITICAL no-lookahead (J-89 / J-90): removing bars/runs dated > D never changes any timeline /
+    episode / recovery-turn value at a date <= D — asserted the `forward_return` tail-invariance way."""
+    cfg = _small_config()
+    engine = _engine()
+    pre = [100.0 - i for i in range(40)]            # decline up to D
+    post = [60.0 + 5 * i for i in range(20)]         # a sharp rally strictly after D
+    d = _BASE + timedelta(days=len(pre) - 1)
+    later = d + timedelta(days=30)                    # a run dated AFTER D
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", pre + post)
+        for i in range(7):
+            _insert_run(session, _BASE + timedelta(days=6 * i), "Risk-off", 15.0, breadth_200=20.0)
+        _insert_run(session, later, "Risk-on", 80.0, breadth_200=70.0)  # a future run (> D)
+        session.commit()
+        with_tail = compute_market_phase(session, d, cfg)
+        # remove every bar AND run dated > D, recompute — every causal field must be byte-identical
+        for bar in session.exec(select(DailyPrice).where(DailyPrice.date > d)).all():
+            session.delete(bar)
+        for run in session.exec(select(ScannerRun).where(ScannerRun.asof_date > d)).all():
+            session.delete(run)
+        session.commit()
+        without_tail = compute_market_phase(session, d, cfg)
+    for key in ("timeline", "episodes", "recovery_turn", "p_bear", "severity", "phase"):
+        assert json.dumps(with_tail[key]) == json.dumps(without_tail[key]), f"{key} changed under tail removal"
+
+
+def test_downtrend_episode_dates_the_decline_as_one_run():
+    """J-89: the synthetic decline surfaces as ONE dated causal downtrend episode carrying its
+    first-trigger date, the severity at trigger, and a closed state once the tape recovered."""
+    cfg = _small_config()
+    engine, dates = _v_shape_engine(cfg)
+    with Session(engine) as session:
+        result = compute_market_phase(session, dates[-1], cfg)
+    episodes = result["episodes"]
+    assert len(episodes) == 1
+    ep = episodes[0]
+    assert {"first_trigger_date", "severity_at_trigger", "last_date", "open"} <= set(ep)
+    assert ep["peak_p_bear"] > 0.9                    # the decline drove filtered P(bear) toward 1
+    assert ep["open"] is False                        # the tape recovered -> the episode closed
+    assert ep["severity_at_trigger"] > 0
+
+
+def test_early_asof_yields_empty_timeline_and_no_signal():
+    """J-89/J-90: an as-of before any stored run yields an honest empty timeline / episode list and a
+    non-signal recovery-turn — never a fabricated episode/probability/signal."""
+    cfg = _small_config()
+    engine = _engine()
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", [100.0 + i for i in range(40)])
+        _insert_run(session, _BASE + timedelta(days=30), "Risk-on", 75.0, breadth_200=60.0)
+        session.commit()
+        result = compute_market_phase(session, _BASE + timedelta(days=5), cfg)
+    assert result["available"] is False
+    assert result["timeline"] == [] and result["episodes"] == []
+    assert result["recovery_turn"]["is_recovery_turn"] is False
+
+
+def test_recovery_turn_signal_fires_with_explainable_reason():
+    """J-90: the resolved as-of at the recovery is flagged a causal recovery turn with its config-defined
+    triggering reason (explainable, never a bare flag) — the filtered P(bear) crossed below the exit while
+    the index reclaimed its trailing MA, all from data <= D."""
+    cfg = _small_config()
+    engine, dates = _v_shape_engine(cfg)
+    with Session(engine) as session:
+        result = compute_market_phase(session, dates[-1], cfg)
+    rt = result["recovery_turn"]
+    assert rt["is_recovery_turn"] is True
+    assert rt["p_bear"] < cfg.market_phase.recovery_signal_pbear_exit <= rt["prev_p_bear"]
+    assert rt["ma_reclaimed"] is True
+    assert isinstance(rt["reason"], str) and "recovery" in rt["reason"].lower()
+
+
+def test_recovery_turn_dates_accessor_returns_signal_context():
+    """J-90: the public `recovery_turn_dates` accessor (the edge study's source) returns the causal
+    recovery-turn date(s) each tagged with the causal phase/severity/P(bear) at the signal date."""
+    cfg = _small_config()
+    engine, dates = _v_shape_engine(cfg)
+    with Session(engine) as session:
+        signal_context = recovery_turn_dates(session, None, cfg)
+    assert len(signal_context) >= 1
+    ctx = next(iter(signal_context.values()))
+    assert {"phase", "severity", "p_bear", "prev_p_bear"} <= set(ctx)
+    assert ctx["p_bear"] < cfg.market_phase.recovery_signal_pbear_exit
+
+
+# --------------------------------------------------------------------------------------------------
+# iter-30 — the FENCED retrospective (smoothed P(bear) + true-bear dating). Analysis-only; the SMOOTHED
+# value and the true-bear dating MUST be future-aware (they read after-the-fact info) and MUST NEVER be
+# read by any as-of value (the J-49 fence).
+# --------------------------------------------------------------------------------------------------
+def test_smoothed_path_differs_from_filtered_uses_future_info():
+    """The SMOOTHED P(bear) is full-sample (lookahead by construction): an early step's smoothed value
+    differs from its FILTERED value because the smoother conditions on LATER observations. (A calm future
+    pulls an early bear-step's smoothed estimate down vs the filtered estimate.)"""
+    cfg = _small_config()
+    obs = [0.9, 0.9, 0.9, 0.1, 0.1, 0.1]  # high stress then calm
+    filtered = _filtered_bear_path(obs, cfg)
+    smoothed = _smoothed_bear_path(obs, cfg)
+    assert len(smoothed) == len(filtered)
+    # the smoother is future-aware -> at least one early step's smoothed != filtered (lookahead present)
+    assert any(abs(s - f) > 1e-6 for s, f in zip(smoothed[:3], filtered[:3]))
+    # the LAST step's smoothed equals the last filtered (no future beyond the end) — the Kim identity.
+    # Both are rounded to 6 dp, so compare at the disclosure precision (the only difference is rounding).
+    assert abs(smoothed[-1] - filtered[-1]) < 1e-5
+
+
+def test_fence_smoothed_and_true_bear_not_read_by_any_asof_value():
+    """THE FENCE (critical): the SMOOTHED probability and the true-bear dating are NOT read by
+    `compute_market_phase`'s phase / severity / filtered-p_bear, the timeline, the episodes, or the
+    recovery-turn signal. Asserted structurally: the causal payload carries NO smoothed/true-bear field,
+    and every causal p_bear equals the FILTERED path (never the smoothed path)."""
+    cfg = _small_config()
+    engine, dates = _v_shape_engine(cfg)
+    with Session(engine) as session:
+        causal = compute_market_phase(session, dates[-1], cfg)
+        retro = compute_retrospective(session, dates[-1], cfg)
+    # no smoothed/true-bear key leaks into the causal payload or any of its causal sub-objects
+    causal_blob = json.dumps(causal)
+    assert "smoothed" not in causal_blob and "true_bear" not in causal_blob
+    # every causal timeline p_bear is the FILTERED value, never the smoothed value
+    obs_values = [o["reading"] for o in causal["observations"]]
+    filtered = [round(p, 6) for p in _filtered_bear_path(obs_values, cfg)]
+    assert [t["p_bear"] for t in causal["timeline"]] == filtered
+    # the retrospective is explicitly analysis-only and lives only behind its own field
+    assert retro["analysis_only"] is True
+    assert "smoothed" in retro and "true_bear_episodes" in retro
+
+
+def test_true_bear_dater_censors_short_or_shallow_declines():
+    """J-89 retrospective: the Bry-Boschan true-bear dater CENSORS a decline shorter than
+    `bry_boschan_min_phase_days` or shallower than `bry_boschan_min_amplitude_pct` (the cutoffs are config
+    keys, not literals). A short synthetic V (30-day, but > amplitude) is censored on duration."""
+    cfg = _small_config()
+    cfg.market_phase.bry_boschan_min_phase_days = 90    # the 30-day synthetic decline is too short
+    cfg.market_phase.bry_boschan_min_amplitude_pct = 20.0
+    engine, dates = _v_shape_engine(cfg)
+    with Session(engine) as session:
+        retro = compute_retrospective(session, dates[-1], cfg)
+    assert retro["true_bear_episodes"] == []  # censored on the 90-day minimum phase length
+
+
+def test_true_bear_dater_emits_one_phase_for_a_long_deep_decline():
+    """J-89 retrospective: a long (>= min phase) + deep (>= min amplitude) decline surfaces as ONE dated
+    true-bear phase with its peak/trough dates + drawdown — future-aware (analysis-only)."""
+    cfg = _small_config()
+    cfg.market_phase.bry_boschan_min_phase_days = 90
+    cfg.market_phase.bry_boschan_min_amplitude_pct = 20.0
+    engine = _engine()
+    down = [100.0 - 30 * i / 199 for i in range(200)]   # 100 -> 70 over ~200 days (-30%)
+    up = [70.0 + 35 * i / 99 for i in range(100)]
+    dates = [_BASE + timedelta(days=20 * i) for i in range(14)]
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", down + up)
+        for i, d in enumerate(dates):
+            _insert_run(session, d, "Risk-off" if i < 8 else "Risk-on",
+                        15.0 if i < 8 else 70.0, breadth_200=20.0 if i < 8 else 65.0)
+        session.commit()
+        retro = compute_retrospective(session, dates[-1], cfg)
+    episodes = retro["true_bear_episodes"]
+    assert len(episodes) == 1
+    ep = episodes[0]
+    assert {"peak_date", "trough_date", "drawdown_pct", "duration_days"} <= set(ep)
+    assert abs(ep["drawdown_pct"]) >= cfg.market_phase.bry_boschan_min_amplitude_pct
+    assert ep["duration_days"] >= cfg.market_phase.bry_boschan_min_phase_days
+
+
+def test_retrospective_determinism_byte_identical_repeat():
+    """Determinism: the SAME config + bars + runs yield a byte-identical retrospective (smoothed +
+    true-bear) on a repeated compute."""
+    cfg = _small_config()
+    engine, dates = _v_shape_engine(cfg)
+    with Session(engine) as session:
+        first = compute_retrospective(session, dates[-1], cfg)
+        second = compute_retrospective(session, dates[-1], cfg)
+    assert json.dumps(first) == json.dumps(second)
+
+
+def test_new_market_phase_config_keys_validated(tmp_path):
+    """iter-30 config validation: the new market_phase threshold keys are typed/validated and rejected
+    when malformed at load (a recovery exit ABOVE the downtrend threshold is incoherent)."""
+    data = _real_config_dict()
+    data["market_phase"]["recovery_signal_pbear_exit"] = 0.99   # > downtrend_pbear_threshold (0.50)
+    with pytest.raises(ConfigError, match="recovery_signal_pbear_exit"):
+        load_config(_write_cfg(tmp_path, data))
+
+
+def test_new_market_phase_pbear_threshold_must_be_in_unit(tmp_path):
+    """iter-30 config validation: a P(bear) threshold outside [0, 1] is rejected at load."""
+    data = _real_config_dict()
+    data["market_phase"]["downtrend_pbear_threshold"] = 1.5
+    with pytest.raises(ConfigError, match="P\\(bear\\) thresholds must be in"):
+        load_config(_write_cfg(tmp_path, data))
+
+
+def test_new_market_phase_bry_boschan_days_must_be_positive(tmp_path):
+    """iter-30 config validation: a non-positive Bry-Boschan min-phase-length is rejected at load."""
+    data = _real_config_dict()
+    data["market_phase"]["bry_boschan_min_phase_days"] = 0
+    with pytest.raises(ConfigError, match="must be positive"):
+        load_config(_write_cfg(tmp_path, data))
 
 
 # --------------------------------------------------------------------------------------------------

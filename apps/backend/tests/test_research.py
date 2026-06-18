@@ -1771,3 +1771,161 @@ def test_event_study_episode_path_is_read_only(episode_engine, monkeypatch):
         payload = compute_event_study(session, "vcp", H, cfg, view=VIEW_EPISODES)
     assert payload["view"] == "episodes" and payload["n"] == 4
     assert payload["episode_count"] == 4
+
+
+# ==================================================================================================
+# iter-30 (J-90) — Recovery-Turn Edge study: read-only over the stored forward_returns of the CAUSAL
+# recovery-turn signal dates, conditioned on the causal phase/severity/P(bear). Count-coherence with the
+# samples drill-down (total == published n in Episodes/Pooled × All-history/As-of) + verbatim reads.
+# ==================================================================================================
+from datetime import timedelta as _td  # noqa: E402
+
+from sqlalchemy import insert as _insert  # noqa: E402
+
+from app.engine.research import compute_recovery_turn_edge  # noqa: E402
+from app.engine.samples import KIND_RECOVERY_TURN, compute_samples  # noqa: E402
+from app.models import DailyPrice  # noqa: E402
+
+_RT_BASE = date(2024, 1, 1)
+
+
+def _rt_cfg():
+    """A market_phase config with a short min_history_bars so a synthetic window suffices, mirroring
+    test_market_phase's `_small_config`. Horizons/min_sample come from the real config."""
+    cfg = copy.deepcopy(load_config())
+    cfg.market_phase.min_history_bars = 5
+    cfg.market_phase.lookback_days = 100000
+    cfg.walk_forward.min_sample = 1  # so a small synthetic cohort is not flagged low-sample everywhere
+    return cfg
+
+
+def _rt_bars(session, sym, closes_list, start=_RT_BASE):
+    rows = [
+        {"symbol": sym, "date": start + _td(days=i), "open": c, "high": c, "low": c, "close": c, "volume": 1000.0}
+        for i, c in enumerate(closes_list)
+    ]
+    session.execute(_insert(DailyPrice.__table__), rows)
+
+
+def _rt_run(session, d, label, score, b200):
+    run = ScannerRun(
+        asof_date=d, created_at=_utc(), provider="seed", benchmark="SPY",
+        regime_score=score, regime_label=label, regime_components_json="[]",
+        breadth_above_50dma=None, breadth_above_200dma=b200,
+        new_high_low_json="{}", candidate_counts_json="{}",
+    )
+    session.add(run)
+    session.flush()
+    return run
+
+
+@pytest.fixture()
+def recovery_turn_engine(tmp_path):
+    """A synthetic V-shaped tape (decline -> recovery) with runs every 6 days + stored forward_returns on
+    EVERY run, so the recovery-turn signal fires at the recovery and the study has a non-empty cohort. The
+    horizon used is the config default (so the API/edge default works)."""
+    engine = _engine(tmp_path, "recovery.db")
+    horizon = load_config().walk_forward.default_horizon
+    down = [100.0 - 40 * i / 29 for i in range(30)]
+    up = [60.0 + 45 * i / 29 for i in range(30)]
+    dates = [_RT_BASE + _td(days=6 * i) for i in range(10)]
+    with Session(engine) as session:
+        _rt_bars(session, "SPY", down + up)
+        for i, d in enumerate(dates):
+            in_bear = i < 5
+            run = _rt_run(session, d, "Risk-off" if in_bear else "Risk-on",
+                          15.0 if in_bear else 70.0, 20.0 if in_bear else 65.0)
+            # two stocks per run, each with a stored forward return + excursions at the default horizon
+            for j, tkr in enumerate(("AAA", "BBB")):
+                _add_result(session, run.id, tkr, rank=j + 1)
+                _add_fr(session, run.id, tkr, ret=0.05 + 0.01 * i + 0.001 * j,
+                        horizon=horizon, mae=-0.02, mfe=0.08)
+        session.commit()
+    return engine, horizon
+
+
+def test_recovery_turn_edge_reads_verbatim_and_conditions_on_phase(recovery_turn_engine):
+    """J-90: the edge study pools the stored forward returns of the causal recovery-turn signal dates,
+    reports the per-horizon distribution (incl. downside risk-adjusted + aggregate max-drawdown), and
+    conditions on the causal signal-date phase — every figure read VERBATIM (recomputes nothing)."""
+    engine, horizon = recovery_turn_engine
+    cfg = _rt_cfg()
+    with Session(engine) as session:
+        edge = compute_recovery_turn_edge(session, horizon, cfg, view=VIEW_EPISODES)
+    assert edge["n"] >= 1                                   # the recovery turn produced a cohort
+    assert edge["signal_count"] >= 1
+    # the selected-horizon row carries the distribution + downside risk-adjusted + aggregate max-drawdown
+    sel = next(r for r in edge["by_horizon"] if r["horizon"] == horizon)
+    assert sel["mean_return"] is not None
+    assert "return_per_downside_dev" in sel and "mean_max_drawdown" in sel
+    # the by-phase conditioning slice emits one row per configured market-phase label (never omitted)
+    phases = {r["phase"] for r in edge["by_phase"]}
+    assert phases == set(cfg.market_phase.labels)
+
+
+def test_recovery_turn_edge_count_coherence_total_equals_published_n(recovery_turn_engine):
+    """COUNT-COHERENCE (J-51/J-65): the samples drill-down `total` EQUALS the published `n` for the SAME
+    recovery-turn cohort SAME-INSTANT in BOTH Episodes and Pooled views — the keystone invariant."""
+    engine, horizon = recovery_turn_engine
+    cfg = _rt_cfg()
+    with Session(engine) as session:
+        for view in (VIEW_EPISODES, VIEW_POOLED):
+            edge = compute_recovery_turn_edge(session, horizon, cfg, view=view)
+            samples = compute_samples(
+                session, kind=KIND_RECOVERY_TURN, horizon=horizon, config=cfg,
+                slice_kind="total", view=view,
+            )
+            assert samples["total"] == edge["n"], f"drill-down total != published n in {view}"
+            # every drill-down row carries the causal signal-date context (read verbatim, never recomputed)
+            for row in samples["rows"]:
+                keys = {v["key"] for v in row["values"]}
+                assert {"signal_date", "signal_phase", "signal_p_bear"} <= keys
+
+
+def test_recovery_turn_edge_by_phase_drilldown_count_coherence(recovery_turn_engine):
+    """COUNT-COHERENCE for a by-phase cohort (J-90): each by-phase row's published `n` equals its samples
+    drill-down `total` for the SAME phase — every displayable row resolves without a 4xx (the J-82 lesson)."""
+    engine, horizon = recovery_turn_engine
+    cfg = _rt_cfg()
+    with Session(engine) as session:
+        edge = compute_recovery_turn_edge(session, horizon, cfg, view=VIEW_EPISODES)
+        for row in edge["by_phase"]:
+            samples = compute_samples(
+                session, kind=KIND_RECOVERY_TURN, horizon=horizon, config=cfg,
+                slice_kind="phase", phase=row["phase"], view=VIEW_EPISODES,
+            )
+            assert samples["total"] == row["n"], f"by-phase total != n for phase {row['phase']}"
+
+
+def test_recovery_turn_edge_as_of_scopes_pool(recovery_turn_engine):
+    """As-of mode (J-32): scoping the edge study to an as-of BEFORE the recovery yields an honest empty /
+    smaller cohort — a FILTER, never a second date state, never a fabricated figure."""
+    engine, horizon = recovery_turn_engine
+    cfg = _rt_cfg()
+    early = _RT_BASE + _td(days=12)  # before the recovery turn fires
+    with Session(engine) as session:
+        scoped = compute_recovery_turn_edge(session, horizon, cfg, as_of=early, view=VIEW_EPISODES)
+        full = compute_recovery_turn_edge(session, horizon, cfg, view=VIEW_EPISODES)
+    assert scoped["asof_date"] == early.isoformat()
+    assert scoped["n"] <= full["n"]  # the early window has not yet seen the recovery turn
+
+
+def test_recovery_turn_edge_unknown_view_raises(recovery_turn_engine):
+    """An unknown `view` raises ValueError (the API turns it into a 422), mirroring the event study."""
+    engine, horizon = recovery_turn_engine
+    cfg = _rt_cfg()
+    with Session(engine) as session:
+        with pytest.raises(ValueError, match="unknown view"):
+            compute_recovery_turn_edge(session, horizon, cfg, view="bogus")
+
+
+def test_recovery_turn_samples_invalid_phase_raises(recovery_turn_engine):
+    """A by-phase drill-down for a non-configured phase raises ValueError (-> 422), never a silent 200."""
+    engine, horizon = recovery_turn_engine
+    cfg = _rt_cfg()
+    with Session(engine) as session:
+        with pytest.raises(ValueError, match="is not a configured market-phase label"):
+            compute_samples(
+                session, kind=KIND_RECOVERY_TURN, horizon=horizon, config=cfg,
+                slice_kind="phase", phase="NotAPhase", view=VIEW_EPISODES,
+            )

@@ -53,6 +53,7 @@ from app.engine.research import (
     _decile_member_slice,
     _event_study_observation_set,
     _factor_observations,
+    _recovery_turn_observation_set,
     _regime_setup_pattern_observations,
     _rsp_combination_filter,
     _rsp_combination_members,
@@ -68,7 +69,14 @@ KIND_FACTOR = "factor"
 KIND_COMBINATION = "combination"
 KIND_EVENT_STUDY = "event-study"
 KIND_REGIME_SETUP_PATTERN = "regime-setup-pattern"  # J-77 combination drill-down
-ALL_KINDS = (KIND_FACTOR, KIND_COMBINATION, KIND_EVENT_STUDY, KIND_REGIME_SETUP_PATTERN)
+KIND_RECOVERY_TURN = "recovery-turn"                 # J-90 recovery-turn edge drill-down
+ALL_KINDS = (
+    KIND_FACTOR, KIND_COMBINATION, KIND_EVENT_STUDY, KIND_REGIME_SETUP_PATTERN, KIND_RECOVERY_TURN,
+)
+# The recovery-turn-edge slice families (which published `N=` chip on the Recovery-Turn Edge lab was
+# clicked). `total` is the whole signal-date pool at the horizon (== `n` / `n_total`); `phase` is the
+# per-signal-phase row.
+_RECOVERY_TURN_SLICES = ("total", "phase")
 
 # The factor-cohort slice families (which published `N=` chip on the Factor Lab was clicked). `total` is
 # `n_total` / rank-IC n (whole pool); `decile` is one D1…D10 bucket; `regime` is the per-regime split.
@@ -410,6 +418,68 @@ def _regime_setup_pattern_samples(
 
 
 # --------------------------------------------------------------------------------------------------
+# Recovery-Turn cohort (Recovery-Turn Edge Lab — J-90 chips: per-horizon n / pooled n_total / by-phase n)
+# --------------------------------------------------------------------------------------------------
+def _recovery_turn_samples(
+    session: Session, cfg: Config, *, horizon: int, slice_kind: str, phase: Optional[str],
+    as_of: Optional[date_cls], view: str = VIEW_EPISODES,
+) -> dict:
+    """Reproduce a Recovery-Turn Edge cohort and list its member observations UNDER THE SELECTED `view`
+    (J-63). Membership is the SAME `_recovery_turn_observation_set` builder `compute_recovery_turn_edge`
+    aggregates, so the drill-down `total` EQUALS the published `n` for the SAME `(horizon, view)` cohort in
+    BOTH Episodes and Pooled modes AND BOTH All-history and As-of scopes (count-coherence keystone — one
+    membership rule, never a second grouping path). `slice_kind`:
+      - "total" → the whole signal-date observation set at this horizon (== per-horizon n / `n` / n_total).
+      - "phase" → the set filtered to the causal signal-date `phase` (== that by-phase row's n).
+    Each row: ticker, snapshot (signal) date, the causal signal-date phase/severity/P(bear), and the
+    realized forward return at the stated horizon (read VERBATIM — recomputes nothing)."""
+    if view not in ALL_VIEWS:
+        raise ValueError(f"unknown view {view!r}; valid views are {list(ALL_VIEWS)}")
+
+    members = _recovery_turn_observation_set(session, horizon, view, cfg, as_of)
+
+    if slice_kind == "total":
+        pass
+    elif slice_kind == "phase":
+        if phase is None or phase not in cfg.market_phase.labels:
+            raise ValueError(
+                f"phase {phase!r} is not a configured market-phase label {list(cfg.market_phase.labels)}"
+            )
+        # the SAME causal signal-phase grouping `_recovery_turn_by_phase` uses (phase read from the
+        # derivation, never recomputed) — so this by-phase row's member list reproduces the aggregate's n.
+        members = [m for m in members if m["signal_phase"] == phase]
+    else:
+        raise ValueError(
+            f"unknown recovery-turn slice {slice_kind!r}; valid slices are {list(_RECOVERY_TURN_SLICES)}"
+        )
+
+    run_dates = _run_date_map(session)
+    rows = [
+        {
+            "ticker": m["ticker"],
+            "snapshot_date": run_dates.get(m["run_id"]),
+            "regime": m["regime"],
+            "sector": m["sector"],
+            "values": [
+                {"key": "signal_date", "label": "Signal date", "value": m["signal_date"]},
+                {"key": "signal_phase", "label": "Phase at signal", "value": m["signal_phase"]},
+                {"key": "signal_p_bear", "label": "P(bear) at signal", "value": m["signal_p_bear"]},
+            ],
+            "forward_return": m["return"],
+        }
+        for m in members
+    ]
+    cohort = {
+        "kind": KIND_RECOVERY_TURN,
+        "slice": slice_kind,
+        "horizon": horizon,
+        "phase": phase if slice_kind == "phase" else None,
+        "view": view,
+    }
+    return {"cohort": cohort, "rows": rows}
+
+
+# --------------------------------------------------------------------------------------------------
 # The single canonical samples read (read-only exposure of the stored observation pools)
 # --------------------------------------------------------------------------------------------------
 def compute_samples(
@@ -426,6 +496,8 @@ def compute_samples(
     view: Optional[str] = None,
     # regime-setup-pattern cohort selector (J-77)
     setup: Optional[str] = None, pattern: Optional[str] = None,
+    # recovery-turn cohort selector (J-90) — reuses `slice_kind` (total|phase) + `phase`
+    phase: Optional[str] = None,
 ) -> dict:
     """The SINGLE canonical Research-samples read (Data Contract value, J-51 / J-52). Reproduces ONE
     published research cohort from the SAME stored per-observation data the aggregate used and returns its
@@ -461,6 +533,11 @@ def compute_samples(
     elif kind == KIND_REGIME_SETUP_PATTERN:
         built = _regime_setup_pattern_samples(
             session, cfg, regime=regime, setup=setup, pattern=pattern, horizon=horizon,
+            as_of=as_of, view=view or VIEW_EPISODES,
+        )
+    elif kind == KIND_RECOVERY_TURN:
+        built = _recovery_turn_samples(
+            session, cfg, horizon=horizon, slice_kind=slice_kind or "total", phase=phase,
             as_of=as_of, view=view or VIEW_EPISODES,
         )
     else:
