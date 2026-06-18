@@ -4,11 +4,11 @@
       "id": "J-01",
       "name": "Daily dashboard at a glance",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29-evidence/UT-01-market-phase-card.png",
-      "note": "Required-still-passing in iter-29. Re-verified: Dashboard '/' loads with Market Regime card, Major indexes & regime, and the NEW Market Phase & Severity panel; no JS errors; breadth/setup-count surfaces intact (UT-01). Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31-evidence/UT-J-01-dashboard-initial.png",
+      "note": "Required-still-passing in iter-31 (lean live re-verification); re-verified PASS via live browser-QA 13/13. Backend diff was a no-op import-alias cleanup in market_phase.py; no regression. Carried passing."
     },
     "J-02": {
       "id": "J-02",
@@ -54,21 +54,21 @@
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29-evidence/UT-12-13-regime-coherence-2024-12-31.png",
-      "note": "Required-still-passing in iter-30. No canonical score/regime touched; market_phase reads regime verbatim. Single source of truth intact. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31-evidence/UT-J-06-nvda-detail-scores.png",
+      "note": "Required-still-passing in iter-31 (lean live re-verification); re-verified PASS via live browser-QA 13/13. Backend diff was a no-op import-alias cleanup in market_phase.py; no regression. Carried passing."
     },
     "J-07": {
       "id": "J-07",
       "name": "Risk-Off regime suppresses Actionable",
       "status": "already_passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29-evidence/TC-02-bear-2022",
-      "note": "Required-still-passing in iter-30 (Risk-Off gate). The market_phase additive layer changes NO gate; gate-invariance unit-asserted. Carried already_passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31-evidence/UT-J-13-historical-asof-indicator.png",
+      "note": "Required-still-passing in iter-31 (lean live re-verification); re-verified PASS via live browser-QA 13/13. Backend diff was a no-op import-alias cleanup in market_phase.py; no regression. Carried already_passing."
     },
     "J-08": {
       "id": "J-08",
@@ -124,11 +124,11 @@
       "id": "J-13",
       "name": "Browse dashboard as of a past date (global as-of switcher)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29-evidence/UT-10-asof-update-no-reload.png",
-      "note": "Required-still-passing in iter-29. Re-verified (UT-10/11): stepping the global as-of to 2022-07-15 re-reads the dashboard (phase Expansion->Bear, severity 28.75->80.34) via SPA navigation; direct load + F5 deterministic. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31-evidence/UT-J-89-bear-2022-fullpage.png",
+      "note": "Required-still-passing in iter-31 (lean live re-verification); re-verified PASS via live browser-QA 13/13. Backend diff was a no-op import-alias cleanup in market_phase.py; no regression. Carried passing."
     },
     "J-14": {
       "id": "J-14",
@@ -174,11 +174,11 @@
       "id": "J-18",
       "name": "One date control (no duplicate)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29-ui-test-results.md",
-      "note": "Required-still-passing in iter-30 (CRITICAL 'exactly one date selector'). Source-verified: new market-phase-card.tsx reads useAsOf() only, holds data/status/showRetrospective(bool) \u2014 NO date useState, NO window/document keydown listener (grep-confirmed); new RecoveryTurnEdgeLab holds factor/horizon/mode/view/sort state, no date useState. Coherence Part B concurs. Held by construction."
+      "last_evidence_path": "reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31-ui-test-results.md",
+      "note": "Required-still-passing in iter-31 (lean live re-verification); re-verified PASS via live browser-QA 13/13. Backend diff was a no-op import-alias cleanup in market_phase.py; no regression. Carried passing."
     },
     "J-19": {
       "id": "J-19",
@@ -424,21 +424,21 @@
       "id": "J-43",
       "name": "Deep-linkable as-of (?asof URL serialization)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29-evidence/UT-10-asof-update-no-reload.png",
-      "note": "Required-still-passing in iter-30. The new endpoints resolve via the SAME shared resolved_date resolver (unparseable->422, out-of-range->400). Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31-evidence/UT-J-13-historical-asof-indicator.png",
+      "note": "Required-still-passing in iter-31 (lean live re-verification); re-verified PASS via live browser-QA 13/13. Backend diff was a no-op import-alias cleanup in market_phase.py; no regression. Carried passing."
     },
     "J-44": {
       "id": "J-44",
       "name": "Dashboard major-indexes chart with regime bands",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29-evidence/UT-12-13-regime-coherence-2024-12-31.png",
-      "note": "Required-still-passing in iter-30. Major-indexes card unchanged; the timeline overlays additively. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31-evidence/UT-J-87-J-88-J-89-dashboard-fullpage.png",
+      "note": "Required-still-passing in iter-31 (lean live re-verification); re-verified PASS via live browser-QA 13/13. Backend diff was a no-op import-alias cleanup in market_phase.py; no regression. Carried passing."
     },
     "J-45": {
       "id": "J-45",
@@ -484,21 +484,21 @@
       "id": "J-49",
       "name": "Major indexes & regime card shows full history \u2014 as-of is a marker, not a clamp (amends J-44)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29-evidence/UT-12-13-regime-coherence-2024-12-31.png",
-      "note": "Required-still-passing in iter-30. As-of-as-marker treatment unchanged; the retrospective is the fenced future-aware surface (J-49 precedent). Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31-evidence/UT-J-87-J-88-J-89-dashboard-fullpage.png",
+      "note": "Required-still-passing in iter-31 (lean live re-verification); re-verified PASS via live browser-QA 13/13. Backend diff was a no-op import-alias cleanup in market_phase.py; no regression. Carried passing."
     },
     "J-50": {
       "id": "J-50",
       "name": "As-of date survives EVERY in-app navigation, including new tabs (extends J-43)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
-      "last_evidence_path": "reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29-ui-test-results.md",
-      "note": "Required-still-passing in iter-30. The new panel/lab add no nav; ?asof propagation unchanged. Carried passing."
+      "last_evidence_path": "reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31-ui-test-results.md",
+      "note": "Required-still-passing in iter-31 (lean live re-verification); re-verified PASS via live browser-QA 13/13. Backend diff was a no-op import-alias cleanup in market_phase.py; no regression. Carried passing."
     },
     "J-51": {
       "id": "J-51",
@@ -864,41 +864,41 @@
       "id": "J-87",
       "name": "Dashboard Market Phase & Severity panel (discrete phase + 0-100 severity + named component breakdown), strictly causal (<=D)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29-evidence/UT-05-bear-red-badge-2022-10-07.png",
-      "note": "Required-still-passing in iter-30 (the CONSUMED layer). Re-verified BYTE-IDENTICAL: test_timeline_filtered_byte_identity_with_filtered_path GREEN (timeline filtered P(bear) == _filtered_bear_path at each date); live ?as_of=2022-10-07 still Bear/severity 92.45/p_bear=0.999958 (unchanged from iter-29). compute_market_phase reads ScannerRun.regime_score VERBATIM; diff provably additive (no canonical engine touched). Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31-evidence/UT-J-87-J-88-J-89-dashboard-fullpage.png",
+      "note": "Required-still-passing in iter-31 (lean live re-verification); re-verified PASS via live browser-QA 13/13. Backend diff was a no-op import-alias cleanup in market_phase.py; no regression. Carried passing."
     },
     "J-88": {
       "id": "J-88",
       "name": "Deterministic 0-1 filtered P(bear) (forward Hamilton FILTER over observations <=D) beside the phase, observation vector disclosed",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29-evidence/UT-06-observation-chips.png",
-      "note": "Required-still-passing in iter-30. The served FILTERED P(bear) for any date is unchanged; the J-89 timeline reads the SAME single _filtered_bear_path series (one source, no second computation). Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31-evidence/UT-J-87-J-88-J-89-dashboard-fullpage.png",
+      "note": "Required-still-passing in iter-31 (lean live re-verification); re-verified PASS via live browser-QA 13/13. Backend diff was a no-op import-alias cleanup in market_phase.py; no regression. Carried passing."
     },
     "J-89": {
       "id": "J-89",
       "name": "Market-phase history timeline + fenced retrospective/SMOOTHED view (consumes the J-87 layer)",
-      "status": "unknown",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
-      "last_evidence_path": null,
-      "note": "BUILT in iter-30 (full); backend/data legs verified by the evaluator but NO LIVE UI EVIDENCE -> stays UNKNOWN (the iter-17 env-failure precedent: code shipped + source/test-verified, browser-QA SKIPPED). Browser-QA SKIPPED entirely (Chrome MCP ECONNREFUSED :9222; evidence dir EMPTY, 0/31 UI tests). Evaluator-verified backend: the structural FENCE holds (compute_market_phase references NO smoothed/retrospective/true_bear symbol; _smoothed_bear_path/_true_bear_episodes called ONLY from compute_retrospective->retrospective_cached->API endpoint when retrospective=True); 30 FAST synthetic market_phase tests GREEN incl. test_fence_smoothed_and_true_bear_not_read_by_any_asof_value, test_timeline_filtered_byte_identity_with_filtered_path, no-lookahead tail-invariance (timeline+episode), determinism, true-bear censoring, 9 config-validation legs; config keys real in config.yaml market_phase: block; no-magic-numbers + test_db expected-tables GREEN. Live curl: GET /api/market-phase 200 (timeline 60-of-1170, 11 episodes incl. 2022 bear 2022-04-08->2023-02-01 peak P(bear)=1.0 closed; served p_bear==timeline[-1].p_bear), ?retrospective=true 200 (true-bear 2022-01-03->2022-10-12 -24.5%, analysis_only=True, causal payload carries NO smoothed key), ?as_of=2021-01-05 available=False (honest empty). Coherence COHERENCE-PASS; review PASS_WITH_NOTES; QA PASS (browser SKIPPED). The UI legs (timeline overlay, fenced retrospective sub-view, episode list) need a LIVE browser pass -> iter-31 lean."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31-evidence/UT-J-89-retrospective-expanded-fullpage.png",
+      "note": "FLIPS unknown -> passing in iter-31 (lean live re-verification). Built iter-30 (full); backend/data legs evaluator-verified iter-30 (structural FENCE, no-lookahead tail-invariance, filtered byte-identity to J-87/J-88, determinism, config validation). The only missing piece \u2014 LIVE UI evidence \u2014 is now captured (iter-30 browser-QA was SKIPPED, Chrome ECONNREFUSED). iter-31 browser-QA 13/13 PASS; evaluator VIEWED UT-J-89-retrospective-expanded-fullpage.png (Dashboard: PHASE & P(BEAR) TIMELINE step-function with coloured phase bands + CAUSAL DOWNTREND EPISODES list w/ first-trigger date/severity/open-closed; the toggled 'Retrospective (full-sample / analysis-only)' sub-view shows SMOOTHED P(bear) + true-bear 2022-01-03->2022-10-12 -24.5% with the explicit fence label) and UT-J-89-early-asof-empty.png (2021-01-05 honest empty: NA components, 'never a fabricated phase or probability'). At ?asof=2022-06-15 timeline clamps to 167-of dates (<=D), 3 episodes incl. open '2022-04-08 -> 2022-06-15'. FENCE intact (smoothed/true-bear only on toggle, absent from causal payload). Diff is backend-only no-op import-alias cleanup. Coherence COHERENCE-PASS; review PASS."
     },
     "J-90": {
       "id": "J-90",
       "name": "Recovery-turn signal + edge study (downtrend exit edge)",
-      "status": "unknown",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
-      "last_evidence_path": null,
-      "note": "BUILT in iter-30 (full); backend/data legs verified by the evaluator but NO LIVE UI EVIDENCE -> stays UNKNOWN (iter-17 precedent). Browser-QA SKIPPED (Chrome MCP ECONNREFUSED :9222; empty evidence dir). Evaluator-verified backend: 6 recovery-turn-edge tests GREEN (count-coherence total==n in Episodes & Pooled & by-phase, verbatim forward_returns reads, as-of scoping, unknown-view/invalid-phase 4xx); recovery-turn signal explainable {reason,p_bear,exit_threshold,ma_reclaimed,ma_window_days} computed from data <=D only; thresholds config-sourced (recovery_signal_pbear_exit<=downtrend_pbear_threshold, recovery_trailing_ma_days). Live curl: GET /api/research/recovery-turn-edge 200 (6 causal signal dates incl. 2022->2023 turn 2023-02-02; n=725@20d mean +2.22% 52%+ MDD -12.2%; by-phase Pullback 243 + Recovery 482 = 725; drill-down total==n LIVE in both modes); error cases 422/400. New samples kind 'recovery-turn' wired (QA TC-30 200). Coherence COHERENCE-PASS. The UI legs (recovery-turn badge on the Market-Phase panel + the /research Recovery-Turn Edge lab toggles/sort/N= drill-down-in-new-tab) need a LIVE browser pass -> iter-31 lean."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31-evidence/UT-J-90-research-rte-fullpage.png",
+      "note": "FLIPS unknown -> passing in iter-31 (lean live re-verification). Built iter-30 (full); recovery-turn-edge count-coherence + verbatim forward_returns reads + as-of scoping + 4xx error cases evaluator-verified iter-30. LIVE UI evidence now captured (iter-30 browser-QA SKIPPED). iter-31 browser-QA 13/13 PASS; evaluator VIEWED UT-J-90-research-rte-fullpage.png (the /research Recovery-Turn Edge lab: 6 causal signal dates, n=725, per-horizon table mean/median/%-positive/expectancy + return-per-downside-dev + return-per-MAE + mean-MDD across 5 horizons, by-phase breakdown w/ low-sample NA, survivorship-bias label) and UT-J-90-samples-drilldown-725.png (Total observations 725, 'nothing is recomputed'). Recovery signal on the Market-Phase panel carries a named reason, never a bare flag. N= count-coherence SAME-INSTANT: n=725==samples total in BOTH Episodes/Pooled AND BOTH As-of/All-history; by-phase Pullback 243 + Recovery 482 == 725; no 4xx on any displayable row; samples kind=bogus -> 422. Sort headers resolved by aria-label. Coherence COHERENCE-PASS; review PASS."
     },
     "J-91": {
       "id": "J-91",
@@ -972,7 +972,7 @@
       "resolution": "iter-21: the two `0.0` float literals in `_rsp_rank_key` were replaced with the structural `is_not_none` boolean fallback (no float literal remains in research.py \u2014 independently tokenizer-verified 0 float-like NUMBER literals). test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers passes; the DEFAULT J-77 ranking is byte-identical (200 randomized orderings match the legacy key; oracle test added). Full suite GREEN (834 passed, 0 failed, EXIT_CODE=0)."
     }
   ],
-  "updated_at": "2026-06-18T01:30:00Z",
+  "updated_at": "2026-06-18T03:30:00Z",
   "open_items": [
     {
       "id": "iter23-stale-api-engine-tests",

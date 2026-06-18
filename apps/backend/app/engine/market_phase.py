@@ -469,13 +469,12 @@ def _recovery_turn_dates_with_context(
     mp = cfg.market_phase
     exit_threshold = mp.recovery_signal_pbear_exit
     out: dict[str, dict] = {}
-    from datetime import date as _date  # local import to parse the ISO timeline dates for the MA read
     for i in range(1, len(timeline)):
         point = timeline[i]
         prev = timeline[i - 1]
         if not (point["p_bear"] < exit_threshold <= prev["p_bear"]):
             continue
-        d = _date.fromisoformat(point["date"])
+        d = date_cls.fromisoformat(point["date"])
         if not _trailing_ma_reclaimed(session, d, cfg):
             continue
         out[point["date"]] = {
