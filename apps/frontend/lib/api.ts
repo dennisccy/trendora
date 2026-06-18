@@ -1435,6 +1435,60 @@ export async function fetchRecoveryTurnEdge(
   return getJSON<RecoveryTurnEdgeResponse>(withAsOf(path, asof), signal);
 }
 
+// --- research / Downtrend Opportunity study (iter-32, J-91) ------------------------------------
+/** One conditioned-cohort row of the Downtrend Opportunity study (J-91): a (dimension, cohort) group
+ *  with its per-horizon-selected forward-return stats. The `dimension` is phase | severity_band |
+ *  pbear_band; `cohort` is the cohort key in that dimension's config catalog; `cohort_label` is the
+ *  display string. Re-formatted from stored values only. */
+export interface DowntrendOpportunityRow {
+  dimension: "phase" | "severity_band" | "pbear_band";
+  cohort: string;
+  cohort_label: string;
+  stats: RegimeSetupPatternStats; // SAME stats shape as the J-77 study (downside-only risk-adjusted)
+}
+
+/** GET /api/research/downtrend-opportunity payload (J-91) — condition the existing forward-return evidence
+ *  on the CAUSAL as-of downtrend state (phase / severity band / P(bear) band, all <= D) and read three
+ *  angles: (a) held_up_best, (b) fell_hardest (EVIDENCE ONLY — no order/execution affordance), and (c) the
+ *  reused J-90 recovery-turn edge. Every figure is read VERBATIM from the stored forward returns; the page
+ *  re-formats only (recomputes nothing). `as_of` (J-32) scopes the pool + the causal context; `view` (J-63)
+ *  is the overlap-honesty mode. The conditioning vocabulary (`conditioning_catalog`) is config-driven. */
+export interface DowntrendOpportunityResponse {
+  horizon: number;
+  asof_date: string | null;
+  view: "episodes" | "pooled";
+  horizons: number[];
+  default_horizon: number;
+  min_sample: number;
+  dimensions: ("phase" | "severity_band" | "pbear_band")[];
+  conditioning_catalog: Record<string, { key: string; label: string }[]>;
+  phase_labels: string[];
+  survivorship_bias: string;
+  descriptive_caveat: string;
+  weakness_evidence_only: boolean; // J-91: the weakness angle is research evidence only — no order path
+  n_total: number;
+  held_up_best: DowntrendOpportunityRow[]; // angle (a) — best-first
+  fell_hardest: DowntrendOpportunityRow[]; // angle (b) — worst-first, EVIDENCE ONLY
+  recovery_turn_edge: RecoveryTurnEdgeResponse; // angle (c) — the reused J-90 payload
+}
+
+/** Canonical Downtrend Opportunity source: GET /api/research/downtrend-opportunity. Throws on non-200 so
+ *  the page renders an explicit "Backend unavailable" state (503 no data / 422 bad horizon/view) — never
+ *  fabricated evidence. All params optional (defaults: config default horizon / episodes / all-history). */
+export async function fetchDowntrendOpportunity(
+  horizon?: number,
+  asof?: string,
+  view?: "episodes" | "pooled",
+  signal?: AbortSignal,
+): Promise<DowntrendOpportunityResponse> {
+  const params = new URLSearchParams();
+  if (horizon !== undefined) params.set("horizon", String(horizon));
+  if (view !== undefined) params.set("view", view);
+  const query = params.toString();
+  const path = `/api/research/downtrend-opportunity${query ? `?${query}` : ""}`;
+  return getJSON<DowntrendOpportunityResponse>(withAsOf(path, asof), signal);
+}
+
 // --- research / samples drill-down (iter-7, J-51 / J-52) -----------------------------------
 /** One displayed qualifying value on a sample row: the catalog `key` + `label` + the STORED `value`
  *  (a numeric factor value, or for an event study the matched setup/pattern label as a string). Read
@@ -1460,10 +1514,16 @@ export interface SampleRow {
 /** The echoed resolved cohort definition (re-formatted into the page header so the drill-down states
  *  exactly which published N it reproduces). Shape varies by `kind`; the page reads the fields it needs. */
 export interface SampleCohort {
-  kind: "factor" | "combination" | "event-study" | "regime-setup-pattern" | "recovery-turn";
+  kind:
+    | "factor"
+    | "combination"
+    | "event-study"
+    | "regime-setup-pattern"
+    | "recovery-turn"
+    | "downtrend-opportunity";
   horizon: number;
   slice?: string; // factor: total|decile|regime · event-study: pooled|regime|sector · recovery-turn: total|phase
-  cohort?: string; // combination: baseline|single|composite|strict_overlap
+  cohort?: string; // combination: baseline|single|composite|strict_overlap · downtrend: the band/phase cohort key
   factor?: FactorLabFactor; // factor kind
   decile?: number | null;
   regime?: string | null;
@@ -1471,6 +1531,7 @@ export interface SampleCohort {
   setup?: string | null; // J-77: regime-setup-pattern kind
   pattern?: string | null; // J-77: regime-setup-pattern kind (a config pattern key or "none")
   phase?: string | null; // J-90: recovery-turn by-phase cohort (a market-phase label)
+  dimension?: string | null; // J-91: downtrend-opportunity conditioning dimension (phase|severity_band|pbear_band)
   subject?: EventStudySubject; // event-study kind
   view?: "episodes" | "pooled"; // J-63: the event-study overlap-honesty view this cohort reproduces
   conditions?: FactorCombinationCondition[]; // combination kind
@@ -1716,10 +1777,39 @@ export interface JobProgressConfig {
   per_symbol_ticks: boolean;
 }
 
+/** J-92: one configured FRED macro series' availability in the Data Manager catalog. `committed_rows` is
+ *  the number of committed-seed observations; `available` is true when there ARE committed rows (offline)
+ *  — a walled/uncommitted series (0 rows + no live key) is honestly NA, never a fabricated value. Carries
+ *  the FRED series id + the publication lag + the optional OHLCV proxy ticker; never a key value. */
+export interface MacroSeriesAvailability {
+  id: string;
+  label: string;
+  fred_series_id: string;
+  publication_lag_days: number;
+  proxy_symbol: string | null;
+  committed_rows: number;
+  available: boolean;
+  reason: string;
+}
+
+/** J-92: the OPTIONAL FRED macro feed catalog + availability surfaced in the Data Manager. The FRED key is
+ *  env-only (`env_var` is the NAME; `live_available` is whether it is set) — NEVER a key value. `enable`
+ *  carries the per-leg config-default-OFF flags (so default figures are unchanged). Descriptive metadata. */
+export interface MacroAvailability {
+  provider: string; // "fred"
+  label: string;
+  env_var: string; // the env-var NAME only — never a key value
+  live_available: boolean; // whether the FRED key env-var is set (the NAME is detected, not the value)
+  enable: { severity: boolean; regime_switching: boolean; study: boolean };
+  series: MacroSeriesAvailability[];
+  publication_lag_note: string;
+}
+
 export interface DataOverviewResponse {
   coverage: DataCoverage;
   runs: DataRun[];
   sources: ProviderSource[]; // J-33 import-source catalog (config-driven, env-detected availability)
+  macro: MacroAvailability; // J-92 optional FRED macro feed catalog (env-detected; committed-seed coverage)
   resumable_imports: ResumableImport[]; // J-34 paused imports (survive a backend restart); never a key
   unfinished_imports: UnfinishedImport[]; // J-38 unified unfinished imports (resumable + partial + failed)
   job_progress: JobProgressConfig; // J-66 poll/heartbeat/granularity knobs (config-driven)

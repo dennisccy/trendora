@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Activity,
   AlertTriangle,
   Database,
   KeyRound,
@@ -40,6 +41,7 @@ import {
   type DataJobKind,
   type DataOverviewResponse,
   type DataRun,
+  type MacroAvailability,
   type MissingDataDiagnostic,
   type PerSymbolCoverage,
   type ProviderSource,
@@ -435,6 +437,11 @@ export default function DataManagerPage() {
             onPull={handlePull}
             pullDisabled={Boolean(jobRunning)}
           />
+          {/* J-92: the OPTIONAL FRED macro feed catalog — env-detected availability, per-series committed-
+              seed coverage, honest blocked-NA for a walled/uncommitted series, and the per-leg
+              config-default-OFF flags. Read-only descriptive metadata; never a key value. */}
+          <MacroFeedPanel macro={state.data.macro} />
+
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <JobForm
               start={start}
@@ -533,6 +540,86 @@ function DefinedMetric({
       </p>
       <p className="text-xs leading-snug text-text-muted">{definition}</p>
     </div>
+  );
+}
+
+/** J-92 — the OPTIONAL FRED macro feed catalog in the Data Manager. Surfaces the macro provider's
+ *  env-detected live availability (the FRED key env-var NAME only — never the value), the per-leg
+ *  config-default-OFF enable flags, and each configured series' committed-seed coverage with an honest
+ *  blocked/unavailable (NA) state for a walled/uncommitted series. Read-only descriptive metadata —
+ *  fabricates nothing, and (since macro is config-default-OFF) the default analysis figures are unchanged. */
+function MacroFeedPanel({ macro }: { macro: MacroAvailability }) {
+  const anyEnabled = macro.enable.severity || macro.enable.regime_switching || macro.enable.study;
+  return (
+    <Card className="p-0" data-testid="macro-feed-panel">
+      <PanelTitle hint="Optional FRED macro feed — yield-curve, unemployment, and credit-spread series + their OHLCV proxies, publication-lag aligned. Config-default-OFF, so default analysis figures are unchanged. Live pulls read the FRED key from the environment only (never stored); a walled or uncommitted series is shown as NA, never fabricated.">
+        <span className="inline-flex items-center gap-2">
+          <Activity className="h-4 w-4 text-text-faint" aria-hidden />
+          {macro.label}
+        </span>
+      </PanelTitle>
+      <div className="space-y-3 p-4">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-text-muted">
+          <span>
+            <span className="text-text-faint">Provider: </span>
+            <span className="font-semibold text-text">{macro.provider}</span>
+          </span>
+          <span>
+            <span className="text-text-faint">Live key ({macro.env_var}): </span>
+            <Badge variant={macro.live_available ? "ok" : "default"} data-testid="macro-live-available">
+              {macro.live_available ? "detected" : "not set (NA)"}
+            </Badge>
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span className="text-text-faint">Wired legs: </span>
+            <Badge variant={macro.enable.severity ? "ok" : "default"}>severity {macro.enable.severity ? "on" : "off"}</Badge>
+            <Badge variant={macro.enable.regime_switching ? "ok" : "default"}>regime {macro.enable.regime_switching ? "on" : "off"}</Badge>
+            <Badge variant={macro.enable.study ? "ok" : "default"}>study {macro.enable.study ? "on" : "off"}</Badge>
+          </span>
+        </div>
+
+        {!anyEnabled ? (
+          <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-text-muted" data-testid="macro-default-off-note">
+            All macro legs are off by default — the dashboard market-phase panel and the Research downtrend
+            study use the price / breadth / VIX path only, so default figures are unchanged. Enable a leg in
+            config to incorporate macro inputs.
+          </p>
+        ) : null}
+
+        <div className="overflow-x-auto">
+          <table data-testid="macro-series-table" className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+                <th className="px-3 py-2 font-medium">Series</th>
+                <th className="px-3 py-2 font-medium">FRED id</th>
+                <th className="px-3 py-2 text-right font-medium">Pub. lag (days)</th>
+                <th className="px-3 py-2 font-medium">Proxy</th>
+                <th className="px-3 py-2 text-right font-medium">Committed obs.</th>
+                <th className="px-3 py-2 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {macro.series.map((s) => (
+                <tr key={s.id} className="border-b border-border last:border-b-0" data-testid={`macro-series-${s.id}`}>
+                  <td className="px-3 py-2 text-text">{s.label}</td>
+                  <td className="px-3 py-2 num text-text-muted">{s.fred_series_id}</td>
+                  <td className="px-3 py-2 num text-right text-text-muted">{s.publication_lag_days}</td>
+                  <td className="px-3 py-2 num text-text-muted">{s.proxy_symbol ?? "—"}</td>
+                  <td className="px-3 py-2 num text-right text-text">{s.committed_rows}</td>
+                  <td className="px-3 py-2">
+                    <Badge variant={s.available ? "ok" : "default"} title={s.reason}>
+                      {s.available ? "available" : "NA"}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <p className="text-xs leading-snug text-text-faint">{macro.publication_lag_note}</p>
+      </div>
+    </Card>
   );
 }
 

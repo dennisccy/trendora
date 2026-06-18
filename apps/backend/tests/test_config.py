@@ -702,3 +702,75 @@ def test_flat_base_nonpositive_ratio_raises(tmp_path):
     data["patterns"]["flat_base_breakout"]["min_breakout_volume_ratio"] = 0
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))
+
+
+# ==================================================================================================
+# iter-32 — J-91 conditioning-band catalog + J-92 macro config validation (typed/validated blocks).
+# ==================================================================================================
+def test_real_config_carries_downtrend_opportunity_and_macro():
+    """The real config.yaml carries the J-91 conditioning-band catalog + the J-92 macro block (env-var
+    name + series + default-OFF legs)."""
+    cfg = load_config()
+    do = cfg.research.downtrend_opportunity
+    assert [b.key for b in do.severity_bands]  # contiguous full-cover validated at load
+    assert [b.key for b in do.pbear_bands]
+    assert cfg.macro.env_var  # the env-var NAME only (never a key value)
+    assert [s.id for s in cfg.macro.series]
+    # macro ships DEFAULT-OFF on every leg (so default figures stay byte-identical)
+    assert cfg.macro.enable.severity is False
+    assert cfg.macro.enable.regime_switching is False
+    assert cfg.macro.enable.study is False
+
+
+def test_conditioning_band_catalog_must_be_contiguous_full_cover():
+    """J-91: a band catalog with a GAP (not full-cover) is rejected at load — so every displayable reading
+    lands in exactly one band (the study never drops a row)."""
+    from app.config import ConditioningBand, DowntrendOpportunityCfg
+
+    good_pbear = [
+        ConditioningBand(key="lo", label="lo", min=0.0, max=0.5),
+        ConditioningBand(key="hi", label="hi", min=0.5, max=1.0),
+    ]
+    # a severity catalog with a GAP (50..70 missing) -> ValueError
+    with pytest.raises(ValueError, match="contiguous|must end|must start"):
+        DowntrendOpportunityCfg(
+            severity_bands=[
+                ConditioningBand(key="a", label="a", min=0.0, max=50.0),
+                ConditioningBand(key="b", label="b", min=70.0, max=100.0),  # gap 50..70
+            ],
+            pbear_bands=good_pbear,
+        )
+    # a catalog that does not reach the scale top -> ValueError
+    with pytest.raises(ValueError, match="must end"):
+        DowntrendOpportunityCfg(
+            severity_bands=[ConditioningBand(key="a", label="a", min=0.0, max=80.0)],
+            pbear_bands=good_pbear,
+        )
+
+
+def test_macro_config_validates_unique_ids_and_lag():
+    """J-92: macro config validation — duplicate series ids rejected; a negative publication lag rejected;
+    a duplicate proxy symbol rejected."""
+    from app.config import MacroCfg, MacroSeriesCfg
+
+    with pytest.raises(ValueError, match="duplicate ids"):
+        MacroCfg(env_var="FRED_API_KEY", series=[
+            MacroSeriesCfg(id="x", fred_series_id="A", label="A", publication_lag_days=1),
+            MacroSeriesCfg(id="x", fred_series_id="B", label="B", publication_lag_days=1),
+        ])
+    with pytest.raises(ValueError, match="publication_lag_days must be >= 0"):
+        MacroSeriesCfg(id="x", fred_series_id="A", label="A", publication_lag_days=-1)
+    with pytest.raises(ValueError, match="duplicate proxy_symbol"):
+        MacroCfg(env_var="FRED_API_KEY", series=[
+            MacroSeriesCfg(id="x", fred_series_id="A", label="A", publication_lag_days=1, proxy_symbol="^Z"),
+            MacroSeriesCfg(id="y", fred_series_id="B", label="B", publication_lag_days=1, proxy_symbol="^Z"),
+        ])
+
+
+def test_macro_defaults_when_omitted(tmp_path):
+    """J-92: a config OMITTING the macro block + the downtrend block still loads (additive, default-OFF) —
+    so a config predating these blocks (and the inline test fixtures) is unaffected."""
+    cfg = load_config(_write(tmp_path, MINIMAL_VALID))
+    assert cfg.macro.enable.severity is False
+    assert cfg.macro.series == []
+    assert [b.key for b in cfg.research.downtrend_opportunity.severity_bands]  # built-in default catalog

@@ -40,6 +40,7 @@ from app.engine.research import (
     compute_factor_combination,
     compute_factor_lab,
     compute_regime_setup_pattern_study,
+    downtrend_opportunity_cached,
     event_study_cached,
     factor_catalog,
     recovery_turn_edge_cached,
@@ -48,6 +49,7 @@ from app.engine.research import (
 from app.engine.samples import (
     ALL_KINDS,
     KIND_COMBINATION,
+    KIND_DOWNTREND_OPPORTUNITY,
     KIND_EVENT_STUDY,
     KIND_FACTOR,
     KIND_RECOVERY_TURN,
@@ -358,6 +360,56 @@ def recovery_turn_edge(
     )
 
 
+@router.get("/research/downtrend-opportunity")
+def downtrend_opportunity(
+    horizon: Optional[int] = Query(default=None, description="forward window in trading days; defaults to config default_horizon"),
+    view: Optional[str] = Query(
+        default=None,
+        description="overlap-honesty view: episodes (default — first-trigger) | pooled (per-signal-day)",
+    ),
+    as_of: Optional[str] = Query(
+        default=None,
+        description="optional point-in-time cutoff (YYYY-MM-DD) — the single global as-of; omitted = all-history",
+    ),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Serve the Downtrend Opportunity study (J-91) for the requested `horizon` + `view` (defaults: config
+    default_horizon / `episodes`). Conditions the EXISTING forward-return evidence on the CAUSAL as-of
+    downtrend state (phase / severity band / P(bear) band, all <= D, from the read-only `market_phase`
+    derivation — never recomputed) and returns THREE angles: (a) held-up-best, (b) fell-hardest (EVIDENCE
+    ONLY — no order/execution affordance), and (c) the J-90 recovery-turn edge (reused verbatim). Validates
+    `horizon` against `walk_forward.horizons` and `view` against {episodes, pooled} (422 otherwise); 503
+    when no price data exists — mirroring the sibling research handlers exactly. The optional `as_of` (J-32)
+    scopes the pool + the causal context to snapshots dated <= D (the single global as-of — a mode, not a
+    second date state); omitted = all-history. The payload is `downtrend_opportunity_cached(...)` verbatim —
+    a read-only grouping of ALREADY-STORED forward returns by the causal conditioning tag, never recomputed
+    in the view. ADDITIVE — J-29/J-63/J-77/J-90 figures stay byte-identical."""
+    cfg: Config = get_config()
+    wf = cfg.walk_forward
+
+    if latest_data_date(session) is None:
+        raise HTTPException(status_code=503, detail="no price data available")
+
+    resolved_horizon = wf.default_horizon if horizon is None else horizon
+    if resolved_horizon not in wf.horizons:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown horizon {resolved_horizon}; valid horizons are {list(wf.horizons)}",
+        )
+
+    resolved_view = VIEW_EPISODES if view is None else view
+    if resolved_view not in ALL_VIEWS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown view {resolved_view!r}; valid views are {list(ALL_VIEWS)}",
+        )
+
+    cutoff = resolved_date(session, as_of, cfg) if as_of else None
+    return downtrend_opportunity_cached(
+        session, resolved_horizon, cfg, as_of=cutoff, view=resolved_view
+    )
+
+
 @router.get("/research/samples")
 def research_samples(
     kind: str = Query(description="analysis kind: factor | combination | event-study"),
@@ -383,6 +435,9 @@ def research_samples(
     pattern: Optional[str] = Query(default=None, description="pattern key or 'none' (regime-setup-pattern kind)"),
     # recovery-turn selector (J-90) — reuses `slice` (total|phase); `phase` is a market-phase label
     phase: Optional[str] = Query(default=None, description="a market-phase label (recovery-turn by-phase cohort)"),
+    # downtrend-opportunity selector (J-91) — `dimension` (phase|severity_band|pbear_band) + `cohort` (the
+    # cohort key in that dimension's config catalog)
+    dimension: Optional[str] = Query(default=None, description="downtrend conditioning dimension (phase|severity_band|pbear_band)"),
     as_of: Optional[str] = Query(
         default=None,
         description="optional point-in-time cutoff (YYYY-MM-DD) — the single global as-of; omitted = all-history",
@@ -418,7 +473,7 @@ def research_samples(
     # the event-study AND regime-setup-pattern kinds (422 otherwise); ignored for other kinds. A cohort/
     # mode selector, not a date.
     resolved_view: Optional[str] = None
-    if kind in (KIND_EVENT_STUDY, KIND_REGIME_SETUP_PATTERN, KIND_RECOVERY_TURN):
+    if kind in (KIND_EVENT_STUDY, KIND_REGIME_SETUP_PATTERN, KIND_RECOVERY_TURN, KIND_DOWNTREND_OPPORTUNITY):
         resolved_view = VIEW_EPISODES if view is None else view
         if resolved_view not in ALL_VIEWS:
             raise HTTPException(
@@ -458,6 +513,7 @@ def research_samples(
             conditions=conditions, cohort_kind=cohort, single_index=single_index,
             subject_key=subject, view=resolved_view,
             setup=setup, pattern=pattern, phase=phase,
+            dimension=dimension,
         )
     except ValueError as exc:
         # an unknown/out-of-range cohort selector is an explicit 4xx — never a silent empty 200 (which is

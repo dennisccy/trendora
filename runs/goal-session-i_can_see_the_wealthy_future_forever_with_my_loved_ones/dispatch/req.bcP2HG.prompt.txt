@@ -1,0 +1,33 @@
+You are the browser-qa-agent for phased development.
+
+Phase: goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32
+Phase spec: /home/dennisccy/Git/trendora/docs/phases/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32.md
+Agent instructions: .claude/agents/browser-qa-agent.md  <-- read this first
+(CLAUDE.md is already in your system prompt — do not Read it again.)
+Skill: .claude/skills/browser-workflow-executor.md  <-- read for Chrome MCP technique
+
+UI test plan: /home/dennisccy/Git/trendora/reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32-ui-test-plan.md  <-- execute each test case in this file
+UI surface map: /home/dennisccy/Git/trendora/reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32-ui-surface-map.md
+
+Frontend URL: http://localhost:3835
+Frontend available: yes
+Note: browser-qa-phase.sh manages backend (http://localhost:8835/health, log: /tmp/browser-qa-backend-8835.log) and frontend (http://localhost:3835, log: /tmp/browser-qa-frontend-8835.log). Services are restarted automatically if they die during quota-retry sleeps.
+
+Chrome MCP browser checks ARE required. Use mcp__plugin_superpowers-chrome_chrome__use_browser for each test case.
+
+Execute the test plan:
+- For each UT-XX test case: execute steps, verify expected result, record PASS/FAIL/SKIP
+- Take screenshots for key states and save to reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32-evidence/
+- For failures: record exact failure description
+
+Write your results to: /home/dennisccy/Git/trendora/reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32-ui-test-results.md
+Use template: templates/ui-test-results.md
+
+The report MUST contain a line at the top:
+**Browser QA Verdict:** PASS
+  or
+**Browser QA Verdict:** FAIL
+  or
+**Browser QA Verdict:** SKIPPED
+
+Then STOP.

@@ -54,6 +54,7 @@ from app.models import (
     DataProviderRun,
     ForwardReturn,
     ImportCheckpoint,
+    MacroSeries,
     ScannerResult,
     ScannerRun,
     SectorScoreRow,
@@ -968,6 +969,64 @@ def compute_provider_availability(config: Optional[Config] = None) -> list[dict]
             "reason": reason,
         })
     return sources
+
+
+def compute_macro_availability(session: Session, config: Optional[Config] = None) -> dict:
+    """The OPTIONAL FRED macro feed's read-only catalog + availability for the Data Manager (J-92). Reports
+    the macro provider's env-detected availability (the FRED key is read from `config.macro.env_var` — the
+    NAME only, NEVER the value), the per-leg config-default-OFF enable flags, and each configured series'
+    COMMITTED-SEED coverage (a count of `macro_series` rows + an honest blocked/unavailable NA state when a
+    series has no rows — a walled/uncommitted series, never a fabricated value). The output carries ONLY the
+    env-var NAME + a boolean + counts/labels — NEVER any key value (anti-goal: keys are env-or-session,
+    never persisted). Descriptive availability metadata — NOT a canonical score/return/bucket."""
+    cfg = config or get_config()
+    macro = cfg.macro
+    key_present = bool(macro.env_var and os.environ.get(macro.env_var))
+    series_rows: list[dict] = []
+    for s in macro.series:
+        count = int(
+            session.scalar(
+                select(func.count()).select_from(MacroSeries).where(MacroSeries.symbol == s.id)
+            )
+            or 0
+        )
+        series_rows.append({
+            "id": s.id,
+            "label": s.label,
+            "fred_series_id": s.fred_series_id,
+            "publication_lag_days": s.publication_lag_days,
+            "proxy_symbol": s.proxy_symbol,
+            "committed_rows": count,
+            # honest blocked/unavailable when no committed rows AND no live key (a walled/uncommitted
+            # series) — never a fabricated value. With committed seed rows the series is available offline.
+            "available": count > 0,
+            "reason": (
+                f"{count} committed seed observations"
+                if count > 0
+                else (
+                    f"no committed seed; live pull needs ${macro.env_var}"
+                    if not key_present
+                    else f"no committed seed; live pull available via ${macro.env_var}"
+                )
+            ),
+        })
+    return {
+        "provider": "fred",
+        "label": "FRED (macro feed)",
+        "env_var": macro.env_var,  # the NAME only — never a key value
+        "live_available": key_present,
+        "enable": {
+            "severity": macro.enable.severity,
+            "regime_switching": macro.enable.regime_switching,
+            "study": macro.enable.study,
+        },
+        "series": series_rows,
+        "publication_lag_note": (
+            "Macro inputs are optional and config-default-OFF, so default figures are unchanged. A macro "
+            "value is used for a date only once published (publication-lag aligned, published_date ≤ D) — "
+            "never the reference-date value. A walled or uncommitted series is shown as NA, never fabricated."
+        ),
+    }
 
 
 # --------------------------------------------------------------------------------------------------

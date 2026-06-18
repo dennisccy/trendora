@@ -715,3 +715,167 @@ def test_api_future_as_of_400(loaded_engine):
     """A future `?as_of=` is rejected 400 — never a fabricated forward phase."""
     with TestClient(main.app) as client:
         assert client.get("/api/market-phase?as_of=2999-01-01").status_code == 400
+
+
+# ==================================================================================================
+# iter-32 (J-92) — Optional FRED macro feed + macro proxies (config-default-OFF). FAST synthetic tests for
+# the anti-goal-critical legs: macro-disabled byte-identity of every J-87..J-91 figure; publication-lag
+# (published_date <= D, never the reference-date value); FRED key env-only never persisted/logged/echoed;
+# a walled provider -> honest blocked-NA never fabricated; the macro provider registered in make_provider.
+# ==================================================================================================
+from app.engine.market_phase import _macro_value_asof, phase_context_by_date  # noqa: E402
+from app.models import MacroSeries  # noqa: E402
+
+
+def _insert_macro(session, series_id, rows, *, source="seed"):
+    """Insert MacroSeries rows: `rows` is [(reference_date, value, published_date)]."""
+    session.execute(insert(MacroSeries.__table__), [
+        {"symbol": series_id, "date": d, "value": v, "source": source, "published_date": p}
+        for d, v, p in rows
+    ])
+
+
+def test_macro_disabled_is_byte_identical_to_price_only(loaded_engine=None):
+    """CRITICAL macro-disabled byte-identity (J-92): with the macro legs DISABLED (the default), inserting
+    macro rows changes NO J-87/J-88 figure — the severity, components, filtered P(bear), timeline, and
+    episodes are byte-identical to the price/breadth/VIX-only path."""
+    cfg = _small_config()
+    assert cfg.macro.enable.severity is False and cfg.macro.enable.regime_switching is False
+    engine, dates = _v_shape_engine(cfg)
+    with Session(engine) as session:
+        before = compute_market_phase(session, dates[-1], cfg)
+        # add macro rows + proxy bars for the whole window (published immediately, so they WOULD be causal)
+        _insert_macro(session, "credit_spread", [(d, 5.0 + i, d) for i, d in enumerate(dates)])
+        _insert_macro(session, "yield_curve_10y2y", [(d, -1.0, d) for d in dates])
+        session.commit()
+        after = compute_market_phase(session, dates[-1], cfg)
+    for key in ("severity", "phase", "p_bear", "components", "timeline", "episodes", "observations"):
+        assert json.dumps(after[key]) == json.dumps(before[key]), f"{key} changed with macro disabled"
+
+
+def test_macro_disabled_phase_context_byte_identical(loaded_engine=None):
+    """CRITICAL macro-disabled byte-identity (J-91/J-92): the J-91 causal phase-context accessor is
+    byte-identical with macro rows present-but-disabled (the conditioning tags don't shift)."""
+    cfg = _small_config()
+    engine, dates = _v_shape_engine(cfg)
+    with Session(engine) as session:
+        before = phase_context_by_date(session, None, cfg)
+        _insert_macro(session, "credit_spread", [(d, 9.0, d) for d in dates])
+        session.commit()
+        after = phase_context_by_date(session, None, cfg)
+    assert json.dumps(before, sort_keys=True) == json.dumps(after, sort_keys=True)
+
+
+def test_macro_enabled_severity_leg_shifts_severity(loaded_engine=None):
+    """J-92: ENABLING the severity leg (config edit) with a configured stress_gate + weight DOES shift the
+    severity (the macro stress is folded into the available-weight blend) — proving the leg is real, not a
+    dead branch. The DEFAULT (disabled) stays byte-identical (asserted above)."""
+    cfg = _small_config()
+    cfg.macro.enable.severity = True
+    # configure a severity-leg scaling on the seed series (weight + stress_gate) — config-driven, no literal
+    series = next(s for s in cfg.macro.series if s.id == "credit_spread")
+    series.weight = 0.5
+    series.stress_gate = 5.0
+    engine, dates = _v_shape_engine(cfg)
+    with Session(engine) as session:
+        # a HIGH credit-spread reading published on/before every date -> a high macro stress leg
+        _insert_macro(session, "credit_spread", [(d, 20.0, d) for d in dates])
+        session.commit()
+        with_macro = compute_market_phase(session, dates[-1], cfg)
+        # disable the leg -> the price/breadth/VIX-only severity (the byte-identity baseline)
+        cfg.macro.enable.severity = False
+        without = compute_market_phase(session, dates[-1], cfg)
+    assert with_macro["severity"] != without["severity"]  # the enabled leg moved the severity
+    macro_components = [c for c in with_macro["components"] if c["name"].startswith("macro_")]
+    assert macro_components and macro_components[0]["available"] is True  # the leg is disclosed/explainable
+
+
+def test_macro_publication_lag_no_lookahead(loaded_engine=None):
+    """J-92 publication-lag (CRITICAL): `_macro_value_asof` uses ONLY a value whose `published_date <= D`
+    — the reference-date value on D (whose publication is LATER) is forbidden lookahead and is never used."""
+    cfg = _small_config()
+    engine = _engine()
+    with Session(engine) as session:
+        ref = date(2024, 6, 1)
+        published = date(2024, 7, 6)  # a 35-day reporting lag (unemployment-style)
+        _insert_macro(session, "unemployment_rate", [(ref, 4.2, published)])
+        session.commit()
+        # on the reference date the value is NOT yet published -> not usable (no lookahead)
+        assert _macro_value_asof(session, "unemployment_rate", ref) is None
+        # the day before publication it is still not usable
+        assert _macro_value_asof(session, "unemployment_rate", published - timedelta(days=1)) is None
+        # on/after the publication date it becomes usable, read verbatim
+        assert _macro_value_asof(session, "unemployment_rate", published) == 4.2
+        assert _macro_value_asof(session, "unemployment_rate", published + timedelta(days=10)) == 4.2
+
+
+def test_macro_walled_series_is_honest_na_never_fabricated(loaded_engine=None):
+    """J-92 data honesty: a series with NO committed rows (a walled/uncommitted series) yields None — an
+    honest blocked-NA, never a fabricated value."""
+    cfg = _small_config()
+    engine = _engine()
+    with Session(engine) as session:
+        assert _macro_value_asof(session, "no_such_series", date(2024, 6, 1)) is None
+
+
+def test_fred_provider_registered_env_only_no_fabrication():
+    """J-92: the FRED macro provider is registered in make_provider; the key is env-only (a no-key provider
+    RAISES rather than fabricating); a misrouted OHLCV fetch RAISES (macro only); the error never echoes a
+    key. None of this writes/logs/echoes a key value."""
+    from app.data_providers import make_provider
+    from app.data_providers.base import ProviderUnavailableError
+
+    provider = make_provider("fred")  # registered like the OHLCV providers
+    assert type(provider).__name__ == "FredProvider"
+    # no key -> raises (never a silent fallback / fabricated value)
+    with pytest.raises(ProviderUnavailableError):
+        provider.get_macro_series("T10Y2Y", 1)
+    # FRED serves macro, not OHLCV bars -> get_daily raises (never a fabricated bar)
+    with pytest.raises(ProviderUnavailableError):
+        provider.get_daily("SPY")
+    # the no-key error names the requirement WITHOUT echoing any key value
+    try:
+        make_provider("fred", api_key=None).get_macro_series("T10Y2Y", 1)
+    except ProviderUnavailableError as exc:
+        assert "FRED" in str(exc) or "FredProvider" in str(exc)
+
+
+def test_fred_provider_parses_observations_and_applies_lag():
+    """J-92: with a key + an injected client returning a canned FRED body, the provider parses the
+    observations (excluding FRED `.` missing values) and applies the publication lag
+    (published_date = reference_date + publication_lag_days). It never fabricates a value."""
+    from app.data_providers.fred_provider import FredProvider
+
+    class _FakeResponse:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    class _FakeClient:
+        def get(self, url, params=None, headers=None, timeout=None):
+            return _FakeResponse({
+                "observations": [
+                    {"date": "2024-06-01", "value": "4.2"},
+                    {"date": "2024-07-01", "value": "."},      # FRED missing -> EXCLUDED, never fabricated
+                    {"date": "2024-08-01", "value": "4.5"},
+                ]
+            })
+
+    provider = FredProvider(api_key="dummy-env-key", client=_FakeClient())
+    obs = provider.get_macro_series("UNRATE", 35)
+    assert [o.value for o in obs] == [4.2, 4.5]                 # the `.` row excluded
+    assert obs[0].date == date(2024, 6, 1)
+    assert obs[0].published_date == date(2024, 6, 1) + timedelta(days=35)  # publication lag applied
+
+
+def test_macro_series_standalone_table_present():
+    """J-92: the standalone macro_series table is created by create_all (registered in test_db's
+    expected-tables MACRO_TABLES group — asserted there); a fresh DB carries it."""
+    from sqlmodel import SQLModel
+
+    assert "macro_series" in SQLModel.metadata.tables

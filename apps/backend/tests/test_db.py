@@ -50,6 +50,14 @@ RESEARCH_CACHE_TABLES = {"event_study_cache"}
 # to a fresh compute; the cache key carries the SAME dataset_version stamp J-72 uses (single-sourced).
 MARKET_PHASE_CACHE_TABLES = {"market_phase_cache"}
 
+# iter-32 (J-92) standalone, create_all-managed optional FRED macro-feed store. Same reasoning as
+# RESEARCH_CACHE_TABLES / MARKET_PHASE_CACHE_TABLES: a separate additive table (NOT a snapshot — the
+# *Snapshots are immutable* anti-goal binds only scanner_runs/results/scores/forward_returns), a
+# STANDALONE table so a fresh DB carries it and no EXISTING table gains a column (the `_ADDITIVE_COLUMNS`
+# trap does not apply). The `^TNX`/`^DXY`/`^VXN` OHLCV macro PROXIES ride the existing daily_prices table
+# → no schema change there. Macro ships config-default-OFF (no rows ⇒ every J-87..J-91 figure unchanged).
+MACRO_TABLES = {"macro_series"}
+
 # iter-25 (J-38): `DataProviderRun.dismissed` is a MUTABLE job-control COLUMN added to the existing
 # data_provider_runs table — it adds NO new table, so the expected-tables set below is unchanged. The
 # explicit assertion in test_data_provider_run_has_dismissed_column verifies the column exists.
@@ -59,7 +67,7 @@ def test_create_all_produces_expected_tables():
     assert (
         set(SQLModel.metadata.tables.keys())
         == ITER1_TABLES | SNAPSHOT_TABLES | WATCHLIST_TABLES | IMPORT_TABLES
-        | RESEARCH_CACHE_TABLES | MARKET_PHASE_CACHE_TABLES
+        | RESEARCH_CACHE_TABLES | MARKET_PHASE_CACHE_TABLES | MACRO_TABLES
     )
 
 

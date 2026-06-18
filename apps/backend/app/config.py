@@ -888,6 +888,81 @@ class CombinationCfg(BaseModel):
         return self
 
 
+# iter-32 (J-91) — the conditioning-band vocabulary for the Downtrend Opportunity study. Each band is a
+# half-open `[min, max)` numeric range (the LAST band is inclusive at its max so the top of the scale is
+# covered). The phase dimension reuses `config.market_phase.labels` (no separate catalog); only the two
+# CONTINUOUS dimensions (severity 0..100, P(bear) 0..1) need an explicit band catalog so the study slices
+# them into named cohorts without a hard-coded edge in calc code (anti-goal: No magic numbers).
+class ConditioningBand(BaseModel):
+    """One named conditioning band (J-91) over a continuous causal reading. `key` is the stable cohort id
+    a samples drill-down round-trips; `label` is the display string; `min`/`max` are the half-open band
+    edges (`min <= value < max`, with the band whose `max` is the scale top inclusive at `max`). A fixed
+    structural membership rule — only the edges + labels live in config (no edge literal in calc code)."""
+
+    model_config = ConfigDict(extra="allow")
+    key: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    min: float
+    max: float
+
+    @model_validator(mode="after")
+    def _validate(self) -> "ConditioningBand":
+        if self.max <= self.min:
+            raise ValueError(
+                f"conditioning band {self.key!r} must have max ({self.max}) > min ({self.min})"
+            )
+        return self
+
+
+def _validate_band_catalog(bands: list["ConditioningBand"], name: str, scale_top: float) -> None:
+    """Validate one conditioning-band catalog (J-91): unique keys, ascending non-overlapping coverage of
+    `[0, scale_top]` (the first band starts at 0, each band's `min` equals the prior band's `max`, the last
+    band's `max` equals `scale_top`). A gap/overlap/partial-cover raises `ValueError` at boot — never a
+    silent default (so every displayable value lands in exactly one band; the study never drops a row)."""
+    keys = [b.key for b in bands]
+    dupes = sorted({k for k in keys if keys.count(k) > 1})
+    if dupes:
+        raise ValueError(f"{name} have duplicate keys: {dupes}")
+    ordered = sorted(bands, key=lambda b: b.min)
+    if ordered[0].min != 0:
+        raise ValueError(f"{name} must start at 0, got {ordered[0].min}")
+    if ordered[-1].max != scale_top:
+        raise ValueError(f"{name} must end at {scale_top}, got {ordered[-1].max}")
+    for prev, nxt in zip(ordered, ordered[1:]):
+        if nxt.min != prev.max:
+            raise ValueError(
+                f"{name} must be contiguous (no gap/overlap): band {prev.key!r} ends at {prev.max} "
+                f"but band {nxt.key!r} starts at {nxt.min}"
+            )
+
+
+class DowntrendOpportunityCfg(BaseModel):
+    """The Downtrend Opportunity study's conditioning vocabulary (iter-32, J-91 — consumed by
+    `app.engine.research.compute_downtrend_opportunity_study`). The study groups the SAME stored
+    event-study observation set, additively tagged with the CAUSAL as-of phase / severity band / P(bear)
+    band at each observation's snapshot date (read from the read-only `market_phase` derivation, <= D).
+
+    The PHASE dimension reuses `config.market_phase.labels` (no separate list). The two continuous
+    dimensions need an explicit band catalog so the study slices them deterministically WITHOUT a
+    hard-coded edge in calc code (anti-goal: No magic numbers):
+      - `severity_bands` — named bands over the 0..100 severity scale (contiguous, covering 0..100).
+      - `pbear_bands` — named bands over the 0..1 filtered-P(bear) scale (contiguous, covering 0..1).
+
+    The horizons + min-sample threshold are REUSED from `config.walk_forward` (no new threshold). Both
+    catalogs are boot-validated for unique keys + contiguous full coverage so every displayable reading
+    lands in exactly one band (the study never drops or fabricates a cohort)."""
+
+    model_config = ConfigDict(extra="allow")
+    severity_bands: list[ConditioningBand] = Field(min_length=1)
+    pbear_bands: list[ConditioningBand] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "DowntrendOpportunityCfg":
+        _validate_band_catalog(self.severity_bands, "research.downtrend_opportunity.severity_bands", 100.0)
+        _validate_band_catalog(self.pbear_bands, "research.downtrend_opportunity.pbear_bands", 1.0)
+        return self
+
+
 class FactorLabCfg(BaseModel):
     """Factor-Lab config (iter-10, J-25). `deciles` (validated > 1) is the equal-count quantile count;
     `factors` is the ordered, config-driven catalog; `combination` (iter-12, J-26) is the typed
@@ -926,11 +1001,40 @@ class FactorLabCfg(BaseModel):
 
 class ResearchCfg(BaseModel):
     """The Research-lab analytics config (iter-10). Holds one typed sub-block per lab; the FIRST is the
-    Factor Lab (J-25). Designed to grow additively (event study J-29, etc.) exactly like `PatternsCfg`
-    grew its detector sub-blocks."""
+    Factor Lab (J-25). Designed to grow additively (event study J-29, downtrend opportunity J-91, etc.)
+    exactly like `PatternsCfg` grew its detector sub-blocks.
+
+    `downtrend_opportunity` (iter-32, J-91) is the conditioning-band vocabulary for the Downtrend
+    Opportunity study. It defaults to a sane built-in catalog so a config predating it (and the inline test
+    fixtures) still loads — the real `config.yaml` supplies the tuned bands. The forward `DowntrendOpportunityCfg`
+    is constructed below the class so the default can name it."""
 
     model_config = ConfigDict(extra="allow")
     factor_lab: FactorLabCfg
+    downtrend_opportunity: "DowntrendOpportunityCfg" = Field(
+        default_factory=lambda: _default_downtrend_opportunity()
+    )
+
+
+def _default_downtrend_opportunity() -> "DowntrendOpportunityCfg":
+    """The built-in default Downtrend Opportunity conditioning catalog (J-91) — used when a config predating
+    the block (or an inline test fixture) omits `research.downtrend_opportunity`. The real `config.yaml`
+    supplies the tuned bands; this default keeps the smallest valid config loading. Contiguous, full-cover
+    over 0..100 (severity) and 0..1 (P(bear)), so every displayable reading lands in exactly one band."""
+    return DowntrendOpportunityCfg(
+        severity_bands=[
+            ConditioningBand(key="calm", label="Calm (0–30)", min=0.0, max=30.0),
+            ConditioningBand(key="elevated", label="Elevated (30–50)", min=30.0, max=50.0),
+            ConditioningBand(key="stressed", label="Stressed (50–70)", min=50.0, max=70.0),
+            ConditioningBand(key="severe", label="Severe (70–100)", min=70.0, max=100.0),
+        ],
+        pbear_bands=[
+            ConditioningBand(key="low", label="Low P(bear) (0–0.25)", min=0.0, max=0.25),
+            ConditioningBand(key="moderate", label="Moderate P(bear) (0.25–0.50)", min=0.25, max=0.50),
+            ConditioningBand(key="high", label="High P(bear) (0.50–0.75)", min=0.50, max=0.75),
+            ConditioningBand(key="extreme", label="Extreme P(bear) (0.75–1.0)", min=0.75, max=1.0),
+        ],
+    )
 
 
 # iter-29 (J-87 / J-88) — the named severity-component weight set. The deterministic drawdown-severity
@@ -1509,6 +1613,102 @@ class DataManagerCfg(BaseModel):
         return self
 
 
+# iter-32 (J-92) — the optional FRED macro feed config. EVERY tunable the macro provider + the
+# config-default-OFF macro-conditioning legs read lives here (anti-goal: No magic numbers — no series id /
+# publication-lag / enable literal in calc code). Macro ships DEFAULT-OFF so with it absent/disabled every
+# J-87..J-91 figure is byte-identical to the price/breadth/VIX-only path.
+class MacroSeriesCfg(BaseModel):
+    """One configured FRED macro series (iter-32, J-92). `id` is the stable internal key the
+    `MacroSeries` table stores + a wiring leg references; `fred_series_id` is the upstream FRED series
+    identifier the provider fetches (e.g. `T10Y2Y`); `label` is the display string; `publication_lag_days`
+    is the calendar-day reporting lag — a value is only usable for date D when `published_date <= D` (so
+    `published_date = reference_date + publication_lag_days`); using the reference-date value on D is
+    forbidden lookahead. `proxy_symbol` (optional) is the OHLCV `DailyPrice` proxy ticker (`^TNX`/`^DXY`/
+    `^VXN`) the same series may also ride as a plain price bar. No key VALUE is ever stored here."""
+
+    model_config = ConfigDict(extra="allow")
+    id: str = Field(min_length=1)
+    fred_series_id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    publication_lag_days: int
+    proxy_symbol: Optional[str] = None
+    # the OPTIONAL severity-leg scaling (consumed ONLY when `macro.enable.severity`): the macro value is
+    # scaled to a [0, 1] stress reading via `min(1, abs(value) / stress_gate)` and blended at `weight`
+    # into the severity components (mirroring the ^VIX gate). Both default 0/None so an enabled leg with
+    # no scaling configured contributes NOTHING (never a fabricated component); a configured `weight` must
+    # be >= 0 and `stress_gate` (when present) must be positive. No magic number — every tunable is config.
+    stress_gate: Optional[float] = None
+    weight: float = 0.0
+
+    @model_validator(mode="after")
+    def _validate(self) -> "MacroSeriesCfg":
+        if self.publication_lag_days < 0:
+            raise ValueError(
+                f"macro.series {self.id!r} publication_lag_days must be >= 0, got {self.publication_lag_days}"
+            )
+        if self.weight < 0:
+            raise ValueError(f"macro.series {self.id!r} weight must be >= 0, got {self.weight}")
+        if self.stress_gate is not None and self.stress_gate <= 0:
+            raise ValueError(
+                f"macro.series {self.id!r} stress_gate must be positive when set, got {self.stress_gate}"
+            )
+        return self
+
+
+class MacroEnableCfg(BaseModel):
+    """The per-leg config-default-OFF enable flags for the optional macro inputs (iter-32, J-92). Each leg
+    is OFF by default, so with macro disabled every J-87..J-91 figure is byte-identical to the
+    price/breadth/VIX-only path (the byte-identity-when-disabled keystone). Enabling a leg is a deliberate
+    config edit — the default boot never changes a figure."""
+
+    model_config = ConfigDict(extra="allow")
+    severity: bool = False           # wire macro into the J-87 severity score
+    regime_switching: bool = False   # wire macro into the J-88 regime-switching observation/emissions
+    study: bool = False              # wire macro into the J-91 study conditioning
+
+
+class MacroCfg(BaseModel):
+    """The optional FRED macro-feed config (iter-32, J-92 — consumed by the macro provider + the
+    config-default-OFF macro-conditioning legs). EVERY series id / publication-lag / enable flag lives here
+    (anti-goal: No magic numbers). The FRED key is read FROM THE ENVIRONMENT ONLY via `env_var` (the NAME
+    only — never a key VALUE here, in the DB, the run log, or any committed file).
+
+      - `env_var` — the environment-variable NAME the FRED key is read from (the NAME only).
+      - `series` — the configured macro series (id + FRED series id + publication lag + optional proxy).
+      - `enable` — the per-leg config-default-OFF flags (severity / regime_switching / study).
+
+    Boot-validated: unique series ids; unique non-null proxy symbols. Default-disabled with an empty series
+    list is valid (the smallest config / the inline test fixtures need no macro block tuning)."""
+
+    model_config = ConfigDict(extra="allow")
+    env_var: str = Field(min_length=1)
+    series: list[MacroSeriesCfg] = Field(default_factory=list)
+    enable: MacroEnableCfg = Field(default_factory=MacroEnableCfg)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "MacroCfg":
+        ids = [s.id for s in self.series]
+        dupes = sorted({i for i in ids if ids.count(i) > 1})
+        if dupes:
+            raise ValueError(f"macro.series have duplicate ids: {dupes}")
+        proxies = [s.proxy_symbol for s in self.series if s.proxy_symbol]
+        proxy_dupes = sorted({p for p in proxies if proxies.count(p) > 1})
+        if proxy_dupes:
+            raise ValueError(f"macro.series have duplicate proxy_symbol values: {proxy_dupes}")
+        return self
+
+    def series_by_id(self, series_id: str) -> Optional["MacroSeriesCfg"]:
+        """The configured series for `series_id`, or None when it is not configured."""
+        return next((s for s in self.series if s.id == series_id), None)
+
+
+def _default_macro() -> "MacroCfg":
+    """The built-in default macro config (J-92) — used when a config predating the block (or an inline test
+    fixture) omits `macro`. DEFAULT-OFF with NO configured series, so it changes no figure and adds no
+    macro proxy; the real `config.yaml` supplies the env-var name + the series + (still default-off) legs."""
+    return MacroCfg(env_var="FRED_API_KEY")
+
+
 class Config(BaseModel):
     """Validated view of config.yaml. Only the iter-1-consumed sections are typed/validated;
     scaffolded sections ride along via extra="allow" so they can be tuned without code edits."""
@@ -1547,6 +1747,10 @@ class Config(BaseModel):
     # `app.engine.market_phase`; no literal lives in that module.
     market_phase: MarketPhaseCfg
     regime_switching: RegimeSwitchingCfg
+    # iter-32 (J-92) — the OPTIONAL FRED macro feed config (provider env-var name + per-series id +
+    # publication-lag + the per-leg config-default-OFF enable flags). Defaults to a DEFAULT-OFF, no-series
+    # block so a config predating it (and the inline test fixtures) still loads and changes no figure.
+    macro: MacroCfg = Field(default_factory=_default_macro)
 
     @field_validator("themes")
     @classmethod

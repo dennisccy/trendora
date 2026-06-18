@@ -71,12 +71,26 @@ export interface RecoveryTurnCohortParams {
   phase?: string;
 }
 
+/** A Downtrend Opportunity cohort chip (J-91): ONE (dimension, cohort) conditioned group. `dimension` is
+ *  phase | severity_band | pbear_band; `cohort` is the cohort key in that dimension's config catalog (e.g.
+ *  "severe", "Bear", "extreme"). `view` (J-63) is the overlap-honesty MODE — episodes (default) or pooled —
+ *  so the drill-down reproduces the same mode + cohort. Held-up-best + fell-hardest share cohorts, so a
+ *  chip from either angle drills into the SAME (dimension, cohort). */
+export interface DowntrendOpportunityCohortParams {
+  kind: "downtrend-opportunity";
+  horizon: number;
+  dimension: "phase" | "severity_band" | "pbear_band";
+  cohort: string;
+  view: "episodes" | "pooled";
+}
+
 export type CohortParams =
   | FactorCohortParams
   | CombinationCohortParams
   | EventStudyCohortParams
   | RegimeSetupPatternCohortParams
-  | RecoveryTurnCohortParams;
+  | RecoveryTurnCohortParams
+  | DowntrendOpportunityCohortParams;
 
 /** Serialize a cohort + the analysis-mode scope into the `/research/samples` path (no `?asof` — that is
  *  merged by `useAsOfHref` at the link site). Repeated `condition` params are preserved. */
@@ -113,6 +127,12 @@ export function buildSamplesHref(cohort: CohortParams, scope: SampleScope): stri
     if (cohort.slice === "phase" && cohort.phase !== undefined) {
       params.set("phase", cohort.phase);
     }
+  } else if (cohort.kind === "downtrend-opportunity") {
+    // J-91: the downtrend-conditioned cohort (dimension + the band/phase cohort key) + the view. The
+    // cohort key rides the `cohort` param (the SAME param the combination cohort uses for its family).
+    params.set("dimension", cohort.dimension);
+    params.set("cohort", cohort.cohort);
+    params.set("view", cohort.view);
   } else {
     params.set("subject", cohort.subject);
     params.set("slice", cohort.slice);

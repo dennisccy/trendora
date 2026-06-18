@@ -1787,3 +1787,323 @@ def recovery_turn_edge_cached(
     except Exception:  # best-effort cache; a concurrent writer raced us — the payload is byte-identical
         session.rollback()
     return payload
+
+
+# --------------------------------------------------------------------------------------------------
+# Downtrend Opportunity study (J-91) — read-only over the SAME enriched event-study observation set, each
+# observation ADDITIVELY tagged with the CAUSAL as-of phase / severity band / P(bear) band at its snapshot
+# date (from the read-only `market_phase` derivation, <= D — never recomputed; the FILTERED P(bear) only,
+# never the J-89 SMOOTHED/true-bear fence). NO new computation: every figure is a pure grouping of stored
+# values (realized return + MAE/MFE + max_drawdown) by a causal conditioning tag — the SAME read-only class
+# as the J-29 event study. NOT a fitted/learned/ML model. The weakness angle is EVIDENCE ONLY — no
+# order/execution/short-deployment affordance. Angle (c) REUSES `compute_recovery_turn_edge` verbatim.
+# --------------------------------------------------------------------------------------------------
+# The three conditioning DIMENSIONS the study groups by. A fixed structural vocabulary (not a tunable) —
+# `phase` reads `config.market_phase.labels`; `severity_band`/`pbear_band` read the config-backed band
+# catalogs (`config.research.downtrend_opportunity`). The samples drill-down validates a requested
+# dimension against this set (422 otherwise).
+DIM_PHASE = "phase"
+DIM_SEVERITY_BAND = "severity_band"
+DIM_PBEAR_BAND = "pbear_band"
+ALL_DOWNTREND_DIMENSIONS = (DIM_PHASE, DIM_SEVERITY_BAND, DIM_PBEAR_BAND)
+
+
+def _band_for(value: Optional[float], bands: list) -> Optional[str]:
+    """The band KEY a continuous reading falls in (J-91): the first `ConditioningBand` whose
+    `min <= value < max`, with the band whose `max` is the scale top INCLUSIVE at `max` (so the very top of
+    the scale is covered). None when `value` is None (an honest no-tag — never fabricated). The catalog is
+    boot-validated contiguous + full-cover, so every non-null reading lands in exactly one band."""
+    if value is None:
+        return None
+    scale_top = max(b.max for b in bands)
+    for band in bands:
+        if band.min <= value < band.max:
+            return band.key
+        if value == band.max == scale_top:
+            return band.key
+    return None  # defensive: a value outside [0, scale_top] (the catalog is validated to cover the scale)
+
+
+def _downtrend_opportunity_observation_set(
+    session: Session, horizon: int, view: str, cfg: Config, as_of: Optional[date_cls] = None
+) -> list[dict]:
+    """The SINGLE observation set the Downtrend Opportunity study AND its samples drill-down BOTH read
+    (count-coherence keystone — one membership rule). Pools the SAME enriched event-study observations
+    (`_regime_setup_pattern_observations` — every stored (run, ticker) with a realized `ForwardReturn` at
+    `horizon`, each carrying its stored regime/setup/pattern/sector + realized return + MAE/MFE +
+    max_drawdown read VERBATIM), then ADDITIVELY tags each with the CAUSAL as-of phase / severity band /
+    P(bear) band at its snapshot date (from the read-only `market_phase.phase_context_by_date` derivation,
+    <= the resolved as-of — never recomputed; the FILTERED P(bear) only, never the J-89 SMOOTHED fence).
+    An observation whose snapshot date has no derivable causal context (insufficient history) carries
+    `phase=None`/band=None and is honestly EXCLUDED from a conditioned cohort (never fabricated).
+
+    `view` (J-63): episodes (default — first-trigger collapse) | pooled (per-signal-day) — reuses the SAME
+    `_regime_setup_pattern_observations` collapse so the conditioning rides the SAME membership. `as_of`
+    (J-32) scopes BOTH the observation pool and the causal context to snapshots dated <= D (a FILTER only —
+    no recompute, no second date state). SELECT-only + the read-only derivation; recomputes NO return /
+    excursion / score / regime / phase / signal."""
+    from app.engine.market_phase import phase_context_by_date  # lazy import (avoids a config/research cycle)
+
+    members = _regime_setup_pattern_observations(session, horizon, view, cfg, as_of)
+    if not members:
+        return []
+    # the CAUSAL phase/severity/P(bear) at each snapshot date (<= the resolved as-of) — read from the SAME
+    # single derivation the panel reads (never a second computation, never the SMOOTHED retrospective).
+    context_by_date = phase_context_by_date(session, as_of, cfg)
+    run_dates = {run.id: run.asof_date.isoformat() for run in session.exec(select(ScannerRun)).all()}
+
+    do = cfg.research.downtrend_opportunity
+    tagged: list[dict] = []
+    for obs in members:
+        signal_date = run_dates.get(obs["run_id"])
+        ctx = context_by_date.get(signal_date) if signal_date is not None else None
+        phase = ctx["phase"] if ctx is not None else None
+        severity = ctx["severity"] if ctx is not None else None
+        p_bear = ctx["p_bear"] if ctx is not None else None
+        tagged.append({
+            **obs,
+            "signal_date": signal_date,
+            "signal_phase": phase,
+            "signal_severity": severity,
+            "signal_p_bear": p_bear,
+            "signal_severity_band": _band_for(severity, do.severity_bands),
+            "signal_pbear_band": _band_for(p_bear, do.pbear_bands),
+        })
+    return tagged
+
+
+def _downtrend_member_dimension_value(obs: dict, dimension: str) -> Optional[str]:
+    """The band/label value ONE observation contributes to for a conditioning `dimension` (J-91) — the
+    SAME membership rule the aggregate AND the samples drill-down apply (so a cohort's n equals its
+    drill-down total by construction). None when the observation has no causal tag for that dimension
+    (insufficient history) — honestly excluded from a conditioned cohort, never fabricated."""
+    if dimension == DIM_PHASE:
+        return obs["signal_phase"]
+    if dimension == DIM_SEVERITY_BAND:
+        return obs["signal_severity_band"]
+    if dimension == DIM_PBEAR_BAND:
+        return obs["signal_pbear_band"]
+    return None
+
+
+def _downtrend_dimension_catalog(cfg: Config) -> dict[str, list[dict]]:
+    """The config-driven conditioning vocabulary served in the payload (J-91): per dimension an ordered
+    list of `{key, label}` cohorts. `phase` reads `config.market_phase.labels`; the two band dimensions
+    read the config-backed band catalogs. No hard-coded list — a config-added phase/band flows through with
+    no code change. The study emits one row per (dimension, catalog entry) cohort, even at n=0 (honest NA)."""
+    do = cfg.research.downtrend_opportunity
+    return {
+        DIM_PHASE: [{"key": label, "label": label} for label in cfg.market_phase.labels],
+        DIM_SEVERITY_BAND: [{"key": b.key, "label": b.label} for b in do.severity_bands],
+        DIM_PBEAR_BAND: [{"key": b.key, "label": b.label} for b in do.pbear_bands],
+    }
+
+
+def _downtrend_cohort_stats(members: list[dict], min_sample: int) -> dict:
+    """Per-cohort descriptive stats over the conditioned members' realized returns (read-only, J-91): `n`,
+    `low_sample`, `mean`, `median`, `pct_positive` (hit-rate), `expectancy`, the aggregate mean
+    max-drawdown, and BOTH downside-only risk-adjusted figures (return/downside-dev REUSING `_risk_adjusted`;
+    return/mean-|MAE| REUSING `_return_per_mae`) — never total volatility. An empty cohort yields None for
+    every figure (honest NA, never a fabricated 0). Mirrors `_rsp_stats` so the frontend reuses the renderer."""
+    returns = [m["return"] for m in members]
+    maes = [m["mae"] for m in members if m["mae"] is not None]
+    mdds = [m["max_drawdown"] for m in members if m.get("max_drawdown") is not None]
+    n = len(returns)
+    dist = _distribution(returns)
+    return {
+        "n": n,
+        "low_sample": n < min_sample,
+        "mean": dist["mean_return"],
+        "median": dist["median"],
+        "pct_positive": dist["pct_positive"],
+        "expectancy": _expectancy(returns)["expectancy"],
+        "mean_max_drawdown": _mean_or_none(mdds),
+        "return_per_downside_dev": _risk_adjusted(returns),
+        "return_per_mae": _return_per_mae(returns, maes),
+    }
+
+
+def _downtrend_angle_rows(
+    observations: list[dict], cfg: Config, *, reverse: bool
+) -> list[dict]:
+    """The ranked conditioned-cohort rows for ONE angle (J-91). Groups the tagged observations by EVERY
+    (dimension, catalog cohort) key (each emitted even at n=0 — honest NA, never omitted), computes the
+    per-cohort stats, and ranks by the downside risk-adjusted figure (NA last), then raw mean (NA last),
+    then a deterministic (dimension, cohort) label tie-break. `reverse=True` ranks BEST-first (angle a —
+    held up best); `reverse=False` ranks WORST-first (angle b — fell hardest, EVIDENCE ONLY). Both angles
+    rank the SAME cohorts (one grouping) — only the direction + presentation differ; the samples drill-down
+    keys on (dimension, cohort) so it reproduces either angle's row byte-for-byte (count-coherence)."""
+    wf = cfg.walk_forward
+    catalog = _downtrend_dimension_catalog(cfg)
+    grouped: dict[tuple[str, str], list[dict]] = defaultdict(list)
+    for obs in observations:
+        for dimension in ALL_DOWNTREND_DIMENSIONS:
+            value = _downtrend_member_dimension_value(obs, dimension)
+            if value is None:
+                continue  # an observation with no causal tag for this dimension is honestly excluded
+            grouped[(dimension, value)].append(obs)
+
+    rows: list[dict] = []
+    for dimension in ALL_DOWNTREND_DIMENSIONS:
+        for entry in catalog[dimension]:
+            members = grouped.get((dimension, entry["key"]), [])
+            rows.append({
+                "dimension": dimension,
+                "cohort": entry["key"],
+                "cohort_label": entry["label"],
+                "stats": _downtrend_cohort_stats(members, wf.min_sample),
+            })
+
+    # stable inner tie-break (dimension, cohort) first, then rank by the risk-adjusted figure (NA last via
+    # the (is_not_none, value) pairing the J-77 study uses), then raw mean. `reverse` flips best/worst.
+    rows.sort(key=lambda r: (r["dimension"], r["cohort"]))
+    rows.sort(key=_downtrend_rank_key, reverse=reverse)
+    return rows
+
+
+def _downtrend_rank_key(row: dict) -> tuple:
+    """The ranking key for the Downtrend Opportunity angles (J-91): by the downside risk-adjusted figure
+    (`return_per_downside_dev`), NA last, then raw mean (NA last). Returns a tuple usable with both
+    `reverse=True` (best-first, angle a) and `reverse=False` (worst-first, angle b). The `is_not_none`
+    boolean partitions present-before-None, and the fallback reuses that flag so a None metric is NEVER
+    cross-compared against a float (the SAME structural pattern `_rsp_rank_key` uses — no float literal,
+    so the No-magic-numbers contract holds)."""
+    ra = row["stats"]["return_per_downside_dev"]
+    mean_r = row["stats"]["mean"]
+    ra_present = ra is not None
+    mean_present = mean_r is not None
+    return (
+        (ra_present, ra if ra_present else ra_present),
+        (mean_present, mean_r if mean_present else mean_present),
+    )
+
+
+def compute_downtrend_opportunity_study(
+    session: Session, horizon: int, config: Optional[Config] = None, *,
+    as_of: Optional[date_cls] = None, view: str = VIEW_EPISODES,
+) -> dict:
+    """The SINGLE canonical Downtrend Opportunity study (Data Contract value, J-91) for the selected
+    `horizon` under the chosen overlap-honesty `view`. Conditions the EXISTING forward-return evidence on
+    the CAUSAL as-of downtrend state (phase / severity band / P(bear) band, all <= D) and returns THREE
+    angles:
+      - (a) `held_up_best` — the conditioned cohorts with the STRONGEST forward returns (best-first).
+      - (b) `fell_hardest` — the conditioned cohorts with the WORST forward returns / deepest drawdown
+        (worst-first). EVIDENCE ONLY — no order/execution/short-deployment affordance.
+      - (c) `recovery_turn_edge` — the EXISTING J-90 `compute_recovery_turn_edge` surfaced in the same
+        panel (REUSED verbatim — never re-derived).
+
+    Angles (a)+(b) rank the SAME conditioned cohorts (one grouping of `_downtrend_opportunity_observation_set`),
+    each cohort carrying per-horizon-selected forward-return stats (n, mean, median, %-positive/hit-rate,
+    expectancy, downside-only risk-adjusted [return/downside-dev, return/|MAE|], aggregate max-drawdown).
+    A cohort below `config.walk_forward.min_sample` carries its honest `n` + a `low_sample` flag (the UI
+    shows NA + n). The conditioning vocabulary comes from the config-backed catalog (no hard-coded list).
+
+    READ-ONLY (the keystone anti-goal): every figure is derived ENTIRELY from stored values —
+    `forward_returns` (realized return + MAE/MFE + `max_drawdown`, read VERBATIM) JOINED to stored
+    `scanner_results` + the read-only `market_phase` causal context — it recomputes NO return / excursion /
+    score / regime / phase / signal. The additive causal-tag enrichment leaves `compute_event_study` /
+    `compute_regime_setup_pattern_study` / `compute_recovery_turn_edge` figures byte-identical (assert).
+    Risk is downside-only everywhere. `view` (J-63) makes the study overlap-honest; `as_of` (J-32) scopes
+    the pool + the causal context to snapshots dated <= D (a FILTER only). Raises `ValueError` for an
+    unknown view (the API pre-validates -> 422). NO order/execution path (downtrend-conditioned descriptive
+    evidence only)."""
+    cfg = config or get_config()
+    wf = cfg.walk_forward
+
+    if view not in ALL_VIEWS:
+        raise ValueError(f"unknown view {view!r}; valid views are {list(ALL_VIEWS)}")
+
+    observations = _downtrend_opportunity_observation_set(session, horizon, view, cfg, as_of)
+
+    held_up_best = _downtrend_angle_rows(observations, cfg, reverse=True)
+    fell_hardest = _downtrend_angle_rows(observations, cfg, reverse=False)
+
+    # angle (c): the EXISTING J-90 recovery-turn edge surfaced in the same panel (reused verbatim — its own
+    # observation membership, never re-derived here). Served via the cache like the standalone J-90 endpoint.
+    recovery_turn_edge = recovery_turn_edge_cached(session, horizon, cfg, as_of=as_of, view=view)
+
+    catalog = _downtrend_dimension_catalog(cfg)
+    return {
+        "horizon": horizon,
+        "asof_date": as_of.isoformat() if as_of is not None else None,
+        "view": view,  # J-63 overlap-honesty view (episodes default | pooled)
+        "horizons": list(wf.horizons),
+        "default_horizon": wf.default_horizon,
+        "min_sample": wf.min_sample,
+        "dimensions": list(ALL_DOWNTREND_DIMENSIONS),
+        # the config-driven conditioning vocabulary (phase labels + the two band catalogs) — the frontend
+        # conditioning controls + the cohort labels are built from THIS (no hard-coded list).
+        "conditioning_catalog": catalog,
+        "phase_labels": list(cfg.market_phase.labels),
+        "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
+        "descriptive_caveat": RESEARCH_CAVEAT,
+        # an honest disclosure that the weakness angle is research evidence only — never an order/execution
+        # path (the *No order/execution path* critical anti-goal, surfaced for the UI label).
+        "weakness_evidence_only": True,
+        "n_total": len(observations),
+        # angle (a) + (b): the SAME conditioned cohorts, ranked best-first / worst-first respectively.
+        "held_up_best": held_up_best,
+        "fell_hardest": fell_hardest,
+        # angle (c): the J-90 recovery-turn edge (reused verbatim).
+        "recovery_turn_edge": recovery_turn_edge,
+    }
+
+
+# The sentinel `subject` slot the Downtrend Opportunity study reuses in the SHARED `EventStudyCache` table
+# (mirroring `_RECOVERY_TURN_EDGE_SUBJECT`) so its cache rows never collide with a real event-study subject
+# or the recovery-turn sentinel. Reusing the same cache table keeps the cache machinery single-sourced.
+_DOWNTREND_OPPORTUNITY_SUBJECT = "__downtrend_opportunity__"
+
+
+def downtrend_opportunity_cached(
+    session: Session, horizon: int, config: Optional[Config] = None, *,
+    as_of: Optional[date_cls] = None, view: str = VIEW_EPISODES,
+) -> dict:
+    """Serve the Downtrend Opportunity study from the J-72 cache (mirrors `recovery_turn_edge_cached`),
+    reusing the SHARED `EventStudyCache` table under the `_DOWNTREND_OPPORTUNITY_SUBJECT` sentinel so it
+    never collides with a real event-study subject or the recovery-turn sentinel. On a HIT for the current
+    `(sentinel, view, asof_key, dataset_version, horizon)` key, return the stored payload (NO recompute);
+    on a MISS, compute it ONCE via `compute_downtrend_opportunity_study` (which validates the view, raising
+    before any write), persist under the current stamp, prune stale rows for this identity, and return it.
+    BYTE-IDENTICAL to a fresh compute; the cache REFRESHES after any dataset change via the dataset-version
+    key."""
+    cfg = config or get_config()
+    version = _dataset_version(session)
+    asof_key = _cache_asof_key(as_of)
+
+    hit = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == _DOWNTREND_OPPORTUNITY_SUBJECT,
+            EventStudyCache.view == view,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.dataset_version == version,
+            EventStudyCache.horizon == horizon,
+        )
+    ).first()
+    if hit is not None:
+        return json.loads(hit.payload_json)
+
+    payload = compute_downtrend_opportunity_study(session, horizon, cfg, as_of=as_of, view=view)
+
+    stale = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == _DOWNTREND_OPPORTUNITY_SUBJECT,
+            EventStudyCache.view == view,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.horizon == horizon,
+            EventStudyCache.dataset_version != version,
+        )
+    ).all()
+    for row in stale:
+        session.delete(row)
+
+    session.add(EventStudyCache(
+        subject=_DOWNTREND_OPPORTUNITY_SUBJECT, view=view, asof_key=asof_key, dataset_version=version,
+        horizon=horizon, payload_json=json.dumps(payload),
+        created_at=datetime.now(timezone.utc),
+    ))
+    try:
+        session.commit()
+    except Exception:  # best-effort cache; a concurrent writer raced us — the payload is byte-identical
+        session.rollback()
+    return payload

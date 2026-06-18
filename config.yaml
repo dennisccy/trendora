@@ -844,6 +844,25 @@ research:
       default_conditions:
         - { factor: rs_spy_3m, side: top,    quantile: quintile }
         - { factor: atr_pct,   side: bottom, quantile: tertile }
+  # iter-32 CONSUMED — Downtrend Opportunity study (J-91). The read-only
+  # app.engine.research.compute_downtrend_opportunity_study groups the SAME stored event-study
+  # observation set, additively tagged with the CAUSAL as-of phase / severity band / P(bear) band at each
+  # observation's snapshot date (read from the read-only market_phase derivation, <= D). The PHASE
+  # dimension reuses market_phase.labels; the two CONTINUOUS dimensions need an explicit band catalog so
+  # the study slices them deterministically WITHOUT a hard-coded edge in calc code (anti-goal: No magic
+  # numbers). Each catalog is contiguous + full-cover (boot-validated) so every displayable reading lands
+  # in exactly one band. Horizons + min-sample are REUSED from walk_forward (no new threshold).
+  downtrend_opportunity:
+    severity_bands:                                   # over the 0..100 severity scale (contiguous)
+      - { key: calm,     label: "Calm (0–30)",       min: 0,   max: 30 }
+      - { key: elevated, label: "Elevated (30–50)",  min: 30,  max: 50 }
+      - { key: stressed, label: "Stressed (50–70)",  min: 50,  max: 70 }
+      - { key: severe,   label: "Severe (70–100)",   min: 70,  max: 100 }
+    pbear_bands:                                      # over the 0..1 filtered-P(bear) scale (contiguous)
+      - { key: low,      label: "Low P(bear) (0–0.25)",       min: 0,    max: 0.25 }
+      - { key: moderate, label: "Moderate P(bear) (0.25–0.50)", min: 0.25, max: 0.50 }
+      - { key: high,     label: "High P(bear) (0.50–0.75)",   min: 0.50, max: 0.75 }
+      - { key: extreme,  label: "Extreme P(bear) (0.75–1.0)", min: 0.75, max: 1.0 }
 
 # ----------------------------------------------------------------------------------------
 # iter-29 CONSUMED — Market Phase & drawdown-Severity layer (J-87). The read-only derivation
@@ -911,6 +930,33 @@ regime_switching:
   emissions:
     bear:    { mean: 0.75, std: 0.18 }        # a bear state emits a HIGH stress reading
     risk_on: { mean: 0.20, std: 0.18 }        # a risk-on state emits a LOW stress reading
+
+# ----------------------------------------------------------------------------------------
+# iter-32 CONSUMED — OPTIONAL FRED macro feed (J-92). A real, optional, publication-lag-aligned macro
+# feed wired off-by-default into the severity / regime-switching / study layer. EVERY tunable lives here
+# (anti-goal: No magic numbers — no series id / publication-lag / enable literal in calc code). The FRED
+# key is read FROM THE ENVIRONMENT ONLY via `env_var` (the NAME only — never a key VALUE here, in the DB,
+# the run log, or any committed file; anti-goal: No secrets in source / keys env-or-session, never
+# persisted). Macro ships DEFAULT-OFF: with `enable.*` false (or no macro data present) every J-87..J-91
+# figure is BYTE-IDENTICAL to the price/breadth/VIX-only path. The live FRED/proxy pull is data-dependent
+# / non-halting — a walled provider / an uncommitted series is honestly blocked-NA, never fabricated. The
+# yield-curve 10y-2y inversion, unemployment trend, and credit-spread series + their OHLCV proxies are
+# fully testable OFFLINE against a small committed macro seed.
+macro:
+  env_var: FRED_API_KEY                        # the env-var NAME the FRED key is read from (NAME only)
+  series:
+    # yield-curve 10y-2y inversion (a leading recession/stress signal). proxy: ^TNX (10-yr yield index).
+    - { id: yield_curve_10y2y, fred_series_id: T10Y2Y,  label: "10Y-2Y Treasury spread", publication_lag_days: 1, proxy_symbol: "^TNX" }
+    # unemployment-rate trend (a coincident/lagging stress signal; reported with a calendar-month lag).
+    - { id: unemployment_rate, fred_series_id: UNRATE,   label: "Unemployment rate (trend)", publication_lag_days: 35 }
+    # high-yield credit spreads (a risk-appetite stress signal). proxy: ^VXN (Nasdaq-100 volatility).
+    - { id: credit_spread,     fred_series_id: BAMLH0A0HYM2, label: "High-yield credit spread", publication_lag_days: 1, proxy_symbol: "^VXN" }
+    # a dollar-strength proxy series (no FRED leg consumed by default — proxy bar only). proxy: ^DXY.
+    - { id: dollar_index,      fred_series_id: DTWEXBGS, label: "Broad dollar index", publication_lag_days: 1, proxy_symbol: "^DXY" }
+  enable:                                       # per-leg config-default-OFF flags (ALL false by default)
+    severity: false                            # wire macro into the J-87 severity score
+    regime_switching: false                    # wire macro into the J-88 regime-switching observation
+    study: false                               # wire macro into the J-91 study conditioning
 
 # ----------------------------------------------------------------------------------------
 # iter-5 CONSUMED — Scanner snapshots. The historical as-of dates the scanner persists an

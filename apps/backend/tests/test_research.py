@@ -1929,3 +1929,217 @@ def test_recovery_turn_samples_invalid_phase_raises(recovery_turn_engine):
                 session, kind=KIND_RECOVERY_TURN, horizon=horizon, config=cfg,
                 slice_kind="phase", phase="NotAPhase", view=VIEW_EPISODES,
             )
+
+
+# ==================================================================================================
+# iter-32 (J-91) — Downtrend Opportunity study. FAST synthetic tests (no seed boot) for the anti-goal-
+# critical legs: ADDITIVE byte-identity (J-29/J-63/J-77/J-90 unchanged), no-lookahead tail-invariance,
+# count-coherence SAME-INSTANT (Episodes × Pooled × All-history × As-of), every displayable row 2xx,
+# downside-only risk, horizons-from-config, min-sample -> NA. Mirrors the recovery_turn_engine fixture.
+# ==================================================================================================
+from app.engine.research import (  # noqa: E402
+    ALL_DOWNTREND_DIMENSIONS,
+    _band_for,
+    compute_downtrend_opportunity_study,
+    compute_event_study,
+    compute_regime_setup_pattern_study,
+)
+from app.engine.samples import KIND_DOWNTREND_OPPORTUNITY  # noqa: E402
+
+
+@pytest.fixture()
+def downtrend_engine(tmp_path):
+    """A synthetic V-shaped tape (decline -> recovery) with runs every 6 days + stored forward_returns on
+    EVERY run — so the causal market-phase derivation tags the decline dates Bear/Correction with a high
+    severity / P(bear) and the recovery dates calm, giving a NON-EMPTY set of conditioned cohorts across
+    multiple bands. Mirrors `recovery_turn_engine`. Returns (engine, horizon)."""
+    engine = _engine(tmp_path, "downtrend.db")
+    horizon = load_config().walk_forward.default_horizon
+    down = [100.0 - 40 * i / 29 for i in range(30)]
+    up = [60.0 + 45 * i / 29 for i in range(30)]
+    dates = [_RT_BASE + _td(days=6 * i) for i in range(10)]
+    with Session(engine) as session:
+        _rt_bars(session, "SPY", down + up)
+        for i, d in enumerate(dates):
+            in_bear = i < 5
+            run = _rt_run(session, d, "Risk-off" if in_bear else "Risk-on",
+                          15.0 if in_bear else 70.0, 20.0 if in_bear else 65.0)
+            for j, tkr in enumerate(("AAA", "BBB")):
+                _add_result(session, run.id, tkr, rank=j + 1)
+                _add_fr(session, run.id, tkr, ret=0.05 + 0.01 * i + 0.001 * j,
+                        horizon=horizon, mae=-0.02, mfe=0.08)
+        session.commit()
+    return engine, horizon
+
+
+def test_band_for_membership_contiguous_full_cover():
+    """`_band_for` lands every reading in exactly one config band; the scale top is INCLUSIVE; None in ->
+    None out (an honest no-tag, never fabricated)."""
+    cfg = _rt_cfg()
+    sev = cfg.research.downtrend_opportunity.severity_bands
+    pb = cfg.research.downtrend_opportunity.pbear_bands
+    assert _band_for(0.0, sev) == sev[0].key                # bottom edge inclusive
+    assert _band_for(100.0, sev) == sev[-1].key             # scale top inclusive
+    assert _band_for(0.0, pb) == pb[0].key
+    assert _band_for(1.0, pb) == pb[-1].key                 # P(bear) scale top inclusive
+    assert _band_for(None, sev) is None and _band_for(None, pb) is None
+
+
+def test_downtrend_study_three_angles_present_and_evidence_only(downtrend_engine):
+    """J-91: the study returns the three angles — held_up_best, fell_hardest (EVIDENCE ONLY), and the
+    reused recovery_turn_edge — over the config conditioning vocabulary, with downside-only risk."""
+    engine, horizon = downtrend_engine
+    cfg = _rt_cfg()
+    with Session(engine) as session:
+        study = compute_downtrend_opportunity_study(session, horizon, cfg, view=VIEW_EPISODES)
+    assert {"held_up_best", "fell_hardest", "recovery_turn_edge"} <= set(study)
+    assert study["weakness_evidence_only"] is True          # no order/execution affordance label
+    assert study["n_total"] >= 1
+    assert list(study["dimensions"]) == list(ALL_DOWNTREND_DIMENSIONS)
+    # the conditioning catalog is config-driven (phase labels + the two band catalogs)
+    cat = study["conditioning_catalog"]
+    assert [e["key"] for e in cat["phase"]] == list(cfg.market_phase.labels)
+    assert [e["key"] for e in cat["severity_band"]] == [b.key for b in cfg.research.downtrend_opportunity.severity_bands]
+    # every angle row carries downside-only risk-adjusted figures (never total volatility)
+    for row in study["held_up_best"]:
+        assert "return_per_downside_dev" in row["stats"] and "return_per_mae" in row["stats"]
+    # the recovery-turn edge (angle c) is the reused J-90 payload shape
+    assert "by_phase" in study["recovery_turn_edge"] and "by_horizon" in study["recovery_turn_edge"]
+
+
+def test_downtrend_angles_rank_same_cohorts_best_vs_worst(downtrend_engine):
+    """J-91: held_up_best (best-first) and fell_hardest (worst-first) rank the SAME set of (dimension,
+    cohort) cohorts — only the order differs (a pure view-transform, recomputes nothing)."""
+    engine, horizon = downtrend_engine
+    cfg = _rt_cfg()
+    with Session(engine) as session:
+        study = compute_downtrend_opportunity_study(session, horizon, cfg, view=VIEW_EPISODES)
+    best = {(r["dimension"], r["cohort"]) for r in study["held_up_best"]}
+    worst = {(r["dimension"], r["cohort"]) for r in study["fell_hardest"]}
+    assert best == worst                                    # same cohort SET
+    assert len(study["held_up_best"]) == len(study["fell_hardest"])
+
+
+def test_downtrend_additive_byte_identity_event_and_rsp_and_recovery(downtrend_engine):
+    """CRITICAL ADDITIVE byte-identity (J-91): computing the downtrend study leaves the J-29 event study,
+    the J-77 regime-setup-pattern study, and the J-90 recovery-turn edge BYTE-IDENTICAL (the additive
+    causal-tag enrichment touches none of them)."""
+    engine, horizon = downtrend_engine
+    cfg = _rt_cfg()
+    with Session(engine) as session:
+        es_before = compute_event_study(session, "Breakout-watch", horizon, cfg, view=VIEW_EPISODES)
+        rsp_before = compute_regime_setup_pattern_study(session, horizon, cfg, view=VIEW_EPISODES)
+        rt_before = compute_recovery_turn_edge(session, horizon, cfg, view=VIEW_EPISODES)
+        # run the downtrend study (which reads the SAME pools + the causal context)
+        compute_downtrend_opportunity_study(session, horizon, cfg, view=VIEW_EPISODES)
+        es_after = compute_event_study(session, "Breakout-watch", horizon, cfg, view=VIEW_EPISODES)
+        rsp_after = compute_regime_setup_pattern_study(session, horizon, cfg, view=VIEW_EPISODES)
+        rt_after = compute_recovery_turn_edge(session, horizon, cfg, view=VIEW_EPISODES)
+    assert json.dumps(es_before, sort_keys=True) == json.dumps(es_after, sort_keys=True)
+    assert json.dumps(rsp_before, sort_keys=True) == json.dumps(rsp_after, sort_keys=True)
+    assert json.dumps(rt_before, sort_keys=True) == json.dumps(rt_after, sort_keys=True)
+
+
+def test_downtrend_count_coherence_all_views_and_scopes(downtrend_engine):
+    """COUNT-COHERENCE SAME-INSTANT (J-51/J-65/J-82): EVERY displayable (dimension, cohort) row's published
+    n EQUALS its samples drill-down total in BOTH Episodes+Pooled AND every emitted cohort resolves 2xx —
+    a row the study emits NEVER 4xx's (the J-82 lesson)."""
+    engine, horizon = downtrend_engine
+    cfg = _rt_cfg()
+    with Session(engine) as session:
+        for view in (VIEW_EPISODES, VIEW_POOLED):
+            study = compute_downtrend_opportunity_study(session, horizon, cfg, view=view)
+            for row in study["held_up_best"]:  # held_up_best + fell_hardest share cohorts -> test one
+                samples = compute_samples(
+                    session, kind=KIND_DOWNTREND_OPPORTUNITY, horizon=horizon, config=cfg,
+                    dimension=row["dimension"], cohort_kind=row["cohort"], view=view,
+                )
+                assert samples["total"] == row["stats"]["n"], (
+                    f"drill-down total != published n for {row['dimension']}/{row['cohort']} ({view})"
+                )
+
+
+def test_downtrend_count_coherence_as_of_scope(downtrend_engine):
+    """COUNT-COHERENCE under As-of (J-32): a row's published n equals its drill-down total at the SAME
+    as-of cutoff — the as-of FILTERS the pool + the causal context identically (no second grouping)."""
+    engine, horizon = downtrend_engine
+    cfg = _rt_cfg()
+    as_of = _RT_BASE + _td(days=6 * 8)  # a late as-of so some conditioned cohorts are non-empty
+    with Session(engine) as session:
+        study = compute_downtrend_opportunity_study(session, horizon, cfg, as_of=as_of, view=VIEW_EPISODES)
+        assert study["asof_date"] == as_of.isoformat()
+        for row in study["held_up_best"]:
+            samples = compute_samples(
+                session, kind=KIND_DOWNTREND_OPPORTUNITY, horizon=horizon, config=cfg,
+                as_of=as_of, dimension=row["dimension"], cohort_kind=row["cohort"], view=VIEW_EPISODES,
+            )
+            assert samples["total"] == row["stats"]["n"]
+
+
+def test_downtrend_no_lookahead_tail_invariance(downtrend_engine):
+    """CRITICAL no-lookahead (J-91): scoping to an as-of D yields figures byte-identical to removing every
+    run/bar dated > D and recomputing all-history — the conditioning tag + the forward returns at D use
+    only <= D / > D information respectively (the `forward_return` tail-invariance idiom)."""
+    engine, horizon = downtrend_engine
+    cfg = _rt_cfg()
+    d = _RT_BASE + _td(days=6 * 6)  # a mid-window as-of
+    with Session(engine) as session:
+        scoped = compute_downtrend_opportunity_study(session, horizon, cfg, as_of=d, view=VIEW_EPISODES)
+        # remove every run/result/forward-return/bar dated > D and recompute ALL-HISTORY
+        for fr in session.exec(select(ForwardReturn)).all():
+            run = session.get(ScannerRun, fr.run_id)
+            if run.asof_date > d:
+                session.delete(fr)
+        for res in session.exec(select(ScannerResult)).all():
+            run = session.get(ScannerRun, res.run_id)
+            if run.asof_date > d:
+                session.delete(res)
+        for run in session.exec(select(ScannerRun).where(ScannerRun.asof_date > d)).all():
+            session.delete(run)
+        for bar in session.exec(select(DailyPrice).where(DailyPrice.date > d)).all():
+            session.delete(bar)
+        session.commit()
+        truncated = compute_downtrend_opportunity_study(session, horizon, cfg, view=VIEW_EPISODES)
+    # the conditioned cohort stats (held_up_best + fell_hardest) must match (the as-of scoping == truncation)
+    assert json.dumps(scoped["held_up_best"], sort_keys=True) == json.dumps(truncated["held_up_best"], sort_keys=True)
+    assert json.dumps(scoped["fell_hardest"], sort_keys=True) == json.dumps(truncated["fell_hardest"], sort_keys=True)
+
+
+def test_downtrend_horizons_from_config_and_min_sample_na(downtrend_engine):
+    """J-91: the served horizons come from `config.walk_forward.horizons`; a cohort below
+    `config.walk_forward.min_sample` carries its honest n + a `low_sample` flag (the UI shows NA + n)."""
+    engine, horizon = downtrend_engine
+    cfg = _rt_cfg()
+    cfg.walk_forward.min_sample = 9999  # force EVERY cohort low-sample
+    # Pooled view keeps every per-signal-day observation, so the later snapshot dates (which DO have
+    # sufficient causal history) carry a conditioning tag -> non-empty conditioned cohorts.
+    with Session(engine) as session:
+        study = compute_downtrend_opportunity_study(session, horizon, cfg, view=VIEW_POOLED)
+    assert list(study["horizons"]) == list(cfg.walk_forward.horizons)
+    assert study["min_sample"] == 9999
+    # every non-empty cohort is flagged low_sample (honest NA gating, never a fabricated figure)
+    nonempty = [r for r in study["held_up_best"] if r["stats"]["n"] > 0]
+    assert nonempty and all(r["stats"]["low_sample"] for r in nonempty)
+
+
+def test_downtrend_unknown_view_raises(downtrend_engine):
+    """An unknown `view` raises ValueError (the API -> 422), mirroring the event study."""
+    engine, horizon = downtrend_engine
+    cfg = _rt_cfg()
+    with Session(engine) as session:
+        with pytest.raises(ValueError, match="unknown view"):
+            compute_downtrend_opportunity_study(session, horizon, cfg, view="bogus")
+
+
+def test_downtrend_samples_invalid_selectors_raise(downtrend_engine):
+    """A drill-down for an unknown dimension OR a cohort the dimension's catalog doesn't list raises
+    ValueError (-> 422) — never a silent empty 200 (reserved for a VALID n=0 cohort)."""
+    engine, horizon = downtrend_engine
+    cfg = _rt_cfg()
+    with Session(engine) as session:
+        with pytest.raises(ValueError, match="unknown downtrend dimension"):
+            compute_samples(session, kind=KIND_DOWNTREND_OPPORTUNITY, horizon=horizon, config=cfg,
+                            dimension="bogus", cohort_kind="severe", view=VIEW_EPISODES)
+        with pytest.raises(ValueError, match="is not a"):
+            compute_samples(session, kind=KIND_DOWNTREND_OPPORTUNITY, horizon=horizon, config=cfg,
+                            dimension="severity_band", cohort_kind="not_a_band", view=VIEW_EPISODES)

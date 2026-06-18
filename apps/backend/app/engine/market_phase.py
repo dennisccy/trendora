@@ -49,7 +49,7 @@ from app.config import (
 from app.engine.labels import label_for
 from app.engine.prices import bar_cache, bars_asof, closes
 from app.engine.research import _dataset_version  # single-sourced cache stamp (J-72) — never duplicated
-from app.models import MarketPhaseCache, ScannerRun
+from app.models import MacroSeries, MarketPhaseCache, ScannerRun
 
 # The Recovery phase label (a STATE override applied after the severity->phase edge lookup): a still-
 # underwater tape that has rebounded >= `recovery_min_off_trough_pct` off its trough reads Recovery
@@ -120,6 +120,41 @@ def _latest_vix_on_or_before(session: Session, d: date_cls, cfg: Config) -> Opti
     return series[-1] if series else None
 
 
+def _macro_value_asof(session: Session, series_id: str, d: date_cls) -> Optional[float]:
+    """The latest stored macro value for `series_id` whose `published_date <= D` (the publication-lag
+    causal gate, J-92), read VERBATIM, or None when no such row exists. Using a value whose
+    `published_date > D` would be forbidden lookahead — this filter forbids it by construction (a value
+    is only usable once it was actually published on/before D). A pure causal read; recomputes nothing,
+    never fabricates a value (a walled/uncommitted series simply has no rows -> None)."""
+    rows = session.exec(
+        select(MacroSeries)
+        .where(MacroSeries.symbol == series_id, MacroSeries.published_date <= d)
+        .order_by(MacroSeries.date)
+    ).all()
+    return rows[-1].value if rows else None
+
+
+def _macro_severity_legs(session: Session, d: date_cls, cfg: Config) -> dict[str, dict]:
+    """The OPTIONAL macro severity legs for date D (J-92 — consumed ONLY when `cfg.macro.enable.severity`).
+    For each configured series carrying a positive `weight` + a `stress_gate`, read the publication-lag-
+    causal macro value (<= D) and scale it to a [0, 1] stress reading `min(1, abs(value) / stress_gate)`
+    (the SAME clamp shape the ^VIX gate uses). Returns `{component_name: {"value": [0,1]|None, "weight":
+    w}}` — a series with no published value <= D contributes `value=None` (excluded from the blend like a
+    missing ^VIX, never fabricated). Returns `{}` when the severity leg is DISABLED, so the disabled path
+    adds NO component and is byte-identical to the price/breadth/VIX-only severity (the byte-identity
+    keystone). No magic number — every gate/weight is config."""
+    if not cfg.macro.enable.severity:
+        return {}
+    legs: dict[str, dict] = {}
+    for series in cfg.macro.series:
+        if series.weight <= 0 or series.stress_gate is None:
+            continue  # a series with no severity-leg scaling configured contributes nothing
+        value = _macro_value_asof(session, series.id, d)
+        scaled = min(1, abs(value) / series.stress_gate) if value is not None and series.stress_gate else None
+        legs[f"macro_{series.id}"] = {"value": scaled, "weight": series.weight}
+    return legs
+
+
 def _severity_reading(
     session: Session, run: ScannerRun, cfg: Config
 ) -> Optional[dict]:
@@ -166,7 +201,15 @@ def _severity_reading(
         "breadth_below_200dma": breadth_below,
         "vix_gate": vix_gate,
     }
-    weights = mp.weights
+    # iter-32 (J-92): the OPTIONAL macro severity legs (config-default-OFF — `_macro_severity_legs` returns
+    # `{}` when disabled, so every line below is byte-identical to the price/breadth/VIX-only path). When
+    # enabled, each leg adds a [0,1] macro stress reading at its config weight, folded into the SAME
+    # available-weight renormalization (a NA macro leg drops out of the denominator like a missing ^VIX).
+    macro_legs = _macro_severity_legs(session, d, cfg)
+    weights = dict(mp.weights)
+    for name, leg in macro_legs.items():
+        raw[name] = leg["value"]
+        weights[name] = leg["weight"]
     available = {name: value for name, value in raw.items() if value is not None}
     available_weight = sum(weights[name] for name in available)
     reading = (
@@ -176,9 +219,11 @@ def _severity_reading(
     )
 
     # the disclosed per-component breakdown (explainable — never a bare number). Iterate the canonical
-    # weight-key set so every configured component appears (even when NA), in a stable order.
+    # weight-key set so every configured component appears (even when NA), in a stable order; then append
+    # any enabled macro legs (J-92) after the canonical components so the disabled path is byte-identical.
+    component_names = sorted(MARKET_PHASE_WEIGHT_KEYS) + sorted(macro_legs)
     components = []
-    for name in sorted(MARKET_PHASE_WEIGHT_KEYS):
+    for name in component_names:
         value = raw[name]
         weight = weights[name]
         if value is None:
@@ -200,13 +245,53 @@ def _severity_reading(
         "available": vix_close is not None,
     }
 
+    # iter-32 (J-88/J-92): the FILTER observation for date D. By default it IS the severity reading (J-88
+    # shares J-87's inputs). When the macro regime-switching leg is ENABLED, blend the publication-lag-
+    # causal macro stress into the observation (config-default-OFF: `_regime_switching_observation` returns
+    # the reading UNCHANGED when disabled, so the filter input — and thus every J-87..J-91 figure — is
+    # byte-identical to the price/breadth/VIX-only path).
+    observation = _regime_switching_observation(reading, session, d, cfg)
+
     return {
         "reading": reading,
+        "observation": observation,
         "components": components,
         "vix_level": vix_disclosure,
         "drawdown_pct": round(dd["drawdown_pct"], 2),
         "off_trough_pct": round(dd["off_trough_pct"], 2),
     }
+
+
+def _regime_switching_observation(
+    reading: float, session: Session, d: date_cls, cfg: Config
+) -> float:
+    """The J-88 filter observation for date D (J-92 optional macro leg). By default returns the severity
+    `reading` UNCHANGED (config-default-OFF — so the closed-form Hamilton filter ingests the SAME [0,1]
+    stress reading it always has, and every J-87..J-91 figure stays byte-identical). When
+    `cfg.macro.enable.regime_switching`, blend the publication-lag-causal macro stress legs into the
+    observation by the SAME available-weight scheme `_severity_reading` uses: the observation becomes the
+    weighted average of the severity reading (the structural base, weight 1) and each enabled macro leg's
+    [0,1] reading at its config weight (a NA macro leg drops out — never fabricated). No magic number — the
+    only structural constant is the integer base weight 1 on the severity reading itself (like the rest of
+    the engine's structural 0/1/2)."""
+    if not cfg.macro.enable.regime_switching:
+        return reading  # DISABLED -> byte-identical (the filter ingests the unchanged severity reading)
+    # when the severity leg is already enabled the macro stress is ALREADY in `reading`; the regime leg
+    # then adds NO further adjustment (avoids double-counting the macro stress) — the reading is the blend.
+    if cfg.macro.enable.severity:
+        return reading
+    # otherwise the regime-switching leg can be enabled independently: blend the configured macro legs into
+    # the observation. A leg's value may be None (no causal value <= D) -> excluded, never fabricated.
+    legs = _macro_severity_legs(session, d, cfg)
+    base_weight = 1  # structural integer base weight on the severity reading (No magic numbers)
+    available = {"_severity": (reading, base_weight)}
+    for name, leg in legs.items():
+        if leg["value"] is not None:
+            available[name] = (leg["value"], leg["weight"])
+    total_weight = sum(w for _v, w in available.values())
+    if not total_weight:
+        return reading
+    return sum(v * w for v, w in available.values()) / total_weight
 
 
 def _phase_for(severity: float, off_trough_pct: float, drawdown_pct: float, cfg: Config) -> str:
@@ -486,16 +571,17 @@ def _recovery_turn_dates_with_context(
     return out
 
 
-def recovery_turn_dates(
-    session: Session, as_of: Optional[date_cls] = None, config: Optional[Config] = None
-) -> dict[str, dict]:
-    """The public read-only accessor the J-90 Recovery-Turn Edge study calls: the CAUSAL recovery-turn
-    signal dates (with their causal context) over the stored snapshot history, optionally scoped to runs
-    dated <= `as_of` (the J-32 point-in-time mode — a FILTER, never a second date state). Builds the SAME
-    single causal timeline `compute_market_phase` reads (the SAME `_filtered_bear_path` + `_phase_for`),
-    then derives the turn dates from it (`_recovery_turn_dates_with_context`). `as_of=None` -> all stored
-    runs (all-history). Recomputes nothing the panel doesn't already compute; reads no future bar."""
-    cfg = config or get_config()
+def _causal_timeline(
+    session: Session, as_of: Optional[date_cls], cfg: Config
+) -> list[dict]:
+    """The FULL per-snapshot-date CAUSAL timeline `[{date, phase, p_bear, severity}]` over the stored
+    snapshot history, optionally scoped to runs dated <= `as_of` (the J-32 point-in-time mode — a FILTER,
+    never a second date state). Builds the SAME single causal derivation `compute_market_phase` /
+    `recovery_turn_dates` read (the SAME `_severity_reading` -> `_filtered_bear_path` -> `_timeline_series`
+    -> `_phase_for`), then returns the un-truncated timeline. `as_of=None` -> all stored runs (all-history).
+    Recomputes nothing the panel doesn't already compute; reads no future bar (every entry is <= its date,
+    and the whole timeline is <= `as_of` when scoped). Shared verbatim by `recovery_turn_dates` and the
+    J-91 `phase_context_by_date` accessor so there is ONE causal series, never a second computation."""
     runs = _stored_runs_through(session, as_of) if as_of is not None else list(
         session.exec(select(ScannerRun).order_by(ScannerRun.asof_date)).all()
     )
@@ -507,9 +593,48 @@ def recovery_turn_dates(
             if reading is None:
                 continue
             readings.append({"date": run.asof_date.isoformat(), "reading_obj": reading})
-            observations.append(round(reading["reading"], 6))
+            # the FILTER observation (J-88) — the macro-aware observation (== the severity reading when the
+            # macro regime-switching leg is disabled, so byte-identical to the price/breadth/VIX-only path).
+            observations.append(round(reading["observation"], 6))
     filtered_path = _filtered_bear_path(observations, cfg)
-    timeline = _timeline_series(readings, filtered_path, cfg)
+    return _timeline_series(readings, filtered_path, cfg)
+
+
+def phase_context_by_date(
+    session: Session, as_of: Optional[date_cls] = None, config: Optional[Config] = None
+) -> dict[str, dict]:
+    """The public read-only accessor the J-91 Downtrend Opportunity study calls: for EVERY stored snapshot
+    date (optionally <= `as_of` — the J-32 point-in-time FILTER, never a second date state) the CAUSAL
+    market-phase context at that date, keyed by the ISO date -> `{phase, severity, p_bear}`. Read from the
+    SAME single causal timeline `compute_market_phase` reads (the SAME `_filtered_bear_path` FILTERED
+    p_bear at each step + the SAME `_phase_for` phase per reading) — strictly causal (each entry uses only
+    its own <= D information), and NEVER the J-89 SMOOTHED/true-bear retrospective (those stay fenced and
+    feed no as-of value). `as_of=None` -> all stored runs (all-history). Recomputes nothing; reads no
+    future bar. The study joins THIS context to each observation's snapshot date (the additive conditioning
+    tag), so a tag is set only by <= D information (no-lookahead by construction)."""
+    cfg = config or get_config()
+    timeline = _causal_timeline(session, as_of, cfg)
+    return {
+        point["date"]: {
+            "phase": point["phase"],
+            "severity": point["severity"],
+            "p_bear": point["p_bear"],
+        }
+        for point in timeline
+    }
+
+
+def recovery_turn_dates(
+    session: Session, as_of: Optional[date_cls] = None, config: Optional[Config] = None
+) -> dict[str, dict]:
+    """The public read-only accessor the J-90 Recovery-Turn Edge study calls: the CAUSAL recovery-turn
+    signal dates (with their causal context) over the stored snapshot history, optionally scoped to runs
+    dated <= `as_of` (the J-32 point-in-time mode — a FILTER, never a second date state). Builds the SAME
+    single causal timeline `compute_market_phase` reads (the SAME `_filtered_bear_path` + `_phase_for`),
+    then derives the turn dates from it (`_recovery_turn_dates_with_context`). `as_of=None` -> all stored
+    runs (all-history). Recomputes nothing the panel doesn't already compute; reads no future bar."""
+    cfg = config or get_config()
+    timeline = _causal_timeline(session, as_of, cfg)  # the SAME single causal series the panel reads
     return _recovery_turn_dates_with_context(session, timeline, cfg)
 
 
@@ -545,9 +670,13 @@ def compute_market_phase(
             reading = _severity_reading(session, run, cfg)
             if reading is None:
                 continue
-            observations.append(
-                {"date": run.asof_date.isoformat(), "reading": round(reading["reading"], 6)}
-            )
+            observations.append({
+                "date": run.asof_date.isoformat(),
+                "reading": round(reading["reading"], 6),
+                # the FILTER input (J-88) — the macro-aware observation (== `reading` when the macro
+                # regime-switching leg is disabled, so byte-identical to the price/breadth/VIX-only path).
+                "observation": round(reading["observation"], 6),
+            })
             readings.append({"date": run.asof_date.isoformat(), "reading_obj": reading})
             latest_reading = reading  # the last valid reading is the served-date severity source
 
@@ -584,18 +713,21 @@ def compute_market_phase(
     )
 
     # the forward filtered P(bear) over the FULL causal observation vector (EVERY reading <= D, in date
-    # order) — the served P(bear) consumes them all (strictly causal, deterministic).
-    obs_values = [o["reading"] for o in observations]
+    # order) — the served P(bear) consumes them all (strictly causal, deterministic). The filter ingests
+    # the macro-aware `observation` (== `reading` when the regime-switching leg is disabled — byte-identical).
+    obs_values = [o["observation"] for o in observations]
     filtered_path = _filtered_bear_path(obs_values, cfg)
     p_bear = round(filtered_path[-1], 6) if filtered_path else None
 
     # disclose only the MOST RECENT `observation_disclosure_limit` observations in the payload (the filter
     # still consumed all of them above) — so a daily-history host serves a bounded, readable tail rather
     # than thousands of chips; `total_observations` discloses the full causal count honestly. Each disclosed
-    # observation additionally carries its filtered P(bear) at that step (the tail of `filtered_path`).
+    # observation additionally carries its filtered P(bear) at that step (the tail of `filtered_path`). The
+    # internal `observation` key (the macro-aware filter input) is stripped from the disclosed payload so it
+    # stays byte-identical to the price/breadth/VIX-only path when the macro leg is disabled.
     limit = cfg.market_phase.observation_disclosure_limit
     disclosed = [
-        {**obs, "p_bear": round(filtered_path[index], 6)}
+        {"date": obs["date"], "reading": obs["reading"], "p_bear": round(filtered_path[index], 6)}
         for index, obs in enumerate(observations)
     ][-limit:]
 
@@ -874,7 +1006,10 @@ def compute_retrospective(
             reading = _severity_reading(session, run, cfg)
             if reading is None:
                 continue
-            observations.append({"date": run.asof_date.isoformat(), "reading": reading["reading"]})
+            # the FENCED retrospective smoother (J-89) ingests the SAME macro-aware filter observation the
+            # causal layer uses (== the severity reading when the regime-switching leg is disabled). The
+            # smoothed value remains analysis-only and is NEVER read by any as-of value (the J-49 fence).
+            observations.append({"date": run.asof_date.isoformat(), "reading": reading["observation"]})
             close = _benchmark_close_on_or_before(session, run.asof_date, cfg)
             if close is not None:
                 dated_closes.append({

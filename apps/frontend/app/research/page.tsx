@@ -17,12 +17,15 @@ import { SampleLink } from "@/components/sample-link";
 import { type SampleScope } from "@/lib/samples-link";
 import { cn } from "@/lib/utils";
 import {
+  fetchDowntrendOpportunity,
   fetchEventStudy,
   fetchFactorCombination,
   fetchFactorLab,
   fetchRecoveryTurnEdge,
   fetchRegimeSetupPattern,
   type CohortStats,
+  type DowntrendOpportunityResponse,
+  type DowntrendOpportunityRow,
   type EventStudyHorizonRow,
   type EventStudyRegimeRow,
   type EventStudyResponse,
@@ -170,6 +173,14 @@ export default function ResearchPage() {
               source + loading state, reusing the page's shared `horizon` + `asofCutoff` (no second
               date/horizon state) plus its own Episodes ⇄ Pooled view toggle. */}
           <RecoveryTurnEdgeLab horizon={horizon} asofCutoff={asofCutoff} scope={mode} />
+
+          {/* J-91: the Downtrend Opportunity lab — condition the existing forward-return evidence on the
+              CAUSAL as-of downtrend state (phase / severity band / P(bear) band, all <= D) and read three
+              angles (held-up-best / fell-hardest evidence / recovery-turn edge), with its OWN read-only
+              data source + loading state, reusing the page's shared `horizon` + `asofCutoff` (no second
+              date/horizon state) plus its own Episodes ⇄ Pooled view toggle + a conditioning-dimension
+              selector. Appended below the existing labs. */}
+          <DowntrendOpportunityLab horizon={horizon} asofCutoff={asofCutoff} scope={mode} />
         </>
       )}
     </div>
@@ -2721,6 +2732,455 @@ function RecoveryTurnPhaseTable({
                   <td className="px-3 py-2 text-right"><EsValue value={row.mean_return} na={na} kind="pct" /></td>
                   <td className="px-3 py-2 text-right"><EsValue value={row.hit_rate} na={na} kind="rate" /></td>
                   <td className="px-3 py-2 text-right"><EsValue value={row.risk_adjusted} na={na} kind="ratio" /></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+// ==================================================================================================
+// iter-32 (J-91) — Downtrend Opportunity lab. Conditions the existing forward-return evidence on the
+// CAUSAL as-of downtrend state (phase / severity band / P(bear) band, all <= D) and renders three angles
+// side by side: (a) held-up-best, (b) fell-hardest (EVIDENCE ONLY — no order/execution affordance), and
+// (c) the reused J-90 recovery-turn edge by phase. Conditioning controls (the dimension selector), the
+// Episodes ⇄ Pooled toggle, client-side sortable ranked tables, N= chips → count-coherent samples in a new
+// tab, NA + n on low-sample, the survivorship caveat, and the J-92 publication-lag limitation label.
+// ==================================================================================================
+const _DIMENSION_LABELS: Record<string, string> = {
+  phase: "Phase",
+  severity_band: "Severity band",
+  pbear_band: "P(bear) band",
+};
+
+function DowntrendOpportunityLab({
+  horizon,
+  asofCutoff,
+  scope,
+}: {
+  horizon: number | undefined;
+  asofCutoff: string | null;
+  scope: SampleScope;
+}) {
+  // J-63: the overlap-honesty view (Episodes default ⇄ Pooled). A local MODE/cohort state, INDEPENDENT of
+  // `asofCutoff` and the page analysis-mode `scope` (NOT a date — no second date state, J-18).
+  const [view, setView] = useState<EventStudyView>("episodes");
+  // the conditioning DIMENSION currently shown (phase | severity_band | pbear_band). A local cohort/view
+  // selector — NOT a date control (J-18). Default: the first dimension the payload lists.
+  const [dimension, setDimension] = useState<string | null>(null);
+  const [data, setData] = useState<DowntrendOpportunityResponse | null>(null);
+  const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setStatus("loading");
+    fetchDowntrendOpportunity(horizon, asofCutoff ?? undefined, view, controller.signal)
+      .then((d) => {
+        if (controller.signal.aborted) return;
+        setData(d);
+        setStatus("ok");
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setStatus("error");
+      });
+    return () => controller.abort();
+  }, [horizon, asofCutoff, view]);
+
+  const activeDimension = dimension ?? data?.dimensions[0] ?? "phase";
+  const hasAny = data ? data.held_up_best.some((r) => r.stats.n > 0) : false;
+
+  return (
+    <Card className="p-0" data-testid="downtrend-opportunity-section">
+      <PanelTitle
+        hint={`Condition the SAME stored forward-return evidence on the CAUSAL as-of downtrend state at each observation's snapshot date — the market phase, the drawdown-severity band, or the filtered P(bear) band, all observed from <= that date (never a future bar, never the smoothed retrospective). Three angles: what held up best, what fell hardest (research EVIDENCE ONLY — there is no order or short-deployment path), and the recovery-turn edge. A read-only grouping of stored returns — descriptive, never a forecast. Columns are client-side sortable; cohorts with n < ${data?.min_sample ?? "min"} show NA + n. Each N= chip opens the exact observations in a new tab.`}
+      >
+        Downtrend Opportunity — forward returns conditioned on the causal downtrend state
+      </PanelTitle>
+      <div className="space-y-4 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <EventStudyViewToggle view={view} onChange={setView} />
+          {data ? (
+            <DowntrendDimensionSelector
+              dimensions={data.dimensions}
+              value={activeDimension}
+              onChange={setDimension}
+            />
+          ) : null}
+          <p className="max-w-md text-xs text-text-faint">
+            Re-uses the page&apos;s shared horizon selector and analysis-mode toggle above — no date control
+            of its own (the single global as-of drives any point-in-time scoping, J-18). The conditioning
+            dimension + Episodes/Pooled are cohort modes, not dates. Forward-return evidence only — there is
+            no order or execution affordance, including on the weakness angle.
+          </p>
+        </div>
+
+        {data ? (
+          <CaveatBanner survivorship={data.survivorship_bias} descriptive={data.descriptive_caveat} />
+        ) : null}
+
+        {/* J-92: the macro inputs that COULD feed this study are config-default-OFF, so today's figures are
+            the price/breadth/VIX-only path. Whenever a macro-conditioned figure IS shown, this
+            publication-lag limitation label discloses that a macro value is only used once published
+            (published_date <= D) — never the reference-date value (forbidden lookahead). */}
+        <MacroPublicationLagLabel />
+
+        {status === "error" ? (
+          <div className="flex items-center gap-3 rounded-md border border-neg bg-surface p-4 text-sm text-neg">
+            <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
+            <div>
+              <p className="font-medium">Backend unavailable</p>
+              <p className="text-text-muted">
+                The Downtrend Opportunity study could not load from the API. No figures are shown rather than
+                fabricated values — confirm the backend is running and retry.
+              </p>
+            </div>
+          </div>
+        ) : !data ? (
+          <CombinationSkeleton />
+        ) : data.n_total === 0 || !hasAny ? (
+          <EmptyState
+            icon={Microscope}
+            title="No downtrend-conditioned observations with forward-tested returns yet"
+            description="No stored observation has a causal downtrend tag with a realized forward return at this horizon / window. Pick a shorter horizon or widen the analysis mode — no evidence is fabricated to fill the gap."
+          />
+        ) : (
+          <DowntrendOpportunityBody
+            data={data}
+            dimension={activeDimension}
+            dim={status === "loading"}
+            scope={scope}
+            view={data.view}
+          />
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/** The conditioning-dimension selector (J-91): a segmented button group (phase / severity band / P(bear)
+ *  band), built from the payload's `dimensions` list (config-driven). A cohort/view selector — NOT a date
+ *  (J-18). Styled like the other research toggles. */
+function DowntrendDimensionSelector({
+  dimensions,
+  value,
+  onChange,
+}: {
+  dimensions: string[];
+  value: string;
+  onChange: (dimension: string) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs uppercase tracking-wide text-text-faint">Condition on</span>
+      <div role="group" aria-label="Conditioning dimension" className="inline-flex rounded-md border border-border bg-surface-2 p-0.5">
+        {dimensions.map((dim) => {
+          const active = dim === value;
+          return (
+            <button
+              key={dim}
+              type="button"
+              onClick={() => onChange(dim)}
+              aria-label={`Condition on ${_DIMENSION_LABELS[dim] ?? dim}`}
+              aria-pressed={active}
+              data-testid={`downtrend-dimension-${dim}`}
+              className={cn(
+                "rounded px-3 py-1 text-sm transition-colors",
+                "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                active ? "bg-accent/15 text-accent" : "text-text-muted hover:text-text",
+              )}
+            >
+              {_DIMENSION_LABELS[dim] ?? dim}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** The J-92 publication-lag limitation label — an honest disclosure shown wherever a macro-conditioned
+ *  figure could appear. The macro feed is config-default-OFF (so today's figures are byte-identical to the
+ *  price/breadth/VIX-only path), and a macro value is only used once it was actually published
+ *  (published_date <= D) — never the reference-date value (forbidden lookahead). */
+function MacroPublicationLagLabel() {
+  return (
+    <div
+      data-testid="macro-publication-lag-label"
+      className="flex items-start gap-2 rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-text-muted"
+    >
+      <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-text-faint" aria-hidden />
+      <span>
+        <span className="font-medium text-text-faint">Macro inputs (FRED) are optional and off by default.</span>{" "}
+        Today&apos;s figures use the price / breadth / VIX path only. When a macro-conditioned figure is shown,
+        a macro value is used for a date only once it was actually published (publication-lag aligned —
+        never the as-of-the-day reference value), and a walled or uncommitted series is shown as NA, never
+        fabricated.
+      </span>
+    </div>
+  );
+}
+
+function DowntrendOpportunityBody({
+  data,
+  dimension,
+  dim,
+  scope,
+  view,
+}: {
+  data: DowntrendOpportunityResponse;
+  dimension: string;
+  dim: boolean;
+  scope: SampleScope;
+  view: EventStudyView;
+}) {
+  // angles (a) + (b) rank the SAME cohorts; filter each to the active conditioning dimension (a pure view
+  // transform — recomputes nothing). The recovery-turn edge (angle c) by-phase rides the reused payload.
+  const best = data.held_up_best.filter((r) => r.dimension === dimension);
+  const worst = data.fell_hardest.filter((r) => r.dimension === dimension);
+  return (
+    <div className={cn("space-y-4 transition-opacity", dim && "opacity-60")} aria-busy={dim}>
+      <p className="text-xs text-text-faint">
+        Rows with <span className="text-warn">n &lt; {data.min_sample} ⚠</span> render NA. Risk is
+        downside-only everywhere (return ÷ downside-deviation and return ÷ mean-|MAE| — never total
+        volatility); the aggregate max-drawdown column is read verbatim from the stored excursions. Conditioned
+        on the causal {_DIMENSION_LABELS[dimension]?.toLowerCase() ?? dimension} at each snapshot date (&le; that date).
+      </p>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <DowntrendAngleTable
+          title="Held up best"
+          hint="The downtrend-conditioned cohorts with the STRONGEST forward returns (best-first). Read-only association on the current-membership seed — not a forecast."
+          rows={best}
+          min={data.min_sample}
+          horizon={data.horizon}
+          scope={scope}
+          view={view}
+          testid="downtrend-held-up-best-table"
+        />
+        <DowntrendAngleTable
+          title="Fell hardest"
+          subtitle="Research evidence only"
+          hint="The downtrend-conditioned cohorts with the WORST forward returns / deepest max-drawdown (worst-first). RESEARCH EVIDENCE ONLY — Trendora places no orders and offers no short-deployment path; this is what historically weakened, never an instruction to act."
+          rows={worst}
+          min={data.min_sample}
+          horizon={data.horizon}
+          scope={scope}
+          view={view}
+          testid="downtrend-fell-hardest-table"
+        />
+        <DowntrendRecoveryAngle data={data.recovery_turn_edge} scope={scope} />
+      </div>
+    </div>
+  );
+}
+
+type DowntrendSortKey = "cohort" | "n" | "mean" | "pct_positive" | "return_per_downside_dev" | "mean_max_drawdown";
+
+/** One ranked conditioned-cohort angle table (J-91), client-side sortable (J-48/J-82 view transform —
+ *  re-orders only). Each row's `n` is a SampleLink into the (dimension, cohort) drill-down (count-coherent,
+ *  new tab). Low-sample / null cells render NA + n (the SAME predicate the sort uses). */
+function DowntrendAngleTable({
+  title,
+  subtitle,
+  hint,
+  rows,
+  min,
+  horizon,
+  scope,
+  view,
+  testid,
+}: {
+  title: string;
+  subtitle?: string;
+  hint: string;
+  rows: DowntrendOpportunityRow[];
+  min: number;
+  horizon: number;
+  scope: SampleScope;
+  view: EventStudyView;
+  testid: string;
+}) {
+  const [sortKey, setSortKey] = useState<DowntrendSortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  const onSort = (key: DowntrendSortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "cohort" ? "asc" : "desc");
+    }
+  };
+
+  const sorted = (() => {
+    if (sortKey === null) return rows; // server rank order (the angle's best-first / worst-first)
+    const sign = sortDir === "asc" ? 1 : -1;
+    const value = (r: DowntrendOpportunityRow): string | number | null => {
+      switch (sortKey) {
+        case "cohort": return r.cohort_label;
+        case "n": return r.stats.n;
+        default: {
+          const raw = r.stats[sortKey];
+          if (r.stats.low_sample || r.stats.n === 0 || raw === null) return null; // SAME NA predicate as the cell
+          return raw;
+        }
+      }
+    };
+    return rows
+      .map((row, index) => ({ row, index }))
+      .sort((a, b) => {
+        const av = value(a.row);
+        const bv = value(b.row);
+        if (av === null && bv === null) return a.index - b.index;
+        if (av === null) return 1; // NA always last
+        if (bv === null) return -1;
+        let primary: number;
+        if (typeof av === "string" && typeof bv === "string") primary = av.localeCompare(bv) * sign;
+        else primary = ((av as number) - (bv as number)) * sign;
+        return primary !== 0 ? primary : a.index - b.index;
+      })
+      .map((e) => e.row);
+  })();
+
+  const header = (label: string, col: DowntrendSortKey, align: "left" | "right" = "right", term?: string) => {
+    const active = sortKey === col;
+    return (
+      <th className={cn("px-2 py-2 font-medium", align === "right" ? "text-right" : "text-left")}>
+        <span className={cn("inline-flex items-center gap-1", align === "right" && "justify-end")}>
+          <button
+            type="button"
+            onClick={() => onSort(col)}
+            aria-label={`Sort ${title} by ${label}`}
+            data-testid={`${testid}-sort-${col}`}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-sm hover:text-text",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+              active ? "text-accent" : "text-text-faint",
+            )}
+          >
+            {label}
+            <span aria-hidden className="text-[10px]">{active ? (sortDir === "asc" ? "▲" : "▼") : "↕"}</span>
+          </button>
+          {term ? <TermInfo term={term} /> : null}
+        </span>
+      </th>
+    );
+  };
+
+  return (
+    <Card className="p-0">
+      <PanelTitle hint={hint}>
+        <span className="inline-flex items-center gap-2">
+          {title}
+          {subtitle ? (
+            <span
+              data-testid={`${testid}-evidence-only`}
+              className="rounded border border-warn px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-warn"
+            >
+              {subtitle}
+            </span>
+          ) : null}
+        </span>
+      </PanelTitle>
+      <div className="overflow-x-auto">
+        <table data-testid={testid} className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+              {header("Cohort", "cohort", "left")}
+              {header("n", "n", "right", "n (sample size)")}
+              {header("Mean", "mean", "right")}
+              {header("Hit-rate", "pct_positive", "right", "hit-rate")}
+              {header("Ret/DD", "return_per_downside_dev", "right", "return / downside-dev")}
+              {header("Mean MDD", "mean_max_drawdown", "right", "max drawdown")}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((row) => {
+              const na = row.stats.low_sample || row.stats.n === 0;
+              return (
+                <tr key={`${row.dimension}-${row.cohort}`} className="border-b border-border last:border-b-0">
+                  <td className="px-2 py-2 text-text">{row.cohort_label}</td>
+                  <td className="px-2 py-2 text-right">
+                    <SampleLink
+                      n={row.stats.n}
+                      min={min}
+                      scope={scope}
+                      cohort={{
+                        kind: "downtrend-opportunity",
+                        horizon,
+                        dimension: row.dimension,
+                        cohort: row.cohort,
+                        view,
+                      }}
+                      label={`See the ${row.stats.n} observations conditioned on ${row.cohort_label}`}
+                    />
+                  </td>
+                  <td className="px-2 py-2 text-right"><EsValue value={row.stats.mean} na={na} kind="pct" /></td>
+                  <td className="px-2 py-2 text-right"><EsValue value={row.stats.pct_positive} na={na} kind="rate" /></td>
+                  <td className="px-2 py-2 text-right"><EsValue value={row.stats.return_per_downside_dev} na={na} kind="ratio" /></td>
+                  <td className="px-2 py-2 text-right"><EsValue value={row.stats.mean_max_drawdown} na={na} kind="pct" /></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+/** Angle (c): the reused J-90 recovery-turn edge surfaced in the same panel — the by-signal-phase
+ *  conditioning slice (each row's n a SampleLink into the recovery-turn drill-down, count-coherent, new
+ *  tab). Read VERBATIM from the reused payload — recomputes nothing. */
+function DowntrendRecoveryAngle({
+  data,
+  scope,
+}: {
+  data: RecoveryTurnEdgeResponse;
+  scope: SampleScope;
+}) {
+  return (
+    <Card className="p-0">
+      <PanelTitle hint="The reused Recovery-Turn Edge (J-90): the forward-return edge of entering at causal recovery-turn dates, conditioned on the causal phase at the signal date. Each N= chip opens the exact observations in a new tab. Forward-return evidence only — no order affordance.">
+        Recovery-turn edge by phase ({data.horizon}d)
+      </PanelTitle>
+      <div className="overflow-x-auto">
+        <table data-testid="downtrend-recovery-angle-table" className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+              <th className="px-2 py-2 font-medium">Phase at signal</th>
+              <th className="px-2 py-2 text-right font-medium">
+                <span className="inline-flex items-center justify-end gap-1">n<TermInfo term="n (sample size)" /></span>
+              </th>
+              <th className="px-2 py-2 text-right font-medium">Mean</th>
+              <th className="px-2 py-2 text-right font-medium">
+                <span className="inline-flex items-center justify-end gap-1">Hit-rate<TermInfo term="hit-rate" /></span>
+              </th>
+              <th className="px-2 py-2 text-right font-medium">
+                <span className="inline-flex items-center justify-end gap-1">Ret/DD<TermInfo term="return / downside-dev" /></span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.by_phase.map((row) => {
+              const na = row.low_sample || row.n === 0;
+              return (
+                <tr key={row.phase} className="border-b border-border last:border-b-0">
+                  <td className="px-2 py-2 text-text">{row.phase}</td>
+                  <td className="px-2 py-2 text-right">
+                    <SampleLink
+                      n={row.n}
+                      min={data.min_sample}
+                      scope={scope}
+                      cohort={{ kind: "recovery-turn", horizon: data.horizon, slice: "phase", phase: row.phase, view: data.view }}
+                      label={`See the ${row.n} recovery-turn observations with a ${row.phase} phase at the signal date`}
+                    />
+                  </td>
+                  <td className="px-2 py-2 text-right"><EsValue value={row.mean_return} na={na} kind="pct" /></td>
+                  <td className="px-2 py-2 text-right"><EsValue value={row.hit_rate} na={na} kind="rate" /></td>
+                  <td className="px-2 py-2 text-right"><EsValue value={row.risk_adjusted} na={na} kind="ratio" /></td>
                 </tr>
               );
             })}

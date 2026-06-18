@@ -304,6 +304,21 @@ function describeCohort(cohort: SampleCohort): { title: string; detail: string |
       detail: `${viewLabel} · ${sliceDetail}`,
     };
   }
+  // J-91 — the Downtrend Opportunity conditioned cohort (forward returns conditioned on the causal
+  // downtrend state at the snapshot date: phase / severity band / P(bear) band, all <= D).
+  if (cohort.kind === "downtrend-opportunity") {
+    const viewLabel = cohort.view === "pooled" ? "Pooled (per-signal-day)" : "Episodes (first-trigger)";
+    const dimLabel: Record<string, string> = {
+      phase: "Phase at snapshot",
+      severity_band: "Severity band at snapshot",
+      pbear_band: "P(bear) band at snapshot",
+    };
+    const dim = dimLabel[cohort.dimension ?? ""] ?? cohort.dimension;
+    return {
+      title: "Downtrend Opportunity",
+      detail: `${viewLabel} · ${dim}: ${cohort.cohort}`,
+    };
+  }
   // event-study
   const subject = cohort.subject?.label ?? "subject";
   // J-63: the overlap-honesty view this drill-down reproduces (Episodes = first-trigger; Pooled = per

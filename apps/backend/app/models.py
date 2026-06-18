@@ -472,6 +472,46 @@ class MarketPhaseCache(SQLModel, table=True):
     created_at: datetime
 
 
+class MacroSeries(SQLModel, table=True):
+    """A STANDALONE, create_all-managed table of optional FRED macro-feed observations (iter-32, J-92).
+
+    Like `EventStudyCache` / `MarketPhaseCache`, this is EXPLICITLY NOT a scanner snapshot — the
+    *Snapshots are immutable* critical anti-goal binds ONLY `scanner_runs` / `scanner_results` /
+    `*_scores` / `forward_returns`. This is a separate, additive macro store: one row per (`symbol`,
+    `date`) macro observation, carrying its raw `value`, the `source` it came from (e.g. `fred` /
+    `seed`), and the `published_date` — the calendar date the value first became publicly available
+    (`published_date = reference_date + publication_lag_days`). A macro value is usable for a causal
+    date D ONLY when `published_date <= D` (using the reference-date value on D is forbidden lookahead);
+    the macro-conditioning legs read with that publication-lag filter.
+
+    A STANDALONE table (its own `create_all`-managed table) is used deliberately so the iter-12
+    `_ADDITIVE_COLUMNS` trap does NOT apply — a fresh DB carries it from `create_db_and_tables`, and no
+    existing table gains a column. (The `^TNX`/`^DXY`/`^VXN` OHLCV macro PROXIES ride the EXISTING
+    `daily_prices` table as plain bars — no schema change there.)
+
+    Macro ships config-default-OFF: with no macro rows here (or every leg disabled) every J-87..J-91
+    figure is byte-identical to the price/breadth/VIX-only path. A walled/uncommitted series simply has
+    no rows → honest blocked-NA, never a fabricated value.
+
+      - `symbol` is the internal macro series id (a `config.macro.series[*].id` — e.g.
+        `yield_curve_10y2y`), NOT the OHLCV proxy ticker.
+      - unique on (`symbol`, `date`) so a re-fetch is an idempotent upsert; indexed by
+        (`symbol`, `date`) for the per-series causal read."""
+
+    __tablename__ = "macro_series"
+    __table_args__ = (
+        UniqueConstraint("symbol", "date", name="uq_macro_series_symbol_date"),
+        Index("ix_macro_series_symbol_date", "symbol", "date"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    symbol: str  # the internal macro series id (config.macro.series[*].id)
+    date: date  # the macro value's reference date (the observation date)
+    value: float  # the raw macro value, read verbatim (never fabricated)
+    source: str  # where the value came from (e.g. "fred" / "seed") — provenance only, no key VALUE
+    published_date: date  # the date the value became public (reference_date + publication_lag); causal gate
+
+
 # --- iter-7 watchlist (USER-MUTABLE — the product's FIRST user-write surface; J-11) ----------
 class Watchlist(SQLModel, table=True):
     """One user-saved stock on the persistent research watchlist (iter-7). The product's FIRST

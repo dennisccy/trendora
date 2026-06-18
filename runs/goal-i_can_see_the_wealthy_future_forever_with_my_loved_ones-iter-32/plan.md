@@ -1,0 +1,86 @@
+# goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32 Execution Plan
+
+Target journeys: **J-91** (Downtrend-conditioned opportunity study on `/research`) + **J-92** (optional, config-default-OFF FRED macro feed + macro proxies). Depth: FULL. Both add backend code → the full ~880-test pytest suite is the GOAL_ACHIEVED gate (handed to the pump nohup-async — NEVER block the evaluator on the in-flight suite; iter-11/iter-29 lesson).
+
+This plan is grounded in the approved blueprint (IA + Data Contract rows for J-91 line 324 / J-92 line 325 are already registered as `[TARGET iter-32]` on EXISTING homes — no nav change, no re-approval) and the iter-30 dev handoff (the J-90 recovery-turn-edge layer J-91 reuses).
+
+## What to Build
+
+**J-91 — Downtrend Opportunity study (`/research`, additive over existing evidence):**
+- New read-only `research:compute_downtrend_opportunity_study` that GROUPS the SAME enriched event-study observation set (`_event_study_observation_set` / `_event_study_members`: stored realized return + MAE/MFE + `max_drawdown` + stored `regime_label` + `sector` + setup/pattern flags, read VERBATIM) and ADDITIVELY tags each observation with the CAUSAL as-of **phase / severity band / P(bear) band** at the observation's snapshot date, read from the existing read-only `market_phase` derivation (≤ D, never recomputed; FILTERED P(bear) only — never the J-89 SMOOTHED/true-bear fence).
+- Returns THREE angles, each ranked rows with per-horizon stats (n, mean, median, %-positive/hit-rate, expectancy, downside-only risk-adjusted [return/downside-dev, return/|MAE|, max-drawdown]): **(a) held-up-best**, **(b) weakness / fell-hardest — EVIDENCE ONLY (no execution)**, **(c) recovery-turn edge** (REUSE `compute_recovery_turn_edge`, do NOT re-derive).
+- New endpoint `GET /api/research/downtrend-opportunity` (`horizon` / `view` Episodes⇄Pooled [J-63] / `as_of` All-history⇄As-of FILTER-only [J-32] params, mirroring `/api/research/event-study`). Horizons from `config.walk_forward.horizons`; min-sample from `config.walk_forward.min_sample` (NA + n below it); phase/severity-band/P(bear)-band vocabulary from a config-backed catalog (no hardcoded list). Downside-only risk only.
+- New `compute_samples` kind in `samples.py` (mirroring `_recovery_turn_samples` / `_regime_setup_pattern_samples`) reached via the EXISTING `GET /api/research/samples`; drill-down total == published row n in BOTH Episodes+Pooled and BOTH All-history+As-of; validation accepts EVERY combination the study emits so no displayable row 4xx's (J-82 lesson).
+- ADDITIVE: assert `compute_event_study` (J-29/J-63), `compute_regime_setup_pattern_study` (J-77), `compute_recovery_turn_edge` (J-90) figures + existing samples drill-downs stay BYTE-IDENTICAL.
+
+**J-92 — Optional FRED macro feed + macro proxies (config-default-OFF):**
+- New **macro provider** registered in `data_providers/__init__.py` `make_provider` (FRED key read FROM THE ENVIRONMENT ONLY — never persisted/logged/committed/echoed) writing a STANDALONE additive `MacroSeries(symbol, date, value, source, published_date)` `create_all`-managed table (the `MarketPhaseCache`/`EventStudyCache` standalone-table reasoning — NOT `_ADDITIVE_COLUMNS`, NO snapshot rebuild). Register `macro_series` in the `test_db.py` expected-tables guard as a NEW group (iter-20 lesson).
+- Store `^TNX` / `^DXY` / `^VXN` as plain `DailyPrice` bars beside the seeded `^VIX` (any symbol accepted — no universe FK; no schema change).
+- Wire macro series as OPTIONAL config-default-OFF inputs to the J-87 severity score, the J-88 regime-switching observation vector + emissions, and the J-91 study conditioning — each leg OFF by default so with macro absent/disabled every J-87..J-91 figure is BYTE-IDENTICAL to the price/breadth/VIX-only path (assert).
+- Publication-lag alignment: a macro value used for date D is only one whose `published_date ≤ D` (config per-series lag; using the reference-date value on D is forbidden lookahead). Honest publication-lag limitation label.
+- Commit a small macro seed over the seed window (mirroring `^VIX`) so macro-conditioned features are offline-testable with injected fixtures. Live FRED/proxy pull + any uncommitted series are data-dependent / NON-HALTING → honest blocked-NA, never fabricated, never vetoing GOAL_ACHIEVED (J-22 / J-44-DIA contract).
+- New typed/validated config block(s) (provider list / env-var name / per-series id + publication-lag + default-off enable flags); macro-wiring code stays `test_no_magic_numbers`-clean.
+
+## Agents Required
+- backend-data: **yes** — the new `compute_downtrend_opportunity_study` + endpoint + samples kind (J-91); the macro provider + standalone `MacroSeries` table + `DailyPrice` proxies + config-default-OFF wiring + macro seed (J-92); config blocks; backend unit/integration + byte-identity tests.
+- frontend-ux: **yes** — the Downtrend Opportunity three-angle panel on `/research`; publication-lag limitation label + macro provider visibility in the `/data` provider catalog.
+- developer: yes — single developer agent handles both backend and frontend per this project's TDD flow.
+
+## Frontend Present
+yes
+
+## Files to Create/Modify
+- `apps/backend/app/engine/research.py` -- add `compute_downtrend_opportunity_study` (+ `_downtrend_opportunity_observation_set` shared with the drill-down; angle (c) reuses `compute_recovery_turn_edge`); a `CALC_FILES` member, no threshold literal.
+- `apps/backend/app/engine/samples.py` -- new `KIND_DOWNTREND_OPPORTUNITY` + `_downtrend_opportunity_samples` + dispatch + selectors (mirror `_recovery_turn_samples`).
+- `apps/backend/app/api/research.py` -- `GET /api/research/downtrend-opportunity` (horizon/view/as_of) + the new samples kind/selectors on `GET /api/research/samples`.
+- `apps/backend/app/engine/market_phase.py` -- a read-only causal phase/severity/P(bear) conditioning-tag accessor for J-91 (reuse the existing `_timeline_series`/`_phase_for`/`_filtered_bear_path` derivation — never a second computation); the J-92 OPTIONAL config-default-OFF macro legs in `_severity_reading` + the regime-switching observation vector/emissions (no behavior change when disabled).
+- `apps/backend/app/data_providers/__init__.py` -- register the new macro provider in `make_provider`.
+- `apps/backend/app/data_providers/fred_provider.py` (NEW) -- the FRED macro provider (env-only key; honest `ProviderUnavailableError` on a walled pull; never fabricates).
+- `apps/backend/app/models.py` -- new STANDALONE `MacroSeries` table (mirror `MarketPhaseCache`).
+- `apps/backend/app/config.py` -- new typed/validated macro config block(s) + the phase/severity-band/P(bear)-band conditioning vocabulary catalog for J-91 (validated; reuses `walk_forward.min_sample`).
+- `config.yaml` -- the real macro block (default-OFF flags, per-series id + publication-lag) + the J-91 conditioning-band catalog.
+- `apps/backend/app/seed_loader.py` (or the seed data path) -- the small committed macro seed over the seed window (mirroring `^VIX`).
+- `apps/backend/tests/test_research.py` -- J-91 downtrend-opportunity tests (byte-identity, no-lookahead tail-invariance, count-coherence Episodes×Pooled×All-history×As-of, every displayable row 2xx, downside-only risk, horizons-from-config, min-sample→NA).
+- `apps/backend/tests/test_market_phase.py` -- J-92 macro-disabled byte-identity of every J-87..J-91 figure; publication-lag (`published_date ≤ D`); no-lookahead.
+- `apps/backend/tests/test_db.py` -- register `macro_series` in the expected-tables guard (new `MACRO_TABLES` group).
+- `apps/backend/tests/` (providers/config) -- macro provider registered in `make_provider`; FRED key env-only never persisted/logged/echoed; walled provider → honest NA; macro config validation; `test_no_magic_numbers` stays green.
+- `apps/backend/tests/test_config.py`, `test_config_engine.py`, `test_indexes.py`, `test_sectors.py`, `test_themes.py` -- add any new required macro/vocabulary config keys to ALL inline from-scratch config dicts (config-fixtures-need-new-required-keys lesson; grep the new section key across all of `apps/backend/tests`).
+- `apps/frontend/app/research/page.tsx` -- new `DowntrendOpportunityLab` section appended after `RecoveryTurnEdgeLab`; three side-by-side ranked client-side-sortable tables; conditioning controls (phase / severity band / P(bear) band from the config vocabulary in the payload); horizon, Episodes⇄Pooled, As-of⇄All-history toggles; `N=` chips → samples in a NEW tab; NA+n on low-sample; survivorship-bias + universe-relative labels; weakness angle labelled EVIDENCE ONLY (no order/execution affordance); J-92 publication-lag limitation label when a macro-conditioned figure is shown.
+- `apps/frontend/lib/api.ts` -- `fetchDowntrendOpportunity` + response types.
+- `apps/frontend/lib/samples-link.ts` -- the downtrend-opportunity cohort serialization for the `N=` chip → drill-down link.
+- `apps/frontend/app/research/samples/page.tsx` -- the drill-down cohort header for the new downtrend-opportunity kind.
+- `apps/frontend/app/data/...` (Data Manager provider catalog component) -- surface the macro provider in the existing provider catalog / import surface; honest blocked/unavailable (NA) state for a walled/uncommitted series.
+
+## UI Evolution
+- New user-facing capability: condition the existing forward-return evidence on the CAUSAL downtrend state (phase / severity band / P(bear) band, all ≤ D) and read three angles — what held up best, what fell hardest (evidence only), the recovery-turn edge — on `/research`. The macro provider becomes selectable in the Data Manager (config-default-OFF, so default figures are unchanged).
+- New information displayed: the Downtrend Opportunity three-angle tables (per-horizon mean/median/%-positive/expectancy + downside-only risk-adjusted + max-drawdown, conditioned by phase/severity-band/P(bear)-band); the publication-lag limitation label for macro-conditioned figures.
+- New user actions: phase / severity-band / P(bear)-band conditioning controls; horizon, Episodes⇄Pooled, As-of⇄All-history toggles; client-side column sort; `N=` chips opening count-coherent samples in a new tab.
+- UI surface changes: a new Downtrend Opportunity panel on the EXISTING `/research` page; the macro provider visible in the EXISTING `/data` provider catalog.
+- Navigation changes: none (existing IA homes — `/research`, `/research/samples`, `/data`; no new top-level nav section, no new page; blueprint Data Contract updated additively, no re-approval).
+
+## Visual Requirements
+- Component patterns: reuse the existing Research-lab building blocks — `Card` panels, `Badge` chips, `Select` toggles, the existing event-study cell renderer (distribution + expectancy + MAE/MFE + aggregate MDD + downside risk-adjusted), the `N=` chip + samples-link pattern, the survivorship `CaveatBanner`. Match `RecoveryTurnEdgeLab` / `RegimeSetupPatternLab` exactly — this panel sits directly after them.
+- Layout: the three angles render side by side as ranked tables within the `/research` page's existing sidebar+main content shell; collapse to stacked on narrow widths; the panel is appended below the existing labs (scroll-into-view for QA).
+- Key visual effects: the established dense dark analytical-workstation treatment (Tailwind + shadcn/ui, Lucide icons, design-token colours — NO magic hex); NA-last sorting using the SAME cell-display predicate (`low_sample` OR `n===0` OR `value===null`, the J-82 contract); ranked rows re-order only (J-48 view-transform — recomputes nothing).
+- States to handle: loading skeleton (per-lab independent, J-72); warming/empty state; honest NA + n for low-sample/empty conditioned cohorts; error state (no figures rather than fabricated values); the EVIDENCE-ONLY label on the weakness angle and the publication-lag label on macro-conditioned figures.
+
+## Key Test Scenarios
+- **J-91 byte-identity (CRITICAL):** the additive causal-tag enrichment leaves `compute_event_study` (J-29/J-63), `compute_regime_setup_pattern_study` (J-77), `compute_recovery_turn_edge` (J-90) figures + existing samples drill-downs BYTE-IDENTICAL.
+- **J-91 no-lookahead (CRITICAL):** the conditioning phase/severity/P(bear) tag at a signal date uses only ≤ D (tail-invariance idiom like `forward_return`); forward returns use only bars > D; FILTERED P(bear) only (never the J-89 SMOOTHED/true-bear fence).
+- **J-91 count-coherence SAME-INSTANT:** drill-down total == published row n in Episodes AND Pooled AND All-history AND As-of; every displayable conditioned (phase/severity-band/P(bear)-band × angle) row resolves 2xx (J-82 lesson); a non-emitted combination → 4xx; downside-only risk; horizons from config; min-sample → NA + n.
+- **J-91 browser:** the three-angle panel renders; conditioning + horizon + Episodes⇄Pooled + As-of⇄All-history toggles re-point consistently; `N=` chip → count-coherent samples in a new tab (total == published n); low-sample shows NA + n; survivorship-bias label present; weakness angle labelled EVIDENCE ONLY with NO order/execution affordance. Resolve sort/`N=` controls by `aria-label` (not `text()`); scroll the below-the-fold panel into full viewport and VIEW the pixels; `md5sum` the evidence dir first.
+- **J-92 provider/table/wiring:** macro provider registered in `make_provider`; `MacroSeries` standalone table created by `create_all` and present in the `test_db.py` expected-tables guard; FRED key read from env only, never persisted/logged/echoed; macro-wiring passes `test_no_magic_numbers`.
+- **J-92 macro-disabled byte-identity (CRITICAL):** with macro absent/disabled every J-87..J-91 figure is byte-identical to the price/breadth/VIX-only path.
+- **J-92 publication-lag + honesty:** a macro value used for D has `published_date ≤ D` (never the reference-date value — forbidden lookahead); a walled FRED provider / uncommitted series → honest blocked-NA, never fabricated, never halting.
+- **J-92 browser:** publication-lag limitation label visible on macro-conditioned figures; macro provider visible in the Data Manager catalog; default figures byte-identical with macro disabled; honest blocked-NA for a walled/uncommitted series.
+- **J-18 (CRITICAL — exactly one date selector):** the new `/research` panel + conditioning controls hold NO date `useState` and NO window/document keydown listener; the As-of⇄All-history toggle is a MODE reading the single global as-of; `?asof` stays the serialization. J-92 adds NO date control.
+- **Required-still-passing smoke:** J-87/J-88 (Dashboard Market-Phase panel unchanged at the same date), J-89/J-90, J-06 (single source), J-07 (Risk-Off gate), J-29/J-32/J-63/J-51/J-65/J-77/J-82 (research labs + samples count-coherence).
+- **Full suite gate:** the FULL ~880-test backend pytest suite must flush `0 failed, EXIT 0` (handed to the pump nohup-async; an `exit=137` in the log is the known background-helper harness-kill, NOT a test failure). Split fast (no-boot synthetic + config-validation) from slow (seed-boot) tests; verify the anti-goal-critical legs (no-lookahead, determinism, byte-identity-when-disabled, count-coherence) via the FAST set within the subagent cap (iter-29 lesson).
+
+## Notes / Assumptions
+- This iteration IS a GOAL_ACHIEVED candidate (it is the J-91/J-92 build, not a verification pass) — but only on a FLUSHED green full suite, zero regression, and COHERENCE-PASS; J-22/J-23/J-24 stay honestly blocked-NA (non-vetoing). J-93/J-94/J-96 + J-95 are the NEXT cluster — explicitly OUT OF SCOPE.
+- Scope discipline: no change to any canonical stock score, A–E bucket, setup status, pattern flag, the regime score, or the Risk-Off→Actionable gate; no new snapshot column or snapshot rebuild (J-91 is a read-only derivation; J-92 uses a standalone table + `DailyPrice` proxies); no EM-fitting regime params at serve time; no serving the SMOOTHED P(bear)/true-bear dating on any causal path; no order/execution/short-deployment affordance on the weakness angle; no persisting/logging/echoing any FRED key; macro inputs ship config-default-OFF.
+- Assumption: the developer reuses the existing `_event_study_observation_set` builder and `compute_recovery_turn_edge` verbatim (one membership rule); the J-91 conditioning tags read the existing `market_phase` causal series (the same `_timeline_series`/`_filtered_bear_path`/`_phase_for` the panel uses) — never a second computation.
+- Assumption: the J-91 samples drill-down rides the EXISTING `GET /api/research/samples` with a new `kind` (no second endpoint); the macro provider rides the EXISTING import path / provider catalog (no second fetch path / no new public macro read endpoint).
+- Cache contract note (iter-30): a fresh `market_phase`-derived compute on the daily-history QA host may be served from a stale `MarketPhaseCache`/`EventStudyCache` keyed by the unchanged `dataset_version`; the derived caches are safe to clear once for QA (NOT the snapshot/seed layer — never trigger the J-85 rebuild for QA; that clears ~1370 daily snapshots, ~11h). On the committed seed the compute is instant.
+- No scope creep detected: the phase spec matches goal.md (J-91 acceptance ~line 2225, J-92 ~line 2234) and the approved blueprint Data Contract rows (lines 324–325) exactly. Nothing outside CORE RULES requested.

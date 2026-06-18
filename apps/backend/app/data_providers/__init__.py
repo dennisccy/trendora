@@ -79,4 +79,11 @@ def make_provider(
         from app.data_providers.alpha_vantage_provider import AlphaVantageProvider  # lazy: only on fetch
 
         return AlphaVantageProvider(api_key=api_key)
+    if name == "fred":
+        # iter-32 (J-92): the STANDALONE FRED macro provider. Key-aware (FRED key read from the
+        # environment, request-only, never persisted); its capability is macro observations
+        # (`get_macro_series`), NOT OHLCV bars. Lazy-imported so the boot path pulls in no FRED dependency.
+        from app.data_providers.fred_provider import FredProvider  # lazy: only when a macro fetch runs
+
+        return FredProvider(api_key=api_key)
     raise ValueError(f"unknown provider: {name!r}")

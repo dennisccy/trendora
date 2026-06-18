@@ -45,12 +45,16 @@ from sqlmodel import Session, select
 from app.config import Config, get_config
 from app.engine.forward_testing import SURVIVORSHIP_BIAS_LABEL
 from app.engine.research import (
+    ALL_DOWNTREND_DIMENSIONS,
     ALL_VIEWS,
     RESEARCH_CAVEAT,
     VIEW_EPISODES,
     _combination_cohort_members,
     _combination_observations,
     _decile_member_slice,
+    _downtrend_dimension_catalog,
+    _downtrend_member_dimension_value,
+    _downtrend_opportunity_observation_set,
     _event_study_observation_set,
     _factor_observations,
     _recovery_turn_observation_set,
@@ -70,8 +74,10 @@ KIND_COMBINATION = "combination"
 KIND_EVENT_STUDY = "event-study"
 KIND_REGIME_SETUP_PATTERN = "regime-setup-pattern"  # J-77 combination drill-down
 KIND_RECOVERY_TURN = "recovery-turn"                 # J-90 recovery-turn edge drill-down
+KIND_DOWNTREND_OPPORTUNITY = "downtrend-opportunity"  # J-91 downtrend-conditioned opportunity drill-down
 ALL_KINDS = (
     KIND_FACTOR, KIND_COMBINATION, KIND_EVENT_STUDY, KIND_REGIME_SETUP_PATTERN, KIND_RECOVERY_TURN,
+    KIND_DOWNTREND_OPPORTUNITY,
 )
 # The recovery-turn-edge slice families (which published `N=` chip on the Recovery-Turn Edge lab was
 # clicked). `total` is the whole signal-date pool at the horizon (== `n` / `n_total`); `phase` is the
@@ -480,6 +486,75 @@ def _recovery_turn_samples(
 
 
 # --------------------------------------------------------------------------------------------------
+# Downtrend Opportunity cohort (J-91 — the three-angle study's per-row N= chip). A cohort is ONE
+# (dimension, cohort-key) conditioned group at a horizon/view: e.g. (severity_band, severe) or (phase,
+# Bear) or (pbear_band, extreme). Angles (a) held-up-best + (b) fell-hardest rank the SAME cohorts, so a
+# chip from EITHER angle drills into the SAME (dimension, cohort) group — count-coherent in both.
+# --------------------------------------------------------------------------------------------------
+def _downtrend_opportunity_samples(
+    session: Session, cfg: Config, *, dimension: Optional[str], cohort_key: Optional[str],
+    horizon: int, as_of: Optional[date_cls], view: str = VIEW_EPISODES,
+) -> dict:
+    """Reproduce ONE (dimension, cohort) conditioned cohort from the J-91 study and list its member
+    observations UNDER THE SELECTED `view` (J-63). Membership is the SAME
+    `_downtrend_opportunity_observation_set` builder + the SAME `_downtrend_member_dimension_value`
+    predicate `compute_downtrend_opportunity_study` aggregates, so the drill-down `total` EQUALS the row's
+    published `n` in BOTH Episodes and Pooled modes AND BOTH All-history and As-of scopes (count-coherence
+    keystone — one membership rule, never a second grouping).
+
+    VALIDATION RECONCILIATION (the J-82 lesson): `dimension` must be one of the three conditioning
+    dimensions; `cohort_key` must be one the dimension's config-backed catalog actually lists (so EVERY
+    displayable row — even an n=0 cohort the study emits as honest NA — resolves 2xx, while a genuinely
+    non-catalogued cohort raises `ValueError` -> an honest 4xx). Vocabularies stay config-backed. Each row:
+    ticker, snapshot (signal) date, the causal signal-date phase/severity/P(bear), the realized forward
+    return at the stated horizon (read VERBATIM — recomputes nothing)."""
+    if view not in ALL_VIEWS:
+        raise ValueError(f"unknown view {view!r}; valid views are {list(ALL_VIEWS)}")
+    if dimension not in ALL_DOWNTREND_DIMENSIONS:
+        raise ValueError(
+            f"unknown downtrend dimension {dimension!r}; valid dimensions are {list(ALL_DOWNTREND_DIMENSIONS)}"
+        )
+    catalog = _downtrend_dimension_catalog(cfg)
+    valid_keys = [entry["key"] for entry in catalog[dimension]]
+    if cohort_key is None or cohort_key not in valid_keys:
+        raise ValueError(
+            f"cohort {cohort_key!r} is not a {dimension!r} cohort the downtrend-opportunity study emits "
+            f"(valid: {valid_keys})"
+        )
+
+    observations = _downtrend_opportunity_observation_set(session, horizon, view, cfg, as_of)
+    members = [
+        obs for obs in observations
+        if _downtrend_member_dimension_value(obs, dimension) == cohort_key
+    ]
+
+    run_dates = _run_date_map(session)
+    rows = [
+        {
+            "ticker": m["ticker"],
+            "snapshot_date": run_dates.get(m["run_id"]),
+            "regime": m["regime"],
+            "sector": m["sector"],
+            "values": [
+                {"key": "signal_phase", "label": "Phase at signal", "value": m["signal_phase"]},
+                {"key": "signal_severity", "label": "Severity at signal", "value": m["signal_severity"]},
+                {"key": "signal_p_bear", "label": "P(bear) at signal", "value": m["signal_p_bear"]},
+            ],
+            "forward_return": m["return"],
+        }
+        for m in members
+    ]
+    cohort = {
+        "kind": KIND_DOWNTREND_OPPORTUNITY,
+        "horizon": horizon,
+        "dimension": dimension,
+        "cohort": cohort_key,
+        "view": view,
+    }
+    return {"cohort": cohort, "rows": rows}
+
+
+# --------------------------------------------------------------------------------------------------
 # The single canonical samples read (read-only exposure of the stored observation pools)
 # --------------------------------------------------------------------------------------------------
 def compute_samples(
@@ -498,6 +573,9 @@ def compute_samples(
     setup: Optional[str] = None, pattern: Optional[str] = None,
     # recovery-turn cohort selector (J-90) — reuses `slice_kind` (total|phase) + `phase`
     phase: Optional[str] = None,
+    # downtrend-opportunity cohort selector (J-91) — `dimension` (phase|severity_band|pbear_band) +
+    # `cohort_kind` (the cohort key in that dimension's config catalog)
+    dimension: Optional[str] = None,
 ) -> dict:
     """The SINGLE canonical Research-samples read (Data Contract value, J-51 / J-52). Reproduces ONE
     published research cohort from the SAME stored per-observation data the aggregate used and returns its
@@ -538,6 +616,11 @@ def compute_samples(
     elif kind == KIND_RECOVERY_TURN:
         built = _recovery_turn_samples(
             session, cfg, horizon=horizon, slice_kind=slice_kind or "total", phase=phase,
+            as_of=as_of, view=view or VIEW_EPISODES,
+        )
+    elif kind == KIND_DOWNTREND_OPPORTUNITY:
+        built = _downtrend_opportunity_samples(
+            session, cfg, dimension=dimension, cohort_key=cohort_kind, horizon=horizon,
             as_of=as_of, view=view or VIEW_EPISODES,
         )
     else:

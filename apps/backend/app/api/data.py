@@ -106,6 +106,10 @@ def data_overview(session: Session = Depends(get_session)) -> dict:
         "coverage": data_manager.compute_coverage(session, cfg),
         "runs": data_manager.recent_runs(session, cfg),
         "sources": data_manager.compute_provider_availability(cfg),
+        # J-92: the OPTIONAL FRED macro feed catalog + availability (env-detected; committed-seed coverage;
+        # honest blocked-NA for a walled/uncommitted series). Carries the env-var NAME + booleans only,
+        # never a key value. Macro ships config-default-OFF, so default figures are unchanged.
+        "macro": data_manager.compute_macro_availability(session, cfg),
         "resumable_imports": data_manager.resumable_imports(session, cfg),
         # J-38: the UNIFIED Unfinished-imports list — resumable checkpoints + partial/failed runs (minus
         # soft-dismissed), each with a plain-language state + the right action. Generalizes

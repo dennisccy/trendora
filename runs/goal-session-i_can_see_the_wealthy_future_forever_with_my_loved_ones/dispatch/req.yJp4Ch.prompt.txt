@@ -1,0 +1,30 @@
+You are the ui-test-designer for phased development.
+
+Phase: goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32
+Phase spec: /home/dennisccy/Git/trendora/docs/phases/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32.md
+Agent instructions: .claude/agents/ui-test-designer.md  <-- read this first
+(CLAUDE.md is already in your system prompt — do not Read it again.)
+Skills to use:
+  - .claude/skills/manual-ui-test-plan-generator.md
+  - .claude/skills/what-to-click-writer.md
+
+Execution plan: /home/dennisccy/Git/trendora/runs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32/plan.md
+User-visible changes: /home/dennisccy/Git/trendora/reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32-user-visible-changes.md  <-- read this first
+UI surface map: /home/dennisccy/Git/trendora/reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32-ui-surface-map.md  <-- read this for surfaces to test
+Existing functional test plan: /home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32-test-plan.md  <-- read for context, do not duplicate API tests
+
+Frontend URL: http://localhost:3835
+
+Your job:
+1. Read the agent instructions and skills above
+2. For each surface in the UI surface map, create test cases (smoke, happy-path, validation, error, regression, UX)
+3. Each test case must have exact steps with specific URLs, button text, field names, and expected outcomes
+4. Write the 5-minute operator verification guide (max 10 steps)
+
+Write these two reports:
+  - /home/dennisccy/Git/trendora/reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32-ui-test-plan.md  (use template: templates/ui-test-plan.md)
+  - /home/dennisccy/Git/trendora/reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32-what-to-click.md  (use template: templates/what-to-click.md)
+
+Every step must be independently executable. No vague steps like 'test the form' or 'verify it works'.
+
+Then STOP.
