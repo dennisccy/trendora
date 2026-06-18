@@ -935,14 +935,23 @@ export interface MethodologyEntry {
   example: string;
 }
 
-/** The Universe Selection section (J-22) — the config-recorded screen that defines membership. The
+/** The Universe Selection section (J-22 / J-93) — the config-recorded screen that defines membership. The
  *  `membership_rule` prose + the three screen `thresholds` (resolved LIVE from `universe.filters` on the
  *  backend, so they always match the offline screen) + the `resolved_size` read from the ONE canonical
- *  universe (the same value GET /api/data reports as `universe_count`). The frontend re-formats it only. */
+ *  universe (the same value GET /api/data reports as `candidate_universe_count`). J-93 additionally serves
+ *  the per-as-of-date membership rule: `per_date_rule` is the prose for the per-date resolver (the same
+ *  candidate pool screened from bars ≤ D only on price + ADV + `per_date_min_history_bars` trailing bars,
+ *  market-cap dropped per-date), `candidate_pool_size` is the full candidate-pool denominator, and
+ *  `per_date_min_history_bars` is the warm-up bar count. All three are produced by the single canonical
+ *  module `methodology._universe_selection` and served by the single `GET /api/methodology`; the frontend
+ *  re-formats them only — it never recomputes membership. */
 export interface UniverseSelection {
   membership_rule: string;
   thresholds: MethodologyThresholdRow[];
   resolved_size: number;
+  candidate_pool_size: number;
+  per_date_rule: string;
+  per_date_min_history_bars: number;
 }
 
 /** One glossary term (iter-4 goal-mode, J-47). `term` is the LITERAL UI string (the tooltip/lookup

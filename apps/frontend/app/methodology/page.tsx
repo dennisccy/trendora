@@ -229,9 +229,11 @@ function fmtMoney(value: number): string {
   return `$${value}`;
 }
 
-/** The Universe Selection section (J-22) — the membership rule + the three config screen thresholds
- *  (read live from config) + the resolved universe size. Mirrors the EntryCard config-backed pattern;
- *  no hard-coded copy or numbers (everything comes from the API). */
+/** The Universe Selection section (J-22 / J-93) — the membership rule + the three config screen
+ *  thresholds (read live from config) + the resolved universe size, plus the J-93 per-as-of-date
+ *  membership rule (the `per_date_rule` prose, the `candidate_pool_size` full-pool denominator, and the
+ *  `per_date_min_history_bars` warm-up bar count). Mirrors the EntryCard config-backed pattern; no
+ *  hard-coded copy or numbers — every value is read verbatim from the GET /api/methodology payload. */
 function UniverseSelectionCard({ selection }: { selection: UniverseSelection }) {
   return (
     <Card className="space-y-3 p-4" data-testid="universe-selection">
@@ -262,6 +264,25 @@ function UniverseSelectionCard({ selection }: { selection: UniverseSelection }) 
             </li>
           ))}
         </ul>
+      </div>
+
+      <div className="space-y-1.5 border-t border-border pt-3" data-testid="universe-per-date-rule">
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-xs uppercase tracking-wide text-text-faint">Per-date membership rule</p>
+          <Badge variant="default">As-of</Badge>
+        </div>
+        <p className="text-sm text-text-muted">{selection.per_date_rule}</p>
+        <p className="text-xs text-text-faint">
+          Candidate pool:{" "}
+          <span className="num text-text" data-testid="universe-candidate-pool-size">
+            {selection.candidate_pool_size}
+          </span>{" "}
+          names · Minimum history:{" "}
+          <span className="num text-text" data-testid="universe-per-date-min-history-bars">
+            {selection.per_date_min_history_bars}
+          </span>{" "}
+          trailing bars
+        </p>
       </div>
     </Card>
   );
