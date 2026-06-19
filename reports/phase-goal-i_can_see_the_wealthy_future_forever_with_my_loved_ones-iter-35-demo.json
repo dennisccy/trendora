@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-35",
+  "base_url": "http://localhost:3835",
+  "iteration": 35,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Stock leaderboard — full universe at latest date",
+      "narration": "The stock leaderboard now shows the complete, correctly-sized universe at today's date. After a full snapshot rebuild, 544 stocks appear instead of the stale 122-member flat list that had been served at every date.",
+      "point_out": "Row count near top of table reads 544/544 — all filters set to 'All'. Each row shows leadership, entry, and risk scores alongside sector and setup labels.",
+      "journey": "J-15",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "544" }
+    },
+    {
+      "n": 2,
+      "title": "Honest empty universe at a pre-warm-up date",
+      "narration": "Step the date back to January 2021 and the leaderboard honestly shows zero stocks. No data is fabricated — the system admits names only once they have the required price history, so the early universe is genuinely empty.",
+      "point_out": "The table is completely empty with a message confirming no stocks qualified on that date. The row counter reads 0, not 122.",
+      "journey": "J-93",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks?asof=2021-01-04" },
+      "expect": { "text": "No ranked stocks at this date" }
+    },
+    {
+      "n": 3,
+      "title": "Dynamic universe at a full-history date",
+      "narration": "Jump to February 2022 and the same leaderboard fills with 504 stocks — the genuine point-in-time universe for that date. The count slides with the date rather than staying fixed at an arbitrary number.",
+      "point_out": "Table shows approximately 504 rows. The very first row displays a leadership score and ticker — confirming real data, not a placeholder.",
+      "journey": "J-93",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks?asof=2022-02-01" },
+      "expect": { "text": "504" }
+    },
+    {
+      "n": 4,
+      "title": "NVDA leaderboard row — score snapshot",
+      "narration": "Back at the latest date, NVDA appears on the leaderboard with three canonical scores. These values come from the single rebuilt snapshot — the same store that powers both the list and the detail page.",
+      "point_out": "NVDA row is visible with Leadership, Entry, and Risk score columns populated. Note the exact score values — we will confirm they match the detail page next.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks?asof=2026-06-16" },
+      "expect": { "text": "NVDA" }
+    },
+    {
+      "n": 5,
+      "title": "NVDA detail page — scores match the leaderboard",
+      "narration": "Opening the NVDA detail page shows the identical leadership, entry, and risk scores seen on the leaderboard. Both views read from the same rebuilt snapshot, confirming a single source of truth.",
+      "point_out": "The scores shown under 'Leadership', 'Entry', and 'Risk' headings are numerically identical to the NVDA row on the list. The 'as of 2026-06-16' badge is visible alongside the setup status.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/NVDA?asof=2026-06-16" },
+      "expect": { "text": "as of 2026-06-16" }
+    },
+    {
+      "n": 6,
+      "title": "Risk-Off date — zero Actionable stocks",
+      "narration": "On a bear-market date in June 2022 the regime reads Risk-Off and the leaderboard returns no Actionable stocks. The risk gate is working as intended — market conditions suppress all buy signals automatically.",
+      "point_out": "Market Regime badge shows 'Risk-off' with a low score. No rows carry an Actionable status — only watchlist-level entries remain.",
+      "journey": "J-07",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks?asof=2022-06-13" },
+      "expect": { "text": "Risk-off" }
+    },
+    {
+      "n": 7,
+      "title": "Dashboard — market regime breakdown",
+      "narration": "The dashboard at a Defensive-regime date shows the full market-phase panel with a score, regime label, and a component table. Breadth figures are labelled universe-relative, keeping the analysis honest about the dynamic universe size.",
+      "point_out": "The 'Market Regime' panel displays a numeric score, a regime label such as 'Defensive', and a row-by-row component breakdown. Breadth metrics carry the 'universe-relative' label.",
+      "journey": "J-87",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/?asof=2022-02-01" },
+      "expect": { "text": "Market Regime" }
+    },
+    {
+      "n": 8,
+      "title": "Backtest — no secondary date picker",
+      "narration": "The Backtest page uses the single global as-of switcher as its only date control. No page-local date input exists anywhere, so there is no way to accidentally introduce a second, conflicting date state.",
+      "point_out": "The Backtest page is fully rendered. Scanning the entire page surface reveals no date input fields beyond the global switcher — just the survivorship-bias label and the scan-date cards loaded from the snapshot store.",
+      "journey": "J-18",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/backtest" },
+      "expect": { "text": "survivorship" }
+    }
+  ]
+}

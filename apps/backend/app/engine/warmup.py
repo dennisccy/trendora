@@ -28,13 +28,14 @@ from datetime import date as date_cls
 from typing import Optional
 
 from sqlalchemy.engine import Engine
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.config import Config, get_config
 from app.engine import data_manager
 from app.engine.forward_testing import backfill_forward_returns, walk_forward_asof_dates
 from app.engine.prices import bar_cache, latest_data_date
 from app.engine.scanner import get_run_for_date, run_scan
+from app.models import ScannerRun
 
 logger = logging.getLogger("trendora.warmup")
 
@@ -99,6 +100,24 @@ def warmup_total(engine: Engine, config: Optional[Config] = None) -> int:
         return len(_warmup_dates(session, cfg))
 
 
+def _warm_membership_timeline(engine: Engine, cfg: Config) -> None:
+    """iter-36 (J-96): precompute + persist the dynamic-universe membership-timeline cache so the FIRST
+    `GET /api/data` after a boot/rebuild serves the cached payload instead of paying the O(dates × pool)
+    `resolve_with_reasons` derivation synchronously. Opens its OWN session on `engine` (never a request
+    session). Calls `data_manager.membership_timeline_cached` with the FULL stored snapshot-date set — on
+    a cold cache it computes once and upserts under the current `_dataset_version` stamp; if a row already
+    exists for the current stamp it is a cheap no-op hit. NON-FATAL: any exception is caught + logged here
+    so a timeline-cache failure never aborts the otherwise-successful warm-up (the cold-miss read still
+    serves the bounded compute). Reads the committed bars/runs only; computes no canonical value."""
+    try:
+        with Session(engine) as session:
+            snapshot_dates = sorted(session.exec(select(ScannerRun.asof_date)).all())
+            data_manager.membership_timeline_cached(session, cfg, snapshot_dates)
+            logger.info("membership-timeline cache warmed (%d snapshot dates)", len(snapshot_dates))
+    except Exception as exc:  # NON-FATAL: a timeline-cache warm failure must not fail the whole warm-up
+        logger.exception("membership-timeline cache warm failed (non-fatal): %s", exc)
+
+
 def _run_warmup(engine: Engine, cfg: Config, prog: "data_manager.JobProgress") -> None:
     """The warm-up worker body (runs in the daemon thread). Persists each remaining cadence snapshot via
     the canonical `run_scan` (batched by `config.startup.warmup_batch_size` for progress ticks), then runs
@@ -134,6 +153,16 @@ def _run_warmup(engine: Engine, cfg: Config, prog: "data_manager.JobProgress") -
         # concurrency-safe) — the SAME engine the synchronous boot ran, only rescheduled.
         result = backfill_forward_returns(engine, cfg)
         prog.forward_returns_inserted = result["rows_inserted"]
+        # iter-36 (J-96): precompute the dynamic-universe membership-timeline cache OFF the boot path so
+        # the FIRST `GET /api/data` after a boot/rebuild serves the cached payload rather than paying the
+        # O(dates × pool) `resolve_with_reasons` derivation synchronously (the iter-35 regression). This is
+        # the J-40/J-41 serve-fast precedent. Computed AFTER the forward-return backfill so it is keyed to
+        # the FINAL `_dataset_version` stamp (which includes the just-inserted forward-return rows) — the
+        # exact stamp a subsequent read will look up. The cached payload is byte-identical to a fresh
+        # compute (it IS a fresh compute, persisted). Wrapped in its OWN guard so a timeline-cache failure
+        # is logged but does NOT flip an otherwise-successful warm-up to `failed` (the cadence snapshots +
+        # forward returns already succeeded; a cold `GET /api/data` still serves the bounded miss).
+        _warm_membership_timeline(engine, cfg)
         prog.status = "ok"
         prog.message = f"history {prog.dates_total}/{prog.dates_total}"
     except Exception as exc:  # NON-FATAL: caught + logged, never re-raised out of the thread

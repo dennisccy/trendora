@@ -103,6 +103,21 @@ class _BarCache:
         cut = bisect.bisect_right(self._dates_by_symbol[symbol], d)
         return full[:cut]
 
+    def trailing_count(self, session: Session, symbol: str, d: date_cls) -> int:
+        """The number of bars for `symbol` with date <= `d` — BYTE-IDENTICAL to
+        `len(self.bars_asof(session, symbol, d))` and to a `SELECT count(*) ... WHERE date <= d` grouped
+        count (the `(symbol, date)` unique constraint means the date-ordered series has no ties, so the
+        bisect over the pre-loaded date list equals the row count exactly). Used by the resolver's
+        history-gate prefilter so a multi-date timeline derivation needs ZERO per-date grouped-count
+        round-trips (it reads the once-loaded series instead). Lazy-loads a missing symbol exactly once
+        (the same guard `bars_asof` uses) so the count is correct even on an un-prefilled cache."""
+        if symbol not in self._dates_by_symbol:
+            # ensure the series is loaded (re-uses bars_asof's lazy-load + lock); we discard the slice.
+            self.bars_asof(session, symbol, d)
+        if symbol not in self._dates_by_symbol:
+            return 0  # the symbol has no bars at all (never loaded) — zero trailing bars
+        return bisect.bisect_right(self._dates_by_symbol[symbol], d)
+
 
 # Registry keyed by id(session) — a cache is consulted by `bars_asof` ONLY while its session's context
 # is active. id(session) is stable for a live session object; the context removes its own entry on exit.
@@ -180,6 +195,14 @@ def attach_shared_cache(session: Session, cache: _BarCache) -> Iterator[None]:
         if not had:
             with _BAR_CACHES_LOCK:
                 _BAR_CACHES.pop(key, None)
+
+
+def active_bar_cache(session: Session) -> Optional["_BarCache"]:
+    """The load-once bar cache bound to `session` (inside an active `bar_cache`/`prefilled_bar_cache`
+    context), or None when no context is active. A read-path helper (the resolver's history-gate
+    prefilter) uses this to source trailing-bar counts from the once-loaded series instead of a per-date
+    grouped-count round-trip — WITHOUT changing the default (no-context) path, which stays byte-identical."""
+    return _BAR_CACHES.get(id(session))
 
 
 def bars_asof(session: Session, symbol: str, d: date_cls) -> list[DailyPrice]:

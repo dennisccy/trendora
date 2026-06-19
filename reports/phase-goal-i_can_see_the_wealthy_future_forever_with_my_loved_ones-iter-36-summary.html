@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36 — Iteration Summary</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  margin: 0; padding: 0; color: #1f2328; background: #f6f8fa; line-height: 1.5;
+}
+.container { max-width: 880px; margin: 0 auto; padding: 24px 16px 80px; }
+.hero {
+  background: white; border: 1px solid #d0d7de; border-radius: 8px;
+  padding: 28px; margin-bottom: 16px; text-align: center;
+}
+.hero.pass { border-top: 6px solid #1a7f37; }
+.hero.fail { border-top: 6px solid #cf222e; }
+.hero.inprogress { border-top: 6px solid #d4a72c; }
+.hero h1 { margin: 0 0 6px 0; font-size: 1.6rem; }
+.hero h2 { margin: 0 0 14px 0; font-size: 1rem; color: #57606a; font-weight: 500; }
+.badge-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 10px; }
+.badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 999px; font-weight: 600; font-size: 0.95rem;
+}
+.badge.pass { background: #dafbe1; color: #1a7f37; }
+.badge.fail { background: #ffebe9; color: #cf222e; }
+.badge.inprogress { background: #fff8c5; color: #9a6700; }
+.signal-badge { padding: 6px 14px; border-radius: 999px; font-weight: 600; font-size: 0.9rem; }
+.signal-badge.improving { background: #dafbe1; color: #1a7f37; }
+.signal-badge.holding { background: #ddf4ff; color: #0969da; }
+.signal-badge.stalling { background: #fff8c5; color: #9a6700; }
+.signal-badge.regressing { background: #ffebe9; color: #cf222e; }
+.signal-badge.na { background: #f6f8fa; color: #57606a; }
+.meta { color: #57606a; font-size: 0.875rem; margin: 10px 0 16px; }
+.journey-row {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 12px 0 4px;
+}
+.journey-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px; font-size: 0.85rem;
+  background: #f6f8fa; border: 1px solid #d0d7de;
+}
+.journey-pill.passing, .journey-pill.already_passing { background: #dafbe1; color: #1a7f37; border-color: #b4e2c0; }
+.journey-pill.failing, .journey-pill.regressed { background: #ffebe9; color: #cf222e; border-color: #f1aeb0; }
+.journey-pill.partial { background: #fff8c5; color: #9a6700; border-color: #eed888; }
+.journey-pill.unknown { background: #f6f8fa; color: #57606a; }
+.hero-image { margin-top: 18px; }
+.hero-image img { max-width: 100%; height: auto; border-radius: 6px; border: 1px solid #d0d7de; }
+details {
+  background: white; border: 1px solid #d0d7de; border-radius: 8px;
+  margin-bottom: 12px;
+}
+details > summary {
+  cursor: pointer; padding: 14px 18px; font-weight: 600; font-size: 1.05rem;
+  list-style: none; user-select: none; display: flex; align-items: center; gap: 8px;
+}
+details > summary::-webkit-details-marker { display: none; }
+details > summary::before {
+  content: '▶'; transition: transform 0.15s; font-size: 0.75rem; color: #57606a;
+}
+details[open] > summary::before { transform: rotate(90deg); }
+.accordion-body { padding: 0 18px 18px; }
+.accordion-body h3 { font-size: 0.95rem; color: #57606a; margin: 16px 0 6px; }
+.why-text { background: #f6f8fa; padding: 10px 12px; border-radius: 6px; margin: 4px 0 12px; }
+ul.bullets { margin: 6px 0 14px; padding-left: 22px; }
+ul.bullets li { margin-bottom: 4px; }
+ol.steps { padding-left: 0; list-style: none; counter-reset: step; }
+ol.steps > li {
+  counter-increment: step; padding: 12px 0 12px 44px;
+  border-top: 1px solid #eaeef2; position: relative;
+}
+ol.steps > li:first-child { border-top: none; }
+ol.steps > li::before {
+  content: counter(step); position: absolute; left: 0; top: 14px;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: #0969da; color: white; display: flex;
+  align-items: center; justify-content: center; font-size: 0.85rem; font-weight: 600;
+}
+.step-shot { margin-top: 10px; }
+.step-shot img { max-width: 100%; height: auto; border-radius: 6px; border: 1px solid #d0d7de; }
+.next-step-box {
+  background: #ddf4ff; padding: 12px 16px; border-radius: 6px;
+  border-left: 4px solid #0969da; margin: 12px 0;
+}
+.drill-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.drill-table th, .drill-table td {
+  text-align: left; padding: 8px 6px; border-bottom: 1px solid #eaeef2;
+}
+.drill-table th { background: #f6f8fa; }
+.verdict-cell.PASS, .verdict-cell.CLOSURE-PASS, .verdict-cell.GOAL_ACHIEVED { color: #1a7f37; font-weight: 600; }
+.verdict-cell.FAIL, .verdict-cell.CLOSURE-FAIL, .verdict-cell.REGRESSION { color: #cf222e; font-weight: 600; }
+.verdict-cell.CONTINUE, .verdict-cell.ESCALATE, .verdict-cell.STALLED { color: #9a6700; font-weight: 600; }
+.verdict-cell.SKIPPED, .verdict-cell.UNKNOWN, .verdict-cell.IN-PROGRESS { color: #57606a; }
+.footer-note { text-align: center; color: #6e7781; font-size: 0.8rem; margin-top: 24px; }
+.iter-card {
+  background: white; border: 1px solid #d0d7de; border-radius: 8px;
+  padding: 16px 18px; margin-bottom: 12px; display: flex; align-items: center; gap: 14px;
+}
+.iter-card .left { flex-shrink: 0; }
+.iter-card .body { flex: 1 1 auto; }
+.iter-card .body .title { font-weight: 600; }
+.iter-card .body .sub { color: #57606a; font-size: 0.88rem; margin-top: 2px; }
+.iter-card a.open { color: #0969da; text-decoration: none; font-weight: 500; }
+.iter-card a.open:hover { text-decoration: underline; }
+.matrix { width: 100%; border-collapse: collapse; margin: 12px 0 22px; font-size: 0.88rem; }
+.matrix th, .matrix td { padding: 6px 8px; border: 1px solid #d0d7de; text-align: center; }
+.matrix th:first-child, .matrix td:first-child { text-align: left; }
+.matrix .cell-passing, .matrix .cell-already_passing { background: #dafbe1; color: #1a7f37; }
+.matrix .cell-failing, .matrix .cell-regressed { background: #ffebe9; color: #cf222e; }
+.matrix .cell-partial { background: #fff8c5; color: #9a6700; }
+.matrix .cell-unknown { background: #f6f8fa; color: #57606a; }
+.no-summary {
+  background: #fff8c5; border: 1px solid #eed888; padding: 14px 18px;
+  border-radius: 8px; color: #9a6700; margin-bottom: 14px;
+}
+/* Plain-language layer — the primary, non-technical view. */
+.plain-words {
+  background: linear-gradient(180deg, #ffffff 0%, #f6fbff 100%);
+  border: 1px solid #d6e4f0; border-radius: 10px;
+  padding: 22px 24px; margin: 18px 0 6px;
+  box-shadow: 0 1px 2px rgba(20, 40, 80, 0.04);
+}
+.plain-words .pw-heading {
+  margin: 0 0 14px; font-size: 1.15rem; color: #0969da;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.pw-grid {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.pw-card {
+  background: white; border-radius: 8px; padding: 14px 16px;
+  border: 1px solid #e3eaf3;
+}
+.pw-card .pw-label {
+  font-size: 0.78rem; font-weight: 600; color: #57606a;
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;
+}
+.pw-card .pw-text {
+  margin: 0; font-size: 1rem; color: #1f2328; line-height: 1.45;
+}
+.pw-empty { color: #8c959f; font-style: italic; font-size: 0.95rem; }
+.tech-divider {
+  margin: 18px 0 8px; text-align: center;
+  color: #6e7781; font-size: 0.82rem; font-style: italic;
+  border-top: 1px dashed #d0d7de; padding-top: 12px;
+}
+/* Watch-it-work — narrated screenshot gallery from demo-narrator. */
+.watch-it-work {
+  background: white; border: 1px solid #d6e4f0; border-radius: 10px;
+  padding: 18px 22px; margin: 10px 0 6px;
+}
+.wiw-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.wiw-heading {
+  margin: 0; font-size: 1.05rem; color: #0969da;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.demo-badge {
+  font-size: 0.75rem; font-weight: 600; padding: 4px 10px; border-radius: 12px;
+  border: 1px solid transparent; letter-spacing: 0.04em;
+}
+.demo-badge.demo-recorded { background: #dafbe1; color: #1a7f37; border-color: #aceebb; }
+.demo-badge.demo-notes    { background: #fff8c5; color: #9a6700; border-color: #e8d97e; }
+.demo-badge.demo-skipped  { background: #f6f8fa; color: #57606a; border-color: #d0d7de; }
+.demo-badge.demo-pending  { background: #ddf4ff; color: #0969da; border-color: #b6e3ff; }
+.demo-grid {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+.demo-step {
+  margin: 0; padding: 12px; background: #f6f8fa;
+  border: 1px solid #d0d7de; border-radius: 8px;
+}
+.demo-step-head {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+.demo-step-num {
+  font-weight: 600; color: #57606a; font-variant-numeric: tabular-nums;
+}
+.demo-step-title { color: #1f2328; font-weight: 500; }
+.demo-new {
+  background: #ddf4ff; color: #0969da; font-size: 0.7rem; font-weight: 700;
+  padding: 2px 6px; border-radius: 4px; letter-spacing: 0.06em;
+}
+.demo-shot { margin-bottom: 8px; }
+.demo-shot img {
+  width: 100%; height: auto; border-radius: 4px; border: 1px solid #d0d7de;
+  display: block;
+}
+.demo-narration {
+  margin: 0; color: #1f2328; font-size: 0.92rem; line-height: 1.4;
+}
+.demo-empty {
+  margin: 8px 0 0; color: #57606a; font-style: italic;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.demo-notes-wrap { margin-top: 14px; }
+.demo-notes-wrap summary {
+  cursor: pointer; color: #9a6700; font-weight: 500; font-size: 0.9rem;
+}
+.demo-notes-wrap[open] summary { margin-bottom: 6px; }
+/* Story so far + latest demo (session index plain-language top). */
+.story-so-far {
+  background: linear-gradient(180deg, #ffffff 0%, #f6fbff 100%);
+  border: 1px solid #d6e4f0; border-radius: 10px;
+  padding: 22px 26px; margin: 14px 0 6px;
+  box-shadow: 0 1px 2px rgba(20, 40, 80, 0.04);
+}
+.story-heading {
+  margin: 0 0 12px; font-size: 1.1rem; color: #0969da;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.story-body { font-size: 1rem; color: #1f2328; line-height: 1.55; }
+.story-body .story-h { margin: 14px 0 6px; color: #1f2328; }
+.story-body p { margin: 0 0 10px; }
+.session-demo {
+  background: white; border: 1px solid #d6e4f0; border-radius: 10px;
+  padding: 0; margin: 8px 0 6px; overflow: hidden;
+}
+.session-demo-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 12px 22px;
+  background: #f6f8fa; border-bottom: 1px solid #d6e4f0;
+  font-weight: 600; color: #1f2328; font-size: 0.95rem;
+}
+.session-demo-head a.open { color: #0969da; text-decoration: none; font-weight: 500; font-size: 0.9rem; }
+.session-demo-head a.open:hover { text-decoration: underline; }
+.session-demo .watch-it-work {
+  border: none; border-radius: 0; box-shadow: none; margin: 0;
+}
+/* Delivered link banner — sits on the session index when GOAL_ACHIEVED. */
+.delivered-link {
+  margin: 14px 0; padding: 14px 22px;
+  background: #dafbe1; border: 1px solid #aceebb; border-radius: 10px;
+  color: #1a7f37; font-size: 1rem;
+}
+.delivered-link a {
+  color: #1a7f37; font-weight: 600; text-decoration: none; margin-left: 8px;
+}
+.delivered-link a:hover { text-decoration: underline; }
+.delivered-back {
+  margin: 8px 0 14px; padding: 0; font-size: 0.9rem;
+}
+.delivered-back a { color: #0969da; text-decoration: none; }
+.delivered-back a:hover { text-decoration: underline; }
+.delivered-body {
+  background: white; border: 1px solid #d6e4f0; border-radius: 10px;
+  padding: 22px 28px; margin: 12px 0;
+}
+.delivered-body h2.story-h { margin-top: 0; }
+/* Feature manual (session index, top of page). */
+.cover-vision {
+  margin: 8px 0 14px; color: #57606a; font-size: 1.02rem;
+  font-style: italic; max-width: 60ch;
+}
+.feature-toc {
+  background: white; border: 1px solid #d6e4f0; border-radius: 10px;
+  padding: 20px 26px; margin: 14px 0;
+  box-shadow: 0 1px 2px rgba(20, 40, 80, 0.04);
+}
+.feature-toc-heading {
+  margin: 0 0 14px; font-size: 1.05rem; color: #0969da;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.feature-toc-list {
+  margin: 0; padding-left: 22px; font-size: 1rem; line-height: 1.7;
+}
+.feature-toc-list li { padding: 2px 0; }
+.feature-toc-list a {
+  color: #1f2328; text-decoration: none; font-weight: 500;
+}
+.feature-toc-list a:hover { color: #0969da; text-decoration: underline; }
+.toc-extra-header {
+  list-style: none; margin: 10px 0 4px -22px;
+  font-size: 0.82rem; color: #57606a; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.feature-manual { margin: 14px 0; }
+.feature-section {
+  background: white; border: 1px solid #d6e4f0; border-radius: 10px;
+  padding: 22px 26px; margin: 16px 0;
+  box-shadow: 0 1px 2px rgba(20, 40, 80, 0.04);
+  scroll-margin-top: 12px;
+}
+.feature-heading {
+  margin: 0 0 10px; font-size: 1.2rem; color: #1f2328;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.feature-description {
+  margin: 0 0 16px; color: #1f2328; font-size: 1rem; line-height: 1.55;
+}
+.feature-description-label {
+  font-weight: 600; color: #57606a; margin-right: 4px;
+}
+.feature-note {
+  margin: 8px 0 12px; padding: 8px 12px;
+  background: #fff8c5; border: 1px solid #eed888; border-radius: 6px;
+  color: #9a6700; font-size: 0.88rem;
+}
+.feature-source {
+  margin: 12px 0 0; font-size: 0.88rem; color: #57606a;
+}
+.feature-source a { color: #0969da; text-decoration: none; }
+.feature-source a:hover { text-decoration: underline; }
+.feature-empty {
+  margin: 10px 0; padding: 12px 16px;
+  background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px;
+  color: #57606a; font-style: italic;
+}
+.status-pill {
+  font-size: 0.78rem; font-weight: 600; padding: 3px 10px; border-radius: 12px;
+  letter-spacing: 0.04em; white-space: nowrap; display: inline-block;
+}
+.status-pill-passing { background: #dafbe1; color: #1a7f37; border: 1px solid #aceebb; }
+.status-pill-failing { background: #ffebe9; color: #cf222e; border: 1px solid #f2b8b5; }
+.status-pill-regressed { background: #ffebe9; color: #cf222e; border: 1px solid #f2b8b5; }
+.status-pill-partial { background: #fff8c5; color: #9a6700; border: 1px solid #e8d97e; }
+.status-pill-unknown { background: #f6f8fa; color: #57606a; border: 1px solid #d0d7de; }
+.status-pill-coming-soon { background: #f6f8fa; color: #57606a; border: 1px solid #d0d7de; }
+.developer-view {
+  margin: 28px 0 6px;
+  border: 1px dashed #d0d7de; border-radius: 8px;
+}
+.developer-view > summary {
+  cursor: pointer; padding: 12px 16px;
+  color: #57606a; font-size: 0.92rem; font-weight: 500;
+  background: #f6f8fa; border-radius: 8px;
+}
+.developer-view[open] > summary {
+  border-bottom: 1px dashed #d0d7de;
+  border-radius: 8px 8px 0 0;
+}
+.developer-view-body { padding: 12px 18px; }
+</style>
+</head><body><div class='container'>
+<section class='hero inprogress'><div class='badge-row'><div class='badge inprogress'><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+<circle cx="12" cy="12" r="11" fill="#d4a72c"/>
+<path d="M12 6v6l4 2.5" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+</svg><span>CONTINUE</span></div><span class='signal-badge improving'>Direction: improving</span></div><h1>Iteration 36  ·  session i_can_see_the_wealthy_future_forever_with_my_loved_ones</h1><h2>Cached the J-96 membership timeline so GET /api/data drops from &gt;300s hang to ~15s; byte-identical values.</h2><div class='meta'>2026-06-19 · goal-full</div><div class='meta'>Journeys: 91/96 passing</div><div class='journey-row'><span class='journey-pill passing' title='Daily dashboard at a glance'>J-01 · passing</span><span class='journey-pill passing' title='Stock Leaderboard with working filters'>J-02 · passing</span><span class='journey-pill passing' title='Theme Leaderboard'>J-03 · passing</span><span class='journey-pill already_passing' title='Sector / industry Leaderboard'>J-04 · already_passing</span><span class='journey-pill passing' title='Stock Detail with explainable scores'>J-05 · passing</span><span class='journey-pill passing' title='Score consistency across pages (coherence)'>J-06 · passing</span><span class='journey-pill passing' title='Risk-Off regime suppresses Actionable'>J-07 · passing</span><span class='journey-pill passing' title='Immutable scanner-run history'>J-08 · passing</span><span class='journey-pill passing' title='Backtest forward-tested evidence (as-of-scoped)'>J-09 · passing</span><span class='journey-pill already_passing' title='Control-group honesty (selection vs sector beta)'>J-10 · already_passing</span><span class='journey-pill already_passing' title='Watchlist with persistence'>J-11 · already_passing</span><span class='journey-pill passing' title='Setup/pattern glossary + inline explanations'>J-12 · passing</span><span class='journey-pill passing' title='Browse dashboard as of a past date (global as-of switcher)'>J-13 · passing</span><span class='journey-pill already_passing' title='Backtest a past date + forward-test scorecard'>J-14 · already_passing</span><span class='journey-pill already_passing' title='Fast page loads from persisted snapshots'>J-15 · already_passing</span><span class='journey-pill passing' title='VCP — detected, explained, filterable, forward-tested'>J-16 · passing</span><span class='journey-pill passing' title='Grow the dataset by date / date range'>J-17 · passing</span><span class='journey-pill passing' title='One date control (no duplicate)'>J-18 · passing</span><span class='journey-pill already_passing' title='Diagnose weak forward-test returns via attribution'>J-19 · already_passing</span><span class='journey-pill passing' title='Chart shows full path through latest with as-of marker'>J-20 · passing</span><span class='journey-pill passing' title='Backtest cohorts below attribution with horizon-linked returns'>J-21 · passing</span><span class='journey-pill unknown' title='Transparent rule-based expanded universe (~500 names)'>J-22 · unknown</span><span class='journey-pill unknown' title='Multi-timeframe bars — intraday seed + pipeline'>J-23 · unknown</span><span class='journey-pill unknown' title='Timeframe selector on the stock chart'>J-24 · unknown</span><span class='journey-pill passing' title='Factor Lab — decile sort and rank-IC per factor'>J-25 · passing</span><span class='journey-pill passing' title='Factor Lab — multi-factor composite cohort'>J-26 · passing</span><span class='journey-pill already_passing' title='Factor Lab — regime-conditioned effectiveness'>J-27 · already_passing</span><span class='journey-pill already_passing' title='More detected patterns beyond VCP (forward-tested)'>J-28 · already_passing</span><span class='journey-pill passing' title='Setup &amp; Pattern lab — event study'>J-29 · passing</span><span class='journey-pill already_passing' title='Volatility factor family — risk-adjusted, regime-conditioned'>J-30 · already_passing</span><span class='journey-pill already_passing' title='Find a high-return driver end-to-end (synthesis)'>J-31 · already_passing</span><span class='journey-pill passing' title='Research point-in-time toggle (as-of vs all-history)'>J-32 · passing</span><span class='journey-pill passing' title='Import from selectable, key-aware provider source'>J-33 · passing</span><span class='journey-pill passing' title='Chunked, rate-limit-resilient, resumable import'>J-34 · passing</span><span class='journey-pill passing' title='Expand the universe from the Data Manager'>J-35 · passing</span><span class='journey-pill passing' title='Coverage — per-symbol table + universe-vs-symbols clarity'>J-36 · passing</span><span class='journey-pill passing' title='Missing-data diagnostic + pull exactly the gap'>J-37 · passing</span><span class='journey-pill passing' title='Unified Unfinished-imports — Resume / Retry / Remove'>J-38 · passing</span><span class='journey-pill passing' title='Remove imported data — seed-safe, cascade-consistent'>J-39 · passing</span><span class='journey-pill passing' title='Fast boot, background warm-up, honest readiness'>J-40 · passing</span><span class='journey-pill passing' title='Boot resilience — warm-up never takes the app down'>J-41 · passing</span><span class='journey-pill passing' title='Every user-facing date reads yyyy-MM-dd (locale-proof)'>J-42 · passing</span><span class='journey-pill passing' title='Deep-linkable as-of (?asof URL serialization)'>J-43 · passing</span><span class='journey-pill passing' title='Dashboard major-indexes chart with regime bands'>J-44 · passing</span><span class='journey-pill passing' title='Market-regime bands behind the stock-detail chart'>J-45 · passing</span><span class='journey-pill passing' title='Fetch + backfill materially faster (parallel, vectorized, benchmarked)'>J-46 · passing</span><span class='journey-pill passing' title='Full &gt;=100-term glossary + inline term help'>J-47 · passing</span><span class='journey-pill passing' title='Stocks leaderboard column sorting (sort the view, never the scores)'>J-48 · passing</span><span class='journey-pill passing' title='Major indexes &amp; regime card shows full history — as-of is a marker, not a clamp (amends J-44)'>J-49 · passing</span><span class='journey-pill passing' title='As-of date survives EVERY in-app navigation, including new tabs (extends J-43)'>J-50 · passing</span><span class='journey-pill passing' title='Every research sample count is a link to its exact samples'>J-51 · passing</span><span class='journey-pill passing' title='From a sample row to the dated stock detail'>J-52 · passing</span><span class='journey-pill passing' title='Fetch+backfill reports stage timings and backfills dates in parallel (extends J-46)'>J-53 · passing</span><span class='journey-pill passing' title='Leaderboard ticker opens the stock detail in a new tab'>J-54 · passing</span><span class='journey-pill passing' title='Stocks leaderboard symbol search (type-to-filter, no button)'>J-55 · passing</span><span class='journey-pill passing' title='Stocks leaderboard theme column + theme filter'>J-56 · passing</span><span class='journey-pill passing' title='Theme members — expandable +n, every member a dated new-tab link (amends J-54)'>J-57 · passing</span><span class='journey-pill passing' title='Sectors page — every ETF named and described, with universe members'>J-58 · passing</span><span class='journey-pill passing' title='Resume from the failed stage — and covered ranges are never re-fetched (extends J-34/J-38)'>J-59 · passing</span><span class='journey-pill passing' title='Run history records every job from the moment it starts'>J-60 · passing</span><span class='journey-pill passing' title='Per-date availability heatmap — see exactly which dates have data'>J-61 · passing</span><span class='journey-pill passing' title='The as-of switcher is a calendar that shows what is selectable'>J-62 · passing</span><span class='journey-pill passing' title='Event study is overlap-honest — first-trigger episodes by default, pooled one toggle away'>J-63 · passing</span><span class='journey-pill passing' title='Research samples table — sortable and filterable (the J-48 contract)'>J-64 · passing</span><span class='journey-pill passing' title='N= chips open the samples drill-down in a new tab (amends J-51/J-54)'>J-65 · passing</span><span class='journey-pill passing' title='Job progress is fine-grained, live, and honest (extends J-46/J-53)'>J-66 · passing</span><span class='journey-pill passing' title='Multi-date backfill completes reliably — no more &#x27;committed&#x27;-session crash (extends J-53/J-41)'>J-67 · passing</span><span class='journey-pill passing' title='Multi-month / multi-year backfill no longer crashes with a &#x27;committed&#x27; session — the real Data Manager reproduction (hardens J-67)'>J-68 · passing</span><span class='journey-pill passing' title='Removing imported data is range-scoped and accident-proof (amends J-39)'>J-69 · passing</span><span class='journey-pill passing' title='The per-date availability heatmap is readable and compact'>J-70 · passing</span><span class='journey-pill passing' title='Step the as-of date with the keyboard (extends J-43 / the global as-of calendar)'>J-71 · passing</span><span class='journey-pill passing' title='Research page loads fast — Setup &amp; Pattern Lab / event study no longer slow (extends J-29/J-63, J-15 load discipline)'>J-72 · passing</span><span class='journey-pill passing' title='No as-of &#x27;date flash&#x27; — every page renders the selected date from first paint (extends J-43/J-18/J-50)'>J-73 · passing</span><span class='journey-pill passing' title='Availability heatmap multi-hue legibility (scale + legend + per-bucket day numbers)'>J-74 · passing</span><span class='journey-pill passing' title='Forward returns on the stock leaderboard and stock detail (1/5/10/20/60-day)'>J-75 · passing</span><span class='journey-pill passing' title='Stock-detail price-chart per-bar hover detail box'>J-76 · passing</span><span class='journey-pill passing' title='Research — returns by regime × setup × pattern (ranked combinations study)'>J-77 · passing</span><span class='journey-pill passing' title='Dashboard major-indexes chart defaults to the full period (All)'>J-78 · passing</span><span class='journey-pill passing' title='Step the as-of date with the popover closed — ◀ ▶ buttons + opt-in ← → keys + year/month jump (amends J-71/J-62)'>J-79 · passing</span><span class='journey-pill passing' title='Stocks leaderboard header — selected-date regime label+score + ranked Top-Themes strip + #n chip badges'>J-80 · passing</span><span class='journey-pill passing' title='Themes &amp; Sectors leaderboards — five forward-return columns (1/5/10/20/60-day) from the SAME stored forward_returns Backtest reads'>J-81 · passing</span><span class='journey-pill passing' title='Research Regime x Setup x Pattern table — NA-last sort + Regime/Setup/Pattern filters + every-emitted-combination N= drill-down + Pooled default'>J-82 · passing</span><span class='journey-pill passing' title='As-of deep link renders with no React hydration mismatch (server-aware SSR seeding; hardens J-73)'>J-83 · passing</span><span class='journey-pill passing' title='Expand-universe market-cap fetch authenticates with Yahoo (cookie + crumb); systemic auth failure pauses resumable (unblocks J-22 via J-35)'>J-84 · passing</span><span class='journey-pill passing' title='Expanding the universe makes new members appear — confirm-gated regenerate-from-scratch snapshot rebuild + coverage diagnostic'>J-85 · passing</span><span class='journey-pill passing' title='Max-drawdown columns beside the forward returns everywhere (1/5/10/20/60-day; mirrors J-75/J-81)'>J-86 · passing</span><span class='journey-pill passing' title='Dashboard Market Phase &amp; Severity panel (discrete phase + 0-100 severity + named component breakdown), strictly causal (&lt;=D)'>J-87 · passing</span><span class='journey-pill passing' title='Deterministic 0-1 filtered P(bear) (forward Hamilton FILTER over observations &lt;=D) beside the phase, observation vector disclosed'>J-88 · passing</span><span class='journey-pill passing' title='Market-phase history timeline + fenced retrospective/SMOOTHED view (consumes the J-87 layer)'>J-89 · passing</span><span class='journey-pill passing' title='Recovery-turn signal + edge study (downtrend exit edge)'>J-90 · passing</span><span class='journey-pill passing' title='Downtrend-conditioned opportunity study'>J-91 · passing</span><span class='journey-pill passing' title='Real FRED macro feed + OHLCV macro proxies + MacroSeries table'>J-92 · passing</span><span class='journey-pill passing' title='Per-as-of-date universe resolver - price + ADV + min-history screening (point-in-time)'>J-93 · passing</span><span class='journey-pill regressed' title='Min-history sufficiency gate + honest warm-up'>J-94 · regressed</span><span class='journey-pill passing' title='Data-dependent backward-history / point-in-time-membership envelope'>J-95 · passing</span><span class='journey-pill partial' title='Membership timeline + survivorship/coverage labels'>J-96 · partial</span></div></section>
+<section class='plain-words'><h2 class='pw-heading'>In plain words</h2><div class='pw-grid'><div class='pw-card'><div class='pw-label'>What you can do now</div><p class='pw-text'>See a live dashboard with a regime score, Market Phase &amp; Severity panel, phase history timeline, dated downtrend episodes, and a fenced retrospective view. Explore a Recovery-Turn Edge study and a Downtrend Opportunity study on the Research page. Step to any past snapshot date and have every leaderboard re-point instantly — stocks, themes, sectors — showing the honest point-in-time universe for that date (empty before October 2021, growing naturally to roughly 544 stocks by today). Open any stock for an explainable score breakdown, a regime-banded chart, and five forward-return columns each paired with a colour-graded drawdown figure. Sort every leaderboard, filter and search, click any sample count to see the exact stored observations, save stocks to a watchlist, and manage imports with live progress tracking.</p></div><div class='pw-card'><div class='pw-label'>What changed this time</div><p class='pw-text'>Behind-the-scenes work — the Data Manager page that shows how the tracked universe has grown over time was stuck in an endless loading state after last round&#x27;s data rebuild. This round fixed the hang by computing the growth timeline once, saving the result, and serving the saved copy on every page load — the same technique already used elsewhere in the product. Response time dropped from over five minutes to roughly fifteen seconds, with identical numbers. Live browser confirmation that the coverage and timeline panels render again is the one remaining gate, awaiting a lean browser re-verification pass.</p></div><div class='pw-card'><div class='pw-label'>What&#x27;s next</div><p class='pw-text'>Next we will run a live browser check to confirm the Data Manager coverage diagnostic and membership growth chart render correctly, then gate on the full test suite — at which point every planned feature will be green and the product will be complete.</p></div></div></section>
+<div class='tech-divider'><span>Technical detail below — open if you want the developer view.</span></div>
+<details><summary>What was done</summary><div class='accordion-body'><ul class='bullets'><li>Added standalone `MembershipTimelineCache` SQLAlchemy model (`models.py`), keyed uniquely by `dataset_version`, mirroring the J-72 `EventStudyCache` and J-87/J-88 `MarketPhaseCache` precedent</li><li>Implemented `membership_timeline_cached(...)` wrapper in `data_manager.py` — serves stored payload on cache hit (0.01s); computes once, prunes stale rows, upserts on miss; routed `compute_coverage`&#x27;s `membership_timeline` field through it</li><li>Added cold-miss bound: `_membership_timeline`&#x27;s per-date loop now runs inside `prefilled_bar_cache` + new `_BarCache.trailing_count(...)` (bisect over once-loaded full series in `prices.py`), eliminating ~1369 grouped-COUNT queries per request; byte-identical to the original path (audit B2: 0 mismatches)</li><li>Added `_warm_membership_timeline(...)` to the background warm-up daemon in `warmup.py` (non-fatal, own guard), so the first post-boot `/api/data` request is already a cache hit</li><li>Registered `MEMBERSHIP_TIMELINE_CACHE_TABLES = {&quot;membership_timeline_cache&quot;}` in `test_db.py` expected-tables union (avoids the iter-20/21/29 exact-set trap)</li><li>Wrote 8-test `test_data_manager_membership_cache.py`: byte-identity (cached == fresh; warm == cold), warm-read-no-recompute, single-row-under-version, cache invalidation on snapshot change and forward-return change, causality through cache, empty-DB case</li><li>Live HTTP verified: 3 consecutive `GET /api/data` at ~12-16s (HTTP 200, 298KB payload) versus the prior &gt;300s hang; 13-date sample byte-identical (0 mismatches); cache row `dataset_version = r1369-f3078824`, 1369 timeline points, 3 honesty labels</li><li>Passed review PASS, QA PASS (19/19 targeted tests + 8/8 API tests), audit PASS_WITH_GAPS (two downstream gaps: live browser re-verify and full suite flush — neither a code defect), coherence COHERENCE-PASS, closure CLOSURE-PASS</li></ul></div></details>
+<details><summary>What's left + Next step</summary><div class='accordion-body'><h3>Still open</h3><ul class='bullets'><li>Journey J-94 (per-date universe coverage diagnostic) — status `regressed`; cause fixed at the API layer, pending live browser render evidence that the `/data` page hydrates and the diagnostic renders</li><li>Journey J-96 (membership timeline step function) — status `partial`; data layer correct, pending live browser evidence showing the rising step function from ~2021-10-18 with populated Entries/Exits and three honesty labels scrolled into viewport</li><li>Full backend pytest suite in-flight nohup-async on the pump; evaluator must gate on the FLUSHED `0 failed, EXIT 0` line (one suspected flaky `F` at ~22% — documented `test_warmup.py` / `test_data_manager_jobs_pipeline.py` contention flake — must be re-run isolated before attribution)</li><li>Journey J-22 (expanded ~500-name universe screen) — blocked-NA, data-walled, non-vetoing per goal.md lines 105-108</li><li>Journey J-23 (multi-timeframe bars) — blocked-NA, data-walled, non-vetoing per goal.md</li><li>Journey J-24 (timeframe selector on stock chart) — blocked-NA, depends on J-23, non-vetoing per goal.md</li></ul><h3>Next step</h3><div class='next-step-box'>iter-37 LEAN live re-verification (NO code rework — backend correct, byte-identity proven, suite gate deferred):
+
+1. Bring up backend `:8835` (WAIT for `GET /api/health` &quot;ready&quot; — warm-up precomputes the cache; a cold pre-warm `GET /api/data` still pays ~97s by design), frontend `:3835`, Chrome `:9222`; fall back to Playwright if Chrome MCP is down (iter-34 precedent). Use the fast `GET /api/stocks?as_of=` for J-93 re-derivation (slides 0/495/504/544).
+2. Browser-QA the two targets on LIVE, md5-distinct, non-skeleton evidence (md5sum the dir FIRST; reject any un-hydrated skeleton frame — iter-18/33 precedent; scroll the below-the-fold panels into the viewport and VIEW the pixels): J-94 = the per-date universe-resolution diagnostic renders (admitted + excluded-by-reason counts at the resolved as-of); J-96 = the rising membership-timeline step function from ~2021-10-18 with populated Entries/Exits and the three honesty labels.
+3. Re-smoke the co-located `/data` journeys J-36/J-37/J-39/J-85, re-confirm J-93 (`/stocks` still slides — fast path), and the CRITICAL J-18 (0 `input[type=date]`) and J-07 (Risk-Off → 0 Actionable), plus J-06 single-source (NVDA list == detail). Confirm the J-94 diagnostic count reconciles with the served `/stocks` membership.
+4. Gate iter-37&#x27;s GOAL_ACHIEVED candidacy on the FLUSHED full-suite `0 failed, EXIT 0` line (pump nohup-async; never block the evaluator on the in-flight suite — iter-11/29/30; re-run any single `test_warmup.py` / `test_data_manager_jobs_pipeline.py` `F` isolated before attributing it).
+
+After J-94 re-renders and J-96 flips to passing on live evidence, with COHERENCE-PASS, zero regression, and a GREEN full suite, iter-37 is a sound GOAL_ACHIEVED candidate — every buildable Must-have green; J-22/J-23/J-24 stay honestly blocked-NA (non-vetoing per goal.md lines 105-108). Closes open_item `iter35-api-data-timeline-uncached`.</div></div></details>
+<details><summary>Direction signal</summary><div class='accordion-body'><div class='why-text'><strong>Why:</strong> The iter-35 J-94 REGRESSION cause is fixed at the data/API layer — `GET /api/data` is responsive again (~15s steady-state) with every served value byte-identical (audit B1-B4: 0 mismatches over a synthetic DB and a 13-date live-DB sample). No prior-passing journey newly broke this iteration; the backend diff is value-preserving and the zero-frontend-diff means J-18/J-07/J-93 cannot regress. The remaining gate is a lean live browser re-verification pass to flip J-94 (regressed) and J-96 (partial) to passing, then a GOAL_ACHIEVED evaluation when the full suite flushes green.</div><h3>Trend</h3><ul class='bullets'><li>Newly passing this iter: none</li><li>Newly passing in last 5 iters total: J-94 (iter-34), J-95 (iter-34), J-93 (iter-35)</li><li>Regressions in last 5 iters: J-94 regressed iter-35 (cause fixed this iter; status still held regressed pending live render evidence)</li><li>Anti-goal violations in last 5 iters: none (the lone ever-recorded iter-20 minor magic-number violation stays resolved since iter-21)</li><li>Iters with no journey state change: 1 of last 5 (iter-36)</li></ul><h3>Latest evaluator reasoning</h3><div class='why-text'>&quot;iter-36 fixed the iter-35 J-94 REGRESSION cause at the data/API layer: `GET /api/data` is responsive again (~12-16s steady-state, down from the &gt;300s hang) via a new `dataset_version`-keyed `MembershipTimelineCache` + warm-up precompute + a byte-identical cold-miss bound, with every served value byte-identical — review PASS, QA PASS, audit PASS_WITH_GAPS, coherence COHERENCE-PASS. But browser-QA was AUTO-SKIPPED on a &#x27;Frontend Present: no&#x27; basis (ui-test-results.md = SKIPPED; no evidence dir exists), so there is no live rendered evidence the `/data` page now hydrates. Per the strict standing rule, J-94 cannot flip `regressed → passing` and J-96 cannot flip `partial → passing` without positive live render proof — this is the established iter-30→31 / iter-33→34 lean live-re-verify path. NOT a new regression (no prior-passing journey newly broke; the backend diff is value-preserving) and NOT a stall (clear actionable next step), so CONTINUE.&quot;</div></div></details>
+<details><summary>Artifacts</summary><div class='accordion-body'><table class='drill-table'><thead><tr><th>Report</th><th>Verdict</th><th>Path</th></tr></thead><tbody><tr><td>Iter spec</td><td><span class='verdict-cell —'>—</span></td><td><a href='../docs/phases/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36.md'>docs/phases/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36.md</a></td></tr><tr><td>Dev handoff</td><td><span class='verdict-cell —'>—</span></td><td><a href='../docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-dev.md'>docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-dev.md</a></td></tr><tr><td>Review</td><td><span class='verdict-cell PASS'>PASS</span></td><td><a href='reviews/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-review.md'>reports/reviews/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-review.md</a></td></tr><tr><td>Browser QA</td><td><span class='verdict-cell SKIPPED'>SKIPPED</span></td><td><a href='phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-ui-test-results.md'>reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-ui-test-results.md</a></td></tr><tr><td>Implementation summary</td><td><span class='verdict-cell —'>—</span></td><td><a href='phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-implementation-summary.md'>reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-implementation-summary.md</a></td></tr><tr><td>User-visible changes</td><td><span class='verdict-cell —'>—</span></td><td><a href='phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-user-visible-changes.md'>reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-user-visible-changes.md</a></td></tr><tr><td>QA</td><td><span class='verdict-cell PASS'>PASS</span></td><td><a href='qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-qa.md'>reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-qa.md</a></td></tr><tr><td>Audit</td><td><span class='verdict-cell PASS_WITH_GAPS'>PASS_WITH_GAPS</span></td><td><a href='../docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-audit.md'>docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-audit.md</a></td></tr><tr><td>Closure</td><td><span class='verdict-cell PASS'>PASS</span></td><td><a href='phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-closure-verdict.md'>reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-closure-verdict.md</a></td></tr><tr><td>Goal evaluation</td><td><span class='verdict-cell CONTINUE'>CONTINUE</span></td><td><a href='../runs/goal-session-i_can_see_the_wealthy_future_forever_with_my_loved_ones/iter-36/eval.md'>runs/goal-session-i_can_see_the_wealthy_future_forever_with_my_loved_ones/iter-36/eval.md</a></td></tr><tr><td>Journey history</td><td><span class='verdict-cell —'>—</span></td><td><a href='../runs/goal-session-i_can_see_the_wealthy_future_forever_with_my_loved_ones/state/journey-history.json'>runs/goal-session-i_can_see_the_wealthy_future_forever_with_my_loved_ones/state/journey-history.json</a></td></tr></tbody></table></div></details>
+<div class='footer-note'>Generated 2026-06-19 18:22 by <code>render_iteration_summary.py</code> · source: <a href='phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-iteration-summary.md'>phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-iteration-summary.md</a></div>
+</div></body></html>

@@ -61,11 +61,13 @@ from app.models import (
     ForwardReturn,
     ImportCheckpoint,
     MacroSeries,
+    MembershipTimelineCache,
     ScannerResult,
     ScannerRun,
     SectorScoreRow,
     ThemeScoreRow,
 )
+from app.engine.research import _dataset_version  # single-sourced cache stamp (J-72/J-87) — never duplicated
 from app.seed_loader import all_seed_symbols
 
 # Injectable sleep (J-34): the chunked fetch's inter-request delay + 429 backoff call this. Tests pass
@@ -501,7 +503,15 @@ def _membership_timeline(
     # date, so caching each symbol's full series once turns each `bars_asof` into an in-memory slice (a
     # whole-calendar rebuild's timeline stays tractable). The cache reads the committed bars (adds none)
     # and dies with this block — never serving a stale series.
-    with bar_cache(session):
+    #
+    # iter-36 (J-96 cold-miss bound): use `prefilled_bar_cache` — it loads EVERY symbol's full series in
+    # ONE query up front, so the per-date `resolve_with_reasons` sources its trailing-bar counts from the
+    # once-loaded series (via the cache's `trailing_count`) instead of issuing one grouped-count query PER
+    # DATE. On the post-rebuild DB this turns ~1369 per-date grouped-count round-trips into a single
+    # prefill + in-memory bisects, bounding the cold (cache-miss) `GET /api/data` cost. Byte-identical to
+    # the lazy `bar_cache` path: same rows, same admission, same excluded counts — only the loading
+    # changes. (This is the cold path; a warm cache hit skips this loop entirely.)
+    with prefilled_bar_cache(session):
         for d in dates:
             members = members_by_date.get(d, set())
             # entries = members never seen on any earlier observed date; exits = prior members now gone.
@@ -526,6 +536,62 @@ def _membership_timeline(
         # J-95(b)/J-96: the three honest labels carried VERBATIM beside the timeline (single source).
         "labels": _membership_labels(session, cfg),
     }
+
+
+def membership_timeline_cached(
+    session: Session, cfg: Config, snapshot_dates: list[date_cls]
+) -> dict:
+    """Serve the J-96 membership timeline from the iter-36 cache (mirrors `market_phase_cached` /
+    `research.event_study_cached`): on a cache HIT for the current `dataset_version` stamp, deserialize
+    and return the stored payload (NO recompute — the O(dates × pool) `resolve_with_reasons` loop is
+    skipped); on a MISS, compute it ONCE via `_membership_timeline`, persist it under the current
+    dataset-version stamp, prune any stale rows (older `dataset_version`), and return it. The returned
+    payload is BYTE-IDENTICAL to `_membership_timeline(...)` — the cache is a pure performance layer
+    (No recompute in the read path; permitted by the "derived once… persisted/cached, read from storage"
+    clause for a deterministic read-only derivation).
+
+    Because the key carries the SAME `_dataset_version` stamp J-72 / J-87 use (single-sourced), the cache
+    REFRESHES automatically after any dataset change (a backfill add, a removal, or the J-85 rebuild) — a
+    stale row keyed to an older stamp is never hit (and is pruned on write). The cached timeline spans the
+    WHOLE history, so the key has no as-of slot — exactly one row per dataset version."""
+    version = _dataset_version(session)
+
+    hit = session.exec(
+        select(MembershipTimelineCache).where(
+            MembershipTimelineCache.dataset_version == version,
+        )
+    ).first()
+    if hit is not None:
+        return json.loads(hit.payload_json)
+
+    # MISS — compute once (the cold, BOUNDED compute) and persist under the current stamp.
+    # `_membership_timeline` runs its per-date loop inside a `prefilled_bar_cache` (one query loads every
+    # symbol's full series), and the resolver sources each date's trailing-bar count from that once-loaded
+    # series via `trailing_count` — so the cold compute pays ONE prefill + in-memory bisects, NOT one
+    # grouped-count round-trip per date (the O(dates) cost that hung the endpoint). The warm-up daemon
+    # precomputes this off the boot path so the FIRST request after a boot/rebuild is already a hit.
+    payload = _membership_timeline(session, cfg, snapshot_dates)
+
+    # prune stale rows (any older dataset_version) so the cache table does not grow unbounded as the
+    # dataset matures; the current-version row is then inserted (idempotent upsert on the unique key).
+    stale = session.exec(
+        select(MembershipTimelineCache).where(
+            MembershipTimelineCache.dataset_version != version,
+        )
+    ).all()
+    for row in stale:
+        session.delete(row)
+
+    session.add(MembershipTimelineCache(
+        dataset_version=version,
+        payload_json=json.dumps(payload),
+        created_at=datetime.now(timezone.utc),
+    ))
+    try:
+        session.commit()
+    except Exception:  # a concurrent writer raced us to the same key — the cache is best-effort, not a
+        session.rollback()  # source of truth; the freshly computed payload is byte-identical, so return it
+    return payload
 
 
 def compute_coverage(
@@ -565,6 +631,19 @@ def compute_coverage(
     resolved = _resolved_universe(session, as_of, cfg)
     resolved_admitted = resolved["admitted"]
 
+    # iter-36: the J-85 absent-from-latest diagnostic resolves the universe at the LATEST stored run date.
+    # When THIS coverage call already resolved at that same latest date (the `as_of=None` default page
+    # load, or an explicit as_of that equals the latest run), reuse `resolved_admitted` so the latest-date
+    # universe is resolved ONCE — not twice — eliminating a redundant per-symbol resolve (~8 s on the
+    # post-rebuild DB). Byte-identical: the same resolver over the same as-of yields the same admitted set
+    # (the function's own `universe=` parameter is documented for exactly this single-resolution reuse).
+    # When the requested as_of differs from the latest run date, pass None so J-85 resolves at the latest
+    # date itself (its contract is "absent from the LATEST snapshot", independent of the page's as_of).
+    latest_run_date = session.scalar(select(func.max(ScannerRun.asof_date)))
+    absent_universe = resolved_admitted if resolved["asof"] == (
+        latest_run_date.isoformat() if latest_run_date is not None else None
+    ) else None
+
     return {
         "price_start": price_min.isoformat() if price_min else None,
         "price_end": price_max.isoformat() if price_max else None,
@@ -600,12 +679,16 @@ def compute_coverage(
         # J-96: the dynamic-universe membership timeline — per snapshot date the resolved size (step
         # function) + entries/exits + per-date excluded-by-reason counts. Strictly causal (each date
         # observed from its own <= D snapshot). Read-only over the stored ScannerResult membership + bars.
-        "membership_timeline": _membership_timeline(session, cfg, snapshot_dates),
+        # iter-36: served through the dataset-version-keyed cache (warmed off the boot path) so the
+        # O(dates × pool) resolver loop is paid ONCE per dataset version, never per request — the served
+        # payload is byte-identical to a fresh `_membership_timeline(...)` compute (No recompute in the
+        # read path; the cache invalidates in lockstep with the J-72/J-87 caches on any dataset change).
+        "membership_timeline": membership_timeline_cached(session, cfg, snapshot_dates),
         # J-85: the universe-vs-latest-snapshot coverage diagnostic — the count of resolved-universe
         # members ABSENT from the latest scanner snapshot's scored set (the operator-facing "rebuild to
         # include the new members" signal). Read-only descriptive derivation; 0 absent → the UI shows no
         # banner. Served on the SAME coverage block (no new endpoint).
-        "absent_from_latest_snapshot": _coverage_diagnostic_absent(session, cfg),
+        "absent_from_latest_snapshot": _coverage_diagnostic_absent(session, cfg, universe=absent_universe),
     }
 
 

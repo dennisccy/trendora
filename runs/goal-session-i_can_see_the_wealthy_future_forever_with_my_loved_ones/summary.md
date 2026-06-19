@@ -1,18 +1,18 @@
 # Goal Session Summary — i_can_see_the_wealthy_future_forever_with_my_loved_ones
 
-**Final verdict:** ABORTED
-**Total iterations:** 33
-**Wall time (seconds):** 0
+**Final verdict:** REGRESSION_HALT
+**Total iterations:** 36
+**Wall time (seconds):** 8065
 **Quota pauses:** 0
 **Started:** 2026-06-10T21:38:27.739257Z
-**Finished:** 2026-06-18T18:57:33.757246Z
+**Finished:** 2026-06-19T14:43:52.202168Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/i_can_see_the_wealthy_future_forever_with_my_loved_ones`. Open a PR with:
 
     gh pr create --base main --head goal/i_can_see_the_wealthy_future_forever_with_my_loved_ones \
-      --title "feat: i_can_see_the_wealthy_future_forever_with_my_loved_ones — ABORTED" \
+      --title "feat: i_can_see_the_wealthy_future_forever_with_my_loved_ones — REGRESSION_HALT" \
       --body-file runs/goal-session-i_can_see_the_wealthy_future_forever_with_my_loved_ones/summary.md
 
 ## Final journey state
@@ -24,19 +24,19 @@ This session pushed iteration commits to `goal/i_can_see_the_wealthy_future_fore
 | J-03 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22 |
 | J-04 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0 |
 | J-05 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28 |
-| J-06 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32 |
-| J-07 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31 |
-| J-08 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27 |
+| J-06 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-35 |
+| J-07 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-35 |
+| J-08 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-34 |
 | J-09 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27 |
 | J-10 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0 |
 | J-11 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0 |
 | J-12 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-4 |
 | J-13 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31 |
 | J-14 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0 |
-| J-15 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0 |
+| J-15 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-35 |
 | J-16 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9 |
 | J-17 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27 |
-| J-18 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32 |
+| J-18 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-35 |
 | J-19 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0 |
 | J-20 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25 |
 | J-21 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27 |
@@ -54,10 +54,10 @@ This session pushed iteration commits to `goal/i_can_see_the_wealthy_future_fore
 | J-33 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27 |
 | J-34 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27 |
 | J-35 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27 |
-| J-36 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27 |
-| J-37 | already_passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27 |
+| J-36 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-34 |
+| J-37 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-34 |
 | J-38 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27 |
-| J-39 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27 |
+| J-39 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-34 |
 | J-40 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27 |
 | J-41 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27 |
 | J-42 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25 |
@@ -103,18 +103,18 @@ This session pushed iteration commits to `goal/i_can_see_the_wealthy_future_fore
 | J-82 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32 |
 | J-83 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25 |
 | J-84 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-26 |
-| J-85 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27 |
+| J-85 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-34 |
 | J-86 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28 |
-| J-87 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32 |
-| J-88 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32 |
-| J-89 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31 |
-| J-90 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-31 |
-| J-91 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32 |
-| J-92 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32 |
-| J-93 | failing | - |
-| J-94 | failing | - |
-| J-95 | failing | - |
-| J-96 | failing | - |
+| J-87 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-35 |
+| J-88 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-35 |
+| J-89 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-34 |
+| J-90 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-34 |
+| J-91 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-34 |
+| J-92 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-34 |
+| J-93 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-35 |
+| J-94 | regressed | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-34 |
+| J-95 | passing | goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-34 |
+| J-96 | partial | - |
 
 ## Anti-goal violations
 

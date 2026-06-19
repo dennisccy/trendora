@@ -512,6 +512,52 @@ class MacroSeries(SQLModel, table=True):
     published_date: date  # the date the value became public (reference_date + publication_lag); causal gate
 
 
+# --- iter-36 membership-timeline derived-aggregate cache (J-96 — a PERFORMANCE cache, not a snapshot) ---
+class MembershipTimelineCache(SQLModel, table=True):
+    """A STANDALONE, create_all-managed cache of the J-96 dynamic-universe membership timeline.
+
+    Like `EventStudyCache` / `MarketPhaseCache`, this is EXPLICITLY NOT a scanner snapshot — the
+    *Snapshots are immutable* critical anti-goal binds ONLY `scanner_runs` / `scanner_results` /
+    `*_scores` / `forward_returns`. This is legitimately mutable derived/cache state: it stores the
+    SERIALIZED `data_manager._membership_timeline(...)` payload (the per-snapshot-date resolved-size step
+    function + entries/exits + per-date excluded-by-reason counts + the three honesty labels) keyed by a
+    single dataset-version stamp, so a read serves the stored timeline instead of re-deriving it per
+    request (No recompute in the read path). The cached payload is BYTE-IDENTICAL to a fresh
+    `_membership_timeline(...)` compute — a cache of the deterministic read-only derivation, never a
+    second computation or a hand-authored value.
+
+    WHY: on the post-rebuild DB (~1369 sliding snapshot dates) the uncached derivation runs an
+    O(dates × pool) `resolve_with_reasons` loop per `GET /api/data` and made the endpoint hang >300 s
+    (the iter-35 regression). The cache (warmed off the boot path by the background warm-up daemon) makes
+    the served VALUES byte-identical while the endpoint returns promptly.
+
+    A STANDALONE table (its own `create_all`-managed table) is used deliberately so the iter-12
+    `_ADDITIVE_COLUMNS` trap does NOT apply — a fresh DB carries it from `create_db_and_tables`, and no
+    existing table gains a column.
+
+    CACHE KEY: `(dataset_version)`:
+      - `dataset_version` is the SAME stamp `app.engine.research._dataset_version` produces (single-sourced
+        with J-72 / J-87 — derived from max run id + the forward-return row count), so this cache
+        invalidates in lockstep with the event-study + market-phase caches: a read computes the current
+        stamp and looks up THIS exact stamp; a stale row keyed to an older stamp is never hit (and is
+        pruned on write), so the cache can NEVER serve a stale timeline (it refreshes after any dataset
+        change). The timeline spans the WHOLE history (not an as-of slice), so there is no `asof_key` slot
+        — exactly one row per dataset version.
+
+    `payload_json` is the full serialized timeline. Unique on `dataset_version` so a write is an
+    idempotent upsert."""
+
+    __tablename__ = "membership_timeline_cache"
+    __table_args__ = (
+        UniqueConstraint("dataset_version", name="uq_membership_timeline_cache_key"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    dataset_version: str = Field(index=True)  # the SAME stamp research._dataset_version produces
+    payload_json: str  # the serialized _membership_timeline(...) derivation (byte-identical to a fresh compute)
+    created_at: datetime
+
+
 # --- iter-7 watchlist (USER-MUTABLE — the product's FIRST user-write surface; J-11) ----------
 class Watchlist(SQLModel, table=True):
     """One user-saved stock on the persistent research watchlist (iter-7). The product's FIRST

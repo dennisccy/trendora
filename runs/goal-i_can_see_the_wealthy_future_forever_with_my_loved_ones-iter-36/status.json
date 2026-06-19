@@ -1,0 +1,25 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-06-19T16:59:52.528747Z",
+  "started_at": "2026-06-19T15:23:24.817916Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/models.py",
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/app/engine/universe_resolver.py",
+    "apps/backend/app/engine/prices.py",
+    "apps/backend/app/engine/warmup.py",
+    "apps/backend/tests/test_db.py",
+    "apps/backend/tests/test_data_manager_membership_cache.py",
+    "apps/backend/tests/test_warmup.py",
+    "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-dev.md",
+    "reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "review",
+  "notes": "Cached the J-96 membership timeline (new standalone MembershipTimelineCache table keyed by research._dataset_version; read/upsert wrapper; warm-up precompute; cold-miss bound via prefilled_bar_cache + resolver trailing_count). GET /api/data steady-state ~12s (was >300s hang), byte-identical served values (membership_timeline cache hit 0.01s; live byte-identity 0 mismatches over 13 sampled dates; cache row dataset_version r1369-f3078824). Targeted green: test_db (27 in batch), 8 membership-cache tests (re-run green after dedup), empty-DB compute_coverage sanity. SLOW loaded_engine/warmed_engine byte-identity + the 2 new test_warmup tests deferred to the pump FULL suite (nohup-async) - evaluator MUST gate on the flushed '0 failed, EXIT 0' line, never the in-flight suite (iter-11/29/30). Backend on :8835 started for verification then stopped; scratch verify script removed. No config field added (cache keyed by dataset_version only). New table created additively by create_all on the live DB at boot."
+}

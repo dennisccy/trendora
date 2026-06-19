@@ -53,7 +53,16 @@ from app.engine.warmup import (
     warmup_total,
     _warmup_dates,
 )
-from app.models import ForwardReturn, ScannerResult, ScannerRun, SectorScoreRow, ThemeScoreRow
+from app.engine.data_manager import _membership_timeline, membership_timeline_cached
+from app.engine.research import _dataset_version
+from app.models import (
+    ForwardReturn,
+    MembershipTimelineCache,
+    ScannerResult,
+    ScannerRun,
+    SectorScoreRow,
+    ThemeScoreRow,
+)
 from app.seed_loader import load_seed
 
 EARLY = date(2022, 10, 7)  # an early, low-history as-of date (fast to scan) used by the race proofs
@@ -192,6 +201,70 @@ def test_warmup_produced_every_cadence_snapshot_and_forward_returns(warmed_engin
         n_fr = session.scalar(select(func.count()).select_from(ForwardReturn))
         assert n_fr > 0               # the warm-up inserted realized forward returns
     assert warmed_engine["warmup_record"]["status"] == "ok"
+
+
+# ==================================================================================================
+# iter-36 (J-96) — the warm-up precomputes the membership-timeline cache OFF the boot path so the FIRST
+# `GET /api/data` after boot/rebuild serves the cached payload (not the O(dates × pool) cold compute)
+# ==================================================================================================
+def test_warmup_precomputes_membership_timeline_cache(warmed_engine):
+    """After the background warm-up finishes, the dynamic-universe membership-timeline cache is already
+    populated under the CURRENT `_dataset_version` stamp — so the first `GET /api/data` serves it from
+    storage rather than paying the per-date resolver loop synchronously (the iter-35 regression fix). The
+    cached payload is byte-identical to a fresh `_membership_timeline(...)` compute (a cache of the
+    deterministic derivation, not a second computation)."""
+    engine, cfg = warmed_engine["engine"], warmed_engine["cfg"]
+    with Session(engine) as session:
+        version = _dataset_version(session)
+        rows = session.exec(select(MembershipTimelineCache)).all()
+        # exactly ONE cache row, keyed to the FINAL dataset version (computed AFTER the forward-return
+        # backfill so the stamp matches the one a subsequent read looks up).
+        assert len(rows) == 1, f"expected exactly one warmed cache row, got {len(rows)}"
+        assert rows[0].dataset_version == version
+        # the cached payload is byte-identical to a fresh compute over the same warmed DB.
+        snapshot_dates = sorted(session.exec(select(ScannerRun.asof_date)).all())
+        fresh = _membership_timeline(session, cfg, snapshot_dates)
+        served = membership_timeline_cached(session, cfg, snapshot_dates)  # must HIT the warmed row
+        assert served == fresh
+        assert served["points"], "the warmed timeline has points (the cadence snapshots exist)"
+
+
+def test_membership_timeline_cache_warm_failure_is_nonfatal(early_engine, monkeypatch, caplog):
+    """A failure precomputing the membership-timeline cache during warm-up is CAUGHT + logged and does NOT
+    flip an otherwise-successful warm-up to `failed` (the cadence snapshots + forward returns already
+    succeeded). The warm-up settles `ok`, and a subsequent (real) `compute`/read still serves the bounded
+    cold miss — the server is never left in a failed state by a cache-warm hiccup."""
+    engine, cfg = early_engine
+    ensure_latest_snapshot(engine, cfg)  # latest servable before the warm-up
+    _clear_warmup_registry()
+    warmup_mod._WARMUP_THREAD = None
+
+    # force ONLY the membership-timeline precompute to raise (the cadence + forward-return steps succeed).
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("forced membership-timeline cache warm failure")
+
+    monkeypatch.setattr(warmup_mod.data_manager, "membership_timeline_cached", _boom)
+    with caplog.at_level("ERROR"):
+        job_id = start_warmup(engine, cfg)
+        _join_warmup(job_id)
+
+    rec = data_manager.get_job(job_id)
+    # the warm-up still settled OK (the cache-warm failure is non-fatal — it did not fail the job).
+    assert rec is not None and rec["status"] == "ok"
+    # the failure was logged honestly (not swallowed silently).
+    assert any("membership-timeline cache warm failed" in r.message.lower() for r in caplog.records)
+    # no stale/garbage cache row was written by the failed warm (the inner compute raised before persist).
+    with Session(engine) as session:
+        assert session.exec(select(MembershipTimelineCache)).all() == []
+
+    # un-patch: a real read now serves the bounded cold miss and persists the cache (server recovers).
+    monkeypatch.undo()
+    with Session(engine) as session:
+        snapshot_dates = sorted(session.exec(select(ScannerRun.asof_date)).all())
+        served = membership_timeline_cached(session, cfg, snapshot_dates)
+        assert served == _membership_timeline(session, cfg, snapshot_dates)
+    _clear_warmup_registry()
+    warmup_mod._WARMUP_THREAD = None
 
 
 def test_lifespan_serves_dashboard_200_while_warmup_in_flight(tmp_path_factory, monkeypatch):

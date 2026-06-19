@@ -40,7 +40,7 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.config import Config, get_config
-from app.engine.prices import bars_asof
+from app.engine.prices import active_bar_cache, bars_asof
 from app.engine.universe_screen import read_pool
 from app.models import DailyPrice
 
@@ -124,18 +124,30 @@ def resolve_with_reasons(
     symbols = sorted({row["symbol"] for row in pool})
     min_history = cfg.indicators.min_history_bars
 
-    # PERFORMANCE: one grouped count query for the trailing-bar count (date <= asof) per priced symbol.
-    # Only a symbol that clears the history gate can possibly be admitted, so we fetch the FULL bar list
-    # (for the price/ADV check) ONLY for those — the (often hundreds of) un-fetched pool names are
-    # trivially `below_history` from the count alone (no per-symbol full-series query). Byte-identical to
-    # resolving each candidate individually (the same gate order, the same admission), just far cheaper.
-    counts_rows = session.exec(
-        select(DailyPrice.symbol, func.count(DailyPrice.id))
-        .where(DailyPrice.symbol.in_(symbols))
-        .where(DailyPrice.date <= asof)
-        .group_by(DailyPrice.symbol)
-    ).all()
-    bar_count_by_symbol: dict[str, int] = {sym: int(n or 0) for sym, n in counts_rows}
+    # PERFORMANCE: the trailing-bar count (date <= asof) per priced symbol — only a symbol that clears
+    # the history gate can possibly be admitted, so we fetch the FULL bar list (for the price/ADV check)
+    # ONLY for those; the (often hundreds of) un-fetched pool names are trivially `below_history` from the
+    # count alone (no per-symbol full-series query). Byte-identical to resolving each candidate
+    # individually (the same gate order, the same admission), just far cheaper.
+    #
+    # iter-36 (J-96 cold-miss bound): when a `bar_cache`/`prefilled_bar_cache` context is active (the
+    # multi-date membership-timeline derivation runs inside one), source the count from the ONCE-loaded
+    # series via `trailing_count` — eliminating ONE grouped-count DB round-trip PER DATE (the O(dates)
+    # cost that made the cold `GET /api/data` hang). `trailing_count` is byte-identical to the grouped
+    # count (the `(symbol, date)` unique constraint means the bisect equals the row count exactly), so the
+    # admitted/excluded results are unchanged. With NO active context (the default per-request resolve)
+    # the original grouped-count query runs — that path is completely unchanged / byte-identical.
+    cache = active_bar_cache(session)
+    if cache is not None:
+        bar_count_by_symbol = {sym: cache.trailing_count(session, sym, asof) for sym in symbols}
+    else:
+        counts_rows = session.exec(
+            select(DailyPrice.symbol, func.count(DailyPrice.id))
+            .where(DailyPrice.symbol.in_(symbols))
+            .where(DailyPrice.date <= asof)
+            .group_by(DailyPrice.symbol)
+        ).all()
+        bar_count_by_symbol = {sym: int(n or 0) for sym, n in counts_rows}
 
     resolutions: list[CandidateResolution] = []
     for symbol in symbols:

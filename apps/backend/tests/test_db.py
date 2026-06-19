@@ -58,6 +58,15 @@ MARKET_PHASE_CACHE_TABLES = {"market_phase_cache"}
 # → no schema change there. Macro ships config-default-OFF (no rows ⇒ every J-87..J-91 figure unchanged).
 MACRO_TABLES = {"macro_series"}
 
+# iter-36 (J-96) standalone, create_all-managed dynamic-universe membership-timeline aggregate cache.
+# Same reasoning as RESEARCH_CACHE_TABLES / MARKET_PHASE_CACHE_TABLES: legitimately MUTABLE derived/cache
+# state (NOT a snapshot — the *Snapshots are immutable* anti-goal binds only
+# scanner_runs/results/scores/forward_returns), a STANDALONE table so a fresh DB carries it and no
+# EXISTING table gains a column (the `_ADDITIVE_COLUMNS` trap does not apply). The cached payload is
+# byte-identical to a fresh `_membership_timeline` compute; the cache key carries the SAME
+# `_dataset_version` stamp J-72 / J-87 use (single-sourced), so it invalidates on any dataset change.
+MEMBERSHIP_TIMELINE_CACHE_TABLES = {"membership_timeline_cache"}
+
 # iter-25 (J-38): `DataProviderRun.dismissed` is a MUTABLE job-control COLUMN added to the existing
 # data_provider_runs table — it adds NO new table, so the expected-tables set below is unchanged. The
 # explicit assertion in test_data_provider_run_has_dismissed_column verifies the column exists.
@@ -68,6 +77,7 @@ def test_create_all_produces_expected_tables():
         set(SQLModel.metadata.tables.keys())
         == ITER1_TABLES | SNAPSHOT_TABLES | WATCHLIST_TABLES | IMPORT_TABLES
         | RESEARCH_CACHE_TABLES | MARKET_PHASE_CACHE_TABLES | MACRO_TABLES
+        | MEMBERSHIP_TIMELINE_CACHE_TABLES
     )
 
 
