@@ -1,0 +1,54 @@
+{
+  "J-94": [
+    "PASS",
+    "Coverage panel rendered with admission data visible. API confirmed: admitted=544, excluded=4. Evidence: UT-J94-coverage-area.png"
+  ],
+  "J-96": [
+    "FAIL",
+    "Membership timeline content not detected in page text. Full text snippet: Trendora\nDashboard\nStocks\nThemes\nSectors\nScanner Runs\nBacktest\nResearch\nWatchlist\nMethodology\nData Manager\nOffline seed spine \u00b7 v0.1\nResearch-only \u00b7 decision support \u00b7 no orders\nLatest\nView as-of date\nLatest\n\u2190 \u2192 steps date\nReady\nprovider: seed\nseed 2026-06-16\n585 symbols\nData Manager\n\nGrow the dataset on demand \u2014 view coverage and gaps, then fetch real EOD history and/or backfill immutable snapshots by date or range. Jobs run asynchronously; new snapshot dates become selectable in the global as-"
+  ],
+  "J-93": [
+    "PASS",
+    "Two byte-distinct frames captured: latest shows NVDA/AAPL/MSFT rows, early 2021-05-01 shows different/smaller content (before warm-up). Universe slides with as-of as expected. Evidence: UT-J93-latest.png, UT-J93-early-2021.png"
+  ],
+  "J-06": [
+    "PASS",
+    "NVDA appears on /stocks leaderboard and /stocks/NVDA detail. Score labels (Leadership/Entry Quality/Risk) present on detail page. Evidence: UT-J06-stocks-leaderboard.png, UT-J06-nvda-detail.png"
+  ],
+  "J-07": [
+    "PASS",
+    "Scanner runs page rendered. Historical view at 2022-10-03 loaded. Regime label detected: True. Actionable count in text: 501. Evidence: UT-J07-scanner-runs.png, UT-J07-riskoff-date.png"
+  ],
+  "J-18": [
+    "PASS",
+    "document.querySelectorAll('input[type=date]').length === 0. No page-local date inputs on /backtest. Global as-of switcher drives the date. Evidence: UT-J18-backtest.png"
+  ],
+  "J-87": [
+    "PASS",
+    "Dashboard renders Market Phase panel. Phase/severity content detected in page. Evidence: UT-J87-dashboard.png"
+  ],
+  "J-88": [
+    "PASS",
+    "P(bear) or related content detected on scrolled dashboard. Evidence: UT-J88-dashboard-scroll.png"
+  ],
+  "J-36": [
+    "PASS",
+    "Coverage panel loaded with universe/symbols definitions. Coverage table content detected. Evidence: UT-J36-data-coverage.png"
+  ],
+  "J-37": [
+    "FAIL",
+    "Missing-data diagnostic not detected. Snippet: Trendora\nDashboard\nStocks\nThemes\nSectors\nScanner Runs\nBacktest\nResearch\nWatchlist\nMethodology\nData Manager\nOffline seed spine \u00b7 v0.1\nResearch-only \u00b7 decision support \u00b7 no orders\nLatest\nView as-of date\nLatest\n\u2190 \u2192 steps date\nChecking backend\u2026\nData Manager\n\nGrow the dataset on demand \u2014 view coverage an"
+  ],
+  "J-39": [
+    "PASS",
+    "Remove data section visible on /data page. Confirm-preview controls present (non-destructive). Evidence: UT-J39-remove-section.png"
+  ],
+  "J-85": [
+    "PASS",
+    "Rebuild snapshots panel visible on /data. Evidence: UT-J85-rebuild-panel.png"
+  ],
+  "J-15": [
+    "FAIL",
+    "Stock rows not visible after load. Snippet: Trendora\nDashboard\nStocks\nThemes\nSectors\nScanner Runs\nBacktest\nResearch\nWatchlist\nMethodology\nData Manager\nOffline seed spine \u00b7 v0.1\nResearch-only \u00b7 decision support \u00b7 no orders\nLatest\nView as-of date"
+  ]
+}

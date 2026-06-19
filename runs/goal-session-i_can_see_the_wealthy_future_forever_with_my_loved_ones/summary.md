@@ -1,18 +1,18 @@
 # Goal Session Summary — i_can_see_the_wealthy_future_forever_with_my_loved_ones
 
-**Final verdict:** REGRESSION_HALT
-**Total iterations:** 36
-**Wall time (seconds):** 8065
+**Final verdict:** ABORTED
+**Total iterations:** 37
+**Wall time (seconds):** 18027
 **Quota pauses:** 0
 **Started:** 2026-06-10T21:38:27.739257Z
-**Finished:** 2026-06-19T14:43:52.202168Z
+**Finished:** 2026-06-19T20:18:18.890539Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/i_can_see_the_wealthy_future_forever_with_my_loved_ones`. Open a PR with:
 
     gh pr create --base main --head goal/i_can_see_the_wealthy_future_forever_with_my_loved_ones \
-      --title "feat: i_can_see_the_wealthy_future_forever_with_my_loved_ones — REGRESSION_HALT" \
+      --title "feat: i_can_see_the_wealthy_future_forever_with_my_loved_ones — ABORTED" \
       --body-file runs/goal-session-i_can_see_the_wealthy_future_forever_with_my_loved_ones/summary.md
 
 ## Final journey state

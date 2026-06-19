@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37",
+  "base_url": "http://localhost:3835",
+  "iteration": 37,
+  "default_timeout_ms": 35000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Dashboard — market regime at a glance",
+      "narration": "The dashboard loads instantly, showing the current market regime and a composite score that tells you at a glance whether conditions favour active positioning or caution.",
+      "point_out": "The regime label (Risk-on) and the composite score (73.44) with its component breakdown — all rendered without any skeleton delay.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Risk-on" }
+    },
+    {
+      "n": 2,
+      "title": "Stock Leaderboard — ranked by composite score",
+      "narration": "The stock leaderboard shows every universe member ranked by their three explainable scores. Top names like NVDA, AAPL, and SPY appear right away from the persisted snapshot — no waiting for live recomputation.",
+      "point_out": "Ticker rows with bucket labels and scores populate within a few seconds. A single as-of date control sits in the toolbar — exactly one, no duplicates.",
+      "journey": "J-02",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "Stock Leaderboard" }
+    },
+    {
+      "n": 3,
+      "title": "NVDA detail — three explainable scores",
+      "narration": "Clicking into any ticker reveals the three scores that drove its ranking: Leadership, Entry, and Risk. Every number shown here is byte-identical to what the leaderboard displayed — a single source of truth, never recomputed on this page.",
+      "point_out": "The NVDA heading, its bucket label, numeric score values, and setup indicator all appear without a 404 or blank field.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/NVDA" },
+      "expect": { "text": "NVDA" }
+    },
+    {
+      "n": 4,
+      "title": "Data Manager — reliable page hydration (iter-37 fix)",
+      "narration": "This iteration restored the bar-cache load-once invariant that a previous optimisation had silently broken. The /data page now hydrates cleanly within 30 seconds on a single load, without exhausting the database connection pool.",
+      "point_out": "The Data Manager heading and the coverage-diagnostic admitted count (544) are both visible — no persistent 'Checking backend…' skeleton. This is the direct evidence of the iter-37 fix.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "ADMITTED" }
+    },
+    {
+      "n": 5,
+      "title": "Coverage diagnostic — admitted and exclusion counts",
+      "narration": "The coverage-diagnostic section shows exactly how many symbols made it into the universe for the current as-of date, and why the rest were excluded — not enough history, too low a price, or below minimum daily volume.",
+      "point_out": "ADMITTED shows 544 members (of 548 candidates). The three exclusion-reason fields — BELOW MIN HISTORY (1), BELOW MIN PRICE (2), and BELOW ADV — each show real integers, not dashes or NaN.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "544" }
+    }
+  ]
+}

@@ -19,7 +19,7 @@ import bisect
 import threading
 from contextlib import contextmanager
 from datetime import date as date_cls
-from typing import Iterator, Optional
+from typing import Iterable, Iterator, Optional
 
 from sqlalchemy import func
 from sqlmodel import Session, select
@@ -63,12 +63,22 @@ class _BarCache:
         self._dates_by_symbol: dict[str, list[date_cls]] = {}
         self._load_lock = threading.Lock()
 
-    def prefill(self, session: Session) -> None:
+    def prefill(self, session: Session, expected_symbols: Optional[Iterable[str]] = None) -> None:
         """Load EVERY symbol's full date-ordered series ONCE, in ONE query, on `session` (the
         orchestrating thread, before any worker fan-out). After this, a shared read across worker
         threads needs no further bar-store load — so a K-date parallel backfill loads each symbol once
         for the whole job (J-46), not once per worker session. Same rows/order as the lazy path: ordered
-        by (symbol, date); the (symbol, date) unique constraint guarantees no ties."""
+        by (symbol, date); the (symbol, date) unique constraint guarantees no ties.
+
+        iter-37 (load-once restored): the one prefill query only returns symbols that HAVE bars in
+        `daily_prices`; a candidate-pool symbol with ZERO bars is therefore absent from the cache, so the
+        resolver's per-date `trailing_count` would fall into the lazy per-symbol load — re-issued once per
+        snapshot date / per worker session, breaking the J-46 load-once-per-job invariant. `expected_symbols`
+        (the candidate pool the resolver will ask about) closes that hole: every expected name NOT already
+        loaded is recorded with an EMPTY series up front, so a no-bar symbol resolves to a trailing count of
+        0 from the once-loaded cache with NO per-date re-load. The served value is byte-identical — an empty
+        series has 0 trailing bars, exactly the grouped-count path's result (`below_history`). Recording an
+        absent symbol as `[]` is descriptive, not fabricated: it means "this name has no bars at/through D"."""
         stmt = select(DailyPrice).order_by(DailyPrice.symbol, DailyPrice.date)
         by_symbol: dict[str, list[DailyPrice]] = {}
         for bar in session.exec(stmt).all():
@@ -79,6 +89,13 @@ class _BarCache:
                 if symbol not in self._by_symbol:  # never overwrite a series already loaded
                     self._by_symbol[symbol] = full
                     self._dates_by_symbol[symbol] = [bar.date for bar in full]
+            # record an EMPTY series for every expected (candidate-pool) symbol with no bars, so it is
+            # never lazy-loaded per-date later — load-once-per-job holds for no-bar names too.
+            if expected_symbols is not None:
+                for symbol in expected_symbols:
+                    if symbol not in self._by_symbol:
+                        self._by_symbol[symbol] = []
+                        self._dates_by_symbol[symbol] = []
 
     def bars_asof(self, session: Session, symbol: str, d: date_cls) -> list[DailyPrice]:
         full = self._by_symbol.get(symbol)
@@ -109,14 +126,20 @@ class _BarCache:
         count (the `(symbol, date)` unique constraint means the date-ordered series has no ties, so the
         bisect over the pre-loaded date list equals the row count exactly). Used by the resolver's
         history-gate prefilter so a multi-date timeline derivation needs ZERO per-date grouped-count
-        round-trips (it reads the once-loaded series instead). Lazy-loads a missing symbol exactly once
-        (the same guard `bars_asof` uses) so the count is correct even on an un-prefilled cache."""
-        if symbol not in self._dates_by_symbol:
+        round-trips (it reads the once-loaded series instead). A symbol not yet recorded is loaded exactly
+        ONCE — and a no-bar symbol is MEMOIZED as an empty series under the lock — so it is never re-loaded
+        on later dates / other worker sessions reading the shared cache (the J-46 load-once-per-job
+        invariant holds even for a candidate-pool name that has zero bars and was not pre-recorded)."""
+        dates = self._dates_by_symbol.get(symbol)
+        if dates is None:
             # ensure the series is loaded (re-uses bars_asof's lazy-load + lock); we discard the slice.
+            # `bars_asof` records the result (an empty list for a no-bar symbol) under the load lock, so a
+            # later `trailing_count`/`bars_asof` for this symbol finds it pre-loaded and never re-queries.
             self.bars_asof(session, symbol, d)
-        if symbol not in self._dates_by_symbol:
-            return 0  # the symbol has no bars at all (never loaded) — zero trailing bars
-        return bisect.bisect_right(self._dates_by_symbol[symbol], d)
+            dates = self._dates_by_symbol.get(symbol)
+            if dates is None:
+                return 0  # defensive: still unrecorded — zero trailing bars
+        return bisect.bisect_right(dates, d)
 
 
 # Registry keyed by id(session) — a cache is consulted by `bars_asof` ONLY while its session's context
@@ -166,14 +189,21 @@ def bar_cache(session: Session) -> Iterator[_BarCache]:
 
 
 @contextmanager
-def prefilled_bar_cache(session: Session) -> Iterator[_BarCache]:
+def prefilled_bar_cache(
+    session: Session, expected_symbols: Optional[Iterable[str]] = None
+) -> Iterator[_BarCache]:
     """Like `bar_cache`, but PRE-FILLS every symbol's full series up front in ONE query (J-53). Returns
     the cache so it can be SHARED with worker sessions via `attach_shared_cache` — so a parallel
     multi-date backfill loads each symbol ONCE for the whole job (the J-46 load-once-per-job guarantee),
     not once per worker session. The orchestrating thread owns this context; workers only READ the
-    pre-loaded immutable series."""
+    pre-loaded immutable series.
+
+    `expected_symbols` (iter-37): the candidate-pool symbols the resolver will ask `trailing_count` about.
+    Any expected name WITHOUT bars is recorded as an empty series in the single prefill, so a no-bar
+    candidate resolves to a trailing count of 0 from the once-loaded cache with NO per-date lazy re-load —
+    restoring load-once-per-job for no-bar names too, byte-identically (empty series ⇒ 0 trailing bars)."""
     with bar_cache(session) as cache:
-        cache.prefill(session)
+        cache.prefill(session, expected_symbols=expected_symbols)
         yield cache
 
 

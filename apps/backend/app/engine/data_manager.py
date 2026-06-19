@@ -484,7 +484,11 @@ def _membership_timeline(
     Strictly causal: each date is observed from its OWN <= D snapshot + bars <= D (no future leakage).
     Deterministic. An empty DB / no snapshots → an empty-but-valid timeline (no fabricated dates/members)."""
     dates = sorted(snapshot_dates)
-    pool_count = len({row["symbol"] for row in read_pool()})
+    # the committed candidate-pool symbols the per-date resolver will ask `trailing_count` about — passed
+    # to `prefilled_bar_cache` so a no-bar candidate is recorded as an empty series up front and never
+    # lazy re-loaded per date (iter-37 load-once restored; byte-identical: empty series ⇒ 0 trailing bars).
+    pool_symbols = {row["symbol"] for row in read_pool()}
+    pool_count = len(pool_symbols)
     points: list[dict] = []
     seen: set[str] = set()
     prev_members: set[str] = set()
@@ -511,7 +515,7 @@ def _membership_timeline(
     # prefill + in-memory bisects, bounding the cold (cache-miss) `GET /api/data` cost. Byte-identical to
     # the lazy `bar_cache` path: same rows, same admission, same excluded counts — only the loading
     # changes. (This is the cold path; a warm cache hit skips this loop entirely.)
-    with prefilled_bar_cache(session):
+    with prefilled_bar_cache(session, expected_symbols=pool_symbols):
         for d in dates:
             members = members_by_date.get(d, set())
             # entries = members never seen on any earlier observed date; exits = prior members now gone.
@@ -2201,7 +2205,13 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
     # loaded ONCE in one query). Workers ATTACH this same cache (read-only) so the whole K-date job does
     # at most one bar-store load per symbol — load-once-per-job, not once per date NOR once per worker.
     # The orchestrator's own forward-return reads + the race-fallback run_scan also read from it.
-    with prefilled_bar_cache(session) as shared_cache:
+    #
+    # iter-37 (load-once restored): pass the candidate-pool symbols so a name with ZERO bars is recorded as
+    # an empty series in the single prefill — the per-date resolver's `trailing_count` then reads 0 from the
+    # once-loaded cache instead of re-issuing a per-symbol lazy load EVERY snapshot date / per worker
+    # session (the iter-36 defect that broke load-once for no-bar candidates). Byte-identical served values.
+    pool_symbols = {row["symbol"] for row in read_pool()}
+    with prefilled_bar_cache(session, expected_symbols=pool_symbols) as shared_cache:
         if workers <= 1 or len(targets) <= 1:
             # serial baseline (workers=1) — compute + persist inline, one date at a time, in order. A
             # per-date compute failure is caught here (isolated), not raised — the rest still run.

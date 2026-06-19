@@ -69,6 +69,53 @@ def test_cached_bars_asof_slices_le_d_identically(tiny_engine):
         assert all(bar_date <= d for bar_date, _ in rows)  # no future bar
 
 
+def test_prefill_expected_symbols_records_zero_bar_symbol_once(tiny_engine):
+    """iter-37 regression guard (the root cause of the load-once break): a CANDIDATE-POOL symbol that has
+    ZERO rows in `daily_prices` must be sourced from the prefilled cache as a count of 0 with AT MOST ONE
+    bar-store load — never a fresh lazy per-date re-load. `prefill(expected_symbols=...)` records an empty
+    series up front for every expected name (incl. the no-bar ones), so the resolver's per-date
+    `trailing_count` reads 0 from the once-loaded cache instead of re-issuing a per-symbol query each date
+    (the iter-36 defect that re-loaded a no-bar candidate every snapshot date of a parallel K-date job)."""
+    engine, days = tiny_engine
+    # instrument EVERY full-series bar-store load (the same instrument the K-date job test uses): a real
+    # per-symbol DB query is exactly a `bars_asof`/`prefill` entry appearing in `_by_symbol`.
+    load_counts: dict[str, int] = {}
+    orig_bars_asof = prices._BarCache.bars_asof
+    orig_prefill = prices._BarCache.prefill
+
+    def _counting_bars_asof(self, session, symbol, d):
+        if symbol not in self._by_symbol:
+            load_counts[symbol] = load_counts.get(symbol, 0) + 1
+        return orig_bars_asof(self, session, symbol, d)
+
+    def _counting_prefill(self, session, expected_symbols=None):
+        before = set(self._by_symbol)
+        orig_prefill(self, session, expected_symbols=expected_symbols)
+        for symbol in self._by_symbol:
+            if symbol not in before:
+                load_counts[symbol] = load_counts.get(symbol, 0) + 1
+
+    prices._BarCache.bars_asof = _counting_bars_asof  # type: ignore[assignment]
+    prices._BarCache.prefill = _counting_prefill  # type: ignore[assignment]
+    try:
+        with Session(engine) as session:
+            with prices.prefilled_bar_cache(session, expected_symbols=["AAA", "ZZZ"]) as cache:
+                # ZZZ has no bars at all — it is a candidate-pool name with zero daily_prices rows.
+                for d in days:  # five per-date resolver reads of the SAME no-bar symbol
+                    assert cache.trailing_count(session, "ZZZ", d) == 0  # honest descriptive count: 0
+                # AAA (five bars) still slices correctly from the once-loaded series.
+                assert cache.trailing_count(session, "AAA", days[-1]) == len(days)
+    finally:
+        prices._BarCache.bars_asof = orig_bars_asof  # type: ignore[assignment]
+        prices._BarCache.prefill = orig_prefill  # type: ignore[assignment]
+
+    # the invariant: the no-bar candidate symbol is loaded AT MOST ONCE for the whole context (it was
+    # recorded as an empty series by `prefill`, so no per-date lazy re-load ever fires).
+    assert load_counts.get("ZZZ", 0) == 1
+    assert load_counts.get("AAA", 0) == 1
+    assert max(load_counts.values()) == 1
+
+
 def test_cache_loads_each_symbol_once_within_context(tiny_engine):
     """The FIRST `bars_asof` for a symbol loads its full series once; every later call slices in memory
     (zero extra bar-store loads). Instrumented at the bar-store load point (the per-symbol DailyPrice
@@ -196,11 +243,11 @@ def test_kdate_backfill_loads_each_symbol_at_most_once(seed_engine, monkeypatch)
             _count(symbol)
         return orig_bars_asof(self, session, symbol, d)
 
-    def _counting_prefill(self, session):
+    def _counting_prefill(self, session, expected_symbols=None):
         before = set(self._by_symbol)
-        orig_prefill(self, session)
+        orig_prefill(self, session, expected_symbols=expected_symbols)
         for symbol in self._by_symbol:
-            if symbol not in before:  # newly loaded by this prefill
+            if symbol not in before:  # newly loaded by this prefill (incl. a no-bar candidate as [])
                 _count(symbol)
 
     monkeypatch.setattr(prices._BarCache, "bars_asof", _counting_bars_asof)

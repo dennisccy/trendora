@@ -1,0 +1,20 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37",
+  "status": "complete",
+  "current_step": "qa_complete",
+  "updated_at": "2026-06-19T22:30:00.000000Z",
+  "started_at": "2026-06-19T17:25:00.000000Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/prices.py",
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/tests/test_bar_cache.py",
+    "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37-dev.md",
+    "reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "next_action": "audit",
+  "notes": "REAL FIX iteration (replaces the aborted verify-only stub). PRIMARY: restored the J-46 load-once-per-job invariant the iter-36 cold-miss optimization broke. Root cause confirmed+reproduced: _BarCache.prefill only recorded symbols WITH rows in daily_prices; a ZERO-BAR candidate-pool symbol was absent, so resolve_with_reasons's active-cache trailing_count fell into bars_asof's lazy per-symbol load, re-issued per snapshot date / per worker session -> test_bar_cache.py::test_kdate_backfill_loads_each_symbol_at_most_once failed assert 3==1 (e.g. A loaded 3x). FIX (sanctioned approach a + defensive b): prefill(session, expected_symbols=None) records an empty [] series up front for every expected candidate-pool symbol with no bars (so a no-bar name resolves to count 0 from the once-loaded cache with NO per-date re-load); prefilled_bar_cache forwards expected_symbols; the two call sites (_do_backfill K-date job + _membership_timeline) pass {row['symbol'] for row in read_pool()}; trailing_count hardened to load-once + memoize the no-bar result. Default (no-context) per-request path UNCHANGED. BYTE-IDENTITY PROVEN (served values unchanged): membership_timeline new-vs-old prefill = identical; resolve_with_reasons cache-vs-no-cache = identical (admitted_count=96, excluded below_history=433/below_price=5/below_adv=14 on seed); compute_coverage cold-vs-warm = identical; score_stocks(D) cached==uncached (existing test). The K-date test's max-load==1 assertion is UNCHANGED; added fast unit test test_prefill_expected_symbols_records_zero_bar_symbol_once. TARGETED TESTS GREEN: test_bar_cache.py 9 passed, test_data_manager_membership_cache.py 8 passed, test_data_manager_backfill_parallel.py 10 passed, test_db.py 9 passed. test_warmup.py handed to pump (module-scoped heavy seed-boot exceeds the 10-min Bash cap; its membership-timeline path covered byte-identically elsewhere). FULL ~3.5h suite handed to the pump nohup-async; gate GOAL_ACHIEVED candidacy on the flushed '0 failed, EXIT 0'; re-run any test_warmup.py / test_data_manager_jobs_pipeline.py F ISOLATED (known concurrent-QA/slow-boot flake). OPTIONAL coverage-block /api/data optimization DESCOPED (developer judgement, spec-permitted) -> ~10s residual on the full DB documented as a Known Limitation (single-as-of _resolved_universe/_coverage_diagnostic_absent in compute_coverage; the J-96 timeline is already cached). NO new table -> test_db.py guard untouched. NO frontend code change. NO kind:rebuild triggered. Frontend Present:yes set ONLY to force browser-qa for the LIVE J-94/J-96 /data re-verify (single sequential page load, ~30s wait, md5 the dir first, NEVER concurrent /api/data probing). Servers: none started by dev this turn (ports left as found). Closes open_item iter35-api-data-timeline-uncached + the iter-36 carried J-94/J-96 live-evidence gap + records/closes the test_bar_cache load-once regression."
+}
