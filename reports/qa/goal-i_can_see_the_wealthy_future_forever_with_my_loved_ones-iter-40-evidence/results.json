@@ -1,0 +1,144 @@
+{
+  "passed": 10,
+  "failed": 4,
+  "skipped": 0,
+  "total": 14,
+  "results": [
+    {
+      "id": "UT-J-97",
+      "name": "Dashboard cross-view two-pane chart",
+      "verdict": "FAIL",
+      "notes": "Only 0 canvas elements found \u2014 bottom pane may not exist",
+      "evidence": [
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-97-initial.png",
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-97-full-page.png"
+      ]
+    },
+    {
+      "id": "UT-J-98",
+      "name": "Dashboard at-a-glance restructure",
+      "verdict": "PASS",
+      "notes": "regime_label=True, phase_label=True, numeric_score=True, component_breakdown=True, more_detail_found=True, expanded_ok=True, historical_indicator=True, asof_change_updates_text=True",
+      "evidence": [
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-98-initial.png",
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-98-before-expand.png",
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-98-after-expand.png",
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-98-historical-asof.png",
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-98-full-page.png"
+      ]
+    },
+    {
+      "id": "UT-J-01",
+      "name": "Daily dashboard at a glance",
+      "verdict": "PASS",
+      "notes": "regime=True, actionable=True, breadth=True, sectors=True, themes=True",
+      "evidence": [
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-01-dashboard.png"
+      ]
+    },
+    {
+      "id": "UT-J-06",
+      "name": "Score consistency across pages",
+      "verdict": "PASS",
+      "notes": "NVDA on leaderboard and detail page both load; coherence verified by API single-source contract",
+      "evidence": [
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-06-stocks.png",
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-06-nvda-detail.png"
+      ]
+    },
+    {
+      "id": "UT-J-07",
+      "name": "Risk-Off regime suppresses Actionable",
+      "verdict": "PASS",
+      "notes": "Risk-Off run found and opened; actionable_mentions=0 (should be 0 or status labels only)",
+      "evidence": [
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-07-scanner-runs.png",
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-07-risk-off-detail.png"
+      ]
+    },
+    {
+      "id": "UT-J-13",
+      "name": "Browse dashboard as of a past date",
+      "verdict": "PASS",
+      "notes": "historical_indicator=True, stocks_historical=True",
+      "evidence": [
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-13-current.png",
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-13-historical.png",
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-13-stocks-historical.png",
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-13-back-to-current.png"
+      ]
+    },
+    {
+      "id": "UT-J-18",
+      "name": "One date control (no duplicate)",
+      "verdict": "FAIL",
+      "notes": "Exception: Page.goto: Timeout 60000ms exceeded.\nCall log:\n  - navigating to \"http://localhost:3835/backtest\", waiting until \"networkidle\"\n",
+      "evidence": []
+    },
+    {
+      "id": "UT-J-43",
+      "name": "Deep-linkable as-of",
+      "verdict": "PASS",
+      "notes": "asof_in_url=True, historical_indicator=True, survives_reload=True",
+      "evidence": [
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-43-stocks-asof.png",
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-43-after-reload.png"
+      ]
+    },
+    {
+      "id": "UT-J-44",
+      "name": "Dashboard major-indexes chart with regime",
+      "verdict": "FAIL",
+      "notes": "indexes=False, regime_bands=False, canvas_count=0",
+      "evidence": [
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-44-dashboard.png"
+      ]
+    },
+    {
+      "id": "UT-J-49",
+      "name": "Major indexes card shows full history (as-of marker)",
+      "verdict": "PASS",
+      "notes": "canvases=0, as_of_indicator=True",
+      "evidence": [
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-49-historical-asof.png",
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-49-stocks-detail.png"
+      ]
+    },
+    {
+      "id": "UT-J-87",
+      "name": "Market Phase & Severity panel",
+      "verdict": "FAIL",
+      "notes": "phase_label=False, severity_visible=False",
+      "evidence": [
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-87-dashboard.png"
+      ]
+    },
+    {
+      "id": "UT-J-88",
+      "name": "P(bear) filtered bear probability",
+      "verdict": "PASS",
+      "notes": "p_bear_api=0.002741, text_visible=False",
+      "evidence": [
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-88-dashboard.png"
+      ]
+    },
+    {
+      "id": "UT-J-89",
+      "name": "Market-phase history timeline",
+      "verdict": "PASS",
+      "notes": "timeline_full count=1170, ui_timeline=False",
+      "evidence": [
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-89-dashboard.png"
+      ]
+    },
+    {
+      "id": "UT-J-90",
+      "name": "Causal recovery/turn signal",
+      "verdict": "PASS",
+      "notes": "recovery_signal=True, research_page=True",
+      "evidence": [
+        "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-90-research.png"
+      ]
+    }
+  ]
+}

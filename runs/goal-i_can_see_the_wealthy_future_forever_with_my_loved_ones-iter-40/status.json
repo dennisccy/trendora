@@ -1,0 +1,16 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
+  "status": "complete",
+  "current_step": "dev_complete",
+  "updated_at": "2026-06-20T16:21:52.698436Z",
+  "started_at": "2026-06-20T16:00:00.000000Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-dev.md"
+  ],
+  "tests_run": true,
+  "tests_summary": "NO CODE CHANGE (happy path; git status shows zero apps/ diff vs iter-39). LIVE backend verification on :8835 (readiness ready, warm phase cache): (1) /api/market-phase?full=true at the LIVE current as-of 2026-06-16 (a cache HIT under dataset_version|s1, NOT a fresh-compute date) serves a POPULATED timeline_full = 1170 pts (first 2021-10-18, last 2026-06-16: phase=Expansion severity=28.75 p_bear=0.002741) -> iter-38 stale-cache bug NOT present; contingency pruning did NOT fire (unneeded). (2) served timeline_full BYTE-IDENTICAL to a fresh in-venv compute_market_phase(2026-06-16). (3) card tail (60) byte-identical to last 60 of timeline_full (single source). (4) ?full=false omits timeline_full + serves unchanged canonical card (protects J-87/88/89). (5) early as-of (2021-01/06/09) -> honest-empty timeline_full len 0, no fabricated phase/severity/p_bear. (6) required-still-passing live API smoke green (J-44/49 regime-history 1370 pts + asof marker; J-87/88 card unchanged w/ components; J-07 Risk-on so 0-Actionable gate correctly not forced). Anti-goal diff: chart byte-unchanged, only useState is tooltip, no date state/setAsOf/keydown/client-side severity math. Unit module test_market_phase.py launched nohup-async -> /tmp/trendora-iter40-market-phase-tests.log (30+ green/0 failed at handoff, session loaded_engine warm-up is the long pole; iter-39 green-suite gate stands for the byte-unchanged backend). Gate full suite on the flushed '0 failed' line, not the in-flight stream.",
+  "browser_checks_run": false,
+  "next_action": "browser-qa: capture the LIVE rendered evidence (PLAN PLAYWRIGHT FALLBACK UP FRONT) to flip J-97 (bottom pane populated at live current as-of: phase bands + 0-100 severity + filtered P(bear) + as-of marker; synced zoom as TWO byte-DISTINCT frames; early-as-of honest-empty bottom pane) and J-98 (first-paint compact Market Regime + Market Phase & Severity figures each with reachable named breakdown; 'More detail' expand revealing breadth/Top Sectors/Candidate Counts/Top Themes; an as-of change updating BOTH compact figures). Required-still-passing live smoke: J-18/J-07/J-06/J-44/J-49/J-87/J-88/J-89/J-90/J-13/J-43/J-01. Backend left running on :8835 (warm cache) for browser-qa; frontend on :3835. Gate any GOAL_ACHIEVED candidacy on the flushed full-suite line (still not a candidate this iter -- J-99/J-100 unbuilt)."
+}

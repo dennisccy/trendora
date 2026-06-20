@@ -1,0 +1,40 @@
+[
+  {
+    "id": "UT-J-18",
+    "name": "One date control (no duplicate)",
+    "verdict": "PASS",
+    "notes": "0 native date inputs; backtest_content=True",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-18-backtest-loaded.png"
+    ]
+  },
+  {
+    "id": "UT-J-44",
+    "name": "Dashboard major-indexes chart with regime",
+    "verdict": "PASS",
+    "notes": "indexes=False, regime=True, canvases=0",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-44-retest.png"
+    ]
+  },
+  {
+    "id": "UT-J-87",
+    "name": "Market Phase & Severity panel",
+    "verdict": "FAIL",
+    "notes": "phase=False, severity=False, p_bear=False",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-87-retest.png"
+    ]
+  },
+  {
+    "id": "UT-J-97",
+    "name": "Dashboard cross-view two-pane chart",
+    "verdict": "FAIL",
+    "notes": "canvas=0, phase=False, severity=False, p_bear=False, cross_view_html=False, regime=False",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-97-final.png",
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-97-before-zoom-final.png",
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-97-after-zoom-final.png"
+    ]
+  }
+]
