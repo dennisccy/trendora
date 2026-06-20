@@ -35,6 +35,8 @@ from app.config import ConfigError, load_config
 from app.db import create_db_and_tables, make_engine
 from app.engine.market_phase import (
     PHASE_RECOVERY,
+    SCHEMA_VERSION,
+    _cache_version,
     _filtered_bear_path,
     _smoothed_bear_path,
     _true_bear_episodes,
@@ -631,12 +633,16 @@ def test_cache_byte_identical_and_single_row(loaded_engine):
 
 def test_cache_refreshes_on_dataset_version_change(loaded_engine):
     """The cache refreshes when `dataset_version` changes (no stale figure): a stored row keyed to an old
-    stamp is pruned and a fresh row written when the stamp changes (a new forward_returns row added)."""
+    stamp is pruned and a fresh row written when the stamp changes (a new forward_returns row added).
+
+    iter-39: the stored `dataset_version` column now holds the COMPOSITE `_cache_version` (the J-72 data
+    stamp `|` the payload `SCHEMA_VERSION`), so the row is keyed/queried by `_cache_version`, not the bare
+    `_dataset_version` — the data-version change still bumps the composite and still prunes the stale row."""
     cfg = load_config()
     d = date(2022, 10, 7)
     with Session(loaded_engine) as session:
         market_phase_cached(session, d, cfg)  # seed the cache under the current stamp
-        v_before = _dataset_version(session)
+        v_before = _cache_version(session)
         old_rows = session.exec(
             select(MarketPhaseCache).where(MarketPhaseCache.dataset_version == v_before)
         ).all()
@@ -649,7 +655,7 @@ def test_cache_refreshes_on_dataset_version_change(loaded_engine):
             realized_return=0.0,
         ))
         session.commit()
-        v_after = _dataset_version(session)
+        v_after = _cache_version(session)
         assert v_after != v_before
         market_phase_cached(session, d, cfg)  # re-read under the NEW stamp
         # the old-stamp row for THIS as-of was pruned; a new-stamp row exists
@@ -809,6 +815,165 @@ def test_api_full_true_empty_timeline_when_early(loaded_engine):
     if resp.status_code == 200:
         data = resp.json()
         assert data["timeline_full"] == []
+
+
+# --------------------------------------------------------------------------------------------------
+# iter-39 (J-97 FIX) — the cache-CORRECTNESS crux. iter-38 added `timeline_full` to the cached payload but
+# kept the cache key on the bare DATA stamp (`_dataset_version`), so every PRE-existing cache row (written
+# under the OLD schema, WITHOUT `timeline_full`) was served VERBATIM on a HIT — the live current-as-of
+# bottom cross-view pane rendered EMPTY. iter-38's QA passed only because it hit a fresh-compute MISS at a
+# different as-of, which masked the bug. These tests probe an ALREADY-POPULATED OLD-schema cache row (a
+# HIT, NOT a fresh compute), proving the SCHEMA_VERSION key fix invalidates it and recomputes WITH the field.
+# --------------------------------------------------------------------------------------------------
+def _seed_old_schema_cache_row(session, d, cfg, *, prefix=""):
+    """Simulate the pre-iter-38 production cache state: a populated `MarketPhaseCache` row keyed under the
+    BARE data stamp (`_dataset_version`, NOT the iter-39 `_cache_version` composite) carrying a payload
+    written under the OLD schema (the `timeline_full` field STRIPPED, exactly as a pre-iter-38 row would be).
+    Returns (bare_stamp, old_payload)."""
+    from app.engine.market_phase import (
+        _FULL_TIMELINE_KEY, _RETRO_KEY_PREFIX, compute_retrospective,
+    )
+    bare = _dataset_version(session)
+    asof_key = prefix + d.isoformat()
+    if prefix == _RETRO_KEY_PREFIX:
+        payload = compute_retrospective(session, d, cfg)  # retrospective has no timeline_full to strip
+    else:
+        payload = compute_market_phase(session, d, cfg)
+        payload = {k: v for k, v in payload.items() if k != _FULL_TIMELINE_KEY}  # the OLD (pre-iter-38) shape
+    # the session-scoped `loaded_engine` is shared across tests, so an earlier cache write (or another test)
+    # may already hold a row at this exact (asof_key, bare-stamp) key — drop it first so seeding the
+    # OLD-schema row is deterministic regardless of prior test order (the UNIQUE key is (asof_key,version)).
+    for existing in session.exec(
+        select(MarketPhaseCache).where(
+            MarketPhaseCache.asof_key == asof_key,
+            MarketPhaseCache.dataset_version == bare,
+        )
+    ).all():
+        session.delete(existing)
+    session.add(MarketPhaseCache(
+        asof_key=asof_key, dataset_version=bare,
+        payload_json=json.dumps(payload), created_at=datetime(2026, 1, 1, 0, 0, 0),
+    ))
+    session.commit()
+    return bare, payload
+
+
+def test_cache_hit_on_old_schema_row_now_serves_timeline_full(loaded_engine):
+    """THE CRUX (J-97 fix): an already-populated OLD-schema cache row (keyed to the bare data stamp, payload
+    WITHOUT `timeline_full`) is a guaranteed MISS under the iter-39 `SCHEMA_VERSION`-composite key, so
+    `market_phase_full_cached` recomputes ONCE and serves `timeline_full` byte-identical to a fresh
+    `compute_market_phase(...)["timeline_full"]` — read VERBATIM, no second computation. (iter-38 served
+    this row verbatim WITHOUT the field; this is the exact failure case the fix closes.)"""
+    cfg = load_config()
+    d = date(2022, 10, 7)
+    with Session(loaded_engine) as session:
+        # the session-scoped DB is shared — clear EVERY cache row for this as-of so the ONLY row present is
+        # the OLD-schema bare-stamp row we seed next. This guarantees `market_phase_full_cached` MISSES the
+        # old-schema row (rather than HITting a leftover composite row from another test), exercising the fix.
+        for existing in session.exec(
+            select(MarketPhaseCache).where(MarketPhaseCache.asof_key == d.isoformat())
+        ).all():
+            session.delete(existing)
+        session.commit()
+        bare, old_payload = _seed_old_schema_cache_row(session, d, cfg)
+        assert _FULL_TIMELINE_KEY_const() not in old_payload  # the seeded row is genuinely old-schema
+        # the ONLY row for this as-of is the bare-stamp OLD-schema row (the pre-iter-38 production state)...
+        all_rows = session.exec(
+            select(MarketPhaseCache).where(MarketPhaseCache.asof_key == d.isoformat())
+        ).all()
+        assert len(all_rows) == 1 and all_rows[0].dataset_version == bare
+        # ...but it is a MISS under the composite key -> recompute with the field, byte-identical to engine.
+        fresh_engine_full = compute_market_phase(session, d, cfg)["timeline_full"]
+        served = market_phase_full_cached(session, d, cfg)
+        # the bare-stamp OLD-schema row was pruned; the served row is now keyed to the composite stamp.
+        composite_rows = session.exec(
+            select(MarketPhaseCache).where(
+                MarketPhaseCache.asof_key == d.isoformat(),
+                MarketPhaseCache.dataset_version == _cache_version(session),
+            )
+        ).all()
+        assert len(composite_rows) == 1
+    assert "timeline_full" in served
+    assert json.dumps(served["timeline_full"]) == json.dumps(fresh_engine_full)
+    assert len(served["timeline_full"]) == served["total_timeline_dates"]
+
+
+def test_old_schema_row_is_pruned_and_recomputed_under_composite_key(loaded_engine):
+    """The MISS on the stale-schema row prunes it (the `dataset_version != version` cleanup) and writes the
+    fresh composite-keyed row — the table does not accumulate a stale-schema duplicate for this as-of."""
+    cfg = load_config()
+    d = date(2022, 10, 7)
+    with Session(loaded_engine) as session:
+        # clear EVERY cache row for this as-of first (the session-scoped DB is shared; a prior test may have
+        # left a composite-keyed row), so seeding only the OLD-schema bare-stamp row guarantees the next
+        # `market_phase_cached` is a genuine MISS that exercises the stale-row prune.
+        for existing in session.exec(
+            select(MarketPhaseCache).where(MarketPhaseCache.asof_key == d.isoformat())
+        ).all():
+            session.delete(existing)
+        session.commit()
+        bare, _ = _seed_old_schema_cache_row(session, d, cfg)
+        composite = _cache_version(session)
+        assert composite != bare  # the schema token makes the composite distinct from the bare stamp
+        market_phase_cached(session, d, cfg)  # MISS -> recompute, prune stale, insert composite row
+        stale = session.exec(
+            select(MarketPhaseCache).where(
+                MarketPhaseCache.asof_key == d.isoformat(),
+                MarketPhaseCache.dataset_version == bare,
+            )
+        ).all()
+        fresh = session.exec(
+            select(MarketPhaseCache).where(
+                MarketPhaseCache.asof_key == d.isoformat(),
+                MarketPhaseCache.dataset_version == composite,
+            )
+        ).all()
+    assert stale == []  # the old-schema row was pruned
+    assert len(fresh) == 1  # exactly one composite-keyed row remains
+
+
+def test_card_payload_byte_identical_after_schema_fix(loaded_engine):
+    """DoD #3: `?full=false` (the card) stays BYTE-IDENTICAL post-fix — the cache KEY string changed but the
+    persisted/served payload and the `market_phase_default_payload` strip behavior did not. The card payload
+    served via the cache equals a fresh strip of `compute_market_phase` (no `timeline_full`)."""
+    cfg = load_config()
+    d = date(2022, 10, 7)
+    with Session(loaded_engine) as session:
+        fresh = compute_market_phase(session, d, cfg)
+        expected_card = {k: v for k, v in fresh.items() if k != _FULL_TIMELINE_KEY_const()}
+    with TestClient(main.app) as client:
+        card = client.get(f"/api/market-phase?as_of={d.isoformat()}").json()
+    assert "timeline_full" not in card
+    assert json.dumps(card) == json.dumps(expected_card)
+
+
+def test_retrospective_payload_byte_identical_after_schema_fix(loaded_engine):
+    """DoD #3 (J-89 fence): the FENCED retrospective payload stays BYTE-IDENTICAL post-fix. An old-schema
+    retrospective row (bare-stamp key) is a MISS under the composite key and is recomputed; the served
+    payload equals a fresh `compute_retrospective` (smoothed/true-bear fence unchanged)."""
+    from app.engine.market_phase import _RETRO_KEY_PREFIX
+    cfg = load_config()
+    d = date(2022, 10, 7)
+    with Session(loaded_engine) as session:
+        _seed_old_schema_cache_row(session, d, cfg, prefix=_RETRO_KEY_PREFIX)
+        fresh = compute_retrospective(session, d, cfg)
+        served = retrospective_cached(session, d, cfg)
+    assert json.dumps(served) == json.dumps(fresh)
+
+
+def test_schema_version_token_present_in_composite_key(loaded_engine):
+    """The composite cache key carries BOTH the J-72 data stamp AND the iter-39 SCHEMA_VERSION token, so a
+    future additive field can invalidate every stale-schema row by bumping the token alone."""
+    with Session(loaded_engine) as session:
+        composite = _cache_version(session)
+        data_stamp = _dataset_version(session)
+    assert composite == f"{data_stamp}|{SCHEMA_VERSION}"
+    assert composite.endswith(f"|{SCHEMA_VERSION}")
+
+
+def _FULL_TIMELINE_KEY_const():
+    from app.engine.market_phase import _FULL_TIMELINE_KEY
+    return _FULL_TIMELINE_KEY
 
 
 # ==================================================================================================

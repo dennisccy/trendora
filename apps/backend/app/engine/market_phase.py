@@ -785,20 +785,41 @@ def compute_market_phase(
     }
 
 
+# iter-39 (J-97 fix): a PAYLOAD-SCHEMA version token folded into the `MarketPhaseCache` key.
+# `_dataset_version` tracks DATA changes (backfill add / removal) ONLY — NOT the payload SCHEMA. When an
+# ADDITIVE field is added to the cached payload (iter-38 added `timeline_full`), every pre-existing row is
+# keyed to the unchanged data stamp and is served VERBATIM without the new field (the bottom cross-view
+# pane rendered empty at the live current as-of, a cache HIT). Bump this constant whenever the cached
+# market-phase / retrospective payload SHAPE changes so every stale-schema row becomes a guaranteed MISS
+# and is recomputed once WITH the new field. It is folded into the existing `dataset_version` STRING
+# composite stored in the cache row (NOT a new DB column — that would need `db.py` `_ADDITIVE_COLUMNS` +
+# the `test_db.py` guards on the live persistent DB). `s1` = the iter-38 `timeline_full` additive field.
+SCHEMA_VERSION = "s1"
+
+
+def _cache_version(session: Session) -> str:
+    """The composite cache-key version: the J-72 data stamp PLUS the payload-SCHEMA token, so a payload
+    shape change invalidates every stale-schema row independently of any data change. Single-sourced from
+    `_dataset_version` (the data half) — never duplicates that stamp's logic."""
+    return f"{_dataset_version(session)}|{SCHEMA_VERSION}"
+
+
 def market_phase_cached(
     session: Session, as_of: date_cls, config: Optional[Config] = None
 ) -> dict:
     """Serve the Market Phase & Severity derivation from the J-87/J-88 cache (mirrors
-    `research.event_study_cached`): on a cache HIT for the current `(asof_key, dataset_version)` key,
+    `research.event_study_cached`): on a cache HIT for the current `(asof_key, cache_version)` key,
     deserialize and return the stored payload (NO recompute); on a MISS, compute it ONCE via
-    `compute_market_phase`, persist it under the current dataset-version stamp, prune any stale rows for
+    `compute_market_phase`, persist it under the current cache-version stamp, prune any stale rows for
     THIS as-of (older `dataset_version`), and return it. The returned payload is BYTE-IDENTICAL to
     `compute_market_phase(...)` — the cache is a pure performance layer (No recompute in the read path).
-    Because the key carries the SAME `_dataset_version` stamp J-72 uses (single-sourced), the cache
-    REFRESHES automatically after any dataset change (a backfill add or a removal) — a stale row is never
-    hit."""
+    The key carries the J-72 `_dataset_version` data stamp (single-sourced) PLUS the iter-39 payload
+    `SCHEMA_VERSION` token (`_cache_version`), so the cache REFRESHES automatically after any dataset change
+    (a backfill add or a removal) AND after any payload-shape change (an additive field) — a stale-data OR
+    stale-SCHEMA row is never hit (iter-38 lesson: `timeline_full` was invisible at every already-cached
+    row keyed to the bare data stamp)."""
     cfg = config or get_config()
-    version = _dataset_version(session)
+    version = _cache_version(session)
     asof_key = as_of.isoformat()
 
     hit = session.exec(
@@ -1117,9 +1138,12 @@ def retrospective_cached(
     compute it ONCE via `compute_retrospective`, persist under the current stamp, prune stale rows for THIS
     retrospective key, and return it. BYTE-IDENTICAL to a fresh compute (a pure performance layer). The
     SMOOTHED series + true-bear dating served here are analysis-only and never consumed by an as-of value
-    (the structural fence)."""
+    (the structural fence). It carries the SAME iter-39 `SCHEMA_VERSION` token via `_cache_version` so any
+    additive field added to the retrospective payload also invalidates every stale-schema row (the
+    identical staleness risk the causal path had); the served payload stays byte-identical post-fix (the
+    smoothed/true-bear fence is unchanged — only the cache KEY string changes)."""
     cfg = config or get_config()
-    version = _dataset_version(session)
+    version = _cache_version(session)
     asof_key = _RETRO_KEY_PREFIX + as_of.isoformat()
 
     hit = session.exec(
