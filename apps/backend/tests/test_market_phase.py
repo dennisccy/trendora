@@ -41,6 +41,7 @@ from app.engine.market_phase import (
     compute_market_phase,
     compute_retrospective,
     market_phase_cached,
+    market_phase_full_cached,
     recovery_turn_dates,
     retrospective_cached,
 )
@@ -715,6 +716,99 @@ def test_api_future_as_of_400(loaded_engine):
     """A future `?as_of=` is rejected 400 — never a fabricated forward phase."""
     with TestClient(main.app) as client:
         assert client.get("/api/market-phase?as_of=2999-01-01").status_code == 400
+
+
+# --------------------------------------------------------------------------------------------------
+# iter-38 (J-97) — the `?full=true` SERIALIZATION of the full-history causal phase timeline for the
+# Dashboard two-pane cross-view. An ADDITIVE opt-in field; the default card payload stays byte-identical.
+# Mirrors the `/api/indexes?full=true` + `/api/regime-history?full=true` (J-49) clamp-optional precedent.
+# --------------------------------------------------------------------------------------------------
+def _timeline_full_for(session, d, cfg):
+    """The full-history causal series the `?full=true` mode serves — read VERBATIM from the cached
+    full-mode payload (the SAME `timeline_full` `compute_market_phase` builds; no recompute)."""
+    return market_phase_full_cached(session, d, cfg)["timeline_full"]
+def test_api_full_default_byte_identical_to_card_payload(loaded_engine):
+    """J-97 / recurring iter-20/23/24/32 lesson: the `full=false` default served payload is byte-identical
+    to today's card payload (no `timeline_full` key, the bounded `timeline` tail + `total_timeline_dates`
+    unchanged). The `full` param is an ADDITIVE opt-in — the card disclosure tail must NOT change."""
+    with TestClient(main.app) as client:
+        default = client.get("/api/market-phase").json()
+        explicit_false = client.get("/api/market-phase?full=false").json()
+    assert "timeline_full" not in default  # the default never carries the full series
+    assert json.dumps(default) == json.dumps(explicit_false)  # full=false == no param, byte-for-byte
+
+
+def test_api_full_true_serves_timeline_full_verbatim(loaded_engine):
+    """J-97: `?full=true` additively attaches `timeline_full` — the SAME full causal series
+    `compute_market_phase` builds (read VERBATIM, no recompute). The full series is the engine's
+    `timeline_full`, and its bounded TAIL equals the card's existing `timeline` (single source)."""
+    cfg = load_config()
+    d = date(2022, 10, 7)
+    with Session(loaded_engine) as session:
+        engine_full = _timeline_full_for(session, d, cfg)
+    with TestClient(main.app) as client:
+        full = client.get(f"/api/market-phase?full=true&as_of={d.isoformat()}").json()
+        card = client.get(f"/api/market-phase?as_of={d.isoformat()}").json()
+    # the served full series equals the engine's timeline_full verbatim (no recompute, no second value)
+    assert "timeline_full" in full
+    assert json.dumps(full["timeline_full"]) == json.dumps(engine_full)
+    # every full series point carries exactly the causal {date, phase, p_bear, severity} shape (no smoothed)
+    for pt in full["timeline_full"]:
+        assert set(pt) == {"date", "phase", "p_bear", "severity"}
+    # the full series is a SUPERSET ending in the bounded card tail (the card timeline is its tail slice)
+    assert len(full["timeline_full"]) == full["total_timeline_dates"]
+    assert full["timeline_full"][-len(card["timeline"]):] == card["timeline"]
+    # everything else in the full payload is byte-identical to the card payload (only the new key is added)
+    assert {k: v for k, v in full.items() if k != "timeline_full"} == card
+
+
+def test_api_full_true_no_smoothed_or_true_bear_value(loaded_engine):
+    """J-89 fence holds on `?full=true`: the full causal series carries NO smoothed/true-bear field and the
+    payload exposes no retrospective unless explicitly requested — the structural fence is preserved."""
+    with TestClient(main.app) as client:
+        full = client.get("/api/market-phase?full=true").json()
+    assert "retrospective" not in full  # the smoothed/true-bear sub-view is never auto-attached
+    for pt in full["timeline_full"]:
+        assert "p_bear_smoothed" not in pt and "smoothed" not in pt
+
+
+def test_full_timeline_no_lookahead_tail_invariance():
+    """CRITICAL no-lookahead (J-97): removing bars/runs dated > D never changes any earlier full-timeline
+    point — asserted the `forward_return` tail-invariance way over the WHOLE served full series."""
+    cfg = _small_config()
+    engine, dates = _v_shape_engine(cfg)
+    d = dates[5]  # a mid-series as-of with a full causal tail still ahead of it
+    later = dates[-1] + timedelta(days=30)
+    with Session(engine) as session:
+        # add a future run + future bars strictly after the last cadence date
+        _insert_bars(session, "SPY", [200.0 + i for i in range(5)], start=later)
+        _insert_run(session, later, "Risk-on", 90.0, breadth_200=80.0)
+        session.commit()
+        with_tail = _timeline_full_for(session, d, cfg)
+        for bar in session.exec(select(DailyPrice).where(DailyPrice.date > d)).all():
+            session.delete(bar)
+        for run in session.exec(select(ScannerRun).where(ScannerRun.asof_date > d)).all():
+            session.delete(run)
+        session.commit()
+        without_tail = _timeline_full_for(session, d, cfg)
+    assert json.dumps(with_tail) == json.dumps(without_tail)
+
+
+def test_api_full_true_empty_timeline_when_early(loaded_engine):
+    """Honest-empty (J-97): an early `?full=true&as_of=` with no causal history serves an empty
+    `timeline_full` — never a fabricated point."""
+    cfg = load_config()
+    # resolve the earliest stored run, then query the day before it (no run <= that day)
+    with Session(loaded_engine) as session:
+        first_run = session.exec(select(ScannerRun).order_by(ScannerRun.asof_date)).first()
+        early = (first_run.asof_date - timedelta(days=1)).isoformat()
+    with TestClient(main.app) as client:
+        resp = client.get(f"/api/market-phase?full=true&as_of={early}")
+    # an early date may resolve to NA (400/503) OR an available-False payload with an empty full series;
+    # either way it never fabricates a point. When it returns 200, timeline_full is honestly empty.
+    if resp.status_code == 200:
+        data = resp.json()
+        assert data["timeline_full"] == []
 
 
 # ==================================================================================================

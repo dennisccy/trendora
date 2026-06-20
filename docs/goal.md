@@ -459,10 +459,17 @@ It places **no orders** and holds **no broker keys**.
 
 ### Navigation / information architecture
 
-- **Dashboard** (`/`) — the daily snapshot at a glance: regime, top sectors, top themes, candidate
-  counts, breadth, last-run time, evidence summary, and the **Major indexes & regime** chart
-  (normalized index-ETF % lines over regime background bands, default-on behind a persisted toggle —
-  J-44). Its period selector **defaults to All (full history)** (J-78).
+- **Dashboard** (`/`) — the daily snapshot at a glance. The top is a **compact at-a-glance summary**
+  that updates on every as-of change — the market-**regime** label + 0–100 score, and the market-**phase**
+  label + 0–100 **severity** score (+ severity-band label) + filtered **P(bear)**, each with its named
+  component breakdown reachable (J-98) — directly above a **two-pane market cross-view chart**: pane 0 = the
+  **Major indexes & regime** chart (normalized index-ETF % lines over stored-regime background bands,
+  default-on behind a persisted toggle — J-44) and pane 1 = the **same index lines over phase-colored bands
+  with the 0–100 severity + filtered P(bear) lines** (J-97); the two panes **share one time axis**, so
+  zoom/pan is synchronized across both — a view transform of the visible range, not a second date control.
+  The breadth metrics, top sectors, candidate counts, top themes, last-run time, and evidence summary sit
+  below in a **collapsed, expandable "More detail" section** (J-98). Its period selector **defaults to All
+  (full history)** (J-78).
 - **Stocks** (`/stocks`) — the Stock Leaderboard (ranked, filterable, **client-side sortable** — J-48 —
   with a **type-to-filter symbol search** (J-55) and a **Theme column + theme filter** re-displaying
   each row's served membership chips (J-56)). Rows link to Stock Detail (**opens in a new tab**, the
@@ -646,6 +653,12 @@ The backend is the single source of truth; every page only displays server-compu
   major-indexes chart (a presentation series, not a canonical score); the frontend only re-formats it.
   Served full-history to the dashboard card regardless of the global as-of (J-49) — same endpoint,
   clamp optional.
+- **Phase / severity / P(bear) timeline series** (date → phase label + 0–100 severity + filtered
+  P(bear)) — computed once by the market-phase engine (J-87 / J-88 / J-89) and served by
+  `/api/market-phase`; the Market-Phase card reads the bounded disclosure tail, and the Dashboard
+  cross-view chart reads the **full-history** series via a `?full=true` serialization of the
+  already-computed `timeline_full` (same endpoint, same single series — not a recompute). Read
+  identically by the card and the Dashboard chart's second pane; never recomputed in a view (J-97).
 - **Displayed date format** — one shared `yyyy-MM-dd` formatter/constant used by every surface that
   shows a calendar date; no component renders a date through a locale-dependent path.
 - **Research sample membership** (the per-observation cohort behind every published N — ticker,
@@ -2269,6 +2282,50 @@ The backend is the single source of truth; every page only displays server-compu
     5. An empty / early-history database yields an honest empty timeline; nothing is fabricated, and the timeline reads identically on every surface for the same date (coherence).
   - Acceptance: a **dynamic-universe membership timeline + coverage view** is a **read-only descriptive derivation** over the stored per-snapshot `ScannerResult` membership (J-93) + the stored bars + the config thresholds — recomputing **no** canonical score / return / membership (it reads the persisted scored-ticker sets that ARE the membership; *Single source of truth*; *No recompute in the read path*; extends *Coverage & missing-data are descriptive & honest*). It renders, per snapshot date (the `ScannerRun.asof_date` set `compute_coverage` already reads), the **resolved universe size** as a step function (the J-44/J-49 overlay treatment), and a deterministic **entries / exits** derivation — the first date each name appears in a snapshot's scored set (enters) and any date it disappears after having been present (exits) — grouped from the stored membership only, so it is **strictly causal** (each date observed from its own ≤ D snapshot; no future bar reclassifies a past entry/exit; *No lookahead*). Beside each date it shows the **J-94 excluded-by-reason counts** (below-history / below-price / below-ADV) against the candidate-pool denominator, so the small / empty warm-up window and every membership change are **explained in plain language**. The view carries the **honest labels** verbatim: the candidate pool's **survivorship-bias** caveat (current-constituent, not as-of-constituent — J-95; *Universe screen is reproducible & honest*), the **warm-up boundary** (J-94), and the **universe-relative breadth** caveat (*Honest limitations surfaced*) — and it states plainly that the dynamic universe **REDUCES** survivorship versus the static current-membership universe while the residual pool-survivorship remains until the J-95 constituent feed. An early / empty database yields an **honest empty timeline** (no fabricated dates or members; *No fabricated data*), it introduces **no second date state** (*Exactly one date selector*), changes **no canonical stock value or the Risk-Off→Actionable gate**, and is **fully buildable and verifiable offline** against the committed 2021-2026 seed (the warm-up-to-full transition and the membership entries are deterministic properties of the seed + `min_history_bars`).
 
+- **J-97: Dashboard market cross-view — a two-pane synced indexes / phase-severity chart (the full causal phase/severity/P(bear) series served once)**
+  - Steps:
+    1. Directly below the existing **Major indexes & regime** chart, a **second stacked pane** renders the SAME normalized index-ETF % lines, this time over **phase-colored background bands** (the J-87 phase per date) with the **0–100 severity line** (J-87) and the **filtered P(bear) line** (J-88) overlaid — so a reader sees the same index path under both the regime lens (top pane) and the phase/severity lens (bottom pane).
+    2. The two panes **share one time axis**, so dragging / scroll-zooming either pane zooms BOTH to the same date window — a perfectly synchronized cross-view with no second control.
+    3. The bottom pane spans the **same full history** as the top pane: the phase/severity/P(bear) series is served **full**, not the bounded disclosure tail the Market-Phase card shows.
+    4. The phase bands, severity, and P(bear) are the SAME server-computed J-87/J-88/J-89 series the card already reads — the chart only re-formats them; nothing is recomputed client-side, and the bottom pane carries the same as-of marker (J-49) the top pane uses.
+    5. An as-of with no causal phase history renders an **honest empty** bottom pane; the chart never fabricates a severity, phase, or probability.
+  - Acceptance: one Dashboard chart renders **two stacked `lightweight-charts` panes sharing a single time scale** — pane 0 = the existing normalized index % lines + stored-regime bands + as-of marker (J-44 / J-49, unchanged), pane 1 = the SAME normalized index lines + **phase-colored bands** + a **0–100 severity line** + the **filtered P(bear) line**, every series read from the SAME single served market-phase series the J-87 / J-88 / J-89 card consumes (*Single source of truth*; *No recompute in the read path*; the frontend only re-formats — no client-side return / probability / severity math). Because the panes share the time scale, zoom / pan is **inherently synchronized** across both — a view transform of the **visible range only**, **never a second date control** (the single global as-of stays the only date state; *Exactly one date selector*). The phase/severity/P(bear) timeline is served **full-history** for the Dashboard chart — a `?full=true`-style serialization of the `timeline_full` the market-phase engine ALREADY computes (mirroring `/api/indexes?full=true` and `/api/regime-history?full=true`), so the bottom pane spans the same window as the top with **no recompute and no new derivation**; the Market-Phase card keeps its bounded disclosure tail unchanged. The phase bands are drawn by a config-colored band primitive analogous to the stored-regime `RegimeBandPrimitive` (phase per snapshot date → band span), reading the served, config-driven phase labels verbatim (*Setup & pattern vocabulary is config-driven in the UI too*). Stored history dated after the as-of renders **display-only behind the as-of marker** and feeds no as-of-scoped computed value (*Full-history market context never looks ahead*; *Regime overlays read stored regime only*). An honest-empty timeline yields an honest-empty bottom pane (*No fabricated data*); the chart changes **no** canonical score, the Risk-Off→Actionable gate, or the as-of state. Fully buildable and verifiable offline against the committed 2021-2026 seed.
+
+- **J-98: Dashboard at-a-glance restructure — a compact regime + phase/severity summary above the cross-view chart, the rest collapsed**
+  - Steps:
+    1. The top of the Dashboard becomes a **compact at-a-glance summary** that updates the instant the as-of date changes: the **market-regime label + 0–100 score**, and the **market-phase label + 0–100 severity score** (with its severity-band label) **+ filtered P(bear)** — the few figures a reader checks first.
+    2. Each displayed score keeps its **named component breakdown reachable** (inline-compact or in a popover) — a score is never shown as a bare number.
+    3. Directly below the summary sits the J-97 two-pane cross-view chart.
+    4. The previously-top breadth metrics and the Top Sectors / Candidate Counts / Top Themes cards move into a **collapsed, expandable "More detail" section** below the chart — kept, not lost.
+    5. Everything reads the single global as-of; no figure is recomputed in the view.
+  - Acceptance: the Dashboard is reorganized so the **first paint shows only the at-a-glance summary + the J-97 cross-view chart** — a compact **Market Regime** figure (stored label + 0–100 score) and a compact **Market Phase & Severity** figure (stored phase label + 0–100 severity + severity-band label + filtered P(bear)), each re-displaying the SAME server-computed canonical values the Dashboard already serves (the regime from `/api/dashboard`, the phase / severity / P(bear) from `/api/market-phase`; *Single source of truth*; *No recompute in the read path*). Every displayed score **carries its named component breakdown** — kept reachable inline-compact or via a popover — so the compact layout still satisfies *Scores must be explainable* (no bare number). The existing **breadth metrics, Top Sectors, Candidate Counts, and Top Themes** are **not removed** — they relocate into a **collapsed, expandable "More detail" section** below the chart (the same data + same endpoints, only repositioned). The restructure introduces **no new endpoint, no new canonical value, and no second date state** (*Exactly one date selector*); it is an information-architecture reshuffle of already-served values, the Dashboard remains the single home for the daily snapshot (no duplicate home for an existing entity), and it changes **no** score, the Risk-Off→Actionable gate, or the as-of contract. Fully buildable and verifiable offline against the committed seed.
+
+- **J-99: Dynamic-universe membership timeline — pagination (10 per page) + year / month filter (a pure view transform)**
+  - Steps:
+    1. The Data Manager's membership-timeline list (J-96) — today every snapshot date at once — becomes **paginated at 10 rows per page**, newest-first, with prev / next controls and a "Page x of N" readout.
+    2. Two **dropdown filters** narrow the list — a **Year** filter and a **Month** filter — their options drawn from the dates actually present in the served timeline.
+    3. Filtering and paging are a **client-side view transform** of the already-served `membership_timeline.points` payload — they re-order / narrow only the rendered rows; they recompute no per-date size, entry, exit, or excluded-by-reason count.
+    4. The view stays **honest about what it hides** ("x of N dates") and the controls compose (year + month + page).
+    5. An empty filter combination renders an **honest empty state**; no row is fabricated.
+  - Acceptance: the J-96 membership-timeline table gains **client-side pagination (10 rows / page, newest-first, prev / next + "x of N")** and **Year + Month dropdown filters**, implemented as a **pure view transform** over the already-served `membership_timeline.points` payload — exactly the contract the leaderboard sort / search / filter already follow (*Leaderboard sorting, searching, and table filtering are view transforms*): the controls **re-order or narrow only the client-rendered rows**, never changing, recomputing, or re-deriving any per-date size / entries / exits / excluded-by-reason count (those stay the stored J-93 / J-94 values read verbatim; *No recompute in the read path*; *Single source of truth*). The Year / Month options are derived from the dates present in the payload; the filtered view stays **honest about what it hides** ("x of N dates") and **alters no underlying membership total**; an empty filter combination renders an **honest empty state**, never a fabricated row (*No fabricated data*). It requires **no backend change, no new endpoint, and no second date state** (the filters are list controls, not the global as-of switcher; *Exactly one date selector*), and reuses the existing `Select` control + the per-symbol coverage table's `useMemo` filter idiom. Fully buildable and verifiable offline.
+
+- **J-100: Bounded-resource backend — the VM no longer freezes under concurrent dashboard / UI-test load (byte-identical canonical outputs)**
+  - Steps:
+    1. Concurrent `/api/data` (coverage) requests no longer each rebuild the full bar cache and recompute the O(dates × pool) membership timeline: a **single-flight + cached** path means concurrent callers share ONE in-flight computation (or the cached result), so N parallel probes cost ~one compute, not N.
+    2. The membership-timeline / coverage cache key is **decoupled from forward-return churn** so the background warm-up (which inserts forward-returns) **no longer invalidates** it — eliminating the recompute storm during warm-up.
+    3. The read path **reuses one process-level bar cache** (load-once, invalidate-on-data-change) instead of a fresh ~1.3M-row prefill per request, so memory stays bounded to a single copy regardless of concurrency.
+    4. Heavy synchronous compute is **offloaded off the event loop** (a worker thread) and **server concurrency is capped** (a bounded semaphore / uvicorn `--limit-concurrency` + a heavy-endpoint timeout), so `/health` and light endpoints stay responsive; the backend process also runs under a **memory cap** so a runaway is OOM-killed (one process) instead of swap-freezing the whole 20 GB VM.
+    5. Every served value stays **byte-identical** to the pre-change output — a pure performance / stability property, never a change to any score, return, membership, or gate.
+  - Acceptance: under concurrent dashboard use and goal-mode UI-test load the backend stays **responsive and memory-bounded** — the intermittent whole-VM freeze is eliminated — while every canonical value remains **byte-identical** (a pure performance property, exactly the *Vectorized scans are a pure refactor* / J-72 contract; *Single source of truth* untouched). **(a)** `compute_coverage` / the J-96 membership timeline gain a **single-flight guard + result cache** (the same idiom the warm-up single-flight uses) so concurrent `/api/data` callers share one in-flight computation or the cached payload — N parallel probes no longer each build a `prefilled_bar_cache` (~1.3M `DailyPrice` objects) and recompute the O(~1369 dates × ~548 pool) loop. **(b)** the coverage / membership-timeline **cache key is decoupled from the forward-returns table** (membership depends only on bars + snapshot set + config), so the background warm-up's forward-return inserts **stop invalidating** it — no recompute storm during warm-up (*Warm-up obeys every data invariant and is idempotent, concurrency-safe, and non-fatal*). **(c)** the read path **reuses a single process-level bar cache** (load-once, invalidated on a real data change) for `_resolved_universe` + the timeline rather than a per-request prefill, bounding memory to one copy. **(d)** heavy synchronous compute is **run in a worker thread** (`run_in_threadpool` / `to_thread`) and server **concurrency is capped** (a bounded semaphore and/or uvicorn `--limit-concurrency` in the start script) with a request timeout on the heavy endpoints, so `/health` + light reads stay responsive (*Startup must not block serving on historical warm-up* reinforced at steady state); the backend process runs under an explicit **memory cap** (systemd `MemoryMax` / cgroup / `ulimit`) so a pathological spike is OOM-killed as a single process, never a swap-thrash freeze of the whole VM. **(e)** goal-mode / browser-QA **test hygiene** is codified: `/api/data` is single-loaded (never concurrently probed), with the `.pump-alive` toucher + heartbeat envs for long QA, so the harness no longer reproduces the freeze. Measured by a **concurrency load test** asserting K parallel `/api/data` calls all return within a bound, peak process RSS stays under a configured cap, `/health` latency stays low throughout, and the served coverage equals the single-request baseline (byte-identical); a test asserts warm-up forward-return inserts do **not** invalidate the membership cache; and the existing canonical suites stay green. It changes **no** canonical score / return / membership or the Risk-Off→Actionable gate. Fully buildable and verifiable offline against the committed seed.
+
+**J-97 … J-100 are NOT data-dependent.** All four are buildable and verifiable offline against the
+committed seed — J-97 (a two-pane chart over the already-served index / regime / phase-severity series plus a
+full-history serialization of the market-phase engine's `timeline_full`), J-98 (an information-architecture
+reshuffle of already-served Dashboard values), J-99 (a client-side pagination / filter view transform over
+the served membership timeline), and J-100 (an in-process performance / stability refactor with byte-identical
+canonical outputs plus ops guards). None may be recorded blocked-NA for provider reasons, and none may halt
+the loop.
+
 **J-93, J-94, and J-96 are NOT data-dependent.** All three are buildable and verifiable offline against the
 committed 2021-2026 seed — J-93 (a per-as-of-date universe resolver that screens the committed candidate pool
 on price + ADV + min-history from bars dated ≤ D, becomes the single source `score_stocks` iterates, repoints
@@ -2662,3 +2719,17 @@ green unconditionally, like backfill.
   current-activity message and the last-progress heartbeat MUST reflect real work (never fabricated,
   never pre-dated); polling/heartbeat/granularity knobs live in config — no magic numbers. *(extends
   Parallel import preserves every import contract — J-66)*
+- **Chart pane-zoom / range-sync is a view transform, not a date control.** Synchronizing the visible
+  date range across the Dashboard's stacked chart panes (or any linked charts) changes only the
+  **displayed window**; it MUST NOT introduce a second date state, write the global as-of, or feed any
+  as-of-scoped computed value — the single global as-of switcher stays the only date control, and the
+  full-history context past the as-of stays display-only behind the as-of marker. *(extends Exactly one
+  date selector + Full-history market context never looks ahead — J-97)*
+- **Bounded resource use is a pure performance property.** Single-flight/caching the coverage +
+  membership-timeline compute, decoupling its cache key from forward-return churn, reusing one
+  process-level bar cache, capping server concurrency, offloading heavy work to a worker thread, and any
+  process memory cap MUST produce **byte-identical** canonical outputs (same scores, buckets, setups,
+  returns, membership — asserted by the existing suites) and MUST preserve immutability + strict
+  no-lookahead + single-source; a faster/leaner backend that changes any stored value is a regression,
+  not an optimization. *(extends Vectorized scans are a pure refactor + Warm-up obeys every data
+  invariant — J-100)*

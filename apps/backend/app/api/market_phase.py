@@ -18,11 +18,15 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session
 
 from app.db import get_session
-from app.engine.market_phase import market_phase_cached, retrospective_cached
+from app.engine.market_phase import (
+    market_phase_default_payload,
+    market_phase_full_cached,
+    retrospective_cached,
+)
 from app.engine.snapshot_serving import resolved_date
 
 router = APIRouter(tags=["market-phase"])
@@ -32,6 +36,16 @@ router = APIRouter(tags=["market-phase"])
 def market_phase(
     as_of: Optional[str] = None,
     retrospective: bool = False,
+    full: bool = Query(
+        default=False,
+        description=(
+            "J-97 clamp-optional: when true, ADDITIVELY attach the full-history causal timeline series "
+            "`timeline_full` ([{date, phase, p_bear, severity}]) for the Dashboard two-pane cross-view "
+            "chart — read VERBATIM from the SAME cached derivation (no recompute, no new endpoint/cache). "
+            "Default false serves the bounded card payload byte-identical to today (the `timeline` tail is "
+            "unchanged); the full series is a display-only opt-in used only by the J-97 chart."
+        ),
+    ),
     session: Session = Depends(get_session),
 ) -> dict:
     """Serve the Market Phase & Severity derivation for the resolved as-of date. `as_of=None` resolves to
@@ -48,7 +62,14 @@ def market_phase(
     fence); the fence is structural — `retrospective_cached` is a different code path that no causal field
     reads. When `retrospective=false` (the default) the heavy backward-smoother is not computed at all."""
     resolved = resolved_date(session, as_of, None)
-    payload = market_phase_cached(session, resolved)
+    # iter-38 (J-97): `full=true` ADDITIVELY attaches the full-history causal `timeline_full` series for the
+    # Dashboard two-pane cross-view (the SAME cached derivation — no recompute, no new cache/endpoint). The
+    # default (`full=false`) strips that opt-in key so the card payload stays byte-identical to today.
+    payload = (
+        market_phase_full_cached(session, resolved)
+        if full
+        else market_phase_default_payload(session, resolved)
+    )
     if retrospective:
         payload = {**payload, "retrospective": retrospective_cached(session, resolved)}
     return payload

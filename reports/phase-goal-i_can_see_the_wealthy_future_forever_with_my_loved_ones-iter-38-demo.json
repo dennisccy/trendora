@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-38",
+  "base_url": "http://localhost:3835",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Dashboard opens with compact market summary at the top",
+      "narration": "The Dashboard now opens with two compact figures front and centre — Market Regime and Market Phase & Severity — so you can read the market's pulse at a glance without scrolling past any charts or tables.",
+      "point_out": "Notice 'Market Regime' and 'Market Phase & Severity' are the very first elements visible, above the Major-indexes chart and everything else.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Market Regime" }
+    },
+    {
+      "n": 2,
+      "title": "Market Regime shows live label and score",
+      "narration": "The Market Regime figure displays the current regime label — such as 'Risk-on' — alongside a numeric score from 0 to 100, giving you an instant read on whether conditions favour risk-taking.",
+      "point_out": "The label (e.g. 'Risk-on') and a score number appear together, with no loading spinner.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Risk-on" }
+    },
+    {
+      "n": 3,
+      "title": "Market Phase & Severity shows badge, severity, and bear probability",
+      "narration": "Right beside the regime figure, the Market Phase & Severity card shows the current phase badge, a 0–100 severity score, and a bear-probability chip — all the context you need to gauge how stretched or calm the market is right now.",
+      "point_out": "Look for the phase badge (e.g. 'Expansion'), the severity number, and the 'P(bear)' chip all on one compact card.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "P(bear)" }
+    },
+    {
+      "n": 4,
+      "title": "Regime component breakdown expands inline",
+      "narration": "Clicking 'Why this regime — component breakdown' reveals the named drivers behind the regime score without leaving the page — you can see exactly which signals are pushing the reading up or down.",
+      "point_out": "A list of named driver rows appears inline directly below the Market Regime figure; no new page opens.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Why this regime" } },
+      "expect": { "text": "component breakdown" }
+    },
+    {
+      "n": 5,
+      "title": "Regime x phase cross-view chart appears below Major-indexes",
+      "narration": "Scrolling down reveals the new 'Regime x phase cross-view' chart — a two-pane view that places regime-coloured bands and phase-coloured bands over the same index lines so you can see both market lenses together in one glance.",
+      "point_out": "The cross-view card is present between the Major-indexes chart and the 'More detail' section, with a Hide toggle in the card header.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Regime × phase cross-view" }
+    },
+    {
+      "n": 6,
+      "title": "More detail section starts collapsed",
+      "narration": "Below the cross-view chart, a 'More detail' section keeps the supporting cards — breadth metrics, Top Sectors, Top Themes, and Candidate Counts — tucked away until you want them, so the Dashboard stays uncluttered on first load.",
+      "point_out": "The 'More detail' header is visible but none of the supporting cards (Top Sectors, Candidate Counts, etc.) are shown yet — the section is collapsed by default.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "More detail" }
+    },
+    {
+      "n": 7,
+      "title": "More detail expands to show supporting data cards",
+      "narration": "One click on the 'More detail' header opens all five supporting cards — Top Sectors, Top Themes, Candidate Counts, breadth metrics, and the full Market Phase detail — each loaded with live data.",
+      "point_out": "After clicking, 'Top Sectors', 'Top Themes', and 'Candidate Counts' all appear with real data values.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "More detail" } },
+      "expect": { "text": "Top Sectors" }
+    },
+    {
+      "n": 8,
+      "title": "Honest empty state for dates before phase history exists",
+      "narration": "When an as-of date is set before enough market history exists to compute a phase, the dashboard shows a clear honest message rather than inventing a number — no fabricated data, ever.",
+      "point_out": "The phase figure reads 'Not enough history to derive a market phase for this date — reported NA, never fabricated.' instead of a made-up score.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Not enough history" }
+    }
+  ]
+}

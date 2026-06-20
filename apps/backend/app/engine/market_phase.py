@@ -705,6 +705,9 @@ def compute_market_phase(
                 "available": False,
                 "reason": "No derivable market phase for this date (insufficient history).",
             },
+            # iter-38 (J-97): honest-empty full series too (the cross-view bottom pane renders empty, never a
+            # fabricated band/line). Stripped from the default card payload like the available path.
+            "timeline_full": [],
         }
 
     severity = round(latest_reading["reading"] * 100, 2)
@@ -772,6 +775,13 @@ def compute_market_phase(
         "total_timeline_dates": len(timeline_full),
         "episodes": episodes,
         "recovery_turn": recovery_turn,
+        # iter-38 (J-97): the FULL-history causal timeline series, carried in the canonical payload (so the
+        # SAME `market_phase_cached` row + `dataset_version` stamp serves it — no new cache, no recompute).
+        # It is the SAME `timeline_full` the bounded `timeline` tail above is sliced from (single source).
+        # The default `GET /api/market-phase` endpoint STRIPS this key so the card payload stays
+        # byte-identical to today; only the J-97 cross-view chart opts in via `?full=true`. Strictly causal
+        # per point (every point read from its own ≤ D snapshot) — no smoothed/true-bear value lives here.
+        "timeline_full": timeline_full,
     }
 
 
@@ -822,6 +832,40 @@ def market_phase_cached(
         session.commit()
     except Exception:  # a concurrent writer raced us to the same key — the cache is best-effort, not a
         session.rollback()  # source of truth; the freshly computed payload is byte-identical, so return it
+    return payload
+
+
+# the additive J-97 full-series key. Stripped from the DEFAULT card payload so that response stays
+# byte-identical to today; carried only when the J-97 cross-view chart opts in via `?full=true`.
+_FULL_TIMELINE_KEY = "timeline_full"
+
+
+def market_phase_full_cached(
+    session: Session, as_of: date_cls, config: Optional[Config] = None
+) -> dict:
+    """iter-38 (J-97): serve the Market-Phase payload WITH the full-history causal `timeline_full` series
+    attached, for the Dashboard two-pane cross-view (`GET /api/market-phase?full=true`).
+
+    It reads the SAME `market_phase_cached` row under the SAME `dataset_version` stamp (no new cache, no
+    new endpoint, no recompute) — the cached payload ALREADY carries `timeline_full` (the SAME series the
+    bounded `timeline` tail is sliced from; single source). This function simply returns that cached payload
+    verbatim with the full series present; the DEFAULT serve path (`market_phase_default_payload`) strips it
+    so the card response stays byte-identical to today (the additive opt-in pattern, mirroring the
+    `/api/indexes?full=true` + `/api/regime-history?full=true` J-49 clamp-optional precedent)."""
+    return market_phase_cached(session, as_of, config)
+
+
+def market_phase_default_payload(
+    session: Session, as_of: date_cls, config: Optional[Config] = None
+) -> dict:
+    """The DEFAULT (card) Market-Phase payload — `market_phase_cached` with the J-97 `timeline_full` opt-in
+    series STRIPPED, so the card response is byte-identical to today (the bounded `timeline` tail,
+    `total_timeline_dates`, episodes, recovery-turn all unchanged). The full series is served only via
+    `market_phase_full_cached` (the `?full=true` opt-in). The strip is a shallow copy that leaves the cached
+    row untouched."""
+    payload = market_phase_cached(session, as_of, config)
+    if _FULL_TIMELINE_KEY in payload:
+        payload = {k: v for k, v in payload.items() if k != _FULL_TIMELINE_KEY}
     return payload
 
 

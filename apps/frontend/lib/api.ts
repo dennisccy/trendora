@@ -551,6 +551,11 @@ export interface MarketPhaseResponse {
   total_timeline_dates?: number; // the FULL causal timeline-date count (>= timeline.length)
   episodes?: MarketPhaseEpisode[]; // the dated causal downtrend episodes
   recovery_turn?: MarketPhaseRecoveryTurn; // the causal recovery/turn signal for the resolved as-of
+  // iter-38 (J-97): the FULL-history causal timeline series — present ONLY when fetched with full=true (the
+  // SAME series the bounded `timeline` tail is sliced from; read VERBATIM from the same cached derivation,
+  // no recompute). Each point is the causal {date, phase, p_bear, severity} — never the smoothed value. The
+  // Dashboard two-pane cross-view chart reads THIS for its phase bands + severity + filtered P(bear) lines.
+  timeline_full?: MarketPhaseTimelinePoint[];
   // the FENCED retrospective — present ONLY when fetched with retrospective=true (a sibling cached read)
   retrospective?: MarketPhaseRetrospective;
 }
@@ -558,14 +563,22 @@ export interface MarketPhaseResponse {
 /** The Market Phase & Severity layer for the dashboard panel (J-87 + J-88 + J-89 + J-90). `asof` re-points
  *  it to a historical date (the single global as-of); the latest view passes nothing. `retrospective=true`
  *  ADDITIVELY requests the fenced full-sample / analysis-only sub-view (the SMOOTHED series + true-bear
- *  dating — lookahead by construction, never an as-of value). The frontend only re-formats these
- *  server-computed values — it never recomputes a phase / severity / probability / signal. */
+ *  dating — lookahead by construction, never an as-of value). `full=true` (J-97) ADDITIVELY requests the
+ *  full-history causal `timeline_full` series for the Dashboard two-pane cross-view chart (read verbatim
+ *  from the SAME cached derivation, no recompute, no new endpoint — the `/api/indexes?full=true` precedent);
+ *  the default card payload stays byte-identical. The frontend only re-formats these server-computed values
+ *  — it never recomputes a phase / severity / probability / signal. */
 export async function fetchMarketPhase(
   asof?: string,
   signal?: AbortSignal,
   retrospective?: boolean,
+  full?: boolean,
 ): Promise<MarketPhaseResponse> {
-  const base = retrospective ? "/api/market-phase?retrospective=true" : "/api/market-phase";
+  let base = "/api/market-phase";
+  const params: string[] = [];
+  if (retrospective) params.push("retrospective=true");
+  if (full) params.push("full=true");
+  if (params.length > 0) base += `?${params.join("&")}`;
   return getJSON<MarketPhaseResponse>(withAsOf(base, asof), signal);
 }
 

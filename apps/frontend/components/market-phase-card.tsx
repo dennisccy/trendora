@@ -9,6 +9,7 @@ import type { VariantProps } from "class-variance-authority";
 import { Badge, type badgeVariants } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatIsoDate } from "@/lib/dates";
+import { phaseFillVar } from "@/lib/phase";
 import { cn } from "@/lib/utils";
 import {
   fetchMarketPhase,
@@ -45,13 +46,9 @@ function phaseVariant(phase: string | null): BadgeVariant {
   return "ok"; // Expansion · Recovery (calm / rebounding)
 }
 
-/** The phase label -> a CSS color token used to FILL the timeline step-function band, grouped by the same
- *  stress posture as `phaseVariant` (presentation only — one label, one colour; no value tuned here). */
-function phaseFillVar(phase: string): string {
-  if (phase === "Bear" || phase === "Correction") return "var(--neg)";
-  if (phase === "Pullback") return "var(--warn)";
-  return "var(--pos)"; // Expansion · Recovery
-}
+// iter-38 (J-97): the phase label → fill-token mapping now lives in the ONE shared `lib/phase` module
+// (`phaseFillVar`), imported above, so the card timeline band and the J-97 cross-view chart phase bands
+// read the SAME label→colour mapping (coherence: same date ⇒ same colour everywhere). No second mapping.
 
 /** Human labels for the five named severity component keys (presentation only — values are computed once
  *  in the backend engine and only re-formatted here). */
