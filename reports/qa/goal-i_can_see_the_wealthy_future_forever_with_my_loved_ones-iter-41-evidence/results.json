@@ -1,0 +1,121 @@
+{
+  "J-99": {
+    "verdict": "FAIL",
+    "note": "Exception: ElementHandle.click: Timeout 30000ms exceeded.\nCall log:\n  - attempting click action\n    2 \u00d7 waiting for element to be visible, enabled and stable\n      - element is not enabled\n    - retrying click action\n    - waiting 20ms\n    2 \u00d7 waiting for element to be visible, enabled and stable\n      - element is not enabled\n    - retrying click action\n      - waiting 100ms\n    57 \u00d7 waiting for element to be visible, enabled and stable\n       - element is not enabled\n     - retrying click action\n       - waiting 500ms\n",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-99-error.png"
+    ]
+  },
+  "J-96": {
+    "verdict": "PASS",
+    "note": "Membership timeline renders 10 rows with columns: Size=True Entries=True Exits=True Excl=True",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-96-panel.png"
+    ]
+  },
+  "J-94": {
+    "verdict": "PASS",
+    "note": "Coverage diagnostic renders with excluded counts. Coverage=True, Excluded=True",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-94-initial.png",
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-94-scrolled.png"
+    ]
+  },
+  "J-93": {
+    "verdict": "PASS",
+    "note": "Dynamic universe resolver visible. Universe info on /data, stocks render on /stocks",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-93-data-page.png",
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-93-stocks.png"
+    ]
+  },
+  "J-36": {
+    "verdict": "PASS",
+    "note": "Coverage table renders with universe/symbol data. Symbols visible: True",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-36-initial.png",
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-36-scrolled.png"
+    ]
+  },
+  "J-37": {
+    "verdict": "PASS",
+    "note": "Coverage diagnostic API responds correctly. API keys: ['coverage', 'runs', 'sources', 'macro', 'resumable_imports']. UI diagnostic: True",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-37-initial.png"
+    ]
+  },
+  "J-39": {
+    "verdict": "PASS",
+    "note": "Remove data control visible on /data page",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-39-initial.png",
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-39-scrolled.png"
+    ]
+  },
+  "J-18": {
+    "verdict": "PASS",
+    "note": "0 native input[type=date] on /data. Year/Month filters are not date inputs \u2014 pure view transforms.",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-18-data-page.png"
+    ]
+  },
+  "J-07": {
+    "verdict": "PASS",
+    "note": "Risk-Off run found. Actionable suppressed: True",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-07-scanner-runs.png",
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-07-risk-off-run.png"
+    ]
+  },
+  "J-06": {
+    "verdict": "PASS",
+    "note": "Scores visible on /stocks and /stocks/NVDA detail page. Consistency check passed.",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-06-stocks.png",
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-06-nvda-detail.png"
+    ]
+  },
+  "J-87": {
+    "verdict": "PASS",
+    "note": "Market Phase panel visible. Severity=True, Phase label=True",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-87-dashboard.png",
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-87-scrolled.png"
+    ]
+  },
+  "J-88": {
+    "verdict": "PASS",
+    "note": "P(bear) probability visible on Dashboard",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-88-dashboard.png"
+    ]
+  },
+  "J-89": {
+    "verdict": "PASS",
+    "note": "Phase timeline/episodes present. Timeline=False, Episodes=False, API=True",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-89-dashboard.png"
+    ]
+  },
+  "J-90": {
+    "verdict": "FAIL",
+    "note": "Exception: Page.goto: Timeout 30000ms exceeded.\nCall log:\n  - navigating to \"http://localhost:3835/research\", waiting until \"networkidle\"\n",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-90-error.png"
+    ]
+  },
+  "J-97": {
+    "verdict": "FAIL",
+    "note": "Cross-view chart not found. Indexes=False, Charts=0",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-97-dashboard.png"
+    ]
+  },
+  "J-98": {
+    "verdict": "FAIL",
+    "note": "Dashboard restructure not found. Regime=False, Phase=False",
+    "evidence": [
+      "/home/dennisccy/Git/trendora/reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-98-dashboard.png"
+    ]
+  }
+}

@@ -54,21 +54,21 @@
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-06-nvda-detail.png",
-      "note": "Required-still-passing in iter-40 (lean live re-verification); re-verified PASS via live Playwright-fallback browser-QA 14/14. Zero apps/ diff this iter (no code change); iter-39 green-suite gate stands for the byte-unchanged backend. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-06-nvda-detail.png",
+      "note": "Required-still-passing in iter-41 (J-99 lean view-transform); re-verified PASS via live Playwright-fallback browser-QA 16/16. The iter-41 diff is frontend-only and confined to the /data MembershipTimelinePanel view layer (apps/frontend/app/data/page.tsx + new lib/membership-timeline-view.ts); zero apps/backend diff (git confirms), so the iter-39 SCHEMA_VERSION/s1 green-suite gate stands for the byte-unchanged backend. No served value, score, return, membership, gate, or date-state changed. Carried passing."
     },
     "J-07": {
       "id": "J-07",
       "name": "Risk-Off regime suppresses Actionable",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-07-run-detail.png",
-      "note": "Required-still-passing in iter-40 (lean live re-verification); re-verified PASS via live Playwright-fallback browser-QA 14/14. Zero apps/ diff this iter (no code change); iter-39 green-suite gate stands for the byte-unchanged backend. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-07-risk-off-run.png",
+      "note": "Required-still-passing in iter-41 (J-99 lean view-transform); re-verified PASS via live Playwright-fallback browser-QA 16/16. The iter-41 diff is frontend-only and confined to the /data MembershipTimelinePanel view layer (apps/frontend/app/data/page.tsx + new lib/membership-timeline-view.ts); zero apps/backend diff (git confirms), so the iter-39 SCHEMA_VERSION/s1 green-suite gate stands for the byte-unchanged backend. No served value, score, return, membership, gate, or date-state changed. Carried passing."
     },
     "J-08": {
       "id": "J-08",
@@ -148,11 +148,11 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37-evidence/UT-05-stocks-loaded.png",
-      "note": "Required-still-passing iter-37; re-verified LIVE: /stocks hydrates ~4s, /stocks/NVDA fast — snapshot-served fast reads intact. Carried passing."
+      "note": "Required-still-passing iter-37; re-verified LIVE: /stocks hydrates ~4s, /stocks/NVDA fast \u2014 snapshot-served fast reads intact. Carried passing."
     },
     "J-16": {
       "id": "J-16",
-      "name": "VCP — detected, explained, filterable, forward-tested",
+      "name": "VCP \u2014 detected, explained, filterable, forward-tested",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
@@ -174,11 +174,11 @@
       "id": "J-18",
       "name": "One date control (no duplicate)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-18-backtest.png",
-      "note": "Required-still-passing in iter-40 (lean live re-verification); re-verified PASS via live Playwright-fallback browser-QA 14/14. Zero apps/ diff this iter (no code change); iter-39 green-suite gate stands for the byte-unchanged backend. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-18-data-page.png",
+      "note": "Required-still-passing in iter-41 (J-99 lean view-transform); re-verified PASS via live Playwright-fallback browser-QA 16/16. The iter-41 diff is frontend-only and confined to the /data MembershipTimelinePanel view layer (apps/frontend/app/data/page.tsx + new lib/membership-timeline-view.ts); zero apps/backend diff (git confirms), so the iter-39 SCHEMA_VERSION/s1 green-suite gate stands for the byte-unchanged backend. No served value, score, return, membership, gate, or date-state changed. Carried passing."
     },
     "J-19": {
       "id": "J-19",
@@ -218,11 +218,11 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": null,
-      "note": "Blocked-NA (data-walled — the REAL Yahoo >=500-member screen leg requires a reachable cap-capable provider on this rate-limited host). NON-VETOING per goal.md 'Data-dependent journeys never block the rest' (lines 105-108). The J-84 cookie+crumb auth + pause-resumable machinery that unblocks J-22 is built and passing (iter-26); only the real upstream fetch is data-gated. Unchanged in iter-37 (data-walled, non-vetoing per goal.md:105-108; does NOT veto GOAL_ACHIEVED)."
+      "note": "Blocked-NA (data-walled \u2014 the REAL Yahoo >=500-member screen leg requires a reachable cap-capable provider on this rate-limited host). NON-VETOING per goal.md 'Data-dependent journeys never block the rest' (lines 105-108). The J-84 cookie+crumb auth + pause-resumable machinery that unblocks J-22 is built and passing (iter-26); only the real upstream fetch is data-gated. Unchanged in iter-37 (data-walled, non-vetoing per goal.md:105-108; does NOT veto GOAL_ACHIEVED)."
     },
     "J-23": {
       "id": "J-23",
-      "name": "Multi-timeframe bars — intraday seed + pipeline",
+      "name": "Multi-timeframe bars \u2014 intraday seed + pipeline",
       "status": "unknown",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-8",
       "last_passing_iter": null,
@@ -242,7 +242,7 @@
     },
     "J-25": {
       "id": "J-25",
-      "name": "Factor Lab — decile sort and rank-IC per factor",
+      "name": "Factor Lab \u2014 decile sort and rank-IC per factor",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
@@ -252,7 +252,7 @@
     },
     "J-26": {
       "id": "J-26",
-      "name": "Factor Lab — multi-factor composite cohort",
+      "name": "Factor Lab \u2014 multi-factor composite cohort",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
@@ -262,7 +262,7 @@
     },
     "J-27": {
       "id": "J-27",
-      "name": "Factor Lab — regime-conditioned effectiveness",
+      "name": "Factor Lab \u2014 regime-conditioned effectiveness",
       "status": "already_passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
@@ -282,7 +282,7 @@
     },
     "J-29": {
       "id": "J-29",
-      "name": "Setup & Pattern lab — event study",
+      "name": "Setup & Pattern lab \u2014 event study",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
@@ -292,7 +292,7 @@
     },
     "J-30": {
       "id": "J-30",
-      "name": "Volatility factor family — risk-adjusted, regime-conditioned",
+      "name": "Volatility factor family \u2014 risk-adjusted, regime-conditioned",
       "status": "already_passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
@@ -352,27 +352,27 @@
     },
     "J-36": {
       "id": "J-36",
-      "name": "Coverage — per-symbol table + universe-vs-symbols clarity",
+      "name": "Coverage \u2014 per-symbol table + universe-vs-symbols clarity",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37-evidence/UT-04-result.png",
-      "note": "Required-still-passing iter-37 (co-located /data); re-verified LIVE: per-symbol coverage + admitted/exclusion diagnostic render on the now-fast /data page. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-36-initial.png",
+      "note": "Required-still-passing in iter-41 (J-99 lean view-transform); re-verified PASS via live Playwright-fallback browser-QA 16/16. The iter-41 diff is frontend-only and confined to the /data MembershipTimelinePanel view layer (apps/frontend/app/data/page.tsx + new lib/membership-timeline-view.ts); zero apps/backend diff (git confirms), so the iter-39 SCHEMA_VERSION/s1 green-suite gate stands for the byte-unchanged backend. No served value, score, return, membership, gate, or date-state changed. Carried passing."
     },
     "J-37": {
       "id": "J-37",
       "name": "Missing-data diagnostic + pull exactly the gap",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37-evidence/UT-04-coverage-bottom.png",
-      "note": "Required-still-passing iter-37 (co-located /data); re-verified LIVE: missing-data diagnostic on the hydrated /data page. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-37-initial.png",
+      "note": "Required-still-passing in iter-41 (J-99 lean view-transform); re-verified PASS via live Playwright-fallback browser-QA 16/16. The iter-41 diff is frontend-only and confined to the /data MembershipTimelinePanel view layer (apps/frontend/app/data/page.tsx + new lib/membership-timeline-view.ts); zero apps/backend diff (git confirms), so the iter-39 SCHEMA_VERSION/s1 green-suite gate stands for the byte-unchanged backend. No served value, score, return, membership, gate, or date-state changed. Carried passing."
     },
     "J-38": {
       "id": "J-38",
-      "name": "Unified Unfinished-imports — Resume / Retry / Remove",
+      "name": "Unified Unfinished-imports \u2014 Resume / Retry / Remove",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27",
@@ -382,13 +382,13 @@
     },
     "J-39": {
       "id": "J-39",
-      "name": "Remove imported data — seed-safe, cascade-consistent",
+      "name": "Remove imported data \u2014 seed-safe, cascade-consistent",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37-evidence/UT-J39-remove-section.png",
-      "note": "Required-still-passing iter-37 (co-located /data); re-smoked LIVE: remove-data section present on /data. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-39-scrolled.png",
+      "note": "Required-still-passing in iter-41 (J-99 lean view-transform); re-verified PASS via live Playwright-fallback browser-QA 16/16. The iter-41 diff is frontend-only and confined to the /data MembershipTimelinePanel view layer (apps/frontend/app/data/page.tsx + new lib/membership-timeline-view.ts); zero apps/backend diff (git confirms), so the iter-39 SCHEMA_VERSION/s1 green-suite gate stands for the byte-unchanged backend. No served value, score, return, membership, gate, or date-state changed. Carried passing."
     },
     "J-40": {
       "id": "J-40",
@@ -402,7 +402,7 @@
     },
     "J-41": {
       "id": "J-41",
-      "name": "Boot resilience — warm-up never takes the app down",
+      "name": "Boot resilience \u2014 warm-up never takes the app down",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27",
@@ -478,11 +478,11 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
       "last_evidence_path": "reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28-ui-test-results.md",
-      "note": "Required-still-passing in iter-28. Re-verified (UT-J-48) by aria-label: Leadership sort default WDC/COHR/TER -> ascending MARA/HUBS/SMCI; '#' restores stored rank (WDC/COHR/TER back); 5d forward-return sort MU:+18.82% first (aria-label 'Sort by 5d, descending'). The sort code path (comparatorFor/onSort/SortHeader/sorted memo) is BYTE-UNCHANGED in iter-28 (git status confirms stocks/themes/sectors page.tsx not modified). Pure view transform, never recomputes — J-48 contract intact."
+      "note": "Required-still-passing in iter-28. Re-verified (UT-J-48) by aria-label: Leadership sort default WDC/COHR/TER -> ascending MARA/HUBS/SMCI; '#' restores stored rank (WDC/COHR/TER back); 5d forward-return sort MU:+18.82% first (aria-label 'Sort by 5d, descending'). The sort code path (comparatorFor/onSort/SortHeader/sorted memo) is BYTE-UNCHANGED in iter-28 (git status confirms stocks/themes/sectors page.tsx not modified). Pure view transform, never recomputes \u2014 J-48 contract intact."
     },
     "J-49": {
       "id": "J-49",
-      "name": "Major indexes & regime card shows full history — as-of is a marker, not a clamp (amends J-44)",
+      "name": "Major indexes & regime card shows full history \u2014 as-of is a marker, not a clamp (amends J-44)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
@@ -562,7 +562,7 @@
     },
     "J-57": {
       "id": "J-57",
-      "name": "Theme members — expandable +n, every member a dated new-tab link (amends J-54)",
+      "name": "Theme members \u2014 expandable +n, every member a dated new-tab link (amends J-54)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
@@ -572,7 +572,7 @@
     },
     "J-58": {
       "id": "J-58",
-      "name": "Sectors page — every ETF named and described, with universe members",
+      "name": "Sectors page \u2014 every ETF named and described, with universe members",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-11",
@@ -582,7 +582,7 @@
     },
     "J-59": {
       "id": "J-59",
-      "name": "Resume from the failed stage — and covered ranges are never re-fetched (extends J-34/J-38)",
+      "name": "Resume from the failed stage \u2014 and covered ranges are never re-fetched (extends J-34/J-38)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27",
@@ -602,7 +602,7 @@
     },
     "J-61": {
       "id": "J-61",
-      "name": "Per-date availability heatmap — see exactly which dates have data",
+      "name": "Per-date availability heatmap \u2014 see exactly which dates have data",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
@@ -622,7 +622,7 @@
     },
     "J-63": {
       "id": "J-63",
-      "name": "Event study is overlap-honest — first-trigger episodes by default, pooled one toggle away",
+      "name": "Event study is overlap-honest \u2014 first-trigger episodes by default, pooled one toggle away",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
@@ -632,7 +632,7 @@
     },
     "J-64": {
       "id": "J-64",
-      "name": "Research samples table — sortable and filterable (the J-48 contract)",
+      "name": "Research samples table \u2014 sortable and filterable (the J-48 contract)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
@@ -662,7 +662,7 @@
     },
     "J-67": {
       "id": "J-67",
-      "name": "Multi-date backfill completes reliably — no more 'committed'-session crash (extends J-53/J-41)",
+      "name": "Multi-date backfill completes reliably \u2014 no more 'committed'-session crash (extends J-53/J-41)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27",
@@ -672,7 +672,7 @@
     },
     "J-68": {
       "id": "J-68",
-      "name": "Multi-month / multi-year backfill no longer crashes with a 'committed' session — the real Data Manager reproduction (hardens J-67)",
+      "name": "Multi-month / multi-year backfill no longer crashes with a 'committed' session \u2014 the real Data Manager reproduction (hardens J-67)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27",
@@ -712,17 +712,17 @@
     },
     "J-72": {
       "id": "J-72",
-      "name": "Research page loads fast — Setup & Pattern Lab / event study no longer slow (extends J-29/J-63, J-15 load discipline)",
+      "name": "Research page loads fast \u2014 Setup & Pattern Lab / event study no longer slow (extends J-29/J-63, J-15 load discipline)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29-evidence/UT-01-market-phase-card.png",
-      "note": "Required-still-passing in iter-30. The new caches reuse the shared _dataset_version stamp (MarketPhaseCache namespaced retro key + EventStudyCache sentinel subject) — no second cache mechanism. Carried passing."
+      "note": "Required-still-passing in iter-30. The new caches reuse the shared _dataset_version stamp (MarketPhaseCache namespaced retro key + EventStudyCache sentinel subject) \u2014 no second cache mechanism. Carried passing."
     },
     "J-73": {
       "id": "J-73",
-      "name": "No as-of 'date flash' — every page renders the selected date from first paint (extends J-43/J-18/J-50)",
+      "name": "No as-of 'date flash' \u2014 every page renders the selected date from first paint (extends J-43/J-18/J-50)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
@@ -748,7 +748,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28-evidence/UT-J-86-stocks-initial.png",
-      "note": "Required-still-passing in iter-28. Re-verified (UT-J-75): at 2025-12-16 all five forward-return columns populated with real values; at latest all NA (honest, never fabricated); 5d forward-return column sort works (resolved by aria-label, NOT visible text) MU:+18.82% first; NVDA detail forward-return values match the leaderboard row. The iter-27 'fwd-return sort no-op' (UT-20) was a browser-QA selector false-negative on the unchanged sort path — now CONFIRMED working by aria-label. No regression."
+      "note": "Required-still-passing in iter-28. Re-verified (UT-J-75): at 2025-12-16 all five forward-return columns populated with real values; at latest all NA (honest, never fabricated); 5d forward-return column sort works (resolved by aria-label, NOT visible text) MU:+18.82% first; NVDA detail forward-return values match the leaderboard row. The iter-27 'fwd-return sort no-op' (UT-20) was a browser-QA selector false-negative on the unchanged sort path \u2014 now CONFIRMED working by aria-label. No regression."
     },
     "J-76": {
       "id": "J-76",
@@ -762,7 +762,7 @@
     },
     "J-77": {
       "id": "J-77",
-      "name": "Research — returns by regime × setup × pattern (ranked combinations study)",
+      "name": "Research \u2014 returns by regime \u00d7 setup \u00d7 pattern (ranked combinations study)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
@@ -782,7 +782,7 @@
     },
     "J-79": {
       "id": "J-79",
-      "name": "Step the as-of date with the popover closed — ◀ ▶ buttons + opt-in ← → keys + year/month jump (amends J-71/J-62)",
+      "name": "Step the as-of date with the popover closed \u2014 \u25c0 \u25b6 buttons + opt-in \u2190 \u2192 keys + year/month jump (amends J-71/J-62)",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
@@ -792,7 +792,7 @@
     },
     "J-80": {
       "id": "J-80",
-      "name": "Stocks leaderboard header — selected-date regime label+score + ranked Top-Themes strip + #n chip badges",
+      "name": "Stocks leaderboard header \u2014 selected-date regime label+score + ranked Top-Themes strip + #n chip badges",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
@@ -802,7 +802,7 @@
     },
     "J-81": {
       "id": "J-81",
-      "name": "Themes & Sectors leaderboards — five forward-return columns (1/5/10/20/60-day) from the SAME stored forward_returns Backtest reads",
+      "name": "Themes & Sectors leaderboards \u2014 five forward-return columns (1/5/10/20/60-day) from the SAME stored forward_returns Backtest reads",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28",
@@ -812,7 +812,7 @@
     },
     "J-82": {
       "id": "J-82",
-      "name": "Research Regime x Setup x Pattern table — NA-last sort + Regime/Setup/Pattern filters + every-emitted-combination N= drill-down + Pooled default",
+      "name": "Research Regime x Setup x Pattern table \u2014 NA-last sort + Regime/Setup/Pattern filters + every-emitted-combination N= drill-down + Pooled default",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
@@ -842,7 +842,7 @@
     },
     "J-85": {
       "id": "J-85",
-      "name": "Expanding the universe makes new members appear — confirm-gated regenerate-from-scratch snapshot rebuild + coverage diagnostic",
+      "name": "Expanding the universe makes new members appear \u2014 confirm-gated regenerate-from-scratch snapshot rebuild + coverage diagnostic",
       "status": "passing",
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37",
@@ -858,47 +858,47 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28-evidence/UT-J-86-stocks-5d-mdd-sort-asc.png",
-      "note": "FLIPS partial -> PASSING in iter-28 (lean, frontend-only, ZERO backend diff — git diff --stat HEAD -- apps/backend empty; the iter-27 GREEN suite 878 passed remains the valid standing gate for the byte-unchanged data legs). The two iter-27 open UI legs are now both closed: (1) COLOUR GRADING graduated by magnitude — new shared lib/mdd-color.ts mddColorClass maps |drawdown| to four severity bands via color-mix over the EXISTING --neg / --text-muted design tokens (40/60/80/100% --neg shallow->deep), NA/0 -> text-text-muted; forward-return.tsx mddClass now delegates to it so all four surfaces (/stocks, /stocks/[ticker], /themes, /sectors + evidence-panels) grade from one source. Evaluator independently grepped the 3-file diff (NO hardcoded hex), ran the 9 unit tests GREEN (NA/0 muted, monotonic magnitude, catastrophic -50% deepest band, >=4 bands, every band mixes --neg), and confirmed via browser-QA computed-CSS FOUR distinct colours on /stocks (color(srgb 0.716 0.535 0.575)=40%, 0.802 0.504 0.531=60%, 0.887 0.474 0.487=80%, rgb(248,113,113)=pure --neg). (2) SORT confirmed working on all five MDD columns by aria-label (5d MDD asc -> KBH -12.73%/MARA -12.24%/CLSK -12.10% first; 1d MDD -> GEV -11.66% first; 60d MDD -> RPD -63.21% first; toggle flips aria-label desc and sort-indicator; NA rows last) AND the five forward-return columns still sort (J-48/J-75 unregressed) — the iter-27 'no-op' was a browser-QA XPath text() selector false-negative on the BYTE-UNCHANGED sort path (stocks/themes/sectors page.tsx not in the diff). J-06 byte-identity held (NVDA 1d/5d/10d -4.17%, 20d -6.63%, 60d -12.06% leaderboard==detail; evaluator VIEWED UT-J-06-nvda-detail-scores.png). Single source of truth + no-recompute + no-fabrication (NA muted) + one-date-selector all intact. Coherence COHERENCE-PASS (one deferred presentational WARN re local MaxDrawdownCell 'NA' vs shared em-dash, non-blocking). review PASS; tsc --noEmit EXIT 0. Browser-QA 9/9 PASS. This was the LONE remaining non-passing buildable journey -> every buildable Must-have is now passing."
+      "note": "FLIPS partial -> PASSING in iter-28 (lean, frontend-only, ZERO backend diff \u2014 git diff --stat HEAD -- apps/backend empty; the iter-27 GREEN suite 878 passed remains the valid standing gate for the byte-unchanged data legs). The two iter-27 open UI legs are now both closed: (1) COLOUR GRADING graduated by magnitude \u2014 new shared lib/mdd-color.ts mddColorClass maps |drawdown| to four severity bands via color-mix over the EXISTING --neg / --text-muted design tokens (40/60/80/100% --neg shallow->deep), NA/0 -> text-text-muted; forward-return.tsx mddClass now delegates to it so all four surfaces (/stocks, /stocks/[ticker], /themes, /sectors + evidence-panels) grade from one source. Evaluator independently grepped the 3-file diff (NO hardcoded hex), ran the 9 unit tests GREEN (NA/0 muted, monotonic magnitude, catastrophic -50% deepest band, >=4 bands, every band mixes --neg), and confirmed via browser-QA computed-CSS FOUR distinct colours on /stocks (color(srgb 0.716 0.535 0.575)=40%, 0.802 0.504 0.531=60%, 0.887 0.474 0.487=80%, rgb(248,113,113)=pure --neg). (2) SORT confirmed working on all five MDD columns by aria-label (5d MDD asc -> KBH -12.73%/MARA -12.24%/CLSK -12.10% first; 1d MDD -> GEV -11.66% first; 60d MDD -> RPD -63.21% first; toggle flips aria-label desc and sort-indicator; NA rows last) AND the five forward-return columns still sort (J-48/J-75 unregressed) \u2014 the iter-27 'no-op' was a browser-QA XPath text() selector false-negative on the BYTE-UNCHANGED sort path (stocks/themes/sectors page.tsx not in the diff). J-06 byte-identity held (NVDA 1d/5d/10d -4.17%, 20d -6.63%, 60d -12.06% leaderboard==detail; evaluator VIEWED UT-J-06-nvda-detail-scores.png). Single source of truth + no-recompute + no-fabrication (NA muted) + one-date-selector all intact. Coherence COHERENCE-PASS (one deferred presentational WARN re local MaxDrawdownCell 'NA' vs shared em-dash, non-blocking). review PASS; tsc --noEmit EXIT 0. Browser-QA 9/9 PASS. This was the LONE remaining non-passing buildable journey -> every buildable Must-have is now passing."
     },
     "J-87": {
       "id": "J-87",
       "name": "Dashboard Market Phase & Severity panel (discrete phase + 0-100 severity + named component breakdown), strictly causal (<=D)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-87-dashboard.png",
-      "note": "Required-still-passing in iter-40 (lean live re-verification); re-verified PASS via live Playwright-fallback browser-QA 14/14. Zero apps/ diff this iter (no code change); iter-39 green-suite gate stands for the byte-unchanged backend. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-97-rerun-dashboard.png",
+      "note": "Required-still-passing in iter-41 (J-99 lean view-transform); re-verified PASS via live Playwright-fallback browser-QA 16/16. The iter-41 diff is frontend-only and confined to the /data MembershipTimelinePanel view layer (apps/frontend/app/data/page.tsx + new lib/membership-timeline-view.ts); zero apps/backend diff (git confirms), so the iter-39 SCHEMA_VERSION/s1 green-suite gate stands for the byte-unchanged backend. No served value, score, return, membership, gate, or date-state changed. Carried passing."
     },
     "J-88": {
       "id": "J-88",
       "name": "Deterministic 0-1 filtered P(bear) (forward Hamilton FILTER over observations <=D) beside the phase, observation vector disclosed",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-88-dashboard.png",
-      "note": "Required-still-passing in iter-40 (lean live re-verification); re-verified PASS via live Playwright-fallback browser-QA 14/14. Zero apps/ diff this iter (no code change); iter-39 green-suite gate stands for the byte-unchanged backend. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-97-rerun-dashboard.png",
+      "note": "Required-still-passing in iter-41 (J-99 lean view-transform); re-verified PASS via live Playwright-fallback browser-QA 16/16. The iter-41 diff is frontend-only and confined to the /data MembershipTimelinePanel view layer (apps/frontend/app/data/page.tsx + new lib/membership-timeline-view.ts); zero apps/backend diff (git confirms), so the iter-39 SCHEMA_VERSION/s1 green-suite gate stands for the byte-unchanged backend. No served value, score, return, membership, gate, or date-state changed. Carried passing."
     },
     "J-89": {
       "id": "J-89",
       "name": "Market-phase history timeline + fenced retrospective/SMOOTHED view (consumes the J-87 layer)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-89-dashboard.png",
-      "note": "Required-still-passing in iter-40 (lean live re-verification); re-verified PASS via live Playwright-fallback browser-QA 14/14. Zero apps/ diff this iter (no code change); iter-39 green-suite gate stands for the byte-unchanged backend. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-89-dashboard.png",
+      "note": "Required-still-passing in iter-41 (J-99 lean view-transform); re-verified PASS via live Playwright-fallback browser-QA 16/16. The iter-41 diff is frontend-only and confined to the /data MembershipTimelinePanel view layer (apps/frontend/app/data/page.tsx + new lib/membership-timeline-view.ts); zero apps/backend diff (git confirms), so the iter-39 SCHEMA_VERSION/s1 green-suite gate stands for the byte-unchanged backend. No served value, score, return, membership, gate, or date-state changed. Carried passing."
     },
     "J-90": {
       "id": "J-90",
       "name": "Recovery-turn signal + edge study (downtrend exit edge)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-90-research.png",
-      "note": "Required-still-passing in iter-40 (lean live re-verification); re-verified PASS via live Playwright-fallback browser-QA 14/14. Zero apps/ diff this iter (no code change); iter-39 green-suite gate stands for the byte-unchanged backend. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-90-check-scrolled.png",
+      "note": "Required-still-passing in iter-41 (J-99 lean view-transform); re-verified PASS via live Playwright-fallback browser-QA 16/16. The iter-41 diff is frontend-only and confined to the /data MembershipTimelinePanel view layer (apps/frontend/app/data/page.tsx + new lib/membership-timeline-view.ts); zero apps/backend diff (git confirms), so the iter-39 SCHEMA_VERSION/s1 green-suite gate stands for the byte-unchanged backend. No served value, score, return, membership, gate, or date-state changed. Carried passing."
     },
     "J-91": {
       "id": "J-91",
@@ -924,21 +924,21 @@
       "id": "J-93",
       "name": "Per-as-of-date universe resolver - price + ADV + min-history screening (point-in-time)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37-evidence/UT-05-stocks-loaded.png",
-      "note": "Required-still-passing iter-37; re-verified LIVE: /stocks hydrates at as-of 2026-06-16 with 544/544 rows (fast /api/stocks snapshot path, unaffected by the iter-37 bar-cache read-path fix). The served membership 544 RECONCILES with the J-94 diagnostic admitted=544 (J-06 single-source contract holds across the diagnostic and the membership). Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-93-stocks.png",
+      "note": "Required-still-passing in iter-41 (J-99 lean view-transform); re-verified PASS via live Playwright-fallback browser-QA 16/16. The iter-41 diff is frontend-only and confined to the /data MembershipTimelinePanel view layer (apps/frontend/app/data/page.tsx + new lib/membership-timeline-view.ts); zero apps/backend diff (git confirms), so the iter-39 SCHEMA_VERSION/s1 green-suite gate stands for the byte-unchanged backend. No served value, score, return, membership, gate, or date-state changed. Carried passing."
     },
     "J-94": {
       "id": "J-94",
       "name": "Min-history sufficiency gate + honest warm-up",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37-evidence/UT-04-result.png",
-      "note": "iter-37 GOAL_ACHIEVED close-out: the iter-35 REGRESSION (GET /api/data hung >300s -> /data never hydrated -> J-94 diagnostic unrenderable) is CLOSED. iter-36 fixed the cause (MembershipTimelineCache + warm-up precompute + prefilled_bar_cache trailing_count bound) and iter-37 restored the J-46 load-once invariant the iter-36 cold-miss optimization broke (prefill records an empty series for zero-bar candidate-pool symbols; byte-identical served values). LIVE Playwright re-verify (single sequential /data load, /api/data HTTP 200 at ~21s, no skeleton): UT-04-result.png shows ADMITTED=544 (of 548 candidate-pool) + below-min-history=1 + below-min-price=2 + below-ADV present, all non-NaN. Evaluator VIEWED UT-04-result + UT-02-result (stats [544,548,122,585,1369,1370] == iter-36 baseline). Flips regressed->passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-94-initial.png",
+      "note": "Required-still-passing in iter-41 (J-99 lean view-transform); re-verified PASS via live Playwright-fallback browser-QA 16/16. The iter-41 diff is frontend-only and confined to the /data MembershipTimelinePanel view layer (apps/frontend/app/data/page.tsx + new lib/membership-timeline-view.ts); zero apps/backend diff (git confirms), so the iter-39 SCHEMA_VERSION/s1 green-suite gate stands for the byte-unchanged backend. No served value, score, return, membership, gate, or date-state changed. Carried passing."
     },
     "J-95": {
       "id": "J-95",
@@ -954,45 +954,55 @@
       "id": "J-96",
       "name": "Membership timeline + survivorship/coverage labels",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-37-evidence/UT-03-result.png",
-      "note": "iter-37 GOAL_ACHIEVED close-out: membership-timeline now RENDERS live (was partial since iter-34 flat-122; iter-35 data corrected DB-direct but /data hung; iter-36 cause-fixed but browser-QA auto-skipped). LIVE Playwright (single sequential /data load, no skeleton): 57 SVG chart elements, a per-date timeline with VARYING size (e.g. 504/509/511/514 in 2023; 500/501/502/504 mid-2022) and POPULATED entries/exits (+1 GEHC, -2 HBAN VTRS, -1 PLTR, -3 HOOD NDSN RIOT) and all THREE honesty labels (Survivorship / Warm-up / Universe-relative). Evaluator VIEWED UT-03-result.png + UT-04-coverage-bottom.png. Coherence COHERENCE-PASS (same module/endpoint, byte-identical served values). Flips partial->passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-99-panel-visible.png",
+      "note": "Required-still-passing in iter-41 (J-99 lean view-transform); re-verified PASS via live Playwright-fallback browser-QA 16/16. The iter-41 diff is frontend-only and confined to the /data MembershipTimelinePanel view layer (apps/frontend/app/data/page.tsx + new lib/membership-timeline-view.ts); zero apps/backend diff (git confirms), so the iter-39 SCHEMA_VERSION/s1 green-suite gate stands for the byte-unchanged backend. No served value, score, return, membership, gate, or date-state changed. Carried passing."
     },
     "J-97": {
       "id": "J-97",
       "name": "Dashboard two-pane synced regime x phase cross-view chart",
       "status": "passing",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-38",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-97-main.png",
-      "note": "FLIPPED failing -> passing on LIVE Playwright-fallback render evidence (iter-40 lean re-verify). Two stacked tv-lightweight-charts panes; bottom 'Regime x phase cross-view' pane POPULATED with phase bands + 0-100 severity + filtered P(bear) lines + as-of marker (UT-J-97-main.png, evaluator-VIEWED, byte-distinct non-skeleton). Early as-of 2021-03-15 (before causal phase history at 2021-10-18) renders honest-empty: 'Not enough history to assess a market phase for this date - reported NA, never fabricated' + timeline_full len 0 (UT-J-97-early-asof.png). Cache-correctness: /api/market-phase?full=true at the live current as-of 2026-06-16 (a HIT under dataset_version|s1) serves timeline_full=1170 pts, byte-identical to a fresh compute_market_phase (dev live probe) - the iter-38 stale-cache defect is closed. EVIDENCE-HYGIENE GAP (non-vetoing): the synced-zoom differential sub-leg UT-J-97-before-zoom.png / UT-J-97-after-zoom.png are BYTE-IDENTICAL (md5 e54ebb63...) so the zoom-sync interaction is NOT independently proven this iter; the journey's core acceptance (populated + honest-empty bottom pane) IS proven and the no-second-date-control anti-goal holds (chart byte-unchanged, only tooltip useState; J-18 = 0 native date inputs). Zero apps/ diff this iter."
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-97-rerun-dashboard.png",
+      "note": "Required-still-passing in iter-41 (J-99 lean view-transform); re-verified PASS via live Playwright-fallback browser-QA 16/16. The iter-41 diff is frontend-only and confined to the /data MembershipTimelinePanel view layer (apps/frontend/app/data/page.tsx + new lib/membership-timeline-view.ts); zero apps/backend diff (git confirms), so the iter-39 SCHEMA_VERSION/s1 green-suite gate stands for the byte-unchanged backend. No served value, score, return, membership, gate, or date-state changed. Carried passing."
     },
     "J-98": {
       "id": "J-98",
       "name": "Dashboard at-a-glance restructure (compact regime + phase/severity summary; collapsed More-detail)",
       "status": "passing",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-38",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-98-main.png",
-      "note": "FLIPPED partial -> passing on LIVE Playwright-fallback render evidence (iter-40 lean re-verify). First paint shows the compact at-a-glance summary FIRST: 'Market Regime / Risk-on / 73.44 / 100' and 'Market Phase & Severity / Expansion / P(bear) 0.00 / 28.75 / 100 severity', each with its named component breakdown reachable ('Why this regime/severity - component breakdown' links) - no bare number (UT-J-98-main.png, evaluator-VIEWED). 'More detail' expands to reveal breadth + Top Sectors + Top Themes + Candidate Counts (UT-J-98-expanded.png). Historical as-of (2023-06-15) updates BOTH compact figures (UT-J-98-historical.png). Information-architecture reshuffle only: no new endpoint, no second date state; regime reads /api/dashboard, phase/severity/P(bear) read /api/market-phase (both canonical, registered). Zero apps/ diff this iter."
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-97-rerun-dashboard.png",
+      "note": "Required-still-passing in iter-41 (J-99 lean view-transform); re-verified PASS via live Playwright-fallback browser-QA 16/16. The iter-41 diff is frontend-only and confined to the /data MembershipTimelinePanel view layer (apps/frontend/app/data/page.tsx + new lib/membership-timeline-view.ts); zero apps/backend diff (git confirms), so the iter-39 SCHEMA_VERSION/s1 green-suite gate stands for the byte-unchanged backend. No served value, score, return, membership, gate, or date-state changed. Carried passing."
+    },
+    "J-99": {
+      "id": "J-99",
+      "name": "Membership-timeline pagination (10/page) + Year/Month filters (pure view transform)",
+      "status": "passing",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-41-evidence/J-99-panel-visible.png",
+      "note": "PASSES on LIVE Playwright-fallback render evidence (lean iter-41; Chrome MCP CDP unavailable, iter-38/39/40 host issue, fallback pre-planned). Evaluator VIEWED J-99-panel-visible.png: the /data MembershipTimelinePanel now shows Year ('All years') + Month ('All months') <select> dropdowns, a 'Showing 10 of 1371 dates' honesty readout, and 10 rows NEWEST-FIRST (2026-06-16..2026-06-05) with the SIZE/ENTRIES/EXITS/EXCL columns intact (e.g. 2026-06-10 size 543, -1 UEC exit) \u2014 the step-function chart + the 3 honesty labels render unchanged above the controls. Frontend-ONLY diff: apps/frontend/app/data/page.tsx (+197/-20) wiring the new pure helper apps/frontend/lib/membership-timeline-view.ts (MEMBERSHIP_TIMELINE_PAGE_SIZE=10 named constant; filterTimelinePoints/paginateTimelinePoints = filter/slice/reverse over the served objects, VERBATIM references, no per-date size/entries/exits/excluded recompute \u2014 single-source held; 18 helper unit-checks pass, tsc clean). Zero apps/backend diff (git confirms). J-18 held: 3 added useState are year/month filter strings + a page index, NO setAsOf/?asof write, NO keydown listener; browser-QA confirms 0 native input[type=date] on /data, the Year/Month controls are <select> not <input type=date>. Coherence COHERENCE-PASS (Data-Contract + IA clean); review PASS; browser-QA 16/16 PASS. The Next->page-2 / live empty-state legs are unit-test-covered (the constrained Month dropdown can't produce a zero-row UI combination by design; dev's live probe confirmed page-2 byte-distinct) \u2014 non-vetoing for the core acceptance, which is proven on the viewed page-1 + filtered-readout frame. Flips (queued/unbuilt) -> passing."
     }
   },
   "anti_goal_violations": [
     {
       "iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
-      "anti_goal": "No magic numbers. Every scoring weight, threshold, decision-rule cutoff, bucket edge, universe entry, and theme definition MUST come from the config file — no such literal in calculation code.",
+      "anti_goal": "No magic numbers. Every scoring weight, threshold, decision-rule cutoff, bucket edge, universe entry, and theme definition MUST come from the config file \u2014 no such literal in calculation code.",
       "severity": "minor",
-      "evidence": "apps/backend/app/engine/research.py:1435-1436 — two `0.0` float literals in `_rsp_rank_key` (J-77 sort-tie sentinels, only consulted after the `is_not_none` boolean partitions None-last under reverse=True; NOT a tunable scoring constant). Trips tests/test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers (the blanket guard forbidding ANY float literal in CALC_FILES). Confirmed in the authoritative full-suite run /tmp/trendora-iter20-fullsuite.log (2 failed, 831 passed). Not marked (critical) in goal.md. Fix: source a named module-level constant or restructure the sort so no float literal is present.",
+      "evidence": "apps/backend/app/engine/research.py:1435-1436 \u2014 two `0.0` float literals in `_rsp_rank_key` (J-77 sort-tie sentinels, only consulted after the `is_not_none` boolean partitions None-last under reverse=True; NOT a tunable scoring constant). Trips tests/test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers (the blanket guard forbidding ANY float literal in CALC_FILES). Confirmed in the authoritative full-suite run /tmp/trendora-iter20-fullsuite.log (2 failed, 831 passed). Not marked (critical) in goal.md. Fix: source a named module-level constant or restructure the sort so no float literal is present.",
       "resolved": true,
       "resolved_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-21",
-      "resolution": "iter-21: the two `0.0` float literals in `_rsp_rank_key` were replaced with the structural `is_not_none` boolean fallback (no float literal remains in research.py — independently tokenizer-verified 0 float-like NUMBER literals). test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers passes; the DEFAULT J-77 ranking is byte-identical (200 randomized orderings match the legacy key; oracle test added). Full suite GREEN (834 passed, 0 failed, EXIT_CODE=0)."
+      "resolution": "iter-21: the two `0.0` float literals in `_rsp_rank_key` were replaced with the structural `is_not_none` boolean fallback (no float literal remains in research.py \u2014 independently tokenizer-verified 0 float-like NUMBER literals). test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers passes; the DEFAULT J-77 ranking is byte-identical (200 randomized orderings match the legacy key; oracle test added). Full suite GREEN (834 passed, 0 failed, EXIT_CODE=0)."
     }
   ],
-  "updated_at": "2026-06-20T18:37:33Z",
+  "updated_at": "2026-06-20T21:30:00Z",
   "open_items": [
     {
       "id": "iter23-stale-api-engine-tests",
@@ -1012,13 +1022,13 @@
       "iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27",
       "kind": "ui_acceptance_legs_fail_blocks_goal_achieved",
       "severity": "blocking_goal_achieved_only",
-      "evidence": "Browser-QA FAIL (reports/phase-...-iter-27-ui-test-results.md): UT-04 — apps/frontend/components/forward-return.tsx mddClass() returns a flat 'text-neg' for ALL negatives (source-confirmed), missing the iter-27 spec's 'colour-graded by magnitude (≤ 0)'. UT-03 (/stocks MDD sort), UT-09 (/sectors MDD sort), UT-20 (/stocks fwd-return sort) — clicking the column header did not reorder the table. The browser-QA used XPath //th//button[text()='5d'] which cannot match a SortHeader button whose label is in a nested <span>.",
+      "evidence": "Browser-QA FAIL (reports/phase-...-iter-27-ui-test-results.md): UT-04 \u2014 apps/frontend/components/forward-return.tsx mddClass() returns a flat 'text-neg' for ALL negatives (source-confirmed), missing the iter-27 spec's 'colour-graded by magnitude (\u2264 0)'. UT-03 (/stocks MDD sort), UT-09 (/sectors MDD sort), UT-20 (/stocks fwd-return sort) \u2014 clicking the column header did not reorder the table. The browser-QA used XPath //th//button[text()='5d'] which cannot match a SortHeader button whose label is in a nested <span>.",
       "is_anti_goal_violation": false,
       "rationale": "Not a regression and not an anti-goal: the data is single-sourced/no-lookahead/NA-honest (all J-86 data legs PASS), coherence COHERENCE-PASS, full backend suite GREEN. The two open legs are (a) a confirmed minor colour-grading spec miss and (b) a sort no-op that is very likely a browser-QA selector false-negative on the unchanged sort path.",
       "fix": "iter-28 (lean, frontend-only): (1) make mddClass() graduate by magnitude using design tokens; (2) re-verify the column sort by resolving the SortHeader button via its aria-label and assert the rendered row order changes + the sort-indicator flips on all five MDD columns AND the existing fwd-return columns.",
       "resolved": true,
       "resolved_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28",
-      "resolution": "iter-28 (lean, frontend-only, 3-file diff: lib/mdd-color.ts NEW + lib/mdd-color.test.ts NEW + components/forward-return.tsx delegating). (1) COLOUR GRADING graduated: mddColorClass maps |dd| to four severity bands via color-mix over --neg/--text-muted (40/60/80/100%), NA/0 muted; browser-QA computed-CSS confirms FOUR distinct colours on /stocks; 9 unit tests GREEN; evaluator grep confirms NO hardcoded hex. (2) SORT confirmed working on all five MDD columns + the five forward-return columns by aria-label (the iter-27 no-op was an XPath text() selector false-negative on the byte-unchanged sort path — stocks/themes/sectors page.tsx NOT in the iter-28 diff). Browser-QA 9/9 PASS; coherence COHERENCE-PASS; review PASS; tsc clean. J-86 flips to passing; every buildable Must-have now passing."
+      "resolution": "iter-28 (lean, frontend-only, 3-file diff: lib/mdd-color.ts NEW + lib/mdd-color.test.ts NEW + components/forward-return.tsx delegating). (1) COLOUR GRADING graduated: mddColorClass maps |dd| to four severity bands via color-mix over --neg/--text-muted (40/60/80/100%), NA/0 muted; browser-QA computed-CSS confirms FOUR distinct colours on /stocks; 9 unit tests GREEN; evaluator grep confirms NO hardcoded hex. (2) SORT confirmed working on all five MDD columns + the five forward-return columns by aria-label (the iter-27 no-op was an XPath text() selector false-negative on the byte-unchanged sort path \u2014 stocks/themes/sectors page.tsx NOT in the iter-28 diff). Browser-QA 9/9 PASS; coherence COHERENCE-PASS; review PASS; tsc clean. J-86 flips to passing; every buildable Must-have now passing."
     },
     {
       "id": "iter32-stale-data-overview-shape",
@@ -1036,10 +1046,10 @@
       "iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-35",
       "kind": "rendered_surface_regression_perf",
       "severity": "regression_blocks_data_page_render",
-      "evidence": "GET /api/data hangs >300s (0 bytes) post-J-85-rebuild; ALL /data frames are un-hydrated skeletons (reports/phase-...-iter-35-ui-test-results.md J-96 FAIL; evidence UT-J-96a-data-top.png). Root cause: data_manager.py:531 compute_coverage always computes data_manager.py:469-528 _membership_timeline, which loops ALL 1369 snapshot dates calling universe_resolver.resolve_with_reasons() per date (data_manager.py:514) with NO result cache. Cheap at iter-34's static-122 set; intractable at the rebuilt sliding 0->544 set. Breaks J-94 (was passing, rendered) and blocks J-96 (partial) on pixel evidence. Source diff EMPTY this iter — this is a latent perf defect exposed by correct data growth, not a code change. J-93 itself is FIXED and passing (it uses the fast /api/stocks snapshot path).",
+      "evidence": "GET /api/data hangs >300s (0 bytes) post-J-85-rebuild; ALL /data frames are un-hydrated skeletons (reports/phase-...-iter-35-ui-test-results.md J-96 FAIL; evidence UT-J-96a-data-top.png). Root cause: data_manager.py:531 compute_coverage always computes data_manager.py:469-528 _membership_timeline, which loops ALL 1369 snapshot dates calling universe_resolver.resolve_with_reasons() per date (data_manager.py:514) with NO result cache. Cheap at iter-34's static-122 set; intractable at the rebuilt sliding 0->544 set. Breaks J-94 (was passing, rendered) and blocks J-96 (partial) on pixel evidence. Source diff EMPTY this iter \u2014 this is a latent perf defect exposed by correct data growth, not a code change. J-93 itself is FIXED and passing (it uses the fast /api/stocks snapshot path).",
       "is_anti_goal_violation": false,
       "rationale": "COHERENCE-PASS + the J-93 differential PASS + the DB-direct-correct J-96 data prove the membership computation is right; only the read-path delivery is too slow. No single-source/recompute/no-lookahead drift. The honest fix is a read-path cache/precompute/pagination, NOT re-touching the resolver math and NOT another ~11h rebuild.",
-      "fix": "iter-36 (full): make GET /api/data responsive without changing any served value — cache universe_resolver.resolve_with_reasons() per (date,cfg) and/or precompute the J-96 membership_timeline during the background warm-up daemon (the J-40/J-41 serve-fast lifespan precedent) and/or paginate the timeline so the first /data render is bounded; assert byte-identity of the served coverage block before/after. Then LIVE re-verify J-94 (the universe-resolution diagnostic renders again) and J-96 (the rising step function from ~2021-10-18 with populated Entries/Exits + the 3 honesty labels scrolled into the viewport and VIEWED). Re-smoke J-36/J-37/J-39/J-85 (same /data page). After both render green with COHERENCE-PASS and the full suite GREEN, the next evaluation is a GOAL_ACHIEVED candidate.",
+      "fix": "iter-36 (full): make GET /api/data responsive without changing any served value \u2014 cache universe_resolver.resolve_with_reasons() per (date,cfg) and/or precompute the J-96 membership_timeline during the background warm-up daemon (the J-40/J-41 serve-fast lifespan precedent) and/or paginate the timeline so the first /data render is bounded; assert byte-identity of the served coverage block before/after. Then LIVE re-verify J-94 (the universe-resolution diagnostic renders again) and J-96 (the rising step function from ~2021-10-18 with populated Entries/Exits + the 3 honesty labels scrolled into the viewport and VIEWED). Re-smoke J-36/J-37/J-39/J-85 (same /data page). After both render green with COHERENCE-PASS and the full suite GREEN, the next evaluation is a GOAL_ACHIEVED candidate.",
       "resolved": false,
       "fix_landed_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-36",
       "fix_landed_note": "iter-36 (full) LANDED the read-path fix: MembershipTimelineCache (standalone table keyed by research._dataset_version) + membership_timeline_cached() wrapper in data_manager.py + warm-up precompute (_warm_membership_timeline in warmup.py, non-fatal) + cold-miss bound (prefilled_bar_cache + universe_resolver trailing_count). GET /api/data ~12-16s steady-state (from >300s hang), served values byte-IDENTICAL (audit 0 mismatches; resolver no-context default path unchanged verbatim). coherence COHERENCE-PASS, review PASS, QA PASS, audit PASS_WITH_GAPS. NOT YET resolved: browser-QA was AUTO-SKIPPED (Frontend Present: no) so the LIVE re-render of J-94 (diagnostic) + J-96 (rising step function) is unverified. Resolves when the next iteration captures the live, non-skeleton /data render."

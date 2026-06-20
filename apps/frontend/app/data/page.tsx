@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
   Database,
   History,
   KeyRound,
@@ -26,6 +28,14 @@ import { Select } from "@/components/ui/select";
 import { TermInfo } from "@/components/ui/term-info";
 import { cn } from "@/lib/utils";
 import { formatIsoDate, formatIsoDateTime, isValidIsoDate, ISO_DATE_PLACEHOLDER } from "@/lib/dates";
+import {
+  MEMBERSHIP_TIMELINE_PAGE_SIZE,
+  ALL_SENTINEL,
+  deriveYearOptions,
+  deriveMonthOptions,
+  filterTimelinePoints,
+  paginateTimelinePoints,
+} from "@/lib/membership-timeline-view";
 import {
   type AbsentFromLatestSnapshot,
   dismissUnfinishedImport,
@@ -1012,6 +1022,23 @@ function UniverseDiagnosticPanel({
   );
 }
 
+/** J-99 — human month labels for the membership-timeline Month dropdown (the option VALUE stays the ISO
+ *  `MM` so the filter matches `date.slice(5,7)` exactly; only the visible label is friendly). */
+const MONTH_NAMES: Record<string, string> = {
+  "01": "Jan",
+  "02": "Feb",
+  "03": "Mar",
+  "04": "Apr",
+  "05": "May",
+  "06": "Jun",
+  "07": "Jul",
+  "08": "Aug",
+  "09": "Sep",
+  "10": "Oct",
+  "11": "Nov",
+  "12": "Dec",
+};
+
 /** J-96 — the dynamic-universe membership timeline. Renders the resolved universe SIZE across the snapshot
  *  dates as a step-function chart (the J-44/J-49 overlay treatment), the per-date entries / exits, and the
  *  per-date excluded-by-reason counts, plus the three HONEST labels verbatim (the candidate-pool
@@ -1021,6 +1048,39 @@ function MembershipTimelinePanel({ timeline }: { timeline: MembershipTimeline })
   const points = timeline.points;
   const labels = timeline.labels;
   const maxSize = Math.max(1, ...points.map((p) => p.size));
+
+  // J-99 — pure client-side VIEW TRANSFORM over the already-served `points`: Year/Month list filters +
+  // 10-rows/page pagination, newest-first. These are list controls (NOT the global as-of switcher); they
+  // hold only local view state and never re-derive any per-date size/entries/exits/excluded value. The
+  // filtered+paged rows are a verbatim slice of `points` (Single source of truth; No recompute; J-18).
+  const [year, setYear] = useState<string>(ALL_SENTINEL);
+  const [month, setMonth] = useState<string>(ALL_SENTINEL);
+  const [page, setPage] = useState(1);
+
+  const yearOptions = useMemo(() => deriveYearOptions(points), [points]);
+  const monthOptions = useMemo(() => deriveMonthOptions(points, year), [points, year]);
+  const filtered = useMemo(() => filterTimelinePoints(points, year, month), [points, year, month]);
+  const view = useMemo(() => paginateTimelinePoints(filtered, page), [filtered, page]);
+
+  // Reset to page 1 whenever a filter changes (no orphaned page index past the new last page). The page
+  // index itself is also clamped inside paginateTimelinePoints, so the render is always in-bounds.
+  function onYearChange(next: string) {
+    setYear(next);
+    setMonth(ALL_SENTINEL); // months are year-scoped; drop a now-invalid month selection
+    setPage(1);
+  }
+  function onMonthChange(next: string) {
+    setMonth(next);
+    setPage(1);
+  }
+  // Step the displayed page within bounds (paginateTimelinePoints re-clamps on render regardless).
+  function goPrev() {
+    setPage((p) => Math.max(1, p - 1));
+  }
+  function goNext() {
+    setPage((p) => Math.min(view.pageCount, p + 1));
+  }
+  const monthLabel = (mm: string) => MONTH_NAMES[mm] ?? mm;
   // a compact step-function SVG sparkline of the resolved size over the snapshot dates.
   const W = 640;
   const H = 120;
@@ -1107,23 +1167,92 @@ function MembershipTimelinePanel({ timeline }: { timeline: MembershipTimeline })
               </div>
             </div>
 
-            {/* the per-date table: size + entries/exits + excluded-by-reason counts */}
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse text-sm" data-testid="timeline-table">
-                <thead>
-                  <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
-                    <th className="px-3 py-2 font-medium">Snapshot date</th>
-                    <th className="px-3 py-2 text-right font-medium">Size</th>
-                    <th className="px-3 py-2 font-medium">Entries</th>
-                    <th className="px-3 py-2 font-medium">Exits</th>
-                    <th className="px-3 py-2 text-right font-medium">Excl. hist / price / liq</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {points
-                    .slice()
-                    .reverse()
-                    .map((p) => (
+            {/* J-99 — Year/Month list filters + page readouts. These are pure VIEW TRANSFORMS over the
+                already-served `points`; they narrow/page only the rendered rows and recompute no per-date
+                value. They are NOT the global as-of switcher (J-18) — no date state is written. */}
+            <div
+              className="flex flex-wrap items-center justify-between gap-3"
+              data-testid="timeline-controls"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <label className="flex flex-col gap-1 text-xs text-text-muted">
+                  Year
+                  <Select
+                    aria-label="Filter membership timeline by year"
+                    data-testid="timeline-year-filter"
+                    className="w-32"
+                    value={year}
+                    onChange={(e) => onYearChange(e.target.value)}
+                  >
+                    <option value={ALL_SENTINEL}>All years</option>
+                    {yearOptions.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+                <label className="flex flex-col gap-1 text-xs text-text-muted">
+                  Month
+                  <Select
+                    aria-label="Filter membership timeline by month"
+                    data-testid="timeline-month-filter"
+                    className="w-32"
+                    value={month}
+                    onChange={(e) => onMonthChange(e.target.value)}
+                  >
+                    <option value={ALL_SENTINEL}>All months</option>
+                    {monthOptions.map((m) => (
+                      <option key={m} value={m}>
+                        {monthLabel(m)}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+              </div>
+              {/* Honest readout: how many dates this filtered/paged view shows out of the full payload. */}
+              <p
+                className="text-xs text-text-faint"
+                aria-label="Filtered date count"
+                data-testid="timeline-count-readout"
+              >
+                Showing{" "}
+                <span className="num text-text-muted">{view.rows.length}</span> of{" "}
+                <span className="num text-text-muted">{view.total}</span>{" "}
+                {view.total === 1 ? "date" : "dates"}
+                {view.total !== points.length ? (
+                  <>
+                    {" "}
+                    (filtered from <span className="num text-text-muted">{points.length}</span>)
+                  </>
+                ) : null}
+              </p>
+            </div>
+
+            {/* the per-date table: size + entries/exits + excluded-by-reason counts — now the filtered+paged
+                slice of `points` rather than the full reversed list. */}
+            {view.isEmpty ? (
+              <div data-testid="timeline-empty-filter">
+                <EmptyState
+                  icon={TrendingUp}
+                  title="No snapshot dates match this filter"
+                  description="No fabricated dates are shown. Clear the Year/Month filter to see the full timeline again."
+                />
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-sm" data-testid="timeline-table">
+                  <thead>
+                    <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+                      <th className="px-3 py-2 font-medium">Snapshot date</th>
+                      <th className="px-3 py-2 text-right font-medium">Size</th>
+                      <th className="px-3 py-2 font-medium">Entries</th>
+                      <th className="px-3 py-2 font-medium">Exits</th>
+                      <th className="px-3 py-2 text-right font-medium">Excl. hist / price / liq</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {view.rows.map((p) => (
                       <tr
                         key={p.date}
                         className="border-b border-border last:border-b-0"
@@ -1162,9 +1291,57 @@ function MembershipTimelinePanel({ timeline }: { timeline: MembershipTimeline })
                         </td>
                       </tr>
                     ))}
-                </tbody>
-              </table>
-            </div>
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* J-99 — pagination controls: prev/next (disabled at the bounds) + "Page x of N". */}
+            {!view.isEmpty && view.pageCount > 1 ? (
+              <div
+                className="flex items-center justify-between gap-3"
+                data-testid="timeline-pagination"
+              >
+                <button
+                  type="button"
+                  onClick={goPrev}
+                  disabled={view.page <= 1}
+                  aria-label="Previous page of snapshot dates"
+                  data-testid="timeline-prev-page"
+                  className={cn(
+                    "inline-flex h-8 items-center gap-1 rounded-md border border-border bg-surface-2 px-3 text-xs font-medium text-text-muted transition",
+                    "hover:border-border-strong focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                    "disabled:cursor-not-allowed disabled:opacity-50",
+                  )}
+                >
+                  <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
+                  Prev
+                </button>
+                <span
+                  className="text-xs text-text-muted"
+                  aria-label="Current page"
+                  data-testid="timeline-page-readout"
+                >
+                  Page <span className="num text-text">{view.page}</span> of{" "}
+                  <span className="num text-text">{view.pageCount}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={goNext}
+                  disabled={view.page >= view.pageCount}
+                  aria-label="Next page of snapshot dates"
+                  data-testid="timeline-next-page"
+                  className={cn(
+                    "inline-flex h-8 items-center gap-1 rounded-md border border-border bg-surface-2 px-3 text-xs font-medium text-text-muted transition",
+                    "hover:border-border-strong focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                    "disabled:cursor-not-allowed disabled:opacity-50",
+                  )}
+                >
+                  Next
+                  <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+                </button>
+              </div>
+            ) : null}
           </>
         )}
       </div>
