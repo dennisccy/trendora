@@ -1,0 +1,27 @@
+{
+  "J-97": {
+    "pass": true,
+    "details": {
+      "canvas_count": 18,
+      "has_cross_view": true,
+      "has_phase_pane": true
+    }
+  },
+  "J-89": {
+    "pass": true,
+    "details": {
+      "has_timeline_via_chart": true,
+      "has_episodes": false,
+      "has_phase_bands": true
+    }
+  },
+  "J-90": {
+    "pass": true,
+    "details": {
+      "has_recovery_feature": true,
+      "has_market_phase_detail": true,
+      "has_episodes_section": true,
+      "api_recovery_turn_available": true
+    }
+  }
+}

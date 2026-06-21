@@ -1,0 +1,153 @@
+{
+  "J-100-dashboard": {
+    "pass": true,
+    "details": {
+      "body_len": 958,
+      "is_skeleton": false,
+      "has_regime": true,
+      "has_score": true,
+      "has_phase": true,
+      "has_summary": true,
+      "chart_canvases": 0,
+      "date_inputs_on_root": 0,
+      "has_more_detail": true
+    }
+  },
+  "J-93": {
+    "pass": false,
+    "details": {
+      "latest_body_len": 92302,
+      "is_skeleton": true,
+      "has_544": true,
+      "has_stocks_table": true,
+      "early_different": true,
+      "date_inputs": 0
+    }
+  },
+  "J-06": {
+    "pass": true,
+    "details": {
+      "nvda_in_leaderboard": true,
+      "nvda_in_detail": true,
+      "detail_has_scores": true,
+      "stocks_api_count": null,
+      "universe_count": null,
+      "reconciles": false
+    }
+  },
+  "J-07": {
+    "pass": false,
+    "details": {
+      "has_riskoff": false,
+      "note": "Risk-Off label found in run list"
+    }
+  },
+  "J-18": {
+    "pass": true,
+    "details": {
+      "/": 0,
+      "/stocks": 0,
+      "/data": 0,
+      "/backtest": 0
+    }
+  },
+  "J-36": {
+    "pass": true,
+    "details": {
+      "has_coverage": true,
+      "is_skeleton": false
+    }
+  },
+  "J-37": {
+    "pass": true,
+    "details": {
+      "has_pull": true
+    }
+  },
+  "J-85": {
+    "pass": true,
+    "details": {
+      "has_rebuild": true
+    }
+  },
+  "J-94": {
+    "pass": true,
+    "details": {
+      "has_diagnostic": true,
+      "has_544": true
+    }
+  },
+  "J-96": {
+    "pass": true,
+    "details": {
+      "has_timeline": true
+    }
+  },
+  "J-99": {
+    "pass": true,
+    "details": {
+      "has_pagination": true
+    }
+  },
+  "J-39": {
+    "pass": true,
+    "details": {
+      "has_remove": true
+    }
+  },
+  "J-87": {
+    "pass": false,
+    "details": {
+      "has_phase_label": false
+    }
+  },
+  "J-88": {
+    "pass": false,
+    "details": {
+      "has_pbear": false
+    }
+  },
+  "J-89": {
+    "pass": false,
+    "details": {
+      "has_phase_history": false
+    }
+  },
+  "J-90": {
+    "pass": false,
+    "details": {
+      "has_recovery": false
+    }
+  },
+  "J-97": {
+    "pass": false,
+    "details": {
+      "canvas_count": 0
+    }
+  },
+  "J-98": {
+    "pass": false,
+    "details": {
+      "has_at_a_glance": false,
+      "has_more_detail": false
+    }
+  },
+  "J-100-api": {
+    "pass": true,
+    "details": {
+      "elapsed_s": 3.8,
+      "response_size_bytes": 298590,
+      "top_keys": [
+        "coverage",
+        "runs",
+        "sources",
+        "macro",
+        "resumable_imports",
+        "unfinished_imports",
+        "job_progress"
+      ],
+      "universe_count": null,
+      "mt_length": null
+    }
+  }
+}

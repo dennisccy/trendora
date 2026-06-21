@@ -1,0 +1,77 @@
+{
+  "J-87": {
+    "pass": true,
+    "details": {
+      "has_phase": true,
+      "has_regime": true,
+      "is_skeleton": false
+    }
+  },
+  "J-88": {
+    "pass": true,
+    "details": {
+      "has_pbear": true
+    }
+  },
+  "J-89": {
+    "pass": false,
+    "details": {
+      "has_timeline": false
+    }
+  },
+  "J-90": {
+    "pass": false,
+    "details": {
+      "has_recovery": false
+    }
+  },
+  "J-97": {
+    "pass": false,
+    "details": {
+      "canvas_count": 0
+    }
+  },
+  "J-98": {
+    "pass": true,
+    "details": {
+      "has_at_a_glance": true,
+      "has_more_detail": true
+    }
+  },
+  "J-07": {
+    "pass": true,
+    "details": {
+      "riskoff_run_count": 196,
+      "all_zero_actionable": true,
+      "sample_asof": "2026-03-31",
+      "sample_actionable": 0,
+      "page_has_riskoff_label": false
+    }
+  },
+  "J-93": {
+    "pass": true,
+    "details": {
+      "has_stocks": true,
+      "has_544": true,
+      "early_has_544": false,
+      "content_differs": true,
+      "date_inputs": 0,
+      "very_early_honest": true
+    }
+  },
+  "J-100": {
+    "pass": true,
+    "details": {
+      "api_universe_count": 544,
+      "api_pool": 548,
+      "api_symbols": 585,
+      "api_snapshots": 1371,
+      "api_candidates": 122,
+      "baseline_match": true,
+      "rendered_body_len": 51341,
+      "rendered_544": true,
+      "rendered_548": true,
+      "rendered_585": true
+    }
+  }
+}
