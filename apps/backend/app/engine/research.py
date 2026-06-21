@@ -53,7 +53,7 @@ from app.engine.forward_testing import (
     _mean_or_none,
 )
 from app.engine.setups import ALL_STATUSES
-from app.models import EventStudyCache, ForwardReturn, ScannerResult, ScannerRun
+from app.models import DailyPrice, EventStudyCache, ForwardReturn, ScannerResult, ScannerRun
 
 # The honest "descriptive, not predictive / universe-relative" caveat carried on every Factor-Lab
 # payload alongside the (reused, single-source) survivorship-bias label (anti-goals: Research lab is
@@ -1242,6 +1242,57 @@ def _dataset_version(session: Session) -> str:
     if isinstance(fr_count, tuple):
         fr_count = fr_count[0]
     return f"r{max_run_id or 0}-f{fr_count or 0}"
+
+
+def _membership_dataset_version(session: Session, config: Optional[Config] = None) -> str:
+    """A NARROWER cache stamp for the J-96 membership-timeline cache (iter-42 / J-100). It depends ONLY on
+    the inputs the membership timeline actually reads — the snapshot/`ScannerRun.asof_date` set, the bars
+    manifest, and the history threshold config — and NOT on the `forward_returns` row count.
+
+    Why a second stamp: `_dataset_version` (the J-72/J-87 event-study/market-phase stamp) folds in
+    `count(forward_returns)`, so EVERY warm-up forward-return insert bumped it and re-invalidated the
+    membership cache (a recompute storm — the iter-42 J-100 root cause). The membership timeline reads the
+    persisted per-snapshot `ScannerResult` membership + the bars (`date <= D`) + the `min_history_bars`
+    threshold; it reads NO forward return. So its cache must refresh on a real membership change — a
+    backfill that adds a snapshot or bars, a removal/rebuild that drops them — but NOT on a pure
+    forward-return insert. This stamp encodes exactly those inputs:
+
+      - `max(scanner_runs.id)`     — bumps when a snapshot is added (or the max drops when the newest is
+                                     removed) — a NEW membership observation row.
+      - `count(scanner_runs)`      — disambiguates an add-then-remove that leaves max(id) unchanged but the
+                                     snapshot SET changed (a removed-then-re-added run gets a new id, but
+                                     counting guards the symmetric case).
+      - `max(daily_prices.date)` + `count(daily_prices)` — the bars manifest: a backfill/fetch that adds
+                                     bars (changing which candidates clear the history gate at a date) or a
+                                     removal that drops bars changes one of these. `forward_returns` rows
+                                     are NOT bars, so a forward-return insert leaves both untouched.
+      - `min_history_bars`         — the only config input the per-date resolver's history gate reads; if it
+                                     were retuned the admitted set would change, so it belongs in the stamp.
+
+    Like `_dataset_version` this is a pure read (a few scalar SELECTs); it recomputes no canonical value and
+    appears in NO served payload — it is an internal cache-invalidation input only. A forward-return-only
+    insert leaves every term above unchanged, so the membership cache HITS across forward-return churn (no
+    recompute storm); a snapshot add/remove or a bar backfill changes a term, so the cache correctly
+    invalidates and recomputes."""
+    cfg = config or get_config()
+    max_run_id = session.exec(select(func.max(ScannerRun.id))).one()
+    if isinstance(max_run_id, tuple):
+        max_run_id = max_run_id[0]
+    run_count = session.exec(select(func.count()).select_from(ScannerRun)).one()
+    if isinstance(run_count, tuple):
+        run_count = run_count[0]
+    max_bar_date = session.exec(select(func.max(DailyPrice.date))).one()
+    if isinstance(max_bar_date, tuple):
+        max_bar_date = max_bar_date[0]
+    bar_count = session.exec(select(func.count()).select_from(DailyPrice)).one()
+    if isinstance(bar_count, tuple):
+        bar_count = bar_count[0]
+    bar_stamp = max_bar_date.isoformat() if max_bar_date is not None else "none"
+    return (
+        f"r{max_run_id or 0}-rc{run_count or 0}"
+        f"-b{bar_stamp}-bc{bar_count or 0}"
+        f"-h{cfg.indicators.min_history_bars}"
+    )
 
 
 def _cache_asof_key(as_of: Optional[date_cls]) -> str:

@@ -105,8 +105,9 @@ def _warm_membership_timeline(engine: Engine, cfg: Config) -> None:
     `GET /api/data` after a boot/rebuild serves the cached payload instead of paying the O(dates × pool)
     `resolve_with_reasons` derivation synchronously. Opens its OWN session on `engine` (never a request
     session). Calls `data_manager.membership_timeline_cached` with the FULL stored snapshot-date set — on
-    a cold cache it computes once and upserts under the current `_dataset_version` stamp; if a row already
-    exists for the current stamp it is a cheap no-op hit. NON-FATAL: any exception is caught + logged here
+    a cold cache it computes once and upserts under the current membership-dataset stamp (J-100: the NARROW
+    `_membership_dataset_version` — the snapshot set + bars manifest, NOT the forward-return count); if a
+    row already exists for the current stamp it is a cheap no-op hit. NON-FATAL: any exception is caught + logged here
     so a timeline-cache failure never aborts the otherwise-successful warm-up (the cold-miss read still
     serves the bounded compute). Reads the committed bars/runs only; computes no canonical value."""
     try:
@@ -156,9 +157,10 @@ def _run_warmup(engine: Engine, cfg: Config, prog: "data_manager.JobProgress") -
         # iter-36 (J-96): precompute the dynamic-universe membership-timeline cache OFF the boot path so
         # the FIRST `GET /api/data` after a boot/rebuild serves the cached payload rather than paying the
         # O(dates × pool) `resolve_with_reasons` derivation synchronously (the iter-35 regression). This is
-        # the J-40/J-41 serve-fast precedent. Computed AFTER the forward-return backfill so it is keyed to
-        # the FINAL `_dataset_version` stamp (which includes the just-inserted forward-return rows) — the
-        # exact stamp a subsequent read will look up. The cached payload is byte-identical to a fresh
+        # the J-40/J-41 serve-fast precedent. iter-42 (J-100): the membership cache now keys on the NARROW
+        # `_membership_dataset_version` (snapshot set + bars manifest), which is INDEPENDENT of the
+        # forward-return inserts above — so the warmed row stays VALID across the forward-return backfill
+        # (no recompute storm) and is the exact stamp a subsequent read looks up. The cached payload is byte-identical to a fresh
         # compute (it IS a fresh compute, persisted). Wrapped in its OWN guard so a timeline-cache failure
         # is logged but does NOT flip an otherwise-successful warm-up to `failed` (the cadence snapshots +
         # forward returns already succeeded; a cold `GET /api/data` still serves the bounded miss).

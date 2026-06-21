@@ -2,9 +2,11 @@
 
 The iter-35 regression: on the post-rebuild DB (~1369 sliding snapshot dates) `compute_coverage` always
 ran `_membership_timeline`, whose per-date `resolve_with_reasons` loop made `GET /api/data` hang >300 s.
-This iteration caches the SERIALIZED `_membership_timeline(...)` payload keyed by the SAME
-`research._dataset_version` stamp J-72 / J-87 use (single-sourced), so the served values stay
-BYTE-IDENTICAL while the read returns promptly.
+iter-36 cached the SERIALIZED `_membership_timeline(...)` payload keyed by `research._dataset_version`, so
+the served values stay BYTE-IDENTICAL while the read returns promptly. iter-42 (J-100) NARROWED that key to
+`research._membership_dataset_version` (the snapshot set + bars manifest + `min_history_bars`, NOT the
+forward-return count) so a warm-up forward-return insert no longer invalidates the cache (the recompute
+storm), while a real snapshot/bar change still refreshes it. The served values remain byte-identical.
 
 Named proofs (each guards a DoD line):
 
@@ -14,9 +16,10 @@ Named proofs (each guards a DoD line):
   cache-hit-no-recompute — a second `compute_coverage` (cache warm) does NOT re-run the resolver loop
                         (asserted by patching `_membership_timeline` to blow up on a second call), and the
                         payload is identical.
-  cache-row-written   — a single cache row keyed to the current dataset_version is persisted on the miss.
-  invalidation        — after the dataset changes (`_dataset_version` changes), a STALE cache row is NOT
-                        served — the read recomputes against the new stamp (and prunes the stale row).
+  cache-row-written   — a single cache row keyed to the current membership-dataset stamp is persisted on the miss.
+  invalidation        — after a real membership change (`_membership_dataset_version` changes: a snapshot or
+                        bar add/remove), a STALE cache row is NOT served — the read recomputes against the
+                        new stamp (and prunes the stale row); a forward-return-only insert does NOT.
   causality           — every timeline date is observed from its OWN <= D snapshot/bars (no future
                         leakage) — re-asserted THROUGH the cache.
   empty-db            — an empty DB → an empty-but-valid timeline (no fabricated dates/members), cached.
@@ -36,7 +39,7 @@ from app.engine.data_manager import (
     compute_coverage,
     membership_timeline_cached,
 )
-from app.engine.research import _dataset_version
+from app.engine.research import _dataset_version, _membership_dataset_version
 from app.models import (
     DailyPrice,
     ForwardReturn,
@@ -155,7 +158,8 @@ def test_cache_row_written_once_under_current_version(tmp_path):
     engine = _three_snapshot_engine(tmp_path)
     with Session(engine) as session:
         dates = _snapshot_dates(session)
-        version = _dataset_version(session)
+        # iter-42 (J-100): the cache row is keyed by the NARROW membership stamp, not `_dataset_version`.
+        version = _membership_dataset_version(session, cfg)
         membership_timeline_cached(session, cfg, dates)
     with Session(engine) as session:
         rows = session.exec(select(MembershipTimelineCache)).all()
@@ -165,17 +169,20 @@ def test_cache_row_written_once_under_current_version(tmp_path):
 
 
 # ==================================================================================================
-# invalidation: a dataset change changes _dataset_version → a stale row is NOT served (and is pruned)
+# invalidation: a real membership change (snapshot add) changes _membership_dataset_version → a stale row
+# is NOT served (and is pruned)
 # ==================================================================================================
 def test_cache_invalidates_on_dataset_change(tmp_path):
-    """Mirror the event_study_cache / market_phase_cache cache-key tests: after the dataset changes (a new
-    snapshot bumps max(scanner_runs.id) → `_dataset_version` changes), a read recomputes against the NEW
-    stamp and serves the UPDATED timeline; the stale row keyed to the old stamp is pruned (never served)."""
+    """Mirror the event_study_cache / market_phase_cache cache-key tests: after a real membership change (a
+    new snapshot bumps max(scanner_runs.id) → `_membership_dataset_version` changes), a read recomputes
+    against the NEW stamp and serves the UPDATED timeline; the stale row keyed to the old stamp is pruned
+    (never served)."""
     cfg = load_config()
     engine = _three_snapshot_engine(tmp_path)
     with Session(engine) as session:
         dates = _snapshot_dates(session)
-        v1 = _dataset_version(session)
+        # iter-42 (J-100): assert against the NARROW membership stamp (snapshot set + bars manifest).
+        v1 = _membership_dataset_version(session, cfg)
         cov1 = copy.deepcopy(compute_coverage(session, cfg))  # warms the cache under v1
         assert cov1["membership_timeline"]["points"][-1]["size"] == 3  # last snapshot had AAA/BBB/CCC
 
@@ -184,8 +191,8 @@ def test_cache_invalidates_on_dataset_change(tmp_path):
         r4 = _mk_run(session, date(2023, 1, 3))
         for i, t in enumerate(["AAA", "BBB", "CCC", "DDD"]):
             _mk_result(session, r4.id, t, rank=i + 1)
-        v2 = _dataset_version(session)
-    assert v2 != v1  # the stamp moved → the cache key changed
+        v2 = _membership_dataset_version(session, cfg)
+    assert v2 != v1  # a snapshot add moves the NARROW stamp → the cache key changed
 
     with Session(engine) as session:
         dates = _snapshot_dates(session)
@@ -202,34 +209,74 @@ def test_cache_invalidates_on_dataset_change(tmp_path):
         assert len(rows) == 1 and rows[0].dataset_version == v2
 
 
-def test_cache_invalidates_when_forward_returns_change(tmp_path):
-    """`_dataset_version` also folds in the forward_returns row count, so adding a forward-return row
-    (with no new snapshot) ALSO invalidates the cache — the timeline payload is unchanged, but the read
-    must key under the new stamp (a stale-stamp row is never hit)."""
+def test_forward_return_insert_does_NOT_invalidate_membership_cache(tmp_path, monkeypatch):
+    """iter-42 (J-100) — the membership cache DECOUPLING (scope (b)). The membership timeline reads NO
+    forward return, so the NARROW `_membership_dataset_version` does NOT fold in the forward-return row
+    count: a forward-return-only insert (with no new snapshot, no new bar) leaves the stamp UNCHANGED, so
+    the cache HITS (no recompute storm). We prove the HIT against an ALREADY-POPULATED cache row
+    (iter-38/39 lesson): seed the cache, patch `_membership_timeline` to BLOW UP, insert a forward-return
+    row, then read — a successful read proves the resolver loop was skipped (the row was served)."""
     cfg = load_config()
     engine = _three_snapshot_engine(tmp_path)
     with Session(engine) as session:
         dates = _snapshot_dates(session)
-        v1 = _dataset_version(session)
-        membership_timeline_cached(session, cfg, dates)  # warm under v1
+        v1_membership = _membership_dataset_version(session, cfg)
+        v1_broad = _dataset_version(session)
+        warm = membership_timeline_cached(session, cfg, dates)  # warm under the narrow stamp
 
     with Session(engine) as session:
-        # add ONE forward-return row → fr_count changes → `_dataset_version` changes.
+        # add ONE forward-return row: the BROAD `_dataset_version` changes (fr_count++), but the NARROW
+        # membership stamp does NOT (no new snapshot, no new bar).
         run = session.exec(select(ScannerRun)).first()
         session.add(ForwardReturn(
             run_id=run.id, symbol="AAA", horizon=5, asof_date=run.asof_date,
             entry_close=10.0, measured_date=date(2022, 1, 10), realized_return=0.05,
         ))
         session.commit()
-        v2 = _dataset_version(session)
-    assert v2 != v1
+        v2_membership = _membership_dataset_version(session, cfg)
+        v2_broad = _dataset_version(session)
+    assert v2_broad != v1_broad  # the broad J-72/J-87 stamp DID move (fr_count changed)
+    assert v2_membership == v1_membership  # the narrow membership stamp did NOT move — the decoupling
+
+    # patch the resolver derivation to raise — a cache HIT must NOT call it.
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("a forward-return insert must NOT invalidate the membership cache")
+
+    monkeypatch.setattr(data_manager, "_membership_timeline", _boom)
+    with Session(engine) as session:
+        dates = _snapshot_dates(session)
+        served = membership_timeline_cached(session, cfg, dates)  # must HIT the still-valid v1 row
+        assert served == warm  # byte-identical to the pre-insert warm payload
+        # the cache still carries exactly the single (unchanged-stamp) row — no churn, no re-write.
+        rows = session.exec(select(MembershipTimelineCache)).all()
+        assert len(rows) == 1 and rows[0].dataset_version == v1_membership
+
+
+def test_bar_backfill_DOES_invalidate_membership_cache(tmp_path):
+    """The narrow stamp's other arm: adding a BAR (a real input the per-date history gate reads) changes
+    the bars manifest term, so the membership cache correctly INVALIDATES and recomputes (the narrow stamp
+    is not so narrow that it misses a real membership-affecting change)."""
+    cfg = load_config()
+    engine = _three_snapshot_engine(tmp_path)
+    with Session(engine) as session:
+        dates = _snapshot_dates(session)
+        v1 = _membership_dataset_version(session, cfg)
+        membership_timeline_cached(session, cfg, dates)  # warm under v1
+        rows = session.exec(select(MembershipTimelineCache)).all()
+        assert len(rows) == 1 and rows[0].dataset_version == v1
+
+    with Session(engine) as session:
+        # add ONE daily price bar → the bars manifest (max date / count) changes → narrow stamp changes.
+        session.add(DailyPrice(
+            symbol="AAA", date=date(2022, 1, 4), open=10.0, high=11.0, low=9.0, close=10.5, volume=1000,
+        ))
+        session.commit()
+        v2 = _membership_dataset_version(session, cfg)
+    assert v2 != v1  # a bar add moves the narrow stamp → the cache must refresh
 
     with Session(engine) as session:
         dates = _snapshot_dates(session)
-        served = membership_timeline_cached(session, cfg, dates)
-        # the served payload still equals a fresh compute (the timeline itself didn't change), and the
-        # cache now carries exactly the v2 row (the v1 row pruned).
-        assert served == _membership_timeline(session, cfg, dates)
+        membership_timeline_cached(session, cfg, dates)  # recompute against v2; prune the stale v1 row
         rows = session.exec(select(MembershipTimelineCache)).all()
         assert len(rows) == 1 and rows[0].dataset_version == v2
 

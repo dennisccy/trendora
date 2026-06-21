@@ -25,7 +25,9 @@ boot path is untouched — this job is on-demand only and opens its OWN DB sessi
 Every job limit / display cap is read from `config.data_manager` (anti-goal: No magic numbers)."""
 from __future__ import annotations
 
+import copy
 import csv
+import hashlib
 import json
 import os
 import threading
@@ -67,7 +69,10 @@ from app.models import (
     SectorScoreRow,
     ThemeScoreRow,
 )
-from app.engine.research import _dataset_version  # single-sourced cache stamp (J-72/J-87) — never duplicated
+from app.engine.research import (
+    _dataset_version,  # single-sourced cache stamp (J-72/J-87) — never duplicated
+    _membership_dataset_version,  # J-100: the NARROW membership-cache stamp (no forward-return term)
+)
 from app.seed_loader import all_seed_symbols
 
 # Injectable sleep (J-34): the chunked fetch's inter-request delay + 429 backoff call this. Tests pass
@@ -554,11 +559,16 @@ def membership_timeline_cached(
     (No recompute in the read path; permitted by the "derived once… persisted/cached, read from storage"
     clause for a deterministic read-only derivation).
 
-    Because the key carries the SAME `_dataset_version` stamp J-72 / J-87 use (single-sourced), the cache
-    REFRESHES automatically after any dataset change (a backfill add, a removal, or the J-85 rebuild) — a
-    stale row keyed to an older stamp is never hit (and is pruned on write). The cached timeline spans the
-    WHOLE history, so the key has no as-of slot — exactly one row per dataset version."""
-    version = _dataset_version(session)
+    iter-42 (J-100): the key now carries the NARROW `_membership_dataset_version` stamp (the snapshot set
+    + bars manifest + `min_history_bars`), NOT the J-72/J-87 `_dataset_version` (which folds in the
+    forward-return row count). The membership timeline reads NO forward return, so a warm-up forward-return
+    insert MUST NOT invalidate it — under the old broad stamp every forward-return insert churned the key
+    and re-ran the O(dates × pool) resolver loop (the recompute storm J-100 closes). The narrow stamp still
+    REFRESHES on a real membership change — a backfill add, a removal, or the J-85 rebuild — because each
+    of those changes the snapshot set or the bars manifest; a stale row keyed to an older narrow stamp is
+    never hit (and is pruned on write). The cached timeline spans the WHOLE history, so the key has no
+    as-of slot — exactly one row per membership dataset version."""
+    version = _membership_dataset_version(session, cfg)
 
     hit = session.exec(
         select(MembershipTimelineCache).where(
@@ -598,8 +608,156 @@ def membership_timeline_cached(
     return payload
 
 
+# --------------------------------------------------------------------------------------------------
+# J-100 (iter-42) — single-flight + result cache around `compute_coverage`'s heavy work.
+#
+# The iter-35/36/37 saga left ONE residual cost on the `/api/data` read path: even with the membership
+# timeline cached, EVERY `compute_coverage` call still resolved `_resolved_universe` (`resolve_with_reasons`,
+# ~8 s warm on the post-rebuild DB) per request with no single-flight. So N concurrent `/api/data` probes
+# cost N heavy resolves — each holding a DB connection ~10 s — exhausting the pool (size 5 + overflow 10)
+# and swap-thrashing the whole VM (the documented intermittent freeze). This single-flight makes N
+# concurrent callers for the SAME resolved as-of + SAME membership-dataset stamp share ONE computation:
+# the first computes (inside ONE shared process-level bar cache, scope (c) — load-once, memory-bounded);
+# the rest WAIT on a per-key event and return the SAME cached payload. The served payload is BYTE-IDENTICAL
+# to today's single-request output (it IS today's compute, run once and shared).
+#
+# It REUSES the warm-up controller's idiom (`warmup._WARMUP_LOCK` + a per-key in-flight guard) rather than
+# inventing a new abstraction. The cache key is `(resolved_as_of_iso, membership_dataset_version)` — the
+# membership stamp (scope (b)) changes on a real snapshot/bar change but NOT on a forward-return insert, so
+# the cached coverage refreshes EXACTLY when a served value could change and is reused across the warm-up's
+# forward-return churn. The cache holds only the LATEST few keys (bounded; a stale-stamp entry is dropped),
+# never persisted to the DB — it is an in-process responsiveness layer, not a source of truth.
+_COVERAGE_LOCK = threading.Lock()
+# per-key in-flight events: key -> threading.Event set when the first computer finishes (so waiters wake).
+_COVERAGE_INFLIGHT: dict[tuple, threading.Event] = {}
+# the cached coverage payloads: key -> the computed dict. Bounded to the most-recent keys (see prune below).
+_COVERAGE_RESULTS: dict[tuple, dict] = {}
+# how many distinct (as_of, stamp) keys to retain — the live page asks for at most a handful of as-of
+# dates at a time, and a stamp change invalidates the rest; this just bounds the dict against churn.
+_COVERAGE_CACHE_MAX_KEYS = 8
+
+
+def _db_identity(session: Session) -> str:
+    """The bound database URL — scopes the in-process coverage cache to the ACTUAL data source. In
+    production there is exactly one DB (one URL) so this is a constant; in tests each tmp-DB engine gets
+    its OWN cache key space, so two distinct in-memory engines that happen to share a membership stamp
+    (e.g. two empty three-snapshot fixtures, both `r3-rc3-bnone-bc0`) never serve each other's payload (a
+    real stale-cache class the stamp alone would not catch — iter-38/39 cached-payload trap)."""
+    try:
+        return str(session.get_bind().url)
+    except Exception:  # extremely defensive: a session with no resolvable bind → a single shared bucket.
+        return "default"
+
+
+# config-fingerprint memo: coverage output also depends on config values the membership stamp does NOT
+# fold in (`gap_preview`, the per-symbol thin threshold, `universe.filters`, `universe.symbols`, …). In
+# production exactly ONE cfg object lives for the process lifetime (reused per request), so the fingerprint
+# is computed ONCE and reused; tests that pass a DISTINCT cfg get a DISTINCT fingerprint, so a second call
+# with a different config never serves the first config's cached payload (the thin-threshold test trap).
+# Memoized by `id(cfg)`, holding a reference to the cfg so its id cannot be recycled while the memo lives.
+_CFG_FINGERPRINTS: dict[int, tuple] = {}
+
+
+def _config_fingerprint(cfg: Config) -> str:
+    """A stable content hash of the full config — folds EVERY coverage-affecting config value into the
+    cache key so a different config never serves a cached payload computed under another (the thin-
+    threshold / filter / gap-preview class the membership stamp alone would miss). Memoized by `id(cfg)`
+    (production reuses one cfg object, so this hashes once); the memo holds the cfg reference so its id is
+    not recycled into a stale fingerprint."""
+    memo = _CFG_FINGERPRINTS.get(id(cfg))
+    if memo is not None and memo[0] is cfg:
+        return memo[1]
+    fingerprint = hashlib.sha1(cfg.model_dump_json().encode()).hexdigest()
+    _CFG_FINGERPRINTS[id(cfg)] = (cfg, fingerprint)
+    # bound the memo (configs are rarely many; this just guards a pathological churn of throwaway configs).
+    if len(_CFG_FINGERPRINTS) > _COVERAGE_CACHE_MAX_KEYS * 2:
+        _CFG_FINGERPRINTS.clear()
+        _CFG_FINGERPRINTS[id(cfg)] = (cfg, fingerprint)
+    return fingerprint
+
+
+def _coverage_cache_key(session: Session, as_of: Optional[date_cls], cfg: Config) -> tuple:
+    """The single-flight / result-cache key: the bound DB identity + a full-config fingerprint + the
+    RESOLVED as-of (the actual date the universe is resolved at, so `None`-falls-back-to-latest and an
+    explicit-latest map to the SAME key) + the NARROW membership-dataset stamp (scope (b) — changes on a
+    snapshot/bar change, NOT on a forward-return insert). Two callers share a compute iff they read the
+    SAME DB under the SAME config and would produce the byte-identical payload."""
+    resolved_asof = _resolve_coverage_asof(session, as_of, cfg)
+    asof_key = resolved_asof.isoformat() if resolved_asof is not None else None
+    stamp = _membership_dataset_version(session, cfg)
+    return (_db_identity(session), _config_fingerprint(cfg), asof_key, stamp)
+
+
 def compute_coverage(
     session: Session, config: Optional[Config] = None, *, as_of: Optional[date_cls] = None
+) -> dict:
+    """Current dataset coverage — single-flight + result-cached (J-100), byte-identical to the underlying
+    `_compute_coverage_uncached`. Concurrent `/api/data` callers for the SAME resolved as-of + membership
+    stamp share ONE heavy compute (the first computes inside one shared bar cache; the rest wait and reuse
+    the cached payload) — so N parallel probes cost ~one resolve, not N (the pool-exhaustion / VM-freeze
+    fix). Returns a deep COPY of the cached payload so a caller mutating its result never corrupts a shared
+    cache entry. The cache refreshes on any real membership change (the narrow stamp) and is reused across
+    the warm-up's forward-return churn (which leaves the stamp unchanged). A `config` override or a
+    standalone-test path with no concurrency still goes through this wrapper (correct + cheap)."""
+    cfg = config or get_config()
+    key = _coverage_cache_key(session, as_of, cfg)
+
+    # fast path: an already-cached payload for this exact key — return a deep copy (no recompute, no lock
+    # contention beyond the brief dict read). This is the warm-hit path N-1 of N concurrent probes take.
+    with _COVERAGE_LOCK:
+        cached = _COVERAGE_RESULTS.get(key)
+        if cached is not None:
+            return copy.deepcopy(cached)
+        event = _COVERAGE_INFLIGHT.get(key)
+        if event is None:
+            # we are the FIRST caller for this key — claim it: register an unset event, then compute below
+            # OUTSIDE the lock (so we never hold the global lock across the ~8 s resolve).
+            event = threading.Event()
+            _COVERAGE_INFLIGHT[key] = event
+            is_owner = True
+        else:
+            is_owner = False
+
+    if not is_owner:
+        # another caller is computing this exact key — wait for it, then return the shared cached payload.
+        event.wait()
+        with _COVERAGE_LOCK:
+            cached = _COVERAGE_RESULTS.get(key)
+        if cached is not None:
+            return copy.deepcopy(cached)
+        # defensive: the owner failed to cache (an exception). Fall through and compute ourselves (rare).
+
+    # OWNER path (or the defensive fall-through): compute ONCE, publish, wake any waiters.
+    try:
+        payload = _compute_coverage_uncached(session, cfg, as_of=as_of)
+        with _COVERAGE_LOCK:
+            _COVERAGE_RESULTS[key] = payload
+            # bound the cache: drop the oldest keys (insertion order) beyond the retention cap so a long-
+            # running process that sees many as-of/stamp keys never grows the dict unbounded.
+            while len(_COVERAGE_RESULTS) > _COVERAGE_CACHE_MAX_KEYS:
+                oldest = next(iter(_COVERAGE_RESULTS))
+                del _COVERAGE_RESULTS[oldest]
+        return copy.deepcopy(payload)
+    finally:
+        # release the in-flight slot + wake waiters whether we succeeded or raised (a waiter then either
+        # finds the cached payload or computes defensively — never deadlocks on a failed owner).
+        with _COVERAGE_LOCK:
+            _COVERAGE_INFLIGHT.pop(key, None)
+        event.set()
+
+
+def reset_coverage_cache() -> None:
+    """Clear the in-process single-flight coverage caches (J-100). For tests that mutate the DB and need a
+    fresh compute, and for any explicit invalidation hook — the cache is keyed on the membership stamp so a
+    real data change already invalidates it, but a test that asserts the compute COUNT wants a clean slate."""
+    with _COVERAGE_LOCK:
+        _COVERAGE_RESULTS.clear()
+        _COVERAGE_INFLIGHT.clear()
+        _CFG_FINGERPRINTS.clear()
+
+
+def _compute_coverage_uncached(
+    session: Session, cfg: Config, *, as_of: Optional[date_cls] = None
 ) -> dict:
     """Current dataset coverage — purely descriptive, recomputing NO canonical value:
       - price-history date range (min/max `DailyPrice.date`) and distinct symbol count,
@@ -618,8 +776,30 @@ def compute_coverage(
     (`candidate_universe_count`) are carried beside it. `universe_diagnostic` (J-94) is the per-date
     admitted + excluded-by-reason counts at `as_of`; `membership_timeline` (J-96) is the per-snapshot-date
     resolved-size step function + entries/exits + per-date excluded counts. Every figure is read-only
-    descriptive metadata over the stored bars + config thresholds (recomputes no canonical score/return)."""
-    cfg = config or get_config()
+    descriptive metadata over the stored bars + config thresholds (recomputes no canonical score/return).
+
+    iter-42 (J-100), scope (c): the WHOLE descriptive derivation runs inside ONE shared process-level
+    `prefilled_bar_cache` (load-once) — so `_resolved_universe`'s `resolve_with_reasons` sources its
+    trailing-bar counts from a single once-loaded copy of every symbol's series (memory bounded to one
+    copy regardless of concurrency), the membership cold-compute reuses that SAME cache (the inner
+    `prefilled_bar_cache` is re-entrant for this session — it never re-loads an already-loaded series),
+    and a no-bar candidate is recorded as an empty series up front (the iter-37 J-46 load-once invariant,
+    preserved). The cache reads the committed bars (adds none) and dies with the `with` block — never a
+    stale series. Byte-identical to the pre-change per-request path: same rows, same admission, same
+    figures — only HOW bars are loaded changes (a pure performance refactor)."""
+    # the committed candidate-pool symbols the resolver + the membership derivation ask `trailing_count`
+    # about — recorded (incl. no-bar names as []) up front so the read path is load-once (iter-37 J-46).
+    pool_symbols = {row["symbol"] for row in read_pool()}
+    with prefilled_bar_cache(session, expected_symbols=pool_symbols):
+        return _compute_coverage_body(session, cfg, as_of=as_of)
+
+
+def _compute_coverage_body(
+    session: Session, cfg: Config, *, as_of: Optional[date_cls] = None
+) -> dict:
+    """The coverage derivation body (runs inside the shared bar-cache context from
+    `_compute_coverage_uncached`). Split out so the cache context wraps EVERY read below (the resolver +
+    the membership cold-compute + the per-symbol table) with no signature change at the call sites."""
     price_min = session.scalar(select(func.min(DailyPrice.date)))
     price_max = session.scalar(select(func.max(DailyPrice.date)))
     symbol_count = session.scalar(select(func.count(func.distinct(DailyPrice.symbol))))

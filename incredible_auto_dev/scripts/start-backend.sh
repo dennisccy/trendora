@@ -28,7 +28,37 @@ if [[ -d alembic ]]; then
   "$REPO_ROOT/apps/backend/.venv/bin/alembic" upgrade head 2>/dev/null || true
 fi
 
+# iter-42 (J-100) — bounded-resource ops guards. EVERY bound is read from config (anti-goal: No magic
+# numbers — no concurrency/timeout/memory literal lives in this script). The venv python prints the four
+# tunables from `config.server`; env overrides (CHAIN_SERVER_*) win for an operator-tuned run. Under
+# concurrent dashboard / goal-mode UI-test load these keep the backend responsive + memory-bounded: the
+# uvicorn --limit-concurrency cap + the single-flight coverage cache mean N parallel /api/data probes cost
+# ~one heavy compute (never N connection-holding resolves that exhaust the pool), and the ulimit -v cap
+# OOM-kills ONE runaway process rather than swap-thrashing the whole VM.
+read -r CFG_LIMIT_CONCURRENCY CFG_KEEP_ALIVE CFG_GRACEFUL CFG_MEMORY_CAP_MB < <(
+  "$REPO_ROOT/apps/backend/.venv/bin/python" - <<'PY'
+from app.config import load_config
+s = load_config().server
+print(s.limit_concurrency, s.timeout_keep_alive_seconds, s.graceful_timeout_seconds, s.memory_cap_mb)
+PY
+)
+LIMIT_CONCURRENCY="${CHAIN_SERVER_LIMIT_CONCURRENCY:-$CFG_LIMIT_CONCURRENCY}"
+KEEP_ALIVE="${CHAIN_SERVER_KEEP_ALIVE:-$CFG_KEEP_ALIVE}"
+GRACEFUL="${CHAIN_SERVER_GRACEFUL_TIMEOUT:-$CFG_GRACEFUL}"
+MEMORY_CAP_MB="${CHAIN_SERVER_MEMORY_CAP_MB:-$CFG_MEMORY_CAP_MB}"
+
+# Per-process virtual-memory cap (ulimit -v takes KiB). Bounds THIS process tree's address space so a
+# pathological N-copy memory spike is OOM-killed as ONE backend process, never a VM-wide swap freeze.
+# `ulimit -v` only LOWERS a soft limit (it cannot exceed a stricter inherited hard cap); if the host
+# already enforces a lower cap we keep it (|| true) rather than fail the start.
+if [[ -n "$MEMORY_CAP_MB" && "$MEMORY_CAP_MB" -gt 0 ]]; then
+  ulimit -v $(( MEMORY_CAP_MB * 1024 )) 2>/dev/null || true
+fi
+
 exec "$REPO_ROOT/apps/backend/.venv/bin/uvicorn" main:app \
   --host 0.0.0.0 \
   --port "$PORT" \
-  --app-dir "$REPO_ROOT/apps/backend"
+  --app-dir "$REPO_ROOT/apps/backend" \
+  --limit-concurrency "$LIMIT_CONCURRENCY" \
+  --timeout-keep-alive "$KEEP_ALIVE" \
+  --timeout-graceful-shutdown "$GRACEFUL"

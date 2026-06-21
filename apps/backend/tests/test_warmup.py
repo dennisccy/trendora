@@ -54,7 +54,7 @@ from app.engine.warmup import (
     _warmup_dates,
 )
 from app.engine.data_manager import _membership_timeline, membership_timeline_cached
-from app.engine.research import _dataset_version
+from app.engine.research import _membership_dataset_version
 from app.models import (
     ForwardReturn,
     MembershipTimelineCache,
@@ -209,16 +209,21 @@ def test_warmup_produced_every_cadence_snapshot_and_forward_returns(warmed_engin
 # ==================================================================================================
 def test_warmup_precomputes_membership_timeline_cache(warmed_engine):
     """After the background warm-up finishes, the dynamic-universe membership-timeline cache is already
-    populated under the CURRENT `_dataset_version` stamp — so the first `GET /api/data` serves it from
+    populated under the CURRENT membership-dataset stamp — so the first `GET /api/data` serves it from
     storage rather than paying the per-date resolver loop synchronously (the iter-35 regression fix). The
     cached payload is byte-identical to a fresh `_membership_timeline(...)` compute (a cache of the
-    deterministic derivation, not a second computation)."""
+    deterministic derivation, not a second computation).
+
+    iter-42 (J-100): the cache row is keyed by the NARROW `_membership_dataset_version` (the snapshot set +
+    bars manifest), NOT the broad `_dataset_version` (which folds in the forward-return count). The warm-up
+    precomputes the membership cache AFTER the forward-return backfill, but because the narrow stamp is
+    INDEPENDENT of the forward-return inserts the warmed row stays valid for a subsequent read (no recompute
+    storm) — exactly the stamp a `GET /api/data` looks up."""
     engine, cfg = warmed_engine["engine"], warmed_engine["cfg"]
     with Session(engine) as session:
-        version = _dataset_version(session)
+        version = _membership_dataset_version(session, cfg)
         rows = session.exec(select(MembershipTimelineCache)).all()
-        # exactly ONE cache row, keyed to the FINAL dataset version (computed AFTER the forward-return
-        # backfill so the stamp matches the one a subsequent read looks up).
+        # exactly ONE cache row, keyed to the membership-dataset stamp the warm-up wrote under.
         assert len(rows) == 1, f"expected exactly one warmed cache row, got {len(rows)}"
         assert rows[0].dataset_version == version
         # the cached payload is byte-identical to a fresh compute over the same warmed DB.

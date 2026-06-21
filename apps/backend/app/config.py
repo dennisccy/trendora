@@ -478,6 +478,49 @@ class StartupCfg(BaseModel):
         return self
 
 
+class ServerOpsCfg(BaseModel):
+    """iter-42 (J-100) — bounded-resource SERVER ops guards. The SINGLE source of the uvicorn concurrency
+    cap, the keep-alive + graceful-shutdown timeouts, and the per-process virtual-memory cap the start
+    script (`scripts/start-backend.sh`) enforces (anti-goal: No magic numbers — NO concurrency/timeout/
+    memory literal lives in the script; it reads every value from here via the venv python). These keep the
+    backend responsive + memory-bounded under concurrent dashboard / goal-mode UI-test load:
+
+      - `limit_concurrency`        — uvicorn `--limit-concurrency`: the max simultaneous connections before
+                                     a 503, so a heavy `/api/data` burst never starves `/health` + light
+                                     reads (paired with the single-flight coverage cache, N parallel probes
+                                     cost ~one heavy compute, not N connection-holding resolves).
+      - `timeout_keep_alive_seconds` — uvicorn `--timeout-keep-alive`: the idle keep-alive timeout; a heavy
+                                     warm `/api/data` read is ~10 s, so this is bounded generously above it.
+      - `graceful_timeout_seconds` — uvicorn `--timeout-graceful-shutdown`: bounds how long a heavy in-flight
+                                     request may delay shutdown.
+      - `memory_cap_mb`            — `ulimit -v` virtual-memory cap (MB) for the backend process: clears the
+                                     one-copy ~1.3M-row bar prefill + headroom, so a pathological N-copy
+                                     spike is OOM-killed as ONE process rather than swap-thrashing the VM.
+
+    Default-populated (a config predating it — and the inline test fixtures — still loads unchanged). Every
+    value MUST be positive; an invalid block raises `ValueError` at load, never a silent default."""
+
+    model_config = ConfigDict(extra="allow")
+    limit_concurrency: int = 64
+    timeout_keep_alive_seconds: int = 65
+    graceful_timeout_seconds: int = 120
+    memory_cap_mb: int = 6144
+
+    @model_validator(mode="after")
+    def _validate(self) -> "ServerOpsCfg":
+        bad = sorted(
+            k for k, v in {
+                "limit_concurrency": self.limit_concurrency,
+                "timeout_keep_alive_seconds": self.timeout_keep_alive_seconds,
+                "graceful_timeout_seconds": self.graceful_timeout_seconds,
+                "memory_cap_mb": self.memory_cap_mb,
+            }.items() if v <= 0
+        )
+        if bad:
+            raise ValueError(f"server ops values must be positive: {bad}")
+        return self
+
+
 class ControlGroupCfg(BaseModel):
     """Walk-forward control-group parameters (iter-6). The random same-sector cohort is drawn with a
     deterministic RNG re-seeded from `seed` on every computation (reproducible across calls/restarts
@@ -1737,6 +1780,10 @@ class Config(BaseModel):
     stock_industries: dict[str, list[str]] = Field(default_factory=dict)
     scanner: ScannerCfg
     startup: StartupCfg  # iter-28 (J-40/J-41) fast-ready boot + warm-up tunables (boot-validated above)
+    # iter-42 (J-100) — bounded-resource server ops guards (uvicorn concurrency/timeout caps + the process
+    # ulimit -v memory cap) the start script reads. Default-populated so a config/test fixture predating it
+    # still loads unchanged and serves the documented bounds.
+    server: ServerOpsCfg = Field(default_factory=ServerOpsCfg)
     walk_forward: WalkForwardCfg
     patterns: PatternsCfg
     methodology: MethodologyCfg
