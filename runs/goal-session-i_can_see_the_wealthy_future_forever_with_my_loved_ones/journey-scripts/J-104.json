@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "journey": "J-104",
+  "name": "Research labs load reliably — page split and lazy-loaded",
+  "default_timeout_ms": 30000,
+  "steps": [
+    {"n": 1, "journey": "J-104", "action": {"type": "goto", "url": "/research"}, "expect": {"text": "Factor Lab"}},
+    {"n": 2, "journey": "J-104", "action": {"type": "goto", "url": "/research"}, "expect": {"text": "Severity-velocity × Regime"}},
+    {"n": 3, "journey": "J-104", "action": {"type": "click", "target": {"css": "a[href*='severity-velocity']"}}, "expect": {"text": "n=241"}},
+    {"n": 4, "journey": "J-104", "action": {"type": "goto", "url": "/research/regime-setup-pattern"}, "expect": {"text": "N="}},
+    {"n": 5, "journey": "J-104", "action": {"type": "goto", "url": "/research/factor-combination"}, "expect": {"text": "N="}},
+    {"n": 6, "journey": "J-104", "action": {"type": "goto", "url": "/research/downtrend-opportunity"}, "expect": {"text": "N="}},
+    {"n": 7, "journey": "J-104", "action": {"type": "goto", "url": "/research/recovery-turn-edge"}, "expect": {"text": "N="}}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "journey": "J-103",
+  "name": "Severity-velocity × regime forward-return study",
+  "default_timeout_ms": 15000,
+  "steps": [
+    {"n": 1, "journey": "J-103", "action": {"type": "goto", "url": "/research/severity-velocity"}, "expect": {"text": "Severity-velocity × Regime"}},
+    {"n": 2, "journey": "J-103", "action": {"type": "goto", "url": "/research/severity-velocity"}, "expect": {"text": "n=241"}},
+    {"n": 3, "journey": "J-103", "action": {"type": "click", "target": {"role": "button", "name": "5d"}}, "expect": {"text": "n=247"}},
+    {"n": 4, "journey": "J-103", "action": {"type": "goto", "url": "/research/samples?kind=severity-velocity&horizon=20&family=risk_on&velocity_sign=rising"}, "expect": {"text": "Total observations: 241"}},
+    {"n": 5, "journey": "J-103", "action": {"type": "goto", "url": "/research/severity-velocity"}, "expect": {"text": "NOT supported"}}
+  ]
+}

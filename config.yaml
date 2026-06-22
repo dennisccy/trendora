@@ -863,6 +863,23 @@ research:
       - { key: moderate, label: "Moderate P(bear) (0.25–0.50)", min: 0.25, max: 0.50 }
       - { key: high,     label: "High P(bear) (0.50–0.75)",   min: 0.50, max: 0.75 }
       - { key: extreme,  label: "Extreme P(bear) (0.75–1.0)", min: 0.75, max: 1.0 }
+  # iter-45 CONSUMED — Severity-velocity × Regime study (J-103). The read-only
+  # app.engine.research.compute_severity_velocity_study GROUPS the stored SPY forward_returns by the
+  # (regime FAMILY, velocity SIGN) at each snapshot date — both vocabularies live here so no regime/family
+  # list or sign label is hard-coded in calc code (anti-goal: No magic numbers). The families PARTITION the
+  # six regime.labels into the coarse risk-on / neutral / risk-off ("red") bands (cross-checked at boot
+  # against regime.labels — every label assigned once, none missing). The velocity-sign keys MUST be exactly
+  # [rising, flat, falling] (the SIGN of the served severity_velocity decides membership; only the labels
+  # are tunable). Horizons + the low-sample threshold are REUSED from walk_forward (no new threshold).
+  severity_velocity:
+    regime_families:                                  # partition regime.labels into coarse families
+      - { key: risk_on,  label: "Risk-on",        regimes: ["Strong risk-on", "Risk-on"] }
+      - { key: neutral,  label: "Neutral",        regimes: ["Narrow leadership", "Choppy"] }
+      - { key: risk_off, label: "Risk-off (red)", regimes: ["Defensive", "Risk-off"] }
+    velocity_signs:                                   # keys MUST be exactly [rising, flat, falling]
+      - { key: rising,  label: "Rising stress (velocity > 0)" }
+      - { key: flat,    label: "Flat (velocity = 0)" }
+      - { key: falling, label: "Falling stress (velocity < 0)" }
 
 # ----------------------------------------------------------------------------------------
 # iter-29 CONSUMED — Market Phase & drawdown-Severity layer (J-87). The read-only derivation

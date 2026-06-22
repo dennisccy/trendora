@@ -37,13 +37,14 @@ from app.engine.prices import latest_data_date
 from app.engine.research import (
     ALL_VIEWS,
     VIEW_EPISODES,
-    compute_factor_combination,
     compute_factor_lab,
-    compute_regime_setup_pattern_study,
     downtrend_opportunity_cached,
     event_study_cached,
     factor_catalog,
+    factor_combination_cached,
     recovery_turn_edge_cached,
+    regime_setup_pattern_cached,
+    severity_velocity_cached,
     subject_catalog,
 )
 from app.engine.samples import (
@@ -196,7 +197,9 @@ def factor_combination(
     # iter-19 (J-32): the optional single global as-of scoping cutoff (shared resolver — 422/400; never
     # hand-rolled). Omitted/empty -> all-history. Not a second date state (J-18).
     cutoff = resolved_date(session, as_of, cfg) if as_of else None
-    return compute_factor_combination(session, conditions, resolved_horizon, cfg, as_of=cutoff)
+    # J-104(a): serve from the persisted/cached derived aggregate (byte-identical to a fresh compute; the
+    # cache refreshes after any dataset change via the dataset-version key) — never recomputed per request.
+    return factor_combination_cached(session, conditions, resolved_horizon, cfg, as_of=cutoff)
 
 
 @router.get("/research/event-study")
@@ -306,9 +309,48 @@ def regime_setup_pattern(
         )
 
     cutoff = resolved_date(session, as_of, cfg) if as_of else None
-    return compute_regime_setup_pattern_study(
+    # J-104(a): serve from the persisted/cached derived aggregate (byte-identical to a fresh compute; the
+    # cache refreshes after any dataset change via the dataset-version key) — never recomputed per request.
+    return regime_setup_pattern_cached(
         session, resolved_horizon, cfg, as_of=cutoff, view=resolved_view
     )
+
+
+@router.get("/research/severity-velocity")
+def severity_velocity(
+    horizon: Optional[int] = Query(default=None, description="forward window in trading days; defaults to config default_horizon"),
+    as_of: Optional[str] = Query(
+        default=None,
+        description="optional point-in-time cutoff (YYYY-MM-DD) — the single global as-of; omitted = all-history",
+    ),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Serve the Severity-velocity × Regime forward-return study (J-103) for the requested `horizon`
+    (defaults: config default_horizon). Builds a regime-family × velocity-sign matrix of the stored
+    benchmark (SPY) forward return (mean / win-rate / N per cell) by GROUPING the stored `forward_returns`
+    joined to the served `severity_velocity` (J-102) + the stored regime label per snapshot date — it
+    recomputes no canonical return / regime / slope (Single source of truth; No recompute in the read path).
+    Validates `horizon` against `walk_forward.horizons` (422 otherwise); 503 when no price data exists —
+    mirroring the sibling research handlers exactly. The optional `as_of` (J-32) scopes the pool + the served
+    velocity to snapshots dated <= D (the single global as-of — a mode, not a second date state); omitted =
+    all-history (the default aggregate). The payload is `severity_velocity_cached(...)` verbatim — a read-only
+    grouping of ALREADY-STORED forward returns, never recomputed in the view. No order/execution affordance
+    (research evidence only)."""
+    cfg: Config = get_config()
+    wf = cfg.walk_forward
+
+    if latest_data_date(session) is None:
+        raise HTTPException(status_code=503, detail="no price data available")
+
+    resolved_horizon = wf.default_horizon if horizon is None else horizon
+    if resolved_horizon not in wf.horizons:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown horizon {resolved_horizon}; valid horizons are {list(wf.horizons)}",
+        )
+
+    cutoff = resolved_date(session, as_of, cfg) if as_of else None
+    return severity_velocity_cached(session, resolved_horizon, cfg, as_of=cutoff)
 
 
 @router.get("/research/recovery-turn-edge")
@@ -438,6 +480,9 @@ def research_samples(
     # downtrend-opportunity selector (J-91) — `dimension` (phase|severity_band|pbear_band) + `cohort` (the
     # cohort key in that dimension's config catalog)
     dimension: Optional[str] = Query(default=None, description="downtrend conditioning dimension (phase|severity_band|pbear_band)"),
+    # severity-velocity selector (J-103) — `family` (a regime family key) + `velocity_sign` (rising|flat|falling)
+    family: Optional[str] = Query(default=None, description="a regime family key (severity-velocity kind)"),
+    velocity_sign: Optional[str] = Query(default=None, description="a velocity sign key: rising|flat|falling (severity-velocity kind)"),
     as_of: Optional[str] = Query(
         default=None,
         description="optional point-in-time cutoff (YYYY-MM-DD) — the single global as-of; omitted = all-history",
@@ -514,6 +559,7 @@ def research_samples(
             subject_key=subject, view=resolved_view,
             setup=setup, pattern=pattern, phase=phase,
             dimension=dimension,
+            family=family, velocity_sign=velocity_sign,
         )
     except ValueError as exc:
         # an unknown/out-of-range cohort selector is an explicit 4xx — never a silent empty 200 (which is

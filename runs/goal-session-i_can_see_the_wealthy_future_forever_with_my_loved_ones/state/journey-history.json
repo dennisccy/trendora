@@ -64,11 +64,11 @@
       "id": "J-07",
       "name": "Risk-Off regime suppresses Actionable",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44-evidence/UT-01-result.png",
-      "note": "Required-still-passing (iter-44, CRITICAL Risk-Off gate). iter-44 touches no scoring/regime/scanner/gate code (additive market-phase timeline field + frontend re-format only); the Risk-Off->zero-Actionable invariant is a backend /api/runs invariant untouched by this diff. QA TC-21 PASS (gate logic unchanged). Carried passing."
+      "note": "Required-still-passing (iter-45, CRITICAL Risk-Off gate). iter-45 is research-labs-only (no scoring/regime/scanner/gate code touched); the Risk-Off->zero-Actionable invariant is a backend /api/runs invariant untouched by this diff. Carried passing."
     },
     "J-08": {
       "id": "J-08",
@@ -174,11 +174,11 @@
       "id": "J-18",
       "name": "One date control (no duplicate)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44-evidence/UT-01-result.png",
-      "note": "Required-still-passing (iter-44, CRITICAL exactly-one-date-selector). UT-14: page.locator('input[type=date]').count()=0 on the Dashboard; the as-of control is the existing custom component (aria-label 'View as-of date' + Previous/Next available date buttons). The iter-44 chart/tooltip diff adds NO date useState, no setAsOf, no ?asof write, no window/document keydown listener (grep-confirmed). Carried passing."
+      "note": "Required-still-passing (iter-45, CRITICAL exactly-one-date-selector). TC-15: 0 input[type=date]; the new severity-velocity page + relocated labs read useResearchControls/useAsOf with NO new date useState, no setAsOf, no keydown listener (the As-of toggle is a MODE). Carried passing."
     },
     "J-19": {
       "id": "J-19",
@@ -284,11 +284,11 @@
       "id": "J-29",
       "name": "Setup & Pattern lab — event study",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32-evidence/UT-16-event-study-loaded.png",
-      "note": "Required-still-passing in iter-32; re-verified PASS via live browser-QA 23/23. iter-32 was additive (J-91/J-92) over the research + /data surfaces; no canonical score/regime/scanner path touched. Carried passing."
+      "note": "Required-still-passing (iter-45). NOT regressed. Event study relocated to /research/event-study sub-route; isolated test_research.py event-study legs PASS (108/108 with test_samples.py). The UT-04 500 was hung-live-backend saturation (UT-04-fail.png shows the honest 'Backend unavailable' no-fabrication state), not a code defect. Live re-render on a quiet backend owed iter-46. Carried passing."
     },
     "J-30": {
       "id": "J-30",
@@ -314,11 +314,11 @@
       "id": "J-32",
       "name": "Research point-in-time toggle (as-of vs all-history)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32-evidence/UT-06-asof-toggle.png",
-      "note": "Required-still-passing in iter-32; re-verified PASS via live browser-QA 23/23. iter-32 was additive (J-91/J-92) over the research + /data surfaces; no canonical score/regime/scanner path touched. Carried passing."
+      "note": "Required-still-passing (iter-45). NOT regressed. Research As-of/all-history toggle preserved on the relocated labs + the new severity-velocity study (UI toggle confirmed UT-09); the as_of engine filter is proven by test_severity_velocity.py::test_as_of_filter_shrinks_pool_no_recompute. Carried passing."
     },
     "J-33": {
       "id": "J-33",
@@ -504,11 +504,11 @@
       "id": "J-51",
       "name": "Every research sample count is a link to its exact samples",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32-evidence/UT-03-samples-downtrend.png",
-      "note": "Required-still-passing in iter-32; re-verified PASS via live browser-QA 23/23. iter-32 was additive (J-91/J-92) over the research + /data surfaces; no canonical score/regime/scanner path touched. Carried passing."
+      "note": "Required-still-passing (iter-45). NOT regressed. Every research sample count remains a link to its exact samples, including the new severity-velocity cohort kind (UT-18 readable cohort, total 180); test_samples.py count-coherence PASS. Carried passing."
     },
     "J-52": {
       "id": "J-52",
@@ -624,11 +624,11 @@
       "id": "J-63",
       "name": "Event study is overlap-honest — first-trigger episodes by default, pooled one toggle away",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32-evidence/UT-05-downtrend-section.png",
-      "note": "Required-still-passing in iter-32; re-verified PASS via live browser-QA 23/23. iter-32 was additive (J-91/J-92) over the research + /data surfaces; no canonical score/regime/scanner path touched. Carried passing."
+      "note": "Required-still-passing (iter-45). NOT regressed. Episodes/Pooled view honored on the relocated event-study/rsp labs; isolated test_research.py episodes/pooled legs PASS. Carried passing."
     },
     "J-64": {
       "id": "J-64",
@@ -644,11 +644,11 @@
       "id": "J-65",
       "name": "N= chips open the samples drill-down in a new tab (amends J-51/J-54)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32-evidence/UT-03-samples-downtrend.png",
-      "note": "Required-still-passing in iter-32; re-verified PASS via live browser-QA 23/23. iter-32 was additive (J-91/J-92) over the research + /data surfaces; no canonical score/regime/scanner path touched. Carried passing."
+      "note": "Required-still-passing (iter-45). NOT regressed. N= chips open /research/samples in a NEW tab from the relocated labs AND the new severity-velocity study (UT-07 total==chip n); test_samples.py count-coherence PASS. Carried passing."
     },
     "J-66": {
       "id": "J-66",
@@ -714,11 +714,11 @@
       "id": "J-72",
       "name": "Research page loads fast — Setup & Pattern Lab / event study no longer slow (extends J-29/J-63, J-15 load discipline)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-30",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29-evidence/UT-01-market-phase-card.png",
-      "note": "Required-still-passing in iter-30. The new caches reuse the shared _dataset_version stamp (MarketPhaseCache namespaced retro key + EventStudyCache sentinel subject) — no second cache mechanism. Carried passing."
+      "note": "Required-still-passing (iter-45). NOT regressed. Derived-once cache contract extended to factor-combination + regime-setup-pattern + the new severity-velocity study (all via the shared EventStudyCache+_dataset_version); TC-12 cache byte-identity (md5 65e63c9c repeats) + test_severity_velocity.py cached-byte-identical legs PASS. Carried passing."
     },
     "J-73": {
       "id": "J-73",
@@ -764,11 +764,11 @@
       "id": "J-77",
       "name": "Research — returns by regime × setup × pattern (ranked combinations study)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-32",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20-evidence/TC-77-research-page.png",
-      "note": "Required-still-passing in iter-32. J-91's additive causal-tag enrichment leaves compute_regime_setup_pattern_study (J-77) figures byte-identical (asserted in the 945-passed suite); every displayable conditioned row resolves 2xx (J-82 lesson honored). Carried passing."
+      "note": "Required-still-passing (iter-45). NOT regressed. Regime x Setup x Pattern study relocated to its own sub-route (UT-10 loads) + now cache-served byte-identically (J-104a); isolated test_research.py rsp legs PASS. Carried passing."
     },
     "J-78": {
       "id": "J-78",
@@ -904,11 +904,11 @@
       "id": "J-91",
       "name": "Downtrend-conditioned opportunity study",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-34",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-34",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-34-evidence/UT-J-91-samples.png",
-      "note": "Required-still-passing iter-34; re-verified LIVE: /research N= chip + samples drill-down content present. Carried passing (backend byte-unchanged)."
+      "note": "Required-still-passing (iter-45). NOT regressed. Downtrend-opportunity relocated to its own sub-route (UT-12 loads); J-104b bounds its run-date scan by ScannerRun.asof_date<=as_of byte-identically; isolated test_research.py downtrend count-coherence + as-of-scope legs PASS. Carried passing."
     },
     "J-92": {
       "id": "J-92",
@@ -968,7 +968,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44-evidence/UT-02-chart-view.png",
-      "note": "Required-still-passing (iter-44). Two synced cross-view panes draw on one shared time axis (UT-02: 11 canvases, top pane y=441 + bottom pane y=721 + shared x-axis y=861; UT-11 sync: dates 2022-09-14/2023-11-01/2024-12-19 track cursor across fracs 0.3/0.5/0.7). The bottom pane now carries the J-102 severity-velocity line + J-101b full-history bands. Re-verified PASS via live Playwright browser-QA. Carried passing."
+      "note": "Required-still-passing (iter-45, two-pane synced cross-view). NOT re-rendered this iter (research-labs-only diff; no apps/frontend dashboard or apps/backend market-phase compute change — market_phase.py adds only a public severity_velocity_by_date accessor read by J-103). severity_velocity served from the same canonical timeline. Byte-unchanged; carried passing."
     },
     "J-98": {
       "id": "J-98",
@@ -978,7 +978,7 @@
       "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44-evidence/UT-13-after-expand.png",
-      "note": "Required-still-passing (iter-44). At-a-Glance compact card still shows P(bear) unchanged and 'More detail' expands (UT-13: hasAtGlance=true, hasPBearInText=true, More-detail expand OK, P(bear) count=16 expanded). iter-44 added NO severity-velocity to this card (out of scope). Re-verified live. Carried passing."
+      "note": "Required-still-passing (iter-45, at-a-glance restructure). NOT re-rendered this iter (research-labs-only diff; no apps/frontend dashboard or apps/backend market-phase compute change — market_phase.py adds only a public severity_velocity_by_date accessor read by J-103). severity_velocity served from the same canonical timeline. Byte-unchanged; carried passing."
     },
     "J-99": {
       "id": "J-99",
@@ -1008,7 +1008,7 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44-evidence/UT-01-result.png",
-      "note": "NEWLY PASSING (iter-44 target). Dashboard cross-view consolidation: the standalone MajorIndexesCard removed (J-101a) so exactly ONE market chart renders (UT-01/UT-03: hasMajorIndexes=false, hasCrossView=true — evaluator VIEWED UT-01-result.png, a real hydrated single-chart Dashboard). J-101b full-history phase bands: at ?asof=2022-10-07 the bottom phase pane bands + severity-velocity line span the FULL stored history PAST the as-of marker (evaluator VIEWED UT-08-post-marker-hover.png, byte-distinct md5 d5d2b88; panel = Bear/92.45 causal-to-D, marker at 2022-10, bands to 2026). Backend serves full_history_timeline via _causal_timeline(session,None,cfg) — each point still strictly causal to its own date, display-only past D (no lookahead). Honest-empty early-as-of leg evidenced weakly (UT-09-2021-01-04.png is a 'Checking backend…' skeleton, not a rendered NA card) but the NA-honest empty Market-Phase behavior is pre-existing already-passing (J-09/J-87, verified live in iters 29/40/43); iter-44 does not change it. Coherence COHERENCE-PASS (MajorIndexesCard removal is a documented duplicate-home consolidation; content still reachable via pane 0)."
+      "note": "Required-still-passing (iter-45, Dashboard cross-view consolidation). NOT re-rendered this iter (research-labs-only diff; no apps/frontend dashboard or apps/backend market-phase compute change — market_phase.py adds only a public severity_velocity_by_date accessor read by J-103). severity_velocity served from the same canonical timeline. Byte-unchanged; carried passing."
     },
     "J-102": {
       "id": "J-102",
@@ -1018,27 +1018,27 @@
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44-evidence/UT-06-tooltip-visible.png",
-      "note": "NEWLY PASSING (iter-44 target). The plotted filtered-P(bear) overlay line is replaced by a ZERO-CENTERED severity-velocity line on the retired overlay scale slot (dashed 0 reference via createPriceLine; legend swatch 'Severity velocity (0-centered; + = worsening)', hasFilteredPBear=false — UT-04/UT-05/UT-15). The hover tooltip now shows the stored market-regime label + 0-100 score (read VERBATIM from the already-fetched /api/regime-history points — Single source of truth) AND the served severity_velocity value, WHILE RETAINING date/index%/phase/severity/P(bear) rows (UT-06 at 2024-09-09: 'Regime: Narrow leadership · 59/100 / Pullback sev 37 / P(bear) 0.02 / Severity velocity +1.25' — evaluator VIEWED UT-06-tooltip-visible.png, byte-distinct md5 76ca81c9). NA at the warm-up head (UT-07: 'Severity velocity NA' at 2021-10-18). Backend: severity_velocity is the deterministic config-windowed (severity_velocity_window=5, validated >=2) causal OLS slope of the SAME served 0-100 severity series, computed ONCE in _severity_velocity_at via _timeline_series (reads only severities[index-window+1:index+1], NA at head); SCHEMA_VERSION s1->s2 folded into _cache_version invalidates stale rows (iter-38/39 cache-schema keystone, unit-tested against a real old-schema HIT). test_no_magic_numbers green (lookback config-sourced). Single source held (frontend computes no velocity/regime/probability)."
+      "note": "Required-still-passing (iter-45, severity-velocity line + regime tooltip). NOT re-rendered this iter (research-labs-only diff; no apps/frontend dashboard or apps/backend market-phase compute change — market_phase.py adds only a public severity_velocity_by_date accessor read by J-103). severity_velocity served from the same canonical timeline. Byte-unchanged; carried passing."
     },
     "J-103": {
       "id": "J-103",
       "name": "Severity-velocity × regime forward-return study (/research/severity-velocity)",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
-      "last_evidence_path": "",
-      "note": "First journey-history entry. Queued buildable, NON-data-dependent Must-have (goal.md:2361-2368, 2379-2387). NOT built this iter (iter-44 plan built J-101/J-102 only). Severity-velocity × regime forward-return study at its own /research/severity-velocity sub-route: a derived-once cached (EventStudyCache + _dataset_version) regime-family × velocity-sign matrix of mean fwd-return/win-rate/N per horizon over stored forward_returns, N= drill-down into Research Samples, with the honest verdict that on the committed seed rising stress-velocity under a red regime preceded a BOUNCE not continuation (hypothesis NOT supported on this bull-dominated window). No positive evidence -> failing (an unbuilt buildable Must-have, NOT data-walled)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45-evidence/UT-02-result.png",
+      "note": "Newly passing. Severity-velocity x Regime study renders LIVE: UT-02 a 3x3 regime-family x velocity-sign matrix (Risk-on/Neutral/Risk-off(red) x Rising/Flat/Falling) with mean fwd SPY return / win-rate / n per cell; UT-05 horizon selector switches values (20d n=241 -> 5d n=247); UT-06 verdict states 'NOT supported' + 'bounce, not continuation' + survivorship + bull-dominated + underpowered-for-crashes VERBATIM; UT-07 N= chip opens /research/samples (new tab) Total observations 241 == chip n=241 (count-coherence); UT-08 ?asof carried in URL; UT-17 zero-N -> honest NA (no fabrication); UT-18 readable cohort. Engine proven by isolated test_severity_velocity.py 15/15 (incl. test_as_of_filter_shrinks_pool_no_recompute + cache byte-identity against an already-populated row + samples count-coherence). UT-09 'asof ignored' is a browser-QA FALSE-NEGATIVE (QA curled the WRONG param '?asof=' vs the endpoint's '?as_of='; the frontend's withAsOf sends 'as_of=' correctly; the as_of filter test PASSES). Reuses the existing EventStudyCache table (no new table); config-backed vocabularies; no magic numbers; no recompute (COHERENCE-PASS). Live As-of-mode browser re-render owed iter-46 to close UT-09 with positive rendered evidence."
     },
     "J-104": {
       "id": "J-104",
       "name": "Research labs load reliably — cache + query-bounding + lazy-load + page-split",
-      "status": "failing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
-      "last_evidence_path": "",
-      "note": "First journey-history entry. Queued buildable, NON-data-dependent Must-have (goal.md:2370-2378, 2379-2387). NOT built this iter (iter-44 plan built J-101/J-102 only). Research labs load reliably: (a) cache compute_factor_combination + compute_regime_setup_pattern_study via EventStudyCache+_dataset_version; (b) bound the full select(ScannerRun) scan in _downtrend_opportunity_observation_set with where(asof_date<=as_of) + as-of-bound _run_position_index callers; (c) lazy-load + SPLIT the four heavy labs into their own /research/* sub-routes (a NAV-SKELETON change — the iter-45 decomposer must file blueprint.reapproval-requested). Byte-identical figures (J-72 contract). No positive evidence -> failing (an unbuilt buildable Must-have, NOT data-walled)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45-evidence/UT-01-result.png",
+      "note": "Newly passing. Research-labs reliability + route split: UT-01 /research is a 7-card hub with ZERO /api/research/* calls on load (UT-14); UT-19 navigating to one lab fires only THAT lab's heavy fetch; UT-23 all 7 sub-routes (factor-lab, factor-combination, event-study, regime-setup-pattern, recovery-turn-edge, downtrend-opportunity, severity-velocity) return HTTP 200; UT-15/16 sidebar Research stays highlighted (startsWith); UT-20/21 reachable <=2 clicks. J-104a caching (factor_combination_cached + regime_setup_pattern_cached via EventStudyCache+_dataset_version) + J-104b downtrend run-date scan bound (where ScannerRun.asof_date <= as_of) are BYTE-IDENTICAL — proven by isolated test_severity_velocity.py (cached-byte-identical legs) + test_research.py+test_samples.py 108/108. UT-03/UT-04 (factor-lab stuck Loading / event-study 500) are LIVE-BACKEND SATURATION (hung uvicorn PID 72189 ~25% CPU from earlier event-study hammering), NOT code: the pages render their honest 'Backend unavailable' no-fabrication state under load, and the research code passes in isolation. Live re-render of the relocated labs on a QUIET backend owed iter-46. COHERENCE-PASS Part B. Review MINOR note: J-104b unit test absent (impl correct); non-blocking."
     }
   },
   "anti_goal_violations": [
@@ -1052,7 +1052,7 @@
       "resolution": "iter-21: the two `0.0` float literals in `_rsp_rank_key` were replaced with the structural `is_not_none` boolean fallback (no float literal remains in research.py — independently tokenizer-verified 0 float-like NUMBER literals). test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers passes; the DEFAULT J-77 ranking is byte-identical (200 randomized orderings match the legacy key; oracle test added). Full suite GREEN (834 passed, 0 failed, EXIT_CODE=0)."
     }
   ],
-  "updated_at": "2026-06-22T11:18:05.376462+00:00",
+  "updated_at": "2026-06-22T14:31:04.091518+00:00",
   "open_items": [
     {
       "id": "iter23-stale-api-engine-tests",

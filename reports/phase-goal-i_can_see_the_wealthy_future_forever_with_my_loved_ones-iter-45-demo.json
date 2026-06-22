@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45",
+  "base_url": "http://localhost:3835",
+  "iteration": 45,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Research hub — seven focused labs",
+      "narration": "The Research section is now a clean hub that lists seven named labs as cards. Opening it no longer fires four heavy data requests at once — only the labs you actually visit load their analysis.",
+      "point_out": "Seven named lab cards appear on the page, each with a short description. No heavy matrix or analysis table is shown here — just a fast menu.",
+      "journey": "J-104",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research" },
+      "expect": { "text": "Severity-velocity" }
+    },
+    {
+      "n": 2,
+      "title": "Navigate to the Severity-velocity study",
+      "narration": "Click the Severity-velocity card to open the new study page. Only this lab's data loads — no other labs fetch in the background.",
+      "point_out": "The browser navigates to /research/severity-velocity and begins loading the regime-family matrix. The other labs remain unloaded.",
+      "journey": "J-104",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Severity-velocity" } },
+      "expect": { "text": "Risk-on" }
+    },
+    {
+      "n": 3,
+      "title": "Severity-velocity matrix with mean returns and win-rates",
+      "narration": "The new Severity-velocity study shows a 3-by-3 matrix — rows for Risk-on, Neutral, and Risk-off regimes; columns for Rising, Flat, and Falling stress velocity. Each cell displays the mean forward SPY return, win-rate, and observation count.",
+      "point_out": "Look at the matrix cells: each one shows a mean return percentage, a win-rate, and an N= count. The default horizon is 20-day forward returns.",
+      "journey": "J-103",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/severity-velocity" },
+      "expect": { "text": "Risk-off" }
+    },
+    {
+      "n": 4,
+      "title": "Switch the forward-return horizon to 5 days",
+      "narration": "The horizon selector lets you change the forward-return window without reloading the page. Clicking '5d' immediately updates every cell with the 5-day forward-return figures.",
+      "point_out": "After clicking 5d, the matrix heading updates to show '(5d)' and the numeric values in the cells change — confirming the in-place update works correctly.",
+      "journey": "J-103",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "5d" } },
+      "expect": { "text": "(5d)" }
+    },
+    {
+      "n": 5,
+      "title": "Honest verdict card with caveats",
+      "narration": "Scroll down to find the verdict card, which states plainly that the hypothesis is NOT supported on this data. Rising stress under a Risk-off regime historically preceded a bounce — not a continued decline — and the card names all three data limitations up front.",
+      "point_out": "The verdict card reads 'NOT supported', mentions 'survivorship', 'bull-dominated', and 'underpowered for sustained crashes'. No positive or optimistic conclusion contradicts this finding.",
+      "journey": "J-103",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/severity-velocity" },
+      "expect": { "text": "NOT supported" }
+    },
+    {
+      "n": 6,
+      "title": "N= chip opens the reproducing cohort in a new tab",
+      "narration": "Every N= count in the matrix is a clickable link. Clicking it opens the exact list of dates and SPY returns behind that cell in a new tab, so you can verify the figures yourself.",
+      "point_out": "The new tab opens at /research/samples with a human-readable description — for example 'Risk on · Velocity: rising / Horizon: 20d' — and the total observation count matches the chip you clicked exactly.",
+      "journey": "J-103",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/samples?kind=severity-velocity&horizon=20&family=risk_on&velocity_sign=rising" },
+      "expect": { "text": "Total observations" }
+    },
+    {
+      "n": 7,
+      "title": "As-of date carried from hub to sub-route",
+      "narration": "When you open the Research hub with a historical as-of date in the URL, every lab card link already includes that date. Clicking a card drops you straight into the lab scoped to the chosen point in time.",
+      "point_out": "The browser URL shows asof=2025-06-30 after navigating from the hub — no extra step is needed to apply the date filter to the lab.",
+      "journey": "J-103",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research?asof=2025-06-30" },
+      "expect": { "text": "Severity-velocity" }
+    },
+    {
+      "n": 8,
+      "title": "Regime × Setup × Pattern lab loads at its own URL",
+      "narration": "The existing Regime × Setup × Pattern study now lives at its own dedicated URL and loads only when you visit it directly. The figures are byte-identical to those shown before the research section was split.",
+      "point_out": "The page heading reads 'Research — Regime × Setup × Pattern' and N= chips are visible in the matrix. This lab did not reload or re-compute when you visited other labs earlier.",
+      "journey": "J-104",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/regime-setup-pattern" },
+      "expect": { "text": "N=" }
+    }
+  ]
+}

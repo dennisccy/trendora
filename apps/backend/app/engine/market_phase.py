@@ -667,6 +667,23 @@ def phase_context_by_date(
     }
 
 
+def severity_velocity_by_date(
+    session: Session, as_of: Optional[date_cls] = None, config: Optional[Config] = None
+) -> dict[str, Optional[float]]:
+    """iter-45 (J-103) — the public read-only accessor the Severity-velocity × Regime study calls: for
+    EVERY stored snapshot date (optionally <= `as_of` — the J-32 point-in-time FILTER, never a second date
+    state) the CAUSAL `severity_velocity` at that date, keyed by the ISO date. Read from the SAME single
+    causal timeline `compute_market_phase` / `phase_context_by_date` read (the SAME `_timeline_series` ->
+    `_severity_velocity_at` derivation, J-102) — strictly causal (each entry's velocity uses only severity
+    at dates <= its own date), NA (None) at the warm-up head where fewer than `severity_velocity_window`
+    snapshots precede a date. `as_of=None` -> all stored runs (all-history). Recomputes nothing the panel
+    doesn't already compute; reads no future bar. The study joins THIS served velocity to each observation's
+    snapshot date (it recomputes no slope — Single source of truth; No recompute in the read path)."""
+    cfg = config or get_config()
+    timeline = _causal_timeline(session, as_of, cfg)
+    return {point["date"]: point["severity_velocity"] for point in timeline}
+
+
 def recovery_turn_dates(
     session: Session, as_of: Optional[date_cls] = None, config: Optional[Config] = None
 ) -> dict[str, dict]:

@@ -84,13 +84,24 @@ export interface DowntrendOpportunityCohortParams {
   view: "episodes" | "pooled";
 }
 
+/** A Severity-velocity × Regime cohort chip (J-103): ONE (regime_family, velocity_sign) matrix cell.
+ *  `family` is a config regime-family key (risk_on | neutral | risk_off); `velocitySign` is a config sign
+ *  key (rising | flat | falling). The cell's published N drills into the exact reproducing cohort. */
+export interface SeverityVelocityCohortParams {
+  kind: "severity-velocity";
+  horizon: number;
+  family: string;
+  velocitySign: string;
+}
+
 export type CohortParams =
   | FactorCohortParams
   | CombinationCohortParams
   | EventStudyCohortParams
   | RegimeSetupPatternCohortParams
   | RecoveryTurnCohortParams
-  | DowntrendOpportunityCohortParams;
+  | DowntrendOpportunityCohortParams
+  | SeverityVelocityCohortParams;
 
 /** Serialize a cohort + the analysis-mode scope into the `/research/samples` path (no `?asof` — that is
  *  merged by `useAsOfHref` at the link site). Repeated `condition` params are preserved. */
@@ -133,6 +144,10 @@ export function buildSamplesHref(cohort: CohortParams, scope: SampleScope): stri
     params.set("dimension", cohort.dimension);
     params.set("cohort", cohort.cohort);
     params.set("view", cohort.view);
+  } else if (cohort.kind === "severity-velocity") {
+    // J-103: the (regime_family, velocity_sign) matrix cell — the SAME selectors the study cell published.
+    params.set("family", cohort.family);
+    params.set("velocity_sign", cohort.velocitySign);
   } else {
     params.set("subject", cohort.subject);
     params.set("slice", cohort.slice);

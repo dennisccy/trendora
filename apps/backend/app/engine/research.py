@@ -46,7 +46,14 @@ from typing import Optional
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from app.config import Config, get_config, parse_factor_source
+from app.config import (
+    VELOCITY_SIGN_FALLING,
+    VELOCITY_SIGN_FLAT,
+    VELOCITY_SIGN_RISING,
+    Config,
+    get_config,
+    parse_factor_source,
+)
 from app.engine.forward_testing import (
     SURVIVORSHIP_BIAS_LABEL,
     _distribution,
@@ -1901,7 +1908,14 @@ def _downtrend_opportunity_observation_set(
     # the CAUSAL phase/severity/P(bear) at each snapshot date (<= the resolved as-of) — read from the SAME
     # single derivation the panel reads (never a second computation, never the SMOOTHED retrospective).
     context_by_date = phase_context_by_date(session, as_of, cfg)
-    run_dates = {run.id: run.asof_date.isoformat() for run in session.exec(select(ScannerRun)).all()}
+    # iter-45 (J-104b): the run-date map BOUNDED to snapshots dated <= the resolved as-of (no full-table
+    # scan). The members already came from `_regime_setup_pattern_observations(... as_of)` (only runs <= D),
+    # so a bound run-date map covers every member's run; an as-of-scoped read no longer loads the entire run
+    # table. `as_of=None` keeps the all-history scan (every run is in scope — byte-identical to before).
+    run_date_stmt = select(ScannerRun.id, ScannerRun.asof_date)
+    if as_of is not None:
+        run_date_stmt = run_date_stmt.where(ScannerRun.asof_date <= as_of)
+    run_dates = {run_id: asof.isoformat() for run_id, asof in session.exec(run_date_stmt).all()}
 
     do = cfg.research.downtrend_opportunity
     tagged: list[dict] = []
@@ -2150,6 +2164,421 @@ def downtrend_opportunity_cached(
 
     session.add(EventStudyCache(
         subject=_DOWNTREND_OPPORTUNITY_SUBJECT, view=view, asof_key=asof_key, dataset_version=version,
+        horizon=horizon, payload_json=json.dumps(payload),
+        created_at=datetime.now(timezone.utc),
+    ))
+    try:
+        session.commit()
+    except Exception:  # best-effort cache; a concurrent writer raced us — the payload is byte-identical
+        session.rollback()
+    return payload
+
+
+# --------------------------------------------------------------------------------------------------
+# Severity-velocity × Regime forward-return study (J-103, iter-45) — read-only over the stored SPY
+# `forward_returns`, GROUPED by the (regime FAMILY, velocity SIGN) at each snapshot date. The regime family
+# is a config-backed grouping of the STORED regime label (read VERBATIM); the velocity sign is the sign of
+# the SERVED `severity_velocity` (J-102, read from the read-only `market_phase` derivation — never recomputed
+# here). NO new computation: every figure is a pure grouping of the stored benchmark forward returns by two
+# already-served conditioning values — the SAME read-only class as the J-29 event study. NOT a fitted/ML
+# model. NO order/execution affordance (research evidence only).
+# --------------------------------------------------------------------------------------------------
+def _regime_family_for(label: Optional[str], cfg: Config) -> Optional[str]:
+    """The config-backed regime FAMILY key for a STORED regime label (J-103) — read VERBATIM via the
+    `research.severity_velocity.regime_families` catalog (the families partition `regime.labels`, validated
+    at boot). None when the label is None or (defensively) not in any family — an honest no-tag, never
+    fabricated. Recomputes no regime."""
+    if label is None:
+        return None
+    for family in cfg.research.severity_velocity.regime_families:
+        if label in family.regimes:
+            return family.key
+    return None
+
+
+def _velocity_sign_for(velocity: Optional[float]) -> Optional[str]:
+    """The severity-velocity SIGN cohort key for a served velocity (J-103): rising (`> 0`, worsening), flat
+    (`== 0`), or falling (`< 0`, easing). None when the velocity is None (the warm-up head — an honest no-tag,
+    honestly EXCLUDED from a cohort, never fabricated). A fixed structural sign test (no threshold literal —
+    only the sign of the served value decides; the labels are config-backed)."""
+    if velocity is None:
+        return None
+    if velocity > 0:
+        return VELOCITY_SIGN_RISING
+    if velocity < 0:
+        return VELOCITY_SIGN_FALLING
+    return VELOCITY_SIGN_FLAT
+
+
+def _severity_velocity_observation_set(
+    session: Session, horizon: int, cfg: Config, as_of: Optional[date_cls] = None
+) -> list[dict]:
+    """The SINGLE observation set the Severity-velocity × Regime study AND its samples drill-down BOTH read
+    (count-coherence keystone — one membership rule). Pools the stored BENCHMARK (SPY) `ForwardReturn` at
+    `horizon` (its `realized_return`, read VERBATIM — the forward MARKET return), ONE per snapshot date,
+    joined to its run's STORED `regime_label` (read verbatim) and the SERVED `severity_velocity` at that
+    snapshot date (from the read-only `market_phase.severity_velocity_by_date` derivation, <= the resolved
+    as-of — never recomputed). Each observation carries its derived (regime family, velocity sign) cohort
+    tags; an observation with no derivable velocity (the warm-up head) or no family is honestly EXCLUDED from
+    a conditioned cohort (its tag is None). SELECT-only + the read-only derivation; it recomputes NO return,
+    NO regime, NO slope.
+
+    `as_of` (J-32) scopes BOTH the pooled SPY returns and the served-velocity timeline to snapshots dated <=
+    D (a FILTER only — no recompute, no second date state); `as_of=None` -> all-history. Forward returns are
+    the stored realized returns (bars > D by construction of `forward_returns`), so No-lookahead holds."""
+    from app.engine.market_phase import severity_velocity_by_date  # lazy import (avoids a config/research cycle)
+
+    spy = cfg.etfs.index[0]  # the benchmark whose forward return is the "market" return (SPY) — from config
+    fr_stmt = select(ForwardReturn).where(
+        ForwardReturn.horizon == horizon, ForwardReturn.symbol == spy
+    )
+    if as_of is not None:
+        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
+            ScannerRun.asof_date <= as_of
+        )
+    fr_rows = session.exec(fr_stmt).all()
+    if not fr_rows:
+        return []
+    runs_with_fr = sorted({fr.run_id for fr in fr_rows})
+    run_rows = session.exec(select(ScannerRun).where(ScannerRun.id.in_(runs_with_fr))).all()
+    run_by_id = {run.id: run for run in run_rows}
+    # the SERVED severity-velocity per snapshot date (read from the SAME single causal timeline the panel
+    # reads, <= the resolved as-of — never a second computation). Keyed by ISO date.
+    velocity_by_date = severity_velocity_by_date(session, as_of, cfg)
+
+    observations: list[dict] = []
+    for fr in sorted(fr_rows, key=lambda r: r.run_id):
+        run = run_by_id.get(fr.run_id)
+        if run is None:
+            continue  # defensive: a benchmark return whose run is missing (never on a consistent DB)
+        signal_date = run.asof_date.isoformat()
+        velocity = velocity_by_date.get(signal_date)
+        observations.append({
+            "run_id": fr.run_id,
+            "ticker": fr.symbol,                       # SPY (the benchmark) — read verbatim
+            "return": fr.realized_return,              # the stored forward MARKET return (read verbatim)
+            "snapshot_date": signal_date,
+            "regime": run.regime_label,                # the STORED regime label (read verbatim)
+            "regime_family": _regime_family_for(run.regime_label, cfg),
+            "severity_velocity": velocity,             # the SERVED velocity (read verbatim from the derivation)
+            "velocity_sign": _velocity_sign_for(velocity),
+        })
+    return observations
+
+
+def _severity_velocity_member_key(obs: dict) -> Optional[tuple[str, str]]:
+    """The (regime_family, velocity_sign) cohort key ONE observation belongs to (J-103) — the SAME
+    membership rule the aggregate AND the samples drill-down apply (so a cell's published N equals its
+    drill-down total by construction). None when the observation has no family OR no velocity sign
+    (insufficient history at the warm-up head) — honestly EXCLUDED from a conditioned cell, never
+    fabricated."""
+    if obs["regime_family"] is None or obs["velocity_sign"] is None:
+        return None
+    return (obs["regime_family"], obs["velocity_sign"])
+
+
+def _severity_velocity_cell_stats(returns: list[float], min_sample: int) -> dict:
+    """Per-cell descriptive stats over the member SPY forward returns (read-only, J-103): `n`, `low_sample`
+    (`n < min_sample`), `mean_return`, and `win_rate` (fraction of returns `> 0`). An empty cell yields None
+    for `mean_return`/`win_rate` (honest NA, never a fabricated 0). The `> 0` win boundary is a fixed
+    structural rule (like `_expectancy`'s), not a tunable."""
+    n = len(returns)
+    return {
+        "n": n,
+        "low_sample": n < min_sample,
+        "mean_return": mean(returns) if returns else None,
+        "win_rate": (sum(1 for r in returns if r > 0) / n) if returns else None,
+    }
+
+
+# The honest verdict caveats carried VERBATIM on every Severity-velocity × Regime study payload (J-103,
+# goal.md invariant) — the survivorship / bull-dominated-sample / underpowered-for-crashes limitations and
+# the conclusion that, on the committed seed, rising stress-velocity under a red regime preceded a BOUNCE,
+# not continuation (the stated hypothesis is NOT supported on this window). A fixed honest disclosure string,
+# not a tunable (No magic numbers — it is descriptive copy, the same class as `RESEARCH_CAVEAT`).
+SEVERITY_VELOCITY_VERDICT_CAVEAT = (
+    "Honest limitations: this study is survivorship-biased to current-membership names, and the loaded "
+    "2021–2026 seed is a bull-dominated sample with only shallow drawdowns — so it is underpowered for "
+    "sustained crashes until the pre-2021 deep-drawdown history loads. On the committed seed, rising "
+    "stress-velocity under a red regime preceded a bounce, not continuation — the hypothesis that rising "
+    "stress under a red regime predicts a further decline is NOT supported on this window. NA/partial cells "
+    "are shown honestly, never fabricated."
+)
+
+
+def compute_severity_velocity_study(
+    session: Session, horizon: int, config: Optional[Config] = None, *,
+    as_of: Optional[date_cls] = None,
+) -> dict:
+    """The SINGLE canonical Severity-velocity × Regime forward-return study (Data Contract value, J-103) for
+    the selected `horizon`. Builds a regime-FAMILY × velocity-SIGN matrix of the stored BENCHMARK (SPY)
+    forward return — each cell reporting `mean_return`, `win_rate`, and `n` — by GROUPING the stored SPY
+    `forward_returns` (read VERBATIM) by the config-backed regime family of the STORED regime label and the
+    SIGN of the SERVED `severity_velocity` (J-102) at each snapshot date. It recomputes NO canonical return,
+    NO regime, NO slope (Single source of truth; No recompute in the read path) — a pure grouping of two
+    already-served values, the SAME read-only class as the J-29 event study. NOT a fitted/ML model. NO
+    order/execution affordance.
+
+    The matrix emits one row per configured regime family and one cell per velocity sign (even at n=0 — an
+    honest NA cell, never omitted, never fabricated). A cell below `walk_forward.min_sample` carries its
+    honest `n` + a `low_sample` flag (the UI shows NA + n). The payload carries the config-driven family +
+    sign vocabularies (so the frontend matrix headers + the samples chips are built from config), the
+    survivorship/descriptive labels, and the honest verdict caveat VERBATIM. `as_of` (J-32) scopes the pool
+    + the served velocity to snapshots dated <= D (a FILTER only); the payload echoes the resolved cutoff as
+    `asof_date` (ISO) when scoped, else null. Forward returns use only bars dated > D by construction of
+    `forward_returns` (No lookahead)."""
+    cfg = config or get_config()
+    wf = cfg.walk_forward
+    sv = cfg.research.severity_velocity
+    min_sample = wf.min_sample
+
+    observations = _severity_velocity_observation_set(session, horizon, cfg, as_of)
+
+    # group the observations into (family, sign) cells — the SAME membership the samples drill-down
+    # reproduces (one rule). An observation with no derivable family/sign (the warm-up head where the
+    # severity-velocity is NA, or an unknown regime label) is honestly EXCLUDED from every cell — never
+    # fabricated. `n_total` counts only the ASSIGNABLE observations (those that landed in a cell), so it
+    # equals the sum of the cell Ns (the matrix's honest displayed total — the warm-up head is not a cell).
+    grouped: dict[tuple[str, str], list[float]] = defaultdict(list)
+    assignable = 0
+    for obs in observations:
+        key = _severity_velocity_member_key(obs)
+        if key is None:
+            continue
+        grouped[key].append(obs["return"])
+        assignable += 1
+
+    families = [{"key": f.key, "label": f.label} for f in sv.regime_families]
+    signs = [{"key": s.key, "label": s.label} for s in sv.velocity_signs]
+
+    # one row per family, one cell per sign — every cell emitted (honest NA at n=0, never omitted).
+    matrix = [
+        {
+            "family": family.key,
+            "family_label": family.label,
+            "cells": [
+                {
+                    "velocity_sign": sign.key,
+                    "velocity_sign_label": sign.label,
+                    "stats": _severity_velocity_cell_stats(
+                        grouped.get((family.key, sign.key), []), min_sample
+                    ),
+                }
+                for sign in sv.velocity_signs
+            ],
+        }
+        for family in sv.regime_families
+    ]
+
+    return {
+        "horizon": horizon,
+        "asof_date": as_of.isoformat() if as_of is not None else None,
+        "horizons": list(wf.horizons),
+        "default_horizon": wf.default_horizon,
+        "min_sample": min_sample,
+        "benchmark": cfg.etfs.index[0],  # the SPY benchmark whose forward return is the "market" return
+        "regime_families": families,
+        "velocity_signs": signs,
+        "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
+        "descriptive_caveat": RESEARCH_CAVEAT,
+        # the honest verdict caveat VERBATIM (the hypothesis is NOT supported on this bull-dominated seed).
+        "verdict_caveat": SEVERITY_VELOCITY_VERDICT_CAVEAT,
+        # the ASSIGNABLE observation count (== Σ cell N) — the warm-up-head / unknown-family observations are
+        # honestly excluded (a cell's published N never includes them).
+        "n_total": assignable,
+        "matrix": matrix,
+    }
+
+
+# The sentinel `subject` slot the Severity-velocity × Regime study reuses in the SHARED `EventStudyCache`
+# table (mirroring `_RECOVERY_TURN_EDGE_SUBJECT` / `_DOWNTREND_OPPORTUNITY_SUBJECT`) so its cache rows never
+# collide with a real event-study subject or the other sentinels. Reusing the same cache table keeps the
+# cache machinery single-sourced (no second cache mechanism, no new table — iter-20 lesson).
+_SEVERITY_VELOCITY_SUBJECT = "__severity_velocity__"
+
+
+def severity_velocity_cached(
+    session: Session, horizon: int, config: Optional[Config] = None, *,
+    as_of: Optional[date_cls] = None,
+) -> dict:
+    """Serve the Severity-velocity × Regime study from the J-72 cache (mirrors `recovery_turn_edge_cached`),
+    reusing the SHARED `EventStudyCache` table under the `_SEVERITY_VELOCITY_SUBJECT` sentinel. The study has
+    no overlap-honesty view, so the `view` slot is the fixed sentinel too. On a HIT for the current
+    `(sentinel, view=sentinel, asof_key, dataset_version, horizon)` key, return the stored payload (NO
+    recompute); on a MISS, compute it ONCE via `compute_severity_velocity_study`, persist under the current
+    stamp, prune stale rows for this identity, and return it. BYTE-IDENTICAL to a fresh compute (a pure
+    performance layer); the cache REFRESHES after any dataset change via the dataset-version key."""
+    cfg = config or get_config()
+    version = _dataset_version(session)
+    asof_key = _cache_asof_key(as_of)
+    view = _SEVERITY_VELOCITY_SUBJECT  # no overlap-honesty view for this study — a fixed sentinel slot
+
+    hit = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == _SEVERITY_VELOCITY_SUBJECT,
+            EventStudyCache.view == view,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.dataset_version == version,
+            EventStudyCache.horizon == horizon,
+        )
+    ).first()
+    if hit is not None:
+        return json.loads(hit.payload_json)
+
+    payload = compute_severity_velocity_study(session, horizon, cfg, as_of=as_of)
+
+    stale = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == _SEVERITY_VELOCITY_SUBJECT,
+            EventStudyCache.view == view,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.horizon == horizon,
+            EventStudyCache.dataset_version != version,
+        )
+    ).all()
+    for row in stale:
+        session.delete(row)
+
+    session.add(EventStudyCache(
+        subject=_SEVERITY_VELOCITY_SUBJECT, view=view, asof_key=asof_key, dataset_version=version,
+        horizon=horizon, payload_json=json.dumps(payload),
+        created_at=datetime.now(timezone.utc),
+    ))
+    try:
+        session.commit()
+    except Exception:  # best-effort cache; a concurrent writer raced us — the payload is byte-identical
+        session.rollback()
+    return payload
+
+
+# --------------------------------------------------------------------------------------------------
+# J-104(a) — cache the two remaining uncached studies via the EXISTING `EventStudyCache` + `_dataset_version`
+# idiom (the SAME pattern `event_study_cached` / `recovery_turn_edge_cached` / `downtrend_opportunity_cached`
+# use), so a repeat request is a cache HIT (byte-identical figures), not a full recompute. No new table.
+# --------------------------------------------------------------------------------------------------
+# The sentinel `subject` slot the Regime × Setup × Pattern study reuses in the SHARED `EventStudyCache` table
+# (mirroring the other sentinels) so its rows never collide. The study has no `subject`, so a fixed sentinel.
+_REGIME_SETUP_PATTERN_SUBJECT = "__regime_setup_pattern__"
+# The sentinel `subject` PREFIX for the factor-combination cache. Because a combination is identified by its
+# ordered list of conditions (not a single subject), the deterministic condition serialization is folded
+# INTO the `subject` slot (after this prefix) — the SAME discipline of folding the full analysis identity
+# into the cache key the iter-38/39 cache-schema lessons require (so two distinct combinations never share a
+# row). The `view` slot stays a fixed sentinel (the study has no overlap-honesty view).
+_FACTOR_COMBINATION_SUBJECT_PREFIX = "__factor_combination__"
+
+
+def _factor_combination_cache_subject(conditions: list[dict]) -> str:
+    """The deterministic `subject` cache-key slot for ONE factor-combination request (J-104a): the sentinel
+    prefix + the ORDERED conditions serialized as `factor:side:quantile` triples joined by `|`. Two distinct
+    combinations (different factors/sides/quantiles/order) therefore key to DIFFERENT rows, while the SAME
+    combination always keys to the SAME row (an idempotent cache hit). The conditions are the request's
+    resolved identity — folding the full analysis identity into the key is the iter-38/39 cache discipline."""
+    serialized = "|".join(
+        f"{c.get('factor')}:{c.get('side')}:{c.get('quantile')}" for c in conditions
+    )
+    return f"{_FACTOR_COMBINATION_SUBJECT_PREFIX}{serialized}"
+
+
+def factor_combination_cached(
+    session: Session, conditions: list[dict], horizon: int, config: Optional[Config] = None, *,
+    as_of: Optional[date_cls] = None,
+) -> dict:
+    """Serve the multi-factor combination cohort analysis (J-26) from the J-72 cache (J-104a — mirrors
+    `event_study_cached`), reusing the SHARED `EventStudyCache` table with the ordered conditions folded into
+    the `subject` slot (`_factor_combination_cache_subject`) so distinct combinations never collide. On a HIT
+    for the current `(subject, view=sentinel, asof_key, dataset_version, horizon)` key, return the stored
+    payload (NO recompute); on a MISS, compute it ONCE via `compute_factor_combination` (which validates the
+    conditions, raising before any write), persist under the current stamp, prune stale rows for this
+    identity, and return it. BYTE-IDENTICAL to a fresh compute; the cache REFRESHES after any dataset change
+    via the dataset-version key."""
+    cfg = config or get_config()
+    version = _dataset_version(session)
+    asof_key = _cache_asof_key(as_of)
+    subject = _factor_combination_cache_subject(conditions)
+    view = _FACTOR_COMBINATION_SUBJECT_PREFIX  # no overlap-honesty view for this study — a fixed sentinel slot
+
+    hit = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == subject,
+            EventStudyCache.view == view,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.dataset_version == version,
+            EventStudyCache.horizon == horizon,
+        )
+    ).first()
+    if hit is not None:
+        return json.loads(hit.payload_json)
+
+    payload = compute_factor_combination(session, conditions, horizon, cfg, as_of=as_of)
+
+    stale = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == subject,
+            EventStudyCache.view == view,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.horizon == horizon,
+            EventStudyCache.dataset_version != version,
+        )
+    ).all()
+    for row in stale:
+        session.delete(row)
+
+    session.add(EventStudyCache(
+        subject=subject, view=view, asof_key=asof_key, dataset_version=version,
+        horizon=horizon, payload_json=json.dumps(payload),
+        created_at=datetime.now(timezone.utc),
+    ))
+    try:
+        session.commit()
+    except Exception:  # best-effort cache; a concurrent writer raced us — the payload is byte-identical
+        session.rollback()
+    return payload
+
+
+def regime_setup_pattern_cached(
+    session: Session, horizon: int, config: Optional[Config] = None, *,
+    as_of: Optional[date_cls] = None, view: str = VIEW_EPISODES,
+) -> dict:
+    """Serve the Regime × Setup × Pattern ranked combinations study (J-77) from the J-72 cache (J-104a —
+    mirrors `recovery_turn_edge_cached`), reusing the SHARED `EventStudyCache` table under the
+    `_REGIME_SETUP_PATTERN_SUBJECT` sentinel so its rows never collide with a real event-study subject or the
+    other sentinels. On a HIT for the current `(sentinel, view, asof_key, dataset_version, horizon)` key,
+    return the stored payload (NO recompute); on a MISS, compute it ONCE via
+    `compute_regime_setup_pattern_study` (which validates the view, raising before any write), persist under
+    the current stamp, prune stale rows for this identity, and return it. BYTE-IDENTICAL to a fresh compute;
+    the cache REFRESHES after any dataset change via the dataset-version key."""
+    cfg = config or get_config()
+    version = _dataset_version(session)
+    asof_key = _cache_asof_key(as_of)
+
+    hit = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == _REGIME_SETUP_PATTERN_SUBJECT,
+            EventStudyCache.view == view,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.dataset_version == version,
+            EventStudyCache.horizon == horizon,
+        )
+    ).first()
+    if hit is not None:
+        return json.loads(hit.payload_json)
+
+    payload = compute_regime_setup_pattern_study(session, horizon, cfg, as_of=as_of, view=view)
+
+    stale = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == _REGIME_SETUP_PATTERN_SUBJECT,
+            EventStudyCache.view == view,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.horizon == horizon,
+            EventStudyCache.dataset_version != version,
+        )
+    ).all()
+    for row in stale:
+        session.delete(row)
+
+    session.add(EventStudyCache(
+        subject=_REGIME_SETUP_PATTERN_SUBJECT, view=view, asof_key=asof_key, dataset_version=version,
         horizon=horizon, payload_json=json.dumps(payload),
         created_at=datetime.now(timezone.utc),
     ))

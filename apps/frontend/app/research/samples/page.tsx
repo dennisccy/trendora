@@ -319,6 +319,16 @@ function describeCohort(cohort: SampleCohort): { title: string; detail: string |
       detail: `${viewLabel} · ${dim}: ${cohort.cohort}`,
     };
   }
+  // J-103 — the Severity-velocity × Regime matrix cell (a (regime family, velocity sign) cohort of the
+  // stored benchmark forward returns).
+  if (cohort.kind === "severity-velocity") {
+    const familyLabel = (cohort.family ?? "").replace(/_/g, " ");
+    const signLabel = (cohort.velocity_sign ?? "").replace(/_/g, " ");
+    return {
+      title: "Severity-velocity × Regime",
+      detail: `Regime family: ${familyLabel} · Velocity: ${signLabel}`,
+    };
+  }
   // event-study
   const subject = cohort.subject?.label ?? "subject";
   // J-63: the overlap-honesty view this drill-down reproduces (Episodes = first-trigger; Pooled = per

@@ -1515,6 +1515,64 @@ export async function fetchDowntrendOpportunity(
   return getJSON<DowntrendOpportunityResponse>(withAsOf(path, asof), signal);
 }
 
+// --- research / severity-velocity × regime study (iter-45, J-103) ---------------------------
+/** One matrix cell's stats: mean forward (SPY) return + win-rate + N + low-sample flag. mean/win-rate are
+ *  null (NA) for an empty cell — read verbatim, the page gates low-sample/empty to NA. */
+export interface SeverityVelocityCellStats {
+  n: number;
+  low_sample: boolean;
+  mean_return: number | null;
+  win_rate: number | null;
+}
+
+/** One matrix cell: a (family, velocity-sign) cohort + its stats. */
+export interface SeverityVelocityCell {
+  velocity_sign: string;
+  velocity_sign_label: string;
+  stats: SeverityVelocityCellStats;
+}
+
+/** One matrix row: a regime family + one cell per velocity sign. */
+export interface SeverityVelocityRow {
+  family: string;
+  family_label: string;
+  cells: SeverityVelocityCell[];
+}
+
+/** GET /api/research/severity-velocity payload (J-103) — the regime-family × velocity-sign matrix of the
+ *  stored benchmark (SPY) forward return (mean / win-rate / N per cell), a read-only GROUPING of stored
+ *  forward returns by the served severity-velocity (J-102) + stored regime label. NO new canonical value. */
+export interface SeverityVelocityResponse {
+  horizon: number;
+  asof_date: string | null;
+  horizons: number[];
+  default_horizon: number;
+  min_sample: number;
+  benchmark: string; // the SPY benchmark whose forward return is the "market" return
+  regime_families: { key: string; label: string }[]; // config-driven family vocabulary (matrix rows)
+  velocity_signs: { key: string; label: string }[]; // config-driven sign vocabulary (matrix columns)
+  survivorship_bias: string;
+  descriptive_caveat: string;
+  verdict_caveat: string; // the honest verdict caveats VERBATIM (hypothesis NOT supported on this seed)
+  n_total: number; // the assignable observation count (== Σ cell N)
+  matrix: SeverityVelocityRow[];
+}
+
+/** Canonical Severity-velocity × Regime source: GET /api/research/severity-velocity. Throws on non-200 so
+ *  the page renders an explicit "Backend unavailable" state (503 no data / 422 bad horizon) — never
+ *  fabricated evidence. All params optional (defaults: config default horizon / all-history). */
+export async function fetchSeverityVelocity(
+  horizon?: number,
+  asof?: string,
+  signal?: AbortSignal,
+): Promise<SeverityVelocityResponse> {
+  const params = new URLSearchParams();
+  if (horizon !== undefined) params.set("horizon", String(horizon));
+  const query = params.toString();
+  const path = `/api/research/severity-velocity${query ? `?${query}` : ""}`;
+  return getJSON<SeverityVelocityResponse>(withAsOf(path, asof), signal);
+}
+
 // --- research / samples drill-down (iter-7, J-51 / J-52) -----------------------------------
 /** One displayed qualifying value on a sample row: the catalog `key` + `label` + the STORED `value`
  *  (a numeric factor value, or for an event study the matched setup/pattern label as a string). Read
@@ -1546,7 +1604,8 @@ export interface SampleCohort {
     | "event-study"
     | "regime-setup-pattern"
     | "recovery-turn"
-    | "downtrend-opportunity";
+    | "downtrend-opportunity"
+    | "severity-velocity";
   horizon: number;
   slice?: string; // factor: total|decile|regime · event-study: pooled|regime|sector · recovery-turn: total|phase
   cohort?: string; // combination: baseline|single|composite|strict_overlap · downtrend: the band/phase cohort key
@@ -1558,6 +1617,8 @@ export interface SampleCohort {
   pattern?: string | null; // J-77: regime-setup-pattern kind (a config pattern key or "none")
   phase?: string | null; // J-90: recovery-turn by-phase cohort (a market-phase label)
   dimension?: string | null; // J-91: downtrend-opportunity conditioning dimension (phase|severity_band|pbear_band)
+  family?: string | null; // J-103: severity-velocity regime family (risk_on|neutral|risk_off)
+  velocity_sign?: string | null; // J-103: severity-velocity sign (rising|flat|falling)
   subject?: EventStudySubject; // event-study kind
   view?: "episodes" | "pooled"; // J-63: the event-study overlap-honesty view this cohort reproduces
   conditions?: FactorCombinationCondition[]; // combination kind

@@ -1042,20 +1042,96 @@ class FactorLabCfg(BaseModel):
         return self
 
 
+# iter-45 (J-103) — the Severity-velocity × Regime study's two config-backed vocabularies. The study groups
+# stored SPY forward returns by (regime FAMILY, velocity SIGN) at each snapshot date — both vocabularies live
+# in config so no regime/family list or sign label is hard-coded in calc code (anti-goal: No magic numbers).
+class RegimeFamily(BaseModel):
+    """One regime FAMILY (J-103): a named grouping of one-or-more stored regime labels into a coarse
+    risk-on / neutral / risk-off ("red") band. `key` is the stable cohort id a samples drill-down
+    round-trips; `label` is the display string; `regimes` is the list of `regime.labels` it covers
+    (cross-checked at boot against the real label vocabulary — an unknown label fails loudly). The study
+    maps each observation's STORED regime label to its family via this catalog (read verbatim, never
+    recomputed)."""
+
+    model_config = ConfigDict(extra="allow")
+    key: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    regimes: list[str] = Field(min_length=1)
+
+
+class VelocitySign(BaseModel):
+    """One severity-velocity SIGN cohort (J-103): rising / flat / falling stress. `key` is the stable
+    cohort id; `label` is the display string. The membership rule is a fixed structural sign test on the
+    served `severity_velocity` (> 0 rising, == 0 flat, < 0 falling — positive = worsening), so only the
+    `key`/`label` vocabulary is config (no sign threshold literal in calc code)."""
+
+    model_config = ConfigDict(extra="allow")
+    key: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+
+
+# The three structural severity-velocity sign keys — a FIXED vocabulary the engine's sign test maps to (the
+# `config.research.severity_velocity.velocity_signs` `key`s MUST be exactly these, validated at boot). Not a
+# tunable — the SIGN of the served velocity decides membership; only the labels are config.
+VELOCITY_SIGN_RISING = "rising"
+VELOCITY_SIGN_FLAT = "flat"
+VELOCITY_SIGN_FALLING = "falling"
+VELOCITY_SIGN_KEYS = (VELOCITY_SIGN_RISING, VELOCITY_SIGN_FLAT, VELOCITY_SIGN_FALLING)
+
+
+class SeverityVelocityCfg(BaseModel):
+    """The Severity-velocity × Regime study's config (iter-45, J-103 — consumed by
+    `app.engine.research.compute_severity_velocity_study`). The study is a read-only GROUPING of the stored
+    SPY `forward_returns` joined to the served `severity_velocity` (J-102) + the stored regime label per
+    snapshot date — it recomputes no canonical return. Two config-backed vocabularies (no hard-coded list):
+      - `regime_families` — ordered named groupings of `regime.labels` into risk-on / neutral / risk-off
+        ("red") families (cross-checked at boot: every `regimes` entry is a real `regime.labels` value, and
+        the families partition the labels with no label assigned twice and none missing).
+      - `velocity_signs` — the rising / flat / falling sign cohorts (keys validated to be exactly
+        `VELOCITY_SIGN_KEYS`; only the labels are tunable).
+    Horizons + the low-sample threshold are REUSED from `walk_forward` (no new threshold). It defaults to a
+    sane built-in catalog so a config predating it (and the inline test fixtures) still loads."""
+
+    model_config = ConfigDict(extra="allow")
+    regime_families: list[RegimeFamily] = Field(min_length=1)
+    velocity_signs: list[VelocitySign] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "SeverityVelocityCfg":
+        fam_keys = [f.key for f in self.regime_families]
+        dupe_fam = sorted({k for k in fam_keys if fam_keys.count(k) > 1})
+        if dupe_fam:
+            raise ValueError(
+                f"research.severity_velocity.regime_families have duplicate keys: {dupe_fam}"
+            )
+        sign_keys = [s.key for s in self.velocity_signs]
+        if tuple(sign_keys) != VELOCITY_SIGN_KEYS:
+            raise ValueError(
+                "research.severity_velocity.velocity_signs keys must be exactly "
+                f"{list(VELOCITY_SIGN_KEYS)} in order, got {sign_keys}"
+            )
+        return self
+
+
 class ResearchCfg(BaseModel):
     """The Research-lab analytics config (iter-10). Holds one typed sub-block per lab; the FIRST is the
-    Factor Lab (J-25). Designed to grow additively (event study J-29, downtrend opportunity J-91, etc.)
-    exactly like `PatternsCfg` grew its detector sub-blocks.
+    Factor Lab (J-25). Designed to grow additively (event study J-29, downtrend opportunity J-91,
+    severity-velocity J-103, etc.) exactly like `PatternsCfg` grew its detector sub-blocks.
 
     `downtrend_opportunity` (iter-32, J-91) is the conditioning-band vocabulary for the Downtrend
-    Opportunity study. It defaults to a sane built-in catalog so a config predating it (and the inline test
-    fixtures) still loads — the real `config.yaml` supplies the tuned bands. The forward `DowntrendOpportunityCfg`
-    is constructed below the class so the default can name it."""
+    Opportunity study. `severity_velocity` (iter-45, J-103) is the regime-family + velocity-sign vocabulary
+    for the Severity-velocity × Regime study. Both default to a sane built-in catalog so a config predating
+    them (and the inline test fixtures) still loads — the real `config.yaml` supplies the tuned values. The
+    forward `DowntrendOpportunityCfg` / `SeverityVelocityCfg` are constructed below the class so the default
+    can name them."""
 
     model_config = ConfigDict(extra="allow")
     factor_lab: FactorLabCfg
     downtrend_opportunity: "DowntrendOpportunityCfg" = Field(
         default_factory=lambda: _default_downtrend_opportunity()
+    )
+    severity_velocity: "SeverityVelocityCfg" = Field(
+        default_factory=lambda: _default_severity_velocity()
     )
 
 
@@ -1076,6 +1152,26 @@ def _default_downtrend_opportunity() -> "DowntrendOpportunityCfg":
             ConditioningBand(key="moderate", label="Moderate P(bear) (0.25–0.50)", min=0.25, max=0.50),
             ConditioningBand(key="high", label="High P(bear) (0.50–0.75)", min=0.50, max=0.75),
             ConditioningBand(key="extreme", label="Extreme P(bear) (0.75–1.0)", min=0.75, max=1.0),
+        ],
+    )
+
+
+def _default_severity_velocity() -> "SeverityVelocityCfg":
+    """The built-in default Severity-velocity × Regime vocabulary (J-103) — used when a config predating the
+    block (or an inline test fixture) omits `research.severity_velocity`. The real `config.yaml` supplies the
+    tuned families; this default groups the canonical 6-label regime vocabulary into the risk-on / neutral /
+    risk-off ("red") families and names the three velocity signs. A fixture using a different regime label
+    set overrides this in config (the Config-level cross-check validates the override against its labels)."""
+    return SeverityVelocityCfg(
+        regime_families=[
+            RegimeFamily(key="risk_on", label="Risk-on", regimes=["Strong risk-on", "Risk-on"]),
+            RegimeFamily(key="neutral", label="Neutral", regimes=["Narrow leadership", "Choppy"]),
+            RegimeFamily(key="risk_off", label="Risk-off (red)", regimes=["Defensive", "Risk-off"]),
+        ],
+        velocity_signs=[
+            VelocitySign(key=VELOCITY_SIGN_RISING, label="Rising stress (velocity > 0)"),
+            VelocitySign(key=VELOCITY_SIGN_FLAT, label="Flat (velocity = 0)"),
+            VelocitySign(key=VELOCITY_SIGN_FALLING, label="Falling stress (velocity < 0)"),
         ],
     )
 
@@ -1923,6 +2019,38 @@ class Config(BaseModel):
                 )
         if bad:
             raise ValueError("research.factor_lab unresolvable factor sources: " + "; ".join(bad))
+        return self
+
+    @model_validator(mode="after")
+    def _severity_velocity_families_resolve(self) -> "Config":
+        """Every `research.severity_velocity.regime_families[*].regimes` entry must be a real
+        `regime.labels` value, and the families must PARTITION the labels (each label assigned to exactly
+        one family — none missing, none assigned twice). Cross-checked here (not in the sub-model) because
+        it needs `regime.labels`. A bad mapping fails the boot loudly (anti-goal: No magic numbers / No
+        fabricated data — the study never groups an observation under an unknown or double-counted family)."""
+        valid_labels = list(self.regime.labels)
+        assigned: list[str] = []
+        unknown: list[str] = []
+        for family in self.research.severity_velocity.regime_families:
+            for label in family.regimes:
+                if label not in valid_labels:
+                    unknown.append(label)
+                assigned.append(label)
+        if unknown:
+            raise ValueError(
+                f"research.severity_velocity.regime_families reference unknown regime labels: "
+                f"{sorted(set(unknown))} (valid: {valid_labels})"
+            )
+        dupes = sorted({lbl for lbl in assigned if assigned.count(lbl) > 1})
+        if dupes:
+            raise ValueError(
+                f"research.severity_velocity.regime_families assign these labels to >1 family: {dupes}"
+            )
+        missing = [lbl for lbl in valid_labels if lbl not in assigned]
+        if missing:
+            raise ValueError(
+                f"research.severity_velocity.regime_families do not cover regime labels: {missing}"
+            )
         return self
 
     @model_validator(mode="after")

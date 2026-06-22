@@ -997,3 +997,87 @@ def test_samples_regime_setup_pattern_invalid_selector_422(loaded_engine):
                     "regime": "Bogus", "setup": "Actionable", "pattern": "vcp"},
         )
     assert resp.status_code == 422
+
+
+# ==================================================================================================
+# iter-45 (J-103) — the Severity-velocity × Regime forward-return study endpoint + its samples drill-down
+# (against the real seed). Proves the matrix renders, the verdict caveat is carried verbatim, the
+# count-coherence keystone holds (each cell's published N == its samples drill-down total), and the
+# selectors validate (422 on a bad horizon / family / sign).
+# ==================================================================================================
+def test_severity_velocity_endpoint_default_payload(loaded_engine):
+    """J-103 at the API level: the default payload carries the regime-family × velocity-sign matrix (mean /
+    win-rate / N per cell), the config-driven family + sign vocabularies, and the honest verdict caveat."""
+    cfg = load_config()
+    sv = cfg.research.severity_velocity
+    with TestClient(main.app) as client:
+        resp = client.get("/api/research/severity-velocity")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["horizon"] == cfg.walk_forward.default_horizon
+    assert data["asof_date"] is None  # default = all-history
+    assert data["benchmark"] == cfg.etfs.index[0]
+    # the config-driven vocabularies are echoed (the frontend matrix headers + chips build from these)
+    assert [f["key"] for f in data["regime_families"]] == [f.key for f in sv.regime_families]
+    assert [s["key"] for s in data["velocity_signs"]] == [s.key for s in sv.velocity_signs]
+    # the matrix is one row per family, one cell per sign — every cell present (honest NA at n=0)
+    assert len(data["matrix"]) == len(sv.regime_families)
+    for row in data["matrix"]:
+        assert len(row["cells"]) == len(sv.velocity_signs)
+        for cell in row["cells"]:
+            assert {"n", "low_sample", "mean_return", "win_rate"} == set(cell["stats"])
+    # the verdict caveat is carried VERBATIM (the hypothesis is NOT supported on the bull-dominated seed)
+    assert "bounce, not continuation" in data["verdict_caveat"]
+    assert "NOT supported" in data["verdict_caveat"]
+
+
+def test_severity_velocity_endpoint_byte_identical_repeated_reads(loaded_engine):
+    """J-72/J-103: the cached endpoint serves a byte-identical payload on repeated reads (a HIT after the
+    first MISS) — same figures, never recomputed differently per request."""
+    import json as _json
+    with TestClient(main.app) as client:
+        first = client.get("/api/research/severity-velocity").json()
+        second = client.get("/api/research/severity-velocity").json()
+    assert _json.dumps(first, sort_keys=True) == _json.dumps(second, sort_keys=True)
+
+
+def test_severity_velocity_endpoint_bad_horizon_422(loaded_engine):
+    """An unknown horizon is an explicit 422 (never a fabricated window) — mirroring the sibling handlers."""
+    with TestClient(main.app) as client:
+        assert client.get("/api/research/severity-velocity?horizon=999").status_code == 422
+
+
+def test_severity_velocity_samples_count_coherence(loaded_engine):
+    """COUNT-COHERENCE (J-51/J-103): each matrix cell's published N equals its samples drill-down total —
+    every displayable cell resolves without a 4xx (the J-82 lesson)."""
+    with TestClient(main.app) as client:
+        study = client.get("/api/research/severity-velocity", params={"horizon": 20}).json()
+        for row in study["matrix"]:
+            for cell in row["cells"]:
+                s = client.get(
+                    "/api/research/samples",
+                    params={
+                        "kind": "severity-velocity", "horizon": 20,
+                        "family": row["family"], "velocity_sign": cell["velocity_sign"],
+                    },
+                ).json()
+                assert s["total"] == cell["stats"]["n"], (
+                    f"({row['family']}, {cell['velocity_sign']}): "
+                    f"study n={cell['stats']['n']} samples total={s['total']}"
+                )
+
+
+def test_severity_velocity_samples_invalid_selector_422(loaded_engine):
+    """J-103: an unknown family/sign cohort selector on /research/samples is an explicit 4xx (never a
+    silent empty 200, which is reserved for a VALID n=0 cell)."""
+    with TestClient(main.app) as client:
+        assert client.get(
+            "/api/research/samples",
+            params={"kind": "severity-velocity", "horizon": 20,
+                    "family": "bogus", "velocity_sign": "rising"},
+        ).status_code == 422
+        assert client.get(
+            "/api/research/samples",
+            params={"kind": "severity-velocity", "horizon": 20,
+                    "family": "risk_off", "velocity_sign": "sideways"},
+        ).status_code == 422

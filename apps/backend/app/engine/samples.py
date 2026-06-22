@@ -61,6 +61,8 @@ from app.engine.research import (
     _regime_setup_pattern_observations,
     _rsp_combination_filter,
     _rsp_combination_members,
+    _severity_velocity_member_key,
+    _severity_velocity_observation_set,
     factor_catalog,
     pattern_keys,
     subject_catalog,
@@ -75,9 +77,10 @@ KIND_EVENT_STUDY = "event-study"
 KIND_REGIME_SETUP_PATTERN = "regime-setup-pattern"  # J-77 combination drill-down
 KIND_RECOVERY_TURN = "recovery-turn"                 # J-90 recovery-turn edge drill-down
 KIND_DOWNTREND_OPPORTUNITY = "downtrend-opportunity"  # J-91 downtrend-conditioned opportunity drill-down
+KIND_SEVERITY_VELOCITY = "severity-velocity"          # J-103 severity-velocity × regime matrix drill-down
 ALL_KINDS = (
     KIND_FACTOR, KIND_COMBINATION, KIND_EVENT_STUDY, KIND_REGIME_SETUP_PATTERN, KIND_RECOVERY_TURN,
-    KIND_DOWNTREND_OPPORTUNITY,
+    KIND_DOWNTREND_OPPORTUNITY, KIND_SEVERITY_VELOCITY,
 )
 # The recovery-turn-edge slice families (which published `N=` chip on the Recovery-Turn Edge lab was
 # clicked). `total` is the whole signal-date pool at the horizon (== `n` / `n_total`); `phase` is the
@@ -555,6 +558,67 @@ def _downtrend_opportunity_samples(
 
 
 # --------------------------------------------------------------------------------------------------
+# Severity-velocity × Regime cohort (J-103 — the matrix's per-cell N= chip). A cohort is ONE (regime_family,
+# velocity_sign) cell at a horizon: e.g. (risk_off, rising) or (risk_on, falling). The samples drill-down
+# reproduces that exact cell from the SAME observation set + the SAME membership rule the study aggregates.
+# --------------------------------------------------------------------------------------------------
+def _severity_velocity_samples(
+    session: Session, cfg: Config, *, family: Optional[str], velocity_sign: Optional[str],
+    horizon: int, as_of: Optional[date_cls],
+) -> dict:
+    """Reproduce ONE (regime_family, velocity_sign) cell from the J-103 study and list its member SPY
+    observations. Membership is the SAME `_severity_velocity_observation_set` builder + the SAME
+    `_severity_velocity_member_key` rule `compute_severity_velocity_study` aggregates, so the drill-down
+    `total` EQUALS the cell's published `n` in BOTH All-history and As-of scopes (count-coherence keystone —
+    one membership rule, never a second grouping).
+
+    VALIDATION RECONCILIATION (the J-82 lesson): `family` must be one the config-backed
+    `research.severity_velocity.regime_families` lists, and `velocity_sign` one the `velocity_signs` lists,
+    so EVERY displayable cell — even an n=0 cell the study emits as honest NA — resolves 2xx, while a
+    genuinely non-catalogued family/sign raises `ValueError` -> an honest 4xx. Vocabularies stay config-backed.
+    Each row: ticker (SPY), snapshot date, the stored regime label + served severity-velocity, the realized
+    forward (market) return at the stated horizon (read VERBATIM — recomputes nothing)."""
+    sv = cfg.research.severity_velocity
+    valid_families = [f.key for f in sv.regime_families]
+    valid_signs = [s.key for s in sv.velocity_signs]
+    if family is None or family not in valid_families:
+        raise ValueError(
+            f"regime family {family!r} is not a configured severity-velocity family {valid_families}"
+        )
+    if velocity_sign is None or velocity_sign not in valid_signs:
+        raise ValueError(
+            f"velocity sign {velocity_sign!r} is not a configured velocity sign {valid_signs}"
+        )
+
+    observations = _severity_velocity_observation_set(session, horizon, cfg, as_of)
+    members = [
+        obs for obs in observations
+        if _severity_velocity_member_key(obs) == (family, velocity_sign)
+    ]
+
+    rows = [
+        {
+            "ticker": m["ticker"],
+            "snapshot_date": m["snapshot_date"],
+            "regime": m["regime"],
+            "values": [
+                {"key": "regime", "label": "Regime", "value": m["regime"]},
+                {"key": "severity_velocity", "label": "Severity-velocity", "value": m["severity_velocity"]},
+            ],
+            "forward_return": m["return"],
+        }
+        for m in members
+    ]
+    cohort = {
+        "kind": KIND_SEVERITY_VELOCITY,
+        "horizon": horizon,
+        "family": family,
+        "velocity_sign": velocity_sign,
+    }
+    return {"cohort": cohort, "rows": rows}
+
+
+# --------------------------------------------------------------------------------------------------
 # The single canonical samples read (read-only exposure of the stored observation pools)
 # --------------------------------------------------------------------------------------------------
 def compute_samples(
@@ -576,6 +640,8 @@ def compute_samples(
     # downtrend-opportunity cohort selector (J-91) — `dimension` (phase|severity_band|pbear_band) +
     # `cohort_kind` (the cohort key in that dimension's config catalog)
     dimension: Optional[str] = None,
+    # severity-velocity cohort selector (J-103) — `family` (a regime family) + `velocity_sign`
+    family: Optional[str] = None, velocity_sign: Optional[str] = None,
 ) -> dict:
     """The SINGLE canonical Research-samples read (Data Contract value, J-51 / J-52). Reproduces ONE
     published research cohort from the SAME stored per-observation data the aggregate used and returns its
@@ -622,6 +688,10 @@ def compute_samples(
         built = _downtrend_opportunity_samples(
             session, cfg, dimension=dimension, cohort_key=cohort_kind, horizon=horizon,
             as_of=as_of, view=view or VIEW_EPISODES,
+        )
+    elif kind == KIND_SEVERITY_VELOCITY:
+        built = _severity_velocity_samples(
+            session, cfg, family=family, velocity_sign=velocity_sign, horizon=horizon, as_of=as_of,
         )
     else:
         raise ValueError(f"unknown kind {kind!r}; valid kinds are {list(ALL_KINDS)}")
