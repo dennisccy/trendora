@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "journey": "J-07",
+  "name": "Risk-Off regime suppresses Actionable",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-07", "action": {"type": "goto", "url": "/scanner-runs"}, "expect": {"text": "Scanner Runs"}},
+    {"n": 2, "journey": "J-07", "action": {"type": "goto", "url": "/scanner-runs/1313"}, "expect": {"text": "Risk-off"}},
+    {"n": 3, "journey": "J-07", "action": {"type": "goto", "url": "/scanner-runs/1313"}, "expect": {"text": "zero Actionable"}}
+  ]
+}

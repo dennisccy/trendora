@@ -130,6 +130,7 @@ _CFG = {
         },
     },
     "research": {
+        "read_batch_size": 2000,  # iter-47 (J-105) required, boot-validated >= 1 streaming batch size
         "factor_lab": {
             "deciles": 10,
             "factors": [

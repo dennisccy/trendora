@@ -183,6 +183,9 @@ MINIMAL_VALID = {
     # never code). The smallest valid block: deciles > 1 + >= 1 factor whose source resolves (a typed
     # score column needs no scores.* component lookup) — the established pattern for a newly-required section.
     "research": {
+        # iter-47 (J-105): research.read_batch_size is a required, boot-validated (>= 1) streaming batch
+        # size for the heavy read-path builders (no inline batch literal in research.py / forward_testing.py).
+        "read_batch_size": 2000,
         "factor_lab": {
             "deciles": 10,
             "factors": [
@@ -329,6 +332,33 @@ def test_theme_member_outside_universe_raises(tmp_path):
 def test_missing_file_raises(tmp_path):
     with pytest.raises(ConfigError):
         load_config(tmp_path / "does_not_exist.yaml")
+
+
+# iter-47 (J-105) — research.read_batch_size is required + boot-validated `>= 1` (mirrors
+# startup.warmup_batch_size). It is the single source of the streaming batch size the heavy research
+# read-path builders pass to yield_per — there is NO inline batch literal in research.py/forward_testing.py.
+def test_research_read_batch_size_below_one_raises(tmp_path):
+    """read_batch_size < 1 is a loud ConfigError — never a silent default (a 0/negative batch would break
+    the streamed reads)."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["research"]["read_batch_size"] = 0
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_research_read_batch_size_missing_raises(tmp_path):
+    """read_batch_size is REQUIRED (like warmup_batch_size) — omitting it fails the boot."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    del data["research"]["read_batch_size"]
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_research_read_batch_size_loads_from_real_config():
+    """The real config.yaml supplies a valid (>= 1) research.read_batch_size."""
+    cfg = load_config()
+    assert isinstance(cfg.research.read_batch_size, int)
+    assert cfg.research.read_batch_size >= 1
 
 
 # --- J-58: etfs.industry catalog + stock_industries membership validation -------------------

@@ -178,6 +178,7 @@ VALID = {
     },
     # iter-10 made `research` required (the Factor Lab decile count + factor catalog come from config).
     "research": {
+        "read_batch_size": 2000,  # iter-47 (J-105) required, boot-validated >= 1 streaming batch size
         "factor_lab": {
             "deciles": 10,
             "factors": [

@@ -175,7 +175,8 @@ def _extract_factor_value(res: ScannerResult, parsed: dict) -> Optional[float]:
 
 
 def _factor_observations(
-    session: Session, factor, horizon: int, as_of: Optional[date_cls] = None
+    session: Session, factor, horizon: int, as_of: Optional[date_cls] = None,
+    *, cfg: Optional[Config] = None,
 ) -> list[dict]:
     """The read-only per-observation list for (factor, horizon): join each stored
     `ForwardReturn.realized_return` at this horizon to its stored `ScannerResult` (by `run_id` + ticker)
@@ -193,14 +194,24 @@ def _factor_observations(
     the canonical `ScannerRun.asof_date` (not the denormalized `ForwardReturn.asof_date`). `as_of=None`
     adds NO clause → byte-identical all-history."""
     parsed = parse_factor_source(factor.source)
-    fr_stmt = select(ForwardReturn).where(ForwardReturn.horizon == horizon)
+    # iter-47 (J-105): column-project + stream the (possibly huge) forward-return scan so the read path is
+    # bounded by config (`yield_per`) instead of materializing the whole table as ORM rows. We read only the
+    # three fields the join consumes (run_id, symbol, realized_return) — projected Row values are the EXACT
+    # same Python types as ORM attribute access (no coercion → byte-identical served value).
+    batch = (cfg or get_config()).research.read_batch_size
+    fr_stmt = select(
+        ForwardReturn.run_id, ForwardReturn.symbol, ForwardReturn.realized_return
+    ).where(ForwardReturn.horizon == horizon)
     if as_of is not None:
         fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
             ScannerRun.asof_date <= as_of
         )
-    fr_rows = session.exec(fr_stmt).all()
-    ret_by_run_symbol = {(fr.run_id, fr.symbol): fr.realized_return for fr in fr_rows}
-    runs_with_fr = sorted({fr.run_id for fr in fr_rows})
+    ret_by_run_symbol: dict[tuple[int, str], float] = {}
+    runs_with_fr_set: set[int] = set()
+    for run_id, symbol, realized_return in session.exec(fr_stmt).yield_per(batch):
+        ret_by_run_symbol[(run_id, symbol)] = realized_return
+        runs_with_fr_set.add(run_id)
+    runs_with_fr = sorted(runs_with_fr_set)
     results = (
         session.exec(select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr))).all()
         if runs_with_fr else []
@@ -341,7 +352,7 @@ def compute_factor_lab(
             f"unknown factor {factor_key!r}; valid factors are {[f['key'] for f in catalog]}"
         )
 
-    observations = _factor_observations(session, factor, horizon, as_of)
+    observations = _factor_observations(session, factor, horizon, as_of, cfg=cfg)
     # ascending by stored factor value; deterministic tie-break by (ticker, run_id) so deciles reproduce
     ordered = sorted(observations, key=lambda o: (o["factor"], o["ticker"], o["run_id"]))
 
@@ -375,7 +386,8 @@ def compute_factor_lab(
 # the J-25 decile sort) — it recomputes NO factor and NO return and is NOT a fitted/learned/ML model.
 # --------------------------------------------------------------------------------------------------
 def _combination_observations(
-    session: Session, factors: list, horizon: int, as_of: Optional[date_cls] = None
+    session: Session, factors: list, horizon: int, as_of: Optional[date_cls] = None,
+    *, cfg: Optional[Config] = None,
 ) -> list[dict]:
     """The read-only multi-factor per-observation pool for (`factors`, `horizon`): mirror
     `_factor_observations` but read EVERY referenced factor's stored value per result. SELECT-only against
@@ -389,14 +401,22 @@ def _combination_observations(
     (the SAME single membership filter as `_factor_observations` / `forward_testing`); `as_of=None` adds
     NO clause → byte-identical all-history."""
     parsed_by_key = {f.key: parse_factor_source(f.source) for f in factors}
-    fr_stmt = select(ForwardReturn).where(ForwardReturn.horizon == horizon)
+    # iter-47 (J-105): column-project + stream the forward-return scan (run_id, symbol, realized_return),
+    # bounded by config — same byte-identical values as the prior full-ORM `.all()`.
+    batch = (cfg or get_config()).research.read_batch_size
+    fr_stmt = select(
+        ForwardReturn.run_id, ForwardReturn.symbol, ForwardReturn.realized_return
+    ).where(ForwardReturn.horizon == horizon)
     if as_of is not None:
         fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
             ScannerRun.asof_date <= as_of
         )
-    fr_rows = session.exec(fr_stmt).all()
-    ret_by_run_symbol = {(fr.run_id, fr.symbol): fr.realized_return for fr in fr_rows}
-    runs_with_fr = sorted({fr.run_id for fr in fr_rows})
+    ret_by_run_symbol: dict[tuple[int, str], float] = {}
+    runs_with_fr_set: set[int] = set()
+    for run_id, symbol, realized_return in session.exec(fr_stmt).yield_per(batch):
+        ret_by_run_symbol[(run_id, symbol)] = realized_return
+        runs_with_fr_set.add(run_id)
+    runs_with_fr = sorted(runs_with_fr_set)
     results = (
         session.exec(select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr))).all()
         if runs_with_fr else []
@@ -622,7 +642,7 @@ def compute_factor_combination(
     # the DISTINCT referenced factors (a factor MAY appear in >1 condition — e.g. top AND bottom of the
     # same factor, the opposing-extremes NA fixture). The pool requires every one of them non-null.
     distinct_factors = list({c["factor"].key: c["factor"] for c in resolved}.values())
-    pool = _combination_observations(session, distinct_factors, horizon, as_of)
+    pool = _combination_observations(session, distinct_factors, horizon, as_of, cfg=cfg)
     pool_n = len(pool)
 
     # the SINGLE membership-derivation path (shared verbatim with the samples drill-down so a cohort's
@@ -742,8 +762,83 @@ def _subject_member(res: ScannerResult, subject: dict) -> bool:
     return bool(getattr(res, f"is_{subject['key']}"))
 
 
+# iter-47 (J-105): the light projected ScannerResult row the event-study builders need — the stored
+# fields the member dict + `_subject_member` read, NEVER the full ORM row (which would grow the identity
+# map). `patterns` is the SAME `{key: bool(is_<key>)}` mirror `_stored_pattern_flags` builds, derived from
+# the projected `is_<k>` flags so it can NOT diverge from `_subject_member`'s pattern test.
+class _SubjectResultRow:
+    __slots__ = ("id", "run_id", "ticker", "sector", "setup_status", "patterns")
+
+    def __init__(self, id, run_id, ticker, sector, setup_status, patterns):
+        self.id = id
+        self.run_id = run_id
+        self.ticker = ticker
+        self.sector = sector
+        self.setup_status = setup_status
+        self.patterns = patterns
+
+
+def _subject_matching_result_rows(
+    session: Session, subject: dict, as_of: Optional[date_cls], p_keys: list[str], batch: int,
+) -> tuple[list["_SubjectResultRow"], set[int]]:
+    """Stream the subject-matching `ScannerResult`s FIRST (iter-47 reorder, J-105), column-projected and
+    ordered by `ScannerResult.id` — the SAME total deterministic order the prior full-ORM scan produced.
+    Returns `(ordered_matches, needed_runs)` where each match is a light `_SubjectResultRow` carrying ONLY
+    the stored fields the member dict + `_subject_member` read (id, run_id, ticker, sector, setup_status,
+    and the `{pattern_key: bool}` mirror derived from the projected `is_<k>` flags). The FR scan is later
+    pruned to `run_id IN needed_runs`, so memory is O(subject matches), independent of the table size.
+
+    BYTE-IDENTITY: the prior builders scanned ALL results in FR-bearing runs and kept the subject members;
+    here we filter to the subject members directly in SQL (setup → `setup_status == key`; pattern →
+    `is_<key> == True`, the SAME stored-mirror test `_subject_member` applies). Dropping the old
+    `run_id IN runs_with_fr` pre-filter can only ADD matches in runs with no FR — those are then dropped by
+    the per-horizon `fr is None` gate at emission → identical content; ordering by `ScannerResult.id` is
+    preserved → identical order. `as_of` scopes via the canonical `ScannerRun.asof_date <= D` join."""
+    # project the light fields the member shape + the subject/pattern tests read (derive the is_<k>
+    # projection FROM p_keys so `patterns`/`_subject_member` can never diverge).
+    flag_cols = [getattr(ScannerResult, f"is_{k}") for k in p_keys]
+    stmt = select(
+        ScannerResult.id, ScannerResult.run_id, ScannerResult.ticker,
+        ScannerResult.sector, ScannerResult.setup_status, *flag_cols,
+    )
+    if subject["kind"] == "setup":
+        stmt = stmt.where(ScannerResult.setup_status == subject["key"])
+    else:
+        stmt = stmt.where(getattr(ScannerResult, f"is_{subject['key']}").is_(True))
+    if as_of is not None:
+        stmt = stmt.join(ScannerRun, ScannerRun.id == ScannerResult.run_id).where(
+            ScannerRun.asof_date <= as_of
+        )
+    stmt = stmt.order_by(ScannerResult.id)
+
+    ordered: list[_SubjectResultRow] = []
+    needed_runs: set[int] = set()
+    for row in session.exec(stmt).yield_per(batch):
+        rid, run_id, ticker, sector, setup_status = row[0], row[1], row[2], row[3], row[4]
+        patterns = {key: bool(row[5 + i]) for i, key in enumerate(p_keys)}
+        ordered.append(_SubjectResultRow(rid, run_id, ticker, sector, setup_status, patterns))
+        needed_runs.add(run_id)
+    return ordered, needed_runs
+
+
+def _regime_by_run_projected(
+    session: Session, needed_runs: set[int], batch: int
+) -> dict[int, Optional[str]]:
+    """`run_id -> stored regime_label` over a SUPERSET of the FR-bearing runs (every subject-matching run),
+    column-projected + streamed. Every emitted member has an FR and so its run is in `needed_runs` → the
+    `.get` is identical to the prior full-run-row map. Read VERBATIM; recomputes no regime."""
+    if not needed_runs:
+        return {}
+    regime_by_run: dict[int, Optional[str]] = {}
+    stmt = select(ScannerRun.id, ScannerRun.regime_label).where(ScannerRun.id.in_(needed_runs))
+    for run_id, regime_label in session.exec(stmt).yield_per(batch):
+        regime_by_run[run_id] = regime_label
+    return regime_by_run
+
+
 def _event_study_members(
-    session: Session, subject: dict, horizon: int, as_of: Optional[date_cls] = None
+    session: Session, subject: dict, horizon: int, as_of: Optional[date_cls] = None,
+    *, cfg: Optional[Config] = None,
 ) -> list[dict]:
     """The read-only per-observation pool for (subject, horizon): join each stored `ForwardReturn` at this
     horizon (its `realized_return` + `mae` + `mfe`, read VERBATIM) to its stored `ScannerResult` (by
@@ -753,46 +848,50 @@ def _event_study_members(
     `by_<pattern>` group (the consistency invariant is unit-asserted). A member with no realized return at
     this horizon contributes nothing (n=0).
 
+    iter-47 (J-105): the forward-return scan is column-projected + `yield_per`-streamed and PRUNED to the
+    subject's needed runs (the subject-matching results are streamed first), so memory is O(subject
+    matches), not O(table). Byte-identical to the prior implementation (same member shape, same
+    `ScannerResult.id` order, same verbatim values).
+
     `as_of` (iter-19, J-32) optionally scopes the pool to snapshots with `ScannerRun.asof_date <= as_of`
     (the SAME single membership filter as `_factor_observations` / `forward_testing`); `as_of=None` adds
     NO clause → byte-identical all-history."""
-    fr_stmt = select(ForwardReturn).where(ForwardReturn.horizon == horizon)
-    if as_of is not None:
-        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
-            ScannerRun.asof_date <= as_of
-        )
-    fr_rows = session.exec(fr_stmt).all()
-    fr_by_run_symbol = {(fr.run_id, fr.symbol): fr for fr in fr_rows}
-    runs_with_fr = sorted({fr.run_id for fr in fr_rows})
-    # explicit ascending id order: a TOTAL deterministic member order shared with the batched J-72
-    # builder (`_event_study_members_by_horizon`), so the two produce byte-identical per-horizon lists.
-    results = (
-        session.exec(
-            select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr)).order_by(ScannerResult.id)
-        ).all()
-        if runs_with_fr else []
-    )
-    run_rows = (
-        session.exec(select(ScannerRun).where(ScannerRun.id.in_(runs_with_fr))).all()
-        if runs_with_fr else []
-    )
-    regime_by_run = {run.id: run.regime_label for run in run_rows}  # stored regime label, read VERBATIM
+    cfg = cfg or get_config()
+    batch = cfg.research.read_batch_size
     # iter-20 (J-77): the config-driven pattern keys resolved ONCE for this build (no per-row get_config).
-    p_keys = pattern_keys(get_config())
+    p_keys = pattern_keys(cfg)
 
+    # (1) stream the subject-matching results first (ordered by id) → the needed-runs cohort.
+    ordered_matches, needed_runs = _subject_matching_result_rows(session, subject, as_of, p_keys, batch)
+    if not ordered_matches:
+        return []
+    # (2) projected regime map over a superset of FR-bearing runs (read verbatim).
+    regime_by_run = _regime_by_run_projected(session, needed_runs, batch)
+
+    # (3) projected + streamed FR scan, PRUNED to the needed runs at this horizon → light value tuples.
+    needed_pairs = {(m.run_id, m.ticker) for m in ordered_matches}
+    fr_by_run_symbol: dict[tuple[int, str], tuple] = {}
+    fr_stmt = select(
+        ForwardReturn.run_id, ForwardReturn.symbol,
+        ForwardReturn.realized_return, ForwardReturn.mae, ForwardReturn.mfe, ForwardReturn.max_drawdown,
+    ).where(ForwardReturn.horizon == horizon, ForwardReturn.run_id.in_(needed_runs))
+    for run_id, symbol, realized_return, mae, mfe, max_drawdown in session.exec(fr_stmt).yield_per(batch):
+        if (run_id, symbol) in needed_pairs:
+            fr_by_run_symbol[(run_id, symbol)] = (realized_return, mae, mfe, max_drawdown)
+
+    # (4) emit members in `ScannerResult.id` order — identical dict shape / key order / values.
     members: list[dict] = []
-    for res in results:
-        if not _subject_member(res, subject):
-            continue
+    for res in ordered_matches:
         fr = fr_by_run_symbol.get((res.run_id, res.ticker))
         if fr is None:
             continue  # no realized return at this horizon for this member (n=0 contribution)
+        realized_return, mae, mfe, max_drawdown = fr
         members.append({
             "run_id": res.run_id, "ticker": res.ticker,
-            "return": fr.realized_return, "mae": fr.mae, "mfe": fr.mfe,
+            "return": realized_return, "mae": mae, "mfe": mfe,
             # iter-27 (J-86): the stored max_drawdown read VERBATIM — aggregated read-only by the event
             # study (mean-MDD beside the return stats); never recomputed. None on a short window.
-            "max_drawdown": fr.max_drawdown,
+            "max_drawdown": max_drawdown,
             "regime": regime_by_run.get(res.run_id),  # stored regime label (read verbatim)
             "sector": res.sector,                     # stored sector (read verbatim)
             # iter-20 (J-77) ADDITIVE enrichment: the observation's STORED setup status + pattern mirror
@@ -801,76 +900,70 @@ def _event_study_members(
             # event-study figure (J-29 / J-63) and the existing samples drill-downs ignore these keys, so
             # they stay byte-identical. The regime×setup×pattern study (J-77) groups by these stored fields.
             "setup_status": res.setup_status,
-            "patterns": _stored_pattern_flags(res, p_keys),
+            "patterns": res.patterns,
         })
     return members
 
 
 def _event_study_members_by_horizon(
-    session: Session, subject: dict, horizons: list[int], as_of: Optional[date_cls] = None
+    session: Session, subject: dict, horizons: list[int], as_of: Optional[date_cls] = None,
+    *, cfg: Optional[Config] = None,
 ) -> dict[int, list[dict]]:
     """The read-only per-observation pools for (subject, EVERY horizon in `horizons`) built from a SINGLE
     batched read (J-72 perf): ONE `ForwardReturn` SELECT covering all configured horizons (`horizon IN
-    horizons`), ONE `ScannerResult` SELECT, and ONE `ScannerRun` SELECT — replacing the per-horizon
-    re-scan (`_event_study_members` once per horizon, one `ForwardReturn` scan each). The returned
-    `{horizon: [members]}` is BYTE-IDENTICAL per horizon to calling `_event_study_members(session,
-    subject, h, as_of)` in a loop (the SAME join, the SAME member shape + enrichment, the SAME insertion
-    order — results iterated once, each appended to its horizon's list keyed by the run-symbol pair). It
+    horizons`), ONE `ScannerResult` stream, and ONE `ScannerRun` stream. The returned `{horizon: [members]}`
+    is BYTE-IDENTICAL per horizon to calling `_event_study_members(session, subject, h, as_of)` in a loop
+    (the SAME join, the SAME member shape + enrichment, the SAME insertion order — results iterated once in
+    `ScannerResult.id` order, each appended to its horizon's list keyed by the run-symbol pair). It
     recomputes NO return / excursion / score / regime / pattern.
+
+    iter-47 (J-105): the FR scan is column-projected + `yield_per`-streamed and PRUNED to the subject's
+    needed runs (`horizon IN horizons AND run_id IN needed_runs`), the subject-matching results streamed
+    first — memory is O(subject matches), not O(table). The reorder is byte-identical: a subject match in a
+    run with no FR at horizon h is simply dropped by the per-horizon `fr is None` gate (exactly as the prior
+    builder dropped it), and ordering by `ScannerResult.id` is preserved.
 
     `as_of` (J-32) scopes ALL horizons' pools to snapshots dated <= D (the SAME single membership filter);
     `as_of=None` adds NO clause -> byte-identical all-history."""
-    fr_stmt = select(ForwardReturn).where(ForwardReturn.horizon.in_(horizons))
-    if as_of is not None:
-        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
-            ScannerRun.asof_date <= as_of
-        )
-    fr_rows = session.exec(fr_stmt).all()
-    # (horizon, run_id, symbol) -> ForwardReturn (one row per the unique constraint) for the batched join
-    fr_by_h_run_symbol: dict[int, dict[tuple[int, str], ForwardReturn]] = {h: {} for h in horizons}
-    runs_with_fr_set: set[int] = set()
-    for fr in fr_rows:
-        fr_by_h_run_symbol[fr.horizon][(fr.run_id, fr.symbol)] = fr
-        runs_with_fr_set.add(fr.run_id)
-    runs_with_fr = sorted(runs_with_fr_set)
-    # explicit ascending id order — matches `_event_study_members` so per-horizon lists are byte-identical.
-    results = (
-        session.exec(
-            select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr)).order_by(ScannerResult.id)
-        ).all()
-        if runs_with_fr else []
-    )
-    run_rows = (
-        session.exec(select(ScannerRun).where(ScannerRun.id.in_(runs_with_fr))).all()
-        if runs_with_fr else []
-    )
-    regime_by_run = {run.id: run.regime_label for run in run_rows}
-    p_keys = pattern_keys(get_config())
+    cfg = cfg or get_config()
+    batch = cfg.research.read_batch_size
+    p_keys = pattern_keys(cfg)
 
-    # IMPORTANT byte-identity note: `_event_study_members(h)` derives `runs_with_fr` (and thus the
-    # `results` iteration order) from ONLY the rows that exist AT THAT horizon. So a run that has rows at
-    # horizon 60 but not horizon 1 still yields the SAME per-horizon member lists here, because membership
-    # is decided per-horizon by the `fr is None` check below — a result whose (run, symbol) has no row at
-    # horizon h simply contributes nothing at h (n=0), exactly as the per-horizon builder does. The
-    # `results` set here is the UNION across horizons, but each horizon's members are filtered to that
-    # horizon's stored rows, and the per-result ordering (by `ScannerResult.id`) matches the single-query
-    # ordering the per-horizon builder produced from the same `run_id IN (...)` predicate.
+    # (1) stream the subject-matching results first (ordered by id) → the needed-runs cohort.
+    ordered_matches, needed_runs = _subject_matching_result_rows(session, subject, as_of, p_keys, batch)
     members_by_h: dict[int, list[dict]] = {h: [] for h in horizons}
-    for res in results:
-        if not _subject_member(res, subject):
-            continue
+    if not ordered_matches:
+        return members_by_h
+    # (2) projected regime map over a superset of FR-bearing runs (read verbatim).
+    regime_by_run = _regime_by_run_projected(session, needed_runs, batch)
+
+    # (3) projected + streamed FR scan over ALL requested horizons, PRUNED to the needed runs/pairs →
+    # `{horizon: {(run_id, symbol): (return, mae, mfe, max_drawdown)}}` (one row per the unique constraint).
+    needed_pairs = {(m.run_id, m.ticker) for m in ordered_matches}
+    fr_by_h_run_symbol: dict[int, dict[tuple[int, str], tuple]] = {h: {} for h in horizons}
+    fr_stmt = select(
+        ForwardReturn.horizon, ForwardReturn.run_id, ForwardReturn.symbol,
+        ForwardReturn.realized_return, ForwardReturn.mae, ForwardReturn.mfe, ForwardReturn.max_drawdown,
+    ).where(ForwardReturn.horizon.in_(horizons), ForwardReturn.run_id.in_(needed_runs))
+    for h, run_id, symbol, realized_return, mae, mfe, max_drawdown in session.exec(fr_stmt).yield_per(batch):
+        if (run_id, symbol) in needed_pairs:
+            fr_by_h_run_symbol[h][(run_id, symbol)] = (realized_return, mae, mfe, max_drawdown)
+
+    # (4) emit members per horizon iterating results in `ScannerResult.id` order — identical shape/order.
+    for res in ordered_matches:
         for h in horizons:
             fr = fr_by_h_run_symbol[h].get((res.run_id, res.ticker))
             if fr is None:
                 continue
+            realized_return, mae, mfe, max_drawdown = fr
             members_by_h[h].append({
                 "run_id": res.run_id, "ticker": res.ticker,
-                "return": fr.realized_return, "mae": fr.mae, "mfe": fr.mfe,
-                "max_drawdown": fr.max_drawdown,  # iter-27 (J-86) stored MDD read verbatim
+                "return": realized_return, "mae": mae, "mfe": mfe,
+                "max_drawdown": max_drawdown,  # iter-27 (J-86) stored MDD read verbatim
                 "regime": regime_by_run.get(res.run_id),
                 "sector": res.sector,
                 "setup_status": res.setup_status,
-                "patterns": _stored_pattern_flags(res, p_keys),
+                "patterns": res.patterns,
             })
     return members_by_h
 
@@ -1167,7 +1260,7 @@ def compute_event_study(
     batch_horizons = list(wf.horizons)
     if horizon not in batch_horizons:
         batch_horizons = batch_horizons + [horizon]
-    pooled_by_h = _event_study_members_by_horizon(session, subject, batch_horizons, as_of)
+    pooled_by_h = _event_study_members_by_horizon(session, subject, batch_horizons, as_of, cfg=cfg)
     # the episode collapse needs the GLOBAL ordered run-date sequence (same as-of window); loaded ONCE and
     # reused across horizons. Built whenever episodes is the view OR the (view-independent) episode_count
     # disclosure is needed — a single SELECT, never per-horizon.
@@ -1377,18 +1470,23 @@ def event_study_cached(
 PATTERN_NONE = "none"
 
 
-def _rsp_member(res: ScannerResult, fr, regime: Optional[str], p_keys: list[str]) -> dict:
+def _rsp_member(
+    run_id, ticker, sector, setup_status, patterns: dict, fr: tuple, regime: Optional[str],
+) -> dict:
     """One enriched per-observation row for the J-77 study, read VERBATIM from stored values (no
     recompute): the realized return + stored regime label + stored setup status + stored pattern mirror
     flags. Mirrors the `_event_study_members` enrichment shape so the same downstream helpers
-    (`_collapse_to_episodes`, the samples builder) consume it identically."""
+    (`_collapse_to_episodes`, the samples builder) consume it identically. iter-47 (J-105): accepts the
+    stored FR VALUE tuple `(realized_return, mae, mfe, max_drawdown)` from the column-projected stream (not
+    an ORM `fr`) — same verbatim values, no coercion → byte-identical."""
+    realized_return, mae, mfe, max_drawdown = fr
     return {
-        "run_id": res.run_id, "ticker": res.ticker,
-        "return": fr.realized_return, "mae": fr.mae, "mfe": fr.mfe,
-        "max_drawdown": fr.max_drawdown,  # iter-27 (J-86) stored MDD read verbatim
-        "regime": regime, "sector": res.sector,
-        "setup_status": res.setup_status,
-        "patterns": _stored_pattern_flags(res, p_keys),
+        "run_id": run_id, "ticker": ticker,
+        "return": realized_return, "mae": mae, "mfe": mfe,
+        "max_drawdown": max_drawdown,  # iter-27 (J-86) stored MDD read verbatim
+        "regime": regime, "sector": sector,
+        "setup_status": setup_status,
+        "patterns": patterns,
     }
 
 
@@ -1401,35 +1499,58 @@ def _regime_setup_pattern_observations(
     study / forward aggregates read), each row carrying its stored regime + setup status + pattern flags
     read VERBATIM. SELECT-only + pure grouping; recomputes nothing.
 
+    iter-47 (J-105): the FR scan is column-projected + `yield_per`-streamed to light value tuples (no
+    full-table ORM materialization). No subject prune (it pools every FR-bearing result), so the FR scan is
+    bounded by the per-horizon row count; the ScannerResult side is read in `ScannerResult.id` order
+    (matching the prior implicit-ordering `.all()`) so the pooled list is byte-identical.
+
     `view` (J-63): in `episodes` (default) the pool is collapsed to first-trigger episodes per ticker
     (`_collapse_to_episodes`, the SAME per-ticker run-ordinal collapse the event study uses); in `pooled`
     every per-signal-day observation survives. `as_of` (J-32) scopes both the members and the run-ordinal
     index to snapshots dated <= D (a FILTER only — no recompute, no second date state)."""
-    fr_stmt = select(ForwardReturn).where(ForwardReturn.horizon == horizon)
+    batch = cfg.research.read_batch_size
+    p_keys = pattern_keys(cfg)
+
+    # column-projected + streamed FR scan → `(run_id, symbol) -> (return, mae, mfe, max_drawdown)` value
+    # tuple (one row per the unique constraint at this horizon), and the runs the result side needs.
+    fr_stmt = select(
+        ForwardReturn.run_id, ForwardReturn.symbol,
+        ForwardReturn.realized_return, ForwardReturn.mae, ForwardReturn.mfe, ForwardReturn.max_drawdown,
+    ).where(ForwardReturn.horizon == horizon)
     if as_of is not None:
         fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
             ScannerRun.asof_date <= as_of
         )
-    fr_rows = session.exec(fr_stmt).all()
-    fr_by_run_symbol = {(fr.run_id, fr.symbol): fr for fr in fr_rows}
-    runs_with_fr = sorted({fr.run_id for fr in fr_rows})
-    results = (
-        session.exec(select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr))).all()
-        if runs_with_fr else []
-    )
-    run_rows = (
-        session.exec(select(ScannerRun).where(ScannerRun.id.in_(runs_with_fr))).all()
-        if runs_with_fr else []
-    )
-    regime_by_run = {run.id: run.regime_label for run in run_rows}
-    p_keys = pattern_keys(cfg)
+    fr_by_run_symbol: dict[tuple[int, str], tuple] = {}
+    runs_with_fr: set[int] = set()
+    for run_id, symbol, realized_return, mae, mfe, max_drawdown in session.exec(fr_stmt).yield_per(batch):
+        fr_by_run_symbol[(run_id, symbol)] = (realized_return, mae, mfe, max_drawdown)
+        runs_with_fr.add(run_id)
 
+    regime_by_run = _regime_by_run_projected(session, runs_with_fr, batch)
+
+    # column-projected + streamed ScannerResult side over the FR-bearing runs, in id order (the prior
+    # implicit-`.all()` order on SQLite) — project the fields `_rsp_member` reads + the is_<k> flags.
     members: list[dict] = []
-    for res in results:
-        fr = fr_by_run_symbol.get((res.run_id, res.ticker))
-        if fr is None:
-            continue  # no realized return at this horizon for this stock (n=0 contribution)
-        members.append(_rsp_member(res, fr, regime_by_run.get(res.run_id), p_keys))
+    if runs_with_fr:
+        flag_cols = [getattr(ScannerResult, f"is_{k}") for k in p_keys]
+        res_stmt = (
+            select(
+                ScannerResult.run_id, ScannerResult.ticker,
+                ScannerResult.sector, ScannerResult.setup_status, *flag_cols,
+            )
+            .where(ScannerResult.run_id.in_(runs_with_fr))
+            .order_by(ScannerResult.id)
+        )
+        for row in session.exec(res_stmt).yield_per(batch):
+            run_id, ticker, sector, setup_status = row[0], row[1], row[2], row[3]
+            fr = fr_by_run_symbol.get((run_id, ticker))
+            if fr is None:
+                continue  # no realized return at this horizon for this stock (n=0 contribution)
+            patterns = {key: bool(row[4 + i]) for i, key in enumerate(p_keys)}
+            members.append(_rsp_member(
+                run_id, ticker, sector, setup_status, patterns, fr, regime_by_run.get(run_id)
+            ))
 
     if view == VIEW_POOLED:
         return members
@@ -1628,15 +1749,22 @@ def _recovery_turn_observation_set(
         return []
     signal_run_ids = sorted(signal_runs)
 
-    # the stored forward returns at this horizon for ONLY the signal-date runs (read verbatim).
-    fr_rows = session.exec(
-        select(ForwardReturn).where(
-            ForwardReturn.horizon == horizon,
-            ForwardReturn.run_id.in_(signal_run_ids),
-        )
-    ).all()
-    fr_by_run_symbol = {(fr.run_id, fr.symbol): fr for fr in fr_rows}
-    runs_with_fr = sorted({fr.run_id for fr in fr_rows})
+    # the stored forward returns at this horizon for ONLY the signal-date runs (read verbatim). iter-47
+    # (J-105): already run_id-bounded to the signal-date runs; column-project + stream the scan to light
+    # value tuples (no full-ORM materialization) for consistency with the other builders.
+    batch = cfg.research.read_batch_size
+    fr_stmt = select(
+        ForwardReturn.run_id, ForwardReturn.symbol,
+        ForwardReturn.realized_return, ForwardReturn.mae, ForwardReturn.mfe, ForwardReturn.max_drawdown,
+    ).where(
+        ForwardReturn.horizon == horizon,
+        ForwardReturn.run_id.in_(signal_run_ids),
+    )
+    fr_by_run_symbol: dict[tuple[int, str], tuple] = {}
+    runs_with_fr: set[int] = set()
+    for run_id, symbol, realized_return, mae, mfe, max_drawdown in session.exec(fr_stmt).yield_per(batch):
+        fr_by_run_symbol[(run_id, symbol)] = (realized_return, mae, mfe, max_drawdown)
+        runs_with_fr.add(run_id)
     results = (
         session.exec(
             select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr)).order_by(ScannerResult.id)
@@ -1649,12 +1777,13 @@ def _recovery_turn_observation_set(
         fr = fr_by_run_symbol.get((res.run_id, res.ticker))
         if fr is None:
             continue  # no realized return at this horizon for this signal-date stock (n=0 contribution)
+        realized_return, mae, mfe, max_drawdown = fr
         run = signal_runs[res.run_id]
         context = signal_context[run.asof_date.isoformat()]
         members.append({
             "run_id": res.run_id, "ticker": res.ticker,
-            "return": fr.realized_return, "mae": fr.mae, "mfe": fr.mfe,
-            "max_drawdown": fr.max_drawdown,  # stored MDD read verbatim (J-86)
+            "return": realized_return, "mae": mae, "mfe": mfe,
+            "max_drawdown": max_drawdown,  # stored MDD read verbatim (J-86)
             "regime": run.regime_label,       # stored regime label (read verbatim)
             "sector": res.sector,             # stored sector (read verbatim)
             "setup_status": res.setup_status,
@@ -2229,17 +2358,23 @@ def _severity_velocity_observation_set(
     from app.engine.market_phase import severity_velocity_by_date  # lazy import (avoids a config/research cycle)
 
     spy = cfg.etfs.index[0]  # the benchmark whose forward return is the "market" return (SPY) — from config
-    fr_stmt = select(ForwardReturn).where(
-        ForwardReturn.horizon == horizon, ForwardReturn.symbol == spy
-    )
+    # iter-47 (J-105): already symbol-bounded to SPY (one row per snapshot date); column-project + stream
+    # the scan to light value tuples (run_id, symbol, realized_return) for consistency — same verbatim values.
+    batch = cfg.research.read_batch_size
+    fr_stmt = select(
+        ForwardReturn.run_id, ForwardReturn.symbol, ForwardReturn.realized_return
+    ).where(ForwardReturn.horizon == horizon, ForwardReturn.symbol == spy)
     if as_of is not None:
         fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
             ScannerRun.asof_date <= as_of
         )
-    fr_rows = session.exec(fr_stmt).all()
+    fr_rows = [
+        (run_id, symbol, realized_return)
+        for run_id, symbol, realized_return in session.exec(fr_stmt).yield_per(batch)
+    ]
     if not fr_rows:
         return []
-    runs_with_fr = sorted({fr.run_id for fr in fr_rows})
+    runs_with_fr = sorted({run_id for run_id, _, _ in fr_rows})
     run_rows = session.exec(select(ScannerRun).where(ScannerRun.id.in_(runs_with_fr))).all()
     run_by_id = {run.id: run for run in run_rows}
     # the SERVED severity-velocity per snapshot date (read from the SAME single causal timeline the panel
@@ -2247,16 +2382,16 @@ def _severity_velocity_observation_set(
     velocity_by_date = severity_velocity_by_date(session, as_of, cfg)
 
     observations: list[dict] = []
-    for fr in sorted(fr_rows, key=lambda r: r.run_id):
-        run = run_by_id.get(fr.run_id)
+    for fr_run_id, fr_symbol, fr_realized_return in sorted(fr_rows, key=lambda r: r[0]):
+        run = run_by_id.get(fr_run_id)
         if run is None:
             continue  # defensive: a benchmark return whose run is missing (never on a consistent DB)
         signal_date = run.asof_date.isoformat()
         velocity = velocity_by_date.get(signal_date)
         observations.append({
-            "run_id": fr.run_id,
-            "ticker": fr.symbol,                       # SPY (the benchmark) — read verbatim
-            "return": fr.realized_return,              # the stored forward MARKET return (read verbatim)
+            "run_id": fr_run_id,
+            "ticker": fr_symbol,                       # SPY (the benchmark) — read verbatim
+            "return": fr_realized_return,              # the stored forward MARKET return (read verbatim)
             "snapshot_date": signal_date,
             "regime": run.regime_label,                # the STORED regime label (read verbatim)
             "regime_family": _regime_family_for(run.regime_label, cfg),

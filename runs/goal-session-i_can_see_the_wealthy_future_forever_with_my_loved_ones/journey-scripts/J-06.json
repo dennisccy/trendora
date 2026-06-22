@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "journey": "J-06",
+  "name": "Score consistency across pages (coherence)",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-06", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "NVDA"}},
+    {"n": 2, "journey": "J-06", "action": {"type": "goto", "url": "/stocks/NVDA"}, "expect": {"text": "40.37"}},
+    {"n": 3, "journey": "J-06", "action": {"type": "goto", "url": "/stocks/NVDA"}, "expect": {"text": "52.85"}}
+  ]
+}

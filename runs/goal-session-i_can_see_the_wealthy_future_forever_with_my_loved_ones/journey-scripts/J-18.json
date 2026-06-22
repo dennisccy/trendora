@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "journey": "J-18",
+  "name": "One date control (no duplicate)",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-18", "action": {"type": "goto", "url": "/backtest"}, "expect": {"text": "Backtest"}},
+    {"n": 2, "journey": "J-18", "action": {"type": "goto", "url": "/backtest?asof=2022-06-30"}, "expect": {"text": "Viewing as-of 2022-06-30 (historical)"}}
+  ]
+}

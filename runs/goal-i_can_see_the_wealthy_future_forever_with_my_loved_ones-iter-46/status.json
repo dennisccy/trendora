@@ -1,0 +1,30 @@
+{
+  "phase": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-46",
+  "status": "complete",
+  "current_step": "dev_complete",
+  "updated_at": "2026-06-22T16:20:00.000000Z",
+  "started_at": "2026-06-22T15:47:00.000000Z",
+  "cli": "claude",
+  "verify_only": true,
+  "zero_source_diff": true,
+  "blockers": [
+    "GENUINE DEFECT (recorded, NOT patched per verify-only OUT OF SCOPE): /api/research/event-study and /api/research/factor-lab raise MemoryError on the live DB. _event_study_members_by_horizon (apps/backend/app/engine/research.py:824) materializes the full forward_returns set via .all() into ORM objects; the live data/trendora.db is 3.3 GB / 3,081,454 forward_returns rows (1,371 daily scanner_runs, 2021-2026), so all-history (and even As-of=2022-12-31 = 799,485 rows) overflows memory. NOT a regression: the unbounded .all() materialization dates to iter-20 (commit 6733c1d) and is byte-identical to the iter-21/43/45 GOAL_ACHIEVED-candidate states; the iter-44/45 route-split did not touch it. Data scale grew (restored daily-history backfills) + host RAM dropped 18->10 GiB mid-iteration on this shared machine. The labs return an honest 500/no-fabrication banner. J-104 acceptance ('load without error under normal use') is UNMET for these two labs on this DB scale. Follow-up scope: bound/stream the ForwardReturn fetch (yield_per / chunking) or push grouping into the cached aggregate so the read path never materializes ~3M ORM rows."
+  ],
+  "changed_files": [],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "live_evidence": {
+    "j103_severity_velocity": "PASS (live HTTP 200; 3x3 matrix, 3 zero-N cells honest-NA, n_total=1147; As-of=2022-12-31 -> N 1147->301; verbatim caveats present; N= drill-down count-coherent all-history 241==chip and as-of 14==chip; no lookahead)",
+    "j104_light_labs": "PASS (live HTTP 200 real figures: regime-setup-pattern, recovery-turn-edge, factor-combination, severity-velocity, downtrend-opportunity)",
+    "j104_heavy_labs": "FAIL (event-study, factor-lab -> MemoryError 500 on live 3.3GB/3.08M-row DB; genuine non-regression defect, recorded not patched)"
+  },
+  "isolated_tests": {
+    "test_severity_velocity.py": "15 passed",
+    "test_research.py": "93 passed",
+    "test_samples.py": "15 passed",
+    "test_no_magic_numbers.py": "2 passed",
+    "test_db.py::test_create_all_produces_expected_tables": "1 passed"
+  },
+  "full_suite": "launched nohup-async at /tmp/iter46-fullsuite.log; flushed 0-failed/EXIT-0 gate is the pump's to confirm (test fixtures use small seed, not the live DB, so they do not hit the live-DB MemoryError)",
+  "next_action": "review"
+}

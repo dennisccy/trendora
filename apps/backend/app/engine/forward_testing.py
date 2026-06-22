@@ -360,6 +360,20 @@ def _commit_forward_returns_concurrency_safe(session: Session) -> None:
         session.rollback()  # a concurrent writer already inserted these keys — our duplicates are dropped
 
 
+def _streamed_existing_keys(session: Session, batch: int) -> set:
+    """The forward-return idempotency key set `{(run_id, symbol, horizon)}`, built by STREAMING a
+    COLUMN-PROJECTED scan (`select(ForwardReturn.run_id, .symbol, .horizon)` consumed with `yield_per`)
+    instead of materializing every stored `ForwardReturn` ORM row at once (iter-47, J-105). The projected
+    Row values are the EXACT same plain `(int, str, int)` tuples as ORM attribute access, so the resulting
+    set is identical to the prior full-table set — idempotency + the INSERT-only/append-only contract are
+    preserved, the read is bounded on the grown table."""
+    existing: set = set()
+    stmt = select(ForwardReturn.run_id, ForwardReturn.symbol, ForwardReturn.horizon)
+    for run_id, symbol, horizon in session.exec(stmt).yield_per(batch):
+        existing.add((run_id, symbol, horizon))
+    return existing
+
+
 def _backfill(session: Session, cfg: Config) -> dict:
     latest = latest_data_date(session)
     if latest is None:
@@ -375,14 +389,18 @@ def _backfill(session: Session, cfg: Config) -> dict:
     for asof in asof_dates:
         run_scan(session, asof, cfg)
 
-    # Idempotency: only INSERT (run, symbol, horizon) keys that do not already exist.
-    existing = {
-        (fr.run_id, fr.symbol, fr.horizon) for fr in session.exec(select(ForwardReturn)).all()
-    }
+    # Idempotency: only INSERT (run, symbol, horizon) keys that do not already exist. iter-47 (J-105):
+    # built by STREAMING a column-projected scan (bounded by config) — not a full-table ORM `.all()`.
+    batch = cfg.research.read_batch_size
+    existing = _streamed_existing_keys(session, batch)
 
     # (3): for EVERY persisted run with >= 1 post-snapshot bar (including the bootstrap Risk-off runs,
     # so the by-regime sample carries both regimes), INSERT the realized per-(run, symbol, horizon)
     # forward returns. Runs with no post-snapshot bars (the latest seed-date run) insert nothing (n=0).
+    # NOTE: `runs` is materialized (not streamed): there is one ScannerRun per cadence date (bounded,
+    # small) and the loop body mutates the session (add + flush + bar queries) — streaming a server-side
+    # cursor while mutating the same session would interleave unsafely. The memory lever is the millions-
+    # row `forward_returns` idempotency scan above (now streamed), not the bounded run list.
     runs = session.exec(select(ScannerRun)).all()
     rows_inserted = 0
     runs_with_returns = 0

@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
+  "base_url": "http://localhost:3835",
+  "iteration": 47,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Dashboard — current market regime at a glance",
+      "narration": "We open the dashboard to see today's market regime score and phase. The data is served instantly from persisted snapshots with no recomputation.",
+      "point_out": "Regime score, phase label (e.g. Expansion or Risk-on), and the as-of date shown in the panel.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/"},
+      "expect": {"text": "73.44"}
+    },
+    {
+      "n": 2,
+      "title": "As-of toggle — step back to a historical date",
+      "narration": "Clicking the back-navigation control on the as-of panel steps the entire dashboard to a past date, showing how the regime and scores looked at that moment in time.",
+      "point_out": "The regime score and phase label update to the historical values — the as-of date indicator in the panel changes to match.",
+      "journey": "J-13",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/?asof=2026-05-15"},
+      "expect": {"text": "Viewing as-of 2026-05-15"}
+    },
+    {
+      "n": 3,
+      "title": "Research hub — all seven labs one click away",
+      "narration": "The Research section is always visible in the sidebar. Opening it shows all seven analytical labs with descriptions and direct links — no hidden menus required.",
+      "point_out": "Seven lab cards listed on the hub page, each with a title, description, and a link to its dedicated route.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/research"},
+      "expect": {"text": "Event Study"}
+    },
+    {
+      "n": 4,
+      "title": "Event-Study matrix — per-horizon mean return and win-rate",
+      "narration": "The Setup and Pattern event-study lab now loads reliably on the full live dataset. Each row shows a horizon window with a mean return, win-rate, and sample count — figures the backend previously failed to serve without running out of memory.",
+      "point_out": "Five horizon rows (1d through 60d) each showing a numeric mean return percentage, a win-rate, and an N= sample count chip.",
+      "journey": "J-29",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/research/event-study"},
+      "expect": {"text": "+0.47%"}
+    },
+    {
+      "n": 5,
+      "title": "Event-Study N= drill-down — count coherence confirmed",
+      "narration": "Clicking any N= chip on the event-study matrix navigates to the sample-level drill-down. The total count on that page matches the integer shown on the chip exactly.",
+      "point_out": "The samples page header showing a total of 455 observations — the same number displayed on the 20d chip in the matrix.",
+      "journey": "J-29",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/research/samples?kind=event-study&horizon=20&subject=Actionable&slice=pooled&view=episodes"},
+      "expect": {"text": "Total observations: 455"}
+    },
+    {
+      "n": 6,
+      "title": "Factor-combination lab — composite cohort with real figures",
+      "narration": "The multi-factor combination lab aggregates across the full pool of 598,271 symbol-dates and shows how a composite rank-blend narrows the field. All cohort rows render with numeric mean return and hit-rate — no backend error.",
+      "point_out": "A pool size of 598,271, a composite cohort row showing mean return and hit-rate, and per-condition breakdowns beneath.",
+      "journey": "J-26",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/research/factor-combination"},
+      "expect": {"text": "598,271"}
+    },
+    {
+      "n": 7,
+      "title": "Regime x Setup x Pattern — ranked combination table",
+      "narration": "This lab ranks every combination of market regime, setup, and pattern by forward return. The table loads with over 100 rows of real figures — low-sample combinations correctly show NA rather than fabricated values.",
+      "point_out": "The top-ranked row showing Defensive regime, Actionable setup, mean return of +5.66%, and an honest NA marker on rows where sample counts are too small.",
+      "journey": "J-77",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/research/regime-setup-pattern"},
+      "expect": {"text": "+5.66%"}
+    },
+    {
+      "n": 8,
+      "title": "Downtrend Opportunity — which stocks held up best",
+      "narration": "The Downtrend Opportunity lab shows which market phases historically produced the best recoveries. The Expansion phase row leads with a mean return of +5.18% across 591 episodes — data that now loads immediately from the warm cache.",
+      "point_out": "The Held-up-best table with the Expansion row at n=591 and mean return +5.18%, alongside the Recovery-Turn Edge section below.",
+      "journey": "J-91",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/research/downtrend-opportunity"},
+      "expect": {"text": "+5.18%"}
+    }
+  ]
+}

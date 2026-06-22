@@ -1123,16 +1123,31 @@ class ResearchCfg(BaseModel):
     for the Severity-velocity × Regime study. Both default to a sane built-in catalog so a config predating
     them (and the inline test fixtures) still loads — the real `config.yaml` supplies the tuned values. The
     forward `DowntrendOpportunityCfg` / `SeverityVelocityCfg` are constructed below the class so the default
-    can name them."""
+    can name them.
+
+    `read_batch_size` (iter-47, J-105) is the SINGLE source of the streaming batch size the heavy research
+    read-path builders pass to `yield_per(...)` when they scan the (large, growing) `forward_returns` table
+    column-projected instead of materializing it as ORM rows. It is a memory-safety knob, not a displayed
+    value, and bounds peak RSS on the grown live dataset (J-100's bounded-resource contract, extended to the
+    research read path). Required + boot-validated `>= 1` (mirroring `startup.warmup_batch_size`) so the
+    builders never read a missing/zero batch from config — there is NO inline batch literal in `research.py`
+    or `forward_testing.py` (both are no-magic-numbers CALC_FILES)."""
 
     model_config = ConfigDict(extra="allow")
     factor_lab: FactorLabCfg
+    read_batch_size: int
     downtrend_opportunity: "DowntrendOpportunityCfg" = Field(
         default_factory=lambda: _default_downtrend_opportunity()
     )
     severity_velocity: "SeverityVelocityCfg" = Field(
         default_factory=lambda: _default_severity_velocity()
     )
+
+    @model_validator(mode="after")
+    def _validate(self) -> "ResearchCfg":
+        if self.read_batch_size < 1:
+            raise ValueError("research.read_batch_size must be >= 1")
+        return self
 
 
 def _default_downtrend_opportunity() -> "DowntrendOpportunityCfg":

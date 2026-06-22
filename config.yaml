@@ -787,6 +787,12 @@ patterns:
 #   - `direction`/`family` are DESCRIPTIVE metadata only (expected sign + grouping for J-30); they do not
 #     flip the sort. The low-sample threshold is REUSED from walk_forward.min_sample (no new threshold).
 research:
+  # iter-47 (J-105) — the streaming batch size the heavy research read-path builders pass to
+  # `yield_per(...)` when they scan the large/growing `forward_returns` table column-projected (instead
+  # of materializing it as ORM rows). A memory-safety knob (J-100's bounded-resource contract extended to
+  # the research read path), NOT a displayed value. Boot-validated `>= 1`; the SINGLE source of this batch
+  # size — there is NO inline batch literal in research.py / forward_testing.py (no-magic-numbers).
+  read_batch_size: 2000
   factor_lab:
     deciles: 10
     factors:
