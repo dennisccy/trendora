@@ -113,8 +113,10 @@ export function PhaseCrossViewCard() {
       <CardContent>
         <p className="mb-3 text-xs text-text-muted">
           The same index path under two lenses on one synchronized chart — the stored-regime bands (top) and
-          the market-phase bands + 0–100 severity + filtered P(bear) lines (bottom). Zoom or drag either pane
-          to re-range both; the vertical marker shows the as-of date (context past it is display-only).
+          the market-phase bands + 0–100 severity + zero-centered severity-velocity line (bottom; positive =
+          stress worsening). Zoom or drag either pane to re-range both; the vertical marker shows the as-of
+          date (context past it is display-only). Hover for the regime label/score, phase, severity, P(bear),
+          and severity-velocity at that date.
         </p>
         {status === "loading" ? (
           <div className="h-[28rem] w-full animate-pulse rounded bg-surface-2" />

@@ -377,17 +377,52 @@ def _stored_runs_through(session: Session, d: date_cls) -> list[ScannerRun]:
 # no threshold literal (every cutoff is a `config.market_phase` key). The SMOOTHED retrospective is a
 # SEPARATE backward pass below — fenced, never consumed here.
 # ==================================================================================================
+def _severity_velocity_at(severities: list[float], index: int, window: int) -> Optional[float]:
+    """iter-44 (J-102) — the CAUSAL severity-velocity at position `index`: the deterministic ordinary-
+    least-squares SLOPE of the served 0-100 `severities` over the trailing `window` snapshots ending at
+    `index` (inclusive), in severity-points-per-snapshot. Sign convention POSITIVE = severity worsening
+    (the slope of an increasing severity is positive). STRICTLY CAUSAL — it reads only `severities[index -
+    window + 1 .. index]`, all dated <= the date at `index`, never a future value. NA (None) at the WARM-UP
+    HEAD where fewer than `window` snapshots precede-and-include `index` (no fabricated slope from a short
+    window). The slope is the closed-form OLS fit over x = 0, 1, ..., window-1 (evenly spaced snapshots):
+    `slope = (n * Σ(x*y) - Σx * Σy) / (n * Σx² - (Σx)²)` — every constant is a structural integer (0/1/2),
+    the only tunable (`window`) comes from config (No magic numbers). A degenerate zero x-variance is
+    impossible for window >= 2 (validated at load), so the denominator is always positive."""
+    if index + 1 < window:
+        return None  # warm-up head: fewer than `window` snapshots <= this date -> honest NA
+    segment = severities[index - window + 1 : index + 1]
+    n = len(segment)
+    # structural accumulators (int 0 like the rest of the engine — promoted to float by the severity sums;
+    # No magic numbers / No float literal in calc code, per the tokenizer test's blanket rule).
+    sum_x = 0
+    sum_y = 0
+    sum_xx = 0
+    sum_xy = 0
+    for x, y in enumerate(segment):
+        sum_x += x
+        sum_y += y
+        sum_xx += x * x
+        sum_xy += x * y
+    denom = n * sum_xx - sum_x * sum_x
+    slope = (n * sum_xy - sum_x * sum_y) / denom
+    return round(slope, 6)
+
+
 def _timeline_series(
     readings: list[dict], filtered_path: list[float], cfg: Config
 ) -> list[dict]:
-    """The per-snapshot-date CAUSAL timeline series `[{date, phase, p_bear, severity}]` (J-89). It reads
-    the SAME single derivation the served panel value reads — the per-date FILTERED `p_bear` is the i-th
-    element of the EXACT `_filtered_bear_path` the panel's served P(bear) is the LAST element of (single
-    source: the timeline and the panel read ONE series, never a second computation), and the per-date
-    `phase`/`severity` are the SAME `_phase_for(_severity_reading)` the served-date phase is. `readings`
-    is the per-valid-run `{date, reading_obj}` list (ascending by date, ALL dated <= D); it is the SAME
-    set, in the SAME order, the `observations`/`filtered_path` are built from, so element i of each lines
-    up. Pure in-memory mapping over already-computed values; recomputes nothing."""
+    """The per-snapshot-date CAUSAL timeline series `[{date, phase, p_bear, severity, severity_velocity}]`
+    (J-89 + iter-44 J-102). It reads the SAME single derivation the served panel value reads — the per-date
+    FILTERED `p_bear` is the i-th element of the EXACT `_filtered_bear_path` the panel's served P(bear) is
+    the LAST element of (single source: the timeline and the panel read ONE series, never a second
+    computation), and the per-date `phase`/`severity` are the SAME `_phase_for(_severity_reading)` the
+    served-date phase is. `readings` is the per-valid-run `{date, reading_obj}` list (ascending by date,
+    ALL dated <= D); it is the SAME set, in the SAME order, the `observations`/`filtered_path` are built
+    from, so element i of each lines up. iter-44 (J-102): each point additionally carries the CAUSAL
+    `severity_velocity` — the config-windowed OLS slope of the SAME `severity` series above (positive =
+    worsening, NA at the warm-up head). Pure in-memory mapping over already-computed values; recomputes
+    nothing and reads no future bar (the velocity at i uses only severities <= the date at i)."""
+    window = cfg.market_phase.severity_velocity_window
     series: list[dict] = []
     for index, entry in enumerate(readings):
         reading = entry["reading_obj"]
@@ -398,7 +433,15 @@ def _timeline_series(
             "phase": phase,
             "p_bear": round(filtered_path[index], 6),
             "severity": severity,
+            # iter-44 (J-102): the causal severity-velocity placeholder; filled below from the SAME single
+            # severity series (one derivation — never a second computation per point).
+            "severity_velocity": None,
         })
+    # iter-44 (J-102): fill severity_velocity from the SAME derived severity series (read VERBATIM above) —
+    # the causal config-windowed OLS slope at each date, NA at the warm-up head. One pass over one series.
+    severities = [point["severity"] for point in series]
+    for index, point in enumerate(series):
+        point["severity_velocity"] = _severity_velocity_at(severities, index, window)
     return series
 
 
@@ -734,23 +777,36 @@ def compute_market_phase(
         for index, obs in enumerate(observations)
     ][-limit:]
 
-    # iter-30 (J-89): the per-snapshot-date CAUSAL timeline series {date, phase, p_bear} — the SAME single
-    # derived series the panel reads (the SAME `_filtered_bear_path` p_bear at each step + the SAME
-    # `_phase_for` phase per reading). The timeline and the panel read ONE derivation, never a second
-    # computation (single source). Bounded to the SAME most-recent disclosure tail so a daily-history host
-    # serves a readable series; `total_timeline_dates` discloses the full causal count.
-    timeline_full = _timeline_series(readings, filtered_path, cfg)
-    timeline = timeline_full[-limit:]
+    # iter-30 (J-89): the per-snapshot-date CAUSAL timeline series {date, phase, p_bear, severity,
+    # severity_velocity} <= D — the SAME single derived series the panel reads (the SAME `_filtered_bear_path`
+    # p_bear at each step + the SAME `_phase_for` phase per reading + the iter-44 J-102 causal severity_
+    # velocity). The timeline and the panel read ONE derivation, never a second computation (single source).
+    # The bounded `timeline` tail (and `total_timeline_dates`) + the episodes + the recovery-turn signal ALL
+    # read this STRICTLY-CAUSAL (<= D) series — no future bar leaks into any as-of-scoped value.
+    causal_timeline = _timeline_series(readings, filtered_path, cfg)
+    timeline = causal_timeline[-limit:]
 
-    # iter-30 (J-89): the dated CAUSAL downtrend episodes grouped from the FULL (un-truncated) timeline —
+    # iter-30 (J-89): the dated CAUSAL downtrend episodes grouped from the FULL (un-truncated, <= D) timeline —
     # each {first_trigger_date, severity_at_trigger, last_date, open|closed at D}. Observed on its dates
     # only (no future bar); empty/early history -> honest empty list. Disclose the FULL set (episodes are
     # few even on a daily-history host).
-    episodes = _downtrend_episodes(timeline_full, as_of, cfg)
+    episodes = _downtrend_episodes(causal_timeline, as_of, cfg)
 
     # iter-30 (J-90): the causal recovery/turn signal for the resolved as-of D, computed from data <= D
     # only (the filtered P(bear) crossing below the config exit while the index reclaims its trailing MA).
-    recovery_turn = _recovery_turn_signal(session, timeline_full, as_of, cfg)
+    recovery_turn = _recovery_turn_signal(session, causal_timeline, as_of, cfg)
+
+    # iter-44 (J-101b): the FULL STORED HISTORY causal phase timeline — every snapshot date through the
+    # LATEST stored run, INDEPENDENT of the resolved as-of (mirroring `/api/regime-history?full=true`, J-49,
+    # which serves the full regime bands regardless of as-of). Each point is STILL strictly causal to its
+    # OWN date (the SAME `_severity_reading` -> `_filtered_bear_path` -> `_timeline_series` derivation, every
+    # point read from its own <= date snapshot), so a point dated > D is DISPLAY-ONLY market context behind
+    # the as-of marker and feeds NO as-of-scoped value (the panel `phase`/`severity`/`p_bear`, the bounded
+    # `timeline` tail, the episodes, and the recovery-turn signal all read `causal_timeline` (<= D) above —
+    # never this full series). The bottom cross-view phase pane now spans the same full history the top regime
+    # pane already does. Built once via the shared `_causal_timeline(None)` (all stored runs) — single source,
+    # no second computation. When the as-of is the latest stored run this equals `causal_timeline` exactly.
+    full_history_timeline = _causal_timeline(session, None, cfg)
 
     return {
         "asof_date": asof_iso,
@@ -772,16 +828,21 @@ def compute_market_phase(
         # no second computation, no second value). The SMOOTHED retrospective lives ONLY behind the separate
         # `retrospective` field (a sibling read), never here.
         "timeline": timeline,
-        "total_timeline_dates": len(timeline_full),
+        # `total_timeline_dates` is the CAUSAL (<= D) count the bounded `timeline` tail is sliced from — it
+        # stays the <= D count (NOT the full-history count) so the card payload (which strips `timeline_full`)
+        # is byte-identical to today regardless of the iter-44 J-101b full-history clamp change.
+        "total_timeline_dates": len(causal_timeline),
         "episodes": episodes,
         "recovery_turn": recovery_turn,
-        # iter-38 (J-97): the FULL-history causal timeline series, carried in the canonical payload (so the
-        # SAME `market_phase_cached` row + `dataset_version` stamp serves it — no new cache, no recompute).
-        # It is the SAME `timeline_full` the bounded `timeline` tail above is sliced from (single source).
-        # The default `GET /api/market-phase` endpoint STRIPS this key so the card payload stays
-        # byte-identical to today; only the J-97 cross-view chart opts in via `?full=true`. Strictly causal
-        # per point (every point read from its own ≤ D snapshot) — no smoothed/true-bear value lives here.
-        "timeline_full": timeline_full,
+        # iter-38 (J-97) / iter-44 (J-101b): the FULL-history causal timeline series, carried in the canonical
+        # payload (so the SAME `market_phase_cached` row + `dataset_version`+SCHEMA stamp serves it — no new
+        # cache, no new endpoint, no recompute). iter-44: this is now the FULL STORED HISTORY (through the
+        # latest run, INDEPENDENT of the resolved as-of) so the bottom cross-view phase pane spans the same
+        # full history the top regime pane already does (J-49 precedent) — each point still strictly causal to
+        # its OWN date (no lookahead; a point > D is display-only). The default `GET /api/market-phase`
+        # endpoint STRIPS this key so the card payload stays byte-identical to today; only the J-97 cross-view
+        # chart opts in via `?full=true`. No smoothed/true-bear value lives here (the J-89 fence holds).
+        "timeline_full": full_history_timeline,
     }
 
 
@@ -793,8 +854,11 @@ def compute_market_phase(
 # market-phase / retrospective payload SHAPE changes so every stale-schema row becomes a guaranteed MISS
 # and is recomputed once WITH the new field. It is folded into the existing `dataset_version` STRING
 # composite stored in the cache row (NOT a new DB column — that would need `db.py` `_ADDITIVE_COLUMNS` +
-# the `test_db.py` guards on the live persistent DB). `s1` = the iter-38 `timeline_full` additive field.
-SCHEMA_VERSION = "s1"
+# the `test_db.py` guards on the live persistent DB). `s1` = the iter-38 `timeline_full` additive field;
+# `s2` = the iter-44 (J-101/J-102) additive `severity_velocity` field on every timeline point AND the
+# full-history (independent-of-as-of) `timeline_full` clamp alignment — a stale `s1` row (missing
+# `severity_velocity`, or carrying the old as-of-truncated `timeline_full`) must never be served.
+SCHEMA_VERSION = "s2"
 
 
 def _cache_version(session: Session) -> str:

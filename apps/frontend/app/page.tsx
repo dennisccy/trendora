@@ -5,7 +5,6 @@ import { AlertTriangle, Clock, ChevronDown } from "lucide-react";
 
 import { useAsOf } from "@/components/asof-provider";
 import { ComponentBreakdown } from "@/components/component-breakdown";
-import { MajorIndexesCard } from "@/components/major-indexes-card";
 import { MarketPhaseCard } from "@/components/market-phase-card";
 import { PhaseCrossViewCard } from "@/components/phase-cross-view-card";
 import { PageHeading } from "@/components/page-heading";
@@ -154,10 +153,10 @@ function DashboardBody({
         <PhaseGlanceCard phase={phase} />
       </div>
 
-      {/* J-44/J-49: Major indexes & regime (top-pane lens, unchanged). */}
-      <MajorIndexesCard />
-
-      {/* J-97: the two-pane synced regime × phase cross-view chart (the new capability). */}
+      {/* J-97 / J-101a: the single two-pane synced regime × phase cross-view chart — the ONE market chart on
+          the Dashboard. The former standalone "Major indexes & regime" card (J-44/J-49) was a DUPLICATE of
+          this chart's pane 0 (same `/api/indexes?full=true` + `/api/regime-history?full=true` series) and is
+          removed (J-101a) — nothing is lost, pane 0 already IS that chart. */}
       <PhaseCrossViewCard />
 
       {/* J-98: every supporting figure relocated into a collapsed, expandable "More detail" section —

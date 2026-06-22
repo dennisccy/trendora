@@ -25,9 +25,11 @@ import type { IndexSeries, MarketPhaseTimelinePoint, RegimePoint } from "@/lib/a
  *   - Pane 0 (top): the same normalized-% index lines + stored-regime background bands + as-of marker as
  *     the J-44/J-49 "Major indexes & regime" card (unchanged lens).
  *   - Pane 1 (bottom): the SAME normalized-% index lines under PHASE-coloured bands, plus a 0–100 severity
- *     line and the filtered P(bear) line (0–1) — every J-97 series read from the SAME single served
- *     full-history market-phase series (`GET /api/market-phase?full=true`). The bottom pane carries the
- *     SAME as-of marker the top pane uses.
+ *     line and (iter-44, J-102) a ZERO-CENTERED severity-velocity line (replacing the retired P(bear) line)
+ *     — every series read from the SAME single served full-history market-phase series
+ *     (`GET /api/market-phase?full=true`). iter-44 (J-101b): that full series spans the FULL stored history
+ *     independent of the as-of, so the phase bands span the full history (like the top regime pane). The
+ *     bottom pane carries the SAME as-of marker the top pane uses.
  *
  * It RE-FORMATS server values only — NO client-side return / severity / probability math. The phase bands
  * read the served phase label per date via the shared `lib/phase` mapping (the SAME the Market-Phase card
@@ -49,10 +51,11 @@ function isoFromTime(time: Time): string {
   return `${year}-${pad(month)}-${pad(day)}`;
 }
 
-// dedicated overlay price-scale ids for the bottom pane's severity (0–100) + P(bear) (0–1) lines, so they
-// don't distort the index %-scale they share the pane with.
+// dedicated overlay price-scale ids for the bottom pane's severity (0–100) + severity-velocity (zero-
+// centered) lines, so they don't distort the index %-scale they share the pane with. iter-44 (J-102): the
+// retired P(bear) overlay scale slot is reused for the zero-centered severity-velocity line.
 const SEVERITY_SCALE_ID = "phase-severity";
-const PBEAR_SCALE_ID = "phase-pbear";
+const VELOCITY_SCALE_ID = "phase-velocity";
 
 interface CrossTooltip {
   date: string;
@@ -60,6 +63,12 @@ interface CrossTooltip {
   phase: string | null;
   severity: number | null;
   pBear: number | null;
+  // iter-44 (J-102): the served severity-velocity for the hovered date (positive = worsening; NULL = NA at
+  // the warm-up head) + the stored regime label/score (read VERBATIM from the already-fetched regime points
+  // — Single source of truth; the frontend computes no velocity / regime / probability).
+  severityVelocity: number | null;
+  regimeLabel: string | null;
+  regimeScore: number | null;
 }
 
 export function PhaseCrossViewChart({
@@ -88,12 +97,22 @@ export function PhaseCrossViewChart({
     return map;
   }, [series]);
 
-  // phase-timeline lookup by ISO date for the tooltip (served label/severity/p_bear read verbatim).
+  // phase-timeline lookup by ISO date for the tooltip (served label/severity/p_bear/severity_velocity read
+  // verbatim — never recomputed).
   const phaseByDate = useMemo(() => {
     const map = new Map<string, MarketPhaseTimelinePoint>();
     timeline.forEach((point) => map.set(point.date, point));
     return map;
   }, [timeline]);
+
+  // iter-44 (J-102): the stored regime label + 0–100 score per ISO date, for the enriched tooltip — read
+  // VERBATIM from the already-fetched `/api/regime-history` points (the SAME series the top pane's bands
+  // use; Single source of truth, Scores must be explainable). The frontend computes no regime value.
+  const regimeByDate = useMemo(() => {
+    const map = new Map<string, RegimePoint>();
+    regimePoints.forEach((point) => map.set(point.date, point));
+    return map;
+  }, [regimePoints]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -197,27 +216,45 @@ export function PhaseCrossViewChart({
         severitySeries.setData(
           timeline.map((pt): LineData<Time> => ({ time: pt.date as Time, value: pt.severity })),
         );
-        // the filtered P(bear) line (0–1) on its own overlay scale.
-        const pBearSeries = chart!.addSeries(
+        // iter-44 (J-102): the ZERO-CENTERED severity-velocity line (severity-points per snapshot; positive =
+        // worsening) on its OWN overlay scale (the retired P(bear) scale slot), so the index % lines stay
+        // undistorted. NA (null) warm-up points are dropped so no fabricated slope is drawn. A horizontal 0
+        // reference line marks the worsening/easing boundary. The plotted P(bear) line is REMOVED (J-102 —
+        // it was visually low-signal); its value stays in the tooltip below.
+        const velocitySeries = chart!.addSeries(
           lwc.LineSeries,
           {
             color: token("--accent"),
             lineWidth: 1,
-            priceScaleId: PBEAR_SCALE_ID,
+            priceScaleId: VELOCITY_SCALE_ID,
             priceLineVisible: false,
             lastValueVisible: false,
           },
           1,
         );
-        pBearSeries.setData(
-          timeline.map((pt): LineData<Time> => ({ time: pt.date as Time, value: pt.p_bear })),
+        velocitySeries.setData(
+          timeline
+            .filter((pt): pt is MarketPhaseTimelinePoint & { severity_velocity: number } =>
+              typeof pt.severity_velocity === "number",
+            )
+            .map((pt): LineData<Time> => ({ time: pt.date as Time, value: pt.severity_velocity })),
         );
-        // keep the two overlay scales out of the way of the % index lines (margins, invisible borders).
+        // the 0 reference on the velocity scale (the worsening/easing boundary — a zero-centered line).
+        velocitySeries.createPriceLine({
+          price: 0,
+          color: token("--text-faint"),
+          lineWidth: 1,
+          lineStyle: lwc.LineStyle.Dashed,
+          axisLabelVisible: false,
+          title: "0",
+        });
+        // keep the two overlay scales out of the way of the % index lines (margins, invisible borders). The
+        // velocity scale is zero-centered: equal top/bottom margins keep 0 near the pane's vertical middle.
         severitySeries.priceScale().applyOptions({
           scaleMargins: { top: 0.1, bottom: 0.1 },
           visible: false,
         });
-        pBearSeries.priceScale().applyOptions({
+        velocitySeries.priceScale().applyOptions({
           scaleMargins: { top: 0.1, bottom: 0.1 },
           visible: false,
         });
@@ -246,12 +283,18 @@ export function PhaseCrossViewChart({
           }
         });
         const pt = phaseByDate.get(date) ?? null;
+        const regime = regimeByDate.get(date) ?? null;
         setTooltip({
           date,
           values,
           phase: pt?.phase ?? null,
           severity: pt?.severity ?? null,
           pBear: pt?.p_bear ?? null,
+          // iter-44 (J-102): the served severity-velocity (NA at the warm-up head) + the stored regime
+          // label/score, all read VERBATIM (never recomputed).
+          severityVelocity: pt?.severity_velocity ?? null,
+          regimeLabel: regime?.label ?? null,
+          regimeScore: regime?.score ?? null,
         });
       };
       chart.subscribeCrosshairMove(crosshairHandler);
@@ -265,7 +308,7 @@ export function PhaseCrossViewChart({
       chart?.remove();
       setTooltip(null);
     };
-  }, [series, regimePoints, timeline, asofDate, isHistorical, phaseByDate]);
+  }, [series, regimePoints, timeline, asofDate, isHistorical, phaseByDate, regimeByDate]);
 
   return (
     <div className="space-y-3">
@@ -284,7 +327,8 @@ export function PhaseCrossViewChart({
 }
 
 /** The hover tooltip: the ISO date, each index's %, and the served phase + 0–100 severity + filtered
- *  P(bear) for that date (read verbatim — never recomputed). */
+ *  P(bear) + iter-44 (J-102) severity-velocity + the stored market-regime label/score for that date (all
+ *  read verbatim — never recomputed). */
 function CrossTooltipBox({ tooltip }: { tooltip: CrossTooltip }) {
   return (
     <div
@@ -303,6 +347,21 @@ function CrossTooltipBox({ tooltip }: { tooltip: CrossTooltip }) {
           </li>
         ))}
       </ul>
+      {/* iter-44 (J-102): the stored market-regime label + 0–100 score (read verbatim from the regime-history
+          points — Single source of truth; Scores must be explainable). */}
+      {tooltip.regimeLabel ? (
+        <div className="mt-2 space-y-1 border-t border-border pt-2">
+          <span className="flex items-center justify-between gap-4">
+            <span className="text-text-muted">Regime</span>
+            <span className="num text-text">
+              {tooltip.regimeLabel}
+              {tooltip.regimeScore !== null ? (
+                <span className="text-text-muted"> · {tooltip.regimeScore.toFixed(0)}/100</span>
+              ) : null}
+            </span>
+          </span>
+        </div>
+      ) : null}
       {tooltip.phase ? (
         <div className="mt-2 space-y-1 border-t border-border pt-2">
           <span className="flex items-center justify-between gap-4">
@@ -324,6 +383,15 @@ function CrossTooltipBox({ tooltip }: { tooltip: CrossTooltip }) {
               <span className="num text-text">{tooltip.pBear.toFixed(2)}</span>
             </span>
           ) : null}
+          {/* iter-44 (J-102): the served severity-velocity (positive = worsening; NA at the warm-up head). */}
+          <span className="flex items-center justify-between gap-4">
+            <span className="text-text-muted">Severity velocity</span>
+            <span className="num text-text">
+              {tooltip.severityVelocity !== null
+                ? `${tooltip.severityVelocity > 0 ? "+" : ""}${tooltip.severityVelocity.toFixed(2)}`
+                : "NA"}
+            </span>
+          </span>
         </div>
       ) : null}
     </div>
@@ -386,9 +454,10 @@ function CrossLegend({
             <span className="inline-block h-2 w-3 rounded-sm" style={{ backgroundColor: "var(--neg)" }} aria-hidden />
             Severity (0–100)
           </span>
+          {/* iter-44 (J-102): the zero-centered severity-velocity line replaces the retired P(bear) line. */}
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-2 w-3 rounded-sm" style={{ backgroundColor: "var(--accent)" }} aria-hidden />
-            Filtered P(bear)
+            Severity velocity (0-centered; + = worsening)
           </span>
         </div>
       ) : null}

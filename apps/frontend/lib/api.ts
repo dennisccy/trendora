@@ -478,6 +478,10 @@ export interface MarketPhaseTimelinePoint {
   phase: string;
   p_bear: number; // the FILTERED (causal) P(bear) at this date (never the smoothed value)
   severity: number;
+  // iter-44 (J-102): the CAUSAL config-windowed OLS slope of the served 0-100 severity (severity-points per
+  // snapshot; positive = worsening, negative = easing). NULL at the warm-up head where the window is
+  // unavailable (NA — never a fabricated slope). Read verbatim — the frontend computes no velocity.
+  severity_velocity: number | null;
 }
 
 /** iter-30 (J-89): one dated CAUSAL downtrend episode — observed on its dates only (no future bar). */

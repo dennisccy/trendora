@@ -462,10 +462,14 @@ It places **no orders** and holds **no broker keys**.
 - **Dashboard** (`/`) — the daily snapshot at a glance. The top is a **compact at-a-glance summary**
   that updates on every as-of change — the market-**regime** label + 0–100 score, and the market-**phase**
   label + 0–100 **severity** score (+ severity-band label) + filtered **P(bear)**, each with its named
-  component breakdown reachable (J-98) — directly above a **two-pane market cross-view chart**: pane 0 = the
-  **Major indexes & regime** chart (normalized index-ETF % lines over stored-regime background bands,
-  default-on behind a persisted toggle — J-44) and pane 1 = the **same index lines over phase-colored bands
-  with the 0–100 severity + filtered P(bear) lines** (J-97); the two panes **share one time axis**, so
+  component breakdown reachable (J-98) — directly above the **single two-pane market cross-view chart** (there is no separate standalone
+  Major-indexes card — it duplicated pane 0 and is removed, J-101): pane 0 = the
+  **Major indexes & regime** lens (normalized index-ETF % lines over stored-regime background bands,
+  default-on behind a persisted toggle — J-44) and pane 1 = the **same index lines over full-history
+  phase-colored bands with the 0–100 severity line + the zero-centered severity-velocity line** (J-97 /
+  J-102); the bottom pane's phase bands span the **full history at any as-of** (the as-of only positions the
+  marker — J-101), and the retired **P(bear)** line stays in the **hover tooltip** beside the **regime label
+  + score** the tooltip now also shows (J-102); the two panes **share one time axis**, so
   zoom/pan is synchronized across both — a view transform of the visible range, not a second date control.
   The breadth metrics, top sectors, candidate counts, top themes, last-run time, and evidence summary sit
   below in a **collapsed, expandable "More detail" section** (J-98). Its period selector **defaults to All
@@ -528,9 +532,15 @@ It places **no orders** and holds **no broker keys**.
   same `N=` samples chips and respecting Episodes/Pooled (J-63) + the As-of mode (J-32) — derived once
   from the same enriched event-study observation set, never recomputed (J-77); its table **filters by
   regime / setup / pattern**, sorts **NA-last** in every column, **defaults to Pooled**, and every row's
-  `N=` chip drills into the exact cohort without error (J-82). Each lab section loads
-  independently and the event-study aggregates are **derived once and cached/precomputed** for fast
-  serving (figures byte-identical — a performance property, J-72).
+  `N=` chip drills into the exact cohort without error (J-82). Each heavy lab section is **lazy-loaded**
+  (fetched on expand / when scrolled into view, never four heavy requests at once) and the four heaviest
+  labs — multi-factor combination, the Setup & Pattern event-study, Regime × Setup × Pattern, and Downtrend
+  Opportunity — live on their **own `/research/*` sub-routes** linked from a `/research` hub, each served
+  from a **derived-once, cached/precomputed** aggregate for fast, reliable loads (figures byte-identical — a
+  performance property, J-72 / J-104). A **Severity-velocity × Regime forward-return study**
+  (`/research/severity-velocity`) tests whether the sign of severity-velocity under a given regime predicts
+  the forward market return — a regime-family × velocity-sign matrix of forward SPY returns (mean / win-rate
+  / N per horizon) with `N=` drill-down, honest about its bull-dominated sample (J-103).
 - **Research Samples** (`/research/samples`) — the drill-down behind every research sample count: each
   `N=…` figure on `/research` links here, parameterized to reproduce that exact cohort (analysis kind,
   factor(s)/subject, horizon, decile/cohort, regime, sector, and the all-history vs as-of scope, as
@@ -637,7 +647,9 @@ The backend is the single source of truth; every page only displays server-compu
   view (the Research **all-history vs as-of-date** mode only filters the observation set to snapshots ≤
   the as-of date — it never recomputes a figure). They are additionally **served from a persisted/
   cached derived aggregate for fast loads** — the cache refreshes on dataset changes and the figures
-  stay **byte-identical** (a performance property, not a recompute) (J-72).
+  stay **byte-identical** (a performance property, not a recompute) (J-72; the previously-uncached
+  multi-factor combination and Regime × Setup × Pattern studies join this cached set in J-104, so every
+  heavy lab serves from a cached aggregate).
 - **Per-timeframe bars + timeframe-scaled indicators/patterns** (1D/1h/15m/5m) — computed once per
   `(symbol, timeframe, as-of)` and served from storage; the daily timeframe stays the canonical swing
   series.
@@ -653,12 +665,22 @@ The backend is the single source of truth; every page only displays server-compu
   major-indexes chart (a presentation series, not a canonical score); the frontend only re-formats it.
   Served full-history to the dashboard card regardless of the global as-of (J-49) — same endpoint,
   clamp optional.
-- **Phase / severity / P(bear) timeline series** (date → phase label + 0–100 severity + filtered
-  P(bear)) — computed once by the market-phase engine (J-87 / J-88 / J-89) and served by
-  `/api/market-phase`; the Market-Phase card reads the bounded disclosure tail, and the Dashboard
-  cross-view chart reads the **full-history** series via a `?full=true` serialization of the
-  already-computed `timeline_full` (same endpoint, same single series — not a recompute). Read
-  identically by the card and the Dashboard chart's second pane; never recomputed in a view (J-97).
+- **Phase / severity / P(bear) / severity-velocity timeline series** (date → phase label + 0–100 severity
+  + filtered P(bear) + the **severity-velocity** — a deterministic, config-windowed causal slope of the
+  0–100 severity, sign + = worsening, NA at the warm-up head; J-102) — computed once by the market-phase
+  engine (J-87 / J-88 / J-89 / J-102) and served by `/api/market-phase`; the Market-Phase card reads the
+  bounded disclosure tail, and the Dashboard cross-view chart reads the **full-history** series via a
+  `?full=true` serialization of the already-computed `timeline_full` (same endpoint, same single series —
+  not a recompute); the payload is **schema-versioned** so adding the velocity field refreshes the
+  `MarketPhaseCache` rows (no stale shape). Read identically by the card and the Dashboard chart's second
+  pane; never recomputed in a view (J-97 / J-102).
+- **Severity-velocity × regime forward-return study aggregate** — the regime-family × velocity-sign matrix
+  of forward benchmark (SPY) returns (mean / win-rate / N per horizon) is **derived once** from the stored
+  append-only `forward_returns` joined to the served severity-velocity + stored regime label, persisted /
+  cached (the `EventStudyCache` + dataset-version idiom) and read identically wherever shown; it recomputes
+  no forward return (only groups stored values), uses only bars dated > D, is NA-honest on thin cells, and
+  every `N=` drills into Research Samples reproducing the exact cohort — never a recompute, never a second
+  membership rule (J-103).
 - **Displayed date format** — one shared `yyyy-MM-dd` formatter/constant used by every surface that
   shows a calendar date; no component renders a date through a locale-dependent path.
 - **Research sample membership** (the per-observation cohort behind every published N — ticker,
@@ -2317,6 +2339,52 @@ The backend is the single source of truth; every page only displays server-compu
     4. Heavy synchronous compute is **offloaded off the event loop** (a worker thread) and **server concurrency is capped** (a bounded semaphore / uvicorn `--limit-concurrency` + a heavy-endpoint timeout), so `/health` and light endpoints stay responsive; the backend process also runs under a **memory cap** so a runaway is OOM-killed (one process) instead of swap-freezing the whole 20 GB VM.
     5. Every served value stays **byte-identical** to the pre-change output — a pure performance / stability property, never a change to any score, return, membership, or gate.
   - Acceptance: under concurrent dashboard use and goal-mode UI-test load the backend stays **responsive and memory-bounded** — the intermittent whole-VM freeze is eliminated — while every canonical value remains **byte-identical** (a pure performance property, exactly the *Vectorized scans are a pure refactor* / J-72 contract; *Single source of truth* untouched). **(a)** `compute_coverage` / the J-96 membership timeline gain a **single-flight guard + result cache** (the same idiom the warm-up single-flight uses) so concurrent `/api/data` callers share one in-flight computation or the cached payload — N parallel probes no longer each build a `prefilled_bar_cache` (~1.3M `DailyPrice` objects) and recompute the O(~1369 dates × ~548 pool) loop. **(b)** the coverage / membership-timeline **cache key is decoupled from the forward-returns table** (membership depends only on bars + snapshot set + config), so the background warm-up's forward-return inserts **stop invalidating** it — no recompute storm during warm-up (*Warm-up obeys every data invariant and is idempotent, concurrency-safe, and non-fatal*). **(c)** the read path **reuses a single process-level bar cache** (load-once, invalidated on a real data change) for `_resolved_universe` + the timeline rather than a per-request prefill, bounding memory to one copy. **(d)** heavy synchronous compute is **run in a worker thread** (`run_in_threadpool` / `to_thread`) and server **concurrency is capped** (a bounded semaphore and/or uvicorn `--limit-concurrency` in the start script) with a request timeout on the heavy endpoints, so `/health` + light reads stay responsive (*Startup must not block serving on historical warm-up* reinforced at steady state); the backend process runs under an explicit **memory cap** (systemd `MemoryMax` / cgroup / `ulimit`) so a pathological spike is OOM-killed as a single process, never a swap-thrash freeze of the whole VM. **(e)** goal-mode / browser-QA **test hygiene** is codified: `/api/data` is single-loaded (never concurrently probed), with the `.pump-alive` toucher + heartbeat envs for long QA, so the harness no longer reproduces the freeze. Measured by a **concurrency load test** asserting K parallel `/api/data` calls all return within a bound, peak process RSS stays under a configured cap, `/health` latency stays low throughout, and the served coverage equals the single-request baseline (byte-identical); a test asserts warm-up forward-return inserts do **not** invalidate the membership cache; and the existing canonical suites stay green. It changes **no** canonical score / return / membership or the Risk-Off→Actionable gate. Fully buildable and verifiable offline against the committed seed.
+
+- **J-101: Dashboard cross-view consolidation — one market chart (the duplicate Major-indexes card removed) whose phase pane spans the full history at any as-of**
+  - Steps:
+    1. The Dashboard shows **exactly one** market chart — the **two-pane cross-view** (J-97). The separate, redundant **Major indexes & regime** card (whose content is byte-for-byte the cross-view's pane 0) is **removed**; nothing is lost because pane 0 already renders the same normalized index % lines over the same stored-regime bands.
+    2. In the bottom (phase) pane, the **phase-colored bands span the full history** — every snapshot date carries its causal phase color — **regardless of the selected as-of date**, exactly like the regime bands in the top pane (today they stop at the as-of because the series is fetched causal-`≤D`).
+    3. Selecting a historical as-of **only moves the as-of marker**; it does **not** truncate the phase bands at the marker. Stored history dated after the as-of stays **display-only behind the marker** (a labelled forward/after-as-of display), feeding no as-of-scoped computed value.
+    4. The two panes still share one time axis (zoom/pan synchronized); the single global as-of stays the only date state.
+    5. An as-of with no causal phase history renders an honest-empty phase pane; the chart fabricates no band.
+  - Acceptance: the Dashboard renders **one** market chart card — the J-97 two-pane synced cross-view — and the standalone **Major indexes & regime** card is **deleted** (it was a *duplicate home for an existing entity*: pane 0 already IS that chart, reading the SAME `/api/indexes?full=true` + `/api/regime-history?full=true` series; *Single source of truth*; *No recompute in the read path*). The bottom pane's **phase bands now span the same full history as the top pane's regime bands** — the phase/severity/velocity timeline is fed **full-history independent of the global as-of** (the phase-band primitive's clip stays `null`, and the series is fetched unfiltered by as-of, mirroring how `/api/regime-history?full=true` already serves the regime bands full-history regardless of as-of, J-49). The selected as-of renders **only as the marker**; stored history dated after D is **display-only behind the marker** and feeds **no** as-of-scoped score / return / severity (*No lookahead*; *Full-history market context never looks ahead*). The change introduces **no new endpoint, no new canonical value, and no second date state** (*Exactly one date selector*) and alters **no** score, the Risk-Off→Actionable gate, or the as-of contract — it is an information-architecture de-duplication plus a display-clamp alignment of already-served series. An honest-empty timeline yields an honest-empty pane (*No fabricated data*). Fully buildable and verifiable offline against the committed seed.
+
+- **J-102: Cross-view phase pane — a served severity-velocity line replaces the P(bear) line, and the hover tooltip gains the regime status**
+  - Steps:
+    1. The market-phase engine serves a new **severity-velocity** value per timeline date — the rate of change of the 0–100 severity over a **config-defined lookback window (default 5 snapshots)**, sign **positive = severity worsening**, negative = severity easing.
+    2. In the cross-view's phase pane, the **filtered P(bear) line is removed** from the plot (it was visually low-signal) and the **severity-velocity** is drawn instead, as a **zero-centered** line on its own overlay scale with a 0 reference.
+    3. The hover **tooltip** adds the **market-regime label + 0–100 score** for the hovered date (the same stored regime the top pane's bands use) and the **severity-velocity** value — alongside the existing date, index %, phase, and severity. The **P(bear) value stays in the tooltip** (only its plotted line is removed).
+    4. Severity-velocity is **strictly causal** — computed from severity at dates ≤ each date — and is **NA** at the warm-up head where the window is unavailable (no fabricated slope).
+    5. Everything is a re-format of server-computed values; the frontend computes no velocity, regime, or probability itself.
+  - Acceptance: `/api/market-phase` (and its `?full=true` `timeline_full`) carries a new **`severity_velocity`** field per date — the **deterministic, config-windowed slope of the served 0–100 severity** (the lookback window is a typed, validated `config.market_phase.*` key; *No magic numbers* — the module still passes the `test_no_magic_numbers` tokenizer), **strictly causal** (severity at dates ≤ D only), **NA** where the window head is unavailable, and **never smoothed with future data** (*No lookahead*). Because it is a new key in the **cached** market-phase payload, the **`SCHEMA_VERSION` token is bumped (`s1`→`s2`)** so `_cache_version` refreshes every `MarketPhaseCache` row to the new shape (the documented cache-schema discipline — a stale row must never serve the old shape). In the Dashboard cross-view's phase pane the **plotted filtered-P(bear) line is removed** and a **zero-centered severity-velocity line** is drawn on its own hidden overlay scale (reusing the retired P(bear) scale slot so the index % lines stay undistorted); the **hover tooltip** adds the **stored regime label + 0–100 score** (read from the already-fetched `/api/regime-history` points — *Single source of truth*; *Scores must be explainable*) and the **severity-velocity** value, while **retaining** the phase, severity, and **P(bear)** rows. The frontend **re-formats only** — it computes no velocity / regime / probability (*No recompute in the read path*). It adds **no second date state** (*Exactly one date selector*) and changes **no** canonical score, the Risk-Off→Actionable gate, or the as-of contract; the Market-Phase card and the at-a-glance summary keep showing P(bear) unchanged. Fully buildable and verifiable offline against the committed seed.
+
+- **J-103: Severity-velocity × regime forward-return study — does rising / falling stress under a red regime predict the market's next move?**
+  - Steps:
+    1. A new **Research study**, on its own lazy-loaded sub-route reached from the `/research` hub, answers a precise question: conditioned on the **market-regime family** (risk-on / neutral / risk-off "red") and the **sign of severity-velocity** (rising vs falling stress) at a snapshot date, what is the **forward market return** (benchmark SPY) over 5 / 10 / 20 / 60 trading days?
+    2. It renders a **regime-family × velocity-sign matrix**: each cell shows the **mean forward return, win-rate, and sample size N** at the selected horizon, drawn once from the stored forward returns — never recomputed in the view.
+    3. Every **`N=` figure drills into Research Samples** (new tab) reproducing that exact cohort (the qualifying dates + their stored forward returns), exactly like the other labs' sample chips.
+    4. The study states a **plain-language verdict** grounded in the data and carries **honest limitations** — the loaded sample window is bull-dominated with only shallow drawdowns, so it is **underpowered for sustained crashes** until the pre-2021 history (J-95) is loaded; NA/partial cells are shown honestly, never fabricated.
+    5. Defaults to an all-history aggregate and respects the Research **As-of mode** (restricting to snapshots ≤ D) as a filter, never a recompute.
+  - Acceptance: a **Severity-velocity × Regime forward-return study** is served from a **derived-once, cached aggregate** (the `EventStudyCache` + `_dataset_version` idiom the event-study / downtrend studies already use, with the schema token) over the **stored append-only `forward_returns`** (benchmark SPY) joined to the **served severity-velocity (J-102) + stored regime label** per snapshot date — a **pure grouping of stored data** that **recomputes no canonical return** (*Single source of truth*; *No recompute in the read path*; the figures are byte-identical and refresh only on a dataset change — the J-72 performance contract). The figure is a **regime-family × velocity-sign matrix** of **mean forward return, win-rate, and N** per horizon (5 / 10 / 20 / 60), every **`N=` chip linking into Research Samples** (new tab — J-65 / J-77) to the exact reproducing cohort (the study's per-cell total equals the published N; *Research sample membership* coherence). Forward returns use **only bars dated > D** (*No lookahead*) and are **NA/partial-honest** where samples are insufficient (*Honest forward-test for partial windows*). The surface lives at its **own `/research/severity-velocity` sub-route, reached from the `/research` hub and deep-linkable** (a real nav path, no orphan surface), lazy-loaded per J-104. It carries a **plain-language verdict** computed from the served figures plus the **honest survivorship / bull-dominated-sample / underpowered-for-crashes** caveats verbatim (*Honest limitations surfaced*) — documenting that, on the committed seed, **rising stress-velocity under a red regime preceded a bounce, not continuation** (the stated hypothesis is **not supported** on this window), while remaining a reusable tool to re-test once deeper-drawdown history loads. It honors the Research **As-of mode** as a pure observation-set filter (J-32) and **defaults to the all-history aggregate**; it adds **no second date state** (*Exactly one date selector*) and changes **no** canonical value or the Risk-Off→Actionable gate. Fully buildable and verifiable offline against the committed seed.
+
+- **J-104: Research labs load reliably — every heavy panel cached, the slow queries fixed, and the page split + lazy-loaded so nothing fires four heavy fetches at once**
+  - Steps:
+    1. The Research panels that error / stall on load — **Multi-factor combination**, **Setup & Pattern event-study**, **Regime × Setup × Pattern**, and **Downtrend Opportunity** — are made fast and reliable.
+    2. The two **uncached** studies (factor-combination, regime × setup × pattern) gain the **same derived-aggregate cache** the event-study and downtrend studies already use, so a repeat request is a cache hit, not a full recompute.
+    3. The **full-table scan** in the downtrend-opportunity observation builder (reading every `ScannerRun` with no as-of bound) is **scoped to snapshots ≤ the as-of**, and the shared run-position-index reads are likewise as-of-bounded — so a single panel no longer scans the whole run table.
+    4. The page no longer fires all heavy panels **concurrently on mount**: each heavy panel is **lazy** (collapsed by default, fetching only when expanded / scrolled into view) **and** the heaviest labs move to **their own `/research/*` sub-routes**, so any one page triggers at most one heavy fetch; `/research` becomes a hub linking to them.
+    5. Every served figure stays **byte-identical** to before — a pure performance / reliability property, no change to any aggregate.
+  - Acceptance: the four heavy Research labs **load without error under normal use** — a pure performance / stability property with **byte-identical** figures (the J-72 / *Vectorized scans are a pure refactor* contract; *Single source of truth* untouched). **(a)** `compute_factor_combination` and `compute_regime_setup_pattern_study` are served from a **persisted/cached derived aggregate** (the `EventStudyCache` + `_dataset_version` pattern already used by `event_study_cached` / `downtrend_opportunity_cached`, refreshing on dataset change), so they stop recomputing from scratch per request (*No recompute in the read path*). **(b)** the **full `select(ScannerRun)` table scan** in `_downtrend_opportunity_observation_set` is **bounded with `where(ScannerRun.asof_date <= as_of)`**, and the shared `_run_position_index` callers pass the as-of bound, so episodes-mode reads no longer load the entire run table. **(c)** the frontend **does not fire all four heavy fetches on mount**: each heavy panel is **lazy** (collapsed / fetch-on-expand or on-visible) **and** the heaviest labs are **split into their own `/research/*` sub-routes** (e.g. `/research/factor-combination`, `/research/event-study`, `/research/regime-setup-pattern`, `/research/downtrend-opportunity`, plus the J-103 `/research/severity-velocity`), with `/research` a hub that links to each — so at most one heavy computation runs per page (eliminating the concurrent-load pool exhaustion). The split is reflected in the navigation / IA (each lab is reachable and deep-linkable; no orphan surface) and the existing `N=` samples drill-downs keep working from the relocated labs. It changes **no** canonical score / return / membership / aggregate value or the Risk-Off→Actionable gate; the existing research suites stay green. Fully buildable and verifiable offline against the committed seed.
+
+**J-101 … J-104 are NOT data-dependent.** All four are buildable and verifiable offline against the
+committed 2021-2026 seed — J-101 (an information-architecture de-duplication + a display-clamp alignment
+of the existing cross-view), J-102 (a deterministic config-windowed slope of the already-served severity
+plus a tooltip / legend re-format), J-103 (a derived-once cached grouping of the stored forward returns by
+the served regime + severity-velocity), and J-104 (a caching / query-bounding / lazy-load + page-split
+performance refactor with byte-identical figures). None may be recorded blocked-NA for provider reasons,
+and none may halt the loop. J-103's empirical *power* for deep, sustained crashes improves once the
+pre-2021 history (J-95) loads, but the study itself is fully buildable / green on the seed now and that
+deeper-history leg is **non-halting** (it never drives a STALLED verdict or vetoes GOAL_ACHIEVED).
 
 **J-97 … J-100 are NOT data-dependent.** All four are buildable and verifiable offline against the
 committed seed — J-97 (a two-pane chart over the already-served index / regime / phase-severity series plus a

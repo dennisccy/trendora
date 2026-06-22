@@ -1120,6 +1120,11 @@ class MarketPhaseCfg(BaseModel):
         payload discloses (the deterministic forward filter still consumes EVERY observation <= D — this
         only bounds the disclosed tail so a daily-history host doesn't serve thousands of chips; the
         served P(bear) is unchanged). MUST be `>= 1`.
+      - `severity_velocity_window` — the lookback window (in snapshots) the per-date `severity_velocity`
+        (iter-44, J-102) ordinary-least-squares slope of the served 0-100 severity is fit over. STRICTLY
+        causal (severity at dates <= each date only); NA at the warm-up head where fewer than this many
+        snapshots precede a date; positive sign = severity worsening. MUST be `>= 2` (a slope needs at
+        least two points). No magic number — the engine reads this window from config, never a literal.
 
     iter-30 (J-89 / J-90) ADDITIVE downtrend-history + recovery-turn keys (consumed by the new read-only
     timeline / episode / retrospective / recovery-turn-signal derivations — every threshold from config,
@@ -1149,6 +1154,8 @@ class MarketPhaseCfg(BaseModel):
     recovery_min_off_trough_pct: float
     min_history_bars: int
     observation_disclosure_limit: int
+    # iter-44 (J-102) — the lookback window (snapshots) the per-date severity_velocity OLS slope is fit over.
+    severity_velocity_window: int
     # iter-30 (J-89 / J-90) — downtrend-history + recovery-turn thresholds (every threshold from config).
     downtrend_pbear_threshold: float
     recovery_signal_pbear_exit: float
@@ -1180,6 +1187,14 @@ class MarketPhaseCfg(BaseModel):
             raise ValueError(f"market_phase values must be positive: {nonpositive}")
         if self.observation_disclosure_limit < 1:
             raise ValueError("market_phase.observation_disclosure_limit must be >= 1")
+        # iter-44 (J-102): the severity-velocity OLS slope needs at least two points; a window < 2 (or a
+        # non-positive one) is incoherent and rejected loudly at load (No magic numbers — the window is the
+        # ONLY source of the lookback; the engine never hard-codes it).
+        if self.severity_velocity_window < 2:
+            raise ValueError(
+                "market_phase.severity_velocity_window must be >= 2 "
+                f"(got {self.severity_velocity_window}) — a slope needs at least two points"
+            )
         # iter-30 (J-89 / J-90): the two probability thresholds must be valid [0, 1] probabilities, and a
         # recovery-exit threshold ABOVE the downtrend-open threshold would be incoherent (you cannot signal
         # a recovery turn at a P(bear) that still opens a downtrend episode) — rejected at load.

@@ -38,6 +38,7 @@ from app.engine.market_phase import (
     SCHEMA_VERSION,
     _cache_version,
     _filtered_bear_path,
+    _severity_velocity_at,
     _smoothed_bear_path,
     _true_bear_episodes,
     compute_market_phase,
@@ -745,25 +746,37 @@ def test_api_full_default_byte_identical_to_card_payload(loaded_engine):
 
 
 def test_api_full_true_serves_timeline_full_verbatim(loaded_engine):
-    """J-97: `?full=true` additively attaches `timeline_full` — the SAME full causal series
-    `compute_market_phase` builds (read VERBATIM, no recompute). The full series is the engine's
-    `timeline_full`, and its bounded TAIL equals the card's existing `timeline` (single source)."""
+    """J-97 / iter-44 J-101b: `?full=true` additively attaches `timeline_full` — the SAME full-history
+    causal series `compute_market_phase` builds (read VERBATIM, no recompute). iter-44: the full series now
+    spans the FULL STORED HISTORY (through the latest run, independent of the as-of), so a HISTORICAL as-of's
+    full series extends PAST the marker (the bottom phase pane spans full history, J-101b) — its overlapping
+    <= D prefix still equals the causal card tail by date (single source). Each point carries the additive
+    iter-44 `severity_velocity` field (J-102)."""
     cfg = load_config()
     d = date(2022, 10, 7)
     with Session(loaded_engine) as session:
         engine_full = _timeline_full_for(session, d, cfg)
+        latest_run = session.exec(select(ScannerRun).order_by(ScannerRun.asof_date.desc())).first()
     with TestClient(main.app) as client:
         full = client.get(f"/api/market-phase?full=true&as_of={d.isoformat()}").json()
         card = client.get(f"/api/market-phase?as_of={d.isoformat()}").json()
     # the served full series equals the engine's timeline_full verbatim (no recompute, no second value)
     assert "timeline_full" in full
     assert json.dumps(full["timeline_full"]) == json.dumps(engine_full)
-    # every full series point carries exactly the causal {date, phase, p_bear, severity} shape (no smoothed)
+    # every full series point carries exactly the causal {date, phase, p_bear, severity, severity_velocity}
+    # shape (the additive iter-44 J-102 field; no smoothed/true-bear value)
     for pt in full["timeline_full"]:
-        assert set(pt) == {"date", "phase", "p_bear", "severity"}
-    # the full series is a SUPERSET ending in the bounded card tail (the card timeline is its tail slice)
-    assert len(full["timeline_full"]) == full["total_timeline_dates"]
-    assert full["timeline_full"][-len(card["timeline"]):] == card["timeline"]
+        assert set(pt) == {"date", "phase", "p_bear", "severity", "severity_velocity"}
+    # iter-44 J-101b: the full series spans the FULL stored history (through the latest run) independent of
+    # the as-of — so at a historical as-of it extends PAST the marker (NOT clamped to total_timeline_dates).
+    assert full["timeline_full"][-1]["date"] == latest_run.asof_date.isoformat()
+    assert len(full["timeline_full"]) >= full["total_timeline_dates"]
+    # the OVERLAPPING <= D prefix of the full series equals the causal card timeline tail (single source) —
+    # the card `timeline` is the bounded causal (<= D) tail; the full series' matching dates carry the SAME
+    # phase/severity/p_bear (a point is byte-identical whether served via the card tail or the full series).
+    full_by_date = {pt["date"]: pt for pt in full["timeline_full"]}
+    for card_pt in card["timeline"]:
+        assert full_by_date[card_pt["date"]] == card_pt
     # everything else in the full payload is byte-identical to the card payload (only the new key is added)
     assert {k: v for k, v in full.items() if k != "timeline_full"} == card
 
@@ -779,25 +792,31 @@ def test_api_full_true_no_smoothed_or_true_bear_value(loaded_engine):
 
 
 def test_full_timeline_no_lookahead_tail_invariance():
-    """CRITICAL no-lookahead (J-97): removing bars/runs dated > D never changes any earlier full-timeline
-    point — asserted the `forward_return` tail-invariance way over the WHOLE served full series."""
+    """CRITICAL no-lookahead (J-97 / iter-44 J-101b/J-102): adding a LATER run/bars never changes any
+    EARLIER full-timeline point's causal values (phase / severity / p_bear / severity_velocity). iter-44:
+    the full series now spans the FULL stored history independent of the as-of, so adding a later run does
+    EXTEND the series with a new (display-only) point — but every PRE-EXISTING (earlier-dated) point stays
+    byte-identical (strictly causal per point), the real no-lookahead property. Asserted per-date over the
+    overlapping prefix, the `forward_return` tail-invariance way."""
     cfg = _small_config()
     engine, dates = _v_shape_engine(cfg)
-    d = dates[5]  # a mid-series as-of with a full causal tail still ahead of it
     later = dates[-1] + timedelta(days=30)
     with Session(engine) as session:
-        # add a future run + future bars strictly after the last cadence date
+        before = _timeline_full_for(session, dates[-1], cfg)
+        before_by_date = {pt["date"]: pt for pt in before}
+        # add a future run + future bars strictly after the last cadence date, then recompute the full series
         _insert_bars(session, "SPY", [200.0 + i for i in range(5)], start=later)
         _insert_run(session, later, "Risk-on", 90.0, breadth_200=80.0)
         session.commit()
-        with_tail = _timeline_full_for(session, d, cfg)
-        for bar in session.exec(select(DailyPrice).where(DailyPrice.date > d)).all():
-            session.delete(bar)
-        for run in session.exec(select(ScannerRun).where(ScannerRun.asof_date > d)).all():
-            session.delete(run)
-        session.commit()
-        without_tail = _timeline_full_for(session, d, cfg)
-    assert json.dumps(with_tail) == json.dumps(without_tail)
+        after = _timeline_full_for(session, later, cfg)
+    after_by_date = {pt["date"]: pt for pt in after}
+    # the later run EXTENDED the full series with its own display-only point...
+    assert later.isoformat() in after_by_date
+    assert later.isoformat() not in before_by_date
+    # ...but every earlier point (every date that already existed) is byte-identical — no future bar/run
+    # leaked into any earlier causal value (incl. the iter-44 severity_velocity, which is strictly causal).
+    for iso_date, point in before_by_date.items():
+        assert json.dumps(after_by_date[iso_date]) == json.dumps(point), f"{iso_date} changed under tail add"
 
 
 def test_api_full_true_empty_timeline_when_early(loaded_engine):
@@ -815,6 +834,169 @@ def test_api_full_true_empty_timeline_when_early(loaded_engine):
     if resp.status_code == 200:
         data = resp.json()
         assert data["timeline_full"] == []
+
+
+# --------------------------------------------------------------------------------------------------
+# iter-44 (J-102) — the served per-date `severity_velocity`: the deterministic, config-windowed, STRICTLY
+# CAUSAL OLS slope of the 0-100 severity (positive = worsening), NA at the warm-up head, never a future
+# bar. FAST synthetic tests for the anti-goal-critical legs (derivation / sign / NA / no-lookahead / the
+# additive byte-identity of every other field). No seed boot.
+# --------------------------------------------------------------------------------------------------
+def test_severity_velocity_helper_exact_slope_and_sign():
+    """The helper IS the deterministic OLS slope of the trailing-window severity, in severity-points per
+    snapshot. A perfectly rising line of slope +10 reads +10.00 (positive = worsening); a falling line of
+    slope -10 reads -10.00 (negative = easing); a flat line reads 0."""
+    rising = [10.0, 20.0, 30.0, 40.0, 50.0]
+    falling = [50.0, 40.0, 30.0, 20.0, 10.0]
+    flat = [33.0, 33.0, 33.0, 33.0, 33.0]
+    # window == len: the slope is fit over the whole series ending at the last index.
+    assert _severity_velocity_at(rising, len(rising) - 1, len(rising)) == 10.0
+    assert _severity_velocity_at(falling, len(falling) - 1, len(falling)) == -10.0
+    assert _severity_velocity_at(flat, len(flat) - 1, len(flat)) == 0.0
+
+
+def test_severity_velocity_helper_uses_only_trailing_window():
+    """The slope at index i is fit over ONLY the trailing `window` severities ending at i (strictly causal —
+    earlier values outside the window do not enter the fit)."""
+    sev = [0.0, 0.0, 0.0, 10.0, 20.0, 30.0]  # the last 3 rise by +10 each; the head is flat
+    # window 3 ending at the last index sees [10, 20, 30] -> slope +10; it never reads the flat head.
+    assert _severity_velocity_at(sev, len(sev) - 1, 3) == 10.0
+    # at index 2 (value 0.0) the trailing window [0,0,0] is flat -> slope 0 (the future rise is NOT seen).
+    assert _severity_velocity_at(sev, 2, 3) == 0.0
+
+
+def test_severity_velocity_helper_na_at_warmup_head():
+    """NA (None) at the warm-up head where fewer than `window` snapshots precede-and-include the index —
+    never a fabricated slope from a short window."""
+    sev = [10.0, 12.0, 15.0, 19.0, 24.0]
+    window = 4
+    # indices 0..2 have fewer than 4 snapshots through them -> NA; index 3 and 4 are computable.
+    assert _severity_velocity_at(sev, 0, window) is None
+    assert _severity_velocity_at(sev, 1, window) is None
+    assert _severity_velocity_at(sev, 2, window) is None
+    assert _severity_velocity_at(sev, 3, window) is not None
+    assert _severity_velocity_at(sev, 4, window) is not None
+
+
+def test_timeline_severity_velocity_matches_helper_and_warmup_na():
+    """The served timeline's per-date `severity_velocity` equals the helper's config-windowed OLS slope over
+    the SAME served `severity` series (single source — one derivation), and the first `window-1` points are
+    NA (the warm-up head)."""
+    cfg = _small_config()
+    window = cfg.market_phase.severity_velocity_window
+    engine, dates = _v_shape_engine(cfg)
+    with Session(engine) as session:
+        result = compute_market_phase(session, dates[-1], cfg)
+    full = result["timeline_full"]
+    severities = [pt["severity"] for pt in full]
+    # every point carries the additive key; the first window-1 are NA (warm-up), the rest match the helper.
+    for i, pt in enumerate(full):
+        assert "severity_velocity" in pt
+        assert pt["severity_velocity"] == _severity_velocity_at(severities, i, window)
+    assert all(full[i]["severity_velocity"] is None for i in range(window - 1))
+    assert full[window - 1]["severity_velocity"] is not None
+
+
+def test_timeline_severity_velocity_sign_tracks_the_severity_trend():
+    """Sign convention end-to-end: every computable point's served velocity has the SAME SIGN as the simple
+    first-vs-last change of its trailing severity window — a rising (worsening) window yields a positive
+    velocity, a falling (easing) window a negative one. Over the synthetic V-shape (a deep decline then a
+    recovery) BOTH a positive and a negative served velocity appear (worsening into the bear, easing into the
+    recovery)."""
+    cfg = _small_config()
+    window = cfg.market_phase.severity_velocity_window
+    engine, dates = _v_shape_engine(cfg)
+    with Session(engine) as session:
+        result = compute_market_phase(session, dates[-1], cfg)
+    full = result["timeline_full"]
+    severities = [pt["severity"] for pt in full]
+    saw_positive = False
+    saw_negative = False
+    for i in range(window - 1, len(full)):
+        vel = full[i]["severity_velocity"]
+        net_change = severities[i] - severities[i - window + 1]  # last minus first over the window
+        # the OLS slope sign agrees with the net first->last change sign (a robust monotone-direction check);
+        # ties (net 0) are skipped — the slope can be ~0 there.
+        if net_change > 0:
+            assert vel > 0  # worsening -> positive velocity
+            saw_positive = True
+        elif net_change < 0:
+            assert vel < 0  # easing -> negative velocity
+            saw_negative = True
+    assert saw_positive and saw_negative  # the V-shape exercises both worsening and easing
+
+
+def test_severity_velocity_no_lookahead_tail_invariance():
+    """CRITICAL no-lookahead (J-102): removing bars/runs dated > D never changes `severity_velocity` at any
+    date <= D — asserted the `forward_return` tail-invariance way, per-date over the timeline."""
+    cfg = _small_config()
+    engine = _engine()
+    pre = [100.0 - i for i in range(40)]            # decline up to D
+    post = [60.0 + 5 * i for i in range(20)]         # a sharp rally strictly after D
+    d = _BASE + timedelta(days=len(pre) - 1)
+    later = d + timedelta(days=30)
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", pre + post)
+        for i in range(8):
+            _insert_run(session, _BASE + timedelta(days=5 * i), "Risk-off", 15.0, breadth_200=20.0)
+        _insert_run(session, later, "Risk-on", 80.0, breadth_200=70.0)  # a future run (> D)
+        session.commit()
+        with_tail = {pt["date"]: pt["severity_velocity"] for pt in compute_market_phase(session, d, cfg)["timeline"]}
+        for bar in session.exec(select(DailyPrice).where(DailyPrice.date > d)).all():
+            session.delete(bar)
+        for run in session.exec(select(ScannerRun).where(ScannerRun.asof_date > d)).all():
+            session.delete(run)
+        session.commit()
+        without_tail = {pt["date"]: pt["severity_velocity"] for pt in compute_market_phase(session, d, cfg)["timeline"]}
+    assert with_tail  # the timeline is non-empty (a real series)
+    assert json.dumps(with_tail) == json.dumps(without_tail)
+
+
+def test_severity_velocity_is_purely_additive_other_fields_byte_identical():
+    """The additive `severity_velocity` field does NOT perturb any other canonical timeline value: every
+    point's date / phase / p_bear / severity is byte-identical whether or not the new key is present
+    (the new key is computed from the SAME served severity series — it changes nothing it reads)."""
+    cfg = _small_config()
+    engine, dates = _v_shape_engine(cfg)
+    with Session(engine) as session:
+        result = compute_market_phase(session, dates[-1], cfg)
+    for pt in result["timeline"]:
+        # the four pre-iter-44 keys are unchanged; severity_velocity is the only added key.
+        assert set(pt) == {"date", "phase", "p_bear", "severity", "severity_velocity"}
+    # the bounded timeline tail's canonical fields equal the panel's served-date values (single source).
+    assert result["timeline"][-1]["p_bear"] == result["p_bear"]
+    assert result["timeline"][-1]["severity"] == result["severity"]
+    assert result["timeline"][-1]["phase"] == result["phase"]
+
+
+def test_severity_velocity_honest_empty_when_no_history(loaded_engine):
+    """Honest-empty (J-102 edge): an early `?full=true&as_of=` with no causal history serves an empty
+    `timeline_full` (no points, hence no fabricated severity-velocity slope)."""
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        first_run = session.exec(select(ScannerRun).order_by(ScannerRun.asof_date)).first()
+        early = (first_run.asof_date - timedelta(days=1)).isoformat()
+    with TestClient(main.app) as client:
+        resp = client.get(f"/api/market-phase?full=true&as_of={early}")
+    if resp.status_code == 200:
+        assert resp.json()["timeline_full"] == []
+
+
+def test_severity_velocity_window_must_be_at_least_two(tmp_path):
+    """iter-44 config validation: a severity_velocity_window < 2 (a slope needs two points) is rejected
+    loudly at load (No magic numbers — the window is the only lookback source)."""
+    data = _real_config_dict()
+    data["market_phase"]["severity_velocity_window"] = 1
+    with pytest.raises(ConfigError, match="severity_velocity_window"):
+        load_config(_write_cfg(tmp_path, data))
+
+
+def test_severity_velocity_window_non_positive_rejected(tmp_path):
+    """iter-44 config validation: a non-positive severity_velocity_window fails the boot loudly."""
+    data = _real_config_dict()
+    data["market_phase"]["severity_velocity_window"] = 0
+    with pytest.raises(ConfigError, match="severity_velocity_window"):
+        load_config(_write_cfg(tmp_path, data))
 
 
 # --------------------------------------------------------------------------------------------------
@@ -895,7 +1077,13 @@ def test_cache_hit_on_old_schema_row_now_serves_timeline_full(loaded_engine):
         assert len(composite_rows) == 1
     assert "timeline_full" in served
     assert json.dumps(served["timeline_full"]) == json.dumps(fresh_engine_full)
-    assert len(served["timeline_full"]) == served["total_timeline_dates"]
+    # iter-44 (J-101b/J-102): the recomputed (post s1->s2) full series carries the NEW shape — every point
+    # has the additive `severity_velocity` key (a stale `s1` row, lacking it, must never be served).
+    assert served["timeline_full"]  # non-empty at this populated as-of
+    assert all("severity_velocity" in pt for pt in served["timeline_full"])
+    # the full series spans the FULL stored history (independent of the as-of, J-101b) so it is at least the
+    # causal (<= D) count; total_timeline_dates stays the <= D count (the card-tail source).
+    assert len(served["timeline_full"]) >= served["total_timeline_dates"]
 
 
 def test_old_schema_row_is_pruned_and_recomputed_under_composite_key(loaded_engine):
@@ -969,6 +1157,75 @@ def test_schema_version_token_present_in_composite_key(loaded_engine):
         data_stamp = _dataset_version(session)
     assert composite == f"{data_stamp}|{SCHEMA_VERSION}"
     assert composite.endswith(f"|{SCHEMA_VERSION}")
+
+
+def test_schema_version_bumped_to_s2_for_severity_velocity():
+    """iter-44 (J-102): the payload-schema token is bumped to `s2` so every stale `s1` MarketPhaseCache row
+    (missing `severity_velocity`, or carrying the as-of-truncated `timeline_full`) becomes a guaranteed MISS
+    and is recomputed once with the new shape."""
+    assert SCHEMA_VERSION == "s2"
+
+
+def _seed_s1_schema_cache_row_without_velocity(session, d, cfg):
+    """Seed a GENUINE old-schema (`s1`) MarketPhaseCache row that is a real cache HIT under the bare data
+    stamp, carrying a `timeline_full` whose points have `severity_velocity` STRIPPED (exactly the pre-iter-44
+    shape) — so the test probes an ALREADY-POPULATED stale row, not a fresh compute that would mask the bug.
+    Returns (bare_stamp, old_payload)."""
+    bare = _dataset_version(session)
+    asof_key = d.isoformat()
+    payload = compute_market_phase(session, d, cfg)
+    # strip the iter-44 key from EVERY timeline point (full + bounded tail) to reproduce the s1 payload shape.
+    for key in ("timeline_full", "timeline"):
+        payload[key] = [{k: v for k, v in pt.items() if k != "severity_velocity"} for pt in payload[key]]
+    # drop any pre-existing row at this (asof_key, bare-stamp) key so the seed is deterministic.
+    for existing in session.exec(
+        select(MarketPhaseCache).where(
+            MarketPhaseCache.asof_key == asof_key,
+            MarketPhaseCache.dataset_version == bare,
+        )
+    ).all():
+        session.delete(existing)
+    session.add(MarketPhaseCache(
+        asof_key=asof_key, dataset_version=bare,
+        payload_json=json.dumps(payload), created_at=datetime(2026, 1, 1, 0, 0, 0),
+    ))
+    session.commit()
+    return bare, payload
+
+
+def test_cache_hit_on_s1_row_without_velocity_recomputes_with_severity_velocity(loaded_engine):
+    """THE iter-44 CRUX (the iter-38/39 cache-schema keystone, applied to `severity_velocity`): an already-
+    populated OLD-schema (`s1`) cache row — keyed to the bare data stamp, `timeline_full` points MISSING
+    `severity_velocity` — is a guaranteed MISS under the `s2`-composite key, so the served full payload is
+    recomputed ONCE and carries `severity_velocity` byte-identical to a fresh `compute_market_phase`. Probes
+    a LIVE populated as-of (a HIT), proving the `s1`->`s2` bump forces the recompute (NOT a fresh-compute date
+    that would mask a stale-row bug)."""
+    cfg = load_config()
+    d = date(2022, 10, 7)
+    with Session(loaded_engine) as session:
+        # clear EVERY row for this as-of so the ONLY row present is the seeded s1 (no-velocity) row.
+        for existing in session.exec(
+            select(MarketPhaseCache).where(MarketPhaseCache.asof_key == d.isoformat())
+        ).all():
+            session.delete(existing)
+        session.commit()
+        bare, old_payload = _seed_s1_schema_cache_row_without_velocity(session, d, cfg)
+        # the seeded row is genuinely old-schema: no timeline point carries severity_velocity.
+        assert old_payload["timeline_full"]  # non-empty
+        assert all("severity_velocity" not in pt for pt in old_payload["timeline_full"])
+        # the ONLY row for this as-of is the bare-stamp s1 row...
+        rows = session.exec(
+            select(MarketPhaseCache).where(MarketPhaseCache.asof_key == d.isoformat())
+        ).all()
+        assert len(rows) == 1 and rows[0].dataset_version == bare
+        # ...but it MISSES under the s2-composite key -> recompute WITH severity_velocity, byte-identical.
+        fresh = compute_market_phase(session, d, cfg)
+        served = market_phase_full_cached(session, d, cfg)
+    assert all("severity_velocity" in pt for pt in served["timeline_full"])
+    assert json.dumps(served["timeline_full"]) == json.dumps(fresh["timeline_full"])
+    # the canonical (non-timeline) fields are byte-identical too — severity_velocity is purely additive.
+    for key in ("phase", "severity", "p_bear", "episodes", "recovery_turn"):
+        assert json.dumps(served[key]) == json.dumps(fresh[key])
 
 
 def _FULL_TIMELINE_KEY_const():

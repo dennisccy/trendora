@@ -899,6 +899,7 @@ market_phase:
   recovery_min_off_trough_pct: 8.0         # once >= 8% off the trough (still underwater) the phase reads Recovery
   min_history_bars: 200                    # below this many benchmark bars <= D the window is insufficient -> NA/partial
   observation_disclosure_limit: 60         # how many MOST-RECENT filter observations the payload discloses (the filter still consumes ALL <= D)
+  severity_velocity_window: 5              # iter-44 (J-102): the lookback (snapshots) the per-date severity-velocity OLS slope is fit over; strictly causal, NA at the warm-up head, positive = worsening (>= 2)
   # iter-30 CONSUMED — J-89 downtrend-history + J-90 recovery-turn thresholds (every threshold from
   # config; market_phase.py stays in test_no_magic_numbers's CALC_FILES). Tuned against the committed
   # 2021-2026 seed so the 2022 bear (filtered P(bear) -> ~1) opens ONE causal downtrend episode and the

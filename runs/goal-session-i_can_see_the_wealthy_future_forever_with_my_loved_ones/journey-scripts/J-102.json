@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "journey": "J-102",
+  "name": "Cross-view phase pane — severity-velocity line replaces P(bear) line; tooltip gains regime status",
+  "default_timeout_ms": 12000,
+  "steps": [
+    {
+      "n": 1,
+      "journey": "J-102",
+      "action": {"type": "goto", "url": "/"},
+      "expect": {"text": "Severity velocity (0-centered; + = worsening)"}
+    },
+    {
+      "n": 2,
+      "journey": "J-102",
+      "action": {"type": "goto", "url": "/"},
+      "expect": {"text": "Severity (0–100)"}
+    },
+    {
+      "n": 3,
+      "journey": "J-102",
+      "action": {"type": "goto", "url": "/"},
+      "expect": {"text": "P(bear)"}
+    },
+    {
+      "n": 4,
+      "journey": "J-102",
+      "action": {"type": "goto", "url": "/"},
+      "expect": {"text": "Market Phase & Severity"}
+    }
+  ]
+}

@@ -222,6 +222,7 @@ _SYNTH_CFG = {
         "recovery_min_off_trough_pct": 8.0,
         "min_history_bars": 200,
         "observation_disclosure_limit": 60,
+        "severity_velocity_window": 5,  # iter-44 (J-102): causal severity-velocity OLS slope lookback (>= 2)
         # iter-30 (J-89 / J-90): downtrend-history + recovery-turn thresholds (every threshold from config).
         "downtrend_pbear_threshold": 0.50,
         "recovery_signal_pbear_exit": 0.40,
