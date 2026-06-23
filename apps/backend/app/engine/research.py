@@ -212,15 +212,28 @@ def _factor_observations(
         ret_by_run_symbol[(run_id, symbol)] = realized_return
         runs_with_fr_set.add(run_id)
     runs_with_fr = sorted(runs_with_fr_set)
-    results = (
-        session.exec(select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr))).all()
-        if runs_with_fr else []
-    )
     run_rows = (
         session.exec(select(ScannerRun).where(ScannerRun.id.in_(runs_with_fr))).all()
         if runs_with_fr else []
     )
     regime_by_run = {run.id: run.regime_label for run in run_rows}  # stored regime label, read VERBATIM
+
+    # iter-48 (J-105): stream the (possibly ~609K-row) ScannerResult side with `yield_per` instead of an
+    # unbounded `.all()` materialization (the live factor-lab MemoryError site, research.py:216 pre-fix).
+    # We stream the FULL ORM row — NOT a narrow column projection — because `_extract_factor_value` reads
+    # `res.record_json` for a COMPONENT factor; dropping it would silently change figures. We order by
+    # `(run_id, id)` — the EXACT order the prior implicit `.all()` produced on the `run_id IN (...)` filter
+    # (SQLite walks the `ix_scanner_results_run_id` index, so rows already arrive grouped by run_id then id)
+    # — so every observation/decile/rank-IC/by_regime figure is byte-identical. Ordering by `(run_id, id)`
+    # rides that SAME index (no `USE TEMP B-TREE FOR ORDER BY`), so the sort never spills a temp file to a
+    # nearly-full disk; a bare `ORDER BY id` would force a full temp-B-tree sort over ~598K rows that can
+    # exhaust disk. Factor Lab is UNCACHED (recomputes every request) → this is the genuine OOM site.
+    res_stmt = (
+        select(ScannerResult)
+        .where(ScannerResult.run_id.in_(runs_with_fr))
+        .order_by(ScannerResult.run_id, ScannerResult.id)
+    )
+    results = session.exec(res_stmt).yield_per(batch) if runs_with_fr else []
 
     observations: list[dict] = []
     for res in results:
@@ -417,10 +430,17 @@ def _combination_observations(
         ret_by_run_symbol[(run_id, symbol)] = realized_return
         runs_with_fr_set.add(run_id)
     runs_with_fr = sorted(runs_with_fr_set)
-    results = (
-        session.exec(select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr))).all()
-        if runs_with_fr else []
+    # iter-48 (J-105): stream the ScannerResult side with `yield_per` (full ORM row — `record_json` is read
+    # by `_extract_factor_value` for component factors). Order by `(run_id, id)` — the EXACT prior implicit
+    # `.all()` order on the `run_id IN (...)` filter, which rides the `ix_scanner_results_run_id` index (no
+    # temp-B-tree sort, no disk spill). This closes the latent cold-miss OOM on the factor-combination path
+    # (masked only by the EventStudyCache hit) while keeping every composite/strict-overlap figure identical.
+    res_stmt = (
+        select(ScannerResult)
+        .where(ScannerResult.run_id.in_(runs_with_fr))
+        .order_by(ScannerResult.run_id, ScannerResult.id)
     )
+    results = session.exec(res_stmt).yield_per(batch) if runs_with_fr else []
 
     observations: list[dict] = []
     for res in results:

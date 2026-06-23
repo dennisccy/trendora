@@ -54,21 +54,21 @@
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-46-evidence/UT-J-06-detail.png",
-      "note": "Required-still-passing (iter-47, single source). Live UT-16: NVDA Leadership/Entry-Quality/Risk 40.37/52.85/39.17 identical on /stocks leaderboard and /stocks/NVDA detail ('identical to the leaderboard; single source of truth'). Snapshot-served fast path unaffected by the heavy-lab path. Carried passing."
+      "note": "Required-still-passing (iter-48, CRITICAL single source). Snapshot-served fast path unaffected by the research read-path streaming refactor; figures byte-identical. Carried passing."
     },
     "J-07": {
       "id": "J-07",
       "name": "Risk-Off regime suppresses Actionable",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-46-evidence/UT-J-07-riskoff-run.png",
-      "note": "Required-still-passing (iter-47, CRITICAL Risk-Off gate) — the /api/runs invariant is on the snapshot-served fast path, unaffected by the heavy research read-path refactor (zero scoring/gate change). Carried passing."
+      "note": "Required-still-passing (iter-48, CRITICAL Risk-Off gate). The /api/runs invariant is on the snapshot-served fast path, entirely unaffected by the heavy-research read-path streaming refactor (zero scoring/gate/snapshot change; backend-only research.py read diff). Carried passing."
     },
     "J-08": {
       "id": "J-08",
@@ -174,11 +174,11 @@
       "id": "J-18",
       "name": "One date control (no duplicate)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-17-asof-panel.png",
-      "note": "Required-still-passing (iter-47, CRITICAL exactly-one-date-selector) — the backend-only streaming refactor adds no date state. UT-17 shows the single global as-of control (one calendar dropdown + step arrows, no page-local/second date state). Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48-evidence/UT-01-result.png",
+      "note": "Required-still-passing (iter-48, CRITICAL exactly-one-date-selector). Backend-only streaming refactor adds no date state. UT-10 DOM eval on /research/factor-lab: document.querySelectorAll('input[type=\"date\"]').length == 0 (only a checkbox All-history/As-of toggle). Single global as-of held. Carried passing."
     },
     "J-19": {
       "id": "J-19",
@@ -243,22 +243,22 @@
     "J-25": {
       "id": "J-25",
       "name": "Factor Lab — decile sort and rank-IC per factor",
-      "status": "regressed",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-20",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-04-fail.png",
-      "note": "STILL FAILING after the iter-47 J-105 fix — genuine INCOMPLETE fix. iter-47 streamed the 7 ForwardReturn reads but LEFT the ScannerResult side of _factor_observations (apps/backend/app/engine/research.py:216 — select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr)).all()) UNSTREAMED, materializing ~609,166 ScannerResult ORM rows. Factor-lab is UNCACHED (unlike factor-combination / regime-setup-pattern which serve from the J-104 EventStudyCache and never rebuild the observation set), so it recomputes every request and OOMs. Evaluator INDEPENDENTLY confirmed: research.py:216 is the literal unstreamed .all() (FR read above it at :211 IS yield_per-streamed); the LIVE backend log /tmp/fanout-backend-8835.log shows repeated `MemoryError` at research.py:216 in _factor_observations called from the factor-lab endpoint. Evaluator VIEWED UT-04-fail.png: FACTOR selector stuck 'Loading…', HORIZON '—', explicit red 'Backend unavailable — No figures are shown rather than fabricated values' (HONEST failure, no fabrication — no anti-goal breach). This violates J-105's own acceptance (goal.md:2386 'never materializes an unbounded full table') for the uncached lab. goal.md:2388 makes J-105 NON-data-dependent and NON-haltable. NOT a NEW regression this iter (J-25 was already regressed since iter-46; the iter-46 REGRESSION was acknowledged). Fix in iter-48 FULL: stream/column-project the ScannerResult read at :216 (and the latent :421), factor-lab first, byte-identical figures."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48-evidence/UT-02-decile-table.png",
+      "note": "RESTORED to passing in iter-48 — the iter-46 regression is fully CLOSED. iter-48 streamed the last two unstreamed select(ScannerResult)...all() reads: _factor_observations (research.py:232-236) and _combination_observations (research.py:439-443) are now session.exec(...).yield_per(batch) over the FULL ORM row (record_json preserved for component factors) with .order_by(ScannerResult.run_id, ScannerResult.id) — evaluator-verified in source as the byte-identical prior implicit .all() order (rides ix_scanner_results_run_id, no temp-B-tree, no disk spill on the 93%-full disk; a bare ORDER BY id would have temp-sort-spilled). Factor Lab is UNCACHED -> this was the genuine live OOM site; now serves HTTP 200. Evaluator VIEWED UT-02-decile-table.png: genuine 'Research — Factor Lab', Leadership score / 20d, full D1-D10 decile table with numeric mean fwd returns (+0.82%..+0.61%), n=59827-59828/decile, Rank-IC +0.01 panel + regime breakdown, total observations 598271, survivorship-bias disclaimer, NO 'Backend unavailable' banner. Dev separately confirmed HTTP 200 for both a column factor (leadership_score) AND a component factor (rs_spy_3m, reads record_json), backend RSS bounded ~733 MB, zero MemoryError/disk-full across all probes. Byte-identity proven green (test_research_streaming.py 29 passed incl. TDD-red record_json-drop proof). Coherence COHERENCE-PASS, review PASS, full suite FLUSHED GREEN 1060 passed/0 failed SUITE_EXIT=0."
     },
     "J-26": {
       "id": "J-26",
       "name": "Factor Lab — multi-factor composite cohort",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-07-result.png",
-      "note": "RESTORED to passing in iter-47. Factor-combination (multi-factor composite) serves from the EventStudyCache + the streamed FR read path; the iter-46 MemoryError is closed for this lab. Evaluator VIEWED UT-07-result.png: Multi-factor combination renders the baseline (all names, N=598,271, +0.88%, 52.89% hit-rate) + combined composite cohort (rank-blend, N=119,655) with real per-condition figures, no 'Backend unavailable'/loading state. NOTE: the latent cold-miss risk persists — _combination_observations (research.py:421) still does an unstreamed select(ScannerResult).where(run_id.in_(runs_with_fr)).all(), currently MASKED by the cache hit; iter-48 should stream it so a cold miss never reintroduces the OOM."
+      "note": "Required-still-passing in iter-48 (carried passing). Multi-factor composite cohort re-rendered live: evaluator VIEWED UT-06-factor-combination.png (Baseline n=598271 +0.88%, rs_spy_3m top-Quintile n=119660 +1.09%, Combined composite n=119655, Strict overlap n=27854, no error banner). _combination_observations ScannerResult read now yield_per-streamed too (closes the latent cold-miss OOM the iter-47 note flagged); figures byte-identical."
     },
     "J-27": {
       "id": "J-27",
@@ -284,11 +284,11 @@
       "id": "J-29",
       "name": "Setup & Pattern lab — event study",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-01-result.png",
-      "note": "RESTORED to passing in iter-47 (the --acknowledge-regression fix of the iter-46 MemoryError). The unbounded all-history ForwardReturn read in _event_study_members_by_horizon was streamed + column-projected and the two event-study builders reordered (subject-matching ScannerResults streamed FIRST, FR scan PRUNED to needed runs). Evaluator VIEWED UT-01-result.png: event-study matrix fully populated — 5 horizon rows (1d/5d/10d/20d/60d) all numeric mean/win-rate/N (5d N=457 +0.47% 57.99%; 20d N=455 +1.75% 63.30%), by-regime + by-sector breakdowns honest-NA on low-sample cells. N= drill-down count-coherent (UT-03: 20d chip N=455 == /research/samples total 455). Streamed-builder byte-identity tested green (test_research_streaming.py 32 passed incl. the J-72 batched==per-horizon guard)."
+      "note": "Required-still-passing in iter-48 (carried passing). Event-study STAYS passing: served HTTP 200 on the live dataset (backend log /tmp/iter48_backend2.log: event-study view=episodes -> 200); test_research.py byte-identical figures green. Browser render SKIPPED for QueuePool-exhaustion (test-harness artifact), not a regression."
     },
     "J-30": {
       "id": "J-30",
@@ -314,11 +314,11 @@
       "id": "J-32",
       "name": "Research point-in-time toggle (as-of vs all-history)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-17-asof-panel.png",
-      "note": "Required-still-passing (iter-47) — Research As-of/all-history toggle preserved (UT-17 as-of toggle works after refactor; Factor-Lab/event-study/factor-combination all show 'All history'/'As of date' modes). Streamed builders are byte-identical so the as_of-filter semantics are unchanged. Carried passing."
+      "note": "Required-still-passing in iter-48 (carried passing). Research as-of/all-history toggle preserved — the streamed builders honor ScannerRun.asof_date <= as_of identically (byte-identity tested), so the as-of-filter semantics are unchanged."
     },
     "J-33": {
       "id": "J-33",
@@ -504,11 +504,11 @@
       "id": "J-51",
       "name": "Every research sample count is a link to its exact samples",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-03-result.png",
-      "note": "Required-still-passing (iter-47) — event-study N= drill-down count-coherent live (UT-03: 20d chip N=455 == /research/samples 'Total observations: 455'). The streamed read path keeps each figure's reported N byte-coherent with its drill-down. Factor-lab N= chip portion blocked by the J-25 OOM (testable once iter-48 streams research.py:216)."
+      "note": "Required-still-passing in iter-48 (carried passing). Factor-lab N= chips now testable since J-25 serves: UT-02 shows decile N= chips (n=59827) linking to /research/samples?kind=factor&...&decile=N (count-coherent). Event-study N= drill-down count-coherence carried from iter-47."
     },
     "J-52": {
       "id": "J-52",
@@ -624,11 +624,11 @@
       "id": "J-63",
       "name": "Event study is overlap-honest — first-trigger episodes by default, pooled one toggle away",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-01-result.png",
-      "note": "Required-still-passing (iter-47) — event-study pooled n live count-coherent with its samples drill-down (dev live: pooled n=13,277 == samples total 13,277). Restored alongside J-29. Carried passing."
+      "note": "Required-still-passing in iter-48 (carried passing). Event-study N= count-coherence carried; figures byte-identical under the streamed read path."
     },
     "J-64": {
       "id": "J-64",
@@ -644,11 +644,11 @@
       "id": "J-65",
       "name": "N= chips open the samples drill-down in a new tab (amends J-51/J-54)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-03-result.png",
-      "note": "Required-still-passing (iter-47) — samples drill-down count-coherence holds for the restored labs (UT-03 event-study 455==455). Carried passing."
+      "note": "Required-still-passing in iter-48 (carried passing). Samples count-coherence carried; test_samples.py green; streamed reads keep each figure's reported N byte-coherent with its /research/samples drill-down."
     },
     "J-66": {
       "id": "J-66",
@@ -714,11 +714,11 @@
       "id": "J-72",
       "name": "Research page loads fast — Setup & Pattern Lab / event study no longer slow (extends J-29/J-63, J-15 load discipline)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29-evidence/UT-01-market-phase-card.png",
-      "note": "Required-still-passing (iter-47) — _dataset_version cache contract + streamed-builder byte-identity. test_research_streaming.py asserts the batched/streamed reads deep-equal the per-horizon reference across as_of/all-history, pooled/episodes, zero-N, and under read_batch_size=1/huge (32 passed). Carried passing."
+      "note": "Required-still-passing in iter-48 (carried passing). Streamed-builder byte-identity holds — the ScannerResult-side yield_per streaming produces a byte-identical observation list (test_research_streaming.py 29 passed; TDD-red record_json-drop proof confirms the test genuinely guards record_json preservation)."
     },
     "J-73": {
       "id": "J-73",
@@ -764,11 +764,11 @@
       "id": "J-77",
       "name": "Research — returns by regime × setup × pattern (ranked combinations study)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-08-result.png",
-      "note": "Required-still-passing (iter-47) — STAYED passing under the streaming refactor. Evaluator VIEWED UT-08-result.png: Regime x Setup x Pattern ranked table 100+ rows, numeric mean_return/median/hit-rate/expectancy/MDD/risk-adjusted, low-sample rows honest NA + n-warn. Served via streamed _regime_setup_pattern_observations (the ScannerResult side projected + streamed). NOTE: feeds Downtrend-Opportunity (J-91), also passing."
+      "note": "Required-still-passing in iter-48 (carried passing). regime-setup-pattern lab served HTTP 200 on the live dataset (one of the five heavy labs confirmed 200); its ScannerResult read was already column-projected+streamed (iter-47), unchanged this iter."
     },
     "J-78": {
       "id": "J-78",
@@ -904,11 +904,11 @@
       "id": "J-91",
       "name": "Downtrend-conditioned opportunity study",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-10-result.png",
-      "note": "Required-still-passing (iter-47) — STAYED passing. Evaluator VIEWED UT-10-result.png: Downtrend Opportunity 'Held up best' (Expansion n=591 +5.18% 74.28%, Recovery n=103 +5.09%) + 'Fell hardest' + Recovery-turn-edge-by-phase sections, real figures, no error. Warm-cache immediate."
+      "note": "Required-still-passing in iter-48 (carried passing). downtrend-opportunity lab served HTTP 200 on the live dataset (one of the five heavy labs confirmed 200); unchanged backend read path."
     },
     "J-92": {
       "id": "J-92",
@@ -1024,31 +1024,31 @@
       "id": "J-103",
       "name": "Severity-velocity × regime forward-return study (/research/severity-velocity)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-17-asof-panel.png",
-      "note": "Required-still-passing (iter-47) — STAYED passing. Severity-velocity FR read column-projected + streamed (already SPY-bounded). Dev live-probe /api/research/severity-velocity?horizon=20 HTTP 200; the As-of filter is engine-proven (test_severity_velocity.py). UT-17 confirms the as-of toggle still works after the refactor (?asof=2026-05-15 historical 73.26/Pullback28.09; latest 73.44/Expansion)."
+      "note": "Required-still-passing in iter-48 (carried passing). Severity-velocity lab unchanged by this iter (its FR read already SPY-bounded+streamed); served HTTP 200. As-of filter engine-proven (test_severity_velocity.py)."
     },
     "J-104": {
       "id": "J-104",
       "name": "Research labs load reliably — cache + query-bounding + lazy-load + page-split",
-      "status": "partial",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-45",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-04-fail.png",
-      "note": "Stays PARTIAL. IA/route-split (the /research 7-card hub + lazy /research/* sub-routes) intact and 6/7 labs serve reliably live (event-study J-29 RESTORED, factor-combination J-26 RESTORED, regime-setup-pattern J-77, downtrend J-91, severity-velocity J-103, recovery-turn J-90 — all HTTP 200 one-at-a-time). The 'labs load reliably without error' acceptance is UNMET for Factor Lab (J-25), which still HTTP-500s with a MemoryError at research.py:216 (uncached, unstreamed ScannerResult .all()). Browser-QA verdict FAIL 14/19 (UT-04/05/06/15/19 = factor-lab). Flips back toward passing once iter-48 streams the factor-lab ScannerResult read."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48-evidence/UT-06-factor-combination.png",
+      "note": "FLIPS partial -> passing in iter-48. The 'all five heavy labs load reliably without error' acceptance is now MET: with the factor-lab ScannerResult read streamed (research.py:232-236), all five heavy labs serve HTTP 200 on the full live 3.47 GB dataset one-at-a-time — event-study (J-29), factor-lab (J-25, RESTORED), factor-combination (J-26), regime-setup-pattern (J-77), downtrend-opportunity (J-91). Evaluator VIEWED UT-02-decile-table.png (factor-lab real decile table) + UT-06-factor-combination.png (multi-factor combination: Baseline n=598271 +0.88%, real cohort figures, no error banner). Dev + QA independently confirmed all five HTTP 200 on a quiet single-fetch backend. The 5 browser-QA SKIPs were a test-harness QueuePool exhaustion (the QA agent's own concurrent Playwright+Chrome traffic saturated the 15-connection SQLite pool), NOT a code regression — every endpoint returned 200 earlier in the same session. IA/route-split (7-card /research hub + lazy /research/* sub-routes) intact. Coherence COHERENCE-PASS; full suite FLUSHED GREEN."
     },
     "J-105": {
       "id": "J-105",
       "name": "Research labs serve on the full live dataset without exhausting memory (streamed/column-projected read path)",
-      "status": "partial",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-04-fail.png",
-      "note": "First journey-history entry. PARTIAL: the ForwardReturn side is genuinely streamed/column-projected (7 reads + the warm-up backfill idempotency scan) with byte-identical figures (test_research_streaming.py / test_forward_testing_streaming.py green; coherence COHERENCE-PASS; review PASS), and event-study (J-29) + factor-combination (J-26) are RESTORED live. BUT the acceptance 'the read path never materializes an unbounded full table' (goal.md:2386) is UNMET: the ScannerResult side of _factor_observations (research.py:216) and _combination_observations (research.py:421) is STILL an unstreamed select(ScannerResult).where(run_id.in_(runs_with_fr)).all() over ~609K rows. Factor-lab is uncached -> OOMs live (LIVE backend log MemoryError at research.py:216; UT-04-fail 'Backend unavailable'). goal.md:2388 makes J-105 NON-data-dependent and NON-haltable. Flips to passing once iter-48 streams/projects the ScannerResult reads (factor-lab first), restoring J-25."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48-evidence/UT-02-decile-table.png",
+      "note": "FLIPS partial -> passing in iter-48 — the J-105 contract is now COMPLETE. goal.md:2386 'the read path never materializes an unbounded full table' is MET: the iter-47 fix streamed the 7 ForwardReturn reads; iter-48 streams the remaining two ScannerResult-side reads. Evaluator INDEPENDENTLY verified in source: grep of research.py shows NO remaining unbounded select(ScannerResult)...all() — :232-236 (_factor_observations) and :439-443 (_combination_observations) are now yield_per(batch) streamed; the audit-only sites are bounded (1790 run-id-bounded+ordered, 836/854/1546/1565 column-projected+yield_per). Backend RSS stayed ~733 MB during the heavy ~598K-row compute (no OOM). Figures byte-identical (test_research_streaming.py 29 passed: column + component(record_json) factors, as-of/all-history, zero-N cohort, batch=1 vs huge; full compute_factor_lab / compute_factor_combination payloads). The combination cold-miss OOM that was masked by the EventStudyCache is now also closed. Coherence COHERENCE-PASS (SHA 6f7efa0); review PASS; full suite FLUSHED GREEN 1060 passed/0 failed SUITE_EXIT=0. goal.md:2388 makes J-105 NON-data-dependent and NON-haltable."
     }
   },
   "anti_goal_violations": [
@@ -1062,7 +1062,7 @@
       "resolution": "iter-21: the two `0.0` float literals in `_rsp_rank_key` were replaced with the structural `is_not_none` boolean fallback (no float literal remains in research.py — independently tokenizer-verified 0 float-like NUMBER literals). test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers passes; the DEFAULT J-77 ranking is byte-identical (200 randomized orderings match the legacy key; oracle test added). Full suite GREEN (834 passed, 0 failed, EXIT_CODE=0)."
     }
   ],
-  "updated_at": "2026-06-22T22:02:03.765969+00:00",
+  "updated_at": "2026-06-23T00:54:45.043834+00:00",
   "open_items": [
     {
       "id": "iter23-stale-api-engine-tests",

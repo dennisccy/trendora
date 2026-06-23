@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "journey": "J-25",
+  "name": "Factor Lab decile table renders with real figures (column factor + rank-IC)",
+  "default_timeout_ms": 130000,
+  "steps": [
+    {
+      "n": 1,
+      "journey": "J-25",
+      "action": {"type": "goto", "url": "/research/factor-lab"},
+      "expect": {"text": "Factor Lab"}
+    },
+    {
+      "n": 2,
+      "journey": "J-25",
+      "action": {"type": "goto", "url": "/research/factor-lab"},
+      "expect": {"text": "Leadership score"}
+    },
+    {
+      "n": 3,
+      "journey": "J-25",
+      "action": {"type": "click", "target": {"role": "button", "name": "20d"}}
+    },
+    {
+      "n": 4,
+      "journey": "J-25",
+      "action": {"type": "goto", "url": "/research/factor-lab"},
+      "expect": {"text": "D1"}
+    }
+  ]
+}

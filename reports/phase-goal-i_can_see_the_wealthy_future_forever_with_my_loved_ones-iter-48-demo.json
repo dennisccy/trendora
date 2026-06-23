@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
+  "base_url": "http://localhost:3835",
+  "iteration": 48,
+  "default_timeout_ms": 15000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Research hub",
+      "narration": "The Research hub is the gateway to all five analytical labs. From here, every evidence-based study the platform offers is one click away.",
+      "point_out": "The Factor Lab link is visible without scrolling — one click gets you there.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research" },
+      "expect": { "text": "Factor Lab" }
+    },
+    {
+      "n": 2,
+      "title": "Navigate to Factor Lab",
+      "narration": "Clicking Factor Lab takes you directly to the decile-analysis tool where every factor in the universe is ranked by its predictive power.",
+      "point_out": "The factor dropdown and horizon buttons load — the page is ready for a query.",
+      "journey": "J-25",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Factor Lab" } },
+      "expect": { "text": "Research — Factor Lab" }
+    },
+    {
+      "n": 3,
+      "title": "Select the Leadership Score factor and 20-day horizon",
+      "narration": "Choose the Leadership Score factor and a 20-day forward-return horizon. The platform now streams the full dataset rather than loading everything into memory at once, so this query completes reliably instead of crashing.",
+      "point_out": "The factor dropdown shows 11 available factors; the horizon buttons (1d through 60d) are active.",
+      "journey": "J-25",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "click", "target": { "role": "button", "name": "20d" } }
+    },
+    {
+      "n": 4,
+      "title": "Factor Lab decile table loads with real figures",
+      "narration": "After roughly 50 to 120 seconds, ten decile rows appear — each showing a real mean forward return and a sample count in the hundreds of thousands. This page was returning an error on every request before this fix; now it delivers the evidence.",
+      "point_out": "D1 through D10 each show a numeric mean return (around +0.61% to +0.92%) and an N count near 60,000 per decile — no blank cells, no error banner.",
+      "journey": "J-25",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/factor-lab" },
+      "expect": { "text": "D1" }
+    },
+    {
+      "n": 5,
+      "title": "Rank-IC statistic confirms factor predictiveness",
+      "narration": "Below the decile table, the Rank-IC section breaks down factor predictiveness by market regime. Each regime shows a Spearman rank correlation — a positive number in risk-on periods, negative in risk-off — so you can see exactly when a factor's edge is strongest.",
+      "point_out": "Numeric Rank-IC values appear for every regime (strong risk-on through risk-off) — the value is a real figure, not blank or NaN.",
+      "journey": "J-25",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/factor-lab" },
+      "expect": { "text": "Rank" }
+    },
+    {
+      "n": 6,
+      "title": "N= chip drills down to matching samples",
+      "narration": "Every decile row carries an N= chip showing the exact observation count. Clicking it opens a samples page pre-filtered to that decile, so you can inspect the individual market readings behind each figure.",
+      "point_out": "The N= chip on D1 shows roughly 59,827 observations — that same count will appear as the total on the samples page it links to.",
+      "journey": "J-25",
+      "new": false,
+      "verified": false,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/research/factor-lab" },
+      "expect": { "text": "N=" }
+    },
+    {
+      "n": 7,
+      "title": "Factor Combination lab confirms real figures",
+      "narration": "The Factor Combination lab lets you blend two factors and see how the overlap cohort performs. This iteration also hardened the cold-start path here, so first-time visitors no longer risk a memory error on the initial load.",
+      "point_out": "The combined cohort table shows baseline n=598,271 at +0.88% mean return, and the strict-overlap cohort has its own count and return — all real figures, no error banner.",
+      "journey": "J-26",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/factor-combination" },
+      "expect": { "text": "Baseline" }
+    },
+    {
+      "n": 8,
+      "title": "Honest error banner when the backend is unavailable",
+      "narration": "When the backend genuinely cannot serve data, the Factor Lab shows a clear message explaining that no figures are displayed — never fabricated numbers. The platform never invents data to paper over a real problem.",
+      "point_out": "The error banner reads 'Backend unavailable — The Factor-Lab evidence could not load from the API. No figures are shown rather than fabricated values.' The decile table is absent; only the honest message appears.",
+      "journey": "J-25",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/factor-lab" },
+      "expect": { "text": "Research — Factor Lab" }
+    }
+  ]
+}

@@ -279,3 +279,213 @@ def test_severity_velocity_observation_set_chunk_independent(prune_engine):
         small = _severity_velocity_observation_set(session, H, _cfg_batch(1))
         big = _severity_velocity_observation_set(session, H, _cfg_batch(1_000_000))
         assert _eq(small, big), "severity-velocity observation set differs by batch"
+
+
+# ==================================================================================================
+# iter-48 (J-105): the ScannerResult-side read in `_factor_observations` (research.py:216) and
+# `_combination_observations` (research.py:421) is now ALSO `yield_per`-streamed (the live Factor-Lab
+# MemoryError site — Factor Lab is UNCACHED so it recomputes the observation set every request). These
+# proofs pin the NON-NEGOTIABLE byte-identity of that ScannerResult-side streaming:
+#
+#   1. The streamed FULL ORM row (NOT a column projection) keeps `record_json` available, so a COMPONENT
+#      factor (which reads `record_json[block]["components"][name]["raw"]`) is byte-identical — a naive
+#      narrow projection would drop `record_json` and silently change component-factor figures.
+#   2. `.order_by(ScannerResult.id)` reproduces the prior implicit-`.all()` row order, so the observation
+#      list (and every downstream decile / rank-IC / by_regime / composite / strict_overlap figure) is
+#      byte-identical regardless of the streaming batch size.
+#   3. A zero-N cohort stays an honest empty/NA result (never a crash, never a fabricated row).
+# ==================================================================================================
+def _component_record_json(ticker: str, rs_spy_3m: float, atr_pct: float) -> str:
+    """A `record_json` blob carrying the two component factors used in the default combination conditions
+    (`leadership.components.rs_spy_3m.raw` and `risk.components.atr_pct.raw`) — the EXACT shape
+    `_extract_factor_value` reads for a `component` factor. This is what would be LOST by a narrow column
+    projection, so it is the load-bearing payload for the byte-identity-with-record_json proof."""
+    return json.dumps({
+        "ticker": ticker, "name": ticker,
+        "leadership": {"components": [
+            {"name": "rs_spy_3m", "raw": rs_spy_3m},
+            {"name": "ma_stack", "raw": 0.5},
+        ]},
+        "risk": {"components": [
+            {"name": "atr_pct", "raw": atr_pct},
+        ]},
+    })
+
+
+@pytest.fixture()
+def component_engine(tmp_path):
+    """A fixture whose `record_json` carries REAL component-factor blocks so a `component` factor
+    (`rs_spy_3m`, `atr_pct`) produces a non-trivial, non-empty observation pool — the case where dropping
+    `record_json` in a narrow projection would silently change figures. Multiple runs/rows across mixed
+    regimes + distinct component values + a subject-matching run with zero FRs (zero-N leg)."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'component.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        r1 = _add_run(session, date(2025, 1, 10), regime_label="Risk-on")
+        r2 = _add_run(session, date(2025, 2, 10), regime_label="Risk-off")
+        r3 = _add_run(session, date(2025, 3, 10), regime_label="Risk-on")  # zero-FR run (zero-N leg)
+        session.flush()
+
+        # run-1: three names with distinct rs_spy_3m / atr_pct component values + a column-factor spread.
+        rows1 = [
+            ("AA", 1, 90.0, 10.0, 0.80, 0.012, 0.10),
+            ("BB", 2, 60.0, 40.0, 0.40, 0.030, 0.04),
+            ("CC", 3, 30.0, 70.0, 0.10, 0.055, -0.06),
+        ]
+        for tkr, rank, lead, risk, rs, atr, ret in rows1:
+            session.add(ScannerResult(
+                run_id=r1.id, ticker=tkr, name=tkr, sector="Technology",
+                leadership_score=lead, leadership_bucket="C",
+                entry_quality_score=55.0, entry_quality_bucket="C",
+                risk_score=risk, risk_bucket="C",
+                setup_status="Actionable", rank=rank,
+                record_json=_component_record_json(tkr, rs, atr),
+            ))
+            _add_fr(session, r1.id, tkr, ret, horizon=H, mae=-0.05, mfe=0.15, mdd=-0.08)
+
+        # run-2 (different regime): one name with an FR at horizon 20 only, distinct component values.
+        session.add(ScannerResult(
+            run_id=r2.id, ticker="DD", name="DD", sector="Energy",
+            leadership_score=75.0, leadership_bucket="C",
+            entry_quality_score=65.0, entry_quality_bucket="C",
+            risk_score=25.0, risk_bucket="C",
+            setup_status="Actionable", rank=1,
+            record_json=_component_record_json("DD", 0.65, 0.020),
+        ))
+        _add_fr(session, r2.id, "DD", 0.30, horizon=H, mae=-0.09, mfe=0.40, mdd=-0.11)
+
+        # run-3: a result with ZERO forward returns -> contributes nothing (zero-N leg).
+        session.add(ScannerResult(
+            run_id=r3.id, ticker="FF", name="FF", sector="Technology",
+            leadership_score=88.0, leadership_bucket="C",
+            entry_quality_score=80.0, entry_quality_bucket="C",
+            risk_score=12.0, risk_bucket="C",
+            setup_status="Actionable", rank=1,
+            record_json=_component_record_json("FF", 0.95, 0.008),
+        ))
+        session.commit()
+    return engine
+
+
+def _factor_observations_reference(session, factor, horizon, as_of, cfg):
+    """A pre-iter-48 REFERENCE of `_factor_observations` that materializes the ScannerResult side with an
+    eager `.all()` (NO `yield_per`, NO `.order_by`), mirroring the exact code the streaming fix replaced.
+    The streamed builder must equal this byte-for-byte (this is the regression oracle for the refactor)."""
+    from app.engine.research import _extract_factor_value, parse_factor_source
+    from sqlmodel import select
+    parsed = parse_factor_source(factor.source)
+    batch = cfg.research.read_batch_size
+    fr_stmt = select(
+        ForwardReturn.run_id, ForwardReturn.symbol, ForwardReturn.realized_return
+    ).where(ForwardReturn.horizon == horizon)
+    if as_of is not None:
+        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
+            ScannerRun.asof_date <= as_of
+        )
+    ret_by_run_symbol = {}
+    runs_with_fr_set = set()
+    for run_id, symbol, realized_return in session.exec(fr_stmt).yield_per(batch):
+        ret_by_run_symbol[(run_id, symbol)] = realized_return
+        runs_with_fr_set.add(run_id)
+    runs_with_fr = sorted(runs_with_fr_set)
+    run_rows = (
+        session.exec(select(ScannerRun).where(ScannerRun.id.in_(runs_with_fr))).all()
+        if runs_with_fr else []
+    )
+    regime_by_run = {run.id: run.regime_label for run in run_rows}
+    # the EXACT pre-fix read: eager `.all()`, no explicit order_by.
+    results = (
+        session.exec(select(ScannerResult).where(ScannerResult.run_id.in_(runs_with_fr))).all()
+        if runs_with_fr else []
+    )
+    observations = []
+    for res in results:
+        realized = ret_by_run_symbol.get((res.run_id, res.ticker))
+        if realized is None:
+            continue
+        value = _extract_factor_value(res, parsed)
+        if value is None:
+            continue
+        observations.append({
+            "run_id": res.run_id, "ticker": res.ticker, "factor": float(value), "return": realized,
+            "regime": regime_by_run.get(res.run_id),
+        })
+    return observations
+
+
+@pytest.mark.parametrize("factor_key", ["leadership_score", "rs_spy_3m"])  # column AND component
+@pytest.mark.parametrize("as_of", [None, date(2025, 1, 31)])
+def test_factor_observations_streamed_equals_eager_all_reference(component_engine, factor_key, as_of):
+    """The `yield_per`-streamed `_factor_observations` (full ORM row + `.order_by(id)`) is byte-identical
+    to the pre-iter-48 eager `.all()` reference — for a COLUMN factor (`leadership_score`) AND a COMPONENT
+    factor (`rs_spy_3m`, read from `record_json`) — proving the stream keeps `record_json` available and
+    reproduces the prior row order, across as-of / all-history."""
+    cfg = load_config()
+    factor = next(f for f in cfg.research.factor_lab.factors if f.key == factor_key)
+    with Session(component_engine) as session:
+        streamed = _factor_observations(session, factor, H, as_of, cfg=_cfg_batch(1))
+        streamed_big = _factor_observations(session, factor, H, as_of, cfg=_cfg_batch(1_000_000))
+        reference = _factor_observations_reference(session, factor, H, as_of, cfg)
+        assert _eq(streamed, reference), f"streamed != eager .all() reference ({factor_key}, {as_of})"
+        assert _eq(streamed, streamed_big), f"batch size changed values ({factor_key}, {as_of})"
+        # the component factor MUST actually read non-null values from record_json (not a degenerate
+        # all-None / zero-N pool that would make the byte-identity vacuous).
+        if factor_key == "rs_spy_3m" and as_of is None:
+            assert streamed, "component-factor pool empty — record_json was not read"
+            assert all(o["factor"] is not None for o in streamed)
+
+
+@pytest.mark.parametrize("factor_key", ["leadership_score", "rs_spy_3m"])  # column AND component
+@pytest.mark.parametrize("as_of", [None, date(2025, 1, 31)])
+def test_compute_factor_lab_chunk_independent_component(component_engine, factor_key, as_of):
+    """The full `compute_factor_lab` payload (deciles, rank_ic, by_regime, n_total) is byte-identical under
+    batch=1 vs huge — for a COLUMN and a COMPONENT factor — on the component-bearing fixture."""
+    with Session(component_engine) as session:
+        small = compute_factor_lab(session, factor_key, H, _cfg_batch(1), as_of=as_of)
+        big = compute_factor_lab(session, factor_key, H, _cfg_batch(1_000_000), as_of=as_of)
+        assert _eq(small, big), f"factor-lab payload differs by batch ({factor_key}, as_of={as_of})"
+
+
+def test_factor_lab_zero_n_cohort_is_honest_not_crash(component_engine):
+    """A factor-lab over an as_of BEFORE any snapshot yields an honest empty/NA payload (n_total 0, every
+    decile mean None) — never a crash, never a fabricated row — under the streamed ScannerResult read."""
+    with Session(component_engine) as session:
+        payload = compute_factor_lab(session, "rs_spy_3m", H, _cfg_batch(1), as_of=date(2024, 1, 1))
+        assert payload["n_total"] == 0
+        for row in payload["deciles"]:
+            assert row["n"] == 0
+            assert row["mean_return"] is None  # honest NA, never a fabricated 0
+        assert payload["rank_ic"]["value"] is None
+
+
+@pytest.mark.parametrize("as_of", [None, date(2025, 1, 31)])
+def test_combination_observations_streamed_chunk_independent_component(component_engine, as_of):
+    """The streamed `_combination_observations` (full ORM row + `.order_by(id)`) is batch-independent on a
+    multi-factor set that mixes a COLUMN factor and a COMPONENT (`record_json`) factor — proving the
+    factor-combination cold-miss path keeps `record_json` and the prior row order."""
+    cfg = load_config()
+    # a column factor + a component factor (read from record_json) -> exercises both extract paths.
+    factors = [f for f in cfg.research.factor_lab.factors if f.key in ("leadership_score", "rs_spy_3m")]
+    with Session(component_engine) as session:
+        small = _combination_observations(session, factors, H, as_of, cfg=_cfg_batch(1))
+        big = _combination_observations(session, factors, H, as_of, cfg=_cfg_batch(1_000_000))
+        assert _eq(small, big), f"_combination_observations differs by batch (as_of={as_of})"
+        if as_of is None:
+            assert small, "combination pool empty — record_json was not read"
+            assert all("rs_spy_3m" in o["values"] for o in small)
+
+
+@pytest.mark.parametrize("as_of", [None, date(2025, 1, 31)])
+def test_compute_factor_combination_chunk_independent_component(component_engine, as_of):
+    """The full `compute_factor_combination` payload (composite + strict_overlap + baseline + singles) is
+    byte-identical under batch=1 vs huge on the component-bearing fixture (the default config conditions
+    reference `rs_spy_3m` + `atr_pct`, both component factors read from `record_json`)."""
+    cfg = load_config()
+    conditions = [
+        {"factor": c.factor, "side": c.side, "quantile": c.quantile}
+        for c in cfg.research.factor_lab.combination.default_conditions
+    ]
+    with Session(component_engine) as session:
+        small = compute_factor_combination(session, conditions, H, _cfg_batch(1), as_of=as_of)
+        big = compute_factor_combination(session, conditions, H, _cfg_batch(1_000_000), as_of=as_of)
+        assert _eq(small, big), f"factor-combination payload differs by batch (as_of={as_of})"
