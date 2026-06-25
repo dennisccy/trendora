@@ -9,15 +9,15 @@
     "stall_window": 3,
     "regression_halt": true
   },
-  "status": "in_progress",
+  "status": "GOAL_ACHIEVED",
   "last_verdict": "GOAL_ACHIEVED",
   "next_depth": "lean",
   "auto_release": false,
   "push_per_iter": true,
   "push_branch": "goal/i_can_see_the_wealthy_future_forever_with_my_loved_ones",
-  "finished_at": "2026-06-22T17:10:46.372924Z",
-  "total_iterations": 47,
-  "wall_time_seconds": 27088,
+  "finished_at": "2026-06-23T01:02:08.486420Z",
+  "total_iterations": 49,
+  "wall_time_seconds": 18656,
   "quota_pause_count": 0,
   "updated_at": "2026-06-23T00:59:49.961034Z"
 }
