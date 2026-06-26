@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "journey": "J-26",
+  "name": "Factor Lab — multi-factor composite cohort",
+  "default_timeout_ms": 12000,
+  "steps": [
+    {"n": 1, "journey": "J-26", "action": {"type": "goto", "url": "/research/factor-combination"}, "expect": {"text": "Multi-factor combination"}},
+    {"n": 2, "journey": "J-26", "action": {"type": "click", "target": {"text": "20d"}}, "expect": {"text": "COHORT"}},
+    {"n": 3, "journey": "J-26", "action": {"type": "goto", "url": "/research/factor-combination"}, "expect": {"text": "Combined (composite rank-blend)"}}
+  ]
+}

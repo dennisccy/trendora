@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "journey": "J-107",
+  "name": "Factor Lab — all-factors Rank-IC table with expandable decile sort",
+  "default_timeout_ms": 12000,
+  "steps": [
+    {"n": 1, "journey": "J-107", "action": {"type": "goto", "url": "/research/factor-lab"}, "expect": {"text": "Research — Factor Lab"}},
+    {"n": 2, "journey": "J-107", "action": {"type": "click", "target": {"text": "20d"}}, "expect": {"text": "Factors: 11"}},
+    {"n": 3, "journey": "J-107", "action": {"type": "click", "target": {"role": "columnheader", "name": "Rank-IC"}}, "expect": {"text": "Proximity to 52-week high"}},
+    {"n": 4, "journey": "J-107", "action": {"type": "click", "target": {"css": "tr[aria-expanded='false']:first-of-type"}}, "expect": {"text": "Decile sort"}},
+    {"n": 5, "journey": "J-107", "action": {"type": "goto", "url": "/research/factor-lab"}, "expect": {"text": "Rank-IC"}}
+  ]
+}

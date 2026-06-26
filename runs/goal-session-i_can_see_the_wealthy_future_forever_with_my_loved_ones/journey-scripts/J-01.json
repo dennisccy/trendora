@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "journey": "J-01",
+  "name": "Daily dashboard at a glance",
+  "default_timeout_ms": 10000,
+  "steps": [
+    {"n": 1, "journey": "J-01", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Dashboard"}},
+    {"n": 2, "journey": "J-01", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Risk-on"}},
+    {"n": 3, "journey": "J-01", "action": {"type": "click", "target": {"text": "More detail"}}, "expect": {"text": "Candidate Counts"}},
+    {"n": 4, "journey": "J-01", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Breakout-watch"}}
+  ]
+}

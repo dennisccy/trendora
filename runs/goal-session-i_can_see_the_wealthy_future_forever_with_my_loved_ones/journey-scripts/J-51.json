@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "journey": "J-51",
+  "name": "Every research sample count is a link to its exact samples",
+  "default_timeout_ms": 15000,
+  "steps": [
+    {"n": 1, "journey": "J-51", "action": {"type": "goto", "url": "/research/factor-lab"}, "expect": {"text": "Research — Factor Lab"}},
+    {"n": 2, "journey": "J-51", "action": {"type": "click", "target": {"text": "20d"}}, "expect": {"text": "Factors: 11"}},
+    {"n": 3, "journey": "J-51", "action": {"type": "click", "target": {"css": "tr[aria-expanded='false']:first-of-type"}}, "expect": {"text": "Decile sort"}},
+    {"n": 4, "journey": "J-51", "action": {"type": "goto", "url": "/research/samples?kind=factor&horizon=20&factor=high_proximity&slice=decile&decile=1"}, "expect": {"text": "Total observations: 11761"}}
+  ]
+}

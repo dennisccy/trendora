@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "journey": "J-29",
+  "name": "Setup & Pattern research lab — event study across all snapshots",
+  "default_timeout_ms": 15000,
+  "steps": [
+    {"n": 1, "journey": "J-29", "action": {"type": "goto", "url": "/research/event-study"}, "expect": {"text": "Setup & Pattern event study"}},
+    {"n": 2, "journey": "J-29", "action": {"type": "click", "target": {"text": "20d"}}, "expect": {"text": "MEAN MAE"}},
+    {"n": 3, "journey": "J-29", "action": {"type": "goto", "url": "/research/event-study"}, "expect": {"text": "best exit"}}
+  ]
+}
