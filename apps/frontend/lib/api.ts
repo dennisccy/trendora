@@ -1058,6 +1058,7 @@ export interface FactorDecileRow {
   factor_max: number | null;
   mean_return: number | null; // raw mean forward return (fraction); null when n === 0
   risk_adjusted: number | null; // downside-deviation-adjusted; null = NA (no downside / n < 2)
+  mean_max_drawdown: number | null; // iter-52 (J-109): paired mean max-drawdown (fraction, <= 0); null = NA
   n: number;
   low_sample: boolean; // n < min_sample — render NA + n, never a fabricated number
 }
@@ -1125,32 +1126,43 @@ export async function fetchFactorLab(
   return getJSON<FactorLabResponse>(withAsOf(path, asof), signal);
 }
 
-/** One all-factors table row (J-107): a config-catalog factor's family + Spearman rank-IC (value + n) +
- *  the downside `risk_adjusted` figure (the factor's OWN top-decile risk_adjusted, re-presented from its
- *  decile table — mean / downside-deviation, never total volatility) + that factor's full decile table
- *  (revealed when the row is expanded). Every figure is a re-presentation of the canonical
- *  `compute_factor_lab` output — byte-identical to the single-factor view; the page recomputes nothing. */
+/** One factor's decile table at a SINGLE horizon (J-109): the served forward window + the per-decile rows
+ *  (each pairing mean_return + mean_max_drawdown) + the horizon's observation count. One of these per
+ *  config horizon rides inside `FactorTableRow.by_horizon`. Re-presented byte-identically from the
+ *  single-horizon `compute_factor_lab(factor, horizon)` output — the page recomputes nothing. */
+export interface FactorHorizonDeciles {
+  horizon: number; // the forward window (trading days)
+  n_total: number; // observations contributing at this horizon
+  deciles: FactorDecileRow[]; // D1…D10 (config-driven count) — paired return + max-drawdown
+}
+
+/** One all-factors table row (J-107 → J-109): a config-catalog factor's family + Spearman rank-IC (value +
+ *  n) + the downside `risk_adjusted` figure (the factor's OWN top-decile risk_adjusted) — ALL at the FIXED
+ *  default horizon — PLUS a `by_horizon` block carrying that factor's full decile table at EVERY config
+ *  horizon (each decile pairing mean forward-return + mean max-drawdown), revealed when the row is expanded.
+ *  Every figure is a re-presentation of the canonical `compute_factor_lab` output — byte-identical per
+ *  (factor, horizon, decile); the page recomputes nothing. */
 export interface FactorTableRow {
   key: string;
   label: string;
   family: string;
   direction: string; // higher_better | lower_better (descriptive)
-  n_total: number; // observations contributing at this horizon (== rank_ic.n)
-  rank_ic: RankIC; // Spearman rank-IC; value null = NA
-  risk_adjusted: number | null; // top-decile downside risk-adjusted; null = NA (no downside / n < 2)
-  deciles: FactorDecileRow[]; // D1…D10 — hidden until the row is expanded
+  n_total: number; // observations at the default horizon (== rank_ic.n)
+  rank_ic: RankIC; // Spearman rank-IC at the default horizon; value null = NA
+  risk_adjusted: number | null; // top-decile downside risk-adjusted at the default horizon; null = NA
+  by_horizon: FactorHorizonDeciles[]; // one decile table per config horizon — hidden until the row expands
 }
 
-/** GET /api/research/factor-lab?all=true payload (J-107) — the ALL-FACTORS view: one entry per config
- *  catalog factor (family + rank-IC + downside risk-adjusted + decile table), every figure byte-identical
- *  to the single-factor `FactorLabResponse`. The page re-formats + client-side sorts (NA-last) only — it
- *  recomputes no return/factor. The As-of / horizon are the single global as-of + the shared horizon
- *  selector (no second date state, J-18). */
+/** GET /api/research/factor-lab?all=true payload (J-107 → J-109) — the ALL-FACTORS, ALL-HORIZONS view: one
+ *  entry per config catalog factor, each carrying the rank-IC + downside risk-adjusted at the fixed default
+ *  horizon PLUS a per-horizon decile table (paired forward-return + max-drawdown) for every config horizon.
+ *  Every figure is byte-identical to the single-factor `FactorLabResponse` at the same horizon. The page
+ *  re-formats + client-side sorts (NA-last) only — it recomputes no return/factor. The As-of toggle is the
+ *  single global as-of (no second date state, J-18); there is no horizon selector (all horizons shown). */
 export interface FactorLabAllResponse {
-  horizon: number; // the served forward window (trading days)
   factors: FactorLabFactor[]; // the config-driven catalog (reference / family vocabulary)
-  horizons: number[]; // valid horizons for the selector (config-driven — not hard-coded in the UI)
-  default_horizon: number;
+  horizons: number[]; // every config horizon shown as paired columns (config-driven — not hard-coded)
+  default_horizon: number; // the fixed horizon the rank-IC / risk-adjusted are labelled with
   deciles_count: number;
   min_sample: number; // factors/deciles with n below this are NA/low-sample
   survivorship_bias: string; // honest caveat, rendered verbatim
@@ -1159,21 +1171,16 @@ export interface FactorLabAllResponse {
   asof_date?: string | null; // J-32: the resolved point-in-time cutoff (ISO) when scoped; null = all-history
 }
 
-/** Canonical all-factors Factor-Lab source: GET /api/research/factor-lab?all=true&horizon=. Throws on
- *  non-200 so the page renders an explicit "Backend unavailable" state (503 no data / 422 bad horizon /
- *  400 future as-of) — never fabricated evidence. `horizon` defaults to the config default; `asof` (J-32)
- *  is the single global as-of cutoff, appended via `withAsOf` ONLY when a historical cutoff is active
- *  (As-of mode + a past date); omitted = all-history. */
+/** Canonical all-factors, all-horizons Factor-Lab source: GET /api/research/factor-lab?all=true. Throws on
+ *  non-200 so the page renders an explicit "Backend unavailable" state (503 no data / 400 future as-of) —
+ *  never fabricated evidence. The view is horizon-independent (it shows every horizon at once), so no
+ *  `horizon` param is sent. `asof` (J-32) is the single global as-of cutoff, appended via `withAsOf` ONLY
+ *  when a historical cutoff is active (As-of mode + a past date); omitted = all-history. */
 export async function fetchFactorLabAll(
-  horizon?: number,
   asof?: string,
   signal?: AbortSignal,
 ): Promise<FactorLabAllResponse> {
-  const params = new URLSearchParams();
-  params.set("all", "true");
-  if (horizon !== undefined) params.set("horizon", String(horizon));
-  const path = `/api/research/factor-lab?${params.toString()}`;
-  return getJSON<FactorLabAllResponse>(withAsOf(path, asof), signal);
+  return getJSON<FactorLabAllResponse>(withAsOf("/api/research/factor-lab?all=true", asof), signal);
 }
 
 // --- research / multi-factor combination cohorts (iter-12, J-26) ---------------------------

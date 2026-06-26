@@ -327,3 +327,9 @@ journeys to `passing` on source review alone.
 **Verdict:** CONTINUE
 **Lesson:** A full-depth iteration can land a correct, COHERENCE-PASS, review/QA/audit-PASS feature and STILL not be a GOAL_ACHIEVED close-out if the standing flushed-full-suite gate was never actually launched — iter-50 produced no suite log at all (dev did not run it, QA timed out, audit explicitly deferred it to the evaluator), distinct from the usual "suite in-flight, didn't flush" case. When that happens, the evaluator should launch the suite nohup-async itself so the next lean iter can confirm the flushed `0 failed, EXIT 0`, rather than declaring done on the green fast-subset alone (two real regressions this session — iter-35 perf, iter-46 OOM — surfaced only under full load).
 **Applies to:** any GOAL_ACHIEVED-candidate iteration whose full pytest suite was not launched/flushed; any backend-touching research read-path change where QA leaves cases NOT_TESTED.
+
+## iter-52 — 2026-06-27T00:00:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Live render evidence can exist even when the dedicated browser-qa-agent step reports SKIPPED. In iter-52 the browser-qa ui-test-results.md was SKIPPED ("frontend not running") because the servers were torn down before that step ran, yet the full-mode QA agent had already captured genuine byte-distinct, fully-hydrated frames (TC-01/TC-07/TC-09 in the same `-evidence/` dir) on a backend+frontend both HTTP-200. Do NOT infer "no live evidence" from the browser-qa SKIP alone — always cross-check the QA report's browser section AND md5sum/view the evidence dir, which is materially different from the iter-36/39/42 auto-skip-with-zero-evidence case.
+**Applies to:** any iter where `Frontend Present: yes` but `reports/phase-…-ui-test-results.md` reports SKIPPED — reconcile against `reports/qa/…-qa.md` browser tests and the `-evidence/` dir before deciding a UI journey lacks render proof.

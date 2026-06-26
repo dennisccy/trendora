@@ -199,17 +199,20 @@ def _factor_observations(
     # three fields the join consumes (run_id, symbol, realized_return) — projected Row values are the EXACT
     # same Python types as ORM attribute access (no coercion → byte-identical served value).
     batch = (cfg or get_config()).research.read_batch_size
+    # iter-52 (J-109): the FR scan ALSO projects the stored `max_drawdown` (the J-86 column, read VERBATIM)
+    # so each observation carries the realized return AND its paired post-snapshot drawdown — both fed to
+    # `_deciles` (the per-decile mean-MDD beside the mean return). One added projected column; no extra read.
     fr_stmt = select(
-        ForwardReturn.run_id, ForwardReturn.symbol, ForwardReturn.realized_return
+        ForwardReturn.run_id, ForwardReturn.symbol, ForwardReturn.realized_return, ForwardReturn.max_drawdown
     ).where(ForwardReturn.horizon == horizon)
     if as_of is not None:
         fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
             ScannerRun.asof_date <= as_of
         )
-    ret_by_run_symbol: dict[tuple[int, str], float] = {}
+    ret_by_run_symbol: dict[tuple[int, str], tuple[float, Optional[float]]] = {}
     runs_with_fr_set: set[int] = set()
-    for run_id, symbol, realized_return in session.exec(fr_stmt).yield_per(batch):
-        ret_by_run_symbol[(run_id, symbol)] = realized_return
+    for run_id, symbol, realized_return, max_drawdown in session.exec(fr_stmt).yield_per(batch):
+        ret_by_run_symbol[(run_id, symbol)] = (realized_return, max_drawdown)
         runs_with_fr_set.add(run_id)
     runs_with_fr = sorted(runs_with_fr_set)
     run_rows = (
@@ -237,14 +240,18 @@ def _factor_observations(
 
     observations: list[dict] = []
     for res in results:
-        realized = ret_by_run_symbol.get((res.run_id, res.ticker))
-        if realized is None:
+        fr = ret_by_run_symbol.get((res.run_id, res.ticker))
+        if fr is None:
             continue  # no realized return at this horizon for this stock (n=0 contribution)
+        realized, max_drawdown = fr
         value = _extract_factor_value(res, parsed)
         if value is None:
             continue  # factor-NULL observation EXCLUDED (never bucketed) — honest, not fabricated
         observations.append({
             "run_id": res.run_id, "ticker": res.ticker, "factor": float(value), "return": realized,
+            # iter-27/52 (J-86/J-109): the stored max_drawdown read VERBATIM — aggregated read-only into the
+            # per-decile mean-MDD beside the mean return; None on a short window (honest NA, never a 0).
+            "max_drawdown": max_drawdown,
             "regime": regime_by_run.get(res.run_id),  # stored regime label for the run (J-27)
         })
     return observations
@@ -265,20 +272,30 @@ def _decile_member_slice(ordered: list[dict], count: int, decile: int) -> list[d
 
 def _deciles(ordered: list[dict], count: int, min_sample: int) -> list[dict]:
     """Split the factor-ascending `ordered` observations into `count` equal-count quantiles (deciles).
-    Each row carries its `factor_min`/`factor_max`, `mean_return`, downside `risk_adjusted`, `n`, and a
-    `low_sample` flag (`n < min_sample`). When there are fewer observations than `count`, the higher
-    deciles are honest empty rows (`mean_return` None, `n` 0) — never fabricated buckets. Membership uses
-    the SAME `_decile_member_slice` the samples drill-down reads (one quantile-edge definition)."""
+    Each row carries its `factor_min`/`factor_max`, `mean_return`, downside `risk_adjusted`, the paired
+    `mean_max_drawdown` (iter-52, J-109), `n`, and a `low_sample` flag (`n < min_sample`). When there are
+    fewer observations than `count`, the higher deciles are honest empty rows (`mean_return` None, `n` 0) —
+    never fabricated buckets. Membership uses the SAME `_decile_member_slice` the samples drill-down reads
+    (one quantile-edge definition).
+
+    `mean_max_drawdown` (J-109) is the mean of the members' STORED `forward_returns.max_drawdown` read
+    VERBATIM, over ONLY the members whose drawdown is non-None (the SAME `_group_mdd` convention the
+    forward-test scorecard uses — a member with no stored drawdown is excluded, never counted as a
+    fabricated 0); None when no member has one (honest NA). Because both `compute_factor_lab` and the
+    all-horizons `compute_factor_lab_all` feed the SAME observation shape into THIS one builder, the paired
+    drawdown column is byte-identical between the single-horizon and all-horizons views."""
     rows: list[dict] = []
     for d in range(1, count + 1):
         members = _decile_member_slice(ordered, count, d)
         returns = [m["return"] for m in members]
+        mdds = [m["max_drawdown"] for m in members if m.get("max_drawdown") is not None]
         rows.append({
             "decile": d,
             "factor_min": members[0]["factor"] if members else None,
             "factor_max": members[-1]["factor"] if members else None,
             "mean_return": mean(returns) if returns else None,
             "risk_adjusted": _risk_adjusted(returns),
+            "mean_max_drawdown": _mean_or_none(mdds),
             "n": len(members),
             "low_sample": len(members) < min_sample,
         })
@@ -392,49 +409,59 @@ def compute_factor_lab(
 
 
 # --------------------------------------------------------------------------------------------------
-# All-factors Factor-Lab view (J-107) — one row per catalog factor, BYTE-IDENTICAL to compute_factor_lab
-# per factor, served from a SINGLE shared observation pool (one heavy read for all N factors). This is a
-# pure re-presentation of the existing per-factor outputs (decile sort + rank-IC + the top-decile downside
-# risk-adjusted figure) — NO new served value, NO second rank-IC/decile/risk-adjusted derivation.
+# All-factors Factor-Lab view (J-107 → J-109) — one row per catalog factor, served from a SINGLE shared
+# observation pool. iter-52 (J-109): the view now shows EVERY config horizon at once as paired (forward-
+# return, max-drawdown) columns instead of a single user-selected horizon. Each (factor, horizon, decile)
+# figure is BYTE-IDENTICAL to today's single-horizon `compute_factor_lab(factor, horizon, …)` for the same
+# tuple (same `_deciles` / `_rank_ic` builders over the same per-horizon observation set). NO new served
+# value — every figure is a re-presentation of an existing `compute_factor_lab` output across all horizons.
 # --------------------------------------------------------------------------------------------------
-def _all_factor_observations(
-    session: Session, factors: list, horizon: int, as_of: Optional[date_cls] = None,
+def _all_factor_observations_by_horizon(
+    session: Session, factors: list, horizons: list[int], as_of: Optional[date_cls] = None,
     *, cfg: Optional[Config] = None,
-) -> list[dict]:
-    """The read-only SHARED per-observation pool for the all-factors view (J-107): fire ONE heavy read over
-    `forward_returns` + `scanner_results` and, for EACH observation, read EVERY catalog factor's stored value
-    (typed column or `record_json` component `raw`, VERBATIM — recomputes NO factor and NO return). Each
-    observation is `{run_id, ticker, return, values: {factor_key: float|None}}`.
+) -> dict[int, list[dict]]:
+    """The read-only SHARED per-observation pools for the all-factors view across EVERY horizon in
+    `horizons` (J-109), built from a SINGLE batched read: ONE `ForwardReturn` SELECT covering all horizons
+    (`horizon IN horizons`, column-projected to run_id/symbol/realized_return/max_drawdown), and ONE
+    `ScannerResult` stream. Returns `{horizon: [observations]}` where each observation is
+    `{run_id, ticker, return, max_drawdown, values: {factor_key: float|None}}` (every catalog factor's
+    stored value read VERBATIM — typed column or `record_json` component `raw`; recomputes NO factor and NO
+    return). The `values` dict is read once per ScannerResult and SHARED across that result's per-horizon
+    observations (the factor value is horizon-independent).
 
-    BYTE-IDENTITY keystone — UNLIKE `_combination_observations`, a NULL in one factor does NOT drop the
-    observation: the pool keeps `values[key] = None`, so each factor's own derivation filters to ITS OWN
-    non-null subset. Because this read iterates the SAME `forward_returns`-joined-to-`scanner_results` pool
-    in the SAME `(run_id, id)` ScannerResult order as `_factor_observations`, the per-factor non-null subset
-    (preserving this order) EQUALS `_factor_observations(factor, horizon, as_of)` row-for-row — so every
-    decile / rank-IC derived from it is byte-identical to `compute_factor_lab(factor, ...)` (one computation
-    path, no second derivation). An observation is kept ONLY when a realized return exists at this horizon
-    (the SAME n=0 exclusion as `_factor_observations`).
+    BYTE-IDENTITY keystone: `{horizon: pools}[h]` is byte-identical (row-for-row, same `(run_id, id)` order)
+    to `_all_factor_observations(factors, h, as_of)` would have produced for a single horizon — and so each
+    factor's non-null subset of `pools[h]` EQUALS `_factor_observations(factor, h, as_of)` row-for-row, the
+    property `compute_factor_lab_all` relies on for per-(factor,horizon,decile) byte-identity. A NULL in one
+    factor does NOT drop the observation (unlike `_combination_observations`): the pool keeps
+    `values[key] = None`, so each factor filters to ITS OWN non-null subset. An observation is kept for
+    horizon h ONLY when a realized return exists at h (the SAME n=0 exclusion as `_factor_observations`); a
+    ScannerResult whose run has FRs at some other horizon but not at h simply contributes nothing to
+    `pools[h]` (the per-horizon `fr is None` gate), exactly as the single-horizon builder dropped it.
 
-    `as_of` (J-32) scopes the pool to snapshots with `ScannerRun.asof_date <= as_of` (the SAME single
-    membership filter as `_factor_observations`); `as_of=None` adds NO clause -> byte-identical all-history.
+    `as_of` (J-32) scopes ALL horizons' pools to snapshots with `ScannerRun.asof_date <= as_of` (the SAME
+    single membership filter); `as_of=None` adds NO clause -> byte-identical all-history.
 
-    iter-50 (J-105 / iter-48 lesson): the read is BOUNDED — the FR scan is column-projected + `yield_per`-
-    streamed, and the ScannerResult side is `yield_per`-streamed in `(run_id, id)` order (rides
-    `ix_scanner_results_run_id`, so no `USE TEMP B-TREE FOR ORDER BY` spills a temp file on a nearly-full
-    disk). ONE heavy read serves all N factors, not N reads — and there is NO unbounded `.all()`."""
+    iter-52 (J-105 / iter-46/47/48 OOM lesson): the read is BOUNDED — the FR scan is column-projected +
+    `yield_per`-streamed (lightweight value tuples, NEVER full ORM rows over `forward_returns`), and the
+    ScannerResult side is `yield_per`-streamed in `(run_id, id)` order (rides `ix_scanner_results_run_id`,
+    so no `USE TEMP B-TREE FOR ORDER BY` spills a temp file). ONE heavy read serves ALL N factors at ALL
+    horizons (not N×H reads) — and there is NO unbounded `.all()` over `ForwardReturn` or `ScannerResult`.
+    The same one-sweep-for-all-horizons pattern as `_event_study_members_by_horizon`."""
     parsed_by_key = {f.key: parse_factor_source(f.source) for f in factors}
     batch = (cfg or get_config()).research.read_batch_size
     fr_stmt = select(
-        ForwardReturn.run_id, ForwardReturn.symbol, ForwardReturn.realized_return
-    ).where(ForwardReturn.horizon == horizon)
+        ForwardReturn.horizon, ForwardReturn.run_id, ForwardReturn.symbol,
+        ForwardReturn.realized_return, ForwardReturn.max_drawdown,
+    ).where(ForwardReturn.horizon.in_(horizons))
     if as_of is not None:
         fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
             ScannerRun.asof_date <= as_of
         )
-    ret_by_run_symbol: dict[tuple[int, str], float] = {}
+    fr_by_h: dict[int, dict[tuple[int, str], tuple[float, Optional[float]]]] = {h: {} for h in horizons}
     runs_with_fr_set: set[int] = set()
-    for run_id, symbol, realized_return in session.exec(fr_stmt).yield_per(batch):
-        ret_by_run_symbol[(run_id, symbol)] = realized_return
+    for h, run_id, symbol, realized_return, max_drawdown in session.exec(fr_stmt).yield_per(batch):
+        fr_by_h[h][(run_id, symbol)] = (realized_return, max_drawdown)
         runs_with_fr_set.add(run_id)
     runs_with_fr = sorted(runs_with_fr_set)
     res_stmt = (
@@ -444,82 +471,101 @@ def _all_factor_observations(
     )
     results = session.exec(res_stmt).yield_per(batch) if runs_with_fr else []
 
-    observations: list[dict] = []
+    pools: dict[int, list[dict]] = {h: [] for h in horizons}
     for res in results:
-        realized = ret_by_run_symbol.get((res.run_id, res.ticker))
-        if realized is None:
-            continue  # no realized return at this horizon (n=0 contribution) — same exclusion as per-factor
-        values = {key: _extract_factor_value(res, parsed) for key, parsed in parsed_by_key.items()}
-        observations.append({
-            "run_id": res.run_id, "ticker": res.ticker, "return": realized, "values": values,
-        })
-    return observations
+        values: Optional[dict] = None  # parsed lazily on the first horizon that has an FR for this result
+        for h in horizons:
+            fr = fr_by_h[h].get((res.run_id, res.ticker))
+            if fr is None:
+                continue  # no realized return at this horizon (n=0) — same exclusion as per-factor
+            if values is None:
+                values = {key: _extract_factor_value(res, parsed) for key, parsed in parsed_by_key.items()}
+            realized, max_drawdown = fr
+            pools[h].append({
+                "run_id": res.run_id, "ticker": res.ticker, "return": realized,
+                "max_drawdown": max_drawdown, "values": values,
+            })
+    return pools
 
 
 def compute_factor_lab_all(
-    session: Session, horizon: int, config: Optional[Config] = None, *,
-    as_of: Optional[date_cls] = None,
+    session: Session, config: Optional[Config] = None, *, as_of: Optional[date_cls] = None,
 ) -> dict:
-    """The all-factors Factor-Lab view (J-107): one entry per config-catalog factor — `family` + Spearman
-    `rank_ic` (`{value, n}`) + the downside `risk_adjusted` figure + that factor's full D1..D`deciles` decile
-    table — all at `horizon`, BYTE-IDENTICAL to `compute_factor_lab(factor, horizon, as_of=cutoff)` per
-    factor (Single source of truth).
+    """The all-factors, all-horizons Factor-Lab view (J-107 → J-109): one entry per config-catalog factor,
+    each carrying — at the FIXED `config.walk_forward.default_horizon` — `family` + Spearman `rank_ic`
+    (`{value, n}`) + the top-decile downside `risk_adjusted` figure, PLUS a `by_horizon` block with, for
+    EVERY `config.walk_forward.horizons` horizon, that factor's full D1..D`deciles` decile table (each
+    decile row pairing the mean realized forward return with its mean `max_drawdown`, J-86). Every
+    `(factor, horizon, decile)` figure is BYTE-IDENTICAL to `compute_factor_lab(factor, horizon,
+    as_of=cutoff)` for the same tuple (Single source of truth).
 
-    ONE computation path: the shared observation pool is built ONCE (`_all_factor_observations` — one heavy
-    read carrying every factor's value per observation), then for EACH factor we filter to ITS non-null
-    subset (preserving the shared pool's order, which equals `_factor_observations`' order), sort with the
-    EXACT `(factor, ticker, run_id)` key `compute_factor_lab` uses, and derive the deciles / rank-IC from the
-    SAME `_deciles` / `_rank_ic` builders. No second rank-IC / decile / risk-adjusted derivation; NO new
-    served value — every figure is a re-presentation of an existing `compute_factor_lab` output. The
-    `risk_adjusted` column is the factor's OWN top (highest-factor-value) decile `risk_adjusted` (reuses
-    `_risk_adjusted` via `_deciles` — downside deviation only, never total volatility); it is read straight
-    off `deciles[-1]`, not recomputed. The per-regime `by_regime` slice is NOT surfaced in this view (its
-    computation in `compute_factor_lab` is untouched — only the frontend retires the table).
+    ONE computation path: the shared observation pools are built ONCE for all horizons
+    (`_all_factor_observations_by_horizon` — one heavy read carrying every factor's value + the paired
+    drawdown per observation), then for EACH (factor, horizon) we filter to that factor's non-null subset
+    (preserving the pool's order, which equals `_factor_observations(factor, horizon)`' order), sort with the
+    EXACT `(factor, ticker, run_id)` key `compute_factor_lab` uses, and derive the deciles from the SAME
+    `_deciles` builder (which pairs mean_return + mean_max_drawdown). The rank-IC + top-decile risk-adjusted
+    are computed ONCE at `default_horizon` (no longer a user selector — relabelled with that horizon). No
+    second rank-IC / decile / risk-adjusted / drawdown derivation; NO new served value — every figure is a
+    re-presentation of an existing `compute_factor_lab` output.
 
-    `as_of` (J-32) scopes the shared pool to snapshots dated <= D (a pure FILTER — recomputes nothing);
+    `as_of` (J-32) scopes the shared pools to snapshots dated <= D (a pure FILTER — recomputes nothing);
     `as_of=None` is the all-history aggregate. The catalog is config-driven, so there is no unknown-factor
-    case here; the API pre-validates the horizon (422)."""
+    case here; the view is horizon-independent (it shows ALL horizons), so it takes no `horizon` argument."""
     cfg = config or get_config()
     fl = cfg.research.factor_lab
     wf = cfg.walk_forward
     catalog = factor_catalog(cfg)
     factors = list(fl.factors)
+    horizons = list(wf.horizons)
+    default_h = wf.default_horizon
 
-    pool = _all_factor_observations(session, factors, horizon, as_of, cfg=cfg)
+    pools = _all_factor_observations_by_horizon(session, factors, horizons, as_of, cfg=cfg)
 
     factors_table: list[dict] = []
     for factor in factors:
-        # ITS non-null subset, in the shared pool's order (== `_factor_observations(factor)` order), so the
-        # rank-IC pearson summation order — and thus the byte value — matches compute_factor_lab exactly.
-        obs = [
-            {
-                "run_id": o["run_id"], "ticker": o["ticker"],
-                "factor": float(o["values"][factor.key]), "return": o["return"],
-            }
-            for o in pool
-            if o["values"][factor.key] is not None
-        ]
-        # ascending by stored factor value; SAME deterministic tie-break compute_factor_lab uses.
-        ordered = sorted(obs, key=lambda o: (o["factor"], o["ticker"], o["run_id"]))
-        deciles = _deciles(ordered, fl.deciles, wf.min_sample)
+        by_horizon: list[dict] = []
+        dh_rank_ic: dict = {"value": None, "n": 0}
+        dh_risk_adjusted: Optional[float] = None
+        dh_n_total = 0
+        for h in horizons:
+            # ITS non-null subset at horizon h, in the pool's order (== `_factor_observations(factor, h)`
+            # order), so the rank-IC pearson summation order — and thus the byte value — matches
+            # compute_factor_lab(factor, h) exactly. The paired drawdown rides along verbatim.
+            obs = [
+                {
+                    "run_id": o["run_id"], "ticker": o["ticker"],
+                    "factor": float(o["values"][factor.key]), "return": o["return"],
+                    "max_drawdown": o["max_drawdown"],
+                }
+                for o in pools[h]
+                if o["values"][factor.key] is not None
+            ]
+            # ascending by stored factor value; SAME deterministic tie-break compute_factor_lab uses.
+            ordered = sorted(obs, key=lambda o: (o["factor"], o["ticker"], o["run_id"]))
+            deciles = _deciles(ordered, fl.deciles, wf.min_sample)
+            by_horizon.append({"horizon": h, "n_total": len(obs), "deciles": deciles})
+            if h == default_h:
+                # the relabelled rank-IC + top-decile downside risk-adjusted at the FIXED default horizon —
+                # byte-identical to compute_factor_lab(factor, default_h).rank_ic / deciles[-1].risk_adjusted.
+                dh_rank_ic = _rank_ic([(o["factor"], o["return"]) for o in obs])
+                dh_risk_adjusted = deciles[-1]["risk_adjusted"]
+                dh_n_total = len(obs)
         factors_table.append({
             "key": factor.key, "label": factor.label, "family": factor.family,
             "direction": factor.direction,
-            "n_total": len(obs),
-            "rank_ic": _rank_ic([(o["factor"], o["return"]) for o in obs]),
-            # the top (highest-factor-value) decile's downside risk-adjusted forward return, re-presented
-            # from THIS factor's own decile table — NOT a new derivation, NOT total volatility.
-            "risk_adjusted": deciles[-1]["risk_adjusted"],
-            "deciles": deciles,
+            "n_total": dh_n_total,          # observations at the default horizon (== rank-IC n)
+            "rank_ic": dh_rank_ic,          # Spearman rank-IC at the default horizon
+            "risk_adjusted": dh_risk_adjusted,  # top-decile downside risk-adjusted at the default horizon
+            "by_horizon": by_horizon,       # per-horizon decile table (paired return + max-drawdown)
         })
 
     return {
-        "horizon": horizon,
         # the resolved as-of scoping cutoff echoed (J-32) — ISO date when scoped, null in all-history mode.
         "asof_date": as_of.isoformat() if as_of is not None else None,
         "factors": catalog,
-        "horizons": list(wf.horizons),
-        "default_horizon": wf.default_horizon,
+        "horizons": horizons,
+        "default_horizon": default_h,  # the fixed horizon the rank-IC / risk-adjusted are labelled with
         "deciles_count": fl.deciles,
         "min_sample": wf.min_sample,
         "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
@@ -2827,29 +2873,40 @@ def factor_combination_cached(
     return payload
 
 
-# The all-factors Factor-Lab view (J-107) is served through the SHARED `EventStudyCache` under a fixed
-# sentinel subject/view namespace — it is ONE global view per (horizon, as-of), not per-subject, so a fixed
-# sentinel pair (never colliding with a real event-study subject or the other sentinels) is the whole key
-# identity. NO new `table=True` model (the `test_db.py` expected-tables guard stays unchanged).
+# The all-factors Factor-Lab view (J-107 → J-109) is served through the SHARED `EventStudyCache` under a
+# fixed sentinel subject/view namespace — it is ONE global all-horizons view per as-of (NOT per horizon —
+# J-109 shows every horizon at once), so a fixed sentinel pair (never colliding with a real event-study
+# subject or the other sentinels) is the whole key identity. NO new `table=True` model (the `test_db.py`
+# expected-tables guard stays unchanged).
 _ALL_FACTORS_SUBJECT = "__all_factors__"
 _ALL_FACTORS_VIEW = "factors_table"
+# iter-52 (J-109): the served all-factors shape CHANGED (all-horizons + paired max-drawdown columns). Fold
+# a schema token into the dataset_version slot so EVERY pre-iter-52 cached row (the old single-horizon
+# `factors_table` shape, keyed by the bare `_dataset_version`) is a guaranteed cache MISS AND is pruned on
+# the next write (same subject/view/asof_key/horizon, different dataset_version) — never served field-less
+# (iter-38/39/44 stale-cache discipline). Bump this token on any future change to the served all-factors
+# shape. The view is horizon-independent now, so the cache `horizon` slot is pinned to `default_horizon`.
+_ALL_FACTORS_SCHEMA_TOKEN = "allh-mdd-v1"
 
 
 def factor_lab_all_cached(
-    session: Session, horizon: int, config: Optional[Config] = None, *,
-    as_of: Optional[date_cls] = None,
+    session: Session, config: Optional[Config] = None, *, as_of: Optional[date_cls] = None,
 ) -> dict:
-    """Serve the all-factors Factor-Lab view (J-107) from the J-72 cache (mirrors `factor_combination_cached`),
-    reusing the SHARED `EventStudyCache` table under the `_ALL_FACTORS_SUBJECT`/`_ALL_FACTORS_VIEW` sentinel
-    namespace (no new table). On a HIT for the current `(sentinel, view, asof_key, dataset_version, horizon)`
-    key, return the stored payload (NO recompute); on a MISS, compute it ONCE via `compute_factor_lab_all`,
-    persist under the current dataset-version stamp, prune any stale rows for this identity, and return it.
-    BYTE-IDENTICAL to a fresh compute; the cache REFRESHES after any dataset change via the dataset-version
-    key (a stale row is never hit, and is pruned on write). `as_of` is folded into the `asof_key` slot (a
-    pure observation-set FILTER)."""
+    """Serve the all-factors, all-horizons Factor-Lab view (J-109) from the J-72 cache (mirrors
+    `factor_combination_cached`), reusing the SHARED `EventStudyCache` table under the
+    `_ALL_FACTORS_SUBJECT`/`_ALL_FACTORS_VIEW` sentinel namespace (no new table). The view is horizon-
+    independent (it shows every config horizon at once), so the cache `horizon` slot is pinned to
+    `default_horizon` and the dataset-version slot folds in `_ALL_FACTORS_SCHEMA_TOKEN` (so a pre-iter-52
+    old-shape row is a guaranteed MISS and is pruned on write). On a HIT for the current `(sentinel, view,
+    asof_key, dataset_version+token, default_horizon)` key, return the stored payload (NO recompute); on a
+    MISS, compute it ONCE via `compute_factor_lab_all`, persist under the current stamp, prune any stale rows
+    for this identity, and return it. BYTE-IDENTICAL to a fresh compute; the cache REFRESHES after any
+    dataset change via the dataset-version key. `as_of` is folded into the `asof_key` slot (a pure
+    observation-set FILTER)."""
     cfg = config or get_config()
-    version = _dataset_version(session)
+    version = f"{_dataset_version(session)}-{_ALL_FACTORS_SCHEMA_TOKEN}"
     asof_key = _cache_asof_key(as_of)
+    horizon = cfg.walk_forward.default_horizon  # the horizon-independent view pins the cache horizon slot
 
     hit = session.exec(
         select(EventStudyCache).where(
@@ -2863,7 +2920,7 @@ def factor_lab_all_cached(
     if hit is not None:
         return json.loads(hit.payload_json)
 
-    payload = compute_factor_lab_all(session, horizon, cfg, as_of=as_of)
+    payload = compute_factor_lab_all(session, cfg, as_of=as_of)
 
     stale = session.exec(
         select(EventStudyCache).where(

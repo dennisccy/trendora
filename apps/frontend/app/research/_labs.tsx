@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -17,7 +17,7 @@ import {
 
 import { useAsOf, useAsOfHref } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
-import { fmtPct, returnClass } from "@/components/forward-return";
+import { fmtMdd, fmtPct, mddClass, returnClass } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
 import { useReadiness } from "@/components/readiness-provider";
 import { shouldShowWarming, WarmingState } from "@/components/warming-state";
@@ -44,6 +44,7 @@ import {
   type FactorCombinationCondition,
   type FactorCombinationResponse,
   type FactorDecileRow,
+  type FactorHorizonDeciles,
   type FactorLabAllResponse,
   type FactorTableRow,
   type RecoveryTurnEdgeHorizonRow,
@@ -160,46 +161,39 @@ export function ResearchError({ what }: { what: string }) {
   );
 }
 
-/** iter-50 (J-107) — the Factor Lab on its OWN route (`/research/factor-lab`). The page now fires the
- *  ALL-FACTORS fetch (`?all=true`) and renders the sortable, expandable all-factors table instead of the
- *  single-factor dropdown view: one row per config-catalog factor (family + rank-IC + downside risk-
- *  adjusted at the horizon), each click-to-expand to its full decile sort. The horizon selector + the
- *  As-of mode toggle REMAIN (the single global as-of — no second date state); the factor dropdown is
- *  retired. Every figure is byte-identical to the single-factor view (re-presented, never recomputed). */
+/** iter-52 (J-109) — the Factor Lab on its OWN route (`/research/factor-lab`). The page fires the
+ *  ALL-FACTORS fetch (`?all=true`) and renders the sortable, expandable all-factors table showing EVERY
+ *  config horizon at once as paired (forward-return, max-drawdown) columns — the top-decile edge and its
+ *  downside per horizon — each row click-to-expand to its full D1…D10 decile grid (the same all-horizon
+ *  paired columns). The horizon `<select>` is GONE (all horizons shown); the rank-IC / downside
+ *  risk-adjusted figures are fixed at the config default horizon. The As-of mode toggle REMAINS (the single
+ *  global as-of — no second date state). Every figure is byte-identical to the single-horizon view
+ *  (re-presented per horizon, never recomputed). */
 export function FactorLabPage() {
-  const [horizon, setHorizon] = useState<number | undefined>(undefined);
   const [state, setState] = useState<State>({ kind: "loading" });
   const { mode, setMode, readiness, asofCutoff, scope } = useResearchControls();
 
   useEffect(() => {
     const controller = new AbortController();
     setState({ kind: "loading" });
-    fetchFactorLabAll(horizon, asofCutoff ?? undefined, controller.signal)
+    fetchFactorLabAll(asofCutoff ?? undefined, controller.signal)
       .then((data) => setState({ kind: "ok", data }))
       .catch(() => {
         if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => controller.abort();
-  }, [horizon, asofCutoff, readiness]);
+  }, [asofCutoff, readiness]);
 
   const data = state.kind === "ok" ? state.data : null;
-  const selectedHorizon = horizon ?? data?.horizon;
 
   return (
     <div className="space-y-4">
       <ResearchControls
         title="Research — Factor Lab"
-        subtitle="Which factors actually sort future returns? Every catalog factor's rank-IC + a downside risk-adjusted figure at the chosen horizon — sortable, and expandable in place to its full decile sort. Derived once from the stored forward-tested evidence; descriptive, not predictive."
+        subtitle="Which factors actually sort future returns — and at what downside? Every catalog factor's top-decile forward-return edge AND its paired max-drawdown across all horizons at once, sortable, and expandable in place to its full decile grid. Rank-IC + downside risk-adjusted at the default horizon. Derived once from the stored forward-tested evidence; descriptive, not predictive."
         mode={mode}
         onModeChange={setMode}
         asofCutoff={asofCutoff}
-        controls={
-          <HorizonSelector
-            horizons={data?.horizons ?? []}
-            value={selectedHorizon}
-            onChange={(h) => setHorizon(h)}
-          />
-        }
       />
       <ResearchCaveat survivorship={data?.survivorship_bias} descriptive={data?.descriptive_caveat} />
       {shouldShowWarming(readiness) ? (
@@ -358,31 +352,52 @@ function CaveatBanner({ survivorship, descriptive }: { survivorship: string; des
   );
 }
 
-// --- All-factors table (J-107) -------------------------------------------------------------------
+// --- All-factors, all-horizons table (J-107 → J-109) ---------------------------------------------
 /** The sortable columns of the all-factors table. `label`/`family` are string sorts; `rank_ic`/`n`/
- *  `risk_adjusted` are numeric (NA-last). A pure VIEW transform — the sort re-orders the served rows only,
- *  it recomputes / refetches nothing (J-48). */
-type FactorSortKey = "label" | "family" | "rank_ic" | "n" | "risk_adjusted";
+ *  `risk_adjusted` are numeric (NA-last) at the default horizon; `fwd:${h}` / `mdd:${h}` are the per-horizon
+ *  top-decile forward-return / max-drawdown numeric columns (NA-last). A pure VIEW transform — the sort
+ *  re-orders the served rows only, it recomputes / refetches nothing (J-48). */
+type FactorStaticSortKey = "label" | "family" | "rank_ic" | "n" | "risk_adjusted";
+type FactorSortKey = FactorStaticSortKey | `fwd:${number}` | `mdd:${number}`;
 type FactorSortDir = "asc" | "desc";
 
 /** The default sort: strongest predictive edge first (rank-IC descending, NA-last). */
 const FACTOR_DEFAULT_SORT: { key: FactorSortKey; dir: FactorSortDir } = { key: "rank_ic", dir: "desc" };
 
-/** A row's top (highest-factor-value) decile — the source of the re-presented `risk_adjusted` column. */
-function topDecile(row: FactorTableRow): FactorDecileRow | undefined {
-  return row.deciles.length > 0 ? row.deciles[row.deciles.length - 1] : undefined;
+/** Parse a per-horizon sort key (`fwd:20` / `mdd:5`) into its metric + horizon, or null for a static key. */
+function parseHorizonSortKey(key: FactorSortKey): { metric: "fwd" | "mdd"; horizon: number } | null {
+  const m = /^(fwd|mdd):(\d+)$/.exec(key);
+  return m ? { metric: m[1] as "fwd" | "mdd", horizon: Number(m[2]) } : null;
+}
+
+/** A factor's decile table at one horizon (or undefined if the horizon is absent — never expected). */
+function horizonBlock(row: FactorTableRow, h: number): FactorHorizonDeciles | undefined {
+  return row.by_horizon.find((b) => b.horizon === h);
+}
+
+/** A factor's top (highest-factor-value) decile at horizon `h` — the source of the top-decile paired cells. */
+function topDecileAt(row: FactorTableRow, h: number): FactorDecileRow | undefined {
+  const block = horizonBlock(row, h);
+  return block && block.deciles.length > 0 ? block.deciles[block.deciles.length - 1] : undefined;
+}
+
+/** Whether a top-decile cell at horizon `h` renders NA (the SAME `low_sample || n===0 || value===null` rule
+ *  the decile cells use) — for the forward-return (`fwd`) or max-drawdown (`mdd`) metric. */
+function topCellIsNa(row: FactorTableRow, h: number, metric: "fwd" | "mdd"): boolean {
+  const top = topDecileAt(row, h);
+  if (!top || top.low_sample || top.n === 0) return true;
+  return metric === "fwd" ? top.mean_return === null : top.mean_max_drawdown === null;
 }
 
 /** The NA predicate for a numeric sort column — mirrors the cell render so the sort NA-set == the visual
- *  NA-set: rank-IC is NA when its value is null; the risk-adjusted column is NA when the top decile is
- *  low-sample / empty / its value is null (the same `low_sample || n===0 || value===null` rule the decile
- *  cells use); `n` is always a real number (0 is a value, not NA). */
-function factorCellIsNa(row: FactorTableRow, key: FactorSortKey): boolean {
+ *  NA-set: rank-IC is NA when its value is null; the risk-adjusted column is NA when the default-horizon top
+ *  decile is low-sample / empty / its value is null; the per-horizon `fwd:`/`mdd:` columns mirror their
+ *  top-decile cell; `n` is always a real number (0 is a value, not NA). */
+function factorCellIsNa(row: FactorTableRow, key: FactorSortKey, defaultHorizon: number): boolean {
   if (key === "rank_ic") return row.rank_ic.value === null;
-  if (key === "risk_adjusted") {
-    const top = topDecile(row);
-    return !top || top.low_sample || top.n === 0 || row.risk_adjusted === null;
-  }
+  if (key === "risk_adjusted") return topCellIsNa(row, defaultHorizon, "fwd") || row.risk_adjusted === null;
+  const hk = parseHorizonSortKey(key);
+  if (hk) return topCellIsNa(row, hk.horizon, hk.metric);
   return false;
 }
 
@@ -391,6 +406,12 @@ function factorCellValue(row: FactorTableRow, key: FactorSortKey): number {
   if (key === "rank_ic") return row.rank_ic.value ?? 0;
   if (key === "risk_adjusted") return row.risk_adjusted ?? 0;
   if (key === "n") return row.rank_ic.n;
+  const hk = parseHorizonSortKey(key);
+  if (hk) {
+    const top = topDecileAt(row, hk.horizon);
+    if (!top) return 0;
+    return (hk.metric === "fwd" ? top.mean_return : top.mean_max_drawdown) ?? 0;
+  }
   return 0;
 }
 
@@ -459,19 +480,23 @@ function RatioCell({ value, na, title }: { value: number | null; na: boolean; ti
   return <span className={cn("num font-semibold", returnClass(value))}>{fmtRatio(value)}</span>;
 }
 
-/** The all-factors comparison table (J-107): one row per config-catalog factor (family + rank-IC value+N +
- *  downside risk-adjusted at the horizon), client-side sortable NA-last, each row click-to-expand to reveal
- *  that factor's full D1…D`deciles` decile sort (the existing `DecileTable`, hidden by default). Every value
- *  is the canonical `compute_factor_lab` output re-presented (byte-identical) — the page recomputes nothing;
- *  the sort + expand are pure view transforms. Supersedes the single-factor dropdown view. */
+/** The all-factors, all-horizons comparison table (J-107 → J-109): one row per config-catalog factor —
+ *  family + rank-IC value+N + downside risk-adjusted (ALL at the fixed default horizon), then for EVERY
+ *  config horizon a paired (top-decile forward-return, top-decile max-drawdown) column. Client-side sortable
+ *  NA-last on every numeric column (incl. each per-horizon `fwd:`/`mdd:` column); each row click-to-expand to
+ *  reveal that factor's full D1…D`deciles` decile grid across all horizons (`DecileTable`, hidden by
+ *  default). Every value is the canonical `compute_factor_lab` output re-presented per horizon
+ *  (byte-identical) — the page recomputes nothing; the sort + expand are pure view transforms. */
 function FactorsTable({ data, scope }: { data: FactorLabAllResponse; scope: SampleScope }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<FactorSortKey>(FACTOR_DEFAULT_SORT.key);
   const [sortDir, setSortDir] = useState<FactorSortDir>(FACTOR_DEFAULT_SORT.dir);
 
   const rows = data.factors_table;
+  const horizons = data.horizons;
+  const defaultHorizon = data.default_horizon;
 
-  // J-107 / J-48 — the sorted view: a STABLE sort (catalog-order tie-break) over the served rows, NA-last
+  // J-109 / J-48 — the sorted view: a STABLE sort (catalog-order tie-break) over the served rows, NA-last
   // for the numeric columns. Recomputes no value; re-orders only.
   const sorted = useMemo(() => {
     const sign = sortDir === "asc" ? 1 : -1;
@@ -482,8 +507,8 @@ function FactorsTable({ data, scope }: { data: FactorLabAllResponse; scope: Samp
         if (sortKey === "label" || sortKey === "family") {
           c = a.row[sortKey].localeCompare(b.row[sortKey]) * sign;
         } else {
-          const ana = factorCellIsNa(a.row, sortKey);
-          const bna = factorCellIsNa(b.row, sortKey);
+          const ana = factorCellIsNa(a.row, sortKey, defaultHorizon);
+          const bna = factorCellIsNa(b.row, sortKey, defaultHorizon);
           if (ana && bna) c = 0;
           else if (ana) return 1; // NA last regardless of direction
           else if (bna) return -1;
@@ -492,7 +517,7 @@ function FactorsTable({ data, scope }: { data: FactorLabAllResponse; scope: Samp
         return c !== 0 ? c : a.i - b.i; // stable tie-break by catalog order
       })
       .map((x) => x.row);
-  }, [rows, sortKey, sortDir]);
+  }, [rows, sortKey, sortDir, defaultHorizon]);
 
   const onSort = (key: FactorSortKey) => {
     if (key === sortKey) {
@@ -515,11 +540,13 @@ function FactorsTable({ data, scope }: { data: FactorLabAllResponse; scope: Samp
     return (
       <EmptyState
         icon={Microscope}
-        title="No forward-tested factors for this horizon"
-        description="No stored snapshot has a factor value with a realized forward return at this horizon. Pick a shorter horizon — no rank-IC or decile is fabricated to fill the gap."
+        title="No forward-tested factors"
+        description="No stored snapshot has a factor value with a realized forward return at any horizon. No rank-IC or decile is fabricated to fill the gap."
       />
     );
   }
+
+  const colSpan = 5 + horizons.length * 2 + 1; // Factor+Family+Rank-IC+N+Risk-adj + 2·horizons + chevron
 
   return (
     <>
@@ -529,12 +556,14 @@ function FactorsTable({ data, scope }: { data: FactorLabAllResponse; scope: Samp
           <span className="num text-text">{rows.length}</span>
         </span>
         <span>
-          <span className="text-text-faint">Horizon: </span>
-          <span className="num text-text">{data.horizon}d</span>
+          <span className="text-text-faint">Horizons: </span>
+          <span className="num text-text">{horizons.map((h) => `${h}d`).join(" · ")}</span>
         </span>
         <span className="text-text-faint">
-          Click a column to sort (NA-last); click a factor to expand its decile sort. Factors / deciles with{" "}
-          <span className="text-warn">n &lt; {data.min_sample} ⚠</span> render NA.
+          Top-decile (D10) forward-return &amp; paired max-drawdown per horizon; rank-IC / risk-adjusted at{" "}
+          <span className="num text-text">{defaultHorizon}d</span>. Click a column to sort (NA-last); click a
+          factor to expand its decile grid. Cells with <span className="text-warn">n &lt; {data.min_sample} ⚠</span>{" "}
+          render NA.
         </span>
       </div>
 
@@ -544,16 +573,22 @@ function FactorsTable({ data, scope }: { data: FactorLabAllResponse; scope: Samp
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
               <FactorSortHeader col="label" label="Factor" activeKey={sortKey} dir={sortDir} onSort={onSort} />
               <FactorSortHeader col="family" label="Family" activeKey={sortKey} dir={sortDir} onSort={onSort} />
-              <FactorSortHeader col="rank_ic" label="Rank-IC" activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
+              <FactorSortHeader col="rank_ic" label={`Rank-IC (${defaultHorizon}d)`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
               <FactorSortHeader col="n" label="N" activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
               <FactorSortHeader
                 col="risk_adjusted"
-                label="Risk-adjusted (downside)"
+                label={`Risk-adjusted (${defaultHorizon}d)`}
                 activeKey={sortKey}
                 dir={sortDir}
                 onSort={onSort}
                 numeric
               />
+              {horizons.map((h) => (
+                <Fragment key={`hh-${h}`}>
+                  <FactorSortHeader col={`fwd:${h}`} label={`Fwd ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
+                  <FactorSortHeader col={`mdd:${h}`} label={`MDD ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
+                </Fragment>
+              ))}
               <th className="px-4 py-2" aria-label="expand" />
             </tr>
           </thead>
@@ -565,7 +600,9 @@ function FactorsTable({ data, scope }: { data: FactorLabAllResponse; scope: Samp
                 open={expanded.has(row.key)}
                 onToggle={() => toggle(row.key)}
                 min={data.min_sample}
-                horizon={data.horizon}
+                horizons={horizons}
+                defaultHorizon={defaultHorizon}
+                colSpan={colSpan}
                 scope={scope}
               />
             ))}
@@ -580,25 +617,68 @@ function FactorsTable({ data, scope }: { data: FactorLabAllResponse; scope: Samp
  *  accessible expandable-row control (role=button + aria-expanded, Enter/Space toggles) the Sectors page
  *  uses; it carries NO nested interactive element (the decile `N=` SampleLinks live in the SEPARATE expanded
  *  panel, not in the clickable summary row — the iter-5 nested-interactive hazard). */
+/** A muted "NA" span — never a fabricated number (the SAME copy the ratio/decile cells use). */
+function NaCell({ title }: { title?: string }) {
+  return (
+    <span className="num font-semibold text-text-muted" title={title ?? "NA — low sample or no value, not a fabricated number"}>
+      NA
+    </span>
+  );
+}
+
+/** A factor's TOP-decile (D10) paired cell at one horizon: the colour-graded forward-return (returnClass)
+ *  or max-drawdown (mdd-color tokens), or an explicit NA when the top decile is low-sample / empty / its
+ *  value is null. Read straight off the served top decile — recomputes nothing. */
+function TopDecileCell({ row, horizon, metric, min }: {
+  row: FactorTableRow;
+  horizon: number;
+  metric: "fwd" | "mdd";
+  min: number;
+}) {
+  const top = topDecileAt(row, horizon);
+  const value = metric === "fwd" ? top?.mean_return ?? null : top?.mean_max_drawdown ?? null;
+  const na = !top || top.low_sample || top.n === 0 || value === null;
+  if (na) {
+    return (
+      <NaCell
+        title={
+          top && top.low_sample
+            ? `Top decile low sample (n < ${min}) — NA, not a fabricated number`
+            : metric === "mdd"
+              ? "No stored drawdown for the top-decile cohort at this horizon — NA"
+              : "No top-decile observations at this horizon — NA"
+        }
+      />
+    );
+  }
+  return metric === "fwd" ? (
+    <span className={cn("num font-semibold", returnClass(value))}>{fmtPct(value)}</span>
+  ) : (
+    <span className={cn("num font-semibold", mddClass(value))}>{fmtMdd(value)}</span>
+  );
+}
+
 function FactorRows({
   row,
   open,
   onToggle,
   min,
-  horizon,
+  horizons,
+  defaultHorizon,
+  colSpan,
   scope,
 }: {
   row: FactorTableRow;
   open: boolean;
   onToggle: () => void;
   min: number;
-  horizon: number;
+  horizons: number[];
+  defaultHorizon: number;
+  colSpan: number;
   scope: SampleScope;
 }) {
   const icNa = row.rank_ic.value === null;
-  const top = topDecile(row);
-  const raNa = !top || top.low_sample || top.n === 0 || row.risk_adjusted === null;
-  const colSpan = 6; // Factor + Family + Rank-IC + N + Risk-adjusted + chevron
+  const raNa = topCellIsNa(row, defaultHorizon, "fwd") || row.risk_adjusted === null;
   return (
     <>
       <tr
@@ -639,16 +719,33 @@ function FactorRows({
             title={raNa ? `Low sample (n < ${min}) or no downside in the top decile — NA, not a fabricated number` : "Top-decile mean return per unit downside deviation"}
           />
         </td>
+        {horizons.map((h) => (
+          <Fragment key={`tc-${row.key}-${h}`}>
+            <td className="px-4 py-2 text-right">
+              <TopDecileCell row={row} horizon={h} metric="fwd" min={min} />
+            </td>
+            <td className="px-4 py-2 text-right">
+              <TopDecileCell row={row} horizon={h} metric="mdd" min={min} />
+            </td>
+          </Fragment>
+        ))}
         <td className="px-4 py-2 text-text-faint">
           {open ? <ChevronDown className="h-4 w-4" aria-hidden /> : <ChevronRight className="h-4 w-4" aria-hidden />}
         </td>
       </tr>
       {open ? (
-        // The expanded panel is a SEPARATE, non-clickable <tr> — the full decile sort (with its decile
-        // `N=` SampleLink drill-downs) lives here, NOT inside the clickable summary row.
+        // The expanded panel is a SEPARATE, non-clickable <tr> — the full all-horizon decile grid (with its
+        // per-(horizon,decile) `N=` SampleLink drill-downs) lives here, NOT inside the clickable summary row.
         <tr className="border-b border-border bg-bg last:border-b-0">
           <td colSpan={colSpan} className="px-4 py-3">
-            <DecileTable rows={row.deciles} min={min} horizon={horizon} factor={row.key} scope={scope} />
+            <DecileTable
+              byHorizon={row.by_horizon}
+              horizons={horizons}
+              defaultHorizon={defaultHorizon}
+              min={min}
+              factor={row.key}
+              scope={scope}
+            />
           </td>
         </tr>
       ) : null}
@@ -665,128 +762,147 @@ function PanelTitle({ children, hint }: { children: React.ReactNode; hint?: stri
   );
 }
 
-/** A decile's mean/risk-adjusted cell: explicit "NA" + n when the decile is low-sample (n < min_sample)
- *  or empty — never a fabricated number; otherwise the colour-graded value + n. The `n` chip is a J-51
- *  LINK into the samples drill-down for this exact decile cohort (count-coherent — its total == this n). */
-function DecileValue({
-  value,
-  lowSample,
-  isRatio,
-  n,
+/** A decile's forward-return cell at one horizon: explicit "NA" when low-sample (n < min_sample) / empty /
+ *  null — never a fabricated number; otherwise the colour-graded mean return (its own per-horizon factor
+ *  range on hover). The trailing `n` chip is a J-51 LINK into the samples drill-down for THIS exact
+ *  `(factor, horizon, decile)` cohort (count-coherent — its total == this n). One chip per (horizon, decile)
+ *  — it lives on the return cell, never duplicated on the paired drawdown cell. */
+function DecileReturnCell({
+  cell,
   min,
   factor,
   horizon,
   decile,
   scope,
 }: {
-  value: number | null;
-  lowSample: boolean;
-  isRatio: boolean;
-  n: number;
+  cell: FactorDecileRow;
   min: number;
   factor: string;
   horizon: number;
   decile: number;
   scope: SampleScope;
 }) {
-  const na = lowSample || n === 0 || value === null;
+  const na = cell.low_sample || cell.n === 0 || cell.mean_return === null;
+  const rangeTitle =
+    cell.factor_min === null || cell.factor_max === null
+      ? undefined
+      : `Factor range at ${horizon}d: ${cell.factor_min.toFixed(2)} … ${cell.factor_max.toFixed(2)}`;
   return (
     <span className="inline-flex items-center justify-end gap-2">
       {na ? (
-        <span className="num font-semibold text-text-muted" title={lowSample ? `Low sample — n below the ${min} minimum` : "No observations"}>
+        <span className="num font-semibold text-text-muted" title={cell.low_sample ? `Low sample — n below the ${min} minimum` : "No observations"}>
           NA
         </span>
       ) : (
-        <span className={cn("num font-semibold", returnClass(value))}>
-          {isRatio ? fmtRatio(value) : fmtPct(value)}
+        <span className={cn("num font-semibold", returnClass(cell.mean_return))} title={rangeTitle}>
+          {fmtPct(cell.mean_return)}
         </span>
       )}
       <SampleLink
-        n={n}
+        n={cell.n}
         min={min}
         scope={scope}
         cohort={{ kind: "factor", factor, horizon, slice: "decile", decile }}
-        label={`See the ${n} observations in decile D${decile}`}
+        label={`See the ${cell.n} observations in factor ${factor} decile D${decile} at the ${horizon}-day horizon`}
       />
     </span>
   );
 }
 
+/** A decile's paired max-drawdown cell at one horizon: explicit "NA" when low-sample / empty / null —
+ *  never a fabricated number; otherwise the mdd-color-graded value (a deeper drawdown reads more severe). */
+function DecileMddCell({ cell, min }: { cell: FactorDecileRow; min: number }) {
+  const na = cell.low_sample || cell.n === 0 || cell.mean_max_drawdown === null;
+  if (na) {
+    return (
+      <span className="num font-semibold text-text-muted" title={cell.low_sample ? `Low sample — n below the ${min} minimum` : "No stored drawdown — NA"}>
+        NA
+      </span>
+    );
+  }
+  return <span className={cn("num font-semibold", mddClass(cell.mean_max_drawdown))}>{fmtMdd(cell.mean_max_drawdown)}</span>;
+}
+
+/** The all-horizon decile grid (J-109): rows D1…D10, columns = factor range (at the default horizon) then,
+ *  per config horizon, a paired (forward-return, max-drawdown) cell. Each return cell carries the
+ *  per-(factor,horizon,decile) `N=` drill-down chip. Every figure is re-presented from the served per-horizon
+ *  decile tables — recomputes nothing. */
 function DecileTable({
-  rows,
+  byHorizon,
+  horizons,
+  defaultHorizon,
   min,
-  horizon,
   factor,
   scope,
 }: {
-  rows: FactorDecileRow[];
+  byHorizon: FactorHorizonDeciles[];
+  horizons: number[];
+  defaultHorizon: number;
   min: number;
-  horizon: number;
   factor: string;
   scope: SampleScope;
 }) {
+  const byH = new Map(byHorizon.map((b) => [b.horizon, b.deciles]));
+  const defaultDeciles = byH.get(defaultHorizon) ?? byHorizon[0]?.deciles ?? [];
+  const decileCount = defaultDeciles.length;
   return (
     <Card className="p-0">
       <PanelTitle
-        hint={`Mean realized ${horizon}-day forward return per factor decile (D1 = lowest factor value → D10 = highest), with a downside risk-adjusted column. Monotonicity across D1→D10 = the factor sorts future returns.`}
+        hint={`Mean realized forward return AND its paired max-drawdown per factor decile (D1 = lowest factor value → D10 = highest) at every horizon. Monotonicity across D1→D10 = the factor sorts future returns. Factor range is shown at the ${defaultHorizon}-day horizon; each horizon's own range is on its return cell's hover. Low-sample / empty (factor, horizon, decile) cohorts render NA + n.`}
       >
-        Decile sort — raw &amp; downside risk-adjusted
+        Decile grid — forward return &amp; paired max-drawdown, all horizons
       </PanelTitle>
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
+        <table data-testid={`decile-grid-${factor}`} className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
               <th className="px-4 py-2 font-medium">
                 <span className="inline-flex items-center gap-1">Decile<TermInfo term="decile" /></span>
               </th>
-              <th className="px-4 py-2 text-right font-medium">Factor range</th>
-              <th className="px-4 py-2 text-right font-medium">
-                <span className="inline-flex items-center gap-1">Mean fwd return<TermInfo term="forward return" /></span>
-              </th>
-              <th className="px-4 py-2 text-right font-medium">
-                <span className="inline-flex items-center gap-1">Risk-adjusted (downside)<TermInfo term="risk-adjusted return" /></span>
-              </th>
+              <th className="px-4 py-2 text-right font-medium">Factor range ({defaultHorizon}d)</th>
+              {horizons.map((h) => (
+                <Fragment key={`dgh-${h}`}>
+                  <th className="px-4 py-2 text-right font-medium">
+                    <span className="inline-flex items-center justify-end gap-1">Fwd {h}d<TermInfo term="forward return" /></span>
+                  </th>
+                  <th className="px-4 py-2 text-right font-medium">MDD {h}d</th>
+                </Fragment>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
-              <tr key={row.decile} className="border-b border-border last:border-b-0">
-                <td className="px-4 py-2">
-                  <span className="num font-semibold text-text">D{row.decile}</span>
-                </td>
-                <td className="num px-4 py-2 text-right text-xs text-text-faint">
-                  {row.factor_min === null || row.factor_max === null
-                    ? "—"
-                    : `${row.factor_min.toFixed(2)} … ${row.factor_max.toFixed(2)}`}
-                </td>
-                <td className="px-4 py-2 text-right">
-                  <DecileValue
-                    value={row.mean_return}
-                    lowSample={row.low_sample}
-                    isRatio={false}
-                    n={row.n}
-                    min={min}
-                    factor={factor}
-                    horizon={horizon}
-                    decile={row.decile}
-                    scope={scope}
-                  />
-                </td>
-                <td className="px-4 py-2 text-right">
-                  <DecileValue
-                    value={row.risk_adjusted}
-                    lowSample={row.low_sample}
-                    isRatio
-                    n={row.n}
-                    min={min}
-                    factor={factor}
-                    horizon={horizon}
-                    decile={row.decile}
-                    scope={scope}
-                  />
-                </td>
-              </tr>
-            ))}
+            {Array.from({ length: decileCount }, (_, i) => i + 1).map((d) => {
+              const range = defaultDeciles[d - 1];
+              return (
+                <tr key={d} className="border-b border-border last:border-b-0">
+                  <td className="px-4 py-2">
+                    <span className="num font-semibold text-text">D{d}</span>
+                  </td>
+                  <td className="num px-4 py-2 text-right text-xs text-text-faint">
+                    {!range || range.factor_min === null || range.factor_max === null
+                      ? "—"
+                      : `${range.factor_min.toFixed(2)} … ${range.factor_max.toFixed(2)}`}
+                  </td>
+                  {horizons.map((h) => {
+                    const cell = byH.get(h)?.[d - 1];
+                    return (
+                      <Fragment key={`dgc-${h}-${d}`}>
+                        <td className="px-4 py-2 text-right">
+                          {cell ? (
+                            <DecileReturnCell cell={cell} min={min} factor={factor} horizon={h} decile={d} scope={scope} />
+                          ) : (
+                            <span className="text-text-faint">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          {cell ? <DecileMddCell cell={cell} min={min} /> : <span className="text-text-faint">—</span>}
+                        </td>
+                      </Fragment>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

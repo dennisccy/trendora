@@ -110,11 +110,14 @@ def factor_lab(
     # snapshot-served read, NOT a second/page-local date state (J-18).
     cutoff = resolved_date(session, as_of, cfg) if as_of else None
 
-    # J-107: the all-factors aggregate (the `factor` selector is N/A here — the table shows every catalog
-    # factor at once). Served from the derived-once cache (byte-identical to a fresh compute; refreshes via
-    # the dataset-version key) — never recomputed per request.
+    # J-107 → J-109: the all-factors aggregate (the `factor` AND `horizon` selectors are N/A here — the
+    # table shows every catalog factor at EVERY config horizon at once, with rank-IC / risk-adjusted fixed
+    # at `default_horizon`). The `horizon` query param is still validated above (no behaviour change to
+    # 422/503) but does not scope this horizon-independent view. Served from the derived-once cache
+    # (byte-identical to a fresh compute; refreshes via the dataset-version+schema-token key) — never
+    # recomputed per request.
     if all:
-        return factor_lab_all_cached(session, resolved_horizon, cfg, as_of=cutoff)
+        return factor_lab_all_cached(session, cfg, as_of=cutoff)
 
     valid_factors = [f["key"] for f in factor_catalog(cfg)]
     resolved_factor = valid_factors[0] if factor is None else factor

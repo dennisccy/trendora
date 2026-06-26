@@ -33,6 +33,7 @@ from app.db import create_db_and_tables, make_engine
 from app.engine.research import (
     VIEW_EPISODES,
     VIEW_POOLED,
+    _all_factor_observations_by_horizon,
     _combination_observations,
     _event_study_members,
     _event_study_members_by_horizon,
@@ -42,6 +43,7 @@ from app.engine.research import (
     compute_event_study,
     compute_factor_combination,
     compute_factor_lab,
+    compute_factor_lab_all,
 )
 from app.models import ForwardReturn, ScannerResult, ScannerRun
 
@@ -375,8 +377,10 @@ def _factor_observations_reference(session, factor, horizon, as_of, cfg):
     from sqlmodel import select
     parsed = parse_factor_source(factor.source)
     batch = cfg.research.read_batch_size
+    # iter-52 (J-109): the reference ALSO projects/carries the stored max_drawdown so it stays a byte-for-byte
+    # oracle of the (now MDD-carrying) streamed `_factor_observations`.
     fr_stmt = select(
-        ForwardReturn.run_id, ForwardReturn.symbol, ForwardReturn.realized_return
+        ForwardReturn.run_id, ForwardReturn.symbol, ForwardReturn.realized_return, ForwardReturn.max_drawdown
     ).where(ForwardReturn.horizon == horizon)
     if as_of is not None:
         fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
@@ -384,8 +388,8 @@ def _factor_observations_reference(session, factor, horizon, as_of, cfg):
         )
     ret_by_run_symbol = {}
     runs_with_fr_set = set()
-    for run_id, symbol, realized_return in session.exec(fr_stmt).yield_per(batch):
-        ret_by_run_symbol[(run_id, symbol)] = realized_return
+    for run_id, symbol, realized_return, max_drawdown in session.exec(fr_stmt).yield_per(batch):
+        ret_by_run_symbol[(run_id, symbol)] = (realized_return, max_drawdown)
         runs_with_fr_set.add(run_id)
     runs_with_fr = sorted(runs_with_fr_set)
     run_rows = (
@@ -400,14 +404,16 @@ def _factor_observations_reference(session, factor, horizon, as_of, cfg):
     )
     observations = []
     for res in results:
-        realized = ret_by_run_symbol.get((res.run_id, res.ticker))
-        if realized is None:
+        fr = ret_by_run_symbol.get((res.run_id, res.ticker))
+        if fr is None:
             continue
+        realized, max_drawdown = fr
         value = _extract_factor_value(res, parsed)
         if value is None:
             continue
         observations.append({
             "run_id": res.run_id, "ticker": res.ticker, "factor": float(value), "return": realized,
+            "max_drawdown": max_drawdown,
             "regime": regime_by_run.get(res.run_id),
         })
     return observations
@@ -489,3 +495,74 @@ def test_compute_factor_combination_chunk_independent_component(component_engine
         small = compute_factor_combination(session, conditions, H, _cfg_batch(1), as_of=as_of)
         big = compute_factor_combination(session, conditions, H, _cfg_batch(1_000_000), as_of=as_of)
         assert _eq(small, big), f"factor-combination payload differs by batch (as_of={as_of})"
+
+
+# ==================================================================================================
+# iter-52 (J-109): the all-factors ALL-HORIZONS shared pool builder is the OOM-sensitive UNCACHED-cold
+# factor-lab read site. It reads `realized_return` AND `max_drawdown` for EVERY horizon in ONE streamed,
+# column-projected sweep (NO unbounded `.all()` over `ForwardReturn` / `ScannerResult`). These proofs pin:
+#   1. Per-horizon BYTE-IDENTITY: a factor's non-null subset of `pools[h]` (preserving order) EQUALS the
+#      streamed `_factor_observations(factor, h)` row-for-row — the property compute_factor_lab_all relies on
+#      so each (factor, horizon, decile) figure is byte-identical to the single-horizon view.
+#   2. Chunk-independence: the one-sweep all-horizons read is identical under batch=1 vs huge (cold probe).
+# ==================================================================================================
+@pytest.mark.parametrize("as_of", [None, date(2025, 1, 31)])
+def test_all_factor_observations_by_horizon_matches_per_factor_per_horizon(prune_engine, as_of):
+    """For EVERY catalog factor and EVERY config horizon, the all-horizons shared pool's non-null subset at
+    horizon h (with `max_drawdown` dropped — it rides additively) equals `_factor_observations(factor, h)`
+    row-for-row on the discriminating reorder fixture (multi-horizon FRs, a non-subject symbol with FRs, a
+    factor-NULL column). Proves the one-sweep all-horizons read is byte-identical per (factor, horizon)."""
+    cfg = load_config()
+    factors = list(cfg.research.factor_lab.factors)
+    horizons = list(cfg.walk_forward.horizons)
+    with Session(prune_engine) as session:
+        pools = _all_factor_observations_by_horizon(session, factors, horizons, as_of, cfg=cfg)
+        for factor in factors:
+            for h in horizons:
+                subset = [
+                    {"run_id": o["run_id"], "ticker": o["ticker"],
+                     "factor": float(o["values"][factor.key]), "return": o["return"],
+                     "max_drawdown": o["max_drawdown"], "regime": None}
+                    for o in pools[h]
+                    if o["values"][factor.key] is not None
+                ]
+                per = _factor_observations(session, factor, h, as_of, cfg=cfg)
+                # compare on the shared keys (the all-horizons pool carries no per-obs regime label, which
+                # compute_factor_lab_all does not use); assert the factor/return/max_drawdown identity.
+                got = [
+                    {"run_id": o["run_id"], "ticker": o["ticker"], "factor": o["factor"],
+                     "return": o["return"], "max_drawdown": o["max_drawdown"]}
+                    for o in subset
+                ]
+                want = [
+                    {"run_id": o["run_id"], "ticker": o["ticker"], "factor": o["factor"],
+                     "return": o["return"], "max_drawdown": o["max_drawdown"]}
+                    for o in per
+                ]
+                assert _eq(got, want), f"all-horizons subset != _factor_observations ({factor.key}@{h})"
+
+
+@pytest.mark.parametrize("as_of", [None, date(2025, 1, 31)])
+def test_all_factor_observations_by_horizon_chunk_independent(prune_engine, as_of):
+    """The all-horizons shared pool read is byte-identical under read_batch_size=1 vs a huge batch — the
+    bounded/streamed cold probe (the batch changes only peak memory, never a value/order)."""
+    cfg = load_config()
+    factors = list(cfg.research.factor_lab.factors)
+    horizons = list(cfg.walk_forward.horizons)
+    with Session(prune_engine) as session:
+        small = _all_factor_observations_by_horizon(session, factors, horizons, as_of, cfg=_cfg_batch(1))
+        big = _all_factor_observations_by_horizon(
+            session, factors, horizons, as_of, cfg=_cfg_batch(1_000_000)
+        )
+        assert _eq(small, big), f"all-horizons pool differs by batch (as_of={as_of})"
+
+
+@pytest.mark.parametrize("as_of", [None, date(2025, 1, 31)])
+def test_compute_factor_lab_all_chunk_independent_component(component_engine, as_of):
+    """The full all-factors, all-horizons payload (every factor × every horizon decile table, paired MDD) is
+    byte-identical under batch=1 vs huge on the component-bearing fixture — proving the cold uncached
+    factor-lab-all read keeps `record_json` (component factors) and the prior order across the stream."""
+    with Session(component_engine) as session:
+        small = compute_factor_lab_all(session, _cfg_batch(1), as_of=as_of)
+        big = compute_factor_lab_all(session, _cfg_batch(1_000_000), as_of=as_of)
+        assert _eq(small, big), f"factor-lab-all payload differs by batch (as_of={as_of})"

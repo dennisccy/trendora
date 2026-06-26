@@ -165,44 +165,68 @@ def test_factor_lab_503_when_no_price_data(tmp_path):
 # GET /api/research/factor-lab?all=true — the all-factors aggregate view (iter-50, J-107)
 # ==================================================================================================
 def test_factor_lab_all_payload_is_one_row_per_catalog_factor(loaded_engine):
-    """J-107 at the API level: `?all=true` returns a `factors_table` with exactly one entry per config
-    catalog factor (in order), each carrying family + rank-IC (value + n) + the downside risk-adjusted
-    figure + a full decile table; the top-level block echoes the config-driven horizons / decile count /
-    min_sample + the honest labels. No single `factor` is resolved (the table shows every factor)."""
+    """J-107 → J-109 at the API level: `?all=true` returns a `factors_table` with exactly one entry per
+    config catalog factor (in order), each carrying family + rank-IC (value + n) + the downside
+    risk-adjusted figure (at the default horizon) + a `by_horizon` block with one decile table per config
+    horizon (each decile pairing mean_return + mean_max_drawdown); the top-level block echoes the
+    config-driven horizons / decile count / min_sample + the honest labels and carries NO single `horizon`.
+    No single `factor` is resolved (the table shows every factor at every horizon)."""
     cfg = load_config()
     fl = cfg.research.factor_lab
+    horizons = list(cfg.walk_forward.horizons)
     with TestClient(main.app) as client:
         resp = client.get("/api/research/factor-lab", params={"all": "true"})
     assert resp.status_code == 200
     data = resp.json()
     assert [e["key"] for e in data["factors_table"]] == [f.key for f in fl.factors]
-    assert data["horizon"] == cfg.walk_forward.default_horizon
+    assert "horizon" not in data  # the all-horizons view has no single served horizon (J-109)
+    assert data["horizons"] == horizons
+    assert data["default_horizon"] == cfg.walk_forward.default_horizon
     assert data["deciles_count"] == fl.deciles
     assert data["min_sample"] == cfg.walk_forward.min_sample
     assert data["asof_date"] is None
     assert "survivorship" in data["survivorship_bias"].lower()
     for e in data["factors_table"]:
-        assert {"key", "label", "family", "direction", "n_total", "rank_ic", "risk_adjusted", "deciles"} == set(e)
+        assert {"key", "label", "family", "direction", "n_total", "rank_ic", "risk_adjusted", "by_horizon"} == set(e)
         assert {"value", "n"} == set(e["rank_ic"])
-        assert len(e["deciles"]) == fl.deciles
+        assert [b["horizon"] for b in e["by_horizon"]] == horizons
+        for b in e["by_horizon"]:
+            assert {"horizon", "n_total", "deciles"} == set(b)
+            assert len(b["deciles"]) == fl.deciles
+            for d in b["deciles"]:
+                assert "mean_max_drawdown" in d  # J-109 paired drawdown column
 
 
 def test_factor_lab_all_is_byte_identical_to_single_factor_view(loaded_engine):
-    """Single source of truth (J-25/J-06): each all-factors entry's deciles + rank-IC are byte-identical to
-    the SINGLE-factor `?factor=` view for the same factor/horizon — proving the all-factors view re-presents
-    the canonical compute_factor_lab outputs (one computation path), not a second derivation."""
+    """Single source of truth (J-25/J-06): each all-factors entry's per-horizon deciles are byte-identical to
+    the SINGLE-factor `?factor=&horizon=` view for the same factor/horizon, and its default-horizon rank-IC /
+    risk-adjusted match the single-factor default view — proving the all-horizons view re-presents the
+    canonical compute_factor_lab outputs (one computation path), not a second derivation."""
     import json
 
     cfg = load_config()
+    horizons = list(cfg.walk_forward.horizons)
+    default_h = cfg.walk_forward.default_horizon
     with TestClient(main.app) as client:
         allp = client.get("/api/research/factor-lab", params={"all": "true"}).json()
         table = {e["key"]: e for e in allp["factors_table"]}
         for f in cfg.research.factor_lab.factors:
-            single = client.get("/api/research/factor-lab", params={"factor": f.key}).json()
             entry = table[f.key]
-            assert json.dumps(entry["deciles"], sort_keys=True) == json.dumps(single["deciles"], sort_keys=True)
-            assert json.dumps(entry["rank_ic"], sort_keys=True) == json.dumps(single["rank_ic"], sort_keys=True)
-            assert entry["risk_adjusted"] == single["deciles"][-1]["risk_adjusted"]
+            by_h = {b["horizon"]: b for b in entry["by_horizon"]}
+            for h in horizons:
+                single = client.get(
+                    "/api/research/factor-lab", params={"factor": f.key, "horizon": h}
+                ).json()
+                assert json.dumps(by_h[h]["deciles"], sort_keys=True) == json.dumps(
+                    single["deciles"], sort_keys=True
+                ), f"deciles drift {f.key}@{h}"
+            single_dh = client.get(
+                "/api/research/factor-lab", params={"factor": f.key, "horizon": default_h}
+            ).json()
+            assert json.dumps(entry["rank_ic"], sort_keys=True) == json.dumps(
+                single_dh["rank_ic"], sort_keys=True
+            )
+            assert entry["risk_adjusted"] == single_dh["deciles"][-1]["risk_adjusted"]
 
 
 def test_factor_lab_all_as_of_scopes_pool_and_echoes_cutoff(loaded_engine):
