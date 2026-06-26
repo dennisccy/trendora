@@ -4,11 +4,11 @@
       "id": "J-01",
       "name": "Daily dashboard at a glance",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-40-evidence/UT-J-01-dashboard.png",
-      "note": "Required-still-passing in iter-40 (lean live re-verification); re-verified PASS via live Playwright-fallback browser-QA 14/14. Zero apps/ diff this iter (no code change); iter-39 green-suite gate stands for the byte-unchanged backend. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49-evidence/UT-10-result.png",
+      "note": "Required-still-passing (iter-49). Re-verified LIVE: Dashboard hydrates — Market Regime Risk-on 76.05/100 + Market Phase & Severity 25.70 + cross-view chart, badge Ready (UT-10-result.png). Transparent to the iter-49 API_BASE host-aware change."
     },
     "J-02": {
       "id": "J-02",
@@ -54,21 +54,21 @@
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-46-evidence/UT-J-06-detail.png",
-      "note": "Required-still-passing (iter-48, CRITICAL single source). Snapshot-served fast path unaffected by the research read-path streaming refactor; figures byte-identical. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49-evidence/UT-02-result.png",
+      "note": "Required-still-passing (iter-49, CRITICAL single source). Re-verified LIVE: MU /stocks/MU detail Leadership 94.58 and the Proximity-to-52w-high breakdown value -0.53% == the leaderboard value byte-identical (UT-02-result.png) — the new J-106 column reads the SAME served component, single source held."
     },
     "J-07": {
       "id": "J-07",
       "name": "Risk-Off regime suppresses Actionable",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-46-evidence/UT-J-07-riskoff-run.png",
-      "note": "Required-still-passing (iter-48, CRITICAL Risk-Off gate). The /api/runs invariant is on the snapshot-served fast path, entirely unaffected by the heavy-research read-path streaming refactor (zero scoring/gate/snapshot change; backend-only research.py read diff). Carried passing."
+      "note": "Required-still-passing (iter-49, CRITICAL Risk-Off gate). Backend scoring/regime/gate untouched (iter-49 backend diff is CORS-only in main.py). Current regime Risk-on; the gate invariant holds (QA TC-15 PASS; no fabricated Actionable). Carried passing."
     },
     "J-08": {
       "id": "J-08",
@@ -174,11 +174,11 @@
       "id": "J-18",
       "name": "One date control (no duplicate)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48-evidence/UT-01-result.png",
-      "note": "Required-still-passing (iter-48, CRITICAL exactly-one-date-selector). Backend-only streaming refactor adds no date state. UT-10 DOM eval on /research/factor-lab: document.querySelectorAll('input[type=\"date\"]').length == 0 (only a checkbox All-history/As-of toggle). Single global as-of held. Carried passing."
+      "note": "Required-still-passing (iter-49, CRITICAL exactly-one-date-selector). The J-106 column adds a SortKey, NOT a date state; J-108 changes only the fetch host. grep confirms 0 native input[type=date] (QA TC-16). Single global as-of held. Carried passing."
     },
     "J-19": {
       "id": "J-19",
@@ -394,11 +394,11 @@
       "id": "J-40",
       "name": "Fast boot, background warm-up, honest readiness",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-27",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-26-evidence/UT-01-result.png",
-      "note": "Not in iter-28 scope (backend diff empty). Carried passing; backend served live during iter-28 browser-QA (provider: seed, 585 symbols, Ready)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49-evidence/UT-09-result.png",
+      "note": "Required-still-passing (iter-49, honest readiness). readiness.py + the three badge states unchanged by J-108 (host-aware base re-resolves WHERE the backend is, never fabricates). Honest states VIEWED live: Unavailable when down (UT-09, byte-distinct), Ready when serving (UT-10/UT-01), Initializing during warm-up (QA UT-10 'Initializing... history 9/9'). Carried passing."
     },
     "J-41": {
       "id": "J-41",
@@ -474,11 +474,11 @@
       "id": "J-48",
       "name": "Stocks leaderboard column sorting (sort the view, never the scores)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
-      "last_evidence_path": "reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28-ui-test-results.md",
-      "note": "Required-still-passing in iter-28. Re-verified (UT-J-48) by aria-label: Leadership sort default WDC/COHR/TER -> ascending MARA/HUBS/SMCI; '#' restores stored rank (WDC/COHR/TER back); 5d forward-return sort MU:+18.82% first (aria-label 'Sort by 5d, descending'). The sort code path (comparatorFor/onSort/SortHeader/sorted memo) is BYTE-UNCHANGED in iter-28 (git status confirms stocks/themes/sectors page.tsx not modified). Pure view transform, never recomputes — J-48 contract intact."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49-evidence/UT-13-result.png",
+      "note": "Required-still-passing (iter-49). Re-verified LIVE: the pre-existing Leadership column sort still reorders (UT-13-result.png: first row MU->COIN, only Leadership shows the sort indicator, Proximity has none); the new J-106 comparator rides the same SortHeader/comparatorFor view-transform contract (pure view sort, never recomputes scores). Carried passing."
     },
     "J-49": {
       "id": "J-49",
@@ -744,11 +744,11 @@
       "id": "J-75",
       "name": "Forward returns on the stock leaderboard and stock detail (1/5/10/20/60-day)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28-evidence/UT-J-86-stocks-initial.png",
-      "note": "Required-still-passing in iter-28. Re-verified (UT-J-75): at 2025-12-16 all five forward-return columns populated with real values; at latest all NA (honest, never fabricated); 5d forward-return column sort works (resolved by aria-label, NOT visible text) MU:+18.82% first; NVDA detail forward-return values match the leaderboard row. The iter-27 'fwd-return sort no-op' (UT-20) was a browser-QA selector false-negative on the unchanged sort path — now CONFIRMED working by aria-label. No regression."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49-evidence/UT-01-result.png",
+      "note": "Required-still-passing (iter-49). Re-verified LIVE: /stocks retains all forward-return columns (1d/5d/10d/20d/60d) alongside the new Proximity column (QA UT-11 lists all 20 headers; UT-01-result.png). Carried passing."
     },
     "J-76": {
       "id": "J-76",
@@ -794,11 +794,11 @@
       "id": "J-80",
       "name": "Stocks leaderboard header — selected-date regime label+score + ranked Top-Themes strip + #n chip badges",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25-evidence/UT-J-80-pass.png",
-      "note": "Not in iter-28 scope. Carried passing (the iter-28 /stocks captures incidentally show the regime header strip intact at 2025-12-16)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49-evidence/UT-01-result.png",
+      "note": "Required-still-passing (iter-49). Re-verified LIVE: /stocks header regime/theme strip + columns intact after the API_BASE change (QA UT-11/UT-19). Carried passing."
     },
     "J-81": {
       "id": "J-81",
@@ -1034,11 +1034,11 @@
       "id": "J-104",
       "name": "Research labs load reliably — cache + query-bounding + lazy-load + page-split",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48-evidence/UT-06-factor-combination.png",
-      "note": "FLIPS partial -> passing in iter-48. The 'all five heavy labs load reliably without error' acceptance is now MET: with the factor-lab ScannerResult read streamed (research.py:232-236), all five heavy labs serve HTTP 200 on the full live 3.47 GB dataset one-at-a-time — event-study (J-29), factor-lab (J-25, RESTORED), factor-combination (J-26), regime-setup-pattern (J-77), downtrend-opportunity (J-91). Evaluator VIEWED UT-02-decile-table.png (factor-lab real decile table) + UT-06-factor-combination.png (multi-factor combination: Baseline n=598271 +0.88%, real cohort figures, no error banner). Dev + QA independently confirmed all five HTTP 200 on a quiet single-fetch backend. The 5 browser-QA SKIPs were a test-harness QueuePool exhaustion (the QA agent's own concurrent Playwright+Chrome traffic saturated the 15-connection SQLite pool), NOT a code regression — every endpoint returned 200 earlier in the same session. IA/route-split (7-card /research hub + lazy /research/* sub-routes) intact. Coherence COHERENCE-PASS; full suite FLUSHED GREEN."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49-evidence/TC-20-research-loads.png",
+      "note": "Required-still-passing (iter-49). Re-verified LIVE: a research lab still loads after the API_BASE host-aware change — /research Factor Lab renders ('Does a factor actually sort future returns? Decile means'), badge Ready, no 'Backend unavailable' (QA UT-12 + TC-20-research-loads.png). Carried passing."
     },
     "J-105": {
       "id": "J-105",
@@ -1049,6 +1049,36 @@
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48-evidence/UT-02-decile-table.png",
       "note": "FLIPS partial -> passing in iter-48 — the J-105 contract is now COMPLETE. goal.md:2386 'the read path never materializes an unbounded full table' is MET: the iter-47 fix streamed the 7 ForwardReturn reads; iter-48 streams the remaining two ScannerResult-side reads. Evaluator INDEPENDENTLY verified in source: grep of research.py shows NO remaining unbounded select(ScannerResult)...all() — :232-236 (_factor_observations) and :439-443 (_combination_observations) are now yield_per(batch) streamed; the audit-only sites are bounded (1790 run-id-bounded+ordered, 836/854/1546/1565 column-projected+yield_per). Backend RSS stayed ~733 MB during the heavy ~598K-row compute (no OOM). Figures byte-identical (test_research_streaming.py 29 passed: column + component(record_json) factors, as-of/all-history, zero-N cohort, batch=1 vs huge; full compute_factor_lab / compute_factor_combination payloads). The combination cold-miss OOM that was masked by the EventStudyCache is now also closed. Coherence COHERENCE-PASS (SHA 6f7efa0); review PASS; full suite FLUSHED GREEN 1060 passed/0 failed SUITE_EXIT=0. goal.md:2388 makes J-105 NON-data-dependent and NON-haltable."
+    },
+    "J-106": {
+      "id": "J-106",
+      "name": "Proximity to 52w high column on the Stocks leaderboard",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49-evidence/UT-01-result.png",
+      "note": "NEW (goal.md extension commit 95b4926, NOT data-dependent per goal.md:2418). Flips unknown->passing on live browser-QA (12/13 PASS, 1 SKIP). Frontend-only re-display of the stored leadership `high_proximity` ScoreComponent.raw via the new shared lib/high-proximity.ts (highProximityValue/fmtHighProximity) — NO new /api/stocks field (avoids the iter-23/24/32 byte-equality-guard trap; backend diff is CORS-only). Evaluator VIEWED: UT-01-result.png (PROXIMITY TO 52W HIGH column directly after Risk, 120 rows, e.g. MU -0.53%/ARM 0.00%/MRVL -1.65%, badge Ready); UT-02-result.png (MU detail Leadership breakdown shows -0.53% raw distance == leaderboard, single source J-06); UT-04-result.png (descending sort, byte-distinct md5 e0cf5dd5 vs ascending e26b3370 vs unsorted 2d21a7a9 — three distinct frames prove the reorder + reverse); UT-06-result.png (config-backed glossary tooltip '52-week high proximity — How close price is to its one-year high...High window=252'). component-breakdown.tsx now renders the raw distance (was opaque percentile) using the SAME formatter -> column==breakdown byte-identical. Coherence COHERENCE-PASS (re-format of canonical endpoint, no recompute). NA-last leg (UT-05) SKIPPED: all 120 warm rows have >=52w history so no NA row exists in the seed; comparator NA-last branch is in source (explicit, kept out of SORT_COMPARATORS) + logic mirror-verified — non-blocking for core acceptance; capture at a short-history as-of if available."
+    },
+    "J-107": {
+      "id": "J-107",
+      "name": "Factor Lab — all-factors Rank-IC + risk-adjusted table with expandable per-factor decile sort",
+      "status": "unknown",
+      "last_verified_iter": null,
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_evidence_path": null,
+      "note": "QUEUED buildable, NOT-data-dependent Must-have (goal.md:2400, 2418). NOT built this iter — iter-49 deliberately scoped to the two clean independent wins (J-106+J-108) and left J-107 isolated for iter-50 because it touches the cached-aggregate / streamed research read path (the iter-46/47/48 OOM-sensitive area). status=unknown (never built, never tested) -> it blocks GOAL_ACHIEVED and drives CONTINUE per the iter-22 lesson. This is the SOLE remaining unbuilt buildable Must-have (J-108 is the highest journey; J-106/J-108 now pass)."
+    },
+    "J-108": {
+      "id": "J-108",
+      "name": "Honest readiness badge (host-aware client base + dev CORS fix)",
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49-evidence/UT-09-result.png",
+      "note": "NEW (goal.md extension, NOT data-dependent per goal.md:2418). Flips unknown->passing on live browser-QA. Regression-class fix of the readiness badge stuck on 'Backend unavailable' at the dev.sh LAN-IP origin. Two diagnosed root causes (documented before fixing): (1) wrong host — API_BASE was a module-load constant baked to localhost, so a page opened at the LAN-IP fetched the viewer's own machine; (2) CORS block — localhost-only CORS_ORIGINS rejected the LAN-IP Origin. Fix: host-aware resolveApiBase() (lib/api-base.ts, pure+unit-testable; re-resolves WHERE the backend is, never fabricates readiness) used at request time in lib/api.ts getJSON/sendJSON; backend create_app() factory + optional dev-only CORS_ORIGIN_REGEX (None in prod); dev.sh adds the LAN-IP origin + private-LAN regex. Badge keeps three HONEST states. Evaluator VIEWED: UT-09-result.png (md5 f6cc7940, byte-DISTINCT — backend stopped -> honest 'Backend unavailable...Nothing is fabricated', proves the badge is NOT hardcoded/faked Ready); UT-10-result.png (localhost Dashboard Ready, Regime 76.05); UT-01-result.png (localhost /stocks Ready). LAN-IP Ready corroborated by the dev's live curl (GET http://192.168.1.68:8255/api/health Origin http://192.168.1.68:3255 -> HTTP 200 + access-control-allow-origin) + test_cors_dev_lan.py (5 passed: LAN-IP allowed with regex, rejected without, readiness states unchanged) + the host-aware code. HYGIENE GAP (non-load-bearing): UT-08-result.png (claimed LAN-IP Ready frame) is BYTE-IDENTICAL (md5 2d21a7a9) to the localhost UT-01 frame, so the LAN-IP navigation is not independently captured in pixels — but the honest Unavailable frame + curl + CORS test + code together substantiate the flip. Coherence COHERENCE-PASS; review PASS; readiness.py unchanged (J-40 intact)."
     }
   },
   "anti_goal_violations": [
@@ -1062,7 +1092,7 @@
       "resolution": "iter-21: the two `0.0` float literals in `_rsp_rank_key` were replaced with the structural `is_not_none` boolean fallback (no float literal remains in research.py — independently tokenizer-verified 0 float-like NUMBER literals). test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers passes; the DEFAULT J-77 ranking is byte-identical (200 randomized orderings match the legacy key; oracle test added). Full suite GREEN (834 passed, 0 failed, EXIT_CODE=0)."
     }
   ],
-  "updated_at": "2026-06-23T00:54:45.043834+00:00",
+  "updated_at": "2026-06-26T01:13:26.664901+00:00",
   "open_items": [
     {
       "id": "iter23-stale-api-engine-tests",

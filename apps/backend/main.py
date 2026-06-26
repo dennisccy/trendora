@@ -87,27 +87,47 @@ def _cors_origins() -> list[str]:
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
-app = FastAPI(title="Trendora API", version="0.1.0", lifespan=lifespan)
+def _cors_origin_regex() -> str | None:
+    """Optional DEV-ONLY origin-allow regex (J-108). When `./scripts/dev.sh` advertises the app at the
+    machine's LAN IP (`http://<LAN_IP>:<frontendPort>`), a browser opened there sends that LAN-IP Origin
+    on its `/api/health` (and every other) request — which a localhost-only `CORS_ORIGINS` list rejects,
+    so the readiness badge sticks on "Backend unavailable". When `CORS_ORIGIN_REGEX` is set (dev.sh sets
+    it to a private-LAN pattern), that LAN-IP frontend origin is also accepted. It is NOT set in
+    production, so this widens nothing outside local development."""
+    raw = os.environ.get("CORS_ORIGIN_REGEX", "").strip()
+    return raw or None
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins(),
-    allow_methods=["*"],
-    allow_headers=["*"],
-    allow_credentials=False,
-)
 
-app.include_router(health.router, prefix="/api")
-app.include_router(sectors.router, prefix="/api")
-app.include_router(dashboard.router, prefix="/api")
-app.include_router(stocks.router, prefix="/api")
-app.include_router(themes.router, prefix="/api")
-app.include_router(runs.router, prefix="/api")
-app.include_router(backtest.router, prefix="/api")
-app.include_router(watchlist.router, prefix="/api")
-app.include_router(methodology.router, prefix="/api")
-app.include_router(data.router, prefix="/api")
-app.include_router(research.router, prefix="/api")
-app.include_router(regime_history.router, prefix="/api")
-app.include_router(indexes.router, prefix="/api")
-app.include_router(market_phase.router, prefix="/api")
+def create_app() -> FastAPI:
+    """Build the Trendora FastAPI app. A factory (not just a module-level singleton) so the CORS policy —
+    which reads `CORS_ORIGINS` / `CORS_ORIGIN_REGEX` from the environment — is testable: a test can set
+    the env and construct a fresh app to assert the allowed origins (J-108)."""
+    application = FastAPI(title="Trendora API", version="0.1.0", lifespan=lifespan)
+
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins(),
+        allow_origin_regex=_cors_origin_regex(),  # dev-only LAN-IP allowance (None in prod)
+        allow_methods=["*"],
+        allow_headers=["*"],
+        allow_credentials=False,
+    )
+
+    application.include_router(health.router, prefix="/api")
+    application.include_router(sectors.router, prefix="/api")
+    application.include_router(dashboard.router, prefix="/api")
+    application.include_router(stocks.router, prefix="/api")
+    application.include_router(themes.router, prefix="/api")
+    application.include_router(runs.router, prefix="/api")
+    application.include_router(backtest.router, prefix="/api")
+    application.include_router(watchlist.router, prefix="/api")
+    application.include_router(methodology.router, prefix="/api")
+    application.include_router(data.router, prefix="/api")
+    application.include_router(research.router, prefix="/api")
+    application.include_router(regime_history.router, prefix="/api")
+    application.include_router(indexes.router, prefix="/api")
+    application.include_router(market_phase.router, prefix="/api")
+    return application
+
+
+app = create_app()

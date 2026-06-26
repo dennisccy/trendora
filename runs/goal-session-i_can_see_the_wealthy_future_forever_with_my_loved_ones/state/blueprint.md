@@ -312,6 +312,48 @@ information-architecture restructure; cross backend+frontend, full pytest gate h
 LEAN (frontend-only view transform, zero backend diff); J-100 follows FULL (backend perf/stability hardening +
 a concurrency load test, full pytest gate). All on the EXISTING Dashboard + Data Manager homes -- no new
 top-level nav section, no new page.
+
+SESSION EXTENSION (2026-06-26) -- J-106..J-108 (this resume, post-iter-48 GOAL_ACHIEVED; goal.md commit
+95b4926). THREE new Must-haves, all NOT data-dependent (goal.md:2418 -- buildable + verifiable offline
+against the committed seed; none may be recorded blocked-NA, none may halt the loop). NO new top-level nav
+section and NO new page: all three land on EXISTING homes (J-106 on the `/stocks` leaderboard; J-107 on the
+existing `/research/factor-lab` route; J-108 is the cross-cutting app-shell readiness badge). NO new Data
+Contract value is introduced by any of the three -- each re-displays / reorganizes / corrects an
+ALREADY-registered canonical value. J-106 = a `/stocks` leaderboard `Proximity to 52w high` column placed
+DIRECTLY AFTER the Risk column, RE-DISPLAYING the stored `high_proximity` Leadership component value already
+served on each `/api/stocks` row (`scoring:score_stocks`, scoring.py:145 -- the SAME value the Leadership
+breakdown shows; Single source / No recompute) -- a PURE client-side view transform (read the existing
+`leadership.components` value; do NOT add a new served field -- the iter-23/24/32 byte-equality-guard trap),
+client-side sortable NA-last under the J-48 contract, NA-honest, header carrying the config-backed glossary
+tooltip (J-47); the 52w window stays config-driven (No magic numbers); no second date state. J-107 [TARGET
+iter-50, FULL] = `/research/factor-lab` is restructured into an ALL-FACTORS table (one row per config-catalog
+factor: family, Rank-IC value+N, downside-risk-adjusted figure at the selected horizon) with a click-to-expand
+per-factor decile sort (the existing aria-expanded expandable-row pattern), SUPERSEDING the single-factor
+dropdown view and RETIRING the per-regime effectiveness table FROM THIS VIEW (a presentation change on the
+EXISTING route -- NOT a nav-skeleton change; the regime-conditioned slice stays a derived-once canonical value,
+just no longer surfaced as a Factor-Lab table). Every value is BYTE-IDENTICAL to the single-factor lab's
+because it is the SAME `research:compute_factor_lab` / `_rank_ic` / risk-adjusted builders served from the
+derived-once cached aggregate (EventStudyCache + `_dataset_version`, streamed/column-projected per J-105 so it
+stays bounded on the full live dataset; the J-72/J-104 performance contract). Risk-adjusted uses DOWNSIDE
+deviation only (never total volatility). Sortable NA-last (J-48); honors the Research As-of mode as a pure
+observation-set filter (J-32); every decile `N=` chip still drills into Research Samples count-coherently
+(J-51/J-65). No new endpoint, no new `table=True` model (reuses EventStudyCache -- the test_db.py
+expected-tables guard is UNCHANGED), no second date state. J-108 = the always-"Backend unavailable" readiness
+badge bug FIXED (regression against J-40 / `Readiness is reported honestly`): a diagnosed root cause of the
+live `/api/health` request path under `./scripts/dev.sh` -- the strongest hypothesis being the host/CORS
+mismatch (the frontend bakes `NEXT_PUBLIC_API_URL=http://localhost:<port>` and `CORS_ORIGINS` lists only
+localhost origins, so a browser opened at the dev.sh-advertised LAN-IP origin is CORS-blocked / fetches the
+wrong host -> `fetchHealth()` throws -> badge stuck unavailable). The fix makes the badge HONEST (Ready /
+Initializing n/m when genuinely serving; Unavailable only when truly down; never hardcoded, inverted, stuck,
+or faked Ready) -- likely a host-aware `API_BASE` resolution in `lib/api.ts` (derive the backend origin from
+`window.location.hostname` + the already-exported `NEXT_PUBLIC_API_PORT` when the configured base is localhost
+but the page host is not) and/or a widened `CORS_ORIGINS`. No canonical value change, no new endpoint, no
+new value (the readiness state stays `readiness:compute_readiness` -> `GET /api/health`, the ONE readiness
+read). NO secrets ride any of these paths (No secrets in source). [TARGET] tags: iter-49 targets J-106 + J-108
+(FULL depth -- frontend `/stocks` column + the readiness diagnosis/fix touching the universal client fetch
+base and possibly backend CORS; full pytest gate handed to the pump). iter-50 targets J-107 (FULL, isolated --
+the cached-aggregate / streamed all-factors Factor Lab restructure). Both on EXISTING homes -- no new
+top-level nav section, no new page.
 -->
 
 ## Information Architecture

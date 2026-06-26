@@ -5,10 +5,30 @@
  * "Backend unavailable" state — we never fabricate data.
  */
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { resolveApiBase } from "@/lib/api-base";
+
+/** The build-time configured backend base (`NEXT_PUBLIC_API_URL`, default localhost). The configured
+ *  backend PORT (`NEXT_PUBLIC_API_PORT`) is read alongside so the runtime resolver can host-swap to the
+ *  page's own host when the page is opened at a non-localhost (LAN-IP) origin (J-108). Both are inlined
+ *  by Next at build time. */
+const CONFIGURED_API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const CONFIGURED_API_PORT = process.env.NEXT_PUBLIC_API_PORT ?? null;
+
+/** Back-compat export: the build-time configured base. Prefer `apiBase()` for runtime host-aware use. */
+export const API_BASE = CONFIGURED_API_BASE;
+
+/** Resolve the backend base at REQUEST time — host-aware (J-108). On the client it reads the page's
+ *  `window.location.hostname` so a page opened at a LAN-IP origin hits the backend on that SAME host
+ *  (not "localhost", which would be the viewer's own machine); during SSR (`window` undefined) it falls
+ *  back to the configured base. An explicit non-localhost `NEXT_PUBLIC_API_URL` is always used verbatim.
+ *  This re-resolves only WHERE the backend is — it never fabricates readiness or any served value. */
+function apiBase(): string {
+  const hostname = typeof window !== "undefined" ? window.location.hostname : undefined;
+  return resolveApiBase(CONFIGURED_API_BASE, hostname, CONFIGURED_API_PORT);
+}
 
 async function getJSON<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { signal, cache: "no-store" });
+  const res = await fetch(`${apiBase()}${path}`, { signal, cache: "no-store" });
   if (!res.ok) {
     throw new Error(`request failed: GET ${path} -> HTTP ${res.status}`);
   }
@@ -28,7 +48,7 @@ function withAsOf(path: string, asof?: string): string {
  *  Error carrying the backend's honest `detail` message so the UI renders an explicit failure
  *  (e.g. "ANET is already on the watchlist") — never a fabricated success. */
 async function sendJSON<T>(method: "POST" | "DELETE", path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(`${apiBase()}${path}`, {
     method,
     headers: body === undefined ? undefined : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),

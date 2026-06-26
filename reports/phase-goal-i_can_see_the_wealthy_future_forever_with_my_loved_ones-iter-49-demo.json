@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+  "base_url": "http://localhost:3255",
+  "iteration": 49,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Stock leaderboard — Proximity to 52-week high column",
+      "narration": "The Stocks leaderboard now shows each name's distance below its 52-week high in a dedicated column placed directly after Risk. A reading of -0.53% means the stock sits just below its annual peak; 0.00% means a fresh 52-week high.",
+      "point_out": "Look for the 'Proximity to 52w high' column header immediately to the right of the 'Risk' column — every row shows a live percentage.",
+      "journey": "J-106",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "Proximity to 52w high" }
+    },
+    {
+      "n": 2,
+      "title": "Sort by proximity ascending — furthest from the high first",
+      "narration": "Clicking the column header reorders all 120 stocks from those furthest below their 52-week high down to those sitting at or near their peak, making it easy to find names that have pulled back the most.",
+      "point_out": "A sort arrow appears on the 'Proximity to 52w high' header and the row order changes — MSTR moves to the top, reflecting its larger pullback from its annual high.",
+      "journey": "J-106",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Sort by Proximity to 52w high, ascending" } },
+      "expect": { "text": "MSTR" }
+    },
+    {
+      "n": 3,
+      "title": "Reverse the sort — leaders near their high float to the top",
+      "narration": "A second click flips the order so stocks trading at or nearest to their 52-week high appear first — the position where true market leaders tend to reside.",
+      "point_out": "The arrow flips direction and ARM moves to the front with a 0.00% reading, indicating it is sitting right at its 52-week high.",
+      "journey": "J-106",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Sort by Proximity to 52w high, ascending" } },
+      "expect": { "text": "ARM" }
+    },
+    {
+      "n": 4,
+      "title": "Info icon surfaces the glossary definition",
+      "narration": "Every numeric column carries a small info icon that opens a plain-language definition pulled directly from the methodology catalog — the Proximity column is no exception.",
+      "point_out": "The popover explains that proximity-to-52w-high is a leadership component, not a buy signal on its own — the same config-backed copy that powers all other column tooltips in the table.",
+      "journey": "J-106",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Definition of 52-week high proximity" } },
+      "expect": { "text": "NOT a buy signal" }
+    },
+    {
+      "n": 5,
+      "title": "Stock detail page shows the matching percentage",
+      "narration": "Opening MU's detail page confirms that the Leadership score component breakdown shows the exact same -0.53% figure that appeared in the leaderboard — one stored value, displayed consistently in both places.",
+      "point_out": "In the Leadership breakdown, the 'Proximity to 52w high' row reads -0.53%, identical to the leaderboard — no opaque internal rank like 'pctl 73', just the actual distance from the 52-week high.",
+      "journey": "J-106",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/MU" },
+      "expect": { "text": "-0.53%" }
+    },
+    {
+      "n": 6,
+      "title": "Dashboard loads with an honest readiness badge",
+      "narration": "The top-bar readiness badge now accurately reflects what the backend is doing — showing Ready when data is being served, an Initializing progress count during warm-up, or Backend unavailable only when the backend is genuinely down.",
+      "point_out": "The badge should read 'Ready' and the dashboard should display live market regime data — look for the 'Risk-on' label with its numerical score.",
+      "journey": "J-108",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Risk-on" }
+    },
+    {
+      "n": 7,
+      "title": "Research lab continues to load after the connectivity fix",
+      "narration": "The same fix that corrected the readiness badge also ensures every other page — including the Factor Lab research view — continues to fetch and display data without error.",
+      "point_out": "The Research page should display 'Factor Lab' with its decile analysis tables and the badge should remain on 'Ready' throughout.",
+      "journey": "J-108",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research" },
+      "expect": { "text": "Factor Lab" }
+    }
+  ]
+}

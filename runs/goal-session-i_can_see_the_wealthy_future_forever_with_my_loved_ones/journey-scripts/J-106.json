@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "journey": "J-106",
+  "name": "Stocks leaderboard shows a Proximity-to-52w-high column after Risk",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-106", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "Stocks"}},
+    {"n": 2, "journey": "J-106", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "Proximity to 52w high"}},
+    {"n": 3, "journey": "J-106", "action": {"type": "goto", "url": "/stocks/MU"}, "expect": {"text": "-0.53%"}},
+    {"n": 4, "journey": "J-106", "action": {"type": "goto", "url": "/stocks/MU"}, "expect": {"text": "Proximity to 52w high"}}
+  ]
+}

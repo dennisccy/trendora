@@ -1,4 +1,5 @@
 import type { ScoreComponent } from "@/lib/api";
+import { fmtHighProximity, HIGH_PROXIMITY_KEY } from "@/lib/high-proximity";
 import { cn } from "@/lib/utils";
 
 // Human labels for the canonical component keys (presentation only — the values are computed
@@ -48,6 +49,9 @@ function detail(component: ScoreComponent): string {
     const op = component.elevated ? "≥" : "<";
     return `VIX ${component.value ?? "—"} ${op} ${component.threshold ?? "—"} (×${component.factor ?? "—"})`;
   }
+  // J-106: "Proximity to 52w high" shows its stored raw distance (a percent <= 0; 0 at a fresh high) —
+  // the SAME value the /stocks leaderboard column re-displays (single source), not the opaque percentile.
+  if (component.name === HIGH_PROXIMITY_KEY) return fmtHighProximity(component.raw ?? null);
   if (typeof component.percentile === "number") {
     return `pctl ${(component.percentile * 100).toFixed(0)}`; // sector rows rank cross-sectionally
   }

@@ -16,6 +16,7 @@ import { Select } from "@/components/ui/select";
 import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { TermInfo } from "@/components/ui/term-info";
 import { formatIsoDate } from "@/lib/dates";
+import { fmtHighProximity, highProximityValue } from "@/lib/high-proximity";
 import { regimeVariant } from "@/lib/regime-variant";
 import { cn } from "@/lib/utils";
 import {
@@ -64,7 +65,9 @@ const PATTERNS: { key: string; label: string; badge: string; get: (row: StockRow
 /** A base sortable column, plus the dynamic forward-return columns `fwd_<horizon>` (J-75) and the paired
  *  max-drawdown columns `mdd_<horizon>` (J-86). */
 type BaseSortKey = "rank" | "ticker" | "sector" | "leadership" | "entry_quality" | "risk" | "setup";
-type SortKey = BaseSortKey | `fwd_${number}` | `mdd_${number}`;
+// J-106 adds the `high_proximity` column key (handled by an explicit NA-last branch in comparatorFor,
+// NOT routed through SORT_COMPARATORS — that base map has no null handling).
+type SortKey = BaseSortKey | "high_proximity" | `fwd_${number}` | `mdd_${number}`;
 type SortDir = "asc" | "desc";
 
 /** J-75 — a stock's realized forward return at `horizon` from the served `forward_returns` (NA → null).
@@ -101,6 +104,21 @@ function comparatorFor(key: SortKey, dir: SortDir): (a: StockRow, b: StockRow) =
     return (a, b) => {
       const av = valueAt(a, horizon);
       const bv = valueAt(b, horizon);
+      if (av === null && bv === null) return 0;
+      if (av === null) return 1; // NA last regardless of direction
+      if (bv === null) return -1;
+      return (av - bv) * sign;
+    };
+  }
+  // J-106 — the "Proximity to 52w high" column sorts on the stored `high_proximity` value (a percent
+  // <= 0; 0 at a fresh high), read verbatim from the SAME served component the detail breakdown shows
+  // (single source; never recomputed). NA (short history) always sorts LAST regardless of direction; the
+  // stable memo then tie-breaks by stored rank. Kept OUT of SORT_COMPARATORS, which has no null handling.
+  if (key === "high_proximity") {
+    const sign = dir === "asc" ? 1 : -1;
+    return (a, b) => {
+      const av = highProximityValue(a.leadership.components);
+      const bv = highProximityValue(b.leadership.components);
       if (av === null && bv === null) return 0;
       if (av === null) return 1; // NA last regardless of direction
       if (bv === null) return -1;
@@ -601,6 +619,18 @@ function StocksInner() {
                   dir={sortDir}
                   onSort={onSort}
                 />
+                {/* J-106 — "Proximity to 52w high", directly after Risk. A re-display of the stored
+                    leadership `high_proximity` value (the SAME value the detail Leadership breakdown
+                    shows; never recomputed), client-side sortable (NA-last). The header carries the
+                    config-backed glossary tooltip via TermInfo (`52-week high proximity`). */}
+                <SortHeader
+                  col="high_proximity"
+                  label="Proximity to 52w high"
+                  term="52-week high proximity"
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={onSort}
+                />
                 <SortHeader
                   col="setup"
                   label="Setup"
@@ -755,6 +785,21 @@ function ForwardReturnCell({ value }: { value: number | null }) {
   return <span className={cn("num font-semibold", returnClass(value))}>{fmtPct(value)}</span>;
 }
 
+/** J-106 — the "Proximity to 52w high" cell: the stored leadership `high_proximity` value (a percent
+ *  <= 0; 0 at a fresh high), read VERBATIM via the shared helper — the SAME value the detail Leadership
+ *  breakdown shows (single source; never recomputed). NA (short history) renders a muted "NA" that sorts
+ *  last; a real value reads in the default numeric style (right-aligned `num`), matching the other cells. */
+function HighProximityCell({ value }: { value: number | null }) {
+  if (value === null || value === undefined) {
+    return (
+      <span className="num text-text-muted" title="No 52-week-high proximity yet (NA — short history)">
+        NA
+      </span>
+    );
+  }
+  return <span className="num text-text">{fmtHighProximity(value)}</span>;
+}
+
 /** J-86 — one colour-graded max-drawdown cell: the served realized drawdown (<= 0; NA → "NA" muted), read
  *  verbatim. A real (negative) drawdown reads red via the shared `mddClass` helper. */
 function MaxDrawdownCell({ value }: { value: number | null }) {
@@ -812,6 +857,12 @@ function StockTableRow({
       </td>
       <td className="px-3 py-2">
         <ScoreBadge bucket={row.risk.bucket} score={row.risk.score} invert />
+      </td>
+      {/* J-106 — proximity-to-52w-high cell, directly after Risk. Re-displays the stored leadership
+          `high_proximity` value verbatim (the SAME value the detail Leadership breakdown shows; never
+          recomputed); NA-honest (muted "NA") on short history. */}
+      <td className="px-3 py-2 text-right" data-testid="high-proximity">
+        <HighProximityCell value={highProximityValue(row.leadership.components)} />
       </td>
       <td className="px-3 py-2">
         <div className="flex flex-wrap items-center gap-1.5">

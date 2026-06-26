@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "journey": "J-108",
+  "name": "The readiness badge reflects the true backend status",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-108", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Dashboard"}},
+    {"n": 2, "journey": "J-108", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "Ready"}}
+  ]
+}
