@@ -1,8 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Microscope, Plus, ShieldAlert, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  ChevronDown,
+  ChevronRight,
+  Microscope,
+  Plus,
+  ShieldAlert,
+  X,
+} from "lucide-react";
 
 import { useAsOf, useAsOfHref } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
@@ -20,7 +31,7 @@ import {
   fetchDowntrendOpportunity,
   fetchEventStudy,
   fetchFactorCombination,
-  fetchFactorLab,
+  fetchFactorLabAll,
   fetchRecoveryTurnEdge,
   fetchRegimeSetupPattern,
   type CohortStats,
@@ -33,18 +44,18 @@ import {
   type FactorCombinationCondition,
   type FactorCombinationResponse,
   type FactorDecileRow,
-  type FactorLabResponse,
+  type FactorLabAllResponse,
+  type FactorTableRow,
   type RecoveryTurnEdgeHorizonRow,
   type RecoveryTurnEdgePhaseRow,
   type RecoveryTurnEdgeResponse,
-  type RegimeEffectivenessRow,
   type RegimeSetupPatternResponse,
   type RegimeSetupPatternRow,
 } from "@/lib/api";
 
 type State =
   | { kind: "loading" }
-  | { kind: "ok"; data: FactorLabResponse }
+  | { kind: "ok"; data: FactorLabAllResponse }
   | { kind: "error" };
 
 /** Format a unitless ratio (the downside risk-adjusted column / the rank-IC) with sign + 2 decimals;
@@ -149,12 +160,13 @@ export function ResearchError({ what }: { what: string }) {
   );
 }
 
-/** iter-45 (J-104) — the Factor Lab on its OWN route (`/research/factor-lab`). The lab body
- *  (`FactorLab`) is unchanged; only the page-level orchestration (the single fetch + the mode/horizon/
- *  factor controls) moved out of the old monolith into this route, so the page fires exactly ONE heavy
- *  fetch (its own). Byte-identical figures to before. */
+/** iter-50 (J-107) — the Factor Lab on its OWN route (`/research/factor-lab`). The page now fires the
+ *  ALL-FACTORS fetch (`?all=true`) and renders the sortable, expandable all-factors table instead of the
+ *  single-factor dropdown view: one row per config-catalog factor (family + rank-IC + downside risk-
+ *  adjusted at the horizon), each click-to-expand to its full decile sort. The horizon selector + the
+ *  As-of mode toggle REMAIN (the single global as-of — no second date state); the factor dropdown is
+ *  retired. Every figure is byte-identical to the single-factor view (re-presented, never recomputed). */
 export function FactorLabPage() {
-  const [factor, setFactor] = useState<string | undefined>(undefined);
   const [horizon, setHorizon] = useState<number | undefined>(undefined);
   const [state, setState] = useState<State>({ kind: "loading" });
   const { mode, setMode, readiness, asofCutoff, scope } = useResearchControls();
@@ -162,39 +174,31 @@ export function FactorLabPage() {
   useEffect(() => {
     const controller = new AbortController();
     setState({ kind: "loading" });
-    fetchFactorLab(factor, horizon, asofCutoff ?? undefined, controller.signal)
+    fetchFactorLabAll(horizon, asofCutoff ?? undefined, controller.signal)
       .then((data) => setState({ kind: "ok", data }))
       .catch(() => {
         if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => controller.abort();
-  }, [factor, horizon, asofCutoff, readiness]);
+  }, [horizon, asofCutoff, readiness]);
 
   const data = state.kind === "ok" ? state.data : null;
-  const selectedFactor = factor ?? data?.factor.key ?? "";
   const selectedHorizon = horizon ?? data?.horizon;
 
   return (
     <div className="space-y-4">
       <ResearchControls
         title="Research — Factor Lab"
-        subtitle="Does a factor actually sort future returns? Decile means + a downside risk-adjusted column + the rank-IC, derived once from the stored forward-tested evidence. Descriptive, not predictive."
+        subtitle="Which factors actually sort future returns? Every catalog factor's rank-IC + a downside risk-adjusted figure at the chosen horizon — sortable, and expandable in place to its full decile sort. Derived once from the stored forward-tested evidence; descriptive, not predictive."
         mode={mode}
         onModeChange={setMode}
         asofCutoff={asofCutoff}
         controls={
-          <>
-            <FactorSelector
-              factors={data?.factors ?? []}
-              value={selectedFactor}
-              onChange={(key) => setFactor(key)}
-            />
-            <HorizonSelector
-              horizons={data?.horizons ?? []}
-              value={selectedHorizon}
-              onChange={(h) => setHorizon(h)}
-            />
-          </>
+          <HorizonSelector
+            horizons={data?.horizons ?? []}
+            value={selectedHorizon}
+            onChange={(h) => setHorizon(h)}
+          />
         }
       />
       <ResearchCaveat survivorship={data?.survivorship_bias} descriptive={data?.descriptive_caveat} />
@@ -204,7 +208,7 @@ export function FactorLabPage() {
         <>
           {state.kind === "loading" ? <LabSkeleton /> : null}
           {state.kind === "error" ? <ResearchError what="The Factor-Lab evidence" /> : null}
-          {data ? <FactorLab data={data} scope={scope} /> : null}
+          {data ? <FactorsTable data={data} scope={scope} /> : null}
         </>
       )}
     </div>
@@ -289,61 +293,10 @@ function ModeContext({ mode, asofCutoff }: { mode: "all" | "asof"; asofCutoff: s
   );
 }
 
-/** Group the config-driven factors by `family`, preserving first-appearance order — derived entirely
- *  from the payload (no hard-coded family or factor list in the frontend). J-30's volatility family
- *  (ATR%, HV, VCP-style contraction, downside/semivol) collects under one "Volatility" heading. */
-function groupByFamily(
-  factors: FactorLabResponse["factors"],
-): { family: string; items: FactorLabResponse["factors"] }[] {
-  const groups: { family: string; items: FactorLabResponse["factors"] }[] = [];
-  for (const f of factors) {
-    const existing = groups.find((g) => g.family === f.family);
-    if (existing) existing.items.push(f);
-    else groups.push({ family: f.family, items: [f] });
-  }
-  return groups;
-}
-
-/** Present a family key as a heading (capitalised first letter) — purely presentational. */
+/** Present a family key as a heading (capitalised first letter) — purely presentational. Re-used by the
+ *  all-factors table's Family column (J-107); no hard-coded family list in the frontend. */
 function familyLabel(family: string): string {
   return family.charAt(0).toUpperCase() + family.slice(1);
-}
-
-function FactorSelector({
-  factors,
-  value,
-  onChange,
-}: {
-  factors: FactorLabResponse["factors"];
-  value: string;
-  onChange: (key: string) => void;
-}) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs uppercase tracking-wide text-text-faint">Factor</span>
-      <Select
-        data-testid="factor-select"
-        aria-label="Factor"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-56"
-        disabled={factors.length === 0}
-      >
-        {factors.length === 0 ? <option value="">Loading…</option> : null}
-        {/* Grouped by family (config-driven <optgroup>); option values are unchanged so selection
-            semantics stay identical — purely presentational, no recompute, no hard-coded list. */}
-        {groupByFamily(factors).map((group) => (
-          <optgroup key={group.family} label={familyLabel(group.family)}>
-            {group.items.map((f) => (
-              <option key={f.key} value={f.key}>
-                {f.label}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </Select>
-    </label>
-  );
 }
 
 export function HorizonSelector({
@@ -405,64 +358,300 @@ function CaveatBanner({ survivorship, descriptive }: { survivorship: string; des
   );
 }
 
-export function FactorLab({ data, scope }: { data: FactorLabResponse; scope: SampleScope }) {
-  if (data.n_total === 0) {
+// --- All-factors table (J-107) -------------------------------------------------------------------
+/** The sortable columns of the all-factors table. `label`/`family` are string sorts; `rank_ic`/`n`/
+ *  `risk_adjusted` are numeric (NA-last). A pure VIEW transform — the sort re-orders the served rows only,
+ *  it recomputes / refetches nothing (J-48). */
+type FactorSortKey = "label" | "family" | "rank_ic" | "n" | "risk_adjusted";
+type FactorSortDir = "asc" | "desc";
+
+/** The default sort: strongest predictive edge first (rank-IC descending, NA-last). */
+const FACTOR_DEFAULT_SORT: { key: FactorSortKey; dir: FactorSortDir } = { key: "rank_ic", dir: "desc" };
+
+/** A row's top (highest-factor-value) decile — the source of the re-presented `risk_adjusted` column. */
+function topDecile(row: FactorTableRow): FactorDecileRow | undefined {
+  return row.deciles.length > 0 ? row.deciles[row.deciles.length - 1] : undefined;
+}
+
+/** The NA predicate for a numeric sort column — mirrors the cell render so the sort NA-set == the visual
+ *  NA-set: rank-IC is NA when its value is null; the risk-adjusted column is NA when the top decile is
+ *  low-sample / empty / its value is null (the same `low_sample || n===0 || value===null` rule the decile
+ *  cells use); `n` is always a real number (0 is a value, not NA). */
+function factorCellIsNa(row: FactorTableRow, key: FactorSortKey): boolean {
+  if (key === "rank_ic") return row.rank_ic.value === null;
+  if (key === "risk_adjusted") {
+    const top = topDecile(row);
+    return !top || top.low_sample || top.n === 0 || row.risk_adjusted === null;
+  }
+  return false;
+}
+
+/** The numeric sort value for a numeric column (NA rows are pushed last by the comparator regardless). */
+function factorCellValue(row: FactorTableRow, key: FactorSortKey): number {
+  if (key === "rank_ic") return row.rank_ic.value ?? 0;
+  if (key === "risk_adjusted") return row.risk_adjusted ?? 0;
+  if (key === "n") return row.rank_ic.n;
+  return 0;
+}
+
+/** J-107 / J-48 — a sortable column header (mirrors the /sectors + /stocks SortHeader pattern). The
+ *  button is resolved in tests by its `aria-label` (the visible label lives in a nested span). */
+function FactorSortHeader({
+  col,
+  label,
+  activeKey,
+  dir,
+  onSort,
+  numeric,
+}: {
+  col: FactorSortKey;
+  label: string;
+  activeKey: FactorSortKey;
+  dir: FactorSortDir;
+  onSort: (key: FactorSortKey) => void;
+  numeric?: boolean;
+}) {
+  const active = activeKey === col;
+  const ariaSort: "ascending" | "descending" | "none" = active
+    ? dir === "asc"
+      ? "ascending"
+      : "descending"
+    : "none";
+  return (
+    <th className={cn("px-4 py-2 font-medium", numeric && "text-right")} aria-sort={ariaSort}>
+      <button
+        type="button"
+        onClick={() => onSort(col)}
+        aria-label={`Sort by ${label}${active ? (dir === "asc" ? ", ascending" : ", descending") : ""}`}
+        className={cn(
+          "group inline-flex items-center gap-1 rounded-sm uppercase tracking-wide transition-colors hover:text-text focus-visible:text-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+          numeric && "justify-end",
+        )}
+      >
+        <span className={cn(active && "text-text")}>{label}</span>
+        {active ? (
+          dir === "asc" ? (
+            <ArrowUp className="h-3 w-3 text-accent" aria-hidden data-testid="sort-indicator" />
+          ) : (
+            <ArrowDown className="h-3 w-3 text-accent" aria-hidden data-testid="sort-indicator" />
+          )
+        ) : (
+          <ArrowUpDown
+            className="h-3 w-3 text-text-faint/40 opacity-0 transition-opacity group-hover:opacity-100"
+            aria-hidden
+          />
+        )}
+      </button>
+    </th>
+  );
+}
+
+/** A colour-graded ratio cell (rank-IC / risk-adjusted): explicit muted "NA" when the value is NA — never
+ *  a fabricated number — otherwise the sign-graded ratio. */
+function RatioCell({ value, na, title }: { value: number | null; na: boolean; title?: string }) {
+  if (na || value === null) {
+    return (
+      <span className="num font-semibold text-text-muted" title={title ?? "NA — low sample or no value, not a fabricated number"}>
+        NA
+      </span>
+    );
+  }
+  return <span className={cn("num font-semibold", returnClass(value))}>{fmtRatio(value)}</span>;
+}
+
+/** The all-factors comparison table (J-107): one row per config-catalog factor (family + rank-IC value+N +
+ *  downside risk-adjusted at the horizon), client-side sortable NA-last, each row click-to-expand to reveal
+ *  that factor's full D1…D`deciles` decile sort (the existing `DecileTable`, hidden by default). Every value
+ *  is the canonical `compute_factor_lab` output re-presented (byte-identical) — the page recomputes nothing;
+ *  the sort + expand are pure view transforms. Supersedes the single-factor dropdown view. */
+function FactorsTable({ data, scope }: { data: FactorLabAllResponse; scope: SampleScope }) {
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [sortKey, setSortKey] = useState<FactorSortKey>(FACTOR_DEFAULT_SORT.key);
+  const [sortDir, setSortDir] = useState<FactorSortDir>(FACTOR_DEFAULT_SORT.dir);
+
+  const rows = data.factors_table;
+
+  // J-107 / J-48 — the sorted view: a STABLE sort (catalog-order tie-break) over the served rows, NA-last
+  // for the numeric columns. Recomputes no value; re-orders only.
+  const sorted = useMemo(() => {
+    const sign = sortDir === "asc" ? 1 : -1;
+    return rows
+      .map((row, i) => ({ row, i }))
+      .sort((a, b) => {
+        let c = 0;
+        if (sortKey === "label" || sortKey === "family") {
+          c = a.row[sortKey].localeCompare(b.row[sortKey]) * sign;
+        } else {
+          const ana = factorCellIsNa(a.row, sortKey);
+          const bna = factorCellIsNa(b.row, sortKey);
+          if (ana && bna) c = 0;
+          else if (ana) return 1; // NA last regardless of direction
+          else if (bna) return -1;
+          else c = (factorCellValue(a.row, sortKey) - factorCellValue(b.row, sortKey)) * sign;
+        }
+        return c !== 0 ? c : a.i - b.i; // stable tie-break by catalog order
+      })
+      .map((x) => x.row);
+  }, [rows, sortKey, sortDir]);
+
+  const onSort = (key: FactorSortKey) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      // string columns lead ascending (A→Z); numeric columns lead descending (strongest first).
+      setSortDir(key === "label" || key === "family" ? "asc" : "desc");
+    }
+  };
+
+  const toggle = (key: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+
+  if (rows.length === 0) {
     return (
       <EmptyState
         icon={Microscope}
-        title="No forward-tested observations for this factor / horizon"
-        description="No stored snapshot has both this factor's value and a realized forward return at this horizon. Pick a shorter horizon or a different factor — no decile or rank-IC is fabricated to fill the gap."
+        title="No forward-tested factors for this horizon"
+        description="No stored snapshot has a factor value with a realized forward return at this horizon. Pick a shorter horizon — no rank-IC or decile is fabricated to fill the gap."
       />
     );
   }
+
   return (
     <>
       <div className="flex flex-wrap items-center gap-x-6 gap-y-1 text-xs text-text-muted">
         <span>
-          <span className="text-text-faint">Factor: </span>
-          <span className="text-text">{data.factor.label}</span>{" "}
-          <span className="text-text-faint">({data.factor.family} · {data.factor.direction.replace("_", " ")})</span>
-        </span>
-        <span>
-          <span className="text-text-faint">Observations: </span>
-          <span className="num text-text">{data.n_total}</span>
+          <span className="text-text-faint">Factors: </span>
+          <span className="num text-text">{rows.length}</span>
         </span>
         <span>
           <span className="text-text-faint">Horizon: </span>
           <span className="num text-text">{data.horizon}d</span>
         </span>
         <span className="text-text-faint">
-          Deciles with <span className="text-warn">n &lt; {data.min_sample} ⚠</span> render NA.
+          Click a column to sort (NA-last); click a factor to expand its decile sort. Factors / deciles with{" "}
+          <span className="text-warn">n &lt; {data.min_sample} ⚠</span> render NA.
         </span>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <DecileTable
-            rows={data.deciles}
-            min={data.min_sample}
-            horizon={data.horizon}
-            factor={data.factor.key}
-            scope={scope}
-          />
-        </div>
-        <RankICCard
-          ic={data.rank_ic}
-          min={data.min_sample}
-          label={data.factor.label}
-          horizon={data.horizon}
-          factor={data.factor.key}
-          scope={scope}
-        />
-      </div>
+      <Card className="overflow-x-auto p-0">
+        <table data-testid="factors-table" className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+              <FactorSortHeader col="label" label="Factor" activeKey={sortKey} dir={sortDir} onSort={onSort} />
+              <FactorSortHeader col="family" label="Family" activeKey={sortKey} dir={sortDir} onSort={onSort} />
+              <FactorSortHeader col="rank_ic" label="Rank-IC" activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
+              <FactorSortHeader col="n" label="N" activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
+              <FactorSortHeader
+                col="risk_adjusted"
+                label="Risk-adjusted (downside)"
+                activeKey={sortKey}
+                dir={sortDir}
+                onSort={onSort}
+                numeric
+              />
+              <th className="px-4 py-2" aria-label="expand" />
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((row) => (
+              <FactorRows
+                key={row.key}
+                row={row}
+                open={expanded.has(row.key)}
+                onToggle={() => toggle(row.key)}
+                min={data.min_sample}
+                horizon={data.horizon}
+                scope={scope}
+              />
+            ))}
+          </tbody>
+        </table>
+      </Card>
+    </>
+  );
+}
 
-      <RegimeEffectivenessTable
-        rows={data.by_regime}
-        min={data.min_sample}
-        horizon={data.horizon}
-        factor={data.factor.key}
-        scope={scope}
-      />
+/** One factor's summary row + (when expanded) its decile-sort panel. The summary `<tr>` is the keyboard-
+ *  accessible expandable-row control (role=button + aria-expanded, Enter/Space toggles) the Sectors page
+ *  uses; it carries NO nested interactive element (the decile `N=` SampleLinks live in the SEPARATE expanded
+ *  panel, not in the clickable summary row — the iter-5 nested-interactive hazard). */
+function FactorRows({
+  row,
+  open,
+  onToggle,
+  min,
+  horizon,
+  scope,
+}: {
+  row: FactorTableRow;
+  open: boolean;
+  onToggle: () => void;
+  min: number;
+  horizon: number;
+  scope: SampleScope;
+}) {
+  const icNa = row.rank_ic.value === null;
+  const top = topDecile(row);
+  const raNa = !top || top.low_sample || top.n === 0 || row.risk_adjusted === null;
+  const colSpan = 6; // Factor + Family + Rank-IC + N + Risk-adjusted + chevron
+  return (
+    <>
+      <tr
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        data-testid={`factor-row-${row.key}`}
+        onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+        className={cn(
+          "cursor-pointer border-b border-border transition-colors last:border-b-0",
+          "hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none active:bg-border",
+          open && "bg-surface-2",
+        )}
+      >
+        <td className="px-4 py-2">
+          <span className="font-semibold text-text">{row.label}</span>{" "}
+          <span className="text-xs text-text-faint">({row.direction.replace("_", " ")})</span>
+        </td>
+        <td className="px-4 py-2 text-text-muted">{familyLabel(row.family)}</td>
+        <td className="px-4 py-2 text-right">
+          <RatioCell
+            value={row.rank_ic.value}
+            na={icNa}
+            title={icNa ? "Not enough independent observations to rank-correlate — NA, not a fabricated 0" : undefined}
+          />
+        </td>
+        <td className="num px-4 py-2 text-right text-text-muted">{row.rank_ic.n}</td>
+        <td className="px-4 py-2 text-right">
+          <RatioCell
+            value={row.risk_adjusted}
+            na={raNa}
+            title={raNa ? `Low sample (n < ${min}) or no downside in the top decile — NA, not a fabricated number` : "Top-decile mean return per unit downside deviation"}
+          />
+        </td>
+        <td className="px-4 py-2 text-text-faint">
+          {open ? <ChevronDown className="h-4 w-4" aria-hidden /> : <ChevronRight className="h-4 w-4" aria-hidden />}
+        </td>
+      </tr>
+      {open ? (
+        // The expanded panel is a SEPARATE, non-clickable <tr> — the full decile sort (with its decile
+        // `N=` SampleLink drill-downs) lives here, NOT inside the clickable summary row.
+        <tr className="border-b border-border bg-bg last:border-b-0">
+          <td colSpan={colSpan} className="px-4 py-3">
+            <DecileTable rows={row.deciles} min={min} horizon={horizon} factor={row.key} scope={scope} />
+          </td>
+        </tr>
+      ) : null}
     </>
   );
 }
@@ -595,172 +784,6 @@ function DecileTable({
                     decile={row.decile}
                     scope={scope}
                   />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
-  );
-}
-
-function RankICCard({
-  ic,
-  min,
-  label,
-  factor,
-  horizon,
-  scope,
-}: {
-  ic: FactorLabResponse["rank_ic"];
-  min: number;
-  label: string;
-  factor: string;
-  horizon: number;
-  scope: SampleScope;
-}) {
-  const na = ic.value === null;
-  const sign = ic.value !== null && ic.value > 0 ? "positive" : ic.value !== null && ic.value < 0 ? "negative" : "flat";
-  return (
-    <Card className="p-0">
-      <PanelTitle hint="Spearman rank correlation between the factor and the realized forward return across all observations.">
-        Rank-IC
-      </PanelTitle>
-      <div className="space-y-3 p-5">
-        <div className="flex items-baseline gap-3">
-          <span
-            data-testid="rank-ic-value"
-            className={cn(
-              "num text-3xl font-semibold",
-              na ? "text-text-muted" : sign === "positive" ? "text-pos" : sign === "negative" ? "text-neg" : "text-text",
-            )}
-          >
-            {na ? "NA" : fmtRatio(ic.value)}
-          </span>
-          {/* the rank-IC n IS the factor's n_total — drill into the whole observation pool (J-51) */}
-          <SampleLink
-            n={ic.n}
-            min={min}
-            scope={scope}
-            cohort={{ kind: "factor", factor, horizon, slice: "total" }}
-            label={`See all ${ic.n} observations behind the rank-IC`}
-          />
-        </div>
-        <p className="text-xs text-text-muted">
-          {na
-            ? `Not enough independent observations to rank-correlate ${label} with forward return — NA, not a fabricated 0.`
-            : sign === "positive"
-              ? `A higher ${label} is associated with a higher forward return in this universe (positive rank correlation).`
-              : sign === "negative"
-                ? `A higher ${label} is associated with a lower forward return in this universe (negative rank correlation).`
-                : `${label} shows no monotone rank relationship with forward return in this universe.`}
-        </p>
-      </div>
-    </Card>
-  );
-}
-
-/** A regime row's numeric cell: explicit "NA" (muted) when the regime is low-sample (n < min_sample) or
- *  the value is null — never a fabricated number; otherwise the colour-graded value. The honest `n` is
- *  carried once per row by the SampleSize chip in the dedicated `n` column (not repeated per cell). */
-function RegimeCell({
-  value,
-  lowSample,
-  isRatio,
-}: {
-  value: number | null;
-  lowSample: boolean;
-  isRatio: boolean;
-}) {
-  if (lowSample || value === null) {
-    return (
-      <span
-        className="num font-semibold text-text-muted"
-        title={lowSample ? "Low sample — n below the minimum; NA, not a fabricated number" : "No value for this regime"}
-      >
-        NA
-      </span>
-    );
-  }
-  return (
-    <span className={cn("num font-semibold", returnClass(value))}>
-      {isRatio ? fmtRatio(value) : fmtPct(value)}
-    </span>
-  );
-}
-
-/** Factor effectiveness by market regime (J-27): one row per CONFIGURED regime label (server-driven from
- *  the payload — never a hard-coded frontend regime list), each with its per-regime n, rank-IC, top/bottom
- *  decile means, and the raw + downside-risk-adjusted top-minus-bottom-decile spread. Low-sample or null
- *  cells render NA + the honest n — so a factor strong in the pooled table can be seen to be regime-
- *  dependent. Re-formats the payload only — recomputes no return/factor/regime. */
-function RegimeEffectivenessTable({
-  rows,
-  min,
-  horizon,
-  factor,
-  scope,
-}: {
-  rows: RegimeEffectivenessRow[];
-  min: number;
-  horizon: number;
-  factor: string;
-  scope: SampleScope;
-}) {
-  return (
-    <Card className="p-0">
-      <PanelTitle
-        hint={`Does this factor still sort ${horizon}-day forward returns WITHIN each market regime? Per configured regime: the rank-IC and the long-short (top-minus-bottom-decile) spread — raw and downside-risk-adjusted. A factor strong in the pooled table can be regime-dependent here; regimes with n < ${min} show NA + n, never a fabricated number.`}
-      >
-        Factor effectiveness by market regime
-      </PanelTitle>
-      <div className="overflow-x-auto">
-        <table data-testid="regime-effectiveness-table" className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
-              <th className="px-4 py-2 font-medium">Regime</th>
-              <th className="px-4 py-2 text-right font-medium">
-                <span className="inline-flex items-center gap-1">n<TermInfo term="n (sample size)" /></span>
-              </th>
-              <th className="px-4 py-2 text-right font-medium">
-                <span className="inline-flex items-center gap-1">Rank-IC<TermInfo term="rank-IC" /></span>
-              </th>
-              <th className="px-4 py-2 text-right font-medium">Top-decile mean</th>
-              <th className="px-4 py-2 text-right font-medium">Bottom-decile mean</th>
-              <th className="px-4 py-2 text-right font-medium">
-                <span className="inline-flex items-center gap-1">Spread (top − bottom)<TermInfo term="long-short spread" /></span>
-              </th>
-              <th className="px-4 py-2 text-right font-medium">Risk-adjusted spread</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.regime} className="border-b border-border last:border-b-0">
-                <td className="px-4 py-2 text-text">{row.regime}</td>
-                <td className="px-4 py-2 text-right">
-                  <SampleLink
-                    n={row.n}
-                    min={min}
-                    scope={scope}
-                    cohort={{ kind: "factor", factor, horizon, slice: "regime", regime: row.regime }}
-                    label={`See the ${row.n} observations in the ${row.regime} regime`}
-                  />
-                </td>
-                <td className="px-4 py-2 text-right">
-                  <RegimeCell value={row.rank_ic.value} lowSample={row.low_sample} isRatio />
-                </td>
-                <td className="px-4 py-2 text-right">
-                  <RegimeCell value={row.top_decile_mean} lowSample={row.low_sample} isRatio={false} />
-                </td>
-                <td className="px-4 py-2 text-right">
-                  <RegimeCell value={row.bottom_decile_mean} lowSample={row.low_sample} isRatio={false} />
-                </td>
-                <td className="px-4 py-2 text-right">
-                  <RegimeCell value={row.spread} lowSample={row.low_sample} isRatio={false} />
-                </td>
-                <td className="px-4 py-2 text-right">
-                  <RegimeCell value={row.risk_adjusted_spread} lowSample={row.low_sample} isRatio />
                 </td>
               </tr>
             ))}

@@ -392,6 +392,143 @@ def compute_factor_lab(
 
 
 # --------------------------------------------------------------------------------------------------
+# All-factors Factor-Lab view (J-107) — one row per catalog factor, BYTE-IDENTICAL to compute_factor_lab
+# per factor, served from a SINGLE shared observation pool (one heavy read for all N factors). This is a
+# pure re-presentation of the existing per-factor outputs (decile sort + rank-IC + the top-decile downside
+# risk-adjusted figure) — NO new served value, NO second rank-IC/decile/risk-adjusted derivation.
+# --------------------------------------------------------------------------------------------------
+def _all_factor_observations(
+    session: Session, factors: list, horizon: int, as_of: Optional[date_cls] = None,
+    *, cfg: Optional[Config] = None,
+) -> list[dict]:
+    """The read-only SHARED per-observation pool for the all-factors view (J-107): fire ONE heavy read over
+    `forward_returns` + `scanner_results` and, for EACH observation, read EVERY catalog factor's stored value
+    (typed column or `record_json` component `raw`, VERBATIM — recomputes NO factor and NO return). Each
+    observation is `{run_id, ticker, return, values: {factor_key: float|None}}`.
+
+    BYTE-IDENTITY keystone — UNLIKE `_combination_observations`, a NULL in one factor does NOT drop the
+    observation: the pool keeps `values[key] = None`, so each factor's own derivation filters to ITS OWN
+    non-null subset. Because this read iterates the SAME `forward_returns`-joined-to-`scanner_results` pool
+    in the SAME `(run_id, id)` ScannerResult order as `_factor_observations`, the per-factor non-null subset
+    (preserving this order) EQUALS `_factor_observations(factor, horizon, as_of)` row-for-row — so every
+    decile / rank-IC derived from it is byte-identical to `compute_factor_lab(factor, ...)` (one computation
+    path, no second derivation). An observation is kept ONLY when a realized return exists at this horizon
+    (the SAME n=0 exclusion as `_factor_observations`).
+
+    `as_of` (J-32) scopes the pool to snapshots with `ScannerRun.asof_date <= as_of` (the SAME single
+    membership filter as `_factor_observations`); `as_of=None` adds NO clause -> byte-identical all-history.
+
+    iter-50 (J-105 / iter-48 lesson): the read is BOUNDED — the FR scan is column-projected + `yield_per`-
+    streamed, and the ScannerResult side is `yield_per`-streamed in `(run_id, id)` order (rides
+    `ix_scanner_results_run_id`, so no `USE TEMP B-TREE FOR ORDER BY` spills a temp file on a nearly-full
+    disk). ONE heavy read serves all N factors, not N reads — and there is NO unbounded `.all()`."""
+    parsed_by_key = {f.key: parse_factor_source(f.source) for f in factors}
+    batch = (cfg or get_config()).research.read_batch_size
+    fr_stmt = select(
+        ForwardReturn.run_id, ForwardReturn.symbol, ForwardReturn.realized_return
+    ).where(ForwardReturn.horizon == horizon)
+    if as_of is not None:
+        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
+            ScannerRun.asof_date <= as_of
+        )
+    ret_by_run_symbol: dict[tuple[int, str], float] = {}
+    runs_with_fr_set: set[int] = set()
+    for run_id, symbol, realized_return in session.exec(fr_stmt).yield_per(batch):
+        ret_by_run_symbol[(run_id, symbol)] = realized_return
+        runs_with_fr_set.add(run_id)
+    runs_with_fr = sorted(runs_with_fr_set)
+    res_stmt = (
+        select(ScannerResult)
+        .where(ScannerResult.run_id.in_(runs_with_fr))
+        .order_by(ScannerResult.run_id, ScannerResult.id)
+    )
+    results = session.exec(res_stmt).yield_per(batch) if runs_with_fr else []
+
+    observations: list[dict] = []
+    for res in results:
+        realized = ret_by_run_symbol.get((res.run_id, res.ticker))
+        if realized is None:
+            continue  # no realized return at this horizon (n=0 contribution) — same exclusion as per-factor
+        values = {key: _extract_factor_value(res, parsed) for key, parsed in parsed_by_key.items()}
+        observations.append({
+            "run_id": res.run_id, "ticker": res.ticker, "return": realized, "values": values,
+        })
+    return observations
+
+
+def compute_factor_lab_all(
+    session: Session, horizon: int, config: Optional[Config] = None, *,
+    as_of: Optional[date_cls] = None,
+) -> dict:
+    """The all-factors Factor-Lab view (J-107): one entry per config-catalog factor — `family` + Spearman
+    `rank_ic` (`{value, n}`) + the downside `risk_adjusted` figure + that factor's full D1..D`deciles` decile
+    table — all at `horizon`, BYTE-IDENTICAL to `compute_factor_lab(factor, horizon, as_of=cutoff)` per
+    factor (Single source of truth).
+
+    ONE computation path: the shared observation pool is built ONCE (`_all_factor_observations` — one heavy
+    read carrying every factor's value per observation), then for EACH factor we filter to ITS non-null
+    subset (preserving the shared pool's order, which equals `_factor_observations`' order), sort with the
+    EXACT `(factor, ticker, run_id)` key `compute_factor_lab` uses, and derive the deciles / rank-IC from the
+    SAME `_deciles` / `_rank_ic` builders. No second rank-IC / decile / risk-adjusted derivation; NO new
+    served value — every figure is a re-presentation of an existing `compute_factor_lab` output. The
+    `risk_adjusted` column is the factor's OWN top (highest-factor-value) decile `risk_adjusted` (reuses
+    `_risk_adjusted` via `_deciles` — downside deviation only, never total volatility); it is read straight
+    off `deciles[-1]`, not recomputed. The per-regime `by_regime` slice is NOT surfaced in this view (its
+    computation in `compute_factor_lab` is untouched — only the frontend retires the table).
+
+    `as_of` (J-32) scopes the shared pool to snapshots dated <= D (a pure FILTER — recomputes nothing);
+    `as_of=None` is the all-history aggregate. The catalog is config-driven, so there is no unknown-factor
+    case here; the API pre-validates the horizon (422)."""
+    cfg = config or get_config()
+    fl = cfg.research.factor_lab
+    wf = cfg.walk_forward
+    catalog = factor_catalog(cfg)
+    factors = list(fl.factors)
+
+    pool = _all_factor_observations(session, factors, horizon, as_of, cfg=cfg)
+
+    factors_table: list[dict] = []
+    for factor in factors:
+        # ITS non-null subset, in the shared pool's order (== `_factor_observations(factor)` order), so the
+        # rank-IC pearson summation order — and thus the byte value — matches compute_factor_lab exactly.
+        obs = [
+            {
+                "run_id": o["run_id"], "ticker": o["ticker"],
+                "factor": float(o["values"][factor.key]), "return": o["return"],
+            }
+            for o in pool
+            if o["values"][factor.key] is not None
+        ]
+        # ascending by stored factor value; SAME deterministic tie-break compute_factor_lab uses.
+        ordered = sorted(obs, key=lambda o: (o["factor"], o["ticker"], o["run_id"]))
+        deciles = _deciles(ordered, fl.deciles, wf.min_sample)
+        factors_table.append({
+            "key": factor.key, "label": factor.label, "family": factor.family,
+            "direction": factor.direction,
+            "n_total": len(obs),
+            "rank_ic": _rank_ic([(o["factor"], o["return"]) for o in obs]),
+            # the top (highest-factor-value) decile's downside risk-adjusted forward return, re-presented
+            # from THIS factor's own decile table — NOT a new derivation, NOT total volatility.
+            "risk_adjusted": deciles[-1]["risk_adjusted"],
+            "deciles": deciles,
+        })
+
+    return {
+        "horizon": horizon,
+        # the resolved as-of scoping cutoff echoed (J-32) — ISO date when scoped, null in all-history mode.
+        "asof_date": as_of.isoformat() if as_of is not None else None,
+        "factors": catalog,
+        "horizons": list(wf.horizons),
+        "default_horizon": wf.default_horizon,
+        "deciles_count": fl.deciles,
+        "min_sample": wf.min_sample,
+        "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
+        "descriptive_caveat": RESEARCH_CAVEAT,
+        "factors_table": factors_table,
+    }
+
+
+# --------------------------------------------------------------------------------------------------
 # Multi-factor combination cohorts (J-26) — read-only over the SAME stored pool. The HEADLINE `composite`
 # cohort is a config-weighted COMPOSITE PERCENTILE-RANK BLEND of the conditions' STORED factor values (the
 # top config-quantile of the blend); the exact AND-intersection rides along as the SECONDARY `strict_overlap`
@@ -2680,6 +2817,68 @@ def factor_combination_cached(
 
     session.add(EventStudyCache(
         subject=subject, view=view, asof_key=asof_key, dataset_version=version,
+        horizon=horizon, payload_json=json.dumps(payload),
+        created_at=datetime.now(timezone.utc),
+    ))
+    try:
+        session.commit()
+    except Exception:  # best-effort cache; a concurrent writer raced us — the payload is byte-identical
+        session.rollback()
+    return payload
+
+
+# The all-factors Factor-Lab view (J-107) is served through the SHARED `EventStudyCache` under a fixed
+# sentinel subject/view namespace — it is ONE global view per (horizon, as-of), not per-subject, so a fixed
+# sentinel pair (never colliding with a real event-study subject or the other sentinels) is the whole key
+# identity. NO new `table=True` model (the `test_db.py` expected-tables guard stays unchanged).
+_ALL_FACTORS_SUBJECT = "__all_factors__"
+_ALL_FACTORS_VIEW = "factors_table"
+
+
+def factor_lab_all_cached(
+    session: Session, horizon: int, config: Optional[Config] = None, *,
+    as_of: Optional[date_cls] = None,
+) -> dict:
+    """Serve the all-factors Factor-Lab view (J-107) from the J-72 cache (mirrors `factor_combination_cached`),
+    reusing the SHARED `EventStudyCache` table under the `_ALL_FACTORS_SUBJECT`/`_ALL_FACTORS_VIEW` sentinel
+    namespace (no new table). On a HIT for the current `(sentinel, view, asof_key, dataset_version, horizon)`
+    key, return the stored payload (NO recompute); on a MISS, compute it ONCE via `compute_factor_lab_all`,
+    persist under the current dataset-version stamp, prune any stale rows for this identity, and return it.
+    BYTE-IDENTICAL to a fresh compute; the cache REFRESHES after any dataset change via the dataset-version
+    key (a stale row is never hit, and is pruned on write). `as_of` is folded into the `asof_key` slot (a
+    pure observation-set FILTER)."""
+    cfg = config or get_config()
+    version = _dataset_version(session)
+    asof_key = _cache_asof_key(as_of)
+
+    hit = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == _ALL_FACTORS_SUBJECT,
+            EventStudyCache.view == _ALL_FACTORS_VIEW,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.dataset_version == version,
+            EventStudyCache.horizon == horizon,
+        )
+    ).first()
+    if hit is not None:
+        return json.loads(hit.payload_json)
+
+    payload = compute_factor_lab_all(session, horizon, cfg, as_of=as_of)
+
+    stale = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == _ALL_FACTORS_SUBJECT,
+            EventStudyCache.view == _ALL_FACTORS_VIEW,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.horizon == horizon,
+            EventStudyCache.dataset_version != version,
+        )
+    ).all()
+    for row in stale:
+        session.delete(row)
+
+    session.add(EventStudyCache(
+        subject=_ALL_FACTORS_SUBJECT, view=_ALL_FACTORS_VIEW, asof_key=asof_key, dataset_version=version,
         horizon=horizon, payload_json=json.dumps(payload),
         created_at=datetime.now(timezone.utc),
     ))

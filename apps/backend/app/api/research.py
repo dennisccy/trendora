@@ -42,6 +42,7 @@ from app.engine.research import (
     event_study_cached,
     factor_catalog,
     factor_combination_cached,
+    factor_lab_all_cached,
     recovery_turn_edge_cached,
     regime_setup_pattern_cached,
     severity_velocity_cached,
@@ -70,30 +71,31 @@ _CONDITION_SIDES = ("top", "bottom")
 def factor_lab(
     factor: Optional[str] = Query(default=None, description="factor key; defaults to the first catalog factor"),
     horizon: Optional[int] = Query(default=None, description="forward window in trading days; defaults to config default_horizon"),
+    all: bool = Query(
+        default=False,
+        description="when true (J-107) serve the ALL-FACTORS aggregate (one entry per catalog factor: family + rank-IC + downside risk-adjusted + decile table) instead of the single `factor`",
+    ),
     as_of: Optional[str] = Query(
         default=None,
         description="optional point-in-time cutoff (YYYY-MM-DD) — the single global as-of; omitted = all-history",
     ),
     session: Session = Depends(get_session),
 ) -> dict:
-    """Serve the Factor Lab for the requested `factor` + `horizon` (defaults: first catalog factor /
-    config default_horizon). Validates both against the config-driven catalog / `walk_forward.horizons`
-    (422 otherwise); 503 when no price data exists. The optional `as_of` (J-32) scopes the pool to
-    snapshots dated <= D (the single global as-of — a mode, not a second date state); omitted = all-history.
-    The payload is the canonical analysis verbatim — never recomputed in the view."""
+    """Serve the Factor Lab. By default this is the single-factor view for the requested `factor` +
+    `horizon` (defaults: first catalog factor / config default_horizon). When `all=true` (J-107) it serves
+    the ALL-FACTORS aggregate on this SAME endpoint (no new endpoint): a `factors_table` block with one entry
+    per config-catalog factor (family + Spearman rank-IC + the downside risk-adjusted figure + that factor's
+    decile table), every figure BYTE-IDENTICAL to the single-factor view and served from the derived-once
+    `EventStudyCache`. Validates `factor` (single-factor view only) + `horizon` against the config-driven
+    catalog / `walk_forward.horizons` (422 otherwise); 503 when no price data exists. The optional `as_of`
+    (J-32) scopes the pool to snapshots dated <= D (the single global as-of — a mode, not a second date
+    state); omitted = all-history. The payload is the canonical analysis verbatim — never recomputed in the
+    view."""
     cfg: Config = get_config()
     wf = cfg.walk_forward
 
     if latest_data_date(session) is None:
         raise HTTPException(status_code=503, detail="no price data available")
-
-    valid_factors = [f["key"] for f in factor_catalog(cfg)]
-    resolved_factor = valid_factors[0] if factor is None else factor
-    if resolved_factor not in valid_factors:
-        raise HTTPException(
-            status_code=422,
-            detail=f"unknown factor {resolved_factor!r}; valid factors are {valid_factors}",
-        )
 
     resolved_horizon = wf.default_horizon if horizon is None else horizon
     if resolved_horizon not in wf.horizons:
@@ -107,6 +109,21 @@ def factor_lab(
     # Omitted/empty -> all-history (no cutoff). This is the same global as-of transmitted on a
     # snapshot-served read, NOT a second/page-local date state (J-18).
     cutoff = resolved_date(session, as_of, cfg) if as_of else None
+
+    # J-107: the all-factors aggregate (the `factor` selector is N/A here — the table shows every catalog
+    # factor at once). Served from the derived-once cache (byte-identical to a fresh compute; refreshes via
+    # the dataset-version key) — never recomputed per request.
+    if all:
+        return factor_lab_all_cached(session, resolved_horizon, cfg, as_of=cutoff)
+
+    valid_factors = [f["key"] for f in factor_catalog(cfg)]
+    resolved_factor = valid_factors[0] if factor is None else factor
+    if resolved_factor not in valid_factors:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown factor {resolved_factor!r}; valid factors are {valid_factors}",
+        )
+
     return compute_factor_lab(session, resolved_factor, resolved_horizon, cfg, as_of=cutoff)
 
 

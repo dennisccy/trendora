@@ -1125,6 +1125,57 @@ export async function fetchFactorLab(
   return getJSON<FactorLabResponse>(withAsOf(path, asof), signal);
 }
 
+/** One all-factors table row (J-107): a config-catalog factor's family + Spearman rank-IC (value + n) +
+ *  the downside `risk_adjusted` figure (the factor's OWN top-decile risk_adjusted, re-presented from its
+ *  decile table — mean / downside-deviation, never total volatility) + that factor's full decile table
+ *  (revealed when the row is expanded). Every figure is a re-presentation of the canonical
+ *  `compute_factor_lab` output — byte-identical to the single-factor view; the page recomputes nothing. */
+export interface FactorTableRow {
+  key: string;
+  label: string;
+  family: string;
+  direction: string; // higher_better | lower_better (descriptive)
+  n_total: number; // observations contributing at this horizon (== rank_ic.n)
+  rank_ic: RankIC; // Spearman rank-IC; value null = NA
+  risk_adjusted: number | null; // top-decile downside risk-adjusted; null = NA (no downside / n < 2)
+  deciles: FactorDecileRow[]; // D1…D10 — hidden until the row is expanded
+}
+
+/** GET /api/research/factor-lab?all=true payload (J-107) — the ALL-FACTORS view: one entry per config
+ *  catalog factor (family + rank-IC + downside risk-adjusted + decile table), every figure byte-identical
+ *  to the single-factor `FactorLabResponse`. The page re-formats + client-side sorts (NA-last) only — it
+ *  recomputes no return/factor. The As-of / horizon are the single global as-of + the shared horizon
+ *  selector (no second date state, J-18). */
+export interface FactorLabAllResponse {
+  horizon: number; // the served forward window (trading days)
+  factors: FactorLabFactor[]; // the config-driven catalog (reference / family vocabulary)
+  horizons: number[]; // valid horizons for the selector (config-driven — not hard-coded in the UI)
+  default_horizon: number;
+  deciles_count: number;
+  min_sample: number; // factors/deciles with n below this are NA/low-sample
+  survivorship_bias: string; // honest caveat, rendered verbatim
+  descriptive_caveat: string; // "descriptive, not predictive / universe-relative", rendered verbatim
+  factors_table: FactorTableRow[]; // one row per catalog factor (in catalog order)
+  asof_date?: string | null; // J-32: the resolved point-in-time cutoff (ISO) when scoped; null = all-history
+}
+
+/** Canonical all-factors Factor-Lab source: GET /api/research/factor-lab?all=true&horizon=. Throws on
+ *  non-200 so the page renders an explicit "Backend unavailable" state (503 no data / 422 bad horizon /
+ *  400 future as-of) — never fabricated evidence. `horizon` defaults to the config default; `asof` (J-32)
+ *  is the single global as-of cutoff, appended via `withAsOf` ONLY when a historical cutoff is active
+ *  (As-of mode + a past date); omitted = all-history. */
+export async function fetchFactorLabAll(
+  horizon?: number,
+  asof?: string,
+  signal?: AbortSignal,
+): Promise<FactorLabAllResponse> {
+  const params = new URLSearchParams();
+  params.set("all", "true");
+  if (horizon !== undefined) params.set("horizon", String(horizon));
+  const path = `/api/research/factor-lab?${params.toString()}`;
+  return getJSON<FactorLabAllResponse>(withAsOf(path, asof), signal);
+}
+
 // --- research / multi-factor combination cohorts (iter-12, J-26) ---------------------------
 /** One quantile option (the top/bottom tail vocabulary, config-driven on the backend — NOT a hard-coded
  *  frontend list). `fraction` is the tail size a top/bottom condition selects (0.20 = a quintile). The

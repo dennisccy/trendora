@@ -54,21 +54,21 @@
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-50",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49-evidence/UT-02-result.png",
-      "note": "Required-still-passing (iter-49, CRITICAL single source). Re-verified LIVE: MU /stocks/MU detail Leadership 94.58 and the Proximity-to-52w-high breakdown value -0.53% == the leaderboard value byte-identical (UT-02-result.png) — the new J-106 column reads the SAME served component, single source held."
+      "note": "iter-50 carried passing (CRITICAL single source): byte-identity of every all-factors figure vs the canonical compute_factor_lab builders proven (12 tests + audit re-run); same factor cannot differ between single-factor and all-factors views."
     },
     "J-07": {
       "id": "J-07",
       "name": "Risk-Off regime suppresses Actionable",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-50",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-46-evidence/UT-J-07-riskoff-run.png",
-      "note": "Required-still-passing (iter-49, CRITICAL Risk-Off gate). Backend scoring/regime/gate untouched (iter-49 backend diff is CORS-only in main.py). Current regime Risk-on; the gate invariant holds (QA TC-15 PASS; no fabricated Actionable). Carried passing."
+      "note": "iter-50 carried passing (CRITICAL Risk-Off gate): backend scoring/regime/Actionable gate untouched (diff confined to research engine/api + the factor-lab frontend view)."
     },
     "J-08": {
       "id": "J-08",
@@ -174,11 +174,11 @@
       "id": "J-18",
       "name": "One date control (no duplicate)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-50",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48-evidence/UT-01-result.png",
-      "note": "Required-still-passing (iter-49, CRITICAL exactly-one-date-selector). The J-106 column adds a SortKey, NOT a date state; J-108 changes only the fetch host. grep confirms 0 native input[type=date] (QA TC-16). Single global as-of held. Carried passing."
+      "note": "iter-50 carried passing (CRITICAL one date control): the As-of toggle is a MODE on the single global top-bar date; QA UT-12 confirms N reduces via the single switcher with no second date state."
     },
     "J-19": {
       "id": "J-19",
@@ -244,21 +244,21 @@
       "id": "J-25",
       "name": "Factor Lab — decile sort and rank-IC per factor",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-50",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48-evidence/UT-02-decile-table.png",
-      "note": "RESTORED to passing in iter-48 — the iter-46 regression is fully CLOSED. iter-48 streamed the last two unstreamed select(ScannerResult)...all() reads: _factor_observations (research.py:232-236) and _combination_observations (research.py:439-443) are now session.exec(...).yield_per(batch) over the FULL ORM row (record_json preserved for component factors) with .order_by(ScannerResult.run_id, ScannerResult.id) — evaluator-verified in source as the byte-identical prior implicit .all() order (rides ix_scanner_results_run_id, no temp-B-tree, no disk spill on the 93%-full disk; a bare ORDER BY id would have temp-sort-spilled). Factor Lab is UNCACHED -> this was the genuine live OOM site; now serves HTTP 200. Evaluator VIEWED UT-02-decile-table.png: genuine 'Research — Factor Lab', Leadership score / 20d, full D1-D10 decile table with numeric mean fwd returns (+0.82%..+0.61%), n=59827-59828/decile, Rank-IC +0.01 panel + regime breakdown, total observations 598271, survivorship-bias disclaimer, NO 'Backend unavailable' banner. Dev separately confirmed HTTP 200 for both a column factor (leadership_score) AND a component factor (rs_spy_3m, reads record_json), backend RSS bounded ~733 MB, zero MemoryError/disk-full across all probes. Byte-identity proven green (test_research_streaming.py 29 passed incl. TDD-red record_json-drop proof). Coherence COHERENCE-PASS, review PASS, full suite FLUSHED GREEN 1060 passed/0 failed SUITE_EXIT=0."
+      "note": "iter-50 carried passing: single-factor compute_factor_lab UNTOUCHED (the all-factors view re-presents its byte-identical output via the additive all=true flag); test_factor_lab_all byte-identity 12 green."
     },
     "J-26": {
       "id": "J-26",
       "name": "Factor Lab — multi-factor composite cohort",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-50",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-07-result.png",
-      "note": "Required-still-passing in iter-48 (carried passing). Multi-factor composite cohort re-rendered live: evaluator VIEWED UT-06-factor-combination.png (Baseline n=598271 +0.88%, rs_spy_3m top-Quintile n=119660 +1.09%, Combined composite n=119655, Strict overlap n=27854, no error banner). _combination_observations ScannerResult read now yield_per-streamed too (closes the latent cold-miss OOM the iter-47 note flagged); figures byte-identical."
+      "note": "iter-50 carried passing: the multi-factor composite lab on /research/factor-combination is out of scope and untouched by the all-factors restructure."
     },
     "J-27": {
       "id": "J-27",
@@ -284,11 +284,11 @@
       "id": "J-29",
       "name": "Setup & Pattern lab — event study",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-50",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-01-result.png",
-      "note": "Required-still-passing in iter-48 (carried passing). Event-study STAYS passing: served HTTP 200 on the live dataset (backend log /tmp/iter48_backend2.log: event-study view=episodes -> 200); test_research.py byte-identical figures green. Browser render SKIPPED for QueuePool-exhaustion (test-harness artifact), not a regression."
+      "note": "iter-50 carried passing: event-study builders untouched; the shared all-factors pool reuses the same streamed read pattern, no event-study change."
     },
     "J-30": {
       "id": "J-30",
@@ -504,11 +504,11 @@
       "id": "J-51",
       "name": "Every research sample count is a link to its exact samples",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-50",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-03-result.png",
-      "note": "Required-still-passing in iter-48 (carried passing). Factor-lab N= chips now testable since J-25 serves: UT-02 shows decile N= chips (n=59827) linking to /research/samples?kind=factor&...&decile=N (count-coherent). Event-study N= drill-down count-coherence carried from iter-47."
+      "note": "iter-50 re-verified LIVE: the decile N= chip on the all-factors view opens Research Samples with Total observations 11761 == chip N (UT-07-samples-page.png) — count-coherent drill-down held."
     },
     "J-52": {
       "id": "J-52",
@@ -1034,11 +1034,11 @@
       "id": "J-104",
       "name": "Research labs load reliably — cache + query-bounding + lazy-load + page-split",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-50",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49-evidence/TC-20-research-loads.png",
-      "note": "Required-still-passing (iter-49). Re-verified LIVE: a research lab still loads after the API_BASE host-aware change — /research Factor Lab renders ('Does a factor actually sort future returns? Decile means'), badge Ready, no 'Backend unavailable' (QA UT-12 + TC-20-research-loads.png). Carried passing."
+      "note": "iter-50 carried passing: labs-load-reliably preserved — the all-factors aggregate is derived-once cached (EventStudyCache) over a bounded yield_per pool; cold ~26s then instant HIT, no OOM/disk-full (253G free)."
     },
     "J-105": {
       "id": "J-105",
@@ -1063,12 +1063,12 @@
     "J-107": {
       "id": "J-107",
       "name": "Factor Lab — all-factors Rank-IC + risk-adjusted table with expandable per-factor decile sort",
-      "status": "unknown",
-      "last_verified_iter": null,
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-50",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-50",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
-      "last_evidence_path": null,
-      "note": "QUEUED buildable, NOT-data-dependent Must-have (goal.md:2400, 2418). NOT built this iter — iter-49 deliberately scoped to the two clean independent wins (J-106+J-108) and left J-107 isolated for iter-50 because it touches the cached-aggregate / streamed research read path (the iter-46/47/48 OOM-sensitive area). status=unknown (never built, never tested) -> it blocks GOAL_ACHIEVED and drives CONTINUE per the iter-22 lesson. This is the SOLE remaining unbuilt buildable Must-have (J-108 is the highest journey; J-106/J-108 now pass)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-50-evidence/UT-01-02-table-loaded.png",
+      "note": "BUILT + LIVE-PASSING in iter-50 (last unbuilt buildable Must-have). /research/factor-lab restructured from a single-factor dropdown into an all-factors table via an additive `all=true` flag on the EXISTING GET /api/research/factor-lab (no new endpoint, no new table=True model; reused EventStudyCache sentinel namespace __all_factors__/factors_table). Every figure byte-identical to the canonical compute_factor_lab/_rank_ic/_deciles/_risk_adjusted builders over ONE shared yield_per-streamed (run_id,id)-ordered observation pool (no unbounded .all() over ForwardReturn/ScannerResult; grep-confirmed only ScannerRun.id.in_(runs_with_fr) small-set .all()). Evaluator VIEWED: UT-01-02-table-loaded (11 catalog factors; FACTOR/FAMILY/RANK-IC/N/RISK-ADJUSTED(downside); no dropdown; default desc Rank-IC; survivorship caveat), UT-03 asc vs UT-04 desc (byte-DISTINCT md5 b69f2c15 vs bbc06a0c — sort toggles NA-last; the browser-QA UT-03 'FAIL' is the documented test-plan expectation bug since the table defaults descending, NOT a product defect — pre-clarified in the iter-50 spec lines 32/92), UT-05 expand-in-place to D1-D10 decile sort (raw + downside risk-adjusted + N), UT-06 collapse, UT-07 decile N= chip -> Research Samples Total observations 11761 == chip N (count-coherent J-51/J-65), UT-11 60d horizon updates all rows, UT-12 As-of mode reduces N globally via the single global top-bar date (J-32/J-18 — one date state). Coherence COHERENCE-PASS (same canonical builders, shared pool, additive param, existing /research/factor-lab home reachable in 2 clicks); review PASS_WITH_NOTES (lone NOTE: unused fetchFactorLab export); QA UI-PASS; audit PASS (12+6 byte-identity/cache/bounded/NA tests independently re-run green). 23-test fast guard subset GREEN (test_factor_lab_all 12 + test_no_magic_numbers + test_db expected-tables unchanged). NOT yet a GOAL_ACHIEVED close-out: the standing flushed full-suite '0 failed, EXIT 0' candidacy gate was UNRUN this iter (no log existed); evaluator launched it nohup-async to /tmp/iter50_full_suite.log for iter-51 to confirm."
     },
     "J-108": {
       "id": "J-108",
@@ -1092,7 +1092,7 @@
       "resolution": "iter-21: the two `0.0` float literals in `_rsp_rank_key` were replaced with the structural `is_not_none` boolean fallback (no float literal remains in research.py — independently tokenizer-verified 0 float-like NUMBER literals). test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers passes; the DEFAULT J-77 ranking is byte-identical (200 randomized orderings match the legacy key; oracle test added). Full suite GREEN (834 passed, 0 failed, EXIT_CODE=0)."
     }
   ],
-  "updated_at": "2026-06-26T01:13:26.664901+00:00",
+  "updated_at": "2026-06-26T03:48:30.666502+00:00",
   "open_items": [
     {
       "id": "iter23-stale-api-engine-tests",
