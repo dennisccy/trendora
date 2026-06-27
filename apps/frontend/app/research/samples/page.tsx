@@ -329,6 +329,24 @@ function describeCohort(cohort: SampleCohort): { title: string; detail: string |
       detail: `Regime family: ${familyLabel} · Velocity: ${signLabel}`,
     };
   }
+  // J-110 — the Regime Lab bucket (a regime LABEL row or a regime-score DECILE).
+  if (cohort.kind === "regime-lab") {
+    const viewLabel = cohort.view === "pooled" ? "Pooled (per-signal-day)" : "Episodes (first-trigger)";
+    const sliceDetail =
+      cohort.slice === "decile"
+        ? `Regime-score decile D${cohort.decile} of ${cohort.deciles_count ?? ""}`
+        : `Regime: ${cohort.regime}`;
+    return { title: "Regime Lab", detail: `${viewLabel} · ${sliceDetail}` };
+  }
+  // J-111 — the Market Phase & Severity Lab bucket (a market-phase LABEL row or a severity-score DECILE).
+  if (cohort.kind === "phase-severity-lab") {
+    const viewLabel = cohort.view === "pooled" ? "Pooled (per-signal-day)" : "Episodes (first-trigger)";
+    const sliceDetail =
+      cohort.slice === "decile"
+        ? `Severity-score decile D${cohort.decile} of ${cohort.deciles_count ?? ""}`
+        : `Market phase: ${cohort.phase}`;
+    return { title: "Market Phase & Severity Lab", detail: `${viewLabel} · ${sliceDetail}` };
+  }
   // event-study
   const subject = cohort.subject?.label ?? "subject";
   // J-63: the overlap-honesty view this drill-down reproduces (Episodes = first-trigger; Pooled = per

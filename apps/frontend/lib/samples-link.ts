@@ -107,6 +107,20 @@ export interface RegimeLabCohortParams {
   decile?: number;
 }
 
+/** A Phase & Severity-Lab cohort chip (J-111): ONE bucket of the Market Phase & Severity Lab — a market-phase
+ *  LABEL row (slice "label") or a severity-score DECILE (slice "decile"). `view` (J-63) is the overlap-honesty
+ *  MODE the chip was clicked under — `episodes` (first-trigger) or `pooled` (per-signal-day) — so the
+ *  drill-down reproduces the same mode + cohort. `phase` is a config market-phase label (label slice);
+ *  `decile` is 1..deciles (decile slice). */
+export interface PhaseSeverityLabCohortParams {
+  kind: "phase-severity-lab";
+  horizon: number;
+  slice: "label" | "decile";
+  view: "episodes" | "pooled";
+  phase?: string;
+  decile?: number;
+}
+
 export type CohortParams =
   | FactorCohortParams
   | CombinationCohortParams
@@ -115,7 +129,8 @@ export type CohortParams =
   | RecoveryTurnCohortParams
   | DowntrendOpportunityCohortParams
   | SeverityVelocityCohortParams
-  | RegimeLabCohortParams;
+  | RegimeLabCohortParams
+  | PhaseSeverityLabCohortParams;
 
 /** Serialize a cohort + the analysis-mode scope into the `/research/samples` path (no `?asof` — that is
  *  merged by `useAsOfHref` at the link site). Repeated `condition` params are preserved. */
@@ -165,6 +180,17 @@ export function buildSamplesHref(cohort: CohortParams, scope: SampleScope): stri
     params.set("view", cohort.view);
     if (cohort.slice === "label" && cohort.regime !== undefined) {
       params.set("regime", cohort.regime);
+    }
+    if (cohort.slice === "decile" && cohort.decile !== undefined) {
+      params.set("decile", String(cohort.decile));
+    }
+  } else if (cohort.kind === "phase-severity-lab") {
+    // J-111: the Phase & Severity-Lab bucket — a market-phase LABEL row or a severity-score DECILE — + the
+    // overlap-honesty view. `slice` selects which; the identifying selector rides `phase` (label) / `decile`.
+    params.set("slice", cohort.slice);
+    params.set("view", cohort.view);
+    if (cohort.slice === "label" && cohort.phase !== undefined) {
+      params.set("phase", cohort.phase);
     }
     if (cohort.slice === "decile" && cohort.decile !== undefined) {
       params.set("decile", String(cohort.decile));

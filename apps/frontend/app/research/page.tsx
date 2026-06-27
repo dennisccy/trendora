@@ -8,6 +8,7 @@ import {
   Layers,
   LineChart,
   Microscope,
+  Thermometer,
   TrendingDown,
   TrendingUp,
   Waves,
@@ -84,6 +85,13 @@ const LABS: LabLink[] = [
     description:
       "How have stocks' forward returns and downside risk differed across market regimes? Paired return + max-drawdown by regime label and by regime-score decile, all horizons.",
     icon: Gauge,
+  },
+  {
+    href: "/research/phase-severity-lab",
+    title: "Market Phase & Severity Lab",
+    description:
+      "How have stocks' forward returns and downside risk differed across the market phase and stress severity? Paired return + max-drawdown by market-phase label and by severity-score decile, all horizons.",
+    icon: Thermometer,
   },
 ];
 

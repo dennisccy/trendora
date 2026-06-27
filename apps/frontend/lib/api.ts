@@ -1257,6 +1257,61 @@ export async function fetchRegimeLab(
   return getJSON<RegimeLabResponse>(withAsOf(path, asof), signal);
 }
 
+// --- research / Market Phase & Severity Lab (iter-54, J-111) --------------------------------
+/** One by-PHASE-LABEL row: a configured market-phase label + its paired figures at every config horizon. The
+ *  per-horizon cell shape (mean_return + paired mean_max_drawdown + n + low_sample) is identical to the Regime
+ *  Lab's, so the cell type is reused; the decile cell additionally carries the severity-score range. */
+export interface PhaseSeverityLabLabelRow {
+  phase: string; // a config.market_phase.labels value (verbatim — server-driven, not hard-coded in the UI)
+  by_horizon: RegimeLabHorizonCell[];
+}
+
+/** One by-DECILE row: a 1..deciles bucket of the 0–100 severity score + its paired figures + score range. */
+export interface PhaseSeverityLabDecileRow {
+  decile: number; // 1..deciles_count
+  by_horizon: RegimeLabDecileHorizonCell[]; // score_min/score_max are the severity-score bounds here
+}
+
+/** GET /api/research/phase-severity-lab payload (J-111) — the structural twin of the Regime Lab:
+ *  cross-sectional realized forward returns + paired max-drawdowns grouped (a) by the five canonical
+ *  market-phase labels and (b) into deciles of the 0–100 severity score, at EVERY config horizon at once
+ *  (paired columns), with the per-horizon rank-IC of the severity score vs the forward return. The grouping
+ *  subject (phase label + severity LEVEL) is read VERBATIM from the served `market_phase` causal timeline,
+ *  joined by snapshot date. Every figure is derived once from stored values (read VERBATIM); the page
+ *  re-formats + client-side sorts (NA-last) only. The As-of toggle is the single global as-of (no second date
+ *  state, J-18); there is no horizon selector (all horizons). */
+export interface PhaseSeverityLabResponse {
+  view: "episodes" | "pooled"; // the resolved overlap-honesty view
+  horizons: number[]; // every config horizon shown as paired columns (config-driven — not hard-coded)
+  default_horizon: number; // the horizon the rank-IC column header is labelled with
+  deciles_count: number;
+  min_sample: number; // buckets with n below this are NA/low-sample
+  phase_labels: string[]; // the by-label row vocabulary (config-driven — not hard-coded in the UI)
+  survivorship_bias: string; // honest caveat, rendered verbatim
+  descriptive_caveat: string; // "descriptive, not predictive / universe-relative", rendered verbatim
+  by_label: PhaseSeverityLabLabelRow[]; // one row per configured market-phase label (in config order)
+  by_decile: PhaseSeverityLabDecileRow[]; // D1..D`deciles` of the severity score
+  rank_ic_by_horizon: RegimeLabRankIcRow[]; // severity score vs forward return, per horizon
+  asof_date?: string | null; // J-32: the resolved point-in-time cutoff (ISO) when scoped; null = all-history
+}
+
+/** Canonical Phase & Severity-Lab source: GET /api/research/phase-severity-lab. Throws on non-200 so the page
+ *  renders an explicit "Backend unavailable" state (503 no data / 422 bad view / 400 future as-of) — never
+ *  fabricated evidence. The view is horizon-independent (every horizon at once), so no `horizon` param is sent.
+ *  `asof` (J-32) is the single global as-of cutoff, appended via `withAsOf` ONLY when a historical cutoff is
+ *  active (As-of mode + a past date); omitted = all-history. */
+export async function fetchPhaseSeverityLab(
+  view?: "episodes" | "pooled",
+  asof?: string,
+  signal?: AbortSignal,
+): Promise<PhaseSeverityLabResponse> {
+  const params = new URLSearchParams();
+  if (view) params.set("view", view);
+  const query = params.toString();
+  const path = `/api/research/phase-severity-lab${query ? `?${query}` : ""}`;
+  return getJSON<PhaseSeverityLabResponse>(withAsOf(path, asof), signal);
+}
+
 // --- research / multi-factor combination cohorts (iter-12, J-26) ---------------------------
 /** One quantile option (the top/bottom tail vocabulary, config-driven on the backend — NOT a hard-coded
  *  frontend list). `fraction` is the tail size a top/bottom condition selects (0.20 = a quintile). The
@@ -1757,7 +1812,9 @@ export interface SampleCohort {
     | "regime-setup-pattern"
     | "recovery-turn"
     | "downtrend-opportunity"
-    | "severity-velocity";
+    | "severity-velocity"
+    | "regime-lab"
+    | "phase-severity-lab";
   horizon: number;
   slice?: string; // factor: total|decile|regime · event-study: pooled|regime|sector · recovery-turn: total|phase
   cohort?: string; // combination: baseline|single|composite|strict_overlap · downtrend: the band/phase cohort key

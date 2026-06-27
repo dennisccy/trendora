@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "journey": "J-111",
+  "name": "Market Phase & Severity Lab — hub tile → page with by-phase/decile tables, sort, as-of filter, N= drill-down",
+  "default_timeout_ms": 10000,
+  "steps": [
+    {
+      "n": 1,
+      "journey": "J-111",
+      "action": {"type": "goto", "url": "/research"},
+      "expect": {"text": "Research"}
+    },
+    {
+      "n": 2,
+      "journey": "J-111",
+      "action": {"type": "click", "target": {"testid": "research-lab-link-phase-severity-lab"}}
+    },
+    {
+      "n": 3,
+      "journey": "J-111",
+      "action": {"type": "goto", "url": "/research/phase-severity-lab"},
+      "expect": {"text": "Market Phase & Severity Lab"}
+    },
+    {
+      "n": 4,
+      "journey": "J-111",
+      "action": {"type": "goto", "url": "/research/phase-severity-lab"},
+      "expect": {"text": "survivorship"}
+    },
+    {
+      "n": 5,
+      "journey": "J-111",
+      "action": {"type": "goto", "url": "/research/phase-severity-lab"},
+      "expect": {"text": "Expansion"}
+    },
+    {
+      "n": 6,
+      "journey": "J-111",
+      "action": {"type": "goto", "url": "/research/phase-severity-lab"},
+      "expect": {"text": "17.3"}
+    },
+    {
+      "n": 7,
+      "journey": "J-111",
+      "action": {"type": "click", "target": {"role": "button", "name": "Sort by Fwd 20d"}},
+      "expect": {"text": "Bear"}
+    },
+    {
+      "n": 8,
+      "journey": "J-111",
+      "action": {"type": "goto", "url": "/research/samples?kind=phase-severity-lab&horizon=20&slice=label&view=pooled&phase=Bear"},
+      "expect": {"text": "11695"}
+    }
+  ]
+}

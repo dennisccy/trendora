@@ -19,15 +19,17 @@ from datetime import date, datetime, timezone
 import pytest
 from sqlmodel import Session
 
+import app.engine.market_phase as market_phase
 from app.config import load_config
 from app.db import create_db_and_tables, make_engine
 from app.engine.research import (
     compute_event_study,
     compute_factor_combination,
     compute_factor_lab,
+    compute_phase_severity_lab,
     compute_regime_lab,
 )
-from app.engine.samples import KIND_REGIME_LAB, compute_samples
+from app.engine.samples import KIND_PHASE_SEVERITY_LAB, KIND_REGIME_LAB, compute_samples
 from app.models import ForwardReturn, ScannerResult, ScannerRun
 
 H = 20  # a real config horizon used throughout
@@ -238,6 +240,73 @@ def test_regime_lab_label_and_decile_coherence(multi_regime_engine):
             assert s["total"] == b["n"], f"decile drift D{row['decile']}"
             total += b["n"]
         assert total == 20  # 12 Risk-on + 8 Risk-off, every observation in exactly one decile
+
+
+# ==================================================================================================
+# Phase & Severity-Lab cohort count-coherence (J-111 — by market-phase LABEL and by severity-score DECILE)
+# ==================================================================================================
+@pytest.fixture()
+def phase_severity_engine(tmp_path, monkeypatch):
+    """12 Expansion + 8 Bear observations across two runs, with the served `market_phase` timeline
+    monkeypatched so the 2025-01-10 run reads (Expansion, severity 10) and the 2025-02-10 run reads
+    (Bear, severity 85) — the SAME isolation `test_severity_velocity.py` uses for the served-velocity join."""
+    engine = _engine(tmp_path, "phasesev.db")
+    with Session(engine) as session:
+        run_exp = _add_run(session, date(2025, 1, 10))
+        run_bear = _add_run(session, date(2025, 2, 10))
+        for i in range(1, 13):
+            _add_result(session, run_exp.id, f"N{i:02d}", rank=i, lead=float(i))
+            _add_fr(session, run_exp.id, f"N{i:02d}", ret=i / 1000)
+        for i in range(1, 9):
+            _add_result(session, run_bear.id, f"F{i:02d}", rank=i, lead=float(i))
+            _add_fr(session, run_bear.id, f"F{i:02d}", ret=-i / 1000)
+        session.commit()
+
+    ctx = {
+        "2025-01-10": {"phase": "Expansion", "severity": 10.0, "p_bear": 0.0},
+        "2025-02-10": {"phase": "Bear", "severity": 85.0, "p_bear": 1.0},
+    }
+
+    def _fake_phase_ctx(session, as_of=None, config=None):
+        if as_of is None:
+            return {d: dict(v) for d, v in ctx.items()}
+        return {d: dict(v) for d, v in ctx.items() if date.fromisoformat(d) <= as_of}
+
+    monkeypatch.setattr(market_phase, "phase_context_by_date", _fake_phase_ctx)
+    return engine
+
+
+def test_phase_severity_lab_label_and_decile_coherence(phase_severity_engine):
+    """Each Phase & Severity-Lab `N=` chip — a market-phase LABEL row and a severity-score DECILE — drills into
+    a cohort whose samples `total` equals the published bucket n (count-coherence keystone), in the pooled view.
+    The fixture's two phases published 12 (Expansion) / 8 (Bear) at H; the decile totals re-sum to n_total."""
+    cfg = load_config()
+    with Session(phase_severity_engine) as session:
+        payload = compute_phase_severity_lab(session, cfg, view="pooled")
+        # by-label coherence at H.
+        n_by_label = {}
+        for row in payload["by_label"]:
+            b = next(b for b in row["by_horizon"] if b["horizon"] == H)
+            n_by_label[row["phase"]] = b["n"]
+            s = compute_samples(
+                session, kind=KIND_PHASE_SEVERITY_LAB, horizon=H, config=cfg,
+                slice_kind="label", phase=row["phase"], view="pooled",
+            )
+            assert s["total"] == b["n"], f"label drift {row['phase']}"
+            assert all(r["phase"] == row["phase"] for r in s["rows"])
+        assert n_by_label["Expansion"] == 12 and n_by_label["Bear"] == 8
+
+        # by-decile coherence at H; the decile totals re-sum to the whole classified pool (20 observations).
+        total = 0
+        for row in payload["by_decile"]:
+            b = next(b for b in row["by_horizon"] if b["horizon"] == H)
+            s = compute_samples(
+                session, kind=KIND_PHASE_SEVERITY_LAB, horizon=H, config=cfg,
+                slice_kind="decile", decile=row["decile"], view="pooled",
+            )
+            assert s["total"] == b["n"], f"decile drift D{row['decile']}"
+            total += b["n"]
+        assert total == 20  # 12 Expansion + 8 Bear, every observation in exactly one severity decile
 
 
 # ==================================================================================================

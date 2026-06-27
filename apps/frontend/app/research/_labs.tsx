@@ -32,6 +32,7 @@ import {
   fetchEventStudy,
   fetchFactorCombination,
   fetchFactorLabAll,
+  fetchPhaseSeverityLab,
   fetchRecoveryTurnEdge,
   fetchRegimeLab,
   fetchRegimeSetupPattern,
@@ -48,6 +49,9 @@ import {
   type FactorHorizonDeciles,
   type FactorLabAllResponse,
   type FactorTableRow,
+  type PhaseSeverityLabDecileRow,
+  type PhaseSeverityLabLabelRow,
+  type PhaseSeverityLabResponse,
   type RecoveryTurnEdgeHorizonRow,
   type RecoveryTurnEdgePhaseRow,
   type RecoveryTurnEdgeResponse,
@@ -3930,6 +3934,276 @@ export function RegimeLabPage() {
             <>
               <RegimeLabByLabelTable data={data} scope={scope} />
               <RegimeLabDecileTable data={data} scope={scope} />
+            </>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+// --- Market Phase & Severity Lab (iter-54, J-111) ------------------------------------------------
+/** The page's working overlap-honesty view. Like the Regime Lab, the Phase & Severity Lab studies the WHOLE
+ *  cross-section (every stock × snapshot), so the first-trigger episode collapse would degenerate to each
+ *  name's first appearance — `pooled` (every per-signal-day observation, tagged by THAT snapshot's served
+ *  phase/severity) is the meaningful cross-sectional view. The view is a cohort/MODE (carried verbatim into
+ *  the `N=` drill-down so the counts stay coherent), NOT a date — `?asof` remains the single global date
+ *  (J-18). Pinned to `pooled` on BOTH the lab fetch AND every `N=` chip. */
+const PHASE_SEVERITY_LAB_VIEW: "episodes" | "pooled" = "pooled";
+
+/** The by-PHASE-LABEL summary table: one row per configured market-phase label (server-driven order), then per
+ *  config horizon a paired (mean forward-return, mean max-drawdown) column + the count-coherent `N=` chip.
+ *  Sortable NA-last on every numeric column. Reuses the Regime-Lab cell/sort machinery (identical cell shape);
+ *  the only difference is the grouping subject (the served market-phase label). */
+function PhaseSeverityLabByLabelTable({
+  data,
+  scope,
+}: {
+  data: PhaseSeverityLabResponse;
+  scope: SampleScope;
+}) {
+  const { sortKey, sortDir, onSort } = useRegimeSort("");
+  const horizons = data.horizons;
+  const sorted = useMemo(
+    () =>
+      sortRegimeRows<PhaseSeverityLabLabelRow>(
+        data.by_label,
+        sortKey,
+        sortDir,
+        (row) => ({ str: row.phase }),
+      ),
+    [data.by_label, sortKey, sortDir],
+  );
+  if (data.by_label.length === 0) {
+    return (
+      <EmptyState
+        icon={Microscope}
+        title="No forward-tested observations"
+        description="No stored snapshot has a realized forward return tagged with a market phase. No figure is fabricated to fill the gap."
+      />
+    );
+  }
+  return (
+    <Card className="overflow-x-auto p-0" data-testid="phase-severity-lab-by-label">
+      <PanelTitle
+        hint={`Mean realized forward return AND its paired max-drawdown per market-phase label, at every horizon. Cells with n < ${data.min_sample} render NA + n. Click a column to sort (NA-last); click an N= chip to open that cohort's observations.`}
+      >
+        By market phase
+      </PanelTitle>
+      <table data-testid="phase-severity-label-table" className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+            <RegimeSortHeader col="regime" label="Market phase" activeKey={sortKey} dir={sortDir} onSort={onSort} />
+            {horizons.map((h) => (
+              <Fragment key={`plh-${h}`}>
+                <RegimeSortHeader col={`fwd:${h}`} label={`Fwd ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
+                <RegimeSortHeader col={`mdd:${h}`} label={`MDD ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
+              </Fragment>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((row) => (
+            <tr key={row.phase} className="border-b border-border last:border-b-0" data-testid={`phase-severity-label-row-${row.phase}`}>
+              <td className="px-4 py-2 font-medium text-text">{row.phase}</td>
+              {horizons.map((h) => {
+                const cell = regimeCellAt(row.by_horizon, h);
+                return (
+                  <Fragment key={`plc-${row.phase}-${h}`}>
+                    <td className="px-4 py-2 text-right">
+                      {cell ? (
+                        <RegimeReturnCell
+                          cell={cell}
+                          min={data.min_sample}
+                          scope={scope}
+                          cohort={{ kind: "phase-severity-lab", horizon: h, slice: "label", view: PHASE_SEVERITY_LAB_VIEW, phase: row.phase }}
+                          chipLabel={`Open the ${row.phase} market-phase cohort (n=${cell.n}) at the ${h}-day horizon in Research Samples (new tab)`}
+                        />
+                      ) : (
+                        <span className="text-text-faint">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      {cell ? <RegimeMddCell cell={cell} min={data.min_sample} /> : <span className="text-text-faint">—</span>}
+                    </td>
+                  </Fragment>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
+/** The by-severity-score-DECILE table: a header Rank-IC row (severity score ↔ forward return per horizon), the
+ *  decile's severity-score range at the default horizon, then per config horizon a paired (mean forward-return,
+ *  mean max-drawdown) column + the count-coherent `N=` chip. Sortable NA-last on every numeric column. */
+function PhaseSeverityLabDecileTable({
+  data,
+  scope,
+}: {
+  data: PhaseSeverityLabResponse;
+  scope: SampleScope;
+}) {
+  const { sortKey, sortDir, onSort } = useRegimeSort("");
+  const horizons = data.horizons;
+  const defaultHorizon = data.default_horizon;
+  const rankIcByH = new Map(data.rank_ic_by_horizon.map((r) => [r.horizon, r.rank_ic]));
+  const sorted = useMemo(
+    () =>
+      sortRegimeRows<PhaseSeverityLabDecileRow>(
+        data.by_decile,
+        sortKey,
+        sortDir,
+        (row) => ({ num: row.decile }),
+      ),
+    [data.by_decile, sortKey, sortDir],
+  );
+  return (
+    <Card className="overflow-x-auto p-0" data-testid="phase-severity-lab-by-decile">
+      <PanelTitle
+        hint={`Mean realized forward return AND its paired max-drawdown per severity-score decile (D1 = lowest 0–100 severity → D10 = highest), at every horizon. The Rank-IC row is the Spearman correlation of the severity score vs the forward return per horizon (labelled at ${defaultHorizon}d for reference). Score range is shown at the ${defaultHorizon}-day horizon; each horizon's own range is on its return cell's hover. Cells with n < ${data.min_sample} render NA + n.`}
+      >
+        By severity-score decile
+      </PanelTitle>
+      <table data-testid="phase-severity-decile-table" className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+            <RegimeSortHeader col="decile" label="Decile" activeKey={sortKey} dir={sortDir} onSort={onSort} />
+            <th className="px-4 py-2 text-right font-medium">Severity range ({defaultHorizon}d)</th>
+            {horizons.map((h) => (
+              <Fragment key={`pdh-${h}`}>
+                <RegimeSortHeader col={`fwd:${h}`} label={`Fwd ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
+                <RegimeSortHeader col={`mdd:${h}`} label={`MDD ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
+              </Fragment>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {/* the Rank-IC header row (severity score ↔ forward return per horizon) — not a decile, so no chip. */}
+          <tr className="border-b border-border bg-surface-2/40" data-testid="phase-severity-decile-rank-ic-row">
+            <td className="px-4 py-2 font-medium text-text-muted">
+              <span className="inline-flex items-center gap-1">Rank-IC<TermInfo term="rank-IC" /></span>
+            </td>
+            <td className="px-4 py-2 text-right text-text-faint">—</td>
+            {horizons.map((h) => {
+              const ic = rankIcByH.get(h);
+              const na = !ic || ic.value === null;
+              return (
+                <Fragment key={`pic-${h}`}>
+                  <td className="px-4 py-2 text-right">
+                    <RatioCell
+                      value={ic?.value ?? null}
+                      na={na}
+                      title={na ? "Not enough independent observations to rank-correlate — NA, not a fabricated 0" : `Spearman rank-IC of the severity score vs the ${h}-day forward return`}
+                    />
+                  </td>
+                  <td className="px-4 py-2 text-right text-text-faint">—</td>
+                </Fragment>
+              );
+            })}
+          </tr>
+          {sorted.map((row) => {
+            const range = regimeCellAt(row.by_horizon, defaultHorizon);
+            return (
+              <tr key={row.decile} className="border-b border-border last:border-b-0" data-testid={`phase-severity-decile-row-${row.decile}`}>
+                <td className="px-4 py-2">
+                  <span className="num font-semibold text-text">D{row.decile}</span>
+                </td>
+                <td className="num px-4 py-2 text-right text-xs text-text-faint">
+                  {!range || range.score_min === null || range.score_max === null
+                    ? "—"
+                    : `${range.score_min.toFixed(1)} … ${range.score_max.toFixed(1)}`}
+                </td>
+                {horizons.map((h) => {
+                  const cell = regimeCellAt(row.by_horizon, h);
+                  const rangeTitle =
+                    cell && cell.score_min !== null && cell.score_max !== null
+                      ? `Severity-score range at ${h}d: ${cell.score_min.toFixed(1)} … ${cell.score_max.toFixed(1)}`
+                      : undefined;
+                  return (
+                    <Fragment key={`pdc-${row.decile}-${h}`}>
+                      <td className="px-4 py-2 text-right">
+                        {cell ? (
+                          <RegimeReturnCell
+                            cell={cell}
+                            min={data.min_sample}
+                            scope={scope}
+                            cohort={{ kind: "phase-severity-lab", horizon: h, slice: "decile", view: PHASE_SEVERITY_LAB_VIEW, decile: row.decile }}
+                            chipLabel={`Open the severity-score decile D${row.decile} cohort (n=${cell.n}) at the ${h}-day horizon in Research Samples (new tab)`}
+                            rangeTitle={rangeTitle}
+                          />
+                        ) : (
+                          <span className="text-text-faint">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        {cell ? <RegimeMddCell cell={cell} min={data.min_sample} /> : <span className="text-text-faint">—</span>}
+                      </td>
+                    </Fragment>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
+type PhaseSeverityLabState =
+  | { kind: "loading" }
+  | { kind: "ok"; data: PhaseSeverityLabResponse }
+  | { kind: "error" };
+
+/** iter-54 (J-111) — the Market Phase & Severity Lab on its OWN route (`/research/phase-severity-lab`). The
+ *  structural twin of the Regime Lab: cross-sectional realized forward returns + paired max-drawdowns grouped
+ *  (a) by the five canonical market-phase labels and (b) into deciles of the 0–100 severity score, at EVERY
+ *  config horizon at once (paired columns), with the per-horizon rank-IC of the severity score vs the forward
+ *  return. The grouping subject (phase label + severity LEVEL) is read VERBATIM from the served `market_phase`
+ *  causal timeline, joined by snapshot date. The As-of mode toggle FILTERS the observation set (the single
+ *  global as-of — no second date state, J-18). Every figure is read VERBATIM from the stored values and
+ *  re-presented; the page recomputes nothing and the sort is a pure view transform. */
+export function PhaseSeverityLabPage() {
+  const [state, setState] = useState<PhaseSeverityLabState>({ kind: "loading" });
+  const { mode, setMode, readiness, asofCutoff, scope } = useResearchControls();
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ kind: "loading" });
+    fetchPhaseSeverityLab(PHASE_SEVERITY_LAB_VIEW, asofCutoff ?? undefined, controller.signal)
+      .then((data) => setState({ kind: "ok", data }))
+      .catch(() => {
+        if (!controller.signal.aborted) setState({ kind: "error" });
+      });
+    return () => controller.abort();
+  }, [asofCutoff, readiness]);
+
+  const data = state.kind === "ok" ? state.data : null;
+
+  return (
+    <div className="space-y-4">
+      <ResearchControls
+        title="Research — Market Phase & Severity Lab"
+        subtitle="How have stocks' realized forward returns and downside risk differed across the market context? Mean forward return + paired max-drawdown grouped by the five market-phase labels and by deciles of the 0–100 severity score, at every horizon at once, with the rank-IC of the severity score vs the forward return. Derived once from the stored forward-tested evidence + the served market-phase timeline; descriptive survivorship-biased association, never a forecast."
+        mode={mode}
+        onModeChange={setMode}
+        asofCutoff={asofCutoff}
+      />
+      <ResearchCaveat survivorship={data?.survivorship_bias} descriptive={data?.descriptive_caveat} />
+      {shouldShowWarming(readiness) ? (
+        <WarmingState what="The Market Phase & Severity Lab" />
+      ) : (
+        <>
+          {state.kind === "loading" ? <LabSkeleton /> : null}
+          {state.kind === "error" ? <ResearchError what="The Market Phase & Severity-Lab evidence" /> : null}
+          {data ? (
+            <>
+              <PhaseSeverityLabByLabelTable data={data} scope={scope} />
+              <PhaseSeverityLabDecileTable data={data} scope={scope} />
             </>
           ) : null}
         </>

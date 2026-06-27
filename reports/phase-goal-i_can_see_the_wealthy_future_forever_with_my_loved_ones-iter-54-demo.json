@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
+  "base_url": "http://localhost:3255",
+  "iteration": 54,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Research hub — new Market Phase & Severity Lab tile",
+      "narration": "The Research hub now includes a Market Phase & Severity Lab tile, visible without scrolling alongside all the existing labs. One click is all it takes to reach the new study.",
+      "point_out": "The Market Phase & Severity Lab tile with its Thermometer icon in the labs grid. All previously existing tiles — Regime Lab, Factor Lab, and others — remain present and unaffected.",
+      "journey": "J-111",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research" },
+      "expect": { "text": "Market Phase & Severity Lab" }
+    },
+    {
+      "n": 2,
+      "title": "Phase & Severity Lab loads with five market-phase rows",
+      "narration": "Clicking the tile opens a dedicated lab page showing how realized forward returns and paired max-drawdowns have played out across the five market-phase labels — Expansion, Recovery, Pullback, Correction, and Bear — at every standard horizon from 1 to 60 days.",
+      "point_out": "The by-phase-label table with five rows, one per phase. Cells are colour-graded: positive returns appear in green, negative drawdowns in red. A survivorship-bias caveat is shown above the tables so the descriptive nature of the evidence is always visible.",
+      "journey": "J-111",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Market Phase & Severity Lab" } },
+      "expect": { "text": "Expansion" }
+    },
+    {
+      "n": 3,
+      "title": "Column sort reorders the phase rows client-side",
+      "narration": "Clicking any horizon column header sorts the five phase rows by that metric instantly, without a page reload. Rows with too few observations to be reliable always stay at the bottom regardless of sort direction.",
+      "point_out": "The row order changes after the click — the phase with the highest (or lowest) forward return for that horizon moves to the top. The URL stays the same, confirming the sort is purely client-side.",
+      "journey": "J-111",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "columnheader", "name": "Fwd 20d" } }
+    },
+    {
+      "n": 4,
+      "title": "As-of filter restricts evidence to a historical snapshot",
+      "narration": "Adding an as-of date to the URL scopes both tables to observations that were available on that date. Every N= chip updates to reflect only the qualifying history, making the lab directly usable for walk-forward research.",
+      "point_out": "The N= chip counts across both tables are noticeably lower than in the all-history view — roughly halved here because data before mid-2024 is excluded. No second date-picker control appears anywhere on the page.",
+      "journey": "J-111",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/phase-severity-lab?asof=2024-06-03" },
+      "expect": { "text": "Expansion" }
+    },
+    {
+      "n": 5,
+      "title": "N= chip opens a count-matched Samples page for the Bear phase",
+      "narration": "Every N= chip in the tables is a direct link to the underlying observation list on the Research Samples page. The total shown there always matches the chip exactly — no rounding, no overlap, and the cohort description names both the lab and the market phase you drilled from.",
+      "point_out": "The Samples page cohort header reads 'Market Phase & Severity Lab' with 'Market phase: Bear' in the slice description, and 'Total observations: 11695' matches the chip number that was clicked.",
+      "journey": "J-111",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/samples?kind=phase-severity-lab&horizon=20&slice=label&view=pooled&phase=Bear" },
+      "expect": { "text": "Market Phase & Severity Lab" }
+    },
+    {
+      "n": 6,
+      "title": "Regime Lab — existing lab is fully intact after the new addition",
+      "narration": "The Regime Lab introduced in the previous iteration is completely unchanged. Its tables, sort controls, as-of filter, and N= chips all continue to work exactly as before.",
+      "point_out": "The Regime Lab page loads with its by-regime and by-decile tables populated. No regression from adding the Phase & Severity Lab.",
+      "journey": "J-110",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/regime-lab" },
+      "expect": { "text": "Risk-on" }
+    },
+    {
+      "n": 7,
+      "title": "Regime Lab drill-through now correctly labels the Samples cohort",
+      "narration": "A bug fixed in this iteration: Regime Lab N= chips previously landed on a Samples page that showed a generic lab name instead of 'Regime Lab'. The cohort header now correctly identifies where the observations came from, so there is never any ambiguity about which study produced the numbers.",
+      "point_out": "The Samples page cohort header reads 'Cohort: Regime Lab' — not any other lab name. The observation count still matches the chip that was clicked.",
+      "journey": "J-110",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/samples?kind=regime-lab&horizon=20&slice=label&view=pooled&regime=Risk-on" },
+      "expect": { "text": "Cohort: Regime Lab" }
+    }
+  ]
+}

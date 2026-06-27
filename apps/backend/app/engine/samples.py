@@ -57,10 +57,12 @@ from app.engine.research import (
     _downtrend_opportunity_observation_set,
     _event_study_observation_set,
     _factor_observations,
+    _phase_severity_lab_observation_set,
     _recovery_turn_observation_set,
     _regime_lab_observation_set,
     _regime_score_ordered,
     _regime_setup_pattern_observations,
+    _severity_ordered,
     _rsp_combination_filter,
     _rsp_combination_members,
     _severity_velocity_member_key,
@@ -81,9 +83,10 @@ KIND_RECOVERY_TURN = "recovery-turn"                 # J-90 recovery-turn edge d
 KIND_DOWNTREND_OPPORTUNITY = "downtrend-opportunity"  # J-91 downtrend-conditioned opportunity drill-down
 KIND_SEVERITY_VELOCITY = "severity-velocity"          # J-103 severity-velocity × regime matrix drill-down
 KIND_REGIME_LAB = "regime-lab"                         # J-110 regime-label / regime-score-decile drill-down
+KIND_PHASE_SEVERITY_LAB = "phase-severity-lab"         # J-111 phase-label / severity-score-decile drill-down
 ALL_KINDS = (
     KIND_FACTOR, KIND_COMBINATION, KIND_EVENT_STUDY, KIND_REGIME_SETUP_PATTERN, KIND_RECOVERY_TURN,
-    KIND_DOWNTREND_OPPORTUNITY, KIND_SEVERITY_VELOCITY, KIND_REGIME_LAB,
+    KIND_DOWNTREND_OPPORTUNITY, KIND_SEVERITY_VELOCITY, KIND_REGIME_LAB, KIND_PHASE_SEVERITY_LAB,
 )
 # The recovery-turn-edge slice families (which published `N=` chip on the Recovery-Turn Edge lab was
 # clicked). `total` is the whole signal-date pool at the horizon (== `n` / `n_total`); `phase` is the
@@ -96,6 +99,9 @@ _FACTOR_SLICES = ("total", "decile", "regime")
 # The Regime-Lab slice families (J-110 — which `N=` chip was clicked): `label` is one of the six canonical
 # regime-label rows; `decile` is one D1…D`deciles` bucket of the 0–100 regime score.
 _REGIME_LAB_SLICES = ("label", "decile")
+# The Phase & Severity-Lab slice families (J-111 — which `N=` chip was clicked): `label` is one of the five
+# canonical market-phase-label rows; `decile` is one D1…D`deciles` bucket of the 0–100 severity score.
+_PHASE_SEVERITY_LAB_SLICES = ("label", "decile")
 # The combination cohort families (which published `N=` chip on the Combination Lab was clicked).
 _COMBINATION_COHORTS = ("baseline", "single", "composite", "strict_overlap")
 # The event-study slice families (which published `N=` chip on the Setup & Pattern Lab was clicked).
@@ -706,6 +712,91 @@ def _regime_lab_samples(
 
 
 # --------------------------------------------------------------------------------------------------
+# Phase & Severity-Lab cohort (J-111 — the Phase & Severity Lab's per-cell N= chip; the structural twin of
+# the Regime-Lab cohort). A cohort is ONE bucket at a (horizon, view): a market-phase LABEL row (slice
+# "label") or a severity-SCORE DECILE (slice "decile"). The drill-down reproduces that exact bucket from the
+# SAME observation set + the SAME membership rule the study aggregates. The single difference from the
+# Regime-Lab cohort: the grouping subject is the SERVED phase label / severity LEVEL (read VERBATIM from the
+# `market_phase` timeline, joined by snapshot date), not the stored regime.
+# --------------------------------------------------------------------------------------------------
+def _phase_severity_lab_samples(
+    session: Session, cfg: Config, *, slice_kind: str, phase: Optional[str], decile: Optional[int],
+    horizon: int, as_of: Optional[date_cls], view: str = VIEW_EPISODES,
+) -> dict:
+    """Reproduce ONE Phase & Severity-Lab bucket from the J-111 study and list its member observations UNDER
+    THE SELECTED `view` (J-63). Membership is the SAME `_phase_severity_lab_observation_set` builder (+ the
+    SAME `_severity_ordered` / `_decile_member_slice` quantile-edge slicing for a decile)
+    `compute_phase_severity_lab` aggregates, so the drill-down `total` EQUALS the bucket's published `n` in
+    BOTH Episodes and Pooled modes AND BOTH All-history and As-of scopes (count-coherence keystone — one
+    membership rule, never a second grouping). `slice_kind`:
+      - "label"  → the observation set filtered to the served `phase` label (== that by-label row's n).
+      - "decile" → the `decile`-th `_decile_member_slice` of the severity-score-ascending set (== that
+        decile's n).
+    Every bucket the study DISPLAYS resolves (a valid n=0 label/decile is an honest empty cohort, never a
+    4xx); an unknown/empty phase label or an out-of-range decile raises `ValueError` -> an honest 4xx. Each
+    row: ticker, snapshot date, the served phase label + severity score, the realized forward return."""
+    if view not in ALL_VIEWS:
+        raise ValueError(f"unknown view {view!r}; valid views are {list(ALL_VIEWS)}")
+    fl = cfg.research.factor_lab
+
+    members = _phase_severity_lab_observation_set(session, horizon, view, as_of)
+
+    if slice_kind == "label":
+        if phase is None or phase not in cfg.market_phase.labels:
+            raise ValueError(
+                f"phase {phase!r} is not a configured market-phase label {list(cfg.market_phase.labels)}"
+            )
+        # the SAME served-phase-label grouping the by-label table uses (label read verbatim, never recomputed).
+        cohort_members = [m for m in members if m["phase"] == phase]
+    elif slice_kind == "decile":
+        if decile is None or not (1 <= decile <= fl.deciles):
+            raise ValueError(
+                f"decile {decile!r} out of range [1, {fl.deciles}] for a severity-score decile cohort"
+            )
+        # the SAME severity-score-ascending ordering + quantile-edge slice the by-decile aggregate reads, so
+        # this decile's member list reproduces the aggregate's n exactly (one quantile-edge definition).
+        ordered = _severity_ordered(members)
+        cohort_members = _decile_member_slice(ordered, fl.deciles, decile)
+    else:
+        raise ValueError(
+            f"unknown phase-severity-lab slice {slice_kind!r}; valid slices are {list(_PHASE_SEVERITY_LAB_SLICES)}"
+        )
+
+    # the decile-slice members carry the `_deciles` "factor" key (== severity score); the label-slice members
+    # carry the raw observation shape (`severity`). Read the score from whichever shape is present.
+    def _score(o: dict):
+        return o.get("severity", o.get("factor"))
+
+    def _label(o: dict):
+        return o.get("phase")
+
+    run_dates = _run_date_map(session)
+    rows = [
+        {
+            "ticker": o["ticker"],
+            "snapshot_date": run_dates.get(o["run_id"]),
+            "phase": _label(o),
+            "values": [
+                {"key": "phase", "label": "Market phase", "value": _label(o)},
+                {"key": "severity", "label": "Severity score", "value": _score(o)},
+            ],
+            "forward_return": o["return"],
+        }
+        for o in cohort_members
+    ]
+    cohort = {
+        "kind": KIND_PHASE_SEVERITY_LAB,
+        "slice": slice_kind,
+        "horizon": horizon,
+        "phase": phase if slice_kind == "label" else None,
+        "decile": decile if slice_kind == "decile" else None,
+        "deciles_count": fl.deciles,
+        "view": view,
+    }
+    return {"cohort": cohort, "rows": rows}
+
+
+# --------------------------------------------------------------------------------------------------
 # The single canonical samples read (read-only exposure of the stored observation pools)
 # --------------------------------------------------------------------------------------------------
 def compute_samples(
@@ -783,6 +874,11 @@ def compute_samples(
     elif kind == KIND_REGIME_LAB:
         built = _regime_lab_samples(
             session, cfg, slice_kind=slice_kind or "label", regime=regime, decile=decile,
+            horizon=horizon, as_of=as_of, view=view or VIEW_EPISODES,
+        )
+    elif kind == KIND_PHASE_SEVERITY_LAB:
+        built = _phase_severity_lab_samples(
+            session, cfg, slice_kind=slice_kind or "label", phase=phase, decile=decile,
             horizon=horizon, as_of=as_of, view=view or VIEW_EPISODES,
         )
     else:
