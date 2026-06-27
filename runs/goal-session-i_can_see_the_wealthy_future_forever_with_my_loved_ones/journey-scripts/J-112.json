@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "journey": "J-112",
+  "name": "Regime × Phase × Factor 3-way decile lab",
+  "default_timeout_ms": 12000,
+  "steps": [
+    {
+      "n": 1,
+      "journey": "J-112",
+      "action": {"type": "goto", "url": "/research"},
+      "expect": {"text": "Regime × Phase × Factor"}
+    },
+    {
+      "n": 2,
+      "journey": "J-112",
+      "action": {"type": "click", "target": {"role": "link", "name": "Regime × Phase × Factor"}},
+      "expect": {"text": "Research — Regime × Phase × Factor"}
+    },
+    {
+      "n": 3,
+      "journey": "J-112",
+      "action": {"type": "goto", "url": "/research/regime-phase-factor"},
+      "expect": {"text": "Page 1 of"}
+    },
+    {
+      "n": 4,
+      "journey": "J-112",
+      "action": {"type": "goto", "url": "/research/samples?kind=regime-phase-factor&horizon=1&factor=leadership_score&regime_decile=7&severity_decile=5&factor_decile=10&view=pooled"},
+      "expect": {"text": "Total observations: 338"}
+    }
+  ]
+}

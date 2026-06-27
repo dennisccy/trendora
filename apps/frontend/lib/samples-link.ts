@@ -121,6 +121,21 @@ export interface PhaseSeverityLabCohortParams {
   decile?: number;
 }
 
+/** A Regime × Phase × Factor cohort chip (J-112): ONE `(regime-score decile, severity-score decile, factor
+ *  decile)` triple of the 3-way study for the SELECTED factor. `factor` is a config catalog factor key; the
+ *  three deciles are each 1..deciles. `view` (J-63) is the overlap-honesty MODE the chip was clicked under —
+ *  pinned to `pooled` for this whole-cross-section lab (the episodes collapse degenerates), carried verbatim so
+ *  the drill-down reproduces the same mode + cohort. */
+export interface RegimePhaseFactorCohortParams {
+  kind: "regime-phase-factor";
+  horizon: number;
+  factor: string; // a config catalog factor key
+  regimeDecile: number; // 1..deciles
+  severityDecile: number; // 1..deciles
+  factorDecile: number; // 1..deciles
+  view: "episodes" | "pooled";
+}
+
 export type CohortParams =
   | FactorCohortParams
   | CombinationCohortParams
@@ -130,7 +145,8 @@ export type CohortParams =
   | DowntrendOpportunityCohortParams
   | SeverityVelocityCohortParams
   | RegimeLabCohortParams
-  | PhaseSeverityLabCohortParams;
+  | PhaseSeverityLabCohortParams
+  | RegimePhaseFactorCohortParams;
 
 /** Serialize a cohort + the analysis-mode scope into the `/research/samples` path (no `?asof` — that is
  *  merged by `useAsOfHref` at the link site). Repeated `condition` params are preserved. */
@@ -199,6 +215,15 @@ export function buildSamplesHref(cohort: CohortParams, scope: SampleScope): stri
     // J-103: the (regime_family, velocity_sign) matrix cell — the SAME selectors the study cell published.
     params.set("family", cohort.family);
     params.set("velocity_sign", cohort.velocitySign);
+  } else if (cohort.kind === "regime-phase-factor") {
+    // J-112: the (regime-score, severity-score, factor)-decile triple for the SELECTED factor + the
+    // overlap-honesty view (pinned pooled). The three deciles ride their own params; the factor rides the
+    // SAME `factor` param the factor-lab cohort uses.
+    params.set("factor", cohort.factor);
+    params.set("regime_decile", String(cohort.regimeDecile));
+    params.set("severity_decile", String(cohort.severityDecile));
+    params.set("factor_decile", String(cohort.factorDecile));
+    params.set("view", cohort.view);
   } else {
     params.set("subject", cohort.subject);
     params.set("slice", cohort.slice);

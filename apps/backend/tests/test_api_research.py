@@ -545,6 +545,149 @@ def test_phase_severity_lab_samples_invalid_selectors_4xx(loaded_engine):
 
 
 # ==================================================================================================
+# GET /api/research/regime-phase-factor — the Regime × Phase × Factor 3-way decile study (iter-55, J-112)
+# ==================================================================================================
+def test_regime_phase_factor_payload_shape_and_config_driven(loaded_engine):
+    """J-112 at the API level: the payload carries a ranked `rows` table of `(regime_decile, severity_decile,
+    factor_decile)` combinations, each with a `by_horizon` list of paired (mean_return, mean_max_drawdown) + n
+    per config horizon, plus the config-driven factor catalog + selected factor + page_size + honest labels, and
+    carries NO single `horizon` (all horizons at once)."""
+    cfg = load_config()
+    fl = cfg.research.factor_lab
+    horizons = list(cfg.walk_forward.horizons)
+    with TestClient(main.app) as client:
+        resp = client.get("/api/research/regime-phase-factor")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "horizon" not in data  # the all-horizons view has no single served horizon
+    assert data["view"] == "episodes"  # the default overlap-honesty view
+    assert data["horizons"] == horizons
+    assert data["default_horizon"] == cfg.walk_forward.default_horizon
+    assert data["deciles_count"] == fl.deciles
+    assert data["min_sample"] == cfg.walk_forward.min_sample
+    assert data["page_size"] == cfg.research.regime_phase_factor_page_size
+    assert data["factor"]["key"] == fl.factors[0].key  # defaults to the first catalog factor
+    assert [f["key"] for f in data["factors"]] == [f.key for f in fl.factors]
+    assert data["asof_date"] is None
+    assert "survivorship" in data["survivorship_bias"].lower()
+    assert data["rows"], "no combination rows on the real seed"
+    for r in data["rows"]:
+        assert set(r) == {"regime_decile", "severity_decile", "factor_decile", "by_horizon"}
+        for k in ("regime_decile", "severity_decile", "factor_decile"):
+            assert 1 <= r[k] <= fl.deciles
+        assert [b["horizon"] for b in r["by_horizon"]] == horizons
+        for b in r["by_horizon"]:
+            assert {"horizon", "n", "low_sample", "mean_return", "mean_max_drawdown"} == set(b)
+
+
+def test_regime_phase_factor_factor_switch_changes_table(loaded_engine):
+    """Changing the `factor` param re-partitions the factor-decile dimension and serves a DISTINCT table (the
+    `factor` selector really drives the study)."""
+    cfg = load_config()
+    keys = [f.key for f in cfg.research.factor_lab.factors]
+    with TestClient(main.app) as client:
+        a = client.get("/api/research/regime-phase-factor", params={"factor": keys[0]}).json()
+        b = client.get("/api/research/regime-phase-factor", params={"factor": keys[1]}).json()
+    assert a["factor"]["key"] == keys[0] and b["factor"]["key"] == keys[1]
+    import json as _json
+    assert _json.dumps(a["rows"], sort_keys=True) != _json.dumps(b["rows"], sort_keys=True)
+
+
+def test_regime_phase_factor_pooled_byte_identical_to_engine(loaded_engine):
+    """`?view=pooled` is byte-identical to the engine's `regime_phase_factor_cached(view='pooled')` — the API
+    serves the canonical aggregate verbatim, never recomputed."""
+    import json as _json
+
+    from app.engine.research import regime_phase_factor_cached
+
+    cfg = load_config()
+    factor = cfg.research.factor_lab.factors[0].key
+    with TestClient(main.app) as client:
+        pooled = client.get(
+            "/api/research/regime-phase-factor", params={"factor": factor, "view": "pooled"}
+        ).json()
+    with Session(loaded_engine) as session:
+        engine_pooled = regime_phase_factor_cached(session, cfg, factor=factor, view="pooled")
+    assert _json.dumps(pooled, sort_keys=True) == _json.dumps(engine_pooled, sort_keys=True)
+
+
+def test_regime_phase_factor_as_of_scopes_and_echoes(loaded_engine):
+    """J-32: `?as_of=D` scopes the observation set to snapshots dated <= D (strictly fewer total observations
+    than all-history) and echoes the resolved cutoff — a mode, not a second date state."""
+    cfg = load_config()
+    dh = cfg.walk_forward.default_horizon
+
+    def _total(payload):
+        return sum(b["n"] for r in payload["rows"] for b in r["by_horizon"] if b["horizon"] == dh)
+
+    with TestClient(main.app) as client:
+        oldest = _oldest_research_date(client)
+        all_history = client.get("/api/research/regime-phase-factor", params={"view": "pooled"}).json()
+        scoped = client.get(
+            "/api/research/regime-phase-factor", params={"view": "pooled", "as_of": oldest}
+        ).json()
+    assert all_history["asof_date"] is None
+    assert scoped["asof_date"] == oldest
+    assert 0 < _total(scoped) < _total(all_history)  # the oldest cutoff pools strictly fewer, not empty
+
+
+def test_regime_phase_factor_invalid_factor_and_view_422(loaded_engine):
+    """An unknown factor or unknown view is rejected (422) — no fabricated input (mirrors the sibling handlers)."""
+    with TestClient(main.app) as client:
+        assert client.get(
+            "/api/research/regime-phase-factor", params={"factor": "not_a_factor"}
+        ).status_code == 422
+        assert client.get(
+            "/api/research/regime-phase-factor", params={"view": "nope"}
+        ).status_code == 422
+
+
+def test_regime_phase_factor_samples_count_coherent_over_http(loaded_engine):
+    """J-51/J-65 over HTTP: a Regime × Phase × Factor `N=` chip's samples drill-down `total` equals the
+    published combination n for the exact triple+horizon, in the SAME pinned-pooled view — and the chip
+    resolves (200), never a 4xx."""
+    cfg = load_config()
+    dh = cfg.walk_forward.default_horizon
+    factor = cfg.research.factor_lab.factors[0].key
+    with TestClient(main.app) as client:
+        data = client.get(
+            "/api/research/regime-phase-factor", params={"factor": factor, "view": "pooled"}
+        ).json()
+        # a populated combination at the default horizon.
+        row = next(
+            r for r in data["rows"]
+            if next(b for b in r["by_horizon"] if b["horizon"] == dh)["n"] > 0
+        )
+        n = next(b for b in row["by_horizon"] if b["horizon"] == dh)["n"]
+        s = client.get("/api/research/samples", params={
+            "kind": "regime-phase-factor", "factor": factor,
+            "regime_decile": row["regime_decile"], "severity_decile": row["severity_decile"],
+            "factor_decile": row["factor_decile"], "horizon": dh, "view": "pooled",
+        })
+        assert s.status_code == 200
+        assert s.json()["total"] == n
+
+
+def test_regime_phase_factor_samples_invalid_selectors_4xx(loaded_engine):
+    """An unknown factor / out-of-range decile / unknown view on the regime-phase-factor samples kind is an
+    explicit 4xx (never a silent empty 200)."""
+    factor = load_config().research.factor_lab.factors[0].key
+    with TestClient(main.app) as client:
+        assert client.get("/api/research/samples", params={
+            "kind": "regime-phase-factor", "factor": "not_a_factor",
+            "regime_decile": 1, "severity_decile": 1, "factor_decile": 1, "horizon": 20, "view": "pooled",
+        }).status_code == 422
+        assert client.get("/api/research/samples", params={
+            "kind": "regime-phase-factor", "factor": factor,
+            "regime_decile": 0, "severity_decile": 1, "factor_decile": 1, "horizon": 20, "view": "pooled",
+        }).status_code == 422
+        assert client.get("/api/research/samples", params={
+            "kind": "regime-phase-factor", "factor": factor,
+            "regime_decile": 1, "severity_decile": 1, "factor_decile": 1, "horizon": 20, "view": "nope",
+        }).status_code == 422
+
+
+# ==================================================================================================
 # GET /api/research/factor-combination — multi-factor combination cohorts (iter-12, J-26)
 # ==================================================================================================
 def test_factor_combination_default_payload(loaded_engine):

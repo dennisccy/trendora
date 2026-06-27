@@ -46,6 +46,7 @@ from app.engine.research import (
     phase_severity_lab_cached,
     recovery_turn_edge_cached,
     regime_lab_cached,
+    regime_phase_factor_cached,
     regime_setup_pattern_cached,
     severity_velocity_cached,
     subject_catalog,
@@ -59,6 +60,7 @@ from app.engine.samples import (
     KIND_PHASE_SEVERITY_LAB,
     KIND_RECOVERY_TURN,
     KIND_REGIME_LAB,
+    KIND_REGIME_PHASE_FACTOR,
     KIND_REGIME_SETUP_PATTERN,
     compute_samples,
 )
@@ -464,6 +466,64 @@ def phase_severity_lab(
     return phase_severity_lab_cached(session, cfg, view=resolved_view, as_of=cutoff)
 
 
+@router.get("/research/regime-phase-factor")
+def regime_phase_factor(
+    factor: Optional[str] = Query(
+        default=None,
+        description="factor key (the selected factor); defaults to the first catalog factor",
+    ),
+    view: Optional[str] = Query(
+        default=None,
+        description="overlap-honesty view: episodes (default — first-trigger) | pooled (per-signal-day)",
+    ),
+    as_of: Optional[str] = Query(
+        default=None,
+        description="optional point-in-time cutoff (YYYY-MM-DD) — the single global as-of; omitted = all-history",
+    ),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Serve the Regime × Phase × Factor 3-way decile study (J-112) for the SELECTED `factor` + `view`
+    (defaults: the first catalog factor / `episodes`): a ranked combination table of `(regime-score decile,
+    severity-score decile, factor decile)` triples, each row carrying per EVERY config horizon at once (paired
+    columns — no `horizon` selector) the combination's mean realized forward return + paired mean max-drawdown
+    + n. The three grouping dimensions are read VERBATIM from their single canonical sources — the stored
+    `ScannerRun.regime_score` (J-80), the served `market_phase` 0–100 severity (J-87/J-111, joined by snapshot
+    date), and the selected factor's stored value (the Factor-Lab source) — it recomputes nothing. Validates
+    `factor` against the config-driven catalog and `view` against {episodes, pooled} (422 otherwise); 503 when
+    no price data exists — mirroring the sibling research handlers exactly. The optional `as_of` (J-32) scopes
+    the observation set to snapshots dated <= D (the single global as-of — a mode, not a second date state);
+    omitted = all-history. The payload is `regime_phase_factor_cached(...)` verbatim — a read-only grouping of
+    ALREADY-STORED values, never recomputed in the view. No order/execution affordance (research evidence
+    only)."""
+    cfg: Config = get_config()
+
+    if latest_data_date(session) is None:
+        raise HTTPException(status_code=503, detail="no price data available")
+
+    valid_factors = [f["key"] for f in factor_catalog(cfg)]
+    resolved_factor = valid_factors[0] if factor is None else factor
+    if resolved_factor not in valid_factors:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown factor {resolved_factor!r}; valid factors are {valid_factors}",
+        )
+
+    resolved_view = VIEW_EPISODES if view is None else view
+    if resolved_view not in ALL_VIEWS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown view {resolved_view!r}; valid views are {list(ALL_VIEWS)}",
+        )
+
+    # iter-19 (J-32): the optional single global as-of scoping cutoff (shared resolver — 422/400; never
+    # hand-rolled). Omitted/empty -> all-history. Not a second date state (J-18). The view is horizon-
+    # independent (all horizons shown), so there is no `horizon` selector.
+    cutoff = resolved_date(session, as_of, cfg) if as_of else None
+    # J-72: serve from the persisted/cached derived aggregate (byte-identical to a fresh compute; the cache
+    # refreshes after any dataset change OR a phase/severity refresh via the composite key) — never recomputed.
+    return regime_phase_factor_cached(session, cfg, factor=resolved_factor, view=resolved_view, as_of=cutoff)
+
+
 @router.get("/research/recovery-turn-edge")
 def recovery_turn_edge(
     horizon: Optional[int] = Query(default=None, description="forward window in trading days; defaults to config default_horizon"),
@@ -594,6 +654,10 @@ def research_samples(
     # severity-velocity selector (J-103) — `family` (a regime family key) + `velocity_sign` (rising|flat|falling)
     family: Optional[str] = Query(default=None, description="a regime family key (severity-velocity kind)"),
     velocity_sign: Optional[str] = Query(default=None, description="a velocity sign key: rising|flat|falling (severity-velocity kind)"),
+    # regime-phase-factor selector (J-112) — `factor` (a catalog factor key) + the three deciles
+    regime_decile: Optional[int] = Query(default=None, description="1..deciles_count regime-score decile (regime-phase-factor kind)"),
+    severity_decile: Optional[int] = Query(default=None, description="1..deciles_count severity-score decile (regime-phase-factor kind)"),
+    factor_decile: Optional[int] = Query(default=None, description="1..deciles_count factor decile (regime-phase-factor kind)"),
     as_of: Optional[str] = Query(
         default=None,
         description="optional point-in-time cutoff (YYYY-MM-DD) — the single global as-of; omitted = all-history",
@@ -631,7 +695,7 @@ def research_samples(
     resolved_view: Optional[str] = None
     if kind in (
         KIND_EVENT_STUDY, KIND_REGIME_SETUP_PATTERN, KIND_RECOVERY_TURN, KIND_DOWNTREND_OPPORTUNITY,
-        KIND_REGIME_LAB, KIND_PHASE_SEVERITY_LAB,
+        KIND_REGIME_LAB, KIND_PHASE_SEVERITY_LAB, KIND_REGIME_PHASE_FACTOR,
     ):
         resolved_view = VIEW_EPISODES if view is None else view
         if resolved_view not in ALL_VIEWS:
@@ -674,6 +738,7 @@ def research_samples(
             setup=setup, pattern=pattern, phase=phase,
             dimension=dimension,
             family=family, velocity_sign=velocity_sign,
+            regime_decile=regime_decile, severity_decile=severity_decile, factor_decile=factor_decile,
         )
     except ValueError as exc:
         # an unknown/out-of-range cohort selector is an explicit 4xx — never a silent empty 200 (which is

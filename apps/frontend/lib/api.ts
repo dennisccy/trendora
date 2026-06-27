@@ -1312,6 +1312,60 @@ export async function fetchPhaseSeverityLab(
   return getJSON<PhaseSeverityLabResponse>(withAsOf(path, asof), signal);
 }
 
+// --- research / Regime × Phase × Factor 3-way decile study (iter-55, J-112) ------------------
+/** One `(regime-score decile, severity-score decile, factor decile)` combination row of the J-112 study: the
+ *  three decile coordinates + a per-config-horizon paired (mean forward-return, mean max-drawdown) cell list.
+ *  The per-horizon cell shape (mean_return + paired mean_max_drawdown + n + low_sample) is identical to the
+ *  Regime / Phase-Severity Lab cell, so that cell type is reused; the page re-formats + client-side sorts /
+ *  filters / paginates only — it recomputes nothing. */
+export interface RegimePhaseFactorRow {
+  regime_decile: number; // 1..deciles_count
+  severity_decile: number; // 1..deciles_count
+  factor_decile: number; // 1..deciles_count
+  by_horizon: RegimeLabHorizonCell[];
+}
+
+/** GET /api/research/regime-phase-factor payload (J-112) — for a SELECTED factor, a ranked combination table
+ *  of `(regime-score decile × severity-score decile × factor decile)` triples, each row carrying per EVERY
+ *  config horizon at once (paired columns — no horizon selector) the combination's mean realized forward
+ *  return + paired mean max-drawdown + n. The three grouping dimensions are read VERBATIM from their single
+ *  canonical sources (stored regime score / served severity / stored factor value) — derived once, never
+ *  recomputed. The page re-formats + client-side sorts (NA-last) / filters / paginates only. The As-of toggle
+ *  is the single global as-of (no second date state, J-18); there is no horizon selector (all horizons). */
+export interface RegimePhaseFactorResponse {
+  view: "episodes" | "pooled"; // the resolved overlap-honesty view (the page pins pooled)
+  factor: FactorLabFactor; // the selected factor (resolved from the config catalog)
+  factors: FactorLabFactor[]; // the config-driven factor catalog (the factor selector vocabulary)
+  horizons: number[]; // every config horizon shown as paired columns (config-driven — not hard-coded)
+  default_horizon: number; // the horizon the default ranking is on
+  deciles_count: number;
+  min_sample: number; // combinations with n below this are NA/low-sample
+  page_size: number; // config-driven rows-per-page for the client-side pagination (no UI literal)
+  survivorship_bias: string; // honest caveat, rendered verbatim
+  descriptive_caveat: string; // "descriptive, not predictive / universe-relative", rendered verbatim
+  rows: RegimePhaseFactorRow[]; // one row per emitted combination, server-ranked by default-horizon return
+  asof_date?: string | null; // J-32: the resolved point-in-time cutoff (ISO) when scoped; null = all-history
+}
+
+/** Canonical Regime × Phase × Factor source: GET /api/research/regime-phase-factor. Throws on non-200 so the
+ *  page renders an explicit "Backend unavailable" state (503 no data / 422 bad factor|view / 400 future as-of)
+ *  — never fabricated evidence. The view is horizon-independent (every horizon at once), so no `horizon` param
+ *  is sent. `factor` selects the studied factor (config catalog key); `asof` (J-32) is the single global as-of
+ *  cutoff, appended via `withAsOf` ONLY when a historical cutoff is active; omitted = all-history. */
+export async function fetchRegimePhaseFactor(
+  factor?: string,
+  view?: "episodes" | "pooled",
+  asof?: string,
+  signal?: AbortSignal,
+): Promise<RegimePhaseFactorResponse> {
+  const params = new URLSearchParams();
+  if (factor) params.set("factor", factor);
+  if (view) params.set("view", view);
+  const query = params.toString();
+  const path = `/api/research/regime-phase-factor${query ? `?${query}` : ""}`;
+  return getJSON<RegimePhaseFactorResponse>(withAsOf(path, asof), signal);
+}
+
 // --- research / multi-factor combination cohorts (iter-12, J-26) ---------------------------
 /** One quantile option (the top/bottom tail vocabulary, config-driven on the backend — NOT a hard-coded
  *  frontend list). `fraction` is the tail size a top/bottom condition selects (0.20 = a quintile). The
@@ -1814,12 +1868,16 @@ export interface SampleCohort {
     | "downtrend-opportunity"
     | "severity-velocity"
     | "regime-lab"
-    | "phase-severity-lab";
+    | "phase-severity-lab"
+    | "regime-phase-factor";
   horizon: number;
   slice?: string; // factor: total|decile|regime · event-study: pooled|regime|sector · recovery-turn: total|phase
   cohort?: string; // combination: baseline|single|composite|strict_overlap · downtrend: the band/phase cohort key
-  factor?: FactorLabFactor; // factor kind
+  factor?: FactorLabFactor; // factor kind · J-112 regime-phase-factor kind (the selected factor)
   decile?: number | null;
+  regime_decile?: number; // J-112: the regime-score decile of the triple cohort
+  severity_decile?: number; // J-112: the severity-score decile of the triple cohort
+  factor_decile?: number; // J-112: the factor decile of the triple cohort
   regime?: string | null;
   sector?: string | null;
   setup?: string | null; // J-77: regime-setup-pattern kind

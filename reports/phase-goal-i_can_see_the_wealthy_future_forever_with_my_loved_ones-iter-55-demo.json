@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
+  "base_url": "http://localhost:3255",
+  "iteration": 55,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Research hub — new 3-way lab tile",
+      "narration": "The Research hub now shows a brand-new tile for the Regime × Phase × Factor lab, sitting alongside the existing Regime Lab and Phase & Severity Lab. Two clicks from the Research nav entry in the sidebar is all it takes to reach the full lab.",
+      "point_out": "The 'Regime × Phase × Factor' tile in the LABS grid, with its Boxes icon and one-line description beneath it.",
+      "journey": "J-112",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research" },
+      "expect": { "text": "Regime × Phase × Factor" }
+    },
+    {
+      "n": 2,
+      "title": "Enter the 3-way combination lab",
+      "narration": "Clicking the tile opens the Regime × Phase × Factor lab — a factor selector at the top, three decile filter dropdowns, and a ranked combination table with paired forward-return and max-drawdown columns at every horizon for each regime × severity × factor triple.",
+      "point_out": "The factor selector defaulting to Leadership Score, the three filter dropdowns each showing All, and the pagination footer reading 'Page 1 of 16' — the combination data has loaded.",
+      "journey": "J-112",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "css": "[data-testid='research-lab-link-regime-phase-factor']" } },
+      "expect": { "text": "Page 1 of 16" }
+    },
+    {
+      "n": 3,
+      "title": "Switch the factor — table re-renders with new data",
+      "narration": "Selecting Entry Quality Score from the factor dropdown triggers a fresh fetch and re-renders the entire combination table using that factor's decile boundaries. The n values and row rankings are completely different from the Leadership Score view.",
+      "point_out": "The selected option now reads 'Entry Quality score' and the table rows have changed — a new ranking of (regime, severity, factor) combinations appears at the top of the first page.",
+      "journey": "J-112",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "role": "combobox", "name": "Select factor" }, "text": "Entry Quality score" },
+      "expect": { "text": "Page 1 of" }
+    },
+    {
+      "n": 4,
+      "title": "Filter to regime decile D10 — instant client-side narrowing",
+      "narration": "Selecting D10 in the Regime Decile filter instantly removes every row from any lower regime decile. This is a pure client-side view transform — no API call, no loading spinner — so the result is immediate.",
+      "point_out": "Every visible row now shows D10 in the Regime D column. The visible row count has dropped and only the highest-regime-score combinations are displayed.",
+      "journey": "J-112",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "role": "combobox", "name": "Filter by regime decile" }, "text": "D10" },
+      "expect": { "text": "D10" }
+    },
+    {
+      "n": 5,
+      "title": "Sort by forward return — NA combinations stay at the bottom",
+      "narration": "Clicking a column header sorts the visible rows in either direction. Combinations with too few qualifying samples show NA and are pinned to the bottom regardless of sort direction, so the evidence-backed rows always float to the top.",
+      "point_out": "The D10 regime rows are now ordered by 1-day forward return. Page 1 shows only numeric-valued rows — any NA combinations have been pushed to the later pages.",
+      "journey": "J-112",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Sort by Fwd 1d" } },
+      "expect": { "text": "D10" }
+    },
+    {
+      "n": 6,
+      "title": "Open the lab with a historical date ready",
+      "narration": "The product shares a single global date control across all research pages. Loading the lab with a May 2024 date in the URL sets that shared control, so one click on the toggle switches the entire combination table to historical-window mode.",
+      "point_out": "The combination table in All-history mode, showing the full observation window with 'Page 1 of 16'. Note the n values in the first few rows before the point-in-time filter is applied.",
+      "journey": "J-112",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/regime-phase-factor?asof=2024-05-31" },
+      "expect": { "text": "Page 1 of 16" }
+    },
+    {
+      "n": 7,
+      "title": "Activate As-of date — n values shrink to the historical window",
+      "narration": "Clicking 'As of date' restricts every combination's sample pool to scanner snapshots dated up to May 31 2024. The n values immediately drop and the page count falls from 16 to 14 — only the evidence that actually existed at that historical date is counted.",
+      "point_out": "'Point-in-time: pooling only snapshots dated ≤ 2024-05-31' is visible in the banner. The n values for the top rows are noticeably smaller than in All-history mode, and pagination now shows Page 1 of 14.",
+      "journey": "J-112",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "As of date" } },
+      "expect": { "text": "Point-in-time" }
+    },
+    {
+      "n": 8,
+      "title": "Drill through an N= chip to the exact observation cohort",
+      "narration": "Every n= chip in the combination table links to a Research Samples view pre-filtered to that exact (regime, severity, factor, horizon) cohort. The Total observations count on the Samples page matches the chip number precisely — the same single data source, no rounding.",
+      "point_out": "The Research Samples page shows 'Total observations: 338', matching the chip clicked from the Leadership score / Regime D7 × Severity D5 × Factor D10 / 1-day combination. The cohort description names every dimension clearly.",
+      "journey": "J-112",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/samples?kind=regime-phase-factor&horizon=1&factor=leadership_score&regime_decile=7&severity_decile=5&factor_decile=10&view=pooled" },
+      "expect": { "text": "Total observations: 338" }
+    }
+  ]
+}

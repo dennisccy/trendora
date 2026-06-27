@@ -54,21 +54,21 @@
       "id": "J-06",
       "name": "Score consistency across pages (coherence)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-53",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54-evidence/UT-08-result.png",
-      "note": "iter-54 CRITICAL single-source. Re-confirmed: coherence Part A PASS (phase/severity read VERBATIM from market_phase timeline, realized_return + J-86 max_drawdown from ForwardReturn \u2014 no second computing path); count-coherence (UT-08 chip n 11695 == Samples Total 11695) proves single source; QA single-source smoke PASS. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55-evidence/UT-15-17-samples.png",
+      "note": "iter-55 CRITICAL single-source. Re-verified: QA TC-22 (regime-score consistent, read verbatim from ScannerRun) + the J-112 count-coherence UT-15 (chip n=338 == Samples 'Total observations: 338') prove the single canonical source; coherence Part A PASS (J-112 reads regime/severity/factor/return/MDD VERBATIM, no second computing path). Carried passing."
     },
     "J-07": {
       "id": "J-07",
       "name": "Risk-Off regime suppresses Actionable",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-53",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-53-evidence/UT-20-risk-off-zero-actionable.png",
-      "note": "iter-54 required-still-passing (Risk-Off gates Actionable (CRITICAL)). Re-confirmed passing via additive-diff confinement (iter-54 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; coherence Part A PASS) + the flushed-GREEN full suite (1164 passed, 4 skipped, 0 failed). Carried passing."
+      "note": "iter-55 required-still-passing (Risk-Off gates Actionable, CRITICAL). Re-confirmed via QA TC-24 (J-07 gate unaffected by the new lab) + additive-diff confinement (J-112 adds a new lab endpoint/cohort/page only; no existing scanner/regime compute path changed; coherence Part A PASS) + the flushed-GREEN full suite (1210 passed, 4 skipped, 0 failed). Carried passing."
     },
     "J-08": {
       "id": "J-08",
@@ -174,11 +174,11 @@
       "id": "J-18",
       "name": "One date control (no duplicate)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-53",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54-evidence/UT-07-result.png",
-      "note": "iter-54 CRITICAL one date control. Re-verified LIVE (UT-07): document.querySelectorAll('input[type=date]').length == 0 on /research/phase-severity-lab; the As-of-vs-All-history control is a MODE on the single global top-bar as-of (serialized via ?asof), never a second/page-local date state. QA TC-04 confirms no second date control. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55-evidence/UT-12-asof-reduced.png",
+      "note": "iter-55 CRITICAL one date control. Re-verified LIVE (UT-13 + QA TC-11/TC-23): document.querySelectorAll('input[type=date]').length == 0 on /research/regime-phase-factor in BOTH default and As-of modes (only a single checkbox toggle); the As-of-vs-All-history control is a MODE on the single global top-bar as-of (?asof serialization), never a second/page-local date state. Carried passing."
     },
     "J-19": {
       "id": "J-19",
@@ -244,21 +244,21 @@
       "id": "J-25",
       "name": "Factor Lab \u2014 decile sort and rank-IC per factor",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54-evidence/UT-10-result.png",
-      "note": "iter-54 required-still-passing \u2014 Factor Lab re-verified LIVE (UT-10): Factor Lab tile -> /research/factor-lab renders real factor rows (Proximity/Risk/Moving-average/Relative-strength/Leadership/...). Additive iter-54 diff; 1164-passed full suite confirms no regression. Carried passing."
+      "note": "iter-55 required-still-passing. Re-confirmed passing via additive-diff confinement (J-112 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; git diff == coherence snapshot d11e4c99; coherence Part A PASS) + the flushed-GREEN full suite (1210 passed, 4 skipped, 0 failed). Carried passing."
     },
     "J-26": {
       "id": "J-26",
       "name": "Factor Lab \u2014 multi-factor composite cohort",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-51",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-51-evidence/UT-J-26-result.png",
-      "note": "iter-54 required-still-passing (multi-factor composite). Re-confirmed passing via additive-diff confinement (iter-54 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; coherence Part A PASS) + the flushed-GREEN full suite (1164 passed, 4 skipped, 0 failed). Carried passing."
+      "note": "iter-55 required-still-passing. Re-confirmed passing via additive-diff confinement (J-112 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; git diff == coherence snapshot d11e4c99; coherence Part A PASS) + the flushed-GREEN full suite (1210 passed, 4 skipped, 0 failed). Carried passing."
     },
     "J-27": {
       "id": "J-27",
@@ -284,11 +284,11 @@
       "id": "J-29",
       "name": "Setup & Pattern lab \u2014 event study",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-51",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-0",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-51-evidence/UT-J-29-result.png",
-      "note": "iter-54 required-still-passing (event study). Re-confirmed passing via additive-diff confinement (iter-54 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; coherence Part A PASS) + the flushed-GREEN full suite (1164 passed, 4 skipped, 0 failed). Carried passing."
+      "note": "iter-55 required-still-passing. Re-confirmed passing via additive-diff confinement (J-112 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; git diff == coherence snapshot d11e4c99; coherence Part A PASS) + the flushed-GREEN full suite (1210 passed, 4 skipped, 0 failed). Carried passing."
     },
     "J-30": {
       "id": "J-30",
@@ -504,11 +504,11 @@
       "id": "J-51",
       "name": "Every research sample count is a link to its exact samples",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-53",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-5",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54-evidence/UT-08-result.png",
-      "note": "iter-54 required-still-passing. Re-verified LIVE (UT-08): the new phase-severity-lab N= chip opens /research/samples?kind=phase-severity-lab&horizon=20&slice=label&view=pooled&phase=Bear (exact params) and 'Total observations: 11695' == published chip n. test_phase_severity_lab + test_samples phase-severity-lab label+decile count-coherence green. Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55-evidence/UT-15-17-samples.png",
+      "note": "iter-55 required-still-passing. Re-verified LIVE (UT-15/UT-17): the new regime-phase-factor N= chip opens /research/samples?kind=regime-phase-factor&horizon=1&factor=leadership_score&regime_decile=7&severity_decile=5&factor_decile=10&view=pooled (exact triple+horizon params) and 'Total observations: 338' == published chip n. Carried passing."
     },
     "J-52": {
       "id": "J-52",
@@ -644,11 +644,11 @@
       "id": "J-65",
       "name": "N= chips open the samples drill-down in a new tab (amends J-51/J-54)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-53",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-9",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54-evidence/UT-08-result.png",
-      "note": "iter-54 required-still-passing \u2014 N= drill-down count-coherence re-verified LIVE (UT-08): Bear Fwd20d chip n=11695 == Samples Total observations 11695 (pinned view=pooled, new tab). Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55-evidence/UT-15-17-samples.png",
+      "note": "iter-55 required-still-passing - N= chips open the samples drill-down in a new tab. Re-verified LIVE (UT-15): the J-112 N=338 chip opens Research Samples (pinned view=pooled, new tab) with the cohort fully named and Total == chip n. Carried passing."
     },
     "J-66": {
       "id": "J-66",
@@ -764,11 +764,11 @@
       "id": "J-77",
       "name": "Research \u2014 returns by regime \u00d7 setup \u00d7 pattern (ranked combinations study)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-18",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-08-result.png",
-      "note": "iter-54 required-still-passing (regime x setup x pattern). Re-confirmed passing via additive-diff confinement (iter-54 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; coherence Part A PASS) + the flushed-GREEN full suite (1164 passed, 4 skipped, 0 failed). Carried passing."
+      "note": "iter-55 required-still-passing. Re-confirmed passing via additive-diff confinement (J-112 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; git diff == coherence snapshot d11e4c99; coherence Part A PASS) + the flushed-GREEN full suite (1210 passed, 4 skipped, 0 failed). Carried passing."
     },
     "J-78": {
       "id": "J-78",
@@ -794,11 +794,11 @@
       "id": "J-80",
       "name": "Stocks leaderboard header \u2014 selected-date regime label+score + ranked Top-Themes strip + #n chip badges",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-22",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-49-evidence/UT-01-result.png",
-      "note": "iter-54 required-still-passing (leaderboard columns). Re-confirmed passing via additive-diff confinement (iter-54 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; coherence Part A PASS) + the flushed-GREEN full suite (1164 passed, 4 skipped, 0 failed). Carried passing."
+      "note": "iter-55 required-still-passing - the Stocks-header regime the lab joins on. Re-confirmed via QA TC-27 (regime-score from the same ScannerRun source; no second regime computation) + additive-diff confinement + the flushed-GREEN full suite (1210 passed). Carried passing."
     },
     "J-81": {
       "id": "J-81",
@@ -854,21 +854,21 @@
       "id": "J-86",
       "name": "Max-drawdown columns beside the forward returns everywhere (1/5/10/20/60-day; mirrors J-75/J-81)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-25",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-28-evidence/UT-J-86-stocks-5d-mdd-sort-asc.png",
-      "note": "iter-54 required-still-passing (max-drawdown column). Re-confirmed passing via additive-diff confinement (iter-54 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; coherence Part A PASS) + the flushed-GREEN full suite (1164 passed, 4 skipped, 0 failed). Carried passing."
+      "note": "iter-55 required-still-passing. Re-confirmed passing via additive-diff confinement (J-112 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; git diff == coherence snapshot d11e4c99; coherence Part A PASS) + the flushed-GREEN full suite (1210 passed, 4 skipped, 0 failed). Carried passing."
     },
     "J-87": {
       "id": "J-87",
       "name": "Dashboard Market Phase & Severity panel (discrete phase + 0-100 severity + named component breakdown), strictly causal (<=D)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-29",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44-evidence/UT-12-market-phase-card.png",
-      "note": "iter-54 required-still-passing \u2014 the market-phase reader (shared source the lab joins on). Dev live probe: GET /api/market-phase -> 200 (phase=Expansion, severity=25.7) \u2014 the SAME market_phase causal timeline phase_context_by_date the Phase & Severity Lab reads VERBATIM. Source intact; additive diff does not touch market_phase compute. Carried passing."
+      "note": "iter-55 required-still-passing - the Dashboard Market-Phase panel severity the lab joins on. Re-confirmed via QA TC-28 (severity from market_phase._timeline_series, the SAME canonical source J-112 reads VERBATIM) + additive-diff confinement (market_phase compute untouched) + the flushed-GREEN full suite. Carried passing."
     },
     "J-88": {
       "id": "J-88",
@@ -1024,31 +1024,31 @@
       "id": "J-103",
       "name": "Severity-velocity \u00d7 regime forward-return study (/research/severity-velocity)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47-evidence/UT-17-asof-panel.png",
-      "note": "iter-54 required-still-passing (severity-velocity x regime). Re-confirmed passing via additive-diff confinement (iter-54 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; coherence Part A PASS) + the flushed-GREEN full suite (1164 passed, 4 skipped, 0 failed). Carried passing."
+      "note": "iter-55 required-still-passing. Re-confirmed passing via additive-diff confinement (J-112 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; git diff == coherence snapshot d11e4c99; coherence Part A PASS) + the flushed-GREEN full suite (1210 passed, 4 skipped, 0 failed). Carried passing."
     },
     "J-104": {
       "id": "J-104",
       "name": "Research labs load reliably \u2014 cache + query-bounding + lazy-load + page-split",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-53",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-44",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-53-evidence/UT-03-result.png",
-      "note": "iter-54 required-still-passing (labs load reliably). Re-confirmed passing via additive-diff confinement (iter-54 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; coherence Part A PASS) + the flushed-GREEN full suite (1164 passed, 4 skipped, 0 failed). Carried passing."
+      "note": "iter-55 required-still-passing. Re-confirmed passing via additive-diff confinement (J-112 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; git diff == coherence snapshot d11e4c99; coherence Part A PASS) + the flushed-GREEN full suite (1210 passed, 4 skipped, 0 failed). Carried passing."
     },
     "J-105": {
       "id": "J-105",
       "name": "Research labs serve on the full live dataset without exhausting memory (streamed/column-projected read path)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-53",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-47",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-48-evidence/UT-02-decile-table.png",
-      "note": "iter-54 required-still-passing (bounded streamed read). Re-confirmed passing via additive-diff confinement (iter-54 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; coherence Part A PASS) + the flushed-GREEN full suite (1164 passed, 4 skipped, 0 failed). Carried passing."
+      "note": "iter-55 required-still-passing. Re-confirmed passing via additive-diff confinement (J-112 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; git diff == coherence snapshot d11e4c99; coherence Part A PASS) + the flushed-GREEN full suite (1210 passed, 4 skipped, 0 failed). Carried passing."
     },
     "J-106": {
       "id": "J-106",
@@ -1084,41 +1084,41 @@
       "id": "J-109",
       "name": "Factor Lab \u2014 all-horizon paired forward-return + max-drawdown columns (no horizon selector)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-52",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-52",
       "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-52-evidence/TC-01-initial-load.png",
-      "note": "iter-54 required-still-passing (Factor Lab all-horizon). Re-confirmed passing via additive-diff confinement (iter-54 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; coherence Part A PASS) + the flushed-GREEN full suite (1164 passed, 4 skipped, 0 failed). Carried passing."
+      "note": "iter-55 required-still-passing. Re-confirmed passing via additive-diff confinement (J-112 adds a new lab endpoint/cohort/page only; no existing compute/serve path changed; git diff == coherence snapshot d11e4c99; coherence Part A PASS) + the flushed-GREEN full suite (1210 passed, 4 skipped, 0 failed). Carried passing."
     },
     "J-110": {
       "id": "J-110",
       "name": "Research \u2014 Regime Lab: cross-sectional forward returns + max-drawdown by regime label / regime-score decile (new /research/regime-lab)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-52",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54-evidence/UT-10-result.png",
-      "note": "iter-54 required-still-passing \u2014 the sibling Regime Lab still renders. Re-verified LIVE (UT-10): Regime Lab tile -> /research/regime-lab heading 'Research \u2014 Regime Lab'; all 9 hub tiles present incl. the new Phase & Severity Lab tile. The iter-54 diff is purely ADDITIVE (new compute_phase_severity_lab + new samples cohort kind + new /research/phase-severity-lab page); coherence Part A PASS (no existing compute/serve path changed). Carried passing."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55-evidence/UT-04-research-hub.png",
+      "note": "iter-55 required-still-passing - the sibling Regime Lab still renders. Re-verified LIVE (UT-18 hub tile present + UT-19): /research/regime-lab renders 17 rows, first row 'Strong risk-on +0.15% n=18826 -2.92%', no error. The J-112 diff is purely ADDITIVE (new endpoint/cohort/page); coherence Part A PASS. Carried passing."
     },
     "J-111": {
       "id": "J-111",
       "name": "Research \u2014 Market Phase & Severity Lab: cross-sectional forward returns + max-drawdown by phase label / severity-score decile (new /research/phase-severity-lab)",
       "status": "passing",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
-      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-52",
-      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54-evidence/UT-02-result.png",
-      "note": "TARGET iter-54 \u2014 Market Phase & Severity Lab at /research/phase-severity-lab flips unknown -> passing on primary, evaluator-VIEWED live browser-QA evidence (15/15 PASS, Chrome MCP, no skips). VIEWED UT-02-result.png (fully hydrated lab: by-market-phase table Expansion/Pullback/Correction/Bear/Recovery with paired forward-return + max-drawdown columns per horizon; by-severity-decile table D1-D10 with score ranges 17.3..95.34 + Rank-IC row; survivorship+descriptive caveat; badge Ready; single global date control), UT-06 (byte-distinct sort md5 e818e0e3 vs unsorted f00ebf26 \u2014 rows reorder NA-last, URL unchanged), UT-07 (As-of mode FILTERS n: Expansion Fwd20d 51351->23297, 0 native input[type=date]), UT-08 (N= chip -> /research/samples?kind=phase-severity-lab&...&phase=Bear, Total observations 11695 == chip n, count-coherent, pinned view=pooled). Anti-goals clean by direct source inspection: phase+severity read VERBATIM from market_phase phase_context_by_date (the served causal timeline, joined by snapshot date), realized_return + J-86 max_drawdown read verbatim from ForwardReturn; both heavy reads column-projected + yield_per-streamed, ScannerResult ordered (run_id,id) (J-105 bounded-read held; no unbounded .all()); NO new table=True (reuses event_study_cache); schema token phaseseverlab-v1 + market_phase _cache_version folded into the lab cache key; no magic numbers (config-sourced labels/horizons/deciles); no order/execution path. coherence COHERENCE-PASS; review PASS; QA PASS (39/39 backend incl. byte-identity, provenance, cache-schema MISS-then-repopulate, bounded-read, count-coherence)."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55-evidence/UT-04-research-hub.png",
+      "note": "iter-55 required-still-passing - the sibling Market Phase & Severity Lab still renders. Re-verified LIVE (UT-18 hub tile present + UT-20): /research/phase-severity-lab renders 16 rows, first row 'Expansion +0.05% n=52892 -3.12%', no error. Additive J-112 diff; coherence Part A PASS. Carried passing."
     },
     "J-112": {
       "id": "J-112",
       "name": "Research \u2014 Regime \u00d7 Phase/Severity \u00d7 Factor 3-way decile study (new /research/regime-phase-factor)",
-      "status": "unknown",
-      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-54",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
+      "last_passing_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55",
       "first_seen_iter": "goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-52",
-      "last_evidence_path": null,
-      "note": "Queued buildable, NON-data-dependent Must-have (Regime x Phase x Factor 3-way decile study; goal.md commit ab7de8c). NOT built this iter (iter-54 built J-111 only \u2014 one heavy cross-sectional lab per iter per the J-109..J-112 blueprint extension plan). Deferred to iter-55. Per the iter-22 lesson a queued-but-unbuilt journey is an `unknown` Must-have, not done -> the every-buildable-Must-have GOAL_ACHIEVED gate stays unmet until iter-55 lands J-112."
+      "last_evidence_path": "reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-55-evidence/UT-03-result.png",
+      "note": "TARGET iter-55 (the LAST unbuilt buildable Must-have) - flips unknown -> passing on primary, evaluator-VIEWED live browser-QA evidence (Chrome MCP 21/21 PASS, NO skips, NO Playwright fallback needed - the strongest live-evidence package of the session). VIEWED UT-03-result.png (fully hydrated 'Research - Regime x Phase x Factor' lab: factor selector 'Leadership score' + three All-default decile filters; combination table with Regime D | Severity D | Factor D + paired Fwd/MDD columns per 1/5/10/20/60d horizon + embedded n; survivorship-bias banner; 'Page 1 of 16' pagination; badge Ready; single global date control), UT-10-sort-ascending.png (ascending Fwd-1d sort, negatives at top, NAs sunk to last pages - byte-distinct md5 from base render), UT-12-asof-reduced.png (As-of mode at 2024-05-31 FILTERS n: pages 16->14, first-row n 338->243; 0 native input[type=date]), UT-15-17-samples.png (N=338 chip for D7xD5xD10 h=1 -> /research/samples?kind=regime-phase-factor&...&view=pooled, 'Total observations: 338' == chip n, count-coherent, cohort fully named, real observation rows). Anti-goals clean by direct source inspection: regime_score read VERBATIM from ScannerRun (J-80), severity read VERBATIM from the served market_phase causal timeline joined by snapshot date (J-87/J-111), factor value read verbatim (Factor Lab source), realized_return + J-86 max_drawdown verbatim from ForwardReturn; the heavy read is BOUNDED (research.py:3766 FR scan column-projected + yield_per; :3782-3784 ScannerResult ordered (run_id,id) + yield_per; grep-confirmed NO unbounded select(...).all() over FR/ScannerResult); REUSES event_study_cache (NO new table=True; test_db guard UNCHANGED) with a folded schema token + market-phase SCHEMA_VERSION/dataset stamp + selected factor in the cache key (no cross-factor bleed); page_size 30 + min_sample 30 config-sourced (test_no_magic_numbers green); no order/execution path (grep clean); honest NA + n for low-sample combinations (UT-15 n=0/1/2/4 marked, never fabricated). coherence COHERENCE-PASS (Part A single-source/no-recompute + Part B 2-click reachable, distinct home vs J-77/J-103/J-110/J-111); review PASS_WITH_NOTES (1 NOTE: a '?? 30' UI fallback literal - cosmetic, non-blocking); QA PASS (28/28); flushed-GREEN full suite 1210 passed, 4 skipped, 0 failed (incl. 46 new J-112 tests: byte-identity >=2 factors/both views/both scopes, provenance, bounded-read guard, cache schema-token MISS-then-repopulate on a real old-schema row, samples count-coherence)."
     }
   },
   "anti_goal_violations": [
@@ -1132,7 +1132,7 @@
       "resolution": "iter-21: the two `0.0` float literals in `_rsp_rank_key` were replaced with the structural `is_not_none` boolean fallback (no float literal remains in research.py \u2014 independently tokenizer-verified 0 float-like NUMBER literals). test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers passes; the DEFAULT J-77 ranking is byte-identical (200 randomized orderings match the legacy key; oracle test added). Full suite GREEN (834 passed, 0 failed, EXIT_CODE=0)."
     }
   ],
-  "updated_at": "2026-06-27T04:26:14.212771+00:00",
+  "updated_at": "2026-06-27T07:10:17.404858+00:00",
   "open_items": [
     {
       "id": "iter23-stale-api-engine-tests",

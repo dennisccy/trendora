@@ -310,6 +310,80 @@ def test_phase_severity_lab_label_and_decile_coherence(phase_severity_engine):
 
 
 # ==================================================================================================
+# Regime × Phase × Factor triple-cohort count-coherence (J-112)
+# ==================================================================================================
+@pytest.fixture()
+def regime_phase_factor_engine(tmp_path, monkeypatch):
+    """Four runs with DISTINCT stored regime scores AND DISTINCT served severities (monkeypatched timeline),
+    each with 15 stocks of spread leadership scores — so all three decile dimensions have spread and many
+    `(regime, severity, factor)` triples are emitted. The SAME served-timeline isolation the phase-severity
+    fixture uses."""
+    engine = _engine(tmp_path, "regimephasefactor.db")
+    run_specs = [
+        (date(2025, 1, 10), 20.0, 85.0),
+        (date(2025, 2, 10), 45.0, 55.0),
+        (date(2025, 3, 10), 80.0, 10.0),
+        (date(2025, 4, 10), 60.0, 35.0),
+    ]
+    with Session(engine) as session:
+        for ri, (asof, regime_score, _sev) in enumerate(run_specs):
+            run = ScannerRun(
+                asof_date=asof, created_at=_utc(), provider="seed", benchmark="SPY",
+                regime_score=regime_score, regime_label="Risk-on", regime_components_json="[]",
+                new_high_low_json="{}", candidate_counts_json="{}",
+            )
+            session.add(run)
+            session.flush()
+            for i in range(1, 16):
+                ticker = f"R{ri}{i:02d}"
+                _add_result(session, run.id, ticker, rank=i, lead=float(i))
+                _add_fr(session, run.id, ticker, ret=(i + ri) / 1000)
+        session.commit()
+
+    ctx = {asof.isoformat(): {"phase": "Bear", "severity": sev, "p_bear": 0.0}
+           for asof, _score, sev in run_specs}
+
+    def _fake_phase_ctx(session, as_of=None, config=None):
+        if as_of is None:
+            return {d: dict(v) for d, v in ctx.items()}
+        return {d: dict(v) for d, v in ctx.items() if date.fromisoformat(d) <= as_of}
+
+    monkeypatch.setattr(market_phase, "phase_context_by_date", _fake_phase_ctx)
+    return engine
+
+
+def test_regime_phase_factor_triple_cohort_coherence(regime_phase_factor_engine):
+    """Each Regime × Phase × Factor `N=` chip — a `(regime_decile, severity_decile, factor_decile)` triple at H —
+    drills into a cohort whose samples `total` equals the published combination n (count-coherence keystone), in
+    the pinned-pooled view, AND the per-combination Ns re-sum to the whole bucketable pool (every classified
+    observation lands in exactly one triple)."""
+    from app.engine.research import compute_regime_phase_factor_study
+    from app.engine.samples import KIND_REGIME_PHASE_FACTOR
+
+    cfg = load_config()
+    factor = cfg.research.factor_lab.factors[0].key
+    with Session(regime_phase_factor_engine) as session:
+        payload = compute_regime_phase_factor_study(session, factor=factor, view="pooled", config=cfg)
+        total = 0
+        checked = 0
+        for row in payload["rows"]:
+            b = next(b for b in row["by_horizon"] if b["horizon"] == H)
+            s = compute_samples(
+                session, kind=KIND_REGIME_PHASE_FACTOR, horizon=H, config=cfg, factor_key=factor,
+                regime_decile=row["regime_decile"], severity_decile=row["severity_decile"],
+                factor_decile=row["factor_decile"], view="pooled",
+            )
+            assert s["total"] == b["n"], (
+                f"triple drift ({row['regime_decile']},{row['severity_decile']},{row['factor_decile']})"
+            )
+            assert len(s["rows"]) == b["n"]
+            total += b["n"]
+            checked += 1
+        assert checked > 0, "no combination emitted — the coherence proof is vacuous"
+        assert total == 60  # 4 runs × 15 stocks, every classified observation in exactly one triple at H
+
+
+# ==================================================================================================
 # Combination cohort count-coherence (baseline / single / composite / strict-overlap incl. n=0)
 # ==================================================================================================
 def test_combination_cohort_coherence_all_kinds(factor_engine):

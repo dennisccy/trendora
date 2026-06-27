@@ -793,6 +793,10 @@ research:
   # the research read path), NOT a displayed value. Boot-validated `>= 1`; the SINGLE source of this batch
   # size — there is NO inline batch literal in research.py / forward_testing.py (no-magic-numbers).
   read_batch_size: 2000
+  # iter-55 (J-112) — rows-per-page of the Regime × Phase × Factor ranked combination table. The
+  # pagination is a pure client-side view transform; this is the SINGLE source of the 30-rows/page
+  # constant (served in the lab payload so the frontend reads it — no `30` literal in research.py).
+  regime_phase_factor_page_size: 30
   factor_lab:
     deciles: 10
     factors:

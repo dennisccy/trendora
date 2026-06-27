@@ -3686,3 +3686,411 @@ def phase_severity_lab_cached(
     except Exception:  # best-effort cache; a concurrent writer raced us — the payload is byte-identical
         session.rollback()
     return payload
+
+
+# --------------------------------------------------------------------------------------------------
+# Regime × Market-Phase/Severity × Factor 3-way decile study (J-112) — the UNION of the Regime Lab (J-110)
+# and the Phase & Severity Lab (J-111) source paths, surfaced through the J-77/J-82 ranked-combination
+# pattern (a ranked, filterable, paginated combination table) instead of the sibling two-table layout. For a
+# SELECTED factor it groups the SAME cross-sectional per-observation forward returns the sibling labs build
+# (stock × snapshot) by the `(regime-score decile × severity-score decile × factor decile)` triple, reporting
+# per `config.walk_forward.horizons` horizon the combination's mean realized forward return + paired mean
+# max-drawdown + n. A read-only re-surfacing of ALREADY-STORED canonical values — it recomputes NOTHING:
+#   (a) the run's STORED `ScannerRun.regime_score` read VERBATIM (the J-80/J-110 path, via `_regime_meta_by_run`),
+#   (b) the snapshot date's SERVED 0–100 severity read VERBATIM from the `market_phase` causal timeline
+#       (`phase_context_by_date`, joined by snapshot date — the J-87/J-111 path, via `_phase_severity_meta_by_run`),
+#   (c) the SELECTED factor's STORED value read VERBATIM off the `ScannerResult` (the Factor-Lab source, via
+#       `_extract_factor_value`),
+# each bucketed into deciles via the EXISTING generic `_deciles`/`_decile_member_slice` edges and grouped by
+# the triple key. NOT a fitted/learned/ML model. It is DISTINCT from J-77 (regime × setup × pattern), J-103
+# (severity-velocity SIGN/slope vs SPY), J-110 (regime alone) and J-111 (phase/severity alone): the THREE-WAY
+# regime × severity × factor-decile interaction, on its OWN home (no duplicate home, no recomputed value). It
+# is the ONLY lab that reads BOTH the regime path AND the served-severity path in the same observation.
+# --------------------------------------------------------------------------------------------------
+def _regime_phase_factor_members_by_horizon(
+    session: Session, horizons: list[int], factor, as_of: Optional[date_cls] = None,
+    *, cfg: Optional[Config] = None,
+) -> dict[int, list[dict]]:
+    """The read-only SHARED per-observation pools for the Regime × Phase × Factor study across EVERY horizon
+    in `horizons` (J-112) for the SELECTED `factor` (a config-catalog factor object), built from a SINGLE
+    batched read (mirrors `_regime_lab_members_by_horizon` / `_phase_severity_lab_members_by_horizon`): ONE
+    `ForwardReturn` SELECT covering all horizons (`horizon IN horizons`, column-projected to run_id/symbol/
+    realized_return/max_drawdown), ONE projected per-run regime read, ONE read of the SERVED `market_phase`
+    causal timeline + a projected per-run snapshot-date join, and ONE `ScannerResult` stream. Returns
+    `{horizon: [observations]}` where each observation is `{run_id, ticker, return, max_drawdown,
+    regime_score, severity, factor_value}` — the realized forward return + the J-86 max_drawdown (read
+    VERBATIM) tagged with the run's STORED `regime_score` (J-80, VERBATIM), the snapshot date's SERVED 0–100
+    severity (J-87/J-111, VERBATIM from the timeline, joined BY SNAPSHOT DATE), and the SELECTED factor's
+    STORED value (the Factor-Lab `_extract_factor_value`, VERBATIM). It recomputes NO regime / severity /
+    factor / return / drawdown.
+
+    UNIQUE to J-112: it reads BOTH source paths in the SAME observation — the regime score off the immutable
+    `ScannerRun` AND the served severity off the `market_phase` timeline by snapshot date AND the factor off
+    the `ScannerResult`. A None tag on ANY dimension (a warm-up-head date with no served severity, a NULL
+    component factor) is kept honestly None and is EXCLUDED from the displayed buckets at the decile-assignment
+    stage (`_assign_triple_deciles`) — never fabricated.
+
+    BYTE-IDENTITY keystone: `{horizon: pools}[h]` is byte-identical (row-for-row, same `(run_id, id)` order)
+    to calling this builder with `horizons=[h]` — the property `compute_regime_phase_factor_study` (all-
+    horizons) and the `_regime_phase_factor_observation_set` samples drill-down (single-horizon) both rely on
+    for count-coherence. An observation is kept for horizon h ONLY when a realized return exists at h (the SAME
+    n=0 exclusion as the sibling labs); a ScannerResult whose run has FRs at some OTHER horizon but not at h
+    contributes nothing to `pools[h]`.
+
+    `as_of` (J-32) scopes ALL horizons' pools to snapshots with `ScannerRun.asof_date <= as_of` AND scopes the
+    served timeline to dates <= as_of (the SAME single membership filter on both sides — a consistent point-in-
+    time window); `as_of=None` adds NO clause -> byte-identical all-history.
+
+    iter-46/47/48 OOM lesson / J-105: the read is BOUNDED — the FR scan is column-projected + `yield_per`-
+    streamed; the ScannerResult side is streamed in `(run_id, id)` order (rides `ix_scanner_results_run_id`, so
+    no `USE TEMP B-TREE FOR ORDER BY` spills a temp file to a nearly-full disk; a bare `ORDER BY id` returned
+    `disk is full` on this host). Unlike the regime/phase labs (where the grouping subject is per-RUN), the
+    factor value is per-RESULT and a COMPONENT factor reads `res.record_json`, so the full ScannerResult ORM
+    row is streamed here exactly as the Factor Lab does — still bounded by `yield_per`, never an unbounded
+    `.all()`. ONE heavy read serves ALL horizons (not H reads)."""
+    from app.engine.market_phase import phase_context_by_date  # lazy import (avoids a market_phase<->research cycle)
+
+    cfg = cfg or get_config()
+    batch = cfg.research.read_batch_size
+    parsed = parse_factor_source(factor.source)
+    fr_stmt = select(
+        ForwardReturn.horizon, ForwardReturn.run_id, ForwardReturn.symbol,
+        ForwardReturn.realized_return, ForwardReturn.max_drawdown,
+    ).where(ForwardReturn.horizon.in_(horizons))
+    if as_of is not None:
+        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
+            ScannerRun.asof_date <= as_of
+        )
+    fr_by_h: dict[int, dict[tuple[int, str], tuple[float, Optional[float]]]] = {h: {} for h in horizons}
+    runs_with_fr_set: set[int] = set()
+    for h, run_id, symbol, realized_return, max_drawdown in session.exec(fr_stmt).yield_per(batch):
+        fr_by_h[h][(run_id, symbol)] = (realized_return, max_drawdown)
+        runs_with_fr_set.add(run_id)
+    runs_with_fr = sorted(runs_with_fr_set)
+    # (a) the per-run STORED regime score, read VERBATIM (J-80) — projected + streamed over the FR-bearing runs.
+    regime_by_run = _regime_meta_by_run(session, runs_with_fr_set, batch)
+    # (b) the SERVED phase label + 0–100 severity per snapshot date, read VERBATIM from the SAME single causal
+    # timeline the panel + J-97/J-102/J-103/J-111 read (<= the resolved as-of — never a second computation),
+    # joined to each run BY SNAPSHOT DATE in `_phase_severity_meta_by_run`.
+    phase_ctx = phase_context_by_date(session, as_of, cfg)
+    phase_by_run = _phase_severity_meta_by_run(session, runs_with_fr_set, batch, phase_ctx)
+    # the ScannerResult side: the FULL ORM row (a COMPONENT factor reads `res.record_json` — same as the
+    # Factor Lab), streamed in (run_id, id) order. Bounded by `yield_per`; never an unbounded `.all()`.
+    res_stmt = (
+        select(ScannerResult)
+        .where(ScannerResult.run_id.in_(runs_with_fr))
+        .order_by(ScannerResult.run_id, ScannerResult.id)
+    )
+    results = session.exec(res_stmt).yield_per(batch) if runs_with_fr else []
+
+    pools: dict[int, list[dict]] = {h: [] for h in horizons}
+    for res in results:
+        run_id = res.run_id
+        ticker = res.ticker
+        resolved = False  # the per-result tags are resolved lazily on the first horizon that has an FR
+        regime_score = severity = factor_value = None
+        for h in horizons:
+            fr = fr_by_h[h].get((run_id, ticker))
+            if fr is None:
+                continue  # no realized return at this horizon (n=0) — same exclusion as the sibling labs
+            if not resolved:
+                regime_score = regime_by_run.get(run_id, (None, None))[0]  # (regime_score, regime_label)
+                severity = phase_by_run.get(run_id, (None, None))[1]       # (phase, severity)
+                value = _extract_factor_value(res, parsed)
+                factor_value = float(value) if value is not None else None  # VERBATIM; None excluded later
+                resolved = True
+            realized, max_drawdown = fr
+            pools[h].append({
+                "run_id": run_id, "ticker": ticker, "return": realized, "max_drawdown": max_drawdown,
+                # the three grouping dimensions, each read VERBATIM from its single canonical source.
+                "regime_score": regime_score, "severity": severity, "factor_value": factor_value,
+            })
+    return pools
+
+
+def _assign_triple_deciles(members: list[dict], deciles_count: int) -> list[dict]:
+    """Tag each BUCKETABLE observation with its `(regime_decile, severity_decile, factor_decile)` — the SINGLE
+    decile assignment BOTH the study aggregate AND the samples drill-down read, so a combination's drill-down
+    `total` EQUALS its published `n` by construction (count-coherence keystone). An observation is bucketable
+    ONLY when ALL THREE dimensions are non-null (a warm-up-head NULL severity or a NULL component factor is
+    EXCLUDED — honest, never bucketed into a fabricated combination), mirroring the sibling labs' score-NULL
+    exclusion. Each dimension is bucketed INDEPENDENTLY: the bucketable set is ordered ascending by that
+    dimension's value with the deterministic `(value, ticker, run_id)` tie-break, then split via the EXACT
+    `_decile_member_slice` quantile edges the generic `_deciles` machinery uses — so a per-horizon decile
+    assignment here reproduces byte-identically in the samples builder over the SAME observation set. Returns
+    NEW observation dicts (the input pool is never mutated)."""
+    bucketable = [
+        {**m, "regime_decile": None, "severity_decile": None, "factor_decile": None}
+        for m in members
+        if m["regime_score"] is not None and m["severity"] is not None and m["factor_value"] is not None
+    ]
+    for value_key, decile_key in (
+        ("regime_score", "regime_decile"),
+        ("severity", "severity_decile"),
+        ("factor_value", "factor_decile"),
+    ):
+        ordered = sorted(bucketable, key=lambda o: (o[value_key], o["ticker"], o["run_id"]))
+        for d in range(1, deciles_count + 1):
+            for m in _decile_member_slice(ordered, deciles_count, d):
+                m[decile_key] = d
+    return bucketable
+
+
+def _regime_phase_factor_observation_set(
+    session: Session, horizon: int, view: str, factor, as_of: Optional[date_cls] = None,
+    *, cfg: Optional[Config] = None,
+) -> list[dict]:
+    """The Regime × Phase × Factor observation set for ONE (horizon, view) for the SELECTED `factor` — the
+    SINGLE membership builder the samples drill-down reads, so a cohort's drill-down `total` EQUALS its
+    published `n` by construction (J-51 count-coherence keystone). `view="pooled"` returns the per-signal-day
+    pool UNCHANGED; `view="episodes"` returns its first-trigger episode collapse (`_collapse_to_episodes`, the
+    SAME overlap-honesty collapse the event study uses, J-63). Built via the SAME
+    `_regime_phase_factor_members_by_horizon` builder `compute_regime_phase_factor_study` reads (single-horizon
+    call — byte-identical to that horizon's slice of the all-horizons build), so the samples set is byte-
+    identical to the published one. Recomputes nothing. `as_of` scopes both the members and the run-ordinal
+    index to the same point-in-time window. The triple-decile tags are NOT assigned here (the caller applies
+    `_assign_triple_deciles` to the SAME shape — one decile-assignment rule)."""
+    members = _regime_phase_factor_members_by_horizon(session, [horizon], factor, as_of, cfg=cfg)[horizon]
+    if view == VIEW_POOLED:
+        return members  # the unchanged per-signal-day pool — byte-identical to the published pooled set
+    run_position = _run_position_index(session, as_of)
+    return _collapse_to_episodes(members, run_position)  # first-trigger episode collapse (J-63)
+
+
+def _rpf_resolve_factor(cfg: Config, factor_key: str):
+    """Resolve a factor KEY to its config-catalog factor object (the vocabulary is the EXISTING Factor-Lab
+    catalog — no hardcoded list). Raises `ValueError` for an unknown key (the API pre-validates -> 422)."""
+    factor = next((f for f in cfg.research.factor_lab.factors if f.key == factor_key), None)
+    if factor is None:
+        raise ValueError(
+            f"unknown factor {factor_key!r}; valid factors are {[f.key for f in cfg.research.factor_lab.factors]}"
+        )
+    return factor
+
+
+def _rpf_rank_key(row: dict, default_horizon: int) -> tuple:
+    """The default ranking key for the J-112 table: descending by the SELECTED factor's combination mean
+    realized forward return at `default_horizon`, NA last. Returns a tuple usable with `reverse=True` — a None
+    metric sorts LAST under reverse via the `(is_not_none, value)` pairing (the J-21 boolean-sentinel idiom; no
+    float literal — the fallback is structural to the sort, never a tunable scoring value). A deterministic
+    `(regime, severity, factor)` decile tie-break is applied as a stable inner sort by the caller, so the order
+    is total + reproducible."""
+    cell = next((b for b in row["by_horizon"] if b["horizon"] == default_horizon), None)
+    val = cell["mean_return"] if cell is not None else None
+    present = val is not None
+    return ((present, val if present else present),)
+
+
+def compute_regime_phase_factor_study(
+    session: Session, *, factor: str, view: str = VIEW_EPISODES, as_of: Optional[date_cls] = None,
+    config: Optional[Config] = None,
+) -> dict:
+    """The SINGLE canonical Regime × Phase × Factor 3-way decile study (Data Contract value, J-112) for the
+    SELECTED `factor` under the chosen overlap-honesty `view`. READS the stored cross-sectional forward returns
+    (`realized_return` + the J-86 `max_drawdown`, VERBATIM) tagged with each run's STORED `regime_score` (J-80,
+    VERBATIM), the snapshot date's SERVED 0–100 severity (J-87/J-111, VERBATIM from `phase_context_by_date`,
+    joined by snapshot date) and the SELECTED factor's STORED value (the Factor-Lab source, VERBATIM) — it
+    recomputes NO regime, NO severity, NO factor, NO return, NO drawdown. Buckets each dimension into D1…D
+    `research.factor_lab.deciles` via the EXISTING `_deciles`/`_decile_member_slice` edges (one quantile-edge
+    definition the samples drill-down reproduces) and groups by the `(regime-decile, severity-decile,
+    factor-decile)` triple. For each combination that the observation set EMITS it reports, per
+    `config.walk_forward.horizons` horizon: mean realized forward return, paired mean max-drawdown, `n`, and a
+    `low_sample` flag (`n < walk_forward.min_sample` — the UI shows NA + n, never a fabricated number).
+
+    The view shows ALL horizons at once (paired columns), so it takes NO `horizon` argument. Rows are ranked
+    by the combination's `default_horizon` mean return (NA last) with a deterministic decile-triple tie-break;
+    the columns are client-side sortable/filterable/paginated on the frontend (a pure view transform). `as_of`
+    (J-32) scopes the observation set to snapshots dated <= D (a pure FILTER — recomputes nothing); `as_of=None`
+    is the all-history aggregate. The payload echoes the resolved cutoff as `asof_date` (ISO) when scoped, else
+    `null`, plus the config-driven `page_size` (the 30-rows/page constant — config-sourced, never an inline
+    literal). Raises `ValueError` for an unknown view or factor (the API pre-validates -> 422)."""
+    cfg = config or get_config()
+    wf = cfg.walk_forward
+    fl = cfg.research.factor_lab
+    horizons = list(wf.horizons)
+
+    if view not in ALL_VIEWS:
+        raise ValueError(f"unknown view {view!r}; valid views are {list(ALL_VIEWS)}")
+    factor_obj = _rpf_resolve_factor(cfg, factor)
+
+    deciles_count = fl.deciles
+    min_sample = wf.min_sample
+
+    # ONE heavy read builds the per-observation pools for ALL horizons (the bounded, byte-identity-preserving
+    # keystone); the episode collapse (when the view is episodes) is a pure in-memory grouping of those SAME
+    # stored rows, computed ONCE per horizon. Each horizon is bucketed INDEPENDENTLY into the triple deciles
+    # (mirroring the sibling labs' per-horizon `_deciles` split), then grouped by the triple key.
+    pools = _regime_phase_factor_members_by_horizon(session, horizons, factor_obj, as_of, cfg=cfg)
+    run_position = _run_position_index(session, as_of) if view == VIEW_EPISODES else None
+
+    # combo -> {horizon: {"returns": [...], "mdds": [...]}} for every combination the observation set emits.
+    combos: dict[tuple[int, int, int], dict[int, dict[str, list]]] = {}
+    for h in horizons:
+        members = pools[h] if view == VIEW_POOLED else _collapse_to_episodes(pools[h], run_position)
+        bucketable = _assign_triple_deciles(members, deciles_count)
+        grouped: dict[tuple[int, int, int], dict[str, list]] = defaultdict(
+            lambda: {"returns": [], "mdds": []}
+        )
+        for m in bucketable:
+            key = (m["regime_decile"], m["severity_decile"], m["factor_decile"])
+            grouped[key]["returns"].append(m["return"])
+            if m["max_drawdown"] is not None:
+                grouped[key]["mdds"].append(m["max_drawdown"])
+        for key, bucket in grouped.items():
+            combos.setdefault(key, {})[h] = bucket
+
+    rows: list[dict] = []
+    for (regime_decile, severity_decile, factor_decile), by_h in combos.items():
+        by_horizon: list[dict] = []
+        for h in horizons:
+            bucket = by_h.get(h)
+            if bucket is None:
+                # the combination has no members at this horizon (the per-horizon decile partition differs) —
+                # an honest NA + n=0 cell, never a fabricated figure.
+                by_horizon.append({
+                    "horizon": h, "n": 0, "low_sample": True,
+                    "mean_return": None, "mean_max_drawdown": None,
+                })
+                continue
+            returns = bucket["returns"]
+            n = len(returns)
+            by_horizon.append({
+                "horizon": h,
+                "n": n,
+                "low_sample": n < min_sample,
+                "mean_return": mean(returns) if returns else None,
+                "mean_max_drawdown": _mean_or_none(bucket["mdds"]),
+            })
+        rows.append({
+            "regime_decile": regime_decile,
+            "severity_decile": severity_decile,
+            "factor_decile": factor_decile,
+            "by_horizon": by_horizon,
+        })
+
+    # default ranking: a stable deterministic decile-triple inner sort first, then descending by the
+    # default-horizon mean return (NA last) — a total + reproducible order (the frontend re-sorts client-side).
+    rows.sort(key=lambda r: (r["regime_decile"], r["severity_decile"], r["factor_decile"]))
+    rows.sort(key=lambda r: _rpf_rank_key(r, wf.default_horizon), reverse=True)
+
+    return {
+        "view": view,  # J-63: the resolved overlap-honesty view (episodes default | pooled)
+        # the resolved as-of scoping cutoff echoed (J-32) — ISO date when scoped, null in all-history mode.
+        "asof_date": as_of.isoformat() if as_of is not None else None,
+        "factor": {
+            "key": factor_obj.key, "label": factor_obj.label, "family": factor_obj.family,
+            "direction": factor_obj.direction, "source": factor_obj.source,
+        },
+        "factors": factor_catalog(cfg),  # the config-driven factor selector vocabulary (no hardcoded list)
+        "horizons": horizons,
+        "default_horizon": wf.default_horizon,  # the horizon the default ranking is on
+        "deciles_count": deciles_count,
+        "min_sample": min_sample,
+        # the config-driven rows-per-page (30 per goal.md) — served so the frontend reads it from config; the
+        # pagination is a pure client-side view transform (no inline literal in this CALC_FILE).
+        "page_size": cfg.research.regime_phase_factor_page_size,
+        "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
+        "descriptive_caveat": RESEARCH_CAVEAT,
+        "rows": rows,
+    }
+
+
+# The all-horizons Regime × Phase × Factor study is served through the SHARED `EventStudyCache` under a fixed
+# sentinel subject with the SELECTED factor folded in (`__regime_phase_factor__:<factor>`, mirroring the
+# `_factor_combination__` per-identity subject) — so two factors never share a cache row (no cross-factor
+# bleed) and the per-factor study never collides with a real event-study subject or the other sentinels. It
+# is ONE all-horizons view per (factor, view, as-of), so the cache `horizon` slot is pinned to
+# `default_horizon`. The served shape is NEW (the 3-way combination table), so a schema token is folded into
+# the dataset-version slot — any old-schema cached row is a guaranteed MISS AND is pruned on the next write
+# (iter-38/39/44 stale-cache discipline). TWIST shared with J-111: because the severity values are read from
+# the `market_phase` series (cached behind its OWN `SCHEMA_VERSION` + dataset stamp), the market-phase stamp is
+# ALSO folded into the lab cache version, so a phase/severity refresh invalidates the lab (no stale severity
+# tags). No new `table=True` model (the `test_db.py` guard stays unchanged).
+_REGIME_PHASE_FACTOR_SUBJECT = "__regime_phase_factor__"
+_REGIME_PHASE_FACTOR_SCHEMA_TOKEN = "regimephasefactor-v1"
+
+
+def _regime_phase_factor_cache_subject(factor_key: str) -> str:
+    """The cache `subject` slot for the J-112 study: the fixed sentinel + the SELECTED factor key, so distinct
+    factors key to distinct rows (no cross-factor cache bleed)."""
+    return f"{_REGIME_PHASE_FACTOR_SUBJECT}:{factor_key}"
+
+
+def _regime_phase_factor_cache_version(session: Session) -> str:
+    """The composite cache-key version for the Regime × Phase × Factor study: the J-72 dataset stamp + the
+    study's payload-SCHEMA token + the SERVED `market_phase` dataset/`SCHEMA_VERSION` stamp (single-sourced
+    from `market_phase._cache_version`, the SAME stamp the phase/severity series caches under). Folding the
+    market-phase stamp is the single-source subtlety shared with J-111: because the severity dimension is read
+    from the served `market_phase` timeline, a phase/severity refresh (a `SCHEMA_VERSION` bump OR a market-
+    phase dataset change) MUST invalidate this study so no stale severity tag is ever served."""
+    from app.engine import market_phase  # lazy import (avoids a market_phase<->research cycle)
+
+    return (
+        f"{_dataset_version(session)}-{_REGIME_PHASE_FACTOR_SCHEMA_TOKEN}"
+        f"-mp:{market_phase._cache_version(session)}"
+    )
+
+
+def regime_phase_factor_cached(
+    session: Session, config: Optional[Config] = None, *,
+    factor: str, view: str = VIEW_EPISODES, as_of: Optional[date_cls] = None,
+) -> dict:
+    """Serve the all-horizons Regime × Phase × Factor study (J-112) from the J-72 cache (mirrors
+    `phase_severity_lab_cached`), reusing the SHARED `EventStudyCache` table under the per-factor
+    `_regime_phase_factor_cache_subject` + the actual `view` (so factors / episodes / pooled never collide),
+    no new table. The view is horizon-independent (it shows every config horizon at once), so the cache
+    `horizon` slot is pinned to `default_horizon` and the dataset-version slot is
+    `_regime_phase_factor_cache_version` (the dataset stamp + the study schema token + the market-phase stamp —
+    so any old-schema OR stale-severity row is a guaranteed MISS and is pruned on write). On a HIT for the
+    current `(subject, view, asof_key, dataset_version, default_horizon)` key, return the stored payload (NO
+    recompute); on a MISS, compute it ONCE via `compute_regime_phase_factor_study` (which validates the view +
+    factor, raising before any write), persist under the current stamp, prune any stale rows for this identity,
+    and return it. BYTE-IDENTICAL to a fresh compute; the cache REFRESHES after any dataset change OR a
+    phase/severity schema/dataset change via the composite key. `as_of` is folded into the `asof_key` slot (a
+    pure observation-set FILTER)."""
+    cfg = config or get_config()
+    # validate the factor up front (so an unknown factor raises before any cache read/write) and key the cache
+    # on the RESOLVED catalog key (never a malformed input string).
+    factor_obj = _rpf_resolve_factor(cfg, factor)
+    subject = _regime_phase_factor_cache_subject(factor_obj.key)
+    version = _regime_phase_factor_cache_version(session)
+    asof_key = _cache_asof_key(as_of)
+    horizon = cfg.walk_forward.default_horizon  # the horizon-independent view pins the cache horizon slot
+
+    hit = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == subject,
+            EventStudyCache.view == view,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.dataset_version == version,
+            EventStudyCache.horizon == horizon,
+        )
+    ).first()
+    if hit is not None:
+        return json.loads(hit.payload_json)
+
+    # MISS — compute once (this also validates the view, raising before any write) and persist.
+    payload = compute_regime_phase_factor_study(session, factor=factor_obj.key, view=view, as_of=as_of, config=cfg)
+
+    stale = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == subject,
+            EventStudyCache.view == view,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.horizon == horizon,
+            EventStudyCache.dataset_version != version,
+        )
+    ).all()
+    for row in stale:
+        session.delete(row)
+
+    session.add(EventStudyCache(
+        subject=subject, view=view, asof_key=asof_key, dataset_version=version,
+        horizon=horizon, payload_json=json.dumps(payload),
+        created_at=datetime.now(timezone.utc),
+    ))
+    try:
+        session.commit()
+    except Exception:  # best-effort cache; a concurrent writer raced us — the payload is byte-identical
+        session.rollback()
+    return payload

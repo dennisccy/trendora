@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   ArrowRight,
+  Boxes,
   Gauge,
   GitCompareArrows,
   Layers,
@@ -92,6 +93,13 @@ const LABS: LabLink[] = [
     description:
       "How have stocks' forward returns and downside risk differed across the market phase and stress severity? Paired return + max-drawdown by market-phase label and by severity-score decile, all horizons.",
     icon: Thermometer,
+  },
+  {
+    href: "/research/regime-phase-factor",
+    title: "Regime × Phase × Factor",
+    description:
+      "For a chosen factor, how do forward returns and downside risk differ across the three-way regime-score × severity-score × factor decile interaction? A ranked, filterable, paginated combination table, all horizons.",
+    icon: Boxes,
   },
 ];
 

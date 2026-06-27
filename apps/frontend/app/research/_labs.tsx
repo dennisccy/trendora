@@ -35,6 +35,7 @@ import {
   fetchPhaseSeverityLab,
   fetchRecoveryTurnEdge,
   fetchRegimeLab,
+  fetchRegimePhaseFactor,
   fetchRegimeSetupPattern,
   type CohortStats,
   type DowntrendOpportunityResponse,
@@ -60,6 +61,8 @@ import {
   type RegimeLabHorizonCell,
   type RegimeLabLabelRow,
   type RegimeLabResponse,
+  type RegimePhaseFactorResponse,
+  type RegimePhaseFactorRow,
   type RegimeSetupPatternResponse,
   type RegimeSetupPatternRow,
 } from "@/lib/api";
@@ -4207,6 +4210,493 @@ export function PhaseSeverityLabPage() {
             </>
           ) : null}
         </>
+      )}
+    </div>
+  );
+}
+
+// --- Regime × Phase × Factor 3-way decile study (iter-55, J-112) ---------------------------------
+/** The page's working overlap-honesty view. Like the Regime / Phase-Severity Lab, this studies the WHOLE
+ *  cross-section (every stock × snapshot), so the first-trigger episode collapse would degenerate to each
+ *  name's first appearance — `pooled` (every per-signal-day observation) is the meaningful view. PINNED to
+ *  `pooled` on BOTH the lab fetch AND every `N=` chip (no Episodes/Pooled toggle is exposed); it is a
+ *  cohort/MODE carried verbatim into the drill-down so the counts stay coherent, NOT a date (`?asof` remains
+ *  the single global date, J-18). */
+const REGIME_PHASE_FACTOR_VIEW: "episodes" | "pooled" = "pooled";
+
+/** The "All" sentinel for the three decile filter dropdowns — a structural value (never a real decile), so it
+ *  can never collide with a 1..deciles entry. The config page size rides the served payload (no UI literal). */
+const RPF_FILTER_ALL = "__all__";
+
+/** The client-side sortable column keys for the J-112 ranked combination table (J-48 view-transform — re-orders
+ *  the already-served rows only; never refetches or recomputes a stored value): the three static decile
+ *  coordinates, or a per-horizon `fwd:${h}` / `mdd:${h}` numeric column (NA-last). The empty key keeps the
+ *  server's default rank (by the default-horizon return). */
+type RpfSortKey =
+  | ""
+  | "regime_decile"
+  | "severity_decile"
+  | "factor_decile"
+  | `fwd:${number}`
+  | `mdd:${number}`;
+
+/** Toggle a sort key: same key flips direction; a new key leads ascending for the static decile columns and
+ *  descending (strongest first) for the numeric per-horizon columns. */
+function useRpfSort(initial: RpfSortKey) {
+  const [sortKey, setSortKey] = useState<RpfSortKey>(initial);
+  const [sortDir, setSortDir] = useState<RegimeSortDir>("desc");
+  const onSort = (key: RpfSortKey) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(
+        key === "regime_decile" || key === "severity_decile" || key === "factor_decile" ? "asc" : "desc",
+      );
+    }
+  };
+  return { sortKey, sortDir, onSort };
+}
+
+/** Stable, NA-last comparator over the combination rows. The three static decile columns sort numerically; the
+ *  per-horizon `fwd:`/`mdd:` columns reuse the SHARED Regime-Lab cell helpers (`regimeCellAt` / `regimeCellIsNa`
+ *  / `regimeCellValue`) so a DISPLAYED-NA cell sinks LAST in BOTH directions (the J-82 predicate — identical to
+ *  the cell display). The empty key keeps the server's default rank (a pure view transform — recomputes
+ *  nothing). */
+function sortRpfRows(
+  rows: RegimePhaseFactorRow[],
+  sortKey: RpfSortKey,
+  sortDir: RegimeSortDir,
+): RegimePhaseFactorRow[] {
+  if (sortKey === "") return rows;
+  const sign = sortDir === "asc" ? 1 : -1;
+  const hk = parseRegimeHorizonKey(sortKey as RegimeSortKey);
+  return rows
+    .map((row, i) => ({ row, i }))
+    .sort((a, b) => {
+      if (hk) {
+        const ca = regimeCellAt(a.row.by_horizon, hk.horizon);
+        const cb = regimeCellAt(b.row.by_horizon, hk.horizon);
+        const ana = regimeCellIsNa(ca, hk.metric);
+        const bna = regimeCellIsNa(cb, hk.metric);
+        if (ana && bna) return a.i - b.i;
+        if (ana) return 1; // NA last regardless of direction
+        if (bna) return -1;
+        const c = (regimeCellValue(ca, hk.metric) - regimeCellValue(cb, hk.metric)) * sign;
+        return c !== 0 ? c : a.i - b.i;
+      }
+      const av = a.row[sortKey as "regime_decile" | "severity_decile" | "factor_decile"];
+      const bv = b.row[sortKey as "regime_decile" | "severity_decile" | "factor_decile"];
+      const c = (av - bv) * sign;
+      return c !== 0 ? c : a.i - b.i;
+    })
+    .map((x) => x.row);
+}
+
+/** A sortable column header for the J-112 table (mirrors `RegimeSortHeader`). Resolved in tests by its
+ *  `aria-label`; the visible label lives in a nested span. */
+function RpfSortHeader({
+  col,
+  label,
+  activeKey,
+  dir,
+  onSort,
+  numeric,
+}: {
+  col: RpfSortKey;
+  label: string;
+  activeKey: RpfSortKey;
+  dir: RegimeSortDir;
+  onSort: (key: RpfSortKey) => void;
+  numeric?: boolean;
+}) {
+  const active = activeKey === col;
+  const ariaSort: "ascending" | "descending" | "none" = active
+    ? dir === "asc"
+      ? "ascending"
+      : "descending"
+    : "none";
+  return (
+    <th className={cn("px-3 py-2 font-medium", numeric && "text-right")} aria-sort={ariaSort}>
+      <button
+        type="button"
+        onClick={() => onSort(col)}
+        aria-label={`Sort by ${label}${active ? (dir === "asc" ? ", ascending" : ", descending") : ""}`}
+        className={cn(
+          "group inline-flex items-center gap-1 rounded-sm uppercase tracking-wide transition-colors hover:text-text focus-visible:text-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+          numeric && "justify-end",
+        )}
+      >
+        <span className={cn(active && "text-text")}>{label}</span>
+        {active ? (
+          dir === "asc" ? (
+            <ArrowUp className="h-3 w-3 text-accent" aria-hidden data-testid="sort-indicator" />
+          ) : (
+            <ArrowDown className="h-3 w-3 text-accent" aria-hidden data-testid="sort-indicator" />
+          )
+        ) : (
+          <ArrowUpDown
+            className="h-3 w-3 text-text-faint/40 opacity-0 transition-opacity group-hover:opacity-100"
+            aria-hidden
+          />
+        )}
+      </button>
+    </th>
+  );
+}
+
+/** A "DECILE / All" filter dropdown (one of the three coordinate filters). The vocabulary is 1..`decilesCount`
+ *  from the served payload — no hard-coded list; default "All" passes every row. Pure view transform. */
+function RpfDecileFilter({
+  label,
+  ariaLabel,
+  testId,
+  value,
+  decilesCount,
+  onChange,
+}: {
+  label: string;
+  ariaLabel: string;
+  testId: string;
+  value: string;
+  decilesCount: number;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs uppercase tracking-wide text-text-faint">{label}</span>
+      <Select
+        data-testid={testId}
+        aria-label={ariaLabel}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-40"
+      >
+        <option value={RPF_FILTER_ALL}>All</option>
+        {Array.from({ length: decilesCount }, (_, i) => i + 1).map((d) => (
+          <option key={d} value={String(d)}>
+            D{d}
+          </option>
+        ))}
+      </Select>
+    </label>
+  );
+}
+
+/** The ranked combination table (J-112): one row per `(regime-score decile, severity-score decile, factor
+ *  decile)` triple, then per config horizon a paired (mean forward-return, mean max-drawdown) column + the
+ *  count-coherent `N=` chip on the return cell. Horizontally scrollable (wide table). Reuses the shared
+ *  Regime-Lab cell + NA-last sort machinery (identical cell shape). The rows are already filtered / sorted /
+ *  paginated by the page (pure view transforms — recomputes nothing). */
+function RegimePhaseFactorTable({
+  data,
+  rows,
+  scope,
+  sortKey,
+  sortDir,
+  onSort,
+}: {
+  data: RegimePhaseFactorResponse;
+  rows: RegimePhaseFactorRow[];
+  scope: SampleScope;
+  sortKey: RpfSortKey;
+  sortDir: RegimeSortDir;
+  onSort: (key: RpfSortKey) => void;
+}) {
+  const horizons = data.horizons;
+  const factorKey = data.factor.key;
+  return (
+    <div className="overflow-x-auto">
+      <table data-testid="regime-phase-factor-table" className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+            <RpfSortHeader col="regime_decile" label="Regime D" activeKey={sortKey} dir={sortDir} onSort={onSort} />
+            <RpfSortHeader col="severity_decile" label="Severity D" activeKey={sortKey} dir={sortDir} onSort={onSort} />
+            <RpfSortHeader col="factor_decile" label="Factor D" activeKey={sortKey} dir={sortDir} onSort={onSort} />
+            {horizons.map((h) => (
+              <Fragment key={`rpfh-${h}`}>
+                <RpfSortHeader col={`fwd:${h}`} label={`Fwd ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
+                <RpfSortHeader col={`mdd:${h}`} label={`MDD ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
+              </Fragment>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr
+              key={`${row.regime_decile}-${row.severity_decile}-${row.factor_decile}`}
+              className="border-b border-border last:border-b-0"
+              data-testid={`rpf-row-${row.regime_decile}-${row.severity_decile}-${row.factor_decile}`}
+            >
+              <td className="px-3 py-2"><span className="num font-semibold text-text">D{row.regime_decile}</span></td>
+              <td className="px-3 py-2"><span className="num font-semibold text-text">D{row.severity_decile}</span></td>
+              <td className="px-3 py-2"><span className="num font-semibold text-text">D{row.factor_decile}</span></td>
+              {horizons.map((h) => {
+                const cell = regimeCellAt(row.by_horizon, h);
+                return (
+                  <Fragment key={`rpfc-${row.regime_decile}-${row.severity_decile}-${row.factor_decile}-${h}`}>
+                    <td className="px-3 py-2 text-right">
+                      {cell ? (
+                        <RegimeReturnCell
+                          cell={cell}
+                          min={data.min_sample}
+                          scope={scope}
+                          cohort={{
+                            kind: "regime-phase-factor",
+                            horizon: h,
+                            factor: factorKey,
+                            regimeDecile: row.regime_decile,
+                            severityDecile: row.severity_decile,
+                            factorDecile: row.factor_decile,
+                            view: REGIME_PHASE_FACTOR_VIEW,
+                          }}
+                          chipLabel={`Open the regime D${row.regime_decile} × severity D${row.severity_decile} × factor D${row.factor_decile} cohort (n=${cell.n}) at the ${h}-day horizon in Research Samples (new tab)`}
+                        />
+                      ) : (
+                        <span className="text-text-faint">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {cell ? <RegimeMddCell cell={cell} min={data.min_sample} /> : <span className="text-text-faint">—</span>}
+                    </td>
+                  </Fragment>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+type RegimePhaseFactorState =
+  | { kind: "loading" }
+  | { kind: "ok"; data: RegimePhaseFactorResponse }
+  | { kind: "error" };
+
+/** iter-55 (J-112) — the Regime × Phase × Factor 3-way decile study on its OWN route
+ *  (`/research/regime-phase-factor`). For a SELECTED factor, a ranked, filterable, client-side-sortable,
+ *  paginated table of `(regime-score decile × severity-score decile × factor decile)` combinations — each row
+ *  carrying, per EVERY config horizon at once (paired columns), the combination's mean realized forward return
+ *  + paired mean max-drawdown + n. The three grouping dimensions are read VERBATIM from their single canonical
+ *  sources (stored regime score / served severity / stored factor value); the page re-formats + client-side
+ *  sorts (NA-last) / filters / paginates only — it recomputes nothing. The factor selector drives the `factor`
+ *  param; the three decile filters + the sort + the pagination are pure view transforms. The As-of mode toggle
+ *  FILTERS the observation set (the single global as-of — no second date state, J-18). The view is PINNED to
+ *  pooled (no Episodes/Pooled toggle — the whole-cross-section episode collapse degenerates). */
+export function RegimePhaseFactorPage() {
+  const { mode, setMode, readiness, asofCutoff, scope } = useResearchControls();
+  const [factor, setFactor] = useState<string | undefined>(undefined);
+  const [state, setState] = useState<RegimePhaseFactorState>({ kind: "loading" });
+  // three "All"-default decile filter dropdowns (regime / severity / factor) — pure view transforms.
+  const [regimeFilter, setRegimeFilter] = useState<string>(RPF_FILTER_ALL);
+  const [severityFilter, setSeverityFilter] = useState<string>(RPF_FILTER_ALL);
+  const [factorFilter, setFactorFilter] = useState<string>(RPF_FILTER_ALL);
+  const { sortKey, sortDir, onSort } = useRpfSort("");
+  const [pageIndex, setPageIndex] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ kind: "loading" });
+    fetchRegimePhaseFactor(factor, REGIME_PHASE_FACTOR_VIEW, asofCutoff ?? undefined, controller.signal)
+      .then((data) => setState({ kind: "ok", data }))
+      .catch(() => {
+        if (!controller.signal.aborted) setState({ kind: "error" });
+      });
+    return () => controller.abort();
+  }, [factor, asofCutoff, readiness]);
+
+  const data = state.kind === "ok" ? state.data : null;
+
+  // a pure client-side filter (the three "All"-default decile dropdowns) → sort (NA-last) → page slice. None
+  // refetch or recompute a stored value (J-48/J-56 view-transform contract).
+  const filteredRows = useMemo(() => {
+    if (!data) return [];
+    return data.rows.filter(
+      (r) =>
+        (regimeFilter === RPF_FILTER_ALL || r.regime_decile === Number(regimeFilter)) &&
+        (severityFilter === RPF_FILTER_ALL || r.severity_decile === Number(severityFilter)) &&
+        (factorFilter === RPF_FILTER_ALL || r.factor_decile === Number(factorFilter)),
+    );
+  }, [data, regimeFilter, severityFilter, factorFilter]);
+
+  const sortedRows = useMemo(
+    () => sortRpfRows(filteredRows, sortKey, sortDir),
+    [filteredRows, sortKey, sortDir],
+  );
+
+  const pageSize = data?.page_size ?? sortedRows.length;
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / Math.max(1, pageSize)));
+  // any change to the result set / ordering / filter / factor / scope returns to the first page.
+  useEffect(() => {
+    setPageIndex(0);
+  }, [data, regimeFilter, severityFilter, factorFilter, sortKey, sortDir]);
+  const safePage = Math.min(pageIndex, pageCount - 1);
+  const pageStart = safePage * pageSize;
+  const pageRows = sortedRows.slice(pageStart, pageStart + pageSize);
+
+  const selectedFactor = factor ?? data?.factor.key;
+
+  return (
+    <div className="space-y-4" data-testid="regime-phase-factor-page">
+      <ResearchControls
+        title="Research — Regime × Phase × Factor"
+        subtitle="For a chosen factor, how have realized forward returns and downside risk differed across the THREE-WAY interaction of market-regime-score decile × severity-score decile × factor decile? A ranked, filterable, paginated combination table over the stored forward-tested evidence — each N= drilling into the exact reproducing cohort. Derived once from stored values; descriptive survivorship-biased association, never a forecast."
+        mode={mode}
+        onModeChange={setMode}
+        asofCutoff={asofCutoff}
+      />
+      <ResearchCaveat survivorship={data?.survivorship_bias} descriptive={data?.descriptive_caveat} />
+      {shouldShowWarming(readiness) ? (
+        <WarmingState what="The Regime × Phase × Factor lab" />
+      ) : (
+        <Card className="p-0" data-testid="regime-phase-factor-section">
+          <PanelTitle
+            hint={`Pick a factor, then read how forward returns + downside risk differ across the (regime-score decile × severity-score decile × factor decile) interaction, at every horizon at once. Combinations with n < ${data?.min_sample ?? "min"} show NA + n, never a fabricated number. Columns are client-side sortable (NA-last); the three decile filters narrow the rows; the table paginates ${data?.page_size ?? 30} rows per page. Each N= chip opens the exact observations in a new tab.`}
+          >
+            Regime × Phase × Factor — ranked combinations
+          </PanelTitle>
+          <div className="space-y-4 p-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs uppercase tracking-wide text-text-faint">Factor</span>
+                <Select
+                  data-testid="rpf-factor-select"
+                  aria-label="Select factor"
+                  value={selectedFactor ?? ""}
+                  onChange={(e) => setFactor(e.target.value)}
+                  className="w-64"
+                  disabled={!data}
+                >
+                  {data
+                    ? data.factors.map((f) => (
+                        <option key={f.key} value={f.key}>
+                          {f.label}
+                        </option>
+                      ))
+                    : null}
+                </Select>
+              </label>
+              {data ? (
+                <>
+                  <RpfDecileFilter
+                    label="Regime decile"
+                    ariaLabel="Filter by regime decile"
+                    testId="rpf-regime-filter"
+                    value={regimeFilter}
+                    decilesCount={data.deciles_count}
+                    onChange={setRegimeFilter}
+                  />
+                  <RpfDecileFilter
+                    label="Severity decile"
+                    ariaLabel="Filter by severity decile"
+                    testId="rpf-severity-filter"
+                    value={severityFilter}
+                    decilesCount={data.deciles_count}
+                    onChange={setSeverityFilter}
+                  />
+                  <RpfDecileFilter
+                    label="Factor decile"
+                    ariaLabel="Filter by factor decile"
+                    testId="rpf-factor-filter"
+                    value={factorFilter}
+                    decilesCount={data.deciles_count}
+                    onChange={setFactorFilter}
+                  />
+                </>
+              ) : null}
+              <p className="max-w-md text-xs text-text-faint">
+                D1 = lowest decile → D{data?.deciles_count ?? 10} = highest, computed per horizon. Counts are
+                pooled (every per-signal-day observation); the single global as-of toggle above scopes any
+                point-in-time view (J-18). Fwd = mean realized forward return; MDD = paired mean max-drawdown.
+              </p>
+            </div>
+
+            {data ? (
+              <CaveatBanner survivorship={data.survivorship_bias} descriptive={data.descriptive_caveat} />
+            ) : null}
+
+            {state.kind === "error" ? (
+              <div className="flex items-center gap-3 rounded-md border border-neg bg-surface p-4 text-sm text-neg">
+                <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
+                <div>
+                  <p className="font-medium">Backend unavailable</p>
+                  <p className="text-text-muted">
+                    The Regime × Phase × Factor study could not load from the API. No figures are shown rather
+                    than fabricated values — confirm the backend is running and retry.
+                  </p>
+                </div>
+              </div>
+            ) : !data ? (
+              <CombinationSkeleton />
+            ) : data.rows.length === 0 ? (
+              <EmptyState
+                icon={Microscope}
+                title="No forward-tested combinations for this factor"
+                description="No stored snapshot has an observation with all three dimensions (regime score, served severity, and the selected factor) and a realized forward return. No combination is fabricated to fill the gap."
+              />
+            ) : sortedRows.length === 0 ? (
+              <EmptyState
+                icon={Microscope}
+                title="No combinations match these filters"
+                description="No (regime, severity, factor) decile combination matches the current filter selection. Reset a filter to “All” to widen the view — nothing is fabricated to fill the gap."
+              />
+            ) : (
+              <>
+                <RegimePhaseFactorTable
+                  data={data}
+                  rows={pageRows}
+                  scope={scope}
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  onSort={onSort}
+                />
+                <div className="flex flex-wrap items-center justify-between gap-3 text-sm" data-testid="rpf-pagination">
+                  <span className="text-text-faint">
+                    Showing {pageStart + 1}–{Math.min(pageStart + pageSize, sortedRows.length)} of{" "}
+                    {sortedRows.length} combinations
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      data-testid="rpf-prev-page"
+                      onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
+                      disabled={safePage <= 0}
+                      aria-label="Previous page"
+                      className={cn(
+                        "rounded-md border border-border px-3 py-1.5 transition-colors",
+                        safePage <= 0
+                          ? "cursor-not-allowed text-text-faint/50"
+                          : "text-text hover:border-accent hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                      )}
+                    >
+                      Prev
+                    </button>
+                    <span className="num text-text-muted" data-testid="rpf-page-indicator">
+                      Page {safePage + 1} of {pageCount}
+                    </span>
+                    <button
+                      type="button"
+                      data-testid="rpf-next-page"
+                      onClick={() => setPageIndex((p) => Math.min(pageCount - 1, p + 1))}
+                      disabled={safePage >= pageCount - 1}
+                      aria-label="Next page"
+                      className={cn(
+                        "rounded-md border border-border px-3 py-1.5 transition-colors",
+                        safePage >= pageCount - 1
+                          ? "cursor-not-allowed text-text-faint/50"
+                          : "text-text hover:border-accent hover:text-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+                      )}
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </Card>
       )}
     </div>
   );

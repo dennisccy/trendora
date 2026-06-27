@@ -1136,6 +1136,13 @@ class ResearchCfg(BaseModel):
     model_config = ConfigDict(extra="allow")
     factor_lab: FactorLabCfg
     read_batch_size: int
+    # iter-55 (J-112) — the rows-per-page of the Regime × Phase × Factor ranked combination table. The
+    # pagination is a pure CLIENT-SIDE view transform (re-orders/pages only — recomputes/refetches nothing);
+    # this is the SINGLE source of the 30-rows/page constant (goal.md), served in the lab payload so the
+    # frontend reads it from config and NO `30` literal is scattered in `research.py` (a no-magic-numbers
+    # CALC_FILE) or the component. Defaulted so a config predating it (and the inline test fixtures) still
+    # loads; boot-validated `>= 1`.
+    regime_phase_factor_page_size: int = 30
     downtrend_opportunity: "DowntrendOpportunityCfg" = Field(
         default_factory=lambda: _default_downtrend_opportunity()
     )
@@ -1147,6 +1154,8 @@ class ResearchCfg(BaseModel):
     def _validate(self) -> "ResearchCfg":
         if self.read_batch_size < 1:
             raise ValueError("research.read_batch_size must be >= 1")
+        if self.regime_phase_factor_page_size < 1:
+            raise ValueError("research.regime_phase_factor_page_size must be >= 1")
         return self
 
 

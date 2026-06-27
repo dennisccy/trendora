@@ -347,6 +347,16 @@ function describeCohort(cohort: SampleCohort): { title: string; detail: string |
         : `Market phase: ${cohort.phase}`;
     return { title: "Market Phase & Severity Lab", detail: `${viewLabel} · ${sliceDetail}` };
   }
+  // J-112 — the Regime × Phase × Factor 3-way decile combination (one (regime, severity, factor)-decile triple).
+  if (cohort.kind === "regime-phase-factor") {
+    const viewLabel = cohort.view === "pooled" ? "Pooled (per-signal-day)" : "Episodes (first-trigger)";
+    const factorLabel = cohort.factor?.label ?? "factor";
+    const triple = `Regime D${cohort.regime_decile} × Severity D${cohort.severity_decile} × Factor D${cohort.factor_decile}`;
+    return {
+      title: "Regime × Phase × Factor",
+      detail: `${viewLabel} · ${factorLabel} · ${triple}`,
+    };
+  }
   // event-study
   const subject = cohort.subject?.label ?? "subject";
   // J-63: the overlap-honesty view this drill-down reproduces (Episodes = first-trigger; Pooled = per

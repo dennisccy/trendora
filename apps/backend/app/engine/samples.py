@@ -57,11 +57,14 @@ from app.engine.research import (
     _downtrend_opportunity_observation_set,
     _event_study_observation_set,
     _factor_observations,
+    _assign_triple_deciles,
     _phase_severity_lab_observation_set,
     _recovery_turn_observation_set,
     _regime_lab_observation_set,
+    _regime_phase_factor_observation_set,
     _regime_score_ordered,
     _regime_setup_pattern_observations,
+    _rpf_resolve_factor,
     _severity_ordered,
     _rsp_combination_filter,
     _rsp_combination_members,
@@ -84,9 +87,11 @@ KIND_DOWNTREND_OPPORTUNITY = "downtrend-opportunity"  # J-91 downtrend-condition
 KIND_SEVERITY_VELOCITY = "severity-velocity"          # J-103 severity-velocity × regime matrix drill-down
 KIND_REGIME_LAB = "regime-lab"                         # J-110 regime-label / regime-score-decile drill-down
 KIND_PHASE_SEVERITY_LAB = "phase-severity-lab"         # J-111 phase-label / severity-score-decile drill-down
+KIND_REGIME_PHASE_FACTOR = "regime-phase-factor"       # J-112 (regime, severity, factor)-decile triple drill-down
 ALL_KINDS = (
     KIND_FACTOR, KIND_COMBINATION, KIND_EVENT_STUDY, KIND_REGIME_SETUP_PATTERN, KIND_RECOVERY_TURN,
     KIND_DOWNTREND_OPPORTUNITY, KIND_SEVERITY_VELOCITY, KIND_REGIME_LAB, KIND_PHASE_SEVERITY_LAB,
+    KIND_REGIME_PHASE_FACTOR,
 )
 # The recovery-turn-edge slice families (which published `N=` chip on the Recovery-Turn Edge lab was
 # clicked). `total` is the whole signal-date pool at the horizon (== `n` / `n_total`); `phase` is the
@@ -797,6 +802,81 @@ def _phase_severity_lab_samples(
 
 
 # --------------------------------------------------------------------------------------------------
+# Regime × Phase × Factor cohort (J-112 — the 3-way combination table's per-row N= chip). A cohort is ONE
+# `(regime-score decile, severity-score decile, factor decile)` triple at a (factor, horizon, view). The
+# drill-down reproduces that exact triple from the SAME observation set + the SAME `_assign_triple_deciles`
+# decile assignment the study aggregates — so the drill-down `total` EQUALS the row's published n by
+# construction (count-coherence keystone, one decile-assignment rule, never a second grouping).
+# --------------------------------------------------------------------------------------------------
+def _regime_phase_factor_samples(
+    session: Session, cfg: Config, *, factor_key: Optional[str], regime_decile: Optional[int],
+    severity_decile: Optional[int], factor_decile: Optional[int], horizon: int,
+    as_of: Optional[date_cls], view: str = VIEW_EPISODES,
+) -> dict:
+    """Reproduce ONE Regime × Phase × Factor combination cohort from the J-112 study and list its member
+    observations UNDER THE SELECTED `view` (J-63). Membership is the SAME
+    `_regime_phase_factor_observation_set` builder + the SAME `_assign_triple_deciles` decile assignment
+    `compute_regime_phase_factor_study` aggregates, so the drill-down `total` EQUALS the combination's
+    published n in BOTH Episodes/Pooled and BOTH All-history/As-of (count-coherence keystone — one decile-
+    assignment rule). Validation: the factor must be a config-catalog factor (`_rpf_resolve_factor` raises ->
+    4xx), and each of the three decile selectors must be in `[1, deciles_count]` (an out-of-range decile is a
+    malformed cohort -> 4xx). EVERY combination the study emits is in-range, so it resolves; a combination with
+    no members at this horizon (the per-horizon decile partition differs) is an honest empty cohort (total 0),
+    never a 4xx. Each row: ticker, snapshot date, the regime score / severity / factor value (read VERBATIM),
+    the realized forward return."""
+    if view not in ALL_VIEWS:
+        raise ValueError(f"unknown view {view!r}; valid views are {list(ALL_VIEWS)}")
+    fl = cfg.research.factor_lab
+    factor = _rpf_resolve_factor(cfg, factor_key)  # raises ValueError -> 4xx on an unknown/None factor
+    for name, d in (
+        ("regime", regime_decile), ("severity", severity_decile), ("factor", factor_decile),
+    ):
+        if d is None or not (1 <= d <= fl.deciles):
+            raise ValueError(
+                f"{name} decile {d!r} out of range [1, {fl.deciles}] for a regime-phase-factor cohort"
+            )
+
+    # the SAME single-horizon observation set + the SAME triple-decile assignment the study reads (one rule),
+    # then the exact triple filter — so this combination's member list reproduces the aggregate's n.
+    members = _regime_phase_factor_observation_set(session, horizon, view, factor, as_of, cfg=cfg)
+    bucketable = _assign_triple_deciles(members, fl.deciles)
+    target = (regime_decile, severity_decile, factor_decile)
+    cohort_members = [
+        m for m in bucketable
+        if (m["regime_decile"], m["severity_decile"], m["factor_decile"]) == target
+    ]
+
+    run_dates = _run_date_map(session)
+    rows = [
+        {
+            "ticker": m["ticker"],
+            "snapshot_date": run_dates.get(m["run_id"]),
+            "values": [
+                {"key": "regime_score", "label": "Regime score", "value": m["regime_score"]},
+                {"key": "severity", "label": "Severity score", "value": m["severity"]},
+                {"key": factor.key, "label": factor.label, "value": m["factor_value"]},
+            ],
+            "forward_return": m["return"],
+        }
+        for m in cohort_members
+    ]
+    cohort = {
+        "kind": KIND_REGIME_PHASE_FACTOR,
+        "horizon": horizon,
+        "factor": {
+            "key": factor.key, "label": factor.label, "family": factor.family,
+            "direction": factor.direction, "source": factor.source,
+        },
+        "regime_decile": regime_decile,
+        "severity_decile": severity_decile,
+        "factor_decile": factor_decile,
+        "deciles_count": fl.deciles,
+        "view": view,
+    }
+    return {"cohort": cohort, "rows": rows}
+
+
+# --------------------------------------------------------------------------------------------------
 # The single canonical samples read (read-only exposure of the stored observation pools)
 # --------------------------------------------------------------------------------------------------
 def compute_samples(
@@ -820,6 +900,9 @@ def compute_samples(
     dimension: Optional[str] = None,
     # severity-velocity cohort selector (J-103) — `family` (a regime family) + `velocity_sign`
     family: Optional[str] = None, velocity_sign: Optional[str] = None,
+    # regime-phase-factor cohort selector (J-112) — `factor_key` (a catalog factor) + the three deciles
+    regime_decile: Optional[int] = None, severity_decile: Optional[int] = None,
+    factor_decile: Optional[int] = None,
 ) -> dict:
     """The SINGLE canonical Research-samples read (Data Contract value, J-51 / J-52). Reproduces ONE
     published research cohort from the SAME stored per-observation data the aggregate used and returns its
@@ -879,6 +962,12 @@ def compute_samples(
     elif kind == KIND_PHASE_SEVERITY_LAB:
         built = _phase_severity_lab_samples(
             session, cfg, slice_kind=slice_kind or "label", phase=phase, decile=decile,
+            horizon=horizon, as_of=as_of, view=view or VIEW_EPISODES,
+        )
+    elif kind == KIND_REGIME_PHASE_FACTOR:
+        built = _regime_phase_factor_samples(
+            session, cfg, factor_key=factor_key, regime_decile=regime_decile,
+            severity_decile=severity_decile, factor_decile=factor_decile,
             horizon=horizon, as_of=as_of, view=view or VIEW_EPISODES,
         )
     else:
