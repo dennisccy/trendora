@@ -94,6 +94,19 @@ export interface SeverityVelocityCohortParams {
   velocitySign: string;
 }
 
+/** A Regime-Lab cohort chip (J-110): ONE bucket of the Regime Lab — a regime LABEL row (slice "label") or a
+ *  regime-score DECILE (slice "decile"). `view` (J-63) is the overlap-honesty MODE the chip was clicked under
+ *  — `episodes` (first-trigger) or `pooled` (per-signal-day) — so the drill-down reproduces the same mode +
+ *  cohort. `regime` is a config regime label (label slice); `decile` is 1..deciles (decile slice). */
+export interface RegimeLabCohortParams {
+  kind: "regime-lab";
+  horizon: number;
+  slice: "label" | "decile";
+  view: "episodes" | "pooled";
+  regime?: string;
+  decile?: number;
+}
+
 export type CohortParams =
   | FactorCohortParams
   | CombinationCohortParams
@@ -101,7 +114,8 @@ export type CohortParams =
   | RegimeSetupPatternCohortParams
   | RecoveryTurnCohortParams
   | DowntrendOpportunityCohortParams
-  | SeverityVelocityCohortParams;
+  | SeverityVelocityCohortParams
+  | RegimeLabCohortParams;
 
 /** Serialize a cohort + the analysis-mode scope into the `/research/samples` path (no `?asof` — that is
  *  merged by `useAsOfHref` at the link site). Repeated `condition` params are preserved. */
@@ -144,6 +158,17 @@ export function buildSamplesHref(cohort: CohortParams, scope: SampleScope): stri
     params.set("dimension", cohort.dimension);
     params.set("cohort", cohort.cohort);
     params.set("view", cohort.view);
+  } else if (cohort.kind === "regime-lab") {
+    // J-110: the Regime-Lab bucket — a regime LABEL row or a regime-score DECILE — + the overlap-honesty
+    // view. `slice` selects which; the bucket's identifying selector rides `regime` (label) / `decile`.
+    params.set("slice", cohort.slice);
+    params.set("view", cohort.view);
+    if (cohort.slice === "label" && cohort.regime !== undefined) {
+      params.set("regime", cohort.regime);
+    }
+    if (cohort.slice === "decile" && cohort.decile !== undefined) {
+      params.set("decile", String(cohort.decile));
+    }
   } else if (cohort.kind === "severity-velocity") {
     // J-103: the (regime_family, velocity_sign) matrix cell — the SAME selectors the study cell published.
     params.set("family", cohort.family);

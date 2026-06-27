@@ -333,3 +333,9 @@ journeys to `passing` on source review alone.
 **Verdict:** CONTINUE
 **Lesson:** Live render evidence can exist even when the dedicated browser-qa-agent step reports SKIPPED. In iter-52 the browser-qa ui-test-results.md was SKIPPED ("frontend not running") because the servers were torn down before that step ran, yet the full-mode QA agent had already captured genuine byte-distinct, fully-hydrated frames (TC-01/TC-07/TC-09 in the same `-evidence/` dir) on a backend+frontend both HTTP-200. Do NOT infer "no live evidence" from the browser-qa SKIP alone — always cross-check the QA report's browser section AND md5sum/view the evidence dir, which is materially different from the iter-36/39/42 auto-skip-with-zero-evidence case.
 **Applies to:** any iter where `Frontend Present: yes` but `reports/phase-…-ui-test-results.md` reports SKIPPED — reconcile against `reports/qa/…-qa.md` browser tests and the `-evidence/` dir before deciding a UI journey lacks render proof.
+
+## iter-53 — 2026-06-27T02:13:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** For a WHOLE-UNIVERSE cross-sectional study (every stock x snapshot, like the Regime Lab), the J-63 first-trigger Episodes collapse degenerates to first-appearances and is meaningless — so J-110's frontend deliberately exposes NO Episodes/Pooled toggle and pins `view=pooled` on both the lab fetch and the N= chips so counts stay coherent. The API still serves+unit-proves both views, but only Pooled is wired to the page. The byte-identity / count-coherence keystone is that the single-horizon samples observation builder is byte-identical (row-for-row, same (run_id,id) order) to the all-horizons builder per horizon.
+**Applies to:** J-111 (/research/phase-severity-lab, iter-54) and J-112 (/research/regime-phase-factor, iter-55) — the exact structural twins of J-110; pin `view=pooled` and skip the Episodes toggle for any whole-cross-section lab.

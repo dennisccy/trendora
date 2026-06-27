@@ -58,6 +58,8 @@ from app.engine.research import (
     _event_study_observation_set,
     _factor_observations,
     _recovery_turn_observation_set,
+    _regime_lab_observation_set,
+    _regime_score_ordered,
     _regime_setup_pattern_observations,
     _rsp_combination_filter,
     _rsp_combination_members,
@@ -78,9 +80,10 @@ KIND_REGIME_SETUP_PATTERN = "regime-setup-pattern"  # J-77 combination drill-dow
 KIND_RECOVERY_TURN = "recovery-turn"                 # J-90 recovery-turn edge drill-down
 KIND_DOWNTREND_OPPORTUNITY = "downtrend-opportunity"  # J-91 downtrend-conditioned opportunity drill-down
 KIND_SEVERITY_VELOCITY = "severity-velocity"          # J-103 severity-velocity × regime matrix drill-down
+KIND_REGIME_LAB = "regime-lab"                         # J-110 regime-label / regime-score-decile drill-down
 ALL_KINDS = (
     KIND_FACTOR, KIND_COMBINATION, KIND_EVENT_STUDY, KIND_REGIME_SETUP_PATTERN, KIND_RECOVERY_TURN,
-    KIND_DOWNTREND_OPPORTUNITY, KIND_SEVERITY_VELOCITY,
+    KIND_DOWNTREND_OPPORTUNITY, KIND_SEVERITY_VELOCITY, KIND_REGIME_LAB,
 )
 # The recovery-turn-edge slice families (which published `N=` chip on the Recovery-Turn Edge lab was
 # clicked). `total` is the whole signal-date pool at the horizon (== `n` / `n_total`); `phase` is the
@@ -90,6 +93,9 @@ _RECOVERY_TURN_SLICES = ("total", "phase")
 # The factor-cohort slice families (which published `N=` chip on the Factor Lab was clicked). `total` is
 # `n_total` / rank-IC n (whole pool); `decile` is one D1…D10 bucket; `regime` is the per-regime split.
 _FACTOR_SLICES = ("total", "decile", "regime")
+# The Regime-Lab slice families (J-110 — which `N=` chip was clicked): `label` is one of the six canonical
+# regime-label rows; `decile` is one D1…D`deciles` bucket of the 0–100 regime score.
+_REGIME_LAB_SLICES = ("label", "decile")
 # The combination cohort families (which published `N=` chip on the Combination Lab was clicked).
 _COMBINATION_COHORTS = ("baseline", "single", "composite", "strict_overlap")
 # The event-study slice families (which published `N=` chip on the Setup & Pattern Lab was clicked).
@@ -619,6 +625,87 @@ def _severity_velocity_samples(
 
 
 # --------------------------------------------------------------------------------------------------
+# Regime-Lab cohort (J-110 — the Regime Lab's per-cell N= chip). A cohort is ONE bucket at a (horizon,
+# view): a regime LABEL row (slice "label") or a regime-SCORE DECILE (slice "decile"). The drill-down
+# reproduces that exact bucket from the SAME observation set + the SAME membership rule the study aggregates.
+# --------------------------------------------------------------------------------------------------
+def _regime_lab_samples(
+    session: Session, cfg: Config, *, slice_kind: str, regime: Optional[str], decile: Optional[int],
+    horizon: int, as_of: Optional[date_cls], view: str = VIEW_EPISODES,
+) -> dict:
+    """Reproduce ONE Regime-Lab bucket from the J-110 study and list its member observations UNDER THE
+    SELECTED `view` (J-63). Membership is the SAME `_regime_lab_observation_set` builder (+ the SAME
+    `_regime_score_ordered` / `_decile_member_slice` quantile-edge slicing for a decile) `compute_regime_lab`
+    aggregates, so the drill-down `total` EQUALS the bucket's published `n` in BOTH Episodes and Pooled modes
+    AND BOTH All-history and As-of scopes (count-coherence keystone — one membership rule, never a second
+    grouping). `slice_kind`:
+      - "label"  → the observation set filtered to the stored `regime` label (== that by-label row's n).
+      - "decile" → the `decile`-th `_decile_member_slice` of the regime-score-ascending set (== that decile's n).
+    Every bucket the study DISPLAYS resolves (a valid n=0 label/decile is an honest empty cohort, never a
+    4xx); an unknown/empty regime label or an out-of-range decile raises `ValueError` -> an honest 4xx. Each
+    row: ticker, snapshot date, the stored regime label + regime score, the realized forward return."""
+    if view not in ALL_VIEWS:
+        raise ValueError(f"unknown view {view!r}; valid views are {list(ALL_VIEWS)}")
+    fl = cfg.research.factor_lab
+
+    members = _regime_lab_observation_set(session, horizon, view, as_of)
+
+    if slice_kind == "label":
+        if regime is None or regime not in cfg.regime.labels:
+            raise ValueError(
+                f"regime {regime!r} is not a configured regime label {list(cfg.regime.labels)}"
+            )
+        # the SAME stored-regime-label grouping the by-label table uses (label read verbatim, never recomputed).
+        cohort_members = [m for m in members if m["regime_label"] == regime]
+    elif slice_kind == "decile":
+        if decile is None or not (1 <= decile <= fl.deciles):
+            raise ValueError(
+                f"decile {decile!r} out of range [1, {fl.deciles}] for a regime-score decile cohort"
+            )
+        # the SAME regime-score-ascending ordering + quantile-edge slice the by-decile aggregate reads, so this
+        # decile's member list reproduces the aggregate's n exactly (one quantile-edge definition).
+        ordered = _regime_score_ordered(members)
+        cohort_members = _decile_member_slice(ordered, fl.deciles, decile)
+    else:
+        raise ValueError(
+            f"unknown regime-lab slice {slice_kind!r}; valid slices are {list(_REGIME_LAB_SLICES)}"
+        )
+
+    # the decile-slice members carry the `_deciles` "factor" key (== regime score); the label-slice members
+    # carry the raw observation shape (`regime_score`). Read the score from whichever shape is present.
+    def _score(o: dict):
+        return o.get("regime_score", o.get("factor"))
+
+    def _label(o: dict):
+        return o.get("regime_label")
+
+    run_dates = _run_date_map(session)
+    rows = [
+        {
+            "ticker": o["ticker"],
+            "snapshot_date": run_dates.get(o["run_id"]),
+            "regime": _label(o),
+            "values": [
+                {"key": "regime", "label": "Regime", "value": _label(o)},
+                {"key": "regime_score", "label": "Regime score", "value": _score(o)},
+            ],
+            "forward_return": o["return"],
+        }
+        for o in cohort_members
+    ]
+    cohort = {
+        "kind": KIND_REGIME_LAB,
+        "slice": slice_kind,
+        "horizon": horizon,
+        "regime": regime if slice_kind == "label" else None,
+        "decile": decile if slice_kind == "decile" else None,
+        "deciles_count": fl.deciles,
+        "view": view,
+    }
+    return {"cohort": cohort, "rows": rows}
+
+
+# --------------------------------------------------------------------------------------------------
 # The single canonical samples read (read-only exposure of the stored observation pools)
 # --------------------------------------------------------------------------------------------------
 def compute_samples(
@@ -692,6 +779,11 @@ def compute_samples(
     elif kind == KIND_SEVERITY_VELOCITY:
         built = _severity_velocity_samples(
             session, cfg, family=family, velocity_sign=velocity_sign, horizon=horizon, as_of=as_of,
+        )
+    elif kind == KIND_REGIME_LAB:
+        built = _regime_lab_samples(
+            session, cfg, slice_kind=slice_kind or "label", regime=regime, decile=decile,
+            horizon=horizon, as_of=as_of, view=view or VIEW_EPISODES,
         )
     else:
         raise ValueError(f"unknown kind {kind!r}; valid kinds are {list(ALL_KINDS)}")

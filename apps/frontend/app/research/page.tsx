@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   ArrowRight,
+  Gauge,
   GitCompareArrows,
   Layers,
   LineChart,
@@ -76,6 +77,13 @@ const LABS: LabLink[] = [
     description:
       "Does rising or falling stress under a given regime predict the market's next move? A regime-family × velocity-sign forward-return matrix.",
     icon: Waves,
+  },
+  {
+    href: "/research/regime-lab",
+    title: "Regime Lab",
+    description:
+      "How have stocks' forward returns and downside risk differed across market regimes? Paired return + max-drawdown by regime label and by regime-score decile, all horizons.",
+    icon: Gauge,
   },
 ];
 

@@ -251,6 +251,155 @@ def test_factor_lab_all_invalid_horizon_422(loaded_engine):
 
 
 # ==================================================================================================
+# GET /api/research/regime-lab — the Regime Lab all-horizons view (iter-53, J-110)
+# ==================================================================================================
+def test_regime_lab_payload_shape_and_config_driven_buckets(loaded_engine):
+    """J-110 at the API level: the payload carries a `by_label` table (one row per config regime label, in
+    order), a `by_decile` table (D1..D`deciles`), and a `rank_ic_by_horizon` block, each row carrying a
+    `by_horizon` list with paired (mean_return, mean_max_drawdown) per config horizon + n. It echoes the
+    config-driven horizons / decile count / min_sample / regime-label vocabulary + the honest labels and
+    carries NO single `horizon` (all horizons at once)."""
+    cfg = load_config()
+    fl = cfg.research.factor_lab
+    horizons = list(cfg.walk_forward.horizons)
+    with TestClient(main.app) as client:
+        resp = client.get("/api/research/regime-lab")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "horizon" not in data  # the all-horizons view has no single served horizon
+    assert data["view"] == "episodes"  # the default overlap-honesty view
+    assert data["horizons"] == horizons
+    assert data["default_horizon"] == cfg.walk_forward.default_horizon
+    assert data["deciles_count"] == fl.deciles
+    assert data["min_sample"] == cfg.walk_forward.min_sample
+    assert data["regime_labels"] == list(cfg.regime.labels)
+    assert data["asof_date"] is None
+    assert "survivorship" in data["survivorship_bias"].lower()
+    assert [r["regime"] for r in data["by_label"]] == list(cfg.regime.labels)
+    assert [r["decile"] for r in data["by_decile"]] == list(range(1, fl.deciles + 1))
+    assert [r["horizon"] for r in data["rank_ic_by_horizon"]] == horizons
+    for r in data["by_label"]:
+        assert [b["horizon"] for b in r["by_horizon"]] == horizons
+        for b in r["by_horizon"]:
+            assert {"horizon", "n", "low_sample", "mean_return", "mean_max_drawdown"} == set(b)
+    for r in data["by_decile"]:
+        for b in r["by_horizon"]:
+            assert {"horizon", "n", "low_sample", "mean_return", "mean_max_drawdown",
+                    "score_min", "score_max"} == set(b)
+
+
+def test_regime_lab_no_date_control_present(loaded_engine):
+    """The Regime-Lab payload exposes no second/page-local date control — the only date state is the single
+    global as-of echoed as `asof_date` (J-18). The default (omitted) call is all-history."""
+    with TestClient(main.app) as client:
+        data = client.get("/api/research/regime-lab").json()
+    assert data["asof_date"] is None
+    # no nested 'date'/'asof' selector field beyond the single echoed cutoff.
+    assert "horizon" not in data
+
+
+def test_regime_lab_pooled_view_differs_and_is_byte_identical_to_engine(loaded_engine):
+    """`?view=pooled` serves the per-signal-day pool (a DIFFERENT, larger observation set than the default
+    episodes collapse) and is byte-identical to the engine's `regime_lab_cached(view='pooled')` — the API
+    serves the canonical aggregate verbatim, never recomputed."""
+    import json as _json
+
+    from app.engine.research import regime_lab_cached
+
+    cfg = load_config()
+    with TestClient(main.app) as client:
+        episodes = client.get("/api/research/regime-lab", params={"view": "episodes"}).json()
+        pooled = client.get("/api/research/regime-lab", params={"view": "pooled"}).json()
+    assert episodes["view"] == "episodes" and pooled["view"] == "pooled"
+    # pooled keeps strictly more observations than the first-trigger episode collapse at the default horizon.
+    dh = cfg.walk_forward.default_horizon
+
+    def _total(payload):
+        return sum(
+            b["n"] for r in payload["by_label"] for b in r["by_horizon"] if b["horizon"] == dh
+        )
+
+    assert _total(pooled) > _total(episodes) > 0
+    with Session(loaded_engine) as session:
+        engine_pooled = regime_lab_cached(session, cfg, view="pooled")
+    assert _json.dumps(pooled, sort_keys=True) == _json.dumps(engine_pooled, sort_keys=True)
+
+
+def test_regime_lab_as_of_scopes_pool_and_echoes_cutoff(loaded_engine):
+    """J-32: `?as_of=D` scopes the observation set to snapshots dated <= D (strictly fewer observations than
+    all-history) and echoes the resolved cutoff — the single global as-of, a mode not a second date state."""
+    cfg = load_config()
+    dh = cfg.walk_forward.default_horizon
+
+    def _total(payload):
+        return sum(b["n"] for r in payload["by_label"] for b in r["by_horizon"] if b["horizon"] == dh)
+
+    with TestClient(main.app) as client:
+        oldest = _oldest_research_date(client)
+        all_history = client.get("/api/research/regime-lab").json()
+        scoped = client.get("/api/research/regime-lab", params={"as_of": oldest}).json()
+    assert all_history["asof_date"] is None
+    assert scoped["asof_date"] == oldest
+    assert 0 < _total(scoped) < _total(all_history)  # the oldest cutoff pools strictly fewer, not empty
+
+
+def test_regime_lab_invalid_view_422(loaded_engine):
+    """An unknown view is rejected (422) — no fabricated view (mirrors the event-study handler)."""
+    with TestClient(main.app) as client:
+        assert client.get("/api/research/regime-lab", params={"view": "nope"}).status_code == 422
+
+
+def test_regime_lab_samples_count_coherent_over_http(loaded_engine):
+    """J-51/J-65 over HTTP: a Regime-Lab `N=` chip's samples drill-down `total` equals the published bucket n
+    for both a regime LABEL and a regime-score DECILE, in the SAME view — and every displayable bucket
+    resolves (200), never a 4xx."""
+    cfg = load_config()
+    dh = cfg.walk_forward.default_horizon
+    with TestClient(main.app) as client:
+        data = client.get("/api/research/regime-lab", params={"view": "pooled"}).json()
+        # a populated label bucket at the default horizon.
+        label_row = next(
+            r for r in data["by_label"]
+            if next(b for b in r["by_horizon"] if b["horizon"] == dh)["n"] > 0
+        )
+        label_n = next(b for b in label_row["by_horizon"] if b["horizon"] == dh)["n"]
+        s = client.get("/api/research/samples", params={
+            "kind": "regime-lab", "slice": "label", "regime": label_row["regime"],
+            "horizon": dh, "view": "pooled",
+        })
+        assert s.status_code == 200
+        assert s.json()["total"] == label_n
+
+        # a populated decile bucket at the default horizon.
+        decile_row = next(
+            r for r in data["by_decile"]
+            if next(b for b in r["by_horizon"] if b["horizon"] == dh)["n"] > 0
+        )
+        decile_n = next(b for b in decile_row["by_horizon"] if b["horizon"] == dh)["n"]
+        s2 = client.get("/api/research/samples", params={
+            "kind": "regime-lab", "slice": "decile", "decile": decile_row["decile"],
+            "horizon": dh, "view": "pooled",
+        })
+        assert s2.status_code == 200
+        assert s2.json()["total"] == decile_n
+
+
+def test_regime_lab_samples_invalid_selectors_4xx(loaded_engine):
+    """An unknown regime label / out-of-range decile / unknown view on the regime-lab samples kind is an
+    explicit 4xx (never a silent empty 200)."""
+    with TestClient(main.app) as client:
+        assert client.get("/api/research/samples", params={
+            "kind": "regime-lab", "slice": "label", "regime": "Not-a-regime", "horizon": 20,
+        }).status_code == 422
+        assert client.get("/api/research/samples", params={
+            "kind": "regime-lab", "slice": "decile", "decile": 0, "horizon": 20,
+        }).status_code == 422
+        assert client.get("/api/research/samples", params={
+            "kind": "regime-lab", "slice": "label", "regime": "Risk-on", "horizon": 20, "view": "nope",
+        }).status_code == 422
+
+
+# ==================================================================================================
 # GET /api/research/factor-combination — multi-factor combination cohorts (iter-12, J-26)
 # ==================================================================================================
 def test_factor_combination_default_payload(loaded_engine):

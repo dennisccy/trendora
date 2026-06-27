@@ -44,6 +44,7 @@ from app.engine.research import (
     factor_combination_cached,
     factor_lab_all_cached,
     recovery_turn_edge_cached,
+    regime_lab_cached,
     regime_setup_pattern_cached,
     severity_velocity_cached,
     subject_catalog,
@@ -55,6 +56,7 @@ from app.engine.samples import (
     KIND_EVENT_STUDY,
     KIND_FACTOR,
     KIND_RECOVERY_TURN,
+    KIND_REGIME_LAB,
     KIND_REGIME_SETUP_PATTERN,
     compute_samples,
 )
@@ -373,6 +375,48 @@ def severity_velocity(
     return severity_velocity_cached(session, resolved_horizon, cfg, as_of=cutoff)
 
 
+@router.get("/research/regime-lab")
+def regime_lab(
+    view: Optional[str] = Query(
+        default=None,
+        description="overlap-honesty view: episodes (default — first-trigger) | pooled (per-signal-day)",
+    ),
+    as_of: Optional[str] = Query(
+        default=None,
+        description="optional point-in-time cutoff (YYYY-MM-DD) — the single global as-of; omitted = all-history",
+    ),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Serve the Regime Lab (J-110): cross-sectional realized forward returns + paired max-drawdowns grouped
+    (a) by the six canonical regime labels and (b) into deciles of the 0–100 regime score, at EVERY config
+    horizon at once (paired columns — no `horizon` selector), with the rank-IC of the regime score vs the
+    forward return per horizon. Validates `view` against {episodes, pooled} (422 otherwise); 503 when no
+    price data exists — mirroring the sibling research handlers exactly. The optional `as_of` (J-32) scopes
+    the observation set to snapshots dated <= D (the single global as-of — a mode, not a second date state);
+    omitted = all-history. The payload is `regime_lab_cached(...)` verbatim — a read-only grouping of
+    ALREADY-STORED forward returns + stored regime score/label, never recomputed in the view. No order/
+    execution affordance (research evidence only)."""
+    cfg: Config = get_config()
+
+    if latest_data_date(session) is None:
+        raise HTTPException(status_code=503, detail="no price data available")
+
+    resolved_view = VIEW_EPISODES if view is None else view
+    if resolved_view not in ALL_VIEWS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown view {resolved_view!r}; valid views are {list(ALL_VIEWS)}",
+        )
+
+    # iter-19 (J-32): the optional single global as-of scoping cutoff (shared resolver — 422/400; never
+    # hand-rolled). Omitted/empty -> all-history. Not a second date state (J-18). The view is horizon-
+    # independent (all horizons shown), so there is no `horizon` selector.
+    cutoff = resolved_date(session, as_of, cfg) if as_of else None
+    # J-72: serve from the persisted/cached derived aggregate (byte-identical to a fresh compute; the cache
+    # refreshes after any dataset change via the dataset-version+schema-token key) — never recomputed.
+    return regime_lab_cached(session, cfg, view=resolved_view, as_of=cutoff)
+
+
 @router.get("/research/recovery-turn-edge")
 def recovery_turn_edge(
     horizon: Optional[int] = Query(default=None, description="forward window in trading days; defaults to config default_horizon"),
@@ -478,7 +522,7 @@ def research_samples(
     horizon: Optional[int] = Query(default=None, description="forward window in trading days; defaults to config default_horizon"),
     # factor-cohort selectors
     factor: Optional[str] = Query(default=None, description="factor key (factor kind)"),
-    slice: Optional[str] = Query(default=None, description="factor: total|decile|regime · event-study: pooled|regime|sector"),
+    slice: Optional[str] = Query(default=None, description="factor: total|decile|regime · event-study: pooled|regime|sector · regime-lab: label|decile"),
     decile: Optional[int] = Query(default=None, description="1..deciles_count (factor decile cohort)"),
     regime: Optional[str] = Query(default=None, description="a configured regime label (by-regime cohort)"),
     sector: Optional[str] = Query(default=None, description="a stored sector (event-study by-sector cohort)"),
@@ -538,7 +582,10 @@ def research_samples(
     # the event-study AND regime-setup-pattern kinds (422 otherwise); ignored for other kinds. A cohort/
     # mode selector, not a date.
     resolved_view: Optional[str] = None
-    if kind in (KIND_EVENT_STUDY, KIND_REGIME_SETUP_PATTERN, KIND_RECOVERY_TURN, KIND_DOWNTREND_OPPORTUNITY):
+    if kind in (
+        KIND_EVENT_STUDY, KIND_REGIME_SETUP_PATTERN, KIND_RECOVERY_TURN, KIND_DOWNTREND_OPPORTUNITY,
+        KIND_REGIME_LAB,
+    ):
         resolved_view = VIEW_EPISODES if view is None else view
         if resolved_view not in ALL_VIEWS:
             raise HTTPException(

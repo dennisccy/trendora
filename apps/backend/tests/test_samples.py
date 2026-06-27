@@ -25,8 +25,9 @@ from app.engine.research import (
     compute_event_study,
     compute_factor_combination,
     compute_factor_lab,
+    compute_regime_lab,
 )
-from app.engine.samples import compute_samples
+from app.engine.samples import KIND_REGIME_LAB, compute_samples
 from app.models import ForwardReturn, ScannerResult, ScannerRun
 
 H = 20  # a real config horizon used throughout
@@ -201,6 +202,42 @@ def test_factor_by_regime_coherence(multi_regime_engine):
             assert s["total"] == n_by_regime[label]
             assert all(r["regime"] == label for r in s["rows"])
     assert n_by_regime["Risk-on"] == 12 and n_by_regime["Risk-off"] == 8
+
+
+# ==================================================================================================
+# Regime-Lab cohort count-coherence (J-110 — by regime LABEL and by regime-score DECILE)
+# ==================================================================================================
+def test_regime_lab_label_and_decile_coherence(multi_regime_engine):
+    """Each Regime-Lab `N=` chip — a regime LABEL row and a regime-score DECILE — drills into a cohort whose
+    samples `total` equals the published bucket n (count-coherence keystone), in the pooled view. The
+    fixture's two regimes published 12 (Risk-on) / 8 (Risk-off) at H, and the decile totals re-sum to n_total."""
+    cfg = load_config()
+    with Session(multi_regime_engine) as session:
+        payload = compute_regime_lab(session, cfg, view="pooled")
+        # by-label coherence at H.
+        n_by_label = {}
+        for row in payload["by_label"]:
+            b = next(b for b in row["by_horizon"] if b["horizon"] == H)
+            n_by_label[row["regime"]] = b["n"]
+            s = compute_samples(
+                session, kind=KIND_REGIME_LAB, horizon=H, config=cfg,
+                slice_kind="label", regime=row["regime"], view="pooled",
+            )
+            assert s["total"] == b["n"], f"label drift {row['regime']}"
+            assert all(r["regime"] == row["regime"] for r in s["rows"])
+        assert n_by_label["Risk-on"] == 12 and n_by_label["Risk-off"] == 8
+
+        # by-decile coherence at H; the decile totals re-sum to the whole pool (20 observations).
+        total = 0
+        for row in payload["by_decile"]:
+            b = next(b for b in row["by_horizon"] if b["horizon"] == H)
+            s = compute_samples(
+                session, kind=KIND_REGIME_LAB, horizon=H, config=cfg,
+                slice_kind="decile", decile=row["decile"], view="pooled",
+            )
+            assert s["total"] == b["n"], f"decile drift D{row['decile']}"
+            total += b["n"]
+        assert total == 20  # 12 Risk-on + 8 Risk-off, every observation in exactly one decile
 
 
 # ==================================================================================================

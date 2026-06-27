@@ -1183,6 +1183,80 @@ export async function fetchFactorLabAll(
   return getJSON<FactorLabAllResponse>(withAsOf("/api/research/factor-lab?all=true", asof), signal);
 }
 
+// --- research / Regime Lab (iter-53, J-110) ------------------------------------------------
+/** One regime-LABEL or regime-score-DECILE bucket's paired figures at ONE horizon: the mean realized
+ *  forward return + paired mean max-drawdown + sample size `n`. `low_sample` (n < min_sample) flags the
+ *  cell the UI renders as NA + n. Re-formatted only — the page recomputes no return/drawdown. */
+export interface RegimeLabHorizonCell {
+  horizon: number; // the forward window (trading days)
+  n: number;
+  low_sample: boolean; // n < min_sample — render NA + n, never a fabricated number
+  mean_return: number | null; // raw mean forward return (fraction); null when n === 0
+  mean_max_drawdown: number | null; // paired mean max-drawdown (fraction, <= 0); null = NA (none stored)
+}
+
+/** A regime-score DECILE bucket's per-horizon cell additionally carries the decile's regime-score range. */
+export interface RegimeLabDecileHorizonCell extends RegimeLabHorizonCell {
+  score_min: number | null; // the decile's lowest regime score (0–100); null when empty
+  score_max: number | null; // the decile's highest regime score (0–100); null when empty
+}
+
+/** One by-LABEL row: a configured regime label + its paired figures at every config horizon. */
+export interface RegimeLabLabelRow {
+  regime: string; // a config.regime.labels value (verbatim — server-driven, not hard-coded in the UI)
+  by_horizon: RegimeLabHorizonCell[];
+}
+
+/** One by-DECILE row: a 1..deciles bucket of the 0–100 regime score + its paired figures + score range. */
+export interface RegimeLabDecileRow {
+  decile: number; // 1..deciles_count
+  by_horizon: RegimeLabDecileHorizonCell[];
+}
+
+/** The decile table's header rank-IC of the regime score vs the realized forward return, per horizon. */
+export interface RegimeLabRankIcRow {
+  horizon: number;
+  rank_ic: RankIC; // value null = NA (n < 2 or zero rank variance) — never a fabricated 0
+}
+
+/** GET /api/research/regime-lab payload (J-110) — cross-sectional realized forward returns + paired
+ *  max-drawdowns grouped (a) by the six canonical regime labels and (b) into deciles of the 0–100 regime
+ *  score, at EVERY config horizon at once (paired columns), with the per-horizon rank-IC of the regime
+ *  score vs the forward return. Every figure is derived once from stored values (read VERBATIM); the page
+ *  re-formats + client-side sorts (NA-last) only — it recomputes no return/regime/drawdown. The As-of toggle
+ *  is the single global as-of (no second date state, J-18); there is no horizon selector (all horizons). */
+export interface RegimeLabResponse {
+  view: "episodes" | "pooled"; // the resolved overlap-honesty view
+  horizons: number[]; // every config horizon shown as paired columns (config-driven — not hard-coded)
+  default_horizon: number; // the horizon the rank-IC column header is labelled with
+  deciles_count: number;
+  min_sample: number; // buckets with n below this are NA/low-sample
+  regime_labels: string[]; // the by-label row vocabulary (config-driven — not hard-coded in the UI)
+  survivorship_bias: string; // honest caveat, rendered verbatim
+  descriptive_caveat: string; // "descriptive, not predictive / universe-relative", rendered verbatim
+  by_label: RegimeLabLabelRow[]; // one row per configured regime label (in config order)
+  by_decile: RegimeLabDecileRow[]; // D1..D`deciles` of the regime score
+  rank_ic_by_horizon: RegimeLabRankIcRow[]; // regime score vs forward return, per horizon
+  asof_date?: string | null; // J-32: the resolved point-in-time cutoff (ISO) when scoped; null = all-history
+}
+
+/** Canonical Regime-Lab source: GET /api/research/regime-lab. Throws on non-200 so the page renders an
+ *  explicit "Backend unavailable" state (503 no data / 422 bad view / 400 future as-of) — never fabricated
+ *  evidence. The view is horizon-independent (it shows every horizon at once), so no `horizon` param is sent.
+ *  `asof` (J-32) is the single global as-of cutoff, appended via `withAsOf` ONLY when a historical cutoff is
+ *  active (As-of mode + a past date); omitted = all-history. */
+export async function fetchRegimeLab(
+  view?: "episodes" | "pooled",
+  asof?: string,
+  signal?: AbortSignal,
+): Promise<RegimeLabResponse> {
+  const params = new URLSearchParams();
+  if (view) params.set("view", view);
+  const query = params.toString();
+  const path = `/api/research/regime-lab${query ? `?${query}` : ""}`;
+  return getJSON<RegimeLabResponse>(withAsOf(path, asof), signal);
+}
+
 // --- research / multi-factor combination cohorts (iter-12, J-26) ---------------------------
 /** One quantile option (the top/bottom tail vocabulary, config-driven on the backend — NOT a hard-coded
  *  frontend list). `fraction` is the tail size a top/bottom condition selects (0.20 = a quintile). The

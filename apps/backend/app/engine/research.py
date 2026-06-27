@@ -2998,3 +2998,329 @@ def regime_setup_pattern_cached(
     except Exception:  # best-effort cache; a concurrent writer raced us — the payload is byte-identical
         session.rollback()
     return payload
+
+
+# --------------------------------------------------------------------------------------------------
+# Regime Lab (J-110) — cross-sectional forward returns + paired max-drawdown by market-regime LABEL and by
+# regime-SCORE decile. A read-only re-surfacing of ALREADY-STORED canonical values: it pools the SAME
+# cross-sectional per-observation forward returns the Factor Lab / event study build (stock × snapshot),
+# tags each observation with its run's STORED `regime_score` + `regime_label` (J-80, read VERBATIM from the
+# immutable `ScannerRun` — the regime is NEVER recomputed), and groups them two ways — (a) by the six
+# canonical regime labels, (b) into deciles D1…D`deciles` of the 0–100 regime score — at EVERY config
+# horizon as paired (mean forward-return, mean max-drawdown) columns, with the rank-IC of the regime score
+# vs the forward return per horizon. It recomputes NO regime / return / drawdown and introduces NO new
+# canonical value — every figure is a grouping of stored values. NOT a fitted/learned/ML model. It is
+# DISTINCT from J-77 (regime × setup × pattern) and J-103 (severity-velocity sign vs SPY): it studies the
+# regime score/label ALONE against cross-sectional stock returns, on its OWN home (no duplicate home).
+# --------------------------------------------------------------------------------------------------
+def _regime_meta_by_run(
+    session: Session, needed_runs: set[int], batch: int
+) -> dict[int, tuple[Optional[float], Optional[str]]]:
+    """`run_id -> (stored regime_score, stored regime_label)` over the FR-bearing runs, column-projected +
+    `yield_per`-streamed. Read VERBATIM from the immutable `ScannerRun` (J-80); recomputes no regime. Mirrors
+    `_regime_by_run_projected`, additionally carrying the 0–100 `regime_score` the decile split groups on (so
+    ONE projected read serves both the by-label and the by-score-decile groupings)."""
+    if not needed_runs:
+        return {}
+    meta: dict[int, tuple[Optional[float], Optional[str]]] = {}
+    stmt = select(ScannerRun.id, ScannerRun.regime_score, ScannerRun.regime_label).where(
+        ScannerRun.id.in_(needed_runs)
+    )
+    for run_id, regime_score, regime_label in session.exec(stmt).yield_per(batch):
+        meta[run_id] = (regime_score, regime_label)
+    return meta
+
+
+def _regime_lab_members_by_horizon(
+    session: Session, horizons: list[int], as_of: Optional[date_cls] = None,
+    *, cfg: Optional[Config] = None,
+) -> dict[int, list[dict]]:
+    """The read-only SHARED per-observation pools for the Regime Lab across EVERY horizon in `horizons`
+    (J-110), built from a SINGLE batched read (mirrors `_all_factor_observations_by_horizon` /
+    `_event_study_members_by_horizon`): ONE `ForwardReturn` SELECT covering all horizons (`horizon IN
+    horizons`, column-projected to run_id/symbol/realized_return/max_drawdown), ONE `ScannerResult` stream,
+    and ONE projected per-run regime read. Returns `{horizon: [observations]}` where each observation is
+    `{run_id, ticker, return, max_drawdown, regime_score, regime_label}` — the realized forward return +
+    the J-86 max_drawdown (read VERBATIM) tagged with the run's STORED `regime_score`/`regime_label` (J-80,
+    read VERBATIM). It recomputes NO regime / return / drawdown.
+
+    BYTE-IDENTITY keystone: `{horizon: pools}[h]` is byte-identical (row-for-row, same `(run_id, id)` order)
+    to calling this builder with `horizons=[h]` — the property `compute_regime_lab` (all-horizons) and the
+    `_regime_lab_observation_set` samples drill-down (single-horizon) both rely on for count-coherence. An
+    observation is kept for horizon h ONLY when a realized return exists at h (the SAME n=0 exclusion as the
+    Factor Lab); a ScannerResult whose run has FRs at some OTHER horizon but not at h simply contributes
+    nothing to `pools[h]` (the per-horizon `fr is None` gate), exactly as the single-horizon build would.
+
+    `as_of` (J-32) scopes ALL horizons' pools to snapshots with `ScannerRun.asof_date <= as_of` (the SAME
+    single membership filter); `as_of=None` adds NO clause -> byte-identical all-history.
+
+    iter-46/47/48 OOM lesson / J-105: the read is BOUNDED — the FR scan is column-projected +
+    `yield_per`-streamed (lightweight value tuples, NEVER full ORM rows over `forward_returns`), the
+    ScannerResult side is column-projected (run_id/id/ticker — the regime is per-RUN, so the heavy
+    `record_json` is NOT read here, unlike the Factor Lab) and `yield_per`-streamed in `(run_id, id)` order
+    (rides `ix_scanner_results_run_id`, so no `USE TEMP B-TREE FOR ORDER BY` spills a temp file to a nearly-
+    full disk; a bare `ORDER BY id` returned `disk is full` on this host). ONE heavy read serves ALL horizons
+    (not H reads) — and there is NO unbounded `.all()` over `ForwardReturn` or `ScannerResult`."""
+    batch = (cfg or get_config()).research.read_batch_size
+    fr_stmt = select(
+        ForwardReturn.horizon, ForwardReturn.run_id, ForwardReturn.symbol,
+        ForwardReturn.realized_return, ForwardReturn.max_drawdown,
+    ).where(ForwardReturn.horizon.in_(horizons))
+    if as_of is not None:
+        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
+            ScannerRun.asof_date <= as_of
+        )
+    fr_by_h: dict[int, dict[tuple[int, str], tuple[float, Optional[float]]]] = {h: {} for h in horizons}
+    runs_with_fr_set: set[int] = set()
+    for h, run_id, symbol, realized_return, max_drawdown in session.exec(fr_stmt).yield_per(batch):
+        fr_by_h[h][(run_id, symbol)] = (realized_return, max_drawdown)
+        runs_with_fr_set.add(run_id)
+    runs_with_fr = sorted(runs_with_fr_set)
+    # the per-run regime score + label, read VERBATIM over the FR-bearing runs (projected + streamed).
+    regime_by_run = _regime_meta_by_run(session, runs_with_fr_set, batch)
+    # the ScannerResult side: only (run_id, id, ticker) is needed to join the FR (the regime is per-RUN, not
+    # per-result) — a lighter column projection than the Factor Lab's full-row stream. Ordered (run_id, id).
+    res_stmt = (
+        select(ScannerResult.run_id, ScannerResult.id, ScannerResult.ticker)
+        .where(ScannerResult.run_id.in_(runs_with_fr))
+        .order_by(ScannerResult.run_id, ScannerResult.id)
+    )
+    results = session.exec(res_stmt).yield_per(batch) if runs_with_fr else []
+
+    pools: dict[int, list[dict]] = {h: [] for h in horizons}
+    for run_id, _res_id, ticker in results:
+        regime_meta: Optional[tuple] = None  # resolved lazily on the first horizon that has an FR
+        for h in horizons:
+            fr = fr_by_h[h].get((run_id, ticker))
+            if fr is None:
+                continue  # no realized return at this horizon (n=0) — same exclusion as the Factor Lab
+            if regime_meta is None:
+                regime_meta = regime_by_run.get(run_id, (None, None))
+            realized, max_drawdown = fr
+            regime_score, regime_label = regime_meta
+            pools[h].append({
+                "run_id": run_id, "ticker": ticker, "return": realized, "max_drawdown": max_drawdown,
+                # the run's STORED regime score (0–100) + label, read VERBATIM (J-80) — never recomputed.
+                "regime_score": regime_score, "regime_label": regime_label,
+            })
+    return pools
+
+
+def _regime_score_ordered(members: list[dict]) -> list[dict]:
+    """The Regime-Lab observation members reshaped to the `_deciles` 'factor' contract — `factor` = the
+    stored 0–100 `regime_score` — and ordered ascending by regime score with the deterministic
+    `(score, ticker, run_id)` tie-break. This is the SINGLE ordering BOTH the by-decile aggregate AND the
+    samples decile drill-down read, so a decile's drill-down `total` EQUALS its published `n` by construction
+    (count-coherence keystone — one quantile-edge definition, never a second). An observation with a NULL
+    regime score is EXCLUDED (never bucketed) — honest, not fabricated (the stored column is non-null in
+    practice, so this drops nothing; it is a defensive parity with the Factor Lab's factor-NULL exclusion)."""
+    scored = [
+        {
+            "factor": m["regime_score"], "ticker": m["ticker"], "run_id": m["run_id"],
+            "return": m["return"], "max_drawdown": m["max_drawdown"],
+            # carry the run's stored label too (ignored by `_deciles`, but surfaced on a decile drill-down row
+            # so each row shows which regime the score came from). Read verbatim — never recomputed.
+            "regime_label": m["regime_label"], "regime_score": m["regime_score"],
+        }
+        for m in members
+        if m["regime_score"] is not None
+    ]
+    return sorted(scored, key=lambda o: (o["factor"], o["ticker"], o["run_id"]))
+
+
+def _regime_lab_observation_set(
+    session: Session, horizon: int, view: str, as_of: Optional[date_cls] = None,
+    *, cfg: Optional[Config] = None,
+) -> list[dict]:
+    """The Regime-Lab observation set for ONE (horizon, view) — the SINGLE membership builder the samples
+    drill-down reads, so a cohort's drill-down `total` EQUALS its published `n` by construction (J-51
+    count-coherence keystone). `view="pooled"` returns the per-signal-day pool UNCHANGED; `view="episodes"`
+    returns its first-trigger episode collapse (`_collapse_to_episodes`, the SAME overlap-honesty collapse
+    the event study uses, J-63). Built via the SAME `_regime_lab_members_by_horizon` builder `compute_regime_
+    lab` reads (single-horizon call — byte-identical to that horizon's slice of the all-horizons build), so
+    the samples set is byte-identical to the published one. Recomputes nothing. `as_of` scopes both the
+    members and the run-ordinal index to the same point-in-time window."""
+    members = _regime_lab_members_by_horizon(session, [horizon], as_of, cfg=cfg)[horizon]
+    if view == VIEW_POOLED:
+        return members  # the unchanged per-signal-day pool — byte-identical to the published pooled set
+    run_position = _run_position_index(session, as_of)
+    return _collapse_to_episodes(members, run_position)  # first-trigger episode collapse (J-63)
+
+
+def compute_regime_lab(
+    session: Session, config: Optional[Config] = None, *,
+    view: str = VIEW_EPISODES, as_of: Optional[date_cls] = None,
+) -> dict:
+    """The SINGLE canonical Regime-Lab analysis (Data Contract value, J-110) under the chosen overlap-honesty
+    `view`. READS the stored cross-sectional forward returns (`realized_return` + the J-86 `max_drawdown`,
+    VERBATIM) tagged with each run's STORED `regime_score`/`regime_label` (J-80, VERBATIM) — it recomputes NO
+    regime, NO return, NO drawdown. Groups them two ways at EVERY `config.walk_forward.horizons` horizon:
+
+      - `by_label`  — one entry per CONFIGURED regime label (`config.regime.labels` order — no hard-coded
+        regime list), each carrying per horizon: mean realized forward return, paired mean max-drawdown, `n`,
+        `low_sample` (`n < walk_forward.min_sample`).
+      - `by_decile` — D1…D`research.factor_lab.deciles` of the 0–100 regime score (the EXISTING generic
+        `_deciles` / `_decile_member_slice` machinery, the SAME quantile-edge definition the samples
+        drill-down reads), each carrying per horizon: mean return, paired mean max-drawdown, `n`,
+        `low_sample`, and the decile's regime-score range (`score_min`/`score_max`).
+      - `rank_ic_by_horizon` — the Spearman rank-IC of the regime score vs the realized forward return, per
+        horizon (the decile table's header figure; `{value, n}`, NA when n < 2 or zero rank variance).
+
+    Every figure is byte-identical to the reference aggregation over `_regime_lab_observation_set(horizon,
+    view)` (the SAME builders the samples drill-down reads — one computation path, no number recomputed). The
+    view shows ALL horizons at once (paired columns), so it takes NO `horizon` argument. `as_of` (J-32) scopes
+    the observation set to snapshots dated <= D (a pure FILTER — recomputes nothing); `as_of=None` is the
+    all-history aggregate. The payload echoes the resolved cutoff as `asof_date` (ISO) when scoped, else
+    `null`. Raises `ValueError` for an unknown view (the API pre-validates -> 422)."""
+    cfg = config or get_config()
+    wf = cfg.walk_forward
+    fl = cfg.research.factor_lab
+    horizons = list(wf.horizons)
+
+    if view not in ALL_VIEWS:
+        raise ValueError(f"unknown view {view!r}; valid views are {list(ALL_VIEWS)}")
+
+    labels = list(cfg.regime.labels)
+
+    # ONE heavy read builds the per-observation pools for ALL horizons (the bounded, byte-identity-preserving
+    # keystone); the episode collapse (when the view is episodes) is a pure in-memory grouping of those SAME
+    # stored rows, computed ONCE per horizon and shared by both the by-label and by-decile groupings.
+    pools = _regime_lab_members_by_horizon(session, horizons, as_of, cfg=cfg)
+    run_position = _run_position_index(session, as_of) if view == VIEW_EPISODES else None
+    members_by_h: dict[int, list[dict]] = {}
+    for h in horizons:
+        members = pools[h]
+        members_by_h[h] = members if view == VIEW_POOLED else _collapse_to_episodes(members, run_position)
+
+    # (a) by-label: every configured regime label emits a row even at n=0 (honest empty row — never omitted,
+    # never fabricated). The paired mean max-drawdown uses the SAME NA convention as the Factor Lab / forward
+    # scorecard (mean over only the members with a stored drawdown; None when none).
+    by_label: list[dict] = []
+    for label in labels:
+        by_horizon: list[dict] = []
+        for h in horizons:
+            label_members = [m for m in members_by_h[h] if m["regime_label"] == label]
+            returns = [m["return"] for m in label_members]
+            mdds = [m["max_drawdown"] for m in label_members if m["max_drawdown"] is not None]
+            n = len(label_members)
+            by_horizon.append({
+                "horizon": h,
+                "n": n,
+                "low_sample": n < wf.min_sample,
+                "mean_return": mean(returns) if returns else None,
+                "mean_max_drawdown": _mean_or_none(mdds),
+            })
+        by_label.append({"regime": label, "by_horizon": by_horizon})
+
+    # (b) by-decile of the 0–100 regime score (the generic `_deciles` machinery) + the per-horizon rank-IC of
+    # the regime score vs the realized forward return.
+    decile_rows_by_h: dict[int, list[dict]] = {}
+    rank_ic_by_horizon: list[dict] = []
+    for h in horizons:
+        ordered = _regime_score_ordered(members_by_h[h])
+        decile_rows_by_h[h] = _deciles(ordered, fl.deciles, wf.min_sample)
+        rank_ic_by_horizon.append({
+            "horizon": h,
+            "rank_ic": _rank_ic([(o["factor"], o["return"]) for o in ordered]),
+        })
+    by_decile: list[dict] = []
+    for d in range(1, fl.deciles + 1):
+        by_horizon = []
+        for h in horizons:
+            drow = decile_rows_by_h[h][d - 1]
+            by_horizon.append({
+                "horizon": h,
+                "n": drow["n"],
+                "low_sample": drow["low_sample"],
+                "mean_return": drow["mean_return"],
+                "mean_max_drawdown": drow["mean_max_drawdown"],
+                # the decile's regime-score range (the `_deciles` factor bounds, re-labelled to "score").
+                "score_min": drow["factor_min"],
+                "score_max": drow["factor_max"],
+            })
+        by_decile.append({"decile": d, "by_horizon": by_horizon})
+
+    return {
+        "view": view,  # J-63: the resolved overlap-honesty view (episodes default | pooled)
+        # the resolved as-of scoping cutoff echoed (J-32) — ISO date when scoped, null in all-history mode.
+        "asof_date": as_of.isoformat() if as_of is not None else None,
+        "horizons": horizons,
+        "default_horizon": wf.default_horizon,  # the horizon the rank-IC column header is labelled with
+        "deciles_count": fl.deciles,
+        "min_sample": wf.min_sample,
+        "regime_labels": labels,  # the by-label row vocabulary (config-driven — not hard-coded in the UI)
+        "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
+        "descriptive_caveat": RESEARCH_CAVEAT,
+        "by_label": by_label,
+        "by_decile": by_decile,
+        "rank_ic_by_horizon": rank_ic_by_horizon,
+    }
+
+
+# The all-horizons Regime-Lab view is served through the SHARED `EventStudyCache` under a fixed sentinel
+# subject (never colliding with a real event-study subject or the other sentinels). It is ONE global
+# all-horizons view per (view, as-of), so the cache `horizon` slot is pinned to `default_horizon`. The
+# served shape is NEW (by-label + by-score-decile paired columns), so a schema token is folded into the
+# dataset-version slot — any old-schema cached row keyed by the bare `_dataset_version` is a guaranteed MISS
+# AND is pruned on the next write (iter-38/39/44 stale-cache discipline). Bump this token on any future
+# change to the served Regime-Lab shape. No new `table=True` model (the `test_db.py` guard stays unchanged).
+_REGIME_LAB_SUBJECT = "__regime_lab__"
+_REGIME_LAB_SCHEMA_TOKEN = "regimelab-v1"
+
+
+def regime_lab_cached(
+    session: Session, config: Optional[Config] = None, *,
+    view: str = VIEW_EPISODES, as_of: Optional[date_cls] = None,
+) -> dict:
+    """Serve the all-horizons Regime Lab (J-110) from the J-72 cache (mirrors `factor_lab_all_cached`),
+    reusing the SHARED `EventStudyCache` table under the `_REGIME_LAB_SUBJECT` sentinel + the actual `view`
+    (so episodes/pooled never collide), no new table. The view is horizon-independent (it shows every config
+    horizon at once), so the cache `horizon` slot is pinned to `default_horizon` and the dataset-version slot
+    folds in `_REGIME_LAB_SCHEMA_TOKEN` (so any old-schema row is a guaranteed MISS and is pruned on write).
+    On a HIT for the current `(sentinel, view, asof_key, dataset_version+token, default_horizon)` key, return
+    the stored payload (NO recompute); on a MISS, compute it ONCE via `compute_regime_lab` (which validates
+    the view, raising before any write), persist under the current stamp, prune any stale rows for this
+    identity, and return it. BYTE-IDENTICAL to a fresh compute; the cache REFRESHES after any dataset change
+    via the dataset-version key. `as_of` is folded into the `asof_key` slot (a pure observation-set FILTER)."""
+    cfg = config or get_config()
+    version = f"{_dataset_version(session)}-{_REGIME_LAB_SCHEMA_TOKEN}"
+    asof_key = _cache_asof_key(as_of)
+    horizon = cfg.walk_forward.default_horizon  # the horizon-independent view pins the cache horizon slot
+
+    hit = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == _REGIME_LAB_SUBJECT,
+            EventStudyCache.view == view,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.dataset_version == version,
+            EventStudyCache.horizon == horizon,
+        )
+    ).first()
+    if hit is not None:
+        return json.loads(hit.payload_json)
+
+    # MISS — compute once (this also validates the view, raising before any write) and persist.
+    payload = compute_regime_lab(session, cfg, view=view, as_of=as_of)
+
+    stale = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == _REGIME_LAB_SUBJECT,
+            EventStudyCache.view == view,
+            EventStudyCache.asof_key == asof_key,
+            EventStudyCache.horizon == horizon,
+            EventStudyCache.dataset_version != version,
+        )
+    ).all()
+    for row in stale:
+        session.delete(row)
+
+    session.add(EventStudyCache(
+        subject=_REGIME_LAB_SUBJECT, view=view, asof_key=asof_key, dataset_version=version,
+        horizon=horizon, payload_json=json.dumps(payload),
+        created_at=datetime.now(timezone.utc),
+    ))
+    try:
+        session.commit()
+    except Exception:  # best-effort cache; a concurrent writer raced us — the payload is byte-identical
+        session.rollback()
+    return payload

@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "journey": "J-110",
+  "name": "Regime Lab — all-horizon by-label and by-decile tables",
+  "default_timeout_ms": 12000,
+  "steps": [
+    {
+      "n": 1,
+      "journey": "J-110",
+      "action": {"type": "goto", "url": "/research"},
+      "expect": {"text": "Regime Lab"}
+    },
+    {
+      "n": 2,
+      "journey": "J-110",
+      "action": {"type": "click", "target": {"role": "link", "name": "Regime Lab"}},
+      "expect": {"text": "Research — Regime Lab"}
+    },
+    {
+      "n": 3,
+      "journey": "J-110",
+      "action": {"type": "click", "target": {"role": "button", "name": "Sort by Fwd 1d"}},
+      "expect": {"text": "Narrow leadership"}
+    },
+    {
+      "n": 4,
+      "journey": "J-110",
+      "action": {"type": "goto", "url": "/research/regime-lab"},
+      "expect": {"text": "Rank-IC"}
+    }
+  ]
+}

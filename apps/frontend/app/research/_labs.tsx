@@ -25,7 +25,7 @@ import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { TermInfo } from "@/components/ui/term-info";
 import { SampleLink } from "@/components/sample-link";
-import { type SampleScope } from "@/lib/samples-link";
+import { type CohortParams, type SampleScope } from "@/lib/samples-link";
 import { cn } from "@/lib/utils";
 import {
   fetchDowntrendOpportunity,
@@ -33,6 +33,7 @@ import {
   fetchFactorCombination,
   fetchFactorLabAll,
   fetchRecoveryTurnEdge,
+  fetchRegimeLab,
   fetchRegimeSetupPattern,
   type CohortStats,
   type DowntrendOpportunityResponse,
@@ -50,6 +51,11 @@ import {
   type RecoveryTurnEdgeHorizonRow,
   type RecoveryTurnEdgePhaseRow,
   type RecoveryTurnEdgeResponse,
+  type RegimeLabDecileHorizonCell,
+  type RegimeLabDecileRow,
+  type RegimeLabHorizonCell,
+  type RegimeLabLabelRow,
+  type RegimeLabResponse,
   type RegimeSetupPatternResponse,
   type RegimeSetupPatternRow,
 } from "@/lib/api";
@@ -3481,5 +3487,453 @@ export function DowntrendOpportunityLabPage() {
         <DowntrendOpportunityLab horizon={horizon} asofCutoff={asofCutoff} scope={scope} onMeta={onMeta} />
       )}
     />
+  );
+}
+
+// --- Regime Lab (iter-53, J-110) -----------------------------------------------------------------
+/** The page's working overlap-honesty view. The Regime Lab studies the WHOLE cross-section (every
+ *  stock × snapshot), so the first-trigger episode collapse would degenerate to each name's first
+ *  appearance — `pooled` (every per-signal-day observation, tagged by THAT snapshot's regime) is the
+ *  meaningful cross-sectional view. The view is a cohort/MODE (carried verbatim into the `N=` drill-down so
+ *  the counts stay coherent), NOT a date — `?asof` remains the single global date (J-18). */
+const REGIME_LAB_VIEW: "episodes" | "pooled" = "pooled";
+
+/** A sortable column of a Regime-Lab table: a static key (the regime label string / the decile number) or a
+ *  per-horizon `fwd:${h}` / `mdd:${h}` numeric column (NA-last). A pure VIEW transform — the sort re-orders
+ *  the served rows only, it recomputes / refetches nothing (J-48). The empty key = the server's natural
+ *  order (config-label order / D1…D10). */
+type RegimeSortKey = "" | "regime" | "decile" | `fwd:${number}` | `mdd:${number}`;
+type RegimeSortDir = "asc" | "desc";
+
+/** Parse a per-horizon sort key (`fwd:20` / `mdd:5`) into its metric + horizon, or null for a static key. */
+function parseRegimeHorizonKey(key: RegimeSortKey): { metric: "fwd" | "mdd"; horizon: number } | null {
+  const m = /^(fwd|mdd):(\d+)$/.exec(key);
+  return m ? { metric: m[1] as "fwd" | "mdd", horizon: Number(m[2]) } : null;
+}
+
+/** The cell at horizon `h` of a row's `by_horizon` list (undefined if absent — never expected). */
+function regimeCellAt<T extends RegimeLabHorizonCell>(byHorizon: T[], h: number): T | undefined {
+  return byHorizon.find((b) => b.horizon === h);
+}
+
+/** Whether a cell renders NA for a metric — the SAME `low_sample || n===0 || value===null` rule the cell
+ *  uses, so the sort NA-set == the visual NA-set (NA-last in both directions, J-82 predicate). */
+function regimeCellIsNa(cell: RegimeLabHorizonCell | undefined, metric: "fwd" | "mdd"): boolean {
+  if (!cell || cell.low_sample || cell.n === 0) return true;
+  return metric === "fwd" ? cell.mean_return === null : cell.mean_max_drawdown === null;
+}
+
+/** The numeric sort value for a metric (NA rows are pushed last by the comparator regardless of sign). */
+function regimeCellValue(cell: RegimeLabHorizonCell | undefined, metric: "fwd" | "mdd"): number {
+  if (!cell) return 0;
+  return (metric === "fwd" ? cell.mean_return : cell.mean_max_drawdown) ?? 0;
+}
+
+/** A sortable column header for the Regime-Lab tables (mirrors `FactorSortHeader`). The button is resolved
+ *  in tests by its `aria-label`; the visible label lives in a nested span. */
+function RegimeSortHeader({
+  col,
+  label,
+  activeKey,
+  dir,
+  onSort,
+  numeric,
+}: {
+  col: RegimeSortKey;
+  label: string;
+  activeKey: RegimeSortKey;
+  dir: RegimeSortDir;
+  onSort: (key: RegimeSortKey) => void;
+  numeric?: boolean;
+}) {
+  const active = activeKey === col;
+  const ariaSort: "ascending" | "descending" | "none" = active
+    ? dir === "asc"
+      ? "ascending"
+      : "descending"
+    : "none";
+  return (
+    <th className={cn("px-4 py-2 font-medium", numeric && "text-right")} aria-sort={ariaSort}>
+      <button
+        type="button"
+        onClick={() => onSort(col)}
+        aria-label={`Sort by ${label}${active ? (dir === "asc" ? ", ascending" : ", descending") : ""}`}
+        className={cn(
+          "group inline-flex items-center gap-1 rounded-sm uppercase tracking-wide transition-colors hover:text-text focus-visible:text-text focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+          numeric && "justify-end",
+        )}
+      >
+        <span className={cn(active && "text-text")}>{label}</span>
+        {active ? (
+          dir === "asc" ? (
+            <ArrowUp className="h-3 w-3 text-accent" aria-hidden data-testid="sort-indicator" />
+          ) : (
+            <ArrowDown className="h-3 w-3 text-accent" aria-hidden data-testid="sort-indicator" />
+          )
+        ) : (
+          <ArrowUpDown
+            className="h-3 w-3 text-text-faint/40 opacity-0 transition-opacity group-hover:opacity-100"
+            aria-hidden
+          />
+        )}
+      </button>
+    </th>
+  );
+}
+
+/** A Regime-Lab forward-return cell at one horizon: colour-graded mean return (or explicit NA when the
+ *  bucket is low-sample / empty / null — never a fabricated number) + the count-coherent `N=` drill-down
+ *  chip (new tab). The chip lives on the return cell only (never duplicated on the paired drawdown cell). */
+function RegimeReturnCell({
+  cell,
+  min,
+  scope,
+  cohort,
+  chipLabel,
+  rangeTitle,
+}: {
+  cell: RegimeLabHorizonCell;
+  min: number;
+  scope: SampleScope;
+  cohort: CohortParams;
+  chipLabel: string;
+  rangeTitle?: string;
+}) {
+  const na = cell.low_sample || cell.n === 0 || cell.mean_return === null;
+  return (
+    <span className="inline-flex items-center justify-end gap-2">
+      {na ? (
+        <span
+          className="num font-semibold text-text-muted"
+          title={cell.low_sample ? `Low sample — n below the ${min} minimum` : "No observations"}
+        >
+          NA
+        </span>
+      ) : (
+        <span className={cn("num font-semibold", returnClass(cell.mean_return))} title={rangeTitle}>
+          {fmtPct(cell.mean_return)}
+        </span>
+      )}
+      <SampleLink n={cell.n} min={min} scope={scope} cohort={cohort} label={chipLabel} />
+    </span>
+  );
+}
+
+/** A Regime-Lab paired max-drawdown cell at one horizon: mdd-color-graded value (a deeper drawdown reads
+ *  more severe), or explicit NA when low-sample / empty / null — never a fabricated 0. */
+function RegimeMddCell({ cell, min }: { cell: RegimeLabHorizonCell; min: number }) {
+  const na = cell.low_sample || cell.n === 0 || cell.mean_max_drawdown === null;
+  if (na) {
+    return (
+      <span
+        className="num font-semibold text-text-muted"
+        title={cell.low_sample ? `Low sample — n below the ${min} minimum` : "No stored drawdown — NA"}
+      >
+        NA
+      </span>
+    );
+  }
+  return (
+    <span className={cn("num font-semibold", mddClass(cell.mean_max_drawdown))}>
+      {fmtMdd(cell.mean_max_drawdown)}
+    </span>
+  );
+}
+
+/** Toggle a sort key: same key flips direction; a new key leads ascending for the static (label/decile)
+ *  columns and descending (strongest first) for the numeric per-horizon columns. */
+function useRegimeSort(initial: RegimeSortKey) {
+  const [sortKey, setSortKey] = useState<RegimeSortKey>(initial);
+  const [sortDir, setSortDir] = useState<RegimeSortDir>("asc");
+  const onSort = (key: RegimeSortKey) => {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "regime" || key === "decile" ? "asc" : "desc");
+    }
+  };
+  return { sortKey, sortDir, onSort };
+}
+
+/** Stable, NA-last comparator over rows carrying a `by_horizon` list. `staticVal` resolves a static column
+ *  (the regime label string / the decile number); the per-horizon `fwd:`/`mdd:` columns sort by the cell's
+ *  metric, NA-last in BOTH directions. The empty key keeps the server's natural order. */
+function sortRegimeRows<T extends { by_horizon: RegimeLabHorizonCell[] }>(
+  rows: T[],
+  sortKey: RegimeSortKey,
+  sortDir: RegimeSortDir,
+  staticVal: (row: T, key: RegimeSortKey) => { str?: string; num?: number },
+): T[] {
+  if (sortKey === "") return rows;
+  const sign = sortDir === "asc" ? 1 : -1;
+  const hk = parseRegimeHorizonKey(sortKey);
+  return rows
+    .map((row, i) => ({ row, i }))
+    .sort((a, b) => {
+      if (hk) {
+        const ca = regimeCellAt(a.row.by_horizon, hk.horizon);
+        const cb = regimeCellAt(b.row.by_horizon, hk.horizon);
+        const ana = regimeCellIsNa(ca, hk.metric);
+        const bna = regimeCellIsNa(cb, hk.metric);
+        if (ana && bna) return a.i - b.i;
+        if (ana) return 1; // NA last regardless of direction
+        if (bna) return -1;
+        const c = (regimeCellValue(ca, hk.metric) - regimeCellValue(cb, hk.metric)) * sign;
+        return c !== 0 ? c : a.i - b.i;
+      }
+      const sa = staticVal(a.row, sortKey);
+      const sb = staticVal(b.row, sortKey);
+      let c = 0;
+      if (sa.str !== undefined && sb.str !== undefined) c = sa.str.localeCompare(sb.str) * sign;
+      else if (sa.num !== undefined && sb.num !== undefined) c = (sa.num - sb.num) * sign;
+      return c !== 0 ? c : a.i - b.i;
+    })
+    .map((x) => x.row);
+}
+
+/** The by-LABEL summary table: one row per configured regime label (server-driven order), then per config
+ *  horizon a paired (mean forward-return, mean max-drawdown) column + the count-coherent `N=` chip. Sortable
+ *  NA-last on every numeric column. */
+function RegimeLabByLabelTable({
+  data,
+  scope,
+}: {
+  data: RegimeLabResponse;
+  scope: SampleScope;
+}) {
+  const { sortKey, sortDir, onSort } = useRegimeSort("");
+  const horizons = data.horizons;
+  const sorted = useMemo(
+    () => sortRegimeRows(data.by_label, sortKey, sortDir, (row) => ({ str: row.regime })),
+    [data.by_label, sortKey, sortDir],
+  );
+  if (data.by_label.length === 0) {
+    return (
+      <EmptyState
+        icon={Microscope}
+        title="No forward-tested observations"
+        description="No stored snapshot has a realized forward return tagged with a regime. No figure is fabricated to fill the gap."
+      />
+    );
+  }
+  return (
+    <Card className="overflow-x-auto p-0" data-testid="regime-lab-by-label">
+      <PanelTitle
+        hint={`Mean realized forward return AND its paired max-drawdown per market-regime label, at every horizon. Cells with n < ${data.min_sample} render NA + n. Click a column to sort (NA-last); click an N= chip to open that cohort's observations.`}
+      >
+        By regime label
+      </PanelTitle>
+      <table data-testid="regime-label-table" className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+            <RegimeSortHeader col="regime" label="Regime" activeKey={sortKey} dir={sortDir} onSort={onSort} />
+            {horizons.map((h) => (
+              <Fragment key={`lh-${h}`}>
+                <RegimeSortHeader col={`fwd:${h}`} label={`Fwd ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
+                <RegimeSortHeader col={`mdd:${h}`} label={`MDD ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
+              </Fragment>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((row) => (
+            <tr key={row.regime} className="border-b border-border last:border-b-0" data-testid={`regime-label-row-${row.regime}`}>
+              <td className="px-4 py-2 font-medium text-text">{row.regime}</td>
+              {horizons.map((h) => {
+                const cell = regimeCellAt(row.by_horizon, h);
+                return (
+                  <Fragment key={`lc-${row.regime}-${h}`}>
+                    <td className="px-4 py-2 text-right">
+                      {cell ? (
+                        <RegimeReturnCell
+                          cell={cell}
+                          min={data.min_sample}
+                          scope={scope}
+                          cohort={{ kind: "regime-lab", horizon: h, slice: "label", view: REGIME_LAB_VIEW, regime: row.regime }}
+                          chipLabel={`Open the ${row.regime} regime cohort (n=${cell.n}) at the ${h}-day horizon in Research Samples (new tab)`}
+                        />
+                      ) : (
+                        <span className="text-text-faint">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      {cell ? <RegimeMddCell cell={cell} min={data.min_sample} /> : <span className="text-text-faint">—</span>}
+                    </td>
+                  </Fragment>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
+/** The by-regime-score-DECILE table: a header Rank-IC row (regime score ↔ forward return per horizon), the
+ *  decile's regime-score range at the default horizon, then per config horizon a paired (mean forward-return,
+ *  mean max-drawdown) column + the count-coherent `N=` chip. Sortable NA-last on every numeric column. */
+function RegimeLabDecileTable({
+  data,
+  scope,
+}: {
+  data: RegimeLabResponse;
+  scope: SampleScope;
+}) {
+  const { sortKey, sortDir, onSort } = useRegimeSort("");
+  const horizons = data.horizons;
+  const defaultHorizon = data.default_horizon;
+  const rankIcByH = new Map(data.rank_ic_by_horizon.map((r) => [r.horizon, r.rank_ic]));
+  const sorted = useMemo(
+    () => sortRegimeRows(data.by_decile, sortKey, sortDir, (row) => ({ num: row.decile })),
+    [data.by_decile, sortKey, sortDir],
+  );
+  return (
+    <Card className="overflow-x-auto p-0" data-testid="regime-lab-by-decile">
+      <PanelTitle
+        hint={`Mean realized forward return AND its paired max-drawdown per regime-score decile (D1 = lowest 0–100 regime score → D10 = highest), at every horizon. The Rank-IC row is the Spearman correlation of the regime score vs the forward return per horizon (labelled at ${defaultHorizon}d for reference). Score range is shown at the ${defaultHorizon}-day horizon; each horizon's own range is on its return cell's hover. Cells with n < ${data.min_sample} render NA + n.`}
+      >
+        By regime-score decile
+      </PanelTitle>
+      <table data-testid="regime-decile-table" className="w-full border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+            <RegimeSortHeader col="decile" label="Decile" activeKey={sortKey} dir={sortDir} onSort={onSort} />
+            <th className="px-4 py-2 text-right font-medium">Score range ({defaultHorizon}d)</th>
+            {horizons.map((h) => (
+              <Fragment key={`dh-${h}`}>
+                <RegimeSortHeader col={`fwd:${h}`} label={`Fwd ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
+                <RegimeSortHeader col={`mdd:${h}`} label={`MDD ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
+              </Fragment>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {/* the Rank-IC header row (regime score ↔ forward return per horizon) — not a decile, so no chip. */}
+          <tr className="border-b border-border bg-surface-2/40" data-testid="regime-decile-rank-ic-row">
+            <td className="px-4 py-2 font-medium text-text-muted">
+              <span className="inline-flex items-center gap-1">Rank-IC<TermInfo term="rank-IC" /></span>
+            </td>
+            <td className="px-4 py-2 text-right text-text-faint">—</td>
+            {horizons.map((h) => {
+              const ic = rankIcByH.get(h);
+              const na = !ic || ic.value === null;
+              return (
+                <Fragment key={`ic-${h}`}>
+                  <td className="px-4 py-2 text-right">
+                    <RatioCell
+                      value={ic?.value ?? null}
+                      na={na}
+                      title={na ? "Not enough independent observations to rank-correlate — NA, not a fabricated 0" : `Spearman rank-IC of the regime score vs the ${h}-day forward return`}
+                    />
+                  </td>
+                  <td className="px-4 py-2 text-right text-text-faint">—</td>
+                </Fragment>
+              );
+            })}
+          </tr>
+          {sorted.map((row) => {
+            const range = regimeCellAt(row.by_horizon, defaultHorizon);
+            return (
+              <tr key={row.decile} className="border-b border-border last:border-b-0" data-testid={`regime-decile-row-${row.decile}`}>
+                <td className="px-4 py-2">
+                  <span className="num font-semibold text-text">D{row.decile}</span>
+                </td>
+                <td className="num px-4 py-2 text-right text-xs text-text-faint">
+                  {!range || range.score_min === null || range.score_max === null
+                    ? "—"
+                    : `${range.score_min.toFixed(1)} … ${range.score_max.toFixed(1)}`}
+                </td>
+                {horizons.map((h) => {
+                  const cell = regimeCellAt(row.by_horizon, h);
+                  const rangeTitle =
+                    cell && cell.score_min !== null && cell.score_max !== null
+                      ? `Regime-score range at ${h}d: ${cell.score_min.toFixed(1)} … ${cell.score_max.toFixed(1)}`
+                      : undefined;
+                  return (
+                    <Fragment key={`dc-${row.decile}-${h}`}>
+                      <td className="px-4 py-2 text-right">
+                        {cell ? (
+                          <RegimeReturnCell
+                            cell={cell}
+                            min={data.min_sample}
+                            scope={scope}
+                            cohort={{ kind: "regime-lab", horizon: h, slice: "decile", view: REGIME_LAB_VIEW, decile: row.decile }}
+                            chipLabel={`Open the regime-score decile D${row.decile} cohort (n=${cell.n}) at the ${h}-day horizon in Research Samples (new tab)`}
+                            rangeTitle={rangeTitle}
+                          />
+                        ) : (
+                          <span className="text-text-faint">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        {cell ? <RegimeMddCell cell={cell} min={data.min_sample} /> : <span className="text-text-faint">—</span>}
+                      </td>
+                    </Fragment>
+                  );
+                })}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </Card>
+  );
+}
+
+type RegimeLabState =
+  | { kind: "loading" }
+  | { kind: "ok"; data: RegimeLabResponse }
+  | { kind: "error" };
+
+/** iter-53 (J-110) — the Regime Lab on its OWN route (`/research/regime-lab`). Cross-sectional realized
+ *  forward returns + paired max-drawdowns grouped (a) by the six canonical regime labels and (b) into
+ *  deciles of the 0–100 regime score, at EVERY config horizon at once (paired columns), with the per-horizon
+ *  rank-IC of the regime score vs the forward return. The As-of mode toggle FILTERS the observation set (the
+ *  single global as-of — no second date state, J-18). Every figure is read VERBATIM from the stored values
+ *  and re-presented; the page recomputes nothing and the sort is a pure view transform. */
+export function RegimeLabPage() {
+  const [state, setState] = useState<RegimeLabState>({ kind: "loading" });
+  const { mode, setMode, readiness, asofCutoff, scope } = useResearchControls();
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ kind: "loading" });
+    fetchRegimeLab(REGIME_LAB_VIEW, asofCutoff ?? undefined, controller.signal)
+      .then((data) => setState({ kind: "ok", data }))
+      .catch(() => {
+        if (!controller.signal.aborted) setState({ kind: "error" });
+      });
+    return () => controller.abort();
+  }, [asofCutoff, readiness]);
+
+  const data = state.kind === "ok" ? state.data : null;
+
+  return (
+    <div className="space-y-4">
+      <ResearchControls
+        title="Research — Regime Lab"
+        subtitle="How have stocks' realized forward returns and downside risk differed across the market regime? Mean forward return + paired max-drawdown grouped by the six regime labels and by deciles of the 0–100 regime score, at every horizon at once, with the rank-IC of the regime score vs the forward return. Derived once from the stored forward-tested evidence; descriptive survivorship-biased association, never a forecast."
+        mode={mode}
+        onModeChange={setMode}
+        asofCutoff={asofCutoff}
+      />
+      <ResearchCaveat survivorship={data?.survivorship_bias} descriptive={data?.descriptive_caveat} />
+      {shouldShowWarming(readiness) ? (
+        <WarmingState what="The Regime Lab" />
+      ) : (
+        <>
+          {state.kind === "loading" ? <LabSkeleton /> : null}
+          {state.kind === "error" ? <ResearchError what="The Regime-Lab evidence" /> : null}
+          {data ? (
+            <>
+              <RegimeLabByLabelTable data={data} scope={scope} />
+              <RegimeLabDecileTable data={data} scope={scope} />
+            </>
+          ) : null}
+        </>
+      )}
+    </div>
   );
 }
