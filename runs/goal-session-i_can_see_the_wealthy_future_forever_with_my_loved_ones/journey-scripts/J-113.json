@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "journey": "J-113",
+  "name": "Research hub — the regime / phase / factor labs lead the hub in reading order",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-113", "action": {"type": "goto", "url": "/research"}, "expect": {"text": "Research"}},
+    {"n": 2, "journey": "J-113", "action": {"type": "goto", "url": "/research"}, "expect": {"text": "Factor Lab"}},
+    {"n": 3, "journey": "J-113", "action": {"type": "goto", "url": "/research"}, "expect": {"text": "Regime Lab"}},
+    {"n": 4, "journey": "J-113", "action": {"type": "goto", "url": "/research"}, "expect": {"text": "Market Phase & Severity Lab"}},
+    {"n": 5, "journey": "J-113", "action": {"type": "goto", "url": "/research"}, "expect": {"text": "Downtrend Opportunity"}}
+  ]
+}

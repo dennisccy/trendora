@@ -401,6 +401,31 @@ the Data Contract when its iter is planned (J-109's amendment registered on the 
 this iter; J-110/J-111/J-112 rows at iter-53/54/55). After all four land green on live evidence + a
 flushed-GREEN full suite + COHERENCE-PASS + zero regression, the next evaluation is a sound GOAL_ACHIEVED
 candidate (J-22/J-23/J-24 stay honestly blocked-NA, non-vetoing per goal.md:105-108).
+
+SESSION EXTENSION (2026-06-28) -- J-113..J-114 (this resume, post-iter-55 GOAL_ACHIEVED; goal.md extended).
+TWO new Must-haves, BOTH NOT data-dependent (goal.md:2495 -- pure frontend PRESENTATION / information-architecture
+changes over ALREADY-served values, buildable + verifiable offline against the committed seed; neither may be
+recorded blocked-NA, neither may halt the loop). NO new top-level nav section, NO new page, NO new Data Contract
+value, NO nav-skeleton change, NO canonical-home move (so NO blueprint.reapproval-requested is owed). J-113 = a
+pure READING-ORDER reorder of the `/research` hub's single ordered `LABS` array (apps/frontend/app/research/page.tsx,
+the `data-testid="research-hub"` grid source) to exactly Factor Lab -> Regime Lab -> Market Phase & Severity Lab ->
+Regime x Phase x Factor -> Regime x Setup x Pattern -> Severity-velocity x Regime -> Multi-factor combination ->
+Setup & Pattern event study -> Recovery-Turn Edge -> Downtrend Opportunity; all TEN labs stay present, reachable,
+deep-linkable (no orphan surface, no duplicate home); every route + ?asof href-stamping (J-50) + per-lab lazy-load
+(J-104) unchanged. J-114 = a pure VIEW-TRANSFORM column reorder across the FOUR all-horizon lab tables
+(apps/frontend/app/research/_labs.tsx: Factor Lab all-factors table + expandable decile grid [J-109], Regime Lab
+by-label + regime-score decile [J-110], Phase & Severity Lab by-phase-label + severity decile [J-111], Regime x
+Phase x Factor combination table [J-112]) so all `config.walk_forward.horizons` FORWARD-RETURN columns render FIRST
+(1/5/10/20/60d) then all MAX-DRAWDOWN columns in the same horizon order -- never interleaved -- matching the
+/stocks/themes/sectors leaderboard order (J-86). Every figure stays BYTE-IDENTICAL, read from the stored
+`forward_returns` (realized return + the J-86 `max_drawdown`) via the EXISTING lab endpoints (Single source of truth /
+No recompute in the read path); every column stays client-side sortable (J-48 -- the `fwd:${h}`/`mdd:${h}` col-key
+mapping just follows the new grouped order), colour-graded, NA-honest, count-coherent (J-51/J-65); horizon set stays
+config-driven (No magic numbers). [TARGET] tag: iter-56 targets BOTH J-113 + J-114 (LEAN, frontend-only -- ZERO
+backend diff; the iter-55 flushed-GREEN 1210-passed pytest suite remains the standing gate for the byte-unchanged
+backend; committed node TS-strip tests assert the hub card order + all-fwd-before-all-mdd header order on each of the
+four labs). After both land green on live evidence, the next evaluation is a sound GOAL_ACHIEVED candidate
+(J-22/J-23/J-24 stay blocked-NA, non-vetoing per goal.md:105-109).
 -->
 
 ## Information Architecture

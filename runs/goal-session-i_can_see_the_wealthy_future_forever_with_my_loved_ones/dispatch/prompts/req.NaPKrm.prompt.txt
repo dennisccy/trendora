@@ -1,0 +1,21 @@
+You are the reviewer agent for goal-mode lean iteration.
+
+Iteration: goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-56
+Iter spec: /home/dennis-chan/Git/trendora/docs/phases/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-56.md
+Dev handoff: /home/dennis-chan/Git/trendora/docs/handoffs/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-56-dev.md
+Project template: .claude/project-template.md
+Agent instructions: .claude/agents/reviewer.md  <-- read this first
+(CLAUDE.md is already in your system prompt — do not Read it again.)
+
+Run: git diff HEAD to see what changed.
+
+Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
+
+Write your review report to: /home/dennis-chan/Git/trendora/reports/reviews/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-56-review.md
+
+The report MUST start with a line matching exactly:
+**Verdict:** PASS
+  or
+**Verdict:** PASS_WITH_NOTES
+  or
+**Verdict:** FAIL

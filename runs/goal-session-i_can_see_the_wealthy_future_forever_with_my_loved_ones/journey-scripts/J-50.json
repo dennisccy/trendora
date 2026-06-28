@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "journey": "J-50",
+  "name": "The as-of date survives EVERY in-app navigation, including new tabs (extends J-43)",
+  "default_timeout_ms": 10000,
+  "steps": [
+    {"n": 1, "journey": "J-50", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "LEADERSHIP"}},
+    {"n": 2, "journey": "J-50", "action": {"type": "click", "target": {"role": "button", "name": "View as-of date"}}},
+    {"n": 3, "journey": "J-50", "action": {"type": "click", "target": {"role": "button", "name": "View as-of 2025-01-02"}}},
+    {"n": 4, "journey": "J-50", "action": {"type": "goto", "url": "/stocks?asof=2025-01-02"}, "expect": {"text": "asof=2025-01-02"}},
+    {"n": 5, "journey": "J-50", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "LEADERSHIP"}}
+  ]
+}

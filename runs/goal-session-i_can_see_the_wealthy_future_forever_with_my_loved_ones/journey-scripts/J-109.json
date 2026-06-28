@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "journey": "J-109",
+  "name": "Factor Lab — all-horizon forward-return + max-drawdown columns on both the all-factors table and the decile sort (removes the horizon selector)",
+  "default_timeout_ms": 10000,
+  "steps": [
+    {"n": 1, "journey": "J-109", "action": {"type": "goto", "url": "/research/factor-lab"}, "expect": {"text": "Factor Lab"}},
+    {"n": 2, "journey": "J-109", "action": {"type": "goto", "url": "/research/factor-lab"}, "expect": {"text": "Fwd 1d"}},
+    {"n": 3, "journey": "J-109", "action": {"type": "goto", "url": "/research/factor-lab"}, "expect": {"text": "MDD 1d"}},
+    {"n": 4, "journey": "J-109", "action": {"type": "goto", "url": "/research/samples?kind=factor&horizon=1&factor=high_proximity&slice=decile&decile=1&scope=asof"}, "expect": {"text": "Research Samples"}}
+  ]
+}

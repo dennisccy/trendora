@@ -1,0 +1,45 @@
+You are the browser-qa-agent for goal-mode lean iteration.
+
+Iteration: goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-56
+Iter spec: /home/dennis-chan/Git/trendora/docs/phases/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-56.md
+Project goal: /home/dennis-chan/Git/trendora/docs/goal.md  <-- read "Must-have user journeys" section for journey definitions
+Agent instructions: .claude/agents/browser-qa-agent.md  <-- read this first
+(CLAUDE.md is already in your system prompt — do not Read it again.)
+Skill: .claude/skills/browser-workflow-executor.md  <-- read for Chrome MCP technique
+
+GOAL-MODE LEAN MODE — test EXACTLY these journeys this run: J-109,J-113,J-114,J-48,J-50
+Do NOT test these — a deterministic replay verifies them separately: J-06 J-07 J-104 J-107 J-110 J-111 J-112 J-18 J-51 
+  1. For each journey ID above, read its numbered steps + Acceptance line from the project goal's "Must-have user journeys" section.
+  2. Execute the steps with Chrome MCP; use the journey ID as the test case ID (e.g. UT-J-01).
+
+Frontend URL: http://localhost:3255
+Frontend available: yes
+
+Chrome MCP browser checks ARE required. Use mcp__plugin_superpowers-chrome_chrome__use_browser.
+
+For each journey:
+  - Execute the numbered steps exactly as written in goal.md
+  - Verify the Acceptance condition
+  - Take a screenshot of the end state, save to reports/qa/goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-56-evidence/
+  - Record PASS / FAIL / SKIP with a short failure description if FAIL
+
+GOLDEN REPLAY SCRIPTS (goal-mode regression speedup): for every journey you verify
+PASS, ALSO write a self-contained deterministic replay script to
+/home/dennis-chan/Git/trendora/runs/goal-session-i_can_see_the_wealthy_future_forever_with_my_loved_ones/journey-scripts/<J-XX>.json (overwrite if present) so future iterations can
+re-verify it without a browser-driving model. Follow the 'Golden replay script'
+section of your agent instructions for the exact JSON shape. Best-effort: if you
+cannot produce one for a journey, skip it (that journey just falls back to the LLM
+next time).
+
+Write your results to: /home/dennis-chan/Git/trendora/reports/phase-goal-i_can_see_the_wealthy_future_forever_with_my_loved_ones-iter-56-ui-test-results.llm.md
+Use template: templates/ui-test-results.md
+Map each journey ID to a UT row.
+
+The report MUST contain a line at the top:
+**Browser QA Verdict:** PASS
+  or
+**Browser QA Verdict:** FAIL
+  or
+**Browser QA Verdict:** SKIPPED
+
+Then STOP.

@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "journey": "J-114",
+  "name": "Research labs — all forward-return columns grouped first, then all max-drawdown columns",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-114", "action": {"type": "goto", "url": "/research/factor-lab"}, "expect": {"text": "Fwd 1d"}},
+    {"n": 2, "journey": "J-114", "action": {"type": "goto", "url": "/research/factor-lab"}, "expect": {"text": "MDD 60d"}},
+    {"n": 3, "journey": "J-114", "action": {"type": "goto", "url": "/research/regime-lab"}, "expect": {"text": "Fwd 1d"}},
+    {"n": 4, "journey": "J-114", "action": {"type": "goto", "url": "/research/regime-lab"}, "expect": {"text": "MDD 60d"}},
+    {"n": 5, "journey": "J-114", "action": {"type": "goto", "url": "/research/phase-severity-lab"}, "expect": {"text": "Fwd 1d"}},
+    {"n": 6, "journey": "J-114", "action": {"type": "goto", "url": "/research/phase-severity-lab"}, "expect": {"text": "MDD 60d"}},
+    {"n": 7, "journey": "J-114", "action": {"type": "goto", "url": "/research/regime-phase-factor"}, "expect": {"text": "Fwd 1d"}},
+    {"n": 8, "journey": "J-114", "action": {"type": "goto", "url": "/research/regime-phase-factor"}, "expect": {"text": "MDD 60d"}}
+  ]
+}

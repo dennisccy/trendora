@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -25,6 +25,7 @@ import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { TermInfo } from "@/components/ui/term-info";
 import { SampleLink } from "@/components/sample-link";
+import { groupedHorizonColumns, horizonColumnKey } from "@/lib/research-lab-columns";
 import { type CohortParams, type SampleScope } from "@/lib/samples-link";
 import { cn } from "@/lib/utils";
 import {
@@ -596,11 +597,17 @@ function FactorsTable({ data, scope }: { data: FactorLabAllResponse; scope: Samp
                 onSort={onSort}
                 numeric
               />
-              {horizons.map((h) => (
-                <Fragment key={`hh-${h}`}>
-                  <FactorSortHeader col={`fwd:${h}`} label={`Fwd ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
-                  <FactorSortHeader col={`mdd:${h}`} label={`MDD ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
-                </Fragment>
+              {/* J-114: all forward-return columns first, then all max-drawdown columns (no interleave). */}
+              {groupedHorizonColumns(horizons).map((col) => (
+                <FactorSortHeader
+                  key={horizonColumnKey(col)}
+                  col={`${col.metric}:${col.horizon}`}
+                  label={`${col.metric === "fwd" ? "Fwd" : "MDD"} ${col.horizon}d`}
+                  activeKey={sortKey}
+                  dir={sortDir}
+                  onSort={onSort}
+                  numeric
+                />
               ))}
               <th className="px-4 py-2" aria-label="expand" />
             </tr>
@@ -732,15 +739,11 @@ function FactorRows({
             title={raNa ? `Low sample (n < ${min}) or no downside in the top decile — NA, not a fabricated number` : "Top-decile mean return per unit downside deviation"}
           />
         </td>
-        {horizons.map((h) => (
-          <Fragment key={`tc-${row.key}-${h}`}>
-            <td className="px-4 py-2 text-right">
-              <TopDecileCell row={row} horizon={h} metric="fwd" min={min} />
-            </td>
-            <td className="px-4 py-2 text-right">
-              <TopDecileCell row={row} horizon={h} metric="mdd" min={min} />
-            </td>
-          </Fragment>
+        {/* J-114: all forward-return cells first, then all max-drawdown cells (no interleave). */}
+        {groupedHorizonColumns(horizons).map((col) => (
+          <td key={`tc-${row.key}-${horizonColumnKey(col)}`} className="px-4 py-2 text-right">
+            <TopDecileCell row={row} horizon={col.horizon} metric={col.metric} min={min} />
+          </td>
         ))}
         <td className="px-4 py-2 text-text-faint">
           {open ? <ChevronDown className="h-4 w-4" aria-hidden /> : <ChevronRight className="h-4 w-4" aria-hidden />}
@@ -873,13 +876,15 @@ function DecileTable({
                 <span className="inline-flex items-center gap-1">Decile<TermInfo term="decile" /></span>
               </th>
               <th className="px-4 py-2 text-right font-medium">Factor range ({defaultHorizon}d)</th>
-              {horizons.map((h) => (
-                <Fragment key={`dgh-${h}`}>
-                  <th className="px-4 py-2 text-right font-medium">
-                    <span className="inline-flex items-center justify-end gap-1">Fwd {h}d<TermInfo term="forward return" /></span>
-                  </th>
-                  <th className="px-4 py-2 text-right font-medium">MDD {h}d</th>
-                </Fragment>
+              {/* J-114: all forward-return columns first, then all max-drawdown columns (no interleave). */}
+              {groupedHorizonColumns(horizons).map((col) => (
+                <th key={horizonColumnKey(col)} className="px-4 py-2 text-right font-medium">
+                  {col.metric === "fwd" ? (
+                    <span className="inline-flex items-center justify-end gap-1">Fwd {col.horizon}d<TermInfo term="forward return" /></span>
+                  ) : (
+                    <>MDD {col.horizon}d</>
+                  )}
+                </th>
               ))}
             </tr>
           </thead>
@@ -896,21 +901,23 @@ function DecileTable({
                       ? "—"
                       : `${range.factor_min.toFixed(2)} … ${range.factor_max.toFixed(2)}`}
                   </td>
-                  {horizons.map((h) => {
-                    const cell = byH.get(h)?.[d - 1];
+                  {/* J-114: all forward-return cells first, then all max-drawdown cells (no interleave). */}
+                  {groupedHorizonColumns(horizons).map((col) => {
+                    const cell = byH.get(col.horizon)?.[d - 1];
                     return (
-                      <Fragment key={`dgc-${h}-${d}`}>
-                        <td className="px-4 py-2 text-right">
-                          {cell ? (
-                            <DecileReturnCell cell={cell} min={min} factor={factor} horizon={h} decile={d} scope={scope} />
+                      <td key={`dgc-${horizonColumnKey(col)}-${d}`} className="px-4 py-2 text-right">
+                        {col.metric === "fwd" ? (
+                          cell ? (
+                            <DecileReturnCell cell={cell} min={min} factor={factor} horizon={col.horizon} decile={d} scope={scope} />
                           ) : (
                             <span className="text-text-faint">—</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-2 text-right">
-                          {cell ? <DecileMddCell cell={cell} min={min} /> : <span className="text-text-faint">—</span>}
-                        </td>
-                      </Fragment>
+                          )
+                        ) : cell ? (
+                          <DecileMddCell cell={cell} min={min} />
+                        ) : (
+                          <span className="text-text-faint">—</span>
+                        )}
+                      </td>
                     );
                   })}
                 </tr>
@@ -3735,11 +3742,17 @@ function RegimeLabByLabelTable({
         <thead>
           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
             <RegimeSortHeader col="regime" label="Regime" activeKey={sortKey} dir={sortDir} onSort={onSort} />
-            {horizons.map((h) => (
-              <Fragment key={`lh-${h}`}>
-                <RegimeSortHeader col={`fwd:${h}`} label={`Fwd ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
-                <RegimeSortHeader col={`mdd:${h}`} label={`MDD ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
-              </Fragment>
+            {/* J-114: all forward-return columns first, then all max-drawdown columns (no interleave). */}
+            {groupedHorizonColumns(horizons).map((col) => (
+              <RegimeSortHeader
+                key={horizonColumnKey(col)}
+                col={`${col.metric}:${col.horizon}`}
+                label={`${col.metric === "fwd" ? "Fwd" : "MDD"} ${col.horizon}d`}
+                activeKey={sortKey}
+                dir={sortDir}
+                onSort={onSort}
+                numeric
+              />
             ))}
           </tr>
         </thead>
@@ -3747,12 +3760,14 @@ function RegimeLabByLabelTable({
           {sorted.map((row) => (
             <tr key={row.regime} className="border-b border-border last:border-b-0" data-testid={`regime-label-row-${row.regime}`}>
               <td className="px-4 py-2 font-medium text-text">{row.regime}</td>
-              {horizons.map((h) => {
+              {/* J-114: all forward-return cells first, then all max-drawdown cells (no interleave). */}
+              {groupedHorizonColumns(horizons).map((col) => {
+                const h = col.horizon;
                 const cell = regimeCellAt(row.by_horizon, h);
                 return (
-                  <Fragment key={`lc-${row.regime}-${h}`}>
-                    <td className="px-4 py-2 text-right">
-                      {cell ? (
+                  <td key={`lc-${row.regime}-${horizonColumnKey(col)}`} className="px-4 py-2 text-right">
+                    {col.metric === "fwd" ? (
+                      cell ? (
                         <RegimeReturnCell
                           cell={cell}
                           min={data.min_sample}
@@ -3762,12 +3777,13 @@ function RegimeLabByLabelTable({
                         />
                       ) : (
                         <span className="text-text-faint">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      {cell ? <RegimeMddCell cell={cell} min={data.min_sample} /> : <span className="text-text-faint">—</span>}
-                    </td>
-                  </Fragment>
+                      )
+                    ) : cell ? (
+                      <RegimeMddCell cell={cell} min={data.min_sample} />
+                    ) : (
+                      <span className="text-text-faint">—</span>
+                    )}
+                  </td>
                 );
               })}
             </tr>
@@ -3808,11 +3824,17 @@ function RegimeLabDecileTable({
           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
             <RegimeSortHeader col="decile" label="Decile" activeKey={sortKey} dir={sortDir} onSort={onSort} />
             <th className="px-4 py-2 text-right font-medium">Score range ({defaultHorizon}d)</th>
-            {horizons.map((h) => (
-              <Fragment key={`dh-${h}`}>
-                <RegimeSortHeader col={`fwd:${h}`} label={`Fwd ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
-                <RegimeSortHeader col={`mdd:${h}`} label={`MDD ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
-              </Fragment>
+            {/* J-114: all forward-return columns first, then all max-drawdown columns (no interleave). */}
+            {groupedHorizonColumns(horizons).map((col) => (
+              <RegimeSortHeader
+                key={horizonColumnKey(col)}
+                col={`${col.metric}:${col.horizon}`}
+                label={`${col.metric === "fwd" ? "Fwd" : "MDD"} ${col.horizon}d`}
+                activeKey={sortKey}
+                dir={sortDir}
+                onSort={onSort}
+                numeric
+              />
             ))}
           </tr>
         </thead>
@@ -3823,20 +3845,22 @@ function RegimeLabDecileTable({
               <span className="inline-flex items-center gap-1">Rank-IC<TermInfo term="rank-IC" /></span>
             </td>
             <td className="px-4 py-2 text-right text-text-faint">—</td>
-            {horizons.map((h) => {
+            {/* J-114: rank-IC lives on the forward-return columns (first), then the drawdown columns show —. */}
+            {groupedHorizonColumns(horizons).map((col) => {
+              const h = col.horizon;
+              if (col.metric === "mdd") {
+                return <td key={horizonColumnKey(col)} className="px-4 py-2 text-right text-text-faint">—</td>;
+              }
               const ic = rankIcByH.get(h);
               const na = !ic || ic.value === null;
               return (
-                <Fragment key={`ic-${h}`}>
-                  <td className="px-4 py-2 text-right">
-                    <RatioCell
-                      value={ic?.value ?? null}
-                      na={na}
-                      title={na ? "Not enough independent observations to rank-correlate — NA, not a fabricated 0" : `Spearman rank-IC of the regime score vs the ${h}-day forward return`}
-                    />
-                  </td>
-                  <td className="px-4 py-2 text-right text-text-faint">—</td>
-                </Fragment>
+                <td key={horizonColumnKey(col)} className="px-4 py-2 text-right">
+                  <RatioCell
+                    value={ic?.value ?? null}
+                    na={na}
+                    title={na ? "Not enough independent observations to rank-correlate — NA, not a fabricated 0" : `Spearman rank-IC of the regime score vs the ${h}-day forward return`}
+                  />
+                </td>
               );
             })}
           </tr>
@@ -3852,16 +3876,18 @@ function RegimeLabDecileTable({
                     ? "—"
                     : `${range.score_min.toFixed(1)} … ${range.score_max.toFixed(1)}`}
                 </td>
-                {horizons.map((h) => {
+                {/* J-114: all forward-return cells first, then all max-drawdown cells (no interleave). */}
+                {groupedHorizonColumns(horizons).map((col) => {
+                  const h = col.horizon;
                   const cell = regimeCellAt(row.by_horizon, h);
                   const rangeTitle =
                     cell && cell.score_min !== null && cell.score_max !== null
                       ? `Regime-score range at ${h}d: ${cell.score_min.toFixed(1)} … ${cell.score_max.toFixed(1)}`
                       : undefined;
                   return (
-                    <Fragment key={`dc-${row.decile}-${h}`}>
-                      <td className="px-4 py-2 text-right">
-                        {cell ? (
+                    <td key={`dc-${row.decile}-${horizonColumnKey(col)}`} className="px-4 py-2 text-right">
+                      {col.metric === "fwd" ? (
+                        cell ? (
                           <RegimeReturnCell
                             cell={cell}
                             min={data.min_sample}
@@ -3872,12 +3898,13 @@ function RegimeLabDecileTable({
                           />
                         ) : (
                           <span className="text-text-faint">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 text-right">
-                        {cell ? <RegimeMddCell cell={cell} min={data.min_sample} /> : <span className="text-text-faint">—</span>}
-                      </td>
-                    </Fragment>
+                        )
+                      ) : cell ? (
+                        <RegimeMddCell cell={cell} min={data.min_sample} />
+                      ) : (
+                        <span className="text-text-faint">—</span>
+                      )}
+                    </td>
                   );
                 })}
               </tr>
@@ -3997,11 +4024,17 @@ function PhaseSeverityLabByLabelTable({
         <thead>
           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
             <RegimeSortHeader col="regime" label="Market phase" activeKey={sortKey} dir={sortDir} onSort={onSort} />
-            {horizons.map((h) => (
-              <Fragment key={`plh-${h}`}>
-                <RegimeSortHeader col={`fwd:${h}`} label={`Fwd ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
-                <RegimeSortHeader col={`mdd:${h}`} label={`MDD ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
-              </Fragment>
+            {/* J-114: all forward-return columns first, then all max-drawdown columns (no interleave). */}
+            {groupedHorizonColumns(horizons).map((col) => (
+              <RegimeSortHeader
+                key={horizonColumnKey(col)}
+                col={`${col.metric}:${col.horizon}`}
+                label={`${col.metric === "fwd" ? "Fwd" : "MDD"} ${col.horizon}d`}
+                activeKey={sortKey}
+                dir={sortDir}
+                onSort={onSort}
+                numeric
+              />
             ))}
           </tr>
         </thead>
@@ -4009,12 +4042,14 @@ function PhaseSeverityLabByLabelTable({
           {sorted.map((row) => (
             <tr key={row.phase} className="border-b border-border last:border-b-0" data-testid={`phase-severity-label-row-${row.phase}`}>
               <td className="px-4 py-2 font-medium text-text">{row.phase}</td>
-              {horizons.map((h) => {
+              {/* J-114: all forward-return cells first, then all max-drawdown cells (no interleave). */}
+              {groupedHorizonColumns(horizons).map((col) => {
+                const h = col.horizon;
                 const cell = regimeCellAt(row.by_horizon, h);
                 return (
-                  <Fragment key={`plc-${row.phase}-${h}`}>
-                    <td className="px-4 py-2 text-right">
-                      {cell ? (
+                  <td key={`plc-${row.phase}-${horizonColumnKey(col)}`} className="px-4 py-2 text-right">
+                    {col.metric === "fwd" ? (
+                      cell ? (
                         <RegimeReturnCell
                           cell={cell}
                           min={data.min_sample}
@@ -4024,12 +4059,13 @@ function PhaseSeverityLabByLabelTable({
                         />
                       ) : (
                         <span className="text-text-faint">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      {cell ? <RegimeMddCell cell={cell} min={data.min_sample} /> : <span className="text-text-faint">—</span>}
-                    </td>
-                  </Fragment>
+                      )
+                    ) : cell ? (
+                      <RegimeMddCell cell={cell} min={data.min_sample} />
+                    ) : (
+                      <span className="text-text-faint">—</span>
+                    )}
+                  </td>
                 );
               })}
             </tr>
@@ -4076,11 +4112,17 @@ function PhaseSeverityLabDecileTable({
           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
             <RegimeSortHeader col="decile" label="Decile" activeKey={sortKey} dir={sortDir} onSort={onSort} />
             <th className="px-4 py-2 text-right font-medium">Severity range ({defaultHorizon}d)</th>
-            {horizons.map((h) => (
-              <Fragment key={`pdh-${h}`}>
-                <RegimeSortHeader col={`fwd:${h}`} label={`Fwd ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
-                <RegimeSortHeader col={`mdd:${h}`} label={`MDD ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
-              </Fragment>
+            {/* J-114: all forward-return columns first, then all max-drawdown columns (no interleave). */}
+            {groupedHorizonColumns(horizons).map((col) => (
+              <RegimeSortHeader
+                key={horizonColumnKey(col)}
+                col={`${col.metric}:${col.horizon}`}
+                label={`${col.metric === "fwd" ? "Fwd" : "MDD"} ${col.horizon}d`}
+                activeKey={sortKey}
+                dir={sortDir}
+                onSort={onSort}
+                numeric
+              />
             ))}
           </tr>
         </thead>
@@ -4091,20 +4133,22 @@ function PhaseSeverityLabDecileTable({
               <span className="inline-flex items-center gap-1">Rank-IC<TermInfo term="rank-IC" /></span>
             </td>
             <td className="px-4 py-2 text-right text-text-faint">—</td>
-            {horizons.map((h) => {
+            {/* J-114: rank-IC lives on the forward-return columns (first), then the drawdown columns show —. */}
+            {groupedHorizonColumns(horizons).map((col) => {
+              const h = col.horizon;
+              if (col.metric === "mdd") {
+                return <td key={horizonColumnKey(col)} className="px-4 py-2 text-right text-text-faint">—</td>;
+              }
               const ic = rankIcByH.get(h);
               const na = !ic || ic.value === null;
               return (
-                <Fragment key={`pic-${h}`}>
-                  <td className="px-4 py-2 text-right">
-                    <RatioCell
-                      value={ic?.value ?? null}
-                      na={na}
-                      title={na ? "Not enough independent observations to rank-correlate — NA, not a fabricated 0" : `Spearman rank-IC of the severity score vs the ${h}-day forward return`}
-                    />
-                  </td>
-                  <td className="px-4 py-2 text-right text-text-faint">—</td>
-                </Fragment>
+                <td key={horizonColumnKey(col)} className="px-4 py-2 text-right">
+                  <RatioCell
+                    value={ic?.value ?? null}
+                    na={na}
+                    title={na ? "Not enough independent observations to rank-correlate — NA, not a fabricated 0" : `Spearman rank-IC of the severity score vs the ${h}-day forward return`}
+                  />
+                </td>
               );
             })}
           </tr>
@@ -4120,16 +4164,18 @@ function PhaseSeverityLabDecileTable({
                     ? "—"
                     : `${range.score_min.toFixed(1)} … ${range.score_max.toFixed(1)}`}
                 </td>
-                {horizons.map((h) => {
+                {/* J-114: all forward-return cells first, then all max-drawdown cells (no interleave). */}
+                {groupedHorizonColumns(horizons).map((col) => {
+                  const h = col.horizon;
                   const cell = regimeCellAt(row.by_horizon, h);
                   const rangeTitle =
                     cell && cell.score_min !== null && cell.score_max !== null
                       ? `Severity-score range at ${h}d: ${cell.score_min.toFixed(1)} … ${cell.score_max.toFixed(1)}`
                       : undefined;
                   return (
-                    <Fragment key={`pdc-${row.decile}-${h}`}>
-                      <td className="px-4 py-2 text-right">
-                        {cell ? (
+                    <td key={`pdc-${row.decile}-${horizonColumnKey(col)}`} className="px-4 py-2 text-right">
+                      {col.metric === "fwd" ? (
+                        cell ? (
                           <RegimeReturnCell
                             cell={cell}
                             min={data.min_sample}
@@ -4140,12 +4186,13 @@ function PhaseSeverityLabDecileTable({
                           />
                         ) : (
                           <span className="text-text-faint">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 text-right">
-                        {cell ? <RegimeMddCell cell={cell} min={data.min_sample} /> : <span className="text-text-faint">—</span>}
-                      </td>
-                    </Fragment>
+                        )
+                      ) : cell ? (
+                        <RegimeMddCell cell={cell} min={data.min_sample} />
+                      ) : (
+                        <span className="text-text-faint">—</span>
+                      )}
+                    </td>
                   );
                 })}
               </tr>
@@ -4413,11 +4460,17 @@ function RegimePhaseFactorTable({
             <RpfSortHeader col="regime_decile" label="Regime D" activeKey={sortKey} dir={sortDir} onSort={onSort} />
             <RpfSortHeader col="severity_decile" label="Severity D" activeKey={sortKey} dir={sortDir} onSort={onSort} />
             <RpfSortHeader col="factor_decile" label="Factor D" activeKey={sortKey} dir={sortDir} onSort={onSort} />
-            {horizons.map((h) => (
-              <Fragment key={`rpfh-${h}`}>
-                <RpfSortHeader col={`fwd:${h}`} label={`Fwd ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
-                <RpfSortHeader col={`mdd:${h}`} label={`MDD ${h}d`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
-              </Fragment>
+            {/* J-114: all forward-return columns first, then all max-drawdown columns (no interleave). */}
+            {groupedHorizonColumns(horizons).map((col) => (
+              <RpfSortHeader
+                key={horizonColumnKey(col)}
+                col={`${col.metric}:${col.horizon}`}
+                label={`${col.metric === "fwd" ? "Fwd" : "MDD"} ${col.horizon}d`}
+                activeKey={sortKey}
+                dir={sortDir}
+                onSort={onSort}
+                numeric
+              />
             ))}
           </tr>
         </thead>
@@ -4431,12 +4484,17 @@ function RegimePhaseFactorTable({
               <td className="px-3 py-2"><span className="num font-semibold text-text">D{row.regime_decile}</span></td>
               <td className="px-3 py-2"><span className="num font-semibold text-text">D{row.severity_decile}</span></td>
               <td className="px-3 py-2"><span className="num font-semibold text-text">D{row.factor_decile}</span></td>
-              {horizons.map((h) => {
+              {/* J-114: all forward-return cells first, then all max-drawdown cells (no interleave). */}
+              {groupedHorizonColumns(horizons).map((col) => {
+                const h = col.horizon;
                 const cell = regimeCellAt(row.by_horizon, h);
                 return (
-                  <Fragment key={`rpfc-${row.regime_decile}-${row.severity_decile}-${row.factor_decile}-${h}`}>
-                    <td className="px-3 py-2 text-right">
-                      {cell ? (
+                  <td
+                    key={`rpfc-${row.regime_decile}-${row.severity_decile}-${row.factor_decile}-${horizonColumnKey(col)}`}
+                    className="px-3 py-2 text-right"
+                  >
+                    {col.metric === "fwd" ? (
+                      cell ? (
                         <RegimeReturnCell
                           cell={cell}
                           min={data.min_sample}
@@ -4454,12 +4512,13 @@ function RegimePhaseFactorTable({
                         />
                       ) : (
                         <span className="text-text-faint">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {cell ? <RegimeMddCell cell={cell} min={data.min_sample} /> : <span className="text-text-faint">—</span>}
-                    </td>
-                  </Fragment>
+                      )
+                    ) : cell ? (
+                      <RegimeMddCell cell={cell} min={data.min_sample} />
+                    ) : (
+                      <span className="text-text-faint">—</span>
+                    )}
+                  </td>
                 );
               })}
             </tr>

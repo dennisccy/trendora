@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "journey": "J-48",
+  "name": "Stocks leaderboard column sorting (sort the view, never the scores)",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-48", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "LEADERSHIP"}},
+    {"n": 2, "journey": "J-48", "action": {"type": "click", "target": {"role": "button", "name": "Sort by Leadership"}}},
+    {"n": 3, "journey": "J-48", "action": {"type": "click", "target": {"role": "button", "name": "Sort by Leadership, ascending"}}},
+    {"n": 4, "journey": "J-48", "action": {"type": "click", "target": {"role": "button", "name": "Sort by Ticker"}}},
+    {"n": 5, "journey": "J-48", "action": {"type": "click", "target": {"role": "button", "name": "Sort by #"}}},
+    {"n": 6, "journey": "J-48", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "1"}}
+  ]
+}
