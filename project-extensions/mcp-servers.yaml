@@ -1,0 +1,13 @@
+# Project-local MCP servers for Trendora — the opt-in overlay consumed by the
+# framework's per-project MCP registration (mechanism "M1"). Merged over the
+# (empty) neutral policy and emitted by the adapters to:
+#   - .mcp.json            (Claude) + enableAllProjectMcpServers + an mcp__<name> allow entry
+#   - .codex/config.toml   (Codex)  [mcp_servers.<name>]
+# This file living here (outside the incredible_auto_dev/ subtree) is what makes
+# the loop active for THIS project without affecting any other project.
+servers:
+  trendora-window:
+    type: stdio
+    command: bash
+    args:
+      - "${CLAUDE_PROJECT_DIR}/project-extensions/mcp/run-window.sh"

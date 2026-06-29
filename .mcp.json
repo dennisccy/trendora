@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "trendora-window": {
+      "type": "stdio",
+      "command": "bash",
+      "args": [
+        "${CLAUDE_PROJECT_DIR}/project-extensions/mcp/run-window.sh"
+      ]
+    }
+  }
+}
