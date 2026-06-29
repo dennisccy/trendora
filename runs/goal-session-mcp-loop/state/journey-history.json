@@ -3,12 +3,12 @@
     "J-01": {
       "id": "J-01",
       "name": "Every score shows an evidence status",
-      "status": "unknown",
-      "last_verified_iter": null,
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-1",
+      "last_passing_iter": "goal-mcp-loop-iter-1",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": null,
-      "note": "Baseline browser-QA did not run (no ui-test-results file, empty evidence dir, no browser-qa-agent telemetry record). Not empirically verified. Dev static scan indicates the evidence surface is not yet implemented; to be established by iter-1 full-pipeline browser-QA."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-1-evidence/UT-02-result.png",
+      "note": "Verified via full-pipeline browser-QA (UT-02/UT-05/UT-11): /stocks renders 120 leaderboard rows, each with three 'Not yet proven' chips (Leadership/Entry Quality/Risk); grades+scores intact, chips additive below them. No score lacks a status. Against the empty ledger every chip is honestly 'Not yet proven'."
     },
     "J-02": {
       "id": "J-02",
@@ -18,17 +18,17 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": null,
-      "note": "Baseline browser-QA did not run (no ui-test-results file, empty evidence dir, no browser-qa-agent telemetry record). Not empirically verified. Requires at least one referee-certified claim before it can pass; deferred to a later certified iteration."
+      "note": "Deferred (correctly out of scope iter-1): requires at least one referee-certified PASS claim and a drill panel showing the OOS test + controls + claim id/date. Against the empty ledger no 'Proven' badge exists to drill into. Targeted by the next certified iteration; also blocked on the writer stamping claim.signal (dev-handoff known issue)."
     },
     "J-03": {
       "id": "J-03",
       "name": "Unproven / noise signals are honestly marked",
-      "status": "unknown",
-      "last_verified_iter": null,
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-1",
+      "last_passing_iter": "goal-mcp-loop-iter-1",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": null,
-      "note": "Baseline browser-QA did not run (no ui-test-results file, empty evidence dir, no browser-qa-agent telemetry record). Not empirically verified. Structurally satisfiable by iter-1 once the read-side path renders 'Not yet proven' against the empty ledger."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-1-evidence/UT-08-result.png",
+      "note": "Verified via browser-QA on both /stocks (UT-02) and stock-detail (UT-03/UT-08): every unvalidated signal reads 'Not yet proven', never a confident 'Proven' number, against the empty ledger. MU detail scores 94.58/23.66/53.11 each carry a muted 'Not yet proven' chip below the score (additive, not a replacement)."
     },
     "J-04": {
       "id": "J-04",
@@ -38,19 +38,19 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": null,
-      "note": "Baseline browser-QA did not run (no ui-test-results file, empty evidence dir, no browser-qa-agent telemetry record). Not empirically verified. Requires regime-scoped certified evidence; deferred to a later certified iteration."
+      "note": "Deferred (correctly out of scope iter-1): requires regime-scoped certified evidence labeled with the regime it holds in. No certified claim exists yet. Targeted by a later certified iteration (after the first PASS claim lands and the writer stamps claim.signal)."
     },
     "J-05": {
       "id": "J-05",
       "name": "Audit the evidence ledger",
-      "status": "unknown",
-      "last_verified_iter": null,
+      "status": "partial",
+      "last_verified_iter": "goal-mcp-loop-iter-1",
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": null,
-      "note": "Baseline browser-QA did not run (no ui-test-results file, empty evidence dir, no browser-qa-agent telemetry record). Not empirically verified. The /evidence ledger surface and Evidence nav entry do not exist yet per dev static scan; to be built and verified in iter-1."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-1-evidence/UT-06-07-result.png",
+      "note": "Ledger SURFACE verified (UT-01/UT-04/UT-06/UT-07): Evidence nav reachable in 1 click; /evidence renders; honest empty state 'No certified claims yet — every signal currently reads Not yet proven'; all five claim-row fields present in markup (Hypothesis, Out-of-sample verdict, Control comparison vs SPY, Registration date, Forward-walk score-to-date) plus the claim->surface linkback text. PARTIAL: J-05 steps 2-3 (a populated claim row + click-through linkback) are not exercisable against an empty ledger (zero claims); pending the first certified iteration. Spec J-05 boundary note anticipates this."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-06-29T20:53:00Z"
+  "updated_at": "2026-06-29T22:37:16Z"
 }

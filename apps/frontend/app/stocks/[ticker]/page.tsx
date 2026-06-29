@@ -7,6 +7,7 @@ import { AlertTriangle, ArrowLeft, SearchX } from "lucide-react";
 
 import { useAsOf, useAsOfHref } from "@/components/asof-provider";
 import { ComponentBreakdown } from "@/components/component-breakdown";
+import { EvidenceStatusBadge } from "@/components/evidence-status-badge";
 import { fmtMdd, fmtPct, mddClass, returnClass } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
 import { PriceChart } from "@/components/price-chart";
@@ -16,10 +17,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatIsoDate } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import {
+  fetchEvidence,
   fetchRegimeHistory,
   fetchStock,
   fetchStockBars,
   type BarsResponse,
+  type ProvenSignal,
   type RegimePoint,
   type ScoreBlock,
   type StockDetailResponse,
@@ -27,6 +30,14 @@ import {
   type Vcp,
 } from "@/lib/api";
 import { usePersistedToggle } from "@/lib/use-persisted-toggle";
+
+/** The signal key each per-stock score maps to on the evidence ledger (the canonical factor-catalog keys).
+ *  Against today's empty ledger none is proven, so every badge reads "Not yet proven". */
+const SCORE_SIGNALS = {
+  leadership: "leadership_score",
+  entry_quality: "entry_quality_score",
+  risk: "risk_score",
+} as const;
 
 type State =
   | { kind: "loading" }
@@ -149,6 +160,20 @@ export default function StockDetailPage() {
 
 function StockDetailBody({ data }: { data: StockDetailResponse }) {
   const { row } = data;
+  // goal-mcp-loop iter-1 — the served proven-signal map (from /api/evidence). Default `{}` is the
+  // FAIL-SAFE: until/unless evidence loads, every score badge reads "Not yet proven". Fetched ONCE,
+  // NON-blocking: a failure leaves it `{}` and never breaks the score cards. The UI never computes
+  // proven-ness — it re-displays this served map (empty ledger ⇒ every badge "Not yet proven").
+  const [provenSignals, setProvenSignals] = useState<Record<string, ProvenSignal>>({});
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchEvidence(controller.signal)
+      .then((evidence) => setProvenSignals(evidence.proven_signals ?? {}))
+      .catch(() => {
+        if (!controller.signal.aborted) setProvenSignals({});
+      });
+    return () => controller.abort();
+  }, []);
   return (
     <div className="space-y-4">
       {/* setup + reason header — each detected pattern badge rides ALONGSIDE the setup status, never replacing it */}
@@ -185,18 +210,29 @@ function StockDetailBody({ data }: { data: StockDetailResponse }) {
       {/* price + moving-average candle chart with volume (server MA series — never recomputed) */}
       <StockChartPanel ticker={row.ticker} />
 
-      {/* three independent scores */}
+      {/* three independent scores — each now carries an inline evidence-status badge (purely additive;
+          the score value is unchanged). Against the empty ledger every badge reads "Not yet proven". */}
       <div className="grid gap-4 lg:grid-cols-3">
-        <ScoreCard title="Leadership" caption="How strong the stock is (higher = stronger)" block={row.leadership} />
+        <ScoreCard
+          title="Leadership"
+          caption="How strong the stock is (higher = stronger)"
+          block={row.leadership}
+          signal={SCORE_SIGNALS.leadership}
+          provenSignals={provenSignals}
+        />
         <ScoreCard
           title="Entry Quality"
           caption="Is the entry buyable or extended (higher = better entry)"
           block={row.entry_quality}
+          signal={SCORE_SIGNALS.entry_quality}
+          provenSignals={provenSignals}
         />
         <ScoreCard
           title="Risk"
           caption="Danger factors (higher = MORE dangerous)"
           block={row.risk}
+          signal={SCORE_SIGNALS.risk}
+          provenSignals={provenSignals}
           invert
         />
       </div>
@@ -542,11 +578,17 @@ function ScoreCard({
   title,
   caption,
   block,
+  signal,
+  provenSignals,
   invert = false,
 }: {
   title: string;
   caption: string;
   block: ScoreBlock;
+  /** goal-mcp-loop iter-1 — the evidence-ledger signal key this score maps to. */
+  signal: string;
+  /** goal-mcp-loop iter-1 — the served proven-signal map; drives the inline evidence-status badge. */
+  provenSignals: Record<string, ProvenSignal>;
   invert?: boolean;
 }) {
   return (
@@ -560,6 +602,9 @@ function ScoreCard({
           <span className="num text-3xl font-semibold text-text">{block.score.toFixed(2)}</span>
           <span className="text-xs text-text-muted">/ 100</span>
         </div>
+        {/* goal-mcp-loop iter-1 — the inline evidence status for this score (purely additive; the score
+            above is unchanged). Empty ledger ⇒ "Not yet proven". */}
+        <EvidenceStatusBadge signal={signal} provenSignals={provenSignals} />
         <p className="text-xs text-text-faint">{caption}</p>
         <ComponentBreakdown components={block.components} />
       </CardContent>

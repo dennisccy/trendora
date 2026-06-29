@@ -1887,6 +1887,32 @@ def _default_macro() -> "MacroCfg":
     return MacroCfg(env_var="FRED_API_KEY")
 
 
+# goal-mcp-loop iter-1 — the read-side evidence ledger location. The default certified-claims ledger path
+# (the SAME file the post-decompose gate writes via `app.mcp.tools.verify_edge`, set by `run-goal.sh`) so
+# the read-only `GET /api/evidence` reads exactly what the referee certified.
+_DEFAULT_LEDGER_PATH = "runs/goal-session-mcp-loop/state/certified-claims.jsonl"
+
+
+class EvidenceCfg(BaseModel):
+    """Read-side evidence config (goal-mcp-loop iter-1). `ledger_path` is the certified-claims ledger the
+    read-only `GET /api/evidence` reads — the SAME append-only file the post-decompose gate writes, so the
+    UI's displayed proven-ness is consistent with what the referee certified. Resolved relative to
+    `REPO_ROOT` when relative; the resolver (`app.engine.evidence.resolve_ledger_path`, NOT this model)
+    applies the runtime `TRENDORA_LEDGER_PATH` override. The path lives in config, never as a literal in
+    the resolver/endpoint (anti-goal: No magic numbers). Default-populated so a config / inline test fixture
+    predating this block still loads unchanged."""
+
+    model_config = ConfigDict(extra="allow")
+    ledger_path: str = Field(default=_DEFAULT_LEDGER_PATH, min_length=1)
+
+
+def _default_evidence() -> "EvidenceCfg":
+    """The built-in default evidence config — used when a config predating the block (or an inline test
+    fixture) omits `evidence`. Points at the gate's default certified-claims ledger; the real `config.yaml`
+    restates it explicitly as the single documented source."""
+    return EvidenceCfg()
+
+
 class Config(BaseModel):
     """Validated view of config.yaml. Only the iter-1-consumed sections are typed/validated;
     scaffolded sections ride along via extra="allow" so they can be tuned without code edits."""
@@ -1933,6 +1959,10 @@ class Config(BaseModel):
     # publication-lag + the per-leg config-default-OFF enable flags). Defaults to a DEFAULT-OFF, no-series
     # block so a config predating it (and the inline test fixtures) still loads and changes no figure.
     macro: MacroCfg = Field(default_factory=_default_macro)
+    # goal-mcp-loop iter-1 — the read-side evidence ledger location (`evidence.ledger_path`). Default-
+    # populated so a config / inline test fixture predating it still loads; the real `config.yaml` restates
+    # the gate's certified-claims ledger path explicitly as the single documented source.
+    evidence: EvidenceCfg = Field(default_factory=_default_evidence)
 
     @field_validator("themes")
     @classmethod

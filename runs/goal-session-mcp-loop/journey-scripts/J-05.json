@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "journey": "J-05",
+  "name": "Evidence ledger page renders honest empty state with claim-row layout",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-05", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "Stock Leaderboard"}},
+    {"n": 2, "journey": "J-05", "action": {"type": "click", "target": {"role": "link", "name": "Evidence"}}, "expect": {}},
+    {"n": 3, "journey": "J-05", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "No certified claims yet"}},
+    {"n": 4, "journey": "J-05", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Forward-walk score-to-date"}}
+  ]
+}

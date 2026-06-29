@@ -26,9 +26,9 @@ BASELINE FILE-SCAN (what already exists vs. what J-01..J-05 still need):
   MISSING — the user-facing evidence SURFACE (this is what J-01..J-05 build):
     • no certified-claims ledger file yet (runs/goal-session-mcp-loop/state/certified-claims.jsonl absent
       ⇒ EMPTY ledger ⇒ every signal must currently render "Not yet proven")
-    • no read-side evidence-status resolver / GET /api/evidence endpoint
-    • no "Proven / Not yet proven" badge component, none inline on any score surface
-    • no /evidence ledger page, not in the sidebar nav
+    • no read-side evidence-status resolver / GET /api/evidence endpoint  [iter-1: building]
+    • no "Proven / Not yet proven" badge component, none inline on any score surface  [iter-1: building]
+    • no /evidence ledger page, not in the sidebar nav  [iter-1: building]
   ⇒ Expect J-01..J-05 to FAIL at baseline; iter-0 only records the starting line.
 
 Rows tagged [built] carry REAL verified names; [TARGET] rows are the convention iter-1+ builds to —
@@ -84,7 +84,7 @@ proven-ness — the UI never computes proven-ness itself** (goal.md Constraints)
 
 | Value / entity | Computed once by (single module/function) | Served by (single endpoint) | Status / notes |
 |---|---|---|---|
-| **Evidence status + certified-claim** for any (signal, as-of) — "Proven" / "Not yet proven" + backing test, controls, claim id + registration date | referee `app.engine.referee:certify_edge` (WRITES verdicts) via `app.mcp.tools:verify_edge`; read-side resolver `app.engine.evidence` over `app.engine.ledger:read_entries(certified-claims.jsonl)` | `GET /api/evidence` (single endpoint: ledger list + per-signal status map keyed by signal) | **[TARGET iter-1+]** ledger file = `runs/goal-session-mcp-loop/state/certified-claims.jsonl`; MISSING ledger ⇒ EMPTY ⇒ every signal "Not yet proven". UI badges LOOK UP this map — never compute status. A signal is "Proven" ONLY with a PASS certified-claim entry. |
+| **Evidence status + certified-claim** for any (signal, as-of) — "Proven" / "Not yet proven" + backing test, controls, claim id + registration date | referee `app.engine.referee:certify_edge` (WRITES verdicts) via `app.mcp.tools:verify_edge`; read-side resolver `app.engine.evidence:build_evidence_payload` over `app.engine.ledger:read_entries(certified-claims.jsonl)` | `GET /api/evidence` → `{claims:[…], proven_signals:{<signal>:…}}` (the SINGLE endpoint; the UI re-displays it verbatim) | **[building iter-1]** ledger file = `runs/goal-session-mcp-loop/state/certified-claims.jsonl`, resolved by `evidence.resolve_ledger_path()` from config `evidence.ledger_path` (env `TRENDORA_LEDGER_PATH` overrides) — the SAME file the post-decompose gate writes. MISSING ledger ⇒ EMPTY ⇒ every signal "Not yet proven". A signal is "Proven" ONLY when a PASS certified-claim entry NAMES it (`claim.signal`); absent ⇒ "Not yet proven" (fail-safe). The `EvidenceStatusBadge` (NOT `evidence-panels.tsx`, which is the Backtest aggregate) LOOKS UP `proven_signals` — it never computes status. |
 | Three per-stock scores: Leadership / Entry Quality / Risk (+ components) | `scoring:score_stocks` | `GET /api/stocks`, `GET /api/stocks/{ticker}` | **[built — UNCHANGED]** evidence badge attaches additively; served scores byte-identical. |
 | Market regime score (0–100) + label + market phase | `regime:score_regime` | `GET /api/dashboard`, `GET /api/runs/{runId}` | **[built — UNCHANGED]** the regime J-04 evidence is conditioned on, never recomputed. |
 | Sector / industry score (+RS-vs-SPY, dist-52w, trend) | `sectors:score_sector` | `GET /api/sectors` | **[built — UNCHANGED]** badge attaches additively. |

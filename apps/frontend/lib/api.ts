@@ -6,6 +6,16 @@
  */
 
 import { resolveApiBase } from "@/lib/api-base";
+import type {
+  CertifiedClaim,
+  EvidenceLedgerResponse,
+  ProvenSignal,
+} from "@/lib/evidence";
+
+// Re-export the read-side evidence types (goal-mcp-loop iter-1) so callers import them from the API client
+// alongside `fetchEvidence`. These are DISTINCT from `EvidenceAggregate` below (the Backtest forward-tested
+// aggregate) — do not confuse the two.
+export type { CertifiedClaim, EvidenceLedgerResponse, ProvenSignal };
 
 /** The build-time configured backend base (`NEXT_PUBLIC_API_URL`, default localhost). The configured
  *  backend PORT (`NEXT_PUBLIC_API_PORT`) is read alongside so the runtime resolver can host-swap to the
@@ -322,6 +332,17 @@ export async function fetchStocks(asof?: string, signal?: AbortSignal): Promise<
  *  time-travels to that date's stored snapshot (iter-8). */
 export async function fetchStock(ticker: string, asof?: string, signal?: AbortSignal): Promise<StockDetailResponse> {
   return getJSON<StockDetailResponse>(withAsOf(`/api/stocks/${encodeURIComponent(ticker)}`, asof), signal);
+}
+
+// --- read-side evidence ledger (goal-mcp-loop iter-1) --------------------------------------
+/** GET /api/evidence — the read-only certified-claims ledger surface. Returns the ledger rows the
+ *  Evidence page renders (`claims`) and the `proven_signals` map the inline status badge reads. The
+ *  evidence ledger is the SINGLE source of proven-ness — the UI never computes it; it re-displays the
+ *  referee's verdicts verbatim. Against today's empty ledger this is `{claims: [], proven_signals: {}}`,
+ *  so every signal honestly reads "Not yet proven". Throws on network error or non-200 so callers fall
+ *  back to the fail-safe "Not yet proven" — never a fabricated "Proven". */
+export async function fetchEvidence(signal?: AbortSignal): Promise<EvidenceLedgerResponse> {
+  return getJSON<EvidenceLedgerResponse>("/api/evidence", signal);
 }
 
 // --- stock price/MA/volume series for the detail chart (iter-4) -----------------------------

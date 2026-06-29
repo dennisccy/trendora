@@ -19,6 +19,7 @@ from app.api import (
     backtest,
     dashboard,
     data,
+    evidence,
     health,
     indexes,
     market_phase,
@@ -127,6 +128,8 @@ def create_app() -> FastAPI:
     application.include_router(regime_history.router, prefix="/api")
     application.include_router(indexes.router, prefix="/api")
     application.include_router(market_phase.router, prefix="/api")
+    # goal-mcp-loop iter-1 — the read-only certified-claims ledger surface (GET /api/evidence).
+    application.include_router(evidence.router, prefix="/api")
     return application
 
 

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "journey": "J-01",
+  "name": "Every leaderboard score shows an evidence status badge",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-01", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "Stock Leaderboard"}},
+    {"n": 2, "journey": "J-01", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "Not yet proven"}}
+  ]
+}

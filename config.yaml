@@ -987,6 +987,16 @@ macro:
     study: false                               # wire macro into the J-91 study conditioning
 
 # ----------------------------------------------------------------------------------------
+# goal-mcp-loop iter-1 CONSUMED — Read-side evidence ledger location (app.engine.evidence). `ledger_path`
+# is the certified-claims ledger the read-only GET /api/evidence reads — the SAME append-only file the
+# post-decompose gate writes (via app.mcp.tools.verify_edge, set by run-goal.sh) — so the UI's displayed
+# proven-ness is consistent with what the referee certified. A RELATIVE path is resolved against the repo
+# root by config.py / app.engine.evidence (anti-goal: No magic numbers — no path literal in the resolver
+# or the endpoint). The runtime env override TRENDORA_LEDGER_PATH takes precedence when set.
+evidence:
+  ledger_path: runs/goal-session-mcp-loop/state/certified-claims.jsonl
+
+# ----------------------------------------------------------------------------------------
 # iter-5 CONSUMED — Scanner snapshots. The historical as-of dates the scanner persists an
 # immutable snapshot for on first boot (the LATEST data date is added programmatically in
 # bootstrap_runs, NOT listed here). Both dates below are real seed dates the regime engine

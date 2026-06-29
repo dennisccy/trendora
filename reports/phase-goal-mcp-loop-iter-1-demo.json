@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-1",
+  "base_url": "http://localhost:3255",
+  "iteration": 1,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Stocks Leaderboard — Evidence Chips on Every Row",
+      "narration": "Every stock on the leaderboard now carries a small 'Not yet proven' chip below each of its three score badges — Leadership, Entry Quality, and Risk. The chips are purely additive: scores, letter grades, and row order are completely untouched.",
+      "point_out": "The muted gray 'Not yet proven' chips appear below each score badge on every row across all 120 stocks in the leaderboard.",
+      "journey": "J-01",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/stocks"},
+      "expect": {"text": "Not yet proven"}
+    },
+    {
+      "n": 2,
+      "title": "Stock Detail — Score Cards with Evidence Chips",
+      "narration": "Drilling into any individual stock shows all three score cards — Leadership, Entry Quality, and Risk — each now carrying a 'Not yet proven' chip directly beneath the numeric score. The existing score value, label, and description are fully preserved alongside the new chip.",
+      "point_out": "All three score cards display their numeric scores and letter grades exactly as before, with a 'Not yet proven' chip added below each score value — nothing has been removed or replaced.",
+      "journey": "J-01",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/stocks/MU"},
+      "expect": {"text": "Not yet proven"}
+    },
+    {
+      "n": 3,
+      "title": "Evidence Nav Link — Reach the Ledger in One Click",
+      "narration": "A new 'Evidence' entry now lives in the left sidebar right after 'Research'. Clicking it takes you directly to the certified-claims ledger — the single source of truth for what has actually been proven about each signal.",
+      "point_out": "The 'Evidence' link with its shield-and-checkmark icon is visible in the sidebar without scrolling, and is active and highlighted once you land on the Evidence page.",
+      "journey": "J-05",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "click", "target": {"role": "link", "name": "Evidence"}},
+      "expect": {"text": "No certified claims yet"}
+    },
+    {
+      "n": 4,
+      "title": "Evidence Page — Honest Empty State with Claim Field Preview",
+      "narration": "With no referee-certified claims entered yet, the page honestly declares 'No certified claims yet' and lists all five fields that every future certified claim must supply. Nothing is fabricated — every signal reads 'Not yet proven' until a real, out-of-sample, control-beating claim backs it.",
+      "point_out": "The empty state lists exactly five required fields — Hypothesis, Out-of-sample verdict, Control comparison (vs SPY), Registration date, and Forward-walk score-to-date — making the standard transparent from day one.",
+      "journey": "J-03",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/evidence"},
+      "expect": {"text": "Hypothesis"}
+    }
+  ]
+}

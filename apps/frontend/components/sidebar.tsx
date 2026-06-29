@@ -11,6 +11,7 @@ import {
   Layers,
   LayoutDashboard,
   Microscope,
+  ShieldCheck,
   Star,
   TrendingUp,
   type LucideIcon,
@@ -35,6 +36,9 @@ const NAV: NavItem[] = [
   { href: "/scanner-runs", label: "Scanner Runs", icon: History },
   { href: "/backtest", label: "Backtest", icon: FlaskConical },
   { href: "/research", label: "Research", icon: Microscope },
+  // goal-mcp-loop iter-1 — the certified-claims ledger (the already-approved blueprint IA's Evidence
+  // section). Reachable in ≤2 clicks; every score's badge links here.
+  { href: "/evidence", label: "Evidence", icon: ShieldCheck },
   { href: "/watchlist", label: "Watchlist", icon: Star },
   { href: "/methodology", label: "Methodology", icon: BookOpen },
   { href: "/data", label: "Data Manager", icon: Database },

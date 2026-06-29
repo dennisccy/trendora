@@ -7,6 +7,7 @@ import { AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Search, TrendingUp } fr
 
 import { useAsOf, useAsOfHref } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
+import { EvidenceStatusBadge } from "@/components/evidence-status-badge";
 import { fmtMdd, fmtPct, mddClass, returnClass } from "@/components/forward-return";
 import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
@@ -21,16 +22,26 @@ import { regimeVariant } from "@/lib/regime-variant";
 import { cn } from "@/lib/utils";
 import {
   fetchDashboard,
+  fetchEvidence,
   fetchMethodology,
   fetchStocks,
   fetchThemes,
   type DashboardResponse,
   type MethodologyCatalog,
+  type ProvenSignal,
   type StockRow,
   type StocksResponse,
   type ThemeRow,
   type ThemesResponse,
 } from "@/lib/api";
+
+/** The signal key each per-stock score maps to on the evidence ledger (the canonical factor-catalog keys).
+ *  Against today's empty ledger none is proven, so every badge reads "Not yet proven". */
+const SCORE_SIGNALS = {
+  leadership: "leadership_score",
+  entry_quality: "entry_quality_score",
+  risk: "risk_score",
+} as const;
 
 type State =
   | { kind: "loading" }
@@ -219,6 +230,11 @@ function StocksInner() {
   // Fetched NON-blocking: a failure renders an honest empty state and never breaks the leaderboard.
   const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
   const [themes, setThemes] = useState<ThemesResponse | null>(null);
+  // goal-mcp-loop iter-1 — the served proven-signal map (from /api/evidence). Default `{}` is the
+  // FAIL-SAFE: until/unless evidence loads, every score badge reads "Not yet proven". The UI never
+  // computes proven-ness — it only re-displays this served map. Against today's empty ledger this stays
+  // `{}`, so every badge honestly reads "Not yet proven".
+  const [provenSignals, setProvenSignals] = useState<Record<string, ProvenSignal>>({});
   // J-48: client-side sort state — PURE view transform. Initial state is the scanner's stored rank
   // (the `#` column ascending), so the leaderboard opens in the canonical stored order. Sort state is
   // deliberately NOT serialized to the URL (out of scope) — it is local view ergonomics only.
@@ -270,6 +286,20 @@ function StocksInner() {
       .then((data) => setCatalog(data))
       .catch(() => {
         if (!controller.signal.aborted) setCatalog(null);
+      });
+    return () => controller.abort();
+  }, []);
+
+  // goal-mcp-loop iter-1 — fetch the certified-claims evidence ONCE (config-global, not as-of keyed; the
+  // endpoint takes no params this iteration), NON-blocking: a failure leaves `provenSignals` at `{}` so
+  // every badge falls back to "Not yet proven" and the leaderboard is never broken. The evidence ledger is
+  // the single source of proven-ness — this only re-displays the served map (no client-side computation).
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchEvidence(controller.signal)
+      .then((data) => setProvenSignals(data.proven_signals ?? {}))
+      .catch(() => {
+        if (!controller.signal.aborted) setProvenSignals({});
       });
     return () => controller.abort();
   }, []);
@@ -687,6 +717,7 @@ function StocksInner() {
                   patternMeaning={patternMeaning}
                   fwdHorizons={fwdHorizons}
                   themeRank={themeRank}
+                  provenSignals={provenSignals}
                 />
               ))}
             </tbody>
@@ -820,6 +851,7 @@ function StockTableRow({
   patternMeaning,
   fwdHorizons,
   themeRank,
+  provenSignals,
 }: {
   row: StockRow;
   /** The detail href, pre-built by the J-50 helper so it already carries `?asof=D` while historical. */
@@ -830,6 +862,8 @@ function StockTableRow({
   fwdHorizons: number[];
   /** J-80 — served theme `rank` by slug (from /api/themes), for the `#n` chip badge. */
   themeRank: Map<string, number>;
+  /** goal-mcp-loop iter-1 — the served proven-signal map; drives each score's evidence-status badge. */
+  provenSignals: Record<string, ProvenSignal>;
 }) {
   return (
     <tr className="border-b border-border transition-colors hover:bg-surface-2">
@@ -849,14 +883,26 @@ function StockTableRow({
         </Link>
       </td>
       <td className="px-3 py-2 text-xs text-text-muted">{row.sector}</td>
+      {/* goal-mcp-loop iter-1 — each score now carries an inline evidence-status badge BELOW it (purely
+          additive; the ScoreBadge value is unchanged). Against the empty ledger every badge reads
+          "Not yet proven". */}
       <td className="px-3 py-2">
-        <ScoreBadge bucket={row.leadership.bucket} score={row.leadership.score} />
+        <div className="flex flex-col items-start gap-1">
+          <ScoreBadge bucket={row.leadership.bucket} score={row.leadership.score} />
+          <EvidenceStatusBadge signal={SCORE_SIGNALS.leadership} provenSignals={provenSignals} />
+        </div>
       </td>
       <td className="px-3 py-2">
-        <ScoreBadge bucket={row.entry_quality.bucket} score={row.entry_quality.score} />
+        <div className="flex flex-col items-start gap-1">
+          <ScoreBadge bucket={row.entry_quality.bucket} score={row.entry_quality.score} />
+          <EvidenceStatusBadge signal={SCORE_SIGNALS.entry_quality} provenSignals={provenSignals} />
+        </div>
       </td>
       <td className="px-3 py-2">
-        <ScoreBadge bucket={row.risk.bucket} score={row.risk.score} invert />
+        <div className="flex flex-col items-start gap-1">
+          <ScoreBadge bucket={row.risk.bucket} score={row.risk.score} invert />
+          <EvidenceStatusBadge signal={SCORE_SIGNALS.risk} provenSignals={provenSignals} />
+        </div>
       </td>
       {/* J-106 — proximity-to-52w-high cell, directly after Risk. Re-displays the stored leadership
           `high_proximity` value verbatim (the SAME value the detail Leadership breakdown shows; never
