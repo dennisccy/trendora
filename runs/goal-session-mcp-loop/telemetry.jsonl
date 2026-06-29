@@ -1,0 +1,13 @@
+{"mode":"new","max_iterations":0,"stall_window":3,"auto_release":false,"ts":"2026-06-29T20:34:39Z","session_id":"mcp-loop","iter":null,"event":"session_start","cli":"claude"}
+{"iter_name":"goal-mcp-loop-iter-0","prior_verdict":"null","prior_depth":"lean","snapshot_sha":"","ts":"2026-06-29T20:34:40Z","session_id":"mcp-loop","iter":0,"event":"iter_start","cli":"claude"}
+{"agent":"goal-decomposer","ts":"2026-06-29T20:34:41Z","session_id":"mcp-loop","iter":0,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"goal-decomposer","exit_status":0,"duration_seconds":476,"retries":0,"ts":"2026-06-29T20:42:37Z","session_id":"mcp-loop","iter":0,"event":"agent_invocation_end","cli":"claude"}
+{"depth":"lean","target_journeys":"J-01, J-02, J-03, J-04, J-05","ts":"2026-06-29T20:42:37Z","session_id":"mcp-loop","iter":0,"event":"iter_dispatch","cli":"claude"}
+{"iter_name":"goal-mcp-loop-iter-0","depth":"lean","ts":"2026-06-29T20:42:37Z","session_id":"mcp-loop","iter":0,"event":"iter_dispatch","cli":"claude"}
+{"agent":"developer","ts":"2026-06-29T20:42:37Z","session_id":"mcp-loop","iter":0,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"developer","exit_status":0,"duration_seconds":291,"retries":0,"ts":"2026-06-29T20:47:28Z","session_id":"mcp-loop","iter":0,"event":"agent_invocation_end","cli":"claude"}
+{"agent":"reviewer","ts":"2026-06-29T20:47:28Z","session_id":"mcp-loop","iter":0,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"reviewer","exit_status":0,"duration_seconds":257,"retries":0,"ts":"2026-06-29T20:51:45Z","session_id":"mcp-loop","iter":0,"event":"agent_invocation_end","cli":"claude"}
+{"agent":"goal-evaluator","ts":"2026-06-29T20:51:54Z","session_id":"mcp-loop","iter":0,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"goal-evaluator","exit_status":0,"duration_seconds":383,"retries":0,"ts":"2026-06-29T20:58:17Z","session_id":"mcp-loop","iter":0,"event":"agent_invocation_end","cli":"claude"}
+{"iter_name":"goal-mcp-loop-iter-0","verdict":"ESCALATE","next_depth":"full","journey_deltas":{"newly_passing":0,"newly_failing":0,"regressed":0,"anti_goal_violations":0},"ts":"2026-06-29T21:03:37Z","session_id":"mcp-loop","iter":0,"event":"iter_end","cli":"claude"}

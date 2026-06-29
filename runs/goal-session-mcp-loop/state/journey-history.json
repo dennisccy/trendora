@@ -1,0 +1,56 @@
+{
+  "journeys": {
+    "J-01": {
+      "id": "J-01",
+      "name": "Every score shows an evidence status",
+      "status": "unknown",
+      "last_verified_iter": null,
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-mcp-loop-iter-0",
+      "last_evidence_path": null,
+      "note": "Baseline browser-QA did not run (no ui-test-results file, empty evidence dir, no browser-qa-agent telemetry record). Not empirically verified. Dev static scan indicates the evidence surface is not yet implemented; to be established by iter-1 full-pipeline browser-QA."
+    },
+    "J-02": {
+      "id": "J-02",
+      "name": "Drill into the proof behind a score",
+      "status": "unknown",
+      "last_verified_iter": null,
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-mcp-loop-iter-0",
+      "last_evidence_path": null,
+      "note": "Baseline browser-QA did not run (no ui-test-results file, empty evidence dir, no browser-qa-agent telemetry record). Not empirically verified. Requires at least one referee-certified claim before it can pass; deferred to a later certified iteration."
+    },
+    "J-03": {
+      "id": "J-03",
+      "name": "Unproven / noise signals are honestly marked",
+      "status": "unknown",
+      "last_verified_iter": null,
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-mcp-loop-iter-0",
+      "last_evidence_path": null,
+      "note": "Baseline browser-QA did not run (no ui-test-results file, empty evidence dir, no browser-qa-agent telemetry record). Not empirically verified. Structurally satisfiable by iter-1 once the read-side path renders 'Not yet proven' against the empty ledger."
+    },
+    "J-04": {
+      "id": "J-04",
+      "name": "Regime-conditioned evidence",
+      "status": "unknown",
+      "last_verified_iter": null,
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-mcp-loop-iter-0",
+      "last_evidence_path": null,
+      "note": "Baseline browser-QA did not run (no ui-test-results file, empty evidence dir, no browser-qa-agent telemetry record). Not empirically verified. Requires regime-scoped certified evidence; deferred to a later certified iteration."
+    },
+    "J-05": {
+      "id": "J-05",
+      "name": "Audit the evidence ledger",
+      "status": "unknown",
+      "last_verified_iter": null,
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-mcp-loop-iter-0",
+      "last_evidence_path": null,
+      "note": "Baseline browser-QA did not run (no ui-test-results file, empty evidence dir, no browser-qa-agent telemetry record). Not empirically verified. The /evidence ledger surface and Evidence nav entry do not exist yet per dev static scan; to be built and verified in iter-1."
+    }
+  },
+  "anti_goal_violations": [],
+  "updated_at": "2026-06-29T20:53:00Z"
+}
