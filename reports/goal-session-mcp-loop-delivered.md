@@ -1,26 +1,35 @@
-# Delivered — Trendora Decision-Quality Evidence Layer
+# Delivered — Decision-Quality Improvement Loop
 
 **Session:** mcp-loop
 **Date:** 2026-06-30
 **Final verdict:** GOAL_ACHIEVED
-**Iterations:** 7 (iter-0 through iter-6)
+**Iterations:** 7
 
 ## What you can do today
 
-Browse 120 ranked stocks, each showing a clear "Proven" or "Not yet proven" badge on every score — Leadership, Entry Quality, and Risk. On any stock with a "Proven" Leadership badge, expand the "Why proven?" panel to read exactly why: the out-of-sample test result (+6.36% holdout edge), the control comparison against the S&P 500, the sealed holdout sample size (12,297 observations), and the date the claim was registered. Entry Quality and Risk scores are honestly marked "Not yet proven" on every stock, so you never see a confident-looking number without backing. Open the Evidence page from the top navigation to browse all certified claims — each one shows its hypothesis, out-of-sample verdict, control comparison, and a round-trip link back to the surface whose badge it backs. On the Dashboard, check the current Market Regime (Risk-on 76.05) and follow the "See evidence proven in this regime" link to find the Breakout-watch setup's certified +6.12% out-of-sample edge, clearly labeled as holding specifically in the Risk-on regime.
+Browse a ranked list of 120 stocks and see a "Proven" or "Not yet proven" badge beside every Leadership, Entry Quality, and Risk score on every row — no score is ever shown without a clear evidence status.
+
+Tap "Why proven?" on any stock's Leadership card to read the full out-of-sample proof that earned that label: the statistical test result, a +6.36% edge measured across 12,297 real observations, a comparison against the S&P 500 as a control, and the date the claim was certified and sealed.
+
+Confirm for yourself that Entry Quality and Risk are honestly marked "Not yet proven" on every stock with no drill-down panel and no fabricated confidence numbers — the product only claims certainty where it has earned it.
+
+Open the Evidence page from the sidebar to audit every certified claim in one place. Each entry shows the hypothesis, the out-of-sample verdict, the benchmark comparison, and the registration date, with round-trip links back to the surfaces they power and forward to the research lab.
+
+On the Dashboard, follow the Market Regime card's "See evidence proven in this regime" link to the Evidence page. There you can read the Breakout-watch setup's certified +6.12% out-of-sample edge over the S&P 500, clearly labeled as applying specifically in the current Risk-on market environment.
 
 ## How it came together
 
-The session opened with Trendora's analytical engine already running — Leadership, Entry Quality, and Risk scores on 120 stocks, a market-regime tracker, and a research lab — but with no evidence surface at all. Every score looked equally confident even though none had been statistically tested.
+The project opened with Trendora already ranking 120 stocks with three independent scores and a real-time market-regime tracker, but with no evidence surface — no badges, no Evidence page, no links, and no proof behind any displayed number. Every score looked equally confident even though none had been through a rigorous test.
 
-The first two iterations built the evidence layer from scratch. "Proven" and "Not yet proven" badges appeared inline on every score across the leaderboard and stock detail pages. A dedicated Evidence page went live in the navigation. Leadership became the first score to earn a "Proven" label after passing a sealed out-of-sample referee test: +6.36% holdout edge versus the S&P 500, with a p-value of 0.0005 and Bonferroni multiple-testing correction.
+The first wave of work built the read-side evidence layer from the ground up. "Not yet proven" chips appeared inline on every score across the leaderboard and every stock detail page, giving traders an honest picture against an empty ledger. A dedicated Evidence page went live in the sidebar. Then the Leadership score was put through a sealed out-of-sample referee test — 12,297 observations, +6.36% edge over the S&P 500, p-value 0.0005, Bonferroni-corrected — and passed. The ledger was stamped, Leadership's badge flipped to "Proven," and a "Why proven?" drill-down panel was wired up to show the exact numbers behind that label.
 
-Iteration 3 fixed a browser connectivity issue that had blocked automated verification, then ran the first full canonical browser suite — confirming that every score carried a status badge, the "Why proven?" drill-down panel showed the correct numbers, unvalidated scores were honestly marked, and the Evidence ledger was fully auditable with working round-trip links. Four of the five journeys passed.
+A browser connectivity issue in the test harness briefly delayed visual confirmation. Once fixed, the automated browser suite ran cleanly and verified four of the five journeys: every score had a status badge, the proof panel showed correct numbers matching the ledger, Entry Quality and Risk were honestly labeled, and the Evidence page was fully auditable with working round-trip links.
 
-Iteration 4 completed the feature set. A second edge — the Breakout-watch setup's +6.12% out-of-sample advantage over the S&P 500 specifically in the Risk-on market regime — survived the referee and was certified. The Evidence page gained a regime-labeled row and the Dashboard gained a "See evidence proven in this regime" link. All five journeys were shown working in a live test, but a server port conflict blocked the automated screenshot lane, leaving the fifth journey's formal verification incomplete.
+The fourth milestone brought the second certified edge. The Breakout-watch event-study pattern was found to hold a +6.12% advantage over the S&P 500 specifically in the Risk-on market regime — surviving a sealed holdout of 107 independent dates with p ≈ 0.0005. The Evidence page gained a clearly labeled "Regime: Risk-on" row and the Dashboard gained a direct link to it. A leftover server process blocked the automated screenshot lane, leaving the final journey's formal verification pending.
 
-Iterations 5 and 6 repaired the verification machinery. A startup-script fix cleared the port conflict, but deeper pipeline defects were then uncovered: the automated system was quietly announcing success without producing its output reports, an unrecognized progress bookmark was aborting the run before the browser walkthrough could execute, and checks were being marked done without any artifacts on disk. All four root-cause defects were fixed in iteration 6. The full automated walkthrough ran end-to-end, the independent audit signed off, and the fifth journey passed the session-standard canonical lane for the first time.
+The last two iterations were a disciplined harness repair. A startup-script port-conflict fix was shipped first. Then four deeper pipeline defects were uncovered and corrected: one step was announcing success without producing its output report, an unrecognized progress bookmark was aborting the entire run before the browser walkthrough could execute, and checks were being marked complete without any artifacts on disk. With all four root causes fixed, the full automated walkthrough ran end-to-end for the first time in three rounds, the independent audit signed off, and the final journey passed the session-standard canonical lane. Every success criterion was met.
 
 ## Watch it work
 
-A full narrated walkthrough is embedded on the page that holds this document. Open it in your browser to see the product in action.
+A full narrated walkthrough is embedded on the page that holds this document.
+Open it in your browser to see the product in action.

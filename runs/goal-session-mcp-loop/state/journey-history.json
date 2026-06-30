@@ -4,53 +4,53 @@
       "id": "J-01",
       "name": "Every score shows an evidence status",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-6",
-      "last_passing_iter": "goal-mcp-loop-iter-6",
+      "last_verified_iter": "goal-mcp-loop-iter-7",
+      "last_passing_iter": "goal-mcp-loop-iter-7",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-6-evidence/UT-J-01-stocks-badges.png",
-      "note": "Passing — re-verified on the CANONICAL browser-qa-agent lane for the first time since iter-3 (engine.log L479-483; ui-test-results.md UT-J-01 PASS). Personally inspected UT-J-01-stocks-badges.png (md5 617da05): /stocks 120/120 rows; every Leadership badge reads 'Proven' (A/B grades), every Entry Quality + Risk reads 'Not yet proven'; Market Regime 'Risk-on 76.05'. No score on the leaderboard is presented without a visible evidence status. last_passing now advances to the canonical iter-6 pass."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-7-evidence/UT-J-01-result.png",
+      "note": "Passing — re-confirmed on the CANONICAL browser-qa lane (ui-test-results.md UT-J-01 PASS, 5/5 overall). Personally inspected UT-J-01-result.png (md5 617da05): /stocks 120/120 rows; every Leadership badge reads 'Proven' (A/B grades), every Entry Quality + Risk reads 'Not yet proven'; Market Regime 'Risk-on 76.05'. No score on the leaderboard is presented without a visible evidence status. Verify-only iteration (zero apps/ diff) — no regression possible to the frozen evidence layer."
     },
     "J-02": {
       "id": "J-02",
       "name": "Drill into the proof behind a score",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-6",
-      "last_passing_iter": "goal-mcp-loop-iter-6",
+      "last_verified_iter": "goal-mcp-loop-iter-7",
+      "last_passing_iter": "goal-mcp-loop-iter-7",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-6-evidence/UT-J-02-proof-panel.png",
-      "note": "Passing — the canonical lane tested J-02 (UT-J-02 PASS: 'Why proven?' clicked → panel expanded showing OOS PASS +6.36% / p=0.0004998 / sealed holdout cohort 12,297 / +6.36% vs SPY / leadership_score registered 2026-06-30 / 'View backing evidence row ->'). CAVEAT (audit T1, personally confirmed): UT-J-02-proof-panel.png (md5 80c7cdd, unique) frames only the three MU score cards (Leadership 94.58 'Proven', Entry Quality 23.66 + Risk 53.11 'Not yet proven'); the EXPANDED drill-down panel renders below the fold and was NOT scrolled into frame — the recurring iter-3 lesson. Functionally passing and corroborated three ways: (1) the narrative's 12,297/+6.36%/p=0.0004998 byte-match certified-claims.jsonl line 1 (cohort_n 12297, holdout_edge 0.06359, p 0.0004998); (2) the identical proof content (OOS PASS +6.36%, control +6.36% vs SPY, registered 2026-06-30) is visible on the personally-inspected /evidence leadership_score row; (3) the inline expanded panel was pixel-proven at canonical iter-3 UT-08 and the feature is frozen (zero apps/ diff → no regression possible). Non-blocking carry-forward: scroll the inline panel into frame next capture."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-7-evidence/UT-J-02-result.png",
+      "note": "Passing — canonical lane UT-J-02 PASS: 'Why proven?' replay asserted the expanded panel (OUT-OF-SAMPLE TEST PASS holdout edge +6.36% / p=0.0004998 / 12,297 obs; CONTROL COMPARISON +6.36% vs SPY; CERTIFIED CLAIM leadership_score registered 2026-06-30). CAVEAT (recurring T1, personally confirmed): UT-J-02-result.png (md5 80c7cdd) frames only the three MU score cards (Leadership 94.58 'Proven', Entry Quality 23.66 + Risk 53.11 'Not yet proven') — the EXPANDED drill-down renders below the fold and was NOT scrolled into frame. Functionally passing and corroborated three ways: (1) the asserted 12,297 / +6.36% / p=0.0004998 byte-match certified-claims.jsonl line 1; (2) identical proof content visible on the personally-inspected /evidence leadership_score row (UT-J-04-result.png); (3) the inline expanded panel was pixel-proven at canonical iter-3 UT-08 and the feature is frozen (zero apps/ diff). Non-blocking carry-forward: scroll the inline panel into frame next capture."
     },
     "J-03": {
       "id": "J-03",
       "name": "Unproven / noise signals are honestly marked",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-6",
-      "last_passing_iter": "goal-mcp-loop-iter-6",
+      "last_verified_iter": "goal-mcp-loop-iter-7",
+      "last_passing_iter": "goal-mcp-loop-iter-7",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-6-evidence/UT-J-03-not-yet-proven.png",
-      "note": "Passing — re-verified on the CANONICAL lane (UT-J-03 PASS). Personally inspected the /stocks frame (md5 617da05, shared with UT-J-01): every leaderboard row's Entry Quality + Risk read 'Not yet proven' (never a confident number), Leadership alone reads 'Proven'; the signal=null Breakout-watch claim lights NO inline per-stock score badge (anti-goal #1 upheld). On /stocks/MU, Entry Quality 23.66 + Risk 53.11 both read 'Not yet proven'. last_passing advances to canonical iter-6."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-7-evidence/UT-J-03-result.png",
+      "note": "Passing — canonical lane UT-J-03 PASS. Corroborated on the personally-inspected UT-J-01-result.png frame (md5 617da05): every leaderboard row's Entry Quality + Risk read 'Not yet proven' (never a confident number), Leadership alone reads 'Proven'; the signal=null Breakout-watch regime claim lights NO inline per-stock score badge (anti-goal #1 upheld). On /stocks/MU, Entry Quality 23.66 + Risk 53.11 both read 'Not yet proven' (UT-J-02-result.png)."
     },
     "J-04": {
       "id": "J-04",
       "name": "Regime-conditioned evidence",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-6",
-      "last_passing_iter": "goal-mcp-loop-iter-6",
+      "last_verified_iter": "goal-mcp-loop-iter-7",
+      "last_passing_iter": "goal-mcp-loop-iter-7",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-6-evidence/UT-J-04-regime-evidence.png",
-      "note": "FLIPPED partial -> passing. Held partial for two iterations purely on the canonical-lane verification gap (feature delivered + certified since iter-4); that gap is now resolved. The CANONICAL browser-qa-agent lane ran this iteration (engine.log L479-483) and rendered J-04 across two personally-inspected pixels: UT-J-04-dashboard.png (Market Regime 'Risk-on 76.05 / 100' + 'See evidence proven in this regime ->' affordance whose href is /evidence) and UT-J-04-regime-evidence.png (/evidence row 2 'PASS Breakout-watch setup [Regime: Risk-on]', subtitle 'Out-of-sample edge in the Risk-on regime', OOS verdict 'PASS holdout edge +6.12%' p=0.0004998 < alpha/2=0.025, control +6.12% vs SPY, registered 2026-06-30, 'Backs: Research event-study lab ->') — scrolled fully into frame. All values byte-match certified-claims.jsonl line 2 (holdout_edge 0.06125, regime Risk-on, signal=null, cohort_n 4720). Evidence is regime-scoped and clearly labeled with the regime it holds in."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-7-evidence/UT-J-04-result.png",
+      "note": "Passing — canonical lane UT-J-04 PASS, re-confirmed across two personally-inspected pixels: UT-J-04-dashboard.png (md5 0a0c589 — Market Regime 'Risk-on 76.05 / 100' + 'See evidence proven in this regime →' affordance; Market Phase 'Expansion 25.70') and UT-J-04-result.png (md5 cfe695e8 — /evidence row 2 'PASS Breakout-watch setup [Regime: Risk-on]', subtitle 'Out-of-sample edge in the Risk-on regime', OOS verdict 'PASS holdout edge +6.12%' p=0.0004998 < alpha/2=0.025, control +6.12% vs SPY, registered 2026-06-30, 'Backs: Research event-study lab →'). All values byte-match certified-claims.jsonl line 2 (holdout_edge 0.06125, regime Risk-on, signal=null, cohort_n 4720). Evidence is regime-scoped and clearly labeled with the regime it holds in."
     },
     "J-05": {
       "id": "J-05",
       "name": "Audit the evidence ledger",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-6",
-      "last_passing_iter": "goal-mcp-loop-iter-6",
+      "last_verified_iter": "goal-mcp-loop-iter-7",
+      "last_passing_iter": "goal-mcp-loop-iter-7",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-6-evidence/UT-J-05-evidence-roundtrip.png",
-      "note": "Passing — re-verified on the CANONICAL lane (UT-J-05 PASS). Both certified claims render on /evidence (personally inspected, md5 cfe695e): leadership_score 'PASS' +6.36% with hypothesis chips, OOS verdict, control +6.36% vs SPY, registered 2026-06-30, 'Backs: Stocks leaderboard ->'; and Breakout-watch '[Regime: Risk-on]' 'PASS' +6.12%, 'Backs: Research event-study lab ->' — both byte-match the ledger. The step-3 ROUND-TRIP is captured as a DISTINCT frame this iter (iter-6 DoD requirement): UT-J-05-evidence-roundtrip.png (md5 617da05 = the /stocks backing surface landed on after clicking 'Backs: Stocks leaderboard ->') is NOT a byte-duplicate of the /evidence list frame (cfe695e) — fixing the iter-5 md5-identical-dup defect. Audit independently confirmed the linkback hrefs (/stocks, /research/event-study)."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-7-evidence/UT-J-05-result.png",
+      "note": "Passing — canonical lane UT-J-05 PASS. Both certified claims render on /evidence (personally inspected UT-J-05-result.png, md5 cfe695e8): leadership_score 'PASS' +6.36% with hypothesis chips, OOS verdict (p=0.0004998 < alpha/1=0.05), control +6.36% vs SPY, registered 2026-06-30, forward-walk 'Pending', 'Backs: Stocks leaderboard →'; and Breakout-watch '[Regime: Risk-on]' 'PASS' +6.12%, 'Backs: Research event-study lab →' — both byte-match the ledger. Step-3 round-trip: the replay verified the backing-link hrefs (/stocks, /research/event-study); the landed-on /stocks backing surface is captured this iteration as UT-J-01-result.png (md5 617da05). NOTE: UT-J-05-result.png is byte-identical to UT-J-04-result.png (both the /evidence list) — the distinct round-trip landed-on frame was NOT separately captured this iteration (iter-6 had captured it as a distinct 617da05 frame). Non-blocking evidence-framing nicety; round-trip corroborated by the inspected /stocks surface + verified hrefs."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-06-30T06:30:00Z"
+  "updated_at": "2026-06-30T19:00:00Z"
 }

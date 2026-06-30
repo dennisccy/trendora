@@ -91,23 +91,28 @@ cd apps/frontend
 npm install
 ```
 
-### Start the backend
+### Quick start — both services at once
+
+```bash
+./scripts/dev.sh
+```
+
+Starts the backend and frontend on deterministic per-project ports (printed to the terminal) and watches for file changes. Ports default to **8835** (backend) and **3835** (frontend); set `CHAIN_BACKEND_PORT` / `CHAIN_FRONTEND_PORT` to override.
+
+### Start the backend (manually)
 
 ```bash
 cd apps/backend
-.venv/bin/python -m uvicorn app.main:app --reload --port 8835
+source .venv/bin/activate
+uvicorn main:app --reload --host 0.0.0.0 --port 8835
 ```
 
-The backend defaults to port **8835** (auto-offset per project). Set `CHAIN_BACKEND_PORT` to override.
-
-### Start the frontend
+### Start the frontend (manually)
 
 ```bash
 cd apps/frontend
 NEXT_PUBLIC_API_URL=http://localhost:8835 npx next dev -p 3835
 ```
-
-The frontend defaults to port **3835**. Set `CHAIN_FRONTEND_PORT` to override.
 
 ### Run backend tests
 
