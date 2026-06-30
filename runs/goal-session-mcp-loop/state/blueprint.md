@@ -11,8 +11,8 @@ regime/phase, realized forward-return evidence, Research labs, Backtest, Data Ma
 `docs/goal.md` evolves it from "explainable" to "PROVABLE": every user-facing score/ranking/edge gains a
 visible EVIDENCE STATUS ("Proven" / "Not yet proven") sourced from an append-only certified-claims
 LEDGER, with a referee that certifies edges out-of-sample before they may ship. FIVE new Must-haves
-J-01..J-05. The evidence layer is ADDITIVE — it never rewrites the existing scoring/regime/research
-engines, only attaches a status + drill-down to what they already serve.
+J-01..J-05 (plus auto-proposed J-06). The evidence layer is ADDITIVE — it never rewrites the existing
+scoring/regime/research engines, only attaches a status + drill-down to what they already serve.
 
 BASELINE FILE-SCAN (what already exists vs. what J-01..J-05 still need):
   EXISTS — the referee + ledger PLUMBING (not yet surfaced):
@@ -71,6 +71,7 @@ Research (its proof companion). Stock Detail, Run Detail, Research labs and Samp
 | J-03 unproven / noise signals honestly marked | cross-cutting badge state on `/stocks`, `/stocks/{ticker}`, `/sectors`, `/themes`, research labs | Stocks / Sectors / Themes / Research |
 | J-04 regime-conditioned evidence | `/` (current regime + Evidence affordance) + regime-labeled claim row on `/evidence` | Dashboard + Evidence/Research |
 | J-05 audit the evidence ledger | `/evidence` (claims list; each links back to the surface it backs) | Evidence [NEW] |
+| J-06 vcp_contraction top-decile certified factor edge | `/research/factor-lab` (vcp_contraction top-decile "Proven" badge → its ledger row) + vcp_contraction claim row on `/evidence` | Research (lab, link-reached) + Evidence |
 
 Evidence badges are INLINE chips on existing score surfaces (not new pages); each badge links to its
 backing ledger entry on `/evidence`. No existing journey's home moves.
@@ -119,6 +120,29 @@ returns `None` for a non-score cohort), so it appears ONLY as a CLAIM ROW in `cl
 title/linkback for a signal-less setup claim — re-display only, no new computing module, no second endpoint,
 no recompute. The Dashboard regime panel adds a discoverable LINK to `/evidence` (navigation affordance — it
 serves no new value). Proven-ness still flows ONLY from `verdict.status == PASS`.
+
+**iter-8 clarification (additive — same value, no new module/endpoint):** the certified-claims value now
+also includes **signal-less plain-factor decile cohort claims** — a NON-score factor sliced to a decile
+(`kind=factor`, `factor=<non-score factor>`, `slice_kind=decile`, `decile=<n>`, here the `vcp_contraction`
+top decile D10 at horizon 20, J-06). (The originally-proposed `ma_stack` D10 cohort was REJECTED by the
+post-decompose referee — holdout +0.0262, p=0.0195 ≥ α/4=0.0125 — and is recorded as a FAIL ledger entry
+that permanently tightens the Bonferroni bar; the human operator replaced it in `docs/goal.md` with
+`vcp_contraction` D10 h20, the one backlog cohort that certifies at the current bar — verified holdout
++0.0333, p=0.01149 < α/4=0.0125. Do NOT re-propose ma_stack/hv/high_proximity — each failed submission
+permanently raises the bar.) Like the regime event-study claim, such a claim **carries NO `signal`**
+(`vcp_contraction` ∉ the three score columns ⇒ `app.engine.evidence:_resolve_signal` returns `None`): it
+appears ONLY as a CLAIM ROW in `claims[]` and never enters `proven_signals` — it cannot light or overwrite a
+`/stocks` inline score badge (J-01/J-02/J-03 unaffected; `proven_signals` stays `{leadership_score}`). The
+**Research factor lab** (`/research/factor-lab`) becomes an additional READER of the SAME `GET /api/evidence`
+payload (via the existing `lib/api.ts:fetchEvidence` client — NO new fetch path): its top-decile rows resolve
+a "Proven"/"Not yet proven" status by MATCHING the served `claims[]` on cohort selectors
+(`factor`+`slice_kind`+`decile`+`horizon`+`direction`) — a pure read-side cohort matcher in `lib/evidence.ts`
+(the signal-less successor to `resolveEvidenceStatus`), NEVER a recompute of proven-ness (which still flows
+solely from `verdict.status == PASS`) and NEVER a second endpoint. The `/evidence` `ClaimRow` gains (a) an
+honest factor-cohort title + "Backs: Research factor lab →" linkback (the `claimSurface` `factor` branch,
+replacing the misleading "Unmapped signal" fallback) and (b) a deterministic cohort-derived anchor so the
+factor-lab badge can deep-link to its row. Re-display + display-routing only — no new computing module, no
+second endpoint, no nav-skeleton change.
 
 <!-- LOOP RULE for the decomposer: an iteration that surfaces any signal AS "Proven" MUST carry a
 machine-readable `## Evidence Claim` JSON block (cohort selectors mirroring /api/research/samples) so the

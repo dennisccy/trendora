@@ -129,6 +129,41 @@ ones, with honest "this isn't proven yet" markers when the evidence is thin or f
      between the two markers below (see the goal-self-extension skill). The human-authored journeys
      above and the Anti-goals below are never machine-edited. An empty block = nothing auto-proposed yet. -->
 <!-- AUTO:journeys -->
+
+- **J-06: vcp_contraction top-decile certified edge surfaced on Evidence + Research factor lab**
+  - Steps:
+    1. The iteration carries a machine-readable `## Evidence Claim` for the vcp_contraction top-decile cohort —
+       `{"kind":"factor","factor":"vcp_contraction","slice_kind":"decile","decile":10,"horizon":20,"direction":"positive"}` —
+       so the post-decompose gate certifies it through the referee (sealed out-of-sample holdout + SPY
+       control + multiple-testing deflation) BEFORE any code is built; a non-PASS verdict (FAIL/INSUFFICIENT)
+       blocks the iteration.
+    2. Visit `/evidence` and locate the new vcp_contraction certified-claim row.
+    3. Assert it renders the same fields as the existing claim rows: hypothesis, out-of-sample verdict,
+       control comparison (vs SPY), registration date, forward-walk score-to-date, and a
+       "Backs: Research factor lab →" linkback.
+    4. Open the Research factor lab (`/research/factor-lab`) for the vcp_contraction factor and assert its
+       top-decile cohort shows an evidence badge reading "Proven" that links to this ledger entry.
+  - Acceptance:
+    - **Consistency (single source):** the vcp_contraction ledger row and the factor-lab badge read the canonical
+      `GET /api/evidence` payload verbatim (the ledger row re-displays `claims[]`; the badge looks up the
+      resolved evidence status — it NEVER recomputes proven-ness or re-fetches from a new path). The vcp_contraction
+      certified-claim is a NEW entry in the EXISTING `certified-claims.jsonl` ledger already served by
+      `GET /api/evidence` — **no new computing module and no new serving endpoint** are introduced (same
+      evidence-status contract value, one additional reader), so the Data Contract's single source of truth
+      is preserved (no new shared value to register).
+    - **Correctness:** the displayed out-of-sample edge, p-value, and control comparison byte-match the
+      referee verdict written to `certified-claims.jsonl` for the same as-of — never a recompute in the UI.
+    - **Honest status / anti-goals:** like the Breakout-watch setup claim, the vcp_contraction factor claim carries
+      NO per-stock `signal`, so it backs ONLY the Research factor lab and never lights or overwrites a
+      `/stocks` inline score badge (J-01/J-02/J-03 unaffected). The factor-lab cohort reads "Proven" ONLY
+      because a PASS certified-claim backs it; absent a PASS verdict it must read "Not yet proven"
+      (anti-goal #1 upheld). No return promise, price target, or buy/sell signal is shown — only the evidence
+      status plus the realized hold-out statistic. Determinism + no-lookahead preserved (scoring ≤ as-of,
+      forward returns > as-of; the referee uses a sealed temporal holdout).
+    - **Walkthrough:** a `[NEW]`-flagged demo-narrator walkthrough of the new vcp_contraction ledger row and the
+      factor-lab "Proven" badge is produced (plain-language narration + a real-data screenshot example),
+      viewable via `demo.sh mcp-loop --session-live`.
+
 <!-- /AUTO:journeys -->
 
 ## Anti-goals

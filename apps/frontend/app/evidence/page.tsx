@@ -8,7 +8,7 @@ import { PageHeading } from "@/components/page-heading";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { claimSurface, regimeLabel } from "@/lib/evidence";
+import { claimAnchorId, claimSurface, regimeLabel } from "@/lib/evidence";
 import { fetchEvidence, type CertifiedClaim, type EvidenceLedgerResponse } from "@/lib/api";
 
 type State =
@@ -133,7 +133,11 @@ function EvidenceEmptyState() {
 function ClaimRow({ claim }: { claim: CertifiedClaim }) {
   const surface = claimSurface(claim);
   const regime = regimeLabel(claim);
-  const anchorId = claim.signal ? `signal-${claim.signal}` : undefined;
+  // The row's deep-link anchor — the SHARED `claimAnchorId` every "Proven" badge agrees on: a score row
+  // keeps its `signal-${signal}` id (J-02/J-05 deep-links unchanged); a signal-less plain-factor decile
+  // cohort (iter-8 — vcp_contraction) derives its stable cohort anchor so the Research factor-lab "Proven"
+  // badge lands on THIS row; any other signal-less row (the event-study row) stays `undefined` (unchanged).
+  const anchorId = claimAnchorId(claim) ?? undefined;
   const verdict = claim.verdict ?? { status: "", reason: "" };
   return (
     <Card id={anchorId} data-testid="evidence-claim-row" className="scroll-mt-20">

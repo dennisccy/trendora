@@ -279,6 +279,21 @@ export function claimSurface(claim: CertifiedClaim): ClaimSurface {
       label: "Research event-study lab",
     };
   }
+  // A signal-less PLAIN-FACTOR decile cohort (iter-8 — the vcp_contraction top-decile edge). It backs the
+  // Research factor lab + this Evidence ledger ONLY (NOT a per-stock score badge — it carries no `signal`),
+  // so its title is the factor + top decile read from the selectors (never the misleading "Unmapped
+  // signal"), its subtitle is honest *historical evidence* framing (never a buy/return promise — anti-goal
+  // #2), and its linkback points at the Research factor lab (NOT the Stocks leaderboard).
+  const factorCohort = kind === "factor" ? factorCohortFromClaim(claim) : null;
+  if (factorCohort) {
+    return {
+      title: `${factorCohort.factor} — top decile (D${factorCohort.decile})`,
+      titleIsSignalKey: false,
+      subtitle: "Out-of-sample edge — factor top decile",
+      href: "/research/factor-lab",
+      label: "Research factor lab",
+    };
+  }
   return {
     title: "Unmapped signal",
     titleIsSignalKey: false,
@@ -286,4 +301,135 @@ export function claimSurface(claim: CertifiedClaim): ClaimSurface {
     href: STOCKS_LEADERBOARD_SURFACE.href,
     label: STOCKS_LEADERBOARD_SURFACE.label,
   };
+}
+
+// --- read-side cohort-selector matcher (goal-mcp-loop iter-8) — the signal-less successor to
+// `resolveEvidenceStatus`. PURE + read-only: it scans the served `claims[]` for a PASS entry whose cohort
+// selectors MATCH a queried factor decile cohort, and re-displays the served status VERBATIM. It NEVER
+// recomputes proven-ness (a matched-but-non-PASS entry stays "Not yet proven"), reads from the SAME
+// `GET /api/evidence` payload (no new fetch path), and fabricates nothing. This is how the Research
+// factor lab marks the one certified top-decile cohort "Proven" while every unbacked cohort reads
+// "Not yet proven" (anti-goal #1).
+
+/** A factor top-decile cohort's selectors — the SAME slice vocabulary the Research labs + the certified
+ *  claim use (`/api/research/samples` / the Evidence-Claim JSON): factor + `slice_kind` ("decile") + the
+ *  decile bucket + the forward `horizon` + the `direction`. A signal-less cohort (it backs no per-stock
+ *  score). */
+export interface FactorCohort {
+  factor: string;
+  slice_kind: string; // "decile"
+  decile: number;
+  horizon: number;
+  direction: string; // "positive" | "negative"
+}
+
+/** Extract a `FactorCohort` from a served claim's selectors, or `null` when the claim is not a factor
+ *  decile cohort (e.g. the event-study row) or is missing a required selector. Reads VERBATIM — fabricates
+ *  nothing. The score-column factor cohorts (leadership/entry-quality/risk) ARE factor cohorts too, so the
+ *  CALLER decides routing (the `/evidence` ClaimRow checks `claim.signal` first — a score row keeps its
+ *  `signal-${signal}` anchor; only a signal-less factor cohort uses this cohort anchor). */
+export function factorCohortFromClaim(claim: CertifiedClaim): FactorCohort | null {
+  const cohort = claim.claim ?? {};
+  if (cohort["kind"] !== "factor") {
+    return null;
+  }
+  const factor = cohort["factor"];
+  const sliceKind = cohort["slice_kind"];
+  const decile = cohort["decile"];
+  const horizon = cohort["horizon"];
+  const direction = cohort["direction"];
+  if (
+    typeof factor !== "string" ||
+    factor === "" ||
+    sliceKind !== "decile" ||
+    typeof decile !== "number" ||
+    typeof horizon !== "number" ||
+    typeof direction !== "string" ||
+    direction === ""
+  ) {
+    return null;
+  }
+  return { factor, slice_kind: sliceKind, decile, horizon, direction };
+}
+
+/** The stable, collision-free anchor id for a factor cohort, derived from its selectors
+ *  (e.g. `factor-vcp_contraction-d10-h20`). The `/evidence` factor `ClaimRow` carries this as its row `id`
+ *  and the factor-lab "Proven" badge links to the matching `/evidence#…` anchor, so the deep-link lands.
+ *  Distinct (factor, decile, horizon) tuples produce distinct ids. */
+export function cohortClaimId(cohort: FactorCohort): string {
+  return `factor-${cohort.factor}-d${cohort.decile}-h${cohort.horizon}`;
+}
+
+/** The `/evidence#…` deep-link a "Proven" factor-cohort badge points at — the `cohortClaimId` under the
+ *  Evidence-page hash (the row carrying the matching `id`). */
+export function cohortEvidenceAnchor(cohort: FactorCohort): string {
+  return `/evidence#${cohortClaimId(cohort)}`;
+}
+
+/**
+ * The stable `/evidence` row `id` for ONE certified claim — the SINGLE source the `/evidence` ClaimRow and
+ * every "Proven" badge agree on, so a deep-link always lands on the backing row:
+ *   - a score-column claim (carries a `signal`) keeps its `signal-${signal}` id (J-02/J-05 unchanged);
+ *   - a signal-less plain-factor decile cohort (iter-8 — vcp_contraction) derives its `cohortClaimId`;
+ *   - any other claim (e.g. the event-study row) has no stable cohort id → `null` (no anchor).
+ * Reading the SAME id at the badge and at the row is what guarantees the factor-lab "Proven" badge scrolls
+ * to its real ledger entry (a score-column factor like leadership_score links to `signal-…`, NOT a cohort
+ * anchor its row never carries).
+ */
+export function claimAnchorId(claim: CertifiedClaim): string | null {
+  if (claim.signal) {
+    return `signal-${claim.signal}`;
+  }
+  const cohort = factorCohortFromClaim(claim);
+  return cohort ? cohortClaimId(cohort) : null;
+}
+
+/** The resolved status for one factor cohort's evidence badge (mirrors `EvidenceStatus`). */
+export interface CohortEvidenceStatus {
+  proven: boolean;
+  /** "Proven" | "Not yet proven" — the exact text the badge renders. */
+  label: string;
+  /** The `/evidence#…` cohort anchor when proven; null when not yet proven (no link). */
+  href: string | null;
+  /** The backing claim row when proven; null otherwise. */
+  claim: CertifiedClaim | null;
+}
+
+/**
+ * Resolve a factor cohort's evidence status from the served `claims[]` (PURE, read-only). It scans for a
+ * `proven` (PASS) entry whose cohort selectors MATCH the queried cohort on `factor` + `slice_kind` +
+ * `decile` + `horizon` + `direction`, and returns "Proven" linking to its `/evidence` cohort anchor.
+ * FAIL-SAFE: no match, a matched-but-NON-PASS entry (e.g. the ma_stack FAIL row), or an empty/null/undefined
+ * list → "Not yet proven" with no link. It re-displays `entry.proven` VERBATIM and recomputes nothing —
+ * the UI never fabricates proven-ness (goal.md Constraints + anti-goal #1).
+ */
+export function resolveCohortEvidence(
+  cohort: FactorCohort,
+  claims: CertifiedClaim[] | null | undefined,
+): CohortEvidenceStatus {
+  if (Array.isArray(claims)) {
+    for (const entry of claims) {
+      if (!entry || entry.proven !== true) {
+        continue; // only a PASS-backed entry can prove a cohort (matched-but-non-PASS stays unproven)
+      }
+      const entryCohort = factorCohortFromClaim(entry);
+      if (
+        entryCohort &&
+        entryCohort.factor === cohort.factor &&
+        entryCohort.slice_kind === cohort.slice_kind &&
+        entryCohort.decile === cohort.decile &&
+        entryCohort.horizon === cohort.horizon &&
+        entryCohort.direction === cohort.direction
+      ) {
+        // Link to the matched claim's ACTUAL `/evidence` row id (`claimAnchorId`) so the deep-link lands:
+        // a signal-less plain factor (vcp_contraction) → its cohort anchor; a score-column factor whose
+        // certified row carries a `signal` (e.g. leadership_score) → that row's `signal-…` anchor (never a
+        // cohort anchor its `/evidence` row never has). Falls back to the queried cohort anchor defensively.
+        const anchor = claimAnchorId(entry);
+        const href = anchor ? `/evidence#${anchor}` : cohortEvidenceAnchor(cohort);
+        return { proven: true, label: PROVEN_LABEL, href, claim: entry };
+      }
+    }
+  }
+  return { proven: false, label: NOT_PROVEN_LABEL, href: null, claim: null };
 }

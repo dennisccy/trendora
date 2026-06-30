@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "journey": "J-06",
+  "name": "vcp_contraction top-decile certified edge surfaced on Evidence + Research factor lab",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-06", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Evidence"}},
+    {"n": 2, "journey": "J-06", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "vcp_contraction — top decile (D10)"}},
+    {"n": 3, "journey": "J-06", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "+3.33%"}},
+    {"n": 4, "journey": "J-06", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Backs: Research factor lab →"}},
+    {"n": 5, "journey": "J-06", "action": {"type": "goto", "url": "/research/factor-lab"}, "expect": {"text": "Research — Factor Lab"}},
+    {"n": 6, "journey": "J-06", "action": {"type": "goto", "url": "/research/factor-lab"}, "expect": {"text": "Evidence (D10 · 20d)"}},
+    {"n": 7, "journey": "J-06", "action": {"type": "click", "target": {"testid": "factor-evidence-badge", "css": "a[data-testid='factor-evidence-badge'][data-factor='vcp_contraction']"}}, "expect": {}},
+    {"n": 8, "journey": "J-06", "action": {"type": "goto", "url": "/evidence#factor-vcp_contraction-d10-h20"}, "expect": {"text": "vcp_contraction — top decile (D10)"}}
+  ]
+}

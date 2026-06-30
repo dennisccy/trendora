@@ -11,7 +11,9 @@ import {
   ChevronRight,
   Microscope,
   Plus,
+  Shield,
   ShieldAlert,
+  ShieldCheck,
   X,
 } from "lucide-react";
 
@@ -21,6 +23,7 @@ import { fmtMdd, fmtPct, mddClass, returnClass } from "@/components/forward-retu
 import { PageHeading } from "@/components/page-heading";
 import { useReadiness } from "@/components/readiness-provider";
 import { shouldShowWarming, WarmingState } from "@/components/warming-state";
+import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { TermInfo } from "@/components/ui/term-info";
@@ -29,8 +32,15 @@ import { groupedHorizonColumns, horizonColumnKey } from "@/lib/research-lab-colu
 import { type CohortParams, type SampleScope } from "@/lib/samples-link";
 import { cn } from "@/lib/utils";
 import {
+  cohortEvidenceAnchor,
+  resolveCohortEvidence,
+  type CertifiedClaim,
+  type FactorCohort,
+} from "@/lib/evidence";
+import {
   fetchDowntrendOpportunity,
   fetchEventStudy,
+  fetchEvidence,
   fetchFactorCombination,
   fetchFactorLabAll,
   fetchPhaseSeverityLab,
@@ -185,6 +195,12 @@ export function ResearchError({ what }: { what: string }) {
  *  (re-presented per horizon, never recomputed). */
 export function FactorLabPage() {
   const [state, setState] = useState<State>({ kind: "loading" });
+  // iter-8 (J-06): the canonical certified-claims list, fetched VERBATIM via the EXISTING evidence client
+  // (the SAME `GET /api/evidence` payload the ledger page + the inline score badges read — no new fetch
+  // path). FAIL-SAFE: it starts empty and stays empty on any fetch error, so every top-decile evidence
+  // badge reads "Not yet proven" (never a fabricated "Proven", never a 500). The badge resolves its status
+  // from this list — it computes nothing.
+  const [evidenceClaims, setEvidenceClaims] = useState<CertifiedClaim[]>([]);
   const { mode, setMode, readiness, asofCutoff, scope } = useResearchControls();
 
   useEffect(() => {
@@ -197,6 +213,18 @@ export function FactorLabPage() {
       });
     return () => controller.abort();
   }, [asofCutoff, readiness]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchEvidence(controller.signal)
+      .then((payload) => {
+        if (!controller.signal.aborted) setEvidenceClaims(payload.claims);
+      })
+      .catch(() => {
+        // fail-safe: leave the claim list empty → every top-decile badge reads "Not yet proven", no link.
+      });
+    return () => controller.abort();
+  }, []);
 
   const data = state.kind === "ok" ? state.data : null;
 
@@ -216,7 +244,7 @@ export function FactorLabPage() {
         <>
           {state.kind === "loading" ? <LabSkeleton /> : null}
           {state.kind === "error" ? <ResearchError what="The Factor-Lab evidence" /> : null}
-          {data ? <FactorsTable data={data} scope={scope} /> : null}
+          {data ? <FactorsTable data={data} scope={scope} evidenceClaims={evidenceClaims} /> : null}
         </>
       )}
     </div>
@@ -501,7 +529,15 @@ function RatioCell({ value, na, title }: { value: number | null; na: boolean; ti
  *  reveal that factor's full D1…D`deciles` decile grid across all horizons (`DecileTable`, hidden by
  *  default). Every value is the canonical `compute_factor_lab` output re-presented per horizon
  *  (byte-identical) — the page recomputes nothing; the sort + expand are pure view transforms. */
-function FactorsTable({ data, scope }: { data: FactorLabAllResponse; scope: SampleScope }) {
+function FactorsTable({
+  data,
+  scope,
+  evidenceClaims,
+}: {
+  data: FactorLabAllResponse;
+  scope: SampleScope;
+  evidenceClaims: CertifiedClaim[];
+}) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [sortKey, setSortKey] = useState<FactorSortKey>(FACTOR_DEFAULT_SORT.key);
   const [sortDir, setSortDir] = useState<FactorSortDir>(FACTOR_DEFAULT_SORT.dir);
@@ -509,6 +545,10 @@ function FactorsTable({ data, scope }: { data: FactorLabAllResponse; scope: Samp
   const rows = data.factors_table;
   const horizons = data.horizons;
   const defaultHorizon = data.default_horizon;
+  // iter-8 (J-06): the top-decile cohort each evidence badge resolves is the HIGHEST factor-value decile
+  // (D`deciles_count`) at the certified default horizon — config-driven, no magic number. This is exactly
+  // the cohort the referee certified for vcp_contraction (decile 10, horizon 20).
+  const topDecile = data.deciles_count;
 
   // J-109 / J-48 — the sorted view: a STABLE sort (catalog-order tie-break) over the served rows, NA-last
   // for the numeric columns. Recomputes no value; re-orders only.
@@ -560,7 +600,8 @@ function FactorsTable({ data, scope }: { data: FactorLabAllResponse; scope: Samp
     );
   }
 
-  const colSpan = 5 + horizons.length * 2 + 1; // Factor+Family+Rank-IC+N+Risk-adj + 2·horizons + chevron
+  // Factor+Evidence+Family+Rank-IC+N+Risk-adj (6) + 2·horizons + chevron (iter-8 adds the Evidence column).
+  const colSpan = 6 + horizons.length * 2 + 1;
 
   return (
     <>
@@ -586,6 +627,12 @@ function FactorsTable({ data, scope }: { data: FactorLabAllResponse; scope: Samp
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
               <FactorSortHeader col="label" label="Factor" activeKey={sortKey} dir={sortDir} onSort={onSort} />
+              {/* iter-8 (J-06): the top-decile evidence status column — not sortable (a referee verdict,
+                  not a metric). Headed "Evidence (D{top} · {h}d)" so the cohort the badge speaks for is
+                  explicit. */}
+              <th className="px-4 py-2 font-medium uppercase tracking-wide">
+                Evidence (D{topDecile} · {defaultHorizon}d)
+              </th>
               <FactorSortHeader col="family" label="Family" activeKey={sortKey} dir={sortDir} onSort={onSort} />
               <FactorSortHeader col="rank_ic" label={`Rank-IC (${defaultHorizon}d)`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
               <FactorSortHeader col="n" label="N" activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
@@ -624,6 +671,8 @@ function FactorsTable({ data, scope }: { data: FactorLabAllResponse; scope: Samp
                 defaultHorizon={defaultHorizon}
                 colSpan={colSpan}
                 scope={scope}
+                evidenceClaims={evidenceClaims}
+                topDecile={topDecile}
               />
             ))}
           </tbody>
@@ -678,6 +727,75 @@ function TopDecileCell({ row, horizon, metric, min }: {
   );
 }
 
+/** iter-8 (J-06) — the top-decile evidence badge on a factor's summary row. It resolves THIS factor's
+ *  highest-value-decile (D`topDecile`) cohort at the certified `horizon` against the served `claims[]` via
+ *  the pure `resolveCohortEvidence` matcher and re-displays the status VERBATIM (it computes nothing). A
+ *  PASS-backed cohort (vcp_contraction) reads "Proven" (calm accent chip) and DEEP-LINKS to its `/evidence`
+ *  ledger row; every unbacked cohort — including ma_stack's FAIL row — reads "Not yet proven" (muted, no
+ *  link). Mirrors `components/evidence-status-badge.tsx`.
+ *
+ *  Nested-interactive hazard guard (iter-5): the summary `<tr>` is itself a click/Enter-to-expand control,
+ *  so the "Proven" `<Link>` calls `stopPropagation()` on click + key events — a click deep-links rather than
+ *  toggling the row. The "Not yet proven" badge is non-interactive (no link) and needs no guard. */
+function FactorEvidenceBadge({
+  factor,
+  topDecile,
+  horizon,
+  evidenceClaims,
+}: {
+  factor: string;
+  topDecile: number;
+  horizon: number;
+  evidenceClaims: CertifiedClaim[];
+}) {
+  const cohort: FactorCohort = {
+    factor,
+    slice_kind: "decile",
+    decile: topDecile,
+    horizon,
+    direction: "positive",
+  };
+  const status = resolveCohortEvidence(cohort, evidenceClaims);
+
+  if (status.proven && status.href) {
+    const registered = status.claim?.register_date ?? "—";
+    return (
+      <Link
+        href={status.href}
+        title={`Proven — this factor's top decile (D${topDecile}) beat SPY out-of-sample over the sealed holdout (certified ${registered}). Click to audit the backing evidence.`}
+        data-testid="factor-evidence-badge"
+        data-proven="true"
+        data-factor={factor}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+        className="inline-flex rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+      >
+        <Badge
+          variant="accent"
+          className="cursor-pointer whitespace-nowrap text-[11px] transition-colors hover:bg-surface active:bg-bg"
+        >
+          <ShieldCheck className="h-3 w-3 shrink-0" aria-hidden />
+          {status.label}
+        </Badge>
+      </Link>
+    );
+  }
+
+  return (
+    <Badge
+      variant="default"
+      title={`Not yet proven — no certified out-of-sample evidence backs this factor's top decile (D${topDecile}) at the ${horizon}-day horizon yet (see the Evidence ledger).`}
+      data-testid="factor-evidence-badge"
+      data-proven="false"
+      data-factor={factor}
+      className="whitespace-nowrap text-[11px] text-text-faint"
+    >
+      <Shield className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
+      {status.label}
+    </Badge>
+  );
+}
+
 function FactorRows({
   row,
   open,
@@ -687,6 +805,8 @@ function FactorRows({
   defaultHorizon,
   colSpan,
   scope,
+  evidenceClaims,
+  topDecile,
 }: {
   row: FactorTableRow;
   open: boolean;
@@ -696,6 +816,8 @@ function FactorRows({
   defaultHorizon: number;
   colSpan: number;
   scope: SampleScope;
+  evidenceClaims: CertifiedClaim[];
+  topDecile: number;
 }) {
   const icNa = row.rank_ic.value === null;
   const raNa = topCellIsNa(row, defaultHorizon, "fwd") || row.risk_adjusted === null;
@@ -722,6 +844,18 @@ function FactorRows({
         <td className="px-4 py-2">
           <span className="font-semibold text-text">{row.label}</span>{" "}
           <span className="text-xs text-text-faint">({row.direction.replace("_", " ")})</span>
+        </td>
+        {/* iter-8 (J-06): the top-decile evidence badge — "Proven" ONLY when a PASS certified-claim backs
+            THIS factor's D{topDecile} @ {defaultHorizon}d cohort (vcp_contraction), else "Not yet proven".
+            It lives in its OWN cell; the "Proven" link stops the click/key from also toggling the row (the
+            iter-5 nested-interactive hazard). */}
+        <td className="px-4 py-2">
+          <FactorEvidenceBadge
+            factor={row.key}
+            topDecile={topDecile}
+            horizon={defaultHorizon}
+            evidenceClaims={evidenceClaims}
+          />
         </td>
         <td className="px-4 py-2 text-text-muted">{familyLabel(row.family)}</td>
         <td className="px-4 py-2 text-right">

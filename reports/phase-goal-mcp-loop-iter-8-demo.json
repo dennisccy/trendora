@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-8",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Factor lab gains an Evidence column",
+      "narration": "The Research factor lab now shows an 'Evidence (D10 · 20d)' column next to every factor. At a glance you can see which factors have certified out-of-sample backing and which are still awaiting their verdict.",
+      "point_out": "The 'Evidence (D10 · 20d)' column header in the factors table — two rows show a green 'Proven' chip and the rest show a muted 'Not yet proven'.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/factor-lab" },
+      "expect": { "text": "Evidence (D10 · 20d)" }
+    },
+    {
+      "n": 2,
+      "title": "vcp_contraction 'Proven' badge links to its evidence",
+      "narration": "Clicking the accent-colored 'Proven' badge on the vcp_contraction row jumps directly to that factor's certified ledger entry — no searching needed on the Evidence page.",
+      "point_out": "The Evidence page scrolls straight to the vcp_contraction claim row, showing the holdout edge of +3.33%, p-value 0.01149, the 'vs SPY' control, and the registration date.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": { "css": "a[data-testid=\"factor-evidence-badge\"][data-factor=\"vcp_contraction\"]" }
+      },
+      "expect": { "text": "vcp_contraction — top decile (D10)" }
+    },
+    {
+      "n": 3,
+      "title": "Round-trip back to the factor lab",
+      "narration": "Every evidence row knows which research surface it backs. Clicking 'Backs: Research factor lab →' returns you to the factor lab in one step, closing the loop between the two pages.",
+      "point_out": "You're back on the Research factor lab — the vcp_contraction 'Proven' badge is intact, confirming the round-trip works in both directions.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": { "role": "link", "name": "Backs: Research factor lab →" }
+      },
+      "expect": { "text": "Research — Factor Lab" }
+    },
+    {
+      "n": 4,
+      "title": "Evidence ledger — all four certified claims",
+      "narration": "The Evidence page is the master ledger. The newest entry, vcp_contraction, joins the three existing claims — each row shows its verdict, supporting numbers, and the research surface it backs.",
+      "point_out": "Four claim rows on the page. The vcp_contraction row at the bottom shows 'Proven' with +3.33% edge. The ma_stack row shows its FAIL verdict honestly. Each row links back to its origin surface.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/evidence" },
+      "expect": { "text": "vcp_contraction — top decile (D10)" }
+    },
+    {
+      "n": 5,
+      "title": "Stocks leaderboard — Leadership Proven, no vcp_contraction",
+      "narration": "On the Stocks leaderboard, each score column carries the badge that matches its evidence. The vcp_contraction edge backs the factor lab only — it does not appear here, keeping each surface honest about what it actually measures.",
+      "point_out": "The LEADERSHIP column shows 'Proven' on every stock row. ENTRY QUALITY and RISK show 'Not yet proven'. The text 'vcp_contraction' is absent from this page entirely.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "Proven" }
+    },
+    {
+      "n": 6,
+      "title": "Stock detail page with Leadership score",
+      "narration": "Clicking into any stock opens its detail page where the Leadership score certification travels with the stock. The 'Proven' badge sits right alongside the score.",
+      "point_out": "The Leadership score section on this stock's detail page with its 'Proven' badge visible and ready to expand.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/MU" },
+      "expect": { "text": "Leadership" }
+    },
+    {
+      "n": 7,
+      "title": "Proof drill-down panel opens on demand",
+      "narration": "Clicking 'Why proven?' unfolds the full certification — the out-of-sample holdout result, the SPY control comparison, the p-value, and the exact date the claim was registered.",
+      "point_out": "The expanded proof panel showing 'vs SPY', the holdout edge percentage, p-value, and registration date all pinned in the ledger.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": { "role": "button", "name": "Why proven?" }
+      },
+      "expect": { "text": "vs SPY" }
+    },
+    {
+      "n": 8,
+      "title": "Factor lab — honest badges across every factor",
+      "narration": "Back at the factor lab, every factor now has an honest badge. The two that have cleared the out-of-sample bar show accent 'Proven' chips; the rest say 'Not yet proven' until the data makes the case.",
+      "point_out": "Side-by-side contrast: vcp_contraction and Leadership score showing 'Proven' in accent color; ma_stack and all other factors showing 'Not yet proven' in muted grey — discoverable without any extra steps.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/factor-lab" },
+      "expect": { "text": "Evidence (D10 · 20d)" }
+    }
+  ]
+}

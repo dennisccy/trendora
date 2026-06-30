@@ -4,53 +4,63 @@
       "id": "J-01",
       "name": "Every score shows an evidence status",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-7",
-      "last_passing_iter": "goal-mcp-loop-iter-7",
+      "last_verified_iter": "goal-mcp-loop-iter-8",
+      "last_passing_iter": "goal-mcp-loop-iter-8",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-7-evidence/UT-J-01-result.png",
-      "note": "Passing — re-confirmed on the CANONICAL browser-qa lane (ui-test-results.md UT-J-01 PASS, 5/5 overall). Personally inspected UT-J-01-result.png (md5 617da05): /stocks 120/120 rows; every Leadership badge reads 'Proven' (A/B grades), every Entry Quality + Risk reads 'Not yet proven'; Market Regime 'Risk-on 76.05'. No score on the leaderboard is presented without a visible evidence status. Verify-only iteration (zero apps/ diff) — no regression possible to the frozen evidence layer."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-8-evidence/UT-15-result.png",
+      "note": "Passing — canonical lane UT-15 PASS. Personally inspected UT-15-result.png (md5 617da05, byte-identical to the frozen iter-7 frame): /stocks 120/120 rows, Market Regime 'Risk-on 76.05'; every Leadership badge reads 'Proven' (A/B), every Entry Quality + Risk reads 'Not yet proven'. No score lacks a status. Critically, document.body has NO 'vcp_contraction' text (hasVcp=false) — the new signal-less factor claim lights NO inline /stocks score badge. /stocks frozen (zero affecting diff)."
     },
     "J-02": {
       "id": "J-02",
       "name": "Drill into the proof behind a score",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-7",
-      "last_passing_iter": "goal-mcp-loop-iter-7",
+      "last_verified_iter": "goal-mcp-loop-iter-8",
+      "last_passing_iter": "goal-mcp-loop-iter-8",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-7-evidence/UT-J-02-result.png",
-      "note": "Passing — canonical lane UT-J-02 PASS: 'Why proven?' replay asserted the expanded panel (OUT-OF-SAMPLE TEST PASS holdout edge +6.36% / p=0.0004998 / 12,297 obs; CONTROL COMPARISON +6.36% vs SPY; CERTIFIED CLAIM leadership_score registered 2026-06-30). CAVEAT (recurring T1, personally confirmed): UT-J-02-result.png (md5 80c7cdd) frames only the three MU score cards (Leadership 94.58 'Proven', Entry Quality 23.66 + Risk 53.11 'Not yet proven') — the EXPANDED drill-down renders below the fold and was NOT scrolled into frame. Functionally passing and corroborated three ways: (1) the asserted 12,297 / +6.36% / p=0.0004998 byte-match certified-claims.jsonl line 1; (2) identical proof content visible on the personally-inspected /evidence leadership_score row (UT-J-04-result.png); (3) the inline expanded panel was pixel-proven at canonical iter-3 UT-08 and the feature is frozen (zero apps/ diff). Non-blocking carry-forward: scroll the inline panel into frame next capture."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-8-evidence/UT-16-result.png",
+      "note": "Passing — canonical lane UT-16 PASS: opened /stocks/MU, clicked 'Why proven?'; panel DOM-asserted 'PASS · holdout edge +6.36%', 'p = 0.0004998', '+6.36% vs SPY (benchmark control)', 'leadership_score · registered 2026-06-30' — byte-match certified-claims.jsonl line 1. CAVEAT (recurring below-fold framing nicety, personally confirmed): UT-16-result.png frames the MU detail page-top (Leadership 94.41 'Proven', Entry Quality 22.44 + Risk 54.26 'Not yet proven'); the EXPANDED drill-down renders below the fold and was NOT scrolled into frame. Functionally passing, corroborated: (1) DOM assertion above; (2) identical proof content pixel-visible on the /evidence leadership_score row (UT-05); (3) feature frozen (zero apps/backend/app/** diff; resolveEvidenceStatus/proofFieldsFor untouched). Non-blocking carry-forward: scroll the inline panel into frame next capture."
     },
     "J-03": {
       "id": "J-03",
       "name": "Unproven / noise signals are honestly marked",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-7",
-      "last_passing_iter": "goal-mcp-loop-iter-7",
+      "last_verified_iter": "goal-mcp-loop-iter-8",
+      "last_passing_iter": "goal-mcp-loop-iter-8",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-7-evidence/UT-J-03-result.png",
-      "note": "Passing — canonical lane UT-J-03 PASS. Corroborated on the personally-inspected UT-J-01-result.png frame (md5 617da05): every leaderboard row's Entry Quality + Risk read 'Not yet proven' (never a confident number), Leadership alone reads 'Proven'; the signal=null Breakout-watch regime claim lights NO inline per-stock score badge (anti-goal #1 upheld). On /stocks/MU, Entry Quality 23.66 + Risk 53.11 both read 'Not yet proven' (UT-J-02-result.png)."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-8-evidence/UT-15-result.png",
+      "note": "Passing — canonical lane UT-15 + UT-09/UT-10 PASS. On UT-15-result.png (md5 617da05) every row's Entry Quality + Risk read 'Not yet proven' (never a confident number); Leadership alone reads 'Proven'. NEW this iter: the rejected ma_stack D10 cohort (FAIL ledger line 3) honestly reads 'Not yet proven' on BOTH the factor lab (UT-03/UT-09, muted Shield, no link, personally inspected) and the /evidence ma_stack row ('FAIL · holdout edge +2.62%', UT-05/UT-12). The signal-less vcp_contraction + Breakout-watch claims light NO inline /stocks score badge (anti-goal #1 upheld)."
     },
     "J-04": {
       "id": "J-04",
       "name": "Regime-conditioned evidence",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-7",
-      "last_passing_iter": "goal-mcp-loop-iter-7",
+      "last_verified_iter": "goal-mcp-loop-iter-8",
+      "last_passing_iter": "goal-mcp-loop-iter-8",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-7-evidence/UT-J-04-result.png",
-      "note": "Passing — canonical lane UT-J-04 PASS, re-confirmed across two personally-inspected pixels: UT-J-04-dashboard.png (md5 0a0c589 — Market Regime 'Risk-on 76.05 / 100' + 'See evidence proven in this regime →' affordance; Market Phase 'Expansion 25.70') and UT-J-04-result.png (md5 cfe695e8 — /evidence row 2 'PASS Breakout-watch setup [Regime: Risk-on]', subtitle 'Out-of-sample edge in the Risk-on regime', OOS verdict 'PASS holdout edge +6.12%' p=0.0004998 < alpha/2=0.025, control +6.12% vs SPY, registered 2026-06-30, 'Backs: Research event-study lab →'). All values byte-match certified-claims.jsonl line 2 (holdout_edge 0.06125, regime Risk-on, signal=null, cohort_n 4720). Evidence is regime-scoped and clearly labeled with the regime it holds in."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-8-evidence/UT-05-result.png",
+      "note": "Passing — canonical lane UT-05 + UT-14 PASS. Personally inspected UT-05-result.png (md5 46da81e): /evidence row 2 'PASS Breakout-watch setup [Regime: Risk-on]', subtitle 'Out-of-sample edge in the Risk-on regime', OOS verdict 'PASS · holdout edge +6.12%' (p=0.0004998 < alpha/2=0.025), control +6.12% vs SPY, registered 2026-06-30, 'Backs: Research event-study lab →'. UT-14 confirms the row is byte-unchanged after iter-8 (linkback NOT 'Research factor lab'). All values byte-match certified-claims.jsonl line 2. Evidence is regime-scoped and labeled."
     },
     "J-05": {
       "id": "J-05",
       "name": "Audit the evidence ledger",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-7",
-      "last_passing_iter": "goal-mcp-loop-iter-7",
+      "last_verified_iter": "goal-mcp-loop-iter-8",
+      "last_passing_iter": "goal-mcp-loop-iter-8",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-7-evidence/UT-J-05-result.png",
-      "note": "Passing — canonical lane UT-J-05 PASS. Both certified claims render on /evidence (personally inspected UT-J-05-result.png, md5 cfe695e8): leadership_score 'PASS' +6.36% with hypothesis chips, OOS verdict (p=0.0004998 < alpha/1=0.05), control +6.36% vs SPY, registered 2026-06-30, forward-walk 'Pending', 'Backs: Stocks leaderboard →'; and Breakout-watch '[Regime: Risk-on]' 'PASS' +6.12%, 'Backs: Research event-study lab →' — both byte-match the ledger. Step-3 round-trip: the replay verified the backing-link hrefs (/stocks, /research/event-study); the landed-on /stocks backing surface is captured this iteration as UT-J-01-result.png (md5 617da05). NOTE: UT-J-05-result.png is byte-identical to UT-J-04-result.png (both the /evidence list) — the distinct round-trip landed-on frame was NOT separately captured this iteration (iter-6 had captured it as a distinct 617da05 frame). Non-blocking evidence-framing nicety; round-trip corroborated by the inspected /stocks surface + verified hrefs."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-8-evidence/UT-05-result.png",
+      "note": "Passing — canonical lane UT-05 + UT-13 PASS. Personally inspected UT-05-result.png (md5 46da81e): all FOUR certified-claims rows render — leadership_score PASS +6.36% ('Backs: Stocks leaderboard →'), Breakout-watch PASS +6.12% ('Backs: Research event-study lab →'), ma_stack FAIL +2.62% ('Backs: Research factor lab →'), vcp_contraction PASS +3.33% ('Backs: Research factor lab →') — each with hypothesis chips, OOS verdict, control vs SPY, registration date, forward-walk 'Pending'. UT-13: leadership anchor still #signal-leadership_score in viewport + 'Backs: Stocks leaderboard →' linkback unchanged (new vcp factor-cohort anchor did not displace it). The new vcp row does not break the list."
+    },
+    "J-06": {
+      "id": "J-06",
+      "name": "vcp_contraction top-decile certified edge surfaced on Evidence + Research factor lab",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-8",
+      "last_passing_iter": "goal-mcp-loop-iter-8",
+      "first_seen_iter": "goal-mcp-loop-iter-8",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-8-evidence/UT-05-result.png",
+      "note": "NEWLY PASSING — canonical lane UT-02/03/04/05/06/07 PASS. Gate certified vcp_contraction D10 h20 PASS (certified-claims.jsonl line 4: holdout +0.0333, p=0.011494 < required_p=0.0125, Bonferroni divisor 4, signal key ABSENT). Personally inspected UT-05-result.png (md5 46da81e): /evidence vcp_contraction row renders 'vcp_contraction — top decile (D10)', subtitle 'Out-of-sample edge — factor top decile', 'PASS · holdout edge +3.33%' (p=0.01149 < alpha/4=0.0125), control +3.33% vs SPY, registered 2026-06-30, forward-walk 'Pending', 'Backs: Research factor lab →' — all byte-match the ledger. Factor-lab 'Proven' badge DOM-asserted (UT-03: text 'Proven', border-accent text-accent cursor-pointer, lucide-shield-check, href=/evidence#factor-vcp_contraction-d10-h20) and deep-link verified (UT-04: navigates to the anchor, row in viewport). CAVEAT (non-blocking framing nicety): the factor-lab vcp 'Proven' badge pixel renders below the fold; inspected factor-lab frames (UT-03 md5 cbce738) show the page-top (Leadership 'Proven', ma_stack/others 'Not yet proven') with vcp below — DOM-asserted + round-trip + /evidence row pixel corroborate. proven_signals stays exactly {leadership_score} (backend test + TC-12)."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-06-30T19:00:00Z"
+  "updated_at": "2026-06-30T22:12:00Z"
 }

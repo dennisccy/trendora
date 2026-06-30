@@ -1,0 +1,775 @@
+{
+  "as_of": null,
+  "horizons": [
+    20
+  ],
+  "weights": {
+    "return": 1.0,
+    "drawdown": 1.0,
+    "frequency": 0.5
+  },
+  "n_cells": 22,
+  "n_screened": 20,
+  "n_survivors": 7,
+  "batch_size": 22,
+  "cells": [
+    {
+      "factor": "leadership_score",
+      "horizon": 20,
+      "decile": 10,
+      "mean_return": 0.03125335293264924,
+      "mean_max_drawdown": -0.14594021423420686,
+      "n": 12297,
+      "rank_ic": 0.008096861704301633,
+      "selector": {
+        "kind": "factor",
+        "factor": "leadership_score",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 20
+      },
+      "triad_score": 1.4468732033764367,
+      "screen": {
+        "survived": true,
+        "reason": "edge-persisted",
+        "in_sample_dates": 828,
+        "holdout_dates": 279,
+        "in_sample_edge": 0.0035071388110186324,
+        "holdout_edge": 0.06359100763913017,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": true
+    },
+    {
+      "factor": "ma_stack",
+      "horizon": 20,
+      "decile": 1,
+      "mean_return": 0.03080368666695752,
+      "mean_max_drawdown": -0.14896011504746753,
+      "n": 12296,
+      "rank_ic": 0.014064889027366445,
+      "selector": {
+        "kind": "factor",
+        "factor": "ma_stack",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 20
+      },
+      "triad_score": 1.3166713598253228,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 759,
+        "holdout_dates": 300,
+        "in_sample_edge": 0.017126871090574505,
+        "holdout_edge": -0.005002692856813343,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "ma_stack",
+      "horizon": 20,
+      "decile": 10,
+      "mean_return": 0.026123908465516228,
+      "mean_max_drawdown": -0.1192158437380107,
+      "n": 12297,
+      "rank_ic": 0.014064889027366445,
+      "selector": {
+        "kind": "factor",
+        "factor": "ma_stack",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 20
+      },
+      "triad_score": 1.2301932831667952,
+      "screen": {
+        "survived": true,
+        "reason": "edge-persisted",
+        "in_sample_dates": 725,
+        "holdout_dates": 351,
+        "in_sample_edge": 0.007165679721854097,
+        "holdout_edge": 0.026192275085938167,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": true
+    },
+    {
+      "factor": "rs_spy_3m",
+      "horizon": 20,
+      "decile": 10,
+      "mean_return": 0.031179586349110496,
+      "mean_max_drawdown": -0.1701175786575956,
+      "n": 12297,
+      "rank_ic": 0.013466692984712765,
+      "selector": {
+        "kind": "factor",
+        "factor": "rs_spy_3m",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 20
+      },
+      "triad_score": 0.9493045904015514,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 892,
+        "holdout_dates": 196,
+        "in_sample_edge": -0.0029070451463677083,
+        "holdout_edge": 0.06849634899871862,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "entry_quality_score",
+      "horizon": 20,
+      "decile": 1,
+      "mean_return": 0.033638475047562316,
+      "mean_max_drawdown": -0.19232100876752298,
+      "n": 12296,
+      "rank_ic": -0.024638112134461092,
+      "selector": {
+        "kind": "factor",
+        "factor": "entry_quality_score",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 20
+      },
+      "triad_score": 0.8608393367688041,
+      "screen": {
+        "survived": true,
+        "reason": "edge-persisted",
+        "in_sample_dates": 791,
+        "holdout_dates": 319,
+        "in_sample_edge": 0.013970542155899837,
+        "holdout_edge": 0.050585471898903084,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": true
+    },
+    {
+      "factor": "downside_vol",
+      "horizon": 20,
+      "decile": 1,
+      "mean_return": 0.015620344605644985,
+      "mean_max_drawdown": -0.07154184549291077,
+      "n": 12296,
+      "rank_ic": -0.00806582114013873,
+      "selector": {
+        "kind": "factor",
+        "factor": "downside_vol",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 20
+      },
+      "triad_score": 0.6413330929991989,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 649,
+        "holdout_dates": 363,
+        "in_sample_edge": 0.0033054930083861625,
+        "holdout_edge": -0.0003522612275271345,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "atr_pct",
+      "horizon": 20,
+      "decile": 1,
+      "mean_return": 0.015189051803729568,
+      "mean_max_drawdown": -0.06879205083434849,
+      "n": 12296,
+      "rank_ic": -0.019685502307945368,
+      "selector": {
+        "kind": "factor",
+        "factor": "atr_pct",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 20
+      },
+      "triad_score": 0.6332353891964435,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 587,
+        "holdout_dates": 346,
+        "in_sample_edge": 0.0035031338504995548,
+        "holdout_edge": -0.004870954214534338,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "hv",
+      "horizon": 20,
+      "decile": 1,
+      "mean_return": 0.014291695737016287,
+      "mean_max_drawdown": -0.07231847783466437,
+      "n": 12296,
+      "rank_ic": -0.018248489392844163,
+      "selector": {
+        "kind": "factor",
+        "factor": "hv",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 20
+      },
+      "triad_score": 0.43022120177931567,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 670,
+        "holdout_dates": 357,
+        "in_sample_edge": 0.008457728571286155,
+        "holdout_edge": -0.008775617636347006,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "vcp_contraction",
+      "horizon": 20,
+      "decile": 1,
+      "mean_return": 0.020182330071744234,
+      "mean_max_drawdown": -0.11576639687929428,
+      "n": 12296,
+      "rank_ic": -0.018988635522758965,
+      "selector": {
+        "kind": "factor",
+        "factor": "vcp_contraction",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 20
+      },
+      "triad_score": 0.4222286101360857,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 808,
+        "holdout_dates": 201,
+        "in_sample_edge": 0.005030908784729817,
+        "holdout_edge": -0.014709011256888605,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "high_proximity",
+      "horizon": 20,
+      "decile": 10,
+      "mean_return": 0.027395174862633275,
+      "mean_max_drawdown": -0.10630678581430869,
+      "n": 11762,
+      "rank_ic": 0.026503813213320366,
+      "selector": {
+        "kind": "factor",
+        "factor": "high_proximity",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 20
+      },
+      "triad_score": -0.06214229224978429,
+      "screen": {
+        "survived": true,
+        "reason": "edge-persisted",
+        "in_sample_dates": 621,
+        "holdout_dates": 313,
+        "in_sample_edge": 0.005348183295441198,
+        "holdout_edge": 0.01953904182455647,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": true
+    },
+    {
+      "factor": "leadership_score",
+      "horizon": 20,
+      "decile": 1,
+      "mean_return": 0.02165197119644101,
+      "mean_max_drawdown": -0.15106398879147354,
+      "n": 12296,
+      "rank_ic": 0.008096861704301633,
+      "selector": {
+        "kind": "factor",
+        "factor": "leadership_score",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 20
+      },
+      "triad_score": -0.0721279832695911,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 800,
+        "holdout_dates": 310,
+        "in_sample_edge": 0.020531381949183244,
+        "holdout_edge": -0.004773270269155513,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "hv",
+      "horizon": 20,
+      "decile": 10,
+      "mean_return": 0.03010650144727071,
+      "mean_max_drawdown": -0.21486083109830326,
+      "n": 12297,
+      "rank_ic": -0.018248489392844163,
+      "selector": {
+        "kind": "factor",
+        "factor": "hv",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 20
+      },
+      "triad_score": -0.10930162854278216,
+      "screen": {
+        "survived": true,
+        "reason": "edge-persisted",
+        "in_sample_dates": 828,
+        "holdout_dates": 263,
+        "in_sample_edge": 0.0014713437044661416,
+        "holdout_edge": 0.053855823829087233,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": true
+    },
+    {
+      "factor": "risk_score",
+      "horizon": 20,
+      "decile": 1,
+      "mean_return": 0.010791491375718368,
+      "mean_max_drawdown": -0.08024831294500731,
+      "n": 12296,
+      "rank_ic": 0.018364676469535438,
+      "selector": {
+        "kind": "factor",
+        "factor": "risk_score",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 20
+      },
+      "triad_score": -0.24438227025119083,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 579,
+        "holdout_dates": 267,
+        "in_sample_edge": 0.0035823790173357146,
+        "holdout_edge": -0.0035788847849182437,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "entry_quality_score",
+      "horizon": 20,
+      "decile": 10,
+      "mean_return": 0.011460892559898444,
+      "mean_max_drawdown": -0.08930179887409308,
+      "n": 12297,
+      "rank_ic": -0.024638112134461092,
+      "selector": {
+        "kind": "factor",
+        "factor": "entry_quality_score",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 20
+      },
+      "triad_score": -0.32490186461918924,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 804,
+        "holdout_dates": 305,
+        "in_sample_edge": 0.0049844428489976425,
+        "holdout_edge": -0.01040229640452616,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "vcp_contraction",
+      "horizon": 20,
+      "decile": 10,
+      "mean_return": 0.016681430937228067,
+      "mean_max_drawdown": -0.13294961803743133,
+      "n": 12297,
+      "rank_ic": -0.018988635522758965,
+      "selector": {
+        "kind": "factor",
+        "factor": "vcp_contraction",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 20
+      },
+      "triad_score": -0.43550652446842497,
+      "screen": {
+        "survived": true,
+        "reason": "edge-persisted",
+        "in_sample_dates": 787,
+        "holdout_dates": 257,
+        "in_sample_edge": 0.006379209119893382,
+        "holdout_edge": 0.03330492745744988,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": true
+    },
+    {
+      "factor": "rs_spy_3m",
+      "horizon": 20,
+      "decile": 1,
+      "mean_return": 0.021746620205517365,
+      "mean_max_drawdown": -0.17441575900227457,
+      "n": 12296,
+      "rank_ic": 0.013466692984712765,
+      "selector": {
+        "kind": "factor",
+        "factor": "rs_spy_3m",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 20
+      },
+      "triad_score": -0.5282983744022722,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 818,
+        "holdout_dates": 265,
+        "in_sample_edge": 0.01566645189821668,
+        "holdout_edge": -0.010675624622685844,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "risk_score",
+      "horizon": 20,
+      "decile": 10,
+      "mean_return": 0.023346645322395013,
+      "mean_max_drawdown": -0.1872609693071671,
+      "n": 12297,
+      "rank_ic": 0.018364676469535438,
+      "selector": {
+        "kind": "factor",
+        "factor": "risk_score",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 20
+      },
+      "triad_score": -0.5482313093272062,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 774,
+        "holdout_dates": 329,
+        "in_sample_edge": -0.004053288247381228,
+        "holdout_edge": 0.050643991435830475,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "up_down_vol",
+      "horizon": 20,
+      "decile": 10,
+      "mean_return": 0.01853745612464304,
+      "mean_max_drawdown": -0.16248378135246405,
+      "n": 12297,
+      "rank_ic": -0.0057491550969897155,
+      "selector": {
+        "kind": "factor",
+        "factor": "up_down_vol",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 20
+      },
+      "triad_score": -0.7569924992089503,
+      "screen": {
+        "survived": true,
+        "reason": "edge-persisted",
+        "in_sample_dates": 806,
+        "holdout_dates": 293,
+        "in_sample_edge": 0.005520527154787454,
+        "holdout_edge": 0.01002177993038391,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": true
+    },
+    {
+      "factor": "up_down_vol",
+      "horizon": 20,
+      "decile": 1,
+      "mean_return": 0.015077875375686185,
+      "mean_max_drawdown": -0.1385530017449486,
+      "n": 12296,
+      "rank_ic": -0.0057491550969897155,
+      "selector": {
+        "kind": "factor",
+        "factor": "up_down_vol",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 20
+      },
+      "triad_score": -0.7874825534571059,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 824,
+        "holdout_dates": 281,
+        "in_sample_edge": -0.00504090738011738,
+        "holdout_edge": 0.006506818255599544,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "downside_vol",
+      "horizon": 20,
+      "decile": 10,
+      "mean_return": 0.026483003626258005,
+      "mean_max_drawdown": -0.22253688066280947,
+      "n": 12297,
+      "rank_ic": -0.00806582114013873,
+      "selector": {
+        "kind": "factor",
+        "factor": "downside_vol",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 20
+      },
+      "triad_score": -0.7969356818749123,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 840,
+        "holdout_dates": 254,
+        "in_sample_edge": -0.004953032919199188,
+        "holdout_edge": 0.03911956304255217,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": false
+    }
+  ],
+  "survivors": [
+    {
+      "factor": "leadership_score",
+      "horizon": 20,
+      "decile": 10,
+      "mean_return": 0.03125335293264924,
+      "mean_max_drawdown": -0.14594021423420686,
+      "n": 12297,
+      "rank_ic": 0.008096861704301633,
+      "selector": {
+        "kind": "factor",
+        "factor": "leadership_score",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 20
+      },
+      "triad_score": 1.4468732033764367,
+      "screen": {
+        "survived": true,
+        "reason": "edge-persisted",
+        "in_sample_dates": 828,
+        "holdout_dates": 279,
+        "in_sample_edge": 0.0035071388110186324,
+        "holdout_edge": 0.06359100763913017,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": true
+    },
+    {
+      "factor": "ma_stack",
+      "horizon": 20,
+      "decile": 10,
+      "mean_return": 0.026123908465516228,
+      "mean_max_drawdown": -0.1192158437380107,
+      "n": 12297,
+      "rank_ic": 0.014064889027366445,
+      "selector": {
+        "kind": "factor",
+        "factor": "ma_stack",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 20
+      },
+      "triad_score": 1.2301932831667952,
+      "screen": {
+        "survived": true,
+        "reason": "edge-persisted",
+        "in_sample_dates": 725,
+        "holdout_dates": 351,
+        "in_sample_edge": 0.007165679721854097,
+        "holdout_edge": 0.026192275085938167,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": true
+    },
+    {
+      "factor": "entry_quality_score",
+      "horizon": 20,
+      "decile": 1,
+      "mean_return": 0.033638475047562316,
+      "mean_max_drawdown": -0.19232100876752298,
+      "n": 12296,
+      "rank_ic": -0.024638112134461092,
+      "selector": {
+        "kind": "factor",
+        "factor": "entry_quality_score",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 20
+      },
+      "triad_score": 0.8608393367688041,
+      "screen": {
+        "survived": true,
+        "reason": "edge-persisted",
+        "in_sample_dates": 791,
+        "holdout_dates": 319,
+        "in_sample_edge": 0.013970542155899837,
+        "holdout_edge": 0.050585471898903084,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": true
+    },
+    {
+      "factor": "high_proximity",
+      "horizon": 20,
+      "decile": 10,
+      "mean_return": 0.027395174862633275,
+      "mean_max_drawdown": -0.10630678581430869,
+      "n": 11762,
+      "rank_ic": 0.026503813213320366,
+      "selector": {
+        "kind": "factor",
+        "factor": "high_proximity",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 20
+      },
+      "triad_score": -0.06214229224978429,
+      "screen": {
+        "survived": true,
+        "reason": "edge-persisted",
+        "in_sample_dates": 621,
+        "holdout_dates": 313,
+        "in_sample_edge": 0.005348183295441198,
+        "holdout_edge": 0.01953904182455647,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": true
+    },
+    {
+      "factor": "hv",
+      "horizon": 20,
+      "decile": 10,
+      "mean_return": 0.03010650144727071,
+      "mean_max_drawdown": -0.21486083109830326,
+      "n": 12297,
+      "rank_ic": -0.018248489392844163,
+      "selector": {
+        "kind": "factor",
+        "factor": "hv",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 20
+      },
+      "triad_score": -0.10930162854278216,
+      "screen": {
+        "survived": true,
+        "reason": "edge-persisted",
+        "in_sample_dates": 828,
+        "holdout_dates": 263,
+        "in_sample_edge": 0.0014713437044661416,
+        "holdout_edge": 0.053855823829087233,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": true
+    },
+    {
+      "factor": "vcp_contraction",
+      "horizon": 20,
+      "decile": 10,
+      "mean_return": 0.016681430937228067,
+      "mean_max_drawdown": -0.13294961803743133,
+      "n": 12297,
+      "rank_ic": -0.018988635522758965,
+      "selector": {
+        "kind": "factor",
+        "factor": "vcp_contraction",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 20
+      },
+      "triad_score": -0.43550652446842497,
+      "screen": {
+        "survived": true,
+        "reason": "edge-persisted",
+        "in_sample_dates": 787,
+        "holdout_dates": 257,
+        "in_sample_edge": 0.006379209119893382,
+        "holdout_edge": 0.03330492745744988,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": true
+    },
+    {
+      "factor": "up_down_vol",
+      "horizon": 20,
+      "decile": 10,
+      "mean_return": 0.01853745612464304,
+      "mean_max_drawdown": -0.16248378135246405,
+      "n": 12297,
+      "rank_ic": -0.0057491550969897155,
+      "selector": {
+        "kind": "factor",
+        "factor": "up_down_vol",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 20
+      },
+      "triad_score": -0.7569924992089503,
+      "screen": {
+        "survived": true,
+        "reason": "edge-persisted",
+        "in_sample_dates": 806,
+        "holdout_dates": 293,
+        "in_sample_edge": 0.005520527154787454,
+        "holdout_edge": 0.01002177993038391,
+        "required_holdout_edge": 0.003091042453358316,
+        "batch_size": 22
+      },
+      "oos_survived": true
+    }
+  ]
+}

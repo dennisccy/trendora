@@ -98,6 +98,67 @@ def _verdict_entry(signal: str, status: str) -> dict:
     }
 
 
+def _vcp_contraction_pass_entry() -> dict:
+    """The REAL iter-8 4th ledger entry: the `vcp_contraction` top-decile (D10) horizon-20 factor cohort,
+    certified PASS by the referee at trial #4 (Bonferroni divisor 4, required_p 0.0125). It deliberately
+    carries NO `signal` key — `vcp_contraction` is a plain (volatility-family) factor, NOT a score column,
+    so `_resolve_signal` returns None and it backs the Research factor lab + the Evidence ledger ONLY (never
+    a `/stocks` inline score badge). Verdict values byte-match `certified-claims.jsonl` line 4."""
+    return {
+        "claim": {
+            "kind": "factor",
+            "factor": "vcp_contraction",
+            "slice_kind": "decile",
+            "decile": 10,
+            "horizon": 20,
+            "direction": "positive",
+        },
+        "register_date": "2026-06-30",
+        "horizon": 20,
+        "cohort_n": 12297,
+        "control_n": 1075,
+        "verdict": {
+            "status": "PASS",
+            "reason": "certified: holdout edge +0.0333 beats the control out-of-sample and is significant after multiple-testing deflation (p=0.01149 < alpha/4=0.0125)",
+            "holdout_edge": 0.03330492745744988,
+            "control_excess": 0.03330492745744988,
+            "p_value": 0.011494252873563218,
+            "deflation_divisor": 4,
+            "required_p": 0.0125,
+        },
+    }
+
+
+def _ma_stack_fail_entry() -> dict:
+    """The REAL iter-8 3rd ledger entry: the `ma_stack` top-decile (D10) horizon-20 factor cohort the
+    referee REJECTED (a decent holdout edge but p=0.01949 >= alpha/3=0.01667). A signal-less FAIL row — it
+    is audit-listed but `proven == False` and adds no UI signal. Verdict values byte-match
+    `certified-claims.jsonl` line 3."""
+    return {
+        "claim": {
+            "kind": "factor",
+            "factor": "ma_stack",
+            "slice_kind": "decile",
+            "decile": 10,
+            "horizon": 20,
+            "direction": "positive",
+        },
+        "register_date": "2026-06-30",
+        "horizon": 20,
+        "cohort_n": 12297,
+        "control_n": 1106,
+        "verdict": {
+            "status": "FAIL",
+            "reason": "holdout edge +0.02619 is not significant after multiple-testing deflation (p=0.01949 >= alpha/3=0.01667)",
+            "holdout_edge": 0.026192275085938167,
+            "control_excess": 0.026192275085938167,
+            "p_value": 0.019490254872563718,
+            "deflation_divisor": 3,
+            "required_p": 0.016666666666666666,
+        },
+    }
+
+
 def test_build_payload_absent_ledger_is_empty(tmp_path):
     missing = tmp_path / "nope" / "certified-claims.jsonl"
     payload = build_evidence_payload(str(missing))
@@ -169,6 +230,61 @@ def test_build_payload_regime_event_study_claim_adds_no_signal(tmp_path):
     assert _resolve_signal(_regime_event_study_entry()["claim"]) is None
     # …while the leadership score column still self-maps (unchanged)
     assert _resolve_signal(_pass_entry("leadership_score")["claim"]) == "leadership_score"
+
+
+def test_build_payload_vcp_contraction_factor_cohort_post_certification(tmp_path):
+    # iter-8 (J-06): the FULL post-certification 4-entry ledger
+    #   [leadership_score PASS (score factor), Breakout-watch × Risk-on PASS (event-study),
+    #    ma_stack D10 FAIL (plain factor), vcp_contraction D10 PASS (plain factor)].
+    # The vcp_contraction top-decile cohort is a signal-less PLAIN-factor edge: it is audit-listed + proven
+    # but carries NO `signal` (`_resolve_signal -> None`), so it backs the Research factor lab + Evidence
+    # ONLY and MUST NOT enter `proven_signals` (J-01/J-02/J-03 unaffected — `leadership_score` stays the SOLE
+    # proven signal). The rejected ma_stack cohort stays `proven == False`. Every displayed number is read
+    # VERBATIM (the J-06 API-correctness / displayed-numbers-are-correct contract).
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), _pass_entry("leadership_score"))
+    append_entry(str(ledger), _regime_event_study_entry())
+    append_entry(str(ledger), _ma_stack_fail_entry())
+    append_entry(str(ledger), _vcp_contraction_pass_entry())
+    payload = build_evidence_payload(str(ledger))
+
+    # the vcp_contraction (and ma_stack) plain-factor claims add NO signal — proven_signals stays EXACTLY
+    # {leadership_score} (the iter-1 lesson asserted here so a stray `signal` stamp would fail loudly).
+    assert list(payload["proven_signals"].keys()) == ["leadership_score"]
+    assert payload["proven_signals"]["leadership_score"]["signal"] == "leadership_score"
+
+    # all four originals are audit-listed (no forward-walk record), in ledger order
+    assert len(payload["claims"]) == 4
+    factor_rows = {
+        row["claim"].get("factor"): row
+        for row in payload["claims"]
+        if row["claim"].get("kind") == "factor"
+    }
+
+    # the vcp_contraction row: proven, signal-less, selectors verbatim, verdict bytes verbatim
+    vcp = factor_rows["vcp_contraction"]
+    assert vcp["proven"] is True
+    assert vcp["signal"] is None
+    assert vcp["claim"]["slice_kind"] == "decile"
+    assert vcp["claim"]["decile"] == 10
+    assert vcp["claim"]["horizon"] == 20
+    assert vcp["claim"]["direction"] == "positive"
+    assert vcp["register_date"] == "2026-06-30"
+    assert vcp["verdict"]["status"] == "PASS"
+    assert vcp["verdict"]["holdout_edge"] == 0.03330492745744988
+    assert vcp["verdict"]["control_excess"] == 0.03330492745744988
+    assert vcp["verdict"]["p_value"] == 0.011494252873563218
+
+    # the ma_stack row: audit-listed but NOT proven (a FAIL never reads "Proven"), signal-less
+    ma = factor_rows["ma_stack"]
+    assert ma["proven"] is False
+    assert ma["signal"] is None
+    assert ma["verdict"]["status"] == "FAIL"
+    assert ma["verdict"]["control_excess"] == 0.026192275085938167
+
+    # the resolver maps the vcp_contraction plain-factor cohort to NO UI signal (it is not a score column)
+    assert _resolve_signal(_vcp_contraction_pass_entry()["claim"]) is None
+    assert _resolve_signal(_ma_stack_fail_entry()["claim"]) is None
 
 
 def test_build_payload_fail_and_insufficient_not_proven(tmp_path):
