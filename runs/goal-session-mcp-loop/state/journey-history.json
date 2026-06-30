@@ -8,7 +8,7 @@
       "last_passing_iter": "goal-mcp-loop-iter-3",
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-3-evidence/UT-02-result.png",
-      "note": "RE-CONFIRMED FRESH in iter-3 after the iter-2 verification gap (iter-2 browser lane SKIPPED). UT-02-result.png shows a real populated /stocks leaderboard: 120/120 rows, health badge 'Ready', each row's Leadership column carries a green 'Proven' chip (rgb 79,209,197) and Entry Quality + Risk each carry a muted 'Not yet proven' chip (rgb 91,102,119). No displayed score lacks a status. Visually verified, not inferred."
+      "note": "CARRIED passing. iter-4 did NOT touch the /stocks leaderboard code path (diff = evidence/page.tsx + page.tsx + lib/evidence.ts + 2 tests; no stocks/proof/leaderboard file changed) and the backend unit test confirms proven_signals stays keyed ONLY on leadership_score (the regime claim adds no signal), so the Leadership 'Proven' + Entry Quality/Risk 'Not yet proven' chips are unchanged. The QA agent's live lane re-confirmed TEXTUALLY (TC-07: ~120 stocks, Leadership Proven, others unproven) but the canonical browser-qa-agent lane SKIPPED (stale next-server held :3255) and NO fresh iter-4 /stocks screenshot was captured. Last pixel evidence remains iter-3 UT-02. Re-capture a fresh /stocks screenshot in the iter-5 verification pass."
     },
     "J-02": {
       "id": "J-02",
@@ -18,7 +18,7 @@
       "last_passing_iter": "goal-mcp-loop-iter-3",
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-3-evidence/UT-08-proof-panel.png",
-      "note": "NEWLY PASSING (was unknown). /stocks/MU renders the Leadership 'Proven' card with a 'Why proven?' toggle (UT-07/UT-08/UT-16); the in-panel 'View backing evidence row -> /evidence#signal-leadership_score' link is present and navigates (UT-09). The panel's OOS values (PASS, holdout edge +6.36%, p=0.0004998, cohort n=12,297, vs SPY control, claim id leadership_score, registered 2026-06-30) are browser-proven byte-identical on the /evidence ledger (UT-12) and corroborated by DOM-text assertions. NOTE/weakness: the screenshots named for the expanded panel (UT-07/UT-08/TC-05/UT-16) are byte-identical full-page-top frames that stop just above the panel (it renders below the fold) -- the in-page expanded panel was confirmed via DOM + the identical /evidence render + the navigating linkback, not via a pixel capture of the panel itself. Zero frontend diff this iter, so the iter-2-unit-tested ScoreProofPanel is unchanged."
+      "note": "CARRIED passing. iter-4 left the /stocks/{ticker} detail page + ScoreProofPanel untouched (no proof/ScoreProof file in the diff). QA agent's live lane re-confirmed TEXTUALLY (TC-08: MU detail Leadership drill-down renders) but the canonical browser-qa-agent lane SKIPPED and NO fresh iter-4 detail-page screenshot was captured. Last pixel evidence remains iter-3 UT-08 (note the standing iter-3 caveat that the expanded panel renders below the fold). Re-capture the proof drill-down in the iter-5 verification pass."
     },
     "J-03": {
       "id": "J-03",
@@ -28,29 +28,29 @@
       "last_passing_iter": "goal-mcp-loop-iter-3",
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-3-evidence/UT-06-result.png",
-      "note": "RE-CONFIRMED FRESH in iter-3. Entry Quality + Risk read muted 'Not yet proven' on both /stocks (UT-02, all 120 rows) and /stocks/MU detail (UT-06: Entry Quality E/23.66, Risk E/53.11). UT-10/UT-11 confirm only ONE 'Why proven?' toggle on the detail page (Leadership); Entry Quality and Risk have no drill-down. Only Leadership reads 'Proven'; the other two are honestly flagged, never confident numbers."
+      "note": "CARRIED passing. Entry Quality + Risk remain honestly 'Not yet proven' — guaranteed by the unchanged proven_signals (unit-tested test_build_payload_regime_event_study_claim_adds_no_signal: only leadership_score proven) and the untouched /stocks code path. The new Breakout-watch regime claim is signal=null, so it lights NO inline score badge (anti-goal #1 preserved). QA reconfirmed textually (TC-07); canonical lane SKIPPED so no fresh iter-4 pixel. Last pixel evidence remains iter-3 UT-06."
     },
     "J-04": {
       "id": "J-04",
       "name": "Regime-conditioned evidence",
-      "status": "unknown",
-      "last_verified_iter": null,
+      "status": "partial",
+      "last_verified_iter": "goal-mcp-loop-iter-4",
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": null,
-      "note": "Still UNKNOWN and correctly OUT OF SCOPE iter-3 (spec deferred). No regime-scoped certified claim exists yet -- only the broad leadership_score (decile=10) claim is in the ledger, and it carries no regime label. J-04 requires a narrow, regime-conditioned ## Evidence Claim that earns a referee PASS at the post-decompose gate, then surfaced labeled with the regime it holds in. This is the SOLE remaining journey before GOAL_ACHIEVED becomes reachable."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-4-evidence/TC-03-evidence-regime-label.png",
+      "note": "FEATURE DELIVERED + GATE-CERTIFIED + QA-LANE-VERIFIED, but the canonical browser-qa-agent lane SKIPPED so session-standard verification is INCOMPLETE (held at partial, not passing). Positive evidence personally inspected: TC-01-dashboard-regime.png shows Dashboard Market Regime 'Risk-on 76.05/100' + the 'See evidence proven in this regime ->' affordance; TC-03-evidence-regime-label.png shows the /evidence 2nd row 'PASS Breakout-watch setup [Regime: Risk-on]', subtitle 'Out-of-sample edge in the Risk-on regime', OOS verdict 'PASS holdout edge +6.12%' (p=0.0004998 < alpha/2=0.025), control +6.12% vs SPY, registered 2026-06-30, 'Backs: Research event-study lab ->'. Values byte-identical to certified-claims.jsonl line 2 (holdout_edge 0.06124590639955655, control_excess same, p_value 0.0004997501249375312, deflation_divisor 2, register_date 2026-06-30). Gate PASS (gate-post-decompose.json blocked=false). WHY NOT 'passing': reports/phase-goal-mcp-loop-iter-4-ui-test-results.md is all-SKIP (0/11, frontend not running — stale next-server held :3255), which the spec's own embedded iter-0/iter-2 lesson designates a HARD verification gap; the two TC-* screenshots come from the QA agent's PARALLEL lane, not the canonical browser-qa-agent lane. Capture canonical UT-* J-04 evidence (Dashboard affordance -> /evidence regime row scrolled into frame) in iter-5 to flip to passing."
     },
     "J-05": {
       "id": "J-05",
       "name": "Audit the evidence ledger",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-3",
-      "last_passing_iter": "goal-mcp-loop-iter-3",
+      "last_verified_iter": "goal-mcp-loop-iter-4",
+      "last_passing_iter": "goal-mcp-loop-iter-4",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-3-evidence/UT-12-evidence-page.png",
-      "note": "NEWLY PASSING (was partial). /evidence (nav-reachable in 1 click) renders the populated leadership_score PASS claim row with all five required fields (UT-12): hypothesis selectors (decile=10/direction=positive/factor=leadership_score/horizon=20/kind=factor/slice_kind=decile), OOS verdict 'PASS - holdout edge +6.36%' (p=0.0004998 < 0.05 after multiple-testing deflation), control comparison '+6.36% vs SPY', registration date 2026-06-30, and forward-walk score-to-date 'Pending - monitored as new data matures' (honest, non-fabricated; claim registered today). Linkback round-trips both ways: 'Backs: Stocks leaderboard ->' lands on the populated 120-row leaderboard (UT-14), and the leaderboard 'Proven' badge -> /evidence#signal-leadership_score (UT-09). End-to-end auditable."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-4-evidence/TC-03-evidence-regime-label.png",
+      "note": "STILL passing — verified UNCHANGED by fresh iter-4 pixels (TC-03). The leadership_score row renders byte-identical to before: 'PASS leadership_score', hypothesis chips (decile=10/direction=positive/factor=leadership_score/horizon=20/kind=factor/slice_kind=decile), OOS verdict 'PASS holdout edge +6.36%' (p=0.0004998 < alpha/1=0.05), control +6.36% vs SPY, registration 2026-06-30, forward-walk 'Pending - monitored as new data matures', and 'Backs: Stocks leaderboard ->'. The newly-added Breakout-watch regime row did NOT break the list (both rows render). claimSurface() preserves the score row's title+linkback (unit-tested 'byte-identical' case). The /evidence -> Stocks leaderboard linkback round-trip itself (J-05 step 3) was last pixel-verified in iter-3 (UT-14); re-capture the round-trip click in iter-5 alongside the J-01/J-03 /stocks pixels."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-06-30T02:42:00Z"
+  "updated_at": "2026-06-30T04:05:00Z"
 }

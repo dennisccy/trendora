@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { AlertTriangle, Clock, ChevronDown } from "lucide-react";
 
 import { useAsOf } from "@/components/asof-provider";
@@ -186,6 +187,14 @@ function RegimeGlanceCard({ regime }: { regime: DashboardResponse["regime"] }) {
         <Disclosure summary="Why this regime — component breakdown">
           <ComponentBreakdown components={regime.components} className="max-w-xl pt-1" />
         </Disclosure>
+        {/* J-04: a discoverable affordance from the current regime to the certified evidence that holds
+            in it — the Dashboard regime → Evidence ledger flow. The regime number/label above is unchanged. */}
+        <Link
+          href="/evidence"
+          className="inline-flex items-center gap-1 text-xs text-accent hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+        >
+          See evidence proven in this regime →
+        </Link>
       </CardContent>
     </Card>
   );

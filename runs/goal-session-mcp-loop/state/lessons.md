@@ -31,3 +31,20 @@ restating the verdict (the evaluator-log.md already does that).
 **Verdict:** CONTINUE
 **Lesson:** Browser-QA captured four screenshots named for the expanded "Why proven?" proof panel (UT-07/UT-08/TC-05/UT-16) that were byte-identical full-page-top frames — the panel renders BELOW the fold and was never actually in any captured viewport. J-02 was only confirmable because the identical OOS values (PASS/+6.36%/p=0.0004998/n=12,297/vs SPY/registered 2026-06-30) render in a clear frame on /evidence (UT-12, single source of truth) AND the in-panel linkback navigated (UT-09). A screenshot named for a disclosure/expander proves nothing about the expanded state unless the target element was scrolled into the viewport first.
 **Applies to:** any iter that browser-verifies an expand/disclose/drill-down/below-the-fold interaction — next up J-04's regime-conditioned evidence panel. The browser-qa-agent must scroll the target element into frame before capturing, and the evaluator should treat a panel-named screenshot that only frames the page header as a visual-evidence gap (lean on an independent same-value render + a confirmed in-component link as corroboration, never the named screenshot alone).
+
+## iter-4 — 2026-06-30T04:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** There are TWO independent browser lanes and they can DISAGREE: the canonical
+`browser-qa-agent` (writes `reports/phase-<iter>-ui-test-results.md`, UT-* screenshots) and the QA
+agent's own Chrome MCP run (writes `reports/qa/<iter>-qa.md`, TC-* screenshots). In iter-4 the canonical
+lane reported all 11 SKIP ("frontend not running") while the QA lane PASSED 15/15 with real working
+screenshots — root cause: a stale `next-server` held :3255 serving an old bundle, and `start-frontend.sh`
+(unlike `dev.sh`) does NOT `fuser -k` the port before binding, so whichever lane ran first hit EADDRINUSE
+/ stale UI. The fix is operational: free :3255 before the browser-qa lane binds. Evaluator discipline: a
+parallel QA-lane PASS (even with genuine pixels) does NOT substitute for the canonical lane on the
+terminal GOAL_ACHIEVED gate — withhold success until the canonical lane renders all journeys and the
+post-QA audit handoff exists (the audit stage stopped at `qa_complete` in both iter-3 and iter-4).
+**Applies to:** any browser-verified iteration, especially the terminal GOAL_ACHIEVED gate — check both
+`ui-test-results.md` (canonical) AND `<iter>-qa.md` (QA lane); reconcile a SKIP-vs-PASS split via the
+port; and confirm `start-frontend.sh` frees the frontend port before binding.

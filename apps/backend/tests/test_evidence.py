@@ -20,6 +20,7 @@ from pathlib import Path
 from app.config import REPO_ROOT
 from app.engine.evidence import (
     LEDGER_PATH_ENV,
+    _resolve_signal,
     build_evidence_payload,
     resolve_ledger_path,
 )
@@ -53,6 +54,35 @@ def _pass_entry(signal: str | None, factor: str = "leadership_score") -> dict:
             "holdout_edge": 0.031,
             "control_excess": 0.018,
             "p_value": 0.004,
+        },
+    }
+
+
+def _regime_event_study_entry() -> dict:
+    """A certified (PASS) ledger entry mirroring the REAL iter-4 2nd ledger entry: the Breakout-watch
+    setup's event-study cohort sliced to the named `Risk-on` regime (pooled view, horizon 20). It
+    deliberately carries NO `signal` key — it backs no per-stock score badge, it is regime-conditioned
+    evidence in its own right (so it must NOT enter `proven_signals` nor overwrite `leadership_score`)."""
+    return {
+        "claim": {
+            "kind": "event-study",
+            "subject": "Breakout-watch",
+            "slice_kind": "regime",
+            "regime": "Risk-on",
+            "view": "pooled",
+            "horizon": 20,
+            "direction": "positive",
+        },
+        "register_date": "2026-06-30",
+        "horizon": 20,
+        "cohort_n": 4720,
+        "control_n": 414,
+        "verdict": {
+            "status": "PASS",
+            "reason": "certified out-of-sample (Risk-on)",
+            "holdout_edge": 0.06124590639955655,
+            "control_excess": 0.06124590639955655,
+            "p_value": 0.0004997501249375312,
         },
     }
 
@@ -100,6 +130,45 @@ def test_build_payload_pass_entry_marks_signal_proven(tmp_path):
 
     assert len(payload["claims"]) == 1
     assert payload["claims"][0] is not proven or payload["claims"][0] == proven
+
+
+def test_build_payload_regime_event_study_claim_adds_no_signal(tmp_path):
+    # iter-4 (J-04 / J-05 no-regression): the LIVE 2-entry ledger
+    # [leadership_score PASS (factor), Breakout-watch × Risk-on PASS (event-study)]. The regime-conditioned
+    # event-study claim is shown as its OWN audit row (regime-labeled) but carries NO `signal`, so it must
+    # NOT enter `proven_signals` nor overwrite `leadership_score` — the leadership score stays the SOLE
+    # proven signal (J-01/J-02/J-03/J-05 must not regress). Every displayed number is read VERBATIM.
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), _pass_entry("leadership_score"))
+    append_entry(str(ledger), _regime_event_study_entry())
+    payload = build_evidence_payload(str(ledger))
+
+    # proven_signals is keyed ONLY on leadership_score — the regime claim adds NO signal
+    assert list(payload["proven_signals"].keys()) == ["leadership_score"]
+    assert payload["proven_signals"]["leadership_score"]["proven"] is True
+    assert payload["proven_signals"]["leadership_score"]["signal"] == "leadership_score"
+
+    # both claims are audit-listed; the regime row is present, PROVEN, signal-less, and regime-labeled
+    assert len(payload["claims"]) == 2
+    regime_rows = [row for row in payload["claims"] if row["claim"].get("kind") == "event-study"]
+    assert len(regime_rows) == 1
+    regime_row = regime_rows[0]
+    assert regime_row["proven"] is True
+    assert regime_row["signal"] is None
+    assert regime_row["claim"]["regime"] == "Risk-on"
+    assert regime_row["claim"]["subject"] == "Breakout-watch"
+    assert regime_row["claim"]["slice_kind"] == "regime"
+    # displayed numbers are re-displayed VERBATIM (the J-04 API-correctness contract)
+    assert regime_row["verdict"]["status"] == "PASS"
+    assert regime_row["verdict"]["holdout_edge"] == 0.06124590639955655
+    assert regime_row["verdict"]["control_excess"] == 0.06124590639955655
+    assert regime_row["verdict"]["p_value"] == 0.0004997501249375312
+    assert regime_row["register_date"] == "2026-06-30"
+
+    # the resolver maps the event-study regime claim to NO UI signal (it stays off the inline badges)…
+    assert _resolve_signal(_regime_event_study_entry()["claim"]) is None
+    # …while the leadership score column still self-maps (unchanged)
+    assert _resolve_signal(_pass_entry("leadership_score")["claim"]) == "leadership_score"
 
 
 def test_build_payload_fail_and_insufficient_not_proven(tmp_path):

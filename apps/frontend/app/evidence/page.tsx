@@ -8,6 +8,7 @@ import { PageHeading } from "@/components/page-heading";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { claimSurface, regimeLabel } from "@/lib/evidence";
 import { fetchEvidence, type CertifiedClaim, type EvidenceLedgerResponse } from "@/lib/api";
 
 type State =
@@ -24,18 +25,6 @@ const CLAIM_FIELDS = [
   "Registration date",
   "Forward-walk score-to-date",
 ] as const;
-
-/** The surface a signal's badge backs (claim → surface linkback). The three per-stock score signals back
- *  the Stocks leaderboard + stock detail; an unknown signal falls back to the leaderboard (never a dead
- *  link). Read-only mapping — this iteration's known signals are the three scores. */
-function surfaceForSignal(signal: string | null): { href: string; label: string } {
-  const KNOWN: Record<string, { href: string; label: string }> = {
-    leadership_score: { href: "/stocks", label: "Stocks leaderboard" },
-    entry_quality_score: { href: "/stocks", label: "Stocks leaderboard" },
-    risk_score: { href: "/stocks", label: "Stocks leaderboard" },
-  };
-  return (signal && KNOWN[signal]) || { href: "/stocks", label: "Stocks leaderboard" };
-}
 
 function verdictVariant(status: string): "ok" | "warn" | "danger" | "accent" | "default" {
   if (status === "PASS") return "accent";
@@ -142,20 +131,29 @@ function EvidenceEmptyState() {
  *  the five fields VERBATIM from the served entry; carries the `id={signal-…}` anchor a “Proven” badge
  *  links to, and a link back to the surface it backs (claim → surface linkback). */
 function ClaimRow({ claim }: { claim: CertifiedClaim }) {
-  const surface = surfaceForSignal(claim.signal);
+  const surface = claimSurface(claim);
+  const regime = regimeLabel(claim);
   const anchorId = claim.signal ? `signal-${claim.signal}` : undefined;
   const verdict = claim.verdict ?? { status: "", reason: "" };
   return (
     <Card id={anchorId} data-testid="evidence-claim-row" className="scroll-mt-20">
       <CardContent className="space-y-3 p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge variant={verdictVariant(verdict.status)}>{verdict.status || "—"}</Badge>
-            {claim.signal ? (
-              <span className="num text-sm font-semibold text-text">{claim.signal}</span>
+            {surface.titleIsSignalKey ? (
+              <span className="num text-sm font-semibold text-text">{surface.title}</span>
             ) : (
-              <span className="text-sm text-text-muted">Unmapped signal</span>
+              <span className="text-sm font-semibold text-text">{surface.title}</span>
             )}
+            {/* J-04: a regime-conditioned claim is clearly labeled with the regime it holds in (read
+                verbatim from the cohort's own selector). Hidden entirely for a score row (no regime) — so
+                the leadership row looks unchanged. */}
+            {regime ? (
+              <Badge variant="accent" data-testid="evidence-claim-regime">
+                Regime: {regime}
+              </Badge>
+            ) : null}
           </div>
           <Link
             href={surface.href}
@@ -165,6 +163,14 @@ function ClaimRow({ claim }: { claim: CertifiedClaim }) {
             Backs: {surface.label} →
           </Link>
         </div>
+
+        {/* Honest anti-hype framing for a non-score (setup) claim — historical out-of-sample evidence,
+            never a buy/sell or return promise. Absent for a score row (subtitle === null). */}
+        {surface.subtitle ? (
+          <p className="text-xs text-text-muted" data-testid="evidence-claim-subtitle">
+            {surface.subtitle}
+          </p>
+        ) : null}
 
         <dl className="grid gap-3 sm:grid-cols-2">
           <Field label="Hypothesis">

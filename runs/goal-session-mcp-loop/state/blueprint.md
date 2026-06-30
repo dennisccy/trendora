@@ -69,7 +69,7 @@ Research (its proof companion). Stock Detail, Run Detail, Research labs and Samp
 | J-01 every score shows an evidence status (inline badge) | `/stocks` (leaderboard rows) | Stocks |
 | J-02 drill into the proof behind a score | `/stocks/{ticker}` (badge → proof panel) | Stocks → Stock Detail (row-reached) |
 | J-03 unproven / noise signals honestly marked | cross-cutting badge state on `/stocks`, `/stocks/{ticker}`, `/sectors`, `/themes`, research labs | Stocks / Sectors / Themes / Research |
-| J-04 regime-conditioned evidence | `/` (current regime) + regime-scoped entry on `/evidence` or a research lab | Dashboard + Evidence/Research |
+| J-04 regime-conditioned evidence | `/` (current regime + Evidence affordance) + regime-labeled claim row on `/evidence` | Dashboard + Evidence/Research |
 | J-05 audit the evidence ledger | `/evidence` (claims list; each links back to the surface it backs) | Evidence [NEW] |
 
 Evidence badges are INLINE chips on existing score surfaces (not new pages); each badge links to its
@@ -107,6 +107,18 @@ referee's `verdict.status == PASS`; the factor→signal map is display-routing, 
 **J-02 proof drill panel** on `/stocks/{ticker}` is an additional READER of the same `GET /api/evidence`
 payload (verdict/control/register_date fields, verbatim) — no new computing module, no second endpoint, no
 recompute.
+
+**iter-4 clarification (additive — same value, no new module/endpoint):** the certified-claims value now
+also includes **regime-conditioned event-study claims** — a named-regime cohort slice (`kind=event-study`,
+`slice_kind=regime`, `regime=<label>`, e.g. the Breakout-watch setup in the `Risk-on` regime). Such a claim
+**carries NO `signal`** (it backs no inline per-stock score badge; `app.engine.evidence:_resolve_signal`
+returns `None` for a non-score cohort), so it appears ONLY as a CLAIM ROW in `claims[]` and never enters
+`proven_signals` — it cannot light or overwrite a score badge (J-01/J-02/J-03 are unaffected). The
+`/evidence` `ClaimRow` is an additional READER that re-displays the entry's own `claim.regime` selector as a
+**"Regime: <label>" display label** (J-04 "labeled with the regime it holds in") and renders an honest
+title/linkback for a signal-less setup claim — re-display only, no new computing module, no second endpoint,
+no recompute. The Dashboard regime panel adds a discoverable LINK to `/evidence` (navigation affordance — it
+serves no new value). Proven-ness still flows ONLY from `verdict.status == PASS`.
 
 <!-- LOOP RULE for the decomposer: an iteration that surfaces any signal AS "Proven" MUST carry a
 machine-readable `## Evidence Claim` JSON block (cohort selectors mirroring /api/research/samples) so the

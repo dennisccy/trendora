@@ -1,0 +1,18 @@
+{
+  "blocked": false,
+  "results": [
+    {
+      "claim": {
+        "kind": "event-study",
+        "subject": "Breakout-watch",
+        "slice_kind": "regime",
+        "regime": "Risk-on",
+        "view": "pooled",
+        "horizon": 20,
+        "direction": "positive"
+      },
+      "status": "PASS",
+      "reason": "certified: holdout edge +0.06125 beats the control out-of-sample and is significant after multiple-testing deflation (p=0.0004998 < alpha/2=0.025)"
+    }
+  ]
+}

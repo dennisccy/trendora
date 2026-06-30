@@ -199,3 +199,91 @@ export function formatPValue(value: number | null | undefined): string {
   }
   return Number(value.toPrecision(4)).toString();
 }
+
+// --- claim-row presentation (goal-mcp-loop iter-4) — regime label + honest title/linkback --------------
+// PURE, read-only helpers the `/evidence` ClaimRow consumes to deliver J-04 (regime-conditioned evidence,
+// "clearly labeled with the regime it holds in") WITHOUT regressing J-05 (the leadership score row's title
+// + linkback stay byte-identical). They re-display what the served claim already carries — they FABRICATE
+// nothing and they NEVER decide proven-ness (that still flows solely from `resolveEvidenceStatus`).
+
+/**
+ * The market-regime label a regime-conditioned claim holds in — read VERBATIM from the claim's own cohort
+ * selector (`claim.claim.regime`, e.g. "Risk-on"). Returns `null` when the cohort carries no regime (a
+ * score claim like the leadership row has none — its label MUST stay hidden so that row looks unchanged),
+ * and treats a blank / whitespace-only value as absent (no empty "Regime:" chip).
+ */
+export function regimeLabel(claim: CertifiedClaim): string | null {
+  const regime = claim.claim?.["regime"];
+  if (typeof regime === "string" && regime.trim() !== "") {
+    return regime;
+  }
+  return null;
+}
+
+/** The Stocks-leaderboard linkback every per-stock score signal backs (the pre-iter-4 surface — unchanged). */
+const STOCKS_LEADERBOARD_SURFACE = { href: "/stocks", label: "Stocks leaderboard" } as const;
+
+/** The honest title + linkback for ONE certified-claims row (the read-only `surfaceForSignal` successor). */
+export interface ClaimSurface {
+  /** The row headline. For a score-column claim this is the signal key VERBATIM (rendered in the mono
+   *  `num` style — byte-identical to the pre-iter-4 row); for a signal-less cohort it is a meaningful
+   *  subject-framed title (never the misleading "Unmapped signal"). */
+  title: string;
+  /** True iff `title` is a raw signal key (so the row renders it in the mono `num` style — the unchanged
+   *  score-row look). False for a prose title. */
+  titleIsSignalKey: boolean;
+  /** An honest one-line framing for a signal-less cohort (e.g. "Out-of-sample edge in the Risk-on regime"),
+   *  or `null` for a score row (which shows only its signal key, unchanged). Always *historical evidence*
+   *  framing — never a buy/sell or return promise (anti-goal #2). */
+  subtitle: string | null;
+  /** The "Backs: <label> →" linkback target. A score claim backs the Stocks leaderboard (unchanged); a
+   *  signal-less event-study cohort backs its Research lab, NOT the leaderboard (honest linkback). */
+  href: string;
+  /** The linkback label rendered inside "Backs: <label> →". */
+  label: string;
+}
+
+/**
+ * Resolve a claim row's title + linkback honestly (PURE, read-only):
+ *   - a MAPPED score signal (`claim.signal` present) → its signal key as the title (mono `num` style) +
+ *     the "Stocks leaderboard" linkback — BYTE-IDENTICAL to the pre-iter-4 score row (J-05 must not regress);
+ *   - a signal-less EVENT-STUDY cohort with a subject → a meaningful "<subject> setup" title + an honest
+ *     "Out-of-sample edge[ in the <regime> regime]" framing + a Research event-study-lab linkback (NOT the
+ *     leaderboard — this claim backs no per-stock score);
+ *   - any OTHER signal-less cohort → the prior generic "Unmapped signal" + leaderboard fallback (defensive —
+ *     no such claim exists today, but never a crash and never a fabricated mapping).
+ * Fabricates nothing — every value is read from the served claim.
+ */
+export function claimSurface(claim: CertifiedClaim): ClaimSurface {
+  if (claim.signal) {
+    return {
+      title: claim.signal,
+      titleIsSignalKey: true,
+      subtitle: null,
+      href: STOCKS_LEADERBOARD_SURFACE.href,
+      label: STOCKS_LEADERBOARD_SURFACE.label,
+    };
+  }
+  const cohort = claim.claim ?? {};
+  const kind = typeof cohort["kind"] === "string" ? (cohort["kind"] as string) : null;
+  const subjectRaw = cohort["subject"];
+  const subject =
+    typeof subjectRaw === "string" && subjectRaw.trim() !== "" ? subjectRaw : null;
+  if (kind === "event-study" && subject) {
+    const regime = regimeLabel(claim);
+    return {
+      title: `${subject} setup`,
+      titleIsSignalKey: false,
+      subtitle: regime ? `Out-of-sample edge in the ${regime} regime` : "Out-of-sample edge",
+      href: "/research/event-study",
+      label: "Research event-study lab",
+    };
+  }
+  return {
+    title: "Unmapped signal",
+    titleIsSignalKey: false,
+    subtitle: null,
+    href: STOCKS_LEADERBOARD_SURFACE.href,
+    label: STOCKS_LEADERBOARD_SURFACE.label,
+  };
+}

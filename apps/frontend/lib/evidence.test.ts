@@ -16,11 +16,14 @@ import {
   NOT_PROVEN_LABEL,
   PROVEN_LABEL,
   SCORE_SIGNALS,
+  claimSurface,
   evidenceAnchor,
   formatEvidencePct,
   formatPValue,
   proofFieldsFor,
+  regimeLabel,
   resolveEvidenceStatus,
+  type CertifiedClaim,
   type ProvenSignal,
 } from "./evidence.ts";
 
@@ -180,6 +183,89 @@ check("formatPValue renders the p-value to 4 significant figures (with a small/m
   assert.strictEqual(formatPValue(0.0000000001), "< 0.0001");
   assert.strictEqual(formatPValue(null), "—");
   assert.strictEqual(formatPValue(undefined), "—");
+});
+
+// ======================================================================================================
+// J-04 regime-conditioned evidence — the ClaimRow regime label + the honest non-score title/linkback.
+// The row below MIRRORS the real 2nd ledger entry the post-decompose gate certified (Breakout-watch ×
+// Risk-on event-study, signal: null), so these pin the J-04 display contract AND the J-05 no-regression
+// invariant (the leadership score row's title + linkback stay byte-identical).
+// ======================================================================================================
+
+/** A certified (PASS) row mirroring the REAL iter-4 2nd ledger entry: the Breakout-watch setup's
+ *  event-study cohort sliced to the named `Risk-on` regime. It deliberately carries NO `signal` (it backs
+ *  no per-stock score badge — it is regime-conditioned evidence in its own right). */
+function eventStudyRegimeRow(): CertifiedClaim {
+  return {
+    signal: null,
+    claim: {
+      kind: "event-study",
+      subject: "Breakout-watch",
+      slice_kind: "regime",
+      regime: "Risk-on",
+      view: "pooled",
+      horizon: 20,
+      direction: "positive",
+    },
+    register_date: "2026-06-30",
+    horizon: 20,
+    cohort_n: 4720,
+    control_n: 414,
+    verdict: {
+      status: "PASS",
+      reason: "certified out-of-sample (Risk-on)",
+      holdout_edge: 0.06124590639955655,
+      control_excess: 0.06124590639955655,
+      p_value: 0.0004997501249375312,
+    },
+    proven: true,
+    forward_walk: null,
+  };
+}
+
+// --- (h) regime label — read VERBATIM from the cohort's own `regime` selector when present --------------
+check("regimeLabel returns the cohort's regime verbatim for a regime-conditioned claim", () => {
+  assert.strictEqual(regimeLabel(eventStudyRegimeRow()), "Risk-on");
+});
+
+// --- (i) regime label is HIDDEN (null) for a score claim with no regime (leadership must look unchanged) -
+check("regimeLabel returns null for a score claim that carries no regime (label hidden)", () => {
+  assert.strictEqual(regimeLabel(provenLeadershipRow()), null);
+});
+
+// --- (j) a blank / whitespace / absent regime is treated as absent (no empty 'Regime:' chip) -----------
+check("regimeLabel treats a blank, whitespace, or absent regime as hidden", () => {
+  const blank = eventStudyRegimeRow();
+  blank.claim = { ...blank.claim, regime: "   " };
+  assert.strictEqual(regimeLabel(blank), null);
+  const absent = eventStudyRegimeRow();
+  delete (absent.claim as Record<string, unknown>).regime;
+  assert.strictEqual(regimeLabel(absent), null);
+});
+
+// --- (k) score row title + linkback stay BYTE-IDENTICAL (J-05 must not regress) ------------------------
+check("claimSurface keeps the score row's signal-key title + 'Stocks leaderboard' linkback byte-identical", () => {
+  const surface = claimSurface(provenLeadershipRow());
+  assert.strictEqual(surface.title, "leadership_score"); // the signal key, rendered in the mono `num` style
+  assert.strictEqual(surface.titleIsSignalKey, true);
+  assert.strictEqual(surface.subtitle, null);
+  assert.strictEqual(surface.href, "/stocks");
+  assert.strictEqual(surface.label, "Stocks leaderboard"); // "Backs: Stocks leaderboard →" — unchanged
+});
+
+// --- (l) signal-less event-study claim → HONEST title + a NON-leaderboard linkback ----------------------
+check("claimSurface gives a signal-less event-study claim an honest title + a non-leaderboard linkback", () => {
+  const surface = claimSurface(eventStudyRegimeRow());
+  // an honest, meaningful title — NEVER the misleading "Unmapped signal"
+  assert.strictEqual(surface.title, "Breakout-watch setup");
+  assert.notStrictEqual(surface.title, "Unmapped signal");
+  assert.strictEqual(surface.titleIsSignalKey, false);
+  // framed as historical out-of-sample evidence in the regime (never a buy/return promise)
+  assert.strictEqual(surface.subtitle, "Out-of-sample edge in the Risk-on regime");
+  // the linkback is honest — its Research event-study lab, NOT the Stocks leaderboard
+  assert.strictEqual(surface.href, "/research/event-study");
+  assert.strictEqual(surface.label, "Research event-study lab");
+  assert.notStrictEqual(surface.label, "Stocks leaderboard");
 });
 
 console.log(`\n${passed} evidence-badge resolver checks passed.`);
