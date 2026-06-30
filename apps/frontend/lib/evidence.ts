@@ -88,3 +88,114 @@ export function resolveEvidenceStatus(
   }
   return { proven: false, label: NOT_PROVEN_LABEL, href: null, claim: null };
 }
+
+/**
+ * The signal key each per-stock score maps to on the evidence ledger — the canonical factor-catalog keys,
+ * byte-identical to the UI signal key (e.g. the Leadership score IS `leadership_score`). The SINGLE
+ * definition shared by the Stocks leaderboard and the Stock-detail score cards (de-duped in iter-2 — there
+ * was one identical copy in each page). A score reads "Proven" ONLY when a PASS-backed ledger entry names
+ * its key; everything absent from `proven_signals` is "Not yet proven".
+ */
+export const SCORE_SIGNALS = {
+  leadership: "leadership_score",
+  entry_quality: "entry_quality_score",
+  risk: "risk_score",
+} as const;
+
+// --- proof drill-down (J-02) field extraction + display formatters ------------------------------------
+// These are PURE and read-only: they re-display what the referee already certified (read VERBATIM from the
+// served `proven_signals` map) and FABRICATE nothing. The Stock-detail "Why proven?" panel renders them;
+// the unit tests pin them. Proven-ness still flows 100% from `resolveEvidenceStatus` (a PASS-backed entry).
+
+/** Coerce a served numeric field to a finite number, else null (NA-honest — never a fabricated 0). */
+function finiteOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * The proof fields a "Proven" score drills into — read VERBATIM from the backing ledger entry (the
+ * out-of-sample test, the SPY control comparison, and the certified-claim id/date). Every numeric field is
+ * the referee's value exactly as written; the panel only re-formats it. `null` numerics render "—"
+ * (never a fabricated figure).
+ */
+export interface ProofFields {
+  /** The certified-claim's signal key (the stable id component, e.g. "leadership_score"). */
+  signal: string;
+  /** The out-of-sample verdict status, verbatim (e.g. "PASS"). */
+  status: string;
+  /** The out-of-sample holdout edge (a fraction), verbatim — null when the entry omits it. */
+  holdoutEdge: number | null;
+  /** The out-of-sample significance (p-value), verbatim — null when the entry omits it. */
+  pValue: number | null;
+  /** The control comparison vs SPY (the cohort's excess over the benchmark, a fraction), verbatim. */
+  controlExcess: number | null;
+  /** The sealed-holdout cohort size, verbatim — null when the entry omits it. */
+  cohortN: number | null;
+  /** The registration date (ISO), verbatim — null when the entry omits it. */
+  registerDate: string | null;
+  /** The stable certified-claim id label: `${signal} · registered ${registerDate}`. */
+  claimId: string;
+  /** The `/evidence` backing-row anchor this proof links to (claim → surface linkback). */
+  href: string;
+}
+
+/**
+ * Build the read-only proof fields for one signal from the served `proven_signals` map, or `null` when the
+ * signal is NOT proven (absent / null map / non-`proven` row). FAIL-SAFE: an unproven signal yields `null`
+ * so the "Why proven?" disclosure is absent entirely (no empty panel, no fabricated confidence). Reads
+ * every field VERBATIM from the backing claim — recomputes nothing.
+ */
+export function proofFieldsFor(
+  signal: string,
+  provenSignals: Record<string, ProvenSignal> | null | undefined,
+): ProofFields | null {
+  const status = resolveEvidenceStatus(signal, provenSignals);
+  if (!status.proven || !status.claim || !status.href) {
+    return null;
+  }
+  const claim = status.claim;
+  const verdict = claim.verdict ?? { status: "", reason: "" };
+  const registerDate = claim.register_date ?? null;
+  return {
+    signal,
+    status: verdict.status ?? "",
+    holdoutEdge: finiteOrNull(verdict.holdout_edge),
+    pValue: finiteOrNull(verdict.p_value),
+    controlExcess: finiteOrNull(verdict.control_excess),
+    cohortN: finiteOrNull(claim.cohort_n),
+    registerDate,
+    claimId: registerDate ? `${signal} · registered ${registerDate}` : signal,
+    href: status.href,
+  };
+}
+
+/**
+ * Format a signed fraction as a percent with an explicit sign (e.g. +6.36% / -0.40%). Display-only; the
+ * SAME representation the `/evidence` claim row uses for the holdout edge and the SPY control comparison.
+ * A null/undefined/non-finite value renders an em dash (never a fabricated 0%).
+ */
+export function formatEvidencePct(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "—";
+  }
+  const pct = value * 100;
+  return `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
+}
+
+/**
+ * Format an out-of-sample p-value for display — 4 significant figures (matching the referee's own
+ * `verdict.reason` formatting, e.g. 0.0004998), `< 0.0001` for vanishingly small values, an em dash for a
+ * missing value. Display-only; never recomputed.
+ */
+export function formatPValue(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "—";
+  }
+  if (value <= 0) {
+    return "0";
+  }
+  if (value < 0.0001) {
+    return "< 0.0001";
+  }
+  return Number(value.toPrecision(4)).toString();
+}

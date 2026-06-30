@@ -96,6 +96,18 @@ The full prior-session Data Contract (every regime/score/forward-return/job row)
 is NOT reproduced here; the rows above are those the evidence layer reads or attaches a badge to. The ONLY
 new contract value this session introduces is the first row (evidence status / certified-claim).
 
+**iter-2 clarification (additive — same value, no new module/endpoint):** for a **score-column factor
+cohort** the canonical `signal` IS the factor key itself — `leadership_score` / `entry_quality_score` /
+`risk_score` are byte-identical factor-catalog keys AND UI signal keys (`config.FACTOR_TYPED_COLUMNS`), so a
+certified top-decile claim on a score tautologically backs that score's badge. The `signal` is carried on
+the WRITTEN claim (set on the iteration's `## Evidence Claim` JSON, which `verify_edge` persists verbatim
+since `signal` is not a `_CLAIM_SELECTOR_KEYS` selector and is ignored by cohort assembly; optionally also
+derived read-side for score-column cohorts as defense-in-depth). Proven-ness still flows ONLY from the
+referee's `verdict.status == PASS`; the factor→signal map is display-routing, not a second computation. The
+**J-02 proof drill panel** on `/stocks/{ticker}` is an additional READER of the same `GET /api/evidence`
+payload (verdict/control/register_date fields, verbatim) — no new computing module, no second endpoint, no
+recompute.
+
 <!-- LOOP RULE for the decomposer: an iteration that surfaces any signal AS "Proven" MUST carry a
 machine-readable `## Evidence Claim` JSON block (cohort selectors mirroring /api/research/samples) so the
 post-decompose gate certifies it through the referee BEFORE build; a non-PASS verdict (FAIL/INSUFFICIENT)

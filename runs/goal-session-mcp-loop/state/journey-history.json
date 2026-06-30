@@ -8,7 +8,7 @@
       "last_passing_iter": "goal-mcp-loop-iter-1",
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-1-evidence/UT-02-result.png",
-      "note": "Verified via full-pipeline browser-QA (UT-02/UT-05/UT-11): /stocks renders 120 leaderboard rows, each with three 'Not yet proven' chips (Leadership/Entry Quality/Risk); grades+scores intact, chips additive below them. No score lacks a status. Against the empty ledger every chip is honestly 'Not yet proven'."
+      "note": "Carried from iter-1 (verified passing there). NOT re-verified in iter-2: the browser-QA lane SKIPPED every test (status.json browser_checks_run=false; frontend stuck on 'Checking backend...'). The lone iter-2 screenshot (TC-01-stocks-page.png) shows an empty leaderboard with no rows/badges — a harness frontend->backend connectivity failure, NOT a code regression (next build, tsc --noEmit, units, and /api/evidence curl all green). Re-confirm the Leadership 'Proven' badge + others 'Not yet proven' in iter-3."
     },
     "J-02": {
       "id": "J-02",
@@ -18,7 +18,7 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": null,
-      "note": "Deferred (correctly out of scope iter-1): requires at least one referee-certified PASS claim and a drill panel showing the OOS test + controls + claim id/date. Against the empty ledger no 'Proven' badge exists to drill into. Targeted by the next certified iteration; also blocked on the writer stamping claim.signal (dev-handoff known issue)."
+      "note": "TARGETED iter-2 and structurally unblocked: gate certified leadership_score (gate-post-decompose.json blocked=false PASS), the ledger entry carries signal=leadership_score, /api/evidence serves proven_signals.leadership_score.proven==true (curl TC-13), and the ScoreProofPanel ('Why proven?' disclosure: OOS test + vs-SPY control + claim id/date, read verbatim, fail-safe) shipped + unit-tested + builds clean. But NO browser verification (browser lane SKIPPED, frontend 'Checking backend...'). Per evaluator rule, a user-facing journey is not 'passing' on build+units+API alone — set unknown until browser-proven in iter-3."
     },
     "J-03": {
       "id": "J-03",
@@ -28,7 +28,7 @@
       "last_passing_iter": "goal-mcp-loop-iter-1",
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-1-evidence/UT-08-result.png",
-      "note": "Verified via browser-QA on both /stocks (UT-02) and stock-detail (UT-03/UT-08): every unvalidated signal reads 'Not yet proven', never a confident 'Proven' number, against the empty ledger. MU detail scores 94.58/23.66/53.11 each carry a muted 'Not yet proven' chip below the score (additive, not a replacement)."
+      "note": "Carried from iter-1 (verified passing there). NOT re-verified in iter-2 (browser lane SKIPPED). No regression evidence: Entry Quality + Risk are absent from proven_signals so they remain 'Not yet proven' by construction; the panel is fail-safe (renders nothing for unproven signals). Re-confirm in iter-3 that only Leadership reads 'Proven' and the other two stay honest."
     },
     "J-04": {
       "id": "J-04",
@@ -38,7 +38,7 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": null,
-      "note": "Deferred (correctly out of scope iter-1): requires regime-scoped certified evidence labeled with the regime it holds in. No certified claim exists yet. Targeted by a later certified iteration (after the first PASS claim lands and the writer stamps claim.signal)."
+      "note": "Correctly OUT OF SCOPE iter-2 (spec deferred to iter-3+ to avoid risking the first PASS on a thin regime slice). Requires a regime-scoped certified claim labeled with the regime it holds in. Carry forward unknown."
     },
     "J-05": {
       "id": "J-05",
@@ -48,9 +48,9 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-1-evidence/UT-06-07-result.png",
-      "note": "Ledger SURFACE verified (UT-01/UT-04/UT-06/UT-07): Evidence nav reachable in 1 click; /evidence renders; honest empty state 'No certified claims yet — every signal currently reads Not yet proven'; all five claim-row fields present in markup (Hypothesis, Out-of-sample verdict, Control comparison vs SPY, Registration date, Forward-walk score-to-date) plus the claim->surface linkback text. PARTIAL: J-05 steps 2-3 (a populated claim row + click-through linkback) are not exercisable against an empty ledger (zero claims); pending the first certified iteration. Spec J-05 boundary note anticipates this."
+      "note": "Still PARTIAL. Surface verified in iter-1 (nav reachable, /evidence renders, all five claim-row fields present, linkback text present). The ledger now HAS its first certified claim and /api/evidence serves it (curl TC-13), so the data for steps 2-3 (populated row + click-through linkback) finally exists — but the populated-row render and the linkback round-trip were NOT browser-verified in iter-2 (browser lane SKIPPED). Complete end-to-end in iter-3."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-06-29T22:37:16Z"
+  "updated_at": "2026-06-30T01:08:00Z"
 }

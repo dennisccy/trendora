@@ -5,9 +5,10 @@ the append-only certified-claims ledger into the read-only `/api/evidence` paylo
 fail-safe contract:
   - absent/empty ledger => empty payload (every signal reads "Not yet proven");
   - a `verdict.status == "PASS"` entry that NAMES a signal => that signal is Proven;
-  - a `FAIL` / `INSUFFICIENT` entry => the signal stays NOT proven;
-  - a real PASS entry WITHOUT a `signal` key (the actual `verify_edge` writer shape today) => no KeyError,
-    not surfaced as a proven signal (fail-safe);
+  - a `FAIL` / `INSUFFICIENT` entry => the signal stays NOT proven (even when its signal can be derived);
+  - a PASS entry WITHOUT an explicit `signal` key: a SCORE-COLUMN factor cohort DERIVES `signal = factor`
+    and is surfaced as proven (iter-2 defense-in-depth, non-spoofable); any OTHER signal-less cohort maps
+    to no UI signal (fail-safe — no KeyError, stays "Not yet proven");
   - forward-walk MONITORING records are excluded from the claim list (they re-score, they aren't claims);
   - `resolve_ledger_path()` honors the `TRENDORA_LEDGER_PATH` env override, else the config default
     resolved against the repo root.
@@ -25,13 +26,14 @@ from app.engine.evidence import (
 from app.engine.ledger import append_entry
 
 
-def _pass_entry(signal: str | None) -> dict:
-    """A certified (PASS) ledger entry. When `signal` is given it is stamped on the claim (the read-side
-    convention iter-1 establishes); when None it mirrors the REAL `verify_edge` writer, which stamps no
-    `signal` key on the cohort-selector claim."""
+def _pass_entry(signal: str | None, factor: str = "leadership_score") -> dict:
+    """A certified (PASS) ledger entry over the `factor` cohort. When `signal` is given it is stamped on
+    the claim verbatim (the iter-2+ gate convention — the Evidence-Claim JSON carries `signal`); when None
+    it mirrors a claim that omitted the field, exercising the read-side `_resolve_signal` derivation
+    (a score-column `factor` self-maps; any other `factor` stays dark)."""
     claim = {
         "kind": "factor",
-        "factor": "leadership_score",
+        "factor": factor,
         "slice_kind": "decile",
         "decile": 10,
         "horizon": 20,
@@ -85,10 +87,11 @@ def test_build_payload_pass_entry_marks_signal_proven(tmp_path):
     assert proven["horizon"] == 20
     assert proven["cohort_n"] == 42
     assert proven["control_n"] == 40
-    # verdict fields are re-displayed VERBATIM (no recompute)
+    # verdict fields are re-displayed VERBATIM (no recompute) — these are exactly what the J-02 proof panel reads
     assert proven["verdict"]["status"] == "PASS"
     assert proven["verdict"]["control_excess"] == 0.018
     assert proven["verdict"]["holdout_edge"] == 0.031
+    assert proven["verdict"]["p_value"] == 0.004
     # forward-walk score-to-date is the layout placeholder (None until a certified iteration monitors it)
     assert proven["forward_walk"] is None
     # hypothesis = the cohort selectors, read verbatim
@@ -113,18 +116,50 @@ def test_build_payload_fail_and_insufficient_not_proven(tmp_path):
     assert statuses == {"FAIL": False, "INSUFFICIENT": False}
 
 
-def test_build_payload_pass_without_signal_key_is_failsafe(tmp_path):
-    # the REAL verify_edge writer stamps NO `signal` on the claim — a signal-less PASS must NOT KeyError
-    # and must NOT light up any UI signal (it stays "Not yet proven" everywhere).
+def test_build_payload_pass_score_column_without_signal_derives(tmp_path):
+    # iter-2 read-side derivation: a PASS over a SCORE-COLUMN factor cohort that omitted an explicit
+    # `signal` still lights its badge — `_resolve_signal` derives `signal = factor` (factor key is
+    # byte-identical to the UI signal key). Defense-in-depth so a future claim that forgets the field
+    # does not silently go dark.
     ledger = tmp_path / "certified-claims.jsonl"
-    append_entry(str(ledger), _pass_entry(None))
+    append_entry(str(ledger), _pass_entry(None, factor="leadership_score"))
     payload = build_evidence_payload(str(ledger))
 
-    assert payload["proven_signals"] == {}          # no signal named => nothing proven on the badge
+    assert list(payload["proven_signals"].keys()) == ["leadership_score"]
+    proven = payload["proven_signals"]["leadership_score"]
+    assert proven["proven"] is True
+    assert proven["signal"] == "leadership_score"     # derived, not explicitly stamped
+    assert proven["claim"].get("signal") is None      # the underlying claim still carries NO signal key
+
+
+def test_build_payload_pass_non_score_factor_without_signal_stays_dark(tmp_path):
+    # FAIL-SAFE preserved: a signal-less PASS over a NON-score factor cohort (only the three score columns
+    # self-map) must NOT KeyError and must NOT light up any UI signal — it stays "Not yet proven".
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), _pass_entry(None, factor="rs_spy_3m"))
+    payload = build_evidence_payload(str(ledger))
+
+    assert payload["proven_signals"] == {}            # a non-score cohort never self-maps to a UI signal
     assert len(payload["claims"]) == 1
     row = payload["claims"][0]
-    assert row["proven"] is True                     # the verdict IS a PASS (honestly shown on the ledger)
-    assert row["signal"] is None                     # but it maps to NO UI signal key (defensive read)
+    assert row["proven"] is True                      # the verdict IS a PASS (honestly shown on the ledger)
+    assert row["signal"] is None                      # but it maps to NO UI signal key (fail-safe)
+
+
+def test_build_payload_non_pass_score_column_not_proven_even_when_signal_derives(tmp_path):
+    # proven-ness flows SOLELY from verdict.status == PASS: a FAIL over a score-column factor cohort whose
+    # signal WOULD derive must still NOT surface as a proven signal (derivation is display-routing only).
+    ledger = tmp_path / "certified-claims.jsonl"
+    fail_entry = _pass_entry(None, factor="leadership_score")
+    fail_entry["verdict"]["status"] = "FAIL"
+    fail_entry["verdict"]["reason"] = "did not beat the control out-of-sample"
+    append_entry(str(ledger), fail_entry)
+    payload = build_evidence_payload(str(ledger))
+
+    assert payload["proven_signals"] == {}            # a non-PASS verdict is never proven, derived signal or not
+    row = payload["claims"][0]
+    assert row["signal"] == "leadership_score"        # the signal still DERIVES (for the audit-listed row)
+    assert row["proven"] is False                     # but proven-ness requires a PASS
 
 
 def test_build_payload_excludes_forward_walk_monitoring_records(tmp_path):

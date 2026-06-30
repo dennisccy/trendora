@@ -19,6 +19,7 @@ import { TermInfo } from "@/components/ui/term-info";
 import { formatIsoDate } from "@/lib/dates";
 import { fmtHighProximity, highProximityValue } from "@/lib/high-proximity";
 import { regimeVariant } from "@/lib/regime-variant";
+import { SCORE_SIGNALS } from "@/lib/evidence";
 import { cn } from "@/lib/utils";
 import {
   fetchDashboard,
@@ -34,14 +35,6 @@ import {
   type ThemeRow,
   type ThemesResponse,
 } from "@/lib/api";
-
-/** The signal key each per-stock score maps to on the evidence ledger (the canonical factor-catalog keys).
- *  Against today's empty ledger none is proven, so every badge reads "Not yet proven". */
-const SCORE_SIGNALS = {
-  leadership: "leadership_score",
-  entry_quality: "entry_quality_score",
-  risk: "risk_score",
-} as const;
 
 type State =
   | { kind: "loading" }

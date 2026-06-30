@@ -12,9 +12,11 @@ import { fmtMdd, fmtPct, mddClass, returnClass } from "@/components/forward-retu
 import { PageHeading } from "@/components/page-heading";
 import { PriceChart } from "@/components/price-chart";
 import { ScoreBadge } from "@/components/score-badge";
+import { ScoreProofPanel } from "@/components/score-proof-panel";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatIsoDate } from "@/lib/dates";
+import { SCORE_SIGNALS } from "@/lib/evidence";
 import { cn } from "@/lib/utils";
 import {
   fetchEvidence,
@@ -30,14 +32,6 @@ import {
   type Vcp,
 } from "@/lib/api";
 import { usePersistedToggle } from "@/lib/use-persisted-toggle";
-
-/** The signal key each per-stock score maps to on the evidence ledger (the canonical factor-catalog keys).
- *  Against today's empty ledger none is proven, so every badge reads "Not yet proven". */
-const SCORE_SIGNALS = {
-  leadership: "leadership_score",
-  entry_quality: "entry_quality_score",
-  risk: "risk_score",
-} as const;
 
 type State =
   | { kind: "loading" }
@@ -603,8 +597,12 @@ function ScoreCard({
           <span className="text-xs text-text-muted">/ 100</span>
         </div>
         {/* goal-mcp-loop iter-1 — the inline evidence status for this score (purely additive; the score
-            above is unchanged). Empty ledger ⇒ "Not yet proven". */}
+            above is unchanged). A PASS-backed signal reads "Proven"; everything else "Not yet proven". */}
         <EvidenceStatusBadge signal={signal} provenSignals={provenSignals} />
+        {/* goal-mcp-loop iter-2 (J-02) — when this score is PROVEN, a collapsed-by-default "Why proven?"
+            disclosure expands in place to audit the out-of-sample test, the SPY control comparison, and the
+            certified-claim id/date (read verbatim from the served map; renders nothing when not proven). */}
+        <ScoreProofPanel signal={signal} provenSignals={provenSignals} />
         <p className="text-xs text-text-faint">{caption}</p>
         <ComponentBreakdown components={block.components} />
       </CardContent>

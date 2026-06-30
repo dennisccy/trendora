@@ -15,7 +15,11 @@ import assert from "node:assert";
 import {
   NOT_PROVEN_LABEL,
   PROVEN_LABEL,
+  SCORE_SIGNALS,
   evidenceAnchor,
+  formatEvidencePct,
+  formatPValue,
+  proofFieldsFor,
   resolveEvidenceStatus,
   type ProvenSignal,
 } from "./evidence.ts";
@@ -86,6 +90,96 @@ check("a present row that is not `proven` is still treated as 'Not yet proven'",
 // --- evidenceAnchor is the stable claim→surface linkback target ---------------------------------------
 check("evidenceAnchor builds the stable per-signal ledger anchor", () => {
   assert.strictEqual(evidenceAnchor("risk_score"), "/evidence#signal-risk_score");
+});
+
+// --- SCORE_SIGNALS — the single shared score→signal map (de-duped in iter-2) ---------------------------
+check("SCORE_SIGNALS maps each score to its canonical factor-catalog signal key", () => {
+  assert.strictEqual(SCORE_SIGNALS.leadership, "leadership_score");
+  assert.strictEqual(SCORE_SIGNALS.entry_quality, "entry_quality_score");
+  assert.strictEqual(SCORE_SIGNALS.risk, "risk_score");
+});
+
+// ======================================================================================================
+// J-02 proof drill-down — `proofFieldsFor` reads the backing claim VERBATIM (the iter-2 PRIMARY contract).
+// The values below MIRROR the real certified leadership_score entry the post-decompose gate wrote, so the
+// test pins the displayed-numbers-are-correct anti-goal: what the panel shows must equal the served entry.
+// ======================================================================================================
+
+/** A proven row mirroring the REAL ledger entry (holdout edge / p-value / control excess / register date /
+ *  cohort_n the gate certified for leadership_score), so the proof-field extraction is pinned to reality. */
+function provenLeadershipRow(): ProvenSignal {
+  return {
+    signal: "leadership_score",
+    claim: {
+      kind: "factor",
+      factor: "leadership_score",
+      slice_kind: "decile",
+      decile: 10,
+      horizon: 20,
+      direction: "positive",
+      signal: "leadership_score",
+    },
+    register_date: "2026-06-30",
+    horizon: 20,
+    cohort_n: 12297,
+    control_n: 1137,
+    verdict: {
+      status: "PASS",
+      reason: "certified out-of-sample",
+      holdout_edge: 0.06359100763913017,
+      control_excess: 0.06359100763913017,
+      p_value: 0.0004997501249375312,
+    },
+    proven: true,
+    forward_walk: null,
+  };
+}
+
+// --- (e) proven => the proof fields are read VERBATIM, with the stable claim id + /evidence anchor -------
+check("proofFieldsFor reads the backing claim verbatim for a proven signal", () => {
+  const fields = proofFieldsFor("leadership_score", { leadership_score: provenLeadershipRow() });
+  assert.ok(fields, "a proven signal must yield proof fields");
+  assert.strictEqual(fields!.signal, "leadership_score");
+  assert.strictEqual(fields!.status, "PASS");
+  // every numeric is the referee's value EXACTLY (no recompute, no rounding in the data layer)
+  assert.strictEqual(fields!.holdoutEdge, 0.06359100763913017);
+  assert.strictEqual(fields!.pValue, 0.0004997501249375312);
+  assert.strictEqual(fields!.controlExcess, 0.06359100763913017);
+  assert.strictEqual(fields!.cohortN, 12297);
+  assert.strictEqual(fields!.registerDate, "2026-06-30");
+  // the stable certified-claim id + the backing /evidence anchor a "Proven" badge round-trips to
+  assert.strictEqual(fields!.claimId, "leadership_score · registered 2026-06-30");
+  assert.strictEqual(fields!.href, "/evidence#signal-leadership_score");
+});
+
+// --- (f) FAIL-SAFE: an unproven / absent / null-map signal yields NO proof fields (no empty panel) ------
+check("proofFieldsFor returns null for an absent, null-map, or not-`proven` signal (fail-safe)", () => {
+  // absent from the map (the Entry Quality / Risk reality this iteration)
+  assert.strictEqual(proofFieldsFor("entry_quality_score", { leadership_score: provenLeadershipRow() }), null);
+  // null / undefined map (fetch failed / empty ledger)
+  assert.strictEqual(proofFieldsFor("leadership_score", null), null);
+  assert.strictEqual(proofFieldsFor("leadership_score", undefined), null);
+  // present but explicitly not `proven` (defensive — never trust a non-proven row)
+  const notProven = { ...provenLeadershipRow(), proven: false };
+  assert.strictEqual(proofFieldsFor("leadership_score", { leadership_score: notProven }), null);
+});
+
+// --- (g) the display formatters — exact strings (the panel re-formats; it fabricates nothing) -----------
+check("formatEvidencePct renders a signed percent (and an em dash for a missing value)", () => {
+  assert.strictEqual(formatEvidencePct(0.06359100763913017), "+6.36%"); // the real holdout edge / control excess
+  assert.strictEqual(formatEvidencePct(-0.004), "-0.40%");
+  assert.strictEqual(formatEvidencePct(0), "+0.00%");
+  assert.strictEqual(formatEvidencePct(null), "—");
+  assert.strictEqual(formatEvidencePct(undefined), "—");
+  assert.strictEqual(formatEvidencePct(Number.NaN), "—");
+});
+
+check("formatPValue renders the p-value to 4 significant figures (with a small/missing fallback)", () => {
+  assert.strictEqual(formatPValue(0.0004997501249375312), "0.0004998"); // the real certified p-value
+  assert.strictEqual(formatPValue(0.05), "0.05");
+  assert.strictEqual(formatPValue(0.0000000001), "< 0.0001");
+  assert.strictEqual(formatPValue(null), "—");
+  assert.strictEqual(formatPValue(undefined), "—");
 });
 
 console.log(`\n${passed} evidence-badge resolver checks passed.`);
