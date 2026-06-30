@@ -408,7 +408,9 @@ case "$CURRENT_STEP" in
   qa_failed)
     SKIP_PLAN=true; SKIP_TEST_PLAN=true; SKIP_DEV_REVIEW=true
     SKIP_UI_IMPACT=true; SKIP_UI_TEST_DESIGN=true; SKIP_BROWSER_QA=true ;;
-  browser_qa_complete)
+  post_dev_parallel_complete|browser_qa_complete)
+    # post_dev_parallel_complete: the Step 4-7 parallel fanout finished (UI chain
+    # 4-6 done); resume from QA (Step 7) onward — same skips as browser_qa_complete.
     SKIP_PLAN=true; SKIP_TEST_PLAN=true; SKIP_DEV_REVIEW=true
     SKIP_UI_IMPACT=true; SKIP_UI_TEST_DESIGN=true; SKIP_BROWSER_QA=true ;;
   ui_test_designed)
@@ -640,11 +642,13 @@ if [[ "$FRONTEND_PRESENT" == "yes" \
   if [[ $fanout_rc -ne 0 ]]; then
     log "  Warning: post-dev fanout exited $fanout_rc — sequential retry will pick up any failed step"
   fi
-  # The UI chain steps (4, 5, 6, 6.5) are always idempotent and write their
-  # artifacts (or N/A stubs) regardless — mark them complete unconditionally.
-  SKIP_UI_IMPACT=true
-  SKIP_UI_TEST_DESIGN=true
-  SKIP_BROWSER_QA=true
+  # Mark each UI-chain step complete ONLY if it actually produced its artifact(s).
+  # On an early Branch-UI abort (e.g. ui-test-design failed mid-chain) the downstream
+  # artifacts are absent; flipping SKIP unconditionally would wrongly bypass the
+  # sequential Step 4/5/6 retry blocks below that exist to re-run the missing step.
+  [[ -s "$USER_VISIBLE" && -s "$UI_SURFACE_MAP" ]] && SKIP_UI_IMPACT=true
+  [[ -s "$UI_TEST_PLAN" && -s "$WHAT_TO_CLICK" ]]  && SKIP_UI_TEST_DESIGN=true
+  [[ -s "$UI_TEST_RESULTS" ]]                      && SKIP_BROWSER_QA=true
   update_status "$PHASE" "in_progress" "post_dev_parallel_complete"
   # Step 7 (QA): only skip the existing retry loop if QA passed in the fanout.
   # Otherwise leave SKIP_QA=false so the sequential retry path runs as today.

@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-6",
+  "base_url": "http://localhost:3255",
+  "iteration": 6,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Dashboard — current market regime",
+      "narration": "The dashboard opens with the live market regime score. The market is currently reading Risk-on at 76.05, and a direct link invites you to see which certified claims are proven within this regime.",
+      "point_out": "The 'Risk-on 76.05' regime indicator and the 'See evidence proven in this regime →' link below it",
+      "journey": "J-04",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Risk-on 76.05" }
+    },
+    {
+      "n": 2,
+      "title": "Regime-conditioned evidence — certified claims for this regime",
+      "narration": "Following the regime link opens the evidence ledger showing claims that passed their out-of-sample test specifically in this market regime. The Breakout-watch claim is labeled 'Regime: Risk-on' with a holdout edge of +6.12%, clearing the significance threshold.",
+      "point_out": "The second claim row — 'PASS Breakout-watch setup [Regime: Risk-on]' — with its OOS holdout edge and p-value of 0.0004998",
+      "journey": "J-04",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "See evidence proven in this regime →" } },
+      "expect": { "text": "Breakout-watch setup" }
+    },
+    {
+      "n": 3,
+      "title": "Evidence ledger round-trip — back to the stock leaderboard",
+      "narration": "Each certified claim carries a link back to the surface it backs. Clicking 'Backs: Stocks leaderboard →' returns directly to the stock rankings, completing the two-way traceability loop from a score, to its proof, and back again.",
+      "point_out": "The stocks leaderboard with 120 rows, each showing a grade, a score, and an evidence badge — 'Proven' for Leadership, 'Not yet proven' for Entry Quality and Risk",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Backs: Stocks leaderboard →" } },
+      "expect": { "text": "Not yet proven" }
+    },
+    {
+      "n": 4,
+      "title": "Stock detail — honest badge mix on MU",
+      "narration": "Opening the Micron Technology detail page shows the three signal scores side by side. Leadership is the only score marked 'Proven' because it is the only one backed by a passing certified claim. Entry Quality and Risk openly show 'Not yet proven', keeping the picture honest.",
+      "point_out": "Leadership A 94.58 marked 'Proven' alongside Entry Quality 23.66 and Risk 53.11 both marked 'Not yet proven'",
+      "journey": "J-02",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/MU" },
+      "expect": { "text": "94.58" }
+    },
+    {
+      "n": 5,
+      "title": "Proof drill-down — expanded out-of-sample panel",
+      "narration": "The 'Why proven?' button expands the full statistical backstory: a sealed holdout cohort of 12,297 observations, an out-of-sample edge of +6.36% beating SPY, p = 0.0004998, and the certified-claim registration date — everything needed to verify the score is not in-sample fit.",
+      "point_out": "The proof panel showing the OOS PASS verdict, holdout edge +6.36%, p = 0.0004998, cohort size 12,297, and the 'View backing evidence row →' link",
+      "journey": "J-02",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Why proven?" } },
+      "expect": { "text": "holdout edge +6.36%" }
+    }
+  ]
+}

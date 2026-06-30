@@ -4,53 +4,53 @@
       "id": "J-01",
       "name": "Every score shows an evidence status",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-5",
-      "last_passing_iter": "goal-mcp-loop-iter-3",
+      "last_verified_iter": "goal-mcp-loop-iter-6",
+      "last_passing_iter": "goal-mcp-loop-iter-6",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-5-evidence/UT-04-stocks-badges.png",
-      "note": "STILL passing — re-confirmed with a fresh iter-5 pixel that the evaluator personally inspected (UT-04: /stocks 120/120 leaderboard; every row shows Leadership A/B + a 'Proven' chip, Entry Quality + Risk both 'Not yet proven'; Market Regime 'Risk-on 76.05'). CAVEAT: this pixel came from the QA agent's PARALLEL Chrome MCP lane (qa-phase Branch-QA), NOT the canonical browser-qa-agent lane — the canonical lane never ran this iteration (Branch-UI aborted at ui-test-design; see J-04 note + engine.log L405-408), so reports/phase-goal-mcp-loop-iter-5-ui-test-results.md does NOT exist. last_passing_iter therefore stays at the last CANONICAL pass (iter-3 UT-02). No regression."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-6-evidence/UT-J-01-stocks-badges.png",
+      "note": "Passing — re-verified on the CANONICAL browser-qa-agent lane for the first time since iter-3 (engine.log L479-483; ui-test-results.md UT-J-01 PASS). Personally inspected UT-J-01-stocks-badges.png (md5 617da05): /stocks 120/120 rows; every Leadership badge reads 'Proven' (A/B grades), every Entry Quality + Risk reads 'Not yet proven'; Market Regime 'Risk-on 76.05'. No score on the leaderboard is presented without a visible evidence status. last_passing now advances to the canonical iter-6 pass."
     },
     "J-02": {
       "id": "J-02",
       "name": "Drill into the proof behind a score",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-3",
-      "last_passing_iter": "goal-mcp-loop-iter-3",
+      "last_verified_iter": "goal-mcp-loop-iter-6",
+      "last_passing_iter": "goal-mcp-loop-iter-6",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-3-evidence/UT-08-proof-panel.png",
-      "note": "STILL passing (no regression; zero apps/ diff this iter), but NOT freshly re-verified. The iter-5 parallel-lane screenshot UT-05 shows only the MU detail SCORE CARDS (Leadership 94.41 'Proven', Entry Quality 22.44 + Risk 54.26 'Not yet proven') captured at a HISTORICAL as-of 2026-05-28 — it does NOT show the expanded proof-panel drill-down (the out-of-sample test + control comparison + certified-claim id + registration date), which renders below the fold and was not scrolled into frame (the standing iter-3 lesson). So J-02's actual acceptance (the proof drill-down) remains last pixel-verified at canonical iter-3 UT-08; last_verified/last_passing stay iter-3. Re-capture the EXPANDED panel in iter-6."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-6-evidence/UT-J-02-proof-panel.png",
+      "note": "Passing — the canonical lane tested J-02 (UT-J-02 PASS: 'Why proven?' clicked → panel expanded showing OOS PASS +6.36% / p=0.0004998 / sealed holdout cohort 12,297 / +6.36% vs SPY / leadership_score registered 2026-06-30 / 'View backing evidence row ->'). CAVEAT (audit T1, personally confirmed): UT-J-02-proof-panel.png (md5 80c7cdd, unique) frames only the three MU score cards (Leadership 94.58 'Proven', Entry Quality 23.66 + Risk 53.11 'Not yet proven'); the EXPANDED drill-down panel renders below the fold and was NOT scrolled into frame — the recurring iter-3 lesson. Functionally passing and corroborated three ways: (1) the narrative's 12,297/+6.36%/p=0.0004998 byte-match certified-claims.jsonl line 1 (cohort_n 12297, holdout_edge 0.06359, p 0.0004998); (2) the identical proof content (OOS PASS +6.36%, control +6.36% vs SPY, registered 2026-06-30) is visible on the personally-inspected /evidence leadership_score row; (3) the inline expanded panel was pixel-proven at canonical iter-3 UT-08 and the feature is frozen (zero apps/ diff → no regression possible). Non-blocking carry-forward: scroll the inline panel into frame next capture."
     },
     "J-03": {
       "id": "J-03",
       "name": "Unproven / noise signals are honestly marked",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-5",
-      "last_passing_iter": "goal-mcp-loop-iter-3",
+      "last_verified_iter": "goal-mcp-loop-iter-6",
+      "last_passing_iter": "goal-mcp-loop-iter-6",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-5-evidence/UT-04-stocks-badges.png",
-      "note": "STILL passing — re-confirmed by the same personally-inspected iter-5 pixel as J-01 (UT-04): every leaderboard row's Entry Quality + Risk read 'Not yet proven' (never a confident number), Leadership alone reads 'Proven', and the signal=null Breakout-watch regime claim lights NO inline per-stock score badge (anti-goal #1 preserved). CAVEAT: parallel QA lane, not the canonical lane (see J-01 note); last_passing stays canonical iter-3 UT-06. No regression."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-6-evidence/UT-J-03-not-yet-proven.png",
+      "note": "Passing — re-verified on the CANONICAL lane (UT-J-03 PASS). Personally inspected the /stocks frame (md5 617da05, shared with UT-J-01): every leaderboard row's Entry Quality + Risk read 'Not yet proven' (never a confident number), Leadership alone reads 'Proven'; the signal=null Breakout-watch claim lights NO inline per-stock score badge (anti-goal #1 upheld). On /stocks/MU, Entry Quality 23.66 + Risk 53.11 both read 'Not yet proven'. last_passing advances to canonical iter-6."
     },
     "J-04": {
       "id": "J-04",
       "name": "Regime-conditioned evidence",
-      "status": "partial",
-      "last_verified_iter": "goal-mcp-loop-iter-5",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-6",
+      "last_passing_iter": "goal-mcp-loop-iter-6",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-5-evidence/UT-07-regime-evidence.png",
-      "note": "STILL partial — held for the SECOND iteration on the same verification-integrity gap. Content re-confirmed correct via the parallel lane: UT-07 (personally inspected) shows /evidence row 2 'PASS Breakout-watch setup [Regime: Risk-on]', subtitle 'Out-of-sample edge in the Risk-on regime', OOS verdict 'PASS holdout edge +6.12%' (p=0.0004998 < alpha/2=0.025), control +6.12% vs SPY, registered 2026-06-30, 'Backs: Research event-study lab ->' — all byte-identical to certified-claims.jsonl line 2 (holdout_edge 0.06124590639955655, p 0.0004997501249375312, register_date 2026-06-30, signal=null). Gate PASS; feature delivered + certified since iter-4. WHY STILL NOT 'passing': the CANONICAL browser-qa-agent lane did not run AGAIN, and this time it never even reached the port-binding step the iter-5 dev fix targeted. Root cause (engine.log L402-413): the post-dev parallel Branch-UI chain ABORTED at ui-test-design because ui-impact's user-visible-changes report was reported written (L402-404) yet 'not found' by ui-test-design (L406) -> browser-qa-agent / ux-regression / closure never executed; AND the 'invalid step post_dev_parallel_complete' status-update bug (L412-413, also iter-4 L343) defeated the sequential-retry fallback. So reports/phase-goal-mcp-loop-iter-5-ui-test-results.md is ABSENT (not all-SKIP as in iter-4 — wholly absent), and the Dashboard regime-affordance step was not pixel-captured this iter either (no Dashboard UT screenshot; only /stocks UT-04 shows the 'Risk-on 76.05' strip). To flip to passing, iter-6 must fix the Branch-UI ui-impact->ui-test-design report handoff + the invalid-step status bug so the canonical lane runs and renders UT-* J-04 evidence (Dashboard affordance -> /evidence regime row, scrolled into frame)."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-6-evidence/UT-J-04-regime-evidence.png",
+      "note": "FLIPPED partial -> passing. Held partial for two iterations purely on the canonical-lane verification gap (feature delivered + certified since iter-4); that gap is now resolved. The CANONICAL browser-qa-agent lane ran this iteration (engine.log L479-483) and rendered J-04 across two personally-inspected pixels: UT-J-04-dashboard.png (Market Regime 'Risk-on 76.05 / 100' + 'See evidence proven in this regime ->' affordance whose href is /evidence) and UT-J-04-regime-evidence.png (/evidence row 2 'PASS Breakout-watch setup [Regime: Risk-on]', subtitle 'Out-of-sample edge in the Risk-on regime', OOS verdict 'PASS holdout edge +6.12%' p=0.0004998 < alpha/2=0.025, control +6.12% vs SPY, registered 2026-06-30, 'Backs: Research event-study lab ->') — scrolled fully into frame. All values byte-match certified-claims.jsonl line 2 (holdout_edge 0.06125, regime Risk-on, signal=null, cohort_n 4720). Evidence is regime-scoped and clearly labeled with the regime it holds in."
     },
     "J-05": {
       "id": "J-05",
       "name": "Audit the evidence ledger",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-5",
-      "last_passing_iter": "goal-mcp-loop-iter-4",
+      "last_verified_iter": "goal-mcp-loop-iter-6",
+      "last_passing_iter": "goal-mcp-loop-iter-6",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-5-evidence/UT-07-regime-evidence.png",
-      "note": "STILL passing — list integrity re-confirmed (personally inspected UT-07): BOTH claim rows render (leadership_score 'PASS' +6.36% 'Backs: Stocks leaderboard ->'; Breakout-watch 'PASS' [Regime: Risk-on] +6.12% 'Backs: Research event-study lab ->'), so the new regime row did NOT break the list and both byte-match the ledger. CAVEAT: the J-05 step-3 ROUND-TRIP (click a claim -> linkback to the surface -> and back) was NOT freshly captured — UT-09-evidence-linkback.png is BYTE-IDENTICAL to UT-07 (md5 cfe695e8ea0e8ac6e6bb2310d2a3555c on both; same static /evidence frame, no click demonstrated). So the round-trip remains last pixel-verified at canonical iter-3 UT-14; last_passing stays iter-4. Parallel lane, not canonical (see J-01 note). No regression."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-6-evidence/UT-J-05-evidence-roundtrip.png",
+      "note": "Passing — re-verified on the CANONICAL lane (UT-J-05 PASS). Both certified claims render on /evidence (personally inspected, md5 cfe695e): leadership_score 'PASS' +6.36% with hypothesis chips, OOS verdict, control +6.36% vs SPY, registered 2026-06-30, 'Backs: Stocks leaderboard ->'; and Breakout-watch '[Regime: Risk-on]' 'PASS' +6.12%, 'Backs: Research event-study lab ->' — both byte-match the ledger. The step-3 ROUND-TRIP is captured as a DISTINCT frame this iter (iter-6 DoD requirement): UT-J-05-evidence-roundtrip.png (md5 617da05 = the /stocks backing surface landed on after clicking 'Backs: Stocks leaderboard ->') is NOT a byte-duplicate of the /evidence list frame (cfe695e) — fixing the iter-5 md5-identical-dup defect. Audit independently confirmed the linkback hrefs (/stocks, /research/event-study)."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-06-30T05:30:00Z"
+  "updated_at": "2026-06-30T06:30:00Z"
 }
