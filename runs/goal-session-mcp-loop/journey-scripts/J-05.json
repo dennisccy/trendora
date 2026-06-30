@@ -1,12 +1,13 @@
 {
   "schema_version": 1,
   "journey": "J-05",
-  "name": "Evidence ledger page renders honest empty state with claim-row layout",
+  "name": "Audit the evidence ledger — leadership_score claim row visible",
   "default_timeout_ms": 8000,
   "steps": [
-    {"n": 1, "journey": "J-05", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "Stock Leaderboard"}},
-    {"n": 2, "journey": "J-05", "action": {"type": "click", "target": {"role": "link", "name": "Evidence"}}, "expect": {}},
-    {"n": 3, "journey": "J-05", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "No certified claims yet"}},
-    {"n": 4, "journey": "J-05", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Forward-walk score-to-date"}}
+    {"n": 1, "journey": "J-05", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Evidence"}},
+    {"n": 2, "journey": "J-05", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "leadership_score"}},
+    {"n": 3, "journey": "J-05", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "PASS"}},
+    {"n": 4, "journey": "J-05", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "+6.36%"}},
+    {"n": 5, "journey": "J-05", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "2026-06-30"}}
   ]
 }

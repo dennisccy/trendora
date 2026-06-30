@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-3",
+  "base_url": "http://localhost:3255",
+  "iteration": 3,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Stocks leaderboard — Proven badges across all 120 rows",
+      "narration": "The Stocks leaderboard ranks every security by its factor scores. The Leadership column carries a bright teal 'Proven' chip on every single row, marking the one signal that has passed rigorous out-of-sample testing. Entry Quality and Risk show a quieter grey 'Not yet proven' chip — honest about what has not yet been certified.",
+      "point_out": "The health badge in the header reads 'Ready'. Every row in the Leadership column glows teal-green, while Entry Quality and Risk stay a muted grey.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "Proven" }
+    },
+    {
+      "n": 2,
+      "title": "Stock detail for MU — three score cards",
+      "narration": "Clicking any ticker opens its score card page. MU shows three cards: Leadership graded A at 94.58, Entry Quality, and Risk. Only the Leadership card carries the teal 'Proven' badge — the other two are honestly marked 'Not yet proven', keeping the display accurate rather than overpromising.",
+      "point_out": "Three score cards are visible on the page. Only Leadership shows 'Proven'. Entry Quality and Risk show 'Not yet proven'. No error message and no blank screen.",
+      "journey": "J-02",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "MU" } },
+      "expect": { "text": "Why proven?" }
+    },
+    {
+      "n": 3,
+      "title": "Why proven? — the out-of-sample proof panel",
+      "narration": "Clicking 'Why proven?' on the Leadership card reveals the complete statistical evidence: a PASS verdict, +6.36% holdout edge, p-value near 0.0005 across 12,297 observations, all measured against the SPY benchmark. This is the full proof chain shown in plain language, not marketing copy.",
+      "point_out": "The expanded panel shows PASS, +6.36%, p ≈ 0.0005, n = 12,297, and 'vs SPY'. All values are drawn live from the API.",
+      "journey": "J-02",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Why proven?" } },
+      "expect": { "text": "PASS" }
+    },
+    {
+      "n": 4,
+      "title": "Evidence ledger — certified claim for leadership_score",
+      "narration": "Inside the proof panel, 'View backing evidence row' jumps straight to the Evidence ledger, anchored to the leadership_score certified claim. The row shows all five required fields: the hypothesis statement, PASS verdict, +6.36% holdout edge, SPY benchmark control, and registration date — nothing blank, nothing placeholder.",
+      "point_out": "The ledger row shows the full hypothesis text, PASS verdict, +6.36% edge, VS SPY, and registration date 2026-06-30. Every field is populated.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "View backing evidence row →" } },
+      "expect": { "text": "leadership_score" }
+    },
+    {
+      "n": 5,
+      "title": "Round-trip complete — back to the leaderboard",
+      "narration": "Clicking 'Backs: Stocks leaderboard' on the evidence row returns you to the full ranked list with no broken links and no missing data. The complete circuit — leaderboard, stock detail, proof panel, evidence ledger, back to leaderboard — closes cleanly in five steps.",
+      "point_out": "You are back on the /stocks leaderboard. Leadership shows teal 'Proven' chips across all 120 rows, exactly as when the tour started.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Backs: Stocks leaderboard →" } },
+      "expect": { "text": "Proven" }
+    }
+  ]
+}

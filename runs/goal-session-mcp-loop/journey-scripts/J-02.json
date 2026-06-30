@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "journey": "J-02",
+  "name": "Drill into the proof behind a proven score",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-02", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "Stock Leaderboard"}},
+    {"n": 2, "journey": "J-02", "action": {"type": "click", "target": {"role": "link", "name": "MU"}}},
+    {"n": 3, "journey": "J-02", "action": {"type": "goto", "url": "/stocks/MU"}, "expect": {"text": "Why proven?"}},
+    {"n": 4, "journey": "J-02", "action": {"type": "click", "target": {"role": "button", "name": "Why proven?"}}},
+    {"n": 5, "journey": "J-02", "action": {"type": "goto", "url": "/stocks/MU"}, "expect": {"text": "PASS"}},
+    {"n": 6, "journey": "J-02", "action": {"type": "goto", "url": "/stocks/MU"}, "expect": {"text": "+6.36%"}},
+    {"n": 7, "journey": "J-02", "action": {"type": "goto", "url": "/stocks/MU"}, "expect": {"text": "12,297"}}
+  ]
+}

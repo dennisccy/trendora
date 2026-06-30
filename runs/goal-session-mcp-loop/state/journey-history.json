@@ -4,31 +4,31 @@
       "id": "J-01",
       "name": "Every score shows an evidence status",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-1",
-      "last_passing_iter": "goal-mcp-loop-iter-1",
+      "last_verified_iter": "goal-mcp-loop-iter-3",
+      "last_passing_iter": "goal-mcp-loop-iter-3",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-1-evidence/UT-02-result.png",
-      "note": "Carried from iter-1 (verified passing there). NOT re-verified in iter-2: the browser-QA lane SKIPPED every test (status.json browser_checks_run=false; frontend stuck on 'Checking backend...'). The lone iter-2 screenshot (TC-01-stocks-page.png) shows an empty leaderboard with no rows/badges — a harness frontend->backend connectivity failure, NOT a code regression (next build, tsc --noEmit, units, and /api/evidence curl all green). Re-confirm the Leadership 'Proven' badge + others 'Not yet proven' in iter-3."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-3-evidence/UT-02-result.png",
+      "note": "RE-CONFIRMED FRESH in iter-3 after the iter-2 verification gap (iter-2 browser lane SKIPPED). UT-02-result.png shows a real populated /stocks leaderboard: 120/120 rows, health badge 'Ready', each row's Leadership column carries a green 'Proven' chip (rgb 79,209,197) and Entry Quality + Risk each carry a muted 'Not yet proven' chip (rgb 91,102,119). No displayed score lacks a status. Visually verified, not inferred."
     },
     "J-02": {
       "id": "J-02",
       "name": "Drill into the proof behind a score",
-      "status": "unknown",
-      "last_verified_iter": null,
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-3",
+      "last_passing_iter": "goal-mcp-loop-iter-3",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": null,
-      "note": "TARGETED iter-2 and structurally unblocked: gate certified leadership_score (gate-post-decompose.json blocked=false PASS), the ledger entry carries signal=leadership_score, /api/evidence serves proven_signals.leadership_score.proven==true (curl TC-13), and the ScoreProofPanel ('Why proven?' disclosure: OOS test + vs-SPY control + claim id/date, read verbatim, fail-safe) shipped + unit-tested + builds clean. But NO browser verification (browser lane SKIPPED, frontend 'Checking backend...'). Per evaluator rule, a user-facing journey is not 'passing' on build+units+API alone — set unknown until browser-proven in iter-3."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-3-evidence/UT-08-proof-panel.png",
+      "note": "NEWLY PASSING (was unknown). /stocks/MU renders the Leadership 'Proven' card with a 'Why proven?' toggle (UT-07/UT-08/UT-16); the in-panel 'View backing evidence row -> /evidence#signal-leadership_score' link is present and navigates (UT-09). The panel's OOS values (PASS, holdout edge +6.36%, p=0.0004998, cohort n=12,297, vs SPY control, claim id leadership_score, registered 2026-06-30) are browser-proven byte-identical on the /evidence ledger (UT-12) and corroborated by DOM-text assertions. NOTE/weakness: the screenshots named for the expanded panel (UT-07/UT-08/TC-05/UT-16) are byte-identical full-page-top frames that stop just above the panel (it renders below the fold) -- the in-page expanded panel was confirmed via DOM + the identical /evidence render + the navigating linkback, not via a pixel capture of the panel itself. Zero frontend diff this iter, so the iter-2-unit-tested ScoreProofPanel is unchanged."
     },
     "J-03": {
       "id": "J-03",
       "name": "Unproven / noise signals are honestly marked",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-1",
-      "last_passing_iter": "goal-mcp-loop-iter-1",
+      "last_verified_iter": "goal-mcp-loop-iter-3",
+      "last_passing_iter": "goal-mcp-loop-iter-3",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-1-evidence/UT-08-result.png",
-      "note": "Carried from iter-1 (verified passing there). NOT re-verified in iter-2 (browser lane SKIPPED). No regression evidence: Entry Quality + Risk are absent from proven_signals so they remain 'Not yet proven' by construction; the panel is fail-safe (renders nothing for unproven signals). Re-confirm in iter-3 that only Leadership reads 'Proven' and the other two stay honest."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-3-evidence/UT-06-result.png",
+      "note": "RE-CONFIRMED FRESH in iter-3. Entry Quality + Risk read muted 'Not yet proven' on both /stocks (UT-02, all 120 rows) and /stocks/MU detail (UT-06: Entry Quality E/23.66, Risk E/53.11). UT-10/UT-11 confirm only ONE 'Why proven?' toggle on the detail page (Leadership); Entry Quality and Risk have no drill-down. Only Leadership reads 'Proven'; the other two are honestly flagged, never confident numbers."
     },
     "J-04": {
       "id": "J-04",
@@ -38,19 +38,19 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": null,
-      "note": "Correctly OUT OF SCOPE iter-2 (spec deferred to iter-3+ to avoid risking the first PASS on a thin regime slice). Requires a regime-scoped certified claim labeled with the regime it holds in. Carry forward unknown."
+      "note": "Still UNKNOWN and correctly OUT OF SCOPE iter-3 (spec deferred). No regime-scoped certified claim exists yet -- only the broad leadership_score (decile=10) claim is in the ledger, and it carries no regime label. J-04 requires a narrow, regime-conditioned ## Evidence Claim that earns a referee PASS at the post-decompose gate, then surfaced labeled with the regime it holds in. This is the SOLE remaining journey before GOAL_ACHIEVED becomes reachable."
     },
     "J-05": {
       "id": "J-05",
       "name": "Audit the evidence ledger",
-      "status": "partial",
-      "last_verified_iter": "goal-mcp-loop-iter-1",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-3",
+      "last_passing_iter": "goal-mcp-loop-iter-3",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-1-evidence/UT-06-07-result.png",
-      "note": "Still PARTIAL. Surface verified in iter-1 (nav reachable, /evidence renders, all five claim-row fields present, linkback text present). The ledger now HAS its first certified claim and /api/evidence serves it (curl TC-13), so the data for steps 2-3 (populated row + click-through linkback) finally exists — but the populated-row render and the linkback round-trip were NOT browser-verified in iter-2 (browser lane SKIPPED). Complete end-to-end in iter-3."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-3-evidence/UT-12-evidence-page.png",
+      "note": "NEWLY PASSING (was partial). /evidence (nav-reachable in 1 click) renders the populated leadership_score PASS claim row with all five required fields (UT-12): hypothesis selectors (decile=10/direction=positive/factor=leadership_score/horizon=20/kind=factor/slice_kind=decile), OOS verdict 'PASS - holdout edge +6.36%' (p=0.0004998 < 0.05 after multiple-testing deflation), control comparison '+6.36% vs SPY', registration date 2026-06-30, and forward-walk score-to-date 'Pending - monitored as new data matures' (honest, non-fabricated; claim registered today). Linkback round-trips both ways: 'Backs: Stocks leaderboard ->' lands on the populated 120-row leaderboard (UT-14), and the leaderboard 'Proven' badge -> /evidence#signal-leadership_score (UT-09). End-to-end auditable."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-06-30T01:08:00Z"
+  "updated_at": "2026-06-30T02:42:00Z"
 }
