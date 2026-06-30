@@ -65,6 +65,7 @@ from app.engine.samples import (
     compute_samples,
 )
 from app.engine.scanner import _latest_stored_run_date
+from app.engine.triad_scan import scan_product_triad as _scan_product_triad
 from app.engine.snapshot_serving import (
     dashboard_payload,
     resolved_date,
@@ -349,6 +350,31 @@ def drill_samples(
         family=family, velocity_sign=velocity_sign,
         regime_decile=regime_decile, severity_decile=severity_decile, factor_decile=factor_decile,
     )
+
+
+# ==================================================================================================
+# Triad scan — the analyst loop's quantitative core. READ-ONLY (never writes the ledger, never spends
+# the certification alpha budget): ranks factor cross-over cohorts by the triad and hold-out-screens
+# the top out-of-sample, so the goal-proposer can turn survivors into enhancement proposals.
+# ==================================================================================================
+def scan_product_triad(
+    session: Session,
+    horizons: Optional[list[int]] = None,
+    top_k: Optional[int] = None,
+    asof: Optional[str] = None,
+) -> dict:
+    """The analyst-loop triad scan over the factor cross-over space. Ranks ``(factor, horizon, decile)``
+    cohorts by the triad (higher mean forward return / shallower mean max-drawdown / higher frequency),
+    hold-out-screens the top cohorts out-of-sample, and returns the screened table + the ``survivors``
+    (proposal candidates whose return edge persisted). REUSES ``compute_factor_lab`` verbatim (the
+    canonical Factor-Lab read — recomputes nothing, so the scan's numbers match the /research UI).
+    READ-ONLY: never writes the certified-claims ledger and never spends the certification alpha budget.
+    Optional ``asof`` scopes the pool to snapshots dated <= D. Raises ValueError when no price data."""
+    cfg = get_config()
+    if latest_data_date(session) is None:
+        raise ValueError("no price data available")
+    cutoff = resolved_date(session, asof, cfg) if asof else None
+    return _scan_product_triad(session, cfg, horizons=horizons, top_k=top_k, as_of=cutoff)
 
 
 # ==================================================================================================

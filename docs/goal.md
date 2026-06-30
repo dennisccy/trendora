@@ -125,6 +125,12 @@ ones, with honest "this isn't proven yet" markers when the evidence is thin or f
     3. Click a claim and assert it links back to the surface(s) whose badge it backs
   - Acceptance: the user can audit every "proven" claim the platform relies on, end to end.
 
+<!-- Continuous-improvement auto-journeys: the goal-proposer appends NEW Must-have journeys ONLY
+     between the two markers below (see the goal-self-extension skill). The human-authored journeys
+     above and the Anti-goals below are never machine-edited. An empty block = nothing auto-proposed yet. -->
+<!-- AUTO:journeys -->
+<!-- /AUTO:journeys -->
+
 ## Anti-goals
 
 - A score, ranking, or "edge" MUST NOT be presented as proven/confident unless it is backed by a

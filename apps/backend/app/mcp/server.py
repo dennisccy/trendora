@@ -162,6 +162,21 @@ def query_event_study(
 
 
 @mcp.tool()
+def scan_product_triad(
+    horizons: Optional[list[int]] = None,
+    top_k: Optional[int] = None,
+    as_of: Optional[str] = None,
+) -> dict:
+    """Triad scan over the factor cross-over space (the analyst loop's quantitative core): ranks
+    (factor, horizon, decile) cohorts by higher forward return / shallower max-drawdown / higher
+    frequency, hold-out-screens the top out-of-sample, and returns the screened table + the `survivors`
+    (cohorts whose return edge persisted). Reuses the canonical Factor-Lab read (recomputes nothing);
+    READ-ONLY — never writes the certified-claims ledger. Optional `as_of` scopes to snapshots <= D."""
+    with _session() as session:
+        return tools.scan_product_triad(session, horizons=horizons, top_k=top_k, asof=as_of)
+
+
+@mcp.tool()
 def drill_samples(
     kind: str,
     horizon: Optional[int] = None,

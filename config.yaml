@@ -997,6 +997,30 @@ evidence:
   ledger_path: runs/goal-session-mcp-loop/state/certified-claims.jsonl
 
 # ----------------------------------------------------------------------------------------
+# Analyst-loop triad scan (app.engine.triad_scan / scan_product_triad). Tunables for the
+# deterministic scan that ranks factor cross-over cohorts by the "triad" (higher forward
+# return / shallower max-drawdown / higher frequency) and hold-out-screens the top before a
+# pattern becomes an enhancement proposal. Consumed VERBATIM by triad_scan (no literal in
+# calc code — anti-goal: No magic numbers). OPTIONAL: the module falls back to its own
+# defaults when this block is absent, so a config predating it still loads + behaves the same.
+#   weights   — relative weight of each triad leg in the z-scored cell score
+#   top_k     — how many top-ranked cells are hold-out-screened each scan
+#   horizons  — which forward horizons to scan (default: walk_forward.default_horizon)
+#   screen    — the lightweight hold-out filter: base_edge_floor + haircut_coef·ln(batch)
+#               is the per-date holdout excess a cell must clear to survive (the multiple-
+#               testing haircut that grows with the number of cells scanned together).
+# ----------------------------------------------------------------------------------------
+triad:
+  weights:
+    return: 1.0
+    drawdown: 1.0
+    frequency: 0.5
+  top_k: 20
+  screen:
+    base_edge_floor: 0.0
+    haircut_coef: 0.001
+
+# ----------------------------------------------------------------------------------------
 # iter-5 CONSUMED — Scanner snapshots. The historical as-of dates the scanner persists an
 # immutable snapshot for on first boot (the LATEST data date is added programmatically in
 # bootstrap_runs, NOT listed here). Both dates below are real seed dates the regime engine
