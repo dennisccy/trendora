@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "journey": "J-08",
+  "name": "Multi-factor combination certified edge surfaced on the Combination lab + Evidence",
+  "default_timeout_ms": 10000,
+  "steps": [
+    {
+      "n": 1,
+      "journey": "J-08",
+      "action": {"type": "goto", "url": "/research/factor-combination"},
+      "expect": {"text": "Research — Multi-factor combination"},
+      "narration": "Open the multi-factor combination lab — the page heading confirms we are in the right place."
+    },
+    {
+      "n": 2,
+      "journey": "J-08",
+      "action": {"type": "fill", "target": {"testid": "condition-factor-1"}, "text": "Proximity to 52-week high"},
+      "narration": "Change leg 2 factor from ATR % (the default) to Proximity to 52-week high (high_proximity) — this selects the certified combination leg."
+    },
+    {
+      "n": 3,
+      "journey": "J-08",
+      "action": {"type": "click", "target": {"css": "[data-testid='condition-side-1'] button:first-child"}},
+      "narration": "Click the Top button for leg 2 side (leg 2 defaults to Bottom; the certified combination needs top:tertile)."
+    },
+    {
+      "n": 4,
+      "journey": "J-08",
+      "action": {"type": "click", "target": {"testid": "combination-evidence-badge"}},
+      "expect": {"text": "rs_spy_3m × high_proximity"},
+      "narration": "Click the Proven badge for the rs_spy_3m × high_proximity composite — it deep-links to /evidence#combination-high_proximity-rs_spy_3m-h20 and the combination row should be in view."
+    },
+    {
+      "n": 5,
+      "journey": "J-08",
+      "action": {"type": "goto", "url": "/evidence"},
+      "expect": {"text": "rs_spy_3m × high_proximity — composite"},
+      "narration": "Navigate to the Evidence ledger and confirm the 6th combination row is rendered with the title 'rs_spy_3m × high_proximity — composite', proving the claim is in the canonical ledger."
+    }
+  ]
+}

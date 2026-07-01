@@ -1,0 +1,26 @@
+{
+  "phase": "goal-mcp-loop-iter-14",
+  "status": "complete",
+  "current_step": "dev_complete",
+  "updated_at": "2026-07-01T10:55:11.000000Z",
+  "started_at": "2026-07-01T11:37:00.000000Z",
+  "cli": "claude",
+  "depth": "lean",
+  "mode": "next",
+  "target_journeys": [
+    "J-08"
+  ],
+  "blockers": [],
+  "changed_files": [
+    "docs/handoffs/goal-mcp-loop-iter-14-dev.md",
+    "runs/goal-mcp-loop-iter-14/status.json",
+    "runs/goal-mcp-loop-iter-14/dev-verify-combination-lab-selection.png",
+    "runs/goal-mcp-loop-iter-14/dev-verify-evidence-ledger-6rows.png",
+    "runs/goal-mcp-loop-iter-14/dev-verify-evidence-top.png"
+  ],
+  "tests_run": true,
+  "tests_result": "Frontend evidence-badge resolver suite GREEN: `npx tsx lib/evidence.test.ts` -> 37 passed, 0 failed; expectation tests UNEDITED (byte-identical to HEAD). Backend `GET /api/evidence` live-checked (200, exactly 6 claims; combination row proven=true/signal=null, holdout_edge=0.046931901591708916, control_excess=0.046931901591708916, p_value=0.0009995002498750624, register_date=2026-07-01; proven_signals keys=['leadership_score'] only). Verification-only iteration: NO app/engine/ledger/config code changed; certified-claims.jsonl byte-identical (6 rows).",
+  "browser_checks_run": true,
+  "browser_checks_result": "Live dev-verification on :8255/:3255 (fresh prod build via next start). J-08: /research/factor-combination default (atr_pct) badge data-proven=false 'Not yet proven'; composed rs_spy_3m:top:quintile x high_proximity:top:tertile @ h20 -> badge data-proven=true, data-legs contains both factors, text 'Proven', href=/evidence#combination-high_proximity-rs_spy_3m-h20. Deep-link (badge click AND cold nav from /stocks) lands /evidence and the committed hash-scroll useEffect auto-scrolls (scrollY=1034=max) so the 6th combination ClaimRow is FULLY in viewport (rect top=591/bottom=876/vh=900) — the exact iter-13 failure now fixed. Displayed values byte-match ledger (+4.69% edge, +4.69% SPY control, p=0.0009995 < alpha/6=0.008333, register 2026-07-01, kind=combination, ledger=canonical, Backs: Multi-factor combination lab). No 'Backend unavailable' pill anywhere. /stocks: 0 combination-badge leakage, 360 inline evidence-status badges (J-01), Proven/Not-yet-proven mix. Committed fix sufficient; contingency NOT triggered. NOTE: viewport screenshots of /evidence go blank when programmatically scrolled below the fold (headless-Chrome capture artifact, not a product defect) — full-page capture (dev-verify-evidence-ledger-6rows.png) shows all 6 rows cleanly; browser-qa lane should use full-page/element-clip captures for the scrolled-into-frame evidence.",
+  "next_action": "review"
+}

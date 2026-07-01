@@ -4,83 +4,83 @@
       "id": "J-01",
       "name": "Every score shows an evidence status",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-13",
-      "last_passing_iter": "goal-mcp-loop-iter-13",
+      "last_verified_iter": "goal-mcp-loop-iter-14",
+      "last_passing_iter": "goal-mcp-loop-iter-14",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-13-evidence/UT-12-stocks-result.png",
-      "note": "Passing — NO regression, re-verified this iter as a regression gate (UT-12 PASS). iter-13 surfaces a SIGNAL-LESS combination claim: `combination-evidence-badge` count = 0 on both /stocks and /stocks/SPY; inline score badges still use `data-testid=evidence-badge` with the same 1-Proven+2-Not-yet-proven-per-stock pattern; `proven_signals` stays exactly {leadership_score} (backend TC-02 + dev live-endpoint). The shared lib/evidence.ts change is additive (new combination branch only; score branch byte-identical, 37/37 unit tests). No /stocks leakage."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-14-evidence/UT-J-08-12-evidence-fullpage.png",
+      "note": "Passing — NO regression. Zero app-diff since iter-13's pixel-verified pass (git diff HEAD = only telemetry.jsonl). Dev-live DOM re-check on /stocks: 360 inline evidence-status badges (Proven/Not-yet-proven mix), 0 combination-evidence-badge elements (no leakage), no 'Backend unavailable' pill. The leadership_score backing claim ('PASS · +6.36% · Backs: Stocks leaderboard') renders live in UT-J-08-12. proven_signals stays {leadership_score}. No dedicated fresh /stocks screenshot this iter, but the byte-identical /stocks surface + live re-check leave no regression mechanism."
     },
     "J-02": {
       "id": "J-02",
       "name": "Drill into the proof behind a score",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-13",
-      "last_passing_iter": "goal-mcp-loop-iter-13",
+      "last_verified_iter": "goal-mcp-loop-iter-14",
+      "last_passing_iter": "goal-mcp-loop-iter-14",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-13-evidence/UT-12-stocks-result.png",
-      "note": "Passing — NO regression (UT-12 PASS). /stocks/SPY shows 0 combination-evidence-badge elements and no combination text; the leadership_score proof drill-down still reads the canonical /api/evidence payload (leadership_score PASS +6.36%, git-UNMODIFIED L1). The signal-less combination claim backs NO per-stock badge. lib/evidence.ts score/factor/event-study branches untouched (audit T2)."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-14-evidence/UT-J-08-12-evidence-fullpage.png",
+      "note": "Passing — NO regression. The leadership_score proof drill reads the canonical /api/evidence payload; its PASS row (hypothesis decile=10/direction=positive/factor=leadership_score/horizon=20, control vs SPY +6.36%, 'Backs: Stocks leaderboard') renders live in UT-J-08-12. 0 combination-badge leakage on /stocks/{ticker} (dev-live). Zero app-diff since iter-13; lib/evidence.ts score/factor branches untouched (37/37 unit tests, expectation tests UNEDITED)."
     },
     "J-03": {
       "id": "J-03",
       "name": "Unproven / noise signals are honestly marked",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-13",
-      "last_passing_iter": "goal-mcp-loop-iter-13",
+      "last_verified_iter": "goal-mcp-loop-iter-14",
+      "last_passing_iter": "goal-mcp-loop-iter-14",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-13-evidence/UT-03-result.png",
-      "note": "Passing — NO regression, and REINFORCED this iter. The honest-marking law held under the new combination surface: every non-certified 2-factor combination reads 'Not yet proven' (UT-04/UT-08/UT-09 DOM PASS; the UT-03 screenshot literally shows the DEFAULT failed pair rs_spy_3m × atr_pct composite row rendering the muted 'Not yet proven' badge). proven_signals stays {leadership_score}; the two 'obvious' anchor combinations FAILED OOS (negative holdout) and are honestly NOT surfaced. Canonical /evidence stays strict Bonferroni; no fabricated 'Proven'."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-14-evidence/UT-J-08-02-default-not-yet-proven.png",
+      "note": "Passing — NO regression, and REINFORCED. UT-J-08-02 (md5 e63c33d7, distinct from the Proven frame) shows the DEFAULT combination leg 2 = 'ATR % (volatility level)' Bottom/Tertile — the FAILED atr_pct pair — which the DOM confirms reads 'Not yet proven' (data-proven=false). On /evidence, ma_stack top-decile is honestly marked FAIL ('holdout edge +2.62% not significant after deflation, p=0.01949 >= alpha/3=0.01667'). No fabricated 'Proven'; canonical ledger stays strict Bonferroni."
     },
     "J-04": {
       "id": "J-04",
       "name": "Regime-conditioned evidence",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-13",
-      "last_passing_iter": "goal-mcp-loop-iter-13",
+      "last_verified_iter": "goal-mcp-loop-iter-14",
+      "last_passing_iter": "goal-mcp-loop-iter-14",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-13-evidence/UT-10-result.png",
-      "note": "Passing — NO regression (UT-10 PASS + directly re-pixel-verified: the UT-05-fail /evidence capture shows the Breakout-watch setup row rendering intact — 'Regime: Risk-on', PASS, control vs SPY +6.12%, 'Backs: Research event-study lab'). The event-study regime-scoped row is git-UNMODIFIED (certified-claims.jsonl L2). iter-13 added no regime/event-study surface."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-14-evidence/UT-J-08-12-evidence-fullpage.png",
+      "note": "Passing — NO regression. UT-J-08-12 shows the Breakout-watch setup row rendering the regime chip 'Regime: Risk-on', PASS · holdout edge +6.12%, control vs SPY +6.12%, kind=event-study/slice_kind=regime/regime=Risk-on, 'Backs: Research event-study lab'. The event-study regime-scoped claim (certified-claims.jsonl row 2) is git-UNMODIFIED."
     },
     "J-05": {
       "id": "J-05",
       "name": "Audit the evidence ledger",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-13",
-      "last_passing_iter": "goal-mcp-loop-iter-13",
+      "last_verified_iter": "goal-mcp-loop-iter-14",
+      "last_passing_iter": "goal-mcp-loop-iter-14",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-13-evidence/UT-10-result.png",
-      "note": "Passing — NO regression, and EXTENDED. The /evidence ledger now lists SIX canonical rows: my own `git diff HEAD` on certified-claims.jsonl is exactly ONE appended line (the combination PASS row 6); the prior 5 rows are byte-identical (UT-10 PASS; UT-05-fail + UT-06 pixels show rows 1-4 rendering unchanged). The 6th row renders the standard five fields verbatim (UT-06 DOM). The auditable canonical ledger stays the single source of proven-ness."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-14-evidence/UT-J-08-12-evidence-fullpage.png",
+      "note": "Passing — NO regression. UT-J-08-12 shows the /evidence ledger listing SIX canonical rows, each with the standard fields (hypothesis, out-of-sample verdict, control vs SPY, registration date, forward-walk score-to-date, Backs linkback). certified-claims.jsonl is byte-identical (6 rows) vs HEAD — the auditable canonical ledger stays the single source of proven-ness."
     },
     "J-06": {
       "id": "J-06",
       "name": "vcp_contraction top-decile certified edge surfaced on Evidence + Research factor lab",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-13",
-      "last_passing_iter": "goal-mcp-loop-iter-13",
+      "last_verified_iter": "goal-mcp-loop-iter-14",
+      "last_passing_iter": "goal-mcp-loop-iter-14",
       "first_seen_iter": "goal-mcp-loop-iter-8",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-13-evidence/UT-10-result.png",
-      "note": "Passing — NO regression (UT-10 PASS; directly re-pixel-verified in the UT-05-fail/UT-06 /evidence captures: vcp_contraction top-decile D10 h20 row renders 'PASS · holdout edge +3.33%', control vs SPY +3.33%, 'Backs: Research factor lab'). The h20 vcp claim (certified-claims.jsonl L4, divisor 4) is git-UNMODIFIED; factor-lab read path zero app-diff."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-14-evidence/UT-J-08-12-evidence-fullpage.png",
+      "note": "Passing — NO regression. UT-J-08-12 shows the vcp_contraction top-decile D10 h20 row: PASS · holdout edge +3.33%, control vs SPY +3.33%, p=0.01149 < alpha/4=0.0125 (divisor 4), 'Backs: Research factor lab'. The h20 vcp claim (certified-claims.jsonl row 4) is git-UNMODIFIED."
     },
     "J-07": {
       "id": "J-07",
       "name": "Multi-horizon certified edge surfaced (the loop sees beyond the 20-day horizon)",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-13",
-      "last_passing_iter": "goal-mcp-loop-iter-13",
+      "last_verified_iter": "goal-mcp-loop-iter-14",
+      "last_passing_iter": "goal-mcp-loop-iter-14",
       "first_seen_iter": "goal-mcp-loop-iter-9",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-13-evidence/UT-10-result.png",
-      "note": "Passing — NO regression (UT-10 confirms all prior 5 rows incl. vcp_contraction h60 present + linkbacks unchanged; UT-02 counts exactly 6 rows). The NON-20 (h60) vcp_contraction D10 canonical claim (certified-claims.jsonl L5: PASS, +8.91%, p=0.0004998, divisor 5, ledger=canonical, NO signal key) is git-UNMODIFIED. iter-13 added a NEW h20 combination row; it did not perturb h60."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-14-evidence/UT-J-08-12-evidence-fullpage.png",
+      "note": "Passing — NO regression. UT-J-08-12 shows the NON-20 vcp_contraction D10 h60 row: '60-day hold', PASS · holdout edge +8.91%, p=0.0004998 < alpha/5=0.01 (divisor 5), ledger=canonical, no signal key, 'Backs: Research factor lab'. certified-claims.jsonl row 5 is git-UNMODIFIED."
     },
     "J-08": {
       "id": "J-08",
       "name": "Multi-factor combination certified edge surfaced on the Combination lab + Evidence",
-      "status": "partial",
-      "last_verified_iter": "goal-mcp-loop-iter-13",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-14",
+      "last_passing_iter": "goal-mcp-loop-iter-14",
       "first_seen_iter": "goal-mcp-loop-iter-9",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-13-evidence/UT-05-fail.png",
-      "note": "PARTIAL this iter — the substantive capability landed and is well-supported on the data/logic channels, but J-08 is NOT cleanly browser-verified. LANDED & VERIFIED: the 6th canonical ledger entry is a genuine honest PASS (git diff = exactly 1 appended line; rs_spy_3m:top:quintile × high_proximity:top:tertile, composite, h20, holdout +4.69%, control +4.69%, p=0.0009995 < required_p=0.008333 divisor 6, ~8x margin; prior 5 byte-identical); GET /api/evidence serves it proven=true, signal=null; proven_signals stays {leadership_score}; resolveCombinationEvidence pure/read-side (37/37 unit tests); coherence COHERENCE-PASS; Review PASS; no anti-goal violation. NOT CLEAN: browser-qa OVERALL verdict FAIL (UT-05 P1 + UT-14 deep-link anchor does not scroll the /evidence row into the viewport), and phase-closure = CLOSURE-FAIL. The audit applied an additive hash-scroll useEffect to app/evidence/page.tsx AFTER the browser run (10:51) — it is UNVERIFIED (no browser-qa re-run). SCREENSHOT HYGIENE FAIL (4th recurrence, spec HARD requirement): the 'Proven' badge screenshot (UT-03, md5 e866ea14) is a relabeled DEFAULT-state frame that actually shows the FAILED rs_spy_3m × atr_pct pair reading 'Not yet proven' — no valid pixel shows the composite 'Proven' badge; UT-05-fail/UT-06 show a red 'Backend unavailable' pill. iter-14 (LEAN) must re-run browser-qa with the scroll fix in place, confirm UT-05/UT-14 flip to PASS, and capture md5-DISTINCT correctly-labeled screenshots that actually show (a) the composite 'Proven' badge for the certified selection scrolled into view and (b) the 6th /evidence combination row scrolled into view — with the backend up for the whole run. J-08 flips to passing on that clean re-run; GOAL_ACHIEVED becomes declarable then."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-14-evidence/UT-J-08-07-fullpage.png",
+      "note": "PASSING (flipped partial -> passing) — the terminal journey is now cleanly browser-verified. UT-J-08-07-fullpage.png (md5 4c740ba8) shows /research/factor-combination with leg 1 = 'Relative strength vs SPY (3m)' Top/Quintile(20%) and leg 2 CORRECTLY composed to 'Proximity to 52-week high' Top/Tertile(33%) — the CERTIFIED selection in-frame — and the 'Combined (composite rank-blend)' row (n=23929) carrying a teal 'Proven' badge (directly refutes the iter-13 relabeled-default-frame failure). UT-J-08-12-evidence-fullpage.png (md5 9bb1f0d7) shows the deep-linked 6th /evidence combination row with all standard fields: PASS · +4.69%, condition=rs_spy_3m:top:quintile,high_proximity:top:tertile, kind=combination, horizon=20, ledger=canonical, control vs SPY +4.69%, register 2026-07-01, 'Backs: Multi-factor combination lab'. BYTE-MATCH independently confirmed against certified-claims.jsonl row 6 (holdout_edge=0.046931901591708916, p_value=0.0009995002498750624, deflation_divisor=6, required_p=0.008333..., register_date=2026-07-01). Committed hash-scroll useEffect (evidence/page.tsx L57-63, scrollIntoView) at HEAD unmodified. proven_signals stays {leadership_score} (signal-less combination lights no /stocks badge). Screenshot hygiene finally clean (md5-distinct, correctly labeled; the four 5855-byte blank frames are headless-Chrome scroll-repaint artifacts, not the referenced evidence). No 'Backend unavailable' pill. COHERENCE-PASS, Review PASS, git diff HEAD = only telemetry.jsonl, 37/37 unit tests. J-08 is the SOLE remaining Must-have journey — GOAL_ACHIEVED."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-07-01T10:17:36Z"
+  "updated_at": "2026-07-01T12:22:00Z"
 }
