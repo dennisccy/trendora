@@ -4,83 +4,93 @@
       "id": "J-01",
       "name": "Every score shows an evidence status",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-14",
-      "last_passing_iter": "goal-mcp-loop-iter-14",
+      "last_verified_iter": "goal-mcp-loop-iter-15",
+      "last_passing_iter": "goal-mcp-loop-iter-15",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-14-evidence/UT-J-08-12-evidence-fullpage.png",
-      "note": "Passing — NO regression. Zero app-diff since iter-13's pixel-verified pass (git diff HEAD = only telemetry.jsonl). Dev-live DOM re-check on /stocks: 360 inline evidence-status badges (Proven/Not-yet-proven mix), 0 combination-evidence-badge elements (no leakage), no 'Backend unavailable' pill. The leadership_score backing claim ('PASS · +6.36% · Backs: Stocks leaderboard') renders live in UT-J-08-12. proven_signals stays {leadership_score}. No dedicated fresh /stocks screenshot this iter, but the byte-identical /stocks surface + live re-check leave no regression mechanism."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-15-evidence/TC-06-stocks-no-regression.png",
+      "note": "Passing — NO regression. TC-06 (/stocks) shows every leaderboard row carrying an inline evidence badge: LEADERSHIP = 'Proven' (green shield), ENTRY QUALITY + RISK = 'Not yet proven'; columns unchanged (LEADERSHIP/ENTRY QUALITY/RISK/PROXIMITY/SETUP/1D/5D/10D/20D). git diff HEAD = zero app-source change (evidence.py + evidence.ts byte-identical), so no leak mechanism; the rs_spy_3m h60 claim is signal-less (proven_signals stays {leadership_score}, UT-13/live API); UT-12 grep = 0 rs_spy_3m occurrences on /stocks. No score presented without a status."
     },
     "J-02": {
       "id": "J-02",
       "name": "Drill into the proof behind a score",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-14",
-      "last_passing_iter": "goal-mcp-loop-iter-14",
+      "last_verified_iter": "goal-mcp-loop-iter-15",
+      "last_passing_iter": "goal-mcp-loop-iter-15",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-14-evidence/UT-J-08-12-evidence-fullpage.png",
-      "note": "Passing — NO regression. The leadership_score proof drill reads the canonical /api/evidence payload; its PASS row (hypothesis decile=10/direction=positive/factor=leadership_score/horizon=20, control vs SPY +6.36%, 'Backs: Stocks leaderboard') renders live in UT-J-08-12. 0 combination-badge leakage on /stocks/{ticker} (dev-live). Zero app-diff since iter-13; lib/evidence.ts score/factor branches untouched (37/37 unit tests, expectation tests UNEDITED)."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-15-evidence/UT-01-initial.png",
+      "note": "Passing — NO regression. UT-01-initial.png (full-page /evidence) shows the leadership_score PASS row with the full proof drill: hypothesis (decile=10, direction=positive, factor=leadership_score, horizon=20, kind=factor), OUT-OF-SAMPLE VERDICT 'PASS · holdout edge +6.36%', CONTROL COMPARISON (VS SPY) +6.36%, registration 2026-06-30, 'Backs: Stocks leaderboard'. lib/evidence.ts score/factor branches byte-identical (39/39 unit tests, expectation tests UNEDITED)."
     },
     "J-03": {
       "id": "J-03",
       "name": "Unproven / noise signals are honestly marked",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-14",
-      "last_passing_iter": "goal-mcp-loop-iter-14",
+      "last_verified_iter": "goal-mcp-loop-iter-15",
+      "last_passing_iter": "goal-mcp-loop-iter-15",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-14-evidence/UT-J-08-02-default-not-yet-proven.png",
-      "note": "Passing — NO regression, and REINFORCED. UT-J-08-02 (md5 e63c33d7, distinct from the Proven frame) shows the DEFAULT combination leg 2 = 'ATR % (volatility level)' Bottom/Tertile — the FAILED atr_pct pair — which the DOM confirms reads 'Not yet proven' (data-proven=false). On /evidence, ma_stack top-decile is honestly marked FAIL ('holdout edge +2.62% not significant after deflation, p=0.01949 >= alpha/3=0.01667'). No fabricated 'Proven'; canonical ledger stays strict Bonferroni."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-15-evidence/UT-01-initial.png",
+      "note": "Passing — NO regression, REINFORCED. On /stocks (TC-06) Entry Quality + Risk read 'Not yet proven' on every row. On /evidence (UT-01-initial) ma_stack top-decile is honestly marked FAIL ('holdout edge +2.62% not significant after deflation, p=0.01949 >= alpha/3=0.01667'), and rs_spy_3m's uncertified horizons h1/h5/h10/h20 read 'Not yet proven' (UT-09, data-proven=false). No fabricated 'Proven'; the canonical ledger stays strict Bonferroni."
     },
     "J-04": {
       "id": "J-04",
       "name": "Regime-conditioned evidence",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-14",
-      "last_passing_iter": "goal-mcp-loop-iter-14",
+      "last_verified_iter": "goal-mcp-loop-iter-15",
+      "last_passing_iter": "goal-mcp-loop-iter-15",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-14-evidence/UT-J-08-12-evidence-fullpage.png",
-      "note": "Passing — NO regression. UT-J-08-12 shows the Breakout-watch setup row rendering the regime chip 'Regime: Risk-on', PASS · holdout edge +6.12%, control vs SPY +6.12%, kind=event-study/slice_kind=regime/regime=Risk-on, 'Backs: Research event-study lab'. The event-study regime-scoped claim (certified-claims.jsonl row 2) is git-UNMODIFIED."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-15-evidence/UT-01-initial.png",
+      "note": "Passing — NO regression. UT-01-initial shows the 'Breakout-watch setup' row with the regime chip 'Regime: Risk-on', 'PASS · holdout edge +6.12%', control vs SPY +6.12%, kind=event-study/slice_kind=regime/regime=Risk-on/subject=Breakout-watch, 'Backs: Research event-study lab'. certified-claims.jsonl row 2 is git-UNMODIFIED (git diff = only the +1 row-7 append)."
     },
     "J-05": {
       "id": "J-05",
       "name": "Audit the evidence ledger",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-14",
-      "last_passing_iter": "goal-mcp-loop-iter-14",
+      "last_verified_iter": "goal-mcp-loop-iter-15",
+      "last_passing_iter": "goal-mcp-loop-iter-15",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-14-evidence/UT-J-08-12-evidence-fullpage.png",
-      "note": "Passing — NO regression. UT-J-08-12 shows the /evidence ledger listing SIX canonical rows, each with the standard fields (hypothesis, out-of-sample verdict, control vs SPY, registration date, forward-walk score-to-date, Backs linkback). certified-claims.jsonl is byte-identical (6 rows) vs HEAD — the auditable canonical ledger stays the single source of proven-ness."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-15-evidence/UT-01-initial.png",
+      "note": "Passing — NO regression, GREW 6->7. UT-01-initial.png shows the /evidence ledger listing all SEVEN canonical rows, each with standard fields (hypothesis, out-of-sample verdict, control vs SPY, registration date, forward-walk score-to-date, Backs linkback). certified-claims.jsonl = 7 lines (rows 1-6 byte-identical vs HEAD, +1 gate-appended row 7). The auditable canonical ledger stays the single source of proven-ness."
     },
     "J-06": {
       "id": "J-06",
       "name": "vcp_contraction top-decile certified edge surfaced on Evidence + Research factor lab",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-14",
-      "last_passing_iter": "goal-mcp-loop-iter-14",
+      "last_verified_iter": "goal-mcp-loop-iter-15",
+      "last_passing_iter": "goal-mcp-loop-iter-15",
       "first_seen_iter": "goal-mcp-loop-iter-8",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-14-evidence/UT-J-08-12-evidence-fullpage.png",
-      "note": "Passing — NO regression. UT-J-08-12 shows the vcp_contraction top-decile D10 h20 row: PASS · holdout edge +3.33%, control vs SPY +3.33%, p=0.01149 < alpha/4=0.0125 (divisor 4), 'Backs: Research factor lab'. The h20 vcp claim (certified-claims.jsonl row 4) is git-UNMODIFIED."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-15-evidence/UT-01-initial.png",
+      "note": "Passing — NO regression. UT-01-initial shows the vcp_contraction D10 h20 row: 'PASS · holdout edge +3.33%', control vs SPY +3.33%, p=0.01149 < alpha/4=0.0125, 'Backs: Research factor lab'. Factor-lab badge re-confirmed by UT-11 (vcp_contraction h20 data-proven=true, href=/evidence#factor-vcp_contraction-d10-h20). certified-claims.jsonl row 4 git-UNMODIFIED."
     },
     "J-07": {
       "id": "J-07",
       "name": "Multi-horizon certified edge surfaced (the loop sees beyond the 20-day horizon)",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-14",
-      "last_passing_iter": "goal-mcp-loop-iter-14",
+      "last_verified_iter": "goal-mcp-loop-iter-15",
+      "last_passing_iter": "goal-mcp-loop-iter-15",
       "first_seen_iter": "goal-mcp-loop-iter-9",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-14-evidence/UT-J-08-12-evidence-fullpage.png",
-      "note": "Passing — NO regression. UT-J-08-12 shows the NON-20 vcp_contraction D10 h60 row: '60-day hold', PASS · holdout edge +8.91%, p=0.0004998 < alpha/5=0.01 (divisor 5), ledger=canonical, no signal key, 'Backs: Research factor lab'. certified-claims.jsonl row 5 is git-UNMODIFIED."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-15-evidence/UT-01-initial.png",
+      "note": "Passing — NO regression. UT-01-initial shows the NON-20 vcp_contraction D10 h60 row: '60-day hold', 'PASS · holdout edge +8.91%', p=0.0004998 < alpha/5=0.01, ledger=canonical, no signal key, 'Backs: Research factor lab'. Factor-lab h60 badge re-confirmed by UT-11 (data-proven=true, href=/evidence#factor-vcp_contraction-d10-h60). certified-claims.jsonl row 5 git-UNMODIFIED."
     },
     "J-08": {
       "id": "J-08",
       "name": "Multi-factor combination certified edge surfaced on the Combination lab + Evidence",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-14",
-      "last_passing_iter": "goal-mcp-loop-iter-14",
+      "last_verified_iter": "goal-mcp-loop-iter-15",
+      "last_passing_iter": "goal-mcp-loop-iter-15",
       "first_seen_iter": "goal-mcp-loop-iter-9",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-14-evidence/UT-J-08-07-fullpage.png",
-      "note": "PASSING (flipped partial -> passing) — the terminal journey is now cleanly browser-verified. UT-J-08-07-fullpage.png (md5 4c740ba8) shows /research/factor-combination with leg 1 = 'Relative strength vs SPY (3m)' Top/Quintile(20%) and leg 2 CORRECTLY composed to 'Proximity to 52-week high' Top/Tertile(33%) — the CERTIFIED selection in-frame — and the 'Combined (composite rank-blend)' row (n=23929) carrying a teal 'Proven' badge (directly refutes the iter-13 relabeled-default-frame failure). UT-J-08-12-evidence-fullpage.png (md5 9bb1f0d7) shows the deep-linked 6th /evidence combination row with all standard fields: PASS · +4.69%, condition=rs_spy_3m:top:quintile,high_proximity:top:tertile, kind=combination, horizon=20, ledger=canonical, control vs SPY +4.69%, register 2026-07-01, 'Backs: Multi-factor combination lab'. BYTE-MATCH independently confirmed against certified-claims.jsonl row 6 (holdout_edge=0.046931901591708916, p_value=0.0009995002498750624, deflation_divisor=6, required_p=0.008333..., register_date=2026-07-01). Committed hash-scroll useEffect (evidence/page.tsx L57-63, scrollIntoView) at HEAD unmodified. proven_signals stays {leadership_score} (signal-less combination lights no /stocks badge). Screenshot hygiene finally clean (md5-distinct, correctly labeled; the four 5855-byte blank frames are headless-Chrome scroll-repaint artifacts, not the referenced evidence). No 'Backend unavailable' pill. COHERENCE-PASS, Review PASS, git diff HEAD = only telemetry.jsonl, 37/37 unit tests. J-08 is the SOLE remaining Must-have journey — GOAL_ACHIEVED."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-15-evidence/UT-01-initial.png",
+      "note": "Passing — NO regression. UT-01-initial shows the 6th row 'rs_spy_3m x high_proximity — composite': 'PASS · holdout edge +4.69%', condition=rs_spy_3m:top:quintile,high_proximity:top:tertile, kind=combination, horizon=20, ledger=canonical, control vs SPY +4.69%, register 2026-07-01, 'Backs: Multi-factor combination lab'. certified-claims.jsonl row 6 byte-identical vs HEAD. Signal-less combination lights no /stocks badge."
+    },
+    "J-09": {
+      "id": "J-09",
+      "name": "Relative-strength (rs_spy_3m) 60-day-horizon certified edge surfaced on Evidence + Research factor lab",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-15",
+      "last_passing_iter": "goal-mcp-loop-iter-15",
+      "first_seen_iter": "goal-mcp-loop-iter-15",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-15-evidence/UT-01-initial.png",
+      "note": "NEW -> passing. TARGET journey. /evidence money frame INDEPENDENTLY CONFIRMED in UT-01-initial.png (full-page, md5 583c1b11 — a distinct capture the audit's F1 overlooked): 7th row 'PASS · rs_spy_3m — top decile (D10)', 'Out-of-sample edge — factor top decile · 60-day hold', hypothesis (decile=10, direction=positive, factor=rs_spy_3m, horizon=60, kind=factor, ledger=canonical, slice_kind=decile), 'PASS · holdout edge +21.34%', 'p=0.0004998 < alpha/7=0.007143', CONTROL (VS SPY) +21.34%, register 2026-07-01, 'Backs: Research factor lab'. BYTE-MATCH confirmed against certified-claims.jsonl row 7 (control_excess=holdout_edge=0.21344270202534893, deflation=bonferroni, deflation_divisor=7, required_p=0.0071428571428571435, p_value=0.0004997501249375312, register_date=2026-07-01, status=PASS, n_trials_at_test=7). Factor-lab 'Proven' chip on the rs_spy_3m h60 cohort was NOT pixel-captured (money frame scrolled off; recurring iter-11/13/14/15 screenshot-hygiene gap, audit F1), but is grounded by the triangle the spec endorses: browser-qa DOM assertions (UT-07: data-proven=true, text='Proven', href=/evidence#factor-rs_spy_3m-d10-h60 for h60; data-proven=false for h1/h5/h10/h20) + unit cases ee/ff (39/39) + the byte-identical general resolveCohortEvidence/factorHorizonBadges matcher that visibly lights vcp_contraction h20/h60 identically + the confirmed /evidence row's 'Backs: Research factor lab' linkback + deep-link anchor. Signal-less: proven_signals stays {leadership_score}; no /stocks badge (UT-12/13, TC-06, git diff zero app-source). Yellow flag: the +0.2134 OOS edge is ~10x its in-sample edge (0.02038) — implausibly large — but a genuine referee PASS at strict Bonferroni divisor 7, surfaced verbatim with 'descriptive, not predictive · read the edge as an upper bound' framing; the seeded-data/engine magnitude is OUT OF SCOPE (anti-goal #5 determinism). Review PASS, QA PASS, browser-qa PASS 13/13, ux-regression UX-REGRESSION-PASS, Audit PASS_WITH_GAPS, Closure CLOSURE-PASS, COHERENCE-PASS."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-07-01T12:22:00Z"
+  "updated_at": "2026-07-01T13:32:59Z"
 }

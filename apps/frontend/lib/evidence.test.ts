@@ -453,15 +453,20 @@ check("resolveCohortEvidence treats a matched-but-non-PASS cohort (ma_stack FAIL
 });
 
 // --- (o) ANY selector mismatch (factor / decile / horizon / direction) => "Not yet proven", no href -----
+// Resolved against the FULL current 7-entry ledger (`ledgerClaims7()`, defined in the J-09 section below).
+// iter-15 reconcile: `rs_spy_3m` is now a BACKED factor (certified at h60 — ledger row 7), so its former
+// "unbacked factor" line becomes the stronger no-cross-horizon-leak negative: the SAME now-backed factor
+// queried at an UNCERTIFIED horizon (h20) must still read "Not yet proven" — proven-ness never leaks h60 → h20
+// (anti-goal #1). The dedicated h60 "Proven" proof lives in check (ee) below.
 check("resolveCohortEvidence returns 'Not yet proven' on any selector mismatch", () => {
   for (const mismatch of [
-    { ...VCP_COHORT, factor: "rs_spy_3m" }, // unbacked factor
+    { ...VCP_COHORT, factor: "rs_spy_3m" }, // rs_spy_3m backed ONLY at h60 — this h20 query is an uncertified horizon (no leak)
     { ...VCP_COHORT, decile: 9 }, // wrong decile (not the top decile)
     { ...VCP_COHORT, horizon: 5 }, // uncertified horizon (only h20 + h60 are backed for vcp_contraction)
     { ...VCP_COHORT, direction: "negative" }, // wrong direction
     { ...VCP_COHORT, slice_kind: "sector" }, // wrong slice kind
   ] as FactorCohort[]) {
-    const status = resolveCohortEvidence(mismatch, ledgerClaims());
+    const status = resolveCohortEvidence(mismatch, ledgerClaims7());
     assert.strictEqual(status.proven, false, `cohort ${JSON.stringify(mismatch)} must not resolve proven`);
     assert.strictEqual(status.label, "Not yet proven");
     assert.strictEqual(status.href, null);
@@ -813,6 +818,121 @@ check("the combination claim is signal-less and leaves the score/factor/event-st
   assert.strictEqual(evt.href, "/research/event-study");
   // the certified factor cohorts still resolve to their OWN rows (the combination row never cross-matches)
   assert.strictEqual(resolveCohortEvidence(VCP_COHORT, ledgerClaims6()).href, "/evidence#factor-vcp_contraction-d10-h20");
+});
+
+// ======================================================================================================
+// J-09 (iter-15) — the per-horizon COHORT matcher lights a SECOND factor's NON-20 certified horizon.
+// The row below MIRRORS the real 7th ledger entry the post-decompose gate certified: the signal-less
+// `rs_spy_3m` top-decile cohort @ h60, promoted to the canonical ledger (`"ledger":"canonical"`, strict
+// Bonferroni divisor 7). It pins the J-09 display contract: `rs_spy_3m`'s h60 cohort reads "Proven" (a
+// PASS-backed per-horizon match) deep-linking to its OWN row, while its h1/h5/h10/h20 cohorts stay
+// "Not yet proven" (no cross-horizon leak) — and `rs_spy_3m` ∉ the three score columns, so it carries NO
+// `signal` and NEVER enters `proven_signals` (J-01/J-02/J-03 unaffected). SAME general matcher, SAME served
+// payload, one more PASS-backed entry — no factor-specific branch (iter-8 lesson).
+// ======================================================================================================
+
+/** A certified (PASS) row mirroring the REAL iter-15 7th ledger entry: the rs_spy_3m top-decile cohort at
+ *  the NON-20 forward-return horizon 60, promoted to the canonical ledger (`"ledger":"canonical"`). Like the
+ *  vcp_contraction factor rows it is signal-less (rs_spy_3m ∉ the three score columns — it backs the factor
+ *  lab + Evidence ONLY, never a `/stocks` inline badge). Verdict values byte-match `certified-claims.jsonl`
+ *  line 7 (the displayed-numbers-are-correct anti-goal #3): holdout/control +0.2134, p 0.0004998, divisor 7. */
+function rsSpy3mH60Row(): CertifiedClaim {
+  return {
+    signal: null,
+    claim: {
+      kind: "factor",
+      factor: "rs_spy_3m",
+      slice_kind: "decile",
+      decile: 10,
+      horizon: 60,
+      direction: "positive",
+      ledger: "canonical",
+    },
+    register_date: "2026-07-01",
+    horizon: 60,
+    cohort_n: 12026,
+    control_n: 1101,
+    verdict: {
+      status: "PASS",
+      reason:
+        "certified: holdout edge +0.2134 beats the control out-of-sample and is significant after multiple-testing deflation (p=0.0004998 < alpha/7=0.007143)",
+      holdout_edge: 0.21344270202534893,
+      control_excess: 0.21344270202534893,
+      p_value: 0.0004997501249375312,
+    },
+    proven: true,
+    forward_walk: null,
+  };
+}
+
+/** The full post-iter-15 7-entry served claim list (the 6 prior rows PLUS the rs_spy_3m h60 factor PASS,
+ *  ledger row 7) — the current full ledger the per-horizon factor-lab badges resolve against. */
+function ledgerClaims7(): CertifiedClaim[] {
+  return [...ledgerClaims6(), rsSpy3mH60Row()];
+}
+
+// --- (ee) iter-15 J-09 — the rs_spy_3m h60 cohort matches the NEW 7th entry => 'Proven' + …-h60 href ------
+// A SECOND factor surfaced beyond the 20-day window: the SAME general matcher, the SAME served payload, one
+// more PASS-backed entry. The h60 badge deep-links to its OWN horizon-distinct row; every uncertified horizon
+// of rs_spy_3m (h1/h5/h10/h20) stays "Not yet proven"; and the vcp_contraction h60 badge is unperturbed (the
+// two h60 factor rows never cross) — J-06/J-07 stay green.
+check("resolveCohortEvidence matches the rs_spy_3m h60 cohort => 'Proven' + a horizon-distinct href", () => {
+  const rsSpyH60: FactorCohort = {
+    factor: "rs_spy_3m",
+    slice_kind: "decile",
+    decile: 10,
+    horizon: 60,
+    direction: "positive",
+  };
+  const status = resolveCohortEvidence(rsSpyH60, ledgerClaims7());
+  assert.strictEqual(status.proven, true);
+  assert.strictEqual(status.label, PROVEN_LABEL);
+  assert.strictEqual(status.label, "Proven");
+  assert.strictEqual(status.href, "/evidence#factor-rs_spy_3m-d10-h60");
+  assert.ok(status.href!.startsWith("/evidence#"), "the proven cohort badge must deep-link into /evidence");
+  // the displayed h60 edge / SPY control / p are read VERBATIM (byte-match certified-claims.jsonl row 7 — anti-goal #3)
+  assert.strictEqual(status.claim?.verdict.holdout_edge, 0.21344270202534893);
+  assert.strictEqual(status.claim?.verdict.control_excess, 0.21344270202534893);
+  assert.strictEqual(status.claim?.verdict.p_value, 0.0004997501249375312);
+  assert.strictEqual(status.claim?.register_date, "2026-07-01");
+  assert.strictEqual(status.claim?.signal, null); // signal-less — never lights a /stocks score badge
+  // every UNCERTIFIED horizon of the SAME factor stays "Not yet proven" (no cross-horizon leak — anti-goal #1)
+  for (const h of [1, 5, 10, 20]) {
+    const uncertified = resolveCohortEvidence({ ...rsSpyH60, horizon: h }, ledgerClaims7());
+    assert.strictEqual(uncertified.proven, false, `rs_spy_3m h${h} must read Not yet proven`);
+    assert.strictEqual(uncertified.label, "Not yet proven");
+    assert.strictEqual(uncertified.href, null);
+    assert.strictEqual(uncertified.claim, null);
+  }
+  // the vcp_contraction h60 badge is unperturbed — the two h60 factor rows resolve to DISTINCT rows (J-07)
+  const vcpH60 = resolveCohortEvidence({ ...VCP_COHORT, horizon: 60 }, ledgerClaims7());
+  assert.strictEqual(vcpH60.href, "/evidence#factor-vcp_contraction-d10-h60");
+  assert.notStrictEqual(vcpH60.href, status.href);
+});
+
+// --- (ff) iter-15 J-09 — the rs_spy_3m h60 `/evidence` ROW renders through the EXISTING signal-less factor
+// branch: an honest factor title, the horizon-disambiguated subtitle, the "Backs: Research factor lab →"
+// linkback, and the `factor-rs_spy_3m-d10-h60` anchor — so the badge href and the row id agree (deep-link lands).
+check("claimSurface + claimAnchorId render the rs_spy_3m h60 /evidence row honestly (factor-lab linkback + anchor)", () => {
+  const row = rsSpy3mH60Row();
+  const surface = claimSurface(row);
+  // an honest factor title derived from the selectors — NEVER the misleading "Unmapped signal"
+  assert.strictEqual(surface.title, "rs_spy_3m — top decile (D10)");
+  assert.notStrictEqual(surface.title, "Unmapped signal");
+  assert.strictEqual(surface.titleIsSignalKey, false);
+  // horizon-disambiguated (NON-20) subtitle, still historical out-of-sample framing (never buy/sell — anti-goal #2)
+  assert.strictEqual(surface.subtitle, "Out-of-sample edge — factor top decile · 60-day hold");
+  assert.ok(!/buy|sell|return|target|price/i.test(surface.subtitle!), "no return/price/buy-sell language");
+  // the linkback is honest — the Research factor lab, NOT the Stocks leaderboard
+  assert.strictEqual(surface.href, "/research/factor-lab");
+  assert.strictEqual(surface.label, "Research factor lab");
+  assert.notStrictEqual(surface.label, "Stocks leaderboard");
+  // the row id the badge deep-links to (badge href === row id ⇒ the click lands on THIS row)
+  assert.strictEqual(claimAnchorId(row), "factor-rs_spy_3m-d10-h60");
+  assert.strictEqual(`/evidence#${claimAnchorId(row)}`, "/evidence#factor-rs_spy_3m-d10-h60");
+  // signal-less: it adds NO inline /stocks score badge (proven_signals stays unaffected — J-01/J-02/J-03)
+  assert.strictEqual(row.signal, null);
+  assert.strictEqual(resolveEvidenceStatus("leadership_score", {}).proven, false);
 });
 
 console.log(`\n${passed} evidence-badge resolver checks passed.`);

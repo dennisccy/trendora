@@ -555,30 +555,33 @@ def test_canonical_ledger_frozen_golden(monkeypatch):
     """The canonical `certified-claims.jsonl` entries are the immutable honest history the whole evidence
     layer reads. The original four (lines 1/2/4 PASS, line 3 `ma_stack` FAIL — strict Bonferroni divisors
     1..4) stay byte-identical, iter-11 (J-07) appended the FIFTH (the vcp_contraction top-decile edge at the
-    NON-20 horizon 60 — PASS, strict Bonferroni divisor 5, required_p 0.010), and iter-13 (J-08) appends the
-    SIXTH: the `rs_spy_3m × high_proximity` composite (multi-factor) edge @ h20, promoted to canonical (PASS,
-    strict Bonferroni divisor 6, required_p 0.008333). All six are strict Bonferroni and `proven_signals`
-    stays exactly `{leadership_score}` (both the h60 and the combination claims are signal-less — they MUST
-    NOT enter it). This pins the canonical golden so any accidental rewrite/reorder of the prior rows — or a
-    stray `signal` on the combination row — fails loudly."""
+    NON-20 horizon 60 — PASS, strict Bonferroni divisor 5, required_p 0.010), iter-13 (J-08) appended the
+    SIXTH (the `rs_spy_3m × high_proximity` composite (multi-factor) edge @ h20, promoted to canonical — PASS,
+    strict Bonferroni divisor 6, required_p 0.008333), and iter-15 (J-09) appends the SEVENTH: the `rs_spy_3m`
+    top-decile edge at the NON-20 horizon 60, promoted to canonical (PASS, strict Bonferroni divisor 7,
+    required_p 0.007143). All seven are strict Bonferroni and `proven_signals` stays exactly
+    `{leadership_score}` (the h60, combination, and rs_spy_3m claims are all signal-less — they MUST NOT enter
+    it). This pins the canonical golden so any accidental rewrite/reorder of the prior rows — or a stray
+    `signal` on a signal-less row — fails loudly."""
     monkeypatch.delenv(LEDGER_PATH_ENV, raising=False)
     from app.engine.ledger import read_entries
 
     ledger_file = REPO_ROOT / "runs/goal-session-mcp-loop/state/certified-claims.jsonl"
     entries = read_entries(str(ledger_file))
 
-    # exactly the six honest-history entries, all strict Bonferroni with divisors 1..6 (the combination
-    # promotion tightened the user-facing bar 5→6 — permanent, honest history).
-    assert len(entries) == 6
-    assert [e["verdict"]["status"] for e in entries] == ["PASS", "PASS", "FAIL", "PASS", "PASS", "PASS"]
-    assert [e["verdict"]["deflation_divisor"] for e in entries] == [1, 2, 3, 4, 5, 6]
+    # exactly the seven honest-history entries, all strict Bonferroni with divisors 1..7 (the rs_spy_3m h60
+    # promotion tightened the user-facing bar 6→7 — permanent, honest history).
+    assert len(entries) == 7
+    assert [e["verdict"]["status"] for e in entries] == ["PASS", "PASS", "FAIL", "PASS", "PASS", "PASS", "PASS"]
+    assert [e["verdict"]["deflation_divisor"] for e in entries] == [1, 2, 3, 4, 5, 6, 7]
     assert all(e["verdict"]["deflation"] == "bonferroni" for e in entries)
-    # the 6th row is a `combination` (no `factor` selector → None); the prior five are unchanged
+    # the 6th row is a `combination` (no `factor` selector → None); the 7th is the rs_spy_3m factor; the prior
+    # five are unchanged.
     assert [e["claim"].get("factor") for e in entries] == [
-        "leadership_score", None, "ma_stack", "vcp_contraction", "vcp_contraction", None,
+        "leadership_score", None, "ma_stack", "vcp_contraction", "vcp_contraction", None, "rs_spy_3m",
     ]
     assert [e["claim"].get("kind") for e in entries] == [
-        "factor", "event-study", "factor", "factor", "factor", "combination",
+        "factor", "event-study", "factor", "factor", "factor", "combination", "factor",
     ]
 
     # the 5th (iter-11 J-07) entry: the vcp_contraction top-decile edge at the NON-20 horizon 60 — PASS,
@@ -609,10 +612,29 @@ def test_canonical_ledger_frozen_golden(monkeypatch):
     assert combo["verdict"]["control_excess"] == 0.046931901591708916
     assert combo["verdict"]["p_value"] == 0.0009995002498750624
 
-    # the projected payload: 6 claim rows, and the ONLY inline-badge signal is STILL leadership_score
-    # (the signal-less h60 + combination claims MUST NOT enter proven_signals — J-01/J-02/J-03 unaffected).
+    # the 7th (iter-15 J-09) entry: the rs_spy_3m top-decile edge at the NON-20 horizon 60 — PASS, signal-less,
+    # verdict bytes FROZEN (the displayed h60 edge/p/control byte-match anti-goal #3). Its promotion tightened
+    # the user-facing Bonferroni bar 6→7 (divisor 7, required_p 0.007143) — permanent, honest history.
+    rs = entries[6]
+    assert rs["claim"]["kind"] == "factor"
+    assert rs["claim"]["factor"] == "rs_spy_3m"
+    assert rs["claim"]["slice_kind"] == "decile"
+    assert rs["claim"]["decile"] == 10
+    assert rs["claim"]["horizon"] == 60
+    assert rs["claim"]["direction"] == "positive"
+    assert rs["claim"]["ledger"] == "canonical"
+    assert "signal" not in rs["claim"]  # signal-less — never lights a /stocks inline score badge
+    assert rs["verdict"]["status"] == "PASS"
+    assert rs["verdict"]["deflation_divisor"] == 7
+    assert rs["verdict"]["required_p"] == 0.0071428571428571435
+    assert rs["verdict"]["holdout_edge"] == 0.21344270202534893
+    assert rs["verdict"]["control_excess"] == 0.21344270202534893
+    assert rs["verdict"]["p_value"] == 0.0004997501249375312
+
+    # the projected payload: 7 claim rows, and the ONLY inline-badge signal is STILL leadership_score (the
+    # signal-less h60 + combination + rs_spy_3m claims MUST NOT enter proven_signals — J-01/J-02/J-03 unaffected).
     payload = build_evidence_payload(str(ledger_file))
-    assert len(payload["claims"]) == 6
+    assert len(payload["claims"]) == 7
     assert set(payload["proven_signals"].keys()) == {"leadership_score"}
     proven = payload["proven_signals"]["leadership_score"]
     assert proven["proven"] is True

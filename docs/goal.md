@@ -206,6 +206,42 @@ ones, with honest "this isn't proven yet" markers when the evidence is thin or f
       factor-lab "Proven" badge is produced (plain-language narration + a real-data screenshot example),
       viewable via `demo.sh mcp-loop --session-live`.
 
+- **J-09: Relative-strength (rs_spy_3m) 60-day-horizon certified edge surfaced on Evidence + Research factor lab**
+  - Steps:
+    1. The iteration carries a machine-readable `## Evidence Claim` for the rs_spy_3m top-decile cohort at the
+       NON-20 60-day horizon — promoted from the pre-registered multi-horizon staging winner
+       (`project-extensions/proposer-guidance.md` §4.1 #3; recorded staging block-bootstrap p=0.00049975) via an
+       explicit canonical ledger route —
+       `{"kind":"factor","factor":"rs_spy_3m","slice_kind":"decile","decile":10,"horizon":60,"direction":"positive","ledger":"canonical"}` —
+       so the post-decompose gate certifies it through the referee (sealed out-of-sample holdout + SPY control +
+       multiple-testing deflation at the canonical Bonferroni divisor) BEFORE any code is built; a non-PASS verdict
+       (FAIL/INSUFFICIENT) blocks the iteration.
+    2. Visit `/evidence` and locate the new rs_spy_3m certified-claim row; assert it renders the same fields as the
+       existing claim rows: hypothesis (incl. the 60-day horizon), out-of-sample verdict, control comparison (vs SPY),
+       registration date, forward-walk score-to-date, and a "Backs: Research factor lab →" linkback.
+    3. Open the Research factor lab (`/research/factor-lab`) for the rs_spy_3m factor and assert its top-decile cohort
+       at the 60-day horizon shows an evidence badge reading "Proven" that links to this ledger entry, while its
+       uncertified horizons (h1/h5/h10/h20) read "Not yet proven".
+  - Acceptance:
+    - **Consistency (single source):** the rs_spy_3m ledger row and the factor-lab badge read the canonical
+      `GET /api/evidence` payload verbatim (the row re-displays `claims[]`; the badge resolves status via the EXISTING
+      per-horizon cohort matcher `resolveCohortEvidence` — it NEVER recomputes proven-ness or re-fetches from a new
+      path). The claim is a NEW entry in the EXISTING `certified-claims.jsonl` already served by `GET /api/evidence` —
+      **no new computing module and no new serving endpoint** (same evidence-status contract value, one additional
+      reader position), so the Data Contract's single source of truth is preserved (no new shared value to register).
+    - **Correctness:** the displayed out-of-sample edge, p-value, and SPY control byte-match the referee verdict
+      written to `certified-claims.jsonl` for the same as-of — never a recompute in the UI.
+    - **Honest status / anti-goals:** rs_spy_3m ∉ the three score columns, so the claim carries NO `signal` and backs
+      ONLY the Research factor lab — it never lights or overwrites a `/stocks` inline score badge (J-01/J-02/J-03
+      unaffected; `proven_signals` stays `{leadership_score}`). The factor-lab cohort reads "Proven" ONLY because a
+      PASS certified-claim backs it; absent a PASS verdict it reads "Not yet proven" (anti-goal #1 upheld). No return
+      promise, price target, or buy/sell signal is shown — only the evidence status plus the realized hold-out
+      statistic. Determinism + no-lookahead preserved (scoring ≤ as-of, forward returns > as-of; the referee uses a
+      sealed temporal holdout). The cohort MUST be the pre-registered §4.1 candidate — never an ad-hoc data-mined slice.
+    - **Walkthrough:** a `[NEW]`-flagged demo-narrator walkthrough of the new rs_spy_3m ledger row and the factor-lab
+      "Proven" badge is produced (plain-language narration + a real-data screenshot example), viewable via
+      `demo.sh mcp-loop --session-live`.
+
 <!-- /AUTO:journeys -->
 
 ## Anti-goals

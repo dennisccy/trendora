@@ -1,0 +1,19 @@
+{
+  "blocked": false,
+  "results": [
+    {
+      "claim": {
+        "kind": "factor",
+        "factor": "rs_spy_3m",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 60,
+        "direction": "positive",
+        "ledger": "canonical"
+      },
+      "ledger": "canonical",
+      "status": "PASS",
+      "reason": "certified: holdout edge +0.2134 beats the control out-of-sample and is significant after multiple-testing deflation (p=0.0004998 < alpha/7=0.007143)"
+    }
+  ]
+}

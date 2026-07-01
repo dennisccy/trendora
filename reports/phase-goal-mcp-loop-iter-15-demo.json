@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-15",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Evidence ledger grows to 7 certified claims",
+      "narration": "The certified-claims ledger now shows seven rows. The newest entry certifies that the 3-month relative-strength factor's 60-day hold delivered a +21.34% out-of-sample edge over a controlled SPY benchmark, registered today.",
+      "point_out": "Count the rows on the ledger page — a 7th row has appeared at the bottom, titled 'rs_spy_3m — top decile (D10)' with the edge of +21.34% clearly visible.",
+      "journey": "J-05",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/evidence" },
+      "expect": { "text": "+21.34%" }
+    },
+    {
+      "n": 2,
+      "title": "New evidence row: 3-month relative-strength, 60-day certified edge",
+      "narration": "The deep-link anchor scrolls the page directly to the new certified entry, which shows the full statistical record — the edge, the p-value, the registration date, and a link back to the Factor Lab that produced the claim.",
+      "point_out": "The 'rs_spy_3m — top decile (D10)' row is now in the viewport. Notice the edge of +21.34%, the p-value of 0.0005, the date 2026-07-01, and the 'Backs: Research factor lab →' link inside the row.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/evidence#factor-rs_spy_3m-d10-h60" },
+      "expect": { "text": "rs_spy_3m — top decile (D10)" }
+    },
+    {
+      "n": 3,
+      "title": "Factor Lab: rs_spy_3m 60-day horizon is now Proven",
+      "narration": "On the Factor Lab, the 3-month relative-strength factor row now carries a distinct Proven badge on its 60-day column. The 1-day, 5-day, 10-day, and 20-day horizons all still read 'Not yet proven' — only what cleared the out-of-sample bar is certified.",
+      "point_out": "Find the 'Relative strength vs SPY (3m)' row in the factor table. The 60d cell shows a Proven pill in a distinct style, while the 1d, 5d, 10d, and 20d cells remain in the muted 'Not yet proven' state.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/factor-lab" },
+      "expect": { "text": "Relative strength vs SPY (3m)" }
+    },
+    {
+      "n": 4,
+      "title": "Proven badge links directly to the matching evidence row",
+      "narration": "Clicking the Proven badge on the factor lab jumps straight to the matching entry in the Evidence ledger — the deep-link anchor scrolls the exact row into view without any manual searching.",
+      "point_out": "After the click, the URL ends with /evidence#factor-rs_spy_3m-d10-h60 and the page scrolls to the rs_spy_3m row — not the page top, and not a different factor's row.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "css": "a[href='/evidence#factor-rs_spy_3m-d10-h60']" } },
+      "expect": { "text": "rs_spy_3m — top decile (D10)" }
+    },
+    {
+      "n": 5,
+      "title": "Evidence row links back to the Factor Lab — full round-trip",
+      "narration": "Every evidence row carries a Backs link that returns you to the research tool that generated the claim, closing the audit trail in both directions without any dead ends.",
+      "point_out": "After clicking 'Backs: Research factor lab →', the browser returns to /research/factor-lab — the complete round-trip from factor lab to proof and back is fully wired.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Backs: Research factor lab →" } },
+      "expect": { "text": "Relative strength vs SPY (3m)" }
+    },
+    {
+      "n": 6,
+      "title": "Stock leaderboard unchanged — no new rs_spy_3m column",
+      "narration": "Certifying a factor's edge on the Evidence ledger does not automatically add a new score column to the stock leaderboard. The three existing columns stay exactly as they were — certifying an edge is separate from deciding to promote it to a scored signal.",
+      "point_out": "Scan the column headers: LEADERSHIP, ENTRY QUALITY, RISK — no rs_spy_3m or relative-strength column appears, and no stock row shows a new badge from this certification.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "Not yet proven" }
+    }
+  ]
+}
