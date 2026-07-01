@@ -223,6 +223,13 @@ export function regimeLabel(claim: CertifiedClaim): string | null {
 /** The Stocks-leaderboard linkback every per-stock score signal backs (the pre-iter-4 surface — unchanged). */
 const STOCKS_LEADERBOARD_SURFACE = { href: "/stocks", label: "Stocks leaderboard" } as const;
 
+/** The forward-return horizon whose signal-less factor-cohort subtitle stays BARE ("Out-of-sample edge —
+ *  factor top decile") — the iter-8-established default-horizon (20-day) vcp_contraction row whose exact
+ *  wording J-06 pins byte-identical. Every OTHER horizon (iter-11's h60) appends a "· N-day hold"
+ *  disambiguator so the two vcp_contraction rows on `/evidence` are self-distinguishing. Display-only — the
+ *  load-bearing horizon signal is still the served `horizon` selector shown on the row's hypothesis chip. */
+const DEFAULT_FACTOR_COHORT_HORIZON = 20;
+
 /** The honest title + linkback for ONE certified-claims row (the read-only `surfaceForSignal` successor). */
 export interface ClaimSurface {
   /** The row headline. For a score-column claim this is the signal key VERBATIM (rendered in the mono
@@ -286,10 +293,19 @@ export function claimSurface(claim: CertifiedClaim): ClaimSurface {
   // #2), and its linkback points at the Research factor lab (NOT the Stocks leaderboard).
   const factorCohort = kind === "factor" ? factorCohortFromClaim(claim) : null;
   if (factorCohort) {
+    // iter-11 (J-07): disambiguate the horizon so the h20 and h60 vcp_contraction rows on `/evidence` are
+    // self-distinguishing. The default (20-day) row keeps iter-8's EXACT wording (J-06 non-regression); any
+    // other horizon appends a "· N-day hold" suffix. This is clarity polish only — proven-ness + the
+    // load-bearing horizon selector are unchanged.
+    const factorSubtitleBase = "Out-of-sample edge — factor top decile";
+    const subtitle =
+      factorCohort.horizon === DEFAULT_FACTOR_COHORT_HORIZON
+        ? factorSubtitleBase
+        : `${factorSubtitleBase} · ${factorCohort.horizon}-day hold`;
     return {
       title: `${factorCohort.factor} — top decile (D${factorCohort.decile})`,
       titleIsSignalKey: false,
-      subtitle: "Out-of-sample edge — factor top decile",
+      subtitle,
       href: "/research/factor-lab",
       label: "Research factor lab",
     };

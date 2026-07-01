@@ -3,8 +3,9 @@
 The iter-9 economy is INJECTABLE and DEFAULT-OFF. These tests pin the load-bearing invariants that keep
 the canonical `/evidence` bar byte-identical while enabling an isolated staging economy:
 
-  * `ledger.rejection_offsets` derives the PASS ordinals (`[1, 2, 4]` on the live canonical ledger) —
-    the wealth history the online-FDR economy reconstructs from — with NO entry rewritten;
+  * `ledger.rejection_offsets` derives the PASS ordinals (`[1, 2, 4, 5]` on the live canonical ledger after
+    iter-11 promoted the vcp_contraction h60 winner) — the wealth history the online-FDR economy reconstructs
+    from — with NO prior entry rewritten;
   * the referee's deflation is an INJECTABLE policy whose DEFAULT reproduces strict Bonferroni
     byte-identically, and a supplied `test_level` threads through as the exact bar;
   * `verify_edge` is the SINGLE writer routed to the target ledger: a staging-routed claim writes the
@@ -92,11 +93,13 @@ def test_rejection_offsets_missing_file_is_empty(tmp_path):
 
 
 def test_rejection_offsets_on_live_canonical_ledger():
-    """The DoD anchor: on the live canonical `certified-claims.jsonl` (lines 1/2/4 PASS, line 3 `ma_stack`
-    FAIL) the derived rejection ordinals are exactly `[1, 2, 4]` — proven WITHOUT rewriting any entry."""
+    """The DoD anchor: on the live canonical `certified-claims.jsonl` the derived rejection ordinals track the
+    honest history WITHOUT rewriting any entry. After iter-11 (J-07) promoted the vcp_contraction h60 winner,
+    the ledger is lines 1/2/4/5 PASS, line 3 `ma_stack` FAIL — so the rejection ordinals are `[1, 2, 4, 5]`
+    over 5 trials (the FAIL at position 3 advances the ordinal but is not a rejection)."""
     assert _CANONICAL_LEDGER.exists(), f"missing canonical ledger at {_CANONICAL_LEDGER}"
-    assert ledger_mod.rejection_offsets(str(_CANONICAL_LEDGER)) == [1, 2, 4]
-    assert ledger_mod.count_trials(str(_CANONICAL_LEDGER)) == 4
+    assert ledger_mod.rejection_offsets(str(_CANONICAL_LEDGER)) == [1, 2, 4, 5]
+    assert ledger_mod.count_trials(str(_CANONICAL_LEDGER)) == 5
 
 
 # ==================================================================================================
@@ -344,8 +347,9 @@ def test_explore_multi_horizon_staging_refuses_the_canonical_ledger(loaded_engin
 
 def test_committed_staging_ledger_is_the_frozen_multi_horizon_discovery():
     """The DoD anchor: the COMMITTED `staging-ledger.jsonl` is the frozen multi-horizon discovery iter-11
-    promotes from. It carries EXACTLY the 4 pre-registered candidates (in order), all under the online-FDR
-    (`lord++`) economy, with the referee's honest verdicts — and the canonical ledger stays byte-identical.
+    promoted from. It carries EXACTLY the 4 pre-registered candidates (in order), all under the online-FDR
+    (`lord++`) economy, with the referee's honest verdicts — and this staging exploration never writes the
+    canonical ledger (which iter-11 has since grown 4→5 by promoting the h60 winner through the gate).
 
     The economy visibly REPLENISHES: after the h10 FAIL and the h60 PASSes, the required_p LOOSENS across
     trials (the exact LORD++ levels), and 3 of 4 candidates clear even the strict canonical divisor-5 bar
@@ -389,8 +393,10 @@ def test_committed_staging_ledger_is_the_frozen_multi_horizon_discovery():
     ]
     assert len(signalless_pass_clears) >= 1
 
-    # the staging PASS ordinals feed iter-11's LORD++ wealth; the canonical ledger is UNCHANGED.
+    # the staging PASS ordinals feed iter-11's LORD++ wealth; this staging exploration NEVER writes canonical.
     assert ledger_mod.rejection_offsets(str(_STAGING_LEDGER)) == [2, 3, 4]
     assert ledger_mod.count_trials(str(_STAGING_LEDGER)) == 4
-    assert ledger_mod.count_trials(str(_CANONICAL_LEDGER)) == 4          # canonical untouched (still 4)
-    assert ledger_mod.rejection_offsets(str(_CANONICAL_LEDGER)) == [1, 2, 4]
+    # iter-11 (J-07) has since PROMOTED the h60 winner to canonical via the gate, so the canonical ledger now
+    # carries 5 strict-Bonferroni entries (PASS ordinals 1,2,4,5) — but this staging call did not touch it.
+    assert ledger_mod.count_trials(str(_CANONICAL_LEDGER)) == 5
+    assert ledger_mod.rejection_offsets(str(_CANONICAL_LEDGER)) == [1, 2, 4, 5]

@@ -149,3 +149,14 @@
 {"agent":"goal-evaluator","ts":"2026-07-01T04:16:23Z","session_id":"mcp-loop","iter":10,"event":"agent_invocation_start","cli":"claude"}
 {"agent":"goal-evaluator","exit_status":0,"duration_seconds":349,"retries":0,"ts":"2026-07-01T04:22:12Z","session_id":"mcp-loop","iter":10,"event":"agent_invocation_end","cli":"claude"}
 {"iter_name":"goal-mcp-loop-iter-10","verdict":"CONTINUE","next_depth":"full","journey_deltas":{"newly_passing":6,"newly_failing":0,"regressed":0,"anti_goal_violations":0},"ts":"2026-07-01T04:31:27Z","session_id":"mcp-loop","iter":10,"event":"iter_end","cli":"claude"}
+{"branch":"goal/mcp-loop","commit_sha":"cee4500595fdbe62230263d4f64ec148c0460003","success":true,"error":"","verdict":"CONTINUE","ts":"2026-07-01T04:31:29Z","session_id":"mcp-loop","iter":10,"event":"iter_push","cli":"claude"}
+{"iter_name":"goal-mcp-loop-iter-11","prior_verdict":"CONTINUE","prior_depth":"full","snapshot_sha":"8dd8512ec7a84f242992e0ca938d754d075cdcb2","ts":"2026-07-01T04:31:29Z","session_id":"mcp-loop","iter":11,"event":"iter_start","cli":"claude"}
+{"agent":"goal-decomposer","ts":"2026-07-01T04:31:29Z","session_id":"mcp-loop","iter":11,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"goal-decomposer","exit_status":0,"duration_seconds":660,"retries":0,"ts":"2026-07-01T04:42:29Z","session_id":"mcp-loop","iter":11,"event":"agent_invocation_end","cli":"claude"}
+{"depth":"full","target_journeys":"J-07","ts":"2026-07-01T04:42:32Z","session_id":"mcp-loop","iter":11,"event":"iter_dispatch","cli":"claude"}
+{"agent":"coherence-auditor","ts":"2026-07-01T06:24:37Z","session_id":"mcp-loop","iter":11,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"coherence-auditor","exit_status":0,"duration_seconds":146,"retries":0,"ts":"2026-07-01T06:27:03Z","session_id":"mcp-loop","iter":11,"event":"agent_invocation_end","cli":"claude"}
+{"verdict":"COHERENCE-PASS","ts":"2026-07-01T06:27:03Z","session_id":"mcp-loop","iter":11,"event":"coherence_audit","cli":"claude"}
+{"agent":"goal-evaluator","ts":"2026-07-01T06:27:03Z","session_id":"mcp-loop","iter":11,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"goal-evaluator","exit_status":0,"duration_seconds":446,"retries":0,"ts":"2026-07-01T06:34:29Z","session_id":"mcp-loop","iter":11,"event":"agent_invocation_end","cli":"claude"}
+{"iter_name":"goal-mcp-loop-iter-11","verdict":"CONTINUE","next_depth":"full","journey_deltas":{"newly_passing":7,"newly_failing":0,"regressed":0,"anti_goal_violations":0},"ts":"2026-07-01T06:43:15Z","session_id":"mcp-loop","iter":11,"event":"iter_end","cli":"claude"}

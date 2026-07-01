@@ -129,6 +129,39 @@ def _vcp_contraction_pass_entry() -> dict:
     }
 
 
+def _vcp_contraction_h60_pass_entry() -> dict:
+    """The REAL iter-11 (J-07) 5th ledger entry: the `vcp_contraction` top-decile (D10) cohort at the NON-20
+    forward-return horizon 60, promoted to the canonical ledger (`"ledger":"canonical"`) and certified PASS at
+    trial #5 (strict Bonferroni divisor 5, required_p 0.010). Like the h20 row it carries NO `signal` key —
+    it backs the Research factor lab + the Evidence ledger ONLY (never a `/stocks` inline score badge). Verdict
+    values byte-match `certified-claims.jsonl` line 5 (the displayed-numbers-are-correct anti-goal)."""
+    return {
+        "claim": {
+            "kind": "factor",
+            "factor": "vcp_contraction",
+            "slice_kind": "decile",
+            "decile": 10,
+            "horizon": 60,
+            "direction": "positive",
+            "ledger": "canonical",
+        },
+        "register_date": "2026-07-01",
+        "horizon": 60,
+        "cohort_n": 12026,
+        "control_n": 1055,
+        "verdict": {
+            "status": "PASS",
+            "reason": "certified: holdout edge +0.0891 beats the control out-of-sample and is significant after multiple-testing deflation (p=0.0004998 < alpha/5=0.01)",
+            "holdout_edge": 0.08909719710495288,
+            "control_excess": 0.08909719710495288,
+            "p_value": 0.0004997501249375312,
+            "deflation": "bonferroni",
+            "deflation_divisor": 5,
+            "required_p": 0.01,
+        },
+    }
+
+
 def _ma_stack_fail_entry() -> dict:
     """The REAL iter-8 3rd ledger entry: the `ma_stack` top-decile (D10) horizon-20 factor cohort the
     referee REJECTED (a decent holdout edge but p=0.01949 >= alpha/3=0.01667). A signal-less FAIL row — it
@@ -287,6 +320,60 @@ def test_build_payload_vcp_contraction_factor_cohort_post_certification(tmp_path
     assert _resolve_signal(_ma_stack_fail_entry()["claim"]) is None
 
 
+def test_build_payload_vcp_contraction_h60_factor_cohort_post_certification(tmp_path):
+    # iter-11 (J-07): the FULL post-promotion 5-entry ledger
+    #   [leadership_score PASS (score factor), Breakout-watch × Risk-on PASS (event-study),
+    #    ma_stack D10 FAIL (plain factor), vcp_contraction D10 h20 PASS, vcp_contraction D10 h60 PASS].
+    # The NEW 5th entry is the same signal-less plain-factor edge as the h20 row but at the NON-20 horizon 60:
+    # it is audit-listed + proven, carries NO `signal`, and MUST NOT enter `proven_signals` (leadership_score
+    # stays the SOLE proven signal — J-01/J-02/J-03 unaffected). Both vcp_contraction rows are served with
+    # their OWN horizon verbatim so the per-horizon factor-lab badge deep-links to the right one. Every
+    # displayed number is read VERBATIM (the J-07 correctness / displayed-numbers-are-correct contract).
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), _pass_entry("leadership_score"))
+    append_entry(str(ledger), _regime_event_study_entry())
+    append_entry(str(ledger), _ma_stack_fail_entry())
+    append_entry(str(ledger), _vcp_contraction_pass_entry())
+    append_entry(str(ledger), _vcp_contraction_h60_pass_entry())
+    payload = build_evidence_payload(str(ledger))
+
+    # proven_signals stays EXACTLY {leadership_score} — the signal-less h60 claim adds NO signal (iter-1 lesson)
+    assert list(payload["proven_signals"].keys()) == ["leadership_score"]
+    assert payload["proven_signals"]["leadership_score"]["signal"] == "leadership_score"
+
+    # all five originals are audit-listed (no forward-walk record), in ledger order
+    assert len(payload["claims"]) == 5
+
+    # the two vcp_contraction rows are served DISTINCTLY by horizon (the per-horizon badge relies on this)
+    vcp_rows = [
+        row
+        for row in payload["claims"]
+        if row["claim"].get("kind") == "factor" and row["claim"].get("factor") == "vcp_contraction"
+    ]
+    assert len(vcp_rows) == 2
+    horizons = sorted(row["claim"]["horizon"] for row in vcp_rows)
+    assert horizons == [20, 60]
+
+    # the NEW h60 row: proven, signal-less, selectors verbatim, verdict bytes verbatim (byte-match the ledger)
+    h60 = next(row for row in vcp_rows if row["claim"]["horizon"] == 60)
+    assert h60["proven"] is True
+    assert h60["signal"] is None
+    assert h60["claim"]["slice_kind"] == "decile"
+    assert h60["claim"]["decile"] == 10
+    assert h60["claim"]["direction"] == "positive"
+    assert h60["register_date"] == "2026-07-01"
+    assert h60["cohort_n"] == 12026
+    assert h60["control_n"] == 1055
+    assert h60["verdict"]["status"] == "PASS"
+    assert h60["verdict"]["holdout_edge"] == 0.08909719710495288
+    assert h60["verdict"]["control_excess"] == 0.08909719710495288
+    assert h60["verdict"]["p_value"] == 0.0004997501249375312
+    assert h60["verdict"]["required_p"] == 0.01
+
+    # the h60 plain-factor cohort still maps to NO UI signal (it is not a score column — anti-goal #1)
+    assert _resolve_signal(_vcp_contraction_h60_pass_entry()["claim"]) is None
+
+
 def test_build_payload_fail_and_insufficient_not_proven(tmp_path):
     ledger = tmp_path / "certified-claims.jsonl"
     append_entry(str(ledger), _verdict_entry("entry_quality_score", "FAIL"))
@@ -380,28 +467,45 @@ def test_resolve_ledger_path_config_default(monkeypatch):
 # so `GET /api/evidence` proven-ness is unperturbed after the injectable-economy refactor.
 # ==================================================================================================
 def test_canonical_ledger_frozen_golden(monkeypatch):
-    """The four canonical `certified-claims.jsonl` entries are the immutable honest history the whole
-    evidence layer reads (lines 1/2/4 PASS, line 3 `ma_stack` FAIL — all strict Bonferroni, divisors 1..4).
-    iter-9's injectable-deflation refactor must leave them byte-identical and `proven_signals` exactly
-    `{leadership_score}`. This pins the canonical golden so any accidental rewrite fails loudly."""
+    """The canonical `certified-claims.jsonl` entries are the immutable honest history the whole evidence
+    layer reads. The original four (lines 1/2/4 PASS, line 3 `ma_stack` FAIL — strict Bonferroni divisors
+    1..4) stay byte-identical, and iter-11 (J-07) appends the FIFTH: the vcp_contraction top-decile edge at
+    the NON-20 horizon 60, promoted to canonical (PASS, strict Bonferroni divisor 5, required_p 0.010). All
+    five are strict Bonferroni and `proven_signals` stays exactly `{leadership_score}` (the new h60 claim is
+    signal-less — it MUST NOT enter it). This pins the canonical golden so any accidental rewrite/reorder of
+    the prior rows — or a stray `signal` on the h60 row — fails loudly."""
     monkeypatch.delenv(LEDGER_PATH_ENV, raising=False)
     from app.engine.ledger import read_entries
 
     ledger_file = REPO_ROOT / "runs/goal-session-mcp-loop/state/certified-claims.jsonl"
     entries = read_entries(str(ledger_file))
 
-    # exactly the four ORIGINAL honest-history entries, all strict Bonferroni with divisors 1..4.
-    assert len(entries) == 4
-    assert [e["verdict"]["status"] for e in entries] == ["PASS", "PASS", "FAIL", "PASS"]
-    assert [e["verdict"]["deflation_divisor"] for e in entries] == [1, 2, 3, 4]
+    # exactly the five honest-history entries, all strict Bonferroni with divisors 1..5 (the h60 promotion
+    # tightened the user-facing bar 4→5 — permanent, honest history).
+    assert len(entries) == 5
+    assert [e["verdict"]["status"] for e in entries] == ["PASS", "PASS", "FAIL", "PASS", "PASS"]
+    assert [e["verdict"]["deflation_divisor"] for e in entries] == [1, 2, 3, 4, 5]
     assert all(e["verdict"]["deflation"] == "bonferroni" for e in entries)
     assert [e["claim"].get("factor") for e in entries] == [
-        "leadership_score", None, "ma_stack", "vcp_contraction",
+        "leadership_score", None, "ma_stack", "vcp_contraction", "vcp_contraction",
     ]
 
-    # the projected payload: 4 claim rows, and the ONLY inline-badge signal is leadership_score (unchanged).
+    # the 5th (iter-11 J-07) entry: the vcp_contraction top-decile edge at the NON-20 horizon 60 — PASS,
+    # signal-less, verdict bytes FROZEN (the displayed h60 edge/p/control byte-match anti-goal #3).
+    h60 = entries[4]
+    assert h60["claim"]["horizon"] == 60
+    assert h60["claim"]["decile"] == 10
+    assert "signal" not in h60["claim"]  # signal-less — never lights a /stocks inline score badge
+    assert h60["verdict"]["status"] == "PASS"
+    assert h60["verdict"]["required_p"] == 0.01
+    assert h60["verdict"]["holdout_edge"] == 0.08909719710495288
+    assert h60["verdict"]["control_excess"] == 0.08909719710495288
+    assert h60["verdict"]["p_value"] == 0.0004997501249375312
+
+    # the projected payload: 5 claim rows, and the ONLY inline-badge signal is STILL leadership_score
+    # (the signal-less h60 claim MUST NOT enter proven_signals — J-01/J-02/J-03 unaffected).
     payload = build_evidence_payload(str(ledger_file))
-    assert len(payload["claims"]) == 4
+    assert len(payload["claims"]) == 5
     assert set(payload["proven_signals"].keys()) == {"leadership_score"}
     proven = payload["proven_signals"]["leadership_score"]
     assert proven["proven"] is True

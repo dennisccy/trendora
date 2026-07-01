@@ -176,6 +176,7 @@ check("proofFieldsFor returns null for an absent, null-map, or not-`proven` sign
 // --- (g) the display formatters — exact strings (the panel re-formats; it fabricates nothing) -----------
 check("formatEvidencePct renders a signed percent (and an em dash for a missing value)", () => {
   assert.strictEqual(formatEvidencePct(0.06359100763913017), "+6.36%"); // the real holdout edge / control excess
+  assert.strictEqual(formatEvidencePct(0.08909719710495288), "+8.91%"); // iter-11 J-07 — the real vcp h60 holdout edge / SPY control
   assert.strictEqual(formatEvidencePct(-0.004), "-0.40%");
   assert.strictEqual(formatEvidencePct(0), "+0.00%");
   assert.strictEqual(formatEvidencePct(null), "—");
@@ -352,10 +353,49 @@ function maStackFailRow(): CertifiedClaim {
   };
 }
 
-/** The full 4-entry served claim list (leadership PASS, Breakout-watch Risk-on PASS, ma_stack FAIL,
- *  vcp_contraction PASS) — the post-iter-8 ledger the factor-lab badge resolves against. */
+/** A certified (PASS) row mirroring the REAL iter-11 5th ledger entry: the vcp_contraction top-decile cohort
+ *  at the NON-20 forward-return horizon 60, promoted to the canonical ledger (`"ledger":"canonical"`). Like
+ *  the h20 row it is signal-less (backs the factor lab + Evidence ONLY). Verdict values byte-match
+ *  `certified-claims.jsonl` line 5 (the displayed-numbers-are-correct anti-goal). */
+function vcpContractionH60Row(): CertifiedClaim {
+  return {
+    signal: null,
+    claim: {
+      kind: "factor",
+      factor: "vcp_contraction",
+      slice_kind: "decile",
+      decile: 10,
+      horizon: 60,
+      direction: "positive",
+      ledger: "canonical",
+    },
+    register_date: "2026-07-01",
+    horizon: 60,
+    cohort_n: 12026,
+    control_n: 1055,
+    verdict: {
+      status: "PASS",
+      reason: "certified: holdout edge +0.0891 beats the control out-of-sample and is significant after multiple-testing deflation (p=0.0004998 < alpha/5=0.01)",
+      holdout_edge: 0.08909719710495288,
+      control_excess: 0.08909719710495288,
+      p_value: 0.0004997501249375312,
+    },
+    proven: true,
+    forward_walk: null,
+  };
+}
+
+/** The full post-iter-11 5-entry served claim list (leadership PASS, Breakout-watch Risk-on PASS, ma_stack
+ *  FAIL, vcp_contraction h20 PASS, vcp_contraction h60 PASS) — the ledger the per-horizon factor-lab badges
+ *  resolve against. */
 function ledgerClaims(): CertifiedClaim[] {
-  return [provenLeadershipRow(), eventStudyRegimeRow(), maStackFailRow(), vcpContractionRow()];
+  return [
+    provenLeadershipRow(),
+    eventStudyRegimeRow(),
+    maStackFailRow(),
+    vcpContractionRow(),
+    vcpContractionH60Row(),
+  ];
 }
 
 // --- (m) full-selector match against a PASS entry => "Proven" + the cohort deep-link href ----------------
@@ -374,6 +414,28 @@ check("resolveCohortEvidence matches a PASS factor cohort on all selectors => 'P
   assert.strictEqual(status.claim?.signal, null); // signal-less — never lights a /stocks score badge
 });
 
+// --- (m2) iter-11 J-07 — the vcp_contraction h60 cohort matches the NEW 5th entry => "Proven" + …-h60 href -
+// This is the first surfaced edge beyond the 20-day window: the SAME matcher, the SAME served payload, one
+// more PASS-backed entry. The h60 badge deep-links to its OWN horizon-distinct row and the h20 badge is
+// unperturbed (the two vcp_contraction rows never cross) — J-06 stays green.
+check("resolveCohortEvidence matches the vcp_contraction h60 cohort => 'Proven' + a horizon-distinct href", () => {
+  const cohortH60: FactorCohort = { ...VCP_COHORT, horizon: 60 };
+  const status = resolveCohortEvidence(cohortH60, ledgerClaims());
+  assert.strictEqual(status.proven, true);
+  assert.strictEqual(status.label, "Proven");
+  assert.strictEqual(status.href, "/evidence#factor-vcp_contraction-d10-h60");
+  // the displayed h60 edge / control / p are read VERBATIM (byte-match the ledger — anti-goal #3)
+  assert.strictEqual(status.claim?.verdict.holdout_edge, 0.08909719710495288);
+  assert.strictEqual(status.claim?.verdict.control_excess, 0.08909719710495288);
+  assert.strictEqual(status.claim?.verdict.p_value, 0.0004997501249375312);
+  assert.strictEqual(status.claim?.register_date, "2026-07-01");
+  assert.strictEqual(status.claim?.signal, null); // signal-less — never lights a /stocks score badge
+  // the h20 cohort still resolves to its OWN distinct row — the two vcp_contraction rows don't cross (J-06)
+  const h20 = resolveCohortEvidence(VCP_COHORT, ledgerClaims());
+  assert.strictEqual(h20.href, "/evidence#factor-vcp_contraction-d10-h20");
+  assert.notStrictEqual(h20.href, status.href);
+});
+
 // --- (n) a matched-but-non-PASS cohort (the ma_stack FAIL row) => "Not yet proven", no href -------------
 check("resolveCohortEvidence treats a matched-but-non-PASS cohort (ma_stack FAIL) as 'Not yet proven'", () => {
   const maCohort: FactorCohort = { ...VCP_COHORT, factor: "ma_stack" };
@@ -390,7 +452,7 @@ check("resolveCohortEvidence returns 'Not yet proven' on any selector mismatch",
   for (const mismatch of [
     { ...VCP_COHORT, factor: "rs_spy_3m" }, // unbacked factor
     { ...VCP_COHORT, decile: 9 }, // wrong decile (not the top decile)
-    { ...VCP_COHORT, horizon: 60 }, // wrong horizon
+    { ...VCP_COHORT, horizon: 5 }, // uncertified horizon (only h20 + h60 are backed for vcp_contraction)
     { ...VCP_COHORT, direction: "negative" }, // wrong direction
     { ...VCP_COHORT, slice_kind: "sector" }, // wrong slice kind
   ] as FactorCohort[]) {
@@ -490,6 +552,22 @@ check("claimSurface gives a signal-less factor cohort an honest title + a 'Resea
   assert.strictEqual(surface.href, "/research/factor-lab");
   assert.strictEqual(surface.label, "Research factor lab");
   assert.notStrictEqual(surface.label, "Stocks leaderboard");
+});
+
+// --- (s2) iter-11 J-07 — the h60 factor-cohort subtitle is horizon-DISAMBIGUATED; h20 stays byte-identical -
+// The two vcp_contraction rows on `/evidence` share a title, so the h60 row's subtitle gains a "· 60-day
+// hold" suffix to self-distinguish. The h20 row's wording MUST stay EXACTLY iter-8's (J-06 non-regression).
+check("claimSurface disambiguates the h60 factor-cohort subtitle while keeping the h20 wording byte-identical", () => {
+  const h60 = claimSurface(vcpContractionH60Row());
+  assert.strictEqual(h60.title, "vcp_contraction — top decile (D10)"); // title is horizon-agnostic (the row id carries the horizon)
+  assert.strictEqual(h60.titleIsSignalKey, false);
+  assert.strictEqual(h60.subtitle, "Out-of-sample edge — factor top decile · 60-day hold");
+  assert.strictEqual(h60.href, "/research/factor-lab");
+  assert.strictEqual(h60.label, "Research factor lab");
+  // still historical out-of-sample framing — never a buy/sell or return promise (anti-goal #2)
+  assert.ok(!/buy|sell|return|target|price/i.test(h60.subtitle), "no return/price/buy-sell language");
+  // the pre-existing h20 vcp_contraction row is byte-identical to iter-8 (J-06 must not regress)
+  assert.strictEqual(claimSurface(vcpContractionRow()).subtitle, "Out-of-sample edge — factor top decile");
 });
 
 // --- (t) the score row + event-study row stay BYTE-IDENTICAL after the factor branch is added ------------

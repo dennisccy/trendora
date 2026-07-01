@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-11",
+  "base_url": "http://localhost:3255",
+  "iteration": 11,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Factor Lab — per-horizon evidence chip strip",
+      "narration": "The Factor Lab's evidence column now shows whether a factor's certified edge holds up at every holding period — 1, 5, 10, 20, and 60 trading days — as a compact row of five chips. The column header was updated to 'Evidence (D10 · per horizon)' to reflect this wider coverage.",
+      "point_out": "Each factor row shows five chips. The vcp_contraction row has two lit 'Proven' chips at 20d and 60d; shorter horizons show 'Not yet proven'. The column header no longer reads '20d'.",
+      "journey": "J-07",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/factor-lab" },
+      "expect": { "text": "Evidence (D10 · per horizon)" }
+    },
+    {
+      "n": 2,
+      "title": "Click the 60d 'Proven' chip — deep-link to the certified claim",
+      "narration": "The new 60-day chip on vcp_contraction is a live hyperlink. Clicking it takes you straight to the certified 60-day claim on the Evidence page.",
+      "point_out": "The browser navigates to /evidence with the h60 anchor active, landing on the vcp_contraction 60-day row showing +8.91% out-of-sample edge.",
+      "journey": "J-07",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "css": "a[data-proven='true'][data-horizon='60']" } },
+      "expect": { "text": "+8.91%" }
+    },
+    {
+      "n": 3,
+      "title": "Evidence page — new 60-day certified claim row",
+      "narration": "The Evidence ledger now holds five certified claims. The newest entry is vcp_contraction at the 60-day holding period — it cleared the pre-registered significance bar with a +8.91% holdout edge versus the SPY benchmark and a 'Pending' forward-walk score that will update as live trades accumulate.",
+      "point_out": "The fifth row's subtitle reads '60-day hold', its status badge shows PASS, and the forward-walk field reads 'Pending — monitored as new data matures'.",
+      "journey": "J-07",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/evidence" },
+      "expect": { "text": "60-day hold" }
+    },
+    {
+      "n": 4,
+      "title": "Click 'Backs: Research factor lab →' — return from evidence to Factor Lab",
+      "narration": "Every certified claim that originates from the Factor Lab includes a link back to it, so you can immediately see the full per-horizon picture for that factor without navigating manually.",
+      "point_out": "Clicking 'Backs: Research factor lab →' on the 60-day row returns to the Factor Lab page, where the chip strip for vcp_contraction is visible.",
+      "journey": "J-07",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Backs: Research factor lab →" } },
+      "expect": { "text": "Evidence (D10 · per horizon)" }
+    },
+    {
+      "n": 5,
+      "title": "Prior evidence rows unchanged — ledger integrity confirmed",
+      "narration": "The four earlier certified claims are intact and unmodified — leadership score, breakout watch, moving-average stack, and vcp_contraction at the 20-day horizon all retain their original statuses and figures.",
+      "point_out": "Rows 1 through 4 show the same PASS and FAIL statuses as before. The vcp_contraction 20-day row's subtitle contains no mention of '60-day'.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/evidence" },
+      "expect": { "text": "+6.36%" }
+    },
+    {
+      "n": 6,
+      "title": "Factor Lab — both proven horizons for vcp_contraction",
+      "narration": "On the Factor Lab, vcp_contraction now shows two independently lit 'Proven' chips — one for the 20-day horizon and one for the 60-day horizon — each linking to its own evidence anchor. Factors with no certified claims still show 'Not yet proven' on all five chips.",
+      "point_out": "The vcp_contraction row shows 'Proven' at 20d and 60d and 'Not yet proven' at 1d, 5d, and 10d. Each 'Proven' chip points to a different evidence anchor URL.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/factor-lab" },
+      "expect": { "text": "Evidence (D10 · per horizon)" }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "blocked": false,
+  "results": [
+    {
+      "claim": {
+        "kind": "factor",
+        "factor": "vcp_contraction",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 60,
+        "direction": "positive",
+        "ledger": "canonical"
+      },
+      "ledger": "canonical",
+      "status": "PASS",
+      "reason": "certified: holdout edge +0.0891 beats the control out-of-sample and is significant after multiple-testing deflation (p=0.0004998 < alpha/5=0.01)"
+    }
+  ]
+}

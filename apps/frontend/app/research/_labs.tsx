@@ -31,12 +31,8 @@ import { SampleLink } from "@/components/sample-link";
 import { groupedHorizonColumns, horizonColumnKey } from "@/lib/research-lab-columns";
 import { type CohortParams, type SampleScope } from "@/lib/samples-link";
 import { cn } from "@/lib/utils";
-import {
-  cohortEvidenceAnchor,
-  resolveCohortEvidence,
-  type CertifiedClaim,
-  type FactorCohort,
-} from "@/lib/evidence";
+import { type CertifiedClaim } from "@/lib/evidence";
+import { factorHorizonBadges, type FactorHorizonBadge } from "@/lib/factor-lab-evidence";
 import {
   fetchDowntrendOpportunity,
   fetchEventStudy,
@@ -627,11 +623,12 @@ function FactorsTable({
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
               <FactorSortHeader col="label" label="Factor" activeKey={sortKey} dir={sortDir} onSort={onSort} />
-              {/* iter-8 (J-06): the top-decile evidence status column — not sortable (a referee verdict,
-                  not a metric). Headed "Evidence (D{top} · {h}d)" so the cohort the badge speaks for is
-                  explicit. */}
+              {/* iter-8 (J-06) → iter-11 (J-07): the top-decile evidence-status column — not sortable (a
+                  referee verdict, not a metric). Now PER HORIZON: a chip strip carries each horizon's status,
+                  so an edge proven beyond the 20-day window (vcp_contraction @ h60) is visible alongside the
+                  still-unproven horizons. Headed "Evidence (D{top} · per horizon)". */}
               <th className="px-4 py-2 font-medium uppercase tracking-wide">
-                Evidence (D{topDecile} · {defaultHorizon}d)
+                Evidence (D{topDecile} · per horizon)
               </th>
               <FactorSortHeader col="family" label="Family" activeKey={sortKey} dir={sortDir} onSort={onSort} />
               <FactorSortHeader col="rank_ic" label={`Rank-IC (${defaultHorizon}d)`} activeKey={sortKey} dir={sortDir} onSort={onSort} numeric />
@@ -727,45 +724,30 @@ function TopDecileCell({ row, horizon, metric, min }: {
   );
 }
 
-/** iter-8 (J-06) — the top-decile evidence badge on a factor's summary row. It resolves THIS factor's
- *  highest-value-decile (D`topDecile`) cohort at the certified `horizon` against the served `claims[]` via
- *  the pure `resolveCohortEvidence` matcher and re-displays the status VERBATIM (it computes nothing). A
- *  PASS-backed cohort (vcp_contraction) reads "Proven" (calm accent chip) and DEEP-LINKS to its `/evidence`
- *  ledger row; every unbacked cohort — including ma_stack's FAIL row — reads "Not yet proven" (muted, no
- *  link). Mirrors `components/evidence-status-badge.tsx`.
+/** iter-8 (J-06) → iter-11 (J-07) — ONE per-horizon top-decile evidence chip on a factor's summary row. It
+ *  is now PRESENTATIONAL: it renders a pre-resolved `FactorHorizonBadge` descriptor (computed once by the
+ *  pure `factorHorizonBadges` from the served `claims[]`) VERBATIM — it decides nothing. A PASS-backed cohort
+ *  (vcp_contraction @ h20 / h60) reads "{h}d Proven" (calm accent chip) and DEEP-LINKS to its OWN
+ *  horizon-distinct `/evidence` ledger row; every unbacked horizon — including ma_stack's FAIL row and the
+ *  uncertified 1/5/10-day horizons — reads "{h}d Not yet proven" (muted, no link). The `data-horizon`
+ *  attribute makes each chip independently selectable by browser-qa.
  *
  *  Nested-interactive hazard guard (iter-5): the summary `<tr>` is itself a click/Enter-to-expand control,
  *  so the "Proven" `<Link>` calls `stopPropagation()` on click + key events — a click deep-links rather than
- *  toggling the row. The "Not yet proven" badge is non-interactive (no link) and needs no guard. */
-function FactorEvidenceBadge({
-  factor,
-  topDecile,
-  horizon,
-  evidenceClaims,
-}: {
-  factor: string;
-  topDecile: number;
-  horizon: number;
-  evidenceClaims: CertifiedClaim[];
-}) {
-  const cohort: FactorCohort = {
-    factor,
-    slice_kind: "decile",
-    decile: topDecile,
-    horizon,
-    direction: "positive",
-  };
-  const status = resolveCohortEvidence(cohort, evidenceClaims);
+ *  toggling the row. The "Not yet proven" chip is non-interactive (no link) and needs no guard. */
+function FactorEvidenceBadge({ badge }: { badge: FactorHorizonBadge }) {
+  const { factor, topDecile, horizon, proven, label, href, claim } = badge;
 
-  if (status.proven && status.href) {
-    const registered = status.claim?.register_date ?? "—";
+  if (proven && href) {
+    const registered = claim?.register_date ?? "—";
     return (
       <Link
-        href={status.href}
-        title={`Proven — this factor's top decile (D${topDecile}) beat SPY out-of-sample over the sealed holdout (certified ${registered}). Click to audit the backing evidence.`}
+        href={href}
+        title={`Proven — this factor's top decile (D${topDecile}) beat SPY out-of-sample over the sealed holdout at the ${horizon}-day horizon (certified ${registered}). Click to audit the backing evidence.`}
         data-testid="factor-evidence-badge"
         data-proven="true"
         data-factor={factor}
+        data-horizon={horizon}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
         className="inline-flex rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
@@ -775,7 +757,8 @@ function FactorEvidenceBadge({
           className="cursor-pointer whitespace-nowrap text-[11px] transition-colors hover:bg-surface active:bg-bg"
         >
           <ShieldCheck className="h-3 w-3 shrink-0" aria-hidden />
-          {status.label}
+          <span className="num">{horizon}d</span>
+          <span>{label}</span>
         </Badge>
       </Link>
     );
@@ -788,10 +771,12 @@ function FactorEvidenceBadge({
       data-testid="factor-evidence-badge"
       data-proven="false"
       data-factor={factor}
+      data-horizon={horizon}
       className="whitespace-nowrap text-[11px] text-text-faint"
     >
       <Shield className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
-      {status.label}
+      <span className="num">{horizon}d</span>
+      <span>{label}</span>
     </Badge>
   );
 }
@@ -845,17 +830,17 @@ function FactorRows({
           <span className="font-semibold text-text">{row.label}</span>{" "}
           <span className="text-xs text-text-faint">({row.direction.replace("_", " ")})</span>
         </td>
-        {/* iter-8 (J-06): the top-decile evidence badge — "Proven" ONLY when a PASS certified-claim backs
-            THIS factor's D{topDecile} @ {defaultHorizon}d cohort (vcp_contraction), else "Not yet proven".
-            It lives in its OWN cell; the "Proven" link stops the click/key from also toggling the row (the
-            iter-5 nested-interactive hazard). */}
+        {/* iter-8 (J-06) → iter-11 (J-07): the top-decile evidence status PER HORIZON. One chip per served
+            horizon (`data.horizons`) resolves its OWN cohort against the served ledger — "Proven" ONLY when a
+            PASS certified-claim backs THIS factor's D{topDecile} @ that horizon (vcp_contraction @ h20/h60),
+            else "Not yet proven". The chips live in their OWN cell; each "Proven" link stops the click/key
+            from also toggling the row (the iter-5 nested-interactive hazard). */}
         <td className="px-4 py-2">
-          <FactorEvidenceBadge
-            factor={row.key}
-            topDecile={topDecile}
-            horizon={defaultHorizon}
-            evidenceClaims={evidenceClaims}
-          />
+          <div className="flex flex-wrap items-center gap-1.5" data-testid={`factor-evidence-${row.key}`}>
+            {factorHorizonBadges(row.key, topDecile, horizons, evidenceClaims).map((badge) => (
+              <FactorEvidenceBadge key={badge.horizon} badge={badge} />
+            ))}
+          </div>
         </td>
         <td className="px-4 py-2 text-text-muted">{familyLabel(row.family)}</td>
         <td className="px-4 py-2 text-right">
