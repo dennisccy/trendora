@@ -31,7 +31,7 @@ from sqlmodel import select
 from app.config import get_config
 from app.engine.forward_testing import benchmark_symbols
 from app.engine.research import compute_factor_lab, factor_catalog
-from app.engine.samples import KIND_FACTOR, compute_samples
+from app.engine.samples import KIND_COMBINATION, KIND_FACTOR, compute_samples
 from app.engine.triad_screen import screen_holdout
 from app.models import ForwardReturn, ScannerRun
 
@@ -325,6 +325,116 @@ def explore_multi_horizon_staging(
         os.remove(ledger_path)  # clean re-derivation of the fixed candidate set (staging file ONLY)
 
     candidates = _staging_candidates(cfg)
+    results: list[dict] = []
+    for claim in candidates:
+        out = verify_edge(
+            session, claim, ledger_path, register_date=register_date, ledger=LEDGER_STAGING
+        )
+        results.append(out)
+    return {
+        "ledger_path": ledger_path,
+        "ledger": LEDGER_STAGING,
+        "register_date": register_date,
+        "n_candidates": len(candidates),
+        "results": results,
+    }
+
+
+# ==================================================================================================
+# goal-mcp-loop iter-12 (Part B Phase 1 — the deferred COMBINATIONS half) — the 2-factor COMBINATION
+# STAGING exploration. The exact sibling of the single-factor `explore_multi_horizon_staging` above, but
+# for pre-registered 2-factor COMPOSITE cohorts (`config.triad.combination_candidates`). It projects each
+# registered pair into a `kind:"combination"` composite-cohort claim and certifies it through the SAME
+# referee path (`verify_edge(ledger="staging")`) into the INTERNAL staging ledger under the online-FDR
+# economy — the recorded block-bootstrap p-values are what iter-13 reads to PROMOTE a winner (raw
+# `p_value < 0.00833`, the canonical divisor-6 bar) to canonical and surface J-08.
+#
+# The referee cert path is REUSED UNCHANGED: `assemble_claim_observations`->`drill_samples` already parse
+# the `condition` legs and resolve the `composite` cohort (`condition`/`cohort` are in
+# `_CLAIM_SELECTOR_KEYS`), so NOTHING in `verify_edge` is modified — it stays the SOLE ledger writer.
+#
+# DELIBERATELY a parallel sibling (NOT a shared refactor of `explore_multi_horizon_staging`): the
+# single-factor exploration writes the byte-FROZEN committed staging entries #1-4, so it is left untouched
+# so those bytes never move (the iter-9/iter-10 "protect the frozen artifact" lesson). The small guard/loop
+# overlap is the deliberate cost of that isolation.
+#
+# Anti-data-mining keystone: the candidate set is PRE-REGISTERED in `config.triad.combination_candidates`
+# (mirrored into `project-extensions/proposer-guidance.md` §4.2, each with an economic rationale), iterated
+# VERBATIM — NEVER the full `factor × pair × horizon` cross-product.
+# ==================================================================================================
+def _combination_staging_candidates(cfg) -> list[dict]:
+    """The FIXED, PRE-REGISTERED 2-factor combination candidate set from
+    ``config.triad.combination_candidates`` — each entry projected into a combination COMPOSITE-cohort claim
+    dict mirroring ``/api/research/samples`` selectors
+    (``{kind:"combination", cohort:"composite", condition:[leg1, leg2], horizon, direction}``). Returns
+    ``[]`` when the block is absent (nothing to explore). Reads config VERBATIM — no leg/horizon literal
+    lives here; ``kind`` + ``cohort`` are the only structural constants (every registered combination is a
+    composite cohort, exactly as ``_staging_candidates`` fixes ``slice_kind="decile"``). The anti-data-mining
+    keystone: the hypothesis set is pre-registered in config, never enumerated in code."""
+    block = getattr(cfg, "triad", None)
+    if not isinstance(block, dict):
+        return []
+    raw = block.get("combination_candidates")
+    if not raw:
+        return []
+    claims: list[dict] = []
+    for c in raw:
+        claims.append({
+            "kind": KIND_COMBINATION,
+            "cohort": "composite",
+            "condition": [str(leg) for leg in c["condition"]],
+            "horizon": int(c["horizon"]),
+            "direction": str(c.get("direction", "positive")),
+        })
+    return claims
+
+
+def explore_combination_staging(
+    session,
+    config=None,
+    *,
+    ledger_path: Optional[str] = None,
+    register_date: str = DEFAULT_STAGING_REGISTER_DATE,
+    reset: bool = False,
+) -> dict:
+    """Run the PRE-REGISTERED 2-factor combination candidate set (``config.triad.combination_candidates``)
+    through the referee into the INTERNAL **staging** ledger, appending one verdict per candidate via
+    ``app.mcp.tools:verify_edge(ledger="staging")`` under the online-FDR economy (when
+    ``evidence.fdr.enabled``). Returns the per-candidate results (claim + verdict) so the caller can persist
+    / report the discovered block-bootstrap p-values — the basis iter-13 PROMOTES a J-08 winner from.
+
+    The exact sibling of ``explore_multi_horizon_staging`` — same determinism, same fences, same (unchanged)
+    referee path — but for combination composite cohorts. Determinism: PURE given the DB + config + a fixed
+    ``register_date`` and a fresh/``reset`` ledger (the referee seed is fixed), so a re-run yields
+    byte-identical verdicts. ``reset=True`` truncates the target staging ledger first (a clean re-derivation
+    of the fixed candidate set, staging file ONLY — NOT an online accumulator).
+
+    Fences (honesty guards):
+      * ``verify_edge`` is called ONLY with ``ledger="staging"`` — the canonical Bonferroni bar is never
+        touched, and ``verify_edge`` remains the SOLE ledger writer;
+      * this function REFUSES to operate on the canonical ledger path (``evidence.ledger_path``) — a
+        ``ValueError`` fail-closed guard so a mis-wired call can never write/clear the user-facing ledger.
+    """
+    from app.mcp.tools import LEDGER_STAGING, verify_edge  # lazy import — breaks the tools<-triad_scan cycle
+
+    cfg = config or get_config()
+    # Resolve BOTH the target and the canonical path through the repo-root convention so the fail-closed
+    # guard compares like-for-like (a relative canonical path passed verbatim is caught exactly as an
+    # absolute one is) — identical to the single-factor explorer.
+    ledger_path = _resolve_repo_path(ledger_path) if ledger_path else _resolve_repo_path(cfg.evidence.staging_ledger_path)
+
+    # Fail-closed: NEVER let the combination staging exploration touch the user-facing canonical ledger.
+    canonical = _resolve_repo_path(cfg.evidence.ledger_path)
+    if os.path.abspath(ledger_path) == os.path.abspath(canonical):
+        raise ValueError(
+            "explore_combination_staging refuses to write the CANONICAL ledger "
+            f"({ledger_path!r}); the staging exploration is fenced to the staging ledger only"
+        )
+
+    if reset and os.path.exists(ledger_path):
+        os.remove(ledger_path)  # clean re-derivation of the fixed candidate set (staging file ONLY)
+
+    candidates = _combination_staging_candidates(cfg)
     results: list[dict] = []
     for claim in candidates:
         out = verify_edge(

@@ -279,7 +279,10 @@ def test_verify_edge_fdr_runs_in_staging_but_canonical_stays_bonferroni(loaded_e
 # touching the canonical Bonferroni bar. These tests pin: determinism + staging-isolation, the
 # thin-fixture INSUFFICIENT path, the fail-closed canonical-path guard, and the committed frozen ledger.
 # ==================================================================================================
-from app.engine.triad_scan import explore_multi_horizon_staging  # noqa: E402
+from app.engine.triad_scan import (  # noqa: E402
+    explore_combination_staging,
+    explore_multi_horizon_staging,
+)
 
 # The claim shape each pre-registered candidate projects to (config.triad.candidates, in order).
 _EXPECTED_CANDIDATES = [
@@ -288,6 +291,14 @@ _EXPECTED_CANDIDATES = [
     ("rs_spy_3m", 60, 10),
     ("leadership_score", 60, 10),
 ]  # (factor, horizon, decile)
+
+# iter-12: the condition-leg pairs each pre-registered COMBINATION candidate projects to (config order,
+# config.triad.combination_candidates). Every one is a composite-cohort claim at horizon 20, direction positive.
+_EXPECTED_COMBINATION_CANDIDATES = [
+    ["rs_spy_3m:top:quintile", "atr_pct:bottom:tertile"],
+    ["leadership_score:top:quintile", "atr_pct:bottom:tertile"],
+    ["rs_spy_3m:top:quintile", "high_proximity:top:tertile"],
+]
 
 
 def test_explore_multi_horizon_staging_is_deterministic_and_staging_only(loaded_engine, tmp_path):
@@ -346,57 +357,186 @@ def test_explore_multi_horizon_staging_refuses_the_canonical_ledger(loaded_engin
 
 
 def test_committed_staging_ledger_is_the_frozen_multi_horizon_discovery():
-    """The DoD anchor: the COMMITTED `staging-ledger.jsonl` is the frozen multi-horizon discovery iter-11
-    promoted from. It carries EXACTLY the 4 pre-registered candidates (in order), all under the online-FDR
-    (`lord++`) economy, with the referee's honest verdicts — and this staging exploration never writes the
-    canonical ledger (which iter-11 has since grown 4→5 by promoting the h60 winner through the gate).
+    """The DoD anchor: the COMMITTED `staging-ledger.jsonl` is the frozen staging discovery — now 7 entries,
+    ALL under the online-FDR (`lord++`) economy: the 4 pre-registered SINGLE-FACTOR multi-horizon candidates
+    (iter-10, entries #1-4 — the discovery iter-11 promoted J-07 from) FOLLOWED BY the 3 pre-registered
+    2-factor COMBINATION candidates (iter-12, entries #5-7 — the basis iter-13 promotes J-08 from). This
+    staging exploration NEVER writes the canonical ledger (which iter-11 grew 4→5 by promoting the h60 winner).
 
-    The economy visibly REPLENISHES: after the h10 FAIL and the h60 PASSes, the required_p LOOSENS across
-    trials (the exact LORD++ levels), and 3 of 4 candidates clear even the strict canonical divisor-5 bar
-    (p < 0.010) — including 2 SIGNAL-LESS ones (the promotable J-07 winners)."""
+    Single-factor prefix (unchanged, iter-10): the economy visibly REPLENISHES — after the h10 FAIL and the
+    h60 PASSes the required_p LOOSENS, and 3 of 4 clear even the strict canonical divisor-5 bar (p<0.010).
+    Combination suffix (iter-12): the two 'obvious' anchor pairs FAIL out-of-sample at h20 (the low-ATR filter
+    HURTS the momentum/leadership edge — an honest referee refusal, anti-goal #1/#4 upheld), while `rs_spy_3m`
+    leaders that are ALSO near their 52-week high PASS with a raw block-bootstrap p that clears even the
+    canonical divisor-6 bar (p<0.00833) with margin — the real recorded basis iter-13 promotes to surface J-08."""
     assert _STAGING_LEDGER.exists(), f"missing committed staging ledger at {_STAGING_LEDGER}"
     entries = ledger_mod.read_entries(str(_STAGING_LEDGER))
-    assert len(entries) == 4
+    assert len(entries) == 7
 
-    claims = [(e["claim"]["factor"], e["claim"]["horizon"], e["claim"]["decile"]) for e in entries]
-    assert claims == _EXPECTED_CANDIDATES
-    verdicts = [e["verdict"] for e in entries]
-
-    # every staging verdict was judged under the online-FDR economy (never Bonferroni).
-    assert all(v["deflation"] == DEFLATION_ONLINE_FDR for v in verdicts)
+    # -- the SINGLE-FACTOR prefix (iter-10, entries #1-4) — the unchanged frozen multi-horizon discovery ----
+    sf = entries[:4]
+    sf_claims = [(e["claim"]["factor"], e["claim"]["horizon"], e["claim"]["decile"]) for e in sf]
+    assert sf_claims == _EXPECTED_CANDIDATES
+    sf_verdicts = [e["verdict"] for e in sf]
+    assert all(v["deflation"] == DEFLATION_ONLINE_FDR for v in sf_verdicts)
     # the honest status pattern: h10 did NOT persist (FAIL); all three h60 cohorts PASS.
-    assert [v["status"] for v in verdicts] == ["FAIL", "PASS", "PASS", "PASS"]
-
+    assert [v["status"] for v in sf_verdicts] == ["FAIL", "PASS", "PASS", "PASS"]
     # the EXACT LORD++ required-p levels — the economy replenishing after each discovery (bar LOOSENS).
-    required_p = [v["required_p"] for v in verdicts]
-    assert required_p == [
+    sf_required_p = [v["required_p"] for v in sf_verdicts]
+    assert sf_required_p == [
         pytest.approx(0.010937254144361815, abs=1e-15),  # trial 1, no priors  -> W0*g(1)
         pytest.approx(0.003607948341404759, abs=1e-15),  # trial 2, no priors  -> W0*g(2)
         pytest.approx(0.012823135192663515, abs=1e-15),  # trial 3, prior [2]  -> replenished
         pytest.approx(0.026672635724664270, abs=1e-15),  # trial 4, prior [2,3]-> replenished more
     ]
-    assert required_p[3] > required_p[2] > required_p[1]  # wealth loosens the bar as discoveries land
-
-    # PASS iff p_value < required_p; the FAIL's p_value is >= its bar (the honest non-clear).
-    for v in verdicts:
-        if v["status"] == "PASS":
-            assert v["p_value"] < v["required_p"]
-        else:
-            assert v["p_value"] >= v["required_p"]
-
-    # the deliverable for iter-11: >= 1 SIGNAL-LESS candidate clears the canonical divisor-5 bar (p<0.010).
+    assert sf_required_p[3] > sf_required_p[2] > sf_required_p[1]  # wealth loosens the bar as discoveries land
+    # >= 1 SIGNAL-LESS single-factor candidate clears the canonical divisor-5 bar (the J-07 promotion winner).
     signalless_pass_clears = [
-        e for e in entries
+        e for e in sf
         if e["verdict"]["status"] == "PASS"
         and e["claim"]["factor"] != "leadership_score"          # signal-less (non-score column)
         and e["verdict"]["p_value"] < 0.010                     # clears strict Bonferroni divisor-5
     ]
     assert len(signalless_pass_clears) >= 1
 
-    # the staging PASS ordinals feed iter-11's LORD++ wealth; this staging exploration NEVER writes canonical.
-    assert ledger_mod.rejection_offsets(str(_STAGING_LEDGER)) == [2, 3, 4]
-    assert ledger_mod.count_trials(str(_STAGING_LEDGER)) == 4
-    # iter-11 (J-07) has since PROMOTED the h60 winner to canonical via the gate, so the canonical ledger now
-    # carries 5 strict-Bonferroni entries (PASS ordinals 1,2,4,5) — but this staging call did not touch it.
+    # -- the COMBINATION suffix (iter-12, entries #5-7) — the J-08 enablement basis -----------------------
+    comb = entries[4:]
+    comb_claims = [
+        (e["claim"]["kind"], e["claim"]["cohort"], e["claim"]["horizon"], e["claim"]["condition"]) for e in comb
+    ]
+    assert comb_claims == [
+        ("combination", "composite", 20, _EXPECTED_COMBINATION_CANDIDATES[0]),
+        ("combination", "composite", 20, _EXPECTED_COMBINATION_CANDIDATES[1]),
+        ("combination", "composite", 20, _EXPECTED_COMBINATION_CANDIDATES[2]),
+    ]
+    comb_verdicts = [e["verdict"] for e in comb]
+    assert all(v["deflation"] == DEFLATION_ONLINE_FDR for v in comb_verdicts)  # judged in the same economy
+    # honest referee: the two 'obvious' anchor pairs FAIL out-of-sample at h20; the RS-near-high pair PASSES.
+    assert [v["status"] for v in comb_verdicts] == ["FAIL", "FAIL", "PASS"]
+    # the EXACT LORD++ required-p levels for trials 5-7 (the economy continues from the 4 single-factor trials;
+    # trials 5+6 FAIL so the PASS-ordinal history stays [2,3,4] across the whole combination run).
+    comb_required_p = [v["required_p"] for v in comb_verdicts]
+    assert comb_required_p == [
+        pytest.approx(0.03180911589706088, abs=1e-15),   # trial 5, prior rejections [2,3,4]
+        pytest.approx(0.012799946614451493, abs=1e-15),  # trial 6, still [2,3,4] (#5 FAILed)
+        pytest.approx(0.007471079062231945, abs=1e-15),  # trial 7, still [2,3,4] (#6 FAILed)
+    ]
+    # each combination verdict carries the fields iter-13 reads to pick a promotable winner (DoD).
+    for e in comb:
+        v = e["verdict"]
+        for key in ("status", "p_value", "holdout_edge", "control_excess",
+                    "cohort_n", "control_n", "deflation", "required_p"):
+            assert key in v, f"combination verdict missing {key!r}"
+        assert e["horizon"] == 20               # the horizon is recorded on the entry
+        assert len(e["claim"]["condition"]) == 2  # the two condition legs are recorded
+    # PASS iff p_value < required_p (honest clear / non-clear) — the same rule as the single-factor prefix.
+    for v in comb_verdicts:
+        if v["status"] == "PASS":
+            assert v["p_value"] < v["required_p"]
+        else:
+            assert v["p_value"] >= v["required_p"]
+
+    # the iter-13 deliverable: the WINNER (rs_spy_3m + high_proximity) clears the canonical divisor-6 bar —
+    # its RAW block-bootstrap p (economy-independent) is < 0.05/6 ≈ 0.00833 with margin — a real recorded
+    # basis to PROMOTE + surface J-08. The two anchor pairs are honest FAILs (a thin/weak composite refused).
+    winner = comb[2]
+    assert winner["claim"]["condition"] == _EXPECTED_COMBINATION_CANDIDATES[2]
+    assert winner["verdict"]["status"] == "PASS"
+    assert winner["verdict"]["p_value"] == pytest.approx(0.0009995002498750624, abs=1e-15)
+    assert winner["verdict"]["p_value"] < 0.05 / 6       # clears the canonical Bonferroni divisor-6 bar
+    assert winner["verdict"]["holdout_edge"] > 0         # a genuine positive out-of-sample edge
+
+    # -- whole-ledger aggregates + the untouched canonical ledger ----------------------------------------
+    # PASS ordinals over the 7 entries: #2,#3,#4 (single-factor) + #7 (the combination winner).
+    assert ledger_mod.rejection_offsets(str(_STAGING_LEDGER)) == [2, 3, 4, 7]
+    assert ledger_mod.count_trials(str(_STAGING_LEDGER)) == 7
+    # the canonical ledger is UNTOUCHED by any staging exploration — still iter-11's 5 strict-Bonferroni
+    # entries (PASS ordinals 1,2,4,5). The honesty fence: FDR is fenced to staging; canonical stays Bonferroni.
     assert ledger_mod.count_trials(str(_CANONICAL_LEDGER)) == 5
     assert ledger_mod.rejection_offsets(str(_CANONICAL_LEDGER)) == [1, 2, 4, 5]
+
+
+# ==================================================================================================
+# goal-mcp-loop iter-12 (Part B Phase 1 — combinations half) — the 2-factor COMBINATION STAGING
+# exploration (`app.engine.triad_scan.explore_combination_staging`). It runs the PRE-REGISTERED
+# `config.triad.combination_candidates` set through the referee into the INTERNAL staging ledger ONLY,
+# under the online-FDR economy, projecting each pair into a `kind:"combination"` composite-cohort claim
+# (REUSING the referee cert path unchanged) — never touching the canonical Bonferroni bar. These tests
+# pin: the exact composite-claim projection + staging-isolation, determinism, the fail-closed
+# canonical-path guard, and that a malformed candidate raises loudly (never a silent skip).
+# (The pre-registered pairs are pinned in `_EXPECTED_COMBINATION_CANDIDATES` near the top of this file.)
+# ==================================================================================================
+def test_explore_combination_staging_projects_composite_claims_and_is_staging_only(loaded_engine, tmp_path):
+    """The combination exploration projects each `config.triad.combination_candidates` entry into the EXACT
+    `{kind:"combination", cohort:"composite", horizon:20, direction:"positive", condition:[leg1, leg2]}`
+    claim, certifies each via `verify_edge(ledger="staging")`, and writes the staging file ONLY: one verdict
+    per pre-registered pair (in config order — NEVER the full cross-product), canonical never created."""
+    canonical = str(tmp_path / "certified-claims.jsonl")
+    staging = str(tmp_path / "staging-ledger.jsonl")
+    with Session(loaded_engine) as session:
+        out = explore_combination_staging(session, ledger_path=staging)
+
+    assert out["ledger"] == "staging"
+    assert out["n_candidates"] == len(_EXPECTED_COMBINATION_CANDIDATES)
+    assert ledger_mod.count_trials(staging) == len(_EXPECTED_COMBINATION_CANDIDATES)
+    # one verdict per pre-registered pair, in the config order, each the exact composite claim shape.
+    got = [r["claim"]["condition"] for r in out["results"]]
+    assert got == _EXPECTED_COMBINATION_CANDIDATES
+    for r in out["results"]:
+        c = r["claim"]
+        assert c["kind"] == "combination"
+        assert c["cohort"] == "composite"
+        assert c["horizon"] == 20
+        assert c["direction"] == "positive"
+        assert r["ledger"] == "staging"
+    # the canonical ledger was never created/touched by a combination staging exploration.
+    assert not Path(canonical).exists()
+    assert ledger_mod.read_entries(canonical) == []
+
+
+def test_explore_combination_staging_is_deterministic(loaded_engine, tmp_path):
+    """Determinism (same DB + fixed seed + fixed register_date -> byte-identical): two runs to fresh paths
+    produce identical ledger bytes — the reproduce contract iter-13 relies on to re-derive the staging p."""
+    staging_a = str(tmp_path / "a" / "staging-ledger.jsonl")
+    staging_b = str(tmp_path / "b" / "staging-ledger.jsonl")
+    with Session(loaded_engine) as session:
+        explore_combination_staging(session, ledger_path=staging_a)
+    with Session(loaded_engine) as session:
+        explore_combination_staging(session, ledger_path=staging_b)
+    assert Path(staging_a).read_text() == Path(staging_b).read_text()
+
+
+def test_explore_combination_staging_refuses_the_canonical_ledger(loaded_engine, config):
+    """Fail-closed guard: the combination exploration REFUSES to operate on the canonical ledger path (same
+    as the single-factor explorer) — a mis-wired call can never write or clear the user-facing `/evidence`
+    ledger. Blocked for both an absolute canonical path and the config-relative one passed verbatim."""
+    with Session(loaded_engine) as session:
+        with pytest.raises(ValueError, match="refuses to write the CANONICAL ledger"):
+            explore_combination_staging(session, config, ledger_path=str(_CANONICAL_LEDGER))
+        with pytest.raises(ValueError, match="CANONICAL"):
+            explore_combination_staging(session, config, ledger_path=config.evidence.ledger_path)
+
+
+def test_explore_combination_staging_raises_loudly_on_a_malformed_candidate(loaded_engine, tmp_path):
+    """Error cases surface LOUDLY (`ValueError`), never silently skipped: an unknown factor key, a malformed
+    condition string (not `<factor>:<side>:<quantile>`), and an unknown quantile each raise. Uses a FRESH
+    config so the bad candidate never contaminates the real registered set nor the committed ledger."""
+    from app.config import load_config
+    staging = str(tmp_path / "staging-ledger.jsonl")
+
+    def _run(condition):
+        cfg = load_config()  # fresh (not the process cache) — the bad candidate stays test-local
+        cfg.triad = {"combination_candidates": [
+            {"condition": condition, "horizon": 20, "direction": "positive"}
+        ]}
+        with Session(loaded_engine) as session:
+            explore_combination_staging(session, cfg, ledger_path=staging)
+
+    with pytest.raises(ValueError, match="unknown factor"):
+        _run(["bogus_factor:top:quintile", "atr_pct:bottom:tertile"])
+    with pytest.raises(ValueError, match="must be '<factor_key>:<side>:<quantile_key>'"):
+        _run(["rs_spy_3m:top", "atr_pct:bottom:tertile"])          # malformed leg — only 2 colon-parts
+    with pytest.raises(ValueError, match="unknown quantile"):
+        _run(["rs_spy_3m:top:decile", "atr_pct:bottom:tertile"])   # 'decile' is not a combination quantile key
+    # nothing was ever appended on the error path — no partial/silent staging write.
+    assert not Path(staging).exists() or ledger_mod.read_entries(staging) == []

@@ -78,6 +78,33 @@ fallback. Promotion MUST set `"ledger":"canonical"` explicitly in the `## Eviden
 defaults to staging). **Do NOT re-propose** `vcp_contraction` h10 as a canonical claim — it failed the referee.
 As with `ma_stack`/`hv`/`high_proximity` (iter-8), a documented referee failure is a closed hypothesis.
 
+### 4.2 Pre-registered 2-factor combination staging candidate set (goal-mcp-loop iter-12 — anti-data-mining keystone)
+
+Part B Phase 1's deferred **combinations** half opens the certification aperture to 2-factor **composite**
+cohorts. As with §4.1, the exploration iterates a **FIXED, PRE-REGISTERED** hypothesis set — a reasoned
+registry, **never** the full `factor × pair × horizon` cross-product. This registry is the single source of
+truth for the set (config-backed in `config.triad.combination_candidates`, consumed VERBATIM by
+`app.engine.triad_scan.explore_combination_staging`, which projects each into a
+`{kind:"combination", cohort:"composite", horizon, direction, condition:[leg1, leg2]}` claim and certifies it
+through the referee into the INTERNAL `runs/goal-session-mcp-loop/state/staging-ledger.jsonl` under the
+online-FDR economy). All are composite cohort, direction positive, **horizon 20** (the J-08 target hold).
+Each `condition` leg is `<factor_key>:<side>:<quantile_key>` with `side` matching the factor's catalog
+`direction` (top = higher_better, bottom = lower_better):
+
+| # | Condition legs | Horizon | Rationale (economic) | Signal-less? |
+|---|----------------|---------|----------------------|--------------|
+| 1 | `rs_spy_3m:top:quintile` + `atr_pct:bottom:tertile` | h20 | Momentum leadership that is NOT volatile/extended — identical to the shipped `research.factor_lab.combination.default_conditions` and the J-08 example; both legs individually evidenced (rs_spy_3m PASSED strongly OOS at h60; low-ATR% is the risk-factor low-volatility/quality filter). | yes — signal-less composite, backs the combination lab only |
+| 2 | `leadership_score:top:quintile` + `atr_pct:bottom:tertile` | h20 | The composite Leadership score concentrated to its low-volatility members; asks whether the system's strongest signal (p-floor solo) is even cleaner filtered to orderly, low-ATR names. | no — carries the `leadership_score` column |
+| 3 | `rs_spy_3m:top:quintile` + `high_proximity:top:tertile` | h20 | Relative-strength leaders that are ALSO near their 52-week high (leaders in position / breakout-ready). | yes — signal-less composite |
+
+**For iter-13's J-08 promotion:** read the recorded staging verdicts (do NOT recompute) and promote the
+combination whose **raw block-bootstrap `p_value`** clears the canonical divisor-6 bar (`required_p ≈ 0.00833`)
+with margin. The promotion `## Evidence Claim` MUST set `"ledger":"canonical"` explicitly (an omitted key
+defaults to staging). If NONE of the three clears the bar with margin, honestly report it — the referee
+refusing a thin/weak composite is anti-goal #1/#4 upheld, not a failure to engineer around; J-08 then needs
+the human to widen/revise the pre-registered set. `ma_stack` is excluded from every leg (a closed referee
+FAIL, iter-8).
+
 ## 5. CONSISTENCY — same data, one source (hard requirement)
 
 Trendora's UI must never show the same value computed two different ways. Every shared value is

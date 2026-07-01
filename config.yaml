@@ -1076,6 +1076,31 @@ triad:
       horizon: 60
       direction: positive
       rationale: "The system's strongest signal (hit the block-bootstrap p-floor at h20) probed at a longer hold: a high-probability staging ANCHOR that confirms the multi-horizon machinery certifies a real edge end-to-end. A score-column factor (already in proven_signals) so it does not disturb J-01/J-02/J-03; the FALLBACK, not the preferred J-07 promotion."
+  # goal-mcp-loop iter-12 (Part B Phase 1 — the deferred COMBINATIONS half): the FIXED, PRE-REGISTERED
+  # 2-factor COMBINATION candidate set. Parallel to `candidates` above but for composite (2-leg) cohorts —
+  # composite cohort, direction positive, horizon 20 (the J-08 target hold). Consumed VERBATIM by
+  # app.engine.triad_scan:explore_combination_staging, which projects each into a
+  # {kind:"combination", cohort:"composite", horizon, direction, condition:[leg1, leg2]} claim and runs it
+  # through the referee into the INTERNAL staging ledger via verify_edge(ledger="staging") under the
+  # online-FDR economy. The exploration iterates ONLY this set — NEVER the full factor×pair×horizon
+  # cross-product (the anti-data-mining keystone). Each `condition` leg is "<factor_key>:<side>:<quantile_key>"
+  # (parsed by drill_samples), with `side` matching the factor's catalog `direction` (top = higher_better,
+  # bottom = lower_better). Mirrored VERBATIM (each pair + horizon + rationale) into
+  # project-extensions/proposer-guidance.md §4.2. iter-13 PROMOTES the winner whose recorded raw
+  # block-bootstrap p clears the canonical divisor-6 bar (required_p ≈ 0.00833) with margin and surfaces J-08.
+  combination_candidates:
+    - condition: ["rs_spy_3m:top:quintile", "atr_pct:bottom:tertile"]
+      horizon: 20
+      direction: positive
+      rationale: "Momentum leadership that is NOT volatile/extended — identical to the shipped research.factor_lab.combination.default_conditions and to the J-08 example; both legs individually evidenced (rs_spy_3m PASSED strongly OOS at h60; low-ATR% is the risk-factor low-volatility/quality filter). Signal-less composite → backs the combination lab only."
+    - condition: ["leadership_score:top:quintile", "atr_pct:bottom:tertile"]
+      horizon: 20
+      direction: positive
+      rationale: "The composite Leadership score concentrated to its low-volatility members; asks whether the system's strongest signal (p-floor solo) is even cleaner filtered to orderly, low-ATR names."
+    - condition: ["rs_spy_3m:top:quintile", "high_proximity:top:tertile"]
+      horizon: 20
+      direction: positive
+      rationale: "Relative-strength leaders that are ALSO near their 52-week high (leaders in position / breakout-ready)."
 
 # ----------------------------------------------------------------------------------------
 # iter-5 CONSUMED — Scanner snapshots. The historical as-of dates the scanner persists an
