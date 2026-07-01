@@ -810,17 +810,40 @@ def test_macro_defaults_when_omitted(tmp_path):
 # ==================================================================================================
 # iter-9 — the online-FDR (LORD++) staging economy config (evidence.staging_ledger_path + evidence.fdr).
 # ==================================================================================================
-def test_real_config_carries_staging_ledger_and_fdr_default_off():
-    """The real config.yaml carries the iter-9 staging ledger + the online-FDR block, DEFAULT-OFF — so the
-    canonical `/evidence` bar stays strict Bonferroni (the load-bearing byte-identical invariant)."""
+def test_real_config_activates_fdr_for_staging_iter10():
+    """The real config.yaml carries the iter-9 staging ledger + the online-FDR block, and goal-mcp-loop
+    iter-10 ACTIVATES the economy (`fdr.enabled: true`) for the wide multi-horizon staging exploration. The
+    honesty fence in `verify_edge` keeps this fenced to staging — the canonical `/evidence` bar stays strict
+    Bonferroni. The CODE default is still off (proven by `test_fdr_and_staging_default_when_omitted`)."""
     cfg = load_config()
     assert cfg.evidence.ledger_path.endswith("certified-claims.jsonl")
     assert cfg.evidence.staging_ledger_path.endswith("staging-ledger.jsonl")
     # the two ledgers are DIFFERENT files — exploration cannot contaminate canonical.
     assert cfg.evidence.staging_ledger_path != cfg.evidence.ledger_path
-    assert cfg.evidence.fdr.enabled is False          # DEFAULT-OFF (canonical stays Bonferroni)
+    assert cfg.evidence.fdr.enabled is True           # iter-10: ACTIVATED for the staging economy only
     assert 0.0 < cfg.evidence.fdr.alpha < 1.0
     assert cfg.evidence.fdr.gamma_exponent > 1.0      # a summable spending sequence
+
+
+def test_real_config_opens_multi_horizon_triad_aperture_iter10():
+    """goal-mcp-loop iter-10 (Part B Phase 1): the real config opens the triad scan aperture beyond h20 and
+    raises the multiple-testing haircut, and carries the FIXED, PRE-REGISTERED multi-horizon candidate set
+    (the anti-data-mining keystone) — a factor×horizon list the staging exploration iterates VERBATIM."""
+    cfg = load_config()
+    triad = cfg.triad
+    assert triad["horizons"] == [1, 5, 10, 20, 60]        # aperture opened beyond the old default [20]
+    assert triad["top_k"] == 50                            # raised from 20 for the ~5x wider field
+    assert triad["screen"]["haircut_coef"] == 0.0025      # raised from the near-inert 0.001
+    # the PRE-REGISTERED candidate set: exactly the 4 multi-horizon single-factor hypotheses, in order,
+    # each carrying an economic rationale (never the full factor×horizon×decile cross-product).
+    candidates = triad["candidates"]
+    assert [(c["factor"], c["horizon"], c["decile"], c["direction"]) for c in candidates] == [
+        ("vcp_contraction", 10, 10, "positive"),
+        ("vcp_contraction", 60, 10, "positive"),
+        ("rs_spy_3m", 60, 10, "positive"),
+        ("leadership_score", 60, 10, "positive"),
+    ]
+    assert all(c.get("rationale") for c in candidates)    # every candidate is reasoned, not ad-hoc
 
 
 def test_fdr_and_staging_default_when_omitted(tmp_path):

@@ -38,6 +38,8 @@ _START = date(2021, 1, 3)
 # The repo-root canonical certified-claims ledger (the live 4-entry honest history).
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _CANONICAL_LEDGER = _REPO_ROOT / "runs" / "goal-session-mcp-loop" / "state" / "certified-claims.jsonl"
+# goal-mcp-loop iter-10 — the committed INTERNAL staging ledger (the multi-horizon discovery, 4 verdicts).
+_STAGING_LEDGER = _REPO_ROOT / "runs" / "goal-session-mcp-loop" / "state" / "staging-ledger.jsonl"
 
 
 def _make_observations(*, n_dates, edge_at, seed, n_cohort=8, n_control=4,
@@ -265,3 +267,130 @@ def test_verify_edge_fdr_runs_in_staging_but_canonical_stays_bonferroni(loaded_e
     # CANONICAL stayed strict Bonferroni despite FDR being enabled — the fence holds.
     assert out_c["verdict"]["deflation"] == DEFLATION_BONFERRONI
     assert out_c["verdict"]["required_p"] == pytest.approx(0.05 / 1, abs=1e-15)
+
+
+# ==================================================================================================
+# goal-mcp-loop iter-10 (Part B Phase 1) — the multi-horizon STAGING exploration
+# (`app.engine.triad_scan.explore_multi_horizon_staging`). It runs the PRE-REGISTERED candidate set
+# through the referee into the INTERNAL staging ledger ONLY, under the online-FDR economy, never
+# touching the canonical Bonferroni bar. These tests pin: determinism + staging-isolation, the
+# thin-fixture INSUFFICIENT path, the fail-closed canonical-path guard, and the committed frozen ledger.
+# ==================================================================================================
+from app.engine.triad_scan import explore_multi_horizon_staging  # noqa: E402
+
+# The claim shape each pre-registered candidate projects to (config.triad.candidates, in order).
+_EXPECTED_CANDIDATES = [
+    ("vcp_contraction", 10, 10),
+    ("vcp_contraction", 60, 10),
+    ("rs_spy_3m", 60, 10),
+    ("leadership_score", 60, 10),
+]  # (factor, horizon, decile)
+
+
+def test_explore_multi_horizon_staging_is_deterministic_and_staging_only(loaded_engine, tmp_path):
+    """The exploration is DETERMINISTIC (same DB + seed + fixed register_date -> byte-identical) and writes
+    the staging file ONLY: two runs to fresh paths produce identical ledger bytes, one verdict per
+    pre-registered candidate, and the canonical ledger is never created/touched."""
+    canonical = str(tmp_path / "certified-claims.jsonl")
+    staging_a = str(tmp_path / "a" / "staging-ledger.jsonl")
+    staging_b = str(tmp_path / "b" / "staging-ledger.jsonl")
+    with Session(loaded_engine) as session:
+        out_a = explore_multi_horizon_staging(session, ledger_path=staging_a)
+    with Session(loaded_engine) as session:
+        out_b = explore_multi_horizon_staging(session, ledger_path=staging_b)
+
+    # byte-identical re-run (determinism — the load-bearing reproduce contract).
+    assert Path(staging_a).read_text() == Path(staging_b).read_text()
+    # one verdict per pre-registered candidate, in the config order (NEVER the full cross-product).
+    assert out_a["n_candidates"] == len(_EXPECTED_CANDIDATES)
+    assert ledger_mod.count_trials(staging_a) == len(_EXPECTED_CANDIDATES)
+    got = [(r["claim"]["factor"], r["claim"]["horizon"], r["claim"]["decile"]) for r in out_a["results"]]
+    assert got == _EXPECTED_CANDIDATES
+    for r in out_a["results"]:
+        assert r["claim"]["direction"] == "positive"
+        assert r["ledger"] == "staging"
+    # the canonical ledger was never created by a staging exploration.
+    assert not Path(canonical).exists()
+    assert ledger_mod.read_entries(canonical) == []
+
+
+def test_explore_multi_horizon_staging_records_insufficient_on_thin_fixture(loaded_engine, tmp_path):
+    """The ERROR path (surfaced, not dropped, not crashing): on the thin quarterly test fixture every
+    candidate's sealed holdout has too few dates for the block bootstrap, so each is honestly recorded as
+    INSUFFICIENT — and every verdict carries `deflation == "lord++"`, proving the online-FDR economy is
+    ACTIVE in staging under the real (iter-10) config (`evidence.fdr.enabled: true`)."""
+    staging = str(tmp_path / "staging-ledger.jsonl")
+    with Session(loaded_engine) as session:
+        out = explore_multi_horizon_staging(session, ledger_path=staging)
+    assert len(out["results"]) == len(_EXPECTED_CANDIDATES)
+    for r in out["results"]:
+        v = r["verdict"]
+        assert v["status"] == "INSUFFICIENT"           # thin sealed holdout -> honestly refused
+        assert v["holdout_dates"] < 5                   # below DEFAULT_MIN_HOLDOUT_DATES (why it refused)
+        assert v["deflation"] == DEFLATION_ONLINE_FDR   # FDR economy active in staging (iter-10 activation)
+
+
+def test_explore_multi_horizon_staging_refuses_the_canonical_ledger(loaded_engine, config):
+    """Fail-closed guard: the staging exploration REFUSES to operate on the canonical ledger path — a
+    mis-wired call can never write or clear the user-facing `/evidence` ledger."""
+    canonical_path = config.evidence.ledger_path  # relative; the function resolves + compares against it
+    with Session(loaded_engine) as session:
+        with pytest.raises(ValueError, match="refuses to write the CANONICAL ledger"):
+            explore_multi_horizon_staging(session, config, ledger_path=str(_CANONICAL_LEDGER))
+        # also blocked when the config-relative canonical path is passed verbatim.
+        with pytest.raises(ValueError, match="CANONICAL"):
+            explore_multi_horizon_staging(session, config, ledger_path=canonical_path)
+
+
+def test_committed_staging_ledger_is_the_frozen_multi_horizon_discovery():
+    """The DoD anchor: the COMMITTED `staging-ledger.jsonl` is the frozen multi-horizon discovery iter-11
+    promotes from. It carries EXACTLY the 4 pre-registered candidates (in order), all under the online-FDR
+    (`lord++`) economy, with the referee's honest verdicts — and the canonical ledger stays byte-identical.
+
+    The economy visibly REPLENISHES: after the h10 FAIL and the h60 PASSes, the required_p LOOSENS across
+    trials (the exact LORD++ levels), and 3 of 4 candidates clear even the strict canonical divisor-5 bar
+    (p < 0.010) — including 2 SIGNAL-LESS ones (the promotable J-07 winners)."""
+    assert _STAGING_LEDGER.exists(), f"missing committed staging ledger at {_STAGING_LEDGER}"
+    entries = ledger_mod.read_entries(str(_STAGING_LEDGER))
+    assert len(entries) == 4
+
+    claims = [(e["claim"]["factor"], e["claim"]["horizon"], e["claim"]["decile"]) for e in entries]
+    assert claims == _EXPECTED_CANDIDATES
+    verdicts = [e["verdict"] for e in entries]
+
+    # every staging verdict was judged under the online-FDR economy (never Bonferroni).
+    assert all(v["deflation"] == DEFLATION_ONLINE_FDR for v in verdicts)
+    # the honest status pattern: h10 did NOT persist (FAIL); all three h60 cohorts PASS.
+    assert [v["status"] for v in verdicts] == ["FAIL", "PASS", "PASS", "PASS"]
+
+    # the EXACT LORD++ required-p levels — the economy replenishing after each discovery (bar LOOSENS).
+    required_p = [v["required_p"] for v in verdicts]
+    assert required_p == [
+        pytest.approx(0.010937254144361815, abs=1e-15),  # trial 1, no priors  -> W0*g(1)
+        pytest.approx(0.003607948341404759, abs=1e-15),  # trial 2, no priors  -> W0*g(2)
+        pytest.approx(0.012823135192663515, abs=1e-15),  # trial 3, prior [2]  -> replenished
+        pytest.approx(0.026672635724664270, abs=1e-15),  # trial 4, prior [2,3]-> replenished more
+    ]
+    assert required_p[3] > required_p[2] > required_p[1]  # wealth loosens the bar as discoveries land
+
+    # PASS iff p_value < required_p; the FAIL's p_value is >= its bar (the honest non-clear).
+    for v in verdicts:
+        if v["status"] == "PASS":
+            assert v["p_value"] < v["required_p"]
+        else:
+            assert v["p_value"] >= v["required_p"]
+
+    # the deliverable for iter-11: >= 1 SIGNAL-LESS candidate clears the canonical divisor-5 bar (p<0.010).
+    signalless_pass_clears = [
+        e for e in entries
+        if e["verdict"]["status"] == "PASS"
+        and e["claim"]["factor"] != "leadership_score"          # signal-less (non-score column)
+        and e["verdict"]["p_value"] < 0.010                     # clears strict Bonferroni divisor-5
+    ]
+    assert len(signalless_pass_clears) >= 1
+
+    # the staging PASS ordinals feed iter-11's LORD++ wealth; the canonical ledger is UNCHANGED.
+    assert ledger_mod.rejection_offsets(str(_STAGING_LEDGER)) == [2, 3, 4]
+    assert ledger_mod.count_trials(str(_STAGING_LEDGER)) == 4
+    assert ledger_mod.count_trials(str(_CANONICAL_LEDGER)) == 4          # canonical untouched (still 4)
+    assert ledger_mod.rejection_offsets(str(_CANONICAL_LEDGER)) == [1, 2, 4]

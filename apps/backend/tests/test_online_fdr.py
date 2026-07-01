@@ -66,6 +66,26 @@ def test_test_level_exact_frozen_values():
     assert online_fdr.test_level(5, [1, 2, 4], **_KW) == pytest.approx(0.027669279357088947, abs=1e-15)
 
 
+def test_test_level_matches_iter10_staging_exploration_sequence():
+    """goal-mcp-loop iter-10: the multi-horizon staging exploration's verdict sequence is
+    [FAIL, PASS, PASS, PASS] — so its four trials are judged at the LORD++ levels for ordinals
+    (1,[]), (2,[]), (3,[2]), (4,[2,3]). These are the EXACT `required_p` values recorded in the committed
+    staging ledger; pinning them here catches an online-FDR drift independently of the DB. The bar LOOSENS
+    across the h60 discoveries (0.0036 -> 0.0128 -> 0.0267) — wealth replenishing, the economy's whole point."""
+    seq = [
+        online_fdr.test_level(1, [], **_KW),        # trial 1 (vcp_contraction h10 -> FAIL): no priors
+        online_fdr.test_level(2, [], **_KW),        # trial 2 (vcp_contraction h60 -> PASS): still no priors
+        online_fdr.test_level(3, [2], **_KW),       # trial 3 (rs_spy_3m h60 -> PASS): prior rejection [2]
+        online_fdr.test_level(4, [2, 3], **_KW),    # trial 4 (leadership_score h60 -> PASS): priors [2, 3]
+    ]
+    assert seq[0] == pytest.approx(0.010937254144361815, abs=1e-15)
+    assert seq[1] == pytest.approx(0.003607948341404759, abs=1e-15)
+    assert seq[2] == pytest.approx(0.012823135192663515, abs=1e-15)
+    assert seq[3] == pytest.approx(0.026672635724664270, abs=1e-15)
+    # after the two h60 discoveries the bar LOOSENS trial-over-trial (Bonferroni could only tighten).
+    assert seq[3] > seq[2] > seq[1]
+
+
 def test_rejections_replenish_wealth_loosening_the_bar():
     """The economy's raison d'être: a trial that follows discoveries is judged at a LOOSER level than the
     same trial with no prior discoveries (Bonferroni could only ever tighten)."""

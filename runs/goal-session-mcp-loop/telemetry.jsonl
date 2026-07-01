@@ -138,3 +138,14 @@
 {"agent":"goal-evaluator","ts":"2026-07-01T01:48:43Z","session_id":"mcp-loop","iter":9,"event":"agent_invocation_start","cli":"claude"}
 {"agent":"goal-evaluator","exit_status":0,"duration_seconds":401,"retries":0,"ts":"2026-07-01T01:55:24Z","session_id":"mcp-loop","iter":9,"event":"agent_invocation_end","cli":"claude"}
 {"iter_name":"goal-mcp-loop-iter-9","verdict":"CONTINUE","next_depth":"full","journey_deltas":{"newly_passing":6,"newly_failing":0,"regressed":0,"anti_goal_violations":0},"ts":"2026-07-01T02:07:19Z","session_id":"mcp-loop","iter":9,"event":"iter_end","cli":"claude"}
+{"branch":"goal/mcp-loop","commit_sha":"66cb3adacdfe53d025cbf71b0d6f2bc74756863e","success":true,"error":"","verdict":"CONTINUE","ts":"2026-07-01T02:07:21Z","session_id":"mcp-loop","iter":9,"event":"iter_push","cli":"claude"}
+{"iter_name":"goal-mcp-loop-iter-10","prior_verdict":"CONTINUE","prior_depth":"full","snapshot_sha":"eecfb6710ce458d704ed6d1aa18ebeb8740c8c51","ts":"2026-07-01T02:07:21Z","session_id":"mcp-loop","iter":10,"event":"iter_start","cli":"claude"}
+{"agent":"goal-decomposer","ts":"2026-07-01T02:07:21Z","session_id":"mcp-loop","iter":10,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"goal-decomposer","exit_status":0,"duration_seconds":1006,"retries":0,"ts":"2026-07-01T02:24:07Z","session_id":"mcp-loop","iter":10,"event":"agent_invocation_end","cli":"claude"}
+{"depth":"full","target_journeys":"J-07 (discovery/enablement PREREQUISITE only — this iteration explores non-20-horizon candidates in the internal staging ledger; it does NOT surface a badge, so J-07 stays `unknown`. Surfacing the discovered winner is iter-11.)","ts":"2026-07-01T02:24:07Z","session_id":"mcp-loop","iter":10,"event":"iter_dispatch","cli":"claude"}
+{"agent":"coherence-auditor","ts":"2026-07-01T04:13:56Z","session_id":"mcp-loop","iter":10,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"coherence-auditor","exit_status":0,"duration_seconds":147,"retries":0,"ts":"2026-07-01T04:16:23Z","session_id":"mcp-loop","iter":10,"event":"agent_invocation_end","cli":"claude"}
+{"verdict":"COHERENCE-PASS","ts":"2026-07-01T04:16:23Z","session_id":"mcp-loop","iter":10,"event":"coherence_audit","cli":"claude"}
+{"agent":"goal-evaluator","ts":"2026-07-01T04:16:23Z","session_id":"mcp-loop","iter":10,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"goal-evaluator","exit_status":0,"duration_seconds":349,"retries":0,"ts":"2026-07-01T04:22:12Z","session_id":"mcp-loop","iter":10,"event":"agent_invocation_end","cli":"claude"}
+{"iter_name":"goal-mcp-loop-iter-10","verdict":"CONTINUE","next_depth":"full","journey_deltas":{"newly_passing":6,"newly_failing":0,"regressed":0,"anti_goal_violations":0},"ts":"2026-07-01T04:31:27Z","session_id":"mcp-loop","iter":10,"event":"iter_end","cli":"claude"}

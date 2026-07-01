@@ -1001,12 +1001,16 @@ evidence:
   # multi-factor edges WITHOUT permanently tightening the user-facing canonical Bonferroni bar. A relative
   # path resolves against the repo root; run-goal.sh exports STAGING_LEDGER_PATH pointing here.
   staging_ledger_path: runs/goal-session-mcp-loop/state/staging-ledger.jsonl
-  # The online-FDR economy is DEFAULT-OFF: with enabled=false the referee stays strict Bonferroni on EVERY
-  # ledger (canonical AND staging), so canonical /evidence proven-ness is byte-identical. FDR (weaker than
-  # family-wise control) is fenced to staging and only activates when enabled=true — it NEVER touches the
-  # canonical "Proven" badge. Every LORD++ tunable is consumed VERBATIM (no magic number in code).
+  # The online-FDR economy is INJECTABLE + DEFAULT-OFF in code (FdrCfg.enabled=False): with enabled=false the
+  # referee stays strict Bonferroni on EVERY ledger (canonical AND staging). goal-mcp-loop iter-10 (Part B
+  # Phase 1) ACTIVATES it here (enabled=true) so the wide multi-horizon staging exploration is feasible — a
+  # strict-Bonferroni divisor over the whole candidate batch would crush it. The honesty fence in verify_edge
+  # (use_fdr = ledger == STAGING and evidence.fdr.enabled) keeps this FENCED to the internal staging ledger:
+  # the user-facing canonical /evidence bar is ALWAYS strict Bonferroni and stays byte-identical, because FDR
+  # controls the false-discovery RATE and is weaker than family-wise control — it NEVER touches the "Proven"
+  # badge. Every LORD++ tunable is consumed VERBATIM (no magic number in code).
   fdr:
-    enabled: false          # DEFAULT-OFF — canonical AND staging stay strict Bonferroni until flipped
+    enabled: true           # iter-10 ACTIVATED for the staging economy ONLY (canonical stays Bonferroni via the fence)
     alpha: 0.05             # target false-discovery rate (LORD++ α) for the staging economy
     w0_fraction: 0.5        # initial alpha-wealth W0 = w0_fraction * alpha (0..1)
     gamma_exponent: 1.6     # polynomial spending-sequence decay exponent (> 1 so Σ γ_j converges)
@@ -1019,22 +1023,59 @@ evidence:
 # pattern becomes an enhancement proposal. Consumed VERBATIM by triad_scan (no literal in
 # calc code — anti-goal: No magic numbers). OPTIONAL: the module falls back to its own
 # defaults when this block is absent, so a config predating it still loads + behaves the same.
-#   weights   — relative weight of each triad leg in the z-scored cell score
-#   top_k     — how many top-ranked cells are hold-out-screened each scan
-#   horizons  — which forward horizons to scan (default: walk_forward.default_horizon)
-#   screen    — the lightweight hold-out filter: base_edge_floor + haircut_coef·ln(batch)
-#               is the per-date holdout excess a cell must clear to survive (the multiple-
-#               testing haircut that grows with the number of cells scanned together).
+#   weights    — relative weight of each triad leg in the z-scored cell score
+#   top_k      — how many top-ranked cells are hold-out-screened each scan
+#   horizons   — which forward horizons to scan (default: [walk_forward.default_horizon]=[20])
+#   screen     — the lightweight hold-out filter: base_edge_floor + haircut_coef·ln(batch)
+#                is the per-date holdout excess a cell must clear to survive (the multiple-
+#                testing haircut that grows with the number of cells scanned together).
+#   candidates — goal-mcp-loop iter-10 (Part B Phase 1): the FIXED, PRE-REGISTERED multi-horizon
+#                single-factor hypothesis set the staging exploration iterates (NEVER the full
+#                factor×horizon×decile cross-product — the anti-data-mining keystone). Consumed by
+#                app.engine.triad_scan:explore_multi_horizon_staging, which runs each through the
+#                referee into the INTERNAL staging ledger via verify_edge(ledger="staging"). Each
+#                entry carries a one-line economic rationale mirrored into
+#                project-extensions/proposer-guidance.md. Adding a candidate here is a deliberate
+#                pre-registration, never an ad-hoc data-mined cohort.
+# goal-mcp-loop iter-10: horizons opened to [1,5,10,20,60] (reuses compute_factor_lab + the
+# already-present walk_forward.horizons forward-return data); top_k + screen.haircut_coef raised so
+# the screen's multiple-testing haircut scales with the ~5× wider batch (screen affects only
+# scan_product_triad — NOT the staging exploration, which uses the full referee).
 # ----------------------------------------------------------------------------------------
 triad:
   weights:
     return: 1.0
     drawdown: 1.0
     frequency: 0.5
-  top_k: 20
+  top_k: 50               # iter-10: raised from 20 — screen more of the ~5× wider (multi-horizon) field
+  horizons: [1, 5, 10, 20, 60]   # iter-10: open the aperture beyond h20 (was default [20])
   screen:
     base_edge_floor: 0.0
-    haircut_coef: 0.001
+    haircut_coef: 0.0025  # iter-10: raised from 0.001 (near-inert) so the batch haircut is a meaningful edge floor
+  # The PRE-REGISTERED multi-horizon candidate set (decile 10, direction positive) — a FIXED, reasoned
+  # hypothesis set: each factor is a documented h20 screen survivor re-registered at a NON-20 horizon, so
+  # each is a genuine "beyond the 20-day horizon" hypothesis. The exploration iterates ONLY this set.
+  candidates:
+    - factor: vcp_contraction
+      decile: 10
+      horizon: 10
+      direction: positive
+      rationale: "Tight volatility contractions resolve into expansion; test whether the h20-proven edge already appears at a ~2-week hold. Signal-less (non-score) — the cleanest J-07 promotion candidate (backs the factor lab only, never a /stocks badge)."
+    - factor: vcp_contraction
+      decile: 10
+      horizon: 60
+      direction: positive
+      rationale: "Does the post-contraction expansion edge persist or strengthen over a quarter? Signal-less."
+    - factor: rs_spy_3m
+      decile: 10
+      horizon: 60
+      direction: positive
+      rationale: "3-month relative-strength leadership over a hold matched to the factor's own 3-month lookback (a longer horizon is more natural than h20, where the cheap screen showed non-persistence). Signal-less; the speculative member of the set."
+    - factor: leadership_score
+      decile: 10
+      horizon: 60
+      direction: positive
+      rationale: "The system's strongest signal (hit the block-bootstrap p-floor at h20) probed at a longer hold: a high-probability staging ANCHOR that confirms the multi-horizon machinery certifies a real edge end-to-end. A score-column factor (already in proven_signals) so it does not disturb J-01/J-02/J-03; the FALLBACK, not the preferred J-07 promotion."
 
 # ----------------------------------------------------------------------------------------
 # iter-5 CONSUMED — Scanner snapshots. The historical as-of dates the scanner persists an

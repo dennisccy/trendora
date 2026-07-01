@@ -21,6 +21,7 @@ used when it is absent, so the scan is robust regardless of config wiring.
 """
 from __future__ import annotations
 
+import os
 from datetime import date as date_cls
 from statistics import mean, pstdev
 from typing import Optional
@@ -38,6 +39,11 @@ from app.models import ForwardReturn, ScannerRun
 DEFAULT_WEIGHTS = {"return": 1.0, "drawdown": 1.0, "frequency": 0.5}
 DEFAULT_TOP_K = 20
 DEFAULT_SCREEN = {"base_edge_floor": 0.0, "haircut_coef": 0.001}
+
+# goal-mcp-loop iter-10 — the deterministic register date stamped on every staging exploration verdict.
+# The referee is PURE (it never reads register_date), so a FIXED date makes a re-run byte-identical; it is
+# only the ledger entry's `register_date` metadata. Overridable via `explore_multi_horizon_staging`'s param.
+DEFAULT_STAGING_REGISTER_DATE = "2026-07-01"
 
 
 # --------------------------------------------------------------------------------------------------
@@ -94,10 +100,17 @@ def scan_factor_decile_cells(
 ) -> list[dict]:
     """One cell per ``(factor, horizon, decile)`` (the extreme deciles by default) carrying the triad
     metrics read verbatim from ``compute_factor_lab``: ``mean_return``, ``mean_max_drawdown``, ``n``
-    (frequency/turnover proxy), and the factor's ``rank_ic``. Low-sample / NA cells are skipped."""
+    (frequency/turnover proxy), and the factor's ``rank_ic``. Low-sample / NA cells are skipped.
+
+    Horizons: an explicit ``horizons=`` wins; otherwise the CONFIGURED aperture ``config.triad.horizons``
+    (goal-mcp-loop iter-10, e.g. ``[1,5,10,20,60]``) is used, falling back to
+    ``[walk_forward.default_horizon]`` only when the triad block declares none — so the multi-horizon
+    aperture is honored whether the caller enters here directly or via ``scan_product_triad``."""
     wf = cfg.walk_forward
     fl = cfg.research.factor_lab
-    horizons = horizons or [wf.default_horizon]
+    if horizons is None:
+        _, _, _, cfg_horizons = _triad_cfg(cfg)
+        horizons = cfg_horizons or [wf.default_horizon]
     deciles_of_interest = deciles_of_interest or sorted({1, fl.deciles})  # bottom + top decile
     cells: list[dict] = []
     for f in factor_catalog(cfg):
@@ -225,3 +238,114 @@ def scan_product_triad(
         "cells": screened,        # the top-K, each annotated with its screen result, ranked best-first
         "survivors": survivors,   # the subset whose edge persisted out-of-sample (proposal candidates)
     }
+
+
+# ==================================================================================================
+# goal-mcp-loop iter-10 (Part B Phase 1) — the multi-horizon STAGING exploration.
+#
+# The ONLY writer-adjacent function in this module: it runs a FIXED, PRE-REGISTERED candidate set of
+# multi-horizon single-factor hypotheses through the REFEREE (the full `verify_edge`, NOT the cheap
+# `screen_holdout` above) into the INTERNAL **staging** ledger under the online-FDR (LORD++) economy. It
+# NEVER touches the user-facing canonical `certified-claims.jsonl`: `verify_edge` stays the sole ledger
+# writer and is called ONLY with `ledger="staging"`, and this function REFUSES to point at the canonical
+# ledger path (a fail-closed guard). The discovered block-bootstrap p-values are what iter-11 reads to
+# PROMOTE a winner (`p_value < 0.010`, the canonical divisor-5 bar) to canonical and surface J-07.
+#
+# Anti-data-mining keystone: the candidate set is PRE-REGISTERED in `config.triad.candidates` (mirrored
+# into `project-extensions/proposer-guidance.md`, each with an economic rationale). The exploration
+# iterates ONLY that fixed set — NEVER the full `factor × horizon × decile` cross-product.
+# ==================================================================================================
+def _staging_candidates(cfg) -> list[dict]:
+    """The FIXED, PRE-REGISTERED multi-horizon candidate set from ``config.triad.candidates`` — each entry
+    projected into a factor-decile claim dict mirroring ``/api/research/samples`` selectors
+    (``{kind, factor, slice_kind, decile, horizon, direction}``). Returns ``[]`` when the block is absent
+    (nothing to explore). Reads config VERBATIM — no cohort/horizon literal lives here (the anti-data-mining
+    keystone: the hypothesis set is pre-registered in config, never enumerated in code)."""
+    block = getattr(cfg, "triad", None)
+    if not isinstance(block, dict):
+        return []
+    raw = block.get("candidates")
+    if not raw:
+        return []
+    claims: list[dict] = []
+    for c in raw:
+        claims.append({
+            "kind": KIND_FACTOR,
+            "factor": str(c["factor"]),
+            "slice_kind": "decile",
+            "decile": int(c["decile"]),
+            "horizon": int(c["horizon"]),
+            "direction": str(c.get("direction", "positive")),
+        })
+    return claims
+
+
+def explore_multi_horizon_staging(
+    session,
+    config=None,
+    *,
+    ledger_path: Optional[str] = None,
+    register_date: str = DEFAULT_STAGING_REGISTER_DATE,
+    reset: bool = False,
+) -> dict:
+    """Run the PRE-REGISTERED multi-horizon candidate set (``config.triad.candidates``) through the referee
+    into the INTERNAL **staging** ledger, appending one verdict per candidate via
+    ``app.mcp.tools:verify_edge(ledger="staging")`` under the online-FDR economy (when
+    ``evidence.fdr.enabled``). Returns the per-candidate results (claim + verdict) so the caller can persist
+    / report the discovered block-bootstrap p-values.
+
+    Determinism: PURE given the DB + config + a fixed ``register_date`` and a fresh/``reset`` ledger — the
+    referee is deterministic (seed = ``walk_forward.control_group.seed``), so a re-run yields byte-identical
+    verdicts. ``reset=True`` truncates the target staging ledger first so a regeneration is idempotent (the
+    fixed-candidate exploration is a clean re-derivation, not an online accumulator).
+
+    Fences (honesty guards):
+      * ``verify_edge`` is called ONLY with ``ledger="staging"`` — the canonical Bonferroni bar is never
+        touched, and ``verify_edge`` remains the SOLE ledger writer;
+      * this function REFUSES to operate on the canonical ledger path (``evidence.ledger_path``) — a
+        ``ValueError`` fail-closed guard so a mis-wired call can never write/clear the user-facing ledger.
+    """
+    from app.mcp.tools import LEDGER_STAGING, verify_edge  # lazy import — breaks the tools<-triad_scan cycle
+
+    cfg = config or get_config()
+    # Resolve BOTH the target and the canonical path through the same repo-root convention (a relative path
+    # -> repo root, an absolute path unchanged) so the fail-closed guard below compares like-for-like — a
+    # relative canonical path passed verbatim is caught exactly as an absolute one is.
+    ledger_path = _resolve_repo_path(ledger_path) if ledger_path else _resolve_repo_path(cfg.evidence.staging_ledger_path)
+
+    # Fail-closed: NEVER let the staging exploration touch the user-facing canonical ledger.
+    canonical = _resolve_repo_path(cfg.evidence.ledger_path)
+    if os.path.abspath(ledger_path) == os.path.abspath(canonical):
+        raise ValueError(
+            "explore_multi_horizon_staging refuses to write the CANONICAL ledger "
+            f"({ledger_path!r}); the staging exploration is fenced to the staging ledger only"
+        )
+
+    if reset and os.path.exists(ledger_path):
+        os.remove(ledger_path)  # clean re-derivation of the fixed candidate set (staging file ONLY)
+
+    candidates = _staging_candidates(cfg)
+    results: list[dict] = []
+    for claim in candidates:
+        out = verify_edge(
+            session, claim, ledger_path, register_date=register_date, ledger=LEDGER_STAGING
+        )
+        results.append(out)
+    return {
+        "ledger_path": ledger_path,
+        "ledger": LEDGER_STAGING,
+        "register_date": register_date,
+        "n_candidates": len(candidates),
+        "results": results,
+    }
+
+
+def _resolve_repo_path(path: str) -> str:
+    """Resolve a config ledger path against the repo root when relative (mirrors the evidence resolver's
+    repo-root convention), so a relative ``evidence.*ledger_path`` points at the committed session-state
+    file regardless of the caller's cwd. An absolute path is returned unchanged."""
+    if os.path.isabs(path):
+        return path
+    # app/engine/triad_scan.py -> repo root is four parents up (repo/apps/backend/app/engine/…).
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
+    return os.path.join(repo_root, path)

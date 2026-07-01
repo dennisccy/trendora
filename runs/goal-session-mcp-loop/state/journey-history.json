@@ -4,61 +4,61 @@
       "id": "J-01",
       "name": "Every score shows an evidence status",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-9",
-      "last_passing_iter": "goal-mcp-loop-iter-9",
+      "last_verified_iter": "goal-mcp-loop-iter-10",
+      "last_passing_iter": "goal-mcp-loop-iter-10",
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-8-evidence/UT-15-result.png",
-      "note": "Passing — NO regression. iter-9 is a backend-only refactor of the shared certification engine (referee/ledger/verify_edge); browser QA SKIPPED by design (Frontend Present: no). Per the iter-6 lesson embedded in this spec, regression is judged on canonical /api/evidence byte-match + the unit suite, NOT on a fresh pixel or the dead browser_checks_run flag. Verified this iter three independent ways: (1) certified-claims.jsonl is git-UNMODIFIED (working tree clean; last touched at iter-8 commit 8043863) — the 4 entries stay PASS/PASS/FAIL/PASS, all deflation=bonferroni, divisors 1-4, signal=leadership_score only on L1; (2) test_referee.py + test_forward_walk.py have ZERO diff (unedited + green) — the strongest proof the default deflation path reproduces today byte-identically; (3) test_evidence.py frozen-golden asserts the payload byte-identical + proven_signals=={leadership_score}. So /stocks 120/120 rows still show Leadership 'Proven' + Entry Quality/Risk 'Not yet proven' unchanged; last pixel = iter-8 UT-15 (md5 617da05)."
+      "note": "Passing — NO regression. iter-10 is backend-only Part B Phase 1 (multi-horizon staging aperture + FDR economy activation); browser QA SKIPPED by design (Frontend Present: no). Regression judged on the spec-mandated canonical byte-identity path, NOT a fresh pixel or the dead browser_checks_run flag. Verified this iter: `git diff HEAD` is EMPTY for certified-claims.jsonl AND for all of apps/frontend/, apps/backend/app/routers/, apps/backend/app/engine/evidence.py; the 4 canonical entries stay PASS/PASS/FAIL/PASS (deflation=bonferroni, divisors 1-4, signal=leadership_score only on L1). The only app/engine change is triad_scan.py (the new staging explorer); referee.py/online_fdr.py/ledger.py/mcp/tools.py are byte-identical to iter-9. So /stocks 120/120 rows still show Leadership 'Proven' + Entry Quality/Risk 'Not yet proven'; last pixel = iter-8 UT-15."
     },
     "J-02": {
       "id": "J-02",
       "name": "Drill into the proof behind a score",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-9",
-      "last_passing_iter": "goal-mcp-loop-iter-9",
+      "last_verified_iter": "goal-mcp-loop-iter-10",
+      "last_passing_iter": "goal-mcp-loop-iter-10",
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-8-evidence/UT-16-result.png",
-      "note": "Passing — NO regression (byte-identity regression path, see J-01). The /stocks/{ticker} proof drill-down reads resolveEvidenceStatus/proofFieldsFor off the canonical /api/evidence payload, which is byte-identical (ledger git-unmodified; test_evidence golden green). The leadership_score PASS proof (holdout +6.36%, p=0.0004998, registered 2026-06-30) byte-matches certified-claims.jsonl line 1 (git-unchanged). No apps/frontend/** diff; the shared engine refactor preserves the default certify_edge output (unedited test_referee.py green). Last pixel = iter-8 UT-16; recurring non-blocking below-fold framing carry-forward unchanged."
+      "note": "Passing — NO regression (byte-identity path, see J-01). The /stocks/{ticker} proof drill-down reads resolveEvidenceStatus/proofFieldsFor off the canonical /api/evidence payload, which is byte-identical (ledger git-unmodified vs HEAD; test_evidence.py EMPTY diff + green). The leadership_score PASS proof (holdout +6.36%, p=0.0004998, registered 2026-06-30) byte-matches certified-claims.jsonl line 1 (git-unchanged). No apps/frontend/** diff; the default certify_edge path is byte-identical (test_referee.py EMPTY diff + green). Last pixel = iter-8 UT-16."
     },
     "J-03": {
       "id": "J-03",
       "name": "Unproven / noise signals are honestly marked",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-9",
-      "last_passing_iter": "goal-mcp-loop-iter-9",
+      "last_verified_iter": "goal-mcp-loop-iter-10",
+      "last_passing_iter": "goal-mcp-loop-iter-10",
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-8-evidence/UT-15-result.png",
-      "note": "Passing — NO regression (byte-identity path). proven_signals stays exactly {leadership_score} (test_evidence golden + honesty fence). Entry Quality + Risk still read 'Not yet proven'; the FAIL ma_stack ledger entry (line 3, git-unchanged) still reads 'Not yet proven'. Critically for anti-goal #1: the new online-FDR staging economy is default-OFF and fenced to an internal staging ledger NEVER served by GET /api/evidence (auditor B5: grep finds zero staging refs in evidence.py/routers/API), so it lights NO badge and cannot present an uncertified edge as proven. No new 'Proven' claim shipped this iter (no Evidence-Claim block by design)."
+      "note": "Passing — NO regression (byte-identity path). proven_signals stays exactly {leadership_score} (test_evidence golden + honesty fence). Entry Quality + Risk still read 'Not yet proven'; the FAIL ma_stack ledger entry (L3, git-unchanged) still reads 'Not yet proven'. Critical for anti-goal #1: iter-10 ACTIVATED the online-FDR economy (config fdr.enabled: false->true) but it is fenced to the INTERNAL staging ledger via use_fdr = ledger==STAGING and evidence.fdr.enabled (mcp/tools.py, unchanged from iter-9), NEVER served by GET /api/evidence (auditor B2 + coherence Step 1: zero staging refs in evidence.py/routers). It lights NO badge and cannot present an uncertified edge as proven. NO canonical Evidence Claim shipped this iter (discovery-only, staging)."
     },
     "J-04": {
       "id": "J-04",
       "name": "Regime-conditioned evidence",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-9",
-      "last_passing_iter": "goal-mcp-loop-iter-9",
+      "last_verified_iter": "goal-mcp-loop-iter-10",
+      "last_passing_iter": "goal-mcp-loop-iter-10",
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-8-evidence/UT-05-result.png",
-      "note": "Passing — NO regression (byte-identity path). The Breakout-watch [Regime: Risk-on] PASS row (certified-claims.jsonl line 2, git-unchanged: +6.12% vs SPY, p=0.0004998, 'Backs: Research event-study lab') renders byte-identically off the unmodified canonical /api/evidence payload. No apps/frontend/** diff; last pixel = iter-8 UT-05."
+      "note": "Passing — NO regression (byte-identity path). The Breakout-watch [Regime: Risk-on] PASS row (certified-claims.jsonl L2, git-unchanged: +6.12% vs SPY, p=0.0004998, 'Backs: Research event-study lab') renders byte-identically off the unmodified canonical /api/evidence payload. No apps/frontend/** diff; last pixel = iter-8 UT-05."
     },
     "J-05": {
       "id": "J-05",
       "name": "Audit the evidence ledger",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-9",
-      "last_passing_iter": "goal-mcp-loop-iter-9",
+      "last_verified_iter": "goal-mcp-loop-iter-10",
+      "last_passing_iter": "goal-mcp-loop-iter-10",
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-8-evidence/UT-05-result.png",
-      "note": "Passing — NO regression (byte-identity path). All FOUR certified-claims rows (leadership_score PASS, Breakout-watch PASS, ma_stack FAIL, vcp_contraction PASS) render unchanged — the ledger file is git-unmodified and build_evidence_payload/GET /api/evidence returns a byte-identical payload (test_evidence frozen-golden green). The staging ledger is internal-only and does not appear on /evidence (auditor B5). Last pixel = iter-8 UT-05."
+      "note": "Passing — NO regression (byte-identity path). All FOUR certified-claims rows (leadership_score PASS, Breakout-watch PASS, ma_stack FAIL, vcp_contraction PASS) render unchanged — certified-claims.jsonl is git-unmodified vs HEAD and GET /api/evidence returns a byte-identical payload (test_evidence frozen-golden green). The NEW staging ledger (staging-ledger.jsonl, 4 verdicts) is internal-only and does NOT appear on /evidence (auditor B2). Last pixel = iter-8 UT-05."
     },
     "J-06": {
       "id": "J-06",
       "name": "vcp_contraction top-decile certified edge surfaced on Evidence + Research factor lab",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-9",
-      "last_passing_iter": "goal-mcp-loop-iter-9",
+      "last_verified_iter": "goal-mcp-loop-iter-10",
+      "last_passing_iter": "goal-mcp-loop-iter-10",
       "first_seen_iter": "goal-mcp-loop-iter-8",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-8-evidence/UT-05-result.png",
-      "note": "Passing — NO regression (byte-identity path). vcp_contraction D10 h20 PASS (certified-claims.jsonl line 4, git-unchanged: holdout +3.33%, p=0.011494 < required_p=0.0125, Bonferroni divisor 4) still renders on /evidence + the factor-lab 'Proven' badge, both reading the byte-identical canonical payload. Confirmed the shared-engine refactor did NOT perturb it: ledger.rejection_offsets() derives [1,2,4] from the live file with NO entry rewritten (auditor B1), and the default certify_edge path is byte-identical (unedited test_referee.py green). Last pixel = iter-8 UT-05."
+      "note": "Passing — NO regression (byte-identity path). vcp_contraction D10 h20 PASS (certified-claims.jsonl L4, git-unchanged: holdout +3.33%, p=0.011494 < required_p=0.0125, Bonferroni divisor 4) still renders on /evidence + the factor-lab 'Proven' badge. Confirmed the staging-aperture work did NOT perturb it: the canonical L4 is byte-identical and the default certify_edge path is unchanged (test_referee.py EMPTY diff + green). NOTE: iter-10 discovered vcp_contraction at h60 (PASS, p=0.00049975) in STAGING — that is a DIFFERENT horizon cohort, not yet surfaced; the h20 canonical claim backing J-06 is untouched. Last pixel = iter-8 UT-05."
     },
     "J-07": {
       "id": "J-07",
@@ -68,7 +68,7 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-9",
       "last_evidence_path": null,
-      "note": "UNBUILT by design — this is a NEW human-authored Must-have journey (goal.md extended with J-07/J-08 before iter-9). iter-9 is Part A enablement ONLY (the sustainable trial economy that unblocks J-07's exploration); the spec explicitly states 'Neither flips to passing this iteration.' No non-20-horizon factor-lab 'Proven' badge, no /evidence claim row, and no canonical certified claim exists yet. Not failing — never attempted. Correctly out of scope for iter-9 per goal.md's 'build the economy first, then widen the scan (Part B, after A)'. Targeted for iter-10: explore a non-20 horizon in the new staging ledger and promote one winner to canonical (explicit \"ledger\":\"canonical\") to surface the badge."
+      "note": "UNBUILT by design — still `unknown`, NOT failing. iter-10 delivered J-07's discovery PREREQUISITE (Part B Phase 1), not the surface: it opened the multi-horizon aperture (config.triad.horizons: [1,5,10,20,60]) and ran the pre-registered 4-candidate set through the referee into the INTERNAL staging ledger under the online-FDR economy. NO /evidence row, NO factor-lab badge, NO canonical claim this iter (the spec explicitly states J-07 does NOT flip). The staging ledger (runs/goal-session-mcp-loop/state/staging-ledger.jsonl) now holds THREE canonical-bar-clearing winners (p=0.00049975 < 0.010), TWO of them signal-less: vcp_contraction D10 h60 (+0.089) and rs_spy_3m D10 h60 (+0.21). iter-11 promotes the signal-less vcp_contraction h60 (more modest/credible edge) to canonical via an EXPLICIT `\"ledger\":\"canonical\"` Evidence Claim (divisor 5 / required_p=0.010), surfaces the /evidence row + factor-lab 'Proven' badge, and browser-verifies J-07."
     },
     "J-08": {
       "id": "J-08",
@@ -78,9 +78,9 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-9",
       "last_evidence_path": null,
-      "note": "UNBUILT by design — NEW human-authored Must-have journey. iter-9 (Part A enablement only) ships no /research/factor-combination 'Proven' badge, no /evidence combination row, and no canonical claim. Not failing — never attempted; correctly deferred to Part B (iter-11) per the spec's OUT OF SCOPE. Requires a curated 2-factor composite drawn from a PRE-REGISTERED candidate set (never ad-hoc data-mining) certified via the gate; the staging economy built this iter is its prerequisite."
+      "note": "UNBUILT by design — still `unknown`, NOT failing. Requires a curated 2-factor composite drawn from a PRE-REGISTERED candidate set (never ad-hoc data-mining) certified via the gate, surfaced on /research/factor-combination + /evidence. iter-10 built the staging economy + multi-horizon SINGLE-factor machinery that is J-08's prerequisite, but combination enumeration + /research/factor-combination are explicitly OUT OF SCOPE this iter (deferred to a later iteration, after J-07 surfaces in iter-11). Never attempted; correctly deferred per goal.md Part B sequencing."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-07-01T01:52:58Z"
+  "updated_at": "2026-07-01T04:19:25Z"
 }

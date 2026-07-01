@@ -168,6 +168,30 @@ canonical vs staging); the gate (`verify_claim.py`) reads an optional per-claim 
 `"staging"`, explicit `"canonical"` for promoted winners) and keeps `exit 3`-on-non-PASS blocking. No new
 computing module for any DISPLAYED value, no second endpoint, no nav-skeleton change.
 
+**iter-10 clarification (additive — INTERNAL discovery machinery; no displayed value, no new endpoint, no
+nav change):** Part B Phase 1 opens the certification engine's scan APERTURE beyond the 20-day horizon so
+future iterations can surface J-07 (multi-horizon) / J-08 (combination) edges. This iter adds
+`config.triad.horizons: [1,5,10,20,60]` (reusing `compute_factor_lab` and the already-present
+`walk_forward.horizons`) + raises `triad.top_k` / the inert `triad.screen.haircut_coef`, so
+`app.engine.triad_scan:{scan_factor_decile_cells,scan_product_triad}` enumerate one cell per
+`(factor, horizon, decile)` across all horizons (the scan stays READ-ONLY — it never writes any ledger).
+A FIXED, PRE-REGISTERED candidate set of multi-horizon single-factor hypotheses (config-backed + mirrored
+into `project-extensions/proposer-guidance.md`, each with an economic rationale — the anti-data-mining
+keystone; NEVER the full cross-product) is then run through the referee into the INTERNAL **staging** ledger
+via `app.mcp.tools:verify_edge(ledger="staging")` under the online-FDR (LORD++) economy (`evidence.fdr.enabled`
+activated). Crucially this introduces **NO new displayed value and NO new serving endpoint**: the staging
+ledger stays internal-only (never served by `GET /api/evidence`, never displayed — as documented in the
+iter-9 clarification), so no `/evidence` row, no factor-lab badge, and no `/stocks` badge change this iter.
+The user-facing canonical `certified-claims.jsonl` + `GET /api/evidence` + `proven_signals` (`{leadership_score}`)
+stay BYTE-IDENTICAL: the honesty fence `use_fdr = (ledger == STAGING and evidence.fdr.enabled)` keeps
+canonical certification strict family-wise Bonferroni even with FDR on (anti-goal #1/#4 — FDR is weaker than
+family-wise control and is FENCED to staging; it lights NO badge). `verify_edge` stays the ONLY ledger
+writer (routing to the staging file). No new computing module for any DISPLAYED value, no second endpoint,
+no nav-skeleton change. (iter-11 will PROMOTE the staging winner with block-bootstrap `p_value < 0.010` to
+canonical via an explicit `"ledger":"canonical"` `## Evidence Claim` and surface J-07 as an additional READER
+of the SAME `GET /api/evidence` payload — same evidence-status contract value, one more reader, still no new
+module/endpoint.)
+
 <!-- LOOP RULE for the decomposer: an iteration that surfaces any signal AS "Proven" MUST carry a
 machine-readable `## Evidence Claim` JSON block (cohort selectors mirroring /api/research/samples) so the
 post-decompose gate certifies it through the referee BEFORE build; a non-PASS verdict (FAIL/INSUFFICIENT)
