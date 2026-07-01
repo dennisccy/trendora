@@ -9,8 +9,8 @@
 #   light    — routine workflow: test running, git/GitHub operations
 
 tiers:
-  strong:   claude-opus-4-8
-  standard: claude-sonnet-4-6
+  strong:   claude-fable-5
+  standard: claude-sonnet-5
   light:    claude-haiku-4-5
 
 agents:
