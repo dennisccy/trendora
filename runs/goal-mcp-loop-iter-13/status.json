@@ -1,0 +1,22 @@
+{
+  "phase": "goal-mcp-loop-iter-13",
+  "status": "blocked",
+  "current_step": "closure_failed",
+  "updated_at": "2026-07-01T09:59:28.935134Z",
+  "started_at": "2026-07-01T08:19:32.674914Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/frontend/lib/evidence.ts",
+    "apps/frontend/lib/evidence.test.ts",
+    "apps/frontend/app/research/_labs.tsx",
+    "apps/backend/tests/test_evidence.py",
+    "apps/backend/tests/test_staging_ledger_routing.py",
+    "docs/handoffs/goal-mcp-loop-iter-13-dev.md",
+    "docs/handoffs/goal-mcp-loop-iter-13-frontend.md",
+    "reports/phase-goal-mcp-loop-iter-13-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "next_action": "release"
+}

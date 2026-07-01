@@ -20,6 +20,9 @@ import {
   claimSurface,
   cohortClaimId,
   cohortEvidenceAnchor,
+  combinationClaimId,
+  combinationCohortFromClaim,
+  combinationEvidenceAnchor,
   evidenceAnchor,
   factorCohortFromClaim,
   formatEvidencePct,
@@ -27,8 +30,10 @@ import {
   proofFieldsFor,
   regimeLabel,
   resolveCohortEvidence,
+  resolveCombinationEvidence,
   resolveEvidenceStatus,
   type CertifiedClaim,
+  type CombinationCohort,
   type FactorCohort,
   type ProvenSignal,
 } from "./evidence.ts";
@@ -584,6 +589,230 @@ check("claimSurface keeps the score + event-study branches byte-identical (J-05 
   assert.strictEqual(evt.subtitle, "Out-of-sample edge in the Risk-on regime");
   assert.strictEqual(evt.href, "/research/event-study");
   assert.strictEqual(evt.label, "Research event-study lab");
+});
+
+// ======================================================================================================
+// J-08 (iter-13) — the read-side COMBINATION-cohort matcher for a signal-less multi-factor composite cohort.
+// The row below MIRRORS the real 6th ledger entry the post-decompose gate certified: the
+// `rs_spy_3m × high_proximity` composite cohort @ h20 (PASS, holdout/control +0.04693, p 0.0009995,
+// signal-less, promoted to canonical). These pin the J-08 display contract: the certified composite reads
+// "Proven" (a PASS-backed leg-set match, order-independent) and deep-links to its ledger row; every other
+// combination — different legs, a different quantile of the SAME factors, a different horizon, the reversed
+// direction, or a matched-but-non-PASS entry — reads "Not yet proven" with no link (anti-goal #1 upheld).
+// ======================================================================================================
+
+/** The queried composite cohort for the certified combination (legs in the ledger's stored order). */
+const COMBINATION_COHORT: CombinationCohort = {
+  kind: "combination",
+  cohort: "composite",
+  condition: ["rs_spy_3m:top:quintile", "high_proximity:top:tertile"],
+  horizon: 20,
+  direction: "positive",
+};
+
+/** A certified (PASS) row mirroring the REAL 6th ledger entry: the `rs_spy_3m × high_proximity` composite
+ *  cohort @ h20, promoted to the canonical ledger (`"ledger":"canonical"`). It deliberately carries NO
+ *  `signal` (a combination cohort — it backs the combination lab + Evidence ONLY, never a per-stock score
+ *  badge), so it MUST NOT enter the inline `proven_signals` map. Verdict values byte-match
+ *  `certified-claims.jsonl` line 6 (the displayed-numbers-are-correct anti-goal #3). */
+function combinationRow(): CertifiedClaim {
+  return {
+    signal: null,
+    claim: {
+      kind: "combination",
+      cohort: "composite",
+      condition: ["rs_spy_3m:top:quintile", "high_proximity:top:tertile"],
+      horizon: 20,
+      direction: "positive",
+      ledger: "canonical",
+    },
+    register_date: "2026-07-01",
+    horizon: 20,
+    cohort_n: 23929,
+    control_n: 1102,
+    verdict: {
+      status: "PASS",
+      reason:
+        "certified: holdout edge +0.04693 beats the control out-of-sample and is significant after multiple-testing deflation (p=0.0009995 < alpha/6=0.008333)",
+      holdout_edge: 0.046931901591708916,
+      control_excess: 0.046931901591708916,
+      p_value: 0.0009995002498750624,
+    },
+    proven: true,
+    forward_walk: null,
+  };
+}
+
+/** The full post-iter-13 6-entry served claim list (the 5 prior rows PLUS the combination PASS) — the ledger
+ *  the composite-cohort badge resolves against. */
+function ledgerClaims6(): CertifiedClaim[] {
+  return [...ledgerClaims(), combinationRow()];
+}
+
+// --- (u) full leg-set match (order-independent) against a PASS entry => "Proven" + the combination href ---
+check("resolveCombinationEvidence matches the certified composite cohort (either leg order) => 'Proven' + href", () => {
+  const status = resolveCombinationEvidence(COMBINATION_COHORT, ledgerClaims6());
+  assert.strictEqual(status.proven, true);
+  assert.strictEqual(status.label, PROVEN_LABEL);
+  assert.strictEqual(status.label, "Proven");
+  assert.strictEqual(status.href, "/evidence#combination-high_proximity-rs_spy_3m-h20");
+  assert.ok(status.href!.startsWith("/evidence#"), "the proven composite badge must deep-link into /evidence");
+  // the backing claim row is returned VERBATIM (the displayed-numbers-are-correct contract, anti-goal #3)
+  assert.strictEqual(status.claim?.verdict.holdout_edge, 0.046931901591708916);
+  assert.strictEqual(status.claim?.verdict.control_excess, 0.046931901591708916);
+  assert.strictEqual(status.claim?.verdict.p_value, 0.0009995002498750624);
+  assert.strictEqual(status.claim?.register_date, "2026-07-01");
+  assert.strictEqual(status.claim?.signal, null); // signal-less — never lights a /stocks score badge
+  // ORDER-INDEPENDENT: querying with the legs reversed resolves to the SAME proven row + href
+  const reversed: CombinationCohort = {
+    ...COMBINATION_COHORT,
+    condition: ["high_proximity:top:tertile", "rs_spy_3m:top:quintile"],
+  };
+  const reversedStatus = resolveCombinationEvidence(reversed, ledgerClaims6());
+  assert.strictEqual(reversedStatus.proven, true);
+  assert.strictEqual(reversedStatus.href, status.href);
+});
+
+// --- (v) FULL-leg match, NOT factor-key match: a different side/quantile of the SAME factors must NOT match -
+check("resolveCombinationEvidence matches the full leg-set, not just the factor keys", () => {
+  // same two factors, but leg 2 is a DIFFERENT side/quantile than the certified `high_proximity:top:tertile`
+  const sameFactorsDifferentLegs: CombinationCohort = {
+    ...COMBINATION_COHORT,
+    condition: ["rs_spy_3m:top:quintile", "high_proximity:bottom:tertile"],
+  };
+  const status = resolveCombinationEvidence(sameFactorsDifferentLegs, ledgerClaims6());
+  assert.strictEqual(status.proven, false, "a different side/quantile of the same factors must not false-match");
+  assert.strictEqual(status.label, "Not yet proven");
+  assert.strictEqual(status.href, null);
+});
+
+// --- (w) any mismatch (legs / horizon / direction) => "Not yet proven", no href -------------------------
+check("resolveCombinationEvidence returns 'Not yet proven' on any leg/horizon/direction mismatch", () => {
+  for (const mismatch of [
+    { ...COMBINATION_COHORT, condition: ["rs_spy_3m:top:quintile", "atr_pct:bottom:tertile"] }, // the FAILED default pair
+    { ...COMBINATION_COHORT, condition: ["rs_spy_3m:top:quintile"] }, // only one leg
+    { ...COMBINATION_COHORT, horizon: 60 }, // uncertified horizon
+    { ...COMBINATION_COHORT, direction: "negative" }, // reversed direction
+  ] as CombinationCohort[]) {
+    const status = resolveCombinationEvidence(mismatch, ledgerClaims6());
+    assert.strictEqual(status.proven, false, `cohort ${JSON.stringify(mismatch.condition)}@${mismatch.horizon}/${mismatch.direction} must not resolve proven`);
+    assert.strictEqual(status.label, "Not yet proven");
+    assert.strictEqual(status.href, null);
+    assert.strictEqual(status.claim, null);
+  }
+});
+
+// --- (x) a matched-but-non-PASS combination entry => "Not yet proven" (proven-ness flows only from PASS) --
+check("resolveCombinationEvidence treats a matched-but-non-PASS combination as 'Not yet proven'", () => {
+  const failRow = combinationRow();
+  failRow.proven = false;
+  failRow.verdict = { ...failRow.verdict, status: "FAIL" };
+  const status = resolveCombinationEvidence(COMBINATION_COHORT, [failRow]);
+  assert.strictEqual(status.proven, false);
+  assert.strictEqual(status.label, NOT_PROVEN_LABEL);
+  assert.strictEqual(status.href, null);
+  assert.strictEqual(status.claim, null);
+});
+
+// --- (y) FAIL-SAFE: an empty / null / undefined claim list => "Not yet proven", no href -----------------
+check("resolveCombinationEvidence falls back to 'Not yet proven' for an empty/null/undefined claim list", () => {
+  for (const claims of [[], null, undefined] as (CertifiedClaim[] | null | undefined)[]) {
+    const status = resolveCombinationEvidence(COMBINATION_COHORT, claims);
+    assert.strictEqual(status.proven, false);
+    assert.strictEqual(status.label, "Not yet proven");
+    assert.strictEqual(status.href, null);
+    assert.strictEqual(status.claim, null);
+  }
+});
+
+// --- (z) combinationCohortFromClaim extracts the certified claim; rejects non-combination / malformed -----
+check("combinationCohortFromClaim reads a composite combination cohort (null for a non-combination/malformed claim)", () => {
+  const cohort = combinationCohortFromClaim(combinationRow());
+  assert.ok(cohort, "a composite combination claim yields a cohort");
+  assert.strictEqual(cohort!.kind, "combination");
+  assert.strictEqual(cohort!.cohort, "composite");
+  assert.deepStrictEqual(cohort!.condition, ["rs_spy_3m:top:quintile", "high_proximity:top:tertile"]);
+  assert.strictEqual(cohort!.horizon, 20);
+  assert.strictEqual(cohort!.direction, "positive");
+  // a factor / event-study claim is NOT a combination cohort
+  assert.strictEqual(combinationCohortFromClaim(vcpContractionRow()), null);
+  assert.strictEqual(combinationCohortFromClaim(eventStudyRegimeRow()), null);
+  // malformed combination claims are rejected (empty condition, non-array condition, missing horizon)
+  const emptyCondition = combinationRow();
+  emptyCondition.claim = { ...emptyCondition.claim, condition: [] };
+  assert.strictEqual(combinationCohortFromClaim(emptyCondition), null);
+  const nonArrayCondition = combinationRow();
+  nonArrayCondition.claim = { ...nonArrayCondition.claim, condition: "rs_spy_3m:top:quintile" };
+  assert.strictEqual(combinationCohortFromClaim(nonArrayCondition), null);
+  const noHorizon = combinationRow();
+  delete (noHorizon.claim as Record<string, unknown>).horizon;
+  assert.strictEqual(combinationCohortFromClaim(noHorizon), null);
+});
+
+// --- (aa) the combination anchor is stable, order-independent, and DISTINCT from any factor anchor --------
+check("combinationClaimId / combinationEvidenceAnchor derive a stable, order-independent, factor-distinct anchor", () => {
+  assert.strictEqual(combinationClaimId(COMBINATION_COHORT), "combination-high_proximity-rs_spy_3m-h20");
+  // order-independent: reversing the legs yields the SAME id
+  const reversed: CombinationCohort = {
+    ...COMBINATION_COHORT,
+    condition: ["high_proximity:top:tertile", "rs_spy_3m:top:quintile"],
+  };
+  assert.strictEqual(combinationClaimId(reversed), combinationClaimId(COMBINATION_COHORT));
+  // the anchor is the id under the /evidence hash — the badge href lands on the ledger row id
+  assert.strictEqual(combinationEvidenceAnchor(COMBINATION_COHORT), "/evidence#combination-high_proximity-rs_spy_3m-h20");
+  assert.strictEqual(
+    combinationEvidenceAnchor(COMBINATION_COHORT),
+    `/evidence#${combinationClaimId(COMBINATION_COHORT)}`,
+  );
+  // DISTINCT from any factor anchor (the `combination-` prefix guarantees no cross-collision)
+  assert.ok(combinationClaimId(COMBINATION_COHORT).startsWith("combination-"));
+  assert.notStrictEqual(combinationClaimId(COMBINATION_COHORT), cohortClaimId(VCP_COHORT));
+});
+
+// --- (bb) claimAnchorId derives the combination row id (distinct from factor + signal anchors) ------------
+check("claimAnchorId returns the combination anchor for a combination claim (distinct from factor/signal)", () => {
+  assert.strictEqual(claimAnchorId(combinationRow()), "combination-high_proximity-rs_spy_3m-h20");
+  // the prior contracts are unchanged: score row keeps its signal anchor, factor cohort keeps its factor id
+  assert.strictEqual(claimAnchorId(provenLeadershipRow()), "signal-leadership_score");
+  assert.strictEqual(claimAnchorId(vcpContractionRow()), "factor-vcp_contraction-d10-h20");
+  // the combination anchor is distinct from BOTH
+  const combo = claimAnchorId(combinationRow());
+  assert.notStrictEqual(combo, claimAnchorId(provenLeadershipRow()));
+  assert.notStrictEqual(combo, claimAnchorId(vcpContractionRow()));
+});
+
+// --- (cc) claimSurface combination branch => honest composite title + combination-lab linkback -----------
+check("claimSurface gives a signal-less combination claim an honest title + a 'Multi-factor combination lab' linkback", () => {
+  const surface = claimSurface(combinationRow());
+  // an honest title naming the two factors — NEVER the misleading "Unmapped signal"
+  assert.strictEqual(surface.title, "rs_spy_3m × high_proximity — composite");
+  assert.notStrictEqual(surface.title, "Unmapped signal");
+  assert.strictEqual(surface.titleIsSignalKey, false);
+  // framed as historical out-of-sample evidence (never a buy/sell or return promise — anti-goal #2)
+  assert.strictEqual(surface.subtitle, "Out-of-sample edge — multi-factor composite");
+  assert.ok(!/buy|sell|return|target|price/i.test(surface.subtitle!), "no return/price/buy-sell language");
+  // the linkback is honest — the Multi-factor combination lab, NOT the Stocks leaderboard
+  assert.strictEqual(surface.href, "/research/factor-combination");
+  assert.strictEqual(surface.label, "Multi-factor combination lab");
+  assert.notStrictEqual(surface.label, "Stocks leaderboard");
+});
+
+// --- (dd) the combination claim adds NO /stocks signal + does not perturb the prior branches -------------
+check("the combination claim is signal-less and leaves the score/factor/event-study branches byte-identical", () => {
+  // signal-less: it must NOT resolve any inline /stocks score badge (proven_signals is unaffected — J-01..J-03)
+  assert.strictEqual(resolveEvidenceStatus("leadership_score", {}).proven, false);
+  // the prior claimSurface branches are byte-identical with the combination row present in the ledger
+  const score = claimSurface(provenLeadershipRow());
+  assert.strictEqual(score.title, "leadership_score");
+  assert.strictEqual(score.href, "/stocks");
+  const factor = claimSurface(vcpContractionRow());
+  assert.strictEqual(factor.title, "vcp_contraction — top decile (D10)");
+  assert.strictEqual(factor.href, "/research/factor-lab");
+  const evt = claimSurface(eventStudyRegimeRow());
+  assert.strictEqual(evt.title, "Breakout-watch setup");
+  assert.strictEqual(evt.href, "/research/event-study");
+  // the certified factor cohorts still resolve to their OWN rows (the combination row never cross-matches)
+  assert.strictEqual(resolveCohortEvidence(VCP_COHORT, ledgerClaims6()).href, "/evidence#factor-vcp_contraction-d10-h20");
 });
 
 console.log(`\n${passed} evidence-badge resolver checks passed.`);

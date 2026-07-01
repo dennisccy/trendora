@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-13",
+  "base_url": "http://localhost:3255",
+  "iteration": 13,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Multi-factor combination lab loads",
+      "narration": "The combination lab lets you compose any two-factor pair and see instantly whether it has been referee-certified out-of-sample. With the default selection — relative-strength leaders paired with ATR volatility — the composite cohort row honestly reads 'Not yet proven'.",
+      "point_out": "The muted 'Not yet proven' badge on the composite cohort row at the bottom of the table — no link attached, because this combination has not cleared the referee.",
+      "journey": "J-08",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/research/factor-combination"},
+      "expect": {"text": "Research — Multi-factor combination"}
+    },
+    {
+      "n": 2,
+      "title": "Select the certified pair — badge flips to Proven",
+      "narration": "Change the second leg to the factor certified by the referee — stocks that are near their 52-week high — and the badge reacts immediately without a page reload, switching to an accent-colored 'Proven' chip with a ShieldCheck icon and a deep link to its evidence row.",
+      "point_out": "The accent 'Proven' badge with ShieldCheck icon on the composite row — it is now a clickable link pointing directly to the combination's evidence entry.",
+      "journey": "J-08",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "fill", "target": {"label": "Leg 2"}, "text": "high_proximity"},
+      "expect": {"target": {"role": "link", "name": "Proven"}}
+    },
+    {
+      "n": 3,
+      "title": "Evidence page — sixth certified claim row",
+      "narration": "The Evidence page now lists six referee-certified claims. The newest entry is the rs_spy_3m × high_proximity combination at the 20-day horizon: a PASS verdict, +4.69% holdout edge beating SPY out-of-sample, registration date 2026-07-01, and a 'Backs: Multi-factor combination lab →' linkback.",
+      "point_out": "The sixth row at the bottom — two condition chips, a PASS badge, the +4.69% holdout edge figure, and the linkback to the combination lab.",
+      "journey": "J-08",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/evidence"},
+      "expect": {"text": "+4.69%"}
+    },
+    {
+      "n": 4,
+      "title": "Navigate back to the lab via the evidence linkback",
+      "narration": "Every evidence row carries a link back to the research tool that produced it. Clicking 'Backs: Multi-factor combination lab →' returns you to the combination lab, completing the round-trip between exploration and proof.",
+      "point_out": "The combination lab reloads — navigation flows naturally in both directions between the lab and the evidence ledger.",
+      "journey": "J-08",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "click", "target": {"role": "link", "name": "Backs: Multi-factor combination lab →"}},
+      "expect": {"text": "Research — Multi-factor combination"}
+    },
+    {
+      "n": 5,
+      "title": "Swap to an uncertified pair — badge reverts honestly",
+      "narration": "Switch back to the ATR-volatility second leg and the badge immediately returns to 'Not yet proven' with no link — only the one pre-registered combination that survived the referee earns the 'Proven' status; every other composition is shown as uncertified.",
+      "point_out": "The muted 'Not yet proven' badge reappears on the composite row — no link, no accent color, no ShieldCheck icon.",
+      "journey": "J-08",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": {"type": "fill", "target": {"label": "Leg 2"}, "text": "atr_pct"},
+      "expect": {"text": "Not yet proven"}
+    },
+    {
+      "n": 6,
+      "title": "Stocks page — no combination badge leakage",
+      "narration": "The combination claim is signal-less by design and stays off the per-stock cards. Only the certified Leadership Score continues to light the 'Proven' inline badge on each stock — no combination or composite badge has appeared anywhere in the stocks list.",
+      "point_out": "The Leadership Score 'Proven' badge on each stock card, unchanged — no combination badge present anywhere on the page.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/stocks"},
+      "expect": {"text": "Proven"}
+    }
+  ]
+}

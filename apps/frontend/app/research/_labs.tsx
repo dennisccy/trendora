@@ -31,7 +31,12 @@ import { SampleLink } from "@/components/sample-link";
 import { groupedHorizonColumns, horizonColumnKey } from "@/lib/research-lab-columns";
 import { type CohortParams, type SampleScope } from "@/lib/samples-link";
 import { cn } from "@/lib/utils";
-import { type CertifiedClaim } from "@/lib/evidence";
+import {
+  resolveCombinationEvidence,
+  type CertifiedClaim,
+  type CombinationCohort,
+  type CombinationEvidenceStatus,
+} from "@/lib/evidence";
 import { factorHorizonBadges, type FactorHorizonBadge } from "@/lib/factor-lab-evidence";
 import {
   fetchDowntrendOpportunity,
@@ -1099,6 +1104,24 @@ export function CombinationLab({
   const [conditions, setConditions] = useState<ConditionInput[] | null>(null);
   const [data, setData] = useState<FactorCombinationResponse | null>(null);
   const [status, setStatus] = useState<"loading" | "ok" | "error">("loading");
+  // iter-13 (J-08): the canonical certified-claims list, fetched VERBATIM via the EXISTING evidence client
+  // (the SAME `GET /api/evidence` payload the ledger page + the factor-lab badges read — NO new fetch path).
+  // FAIL-SAFE: it starts empty and stays empty on any fetch error, so the composite-cohort evidence badge
+  // reads "Not yet proven" (never a fabricated "Proven", never a 500). The badge resolves its status from
+  // this list — it computes nothing.
+  const [evidenceClaims, setEvidenceClaims] = useState<CertifiedClaim[]>([]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetchEvidence(controller.signal)
+      .then((payload) => {
+        if (!controller.signal.aborted) setEvidenceClaims(payload.claims);
+      })
+      .catch(() => {
+        // fail-safe: leave the claim list empty → the composite badge reads "Not yet proven", no link.
+      });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1185,7 +1208,7 @@ export function CombinationLab({
           />
         ) : (
           <>
-            <CombinationTable data={data} dim={status === "loading"} scope={scope} />
+            <CombinationTable data={data} dim={status === "loading"} scope={scope} evidenceClaims={evidenceClaims} />
             <p className="text-xs text-text-faint">
               The risk-adjusted column is{" "}
               <span className="text-text-muted">downside-deviation only</span> (mean ÷ downside deviation —
@@ -1402,10 +1425,12 @@ function CombinationTable({
   data,
   dim,
   scope,
+  evidenceClaims,
 }: {
   data: FactorCombinationResponse;
   dim: boolean;
   scope: SampleScope;
+  evidenceClaims: CertifiedClaim[];
 }) {
   const min = data.min_sample;
   const horizon = data.horizon;
@@ -1414,6 +1439,20 @@ function CombinationTable({
   const conditions = data.conditions.map(
     (c) => `${c.factor.key}:${c.side}:${c.quantile.key}`,
   );
+  // iter-13 (J-08): resolve the CURRENTLY-SELECTED composite cohort's evidence status against the SAME served
+  // `claims[]` (no new fetch path). The composite is the top-quantile rank-blend of the selected legs — the
+  // positive direction by construction — so we query `direction:"positive"` with the selected legs + horizon.
+  // "Proven" ONLY when a PASS certified-claim matches (the pre-registered `rs_spy_3m × high_proximity` @ h20);
+  // every other selection (incl. the FAILED `rs_spy_3m × atr_pct` default) reads "Not yet proven". Recomputes
+  // nothing — the matcher re-displays the referee's verdict.
+  const compositeCohort: CombinationCohort = {
+    kind: "combination",
+    cohort: "composite",
+    condition: conditions,
+    horizon,
+    direction: "positive",
+  };
+  const compositeEvidence = resolveCombinationEvidence(compositeCohort, evidenceClaims);
   // each table row carries the cohort selector its `n` chip drills into (J-51). `cohort` is the kind;
   // `singleIndex` identifies WHICH single-condition cohort (its index into `data.singles`).
   type Cohort = "baseline" | "single" | "composite" | "strict_overlap";
@@ -1469,6 +1508,17 @@ function CombinationTable({
                 <span className={cn(primary ? "font-semibold text-text" : "text-text-muted")}>
                   {row.label}
                 </span>
+                {/* iter-13 (J-08): the composite cohort's evidence badge — "Proven" ONLY when a PASS
+                    certified-claim backs the CURRENTLY-SELECTED legs @ this horizon, else "Not yet proven".
+                    Only the composite row carries it (a signal-less combination edge — it backs this lab +
+                    Evidence, never a /stocks score). */}
+                {row.cohort === "composite" ? (
+                  <CombinationEvidenceBadge
+                    status={compositeEvidence}
+                    conditions={conditions}
+                    horizon={horizon}
+                  />
+                ) : null}
               </td>
               <td className="px-4 py-2 text-right">
                 <SampleLink
@@ -1503,6 +1553,63 @@ function CombinationTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** iter-13 (J-08): the composite-cohort evidence chip — the multi-factor sibling of `FactorEvidenceBadge`.
+ *  Reads its status from the SAME served `claims[]` via `resolveCombinationEvidence` (no recompute). "Proven"
+ *  (calm accent chip, `ShieldCheck`) DEEP-LINKS to the backing `/evidence` combination row; "Not yet proven"
+ *  (muted `Shield`) is non-interactive (no link). `data-testid`/`data-proven` (+ the selected legs/horizon)
+ *  make it independently selectable by browser-qa. The composite `<tr>` is NOT itself clickable, so no
+ *  nested-interactive guard is needed. */
+function CombinationEvidenceBadge({
+  status,
+  conditions,
+  horizon,
+}: {
+  status: CombinationEvidenceStatus;
+  conditions: string[];
+  horizon: number;
+}) {
+  const legs = conditions.join(" + ");
+  const legsAttr = conditions.join(",");
+
+  if (status.proven && status.href) {
+    const registered = status.claim?.register_date ?? "—";
+    return (
+      <Link
+        href={status.href}
+        title={`Proven — this composite (${legs}) beat SPY out-of-sample over the sealed holdout at the ${horizon}-day horizon (certified ${registered}). Click to audit the backing evidence.`}
+        data-testid="combination-evidence-badge"
+        data-proven="true"
+        data-horizon={horizon}
+        data-legs={legsAttr}
+        className="ml-2 inline-flex rounded-md align-middle focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+      >
+        <Badge
+          variant="accent"
+          className="cursor-pointer whitespace-nowrap text-[11px] transition-colors hover:bg-surface active:bg-bg"
+        >
+          <ShieldCheck className="h-3 w-3 shrink-0" aria-hidden />
+          <span>{status.label}</span>
+        </Badge>
+      </Link>
+    );
+  }
+
+  return (
+    <Badge
+      variant="default"
+      title={`Not yet proven — no certified out-of-sample evidence backs this composite (${legs}) at the ${horizon}-day horizon yet (see the Evidence ledger).`}
+      data-testid="combination-evidence-badge"
+      data-proven="false"
+      data-horizon={horizon}
+      data-legs={legsAttr}
+      className="ml-2 whitespace-nowrap align-middle text-[11px] text-text-faint"
+    >
+      <Shield className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
+      <span>{status.label}</span>
+    </Badge>
   );
 }
 

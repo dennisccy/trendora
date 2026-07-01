@@ -3,9 +3,10 @@
 The iter-9 economy is INJECTABLE and DEFAULT-OFF. These tests pin the load-bearing invariants that keep
 the canonical `/evidence` bar byte-identical while enabling an isolated staging economy:
 
-  * `ledger.rejection_offsets` derives the PASS ordinals (`[1, 2, 4, 5]` on the live canonical ledger after
-    iter-11 promoted the vcp_contraction h60 winner) — the wealth history the online-FDR economy reconstructs
-    from — with NO prior entry rewritten;
+  * `ledger.rejection_offsets` derives the PASS ordinals (`[1, 2, 4, 5, 6]` on the live canonical ledger after
+    iter-11 promoted the vcp_contraction h60 winner and iter-13 promoted the rs_spy_3m × high_proximity
+    combination winner) — the wealth history the online-FDR economy reconstructs from — with NO prior entry
+    rewritten;
   * the referee's deflation is an INJECTABLE policy whose DEFAULT reproduces strict Bonferroni
     byte-identically, and a supplied `test_level` threads through as the exact bar;
   * `verify_edge` is the SINGLE writer routed to the target ledger: a staging-routed claim writes the
@@ -94,12 +95,13 @@ def test_rejection_offsets_missing_file_is_empty(tmp_path):
 
 def test_rejection_offsets_on_live_canonical_ledger():
     """The DoD anchor: on the live canonical `certified-claims.jsonl` the derived rejection ordinals track the
-    honest history WITHOUT rewriting any entry. After iter-11 (J-07) promoted the vcp_contraction h60 winner,
-    the ledger is lines 1/2/4/5 PASS, line 3 `ma_stack` FAIL — so the rejection ordinals are `[1, 2, 4, 5]`
-    over 5 trials (the FAIL at position 3 advances the ordinal but is not a rejection)."""
+    honest history WITHOUT rewriting any entry. After iter-11 (J-07) promoted the vcp_contraction h60 winner
+    and iter-13 (J-08) promoted the rs_spy_3m × high_proximity combination winner, the ledger is lines
+    1/2/4/5/6 PASS, line 3 `ma_stack` FAIL — so the rejection ordinals are `[1, 2, 4, 5, 6]` over 6 trials
+    (the FAIL at position 3 advances the ordinal but is not a rejection)."""
     assert _CANONICAL_LEDGER.exists(), f"missing canonical ledger at {_CANONICAL_LEDGER}"
-    assert ledger_mod.rejection_offsets(str(_CANONICAL_LEDGER)) == [1, 2, 4, 5]
-    assert ledger_mod.count_trials(str(_CANONICAL_LEDGER)) == 5
+    assert ledger_mod.rejection_offsets(str(_CANONICAL_LEDGER)) == [1, 2, 4, 5, 6]
+    assert ledger_mod.count_trials(str(_CANONICAL_LEDGER)) == 6
 
 
 # ==================================================================================================
@@ -450,10 +452,12 @@ def test_committed_staging_ledger_is_the_frozen_multi_horizon_discovery():
     # PASS ordinals over the 7 entries: #2,#3,#4 (single-factor) + #7 (the combination winner).
     assert ledger_mod.rejection_offsets(str(_STAGING_LEDGER)) == [2, 3, 4, 7]
     assert ledger_mod.count_trials(str(_STAGING_LEDGER)) == 7
-    # the canonical ledger is UNTOUCHED by any staging exploration — still iter-11's 5 strict-Bonferroni
-    # entries (PASS ordinals 1,2,4,5). The honesty fence: FDR is fenced to staging; canonical stays Bonferroni.
-    assert ledger_mod.count_trials(str(_CANONICAL_LEDGER)) == 5
-    assert ledger_mod.rejection_offsets(str(_CANONICAL_LEDGER)) == [1, 2, 4, 5]
+    # the canonical ledger is UNTOUCHED by any staging exploration — it grew ONLY by DELIBERATE promotion:
+    # iter-11's 5 strict-Bonferroni entries PLUS iter-13's promoted combination winner = 6 entries (PASS
+    # ordinals 1,2,4,5,6). None of the 7 staging FDR trials above ever wrote canonical. The honesty fence:
+    # FDR is fenced to staging; canonical stays strict Bonferroni and only receives explicitly promoted winners.
+    assert ledger_mod.count_trials(str(_CANONICAL_LEDGER)) == 6
+    assert ledger_mod.rejection_offsets(str(_CANONICAL_LEDGER)) == [1, 2, 4, 5, 6]
 
 
 # ==================================================================================================

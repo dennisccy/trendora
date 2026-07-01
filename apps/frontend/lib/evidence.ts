@@ -310,6 +310,29 @@ export function claimSurface(claim: CertifiedClaim): ClaimSurface {
       label: "Research factor lab",
     };
   }
+  // A signal-less COMBINATION composite cohort (iter-13, J-08 — the rs_spy_3m × high_proximity edge). Like
+  // the plain-factor cohort it backs the Research combination lab + this Evidence ledger ONLY (no per-stock
+  // score badge — it carries no `signal`), so its title names the two legs' factors honestly (never the
+  // misleading "Unmapped signal"), its subtitle is historical *out-of-sample evidence* framing (never a
+  // buy/sell or return promise — anti-goal #2), and its linkback points at the Multi-factor combination lab
+  // (NOT the Stocks leaderboard). The full per-leg side/quantile detail is shown verbatim in the row's
+  // Hypothesis `condition=[…]` chip; the title is the factor-level summary.
+  const combinationCohort = kind === "combination" ? combinationCohortFromClaim(claim) : null;
+  if (combinationCohort) {
+    const factors = combinationCohort.condition.map((leg) => leg.split(":")[0]);
+    const combinationSubtitleBase = "Out-of-sample edge — multi-factor composite";
+    const subtitle =
+      combinationCohort.horizon === DEFAULT_FACTOR_COHORT_HORIZON
+        ? combinationSubtitleBase
+        : `${combinationSubtitleBase} · ${combinationCohort.horizon}-day hold`;
+    return {
+      title: `${factors.join(" × ")} — composite`,
+      titleIsSignalKey: false,
+      subtitle,
+      href: "/research/factor-combination",
+      label: "Multi-factor combination lab",
+    };
+  }
   return {
     title: "Unmapped signal",
     titleIsSignalKey: false,
@@ -397,7 +420,13 @@ export function claimAnchorId(claim: CertifiedClaim): string | null {
     return `signal-${claim.signal}`;
   }
   const cohort = factorCohortFromClaim(claim);
-  return cohort ? cohortClaimId(cohort) : null;
+  if (cohort) {
+    return cohortClaimId(cohort);
+  }
+  // iter-13 (J-08): a signal-less combination composite cohort derives its own combination anchor so its
+  // `/evidence` row is deep-linkable (the combination-lab "Proven" badge lands on THIS row).
+  const combination = combinationCohortFromClaim(claim);
+  return combination ? combinationClaimId(combination) : null;
 }
 
 /** The resolved status for one factor cohort's evidence badge (mirrors `EvidenceStatus`). */
@@ -443,6 +472,131 @@ export function resolveCohortEvidence(
         // cohort anchor its `/evidence` row never has). Falls back to the queried cohort anchor defensively.
         const anchor = claimAnchorId(entry);
         const href = anchor ? `/evidence#${anchor}` : cohortEvidenceAnchor(cohort);
+        return { proven: true, label: PROVEN_LABEL, href, claim: entry };
+      }
+    }
+  }
+  return { proven: false, label: NOT_PROVEN_LABEL, href: null, claim: null };
+}
+
+// --- read-side COMBINATION-cohort matcher (goal-mcp-loop iter-13, J-08) — the multi-factor sibling of
+// `resolveCohortEvidence`. PURE + read-only: it scans the served `claims[]` for a PASS entry whose
+// combination selectors MATCH a queried composite cohort (kind=combination + cohort=composite + the
+// `condition` leg-set MATCHED ORDER-INDEPENDENTLY as FULL `factor:side:quantile` strings + horizon +
+// direction), and re-displays the served status VERBATIM. It NEVER recomputes proven-ness (a
+// matched-but-non-PASS entry stays "Not yet proven"), reads from the SAME `GET /api/evidence` payload (no
+// new fetch path), and fabricates nothing. This is how the Research combination lab marks the one certified
+// composite cohort "Proven" while every other combination reads "Not yet proven" (anti-goal #1). A
+// combination cohort is signal-less — it backs NO per-stock `/stocks` score badge.
+
+/** A combination composite cohort's selectors — the SAME slice vocabulary the Multi-factor combination lab
+ *  (`/api/research/factor-combination`) + the certified claim use: `kind` ("combination") + `cohort`
+ *  ("composite") + the `condition` legs (each a full `factor:side:quantile` string) + the forward `horizon`
+ *  + the `direction`. Signal-less (it backs no per-stock score). */
+export interface CombinationCohort {
+  kind: "combination";
+  cohort: "composite";
+  /** The full `factor:side:quantile` leg strings — a SET matched order-independently. */
+  condition: string[];
+  horizon: number;
+  direction: string; // "positive" (the composite is the top-quantile blend — positive by construction)
+}
+
+/** Extract a `CombinationCohort` from a served claim's selectors, or `null` when the claim is not a composite
+ *  combination cohort (e.g. a factor / event-study row) or is missing/malformed a required selector (an empty
+ *  or non-array `condition`, a non-numeric `horizon`, a blank `direction`). Reads VERBATIM — fabricates
+ *  nothing. */
+export function combinationCohortFromClaim(claim: CertifiedClaim): CombinationCohort | null {
+  const cohort = claim.claim ?? {};
+  if (cohort["kind"] !== "combination" || cohort["cohort"] !== "composite") {
+    return null;
+  }
+  const condition = cohort["condition"];
+  const horizon = cohort["horizon"];
+  const direction = cohort["direction"];
+  if (
+    !Array.isArray(condition) ||
+    condition.length === 0 ||
+    !condition.every((leg) => typeof leg === "string" && leg !== "") ||
+    typeof horizon !== "number" ||
+    typeof direction !== "string" ||
+    direction === ""
+  ) {
+    return null;
+  }
+  return {
+    kind: "combination",
+    cohort: "composite",
+    condition: condition as string[],
+    horizon,
+    direction,
+  };
+}
+
+/** The order-independent leg-set key for a combination cohort — the FULL legs sorted + joined, so a
+ *  different side/quantile of the same factors does NOT collide and leg ORDER never matters. */
+function combinationLegKey(condition: string[]): string {
+  return [...condition].sort().join("|");
+}
+
+/** The stable, collision-free anchor id for a combination cohort — derived from the SORTED factor keys of its
+ *  legs + horizon (e.g. `combination-high_proximity-rs_spy_3m-h20`), so it is deterministic + order-independent.
+ *  `combination-`-prefixed so it is DISTINCT from any `factor-…` anchor (no cross-collision). The `/evidence`
+ *  combination `ClaimRow` carries this as its row `id` and the combination-lab "Proven" badge links to the
+ *  matching `/evidence#…` anchor — the SAME function on both sides, so the deep-link always lands. (The
+ *  curated candidate set uses distinct factors per pair, so factor-key sorting is collision-free in practice.) */
+export function combinationClaimId(cohort: CombinationCohort): string {
+  const factors = cohort.condition.map((leg) => leg.split(":")[0]).sort();
+  return `combination-${factors.join("-")}-h${cohort.horizon}`;
+}
+
+/** The `/evidence#…` deep-link a "Proven" combination-cohort badge points at — the `combinationClaimId` under
+ *  the Evidence-page hash (the row carrying the matching `id`). */
+export function combinationEvidenceAnchor(cohort: CombinationCohort): string {
+  return `/evidence#${combinationClaimId(cohort)}`;
+}
+
+/** The resolved status for one combination cohort's evidence badge (mirrors `CohortEvidenceStatus`). */
+export interface CombinationEvidenceStatus {
+  proven: boolean;
+  /** "Proven" | "Not yet proven" — the exact text the badge renders. */
+  label: string;
+  /** The `/evidence#…` combination anchor when proven; null when not yet proven (no link). */
+  href: string | null;
+  /** The backing claim row when proven; null otherwise. */
+  claim: CertifiedClaim | null;
+}
+
+/**
+ * Resolve a combination composite cohort's evidence status from the served `claims[]` (PURE, read-only). It
+ * scans for a `proven` (PASS) entry whose combination selectors MATCH the queried cohort on `kind`
+ * ("combination") + `cohort` ("composite") + the `condition` leg-set (ORDER-INDEPENDENT full-leg match) +
+ * `horizon` + `direction`, and returns "Proven" linking to that entry's `/evidence` combination anchor.
+ * FAIL-SAFE: no match, a matched-but-NON-PASS entry, or an empty/null/undefined list → "Not yet proven" with
+ * no link. It re-displays `entry.proven` VERBATIM and recomputes nothing — the UI never fabricates
+ * proven-ness (goal.md Constraints + anti-goal #1).
+ */
+export function resolveCombinationEvidence(
+  cohort: CombinationCohort,
+  claims: CertifiedClaim[] | null | undefined,
+): CombinationEvidenceStatus {
+  if (Array.isArray(claims)) {
+    const queryLegKey = combinationLegKey(cohort.condition);
+    for (const entry of claims) {
+      if (!entry || entry.proven !== true) {
+        continue; // only a PASS-backed entry can prove a cohort (matched-but-non-PASS stays unproven)
+      }
+      const entryCohort = combinationCohortFromClaim(entry);
+      if (
+        entryCohort &&
+        entryCohort.horizon === cohort.horizon &&
+        entryCohort.direction === cohort.direction &&
+        combinationLegKey(entryCohort.condition) === queryLegKey
+      ) {
+        // Link to the matched claim's ACTUAL `/evidence` row id (`claimAnchorId`) so the deep-link lands;
+        // fall back to the queried cohort anchor defensively (they agree — same combination function).
+        const anchor = claimAnchorId(entry);
+        const href = anchor ? `/evidence#${anchor}` : combinationEvidenceAnchor(cohort);
         return { proven: true, label: PROVEN_LABEL, href, claim: entry };
       }
     }

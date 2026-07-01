@@ -47,6 +47,24 @@ export default function EvidencePage() {
     return () => controller.abort();
   }, []);
 
+  // Honor the URL hash AFTER the rows mount so a "Proven" badge deep-link (e.g.
+  // `/evidence#combination-…`, or the signal-/factor-cohort anchors) actually scrolls its backing row into
+  // view. The claim rows render only once the async fetch resolves, so the browser's native one-shot hash
+  // scroll fires too early (before the target row exists in the DOM) and never lands — this re-applies it on
+  // the load→ok transition, once the matching row is present. No-op when there is no hash or no matching row
+  // (never fabricates a scroll for a missing anchor); respects each row's `scroll-mt-20` offset via
+  // `block:"start"`. Fixes the deep-link scroll gap for ALL evidence anchors, not just the combination row.
+  useEffect(() => {
+    if (state.kind !== "ok") return;
+    const raw = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
+    if (!raw) return;
+    const id = decodeURIComponent(raw);
+    const frame = requestAnimationFrame(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [state.kind]);
+
   const claims = state.kind === "ok" ? state.data.claims : [];
 
   return (

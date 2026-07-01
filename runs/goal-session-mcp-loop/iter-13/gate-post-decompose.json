@@ -1,0 +1,21 @@
+{
+  "blocked": false,
+  "results": [
+    {
+      "claim": {
+        "kind": "combination",
+        "cohort": "composite",
+        "horizon": 20,
+        "direction": "positive",
+        "condition": [
+          "rs_spy_3m:top:quintile",
+          "high_proximity:top:tertile"
+        ],
+        "ledger": "canonical"
+      },
+      "ledger": "canonical",
+      "status": "PASS",
+      "reason": "certified: holdout edge +0.04693 beats the control out-of-sample and is significant after multiple-testing deflation (p=0.0009995 < alpha/6=0.008333)"
+    }
+  ]
+}
