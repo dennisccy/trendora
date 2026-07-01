@@ -1,7 +1,7 @@
 {
-  "extended": true,
-  "n_new_journeys": 1,
-  "n_proposals": 3,
-  "dry": false,
-  "summary": "Promoted J-09: rs_spy_3m top-decile h60 certified edge (pre-registered guidance section-4.1 #3; recorded staging referee PASS p=0.00049975; strongest holdout edge +0.2134 and best rank-IC +0.0274 in the scan; signal-less -> backs the Research factor lab only, /stocks badges unaffected). Backlog also records leadership_score h60 (robust, score-column fallback, not promoted) and a speculative horizon term-structure view."
+  "extended": false,
+  "n_new_journeys": 0,
+  "n_proposals": 2,
+  "dry": true,
+  "summary": "Honest stop: pre-registered candidate sets (guidance 4.1/4.2) exhausted - every member is a canonical journey (J-06 vcp h20, J-07 vcp h60, J-08 rs_spy x high_proximity, J-09 rs_spy h60) or a closed referee FAIL (ma_stack); the only remaining screen survivors are leadership_score score-column multi-horizon cohorts (h5/h10/h60), non-promotable (already-proven /stocks flagship + proven_signals overwrite would regress J-01/J-02). No clean structural proposal (term-structure panel still gated on 3+ multi-horizon factors; deferred directions need human registry widening). goal.md UNTOUCHED; 2 survivors recorded in backlog."
 }

@@ -1,11 +1,11 @@
 # Goal Session Summary — mcp-loop
 
 **Final verdict:** GOAL_ACHIEVED
-**Total iterations:** 9
-**Wall time (seconds):** 7769
+**Total iterations:** 16
+**Wall time (seconds):** 51315
 **Quota pauses:** 0
 **Started:** 2026-06-29T20:34:38.534484Z
-**Finished:** 2026-06-30T22:34:20.260573Z
+**Finished:** 2026-07-01T14:02:49.760800Z
 
 ## Branch
 
@@ -19,12 +19,15 @@ This session pushed iteration commits to `goal/mcp-loop`. Open a PR with:
 
 | Journey | Status | Last passing iter |
 |---|---|---|
-| J-01 | passing | goal-mcp-loop-iter-8 |
-| J-02 | passing | goal-mcp-loop-iter-8 |
-| J-03 | passing | goal-mcp-loop-iter-8 |
-| J-04 | passing | goal-mcp-loop-iter-8 |
-| J-05 | passing | goal-mcp-loop-iter-8 |
-| J-06 | passing | goal-mcp-loop-iter-8 |
+| J-01 | passing | goal-mcp-loop-iter-15 |
+| J-02 | passing | goal-mcp-loop-iter-15 |
+| J-03 | passing | goal-mcp-loop-iter-15 |
+| J-04 | passing | goal-mcp-loop-iter-15 |
+| J-05 | passing | goal-mcp-loop-iter-15 |
+| J-06 | passing | goal-mcp-loop-iter-15 |
+| J-07 | passing | goal-mcp-loop-iter-15 |
+| J-08 | passing | goal-mcp-loop-iter-15 |
+| J-09 | passing | goal-mcp-loop-iter-15 |
 
 ## Anti-goal violations
 

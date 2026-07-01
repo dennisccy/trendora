@@ -1,9 +1,9 @@
 # Delivered — Decision-Quality Improvement Loop
 
 **Session:** mcp-loop
-**Date:** 2026-06-30
+**Date:** 2026-07-01
 **Final verdict:** GOAL_ACHIEVED
-**Iterations:** 9
+**Iterations:** 16
 
 ## What you can do today
 
@@ -11,27 +11,33 @@ Browse a ranked list of 120 stocks and see a "Proven" or "Not yet proven" badge 
 
 Tap "Why proven?" on any stock's Leadership card to read the full out-of-sample proof that earned that label: the statistical test result, a +6.36% edge measured across 12,297 real observations, a comparison against the S&P 500 as a control, and the date the claim was certified and sealed.
 
-Confirm for yourself that Entry Quality and Risk are honestly marked "Not yet proven" on every stock with no drill-down panel and no fabricated confidence numbers — the product only claims certainty where it has earned it.
+Confirm for yourself that Entry Quality and Risk are honestly marked "Not yet proven" on every stock — no fabricated confidence numbers, no invented proof.
 
-Open the Evidence page from the sidebar to audit all four certified claims in one place. Each entry shows the hypothesis, the out-of-sample verdict, the benchmark comparison, and the registration date, with round-trip links back to the surfaces they power and forward to the research labs.
+Open the Evidence page from the sidebar to audit all seven certified claims in one place. Each entry shows the hypothesis, the out-of-sample verdict, the benchmark comparison, and the registration date, with round-trip links back to the surfaces they power and forward to the research labs.
 
-On the Dashboard, follow the Market Regime card's "See evidence proven in this regime" link to the Evidence page. There you can read the Breakout-watch setup's certified +6.12% out-of-sample edge over the S&P 500, clearly labeled as applying specifically in the current Risk-on market environment.
+On the Dashboard, follow the Market Regime card's link to see the Breakout-watch setup's certified +6.12% out-of-sample edge over the S&P 500, clearly labeled as applying specifically in the current Risk-on market environment.
 
-Open the Research factor lab to see whether each factor's top performers have a certified statistical edge. The vcp_contraction factor is the first plain research factor to earn a "Proven" label — its top-decile stocks beat the S&P 500 by +3.33% on a sealed holdout — and clicking its badge takes you straight to the full auditable entry on the Evidence page. Every other factor, including ma_stack whose edge was tested and rejected, honestly reads "Not yet proven."
+Open the Research factor lab to see each factor's evidence status at every tested holding period — 1-day, 5-day, 10-day, 20-day, and 60-day windows. The volatility-contraction pattern is "Proven" at both the 20-day (+3.33% edge) and the 60-day (+8.91% edge) windows. The 3-month relative-strength factor is "Proven" at the 60-day window (+21.34% edge). Click any "Proven" chip to jump straight to the auditable Evidence entry behind it.
+
+Open the Multi-factor Combination Lab, compose any pair of factors, and see "Proven" only for the one statistically certified pair: stocks that lead the market on 3-month relative strength and are also near their 52-week high showed a +4.69% certified edge. Every other combination, including those that were tested and honestly rejected, reads "Not yet proven."
 
 ## How it came together
 
-The project opened with Trendora already ranking 120 stocks with three independent scores and a real-time market-regime tracker, but with no evidence surface — no badges, no Evidence page, no links, and no proof behind any displayed number. Every score looked equally confident even though none had been through a rigorous test.
+The project opened with Trendora already ranking 120 stocks with Leadership, Entry Quality, and Risk scores, but no evidence surface — no badges, no proof, and no way to tell a certified signal from an untested one. Every score looked equally confident even though none had been through a rigorous test.
 
-The first wave of work built the read-side evidence layer from the ground up. "Not yet proven" chips appeared inline on every score across the leaderboard and every stock detail page, giving traders an honest picture against an empty ledger. A dedicated Evidence page went live in the sidebar. Then the Leadership score was put through a sealed out-of-sample referee test — 12,297 observations, +6.36% edge over the S&P 500, p-value 0.0005, Bonferroni-corrected — and passed. The ledger was stamped, Leadership's badge flipped to "Proven," and a "Why proven?" drill-down panel was wired up to show the exact numbers behind that label.
+The first round built that foundation. "Not yet proven" chips appeared beside every score on the leaderboard and every stock detail page. A new Evidence page went live in the sidebar. Then the Leadership score was put through a sealed statistical referee — 12,297 observations, +6.36% edge over the S&P 500 — and passed. Its badge flipped to "Proven" and a "Why proven?" panel let any user read the exact numbers behind that label.
 
-A browser connectivity issue in the test harness briefly delayed visual confirmation. Once fixed, the automated browser suite ran cleanly and verified four of the five journeys: every score had a status badge, the proof panel showed correct numbers matching the ledger, Entry Quality and Risk were honestly labeled, and the Evidence page was fully auditable with working round-trip links.
+After a brief browser-test connectivity fix, the automated walkthrough confirmed four capabilities in one pass: every score had a badge, the proof panel showed correct numbers, Entry Quality and Risk were honestly labeled, and the Evidence page had working round-trip links.
 
-The fourth milestone brought the second certified edge. The Breakout-watch event-study pattern was found to hold a +6.12% advantage over the S&P 500 specifically in the Risk-on market regime — surviving a sealed holdout of 107 independent dates with p ≈ 0.0005. The Evidence page gained a clearly labeled "Regime: Risk-on" row and the Dashboard gained a direct link to it. A leftover server process blocked the automated screenshot lane, leaving the final journey's formal verification pending.
+Next, the Breakout-watch event-study was tested and certified: +6.12% in the current Risk-on market regime, surviving 107 independent holdout dates. The Evidence page gained a "Regime: Risk-on" row and the Dashboard gained a direct link to it. Two rounds of pipeline repair followed before the full automated walkthrough could run end-to-end; once fixed, the audit signed off and the regime-conditioned capability was formally confirmed. All five original goals were met.
 
-Two iterations of disciplined harness repair followed. A startup-script port-conflict fix was shipped first. Then four deeper pipeline defects were uncovered and corrected: one step was announcing success without producing its output report, an unrecognized progress bookmark was aborting the entire run before the browser walkthrough could execute, and checks were being marked complete without any artifacts on disk. With all four root causes fixed, the full automated walkthrough ran end-to-end for the first time in three rounds, the independent audit signed off, and the regime-conditioned evidence journey passed the session-standard canonical lane. All five original success criteria were met and the goal was declared achieved.
+The continuous-improvement loop then kicked in. The volatility-contraction pattern was tested: its top-decile stocks beat the market by +3.33% out-of-sample. An adjacent test of a momentum-average pattern was honestly rejected and permanently recorded. The Research factor lab gained an Evidence column, and a fourth certified claim appeared on the Evidence page with working round-trip links.
 
-A continuous-improvement pass then extended the goal further. The vcp_contraction pattern's top-decile cohort was nominated through the referee: the fourth trial under a tightened Bonferroni bar returned a PASS — +3.33% holdout edge, p = 0.01149, with the ma_stack cohort tested in the same round and honestly rejected as "Not yet proven." The Research factor lab gained a dedicated Evidence column showing each factor's certification status, and the Evidence page gained a fourth certified claim with a working round-trip link back to the lab. All six journeys passed the canonical browser walkthrough. The ma_stack rejection is permanently on record, the no-lookahead and single-source-of-truth contracts are preserved, and no uncertified edge reaches any surface.
+To support a wider search without permanently tightening the public evidence bar, the platform built a separate private staging ledger. The first sweep found that volatility contraction also held at the 60-day horizon (+8.91% edge). The Research factor lab was upgraded from one chip per factor to a strip of five per-horizon chips — both the 20-day and 60-day windows now read "Proven" for volatility contraction.
+
+Three pre-registered two-factor combinations were then nominated through the referee. Two failed and their "Not yet proven" labels were set permanently on the record. The third — momentum leaders that are also near their 52-week high — passed (+4.69% edge). The Multi-factor Combination Lab gained a "Proven" badge for that certified pair, and a sixth claim appeared on the Evidence page.
+
+Finally, the 3-month relative-strength factor at the 60-day hold was promoted to the public ledger as the seventh certified claim — +21.34% edge, the strongest out-of-sample result yet. The existing display machinery lit the new "Proven" badge automatically, with no code changes needed, confirming the platform's ability to grow its evidence ledger without structural rework. All nine planned user capabilities are now live and independently verified.
 
 ## Watch it work
 

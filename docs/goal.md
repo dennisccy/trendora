@@ -167,6 +167,93 @@ ones, with honest "this isn't proven yet" markers when the evidence is thin or f
     PASS-gated; no return/price/buy-sell; deterministic; `[NEW]` walkthrough). The combination
     MUST come from the pre-registered candidate set — never an ad-hoc data-mined cohort.
 
+- **J-10: The product surfaces deep (up to ~30-year) price history, honestly bounded per name**
+  - Steps:
+    1. Price data comes from the committed seed rebuilt from the FREE Stooq provider across the full span
+       (~1996→present, as far back as each name's real listing) in the identical
+       `date,open,high,low,close,volume` schema with split/dividend back-adjusted `close`; no fabricated
+       bars (missing/short history stays short, never synthesized).
+    2. Open a long-tenured name (AAPL / MSFT / NVDA); assert the available history / as-of backtest window
+       spans well beyond 5 years (back toward ~1996 or the name's real first bar), not the old 2021 floor.
+    3. Open a post-IPO name (ARM / COIN / HOOD); assert it honestly shows only its real (short) history.
+  - Acceptance:
+    - **Consistency:** chart/backtest read the same `daily_prices` the engine scores on; the displayed
+      first date matches the committed seed's real first bar for that symbol (no invented dates).
+    - **Correctness:** `close` is back-adjusted consistently across the whole span (no discontinuous jump
+      at the old 2021 seam); a known split (NVDA/AAPL) is continuous.
+    - **Honest status / anti-goals:** no fabricated data; the survivorship disclosure is present wherever a
+      multi-year edge/backtest shows; determinism + no-lookahead preserved (scoring ≤ as-of, forward > as-of).
+    - **Performance:** pages reading the latest snapshot/ledger (`/stocks`, `/evidence`) stay responsive;
+      long-range charts window or downsample the deep history rather than shipping every bar.
+    - **Walkthrough:** a `[NEW]` demo-narrator walkthrough of the deeper chart/backtest window.
+
+- **J-11: Every displayed "Proven" edge is re-certified on the new 30-year data — no stale edge survives**
+  - Steps:
+    1. The historical data basis has been replaced, so EVERY pre-refresh certified-claim (computed on the
+       retired ~5-year window) is invalidated. The evidence ledger is regenerated from scratch by the
+       referee/gate on the new data — nothing is carried forward.
+    2. Visit `/evidence`; assert every row is one the referee re-passed on the 30-year data, and that no
+       pre-refresh edge value (old +21.34% / +6.36% / p=0.0004998) is shown unless it independently re-certified.
+    3. Cross-check one surviving factor edge on its Research lab: the "Proven" badge + `/evidence` row
+       byte-match the regenerated ledger for the same as-of.
+  - Acceptance:
+    - **Consistency (single source):** badges + rows read canonical `GET /api/evidence`; the regenerated
+      `certified-claims.jsonl` is the only source; the two frozen-golden tests (`test_evidence.py`
+      canonical golden + `test_staging_ledger_routing.py`) are refreshed to the new values.
+    - **Correctness:** every displayed edge/p-value/control byte-matches the regenerated referee verdict —
+      never an old carried number, never a UI recompute.
+    - **Honest status / anti-goals:** an edge that no longer clears the referee on 30-year data reads "Not
+      yet proven" (anti-goal #1); no retired/overfit edge shown as proven (anti-goal #4); determinism
+      preserved (seed 20240601); the honest-stop guard is respected.
+    - **Walkthrough:** a `[NEW]` walkthrough of the re-certified `/evidence` ledger.
+
+- **J-12: The universe is a broad, point-in-time dynamic set across the deep history — names enter at
+  their real IPO and leave cleanly when their data ends; discrete existence never corrupts a number**
+  - Steps:
+    1. The candidate pool is broadened to the full committed `universe_pool.csv` (~548: current S&P500 ∪
+       Nasdaq-100 ∪ prior) with Stooq bars loaded for the pool (not just the ~122 seed names); membership
+       at each date is resolved point-in-time by the existing `resolve_members(D)` (history/price/ADV on
+       `bars_asof(D)`), no lookahead.
+    2. Pick a name that IPO'd mid-history; assert it is ABSENT from the universe/leaderboard on dates
+       before it accumulated `min_history_bars` and PRESENT after — no fabricated early rows.
+    3. Pick a name whose data ends mid-history; assert it exits membership cleanly at end-of-data, its
+       60-day-return/MDD contributions are honest NA/n=0 for horizons running past its last bar, and it
+       never produces a misaligned relative-strength score (the `rs_vs` staleness gate excludes stale members).
+  - Acceptance:
+    - **Consistency:** the leaderboard/methodology membership count reflects `resolve_members(D)` over the
+      broadened pool for that date; entries/exits match the membership timeline (J-96).
+    - **Correctness:** 60-day return, max-drawdown, and decile ranking are per-`(symbol,date)` with honest
+      NA/n=0 for partial existence (no cross-symbol matrix); a stale/ended name never yields a misaligned
+      RS score (staleness gate in `resolve_candidate`).
+    - **Honest status / anti-goals:** point-in-time entry preserves no-lookahead (admission at D reads only
+      bars ≤ D); truly delisted names absent from free Stooq are disclosed, never fabricated; determinism preserved.
+    - **Walkthrough:** a `[NEW]` walkthrough of the membership timeline showing entries/exits across the deep history.
+
+- **J-13: The Data Manager page reflects the broadened 548-symbol universe, and its per-date
+  availability legend is unambiguous**
+  - Steps:
+    1. On `/data`, a generic Fetch job operates over the full ~548-symbol pool (not the old ~122), so
+       keeping the seed fresh covers every pool name; the "Expand universe" job option is removed (its
+       pool-fetch role is now the default Fetch once the 548 pool is the committed default).
+    2. In the "Per-date availability" heatmap, assert the legend clearly separates the two DISTINCT
+       signals: the cell FILL = price-data completeness (how many stored symbols have a bar that day),
+       and the snapshot indicator = whether an immutable scored scan exists for that day. No two encodings
+       look alike while meaning different things (no amber-as-"best", no fill-green colliding with a
+       snapshot-green).
+    3. Hover a date with bars but no snapshot (a backfill gap) and a date with a snapshot; assert the
+       tooltip + legend make the difference obvious and explain the Fetch→fills / Backfill→scores workflow.
+  - Acceptance:
+    - **Consistency:** the Fetch symbol set = the committed 548 pool; the availability numbers still come
+      from the same `GET /api/data/availability` (`symbols_with_bars` / `total_symbols`, `snapshot_exists`)
+      — a presentation-only clarity change, no data-semantics change.
+    - **Correctness:** "full" (fill) and "snapshot" (ring/badge) keep their true orthogonal meanings
+      (data-completeness vs scored-scan) — clarified, not merged (they are genuinely different: a day can
+      be one without the other).
+    - **Honest status / anti-goals:** removing the Expand UI trigger fabricates no data and hides no gap;
+      market caps (Expand's other role) either refresh via a retained path or are honestly shown as
+      committed/static; no invented dead-name data.
+    - **Walkthrough:** a `[NEW]` walkthrough of the clarified availability legend + the 548-symbol Fetch.
+
 <!-- Continuous-improvement auto-journeys: the goal-proposer appends NEW Must-have journeys ONLY
      between the two markers below (see the goal-self-extension skill). The human-authored journeys
      above and the Anti-goals below are never machine-edited. An empty block = nothing auto-proposed yet. -->
@@ -295,6 +382,14 @@ will refuse to certify on a sample too thin to believe.
 > only deliberately promoted winners (`"ledger":"canonical"`). Build that economy BEFORE widening
 > the scan, so the wider aperture has a sustainable economy to run in.
 
+> **Data-basis change (sanctioned ledger reset):** when the historical price seed is rebuilt (the
+> ~30-year Stooq extension over the broadened 548 point-in-time universe, in the second "Improvement
+> direction" section below), treat ALL prior certified-claims as invalidated — they were measured on the
+> retired window and will not reproduce. Regenerate the ledger on the new data BEFORE re-declaring any
+> edge "Proven", and refresh the frozen-golden tests. This is the one sanctioned reset of the otherwise
+> append-only ledger; J-01..J-09 remain valid contracts (honest badges, correct numbers) but their
+> specific certified edges recompute.
+
 ## Improvement direction (engineering): open the aperture + sustainable trial economy
 
 The continuous-improvement loop converged because the discovery machinery is structurally narrow,
@@ -343,3 +438,113 @@ cohorts (event-study sector slice), scoped α-split families.
 than family-wise control — it runs ONLY in staging; the user-facing `/evidence` "Proven" badge stays
 Bonferroni-curated. Every verdict records its `deflation` + `required_p` for audit. No unbacked or
 overfit edge is ever shown as proven.
+
+## Improvement direction (engineering): 30-year Stooq history over a broad point-in-time dynamic universe
+
+Grow the committed price seed from ~5 to ~30 years using the FREE **Stooq** provider (adapter exists:
+`stooq_provider.py`, `make_provider("stooq")`; `config.provider` allows `"stooq"`), broaden the effective
+universe to the full ~548-name point-in-time pool, and keep every honesty guarantee. The engine is
+shape-agnostic and already discrete-symbol-safe (per-`(symbol,date)` rows, honest NA/n=0, no matrix), and
+point-in-time ENTRY already exists (J-93/J-94/J-96) — so the work is data prep, one small membership
+hardening, two "use-it" levers, an honest evidence reset, disclosure, and bounding offline cost.
+Suggested sequencing: (1) ingest+load 548 × 30y and rebuild DB; (2) membership hardening; (3) evidence
+reset + config levers + test refresh; (4) chart perf; (5) Data Manager coherence.
+
+**A) Re-ingest the WHOLE span from Stooq, for the 548-name pool (one consistent adjustment basis).** Route
+`scripts/ingest_seed.py` through the provider abstraction (`--provider stooq`) and re-fetch the entire
+span (`--start 1996-01-01 --end <today>`, honoring each name's real first bar) for the names in
+`data/seed/universe_pool.csv` (~548), NOT just `config.universe.symbols` (~122), and NOT Stooq-deep
+spliced onto the existing Yahoo-recent CSVs: the engine trusts `close` to be split/dividend back-adjusted
+end-to-end and has ZERO correction logic (`prices.py`/`scoring.py` read close/high/low/volume only), so a
+mixed-vendor seam would create an adjustment discontinuity. Ensure `seed_loader.load_prices` loads bars
+for the full pool (today it loads only `config.universe.symbols`). Verify Stooq emits the identical
+`date,open,high,low,close,volume` schema with adjusted OHLC and confirm its US depth reaches the 1990s for
+old names; spot-check a known split (NVDA/AAPL). Names Stooq lacks simply never enter (honest
+`below_history`), never padded. Regenerate `data/seed/meta.json`; commit CSVs + meta.
+
+**B) Broaden + harden the dynamic point-in-time universe.** Point-in-time ENTRY already works
+(`universe_resolver.resolve_members(D)` screens `read_pool()` = `universe_pool.csv` from `bars_asof(D)`),
+so once the 548 have bars, they become eligible and each enters at its real IPO. Add the ONE missing
+piece for names whose data ends mid-history: a **recency/staleness gate** in `resolve_candidate`
+(`universe_resolver.py`) so a member whose last bar is far from D is excluded (today it gates on bar
+count/price/ADV but not recency) — this closes the `rs_vs` positional-misalignment (`indicators.py`) for
+stale members. The evidence pipeline (`forward_return`/`max_drawdown`/deciles/referee) needs NO change:
+it already returns honest NA/n=0 for partial existence and pools per-`(symbol,date)`. Confirm the
+membership timeline (J-96) shows entries/exits across the deep history.
+
+**C) Make the depth actually used.** (1) Rebuild the SQLite DB — `load_prices` is idempotent (no-op if a
+symbol has rows), so clear/rebuild `data/trendora.db` (or the `data_manager` `rebuild` job) or the deep
+history + new pool names never load. (2) Raise `config.yaml walk_forward.history_years` (currently 2)
+toward ~30 — it bounds the quarterly `/api/backtest` window regardless of data extent (cadence stays
+`quarterly` → ~120 as-of dates over 30y). (3) Backfill scanner snapshots across the wider window via
+`data_manager.run_data_job` (`backfill`/`rebuild`) so the referee's edge-study pool spans the deep
+history — but BOUND it (§F): daily cadence for recent years, coarser (weekly/monthly) for the deep history.
+
+**D) Honest evidence reset (load-bearing).** Every row in `certified-claims.jsonl` (7) and
+`staging-ledger.jsonl` (7) was computed on the retired window; its edges/p-values (+6.36%, +21.34%,
+p=0.0004998, control_n=1137, holdout 279 / in-sample 828, block_length 29/87) will NOT reproduce and MUST
+NOT be displayed post-change. Regenerate both ledgers by re-running the gate/referee over the new data
+(re-certify only edges that independently re-pass), then refresh the two frozen-golden tests:
+`tests/test_evidence.py::test_canonical_ledger_frozen_golden` and `tests/test_staging_ledger_routing.py`.
+Also refresh window/count pins in `tests/test_seed_ingest.py` and the offset-date comment in
+`tests/test_bar_cache.py` (~"day 150 2021-08"), since the seed start shifts before 2021.
+
+**E) Survivorship — point-in-time over the survivors, honestly disclosed.** The broadened pool + dynamic
+entry/exit gives correct point-in-time TIMING for every name Stooq has, but free Stooq has no truly
+delisted names, so the residual survivorship (dead names absent) remains — keep + extend
+`SURVIVORSHIP_BIAS_LABEL` (`app/engine/forward_testing.py`) to name the 30-year span and "read the edge as
+an upper bound," and keep `pool_survivorship()`'s honest `point_in_time_feed_available: False`. Optionally
+add representative regime dates to `scanner.bootstrap_dates` (currently `["2022-10-07","2025-04-04"]`) for
+2000-03 (dot-com), 2008-11 (GFC), 2020-03 (COVID). A true survivorship-free feed (point-in-time
+constituents + delisted prices via a public membership list and/or Sharadar/Norgate) is an out-of-scope
+backlog follow-on — NOT this direction; never fabricate dead-name data.
+
+**F) Performance & certification under 30 years × 548 names.**
+- *Volume is sub-linear in years* (young universe → sparse deep history): `daily_prices` grows ~2-3×
+  even with 548 names; SQLite + the existing `Index(symbol,date)` handles ~1M+ rows trivially.
+- *Most pages stay fast:* `/stocks` (latest snapshot, one row/symbol) and `/evidence` (small ledger) don't
+  scan raw bars — independent of history depth.
+- *One user-visible hotspot — the price chart:* a long-tenured name pulls ~5-7k daily points (vs ~1,356);
+  default the chart/backtest to a bounded recent window + opt-in "full history" and/or weekly downsample
+  beyond N years (give `/bars` a range/interval param). This is the J-10 "Performance" acceptance.
+- *The heavy cost is OFFLINE (build-time), borne once:* the 30y × 548 backfill (more snapshots, more names
+  scored per snapshot) can be multi-hour — bound it via the coarser deep-history cadence in §C(3); each
+  evidence re-certification runs the bootstrap over a bigger array (seconds → tens of seconds).
+- *Certification becomes more DISCRIMINATING:* more observations (deeper history + wider cross-section)
+  raise power → a genuine stable edge earns a smaller p-value (easier); the fraction-based sealed holdout
+  now spans multiple regimes (dot-com, GFC, COVID, 2021-26) → regime-fragile/data-mined edges correctly
+  FAIL the holdout (harder for spurious ones). The Bonferroni bar is UNCHANGED by span (tracks `n_trials`,
+  not years). Caveat: residual survivorship can still INFLATE edges (mitigated only by the §E disclosure).
+  Net: fewer but more robust certified edges.
+
+**G) Data Manager page coherence with the 548 default.** Three surgical changes:
+- *Fetch over 548.* Point the generic-fetch symbol set at the pool: `data_manager._run_job`'s
+  `else: symbols = all_seed_symbols(cfg)` branch (~`data_manager.py:2923`, the ~122-based default) →
+  `read_pool(seed_dir)` (the 548; `seed_dir` is already threaded, `read_pool` already imported), mirroring
+  the existing `is_expand` branch. Backfill already scores the full pool per-date (`resolve_members`) — no
+  change. This is the "make the fetch use the new number of symbols" wiring.
+- *Remove the "Expand universe" job option.* Delete the `<option value="expand">` (`apps/frontend/app/data/page.tsx`
+  ~:2113) and its now-dead supporting code (the `isExpandKind`/`sourceIneligibleForExpand` derived flags,
+  the `handleStart` market-cap guard, the `JobForm` props/disabled wiring, the source-eligibility option
+  suffix + amber alert, the panel title/copy mentioning expand, the `JobProgressPanel` expand branch, and
+  the `ExpandScreenResult` component). The backend still accepts `kind:"expand"` (harmless) and the offline
+  `scripts/screen_universe.py` remains the escape hatch. **Decision to make consciously:** Expand is also
+  the only on-demand market-cap refresh (J-84 `get_market_caps` → `universe.json`) — since market cap is
+  display-only (the per-date resolver drops it), the minimal choice is to accept static committed caps;
+  if fresh caps matter, fold `get_market_caps` into the Fetch job or a small dedicated action.
+- *Clarify the per-date availability legend (`apps/frontend/components/availability-heatmap.tsx`).* The
+  backend emits raw `symbols_with_bars` / `total_symbols` / `snapshot_exists` (`data_manager.compute_availability`);
+  the frontend derives "full" = density==1.0 (amber fill `--heat-5`) and "snapshot" = `snapshot_exists`
+  (green ring `--pos`). These are ORTHOGONAL (data-completeness set by Fetch vs scored-scan set by Backfill;
+  a day can be one without the other — "full but no snapshot" is exactly a backfill gap). Do NOT merge —
+  make the distinction unmistakable: split the legend into two labeled groups ("Price data — cell fill"
+  vs "Scored snapshot — indicator"), make the density ramp a monotonic single-hue scale so the top bucket
+  is not amber (amber is the page's warning color) and does not collide with the 75–<100% green
+  (`--heat-4`), give the snapshot indicator an unambiguous non-green treatment, and update the caption +
+  tooltip to state each meaning plainly plus the Fetch→fills / Backfill→scores workflow. Color tokens:
+  `apps/frontend/app/globals.css` (`--pos`, `--heat-0..5`, `--heat-text-*`) + `tailwind.config.ts`.
+
+**Anti-goal guardrails (unchanged):** no fabricated data (missing history / dead names stay absent);
+determinism + no-lookahead preserved (seed 20240601; scoring ≤ as-of / forward > as-of; sealed holdout);
+every displayed number byte-matches the regenerated referee verdict; no retired/overfit edge shown as
+proven; no credentials in source (Stooq needs no API key).
