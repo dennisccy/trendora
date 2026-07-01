@@ -103,15 +103,30 @@ DEFAULT_ALPHA_BUDGET = 1.0           # the total alpha budget a fresh ledger sta
 DEFAULT_SEED = 20240601              # deterministic default seed (matches the engine control-group seed)
 DEFAULT_DIRECTION = "positive"       # the claimed edge direction; "negative" flips the sign of the gate
 
+# ---- multiple-testing deflation policy names (a structural vocabulary, not tunables) --------------
+# The DEFAULT policy is strict Bonferroni: `required_p = alpha_per_test / n_trials`. `ONLINE_FDR` marks a
+# verdict whose bar was pre-allocated by the injectable staging online-FDR economy (`app.engine.online_fdr`,
+# LORD++) — it runs ONLY in the internal staging ledger and NEVER on the canonical `/evidence` bar.
+DEFLATION_BONFERRONI = "bonferroni"
+DEFLATION_ONLINE_FDR = "lord++"
+
 
 @dataclass(frozen=True)
 class RefereeState:
     """The cumulative testing state the referee deflates against. `n_trials` is THIS claim's ordinal
     (1 for the first claim ever tested, 2 for the second, …) — the Bonferroni divisor. `alpha_budget_
-    remaining` is the Thresholdout budget left (the ledger's starting budget minus all prior charges)."""
+    remaining` is the Thresholdout budget left (the ledger's starting budget minus all prior charges).
+
+    iter-9 makes the multiple-testing deflation an INJECTABLE policy with the DEFAULT reproducing strict
+    Bonferroni byte-identically: when `test_level is None` (the default) the referee uses
+    ``alpha_per_test / n_trials``; a staging online-FDR economy instead PRE-ALLOCATES the per-trial
+    significance level and passes it as `test_level`, naming the policy in `deflation` for the audit
+    trail. `deflation` defaults to ``"bonferroni"`` so every existing construction is unchanged."""
 
     n_trials: int = 1
     alpha_budget_remaining: float = DEFAULT_ALPHA_BUDGET
+    deflation: str = DEFLATION_BONFERRONI
+    test_level: Optional[float] = None
 
 
 @dataclass(frozen=True)
@@ -336,11 +351,21 @@ def certify_edge(
     rng = np.random.default_rng(seed)
     n_trials = max(1, int(state.n_trials))
     divisor = n_trials
-    required_p = alpha_per_test / divisor
+    # (f) Multiple-testing deflation — an INJECTABLE policy. The DEFAULT (`test_level is None`) is strict
+    # Bonferroni and reproduces today's bar byte-identically: ``required_p = alpha_per_test / n_trials``.
+    # A staging online-FDR economy instead pre-allocates the significance level and passes it via
+    # `state.test_level`, naming the policy in `state.deflation` (canonical is never routed through it).
+    if state.test_level is None:
+        required_p = alpha_per_test / divisor
+        bar_desc = f"alpha/{divisor}={required_p:.4g}"
+    else:
+        required_p = float(state.test_level)
+        bar_desc = f"{state.deflation} level {required_p:.4g}"
     base = dict(
         n_trials_at_test=state.n_trials,
         deflation_divisor=divisor,
         required_p=required_p,
+        deflation=state.deflation,
         direction=direction,
         seed=seed,
         cohort_n=len(cohort),
@@ -439,14 +464,15 @@ def certify_edge(
             alpha_charged=charged, **base,
         )
 
-    # (f) Deflated significance — Bonferroni against the cumulative trial count.
+    # (f) Deflated significance — the selected policy's bar (`bar_desc`): the DEFAULT Bonferroni bar
+    # renders exactly ``alpha/{divisor}={required_p:.4g}`` (byte-identical to before); a staging
+    # online-FDR bar renders ``{deflation} level {required_p:.4g}``.
     if p_value < required_p:
         return _verdict(
             STATUS_PASS,
             (
                 f"certified: holdout edge {holdout_edge:+.4g} beats the control out-of-sample and is "
-                f"significant after multiple-testing deflation (p={p_value:.4g} < alpha/{divisor}="
-                f"{required_p:.4g})"
+                f"significant after multiple-testing deflation (p={p_value:.4g} < {bar_desc})"
             ),
             alpha_charged=charged, **base,
         )
@@ -454,7 +480,7 @@ def certify_edge(
         STATUS_FAIL,
         (
             f"holdout edge {holdout_edge:+.4g} is not significant after multiple-testing deflation "
-            f"(p={p_value:.4g} >= alpha/{divisor}={required_p:.4g})"
+            f"(p={p_value:.4g} >= {bar_desc})"
         ),
         alpha_charged=charged, **base,
     )

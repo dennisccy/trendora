@@ -805,3 +805,55 @@ def test_macro_defaults_when_omitted(tmp_path):
     assert cfg.macro.enable.severity is False
     assert cfg.macro.series == []
     assert [b.key for b in cfg.research.downtrend_opportunity.severity_bands]  # built-in default catalog
+
+
+# ==================================================================================================
+# iter-9 — the online-FDR (LORD++) staging economy config (evidence.staging_ledger_path + evidence.fdr).
+# ==================================================================================================
+def test_real_config_carries_staging_ledger_and_fdr_default_off():
+    """The real config.yaml carries the iter-9 staging ledger + the online-FDR block, DEFAULT-OFF — so the
+    canonical `/evidence` bar stays strict Bonferroni (the load-bearing byte-identical invariant)."""
+    cfg = load_config()
+    assert cfg.evidence.ledger_path.endswith("certified-claims.jsonl")
+    assert cfg.evidence.staging_ledger_path.endswith("staging-ledger.jsonl")
+    # the two ledgers are DIFFERENT files — exploration cannot contaminate canonical.
+    assert cfg.evidence.staging_ledger_path != cfg.evidence.ledger_path
+    assert cfg.evidence.fdr.enabled is False          # DEFAULT-OFF (canonical stays Bonferroni)
+    assert 0.0 < cfg.evidence.fdr.alpha < 1.0
+    assert cfg.evidence.fdr.gamma_exponent > 1.0      # a summable spending sequence
+
+
+def test_fdr_and_staging_default_when_omitted(tmp_path):
+    """A config OMITTING the staging_ledger_path + fdr block still loads (additive, default-populated) — so
+    a config / inline fixture predating iter-9 is unaffected and stays default-off (Bonferroni everywhere)."""
+    cfg = load_config(_write(tmp_path, MINIMAL_VALID))
+    assert cfg.evidence.fdr.enabled is False
+    assert cfg.evidence.staging_ledger_path  # the built-in default path
+    assert cfg.evidence.fdr.alpha == 0.05 and cfg.evidence.fdr.gamma_exponent == 1.6
+
+
+def test_fdr_config_validation_rejects_bad_tunables():
+    """Every LORD++ tunable is bounds-checked — a bad value is a loud error, NEVER a silent weakening."""
+    from app.config import FdrCfg
+
+    with pytest.raises(ValueError, match="alpha must be in"):
+        FdrCfg(alpha=1.5)
+    with pytest.raises(ValueError, match="w0_fraction must be in"):
+        FdrCfg(w0_fraction=-0.1)
+    with pytest.raises(ValueError, match="gamma_exponent must be > 1"):
+        FdrCfg(gamma_exponent=1.0)
+    with pytest.raises(ValueError, match="gamma_terms must be >= 1"):
+        FdrCfg(gamma_terms=0)
+
+
+def test_malformed_fdr_block_in_full_config_raises(tmp_path):
+    """A malformed `evidence.fdr` block in a full config raises ConfigError at load (not a silent
+    fall-through) — the honesty guard: the canonical bar can never be silently weakened by bad config."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["evidence"] = {
+        "ledger_path": "runs/x/certified-claims.jsonl",
+        "staging_ledger_path": "runs/x/staging-ledger.jsonl",
+        "fdr": {"enabled": True, "alpha": 2.0},  # alpha out of (0,1)
+    }
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))

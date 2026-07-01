@@ -42,7 +42,13 @@ from datetime import date as date_cls
 from typing import Callable, Optional
 
 from app.engine import ledger as ledger_mod
-from app.engine.referee import DEFAULT_ALPHA_BUDGET, DEFAULT_SEED, RefereeState, certify_edge
+from app.engine.referee import (
+    DEFAULT_ALPHA_BUDGET,
+    DEFAULT_SEED,
+    DEFLATION_BONFERRONI,
+    RefereeState,
+    certify_edge,
+)
 
 # An assembler maps a stored `claim` dict -> ``(cohort_obs, control_obs, horizon)`` — exactly the seam
 # `app.mcp.tools.assemble_claim_observations` provides. Injectable so the monitor is DB-free in tests.
@@ -120,9 +126,23 @@ def _rescore(entry: dict, assemble: Assembler):
     n_trials = int(orig_verdict.get("n_trials_at_test") or 1)  # the ORIGINAL ordinal — never inflated
     seed_val = orig_verdict.get("seed")
     seed = int(seed_val) if seed_val is not None else DEFAULT_SEED
+    # Reconstruct the ORIGINAL deflation policy's bar so the re-score reproduces the verdict byte-for-byte.
+    # A Bonferroni entry re-derives ``alpha_per_test / n_trials`` from the recovered ordinal (test_level
+    # stays None — unchanged from before). A staging online-FDR entry PINS `test_level` to the recorded
+    # `required_p`, since the LORD++ wealth that produced it depended on the staging rejection history AT
+    # registration; re-deriving it from the (now larger) ledger would move the bar. Only newer/matured
+    # DATA may change a re-score — never the bar itself.
+    deflation = orig_verdict.get("deflation", DEFLATION_BONFERRONI)
+    test_level = None
+    if deflation != DEFLATION_BONFERRONI:
+        recorded_required_p = orig_verdict.get("required_p")
+        test_level = float(recorded_required_p) if recorded_required_p is not None else None
     # Fresh, full budget: forward-walk monitoring must not be REFUSED for an exhausted certification budget
     # nor charge against it — its own `alpha_charged` lives only inside the (excluded) forward-walk record.
-    state = RefereeState(n_trials=n_trials, alpha_budget_remaining=DEFAULT_ALPHA_BUDGET)
+    state = RefereeState(
+        n_trials=n_trials, alpha_budget_remaining=DEFAULT_ALPHA_BUDGET,
+        deflation=deflation, test_level=test_level,
+    )
 
     direction = claim.get("direction", "positive")
     extra = {}

@@ -4,10 +4,21 @@
 Invoked by project-extensions/gates/post-decompose.sh from apps/backend with the
 backend venv. Reads the iteration spec ($SPEC_PATH), extracts any "## Evidence
 Claim" JSON block(s), and runs each through the referee's verify_edge against the
-certified-claims ledger ($LEDGER_PATH).
+target ledger.
+
+Per-claim ledger routing (iter-9): each Evidence Claim MAY carry an optional
+"ledger" key selecting which economy certifies it —
+
+    "staging"   (the DEFAULT when the key is absent) -> the internal online-FDR
+                exploration ledger ($STAGING_LEDGER_PATH). Exploration accumulates
+                here WITHOUT tightening the user-facing canonical Bonferroni bar.
+    "canonical" (explicit, for a deliberately promoted winner) -> the user-facing
+                certified-claims ledger ($LEDGER_PATH), ALWAYS strict Bonferroni.
 
     exit 0  => no claim, OR every claim CERTIFIED (PASS)        -> iteration may build
-    exit 3  => a claim was NOT certified (FAIL / INSUFFICIENT)  -> block the iteration
+    exit 3  => a claim was NOT certified (FAIL / INSUFFICIENT), OR a routing failure
+               (unrecognized "ledger" value / the required *_LEDGER_PATH unset)
+               -> block the iteration (FAIL-CLOSED — never a silent certification)
 
 A summary is written to $GATE_VERDICT_PATH when set. The referee counts independent
 holdout DATES, so on a thin/coarse dataset it honestly returns INSUFFICIENT (which
@@ -33,6 +44,13 @@ _CLAIM_SECTION = re.compile(r"^##\s+Evidence Claim\b.*?(?=^\#\#\s|\Z)", re.MULTI
 # Each fenced ```json { ... } ``` block inside it is one claim.
 _JSON_FENCE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
 
+# The per-claim "ledger" routing vocabulary -> the env var carrying that ledger's path. A claim omitting
+# the key defaults to STAGING (exploration); a promoted winner sets "canonical" explicitly. An unrecognized
+# value is FAIL-CLOSED (never silently certified). The env indirection matches how run-goal.sh exports the
+# two paths (LEDGER_PATH + STAGING_LEDGER_PATH) — no path literal lives here.
+_LEDGER_ENV = {"staging": "STAGING_LEDGER_PATH", "canonical": "LEDGER_PATH"}
+_DEFAULT_LEDGER = "staging"
+
 
 def extract_claims(spec_text: str) -> list:
     claims = []
@@ -43,6 +61,28 @@ def extract_claims(spec_text: str) -> list:
             except json.JSONDecodeError:
                 pass
     return claims
+
+
+def resolve_claim_ledger(claim: dict) -> tuple:
+    """Route ONE claim to its target ledger, FAIL-CLOSED. Returns ``(kind, env_name, path, error)``:
+
+      * `kind`     — the claim's "ledger" value (default ``"staging"``);
+      * `env_name` — the env var that must carry the path (``None`` for an unrecognized kind);
+      * `path`     — the resolved ledger path (``None`` on any failure);
+      * `error`    — a human-readable blocking reason, or ``None`` when routing succeeded.
+
+    An UNRECOGNIZED kind and an UNSET required path are BOTH fail-closed (a blocking `error`), never a
+    silent certification — the same discipline as the original LEDGER_PATH-unset guard, now per-claim."""
+    kind = claim.get("ledger", _DEFAULT_LEDGER)
+    if kind not in _LEDGER_ENV:
+        return kind, None, None, (
+            f"unrecognized ledger {kind!r} (valid: {sorted(_LEDGER_ENV)}) — fail-closed"
+        )
+    env_name = _LEDGER_ENV[kind]
+    path = os.environ.get(env_name, "")
+    if not path:
+        return kind, env_name, None, f"{env_name} unset — cannot certify a {kind} claim (fail-closed)"
+    return kind, env_name, path, None
 
 
 def _verdict_fields(v) -> tuple:
@@ -56,7 +96,6 @@ def _verdict_fields(v) -> tuple:
 
 def main() -> int:
     spec_path = os.environ.get("SPEC_PATH", "")
-    ledger_path = os.environ.get("LEDGER_PATH", "")
     verdict_path = os.environ.get("GATE_VERDICT_PATH", "")
 
     if not spec_path or not os.path.exists(spec_path):
@@ -66,22 +105,26 @@ def main() -> int:
     if not claims:
         print("[gate] no '## Evidence Claim' block — not a data-derived iteration, passing through")
         return 0
-    if not ledger_path:
-        print("[gate] LEDGER_PATH unset — cannot certify a claim; BLOCKING (fail-closed)", file=sys.stderr)
-        return 3
 
     register = date.today().isoformat()
     results, blocked = [], False
     with Session(get_engine()) as session:
         for claim in claims:
+            kind, _env_name, ledger_path, route_error = resolve_claim_ledger(claim)
+            if route_error is not None:
+                # Routing failure (unrecognized ledger / unset path) -> BLOCK, never a silent write.
+                results.append({"claim": claim, "ledger": kind, "status": "BLOCKED", "reason": route_error})
+                print(f"[gate] BLOCKED: {claim}  ({route_error})", file=sys.stderr)
+                blocked = True
+                continue
             try:
                 status, reason = _verdict_fields(
-                    tools.verify_edge(session, claim, ledger_path, register_date=register)
+                    tools.verify_edge(session, claim, ledger_path, register_date=register, ledger=kind)
                 )
             except Exception as exc:  # a malformed claim selector, etc. — never ship it
                 status, reason = "INSUFFICIENT", f"verify_edge error: {exc}"
-            results.append({"claim": claim, "status": status, "reason": reason})
-            print(f"[gate] {status}: {claim}  ({reason})")
+            results.append({"claim": claim, "ledger": kind, "status": status, "reason": reason})
+            print(f"[gate] {status} [{kind}]: {claim}  ({reason})")
             if status != "PASS":
                 blocked = True
 

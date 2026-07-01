@@ -373,3 +373,36 @@ def test_resolve_ledger_path_config_default(monkeypatch):
     # the SAME file the post-decompose gate writes, resolved absolute against the repo root
     assert resolved == str(REPO_ROOT / "runs/goal-session-mcp-loop/state/certified-claims.jsonl")
     assert Path(resolved).is_absolute()
+
+
+# ==================================================================================================
+# iter-9 LOAD-BEARING INVARIANT — the LIVE canonical ledger is byte-identical (honest history intact),
+# so `GET /api/evidence` proven-ness is unperturbed after the injectable-economy refactor.
+# ==================================================================================================
+def test_canonical_ledger_frozen_golden(monkeypatch):
+    """The four canonical `certified-claims.jsonl` entries are the immutable honest history the whole
+    evidence layer reads (lines 1/2/4 PASS, line 3 `ma_stack` FAIL — all strict Bonferroni, divisors 1..4).
+    iter-9's injectable-deflation refactor must leave them byte-identical and `proven_signals` exactly
+    `{leadership_score}`. This pins the canonical golden so any accidental rewrite fails loudly."""
+    monkeypatch.delenv(LEDGER_PATH_ENV, raising=False)
+    from app.engine.ledger import read_entries
+
+    ledger_file = REPO_ROOT / "runs/goal-session-mcp-loop/state/certified-claims.jsonl"
+    entries = read_entries(str(ledger_file))
+
+    # exactly the four ORIGINAL honest-history entries, all strict Bonferroni with divisors 1..4.
+    assert len(entries) == 4
+    assert [e["verdict"]["status"] for e in entries] == ["PASS", "PASS", "FAIL", "PASS"]
+    assert [e["verdict"]["deflation_divisor"] for e in entries] == [1, 2, 3, 4]
+    assert all(e["verdict"]["deflation"] == "bonferroni" for e in entries)
+    assert [e["claim"].get("factor") for e in entries] == [
+        "leadership_score", None, "ma_stack", "vcp_contraction",
+    ]
+
+    # the projected payload: 4 claim rows, and the ONLY inline-badge signal is leadership_score (unchanged).
+    payload = build_evidence_payload(str(ledger_file))
+    assert len(payload["claims"]) == 4
+    assert set(payload["proven_signals"].keys()) == {"leadership_score"}
+    proven = payload["proven_signals"]["leadership_score"]
+    assert proven["proven"] is True
+    assert proven["claim"]["decile"] == 10 and proven["claim"]["horizon"] == 20

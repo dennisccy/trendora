@@ -125,6 +125,48 @@ ones, with honest "this isn't proven yet" markers when the evidence is thin or f
     3. Click a claim and assert it links back to the surface(s) whose badge it backs
   - Acceptance: the user can audit every "proven" claim the platform relies on, end to end.
 
+- **J-07: Multi-horizon certified edge surfaced (the loop sees beyond the 20-day horizon)**
+  - Steps:
+    1. The iteration carries a machine-readable `## Evidence Claim` for a factor cohort at a
+       NON-20 forward-return horizon (1/5/10/60) — e.g.
+       `{"kind":"factor","factor":"<key>","slice_kind":"decile","decile":10,"horizon":60,"direction":"positive"}` —
+       that the post-decompose gate certifies through the referee BEFORE any code is built
+       (a non-PASS verdict blocks the iteration).
+    2. Visit `/evidence` and locate the new certified-claim row; assert its horizon is the
+       non-20 value and it renders the standard fields (hypothesis incl. horizon, out-of-sample
+       verdict, SPY control, registration date, forward-walk score-to-date, "Backs: Research
+       factor lab →").
+    3. Open `/research/factor-lab` for that factor; assert its cohort at that horizon shows a
+       "Proven" badge linking to this ledger entry, while uncertified horizons read "Not yet proven".
+  - Acceptance:
+    - **Consistency (single source):** the row + factor-lab badge read the canonical
+      `GET /api/evidence` payload verbatim; the claim is a NEW entry in the EXISTING
+      `certified-claims.jsonl` (no new computing module, no new serving endpoint).
+    - **Correctness:** displayed edge / p-value / control byte-match the referee verdict for
+      the same as-of — never a UI recompute.
+    - **Honest status / anti-goals:** a signal-less factor claim backs ONLY the factor lab,
+      never a `/stocks` inline badge (J-01/J-02/J-03 unaffected); "Proven" only with a PASS,
+      else "Not yet proven" (anti-goal #1); no return/price/buy-sell language; determinism +
+      no-lookahead preserved (scoring ≤ as-of, forward returns > as-of; sealed temporal holdout).
+    - **Walkthrough:** a `[NEW]`-flagged demo-narrator walkthrough of the multi-horizon row +
+      badge, viewable via `demo.sh mcp-loop --session-live`.
+
+- **J-08: Multi-factor combination certified edge surfaced on the Combination lab + Evidence**
+  - Steps:
+    1. The iteration carries a `## Evidence Claim` for a curated 2-factor composite cohort drawn
+       from the pre-registered combination candidate set — e.g.
+       `{"kind":"combination","cohort":"composite","horizon":20,"direction":"positive","condition":["rs_spy_3m:top:quintile","atr_pct:bottom:tertile"]}` —
+       certified by the gate BEFORE any code is built (a non-PASS verdict blocks the iteration).
+    2. Visit `/evidence`, locate the new combination certified-claim row, and assert the standard
+       fields plus a "Backs: Multi-factor combination lab →" linkback.
+    3. Open `/research/factor-combination`, reproduce/select that combination, and assert its
+       composite cohort shows a "Proven" badge linking to this ledger entry; uncertified
+       combinations read "Not yet proven".
+  - Acceptance: same Consistency / Correctness / Honest-status / Walkthrough bar as J-07
+    (canonical `GET /api/evidence` single source; byte-match; signal-less ⇒ no `/stocks` badge;
+    PASS-gated; no return/price/buy-sell; deterministic; `[NEW]` walkthrough). The combination
+    MUST come from the pre-registered candidate set — never an ad-hoc data-mined cohort.
+
 <!-- Continuous-improvement auto-journeys: the goal-proposer appends NEW Must-have journeys ONLY
      between the two markers below (see the goal-self-extension skill). The human-authored journeys
      above and the Anti-goals below are never machine-edited. An empty block = nothing auto-proposed yet. -->
@@ -209,3 +251,59 @@ certified-claims ledger at `runs/goal-session-<sid>/state/certified-claims.jsonl
 believe survives out-of-sample, and prefer **narrow, regime-conditioned** cohorts over broad,
 data-mined ones — the referee counts independent holdout *dates*, not correlated same-date names, and
 will refuse to certify on a sample too thin to believe.
+
+> **Sustaining an open-ended search:** the single global Bonferroni bar above is what the
+> "Improvement direction (engineering)" section below replaces for *exploration*. Per-iteration
+> Evidence Claims default to a separate **staging** ledger under an online-FDR economy; the
+> user-facing `/evidence` ledger (`certified-claims.jsonl`) stays strict Bonferroni and receives
+> only deliberately promoted winners (`"ledger":"canonical"`). Build that economy BEFORE widening
+> the scan, so the wider aperture has a sustainable economy to run in.
+
+## Improvement direction (engineering): open the aperture + sustainable trial economy
+
+The continuous-improvement loop converged because the discovery machinery is structurally narrow,
+not because real edges are exhausted. Two coupled upgrades — **build the economy first, then widen
+the scan**. (Richer engineering notes were drafted in a planning doc; everything needed is inlined
+here.)
+
+**Why it stalled.** (1) The scan enumerates only `factor × horizon-20 × deciles{1,10}` (~22 cells,
+SPY control only) in `app/engine/triad_scan.py` `scan_factor_decile_cells`, while the cohort/cert
+path already supports horizons 1–60, regime/sector slices, and multi-factor combinations, against a
+dense ~1,377-date snapshot. (2) The referee uses one global Bonferroni counter that never resets and
+counts failures (`app/engine/referee.py` `certify_edge`; `app/engine/ledger.py` `count_trials`), so
+every probe permanently tightens the bar (now `0.05/5 = 0.010`) and a single FAIL is permanent.
+
+**A) Sustainable trial economy (hybrid — build this FIRST).** Add online-FDR (LORD++) as an
+*injectable, default-off* deflation policy in the referee, running in a SEPARATE **staging** ledger
+where a discovery replenishes testing capacity (so a wide search keeps finding edges). The canonical
+`certified-claims.jsonl` served to `/evidence` stays STRICT Bonferroni and receives only deliberately
+promoted winners — its "Proven" badge keeps its current family-wise guarantee. FDR is OFF by default
+(config); exploration is isolated; the honesty guards (out-of-sample-beats-control gate, block
+bootstrap, Thresholdout overfit charge) stay independent of the economy. Seams: new PURE
+`app/engine/online_fdr.py` (no RNG/IO, wealth derived from rejection times — zero migration);
+`RefereeState.test_level` + `deflation` (default-preserving, so every existing referee test stays
+byte-identical); `ledger.rejection_offsets` (derived, no schema change → live ledger `[1,2,4]`);
+`verify_edge` threads the economy (stays the ONLY ledger writer); `forward_walk` reproduce-contract
+preserved by reconstructing `test_level` from the recorded `required_p`; `EvidenceCfg` typed `FdrCfg`
+(defaults reproduce today) + `staging_ledger_path` in `config.yaml`; gate routing in
+`project-extensions/gates/verify_claim.py` reads an optional `"ledger"` key per Evidence Claim
+(default `"staging"`, explicit `"canonical"` for winners) with `exit 3`-on-non-PASS blocking
+unchanged; `run-goal.sh` exports `STAGING_LEDGER_PATH` alongside `LEDGER_PATH`. The 4 existing
+canonical entries stay byte-identical (`deflation="bonferroni"`, divisors 1–4 — honest history).
+
+**B) Open the scan aperture (after A). Phase 1:** multi-horizon (config-only:
+`config.yaml` triad `horizons: [1,5,10,20,60]`, reuses `compute_factor_lab`) + curated 2-factor
+combinations (reuse `compute_factor_combination`; emit the `condition`-string claim form parsed by
+`drill_samples`; combination enumerator + selector translation in `triad_scan.py`). Raise
+`triad.top_k` (only `ranked[:top_k]` are screened) and the currently-inert `triad.screen.haircut_coef`
+so the multiple-testing haircut scales with the wider aperture. A PRE-REGISTERED, config-backed
+candidate set — each pair/horizon carrying a one-line economic rationale, mirrored into
+`project-extensions/proposer-guidance.md` — is the anti-data-mining keystone: iterate a fixed
+hypothesis set, NEVER the full cross-product. Deferred to later phases (NOT this direction):
+quantile spreads (D10−D1), regime conditioning (reuse the `regime-phase-factor` kind first), sector
+cohorts (event-study sector slice), scoped α-split families.
+
+**Honesty constraint (anti-goal #1 upheld):** FDR controls the false-discovery *rate* and is weaker
+than family-wise control — it runs ONLY in staging; the user-facing `/evidence` "Proven" badge stays
+Bonferroni-curated. Every verdict records its `deflation` + `required_p` for audit. No unbacked or
+overfit edge is ever shown as proven.

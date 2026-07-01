@@ -1891,19 +1891,69 @@ def _default_macro() -> "MacroCfg":
 # (the SAME file the post-decompose gate writes via `app.mcp.tools.verify_edge`, set by `run-goal.sh`) so
 # the read-only `GET /api/evidence` reads exactly what the referee certified.
 _DEFAULT_LEDGER_PATH = "runs/goal-session-mcp-loop/state/certified-claims.jsonl"
+# goal-mcp-loop iter-9 — the INTERNAL staging ledger location (the isolated online-FDR exploration ledger).
+# NEVER read by `GET /api/evidence`; it exists so future iterations can explore edges without tightening the
+# canonical Bonferroni bar. Written only by `verify_edge` when routed to staging (via `STAGING_LEDGER_PATH`).
+_DEFAULT_STAGING_LEDGER_PATH = "runs/goal-session-mcp-loop/state/staging-ledger.jsonl"
+
+
+class FdrCfg(BaseModel):
+    """Online-FDR (LORD++) *staging* economy config (goal-mcp-loop iter-9) — the injectable, DEFAULT-OFF
+    deflation policy `app.engine.online_fdr` consumes. Every LORD++ tunable lives here, never as a magic
+    number in the engine (anti-goal: No magic numbers).
+
+    DEFAULT-OFF is load-bearing: with `enabled=False` (the default) the referee stays strict Bonferroni on
+    EVERY ledger — canonical AND staging — so a config predating this block (and the inline test fixtures)
+    loads and behaves byte-identically. The economy activates ONLY in the staging ledger and ONLY when
+    `enabled=True`; the user-facing canonical `/evidence` bar is ALWAYS Bonferroni regardless (fenced in
+    `verify_edge`), because FDR controls the false-discovery *rate* and is weaker than family-wise control.
+
+    Tunables: `alpha` = target FDR level (LORD++ α); `w0_fraction` = initial alpha-wealth as a fraction of
+    α (W₀ = w0_fraction·α); `gamma_exponent` = the polynomial spending-sequence decay exponent (> 1 so the
+    sequence is summable); `gamma_terms` = explicit terms for the ζ normalizer (Euler–Maclaurin tail beyond).
+    Validated: `alpha ∈ (0,1)`, `w0_fraction ∈ [0,1]`, `gamma_exponent > 1`, `gamma_terms >= 1`. A malformed
+    block raises `ConfigError` at load — a loud failure, NEVER a silent weakening of the bar."""
+
+    model_config = ConfigDict(extra="allow")
+    enabled: bool = False
+    alpha: float = 0.05
+    w0_fraction: float = 0.5
+    gamma_exponent: float = 1.6
+    gamma_terms: int = 1000
+
+    @model_validator(mode="after")
+    def _validate(self) -> "FdrCfg":
+        if not (0.0 < self.alpha < 1.0):
+            raise ValueError(f"evidence.fdr.alpha must be in (0, 1), got {self.alpha}")
+        if not (0.0 <= self.w0_fraction <= 1.0):
+            raise ValueError(f"evidence.fdr.w0_fraction must be in [0, 1], got {self.w0_fraction}")
+        if self.gamma_exponent <= 1.0:
+            raise ValueError(
+                f"evidence.fdr.gamma_exponent must be > 1 (summable spending sequence), got {self.gamma_exponent}"
+            )
+        if self.gamma_terms < 1:
+            raise ValueError(f"evidence.fdr.gamma_terms must be >= 1, got {self.gamma_terms}")
+        return self
 
 
 class EvidenceCfg(BaseModel):
-    """Read-side evidence config (goal-mcp-loop iter-1). `ledger_path` is the certified-claims ledger the
-    read-only `GET /api/evidence` reads — the SAME append-only file the post-decompose gate writes, so the
-    UI's displayed proven-ness is consistent with what the referee certified. Resolved relative to
-    `REPO_ROOT` when relative; the resolver (`app.engine.evidence.resolve_ledger_path`, NOT this model)
-    applies the runtime `TRENDORA_LEDGER_PATH` override. The path lives in config, never as a literal in
-    the resolver/endpoint (anti-goal: No magic numbers). Default-populated so a config / inline test fixture
-    predating this block still loads unchanged."""
+    """Read-side evidence config (goal-mcp-loop iter-1; iter-9 adds the staging economy). `ledger_path` is
+    the certified-claims ledger the read-only `GET /api/evidence` reads — the SAME append-only file the
+    post-decompose gate writes, so the UI's displayed proven-ness is consistent with what the referee
+    certified. Resolved relative to `REPO_ROOT` when relative; the resolver
+    (`app.engine.evidence.resolve_ledger_path`, NOT this model) applies the runtime `TRENDORA_LEDGER_PATH`
+    override. The path lives in config, never as a literal in the resolver/endpoint (anti-goal: No magic
+    numbers).
+
+    iter-9 adds the INTERNAL exploration seam — `staging_ledger_path` (a NEVER-served staging ledger the
+    online-FDR economy explores in, so exploration cannot tighten the canonical Bonferroni bar) and `fdr`
+    (the DEFAULT-OFF LORD++ economy config). Both are default-populated so a config / inline test fixture
+    predating this block still loads unchanged, and default-off keeps canonical behavior byte-identical."""
 
     model_config = ConfigDict(extra="allow")
     ledger_path: str = Field(default=_DEFAULT_LEDGER_PATH, min_length=1)
+    staging_ledger_path: str = Field(default=_DEFAULT_STAGING_LEDGER_PATH, min_length=1)
+    fdr: FdrCfg = Field(default_factory=FdrCfg)
 
 
 def _default_evidence() -> "EvidenceCfg":

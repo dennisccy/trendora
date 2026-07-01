@@ -72,9 +72,13 @@ Research (its proof companion). Stock Detail, Run Detail, Research labs and Samp
 | J-04 regime-conditioned evidence | `/` (current regime + Evidence affordance) + regime-labeled claim row on `/evidence` | Dashboard + Evidence/Research |
 | J-05 audit the evidence ledger | `/evidence` (claims list; each links back to the surface it backs) | Evidence [NEW] |
 | J-06 vcp_contraction top-decile certified factor edge | `/research/factor-lab` (vcp_contraction top-decile "Proven" badge → its ledger row) + vcp_contraction claim row on `/evidence` | Research (lab, link-reached) + Evidence |
+| J-07 multi-horizon (NON-20) certified factor edge | `/research/factor-lab` (the factor's non-20-horizon cohort "Proven" badge → its ledger row) + non-20-horizon claim row on `/evidence` | Research (lab, link-reached) + Evidence |
+| J-08 multi-factor combination certified edge | `/research/factor-combination` (the composite cohort "Proven" badge → its ledger row) + combination claim row on `/evidence` | Research (lab, link-reached) + Evidence |
 
 Evidence badges are INLINE chips on existing score surfaces (not new pages); each badge links to its
-backing ledger entry on `/evidence`. No existing journey's home moves.
+backing ledger entry on `/evidence`. No existing journey's home moves. J-07/J-08 reuse the EXISTING
+`/research/factor-lab` and `/research/factor-combination` routes (both already present) + the EXISTING
+`/evidence` ledger — no new page, no nav-skeleton change.
 
 ## Data Contract
 
@@ -143,6 +147,26 @@ honest factor-cohort title + "Backs: Research factor lab →" linkback (the `cla
 replacing the misleading "Unmapped signal" fallback) and (b) a deterministic cohort-derived anchor so the
 factor-lab badge can deep-link to its row. Re-display + display-routing only — no new computing module, no
 second endpoint, no nav-skeleton change.
+
+**iter-9 clarification (additive — INTERNAL certification machinery; no displayed value, no new endpoint, no
+nav change):** the certification ENGINE behind the single evidence-status contract value gains a sustainable
+**trial economy** so future iterations can explore J-07 (multi-horizon) and J-08 (combination) edges without
+permanently tightening the user-facing canonical Bonferroni bar (`app.engine.ledger:count_trials`; now at
+divisor 4, the next canonical claim would face divisor 5). The deflation becomes an **injectable policy** on
+`RefereeState` with the DEFAULT = Bonferroni (so `certify_edge` reproduces every existing verdict
+byte-identically), plus a NEW PURE `app.engine.online_fdr` (LORD++; no RNG/IO; `test_level` derived from prior
+rejection times — `app.engine.ledger:rejection_offsets`, derived `[1,2,4]` from the live canonical PASS
+ordinals, no schema change). A SEPARATE internal **staging ledger**
+(`runs/goal-session-mcp-loop/state/staging-ledger.jsonl`, config `evidence.staging_ledger_path`, harness
+`STAGING_LEDGER_PATH`) holds exploration probes under the online-FDR economy. Crucially this introduces **NO
+new displayed value and NO new serving endpoint**: the staging ledger is internal-only — never read by any
+page, never served, never displayed. The user-facing canonical `certified-claims.jsonl` + `GET /api/evidence`
++ `proven_signals` stay byte-identical, and FDR is `enabled: false` by default — so the "Proven" badge keeps
+its strict family-wise (Bonferroni) guarantee (honesty constraint, anti-goal #1/#4: FDR is weaker than
+family-wise control and is FENCED to staging). `verify_edge` stays the ONLY ledger writer (it merely routes to
+canonical vs staging); the gate (`verify_claim.py`) reads an optional per-claim `"ledger"` key (default
+`"staging"`, explicit `"canonical"` for promoted winners) and keeps `exit 3`-on-non-PASS blocking. No new
+computing module for any DISPLAYED value, no second endpoint, no nav-skeleton change.
 
 <!-- LOOP RULE for the decomposer: an iteration that surfaces any signal AS "Proven" MUST carry a
 machine-readable `## Evidence Claim` JSON block (cohort selectors mirroring /api/research/samples) so the

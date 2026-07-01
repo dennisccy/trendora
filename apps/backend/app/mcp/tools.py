@@ -27,13 +27,19 @@ from sqlmodel import Session, select
 
 from app.config import get_config
 from app.engine import ledger as ledger_mod
+from app.engine import online_fdr
 from app.engine.forward_testing import (
     backfill_run_forward_returns,
     benchmark_symbols,
     compute_forward_aggregates,
     compute_run_scorecard,
 )
-from app.engine.referee import DEFAULT_ALPHA_BUDGET, RefereeState, certify_edge
+from app.engine.referee import (
+    DEFAULT_ALPHA_BUDGET,
+    DEFLATION_ONLINE_FDR,
+    RefereeState,
+    certify_edge,
+)
 from app.engine.indexes import compute_index_series  # raises UnknownRangeError verbatim on a bad preset
 from app.engine.methodology import build_catalog
 from app.engine.market_phase import (
@@ -455,8 +461,21 @@ def assemble_claim_observations(
     return cohort_obs, control_obs, horizon
 
 
+# The two multiple-testing economies `verify_edge` may run under. CANONICAL is the user-facing
+# `/evidence` ledger and is ALWAYS strict Bonferroni (its "Proven" badge keeps its family-wise guarantee).
+# STAGING is the INTERNAL exploration ledger; it runs the configured online-FDR economy ONLY when
+# `evidence.fdr.enabled` is true, else it too stays Bonferroni (default-off ⇒ byte-identical to canonical).
+LEDGER_CANONICAL = "canonical"
+LEDGER_STAGING = "staging"
+
+
 def verify_edge(
-    session: Session, claim: dict, ledger_path: str, *, register_date: str
+    session: Session,
+    claim: dict,
+    ledger_path: str,
+    *,
+    register_date: str,
+    ledger: str = LEDGER_CANONICAL,
 ) -> dict:
     """Certify (or reject) a proposed edge and APPEND the verdict to the certified-claims ledger.
 
@@ -466,26 +485,55 @@ def verify_edge(
         {"kind": "factor", "horizon": 20, "factor": "<key>", "slice_kind": "decile", "decile": 10,
          "direction": "positive"}      # or {"kind": "event-study", "subject": "<key>", "horizon": 20}
 
+    `ledger` selects the multiple-testing ECONOMY the referee deflates under (iter-9). `"canonical"` (the
+    default) is ALWAYS strict Bonferroni — the user-facing `/evidence` bar keeps its family-wise "Proven"
+    guarantee. `"staging"` runs the configured online-FDR (LORD++) economy WHEN `evidence.fdr.enabled` is
+    true, else it too stays Bonferroni (default-off ⇒ byte-identical). The economy is a POLICY choice; this
+    function stays the SINGLE ledger writer (iter-1 lesson — one writer, routed to the target file), and the
+    CALLER passes the target `ledger_path` (canonical vs staging) so the two economies never share a file.
+
     Procedure (READ-ONLY w.r.t. the snapshot DB — the SOLE write is the ledger append):
       (a) assemble the cohort + same-dates control observations via the shared
           `assemble_claim_observations` seam (also used by the forward-walk monitor);
-      (b) read the cumulative `n_trials` + remaining alpha budget from the ledger;
-      (c) call the PURE referee -> a `Verdict`;
-      (d) append ``{claim, register_date, verdict}`` to the ledger (append-only);
+      (b) read the cumulative `n_trials` + remaining alpha budget from THIS ledger, and (staging + FDR)
+          the PASS-ordinal rejection history the online-FDR economy reconstructs its wealth from;
+      (c) call the PURE referee under the selected deflation policy -> a `Verdict`;
+      (d) append ``{claim, register_date, verdict}`` to THIS ledger (append-only);
       (e) return the verdict dict (+ the assembled context).
 
     Mirrors `drill_samples`' validation: an unknown kind / horizon / selector raises `ValueError`."""
     # (a) cohort + same-dates control observations — the SHARED assembly seam (reused by forward_walk).
     cohort_obs, control_obs, horizon = assemble_claim_observations(session, claim)
 
-    # (b) cumulative testing state from the ledger (this claim's ordinal + remaining budget).
+    # (b) cumulative testing state from THIS ledger (this claim's ordinal + remaining budget).
     prior_trials = ledger_mod.count_trials(ledger_path)
     spent = ledger_mod.alpha_spent(ledger_path)
     remaining = DEFAULT_ALPHA_BUDGET - spent
-    state = RefereeState(n_trials=prior_trials + 1, alpha_budget_remaining=remaining)
+    n_trials = prior_trials + 1
 
-    # (c) the PURE referee — deterministic given the engine's reproducible control-group seed.
+    # (c) select the deflation policy. CANONICAL is ALWAYS Bonferroni (the honesty fence — FDR never touches
+    # the user-facing bar). STAGING runs the configured online-FDR economy only when it is enabled; otherwise
+    # it too falls back to Bonferroni (default-off preserves byte-identical behavior everywhere).
     cfg = get_config()
+    fdr_cfg = cfg.evidence.fdr
+    use_fdr = ledger == LEDGER_STAGING and fdr_cfg.enabled
+    if use_fdr:
+        test_level = online_fdr.test_level(
+            n_trials,
+            ledger_mod.rejection_offsets(ledger_path),
+            alpha=fdr_cfg.alpha,
+            w0_fraction=fdr_cfg.w0_fraction,
+            gamma_exponent=fdr_cfg.gamma_exponent,
+            gamma_terms=fdr_cfg.gamma_terms,
+        )
+        state = RefereeState(
+            n_trials=n_trials, alpha_budget_remaining=remaining,
+            deflation=DEFLATION_ONLINE_FDR, test_level=test_level,
+        )
+    else:
+        state = RefereeState(n_trials=n_trials, alpha_budget_remaining=remaining)  # strict Bonferroni
+
+    # the PURE referee — deterministic given the engine's reproducible control-group seed.
     direction = claim.get("direction", "positive")
     extra = {}
     if claim.get("min_effect_size") is not None:
@@ -496,7 +544,7 @@ def verify_edge(
     )
     verdict_dict = verdict.to_dict()
 
-    # (d) append the verdict to the append-only ledger (the ONLY write).
+    # (d) append the verdict to THIS append-only ledger (the ONLY write — the snapshot DB is untouched).
     context = {
         "claim": claim,
         "register_date": register_date,
@@ -510,6 +558,7 @@ def verify_edge(
     return {
         **context,
         "ledger_path": ledger_path,
+        "ledger": ledger,
         "n_trials_before": prior_trials,
         "alpha_budget_remaining_before": remaining,
         "verdict": verdict_dict,

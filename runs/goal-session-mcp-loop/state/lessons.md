@@ -66,3 +66,15 @@ port; and confirm `start-frontend.sh` frees the frontend port before binding.
 **Verdict:** GOAL_ACHIEVED
 **Lesson:** A GENERAL read-side cohort matcher (`resolveCohortEvidence` in `apps/frontend/lib/evidence.ts`) lights "Proven" on EVERY certified cohort it matches — including a score-column factor (`leadership_score`) that also appears as a factor-lab row. The spec's parenthetical only named vcp_contraction, but lighting leadership_score too is HONEST and correct (it has a genuine PASS ledger entry; anti-goal #1 only bans UNBACKED "Proven"), NOT a defect — provided the badge deep-links via `claimAnchorId` to the row's REAL `signal-…` anchor and not a `factor-…` cohort anchor the row never carries. Do not "fix" this by special-casing the matcher to vcp-only; suppressing a true status would be the dishonest move.
 **Applies to:** any iter that touches the factor-lab evidence matcher / `resolveCohortEvidence` / `claimAnchorId`, or adds a new certified cohort whose factor doubles as a score-column row — expect (and allow) every certified cohort to read "Proven", and assert the deep-link lands on the row's actual anchor.
+
+## iter-9 — 2026-07-01T01:52:58Z
+
+**Verdict:** CONTINUE
+**Lesson:** For a backend-only refactor of a *shared value's computing module* (here referee/ledger/verify_edge behind every "Proven" badge), the regression proof is NOT a browser pass — it is (a) the shared value's canonical output being git-UNMODIFIED / byte-identical (`certified-claims.jsonl` + `GET /api/evidence` frozen-golden) and (b) the module's existing default-path tests being UNEDITED and green (`git diff test_referee.py` == 0 lines). An unedited passing suite is the strongest possible proof "defaults reproduce today"; if a future iter had to EDIT those expectation tests, that is itself the regression signal. Judge on this, never on the dead `browser_checks_run` flag or a SKIPPED browser lane (which is correct for a no-frontend-diff iter).
+**Applies to:** any iter touching `apps/backend/app/engine/{referee,ledger,forward_walk}.py` or `app/mcp/tools.py:verify_edge` (the shared certification engine) — especially the upcoming iter-10/iter-11 that reuse this economy.
+
+## iter-9b — 2026-07-01T01:52:58Z
+
+**Verdict:** CONTINUE
+**Lesson:** iter-9 flipped the gate's default ledger to `"staging"` (`project-extensions/gates/verify_claim.py`) — the conservative direction (a forgotten key ⇒ "not shown as proven", never "wrongly proven"). But this is a real footgun for the very next iterations: a J-07/J-08 winner meant for the user-facing badge that omits `"ledger":"canonical"` in its `## Evidence Claim` gets certified into the internal staging ledger and SILENTLY never surfaces on `/evidence` or the factor lab — the journey would fail to build with no gate error. The badge-bound claim MUST set `"ledger":"canonical"` explicitly.
+**Applies to:** iter-10 (J-07 multi-horizon) and iter-11 (J-08 combination) — any iter whose Evidence Claim is intended to light a user-facing "Proven" badge.

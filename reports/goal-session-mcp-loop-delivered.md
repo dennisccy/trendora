@@ -3,7 +3,7 @@
 **Session:** mcp-loop
 **Date:** 2026-06-30
 **Final verdict:** GOAL_ACHIEVED
-**Iterations:** 7
+**Iterations:** 9
 
 ## What you can do today
 
@@ -13,9 +13,11 @@ Tap "Why proven?" on any stock's Leadership card to read the full out-of-sample 
 
 Confirm for yourself that Entry Quality and Risk are honestly marked "Not yet proven" on every stock with no drill-down panel and no fabricated confidence numbers — the product only claims certainty where it has earned it.
 
-Open the Evidence page from the sidebar to audit every certified claim in one place. Each entry shows the hypothesis, the out-of-sample verdict, the benchmark comparison, and the registration date, with round-trip links back to the surfaces they power and forward to the research lab.
+Open the Evidence page from the sidebar to audit all four certified claims in one place. Each entry shows the hypothesis, the out-of-sample verdict, the benchmark comparison, and the registration date, with round-trip links back to the surfaces they power and forward to the research labs.
 
 On the Dashboard, follow the Market Regime card's "See evidence proven in this regime" link to the Evidence page. There you can read the Breakout-watch setup's certified +6.12% out-of-sample edge over the S&P 500, clearly labeled as applying specifically in the current Risk-on market environment.
+
+Open the Research factor lab to see whether each factor's top performers have a certified statistical edge. The vcp_contraction factor is the first plain research factor to earn a "Proven" label — its top-decile stocks beat the S&P 500 by +3.33% on a sealed holdout — and clicking its badge takes you straight to the full auditable entry on the Evidence page. Every other factor, including ma_stack whose edge was tested and rejected, honestly reads "Not yet proven."
 
 ## How it came together
 
@@ -27,7 +29,9 @@ A browser connectivity issue in the test harness briefly delayed visual confirma
 
 The fourth milestone brought the second certified edge. The Breakout-watch event-study pattern was found to hold a +6.12% advantage over the S&P 500 specifically in the Risk-on market regime — surviving a sealed holdout of 107 independent dates with p ≈ 0.0005. The Evidence page gained a clearly labeled "Regime: Risk-on" row and the Dashboard gained a direct link to it. A leftover server process blocked the automated screenshot lane, leaving the final journey's formal verification pending.
 
-The last two iterations were a disciplined harness repair. A startup-script port-conflict fix was shipped first. Then four deeper pipeline defects were uncovered and corrected: one step was announcing success without producing its output report, an unrecognized progress bookmark was aborting the entire run before the browser walkthrough could execute, and checks were being marked complete without any artifacts on disk. With all four root causes fixed, the full automated walkthrough ran end-to-end for the first time in three rounds, the independent audit signed off, and the final journey passed the session-standard canonical lane. Every success criterion was met.
+Two iterations of disciplined harness repair followed. A startup-script port-conflict fix was shipped first. Then four deeper pipeline defects were uncovered and corrected: one step was announcing success without producing its output report, an unrecognized progress bookmark was aborting the entire run before the browser walkthrough could execute, and checks were being marked complete without any artifacts on disk. With all four root causes fixed, the full automated walkthrough ran end-to-end for the first time in three rounds, the independent audit signed off, and the regime-conditioned evidence journey passed the session-standard canonical lane. All five original success criteria were met and the goal was declared achieved.
+
+A continuous-improvement pass then extended the goal further. The vcp_contraction pattern's top-decile cohort was nominated through the referee: the fourth trial under a tightened Bonferroni bar returned a PASS — +3.33% holdout edge, p = 0.01149, with the ma_stack cohort tested in the same round and honestly rejected as "Not yet proven." The Research factor lab gained a dedicated Evidence column showing each factor's certification status, and the Evidence page gained a fourth certified claim with a working round-trip link back to the lab. All six journeys passed the canonical browser walkthrough. The ma_stack rejection is permanently on record, the no-lookahead and single-source-of-truth contracts are preserved, and no uncertified edge reaches any surface.
 
 ## Watch it work
 

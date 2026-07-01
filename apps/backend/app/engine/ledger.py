@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
+from typing import Any, Optional
 
 # A forward-walk MONITORING record (written by `app.engine.forward_walk`, the renewing holdout) carries
 # this `type`. It RE-scores an already-certified claim against newer data — it is monitoring the same
@@ -66,6 +66,40 @@ def count_trials(path: str) -> int:
     failing). Forward-walk MONITORING records (`type='forward_walk'`) are EXCLUDED — a re-score is not a
     new test and must not inflate the Bonferroni divisor. Missing file ⇒ 0."""
     return sum(1 for entry in read_entries(path) if not _is_forward_walk(entry))
+
+
+# The verdict status a certified (rejected-the-null) claim carries. Mirrors `app.engine.referee.STATUS_PASS`
+# (kept as a local literal so this module stays engine-free — pure filesystem I/O, exactly like
+# `FORWARD_WALK_TYPE` above).
+_PASS_STATUS = "PASS"
+
+
+def _entry_status(entry: Any) -> Optional[str]:
+    """The recorded verdict status of one entry (``entry['verdict']['status']``), or None when absent."""
+    if not isinstance(entry, dict):
+        return None
+    verdict = entry.get("verdict")
+    if isinstance(verdict, dict):
+        return verdict.get("status")
+    return None
+
+
+def rejection_offsets(path: str) -> list[int]:
+    """The 1-based ordinals of the REJECTED (certified, ``verdict.status == "PASS"``) claims among the
+    ORIGINAL entries — the "rejection times" the online-FDR (LORD++) economy reconstructs its alpha-wealth
+    from (`app.engine.online_fdr`). Ordinals count ORIGINAL claim entries in append order (the exact index
+    space `count_trials` counts); forward-walk MONITORING records are SKIPPED and never advance the ordinal,
+    exactly like `count_trials`. On the live canonical ledger this is ``[1, 2, 4]`` (lines 1/2/4 PASS, line 3
+    FAIL). DERIVED ONLY — no schema change, no entry is rewritten. Missing file ⇒ ``[]``."""
+    offsets: list[int] = []
+    ordinal = 0
+    for entry in read_entries(path):
+        if _is_forward_walk(entry):
+            continue
+        ordinal += 1
+        if _entry_status(entry) == _PASS_STATUS:
+            offsets.append(ordinal)
+    return offsets
 
 
 def _entry_alpha_charged(entry: Any) -> float:

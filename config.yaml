@@ -995,6 +995,22 @@ macro:
 # or the endpoint). The runtime env override TRENDORA_LEDGER_PATH takes precedence when set.
 evidence:
   ledger_path: runs/goal-session-mcp-loop/state/certified-claims.jsonl
+  # goal-mcp-loop iter-9 CONSUMED — the INTERNAL staging ledger + the online-FDR (LORD++) staging economy
+  # (app.engine.online_fdr, threaded by app.mcp.tools.verify_edge). The staging ledger is NEVER served to
+  # GET /api/evidence and never displayed — it exists so future iterations can explore multi-horizon /
+  # multi-factor edges WITHOUT permanently tightening the user-facing canonical Bonferroni bar. A relative
+  # path resolves against the repo root; run-goal.sh exports STAGING_LEDGER_PATH pointing here.
+  staging_ledger_path: runs/goal-session-mcp-loop/state/staging-ledger.jsonl
+  # The online-FDR economy is DEFAULT-OFF: with enabled=false the referee stays strict Bonferroni on EVERY
+  # ledger (canonical AND staging), so canonical /evidence proven-ness is byte-identical. FDR (weaker than
+  # family-wise control) is fenced to staging and only activates when enabled=true — it NEVER touches the
+  # canonical "Proven" badge. Every LORD++ tunable is consumed VERBATIM (no magic number in code).
+  fdr:
+    enabled: false          # DEFAULT-OFF — canonical AND staging stay strict Bonferroni until flipped
+    alpha: 0.05             # target false-discovery rate (LORD++ α) for the staging economy
+    w0_fraction: 0.5        # initial alpha-wealth W0 = w0_fraction * alpha (0..1)
+    gamma_exponent: 1.6     # polynomial spending-sequence decay exponent (> 1 so Σ γ_j converges)
+    gamma_terms: 1000       # explicit terms for the ζ(gamma_exponent) normalizer (Euler–Maclaurin tail beyond)
 
 # ----------------------------------------------------------------------------------------
 # Analyst-loop triad scan (app.engine.triad_scan / scan_product_triad). Tunables for the
