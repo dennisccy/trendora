@@ -126,5 +126,5 @@ cd apps/backend && .venv/bin/python -m pytest tests/ -v
 |---------|-----|
 | Frontend | http://localhost:3835 |
 | Backend API | http://localhost:8835 |
-| Health check | http://localhost:8835/health |
+| Health check | http://localhost:8835/api/health |
 <!-- /AUTO:how-to-run -->

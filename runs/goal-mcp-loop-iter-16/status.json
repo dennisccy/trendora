@@ -1,0 +1,21 @@
+{
+  "phase": "goal-mcp-loop-iter-16",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-07-01T23:47:58.427619Z",
+  "started_at": "2026-07-01T22:31:02.947611Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/scripts/ingest_seed.py",
+    "apps/backend/tests/test_ingest_seed.py",
+    "apps/backend/tests/test_seed_staged_30y.py",
+    "reports/phase-goal-mcp-loop-iter-16-seed-coverage.md",
+    "reports/phase-goal-mcp-loop-iter-16-implementation-summary.md",
+    "docs/handoffs/goal-mcp-loop-iter-16-dev.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "none",
+  "notes": "Probe-blocked branch (sanctioned by the spec): Stooq CSV export ACL denies this environment; tooling + validation suite landed, staged asset NOT created, zero runtime diff. Human decision required before iter-17 (see reports/phase-goal-mcp-loop-iter-16-seed-coverage.md section 6)."
+}

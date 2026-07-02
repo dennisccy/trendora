@@ -1,33 +1,37 @@
 # Goal Session Summary — mcp-loop
 
-**Final verdict:** GOAL_ACHIEVED
-**Total iterations:** 16
-**Wall time (seconds):** 51315
+**Final verdict:** STALLED
+**Total iterations:** 17
+**Wall time (seconds):** 7769
 **Quota pauses:** 0
 **Started:** 2026-06-29T20:34:38.534484Z
-**Finished:** 2026-07-01T14:02:49.760800Z
+**Finished:** 2026-07-02T00:19:38.095650Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/mcp-loop`. Open a PR with:
 
     gh pr create --base main --head goal/mcp-loop \
-      --title "feat: mcp-loop — GOAL_ACHIEVED" \
+      --title "feat: mcp-loop — STALLED" \
       --body-file runs/goal-session-mcp-loop/summary.md
 
 ## Final journey state
 
 | Journey | Status | Last passing iter |
 |---|---|---|
-| J-01 | passing | goal-mcp-loop-iter-15 |
-| J-02 | passing | goal-mcp-loop-iter-15 |
-| J-03 | passing | goal-mcp-loop-iter-15 |
-| J-04 | passing | goal-mcp-loop-iter-15 |
-| J-05 | passing | goal-mcp-loop-iter-15 |
-| J-06 | passing | goal-mcp-loop-iter-15 |
-| J-07 | passing | goal-mcp-loop-iter-15 |
-| J-08 | passing | goal-mcp-loop-iter-15 |
-| J-09 | passing | goal-mcp-loop-iter-15 |
+| J-01 | passing | goal-mcp-loop-iter-16 |
+| J-02 | passing | goal-mcp-loop-iter-16 |
+| J-03 | passing | goal-mcp-loop-iter-16 |
+| J-04 | passing | goal-mcp-loop-iter-16 |
+| J-05 | passing | goal-mcp-loop-iter-16 |
+| J-06 | passing | goal-mcp-loop-iter-16 |
+| J-07 | passing | goal-mcp-loop-iter-16 |
+| J-08 | passing | goal-mcp-loop-iter-16 |
+| J-09 | passing | goal-mcp-loop-iter-16 |
+| J-10 | unknown | - |
+| J-11 | unknown | - |
+| J-12 | unknown | - |
+| J-13 | unknown | - |
 
 ## Anti-goal violations
 

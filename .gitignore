@@ -66,6 +66,14 @@ htmlcov/
 *.db
 *.db-journal
 .data/
+# Repo-root data/ holds the operator's raw Stooq bulk archives (d_us_txt.zip / extracted tree,
+# and any indices bundle) — large scratch inputs to scripts/ingest_seed.py, NOT repo artifacts.
+# The STAGED, validated seed lives under apps/backend/data/seed-stooq-30y/ and IS committed.
+# Anchored with a leading slash so apps/backend/data/ is unaffected.
+/data/
+
+# Goal-mode interactive pump transient logs
+runs/goal-session-*/pump-launch.out
 
 # IDE
 .vscode-test
