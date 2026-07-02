@@ -254,6 +254,25 @@ ones, with honest "this isn't proven yet" markers when the evidence is thin or f
       committed/static; no invented dead-name data.
     - **Walkthrough:** a `[NEW]` walkthrough of the clarified availability legend + the 548-symbol Fetch.
 
+- **J-14: The 30-year basis carries deep, honestly-sourced index context (benchmarks + macro), each
+  labeled by vendor**
+  - Steps:
+    1. The seed carries deep index context across the 30-year window: a deep equity benchmark (`^SPX`,
+       plus `^NDX`/`^DJI`) from Stooq's world bundle, and `^VIX` re-fetched deep from Yahoo — no fabricated
+       bars; a series a source lacks stays honestly short.
+    2. On the relevant view (dashboard regime / research), the deep benchmark and the volatility/macro
+       overlays render across the deep window (not the old ~5-year floor); the macro proxies
+       (`^TNX`/`^DXY`/`^VXN`) stay coherent with the FRED macro series the app shows on `/data`.
+    3. Each index/benchmark series discloses its vendor (Stooq / Yahoo / FRED-macro proxy) where surfaced.
+  - Acceptance:
+    - **Consistency:** charts/regime read the same `daily_prices` the engine scores on; a displayed
+      series' first date matches the committed seed's real first bar for that series.
+    - **Correctness:** displayed values match the seed; a macro proxy equals its FRED source series (never
+      a market index); no recompute; no intra-series vendor-splice seam.
+    - **Honest status / anti-goals:** no fabricated bars; the vendor mix is disclosed per series and a
+      proxy is never presented as a market index; determinism + no-lookahead preserved.
+    - **Walkthrough:** a `[NEW]` walkthrough of the deep benchmark + the vendor-labeled index/macro context.
+
 <!-- Continuous-improvement auto-journeys: the goal-proposer appends NEW Must-have journeys ONLY
      between the two markers below (see the goal-self-extension skill). The human-authored journeys
      above and the Anti-goals below are never machine-edited. An empty block = nothing auto-proposed yet. -->
@@ -460,7 +479,11 @@ mixed-vendor seam would create an adjustment discontinuity. Ensure `seed_loader.
 for the full pool (today it loads only `config.universe.symbols`). Verify Stooq emits the identical
 `date,open,high,low,close,volume` schema with adjusted OHLC and confirm its US depth reaches the 1990s for
 old names; spot-check a known split (NVDA/AAPL). Names Stooq lacks simply never enter (honest
-`below_history`), never padded. Regenerate `data/seed/meta.json`; commit CSVs + meta.
+`below_history`), never padded. Regenerate `data/seed/meta.json`; commit CSVs + meta. **(Status: the
+equities span is DONE offline — see §H. Stooq's per-symbol NETWORK endpoint is IP-blocked for this host,
+so this span was staged via the existing `--provider stooq-local` path from the local `data/d_us_txt`
+bulk archive to `data/seed-stooq-30y/` (583 names, 1996→2026, validated), committed. Do NOT re-fetch it
+over the network; the index/macro context is the remaining work in §H.)**
 
 **B) Broaden + harden the dynamic point-in-time universe.** Point-in-time ENTRY already works
 (`universe_resolver.resolve_members(D)` screens `read_pool()` = `universe_pool.csv` from `bars_asof(D)`),
@@ -543,6 +566,31 @@ backlog follow-on — NOT this direction; never fabricate dead-name data.
   (`--heat-4`), give the snapshot indicator an unambiguous non-green treatment, and update the caption +
   tooltip to state each meaning plainly plus the Fetch→fills / Backfill→scores workflow. Color tokens:
   `apps/frontend/app/globals.css` (`--pos`, `--heat-0..5`, `--heat-text-*`) + `tailwind.config.ts`.
+
+**H) Index & macro context for the deep basis (offline sourcing; mixed vendor, honestly disclosed).**
+Stooq's per-symbol network endpoint is IP-blocked for this host, so ingest reads Stooq's LOCAL bulk
+archives offline via the existing `--provider stooq-local` path (committed): the 548-name equities span
+(§A) is already staged from `data/d_us_txt` to `data/seed-stooq-30y/` (583 names). Complete the seed's
+index/macro context BEFORE the swap so the swap happens once over one complete seed:
+- **Deep equity-index benchmarks `^SPX`/`^NDX`/`^DJI`** — from Stooq's WORLD bundle (`data/d_world_txt`,
+  under `data/daily/world/indices/^spx.txt` etc.; single `.txt`, caret kept) via the same `stooq-local`
+  path, deep to 1996. Stage as `_SPX/_NDX/_DJI.csv`; usable as a deeper market control (SPY the ETF only
+  starts 2005) and for deep index charts.
+- **`^VIX`** — a REAL Yahoo OHLCV series (verified: matches the live seed exactly on the 2021–26 overlap)
+  → re-fetch DEEP from Yahoo (`--provider yahoo --start 1996`). It is genuinely a Yahoo index.
+- **`^TNX`/`^DXY`/`^VXN` are NOT external tickers — do NOT re-fetch them from Yahoo.** They are the app's
+  deterministic FRED-macro PROXIES (verified this session: `_DXY` == `macro/dollar_index`, `_TNX` ==
+  `macro/credit_spread`×5, `_VXN` a similar flat-OHLC transform; added iter-32/J-92). A Yahoo re-fetch
+  (ICE DXY ≈89 vs the app's ≈105; market yield×10 vs the app's `_TNX`) would DESYNC them from the FRED
+  macro the app displays elsewhere and silently change their meaning. Keep them coherent with
+  `data/seed/macro/`: preserve the existing proxies, or DEEPEN them by extending the FRED macro series
+  (FRED carries deep history) and regenerating the proxies deterministically — a macro-subsystem task,
+  never a market-index splice.
+- **`data/seed/macro/`** (FRED: credit_spread, dollar_index, unemployment_rate, yield_curve) is preserved
+  by the swap.
+- **Disclosure:** record each index/benchmark series' vendor in `meta.json` (`stooq` / `yahoo` /
+  `fred-macro-proxy`) and label it where surfaced; no fabricated bars; a series a source lacks stays
+  honestly short; a proxy is NEVER presented as a market index; determinism + no-lookahead preserved.
 
 **Anti-goal guardrails (unchanged):** no fabricated data (missing history / dead names stay absent);
 determinism + no-lookahead preserved (seed 20240601; scoring ≤ as-of / forward > as-of; sealed holdout);
