@@ -173,6 +173,11 @@ _trace_record_invocation() {
   local ts
   ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
+  # Model/effort/backend attribution. The sidecar (spread last) carries the
+  # ground-truth model claude actually ran; _CHAIN_TRACE_MODEL is the resolved
+  # intent (frontmatter/override) used when no sidecar exists (e.g. the
+  # interactive backend). Empty values are omitted, and a sidecar model wins.
+  local backend="${CHAIN_AGENT_BACKEND:-${CHAIN_CLI:-claude}}"
   if command -v jq >/dev/null 2>&1; then
     local args_json
     args_json=$(printf '%s\n' "$@" | jq -R . 2>/dev/null | jq -s -c . 2>/dev/null) || args_json='[]'
@@ -185,20 +190,26 @@ _trace_record_invocation() {
       --argjson step "$step" \
       --arg agent "$agent" \
       --arg cli "$cli" \
+      --arg backend "$backend" \
+      --arg model "${_CHAIN_TRACE_MODEL:-}" \
+      --arg effort "${_CHAIN_TRACE_EFFORT:-}" \
       --arg ts "$ts" \
       --argjson exit_code "$invocation_exit" \
       --argjson duration_seconds "$duration_seconds" \
       --arg stdout_path "$stdout_filename" \
       --argjson args "$args_json" \
       --argjson usage "$usage_json" \
-      '{step:$step, agent:$agent, cli:$cli, ts:$ts, exit_code:$exit_code, duration_seconds:$duration_seconds, stdout_path:$stdout_path, args:$args} + $usage' 2>/dev/null) || record=""
+      '{step:$step, agent:$agent, cli:$cli, backend:$backend, ts:$ts, exit_code:$exit_code, duration_seconds:$duration_seconds, stdout_path:$stdout_path, args:$args}
+       + (if $model != "" then {model:$model} else {} end)
+       + (if $effort != "" then {effort:$effort} else {} end)
+       + $usage' 2>/dev/null) || record=""
     if [[ -n "$record" ]]; then
       printf '%s\n' "$record" >> "$trace_dir/trace.jsonl"
     fi
   else
-    # Minimal fallback (jq absent): step + agent + cli + ts + stdout path only
-    printf '{"step":%d,"agent":"%s","cli":"%s","ts":"%s","exit_code":%d,"duration_seconds":%d,"stdout_path":"%s"}\n' \
-      "$step" "$agent" "$cli" "$ts" "$invocation_exit" "$duration_seconds" "$stdout_filename" \
+    # Minimal fallback (jq absent): step + agent + cli + backend + ts + stdout path only
+    printf '{"step":%d,"agent":"%s","cli":"%s","backend":"%s","ts":"%s","exit_code":%d,"duration_seconds":%d,"stdout_path":"%s"}\n' \
+      "$step" "$agent" "$cli" "$backend" "$ts" "$invocation_exit" "$duration_seconds" "$stdout_filename" \
       >> "$trace_dir/trace.jsonl"
   fi
 }
@@ -462,6 +473,8 @@ _claude_invoke() {
         fi
       fi
     fi
+    _CHAIN_TRACE_EFFORT="$_effort"
+    _CHAIN_TRACE_MODEL=""   # headless model attribution comes from the usage sidecar
     local -a _claude_extra_args=(--effort "$_effort")
     if [[ "$CHAIN_CLAUDE_DISABLE_CACHE_HYGIENE" != "true" ]]; then
       _claude_extra_args+=(--exclude-dynamic-system-prompt-sections)
