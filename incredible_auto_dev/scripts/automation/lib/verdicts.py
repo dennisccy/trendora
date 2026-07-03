@@ -74,6 +74,8 @@ class IterationSummaryVerdict(str, Enum):
     REGRESSION = "REGRESSION"
     STALLED = "STALLED"
     PASS = "PASS"
+    PASS_WITH_NOTES = "PASS_WITH_NOTES"
+    PASS_WITH_GAPS = "PASS_WITH_GAPS"
     FAIL = "FAIL"
     IN_PROGRESS = "IN-PROGRESS"
 

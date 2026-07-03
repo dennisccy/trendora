@@ -130,7 +130,12 @@ def find_verdict(content: str, allowed: set[str]) -> Optional[str]:
 
 
 def find_h2_sections(content: str) -> set[str]:
-    return set(_H2_RE.findall(content))
+    """H2 headings, both verbatim and with a leading "N. " ordinal stripped —
+    agent templates number their sections ("## 1. Executive Verdict") while
+    schemas name them bare ("Executive Verdict")."""
+    found = set(_H2_RE.findall(content))
+    found |= {re.sub(r"^\d+\.\s+", "", h) for h in found}
+    return found
 
 
 @dataclass

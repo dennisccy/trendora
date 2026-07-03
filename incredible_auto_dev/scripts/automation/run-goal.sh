@@ -233,7 +233,12 @@ _run_iteration_summarizer() {
   mkdir -p "$REPO_ROOT/runs/goal-session-${SESSION_ID}/state"
 
   cd "$REPO_ROOT"
-  export CHAIN_CURRENT_AGENT=iteration-summarizer
+  # record_* pair (not a bare export): attributes telemetry/trace to this agent
+  # and clears CHAIN_CURRENT_AGENT afterwards so attribution can't bleed into
+  # later inline calls.
+  record_agent_invocation_start "iteration-summarizer"
+  local _sum_start=$CHAIN_AGENT_START_EPOCH
+  local _sum_rc=0
   claude_with_quota_retry -p "You are the iteration-summarizer agent.
 
 mode: normal
@@ -268,7 +273,8 @@ form '**Verdict:** VALUE' where VALUE is one of: GOAL_ACHIEVED, CONTINUE,
 ESCALATE, REGRESSION, STALLED, PASS, FAIL, IN-PROGRESS.
 
 When finished, STOP." \
-    || echo "[run-goal] Warning: iteration-summarizer call failed (non-blocking)"
+    || { _sum_rc=$?; echo "[run-goal] Warning: iteration-summarizer call failed (non-blocking)"; }
+  record_agent_invocation_end "iteration-summarizer" "$_sum_start" "$_sum_rc"
 }
 
 # Maintain the PROJECT's README.md so it always reflects current capabilities and
@@ -281,8 +287,30 @@ _run_readme_maintainer() {
   local agent_file="$REPO_ROOT/.claude/agents/readme-maintainer.md"
   [[ -f "$agent_file" ]] || { echo "[run-goal] Warning: readme-maintainer agent missing, skipping README update"; return 0; }
 
+  # Token gate: skip the dispatch when this iteration provably changed nothing
+  # user-visible (only test/report/handoff/spec churn). Conservative by design —
+  # any app/config/script/doc change, a missing snapshot, or a git error runs
+  # the agent as before. CHAIN_README_EVERY_ITER=true restores the old behavior.
+  if [[ "${CHAIN_README_EVERY_ITER:-false}" != "true" ]]; then
+    local _snap _changed
+    _snap="$(cat "$GOAL_SESSION_DIR_LOCAL/iter-${CURRENT_ITER}/snapshot-sha" 2>/dev/null || echo "")"
+    if [[ -n "$_snap" ]]; then
+      _changed="$( { git -C "$REPO_ROOT" diff --name-only "$_snap" 2>/dev/null; git -C "$REPO_ROOT" status --porcelain 2>/dev/null | awk '{print $NF}'; } | sort -u )" || _changed="__git_error__"
+      if [[ -n "$_changed" && "$_changed" != "__git_error__" ]]; then
+        local _visible
+        _visible="$(printf '%s\n' "$_changed" | grep -Ev '^(tests?/|runs/|reports/|docs/handoffs/|docs/phases/)' || true)"
+        if [[ -z "$_visible" ]]; then
+          echo "[run-goal] readme-maintainer: skipped — iteration touched only test/report/handoff/spec paths (no user-visible change). Set CHAIN_README_EVERY_ITER=true to disable this gate."
+          return 0
+        fi
+      fi
+    fi
+  fi
+
   cd "$REPO_ROOT"
-  export CHAIN_CURRENT_AGENT=readme-maintainer
+  record_agent_invocation_start "readme-maintainer"
+  local _rm_start=$CHAIN_AGENT_START_EPOCH
+  local _rm_rc=0
   claude_with_quota_retry -p "You are the readme-maintainer agent.
 
 Phase id: $iter_name
@@ -306,7 +334,8 @@ command in .claude/project-template.md — if a needed field is still a template
 placeholder (<e.g., ...>), write a 'TODO:' line rather than inventing a command.
 
 When finished, STOP." \
-    || echo "[run-goal] Warning: readme-maintainer call failed (non-blocking)"
+    || { _rm_rc=$?; echo "[run-goal] Warning: readme-maintainer call failed (non-blocking)"; }
+  record_agent_invocation_end "readme-maintainer" "$_rm_start" "$_rm_rc"
 }
 
 # Generate the one-time "delivered" wrap when goal-evaluator returns
@@ -328,7 +357,9 @@ _render_final_delivered() {
   mkdir -p "$REPO_ROOT/reports"
 
   cd "$REPO_ROOT"
-  export CHAIN_CURRENT_AGENT=iteration-summarizer
+  record_agent_invocation_start "iteration-summarizer"
+  local _dw_start=$CHAIN_AGENT_START_EPOCH
+  local _dw_rc=0
   claude_with_quota_retry -p "You are the iteration-summarizer agent.
 
 mode: delivered
@@ -353,7 +384,8 @@ NOT also rewrite the iteration summary in this mode. Friendly, factual, no
 journey IDs, no file names.
 
 When finished, STOP." \
-    || echo "[run-goal] Warning: delivered-wrap iteration-summarizer call failed (non-blocking)"
+    || { _dw_rc=$?; echo "[run-goal] Warning: delivered-wrap iteration-summarizer call failed (non-blocking)"; }
+  record_agent_invocation_end "iteration-summarizer" "$_dw_start" "$_dw_rc"
 
   if [[ -f "$renderer" ]]; then
     python3 "$renderer" delivered "$sid" --repo-root="$REPO_ROOT" 2>&1 \
@@ -492,7 +524,12 @@ import json, datetime
 d = json.load(open("$SESSION_JSON"))
 d["status"] = "AWAITING_GITHUB_AUTH"
 d["updated_at"] = datetime.datetime.now(datetime.UTC).isoformat().replace('+00:00','Z')
-json.dump(d, open("$SESSION_JSON","w"), indent=2); open("$SESSION_JSON","a").write("\n")
+import os as _os, tempfile as _tf
+_fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
+with _os.fdopen(_fd, "w") as _f:
+    json.dump(d, _f, indent=2)
+    _f.write("\n")
+_os.replace(_tmp, "$SESSION_JSON")
 PY
   record_telemetry_event "halt" '{"reason":"AWAITING_GITHUB_AUTH","detected_at_step":"preflight"}'
   echo ""
@@ -638,7 +675,12 @@ d["push_branch"] = "$PUSH_BRANCH"
 d["agent_backend"] = "$AGENT_BACKEND"
 if "$RUN_MODE" == "resume" and d.get("status") in ("REGRESSION_HALT", "AWAITING_BLUEPRINT_APPROVAL", "AWAITING_PUMP"):
   d["status"] = "in_progress"
-json.dump(d, open("$SESSION_JSON","w"), indent=2); open("$SESSION_JSON","a").write("\n")
+import os as _os, tempfile as _tf
+_fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
+with _os.fdopen(_fd, "w") as _f:
+    json.dump(d, _f, indent=2)
+    _f.write("\n")
+_os.replace(_tmp, "$SESSION_JSON")
 PY
 
 # Resuming from a blueprint-approval pause: the human has reviewed (and possibly
@@ -664,6 +706,13 @@ if [[ "$INTERACTIVE" == "true" ]]; then
   export CHAIN_DISPATCH_DIR="$GOAL_SESSION_DIR_LOCAL/dispatch"
   mkdir -p "$CHAIN_DISPATCH_DIR"
   rm -f "$CHAIN_DISPATCH_DIR"/req.* "$CHAIN_DISPATCH_DIR"/*.res "$CHAIN_DISPATCH_DIR"/*.started "$CHAIN_DISPATCH_DIR/.awaiting-pump" 2>/dev/null || true
+  # Seed the pump heartbeat FRESH at launch. A stale .pump-alive surviving from
+  # a prior session made the engine's first dispatch race the pump's first
+  # await call: if the engine won, Tier A read an hours-old mtime and aborted
+  # with "pump heartbeat stale" before the pump ever beat (the bug users worked
+  # around by manually pre-touching the file). Seeding (not deleting) keeps the
+  # Tier A abort armed for a pump that genuinely never starts.
+  touch "$CHAIN_DISPATCH_DIR/.pump-alive"
   echo "[run-goal] Interactive dispatch backend ON — agents run as subagents in the foreground session (the pump)."
   echo "[run-goal]   Dispatch channel: $CHAIN_DISPATCH_DIR"
 fi
@@ -764,10 +813,19 @@ QUOTA_PAUSE_COUNT_FILE="$GOAL_SESSION_DIR_LOCAL/.quota-pause-count"
 [[ -f "$QUOTA_PAUSE_COUNT_FILE" ]] || echo "0" > "$QUOTA_PAUSE_COUNT_FILE"
 
 journey_history_hash() {
+  # Hash ONLY stall-relevant fields. The evaluator bumps last_verified_iter
+  # (and evidence paths) on every re-verification even when no journey's
+  # STATE changed, so hashing the whole journey dict made consecutive hashes
+  # always differ — is_stalled() could never fire and the deterministic
+  # stall backstop was dead code. Status + last_passing_iter freeze exactly
+  # when real progress freezes.
   python3 -c "
 import hashlib, json, sys
 data = json.load(open('$JOURNEY_HISTORY'))
-canonical = {'journeys': data.get('journeys', {})}
+journeys = data.get('journeys', {}) or {}
+canonical = {'journeys': {jid: {'status': (j or {}).get('status'),
+                                'last_passing_iter': (j or {}).get('last_passing_iter')}
+                          for jid, j in journeys.items()}}
 print(hashlib.sha1(json.dumps(canonical, sort_keys=True).encode()).hexdigest())
 "
 }
@@ -806,7 +864,12 @@ d["finished_at"] = __import__("datetime").datetime.now(__import__("datetime").UT
 d["total_iterations"] = $total_iterations
 d["wall_time_seconds"] = $wall_time
 d["quota_pause_count"] = $quota_pauses
-json.dump(d, open("$SESSION_JSON","w"), indent=2); open("$SESSION_JSON","a").write("\n")
+import os as _os, tempfile as _tf
+_fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
+with _os.fdopen(_fd, "w") as _f:
+    json.dump(d, _f, indent=2)
+    _f.write("\n")
+_os.replace(_tmp, "$SESSION_JSON")
 PY
   # Branch info (only when push_per_iter is on)
   local branch_section=""
@@ -923,7 +986,12 @@ import json, datetime
 d = json.load(open("$SESSION_JSON"))
 d["status"] = "AWAITING_BLUEPRINT_APPROVAL"
 d["updated_at"] = datetime.datetime.now(datetime.UTC).isoformat().replace('+00:00','Z')
-json.dump(d, open("$SESSION_JSON","w"), indent=2); open("$SESSION_JSON","a").write("\n")
+import os as _os, tempfile as _tf
+_fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
+with _os.fdopen(_fd, "w") as _f:
+    json.dump(d, _f, indent=2)
+    _f.write("\n")
+_os.replace(_tmp, "$SESSION_JSON")
 PY
     record_telemetry_event "halt" '{"reason":"AWAITING_BLUEPRINT_APPROVAL","detected_at_step":"pre_decomposer"}'
     echo ""
@@ -954,6 +1022,14 @@ PY
   ITER_NAME="goal-${SESSION_ID}-iter-${CURRENT_ITER}"
   ITER_DIR="$GOAL_SESSION_DIR_LOCAL/iter-${CURRENT_ITER}"
   mkdir -p "$ITER_DIR"
+  # Stale-artifact hygiene: a prior ABORTED/AWAITING_PUMP attempt of this same
+  # iteration may have left eval.md / coherence.md behind; parsing them would
+  # certify a verdict the re-run never produced. Delete them UNLESS the
+  # .evaluated marker says the previous attempt completed its evaluation (in
+  # which case the evaluator step below reuses eval.md instead of re-running).
+  if [[ ! -f "$ITER_DIR/.evaluated" ]]; then
+    rm -f "$ITER_DIR/eval.md" "$ITER_DIR/coherence.md" 2>/dev/null || true
+  fi
   export GOAL_ITER_INDEX="$CURRENT_ITER"
   export GOAL_ITER_NAME="$ITER_NAME"
 
@@ -1086,11 +1162,11 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
   # Parse depth
   DEPTH=$(grep -m1 -E '^[[:space:]]*-?[[:space:]]*\*\*Depth:\*\*' "$ITER_SPEC_PATH" \
             | sed -E 's/.*\*\*Depth:\*\*[[:space:]]*//; s/[[:space:]]+$//' \
-            | tr '[:upper:]' '[:lower:]')
+            | tr '[:upper:]' '[:lower:]') || true
   if [[ -z "$DEPTH" ]]; then
     DEPTH=$(grep -m1 -E '^[[:space:]]*-?[[:space:]]*Depth:' "$ITER_SPEC_PATH" \
               | sed -E 's/.*Depth:[[:space:]]*//; s/[[:space:]]+$//' \
-              | tr '[:upper:]' '[:lower:]')
+              | tr '[:upper:]' '[:lower:]') || true
   fi
   if [[ "$DEPTH" != "lean" && "$DEPTH" != "full" ]]; then
     echo "[run-goal] Could not parse Depth (expected 'lean' or 'full') from $ITER_SPEC_PATH. Defaulting to lean." >&2
@@ -1178,11 +1254,19 @@ The verdict line MUST appear first and start exactly with:
   or **Verdict:** COHERENCE-WARN
   or **Verdict:** COHERENCE-FAIL" || _coh_rc=$?
     record_agent_invocation_end "coherence-auditor" "$_coh_start" "$_coh_rc"
+    # Pump loss (transport 70) is infrastructure, not an audit result — without
+    # this guard a dead pump fabricated a COHERENCE-PASS via the crash stub below.
+    if [[ "$_coh_rc" -eq "${DISPATCH_UNAVAILABLE_EXIT_CODE:-70}" ]]; then
+      echo "[run-goal] Interactive pump/dispatch unavailable during coherence audit — pausing (resume re-runs iteration $CURRENT_ITER)." >&2
+      record_telemetry_event "halt" '{"reason":"AWAITING_PUMP","detected_at_step":"coherence_auditor"}'
+      write_session_summary "AWAITING_PUMP" "$CURRENT_ITER"
+      exit 0
+    fi
     if [[ ! -f "$COHERENCE_OUTPUT" ]]; then
       echo "[run-goal] coherence-auditor wrote no output — recording non-blocking PASS and continuing." >&2
       printf '**Verdict:** COHERENCE-PASS\n\n(Coherence auditor produced no output; treated as a non-blocking pass.)\n' > "$COHERENCE_OUTPUT"
     fi
-    _coh_verdict=$(grep -m1 -E '^\*\*Verdict:\*\*' "$COHERENCE_OUTPUT" | sed -E 's/^\*\*Verdict:\*\*[[:space:]]*//' | awk '{print $1}')
+    _coh_verdict=$(grep -m1 -E '^\*\*Verdict:\*\*' "$COHERENCE_OUTPUT" | sed -E 's/^\*\*Verdict:\*\*[[:space:]]*//' | awk '{print $1}') || true
     echo "[run-goal] Coherence verdict: ${_coh_verdict:-unknown}"
     record_telemetry_event "coherence_audit" "$(jq -cn --arg v "${_coh_verdict:-unknown}" '{verdict:$v}' 2>/dev/null || printf '{"verdict":"%s"}' "${_coh_verdict:-unknown}")"
   fi
@@ -1192,6 +1276,14 @@ The verdict line MUST appear first and start exactly with:
   EVAL_OUTPUT="$ITER_DIR/eval.md"
   # Pre-trim — evaluator spec asks for "last 5 entries"; 300 lines covers it.
   EVALUATOR_LOG_TAIL_5=$(_tail_or_placeholder "$EVALUATOR_LOG" 300 "(no entries yet — first evaluation)")
+  if [[ -f "$ITER_DIR/.evaluated" && -f "$EVAL_OUTPUT" ]]; then
+    # A prior attempt of this iteration completed its evaluation but crashed
+    # before current_iter advanced. Re-running the evaluator would double-append
+    # evaluator-log.md/lessons.md and re-churn journey-history — reuse instead.
+    echo "[run-goal] Iteration $CURRENT_ITER already evaluated (.evaluated marker) — reusing existing eval.md, skipping evaluator re-dispatch."
+    cd "$REPO_ROOT"
+    _eval_rc=0
+  else
   cd "$REPO_ROOT"
   record_agent_invocation_start "goal-evaluator"   # bare call: must NOT be $(...) or the CHAIN_CURRENT_AGENT export is lost to a subshell
   _eval_start=$CHAIN_AGENT_START_EPOCH
@@ -1245,16 +1337,36 @@ STOP." || _eval_rc=$?
 
   record_agent_invocation_end "goal-evaluator" "$_eval_start" "$_eval_rc"
 
+  # Pump loss (transport 70) during evaluation: pause resumably. This must be
+  # checked BEFORE the missing-file ABORTED branch (which mislabeled pump loss)
+  # and before any parse (a stale eval.md must never be certified here — the
+  # iteration-start hygiene deletes stale ones, this guard covers the fresh 70).
+  if [[ "$_eval_rc" -eq "${DISPATCH_UNAVAILABLE_EXIT_CODE:-70}" ]]; then
+    echo "[run-goal] Interactive pump/dispatch unavailable during evaluation — pausing (resume re-runs iteration $CURRENT_ITER)." >&2
+    record_telemetry_event "halt" '{"reason":"AWAITING_PUMP","detected_at_step":"goal_evaluator"}'
+    write_session_summary "AWAITING_PUMP" "$CURRENT_ITER"
+    exit 0
+  fi
+
   if [[ ! -f "$EVAL_OUTPUT" ]]; then
     echo "[run-goal] goal-evaluator did not write $EVAL_OUTPUT — treating as ABORTED." >&2
     write_session_summary "ABORTED" "$CURRENT_ITER"
     exit 1
   fi
+  fi  # end .evaluated reuse guard
 
-  # Parse verdict
-  VERDICT=$(grep -m1 -E '^\*\*Verdict:\*\*' "$EVAL_OUTPUT" | sed -E 's/^\*\*Verdict:\*\*[[:space:]]*//' | awk '{print $1}')
-  NEXT_DEPTH=$(grep -m1 -E 'Depth Recommendation For Next Iteration:' "$EVAL_OUTPUT" | sed -E 's/.*Iteration:\*?\*?[[:space:]]*//' | awk '{print $1}' | tr '[:upper:]' '[:lower:]')
+  # Parse verdict (guarded: a malformed verdict line must surface as an empty
+  # VERDICT for the fallthrough handling, not kill the engine via pipefail)
+  VERDICT=$(grep -m1 -E '^\*\*Verdict:\*\*' "$EVAL_OUTPUT" | sed -E 's/^\*\*Verdict:\*\*[[:space:]]*//' | awk '{print $1}') || true
+  NEXT_DEPTH=$(grep -m1 -E 'Depth Recommendation For Next Iteration:' "$EVAL_OUTPUT" | sed -E 's/.*Iteration:\*?\*?[[:space:]]*//' | awk '{print $1}' | tr '[:upper:]' '[:lower:]') || true
   [[ "$NEXT_DEPTH" != "lean" && "$NEXT_DEPTH" != "full" ]] && NEXT_DEPTH="lean"
+
+  # Mark this iteration's evaluation as complete (with the parsed verdict) so a
+  # crash between here and the current_iter advance can resume without a second
+  # evaluator pass. Only written for a well-formed verdict.
+  if [[ -n "$VERDICT" ]]; then
+    printf '{"iter": %s, "verdict": "%s"}\n' "$CURRENT_ITER" "$VERDICT" > "$ITER_DIR/.evaluated" 2>/dev/null || true
+  fi
 
   # Capture journey-history hash for stall detection
   HASH=$(journey_history_hash)
@@ -1285,7 +1397,12 @@ d["last_verdict"] = "$VERDICT"
 d["next_depth"] = "$NEXT_DEPTH"
 d["status"] = "in_progress"
 d["updated_at"] = __import__("datetime").datetime.now(__import__("datetime").UTC).isoformat().replace('+00:00','Z')
-json.dump(d, open("$SESSION_JSON","w"), indent=2); open("$SESSION_JSON","a").write("\n")
+import os as _os, tempfile as _tf
+_fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
+with _os.fdopen(_fd, "w") as _f:
+    json.dump(d, _f, indent=2)
+    _f.write("\n")
+_os.replace(_tmp, "$SESSION_JSON")
 PY
 
   # Compute deltas (best-effort)
@@ -1368,6 +1485,31 @@ except Exception as e:
         ;;
       REGRESSION|STALLED)
         echo "[run-goal] push-per-iter: skipping push for $VERDICT — branch left at prior iter's HEAD for inspection."
+        # Park the iteration's uncommitted work as a local WIP commit (no push).
+        # Left loose, it was exposed to manual cleanup (git checkout/--reset) and
+        # would otherwise be silently folded into the NEXT iteration's commit
+        # under a misleading message, breaking attribution and bisect.
+        if [[ -n "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null)" ]]; then
+          _park_sha=""
+          if git -C "$REPO_ROOT" add -A 2>/dev/null && \
+             git -C "$REPO_ROOT" commit --quiet -m "wip(goal): iter $CURRENT_ITER $VERDICT — parked uncommitted work (not pushed)" 2>/dev/null; then
+            _park_sha="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo "")"
+            echo "[run-goal] push-per-iter: parked uncommitted work as local WIP commit ${_park_sha} (amend/revert freely before resuming)."
+            python3 - <<PY 2>/dev/null || true
+import json, os, tempfile
+d = json.load(open("$SESSION_JSON"))
+d["parked_wip_sha"] = "${_park_sha}"
+_fd, _tmp = tempfile.mkstemp(dir=os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
+with os.fdopen(_fd, "w") as _f:
+    json.dump(d, _f, indent=2)
+    _f.write("\n")
+os.replace(_tmp, "$SESSION_JSON")
+PY
+          else
+            echo "[run-goal] push-per-iter: WARNING — could not park uncommitted work (git add/commit failed); it remains loose in the working tree." >&2
+          fi
+          record_telemetry_event "wip_parked" "$(jq -cn --arg v "$VERDICT" --arg sha "${_park_sha:-}" '{verdict:$v, sha:$sha}' 2>/dev/null || echo '{}')"
+        fi
         record_telemetry_event "iter_push" "$(jq -cn --arg b "$PUSH_BRANCH" --arg verdict "$VERDICT" '{branch:$b, success:true, skipped:"halt_verdict", verdict:$verdict}' 2>/dev/null || echo '{}')"
         ;;
     esac
@@ -1405,7 +1547,6 @@ except Exception as e:
         ) || echo "[run-goal] post-goal hook returned non-zero (non-fatal) — continuing." >&2
         # 2. dispatch the generic goal-proposer agent (works headless AND interactive pump).
         cd "$REPO_ROOT"
-        export CHAIN_CURRENT_AGENT=goal-proposer
         record_agent_invocation_start "goal-proposer"
         _prop_start=$CHAIN_AGENT_START_EPOCH
         _prop_rc=0
@@ -1483,7 +1624,12 @@ Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly. Do NOT wri
 import json
 d = json.load(open("$SESSION_JSON"))
 d["status"] = "REGRESSION_HALT"
-json.dump(d, open("$SESSION_JSON","w"), indent=2); open("$SESSION_JSON","a").write("\n")
+import os as _os, tempfile as _tf
+_fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
+with _os.fdopen(_fd, "w") as _f:
+    json.dump(d, _f, indent=2)
+    _f.write("\n")
+_os.replace(_tmp, "$SESSION_JSON")
 PY
       record_telemetry_event "halt" '{"reason":"REGRESSION_HALT","detected_at_step":"post_evaluator"}'
       write_session_summary "REGRESSION_HALT" "$((CURRENT_ITER+1))"

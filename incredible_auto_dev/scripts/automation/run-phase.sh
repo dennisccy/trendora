@@ -423,7 +423,11 @@ case "$CURRENT_STEP" in
     SKIP_PLAN=true; SKIP_TEST_PLAN=true; SKIP_DEV_REVIEW=true ;;
   review_failed)
     SKIP_PLAN=true; SKIP_TEST_PLAN=true ;;
-  dev_complete_attempt_*)
+  dev_complete|dev_complete_attempt_*)
+    # Bare `dev_complete` is written by the developer agent itself
+    # (dev-phase.sh / goal-iter-lean.sh); the attempt-suffixed form is
+    # run-phase.sh's own checkpoint. Both mean "dev done, resume at review" —
+    # without the bare arm, a resume on it silently re-ran the whole phase.
     SKIP_PLAN=true; SKIP_TEST_PLAN=true
     if verdict_passes "$REVIEW_REPORT"; then
       SKIP_DEV_REVIEW=true

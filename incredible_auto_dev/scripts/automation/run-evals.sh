@@ -108,6 +108,64 @@ else
   _fail "self-test: common.sh (kill-tree / self-heal)"
 fi
 
+# Parallel two-branch runner (previously had a self-test that nothing invoked).
+if bash scripts/automation/lib/parallel.sh self-test >/dev/null 2>&1; then
+  _pass "self-test: parallel.sh"
+else
+  _fail "self-test: parallel.sh (run: bash scripts/automation/lib/parallel.sh self-test)"
+fi
+
+# ── 2c. Standalone unit-test scripts (API-free by design) ────────────────────
+_log "2c. tests/automation unit tests"
+for _t in tests/automation/test-quota-retry.sh tests/automation/test-install-gate.sh; do
+  if bash "$_t" >/dev/null 2>&1; then
+    _pass "unit: $_t"
+  else
+    _fail "unit: $_t (run: bash $_t)"
+  fi
+done
+
+# ── 2d. Hook behavioral smokes (beyond bash -n) ──────────────────────────────
+_log "2d. hook behavioral smokes"
+if bash .claude/hooks/guard-dangerous-commands.sh "ls -la" >/dev/null 2>&1; then
+  _pass "hook: guard-dangerous-commands allows a benign command"
+else
+  _fail "hook: guard-dangerous-commands blocked a benign command"
+fi
+if bash .claude/hooks/guard-dangerous-commands.sh "rm -rf /" >/dev/null 2>&1; then
+  _fail "hook: guard-dangerous-commands FAILED to block 'rm -rf /'"
+else
+  _pass "hook: guard-dangerous-commands blocks 'rm -rf /'"
+fi
+_lint_tmp=$(mktemp /tmp/eval-lint-XXXX.py); echo "x = 1" > "$_lint_tmp"
+if bash .claude/hooks/post-edit-lint.sh "$_lint_tmp" >/dev/null 2>&1; then
+  _pass "hook: post-edit-lint accepts a valid .py file"
+else
+  _fail "hook: post-edit-lint errored on a valid .py file"
+fi
+rm -f "$_lint_tmp"
+if bash .claude/hooks/install-security-gate.sh "echo not-an-install" >/dev/null 2>&1; then
+  _pass "hook: install-security-gate passes a non-install command through"
+else
+  _fail "hook: install-security-gate blocked a non-install command"
+fi
+if (cd "$(mktemp -d)" && bash "$OLDPWD/.claude/hooks/on-stop-check-artifacts.sh" >/dev/null 2>&1); then
+  _pass "hook: on-stop-check-artifacts exits cleanly with no runs/"
+else
+  _fail "hook: on-stop-check-artifacts errored with no runs/"
+fi
+
+# ── 2e. Build-product drift gate ─────────────────────────────────────────────
+# .claude/ is rendered from the neutral source; a divergence means someone
+# edited one side without resyncing (see .claude/maintenance-protocol.md §3).
+# claude-only: .codex/ is gitignored here, so the 'both' form is always red.
+_log "2e. sync-cli-assets drift check (claude)"
+if python3 scripts/automation/sync-cli-assets.py --cli claude --check >/dev/null 2>&1; then
+  _pass "sync: committed .claude/ tree matches the neutral source render"
+else
+  _fail "sync: .claude/ drifted from neutral source (run: python3 scripts/automation/sync-cli-assets.py --cli claude, then commit)"
+fi
+
 # ── 3. Agent frontmatter validation ──────────────────────────────────────────
 _log "3. agent frontmatter validation"
 if python3 scripts/automation/lib/validate_agents.py >/dev/null 2>&1; then

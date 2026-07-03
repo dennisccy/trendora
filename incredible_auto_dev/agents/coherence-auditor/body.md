@@ -80,7 +80,7 @@ Write to the path given in the invocation prompt
 the structure. The verdict line MUST be first and machine-parseable:
 
 ```
-**Verdict:** COHERENCE-PASS | COHERENCE-WARN | COHERENCE-FAIL
+**Verdict:** <exactly one of: COHERENCE-PASS, COHERENCE-WARN, COHERENCE-FAIL>
 ```
 
 ## Verdicts
