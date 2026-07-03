@@ -4,133 +4,143 @@
       "id": "J-01",
       "name": "Every score shows an evidence status",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-16",
-      "last_passing_iter": "goal-mcp-loop-iter-16",
+      "last_verified_iter": "goal-mcp-loop-iter-17",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-15-evidence/TC-06-stocks-no-regression.png",
-      "note": "Passing — carried via the spec-prescribed byte-identity channel for the zero-frontend iter-16 (git diff HEAD empty on apps/backend/app/**, apps/frontend/**, config.yaml, both evidence ledgers 7+7 rows; unedited DoD suites green — 44 passed + 1 pre-existing live-integration skip, re-run by this evaluator). No regression mechanism. Last pixel evidence iter-15: TC-06 shows every /stocks row with an inline badge — LEADERSHIP 'Proven' (backed by the certified leadership_score PASS), ENTRY QUALITY + RISK 'Not yet proven'; proven_signals stays {leadership_score}."
+      "note": "Passing — carried via the byte-identity channel for the zero-frontend iter-17 (evaluator-verified: git diff HEAD empty on apps/backend/app/**, apps/frontend/**, config.yaml, data/seed/**, both evidence ledgers 7+7 rows; unedited DoD suites green — 64 passed, run independently by BOTH reviewer and QA). No regression mechanism. Last pixel evidence iter-15: TC-06 shows every /stocks row with an inline badge — LEADERSHIP 'Proven' (backed by the certified leadership_score PASS), ENTRY QUALITY + RISK 'Not yet proven'; proven_signals stays {leadership_score}. NOTE: the iter-18 sanctioned ledger reset regenerates the backing claim — the badge contract (honest status) is what must hold post-swap, not the specific leadership_score PASS."
     },
     "J-02": {
       "id": "J-02",
       "name": "Drill into the proof behind a score",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-16",
-      "last_passing_iter": "goal-mcp-loop-iter-16",
+      "last_verified_iter": "goal-mcp-loop-iter-17",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-15-evidence/UT-01-initial.png",
-      "note": "Passing — carried via iter-16 byte-identity (zero app/frontend/config/ledger diff; lib/evidence.ts and the drill-down code untouched; unedited suites green). Last pixel evidence iter-15: UT-01-initial (full-page /evidence) shows the leadership_score PASS row with the full proof drill — hypothesis, OUT-OF-SAMPLE VERDICT 'PASS · holdout edge +6.36%', CONTROL (VS SPY) +6.36%, register 2026-06-30, 'Backs: Stocks leaderboard'."
+      "note": "Passing — carried via iter-17 byte-identity (zero app/frontend/config/ledger diff; lib/evidence.ts and the drill-down code untouched; unedited suites green). Last pixel evidence iter-15: UT-01-initial (full-page /evidence) shows the leadership_score PASS row with the full proof drill — hypothesis, OUT-OF-SAMPLE VERDICT 'PASS · holdout edge +6.36%', CONTROL (VS SPY) +6.36%, register 2026-06-30, 'Backs: Stocks leaderboard'. Subject to the iter-18 sanctioned re-certification reset."
     },
     "J-03": {
       "id": "J-03",
       "name": "Unproven / noise signals are honestly marked",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-16",
-      "last_passing_iter": "goal-mcp-loop-iter-16",
+      "last_verified_iter": "goal-mcp-loop-iter-17",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-15-evidence/UT-01-initial.png",
-      "note": "Passing — carried via iter-16 byte-identity (zero displayed-number change; canonical ledger byte-identical at 7 rows incl. the honest ma_stack FAIL). Last pixel evidence iter-15: Entry Quality + Risk read 'Not yet proven' on every /stocks row; ma_stack top-decile honestly marked FAIL on /evidence; uncertified rs_spy_3m horizons h1/h5/h10/h20 read 'Not yet proven'."
+      "note": "Passing — carried via iter-17 byte-identity (zero displayed-number change; canonical ledger byte-identical at 7 rows incl. the honest ma_stack FAIL). Last pixel evidence iter-15: Entry Quality + Risk read 'Not yet proven' on every /stocks row; ma_stack top-decile honestly marked FAIL on /evidence; uncertified rs_spy_3m horizons h1/h5/h10/h20 read 'Not yet proven'."
     },
     "J-04": {
       "id": "J-04",
       "name": "Regime-conditioned evidence",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-16",
-      "last_passing_iter": "goal-mcp-loop-iter-16",
+      "last_verified_iter": "goal-mcp-loop-iter-17",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-15-evidence/UT-01-initial.png",
-      "note": "Passing — carried via iter-16 byte-identity (certified-claims.jsonl row 2 byte-identical; zero app diff). Last pixel evidence iter-15: 'Breakout-watch setup' row with regime chip 'Regime: Risk-on', 'PASS · holdout edge +6.12%', control vs SPY, 'Backs: Research event-study lab'."
+      "note": "Passing — carried via iter-17 byte-identity (certified-claims.jsonl row 2 byte-identical; zero app diff). Last pixel evidence iter-15: 'Breakout-watch setup' row with regime chip 'Regime: Risk-on', 'PASS · holdout edge +6.12%', control vs SPY, 'Backs: Research event-study lab'. Subject to the iter-18 sanctioned re-certification reset."
     },
     "J-05": {
       "id": "J-05",
       "name": "Audit the evidence ledger",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-16",
-      "last_passing_iter": "goal-mcp-loop-iter-16",
+      "last_verified_iter": "goal-mcp-loop-iter-17",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-15-evidence/UT-01-initial.png",
-      "note": "Passing — carried via iter-16 byte-identity (zero referee submissions this iteration; certified-claims.jsonl exactly 7 lines, 0-diff vs HEAD — verified by this evaluator). Last pixel evidence iter-15: full-page /evidence listing all seven canonical rows with standard fields + Backs linkbacks. NOTE for iter-17+: the sanctioned data-basis reset will regenerate this ledger; J-05 remains a valid contract but its specific rows will change."
+      "note": "Passing — carried via iter-17 byte-identity (zero referee submissions; certified-claims.jsonl exactly 7 lines, 0-diff vs HEAD — evaluator-verified). Last pixel evidence iter-15: full-page /evidence listing all seven canonical rows with standard fields + Backs linkbacks. NOTE for iter-18: the sanctioned data-basis reset regenerates this ledger; J-05 remains a valid contract but its specific rows WILL change — every displayed row must come from the REGENERATED ledger."
     },
     "J-06": {
       "id": "J-06",
       "name": "vcp_contraction top-decile certified edge surfaced on Evidence + Research factor lab",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-16",
-      "last_passing_iter": "goal-mcp-loop-iter-16",
+      "last_verified_iter": "goal-mcp-loop-iter-17",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
       "first_seen_iter": "goal-mcp-loop-iter-8",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-15-evidence/UT-01-initial.png",
-      "note": "Passing — carried via iter-16 byte-identity (ledger row 4 unchanged; factor-lab code untouched). Last pixel evidence iter-15: vcp_contraction D10 h20 row 'PASS · holdout edge +3.33%', p=0.01149 < alpha/4=0.0125, 'Backs: Research factor lab'. Subject to the sanctioned re-certification reset when the 30-year basis lands (goal.md J-11)."
+      "note": "Passing — carried via iter-17 byte-identity (ledger row 4 unchanged; factor-lab code untouched). Last pixel evidence iter-15: vcp_contraction D10 h20 row 'PASS · holdout edge +3.33%', p=0.01149 < alpha/4=0.0125, 'Backs: Research factor lab'. IMPORTANT for iter-18: the sanctioned reset invalidates this specific claim — it must independently re-certify on the 30-year basis or honestly read 'Not yet proven'; per goal.md's data-basis-change provision that transition is NOT a regression."
     },
     "J-07": {
       "id": "J-07",
       "name": "Multi-horizon certified edge surfaced (the loop sees beyond the 20-day horizon)",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-16",
-      "last_passing_iter": "goal-mcp-loop-iter-16",
+      "last_verified_iter": "goal-mcp-loop-iter-17",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
       "first_seen_iter": "goal-mcp-loop-iter-9",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-15-evidence/UT-01-initial.png",
-      "note": "Passing — carried via iter-16 byte-identity (ledger row 5 unchanged). Last pixel evidence iter-15: NON-20 vcp_contraction D10 h60 row '60-day hold', 'PASS · holdout edge +8.91%', p=0.0004998 < alpha/5=0.01, ledger=canonical, 'Backs: Research factor lab'. Subject to the sanctioned re-certification reset (J-11)."
+      "note": "Passing — carried via iter-17 byte-identity (ledger row 5 unchanged). Last pixel evidence iter-15: NON-20 vcp_contraction D10 h60 row '60-day hold', 'PASS · holdout edge +8.91%', p=0.0004998 < alpha/5=0.01, ledger=canonical, 'Backs: Research factor lab'. Same iter-18 re-certification note as J-06."
     },
     "J-08": {
       "id": "J-08",
       "name": "Multi-factor combination certified edge surfaced on the Combination lab + Evidence",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-16",
-      "last_passing_iter": "goal-mcp-loop-iter-16",
+      "last_verified_iter": "goal-mcp-loop-iter-17",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
       "first_seen_iter": "goal-mcp-loop-iter-9",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-14-evidence/UT-J-08-07-fullpage.png",
-      "note": "Passing — carried via iter-16 byte-identity (ledger row 6 unchanged; combination-lab code untouched). Last dedicated pixel evidence iter-14: UT-J-08-07-fullpage shows the composite 'Proven' badge for rs_spy_3m:top:quintile x high_proximity:top:tertile; iter-15 UT-01-initial re-rendered the 6th /evidence row (+4.69%). Subject to the sanctioned re-certification reset (J-11)."
+      "note": "Passing — carried via iter-17 byte-identity (ledger row 6 unchanged; combination-lab code untouched). Last dedicated pixel evidence iter-14: UT-J-08-07-fullpage shows the composite 'Proven' badge for rs_spy_3m:top:quintile x high_proximity:top:tertile; iter-15 UT-01-initial re-rendered the 6th /evidence row (+4.69%). Same iter-18 re-certification note as J-06."
     },
     "J-09": {
       "id": "J-09",
       "name": "Relative-strength (rs_spy_3m) 60-day-horizon certified edge surfaced on Evidence + Research factor lab",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-16",
-      "last_passing_iter": "goal-mcp-loop-iter-16",
+      "last_verified_iter": "goal-mcp-loop-iter-17",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
       "first_seen_iter": "goal-mcp-loop-iter-15",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-15-evidence/UT-01-initial.png",
-      "note": "Passing — carried via iter-16 byte-identity (ledger row 7 byte-identical: holdout_edge=control_excess=0.21344270202534893, p=0.0004997501249375312, divisor 7, register 2026-07-01). Last pixel evidence iter-15: UT-01-initial (md5 583c1b11) shows row 7 in full ('PASS · rs_spy_3m top decile · 60-day hold · +21.34% · alpha/7'); factor-lab h60 'Proven' chip grounded via DOM assertions + unit cases + the general matcher. CARRIED YELLOW FLAG: the +0.2134 OOS edge is ~10x its in-sample edge — a genuine referee PASS surfaced verbatim under the upper-bound framing, but a real data-quality flag the 30-year re-certification (J-11) is expected to resolve honestly (a retired-window artifact will simply fail to re-certify)."
+      "note": "Passing — carried via iter-17 byte-identity (ledger row 7 byte-identical: holdout_edge=control_excess=0.21344270202534893, p=0.0004997501249375312, divisor 7, register 2026-07-01). Last pixel evidence iter-15: UT-01-initial shows row 7 in full ('PASS · rs_spy_3m top decile · 60-day hold · +21.34% · alpha/7'). CARRIED YELLOW FLAG: the +0.2134 OOS edge is ~10x its in-sample edge — the iter-18 sanctioned re-certification on the 30-year basis is EXPECTED to resolve this honestly (a retired-window artifact will simply fail to re-certify; that is the system working, NOT a regression)."
     },
     "J-10": {
       "id": "J-10",
       "name": "The product surfaces deep (up to ~30-year) price history, honestly bounded per name",
       "status": "unknown",
-      "last_verified_iter": "goal-mcp-loop-iter-16",
+      "last_verified_iter": "goal-mcp-loop-iter-17",
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-16",
       "last_evidence_path": null,
-      "note": "Unknown (target of iter-16 Part-A enablement, delivered on the spec's sanctioned PROBE-BLOCKED branch). Tooling is DONE and verified: ingest_seed.py --provider stooq/--out/--symbols-set pool/--probe with pinned-end manifest, 588-symbol priority tiers, resume-skip, graceful cap-stop, env-only key + audit-added redaction (21 unit tests green); the 7-validation staged-seed suite is proven load-bearing (synthetic-tree pass + 5 planted violations caught) and skips-with-reason. The staged 30-year asset does NOT exist: Stooq's CSV export endpoint returns 'Access denied' for this environment's IP (standing per-IP ACL — reproduced independently by the phase auditor; bulk DB path 401 key-gated; STOOQ_API_KEY unset). BLOCKED ON HUMAN DECISION (coverage manifest section 6): (a) run the fetch from an accepted network, (b) provide STOOQ_API_KEY via env, or (c) amend goal.md's provider choice. Zero bars fabricated."
+      "note": "Unknown — the iter-16 BLOCKER IS RESOLVED: the human operator staged the 548-name equities span from the local Stooq bulk archive (commit 8be979d), and iter-17 completed the staged asset's index/macro context. The staged 30-year seed (apps/backend/data/seed-stooq-30y/, 590 price CSVs, window 1996-01-01 -> 2026-07-01) now EXISTS, is validated (test_seed_staged_30y.py 12/12 green — evaluator re-run), and is SWAP-COMPLETE (staged 590 superset-of live 162, committed passing gate test). User-visible deep history (steps 2-3: long-tenured names beyond the 5y floor, post-IPO names honestly short, chart windowing) remains unbuilt — it lights at/after the iter-18 atomic swap. Zero bars fabricated (SATS the only honest absence)."
     },
     "J-11": {
       "id": "J-11",
       "name": "Every displayed 'Proven' edge is re-certified on the new 30-year data — no stale edge survives",
       "status": "unknown",
-      "last_verified_iter": "goal-mcp-loop-iter-16",
+      "last_verified_iter": "goal-mcp-loop-iter-17",
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-16",
       "last_evidence_path": null,
-      "note": "Unknown — unbuilt by design (newly tracked; goal.md extended at commit e029e5a). The sanctioned ledger reset + regeneration is sequenced into the iter-17 atomic swap, which is blocked on the same human decision as J-10 (the staged 30-year asset does not exist). Both ledgers remain byte-identical this iteration (zero referee submissions — deliberate: any pre-swap claim would be measured on the retiring basis)."
+      "note": "Unknown — unbuilt by design. The sanctioned ledger reset + regeneration IS the iter-18 atomic swap, which is now UNBLOCKED (staged asset swap-complete). Both ledgers remain byte-identical this iteration (7+7 rows, zero referee submissions — deliberate: any pre-swap claim would be measured on the retiring basis). Post-swap acceptance: no pre-refresh edge value (+21.34% / +6.36% / p=0.0004998) may be shown unless independently re-certified."
     },
     "J-12": {
       "id": "J-12",
       "name": "The universe is a broad, point-in-time dynamic set across the deep history",
       "status": "unknown",
-      "last_verified_iter": "goal-mcp-loop-iter-16",
+      "last_verified_iter": "goal-mcp-loop-iter-17",
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-16",
       "last_evidence_path": null,
-      "note": "Unknown — unbuilt by design (newly tracked). The 548-name pool broadening + resolve_candidate recency/staleness gate are sequenced into iter-17 ('lands with the pool broadening it protects') and require the staged 30-year data — blocked on the same human decision as J-10."
+      "note": "Unknown — unbuilt by design. The 548-name pool broadening (load_prices over the pool) + resolve_candidate recency/staleness gate are sequenced into iter-18, now unblocked: the staged basis carries 583 equity series across the deep window with per-name real first bars."
     },
     "J-13": {
       "id": "J-13",
       "name": "The Data Manager page reflects the broadened 548-symbol universe with an unambiguous availability legend",
       "status": "unknown",
-      "last_verified_iter": "goal-mcp-loop-iter-16",
+      "last_verified_iter": "goal-mcp-loop-iter-17",
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-16",
       "last_evidence_path": null,
-      "note": "Unknown — unbuilt by design (newly tracked). goal.md and the iter-16 spec both sequence J-13 AFTER the 548 pool is the committed default (Fetch-over-548 acceptance requires the post-swap basis) — blocked on the same human decision as J-10."
+      "note": "Unknown — unbuilt by design. goal.md sequences J-13 AFTER the 548 pool is the committed default (Fetch-over-548 acceptance requires the post-swap basis) — now reachable once iter-18 lands."
+    },
+    "J-14": {
+      "id": "J-14",
+      "name": "The 30-year basis carries deep, honestly-sourced index context (benchmarks + macro), each labeled by vendor",
+      "status": "unknown",
+      "last_verified_iter": "goal-mcp-loop-iter-17",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-mcp-loop-iter-17",
+      "last_evidence_path": null,
+      "note": "Unknown (newly tracked; target of iter-17). STEP 1's DATA BASIS IS DELIVERED into the staged asset (evaluator-verified on disk): _SPX/_NDX/_DJI deep from Stooq's world bundle (7,674 bars each, 1996-01-02 -> 2026-07-01, 1789-era archive rows provably clipped — zero pre-1996 leakage), _VIX deep from Yahoo (7,675 bars, max |delta|=0.0 vs live on all 1,357 overlap dates, zero seam, single vendor), _TNX/_DXY/_VXN preserved as byte-identical FRED-macro proxies (cmp-verified, honestly short 2021-01-04 -> 2026-05-28, NEVER re-fetched from Yahoo per goal.md §H). Per-series vendor recorded in the staged meta.json (stooq x3 / yahoo x1 / fred-macro-proxy x3) with the 'a proxy is never presented as a market index' disclaimer exactly once. Steps 2-3 (deep overlays rendering + vendor labels where surfaced) are post-swap surfacing work; the vendor field gets Data Contract registration at the iteration that first displays it."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-07-02T00:04:05Z"
+  "updated_at": "2026-07-02T23:48:35Z"
 }

@@ -34,6 +34,11 @@ Usage:
         --provider stooq --probe --out apps/backend/data/seed-stooq-30y --start 1996-01-01
     apps/backend/.venv/bin/python apps/backend/scripts/ingest_seed.py \
         --provider stooq --out apps/backend/data/seed-stooq-30y --symbols-set pool --start 1996-01-01
+    # iter-17 (goal.md §H): merge the index/macro CONTEXT into the staged seed — ^SPX/^NDX/^DJI
+    # deep from the local world bundle, ^VIX deep from Yahoo (sanctioned live-copy fallback),
+    # ^TNX/^DXY/^VXN byte-identical FRED-macro-proxy copies; per-series vendor in meta.json:
+    apps/backend/.venv/bin/python apps/backend/scripts/ingest_seed.py \
+        --provider stooq-local --stage-context --out apps/backend/data/seed-stooq-30y
 
 Exit codes: 0 ok (recorded per-symbol absences included) · 2 rate-cap/gated stop (resumable) or
 probe hard-failure · 3 probe validation failure (no-go) · 4 refused (window conflict / foreign --out).
@@ -60,6 +65,9 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 REPO_ROOT = BACKEND_DIR.parents[1]
 SEED_DIR = BACKEND_DIR / "data" / "seed"
 DEFAULT_ARCHIVE_DIR = REPO_ROOT / "data" / "d_us_txt"  # stooq-local: extracted Stooq bulk US archive
+# --stage-context default: the extracted Stooq bulk WORLD archive (plain ^xxx.txt files, e.g.
+# data/daily/world/indices/^spx.txt) — the offline source for the deep ^SPX/^NDX/^DJI context.
+DEFAULT_WORLD_ARCHIVE_DIR = REPO_ROOT / "data" / "d_world_txt"
 
 sys.path.insert(0, str(BACKEND_DIR))
 from app.config import load_config  # noqa: E402
@@ -238,9 +246,19 @@ class _ManifestState:
         self.start, self.end, self.planned = start, end, planned
         self.source, self.note = source, note
 
-    def record_ok(self, symbol: str, rows: list[dict]) -> None:
-        self.ok[symbol] = {"symbol": symbol, "bars": len(rows),
-                           "first": rows[0]["date"], "last": rows[-1]["date"]}
+    def record_ok(self, symbol: str, rows: list[dict], vendor: str | None = None,
+                  note: str | None = None) -> None:
+        """Record a staged series. `vendor`/`note` exist for the iter-17 CONTEXT series only
+        (per-series vendor disclosure, goal.md §H); equity records keep the manifest-level
+        provider tag and stay byte-identical. `note` passes the redaction choke point — it is
+        persisted into the committed manifest."""
+        entry: dict = {"symbol": symbol, "bars": len(rows),
+                       "first": rows[0]["date"], "last": rows[-1]["date"]}
+        if vendor is not None:
+            entry["vendor"] = vendor
+        if note is not None:
+            entry["note"] = redact_stooq_key(note)[:300]
+        self.ok[symbol] = entry
         self.failures.pop(symbol, None)
 
     def record_absent(self, symbol: str, kind: str, detail: str) -> None:
@@ -289,13 +307,24 @@ class _ManifestState:
 # and is honored unchanged: it surfaces as ProviderUnavailableError and stops the run honestly.)
 _STOOQ_CHALLENGE_RE = re.compile(r'const c="([^"]+)",d=(\d+)')
 
+# (iter-16 audit B2) Bound the handshake solve: the observed served difficulty is 4 (~65k tries
+# expected; solved live in 0.03s) and 5 needs ~1M — 10M clears both with overwhelming margin. A
+# served difficulty the cap cannot clear is treated as a GATE (honest resumable stop), never an
+# unbounded spin.
+_POW_MAX_ITERATIONS = 10_000_000
 
-def _solve_stooq_pow(challenge: str, difficulty: int) -> int:
+
+def _solve_stooq_pow(challenge: str, difficulty: int,
+                     max_iterations: int = _POW_MAX_ITERATIONS) -> int:
     prefix = "0" * difficulty
-    n = 0
-    while not hashlib.sha256(f"{challenge}{n}".encode()).hexdigest().startswith(prefix):
-        n += 1
-    return n
+    for n in range(max_iterations):
+        if hashlib.sha256(f"{challenge}{n}".encode()).hexdigest().startswith(prefix):
+            return n
+    raise ProviderUnavailableError(
+        f"stooq verification handshake unsolved after {max_iterations} iterations (served "
+        f"difficulty {difficulty}) — refusing an unbounded spin; treating the endpoint as gated "
+        f"for this environment"
+    )
 
 
 class _StooqVerifyClient:
@@ -338,12 +367,43 @@ def make_stooq_provider() -> PriceProvider:
     return StooqProvider(client=_StooqVerifyClient(api_key=os.environ.get(STOOQ_API_KEY_ENV)))
 
 
-def make_local_stooq_provider(archive_dir: Path | str) -> LocalStooqArchiveProvider:
-    """The stooq-local fetch path reads Stooq's BULK US archive (`d_us_txt`) from local disk — the
-    SAME vendor/adjusted data as the per-symbol endpoint, consumed offline to bypass the per-IP
-    export ACL (iter-16 unblock). No network, no key. This provider is imported only by this dev-run
-    script (never by `make_provider`), so the app boot/request path is unchanged."""
-    return LocalStooqArchiveProvider(archive_dir)
+class _LocalStooqBundleProvider(LocalStooqArchiveProvider):
+    """`LocalStooqArchiveProvider` (US archive: `*.us.txt`) extended with Stooq's WORLD-bundle
+    layout (iter-17): plain `^xxx.txt` files (no `.us` suffix; e.g.
+    `data/daily/world/indices/^spx.txt`), same `<TICKER>,<PER>,<DATE>,...` bulk row format, same
+    vendor (stooq). A caret symbol maps to its caret-keeping file stem (`^SPX` -> `^spx.txt`);
+    everything else keeps the parent's behavior byte-identically (absent name/caret -> honest [],
+    corrupt row in a present file -> ProviderUnavailableError('...unparseable...'), start/end
+    window clip in the parser). Defined HERE (not app/**) because archives are read only by this
+    dev-run script — the app boot/request path stays unchanged."""
+
+    _WORLD_SUFFIX = ".txt"
+
+    def __init__(self, archive_dir: Path | str):
+        super().__init__(archive_dir)  # indexes *.us.txt exactly as before
+        self.world_indexed_count = 0
+        if self.archive_dir.is_dir():
+            for path in self.archive_dir.rglob("^*" + self._WORLD_SUFFIX):
+                stem = path.name[: -len(self._WORLD_SUFFIX)].lower()
+                if self._index.setdefault(stem, path) is path:
+                    self.world_indexed_count += 1
+
+    @staticmethod
+    def _stem_for(symbol: str) -> Optional[str]:
+        s = symbol.strip().lower()
+        if s.startswith("^"):
+            return s if len(s) > 1 else None  # world caret index: the file stem keeps the caret
+        return LocalStooqArchiveProvider._stem_for(symbol)
+
+
+def make_local_stooq_provider(archive_dir: Path | str) -> _LocalStooqBundleProvider:
+    """The stooq-local fetch path reads Stooq's BULK archives from local disk — the SAME
+    vendor/adjusted data as the per-symbol endpoint, consumed offline to bypass the per-IP export
+    ACL (iter-16 unblock): `*.us.txt` (US stocks+ETFs, `d_us_txt`) and, since iter-17, plain
+    `^xxx.txt` world-bundle indices (`d_world_txt`) in one index. No network, no key. These
+    providers are used only by this dev-run script (never by `make_provider`), so the app
+    boot/request path is unchanged."""
+    return _LocalStooqBundleProvider(archive_dir)
 
 
 def classify_stooq_failure(message: str) -> str:
@@ -514,7 +574,17 @@ def run_stooq_ingest(provider: PriceProvider, symbols: list[str], start: date, e
         print(f"[ingest] REFUSED: {out_dir / 'meta.json'} is not a stooq staging manifest — "
               f"staging is side-by-side only (never over the live seed); choose a fresh --out dir.")
         return EXIT_CONFLICT
-    state = _ManifestState(manifest, start, end, planned=len(symbols), source=source, note=note)
+    planned = len(symbols)
+    if manifest is not None:
+        # Resume: the plan breadth and note/source provenance established at staging birth are
+        # PRESERVED — a narrower later invocation (e.g. the default symbol set over an
+        # already-staged pool manifest) must not shrink `symbols_planned` or rewrite the note
+        # (the iter-17 context addendum + per-series vendor records live there). Real resume
+        # flows pass the same set/constants, so this is byte-equivalent for them.
+        planned = max(int(manifest.get("symbols_planned", 0)), planned)
+        source = manifest.get("source", source)
+        note = manifest.get("note", note)
+    state = _ManifestState(manifest, start, end, planned=planned, source=source, note=note)
     prices_dir = out_dir / "prices"
 
     pending: list[str] = []
@@ -670,6 +740,212 @@ def run_probe(provider: PriceProvider, out_dir: Path | str, start: date, end: da
 
 
 # ---------------------------------------------------------------------------
+# context merge (iter-17, goal.md §H): index & macro context into the STAGED seed
+# ---------------------------------------------------------------------------
+
+# Per-series vendor disclosure (§H): the vendor mix is recorded per context series and a proxy is
+# never presented as a market index.
+CONTEXT_WORLD_SYMBOLS = ("^SPX", "^NDX", "^DJI")   # deep from Stooq's world indices bundle
+CONTEXT_YAHOO_SYMBOL = "^VIX"                       # genuinely a Yahoo index (verified in goal.md §H)
+CONTEXT_PROXY_SYMBOLS = ("^TNX", "^DXY", "^VXN")    # the app's deterministic FRED-macro PROXIES
+VENDOR_STOOQ = "stooq"
+VENDOR_YAHOO = "yahoo"
+VENDOR_FRED_PROXY = "fred-macro-proxy"
+VIX_DEEP_ANCHOR = date(1996, 1, 5)   # a usable DEEP pull reaches the first 1996 trading week
+VIX_MAX_GAP_DAYS = 14                # single continuous series: no US-market closure exceeds this
+CONTEXT_NOTE_ADDENDUM = (
+    " Context series (iter-17, goal.md §H — mixed vendor, honestly disclosed per series): "
+    "^SPX/^NDX/^DJI staged DEEP from Stooq's world indices bundle (data/d_world_txt; vendor "
+    "stooq — same vendor, local world archive), window-clipped to the pinned window; ^VIX from "
+    "Yahoo (vendor yahoo; deep single pull, or the sanctioned verbatim live-seed copy on an "
+    "unreachable endpoint — see its per-series note); ^TNX/^DXY/^VXN are the app's deterministic "
+    "FRED-macro PROXIES copied BYTE-IDENTICAL from the live seed (vendor fred-macro-proxy), kept "
+    "coherent with data/seed/macro/ and NEVER re-fetched from Yahoo. Each context record carries "
+    "its per-series vendor; a proxy is never presented as a market index; no bar is fabricated, "
+    "padded, interpolated, or vendor-spliced."
+)
+
+
+def _fetch_yahoo_vix_rows(start: date, end: date) -> list[dict]:
+    """ONE single-vendor, single-pull deep `^VIX` fetch from the free Yahoo chart API, clipped
+    client-side to the pinned window [start, end] (Yahoo's period2 is an exclusive midnight-UTC
+    bound, so the request reaches one day past the pinned end and the rows are clipped locally —
+    a staged row never exceeds the manifest window). No key, no secret; raises on any failure."""
+    with httpx.Client(follow_redirects=True) as client:
+        rows = fetch_symbol(client, CONTEXT_YAHOO_SYMBOL, start, end + timedelta(days=1))
+    return [r for r in rows if start.isoformat() <= r["date"] <= end.isoformat()]
+
+
+def _vix_pull_shortfall(rows: list[dict], live_last: str | None) -> str | None:
+    """Why a fetched deep-^VIX pull is NOT usable as the staged deep series (None = usable). A
+    pull failing ANY check is discarded IN FULL for the sanctioned verbatim fallback — two pulls
+    are never merged/spliced into one series (anti-goal: no vendor-spliced bars)."""
+    if not rows:
+        return "empty series"
+    first = date.fromisoformat(rows[0]["date"])
+    if first > VIX_DEEP_ANCHOR:
+        return f"not deep: first bar {first} > {VIX_DEEP_ANCHOR}"
+    if live_last is not None and rows[-1]["date"] < live_last:
+        return (f"stale: last bar {rows[-1]['date']} < the live copy's {live_last} — staging it "
+                f"would lose coverage vs the sanctioned fallback")
+    prev: date | None = None
+    for row in rows:
+        d = date.fromisoformat(row["date"])
+        if prev is not None:
+            if d <= prev:
+                return f"dates not strictly ascending at {row['date']}"
+            if (d - prev).days > VIX_MAX_GAP_DAYS:
+                return (f"{(d - prev).days}-day gap ending {row['date']} — not a single "
+                        f"continuous series")
+        prev = d
+    return None
+
+
+def _copy_series_verbatim(src: Path, prices_dir: Path, symbol: str) -> list[dict]:
+    """Copy one live-seed CSV BYTE-IDENTICAL into the staged tree (atomic tmp+rename), returning
+    its parsed rows for the coverage record. The source is read-only — `data/seed/` is never
+    modified."""
+    prices_dir.mkdir(parents=True, exist_ok=True)
+    dst = prices_dir / symbol_to_filename(symbol)
+    tmp = prices_dir / (dst.name + ".tmp")
+    tmp.write_bytes(src.read_bytes())
+    tmp.replace(dst)
+    with dst.open(newline="") as fh:
+        return list(csv.DictReader(fh))
+
+
+def run_context_merge(world_provider: PriceProvider, out_dir: Path | str,
+                      start_arg: str | None = None, end_arg: str | None = None,
+                      live_seed_dir: Path | str | None = None,
+                      fetch_vix_rows=None) -> int:
+    """Merge the index/macro CONTEXT series into an EXISTING staged stooq manifest (iter-17,
+    goal.md §H) — never a fresh manifest, never `run_yahoo_ingest` (whose writer would CLOBBER
+    the staged meta.json):
+
+      * `^SPX`/`^NDX`/`^DJI` — deep from the local WORLD bundle, clipped to the pinned window
+        (vendor stooq; the archive reaches 1789 — pre-window rows never land);
+      * `^TNX`/`^DXY`/`^VXN` — BYTE-IDENTICAL copies of the live seed's FRED-macro proxies
+        (vendor fred-macro-proxy; §H: a Yahoo re-fetch would DESYNC them from the FRED macro);
+      * `^VIX` — ONE deep single-pull Yahoo series (vendor yahoo), with the SANCTIONED fallback:
+        on an unreachable/unusable pull, the live seed's series is copied verbatim (honestly
+        short) and the shortfall recorded — never a partial/spliced series.
+
+    The 583 equity records, the pinned window, and the provider identity are untouched; resolved
+    caret failures become coverage records; accounting stays consistent; every persisted failure
+    detail/note passes the redaction choke point. Absences are recorded honestly (exit 0 — the
+    staged validation suite is the gate); refusals (missing/foreign manifest, window conflict)
+    exit EXIT_CONFLICT before any write."""
+    out_dir = Path(out_dir)
+    live_prices_dir = (Path(live_seed_dir) if live_seed_dir is not None else SEED_DIR) / "prices"
+    manifest = load_manifest(out_dir)
+    if manifest is None:
+        print(f"[context] REFUSED: {out_dir / 'meta.json'} does not exist — the context merge "
+              f"targets an EXISTING staged stooq manifest (run the equities staging first).")
+        return EXIT_CONFLICT
+    if _foreign_manifest(manifest):
+        print(f"[context] REFUSED: {out_dir / 'meta.json'} is not a stooq staging manifest — "
+              f"staging is side-by-side only (never over the live seed).")
+        return EXIT_CONFLICT
+    try:
+        start, end = resolve_stooq_window(start_arg, end_arg, manifest, datetime.now(ET).date())
+    except WindowConflictError as exc:
+        print(f"[context] {exc}")
+        return EXIT_CONFLICT
+
+    prior_recorded = ({e["symbol"] for e in manifest.get("symbols", [])}
+                      | set(manifest.get("failed", [])))
+    planned = int(manifest.get("symbols_planned", 0)) + sum(
+        1 for s in CONTEXT_WORLD_SYMBOLS if s not in prior_recorded)
+    note = manifest.get("note", STOOQ_LOCAL_NOTE)
+    if CONTEXT_NOTE_ADDENDUM not in note:
+        note = note + CONTEXT_NOTE_ADDENDUM
+    state = _ManifestState(manifest, start, end, planned=planned,
+                           source=manifest.get("source", STOOQ_LOCAL_SOURCE), note=note)
+    prices_dir = out_dir / "prices"
+    print(f"[context] merging index/macro context into {out_dir} "
+          f"(pinned window {start} -> {end})")
+
+    # 1) Deep equity-index benchmarks from Stooq's WORLD bundle (offline; vendor stooq).
+    for symbol in CONTEXT_WORLD_SYMBOLS:
+        try:
+            bars = world_provider.get_daily(symbol, start, end)
+        except ProviderUnavailableError as exc:
+            state.record_absent(symbol, "unparseable", str(exc))
+            print(f"[context] {symbol:5s} ABSENT (unparseable): {redact_stooq_key(str(exc))}")
+            continue
+        if not bars:
+            state.record_absent(symbol, "no_data",
+                                "absent from the world indices bundle — honestly omitted")
+            print(f"[context] {symbol:5s} ABSENT from the world bundle (recorded honestly)")
+            continue
+        rows = _bars_to_rows(bars)
+        write_csv(prices_dir, symbol, rows)
+        state.record_ok(symbol, rows, vendor=VENDOR_STOOQ)
+        print(f"[context] {symbol:5s} {len(rows):5d} bars {rows[0]['date']}..{rows[-1]['date']} "
+              f"vendor={VENDOR_STOOQ} (world bundle, window-clipped)")
+
+    # 2) FRED-macro proxies — byte-identical live-seed copies (vendor fred-macro-proxy).
+    for symbol in CONTEXT_PROXY_SYMBOLS:
+        src = live_prices_dir / symbol_to_filename(symbol)
+        if not src.exists():
+            state.record_absent(symbol, "no_data", f"live seed has no {src.name} to copy")
+            print(f"[context] {symbol:5s} ABSENT: live seed has no {src.name}")
+            continue
+        rows = _copy_series_verbatim(src, prices_dir, symbol)
+        state.record_ok(symbol, rows, vendor=VENDOR_FRED_PROXY,
+                        note="deterministic FRED-macro proxy copied byte-identical from the live "
+                             "seed — never re-fetched from Yahoo; coherent with data/seed/macro/; "
+                             "honestly short")
+        print(f"[context] {symbol:5s} {len(rows):5d} bars {rows[0]['date']}..{rows[-1]['date']} "
+              f"vendor={VENDOR_FRED_PROXY} (byte-identical live copy)")
+
+    # 3) Deep ^VIX from Yahoo (single pull), else the SANCTIONED verbatim live copy.
+    live_vix = live_prices_dir / symbol_to_filename(CONTEXT_YAHOO_SYMBOL)
+    live_last: str | None = None
+    if live_vix.exists():
+        with live_vix.open(newline="") as fh:
+            live_rows = list(csv.DictReader(fh))
+        live_last = live_rows[-1]["date"] if live_rows else None
+    fetch = fetch_vix_rows if fetch_vix_rows is not None else _fetch_yahoo_vix_rows
+    rows = None
+    shortfall: str | None = None
+    try:
+        rows = fetch(start, end)
+    except Exception as exc:  # noqa: BLE001 — ANY live failure takes the sanctioned fallback
+        shortfall = f"{type(exc).__name__}: {exc}"
+    if shortfall is None:
+        shortfall = _vix_pull_shortfall(rows, live_last)
+    if shortfall is None:
+        write_csv(prices_dir, CONTEXT_YAHOO_SYMBOL, rows)
+        state.record_ok(CONTEXT_YAHOO_SYMBOL, rows, vendor=VENDOR_YAHOO,
+                        note="deep single-pull Yahoo series, window-clipped — never spliced")
+        print(f"[context] {CONTEXT_YAHOO_SYMBOL:5s} {len(rows):5d} bars "
+              f"{rows[0]['date']}..{rows[-1]['date']} vendor={VENDOR_YAHOO} (deep single pull)")
+    elif live_vix.exists():
+        rows = _copy_series_verbatim(live_vix, prices_dir, CONTEXT_YAHOO_SYMBOL)
+        state.record_ok(CONTEXT_YAHOO_SYMBOL, rows, vendor=VENDOR_YAHOO,
+                        note=("sanctioned fallback: deep Yahoo re-fetch unavailable ("
+                              + redact_stooq_key(shortfall)[:120] + "); verbatim byte-copy of "
+                              "the live seed's Yahoo series — honestly short, never spliced"))
+        print(f"[context] {CONTEXT_YAHOO_SYMBOL:5s} FALLBACK — deep pull unavailable "
+              f"({redact_stooq_key(shortfall)}); staged the live seed's series VERBATIM "
+              f"({rows[0]['date']}..{rows[-1]['date']}, honestly short; vendor={VENDOR_YAHOO}).")
+    else:
+        state.record_absent(CONTEXT_YAHOO_SYMBOL, "no_data",
+                            f"deep pull failed ({shortfall}) and the live seed has no "
+                            f"{live_vix.name} to fall back to")
+        print(f"[context] {CONTEXT_YAHOO_SYMBOL:5s} ABSENT: deep pull failed "
+              f"({redact_stooq_key(shortfall)}) and no live copy exists — recorded honestly.")
+
+    state.write(out_dir)
+    context_all = (*CONTEXT_WORLD_SYMBOLS, *CONTEXT_PROXY_SYMBOLS, CONTEXT_YAHOO_SYMBOL)
+    staged_now = [s for s in context_all if s in state.ok]
+    print(f"[context] merged: {len(state.ok)} ok / {len(state.failures)} recorded absent "
+          f"(planned {planned}); context staged: {staged_now}. Wrote {out_dir / 'meta.json'}")
+    return EXIT_OK
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -698,7 +974,14 @@ def build_parser() -> argparse.ArgumentParser:
                         help="stooq go/no-go probe (AAPL+SPY+NVDA full-span validation), then exit")
     parser.add_argument("--archive-dir", dest="archive_dir", default=None,
                         help="stooq-local: path to the extracted Stooq bulk US archive "
-                             f"(default {DEFAULT_ARCHIVE_DIR})")
+                             f"(default {DEFAULT_ARCHIVE_DIR}; with --stage-context the default "
+                             f"is the world bundle {DEFAULT_WORLD_ARCHIVE_DIR})")
+    parser.add_argument("--stage-context", dest="stage_context", action="store_true",
+                        help="stooq-local: merge the index/macro CONTEXT series into an EXISTING "
+                             "staged manifest (iter-17, goal.md §H) — ^SPX/^NDX/^DJI deep from "
+                             "the local world bundle, ^VIX deep from Yahoo (sanctioned verbatim "
+                             "live-copy fallback), ^TNX/^DXY/^VXN byte-identical FRED-macro-proxy "
+                             "copies; per-series vendor recorded in meta.json")
     return parser
 
 
@@ -706,6 +989,12 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     config = load_config()
     out_dir = Path(args.out) if args.out else SEED_DIR
+
+    if args.stage_context and args.provider != "stooq-local":
+        print("[ingest] --stage-context merges the LOCAL world-bundle context into an existing "
+              "staged manifest; use --provider stooq-local (the ^VIX Yahoo leg is internal to "
+              "the mode — never a manifest-writing yahoo run).")
+        return EXIT_CONFLICT
 
     if args.provider == "yahoo":
         if args.probe:
@@ -745,17 +1034,26 @@ def main(argv: list[str] | None = None) -> int:
                   "validation suite (tests/test_seed_staged_30y.py) is the gate — re-run without "
                   "--probe.")
             return EXIT_CONFLICT
-        archive_dir = Path(args.archive_dir) if args.archive_dir else DEFAULT_ARCHIVE_DIR
+        default_archive = DEFAULT_WORLD_ARCHIVE_DIR if args.stage_context else DEFAULT_ARCHIVE_DIR
+        archive_dir = Path(args.archive_dir) if args.archive_dir else default_archive
         if not archive_dir.is_dir():
             print(f"[ingest] REFUSED: --archive-dir {archive_dir} does not exist. Point it at the "
-                  f"extracted Stooq bulk archive (default {DEFAULT_ARCHIVE_DIR}).")
+                  f"extracted Stooq bulk archive (default {default_archive}).")
             return EXIT_CONFLICT
         provider = make_local_stooq_provider(archive_dir)
-        print(f"[ingest] stooq-local: indexed {provider.indexed_count} symbols under {archive_dir}")
+        print(f"[ingest] stooq-local: indexed {provider.indexed_count} symbols under {archive_dir} "
+              f"({provider.world_indexed_count} world-bundle ^xxx.txt)")
         if provider.indexed_count == 0:
-            print(f"[ingest] REFUSED: no *.us.txt files found under {archive_dir} — wrong "
-                  f"--archive-dir? (expected the extracted d_us_txt tree).")
+            print(f"[ingest] REFUSED: no *.us.txt or ^xxx.txt files found under {archive_dir} — "
+                  f"wrong --archive-dir? (expected an extracted d_us_txt or d_world_txt tree).")
             return EXIT_CONFLICT
+        if args.stage_context:
+            if provider.world_indexed_count == 0:
+                print(f"[ingest] REFUSED: no ^xxx.txt world-bundle files under {archive_dir} — "
+                      f"the context merge needs the extracted d_world_txt tree "
+                      f"(default {DEFAULT_WORLD_ARCHIVE_DIR}).")
+                return EXIT_CONFLICT
+            return run_context_merge(provider, out_dir, start_arg=args.start, end_arg=args.end)
         sleep_s = 0.0 if args.sleep is None else args.sleep  # local disk — no politeness delay
         source, note = STOOQ_LOCAL_SOURCE, STOOQ_LOCAL_NOTE
     else:

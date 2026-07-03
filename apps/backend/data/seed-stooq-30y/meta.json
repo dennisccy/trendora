@@ -1,43 +1,19 @@
 {
   "source": "Stooq bulk US daily archive (local: data/d_us_txt, from stooq.com d_us_txt.zip)",
   "provider": "stooq",
-  "note": "REAL split/dividend-adjusted EOD OHLCV read from Stooq's BULK US stocks+ETFs archive (data/d_us_txt/, the operator's d_us_txt.zip) \u2014 the SAME vendor and adjusted data as the per-symbol endpoint, consumed locally to bypass the standing per-IP export ACL. Provider tag stays 'stooq' (vendor unchanged); only the access method differs. Per-name first bar is the name's real first bar \u2014 never padded, fabricated, or vendor-spliced. Caret index series (^VIX/^TNX/^VXN/^DXY) and any name absent from this stocks+ETFs bundle are recorded absent below (they come from a separate Stooq indices bundle), never fabricated.",
-  "generated_at": "2026-07-02T11:51:25.907309+00:00",
+  "note": "REAL split/dividend-adjusted EOD OHLCV read from Stooq's BULK US stocks+ETFs archive (data/d_us_txt/, the operator's d_us_txt.zip) \u2014 the SAME vendor and adjusted data as the per-symbol endpoint, consumed locally to bypass the standing per-IP export ACL. Provider tag stays 'stooq' (vendor unchanged); only the access method differs. Per-name first bar is the name's real first bar \u2014 never padded, fabricated, or vendor-spliced. Caret index series (^VIX/^TNX/^VXN/^DXY) and any name absent from this stocks+ETFs bundle are recorded absent below (they come from a separate Stooq indices bundle), never fabricated. Context series (iter-17, goal.md \u00a7H \u2014 mixed vendor, honestly disclosed per series): ^SPX/^NDX/^DJI staged DEEP from Stooq's world indices bundle (data/d_world_txt; vendor stooq \u2014 same vendor, local world archive), window-clipped to the pinned window; ^VIX from Yahoo (vendor yahoo; deep single pull, or the sanctioned verbatim live-seed copy on an unreachable endpoint \u2014 see its per-series note); ^TNX/^DXY/^VXN are the app's deterministic FRED-macro PROXIES copied BYTE-IDENTICAL from the live seed (vendor fred-macro-proxy), kept coherent with data/seed/macro/ and NEVER re-fetched from Yahoo. Each context record carries its per-series vendor; a proxy is never presented as a market index; no bar is fabricated, padded, interpolated, or vendor-spliced.",
+  "generated_at": "2026-07-02T21:01:09.339792+00:00",
   "window": {
     "start": "1996-01-01",
     "end": "2026-07-01"
   },
-  "symbols_planned": 588,
-  "symbols_ok": 583,
-  "symbols_failed": 5,
+  "symbols_planned": 591,
+  "symbols_ok": 590,
+  "symbols_failed": 1,
   "failed": [
-    "SATS",
-    "^DXY",
-    "^TNX",
-    "^VIX",
-    "^VXN"
+    "SATS"
   ],
   "failures": [
-    {
-      "symbol": "^VIX",
-      "kind": "no_data",
-      "detail": "empty CSV (no rows in window)"
-    },
-    {
-      "symbol": "^TNX",
-      "kind": "no_data",
-      "detail": "empty CSV (no rows in window)"
-    },
-    {
-      "symbol": "^VXN",
-      "kind": "no_data",
-      "detail": "empty CSV (no rows in window)"
-    },
-    {
-      "symbol": "^DXY",
-      "kind": "no_data",
-      "detail": "empty CSV (no rows in window)"
-    },
     {
       "symbol": "SATS",
       "kind": "no_data",
@@ -3543,6 +3519,59 @@
       "bars": 3373,
       "first": "2013-02-01",
       "last": "2026-07-01"
+    },
+    {
+      "symbol": "^SPX",
+      "bars": 7674,
+      "first": "1996-01-02",
+      "last": "2026-07-01",
+      "vendor": "stooq"
+    },
+    {
+      "symbol": "^NDX",
+      "bars": 7674,
+      "first": "1996-01-02",
+      "last": "2026-07-01",
+      "vendor": "stooq"
+    },
+    {
+      "symbol": "^DJI",
+      "bars": 7674,
+      "first": "1996-01-02",
+      "last": "2026-07-01",
+      "vendor": "stooq"
+    },
+    {
+      "symbol": "^TNX",
+      "bars": 1357,
+      "first": "2021-01-04",
+      "last": "2026-05-28",
+      "vendor": "fred-macro-proxy",
+      "note": "deterministic FRED-macro proxy copied byte-identical from the live seed \u2014 never re-fetched from Yahoo; coherent with data/seed/macro/; honestly short"
+    },
+    {
+      "symbol": "^DXY",
+      "bars": 1357,
+      "first": "2021-01-04",
+      "last": "2026-05-28",
+      "vendor": "fred-macro-proxy",
+      "note": "deterministic FRED-macro proxy copied byte-identical from the live seed \u2014 never re-fetched from Yahoo; coherent with data/seed/macro/; honestly short"
+    },
+    {
+      "symbol": "^VXN",
+      "bars": 1357,
+      "first": "2021-01-04",
+      "last": "2026-05-28",
+      "vendor": "fred-macro-proxy",
+      "note": "deterministic FRED-macro proxy copied byte-identical from the live seed \u2014 never re-fetched from Yahoo; coherent with data/seed/macro/; honestly short"
+    },
+    {
+      "symbol": "^VIX",
+      "bars": 7675,
+      "first": "1996-01-02",
+      "last": "2026-07-01",
+      "vendor": "yahoo",
+      "note": "deep single-pull Yahoo series, window-clipped \u2014 never spliced"
     }
   ]
 }

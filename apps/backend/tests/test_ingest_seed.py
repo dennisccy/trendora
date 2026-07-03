@@ -15,7 +15,7 @@ Honesty contract under test (anti-goal: No fabricated data):
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, timedelta
 
 import httpx
 import pytest
@@ -31,16 +31,20 @@ from scripts.ingest_seed import (
     EXIT_PROBE_FAIL,
     STOOQ_API_KEY_ENV,
     WindowConflictError,
+    _POW_MAX_ITERATIONS,
     _StooqVerifyClient,
+    _solve_stooq_pow,
     build_default_symbols,
     build_parser,
     build_pool_symbol_plan,
     classify_stooq_failure,
     load_manifest,
     main,
+    make_local_stooq_provider,
     make_stooq_provider,
     most_recent_completed_trading_day,
     resolve_stooq_window,
+    run_context_merge,
     run_probe,
     run_stooq_ingest,
 )
@@ -717,3 +721,469 @@ def test_stooq_local_routes_through_main(monkeypatch, tmp_path):
     assert "d_us_txt" in meta["source"]
     assert [e["symbol"] for e in meta["symbols"]] == ["AAPL"]
     assert meta["failed"] == ["^VIX"]
+
+
+# ---------------------------------------------------------------------------
+# iter-17: world-bundle indexing (plain ^xxx.txt) in the stooq-local path
+# ---------------------------------------------------------------------------
+
+def _make_world_archive(tmp_path):
+    """A tiny d_world_txt-shaped tree: plain `^xxx.txt` world indices (no `.us` suffix; the ^SPX
+    file reaches back to 1789 with flat monthly rows, like the real bundle) PLUS one `*.us.txt`
+    file in the same tree to prove the two layouts coexist in one index."""
+    world = tmp_path / "d_world_txt" / "data" / "daily" / "world" / "indices"
+    _write_bulk(world / "^spx.txt", "^SPX", [
+        ("17890501", 0.51, 0.51, 0.51, 0.51, 0),        # flat monthly 18xx rows — MUST be clipped
+        ("18710214", 4.86, 4.86, 4.86, 4.86, 0),
+        ("19951229", 615.93, 616.7, 613.2, 615.93, 0),   # last pre-window row
+        ("19960102", 620.73, 620.74, 613.17, 620.73, 350000),
+        ("19960103", 621.32, 624.5, 619.1, 621.32, 360000),
+        ("20260630", 7441.3, 7508.3, 7438.0, 7499.4, 3839254731),
+        ("20260701", 7478.8, 7521.8, 7449.6, 7483.2, 2583762787),
+    ])
+    _write_bulk(world / "^ndx.txt", "^NDX", [
+        ("19380103", 2.25, 2.29, 2.22, 2.24, 0),
+        ("19960102", 576.23, 578.0, 570.1, 576.23, 0),   # index rows may carry volume 0
+        ("20260701", 29914.28, 30084.78, 29787.41, 29809.13, 912401564),
+    ])
+    _write_bulk(world / "^dji.txt", "^DJI", [
+        ("18960527", 29.39, 29.39, 29.39, 29.39, 0),
+        ("19960102", 5177.45, 5194.2, 5130.0, 5177.45, 0),
+        ("20260701", 52231.2, 52742.7, 52026.6, 52305.2, 429385567),
+    ])
+    us = tmp_path / "d_world_txt" / "data" / "daily" / "us" / "nasdaq stocks" / "1"
+    _write_bulk(us / "aapl.us.txt", "AAPL.US", [
+        ("19960102", 0.24, 0.25, 0.23, 0.2425, 400000000),
+    ])
+    return tmp_path / "d_world_txt"
+
+
+def test_world_bundle_provider_indexes_carets_and_coexists(tmp_path):
+    """The stooq-local provider discovers plain `^xxx.txt` world-bundle files alongside the
+    `*.us.txt` US archive in ONE index; an absent caret stays an honest [] (never a raise —
+    a raised 'no file' would gate-stop the whole run)."""
+    provider = make_local_stooq_provider(_make_world_archive(tmp_path))
+    assert provider.indexed_count == 4        # ^spx + ^ndx + ^dji + aapl.us
+    assert provider.world_indexed_count == 3
+    bars = provider.get_daily("^SPX", date(1996, 1, 1), date(2026, 7, 1))
+    assert [b.date for b in bars][:2] == [date(1996, 1, 2), date(1996, 1, 3)]
+    assert bars[-1].date == date(2026, 7, 1)
+    assert provider.get_daily("AAPL", date(1996, 1, 1), date(2026, 7, 1))  # *.us.txt coexists
+    assert provider.get_daily("^VIX") == []   # not in the world bundle — honest absence
+    assert provider.get_daily("ZZZZ") == []
+
+
+def test_world_bundle_window_clip_excludes_pre_1996(tmp_path):
+    """The pinned-window clip is load-bearing: the world ^SPX file reaches 1789 (flat/monthly
+    early rows) and NONE of that may leak into a staged CSV; the unclipped read still serves the
+    deep rows (the clip is the caller's window, not data loss)."""
+    provider = make_local_stooq_provider(_make_world_archive(tmp_path))
+    bars = provider.get_daily("^SPX", date(1996, 1, 1), date(2026, 7, 1))
+    assert all(b.date >= date(1996, 1, 1) for b in bars)
+    assert len(bars) == 4                      # exactly the in-window fixture rows
+    assert provider.get_daily("^SPX")[0].date == date(1789, 5, 1)  # archive depth intact
+
+
+# ---------------------------------------------------------------------------
+# iter-17: context-merge staging mode (--stage-context)
+# ---------------------------------------------------------------------------
+
+_STAGED_EQUITY_NOTE = "equities note (iter-16 staging)"
+_STAGED_AAPL_ENTRY = {"symbol": "AAPL", "bars": 2, "first": "1996-01-02", "last": "2026-07-01"}
+
+
+def _make_staged_equities_dir(tmp_path):
+    """A miniature iter-16-shaped staged seed: one equity CSV + a manifest recording the four
+    caret context series and SATS as honest absences (the real staged manifest's exact shape)."""
+    out = tmp_path / "seed-stooq-30y"
+    prices = out / "prices"
+    prices.mkdir(parents=True)
+    (prices / "AAPL.csv").write_text(
+        "date,open,high,low,close,volume\n"
+        "1996-01-02,0.24,0.25,0.23,0.2425,400000000\n"
+        "2026-07-01,210.0,212.0,208.0,211.0,90000\n"
+    )
+    manifest = {
+        "source": "Stooq bulk US daily archive (local: data/d_us_txt, from stooq.com d_us_txt.zip)",
+        "provider": "stooq",
+        "note": _STAGED_EQUITY_NOTE,
+        "generated_at": "2026-07-02T11:51:25+00:00",
+        "window": {"start": "1996-01-01", "end": "2026-07-01"},
+        "symbols_planned": 6,
+        "symbols_ok": 1,
+        "symbols_failed": 5,
+        "failed": ["SATS", "^DXY", "^TNX", "^VIX", "^VXN"],
+        "failures": [
+            {"symbol": "^VIX", "kind": "no_data", "detail": "empty CSV (no rows in window)"},
+            {"symbol": "^TNX", "kind": "no_data", "detail": "empty CSV (no rows in window)"},
+            {"symbol": "^VXN", "kind": "no_data", "detail": "empty CSV (no rows in window)"},
+            {"symbol": "^DXY", "kind": "no_data", "detail": "empty CSV (no rows in window)"},
+            {"symbol": "SATS", "kind": "no_data", "detail": "empty CSV (no rows in window)"},
+        ],
+        "cap_events": [],
+        "symbols": [dict(_STAGED_AAPL_ENTRY)],
+    }
+    (out / "meta.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    return out
+
+
+_LIVE_CARET_CSVS = {
+    "_VIX.csv": ("date,open,high,low,close,volume\n"
+                 "2021-01-04,23.04,29.19,22.56,26.97,0\n"
+                 "2026-05-28,16.76,16.85,15.61,15.74,0\n"),
+    "_TNX.csv": ("date,open,high,low,close,volume\n"
+                 "2021-01-04,4.8,4.8,4.8,4.8,0\n"
+                 "2026-05-28,4.4,4.4,4.4,4.4,0\n"),
+    "_DXY.csv": ("date,open,high,low,close,volume\n"
+                 "2021-01-04,105.2,105.2,105.2,105.2,0\n"
+                 "2026-05-28,104.1,104.1,104.1,104.1,0\n"),
+    "_VXN.csv": ("date,open,high,low,close,volume\n"
+                 "2021-01-04,28.9,28.9,28.9,28.9,0\n"
+                 "2026-05-28,19.2,19.2,19.2,19.2,0\n"),
+}
+
+
+def _make_live_seed_fixture(tmp_path, include_vix=True):
+    """A miniature live-seed dir carrying the caret series (the proxy-copy / _VIX-fallback
+    sources). NEVER written by the merge — reads only."""
+    live = tmp_path / "live-seed"
+    prices = live / "prices"
+    prices.mkdir(parents=True)
+    for name, body in _LIVE_CARET_CSVS.items():
+        if name == "_VIX.csv" and not include_vix:
+            continue
+        (prices / name).write_text(body)
+    return live
+
+
+def _deep_vix_rows(start=date(1996, 1, 2), end=date(2026, 6, 30)):
+    """A synthetic DEEP, single-pull, continuous ^VIX series (weekly cadence — every gap is 7
+    calendar days, inside the single-continuous-series bound)."""
+    rows = []
+    d = start
+    while d <= end:
+        rows.append({"date": d.isoformat(), "open": 20.0, "high": 21.0, "low": 19.0,
+                     "close": 20.5, "volume": 0})
+        d += timedelta(days=7)
+    return rows
+
+
+def test_context_merge_stages_and_merges_manifest(tmp_path):
+    """The context merge stages _SPX/_NDX/_DJI (world bundle, window-clipped), byte-copies the
+    three FRED-macro proxies, writes the deep ^VIX pull, and MERGES the coverage/vendor records
+    into the existing staged manifest — 583-style equity records, pinned window, and provider
+    identity all untouched; the caret failures resolve; accounting stays consistent."""
+    out = _make_staged_equities_dir(tmp_path)
+    live = _make_live_seed_fixture(tmp_path)
+    provider = make_local_stooq_provider(_make_world_archive(tmp_path))
+    deep = _deep_vix_rows()
+
+    rc = run_context_merge(provider, out, live_seed_dir=live,
+                           fetch_vix_rows=lambda start, end: list(deep))
+    assert rc == 0
+
+    # world indexes staged, window-clipped, caret -> _XXX.csv mapping
+    spx_lines = (out / "prices" / "_SPX.csv").read_text().strip().splitlines()
+    assert spx_lines[0] == ",".join(CSV_FIELDS)
+    assert spx_lines[1].split(",")[0] == "1996-01-02"      # the 1789/1871/1995 rows were clipped
+    assert spx_lines[-1].split(",")[0] == "2026-07-01"     # last bar == the manifest's pinned end
+    assert len(spx_lines) == 1 + 4
+    assert (out / "prices" / "_NDX.csv").exists() and (out / "prices" / "_DJI.csv").exists()
+
+    # proxies byte-identical to the live seed; deep ^VIX written from the single pull
+    for name in ("_TNX.csv", "_DXY.csv", "_VXN.csv"):
+        assert (out / "prices" / name).read_bytes() == (live / "prices" / name).read_bytes()
+    vix_lines = (out / "prices" / "_VIX.csv").read_text().strip().splitlines()
+    assert vix_lines[1].split(",")[0] == "1996-01-02"
+    assert len(vix_lines) == 1 + len(deep)
+
+    meta = load_manifest(out)
+    assert meta["provider"] == "stooq"
+    assert meta["window"] == {"start": "1996-01-01", "end": "2026-07-01"}   # pins unchanged
+    assert meta["symbols"][0] == _STAGED_AAPL_ENTRY                          # equity record untouched
+    assert meta["source"].startswith("Stooq bulk US daily archive")         # source preserved
+    assert meta["note"].startswith(_STAGED_EQUITY_NOTE)                      # note EXTENDED, not replaced
+    assert "never presented as a market index" in meta["note"]
+    assert meta["symbols_planned"] == 6 + 3                                  # +^SPX/^NDX/^DJI only
+    assert meta["symbols_ok"] == 1 + 7 == len(meta["symbols"])
+    assert meta["symbols_failed"] == 1 and meta["failed"] == ["SATS"]        # caret failures resolved
+
+    by_symbol = {e["symbol"]: e for e in meta["symbols"]}
+    for symbol, vendor in (("^SPX", "stooq"), ("^NDX", "stooq"), ("^DJI", "stooq"),
+                           ("^VIX", "yahoo"), ("^TNX", "fred-macro-proxy"),
+                           ("^DXY", "fred-macro-proxy"), ("^VXN", "fred-macro-proxy")):
+        assert by_symbol[symbol]["vendor"] == vendor, symbol
+    assert "vendor" not in by_symbol["AAPL"]           # equity records keep the manifest-level tag
+    assert (by_symbol["^SPX"]["bars"], by_symbol["^SPX"]["first"], by_symbol["^SPX"]["last"]) == \
+        (4, "1996-01-02", "2026-07-01")
+    assert (by_symbol["^TNX"]["first"], by_symbol["^TNX"]["last"]) == ("2021-01-04", "2026-05-28")
+    assert by_symbol["^VIX"]["first"] == "1996-01-02"
+
+    # idempotent re-run: accounting stable, the note addendum appended exactly once
+    rc2 = run_context_merge(provider, out, live_seed_dir=live,
+                            fetch_vix_rows=lambda start, end: list(deep))
+    assert rc2 == 0
+    meta2 = load_manifest(out)
+    assert meta2["symbols_planned"] == 9 and meta2["symbols_ok"] == 8
+    assert meta2["note"].count("never presented as a market index") == 1
+
+
+def test_context_merge_vix_falls_back_to_verbatim_live_copy(tmp_path):
+    """Yahoo unreachable -> the SANCTIONED fallback: the live seed's _VIX.csv is copied VERBATIM
+    (byte-identical, honestly short), recorded vendor=yahoo with the shortfall — never a partial
+    or spliced series, and the merge still completes (iter-18 stays unblocked)."""
+    out = _make_staged_equities_dir(tmp_path)
+    live = _make_live_seed_fixture(tmp_path)
+    provider = make_local_stooq_provider(_make_world_archive(tmp_path))
+
+    def _unreachable(start, end):
+        raise httpx.ConnectError("connection refused")
+
+    rc = run_context_merge(provider, out, live_seed_dir=live, fetch_vix_rows=_unreachable)
+    assert rc == 0
+    assert (out / "prices" / "_VIX.csv").read_bytes() == \
+        (live / "prices" / "_VIX.csv").read_bytes()
+    meta = load_manifest(out)
+    vix = next(e for e in meta["symbols"] if e["symbol"] == "^VIX")
+    assert vix["vendor"] == "yahoo"
+    assert (vix["first"], vix["last"]) == ("2021-01-04", "2026-05-28")  # honestly short, recorded
+    assert "fallback" in vix.get("note", "")
+
+
+def test_context_merge_shallow_or_stale_pull_falls_back_never_splices(tmp_path):
+    """A pull that is NOT the deep series (shallow first bar) or that would LOSE coverage vs the
+    live copy (stale last bar) is discarded IN FULL for the verbatim fallback — the two pulls are
+    never merged/spliced into one series (anti-goal: no vendor-spliced bars)."""
+    out = _make_staged_equities_dir(tmp_path)
+    live = _make_live_seed_fixture(tmp_path)
+    provider = make_local_stooq_provider(_make_world_archive(tmp_path))
+
+    shallow = [{"date": "2021-01-04", "open": 23.0, "high": 29.2, "low": 22.6, "close": 26.97,
+                "volume": 0},
+               {"date": "2026-06-30", "open": 16.0, "high": 17.0, "low": 15.5, "close": 15.9,
+                "volume": 0}]
+    rc = run_context_merge(provider, out, live_seed_dir=live,
+                           fetch_vix_rows=lambda start, end: list(shallow))
+    assert rc == 0
+    assert (out / "prices" / "_VIX.csv").read_bytes() == \
+        (live / "prices" / "_VIX.csv").read_bytes()          # verbatim copy, NOT the shallow pull
+
+    stale = _deep_vix_rows(end=date(2020, 1, 1))             # deep but ends before the live copy
+    out2 = _make_staged_equities_dir(tmp_path / "second")
+    rc2 = run_context_merge(provider, out2, live_seed_dir=live,
+                            fetch_vix_rows=lambda start, end: list(stale))
+    assert rc2 == 0
+    assert (out2 / "prices" / "_VIX.csv").read_bytes() == \
+        (live / "prices" / "_VIX.csv").read_bytes()
+
+
+def test_context_merge_refuses_missing_or_foreign_manifest(tmp_path):
+    """The merge targets an EXISTING stooq staging manifest only: a dir with no manifest (the
+    equities staging hasn't run) and a dir with a foreign (live Yahoo) manifest are both REFUSED
+    before any write."""
+    provider = make_local_stooq_provider(_make_world_archive(tmp_path))
+    live = _make_live_seed_fixture(tmp_path)
+
+    empty = tmp_path / "empty-out"
+    empty.mkdir()
+    rc = run_context_merge(provider, empty, live_seed_dir=live,
+                           fetch_vix_rows=lambda start, end: [])
+    assert rc == EXIT_CONFLICT
+    assert not (empty / "prices").exists()
+
+    foreign = tmp_path / "live-shaped"
+    foreign.mkdir()
+    (foreign / "meta.json").write_text(json.dumps({
+        "source": "Yahoo Finance chart API (query1.finance.yahoo.com/v8/finance/chart)",
+        "window": {"start": "2021-01-04", "end": "2026-05-28"},
+        "symbols": [],
+    }))
+    rc2 = run_context_merge(provider, foreign, live_seed_dir=live,
+                            fetch_vix_rows=lambda start, end: [])
+    assert rc2 == EXIT_CONFLICT
+    assert not (foreign / "prices").exists()
+
+
+def test_context_merge_window_conflict_refused(tmp_path):
+    """An explicit --start/--end conflicting with the manifest's pinned window is refused (never
+    a mixed-window basis) — nothing staged."""
+    out = _make_staged_equities_dir(tmp_path)
+    live = _make_live_seed_fixture(tmp_path)
+    provider = make_local_stooq_provider(_make_world_archive(tmp_path))
+    rc = run_context_merge(provider, out, end_arg="2026-06-30", live_seed_dir=live,
+                           fetch_vix_rows=lambda start, end: [])
+    assert rc == EXIT_CONFLICT
+    assert not (out / "prices" / "_SPX.csv").exists()
+    assert load_manifest(out)["symbols_planned"] == 6      # manifest untouched
+
+
+def test_context_merge_absent_world_series_recorded_honestly(tmp_path):
+    """A context series absent from its source is recorded as an honest manifest failure —
+    never fabricated, and the rest of the merge still lands."""
+    archive = tmp_path / "d_world_txt" / "data" / "daily" / "world" / "indices"
+    _write_bulk(archive / "^spx.txt", "^SPX", [
+        ("19960102", 620.73, 620.74, 613.17, 620.73, 350000),
+        ("20260701", 7478.8, 7521.8, 7449.6, 7483.2, 2583762787),
+    ])  # NO ^ndx.txt / ^dji.txt in this bundle
+    out = _make_staged_equities_dir(tmp_path)
+    live = _make_live_seed_fixture(tmp_path)
+    provider = make_local_stooq_provider(tmp_path / "d_world_txt")
+
+    rc = run_context_merge(provider, out, live_seed_dir=live,
+                           fetch_vix_rows=lambda start, end: list(_deep_vix_rows()))
+    assert rc == 0
+    assert (out / "prices" / "_SPX.csv").exists()
+    assert not (out / "prices" / "_NDX.csv").exists()
+    meta = load_manifest(out)
+    assert set(meta["failed"]) == {"SATS", "^NDX", "^DJI"}
+    ndx = next(f for f in meta["failures"] if f["symbol"] == "^NDX")
+    assert ndx["kind"] == "no_data" and "world" in ndx["detail"]
+
+
+def test_regular_resume_preserves_merged_manifest_provenance(tmp_path):
+    """A regular (non-context) resume over an ALREADY-MERGED staged manifest must not shrink
+    `symbols_planned` or rewrite the note/source provenance — the iter-17 vendor addendum,
+    accounting, and per-series vendor records survive later maintenance runs (the merge is
+    never silently overwritten by a narrower invocation)."""
+    out = _make_staged_equities_dir(tmp_path)
+    live = _make_live_seed_fixture(tmp_path)
+    provider = make_local_stooq_provider(_make_world_archive(tmp_path))
+    assert run_context_merge(provider, out, live_seed_dir=live,
+                             fetch_vix_rows=lambda start, end: list(_deep_vix_rows())) == 0
+    merged = load_manifest(out)
+    assert merged["symbols_planned"] == 9
+
+    # a later regular run with a NARROW symbol set: everything already staged -> nothing fetched
+    rc = run_stooq_ingest(provider, ["AAPL"], date(1996, 1, 1), date(2026, 7, 1), out, sleep_s=0,
+                          source="narrow-run-source", note="narrow-run-note")
+    assert rc == 0
+    meta = load_manifest(out)
+    assert meta["symbols_planned"] == 9                       # not shrunk to 1
+    assert meta["note"] == merged["note"]                     # addendum survives
+    assert meta["source"] == merged["source"]
+    spx = next(e for e in meta["symbols"] if e["symbol"] == "^SPX")
+    assert spx["vendor"] == "stooq"                           # vendor records survive
+
+
+def test_context_merge_redacts_env_key_on_failure_path(monkeypatch, tmp_path):
+    """(B1 discipline) The context merge's NEW failure-record path routes error/URL text through
+    the redaction choke point: with STOOQ_API_KEY in the environment and a failing pull whose
+    message embeds it, nothing env-sourced persists into the committed manifest."""
+    monkeypatch.setenv(STOOQ_API_KEY_ENV, "ctx-secret-key-9")
+    out = _make_staged_equities_dir(tmp_path)
+    live = _make_live_seed_fixture(tmp_path, include_vix=False)   # no fallback copy available
+    provider = make_local_stooq_provider(_make_world_archive(tmp_path))
+
+    def _keyed_failure(start, end):
+        raise httpx.HTTPError(
+            "Client error '401 Unauthorized' for url "
+            "'https://query1.finance.yahoo.com/v8/finance/chart/^VIX"
+            "?apikey=ctx-secret-key-9&period1=820454400'"
+        )
+
+    rc = run_context_merge(provider, out, live_seed_dir=live, fetch_vix_rows=_keyed_failure)
+    assert rc == 0                                    # honest absence recorded; suite is the gate
+    meta_text = (out / "meta.json").read_text()
+    assert "ctx-secret-key-9" not in meta_text        # never persisted (anti-goal: no secrets)
+    meta = json.loads(meta_text)
+    vix_failure = next(f for f in meta["failures"] if f["symbol"] == "^VIX")
+    assert "apikey=***" in vix_failure["detail"]      # evidence kept, secret stripped
+
+
+# ---------------------------------------------------------------------------
+# iter-17: --stage-context CLI wiring
+# ---------------------------------------------------------------------------
+
+def test_parser_stage_context_flag_default_off():
+    assert build_parser().parse_args([]).stage_context is False
+    assert build_parser().parse_args(["--stage-context"]).stage_context is True
+
+
+def test_stage_context_requires_stooq_local():
+    """--stage-context reads the LOCAL world bundle; the yahoo and stooq-network providers refuse
+    it (the ^VIX Yahoo leg is internal to the mode, never a manifest-writing yahoo run)."""
+    assert main(["--stage-context"]) == EXIT_CONFLICT
+    assert main(["--provider", "stooq", "--stage-context"]) == EXIT_CONFLICT
+
+
+def test_stage_context_refuses_missing_or_worldless_archive(tmp_path):
+    """Missing --archive-dir path -> REFUSED; an archive with NO ^xxx.txt world files (e.g. the
+    US-only d_us_txt tree) -> REFUSED for context staging (wrong bundle, before any write)."""
+    out = _make_staged_equities_dir(tmp_path)
+    rc = main(["--provider", "stooq-local", "--stage-context", "--out", str(out),
+               "--archive-dir", str(tmp_path / "nope")])
+    assert rc == EXIT_CONFLICT
+
+    us_only = _make_local_archive(tmp_path)           # *.us.txt files, zero ^xxx.txt
+    rc2 = main(["--provider", "stooq-local", "--stage-context", "--out", str(out),
+                "--archive-dir", str(us_only)])
+    assert rc2 == EXIT_CONFLICT
+    assert not (out / "prices" / "_SPX.csv").exists()
+
+
+def test_stage_context_routes_through_main(monkeypatch, tmp_path):
+    """Full CLI path: --provider stooq-local --stage-context stages the world indexes + proxies
+    and takes the sanctioned _VIX fallback when Yahoo is unreachable — exit 0, swap-completeness
+    material all staged."""
+    import scripts.ingest_seed as ingest_seed
+
+    out = _make_staged_equities_dir(tmp_path)
+    live = _make_live_seed_fixture(tmp_path)
+    archive = _make_world_archive(tmp_path)
+    monkeypatch.setattr(ingest_seed, "SEED_DIR", live)
+
+    def _unreachable(start, end):
+        raise httpx.ConnectError("connection refused")
+
+    monkeypatch.setattr(ingest_seed, "_fetch_yahoo_vix_rows", _unreachable)
+    rc = main(["--provider", "stooq-local", "--stage-context", "--out", str(out),
+               "--archive-dir", str(archive)])
+    assert rc == 0
+    for name in ("_SPX.csv", "_NDX.csv", "_DJI.csv", "_TNX.csv", "_DXY.csv", "_VXN.csv"):
+        assert (out / "prices" / name).exists(), name
+    assert (out / "prices" / "_VIX.csv").read_bytes() == \
+        (live / "prices" / "_VIX.csv").read_bytes()
+
+
+# ---------------------------------------------------------------------------
+# iter-17: B2 carry-forward — the proof-of-work solve is bounded
+# ---------------------------------------------------------------------------
+
+def test_solve_stooq_pow_bounded_with_honest_failure():
+    """(audit B2) `_solve_stooq_pow` is a bounded loop: real difficulties still solve (regression),
+    and an unsolvable challenge raises an HONEST failure at the cap — classified as a gate stop
+    (resumable, never an unbounded spin)."""
+    import hashlib
+
+    n = _solve_stooq_pow(_CHALLENGE_C, 1)             # regression: the served difficulty solves
+    assert hashlib.sha256(f"{_CHALLENGE_C}{n}".encode()).hexdigest().startswith("0")
+
+    with pytest.raises(ProviderUnavailableError) as exc:
+        _solve_stooq_pow("unsolvable", 64, max_iterations=250)   # 64 leading zeros: impossible
+    message = str(exc.value)
+    assert "250" in message and "difficulty 64" in message
+    assert classify_stooq_failure(message) == "gate"  # -> retry then honest resumable stop
+    assert _POW_MAX_ITERATIONS >= 1_000_000           # the default cap clears real difficulties
+
+
+# ---------------------------------------------------------------------------
+# iter-17: live integration — the deep ^VIX Yahoo pull (the real-system check)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+def test_yahoo_vix_deep_pull_live_or_skip():
+    """Live integration (real-data-only): one deep-window ^VIX request against the real Yahoo
+    chart API. Skips honestly when the host cannot reach Yahoo — the sanctioned verbatim-copy
+    fallback covers staging either way; the honest outcome is documented in the dev handoff."""
+    from scripts.ingest_seed import _fetch_yahoo_vix_rows
+
+    try:
+        rows = _fetch_yahoo_vix_rows(date(1996, 1, 1), date(1996, 3, 29))
+    except Exception as exc:  # noqa: BLE001 — any live failure = the documented fallback branch
+        pytest.skip(f"Yahoo chart API unreachable from this host: {exc}")
+    assert rows, "Yahoo returned an empty ^VIX series for a window it is known to cover"
+    assert rows[0]["date"] <= "1996-01-05"            # deep coverage exists at the window start
+    assert rows[-1]["date"] <= "1996-03-29"           # clipped to the requested end
+    dates = [r["date"] for r in rows]
+    assert dates == sorted(set(dates))                # ascending, no duplicates
+    assert all(float(r["close"]) > 0 for r in rows)
