@@ -1,6 +1,6 @@
 # Agents
 
-The framework defines 14 agents in `.claude/agents/`. Each agent has a model tier assignment in `config/agent-models.yaml`. Twelve agents serve the phase pipeline; two are specific to goal mode.
+The framework defines 19 agents in `.claude/agents/` (rendered from `agents/<name>/`). Each agent has a `model_tier` in its `agent.yaml`, resolved via `config/model-tiers.yaml`. Twelve serve the phase pipeline; four are goal-mode agents (goal-decomposer, goal-evaluator, coherence-auditor, goal-proposer); three are showcase/maintenance agents (iteration-summarizer, demo-narrator, readme-maintainer).
 
 ## Model Tiers
 
@@ -117,7 +117,7 @@ The framework defines 14 agents in `.claude/agents/`. Each agent has a model tie
 - **Output:** `reports/phase-{N}-closure-verdict.md`
 - **Role:** Final gate before finalize. Validates all UI artifacts exist, are non-vague, and are consistent. Blocks false completion.
 
-## Goal Mode Agents (2)
+## Goal Mode Agents (4 — plus 3 showcase agents documented in CLAUDE.md and their agent files)
 
 These agents are invoked only by the goal-mode pipeline (`run-goal.sh` and `goal-iter-lean.sh`). Phase mode does not use them. See [`goal-mode.md`](goal-mode.md) for how they fit into the loop.
 

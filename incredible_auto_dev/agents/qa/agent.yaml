@@ -7,5 +7,3 @@ model_tier: light
 version: 1.1.0
 last_updated: '2026-07-03'
 body: body.md
-claude:
-  model_override: claude-haiku-4-5

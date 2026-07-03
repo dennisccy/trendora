@@ -166,6 +166,16 @@ else
   _fail "hook: on-stop-check-artifacts errored with no runs/"
 fi
 
+# Model config has ONE source: model_tier in agent.yaml → config/model-tiers.yaml.
+# A model_override reappearing means someone re-pinned a concrete id — allowed
+# only as a deliberate temporary exception (maintenance-protocol §6), which
+# should be visible here, not silent.
+if grep -l "model_override" agents/*/agent.yaml >/dev/null 2>&1; then
+  _fail "model config: model_override found in agents/*/agent.yaml — tiers are the single source (see .claude/maintenance-protocol.md §6): $(grep -l 'model_override' agents/*/agent.yaml | tr '\n' ' ')"
+else
+  _pass "model config: no per-agent model_override pins; tiers are the single source"
+fi
+
 # ── 2e. Build-product drift gate ─────────────────────────────────────────────
 # .claude/ is rendered from the neutral source; a divergence means someone
 # edited one side without resyncing (see .claude/maintenance-protocol.md §3).

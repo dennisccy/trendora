@@ -8,5 +8,3 @@ model_tier: standard
 version: 1.0.1
 last_updated: '2026-05-21'
 body: body.md
-claude:
-  model_override: claude-sonnet-5
