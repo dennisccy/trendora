@@ -60,6 +60,25 @@ class BrowserQAVerdict(str, Enum):
     SKIPPED = "SKIPPED"
 
 
+class GoalEvalVerdict(str, Enum):
+    """Goal-evaluator iteration verdicts (runs/goal-session-<sid>/iter-N/eval.md).
+
+    Parsed by run-goal.sh; shape-validated at runtime by lib/goal-gates.sh via
+    artifact_schemas.py (a malformed verdict is demoted, never fail-open)."""
+    GOAL_ACHIEVED = "GOAL_ACHIEVED"
+    CONTINUE = "CONTINUE"
+    ESCALATE = "ESCALATE"
+    REGRESSION = "REGRESSION"
+    STALLED = "STALLED"
+
+
+class CoherenceVerdict(str, Enum):
+    """Coherence-auditor verdicts (runs/goal-session-<sid>/iter-N/coherence.md)."""
+    COHERENCE_PASS = "COHERENCE-PASS"
+    COHERENCE_WARN = "COHERENCE-WARN"
+    COHERENCE_FAIL = "COHERENCE-FAIL"
+
+
 class IterationSummaryVerdict(str, Enum):
     """Iteration summary verdicts (reports/phase-{N}-iteration-summary.md).
 

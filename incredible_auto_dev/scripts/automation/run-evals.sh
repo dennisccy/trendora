@@ -115,6 +115,17 @@ else
   _fail "self-test: parallel.sh (run: bash scripts/automation/lib/parallel.sh self-test)"
 fi
 
+# Goal-mode deterministic gates (verdict cross-checks, diff scan/bounding).
+_run_self_test scripts/automation/lib/goal_gate.py self-test
+_run_self_test scripts/automation/lib/scan_diff.py self-test
+_run_self_test scripts/automation/lib/diff_bound.py self-test
+if bash scripts/automation/lib/goal-gates.sh --self-test >/dev/null 2>&1; then
+  _pass "self-test: goal-gates.sh (verdict gates + two-key confirm, stubbed dispatch)"
+else
+  bash scripts/automation/lib/goal-gates.sh --self-test || true
+  _fail "self-test: goal-gates.sh"
+fi
+
 # ── 2c. Standalone unit-test scripts (API-free by design) ────────────────────
 _log "2c. tests/automation unit tests"
 for _t in tests/automation/test-quota-retry.sh tests/automation/test-install-gate.sh; do

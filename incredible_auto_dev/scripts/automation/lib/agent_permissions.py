@@ -73,6 +73,13 @@ EFFORT_OVERRIDES: dict[str, str] = {
     "phase-closure-auditor": "medium",
     "ui-impact-analyst":     "medium",
     "qa":                    "medium",  # both generate-mode and validate-mode
+    # Non-gating narrative/showcase agents: their output quality bar is
+    # readable prose from already-written artifacts, not judgment. Judges,
+    # gates, and browser-qa stay at max.
+    "iteration-summarizer":  "medium",
+    "readme-maintainer":     "medium",
+    "demo-narrator":         "medium",
+    "ux-regression-reviewer": "medium",
 }
 
 # Reads from the legacy `.claude/agents/<name>.md` (frontmatter) by default to
@@ -484,6 +491,12 @@ def _self_test() -> int:
         assert effort_for("phase-closure-auditor") == "medium"
         assert effort_for("ui-impact-analyst") == "medium"
         assert effort_for("qa") == "medium", "qa must drop to medium for both modes"
+        assert effort_for("iteration-summarizer") == "medium", "showcase agents drop to medium"
+        assert effort_for("readme-maintainer") == "medium"
+        assert effort_for("demo-narrator") == "medium"
+        assert effort_for("ux-regression-reviewer") == "medium"
+        assert effort_for("goal-evaluator") == "max", "judges stay at max"
+        assert effort_for("browser-qa-agent") == "max", "browser-qa stays at max"
         assert effort_for("some-unknown-agent") == "max", "default must be max"
 
     print("self-test passed")

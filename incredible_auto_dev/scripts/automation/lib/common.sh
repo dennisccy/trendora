@@ -636,6 +636,31 @@ _start_service_with_retries() {
   return 1
 }
 
+# ── Escalation ladder (model) ─────────────────────────────────────────────────
+# Fix-mode retries run on the strong tier: a task that already failed once on
+# its normal model gets more capability, not another identical roll
+# (.claude/model-orchestration.md §5). Works on both backends — headless via
+# the --model injection in quota-retry.sh, interactive via the request JSON's
+# model field. Disable with CHAIN_MODEL_ESCALATION=false.
+escalate_model_on() {
+  [[ "${CHAIN_MODEL_ESCALATION:-true}" != "true" ]] && return 0
+  local _m
+  _m="$(python3 "$(dirname "${BASH_SOURCE[0]}")/agent_permissions.py" tier-model strong 2>/dev/null || true)"
+  if [[ -n "$_m" ]]; then
+    export CHAIN_MODEL_OVERRIDE="$_m"
+    echo "[escalation] retry runs on the strong tier: $_m"
+    if declare -F record_telemetry_event >/dev/null 2>&1; then
+      record_telemetry_event "model_escalation" "$(jq -cn --arg m "$_m" '{model:$m, escalated:true}' 2>/dev/null || printf '{"model":"%s","escalated":true}' "$_m")" || true
+    fi
+  fi
+  return 0
+}
+
+escalate_model_off() {
+  unset CHAIN_MODEL_OVERRIDE
+  return 0
+}
+
 # ── Idempotent service bootstrap (shared by qa-phase.sh and browser-qa-phase.sh) ──
 #
 # Starts the backend (and optionally frontend) if they are not already running.

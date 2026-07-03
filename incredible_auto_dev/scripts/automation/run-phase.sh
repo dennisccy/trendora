@@ -580,8 +580,10 @@ if [[ "$SKIP_DEV_REVIEW" == "false" ]]; then
       log "  [attempt $ATTEMPT/$MAX_RETRIES] Skipping dev (already completed), running reviewer..."
     else
       log "  [attempt $ATTEMPT/$MAX_RETRIES] Running dev agent..."
+      [[ $ATTEMPT -ge 2 ]] && escalate_model_on
       dev_rc=0
       _run_step "$SCRIPT_DIR/dev-phase.sh" "$PHASE" || dev_rc=$?
+      escalate_model_off
       if [[ $dev_rc -eq 75 ]]; then
         ATTEMPT=$((ATTEMPT - 1))  # don't count quota failures as attempts
         continue
@@ -795,7 +797,9 @@ if [[ "$SKIP_QA" == "false" ]]; then
 
     log "  QA: FAIL (attempt $QA_ATTEMPT) -- fixing then re-reviewing..."
     qd_rc=0
+    escalate_model_on
     _run_step "$SCRIPT_DIR/dev-phase.sh" "$PHASE" || qd_rc=$?
+    escalate_model_off
     [[ $qd_rc -eq 75 ]] && { QA_ATTEMPT=$((QA_ATTEMPT - 1)); continue; }
     _guard_step_rc "$qd_rc" "Step 7 fix-mode (dev)"
     [[ $qd_rc -ne 0 ]] && log "  Warning: dev-phase.sh exited with error -- continuing"
@@ -879,7 +883,9 @@ if [[ "$SKIP_AUDIT" == "false" ]]; then
 
     log "  Audit: FAIL (attempt $AUDIT_ATTEMPT) -- applying hardening fixes..."
     ad_rc=0
+    escalate_model_on
     _run_step "$SCRIPT_DIR/dev-phase.sh" "$PHASE" || ad_rc=$?
+    escalate_model_off
     [[ $ad_rc -eq 75 ]] && { AUDIT_ATTEMPT=$((AUDIT_ATTEMPT - 1)); continue; }
     _guard_step_rc "$ad_rc" "Step 9 hardening (dev)"
     [[ $ad_rc -ne 0 ]] && log "  Warning: dev-phase.sh exited with error -- continuing"

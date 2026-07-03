@@ -58,6 +58,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/telemetry.sh"
+source "$SCRIPT_DIR/lib/goal-gates.sh"
 
 # Pull --cli (and --force-cli) out of the args BEFORE the existing parse loop,
 # so the loop below sees only its known flags.
@@ -70,7 +71,8 @@ fi
 
 # ── Defaults ──────────────────────────────────────────────────────────────
 SESSION_ID=""
-MAX_ITER=0          # 0 = unlimited (no iteration cap); a positive --max-iter restores a hard budget
+MAX_ITER=0          # 0 = unlimited; NEW sessions default to 60 unless --max-iter is passed (explicit 0 keeps unlimited); resume honors the value stored in session.json
+MAX_ITER_EXPLICIT=false
 STALL_WINDOW=3
 RESUME=false
 RESET=false
@@ -102,7 +104,7 @@ RESUME_PUSH_MODE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --session-id)              SESSION_ID="$2"; shift 2 ;;
-    --max-iter)                MAX_ITER="$2"; shift 2 ;;
+    --max-iter)                MAX_ITER="$2"; MAX_ITER_EXPLICIT=true; shift 2 ;;
     --stall-window)            STALL_WINDOW="$2"; shift 2 ;;
     --resume)                  RESUME=true; shift ;;
     --reset)                   RESET=true; shift ;;
@@ -659,14 +661,26 @@ EOF
   RUN_MODE="new"
 fi
 
-# Allow --max-iter override on resume; also persist the resolved push_per_iter
-# / push_branch values so a subsequent resume picks them up (key may have been
-# absent in older sessions that pre-date the per-iter push feature).
+# New sessions get a default iteration cap (a fail-open loop with a
+# never-halting evaluator previously ran unbounded). --max-iter always wins,
+# and an explicit --max-iter 0 keeps a session unlimited. Resume honors the
+# value already stored in session.json rather than silently resetting it.
+if [[ "$RUN_MODE" == "new" && "$MAX_ITER_EXPLICIT" != "true" ]]; then
+  MAX_ITER=60
+  echo "[run-goal] Default iteration cap: $MAX_ITER (override with --max-iter N; 0 = unlimited)."
+fi
+
+# Persist halt config; also persist the resolved push_per_iter / push_branch
+# values so a subsequent resume picks them up (key may have been absent in
+# older sessions that pre-date the per-iter push feature).
 python3 - <<PY
 import json
 d = json.load(open("$SESSION_JSON"))
 d.setdefault("halt_config", {})
-d["halt_config"]["max_iterations"] = $MAX_ITER
+if "$RUN_MODE" == "new" or "$MAX_ITER_EXPLICIT" == "true":
+    d["halt_config"]["max_iterations"] = $MAX_ITER
+else:
+    d["halt_config"].setdefault("max_iterations", $MAX_ITER)
 d["halt_config"]["stall_window"] = $STALL_WINDOW
 if $( [[ "$AUTO_RELEASE" == "true" ]] && echo "True" || echo "False" ):
   d["auto_release"] = True
@@ -682,6 +696,10 @@ with _os.fdopen(_fd, "w") as _f:
     _f.write("\n")
 _os.replace(_tmp, "$SESSION_JSON")
 PY
+
+# The effective cap is whatever session.json now holds (resume may have kept a
+# stored value that differs from this invocation's $MAX_ITER default).
+MAX_ITER=$(python3 -c "import json; print(json.load(open('$SESSION_JSON')).get('halt_config', {}).get('max_iterations', 0))" 2>/dev/null || echo "$MAX_ITER")
 
 # Resuming from a blueprint-approval pause: the human has reviewed (and possibly
 # edited) state/blueprint.md. Treat the act of resuming as approval, and clear any
@@ -1070,6 +1088,14 @@ PY
   # 200 lines is conservative and covers multi-paragraph entries.
   EVALUATOR_LOG_TAIL=$(_tail_or_placeholder "$EVALUATOR_LOG" 200 "(no entries yet — first iteration)")
   LESSONS_TAIL=$(_tail_or_placeholder "$LESSONS_FILE" 200 "(no lessons recorded yet)")
+  # Token-lean goal view (T1/T8): stable passing journeys digested to one line,
+  # vision/anti-goals/failing journeys verbatim; plus an inline journey digest.
+  # Both fail safe (full file / placeholder) — see lib/goal_gate.py.
+  GOAL_SLICE_PATH="$ITER_DIR/goal-slice.md"
+  python3 "$SCRIPT_DIR/lib/goal_gate.py" goal-slice "$GOAL_FILE" \
+    --history "$JOURNEY_HISTORY" --out "$GOAL_SLICE_PATH" 2>/dev/null \
+    || cp "$GOAL_FILE" "$GOAL_SLICE_PATH" 2>/dev/null || GOAL_SLICE_PATH="$GOAL_FILE"
+  JOURNEY_DIGEST=$(python3 "$SCRIPT_DIR/lib/goal_gate.py" digest "$JOURNEY_HISTORY" 2>/dev/null || echo "(journey digest unavailable — read $JOURNEY_HISTORY)")
   cd "$REPO_ROOT"
   record_agent_invocation_start "goal-decomposer"   # bare call: must NOT be $(...) or the CHAIN_CURRENT_AGENT export is lost to a subshell
   _decomp_start=$CHAIN_AGENT_START_EPOCH
@@ -1084,7 +1110,8 @@ Prior verdict: $PRIOR_VERDICT
 Prior depth: $PRIOR_DEPTH
 
 Project template: .claude/project-template.md
-Project goal: $GOAL_FILE  <-- read 'Must-have user journeys' and 'Anti-goals'
+Project goal (SLICED — vision + anti-goals + failing/target journeys verbatim; stable passing journeys digested to one line): $GOAL_SLICE_PATH
+  Full goal file: $GOAL_FILE — Read it ONLY if a digested journey becomes relevant to your plan.
 Agent instructions: .claude/agents/goal-decomposer.md  <-- read this first
 (CLAUDE.md is already in your system prompt — do not Read it again.)
 
@@ -1096,7 +1123,10 @@ Lessons learned (full file, append-only):
 \`\`\`
 $LESSONS_TAIL
 \`\`\`
-Journey history: $JOURNEY_HISTORY  <-- read for full journey state
+Journey state (inline digest; Read $JOURNEY_HISTORY only for fields the digest omits):
+\`\`\`
+$JOURNEY_DIGEST
+\`\`\`
 
 $( [[ $CURRENT_ITER -gt 0 && -f "$GOAL_SESSION_DIR_LOCAL/iter-$((CURRENT_ITER-1))/eval.md" ]] && echo "Last iteration eval: $GOAL_SESSION_DIR_LOCAL/iter-$((CURRENT_ITER-1))/eval.md")
 
@@ -1271,6 +1301,23 @@ The verdict line MUST appear first and start exactly with:
     record_telemetry_event "coherence_audit" "$(jq -cn --arg v "${_coh_verdict:-unknown}" '{verdict:$v}' 2>/dev/null || printf '{"verdict":"%s"}' "${_coh_verdict:-unknown}")"
   fi
 
+  # 3c. Pre-evaluator deterministic artifacts (gates + token-lean context).
+  #   - journey-history.pre.json: snapshot BEFORE the evaluator rewrites it —
+  #     the regression cross-check compares against this (skipped on the
+  #     .evaluated reuse path, where the prior attempt's snapshot must survive)
+  #   - scan-report.md / iter-diff.md: full-diff secret scan + bounded diff view
+  #   - goal-slice refresh with this iteration's Target journeys kept verbatim
+  if [[ ! -f "$ITER_DIR/.evaluated" ]]; then
+    cp "$JOURNEY_HISTORY" "$ITER_DIR/journey-history.pre.json" 2>/dev/null || true
+  fi
+  _snapshot_sha_for_gates="$(cat "$ITER_DIR/snapshot-sha" 2>/dev/null || echo "")"
+  goal_gate_build_diff_artifacts "$ITER_DIR" "$_snapshot_sha_for_gates" "$REPO_ROOT" || true
+  _spec_targets="$(grep -m1 -E 'Target journeys:' "$ITER_SPEC_PATH" 2>/dev/null | sed -E 's/.*Target journeys:\*?\*?[[:space:]]*//' | tr -d ' ' )" || _spec_targets=""
+  python3 "$SCRIPT_DIR/lib/goal_gate.py" goal-slice "$GOAL_FILE" \
+    --history "$JOURNEY_HISTORY" ${_spec_targets:+--targets "$_spec_targets"} \
+    --out "$GOAL_SLICE_PATH" 2>/dev/null || true
+  JOURNEY_DIGEST=$(python3 "$SCRIPT_DIR/lib/goal_gate.py" digest "$JOURNEY_HISTORY" 2>/dev/null || echo "(journey digest unavailable — read $JOURNEY_HISTORY)")
+
   # 4. Goal evaluator
   echo "[run-goal] Step 3: goal-evaluator"
   EVAL_OUTPUT="$ITER_DIR/eval.md"
@@ -1295,12 +1342,15 @@ Iteration index: $CURRENT_ITER
 Iter name: $ITER_NAME
 Depth dispatched: $DEPTH
 
-Project goal: $GOAL_FILE  <-- read 'Must-have user journeys' and 'Anti-goals'
+Project goal (SLICED — vision + anti-goals + target/failing journeys verbatim; stable passing journeys digested): $GOAL_SLICE_PATH
+  Full goal file: $GOAL_FILE — Read it ONLY if a digested journey becomes relevant.
 Iter spec: $ITER_SPEC_PATH
 Agent instructions: .claude/agents/goal-evaluator.md  <-- read this first
 (CLAUDE.md is already in your system prompt — do not Read it again.)
 
 Iteration artifacts (read what exists):
+  Deterministic diff scan (FULL diff — secrets/deps/license): $ITER_DIR/scan-report.md
+  Bounded diff view (complete file list; hunks capped, header lists omissions): $ITER_DIR/iter-diff.md
   Dev handoff: docs/handoffs/${ITER_NAME}-dev.md
   Review report: reports/reviews/${ITER_NAME}-review.md
   QA report: reports/qa/${ITER_NAME}-qa.md (full mode only)
@@ -1308,6 +1358,11 @@ Iteration artifacts (read what exists):
   Browser QA results: reports/phase-${ITER_NAME}-ui-test-results.md
   Evidence: reports/qa/${ITER_NAME}-evidence/
   Coherence audit: $COHERENCE_OUTPUT  <-- COHERENCE-FAIL vetoes GOAL_ACHIEVED and drives a consolidation CONTINUE
+
+Journey state (inline digest — your methodology's section A table starts here):
+\`\`\`
+$JOURNEY_DIGEST
+\`\`\`
 
 Prior session state:
   Journey history: $JOURNEY_HISTORY  <-- update this with new state (full atomic write)
@@ -1366,6 +1421,21 @@ STOP." || _eval_rc=$?
   # evaluator pass. Only written for a well-formed verdict.
   if [[ -n "$VERDICT" ]]; then
     printf '{"iter": %s, "verdict": "%s"}\n' "$CURRENT_ITER" "$VERDICT" > "$ITER_DIR/.evaluated" 2>/dev/null || true
+  fi
+
+  # ── Deterministic verdict gates (lib/goal-gates.sh) ─────────────────────────
+  # Placed BEFORE the session.json write so every downstream consumer (deltas,
+  # telemetry, per-iter push, halt cases) sees the FINAL verdict. GOAL_ACHIEVED
+  # must survive the mechanical gates + the two-key confirm; malformed verdicts
+  # are bounded (2 consecutive → ABORT_MALFORMED); undeclared regressions are
+  # surfaced. Disable via CHAIN_GOAL_GATES=false.
+  _coherence_expected="false"
+  [[ $CURRENT_ITER -gt 0 && -f "$BLUEPRINT_FILE" ]] && _coherence_expected="true"
+  _raw_verdict="$VERDICT"
+  VERDICT="$(goal_gate_filter_verdict "$_raw_verdict" "$ITER_DIR" "$EVAL_OUTPUT" "$JOURNEY_HISTORY" "$COHERENCE_OUTPUT" "$_coherence_expected" "$REPO_ROOT/reports/phase-${ITER_NAME}-ui-test-results.md" "$GOAL_SESSION_DIR_LOCAL" "$GOAL_SLICE_PATH")"
+  if [[ "$VERDICT" != "$_raw_verdict" ]]; then
+    echo "[run-goal] Verdict gate: evaluator said '$_raw_verdict' → final verdict '$VERDICT'."
+    record_telemetry_event "deterministic_gate" "$(jq -cn --arg r "$_raw_verdict" --arg f "$VERDICT" '{raw:$r, final:$f}' 2>/dev/null || printf '{"raw":"%s","final":"%s"}' "$_raw_verdict" "$VERDICT")"
   fi
 
   # Capture journey-history hash for stall detection
@@ -1644,6 +1714,15 @@ PY
       ;;
     CONTINUE|ESCALATE)
       CURRENT_ITER=$((CURRENT_ITER+1))
+      ;;
+    ABORT_MALFORMED)
+      # The gate saw 2 consecutive malformed/unknown evaluator verdicts —
+      # something is systematically wrong (prompt drift, model failure).
+      # Halting beats the old behavior of silently CONTINUE-ing forever.
+      echo "[run-goal] ABORT_MALFORMED — two consecutive malformed evaluator verdicts. Inspect $ITER_DIR/eval.md, fix the cause (or run with CHAIN_GOAL_GATES=false to bypass), then --resume." >&2
+      record_telemetry_event "halt" '{"reason":"ABORT_MALFORMED","detected_at_step":"verdict_gate"}'
+      write_session_summary "ABORTED" "$CURRENT_ITER"
+      exit 1
       ;;
     *)
       echo "[run-goal] Unknown verdict '$VERDICT' — treating as CONTINUE." >&2

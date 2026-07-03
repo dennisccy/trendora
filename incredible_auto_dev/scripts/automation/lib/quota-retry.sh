@@ -93,6 +93,16 @@
 : "${CHAIN_TRACE_DIR:=}"
 : "${CHAIN_DISABLE_TRACE:=false}"
 : "${CHAIN_DISABLE_PERMISSION_ISOLATION:=false}"
+# Model routing (headless): resolve each agent's model from its frontmatter /
+# tier and pass --model explicitly. Before this existed, frontmatter models
+# were INERT in headless mode — every agent ran on the CLI's ambient default.
+#   CHAIN_MODEL_OVERRIDE   one-shot forced model id (escalation ladder,
+#                          two-key confirm); wins over frontmatter
+#   CHAIN_EFFORT_OVERRIDE  one-shot forced --effort value; wins over policy
+#   CHAIN_DISABLE_MODEL_ROUTING=true  revert to ambient-default behavior
+: "${CHAIN_DISABLE_MODEL_ROUTING:=false}"
+: "${CHAIN_MODEL_OVERRIDE:=}"
+: "${CHAIN_EFFORT_OVERRIDE:=}"
 
 # ── CLI selection ─────────────────────────────────────────────────────────────
 # Which CLI provider drives agent invocations. Set per-run by run-phase.sh / per-session
@@ -461,21 +471,40 @@ _claude_invoke() {
     # Telemetry: when CHAIN_TELEMETRY_TOKENS=true, request stream-json output and
     # route through claude_stream_renderer.py so the final usage block lands in
     # $CHAIN_CLAUDE_USAGE_SIDECAR for telemetry capture.
+    local _perms_script
+    _perms_script="$(dirname "${BASH_SOURCE[0]}")/agent_permissions.py"
+
     local _effort="max"
-    if [[ "$CHAIN_DISABLE_EFFORT_OVERRIDE" != "true" && -n "${CHAIN_CURRENT_AGENT:-}" ]]; then
-      local _perms_script_for_effort
-      _perms_script_for_effort="$(dirname "${BASH_SOURCE[0]}")/agent_permissions.py"
-      if [[ -f "$_perms_script_for_effort" ]]; then
+    if [[ -n "${CHAIN_EFFORT_OVERRIDE:-}" ]]; then
+      _effort="$CHAIN_EFFORT_OVERRIDE"
+    elif [[ "$CHAIN_DISABLE_EFFORT_OVERRIDE" != "true" && -n "${CHAIN_CURRENT_AGENT:-}" ]]; then
+      if [[ -f "$_perms_script" ]]; then
         local _eff_lookup
-        _eff_lookup=$(python3 "$_perms_script_for_effort" effort "$CHAIN_CURRENT_AGENT" 2>/dev/null) || _eff_lookup=""
+        _eff_lookup=$(python3 "$_perms_script" effort "$CHAIN_CURRENT_AGENT" 2>/dev/null) || _eff_lookup=""
         if [[ -n "$_eff_lookup" ]]; then
           _effort="$_eff_lookup"
         fi
       fi
     fi
     _CHAIN_TRACE_EFFORT="$_effort"
-    _CHAIN_TRACE_MODEL=""   # headless model attribution comes from the usage sidecar
+
+    # Per-agent --model routing: override > frontmatter/tier resolution > none.
+    # Empty result ⇒ no --model flag (ambient default), never an error.
+    local _model=""
+    if [[ "${CHAIN_DISABLE_MODEL_ROUTING:-false}" != "true" ]]; then
+      if [[ -n "${CHAIN_MODEL_OVERRIDE:-}" ]]; then
+        _model="$CHAIN_MODEL_OVERRIDE"
+      elif [[ -n "${CHAIN_CURRENT_AGENT:-}" && -f "$_perms_script" ]]; then
+        _model=$(python3 "$_perms_script" model "$CHAIN_CURRENT_AGENT" 2>/dev/null) || _model=""
+      fi
+    fi
+    # Recorded intent; the usage sidecar (ground truth) still wins in the trace merge.
+    _CHAIN_TRACE_MODEL="$_model"
+
     local -a _claude_extra_args=(--effort "$_effort")
+    if [[ -n "$_model" ]]; then
+      _claude_extra_args+=(--model "$_model")
+    fi
     if [[ "$CHAIN_CLAUDE_DISABLE_CACHE_HYGIENE" != "true" ]]; then
       _claude_extra_args+=(--exclude-dynamic-system-prompt-sections)
     fi
@@ -773,8 +802,8 @@ _codex_invoke() {
         _codex_prompt="$2"
         shift 2
         ;;
-      --effort|--exclude-dynamic-system-prompt-sections|--output-format|--verbose|--include-partial-messages|--disallowedTools|--max-budget-usd)
-        # Claude-only flags. Drop. Some take a value (effort/output-format/disallowedTools/max-budget-usd); skip the next arg.
+      --effort|--model|--exclude-dynamic-system-prompt-sections|--output-format|--verbose|--include-partial-messages|--disallowedTools|--max-budget-usd)
+        # Claude-only flags. Drop. Some take a value (effort/model/output-format/disallowedTools/max-budget-usd); skip the next arg.
         case "$1" in
           --exclude-dynamic-system-prompt-sections|--verbose|--include-partial-messages) shift ;;
           *) shift 2 ;;
