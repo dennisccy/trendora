@@ -79,7 +79,10 @@ cover: escalate to the strong tier at max effort, get a second fresh-context opi
 stop and ask the user (`.claude/judgment-rubrics.md` §3). Unknown is a first-class answer.
 Never fabricate — the chain's value rests entirely on its artifacts being true.
 
-## Handoff (state as of 2026-07-03)
+## Deployment note — Trendora, 2026-07-03 (the session that authored this letter)
+
+Everything below is THAT deployment's transient state, recorded for provenance — not
+framework requirements. Other projects can ignore this section.
 
 - All hardening work packages landed (WP1 judgment docs/scaffolding, WP2 measurement,
   WP-B bug/contract fixes, WP-T token reductions, WP3 gates/routing/ladder, WP4

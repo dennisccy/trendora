@@ -122,6 +122,8 @@ An agent's claim about its own work is a hypothesis, not evidence.
 | `CHAIN_DISABLE_MODEL_ROUTING` | `true` → headless stops passing `--model` (ambient default) | `lib/quota-retry.sh` |
 | `CHAIN_GOAL_GATES` | default `true`; deterministic verdict gates | `lib/goal-gates.sh` |
 | `CHAIN_GOAL_CONFIRM` | default `true`; the two-key GOAL_ACHIEVED confirm pass | `lib/goal-gates.sh` |
+| `CHAIN_SCAN_STRICT_DEPS` | `true` → new paid-SaaS dependencies become CRITICAL (block certification); default warn | `lib/scan_diff.py` |
+| `CHAIN_SCAN_DEP_ALLOWLIST` | package names (space/comma) never classified as paid-SaaS | `lib/scan_diff.py` |
 | `CHAIN_DISABLE_EFFORT_OVERRIDE` | `true` → everyone back to `--effort max` | `lib/quota-retry.sh` |
 
 If you disable a gate/routing knob for an experiment, **re-enable it in the same session**

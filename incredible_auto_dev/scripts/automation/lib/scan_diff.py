@@ -9,9 +9,18 @@ mechanical first pass over the FULL diff, including the parts the bounded
 diff view excludes (secrets hide in data/config paths).
 
 Scans ADDED lines ('+' prefix) only. Severities:
-  critical — private keys, cloud/API credentials, paid-SaaS dependency added
-  warn     — any other new dependency, LICENSE changes, placeholder-looking
-             secret assignments
+  critical — private keys, cloud/API credentials (always blocking)
+  warn     — new dependencies (including known paid-SaaS clients), LICENSE
+             changes, placeholder-looking secret assignments
+
+Paid-SaaS dependency policy (project-tunable — whether a paid service is
+allowed is a per-project Anti-goals question the evaluator judges; the scanner
+only surfaces the signal):
+  default                       — paid-SaaS additions are WARN findings
+  CHAIN_SCAN_STRICT_DEPS=true   — paid-SaaS additions become CRITICAL (block
+                                  GOAL_ACHIEVED certification via the gate)
+  CHAIN_SCAN_DEP_ALLOWLIST      — space/comma-separated package names (case-
+                                  insensitive) never classified as paid-SaaS
 
 CLI:
     git diff <sha> | python3 scan_diff.py scan [--json]
@@ -24,6 +33,7 @@ Default output is a small markdown report; --json emits the raw findings.
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from dataclasses import asdict, dataclass
@@ -49,8 +59,10 @@ _PLACEHOLDER = re.compile(
     r"your[-_ ]|<[^>]+>|x{4,}|\*{4,}|test)"
 )
 
-# Paid/metered SaaS client packages: adding one violates the default
-# "no paid SaaS" anti-goal class. Matched against dependency names.
+# Paid/metered SaaS client packages, matched against dependency names.
+# Whether adding one is a violation depends on the PROJECT's Anti-goals, so by
+# default these are WARN findings the evaluator weighs; CHAIN_SCAN_STRICT_DEPS
+# makes them CRITICAL, and CHAIN_SCAN_DEP_ALLOWLIST exempts named packages.
 _PAID_SAAS = {
     "stripe", "twilio", "sendgrid", "@sendgrid/mail", "mailgun", "mailgun-js",
     "launchdarkly", "launchdarkly-server-sdk", "datadog", "dd-trace",
@@ -81,6 +93,16 @@ class Finding:
     rule: str
     file: str
     excerpt: str
+
+
+def _paid_saas_severity() -> str:
+    """WARN by default; CRITICAL only when the project opts into strict mode."""
+    return "critical" if os.environ.get("CHAIN_SCAN_STRICT_DEPS", "").lower() == "true" else "warn"
+
+
+def _dep_allowlist() -> set[str]:
+    raw = os.environ.get("CHAIN_SCAN_DEP_ALLOWLIST", "")
+    return {d.strip().lower() for d in raw.replace(",", " ").split() if d.strip()}
 
 
 def _added_lines(diff_text: str):
@@ -125,8 +147,8 @@ def scan(diff_text: str) -> list[Finding]:
                     dep = dm.group(1).lower().strip()
                     if not dep or dep in {"python", "node", "version", "name", "description"}:
                         continue
-                    if dep in _PAID_SAAS:
-                        add("critical", "paid-saas-dependency", path, f"new dependency: {dep}")
+                    if dep in _PAID_SAAS and dep not in _dep_allowlist():
+                        add(_paid_saas_severity(), "paid-saas-dependency", path, f"new dependency: {dep}")
                     else:
                         add("warn", "new-dependency", path, f"new dependency: {dep}")
                     break
@@ -199,19 +221,41 @@ def _self_test() -> int:
     dep_diff = """diff --git a/apps/backend/requirements.txt b/apps/backend/requirements.txt
 +++ b/apps/backend/requirements.txt
 +stripe==7.0.0
++openai==1.30.0
 +numpy==1.26.0
 diff --git a/apps/frontend/package.json b/apps/frontend/package.json
 +++ b/apps/frontend/package.json
 +    "launchdarkly": "^3.0.0",
 +    "lodash": "^4.17.21",
 """
+    # Default policy: paid-SaaS additions are WARN (the evaluator judges them
+    # against the project's Anti-goals) — an AI-app project adding its SDK must
+    # not be mechanically blocked from certification.
+    os.environ.pop("CHAIN_SCAN_STRICT_DEPS", None)
+    os.environ.pop("CHAIN_SCAN_DEP_ALLOWLIST", None)
+    f = scan(dep_diff)
+    assert not any(x.severity == "critical" for x in f), "no criticals by default"
+    saas = {x.excerpt for x in f if x.rule == "paid-saas-dependency"}
+    plain = {x.excerpt for x in f if x.rule == "new-dependency"}
+    assert "new dependency: stripe" in saas
+    assert "new dependency: openai" in saas
+    assert "new dependency: launchdarkly" in saas
+    assert "new dependency: numpy" in plain
+    assert "new dependency: lodash" in plain
+
+    # Strict mode: paid-SaaS additions become CRITICAL (blocking).
+    os.environ["CHAIN_SCAN_STRICT_DEPS"] = "true"
     f = scan(dep_diff)
     crit = {x.excerpt for x in f if x.severity == "critical"}
-    warn = {x.excerpt for x in f if x.severity == "warn"}
-    assert "new dependency: stripe" in crit
-    assert "new dependency: launchdarkly" in crit
-    assert "new dependency: numpy" in warn
-    assert "new dependency: lodash" in warn
+    assert "new dependency: stripe" in crit and "new dependency: openai" in crit
+    # Allowlist beats strict for the named packages.
+    os.environ["CHAIN_SCAN_DEP_ALLOWLIST"] = "openai, anthropic"
+    f = scan(dep_diff)
+    assert "new dependency: openai" in {x.excerpt for x in f if x.rule == "new-dependency"}, \
+        "allowlisted package must be a plain new-dependency"
+    assert "new dependency: stripe" in {x.excerpt for x in f if x.severity == "critical"}
+    os.environ.pop("CHAIN_SCAN_STRICT_DEPS", None)
+    os.environ.pop("CHAIN_SCAN_DEP_ALLOWLIST", None)
 
     lic_diff = """diff --git a/LICENSE b/LICENSE
 +++ b/LICENSE

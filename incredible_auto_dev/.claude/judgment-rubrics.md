@@ -1,8 +1,9 @@
 # Judgment Rubrics
 
 Executable judgment criteria for agents and main-loop sessions. Each rubric gives the
-decision criteria plus one positive (✚) and one negative (✖) example — most drawn from this
-repo's real history (goal-session `mcp-loop`). When a rubric and your intuition disagree,
+decision criteria plus one positive (✚) and one negative (✖) example — most drawn from a real
+production goal-mode deployment (Trendora, goal-session `mcp-loop`); read them as case studies,
+not as artifacts you can open in this repo. When a rubric and your intuition disagree,
 follow the rubric and note the disagreement in your report.
 
 ---

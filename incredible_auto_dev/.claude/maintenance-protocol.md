@@ -46,6 +46,13 @@ sync is a no-op when the mirrors already exist, so:
    then commit source AND mirrors together.
 3. Verify with `python3 scripts/automation/sync-cli-assets.py --cli claude --check` (exit 0 =
    in sync). This runs in `run-evals.sh` — a red eval here means someone broke the invariant.
+4. **Vendored deployments (framework embedded in a product repo):** a deployment MAY
+   localize `scripts/dev.sh`, `scripts/start-backend.sh`, and `scripts/start-frontend.sh`
+   to its own app layout — these three are per-project templates and their localized
+   versions must NEVER be pushed upstream. When syncing a vendored copy upstream
+   (clone-and-apply), copy ONLY the files your session's commits actually changed
+   (`git log <range> --name-only`), never a whole-tree copy/rsync — a vendored tree
+   accumulates product debris and localizations that do not belong in the framework.
 
 ## 4. Condensation rule (growth control)
 
