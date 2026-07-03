@@ -42,7 +42,7 @@ Write the iteration spec to `docs/phases/goal-<sid>-iter-<N>.md`. The file MUST 
 
 - **Session ID:** <sid>
 - **Iteration:** <N>
-- **Mode:** baseline | normal
+- **Mode:** baseline | next
 - **Depth:** lean | full
 - **Target journeys:** J-01, J-03, J-07
 - **Required-still-passing journeys:** J-02, J-04
@@ -166,7 +166,7 @@ In `Mode: baseline` (iter 0), write a spec that:
 
 For an existing project, this is the moment that distinguishes "already implemented" from "yet to build" — the goal-evaluator will mark already-passing journeys as `already_passing` so subsequent iterations skip them.
 
-**Also draft the blueprint.** In baseline mode you additionally write `runs/goal-session-<sid>/state/blueprint.md` (use `.claude/templates/blueprint.md` as the structure), populated from `docs/goal.md` — the `## Product Shape` section if present, plus the Must-have journeys and Key Capabilities:
+**Also draft the blueprint.** In baseline mode you additionally write `runs/goal-session-<sid>/state/blueprint.md` (use `templates/blueprint.md` as the structure), populated from `docs/goal.md` — the `## Product Shape` section if present, plus the Must-have journeys and Key Capabilities:
 - **Information Architecture:** propose the layout shell + nav skeleton, and give every Must-have journey/feature a canonical home reachable in ≤2 clicks from the persistent nav.
 - **Data Contract:** list every value that will appear in the UI and must read the same everywhere (numbers, derived metrics, shared entities), each with ONE canonical computing module and ONE serving endpoint. If `## Product Shape` names canonical values, use them verbatim. If the product has no shared numeric/derived values, write "No shared canonical values."
 

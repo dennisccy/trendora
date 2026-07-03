@@ -92,7 +92,7 @@ calls only, no narration.
 The `agent` field is one of the goal-mode agent names, which match the
 `.claude/agents/<name>.md` filenames exactly: developer, reviewer, qa,
 browser-qa-agent, goal-decomposer, coherence-auditor, goal-evaluator,
-iteration-summarizer, readme-maintainer, orchestrator, auditor, ui-impact-analyst,
+iteration-summarizer, readme-maintainer, goal-proposer, orchestrator, auditor, ui-impact-analyst,
 ui-test-designer, ux-regression-reviewer, phase-closure-auditor, demo-narrator,
 release-manager, product-manager. Use that name as `subagent_type`.
 

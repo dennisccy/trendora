@@ -13,7 +13,7 @@ CLAUDE.md is auto-loaded into your system prompt — do not Read it again.
 - `docs/architecture/*.md` — existing project architecture (check consistency)
 - `.claude/project-template.md` — project-specific architecture principles
 - Changed files: read each file listed in the dev handoff
-- Git diff: `git diff HEAD~1..HEAD` or `git diff main..HEAD`
+- Git diff: `git diff HEAD` (the work under review is UNCOMMITTED at review time; a committed-range diff like HEAD~1..HEAD reviews the wrong change)
 
 ## Output
 

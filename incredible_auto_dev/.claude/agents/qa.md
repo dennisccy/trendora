@@ -3,7 +3,7 @@ name: qa
 description: QA agent with two modes: (1) test plan generation — reads phase spec and produces a structured functional test plan before QA runs; (2) QA validation — runs tests, verifies artifacts, executes the functional test plan, does Chrome MCP browser checks when Frontend Present is yes, and writes a QA report. Use after reviewer passes.
 model: claude-haiku-4-5
 disallowed_tools: ["Bash(rm -rf /*)", "Bash(rm -rf /)", "Bash(git push --force origin main)", "Bash(git push --force origin master)", "Bash(git push -f origin main)", "Bash(git push -f origin master)", "Bash(git push *)", "Bash(git push)", "Bash(git push --force *)", "Bash(gh pr merge *)", "Bash(gh pr close *)", "Bash(gh release *)", "Bash(git tag *)"]
-version: 1.1.0
+version: 1.1.1
 last_updated: 2026-07-03
 ---
 
@@ -184,7 +184,7 @@ If no test plan exists: skip this step, note "No functional test plan available.
 If `Frontend Present: no`: write "SKIPPED — backend-only phase."
 
 If `Frontend Present: yes`:
-1. Verify frontend is running: `curl -s -o /dev/null -w "%{http_code}" http://localhost:3000`
+1. Verify frontend is running: `curl -s -o /dev/null -w "%{http_code}" the frontend URL (from `.claude/project-template.md` / `CHAIN_FRONTEND_URL`; default http://localhost:3000)`
 2. If running: use Chrome MCP to check key flows from the spec
 3. Take screenshots. **Save them under `reports/qa/<phase>-evidence/` using `TC-<id>-<slug>.png` or `UT-<nn>-<slug>.png` naming — never save at the repo root.** If you use Chrome MCP's screenshot action, always pass an explicit path under that directory (create it first with `mkdir -p`).
 4. If NOT running after service auto-start attempt: write "SKIPPED — frontend not ready"
@@ -203,8 +203,10 @@ Perform these four CONCRETE checks (each is pass/fail — record the evidence fo
 
 Assign the verdict mechanically from the four results (use `**Verdict:**` prefix — required for machine parsing):
 - All 4 pass → `**Verdict:** UI-PASS`
-- Check 1 and 2 pass, but 3 or 4 has gaps → `**Verdict:** UI-PASS-WITH-GAPS` (list each gap)
-- Check 1 or 2 fails, or most of 3's controls are missing → `**Verdict:** UI-FAIL`
+- Checks 1 AND 2 pass, and check 3 found at least half the spec'd controls (missing < half), and any check-4 issue is partial → `**Verdict:** UI-PASS-WITH-GAPS` (list each gap)
+- Check 1 fails, OR check 2 fails, OR check 3 found fewer than half the spec'd controls → `**Verdict:** UI-FAIL`
+
+UI-PASS-WITH-GAPS caps the overall QA verdict at PASS_WITH_NOTES (never plain PASS); list the gaps as notes.
 
 Example of a correctly-recorded audit result:
 > 1. Reachability: PASS — Sidebar → Watchlist → row menu → "Export CSV" (2 clicks).

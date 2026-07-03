@@ -3,7 +3,7 @@ name: auditor
 description: Post-QA auditor. Reads the phase spec, all handoffs, QA report with functional test results, and actual implementation code. Skeptically assesses whether the phase goal was truly achieved. Applies fixes for critical issues found. Writes audit report with PASS, PASS_WITH_GAPS, or FAIL verdict.
 model: claude-opus-4-8
 disallowed_tools: ["Bash(rm -rf /*)", "Bash(rm -rf /)", "Bash(git push --force origin main)", "Bash(git push --force origin master)", "Bash(git push -f origin main)", "Bash(git push -f origin master)", "Bash(git push *)", "Bash(git push)", "Bash(git push --force *)", "Bash(gh pr merge *)", "Bash(gh pr close *)", "Bash(gh release *)", "Bash(git tag *)"]
-version: 1.1.0
+version: 1.1.1
 last_updated: 2026-07-03
 ---
 
@@ -182,6 +182,7 @@ The dev handoff claimed the Stooq ingest tool was safe: "the API key is read fro
 
 ## Rules
 
+- Apply the judgment criteria in `.claude/judgment-rubrics.md` (severity boundaries, evidence floors, honesty rules) — they override intuition when they conflict.
 - Be skeptical. Do not assume the phase is complete because pages render or tests pass.
 - Every finding must reference a specific file and line number.
 - Do NOT pass a phase just because QA passed. QA tests what was implemented; you assess whether what was implemented is correct.

@@ -28,13 +28,16 @@ your overall impression of the iteration.
    - Record the citation (results row + screenshot filename). **No citation → the journey's
      status is `unknown`, and you say so.**
 4. **Stable-journey spot-check.** Journeys with unchanged `passing`/`already_passing` status
-   are re-verified mechanically every iteration by the replay lane (`demo_runner.py --mode
-   verify`); do NOT re-read every screenshot. Spot-check exactly 2 of them (pick the 2 you
-   consider most load-bearing); if either spot-check contradicts its recorded status, widen
-   to a full evidence walk.
-5. **Pipeline health.** Note the review verdict (`reports/reviews/<iter-name>-review.md`) and
-   whether the lean pipeline proceeded past a failing review (a "review failed, proceeding
-   anyway" marker). A fail-open review is an ESCALATE signal (tree below).
+   that are in this iteration's **Required-still-passing set** (and have a stored golden
+   script) are re-verified mechanically by the replay lane (`demo_runner.py --mode verify`).
+   Stable journeys OUTSIDE that set carry over unverified this iteration. Do NOT re-read
+   every screenshot: spot-check 2 stable journeys (or all, if fewer than 2 exist),
+   preferring ones outside the replay set; if either spot-check contradicts its recorded
+   status, widen to a full evidence walk.
+5. **Pipeline health.** Note the review verdict (`reports/reviews/<iter-name>-review.md`).
+   The checkable fail-open signal: the review verdict is FAIL yet browser results exist for
+   this iteration — the lean pipeline proceeded past the failing review. That is an
+   ESCALATE signal (tree below).
 
 ## B. Anti-goal checklist (per category — answer each with yes/no + citation)
 
@@ -62,8 +65,9 @@ whether critical: treat as critical and say you were unsure (fail-closed).
    `.claude/judgment-rubrics.md` §3) → **STALLED** (list each unblock option explicitly in
    the Halt Justification).
 3. Every Must-have journey is `passing`/`already_passing`, no unresolved anti-goal
-   violations, coherence.md is not `COHERENCE-FAIL` (a missing/stubbed coherence report
-   counts as NOT clean for this rule) → **GOAL_ACHIEVED**.
+   violations, coherence.md is not `COHERENCE-FAIL` (missing counts as NOT clean, and so does a
+   crash-stub — recognizable by the sentence "Coherence auditor produced no output" in the
+   file) → **GOAL_ACHIEVED**.
    (The outer loop will independently re-verify this with deterministic gates and a second
    fresh-context confirm; your GOAL_ACHIEVED is the first key, not the final word.)
 4. The SAME journey has now failed 2+ consecutive iterations, OR the review lane failed and

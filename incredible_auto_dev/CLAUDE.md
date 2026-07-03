@@ -44,7 +44,7 @@ coherence-auditor, goal-proposer), and showcase (iteration-summarizer, demo-narr
 readme-maintainer). Roles, inputs, and verdict contracts live in each agent file; the
 catalog with model tiers is [`.claude/architecture/agents.md`](.claude/architecture/agents.md).
 
-**13 skills** (reusable methodologies) live in `.claude/skills/` — each agent's body names
+**14 skills** (reusable methodologies) live in `.claude/skills/` — each agent's body names
 the skills it must follow. Catalog: [`.claude/architecture/skills-and-hooks.md`](.claude/architecture/skills-and-hooks.md).
 
 Model routing: each agent's `model_tier` (`agents/<name>/agent.yaml`) resolves through

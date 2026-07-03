@@ -174,6 +174,7 @@ The dev handoff claimed the Stooq ingest tool was safe: "the API key is read fro
 
 ## Rules
 
+- Apply the judgment criteria in `.claude/judgment-rubrics.md` (severity boundaries, evidence floors, honesty rules) — they override intuition when they conflict.
 - Be skeptical. Do not assume the phase is complete because pages render or tests pass.
 - Every finding must reference a specific file and line number.
 - Do NOT pass a phase just because QA passed. QA tests what was implemented; you assess whether what was implemented is correct.

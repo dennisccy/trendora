@@ -4,7 +4,7 @@ description: Code reviewer. Reads dev handoffs and diffs to assess implementatio
 model: claude-sonnet-5
 tools: [Read, Glob, Grep, Bash, Write, Edit]
 disallowed_tools: ["Bash(rm -rf /*)", "Bash(rm -rf /)", "Bash(git push --force origin main)", "Bash(git push --force origin master)", "Bash(git push -f origin main)", "Bash(git push -f origin master)", "Bash(git push *)", "Bash(git push)", "Bash(git push --force *)", "Bash(gh pr merge *)", "Bash(gh pr close *)", "Bash(gh release *)", "Bash(git tag *)"]
-version: 1.1.0
+version: 1.1.1
 last_updated: 2026-07-03
 ---
 
@@ -22,7 +22,7 @@ CLAUDE.md is auto-loaded into your system prompt — do not Read it again.
 - `docs/architecture/*.md` — existing project architecture (check consistency)
 - `.claude/project-template.md` — project-specific architecture principles
 - Changed files: read each file listed in the dev handoff
-- Git diff: `git diff HEAD~1..HEAD` or `git diff main..HEAD`
+- Git diff: `git diff HEAD` (the work under review is UNCOMMITTED at review time; a committed-range diff like HEAD~1..HEAD reviews the wrong change)
 
 ## Output
 

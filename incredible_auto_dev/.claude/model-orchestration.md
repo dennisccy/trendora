@@ -26,8 +26,12 @@ from it). Update this table in the same commit that changes the tier map.
 | light | `claude-haiku-4-5` | qa (procedural mode), release-manager | Fully proceduralized tasks with exact steps and output formats |
 
 Effort: headless dispatches get `--effort` from `scripts/automation/lib/agent_permissions.py`
-(`EFFORT_DEFAULT=max`; structured/showcase agents run `medium`). Judges and gates always run
-`max`. Do not lower a judge's effort to save tokens — lower the *context you feed it* instead
+(`EFFORT_DEFAULT=max`). At `max`: goal-evaluator, goal-decomposer, auditor, goal-proposer,
+reviewer, developer, orchestrator, product-manager, browser-qa-agent, coherence-auditor, and
+the two-key confirm. At `medium` (structured/showcase): qa, release-manager,
+ui-test-designer, ui-impact-analyst, phase-closure-auditor, iteration-summarizer,
+readme-maintainer, demo-narrator, ux-regression-reviewer. Do not raise a medium agent to
+"fix" quality — its work is procedural; and do not lower a max judge's effort to save tokens — lower the *context you feed it* instead
 (see `.claude/workflow.md` and the digest tools in `scripts/automation/lib/goal_gate.py`).
 
 ## 2. The commander does not go into the field
@@ -108,16 +112,17 @@ An agent's claim about its own work is a hypothesis, not evidence.
   NOT done"). The goal pipeline's two-key GOAL_ACHIEVED confirm is this rule in code; imitate
   it for anything comparably irreversible.
 
-## 7. Environment knobs (runtime source: `scripts/automation/lib/quota-retry.sh` header)
+## 7. Environment knobs
 
-| Variable | Effect |
-|----------|--------|
-| `CHAIN_MODEL_OVERRIDE` | Force the next dispatch(es) onto a specific model id (both backends) |
-| `CHAIN_EFFORT_OVERRIDE` | Force effort for the next dispatch(es) (headless) |
-| `CHAIN_MODEL_ESCALATION` | default `true`; dev fix-retries ≥2 run on the strong tier |
-| `CHAIN_DISABLE_MODEL_ROUTING` | `true` → headless stops passing `--model` (ambient default) |
-| `CHAIN_GOAL_GATES` | default `true`; deterministic verdict gates + two-key confirm |
-| `CHAIN_DISABLE_EFFORT_OVERRIDE` | `true` → everyone back to `--effort max` |
+| Variable | Effect | Defined in (scripts/automation/…) |
+|----------|--------|-----------------------------------|
+| `CHAIN_MODEL_OVERRIDE` | Force the next dispatch(es) onto a specific model id (both backends) | `lib/quota-retry.sh` |
+| `CHAIN_EFFORT_OVERRIDE` | Force effort for the next dispatch(es) (headless) | `lib/quota-retry.sh` |
+| `CHAIN_MODEL_ESCALATION` | default `true`; dev fix-retries run on the strong tier | `lib/common.sh` |
+| `CHAIN_DISABLE_MODEL_ROUTING` | `true` → headless stops passing `--model` (ambient default) | `lib/quota-retry.sh` |
+| `CHAIN_GOAL_GATES` | default `true`; deterministic verdict gates | `lib/goal-gates.sh` |
+| `CHAIN_GOAL_CONFIRM` | default `true`; the two-key GOAL_ACHIEVED confirm pass | `lib/goal-gates.sh` |
+| `CHAIN_DISABLE_EFFORT_OVERRIDE` | `true` → everyone back to `--effort max` | `lib/quota-retry.sh` |
 
 If you disable a gate/routing knob for an experiment, **re-enable it in the same session**
 and say so in your report — a silently disabled gate is the #1 way this system degrades

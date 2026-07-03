@@ -4,7 +4,7 @@ description: Goal-mode iteration evaluator. Reads iteration outputs (handoffs, b
 model: claude-opus-4-8
 tools: [Read, Glob, Grep, Bash, Write]
 disallowed_tools: ["Bash(rm -rf /*)", "Bash(rm -rf /)", "Bash(git push --force origin main)", "Bash(git push --force origin master)", "Bash(git push -f origin main)", "Bash(git push -f origin master)", "Bash(git push *)", "Bash(git push)", "Bash(git push --force *)", "Bash(gh pr merge *)", "Bash(gh pr close *)", "Bash(gh release *)", "Bash(git tag *)"]
-version: 1.2.0
+version: 1.2.1
 last_updated: 2026-07-03
 ---
 
@@ -48,7 +48,7 @@ Follow methodology section A (evidence walk). In short: deterministic reports fi
 - Verify the screenshot in `reports/qa/<iter-name>-evidence/` actually shows the claimed end state
 - Cross-check against the prior journey state (inlined digest) to detect changes (newly passing, newly failing, regressed)
 
-Stable `passing`/`already_passing` journeys are re-verified mechanically by the replay lane each iteration — spot-check exactly 2 of them (the most load-bearing) instead of re-reading every screenshot; widen to a full walk if a spot-check contradicts its recorded status.
+Stable `passing`/`already_passing` journeys inside this iteration's **Required-still-passing set** are re-verified mechanically by the replay lane (those with stored golden scripts); stable journeys OUTSIDE that set carry over unverified. Spot-check 2 stable journeys (or all, if fewer) — prefer ones outside the replay set — instead of re-reading every screenshot; widen to a full walk if a spot-check contradicts its recorded status.
 
 Also read this iteration's `coherence.md` and note its verdict. A `COHERENCE-FAIL` is a structural veto on `GOAL_ACHIEVED` and drives a consolidation `CONTINUE` (see Verdicts).
 
@@ -193,7 +193,7 @@ or `CONTINUE`, `ESCALATE`, `REGRESSION`, `STALLED`.
 
 - **REGRESSION** — a journey with prior status `passing` or `already_passing` is now `failing` OR a critical anti-goal was violated. Loop halts immediately for human review. The user can resume with `--acknowledge-regression` after manual fix.
 
-- **STALLED** — past `stall_window` iterations have made no journey state progress AND no actionable next step is identifiable. Loop halts. The user must edit `docs/goal.md` (clearer journeys, narrower scope, or fewer anti-goals) and `--resume`.
+- **STALLED** — EITHER every unblock path for the current blocker is a human-owned action (credentials, network/IP access, paid service, an irreversible step needing sanction — methodology tree C.2; this applies even on the first blocked iteration), OR past `stall_window` iterations have made no journey state progress and no actionable next step is identifiable. Loop halts. The user must unblock or edit `docs/goal.md`, then `--resume`.
 
   Note: the script also computes a stall hash independently. Your STALLED verdict signals "I cannot identify productive next work" — even if the script's hash check has not yet tripped.
 
@@ -217,4 +217,4 @@ or `CONTINUE`, `ESCALATE`, `REGRESSION`, `STALLED`.
 ## Token and Questioning Policy
 
 Apply `.claude/core.md` strictly. Agent-specific guidance:
-- Do not ask questions — assess from evidence. Screenshot policy: open the screenshot for every journey whose status CHANGED this iteration, plus 2 stable spot-checks (methodology section A) — not one per claimed-passing journey; the deterministic replay lane covers stable journeys.
+- Do not ask questions — assess from evidence. Screenshot policy: open the screenshot for every journey whose status CHANGED this iteration, plus 2 stable spot-checks (methodology section A) — not one per claimed-passing journey; the deterministic replay lane covers the Required-still-passing set, and your 2 spot-checks sample the rest.
