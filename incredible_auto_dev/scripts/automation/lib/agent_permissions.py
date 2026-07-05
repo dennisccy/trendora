@@ -28,6 +28,7 @@ CLI:
 """
 from __future__ import annotations
 
+import os
 import re
 import sys
 from pathlib import Path
@@ -80,6 +81,32 @@ EFFORT_OVERRIDES: dict[str, str] = {
     "readme-maintainer":     "medium",
     "demo-narrator":         "medium",
     "ux-regression-reviewer": "medium",
+}
+
+# Per-agent runtime caps (seconds), ~2.5-3x the typical durations measured from
+# goal-session telemetry (tape_to_profit: developer ~41m, reviewer ~21m,
+# browser-qa ~20m, evaluator ~17m, decomposer ~8m, coherence ~4m). One flat
+# 7200s cap previously let a hung 20-minute reviewer burn a full 2 hours before
+# the watchdog fired. Agents NOT listed here (the full-pipeline-only chain:
+# orchestrator, qa, ui-*, auditor, release-manager, ...) fall back to the flat
+# CHAIN_CLAUDE_MAX_RUNTIME_SECONDS / CHAIN_DISPATCH_INFLIGHT_TIMEOUT global —
+# zero behavior change for run-phase.sh.
+#
+# Resolution precedence (implemented by the shell seam, lib/quota-retry.sh):
+#   CHAIN_TIMEOUT_<AGENT> env  >  agents/<name>/agent.yaml max_runtime_seconds
+#   >  this table  >  flat global. An EXPLICITLY exported flat global keeps
+#   today's meaning and disables the per-agent table entirely.
+AGENT_TIMEOUTS_SECONDS: dict[str, int] = {
+    "goal-decomposer":      1800,   # typical ~8m
+    "developer":            7200,   # typical ~41m; initial builds vary — keep 2h
+    "reviewer":             3600,   # typical ~21m (observed hang burned 7200s)
+    "browser-qa-agent":     4500,   # typical ~20m; grows with journey count
+    "coherence-auditor":    1200,   # typical ~4m
+    "goal-evaluator":       3600,   # typical ~17m
+    "goal-proposer":        3600,
+    "iteration-summarizer": 1800,
+    "readme-maintainer":    1800,
+    "demo-narrator":        1800,
 }
 
 # Reads from the legacy `.claude/agents/<name>.md` (frontmatter) by default to
@@ -227,15 +254,78 @@ def disallowed_for(agent: str, agents_dir: Path = DEFAULT_AGENTS_DIR) -> list[st
     return denials
 
 
+# Judges make verdict-class calls; lowering their effort to save time is the
+# one lever .claude/model-orchestration.md forbids ("lower the context you feed
+# it, not the effort"). The CHAIN_AGENT_EFFORT experiment knob below refuses
+# them by construction — the two-key GOAL_ACHIEVED confirm dispatches as
+# goal-evaluator, so it is covered too.
+JUDGE_AGENTS = frozenset({
+    "goal-evaluator", "goal-decomposer", "auditor", "reviewer", "goal-proposer",
+})
+
+
+def _experiment_effort_override(agent: str) -> str | None:
+    """Opt-in speed experiment: CHAIN_AGENT_EFFORT="developer=high[,agent=lvl]".
+
+    Applies ONLY to non-judge agents; judges are refused loudly. Pair with the
+    telemetry tripwire (analyze_telemetry.py --tripwire) — run-goal.sh reverts
+    the knob automatically when quality moves. Headless-only in effect: the
+    interactive pump path does not apply --effort.
+    """
+    raw = os.environ.get("CHAIN_AGENT_EFFORT", "").strip()
+    if not raw:
+        return None
+    for part in raw.split(","):
+        key, _, value = part.partition("=")
+        if key.strip() != agent or not value.strip():
+            continue
+        if agent in JUDGE_AGENTS:
+            print(
+                f"[agent-permissions] CHAIN_AGENT_EFFORT refused for judge "
+                f"'{agent}' — judges keep their effort (model-orchestration.md: "
+                f"trim the context fed to a judge, never its effort).",
+                file=sys.stderr,
+            )
+            return None
+        return value.strip()
+    return None
+
+
 def effort_for(agent: str) -> str:
     """Return the `--effort` flag value for the named agent.
 
     Default `EFFORT_DEFAULT` ("max") unless the agent is in the override map.
-    The CHAIN_DISABLE_EFFORT_OVERRIDE env var is honored by the calling shell
-    wrapper, not here — this function returns the policy value regardless,
-    and the caller decides whether to apply it.
+    An opt-in CHAIN_AGENT_EFFORT experiment override wins for non-judge agents
+    only. The CHAIN_DISABLE_EFFORT_OVERRIDE env var is honored by the calling
+    shell wrapper, not here — this function returns the policy value
+    regardless, and the caller decides whether to apply it.
     """
+    experiment = _experiment_effort_override(agent)
+    if experiment:
+        return experiment
     return EFFORT_OVERRIDES.get(agent, EFFORT_DEFAULT)
+
+
+def timeout_for(agent: str, neutral_dir: Path = NEUTRAL_AGENTS_DIR) -> int | None:
+    """Return the per-agent runtime cap in seconds, or None when the agent has
+    no specific cap (callers fall back to the flat global).
+
+    Order: agents/<name>/agent.yaml `max_runtime_seconds` (optional, per-project
+    tuning) > the built-in AGENT_TIMEOUTS_SECONDS table. Env overrides
+    (CHAIN_TIMEOUT_<AGENT>) are the calling shell's job, not this function's —
+    same division of labor as effort_for().
+    """
+    n = _neutral_agent_yaml(agent, neutral_dir)
+    if n is not None:
+        raw = _neutral_yaml_field(n, "max_runtime_seconds")
+        if raw is not None:
+            try:
+                v = int(float(raw))
+                if v > 0:
+                    return v
+            except (TypeError, ValueError):
+                pass
+    return AGENT_TIMEOUTS_SECONDS.get(agent)
 
 
 def _tiers_file(tiers_path: Path | None = None) -> Path | None:
@@ -423,6 +513,16 @@ def _cmd_tier_model(args: list[str]) -> int:
     return 0
 
 
+def _cmd_timeout(args: list[str]) -> int:
+    """Print the per-agent runtime cap in seconds (empty = no specific cap)."""
+    if not args:
+        print("Usage: agent_permissions.py timeout <agent>", file=sys.stderr)
+        return 2
+    t = timeout_for(args[0])
+    print("" if t is None else f"{t}")
+    return 0
+
+
 def _self_test() -> int:
     import tempfile
 
@@ -483,6 +583,43 @@ def _self_test() -> int:
         assert tier_model_for("light", tiers_path=tiers) == "claude-test-light"
         assert tier_model_for("nope", tiers_path=tiers) == ""
 
+        # Per-agent timeouts — table hit, yaml max_runtime_seconds override,
+        # unknown agent → None (callers fall back to the flat global cap).
+        assert timeout_for("reviewer") == 3600, "reviewer cap from the builtin table"
+        assert timeout_for("coherence-auditor") == 1200
+        assert timeout_for("developer") == 7200
+        assert timeout_for("orchestrator") is None, "full-pipeline agents keep the flat global"
+        assert timeout_for("some-unknown-agent") is None
+        neutral = d / "neutral-agents"
+        (neutral / "reviewer").mkdir(parents=True)
+        (neutral / "reviewer" / "agent.yaml").write_text(
+            "name: reviewer\nmodel_tier: standard\nmax_runtime_seconds: 900\n",
+            encoding="utf-8",
+        )
+        assert timeout_for("reviewer", neutral_dir=neutral) == 900, "agent.yaml overrides the table"
+        (neutral / "developer").mkdir(parents=True)
+        (neutral / "developer" / "agent.yaml").write_text(
+            "name: developer\nmax_runtime_seconds: not-a-number\n",
+            encoding="utf-8",
+        )
+        assert timeout_for("developer", neutral_dir=neutral) == 7200, "bad yaml value falls back to table"
+
+        # CHAIN_AGENT_EFFORT experiment knob — applies to non-judges only.
+        _prev_exp = os.environ.get("CHAIN_AGENT_EFFORT")
+        try:
+            os.environ["CHAIN_AGENT_EFFORT"] = "developer=high,reviewer=low,goal-evaluator=low"
+            assert effort_for("developer") == "high", "experiment knob applies to developer"
+            assert effort_for("reviewer") == "max", "judge guard: reviewer keeps its effort"
+            assert effort_for("goal-evaluator") == "max", "judge guard: evaluator keeps its effort"
+            assert effort_for("browser-qa-agent") == "max", "agents not named keep policy"
+            os.environ["CHAIN_AGENT_EFFORT"] = "malformed-no-equals"
+            assert effort_for("developer") == "max", "malformed knob value is ignored"
+        finally:
+            if _prev_exp is None:
+                os.environ.pop("CHAIN_AGENT_EFFORT", None)
+            else:
+                os.environ["CHAIN_AGENT_EFFORT"] = _prev_exp
+
         # Effort overrides — defaults to "max" except for the listed lighter agents.
         assert effort_for("developer") == "max", "developer must stay at --effort max"
         assert effort_for("auditor") == "max", "auditor must stay at --effort max"
@@ -509,6 +646,7 @@ _COMMANDS = {
     "effort": _cmd_effort,
     "model": _cmd_model,
     "tier-model": _cmd_tier_model,
+    "timeout": _cmd_timeout,
     "self-test": lambda _args: _self_test(),
 }
 

@@ -416,6 +416,99 @@ _render_session_index_html() {
     | sed 's/^/[run-goal] /' || echo "[run-goal] Warning: session-index HTML render failed (non-blocking)"
 }
 
+# ── Showcase tail (demo → summary → README → renders), inline or forked ──────
+# These steps are non-gating showcase/maintenance, but they used to sit
+# 6-13 min on the loop's critical path between the evaluator and the next
+# decomposer (measured: summarizer ~5.7m + readme ~4.5m + renders). For
+# CONTINUE/ESCALATE verdicts they now run as a background group that overlaps
+# the NEXT iteration's decomposer; the group is joined — and its artifacts
+# committed — BEFORE the next executor dispatch, so developer/reviewer N+1 see
+# exactly the tree the sequential ordering produced. Halt verdicts keep the
+# inline path so final summaries are always complete before the session ends.
+# Disable with CHAIN_ASYNC_SHOWCASE=false.
+_SHOWCASE_PID=""
+_SHOWCASE_ITER=""
+
+_run_showcase_steps() {
+  local iter_name="$1" depth="$2"
+  # Demo first (lean depth only — full depth records inside run-phase.sh).
+  # demo-phase.sh boots its own services idempotently; _join_showcase_tail
+  # clears them so the next iteration's browser-qa never reuses a server tree
+  # that is still serving iteration N's code.
+  if [[ "$depth" == "lean" ]]; then
+    bash "$SCRIPT_DIR/demo-phase.sh" "$iter_name" \
+      || echo "[run-goal] demo-phase.sh exited non-zero — continuing (showcase, non-gating)"
+  fi
+  _run_iteration_summarizer "$iter_name"
+  _run_readme_maintainer "$iter_name"
+  _render_iter_html "$iter_name"
+  _render_session_index_html
+}
+
+_fork_showcase_tail() {
+  local iter_name="$1" depth="$2"
+  _SHOWCASE_ITER="$CURRENT_ITER"
+  ( _run_showcase_steps "$iter_name" "$depth" ) &
+  _SHOWCASE_PID=$!
+  echo "[run-goal] Showcase tail (demo → summary → README → renders) running in the background (pid $_SHOWCASE_PID); the loop proceeds."
+}
+
+# _join_showcase_tail [--kill]
+#   default: bounded wait for the group, clear its demo services, then commit
+#            (+push) its artifacts when push-per-iter is on. Scoped add — the
+#            next iteration's freshly written spec stays uncommitted, exactly
+#            as it does under the sequential ordering.
+#   --kill:  reap immediately without committing (Ctrl-C / dead-pump paths,
+#            where the group's own agent dispatches cannot succeed anyway).
+_join_showcase_tail() {
+  [[ -n "${_SHOWCASE_PID:-}" ]] || return 0
+  local mode="${1:-}"
+  if [[ "$mode" == "--kill" ]]; then
+    if declare -F _kill_pid_tree >/dev/null 2>&1; then
+      _kill_pid_tree "$_SHOWCASE_PID" 2>/dev/null || true
+    else
+      kill "$_SHOWCASE_PID" 2>/dev/null || true
+    fi
+    wait "$_SHOWCASE_PID" 2>/dev/null || true
+    _SHOWCASE_PID=""
+    return 0
+  fi
+  local timeout_s="${CHAIN_ASYNC_SHOWCASE_JOIN_TIMEOUT:-900}"
+  local waited=0
+  if kill -0 "$_SHOWCASE_PID" 2>/dev/null; then
+    echo "[run-goal] Waiting for the background showcase tail of iter ${_SHOWCASE_ITER} (bounded ${timeout_s}s)..."
+  fi
+  while kill -0 "$_SHOWCASE_PID" 2>/dev/null; do
+    if [[ "$waited" -ge "$timeout_s" ]]; then
+      echo "[run-goal] Showcase tail exceeded ${timeout_s}s — killing it (non-gating; artifacts may be partial)." >&2
+      if declare -F _kill_pid_tree >/dev/null 2>&1; then
+        _kill_pid_tree "$_SHOWCASE_PID" 2>/dev/null || true
+      else
+        kill "$_SHOWCASE_PID" 2>/dev/null || true
+      fi
+      break
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+  wait "$_SHOWCASE_PID" 2>/dev/null || true
+  _SHOWCASE_PID=""
+  # Clear any services the demo recording booted (fresh-serving-tree guarantee).
+  kill_phase_servers 2>/dev/null || true
+  if [[ "$PUSH_PER_ITER" == "true" ]]; then
+    local _p
+    for _p in reports runs README.md; do
+      [[ -e "$REPO_ROOT/$_p" ]] && git -C "$REPO_ROOT" add -A -- "$_p" 2>/dev/null || true
+    done
+    if ! git -C "$REPO_ROOT" diff --cached --quiet 2>/dev/null; then
+      if git -C "$REPO_ROOT" commit --quiet -m "chore(goal): iter ${_SHOWCASE_ITER} showcase artifacts (demo/summary/README/renders)" 2>/dev/null; then
+        GIT_TERMINAL_PROMPT=0 git -C "$REPO_ROOT" push -u origin HEAD >/dev/null 2>&1 \
+          || echo "[run-goal] Showcase commit push failed (non-blocking; the next iteration's push carries it)." >&2
+      fi
+    fi
+  fi
+}
+
 # Tail an append-only state file to the last N lines, or return a placeholder
 # if the file does not exist yet. Used to keep token usage flat as the goal
 # session grows — agents only need the tail (last few entries), not the full
@@ -870,6 +963,14 @@ else:
 write_session_summary() {
   local final_verdict="$1"
   local total_iterations="$2"
+  # Settle any background showcase tail first so the summary/index reflect the
+  # final artifact set. When the pump is gone (AWAITING_PUMP) or the user hit
+  # Ctrl-C (ABORTED), the group's own agent dispatches cannot succeed — reap it
+  # immediately instead of waiting out its bounded join.
+  case "$final_verdict" in
+    AWAITING_PUMP|ABORTED) _join_showcase_tail --kill ;;
+    *)                     _join_showcase_tail ;;
+  esac
   local now_epoch=$(date +%s)
   local wall_time=$(( now_epoch - SESSION_START_EPOCH ))
   local quota_pauses
@@ -939,6 +1040,12 @@ else:
 ## Telemetry
 
 See \`runs/goal-session-${SESSION_ID}/telemetry.jsonl\` for the structured event log.
+
+## Iteration timing
+
+\`\`\`
+$(python3 "$SCRIPT_DIR/lib/analyze_telemetry.py" --wall "$GOAL_SESSION_DIR_LOCAL/telemetry.jsonl" 2>/dev/null || echo "(timing report unavailable)")
+\`\`\`
 EOF
   record_telemetry_event "session_end" "$(jq -cn --arg fv "$final_verdict" --argjson ti $total_iterations --argjson wt $wall_time --argjson qp $quota_pauses '{final_verdict:$fv, total_iterations:$ti, wall_time_seconds:$wt, quota_pause_count:$qp}' 2>/dev/null || printf '{"final_verdict":"%s","total_iterations":%d}' "$final_verdict" "$total_iterations")"
   echo "[run-goal] Session summary: $SUMMARY_FILE"
@@ -952,11 +1059,13 @@ EOF
 # not available to a later /goal-pause). Cleaned up on any exit, including the
 # on_abort path below (which exits 130 → the EXIT trap fires).
 echo "$$" > "$ENGINE_PID_FILE" 2>/dev/null || true
-trap 'rm -f "$ENGINE_PID_FILE" 2>/dev/null || true' EXIT
+trap '_join_showcase_tail --kill 2>/dev/null; rm -f "$ENGINE_PID_FILE" 2>/dev/null || true' EXIT
 
-# Trap: on SIGINT/SIGTERM, write ABORTED summary
+# Trap: on SIGINT/SIGTERM, write ABORTED summary. Kill the background showcase
+# tail FIRST so Ctrl-C never blocks on a non-gating summary/README agent.
 on_abort() {
   echo "[run-goal] Aborted by user signal. Writing summary." >&2
+  _join_showcase_tail --kill 2>/dev/null || true
   write_session_summary "ABORTED" "$CURRENT_ITER"
   exit 130
 }
@@ -1042,14 +1151,21 @@ PY
   mkdir -p "$ITER_DIR"
   # Stale-artifact hygiene: a prior ABORTED/AWAITING_PUMP attempt of this same
   # iteration may have left eval.md / coherence.md behind; parsing them would
-  # certify a verdict the re-run never produced. Delete them UNLESS the
-  # .evaluated marker says the previous attempt completed its evaluation (in
-  # which case the evaluator step below reuses eval.md instead of re-running).
+  # certify a verdict the re-run never produced. Delete them UNLESS a completion
+  # marker says the previous attempt genuinely finished that step: eval.md is
+  # covered by the .evaluated marker (the evaluator step below reuses it), and
+  # coherence.md by its step checkpoint (the coherence step below reuses it —
+  # the checkpoint's tree-hash re-verification happens at that site).
   if [[ ! -f "$ITER_DIR/.evaluated" ]]; then
-    rm -f "$ITER_DIR/eval.md" "$ITER_DIR/coherence.md" 2>/dev/null || true
+    rm -f "$ITER_DIR/eval.md" 2>/dev/null || true
+  fi
+  if ! step_done_valid coherence --dir "$ITER_DIR" "$ITER_DIR/coherence.md"; then
+    rm -f "$ITER_DIR/coherence.md" 2>/dev/null || true
   fi
   export GOAL_ITER_INDEX="$CURRENT_ITER"
   export GOAL_ITER_NAME="$ITER_NAME"
+  # Lets goal-iter-lean.sh fork the coherence audit concurrently with browser-qa.
+  export GOAL_BLUEPRINT_FILE="$BLUEPRINT_FILE"
 
   # Capture a working-tree snapshot at the start of this iteration. This is a
   # zero-impact recording: `git stash create` builds a stash commit object
@@ -1057,11 +1173,16 @@ PY
   # `git diff <sha>..HEAD` to see exactly what this iteration changed, and
   # `git reset --hard <sha>` (advanced) to roll back. Best-effort; failures
   # write an empty file and do not block the iteration.
+  # First-write-wins: a RESUMED attempt of this same iteration must keep the
+  # original pre-development baseline — re-capturing here would make the
+  # coherence-auditor diff against a post-development tree and see nothing.
   if git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-    if _snap=$(git -C "$REPO_ROOT" stash create 2>/dev/null); then
-      printf '%s' "$_snap" > "$ITER_DIR/snapshot-sha"
-    else
-      : > "$ITER_DIR/snapshot-sha"
+    if [[ ! -f "$ITER_DIR/snapshot-sha" ]]; then
+      if _snap=$(git -C "$REPO_ROOT" stash create 2>/dev/null); then
+        printf '%s' "$_snap" > "$ITER_DIR/snapshot-sha"
+      else
+        : > "$ITER_DIR/snapshot-sha"
+      fi
     fi
   fi
 
@@ -1069,6 +1190,12 @@ PY
   PRIOR_DEPTH=$(python3 -c "import json; print(json.load(open('$SESSION_JSON')).get('next_depth') or 'lean')")
 
   record_telemetry_event "iter_start" "$(jq -cn --arg n "$ITER_NAME" --arg pv "$PRIOR_VERDICT" --arg pd "$PRIOR_DEPTH" --arg ss "$(cat "$ITER_DIR/snapshot-sha" 2>/dev/null || echo "")" '{iter_name:$n, prior_verdict:$pv, prior_depth:$pd, snapshot_sha:$ss}' 2>/dev/null || printf '{"iter_name":"%s"}' "$ITER_NAME")"
+
+  # Mark experiment-knob-active iterations so the --tripwire window knows which
+  # iterations to judge (opt-in speed experiments, .claude/model-orchestration.md).
+  if [[ -n "${CHAIN_AGENT_EFFORT:-}" ]]; then
+    record_telemetry_event "iter_config" "$(jq -cn --arg k "CHAIN_AGENT_EFFORT" --arg v "$CHAIN_AGENT_EFFORT" '{key:$k, value:$v}' 2>/dev/null || printf '{"key":"CHAIN_AGENT_EFFORT","value":"%s"}' "$CHAIN_AGENT_EFFORT")"
+  fi
 
   echo ""
   echo "════════════════════════════════════════════════════════════════════"
@@ -1097,6 +1224,17 @@ PY
     || cp "$GOAL_FILE" "$GOAL_SLICE_PATH" 2>/dev/null || GOAL_SLICE_PATH="$GOAL_FILE"
   JOURNEY_DIGEST=$(python3 "$SCRIPT_DIR/lib/goal_gate.py" digest "$JOURNEY_HISTORY" 2>/dev/null || echo "(journey digest unavailable — read $JOURNEY_HISTORY)")
   cd "$REPO_ROOT"
+  ITER_SPEC_PATH="$REPO_ROOT/docs/phases/${ITER_NAME}.md"
+  # Resume-skip: a prior attempt of this same iteration already wrote a spec
+  # that parses (checkpoint + Depth line) — don't redo the planning call.
+  # The guarded section below is not re-indented; it ends at the matching `fi`
+  # after the spec-existence check.
+  if step_done_valid decomposer --dir "$ITER_DIR" "$ITER_SPEC_PATH" \
+     && grep -qiE '(\*\*)?Depth:(\*\*)?[[:space:]]*(lean|full)' "$ITER_SPEC_PATH"; then
+    echo "[run-goal] Resume: goal-decomposer already completed for iteration $CURRENT_ITER (checkpoint + spec verified) — skipping."
+    record_telemetry_event "step_skipped" "$(jq -cn --arg n "$ITER_NAME" '{step:"goal-decomposer", iter_name:$n, reason:"checkpoint"}' 2>/dev/null || printf '{"step":"goal-decomposer"}')"
+  else
+  step_invalidate_from decomposer "$ITER_DIR"
   record_agent_invocation_start "goal-decomposer"   # bare call: must NOT be $(...) or the CHAIN_CURRENT_AGENT export is lost to a subshell
   _decomp_start=$CHAIN_AGENT_START_EPOCH
   _decomp_rc=0
@@ -1144,6 +1282,20 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
 
   record_agent_invocation_end "goal-decomposer" "$_decomp_start" "$_decomp_rc"
 
+  # Transport loss (exit 70) is infrastructure, not a planning failure: pause
+  # resumably like the executor/coherence sites do, instead of the previous
+  # (incorrect) hard ABORTED that forced a full manual restart.
+  if [[ "$_decomp_rc" -eq "${DISPATCH_UNAVAILABLE_EXIT_CODE:-70}" ]]; then
+    echo "[run-goal] Interactive pump/dispatch unavailable during goal-decomposer — pausing (resume re-runs iteration $CURRENT_ITER)." >&2
+    if [[ -n "${CHAIN_DISPATCH_DIR:-}" && -f "${CHAIN_DISPATCH_DIR}/.awaiting-pump" ]]; then
+      echo "[run-goal]   $(cat "${CHAIN_DISPATCH_DIR}/.awaiting-pump" 2>/dev/null)" >&2
+    fi
+    echo "[run-goal]   Resume after re-opening the pump session:  /goal-resume $SESSION_ID" >&2
+    record_telemetry_event "halt" '{"reason":"AWAITING_PUMP","detected_at_step":"decomposer"}'
+    write_session_summary "AWAITING_PUMP" "$CURRENT_ITER"
+    exit 0
+  fi
+
   if [[ $_decomp_rc -ne 0 ]]; then
     echo "[run-goal] goal-decomposer failed with exit $_decomp_rc — aborting." >&2
     record_telemetry_event "halt" '{"reason":"DECOMPOSER_FAILED","detected_at_step":"decomposer"}'
@@ -1151,12 +1303,14 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
     exit "$_decomp_rc"
   fi
 
-  ITER_SPEC_PATH="$REPO_ROOT/docs/phases/${ITER_NAME}.md"
   if [[ ! -f "$ITER_SPEC_PATH" ]]; then
     echo "[run-goal] goal-decomposer did not write spec at $ITER_SPEC_PATH — aborting." >&2
     write_session_summary "ABORTED" "$CURRENT_ITER"
     exit 1
   fi
+
+  step_mark_done decomposer --dir "$ITER_DIR" "$ITER_SPEC_PATH"
+  fi  # end of the decomposer resume-skip guard
 
   # ── Post-decompose gate (generic, project-local, default-off) ───────────────
   # Extension point M2: if the project provides project-extensions/gates/
@@ -1210,6 +1364,13 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
   echo "[run-goal] Target journeys: ${TARGET_JOURNEYS:-(none parsed)}"
   record_telemetry_event "iter_dispatch" "$(jq -cn --arg d "$DEPTH" --arg tj "$TARGET_JOURNEYS" '{depth:$d, target_journeys:$tj}' 2>/dev/null || printf '{"depth":"%s"}' "$DEPTH")"
 
+  # 2c. Join the previous iteration's background showcase tail (if any) BEFORE
+  # dispatching build work: its artifacts get committed here, so developer /
+  # reviewer of THIS iteration see exactly the tree the sequential ordering
+  # would have produced. Overlapping it with the decomposer above is where the
+  # ~6-13 min saving comes from.
+  _join_showcase_tail
+
   # 3. Dispatch. Reset the per-iteration exit code first: _exec_rc is a plain
   # shell var, so a stale 70 from a prior iteration would otherwise survive into
   # this one (the `:-0` default only fills an UNSET var) and mis-fire the
@@ -1255,35 +1416,23 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
   # safety-net agent can never wedge the session.
   COHERENCE_OUTPUT="$ITER_DIR/coherence.md"
   if [[ $CURRENT_ITER -gt 0 && -f "$BLUEPRINT_FILE" ]]; then
+    _coh_dispatched=""
+    _coh_stubbed=""
+    # Resume-skip: a prior attempt's audit is reusable only when its checkpoint,
+    # the verdict line, AND the tree state all verify (a drifted tree means the
+    # audited diff is no longer this iteration's diff).
+    if step_done_valid coherence --verify-tree --dir "$ITER_DIR" "$COHERENCE_OUTPUT" \
+       && grep -qE '^\*\*Verdict:\*\* COHERENCE-(PASS|WARN|FAIL)' "$COHERENCE_OUTPUT"; then
+      echo "[run-goal] Resume: coherence audit already completed for iteration $CURRENT_ITER (checkpoint + tree verified) — reusing $COHERENCE_OUTPUT."
+      record_telemetry_event "step_skipped" "$(jq -cn --arg n "$ITER_NAME" '{step:"coherence-auditor", iter_name:$n, reason:"checkpoint"}' 2>/dev/null || printf '{"step":"coherence-auditor"}')"
+    else
+    step_invalidate_from coherence "$ITER_DIR"
+    _coh_dispatched=1
     echo "[run-goal] Step 2b: coherence-auditor"
     _snapshot_sha="$(cat "$ITER_DIR/snapshot-sha" 2>/dev/null || echo "")"
-    cd "$REPO_ROOT"
-    record_agent_invocation_start "coherence-auditor"   # bare call: must NOT be $(...) or the CHAIN_CURRENT_AGENT export is lost to a subshell
-    _coh_start=$CHAIN_AGENT_START_EPOCH
     _coh_rc=0
-    claude_with_quota_retry -p "You are the coherence-auditor agent for goal-mode coherence enforcement.
-
-Session ID: $SESSION_ID
-Iteration index: $CURRENT_ITER
-Iter name: $ITER_NAME
-
-Blueprint (the contract): $BLUEPRINT_FILE
-Iter spec: $ITER_SPEC_PATH
-Agent instructions: .claude/agents/coherence-auditor.md  <-- read this first
-Methodology: .claude/skills/coherence-audit.md
-(CLAUDE.md is already in your system prompt — do not Read it again.)
-
-This iteration's changes: run \`git diff ${_snapshot_sha}\` (and \`git status\` / \`git diff HEAD\` for uncommitted changes). If the snapshot SHA is empty, fall back to \`git diff HEAD~1\`.
-UI surface map (read if it exists): reports/phase-${ITER_NAME}-ui-surface-map.md
-
-Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
-
-Write your verdict to: $COHERENCE_OUTPUT
-The verdict line MUST appear first and start exactly with:
-**Verdict:** COHERENCE-PASS
-  or **Verdict:** COHERENCE-WARN
-  or **Verdict:** COHERENCE-FAIL" || _coh_rc=$?
-    record_agent_invocation_end "coherence-auditor" "$_coh_start" "$_coh_rc"
+    dispatch_coherence_audit "$SESSION_ID" "$CURRENT_ITER" "$ITER_NAME" \
+      "$BLUEPRINT_FILE" "$ITER_SPEC_PATH" "$COHERENCE_OUTPUT" "$_snapshot_sha" || _coh_rc=$?
     # Pump loss (transport 70) is infrastructure, not an audit result — without
     # this guard a dead pump fabricated a COHERENCE-PASS via the crash stub below.
     if [[ "$_coh_rc" -eq "${DISPATCH_UNAVAILABLE_EXIT_CODE:-70}" ]]; then
@@ -1292,13 +1441,20 @@ The verdict line MUST appear first and start exactly with:
       write_session_summary "AWAITING_PUMP" "$CURRENT_ITER"
       exit 0
     fi
+    fi  # end of the coherence resume-skip guard
     if [[ ! -f "$COHERENCE_OUTPUT" ]]; then
       echo "[run-goal] coherence-auditor wrote no output — recording non-blocking PASS and continuing." >&2
       printf '**Verdict:** COHERENCE-PASS\n\n(Coherence auditor produced no output; treated as a non-blocking pass.)\n' > "$COHERENCE_OUTPUT"
+      _coh_stubbed=1
     fi
     _coh_verdict=$(grep -m1 -E '^\*\*Verdict:\*\*' "$COHERENCE_OUTPUT" | sed -E 's/^\*\*Verdict:\*\*[[:space:]]*//' | awk '{print $1}') || true
     echo "[run-goal] Coherence verdict: ${_coh_verdict:-unknown}"
     record_telemetry_event "coherence_audit" "$(jq -cn --arg v "${_coh_verdict:-unknown}" '{verdict:$v}' 2>/dev/null || printf '{"verdict":"%s"}' "${_coh_verdict:-unknown}")"
+    # Checkpoint: only a genuine agent-produced audit is reusable on resume —
+    # never the non-blocking crash stub above (a re-run may produce a real one).
+    if [[ -n "$_coh_dispatched" && -z "$_coh_stubbed" && "${_coh_rc:-1}" -eq 0 ]]; then
+      step_mark_done coherence --dir "$ITER_DIR" --verdict "${_coh_verdict:-unknown}" "$COHERENCE_OUTPUT"
+    fi
   fi
 
   # 3c. Pre-evaluator deterministic artifacts (gates + token-lean context).
@@ -1442,15 +1598,18 @@ STOP." || _eval_rc=$?
   HASH=$(journey_history_hash)
   echo "$HASH" >> "$GOAL_SESSION_DIR_LOCAL/.history-hashes"
 
-  # Build the iteration summary MD (via summarizer agent), then render its HTML.
-  # The MD is the source of truth — the renderer just visualizes it.
-  # Non-blocking; the session index is also refreshed below so the
-  # feature-organized user-manual view stays current mid-session.
-  _run_iteration_summarizer "$ITER_NAME"
-  # Keep the project README current with what now exists + how to run it.
-  _run_readme_maintainer "$ITER_NAME"
-  _render_iter_html "$ITER_NAME"
-  _render_session_index_html
+  # Showcase tail (demo → summary MD → README → HTML renders). The MD is the
+  # source of truth — the renderer just visualizes it. Non-blocking either way:
+  # halt verdicts run it INLINE here (final artifacts must be complete before
+  # the session summary); CONTINUE/ESCALATE defer it to a background fork after
+  # the push below, overlapping the next iteration's decomposer.
+  _async_showcase="no"
+  if [[ "${CHAIN_ASYNC_SHOWCASE:-true}" == "true" ]]; then
+    case "$VERDICT" in CONTINUE|ESCALATE) _async_showcase="yes" ;; esac
+  fi
+  if [[ "$_async_showcase" != "yes" ]]; then
+    _run_showcase_steps "$ITER_NAME" "$DEPTH"
+  fi
   _iter_md="$REPO_ROOT/reports/phase-${ITER_NAME}-iteration-summary.md"
   _iter_html="$REPO_ROOT/reports/phase-${ITER_NAME}-summary.html"
   _session_index_html="$REPO_ROOT/reports/goal-session-${SESSION_ID}-index.html"
@@ -1495,6 +1654,28 @@ except Exception as e:
 ")
 
   record_telemetry_event "iter_end" "$(jq -cn --arg n "$ITER_NAME" --arg v "$VERDICT" --arg nd "$NEXT_DEPTH" --argjson dl "$DELTAS" '{iter_name:$n, verdict:$v, next_depth:$nd, journey_deltas:$dl}' 2>/dev/null || printf '{"iter_name":"%s","verdict":"%s"}' "$ITER_NAME" "$VERDICT")"
+
+  # Where did this iteration's wall time go? Human-readable per-step breakdown
+  # from the telemetry events just recorded (non-blocking, no model).
+  python3 "$SCRIPT_DIR/lib/analyze_telemetry.py" --wall --iter "$CURRENT_ITER" \
+    "$GOAL_SESSION_DIR_LOCAL/telemetry.jsonl" 2>/dev/null | sed 's/^/[run-goal] /' || true
+
+  # Experiment tripwire: while an opt-in speed knob is active, revert it the
+  # moment quality moves in the window (REGRESSION verdict, journey
+  # regressions, repeated first-attempt review FAILs). Exit 3 = TRIP; any
+  # other non-zero rc is an analyzer error and must NOT trigger a revert.
+  if [[ -n "${CHAIN_AGENT_EFFORT:-}" ]]; then
+    _trip_rc=0
+    python3 "$SCRIPT_DIR/lib/analyze_telemetry.py" --tripwire --window 3 \
+      "$GOAL_SESSION_DIR_LOCAL/telemetry.jsonl" > "$ITER_DIR/.tripwire-report" 2>/dev/null || _trip_rc=$?
+    if [[ "$_trip_rc" -eq 3 ]]; then
+      echo "[run-goal] EXPERIMENT TRIPWIRE: quality moved under CHAIN_AGENT_EFFORT='$CHAIN_AGENT_EFFORT' — reverting the knob for the rest of this run." >&2
+      sed 's/^/[run-goal]   /' "$ITER_DIR/.tripwire-report" >&2 2>/dev/null || true
+      record_telemetry_event "experiment_reverted" "$(jq -cn --arg k "CHAIN_AGENT_EFFORT" --arg v "$CHAIN_AGENT_EFFORT" '{key:$k, value:$v}' 2>/dev/null || printf '{"key":"CHAIN_AGENT_EFFORT"}')"
+      unset CHAIN_AGENT_EFFORT
+    fi
+    rm -f "$ITER_DIR/.tripwire-report" 2>/dev/null || true
+  fi
 
   echo "[run-goal] Verdict: $VERDICT (next depth: $NEXT_DEPTH)"
 
@@ -1554,6 +1735,7 @@ except Exception as e:
         fi
         ;;
       REGRESSION|STALLED)
+        # (inline showcase already ran for these halt verdicts)
         echo "[run-goal] push-per-iter: skipping push for $VERDICT — branch left at prior iter's HEAD for inspection."
         # Park the iteration's uncommitted work as a local WIP commit (no push).
         # Left loose, it was exposed to manual cleanup (git checkout/--reset) and
@@ -1583,6 +1765,13 @@ PY
         record_telemetry_event "iter_push" "$(jq -cn --arg b "$PUSH_BRANCH" --arg verdict "$VERDICT" '{branch:$b, success:true, skipped:"halt_verdict", verdict:$verdict}' 2>/dev/null || echo '{}')"
         ;;
     esac
+  fi
+
+  # 4c. Deferred showcase tail: fork AFTER the push so the iteration's own
+  # commit is exactly what the sequential ordering produced; the group's
+  # artifacts land via _join_showcase_tail before the next executor dispatch.
+  if [[ "$_async_showcase" == "yes" ]]; then
+    _fork_showcase_tail "$ITER_NAME" "$DEPTH"
   fi
 
   # 5. Halt-on-verdict

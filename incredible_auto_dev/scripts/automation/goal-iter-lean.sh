@@ -68,6 +68,19 @@ mkdir -p "$REPO_ROOT/reports/reviews"
 mkdir -p "$REPO_ROOT/reports/qa/${ITER_NAME}-evidence"
 mkdir -p "$REPO_ROOT/docs/handoffs"
 
+# ── Step checkpoints (lib/checkpoint.sh) ──────────────────────────────────
+# A resumed iteration (pump stall / quota / Ctrl-C) skips steps whose marker,
+# artifact, and working-tree state all verify — so a stall never redoes the
+# expensive developer build. Any doubt → the step re-runs (today's behavior).
+ITER_DIR="$(goal_iter_dir "$ITER_NAME" 2>/dev/null || true)"
+
+_review_parses() { grep -qE '^\*\*Verdict:\*\*[[:space:]]*(PASS_WITH_NOTES|PASS|FAIL)[[:space:]]*$' "$REVIEW_REPORT" 2>/dev/null; }
+_review_verdict() { grep -m1 -E '^\*\*Verdict:\*\*' "$REVIEW_REPORT" 2>/dev/null | grep -oE 'PASS_WITH_NOTES|PASS|FAIL' | head -1; }
+_step_skipped_event() {
+  echo "[goal-iter-lean] Resume: $1 already completed for this iteration (checkpoint verified) — skipping."
+  record_telemetry_event "step_skipped" "$(jq -cn --arg s "$1" --arg n "$ITER_NAME" '{step:$s, iter_name:$n, reason:"checkpoint"}' 2>/dev/null || printf '{"step":"%s","iter_name":"%s"}' "$1" "$ITER_NAME")"
+}
+
 echo "[goal-iter-lean] Iteration: $ITER_NAME"
 record_telemetry_event "iter_dispatch" "$(jq -cn --arg n "$ITER_NAME" --arg d "lean" '{iter_name:$n, depth:$d}' 2>/dev/null || printf '{"iter_name":"%s","depth":"lean"}' "$ITER_NAME")"
 
@@ -81,6 +94,15 @@ cleanup_iter_servers() {
   pkill -f "next dev -p ${_fe_port}" 2>/dev/null || true
   pkill -f "next-server.*:${_fe_port}" 2>/dev/null || true
   fuser -k "${_be_port}/tcp" "${_fe_port}/tcp" 2>/dev/null || true
+  # Reap a still-running coherence fork so an aborting iteration can't leave an
+  # orphaned agent racing a future resume of the same iteration.
+  if [[ -n "${_COH_PID:-}" ]]; then
+    if declare -F _kill_pid_tree >/dev/null 2>&1; then
+      _kill_pid_tree "$_COH_PID" 2>/dev/null || true
+    else
+      kill "$_COH_PID" 2>/dev/null || true
+    fi
+  fi
 }
 trap cleanup_iter_servers EXIT
 
@@ -133,7 +155,7 @@ Project template: .claude/project-template.md
 Agent instructions: .claude/agents/reviewer.md  <-- read this first
 (CLAUDE.md is already in your system prompt — do not Read it again.)
 
-Run: git diff HEAD to see what changed.
+$(review_diff_hint HEAD)
 
 Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
 
@@ -152,34 +174,74 @@ The report MUST start with a line matching exactly:
 
 # Round 1: build. A transport failure (70) pauses cleanly; any other non-zero
 # aborts the iteration as before (set -e semantics, now with the code preserved).
-_dev_rc=0
-run_developer "INITIAL BUILD" "" || _dev_rc=$?
-_pause_if_transport "$_dev_rc" "developer (initial build)"
-if [[ "$_dev_rc" -ne 0 ]]; then exit "$_dev_rc"; fi
+# Resume-skip: handoff on disk + the tree exactly where this iteration last
+# left it → the ~41-min build is already done, don't redo it.
+if step_done_valid developer --verify-tree --dir "$ITER_DIR" "$DEV_HANDOFF"; then
+  _step_skipped_event "developer"
+else
+  step_invalidate_from developer "$ITER_DIR"
+  _dev_rc=0
+  run_developer "INITIAL BUILD" "" || _dev_rc=$?
+  _pause_if_transport "$_dev_rc" "developer (initial build)"
+  if [[ "$_dev_rc" -ne 0 ]]; then exit "$_dev_rc"; fi
+  [[ -s "$DEV_HANDOFF" ]] && step_mark_done developer --dir "$ITER_DIR" "$DEV_HANDOFF"
+fi
 
 # Round 1: review. A transport failure pauses; any other review failure is
 # tolerated (the retry below / evaluator handles it), as the prior `|| true` did.
-_rev_rc=0
-run_reviewer || _rev_rc=$?
-_pause_if_transport "$_rev_rc" "reviewer"
+# Resume-skip: the marker alone is never trusted — the report must live-parse
+# to a verdict (a FAIL report still routes into the fix branch below, exactly
+# as a freshly written FAIL would).
+if { step_done_valid review-1 --dir "$ITER_DIR" "$REVIEW_REPORT" \
+     || step_done_valid review-2 --dir "$ITER_DIR" "$REVIEW_REPORT"; } && _review_parses; then
+  _step_skipped_event "reviewer"
+else
+  step_invalidate_from review-1 "$ITER_DIR"
+  _rev_rc=0
+  run_reviewer || _rev_rc=$?
+  _pause_if_transport "$_rev_rc" "reviewer"
+  if _review_parses; then
+    record_telemetry_event "review_verdict" "$(jq -cn --arg v "$(_review_verdict)" --argjson a 1 --arg n "$ITER_NAME" '{verdict:$v, attempt:$a, iter_name:$n}' 2>/dev/null || printf '{"verdict":"%s","attempt":1}' "$(_review_verdict)")"
+  fi
+  if [[ "$_rev_rc" -eq 0 ]] && _review_parses; then
+    step_mark_done review-1 --dir "$ITER_DIR" --verdict "$(_review_verdict)" "$REVIEW_REPORT"
+  fi
+fi
 
 # Retry once if reviewer FAILed
 if [[ -f "$REVIEW_REPORT" ]] && ! verdict_passes "$REVIEW_REPORT"; then
   echo "[goal-iter-lean] Review FAIL — running developer in fix mode (1 retry allowed)..."
-  _dev_rc=0
-  escalate_model_on   # fix-mode retry runs on the strong tier (escalation ladder)
-  run_developer "FIX MODE (review failed)" "
+  if step_done_valid developer-fix --verify-tree --dir "$ITER_DIR" "$DEV_HANDOFF"; then
+    _step_skipped_event "developer-fix"
+  else
+    step_invalidate_from developer-fix "$ITER_DIR"
+    _dev_rc=0
+    escalate_model_on   # fix-mode retry runs on the strong tier (escalation ladder)
+    run_developer "FIX MODE (review failed)" "
 The review report below contains FAIL issues that must be fixed.
 Do NOT rebuild from scratch -- fix only what is listed.
 
 Review report path: $REVIEW_REPORT
 " || _dev_rc=$?
-  escalate_model_off
-  _pause_if_transport "$_dev_rc" "developer (fix-mode)"
-  if [[ "$_dev_rc" -ne 0 ]]; then exit "$_dev_rc"; fi
-  _rev_rc=0
-  run_reviewer || _rev_rc=$?
-  _pause_if_transport "$_rev_rc" "reviewer (fix-mode)"
+    escalate_model_off
+    _pause_if_transport "$_dev_rc" "developer (fix-mode)"
+    if [[ "$_dev_rc" -ne 0 ]]; then exit "$_dev_rc"; fi
+    [[ -s "$DEV_HANDOFF" ]] && step_mark_done developer-fix --dir "$ITER_DIR" "$DEV_HANDOFF"
+  fi
+  if step_done_valid review-2 --dir "$ITER_DIR" "$REVIEW_REPORT" && _review_parses; then
+    _step_skipped_event "reviewer (fix-mode)"
+  else
+    step_invalidate_from review-2 "$ITER_DIR"
+    _rev_rc=0
+    run_reviewer || _rev_rc=$?
+    _pause_if_transport "$_rev_rc" "reviewer (fix-mode)"
+    if _review_parses; then
+      record_telemetry_event "review_verdict" "$(jq -cn --arg v "$(_review_verdict)" --argjson a 2 --arg n "$ITER_NAME" '{verdict:$v, attempt:$a, iter_name:$n}' 2>/dev/null || printf '{"verdict":"%s","attempt":2}' "$(_review_verdict)")"
+    fi
+    if [[ "$_rev_rc" -eq 0 ]] && _review_parses; then
+      step_mark_done review-2 --dir "$ITER_DIR" --verdict "$(_review_verdict)" "$REVIEW_REPORT"
+    fi
+  fi
 fi
 
 if [[ -f "$REVIEW_REPORT" ]] && ! verdict_passes "$REVIEW_REPORT"; then
@@ -187,10 +249,77 @@ if [[ -f "$REVIEW_REPORT" ]] && ! verdict_passes "$REVIEW_REPORT"; then
   echo "[goal-iter-lean] The goal-evaluator will likely emit ESCALATE for the next iteration."
 fi
 
+# ── Coherence audit fork (runs concurrently with browser-qa) ──────────────
+# The coherence-auditor reads only the blueprint + this iteration's diff, both
+# final once review settles — nothing it needs depends on services or browser
+# results. Forking here hides its ~4 min under the ~20-min browser-qa lane.
+# The subshell isolates CHAIN_CURRENT_AGENT and the dispatch env; run-goal.sh's
+# sequential coherence step remains the automatic fallback: it reuses this
+# fork's checkpoint when valid, or re-dispatches if the fork crashed.
+# Disable with CHAIN_LEAN_PARALLEL_COHERENCE=false.
+_COH_PID=""
+_COH_RC_FILE="${ITER_DIR:+$ITER_DIR/.coherence-rc}"
+COHERENCE_OUTPUT_LEAN="${ITER_DIR:+$ITER_DIR/coherence.md}"
+if [[ "${CHAIN_LEAN_PARALLEL_COHERENCE:-true}" == "true" && -n "$ITER_DIR" \
+      && "${GOAL_ITER_INDEX:-0}" -gt 0 \
+      && -n "${GOAL_BLUEPRINT_FILE:-}" && -f "${GOAL_BLUEPRINT_FILE:-/nonexistent}" ]]; then
+  if step_done_valid coherence --verify-tree --dir "$ITER_DIR" "$COHERENCE_OUTPUT_LEAN" \
+     && grep -qE '^\*\*Verdict:\*\* COHERENCE-(PASS|WARN|FAIL)' "$COHERENCE_OUTPUT_LEAN"; then
+    _step_skipped_event "coherence-auditor"
+  else
+    step_invalidate_from coherence "$ITER_DIR"
+    rm -f "$_COH_RC_FILE"
+    # Coherence-scoped bounded diff (judge context trim): the source tree is
+    # final once review settles, so build iter-diff.md NOW for the auditor to
+    # read first. The evaluator's own scan/iter-diff artifacts are still built
+    # at their original post-browser-qa point in run-goal.sh (overwriting this
+    # file), so the evaluator's inputs are byte-identical to before.
+    if declare -F goal_gate_build_diff_artifacts >/dev/null 2>&1 || source "$SCRIPT_DIR/lib/goal-gates.sh" 2>/dev/null; then
+      goal_gate_build_diff_artifacts "$ITER_DIR" "$(cat "$ITER_DIR/snapshot-sha" 2>/dev/null || echo "")" "$REPO_ROOT" 2>/dev/null || true
+    fi
+    echo "[goal-iter-lean] Forking coherence-auditor to run concurrently with browser-qa..."
+    (
+      _rc=0
+      dispatch_coherence_audit "${GOAL_SESSION_ID:-unknown}" "${GOAL_ITER_INDEX}" "$ITER_NAME" \
+        "$GOAL_BLUEPRINT_FILE" "$SPEC" "$COHERENCE_OUTPUT_LEAN" \
+        "$(cat "$ITER_DIR/snapshot-sha" 2>/dev/null || echo "")" || _rc=$?
+      echo "$_rc" > "$_COH_RC_FILE"
+    ) &
+    _COH_PID=$!
+  fi
+fi
+
 # ── Step 3: Browser QA ────────────────────────────────────────────────────
 # Determine if frontend work is implied. Lean iterations always test journeys,
 # so we always try to start the frontend; if it fails we mark all SKIPPED and
 # the evaluator will treat that as ESCALATE.
+
+# Journey sets come from the spec (needed by the resume-skip check below AND by
+# the lanes inside the block). First match wins.
+_spec_journeys() { grep -iE "$1" "$SPEC" 2>/dev/null | head -1 | grep -oE 'J-[0-9]+' | sort -u | tr '\n' ' '; }
+TARGET_JOURNEYS="$(_spec_journeys 'Target journeys:')"
+REQUIRED_JOURNEYS="$(_spec_journeys 'Required-still-passing')"
+_bq_sig="${TARGET_JOURNEYS}|${REQUIRED_JOURNEYS}"
+
+# Resume-skip for the WHOLE browser-qa section (service boot + replay lane +
+# LLM lane + merge): reusable only when the results file carries a real
+# PASS/FAIL verdict (a SKIPPED verdict is never reusable — a re-run may produce
+# a genuine result instead of a wasted ESCALATE), the journey sets still match
+# the spec, and the tree is exactly where this iteration last left it.
+_bq_skip="no"
+if step_done_valid browser-qa --verify-tree --dir "$ITER_DIR" "$UI_TEST_RESULTS" \
+   && [[ "$(step_field browser-qa journeys "$ITER_DIR")" == "$_bq_sig" ]]; then
+  _prior_bq_verdict="$(grep -m1 -E '^\*\*Browser QA Verdict:\*\*' "$UI_TEST_RESULTS" 2>/dev/null | grep -oE 'PASS|FAIL|SKIPPED' | head -1)"
+  if [[ "$_prior_bq_verdict" == "PASS" || "$_prior_bq_verdict" == "FAIL" ]]; then
+    _bq_skip="yes"
+    _step_skipped_event "browser-qa"
+  fi
+fi
+
+# NOTE: the section below is guarded, not re-indented — the guard is the only
+# change to its flow. It ends at the matching `fi` before the demo step.
+if [[ "$_bq_skip" != "yes" ]]; then
+step_invalidate_from browser-qa "$ITER_DIR"
 
 QA_BACKEND_LOG=$(_qa_log_path "goal-iter-backend")
 QA_FRONTEND_LOG=$(_qa_log_path "goal-iter-frontend")
@@ -270,10 +399,7 @@ LLM_RESULTS="$REPO_ROOT/reports/phase-${ITER_NAME}-ui-test-results.llm.md"
 DEMO_RUNNER="$SCRIPT_DIR/lib/demo_runner.py"
 MERGE_RESULTS="$SCRIPT_DIR/lib/merge_ui_test_results.py"
 
-# Pull the journey IDs out of a spec metadata line (first match wins).
-_spec_journeys() { grep -iE "$1" "$SPEC" 2>/dev/null | head -1 | grep -oE 'J-[0-9]+' | sort -u | tr '\n' ' '; }
-TARGET_JOURNEYS="$(_spec_journeys 'Target journeys:')"
-REQUIRED_JOURNEYS="$(_spec_journeys 'Required-still-passing')"
+# (Journey IDs were pulled from the spec above, before the resume-skip check.)
 
 # Dispatch the LLM browser-qa-agent on an explicit journey list, writing to $2.
 run_browser_qa_llm() {
@@ -337,10 +463,30 @@ Then STOP." || _rc=$?
   return $_rc
 }
 
-# Partition Required-still-passing into replay (golden script on file) vs LLM.
+# Partition Required-still-passing into replay (LINTABLE golden on file) vs LLM.
+# A golden that fails validation is quarantined (renamed *.json.invalid) and its
+# journey routed to the LLM lane — previously an invalid golden produced a
+# replay SKIP that nothing re-confirmed (silently unverified journey). A lint
+# crash (no output) conservatively keeps the old file-exists behavior: the
+# verify runner re-validates at replay time anyway.
+_lint_out=""
+if [[ -n "${REQUIRED_JOURNEYS// /}" ]]; then
+  _lint_out="$(python3 "$DEMO_RUNNER" --mode lint --scripts-dir "$JOURNEY_SCRIPTS_DIR" \
+    --journeys "$(echo "$REQUIRED_JOURNEYS" | tr ' ' ',' | sed 's/^,*//;s/,*$//')" 2>/dev/null || true)"
+fi
 R_REPLAY=""; R_LLM=""
 for _j in $REQUIRED_JOURNEYS; do
-  if [[ -f "$JOURNEY_SCRIPTS_DIR/$_j.json" ]]; then R_REPLAY+="$_j "; else R_LLM+="$_j "; fi
+  if [[ -f "$JOURNEY_SCRIPTS_DIR/$_j.json" ]]; then
+    if printf '%s\n' "$_lint_out" | grep -q "^$_j invalid"; then
+      echo "[goal-iter-lean] Golden for $_j failed lint — quarantining ($_j.json.invalid) and routing to the LLM lane: $(printf '%s\n' "$_lint_out" | grep -m1 "^$_j invalid" | cut -d' ' -f2-)"
+      mv -f "$JOURNEY_SCRIPTS_DIR/$_j.json" "$JOURNEY_SCRIPTS_DIR/$_j.json.invalid" 2>/dev/null || true
+      R_LLM+="$_j "
+    else
+      R_REPLAY+="$_j "
+    fi
+  else
+    R_LLM+="$_j "
+  fi
 done
 
 _use_replay="no"
@@ -361,6 +507,15 @@ if [[ "$_use_replay" == "yes" ]]; then
   if [[ "$_replay_rc" -eq 5 ]]; then
     REPLAY_FAILED="$(grep -E '^\| UT-J-[0-9]+ ' "$REGRESSION_RESULTS" 2>/dev/null | grep -F '| FAIL |' | grep -oE 'J-[0-9]+' | sort -u | tr '\n' ' ')"
     echo "[goal-iter-lean] Replay flagged possible regression(s) — re-confirming via LLM: $REPLAY_FAILED"
+  elif [[ "$_replay_rc" -ne 0 ]]; then
+    # Replay-lane infrastructure failure (rc 6 = browser launch/crash; any
+    # other rc = runner crash). The replay journeys were NOT verified — route
+    # ALL of them back to the LLM lane, byte-identical to running this
+    # iteration with CHAIN_REGRESSION_REPLAY=false. Previously a replay crash
+    # left them silently unverified for the iteration.
+    echo "[goal-iter-lean] Replay lane failed (rc=$_replay_rc) — falling back to the LLM lane for ALL regression journeys." >&2
+    _use_replay="no"
+    R_REPLAY=""
   fi
 fi
 
@@ -398,13 +553,61 @@ if [[ ! -f "$UI_TEST_RESULTS" && "$_bqa_rc" -ne "${QUOTA_EXHAUSTED_EXIT_CODE:-75
     "goal-iter-lean.sh browser-qa produced no results file (exit $_bqa_rc). The evaluator will likely emit ESCALATE for the next iteration."
 fi
 
+# Golden coverage: every PASSing journey should now have a lintable golden so
+# the replay lane keeps growing (browser-qa LLM time decays iteration over
+# iteration). A gap is loud but non-gating — those journeys simply return to
+# the LLM lane next iteration.
+_pass_j="$(grep -E '^\| UT-J-[0-9]+ ' "$UI_TEST_RESULTS" 2>/dev/null | grep -F '| PASS |' | grep -oE 'J-[0-9]+' | sort -u | tr '\n' ' ')"
+_n_pass=0; _missing_golden=""
+for _j in $_pass_j; do
+  _n_pass=$((_n_pass + 1))
+  [[ -f "$JOURNEY_SCRIPTS_DIR/$_j.json" ]] || _missing_golden+="$_j "
+done
+if [[ -n "${_missing_golden// /}" ]]; then
+  echo "[goal-iter-lean] Golden coverage gap: PASSing journey(s) without a replay script: ${_missing_golden}— the browser-qa agent should write a golden per PASS (they fall back to the slower LLM lane next iteration)."
+fi
+record_telemetry_event "golden_coverage" "$(jq -cn --argjson p "$_n_pass" --arg m "${_missing_golden% }" --arg n "$ITER_NAME" '{passing:$p, missing_goldens:$m, iter_name:$n}' 2>/dev/null || printf '{"passing":%d,"missing_goldens":"%s"}' "$_n_pass" "${_missing_golden% }")"
+
+# Checkpoint: reusable on resume only with a real PASS/FAIL verdict (never a
+# SKIPPED stub) and the journey signature this run actually covered.
+_bq_verdict="$(grep -m1 -E '^\*\*Browser QA Verdict:\*\*' "$UI_TEST_RESULTS" 2>/dev/null | grep -oE 'PASS|FAIL|SKIPPED' | head -1)"
+if [[ "$_bq_verdict" == "PASS" || "$_bq_verdict" == "FAIL" ]]; then
+  step_mark_done browser-qa --dir "$ITER_DIR" --verdict "$_bq_verdict" --journeys "$_bq_sig" "$UI_TEST_RESULTS"
+fi
+
+fi  # end of the browser-qa resume-skip guard (_bq_skip)
+
+# ── Coherence audit join ──────────────────────────────────────────────────
+# Settle the fork BEFORE this script returns: the goal-evaluator's input set
+# must be complete and identical to the sequential ordering.
+if [[ -n "$_COH_PID" ]]; then
+  wait "$_COH_PID" 2>/dev/null || true
+  _coh_rc="$(cat "$_COH_RC_FILE" 2>/dev/null || echo 1)"
+  rm -f "$_COH_RC_FILE"
+  _COH_PID=""
+  if [[ "$_coh_rc" -eq "${DISPATCH_UNAVAILABLE_EXIT_CODE:-70}" ]]; then
+    rm -f "$COHERENCE_OUTPUT_LEAN" 2>/dev/null || true   # partial output is untrustworthy
+    _pause_if_transport "$_coh_rc" "coherence-auditor (parallel)"
+  fi
+  if [[ "$_coh_rc" -eq 0 ]] && grep -qE '^\*\*Verdict:\*\* COHERENCE-(PASS|WARN|FAIL)' "$COHERENCE_OUTPUT_LEAN" 2>/dev/null; then
+    _coh_v="$(grep -m1 -E '^\*\*Verdict:\*\*' "$COHERENCE_OUTPUT_LEAN" | grep -oE 'COHERENCE-(PASS|WARN|FAIL)' | head -1)"
+    step_mark_done coherence --dir "$ITER_DIR" --verdict "${_coh_v:-unknown}" "$COHERENCE_OUTPUT_LEAN"
+    echo "[goal-iter-lean] Coherence audit (parallel) verdict: ${_coh_v:-unknown}"
+  else
+    # Crash or malformed output → clear it; run-goal.sh's sequential coherence
+    # step re-dispatches fresh (automatic fallback) per its own rules.
+    echo "[goal-iter-lean] Parallel coherence audit did not complete cleanly (rc=$_coh_rc) — falling back to the sequential dispatch in run-goal.sh." >&2
+    rm -f "$COHERENCE_OUTPUT_LEAN" 2>/dev/null || true
+  fi
+fi
+
 # ── Product demo (showcase) ───────────────────────────────────────────────
-# Reuses the still-running app (cleanup_iter_servers fires only on EXIT). The
-# idempotent ensure_services_running in demo-phase.sh is a no-op when ports
-# are warm, so no second boot. Non-gating: failures become a SKIPPED stub and
-# the lean iteration continues to its closing summary.
-bash "$SCRIPT_DIR/demo-phase.sh" "$ITER_NAME" \
-  || echo "[goal-iter-lean] demo-phase.sh exited non-zero — continuing (showcase, non-gating)"
+# Moved OUT of the lean executor: run-goal.sh's showcase tail now runs
+# demo-phase.sh (per-iteration, lean depth) off the gate path — in the
+# background for CONTINUE/ESCALATE, inline for halt verdicts. The evaluator
+# never read demo artifacts, so its input set is unchanged. demo-phase.sh
+# boots its own services idempotently, so it no longer depends on this
+# script's still-warm ports.
 
 echo "[goal-iter-lean] Done. Iteration artifacts:"
 echo "  Dev handoff:   $DEV_HANDOFF"
