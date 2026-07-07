@@ -273,6 +273,46 @@ ones, with honest "this isn't proven yet" markers when the evidence is thin or f
       proxy is never presented as a market index; determinism + no-lookahead preserved.
     - **Walkthrough:** a `[NEW]` walkthrough of the deep benchmark + the vendor-labeled index/macro context.
 
+- **J-15: Core pages and APIs stay fast on the deep basis — measured, budgeted, never regressing**
+  - Steps:
+    1. With a warm backend in prod mode (`scripts/start-backend.sh` / `scripts/start-frontend.sh` —
+       never `dev.sh`, whose `--reload` + per-route `next dev` compile are not product latency),
+       measure time-to-interactive of `/stocks`, `/stocks/AAPL` (including the Full-history toggle),
+       `/data`, and `/evidence`, and the warm latency of `GET /api/stocks`, `/api/stocks/{ticker}`,
+       `/api/data`, and `/api/health`.
+    2. Record every measurement in `reports/perf-budgets.md` (the committed budgets table).
+    3. Every later iteration that touches the data path re-asserts the committed budgets and records
+       the fresh numbers alongside the old ones.
+  - Acceptance:
+    - **Budgets:** pages interactive ≤ 3 s warm; `GET /api/stocks` ≤ 1.5 s (≤ 0.5 s once item E of the
+      fast-platform section lands); `/api/stocks/{ticker}` ≤ 0.3 s (item D); `/api/data` ≤ 1.5 s warm
+      and its COLD path completes ≤ 60 s without OOM under the 6144 MB cap (item A); `/api/health`
+      ≤ 0.1 s (item G). If a budget is proven infeasible without a correctness trade-off, the budgets
+      table may set a different value WITH the measurement attached — the table then IS the contract.
+    - **Correctness (byte-identical):** optimized paths return byte-identical values to the canonical
+      computation for the same as-of — a projection or cache re-serves stored values, never recomputes.
+    - **Honest status / anti-goals:** anything slower than its budget shows an honest progress or
+      initializing state, never a frozen or blank frame; determinism + no-lookahead preserved.
+    - **Walkthrough:** a `[NEW]` walkthrough showing the measured timings against the committed budgets.
+
+- **J-16: Data jobs (Fetch + Backfill + warmup) are fast and honest about progress**
+  - Steps:
+    1. Commit the measured baseline to `reports/perf-budgets.md` (current, measured 2026-07-07:
+       backfill ≈ 6.2 s/date; per-date snapshot compute 2–8 s; seed load 20.5 s; full warmup pass
+       ≈ 124 cadence dates + forward returns).
+    2. Land the prescribed optimizations (items A, B, F of the fast-platform section, including F's
+       warmup-cache note).
+    3. Re-measure the same operations on the same host and commit the new numbers.
+  - Acceptance:
+    - **Improvement:** per-date backfill wall time improves ≥ 30% vs the committed baseline
+      (network-bound fetch transfer time is measured separately and excluded from the target); a full
+      warmup pass improves ≥ 30%; the improved numbers become the never-regress budgets.
+    - **Correctness (byte-identical):** per-(symbol, date) outputs are byte-identical to the
+      unoptimized path — snapshots, forward returns, and membership resolve to the same values.
+    - **Honest status / anti-goals:** running jobs keep live progress on `/data` and never report
+      done early; no fabricated or partial data marked complete.
+    - **Walkthrough:** a `[NEW]` walkthrough of the before/after job timings from the budgets table.
+
 <!-- Continuous-improvement auto-journeys: the goal-proposer appends NEW Must-have journeys ONLY
      between the two markers below (see the goal-self-extension skill). The human-authored journeys
      above and the Anti-goals below are never machine-edited. An empty block = nothing auto-proposed yet. -->
@@ -366,6 +406,11 @@ ones, with honest "this isn't proven yet" markers when the evidence is thin or f
 - No iteration ships if its evidence-derived claims (if any) lack a passing referee verdict from the
   post-decompose gate. *(critical)*
 - No hard-coded credentials, API keys, or tokens in source files. *(critical)*
+- **Resilience to data-shape and data-scale change:** widening the data basis (new nulls, broader
+  pools, deeper history) must never crash an existing page or exhaust a service's memory — every
+  existing consumer of a widened field is re-validated, the UI degrades gracefully (contained error
+  boundary, honest "—"/NA placeholder, never a blank application-error page), and unbounded
+  whole-table ORM loads are forbidden on the deep basis. *(critical)*
 
 ## Loop mechanics (for the iteration planner)
 
@@ -596,3 +641,181 @@ index/macro context BEFORE the swap so the swap happens once over one complete s
 determinism + no-lookahead preserved (seed 20240601; scoring ≤ as-of / forward > as-of; sealed holdout);
 every displayed number byte-matches the regenerated referee verdict; no retired/overfit edge shown as
 proven; no credentials in source (Stooq needs no API key).
+
+## Improvement direction (engineering): fast platform on the deep basis (measured 2026-07-07)
+
+The 30-year × 587-symbol basis (1.3 GB DB; `daily_prices` 3,270,066 rows; 410 snapshot runs;
+`scanner_results` 165,670 rows) made data volume the dominant cost. This section SUPERSEDES §F's
+"the heavy cost is OFFLINE" assumption above — measured reality: the online `/api/data` cold path
+OOMs (`prices.py:84` whole-table ORM prefill; ~6.8 GB peak vs the 6144 MB `server.memory_cap_mb`
+cap), and several endpoints/pages do avoidable full-set work. Every item below preserves the
+anti-goals: **byte-identical displayed numbers, determinism/no-lookahead, single canonical
+compute/serve per value, honest states.** Items are independent; each lands with its own before/after
+measurement recorded in `reports/perf-budgets.md` (J-15/J-16 are the journey contracts).
+**Suggested sequencing:** (1) the iter-19 regression pass = sector-null crash fix + item **A**
+(unblocks browser-QA); (2) mechanical backend pass = **B + C + D + G + H**; (3) payload & interaction
+pass = **E + I**; (4) compute & storage pass = **F + J** (each gated by byte-identical verification).
+
+**A) Bound the bar prefill (the OOM — iter-19, blocking).** `app/engine/prices.py:82-84` `prefill()`
+runs `select(DailyPrice).order_by(symbol, date)` + `.all()` → 3.27M hydrated ORM rows at once,
+retained in `_by_symbol` for the job. Rewrite as a **streamed, column-projected** load:
+`select(DailyPrice.symbol, DailyPrice.date, DailyPrice.open, DailyPrice.high, DailyPrice.low,
+DailyPrice.close, DailyPrice.volume).order_by(...)` iterated with `.yield_per(batch)` (idiom:
+`forward_testing.py:367-378` `_streamed_existing_keys`; ~20 uses in `research.py`), building
+lightweight records — a module-level `NamedTuple` or `__slots__` class `Bar` with **exactly those
+attribute names** (consumers read `.date/.open/.high/.low/.close/.volume`) — instead of `DailyPrice`
+instances. Batch size from config (`research.read_batch_size`, currently 2000, or a new
+`data_manager.prefill_batch_size` — no inline literals). Apply the same record type to the lazy
+per-symbol path at `prices.py:115`. Expected retained footprint ~0.4–0.5 GB (vs ~3+ GB ORM; the
+transient `.all()` spike is eliminated). Preserve `ORDER BY symbol, date` and the `expected_symbols`
+semantics so `test_bar_cache.py`'s byte-identical snapshot tests stay green; any new param threaded
+through `prefilled_bar_cache → prefill` must be OPTIONAL (monkeypatch shims `test_bar_cache.py:91`,
+`:256`; 2-arg call `:102`). ALSO: verify the `compute_coverage` single-flight (`data_manager.py:629-745`)
+actually serializes cold-key computes — the OOM log shows ≥6 CONCURRENT prefills from parallel
+`/api/data` probes, so either the lock scope excludes `_compute_coverage_uncached`'s prefill or probes
+bypass it; enforce one cold compute at a time. Fix the stale `config.yaml` `server.memory_cap_mb`
+comment ("~1.3M-row" → the real 3.27M figure).
+*Growth leeway (design in now, cheap):* give `prefill` two optional bounds so the cache scales
+sub-linearly with future pool growth — `symbols=` (load only pool ∪ benchmarks: the DB already holds
+more symbols than the pool serves) and `min_date=` (callers that compute a bounded date range, e.g. a
+recent-K-dates backfill, pass `min(target_dates) − max_lookback`; full rebuilds pass None). Both
+default to today's behavior. Note in the docstring: `trailing_count` needs full-history **dates**
+(cheap scalars), not full-history OHLCV — if the pool ever grows past ~1,500 symbols, split the cache
+into dates-only (full depth) + OHLCV (lookback window only) instead of buying more RAM.
+
+**B) Tune SQLite (tiny diff, cross-cutting).** `app/db.py:39-41` sets only `check_same_thread=False`;
+the 1.3 GB DB runs journal=delete / synchronous=FULL / 2 MB page cache / no busy_timeout / default
+pool 5+10 under a concurrent read+write workload (warmup writes while `/api` reads). In `make_engine`,
+add an `event.listen(engine, "connect")` hook applying config-sourced pragmas (new `database.pragmas`
+block): `journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout=30000`, `cache_size=-262144` (256 MB),
+`mmap_size=1073741824`, `temp_store=MEMORY`; and size the pool to the workers (`pool_size=10,
+max_overflow=20`, config-keyed). WAL+NORMAL is the standard safe pairing for a single-host research
+app (worst case: the last commit is lost on power cut — acceptable here; document it). Expected:
+writers stop blocking readers during warmup/backfill; commit cost drops ~an order of magnitude;
+"database is locked" class errors disappear.
+*Growth leeway:* apply the pragma hook **only when the URL is sqlite** and keep it the ONE
+dialect-specific site in the codebase — all queries stay ORM-portable, so outgrowing SQLite (see K's
+tripwires) is a `database.url` config swap to Postgres, not a rewrite. SQLite with WAL + these indexes
+comfortably serves this read pattern to ~10× today's size; the seam matters more than the migration.
+
+**C) Index hygiene (schema + one-off guarded migration at startup).** `models.py:84-87`: the
+`UniqueConstraint("symbol","date")` already creates a unique index; the explicit
+`Index("ix_daily_prices_symbol_date", ...)` is a **byte-for-byte duplicate (81 MB + a second index
+write on every bar insert)** — remove it from the model AND `DROP INDEX IF EXISTS
+ix_daily_prices_symbol_date` in a guarded post-`create_db_and_tables` startup step (no alembic in this
+repo). Same for `forward_returns`' redundant prefixes `ix_forward_returns_run_id` and
+`ix_forward_returns_run_symbol` (both prefixes of the `UNIQUE(run_id,symbol,horizon)` autoindex;
+~23 MB). ADD `Index("ix_daily_prices_date", "date")` (`CREATE INDEX IF NOT EXISTS` in the same hook) —
+`func.max(DailyPrice.date)` (`prices.py:33`, on ~every request), the availability `group_by(date)`
+(`data_manager.py:914-919`) and min/max window scans currently walk 3.27M rows without it. Verify with
+`EXPLAIN QUERY PLAN` that `bars_asof` still uses the unique index and `max(date)` uses the new one.
+Dropping a redundant index never changes results, only plans.
+
+**D) Stop deserializing the whole leaderboard to serve one row.** `snapshot_serving.py:213-223`
+(`stock_detail_payload`) and `watchlist.py:53-58` (`_canonical_rows`) call `stored_stock_rows`, which
+`json.loads`es **all ~404 `record_json` blobs** to return 1 (or a few) rows. Add a filtered variant:
+query `ScannerResult` `where(run_id==…, ticker==…)` (or `ticker IN (…)` for the watchlist) and
+deserialize only those rows. Same serializer, same payload shape — byte-identical responses, existing
+API tests stay green. Expected: detail/watchlist latency drops from ~404 `json.loads` to ~1–5.
+
+**E) Lean leaderboard DTO (payload ~2 MB → ~0.2 MB).** `/api/stocks` ships the full detail-row shape
+×541 (`apps/frontend/lib/api.ts:276-296`): three `components[]` arrays, `invalidation`, pattern
+`detail`+`contractions` — **only the detail page renders those.** Server: in
+`snapshot_serving.stocks_payload`, project each row to a summary DTO (ticker, sector, the three scores
+as value+bucket+evidence_status WITHOUT `components`, setup status+reason, per-pattern
+`flagged`+reason+pivot only, themes, `forward_returns`, and `high_proximity` **lifted to a top-level
+field** — it currently hides inside `leadership.components`, forcing a per-cell `.find()`
+client-side). Keep the full shape on `/api/stocks/{ticker}` (item D). This is a **projection of the
+same canonical stored values** (no recompute — register the summary view in `blueprint.md`'s Data
+Contract as a presentation projection of the same canonical rows). Frontend: add `StockSummaryRow` to
+`lib/api.ts`, consume it in `app/stocks/page.tsx`; delete the `.find()`-per-cell helpers
+(`:904/:931/:938` via `:80/:86`) in favor of the server-provided fields.
+
+**F) Window the scoring inputs (CPU: the 2–8 s/date driver).** `scoring.py:113` and `:339` slice each
+member's **entire history ≤ D** (late dates ≈ 5,300 bars) into every indicator, but the longest
+lookback is ~252 bars (52-week window; `min_history_bars: 200`; MA/ATR/vol windows smaller). Determine
+the TRUE max lookback across `_raw_components` (`scoring.py:119-135`) and the pass-3 detectors (VCP /
+pullback / flat-base / hist_volatility / vol_contraction / downside_vol), add config
+`indicators.max_lookback_bars` = that max + a safety margin (e.g. 320), and slice `bars[-N:]` before
+indicator computation. **Gate: byte-identical verification before adoption** — a one-off harness
+compares `score_stocks` output on ≥3 dates × the full pool, windowed vs unwindowed; ANY diff means an
+indicator silently depends on deeper history (fix the window; never accept drift). Expected: per-date
+snapshot 2–8 s → well under 1 s for late dates (~17× less data per indicator); full rebuild and warmup
+scale proportionally. ALSO (same area): `warmup.py:155` runs `backfill_forward_returns` **outside**
+the `bar_cache` block that wraps the snapshot loop (`warmup.py:145`) — its per-(run,symbol)
+`close_on`/`bars_after` reads (~330k bounded queries per full pass) should run inside the shared cache
+context (with item A's lightweight cache this becomes a free in-memory slice).
+
+**G) Make the readiness probe cheap.** `readiness.py:78-80` re-derives the warmup calendar on **every
+2 s health poll**: `_warmup_dates` → `walk_forward_asof_dates` materializes all 5,369 SPY ORM rows
+(`forward_testing.py:265`), then `get_run_for_date` issues ~124 per-date point queries. Fix:
+(1) column-project the SPY calendar (`select(DailyPrice.date).where(symbol == 'SPY')` — date scalars,
+not ORM rows) and memoize it keyed on `(latest_date, cfg)`; (2) replace the per-date existence loop
+with ONE `select(ScannerRun.asof_date).where(asof_date.in_(cadence_dates))` and a set diff. Budget:
+`/api/health` ≤ 0.1 s.
+
+**H) Kill the `/api/data` cold-path N+1.** `data_manager.py:276-281` (`_missing_data_diagnostic`)
+runs one `DailyPrice.date` query **per universe member** (~548) on every cold coverage compute.
+Replace with one grouped/windowed query (the sibling `_per_symbol_coverage` at `:164-171` already
+shows the bulk `group_by` pattern) or read from the active bar cache's `_dates_by_symbol`.
+
+**I) Frontend interaction costs (no data-contract change).**
+- *Availability heatmap* (`components/availability-heatmap.tsx:289-328`): ~7,800 `<button>`s (~19k DOM
+  nodes) fully re-reconcile on **every hover** because `setHovered` re-runs the whole band map.
+  Extract a `React.memo` `HeatCell` (props = precomputed primitives; move
+  `parseIsoUTC`/`densityBucket`/range checks into the `bands` memo at `:157`), and hold hover state so
+  only the tooltip + the two affected cells re-render (or use one delegated `onMouseOver` on the grid
+  container reading `data-*` from the event target). Acceptance: hovering does not re-render the full
+  grid (React DevTools profiler count or a dev render-counter).
+- *Leaderboard* (`app/stocks/page.tsx`): debounce the search input (~200 ms) before the `visible`
+  filter (`:400-418`) and move the URL-reflect `router.replace` (`:306-322`) to the debounced value;
+  wrap `StockTableRow` (`:840`) in `React.memo` (row objects keep identity across sorts, so memo
+  works); sort a copied array directly with comparators reading item-E's server-provided fields (drop
+  the wrap/unwrap double map at `:427-437`).
+- *Detail page* (`app/stocks/[ticker]/page.tsx:150,:405`): start the bars fetch in parallel with the
+  row fetch (it needs only ticker+asOf+range, not the row) — removes a full round-trip from perceived
+  chart load. *Chart* (`components/price-chart.tsx:312`): toggling the regime overlay tears down and
+  recreates the entire chart (`chart.remove()` → `createChart` → re-`setData` of ~3.2k points); keep
+  the chart instance in a ref and add/remove only the band series on toggle.
+- *Cheap wins:* `app/stocks/page.tsx:276-278` re-fetches `/api/methodology` although
+  `GlossaryProvider` (`lib/glossary.tsx:41`) already holds it — consume the provider. In `lib/api.ts`
+  `getJSON` (`:40-46`), add a small in-memory GET cache for **as-of-pinned URLs only** (responses for
+  an explicit `as_of=` are immutable snapshots) so Recent↔Full chart toggles and as-of revisits stop
+  re-fetching; latest-view URLs stay `no-store`.
+
+**J) Shrink `record_json` at write (STRUCTURAL — the future-growth driver; after E).**
+`scanner_results.record_json` (avg 4,051 B × 165,670 rows = 640 MB, **59% of the DB**) is parsed in
+full for every leaderboard read — and its growth slope just changed: **daily snapshot cadence is live
+since 2026-06-01** (`scanner.snapshot_cadence.daily_start`), so at current blob size the table grows
+≈ 252 runs/yr × ~540 rows × ~4 KB ≈ **+545 MB/year — the DB nearly doubles in ~14 months with zero
+new symbols.** Two-part fix: (1) once E lands, persist the summary projection as its own column
+(`summary_json`, ~0.3–0.5 KB) at snapshot write; `/api/stocks` reads only `summary_json` (fallback:
+derive from `record_json` for pre-migration runs, lazily backfilling); (2) compress `record_json` at
+write (zlib ≈ 3–4:1; a `compressed` marker or magic-byte sniff for old rows) with a one-off
+maintenance migration over the 165k existing rows. Combined slope: ~+545 → ~+200 MB/yr, and
+leaderboard reads stop touching the big blobs entirely. The detail path (item D) still reads the full
+blob for its one row. Immutability guardrail: snapshots are evidence — compression/summary re-encode
+bytes, never alter values; NEVER thin or prune historical runs (walk-forward + the referee depend on
+them).
+
+**K) Measurement, capacity tripwires + ops hygiene.** Add `scripts/measure-perf.sh` (curl-timed warm
+endpoint latencies + one bounded K-date backfill timing via the jobs API + a **DB capacity snapshot**:
+file size, rows in daily_prices / scanner_results / forward_returns; output appended to
+`reports/perf-budgets.md` so the growth **slope** is visible run-over-run) — measurements run against
+**prod mode** (`start-backend.sh`/`start-frontend.sh`; `dev.sh`'s `--reload` + `next dev` per-route
+compile are not product latency). Surface the same capacity snapshot as a small storage card on
+`/data` (the Data Manager already owns this surface — presentation of stored values only, no new
+computation). **Capacity tripwires (pre-registered so future planners act instead of rediscovering):**
+when ANY of — `daily_prices` > 10M rows, DB file > 5 GB, pool > 1,200 symbols, or a J-15 budget
+regresses two measurement runs straight — schedule a capacity iteration: re-baseline, re-check item
+A's dates-vs-OHLCV cache split, and evaluate item B's Postgres seam. Growth math for reference: bars
+grow ≈ +148k rows/yr (~+4.5%/yr) at today's pool and linearly with pool size; snapshot growth per
+item J. The offline pytest fixture cost (~10 h suite) is **test-only and out of scope** for this
+workstream. Keep `server.memory_cap_mb: 6144` as the OOM guard; item A must fit comfortably under it
+at ≥3× today's row count. New rule going forward: any new loop over "all symbols" or "all dates"
+takes its bound/batch/scope from config — never unbounded, never a literal.
+
+**Anti-goal guardrails (unchanged):** no fabricated data; determinism + no-lookahead preserved; every
+displayed number byte-matches the canonical engine computation for the same as-of (projections and
+caches re-serve stored values, never recompute); honest states everywhere (initializing/progress,
+never stale-as-fresh, never a blank crash).

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "journey": "J-10",
+  "name": "The product surfaces deep (up to ~30-year) price history, honestly bounded per name",
+  "default_timeout_ms": 10000,
+  "steps": [
+    {"n": 1, "journey": "J-10", "action": {"type": "goto", "url": "/stocks/NVDA"}, "expect": {"text": "Technology"}},
+    {"n": 2, "journey": "J-10", "action": {"type": "click", "target": {"testid": "chart-range-full"}}, "expect": {"text": "3025 bars"}},
+    {"n": 3, "journey": "J-10", "action": {"type": "click", "target": {"testid": "chart-range-recent"}}, "expect": {"text": "1255 bars"}}
+  ]
+}

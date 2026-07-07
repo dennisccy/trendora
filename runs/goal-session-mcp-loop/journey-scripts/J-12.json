@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "journey": "J-12",
+  "name": "The universe is a broad, point-in-time dynamic set across the deep history",
+  "default_timeout_ms": 10000,
+  "steps": [
+    {"n": 1, "journey": "J-12", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "Dynamic-universe membership timeline"}},
+    {"n": 2, "journey": "J-12", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "Stale series"}},
+    {"n": 3, "journey": "J-12", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "541"}},
+    {"n": 4, "journey": "J-12", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "DDOG"}}
+  ]
+}

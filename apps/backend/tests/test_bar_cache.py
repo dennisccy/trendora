@@ -69,6 +69,91 @@ def test_cached_bars_asof_slices_le_d_identically(tiny_engine):
         assert all(bar_date <= d for bar_date, _ in rows)  # no future bar
 
 
+def test_prefill_returns_bar_records_matching_plain_query_row_level(tiny_engine):
+    """iter-19 (the OOM fix): `_BarCache.prefill()` now streams a COLUMN-PROJECTED query into lightweight
+    `Bar` records instead of materializing whole `DailyPrice` ORM rows. Proves the rewrite changes HOW
+    bars are loaded, never WHAT is loaded: the prefilled cache's rows/order/values for EVERY symbol match
+    a plain reference `SELECT * FROM daily_prices ORDER BY symbol, date` exactly, and each cached bar is a
+    `Bar` (not a `DailyPrice`) carrying the identical date/open/high/low/close/volume values."""
+    engine, days = tiny_engine
+    with Session(engine) as reference_session:
+        reference = [
+            (bar.symbol, bar.date, bar.open, bar.high, bar.low, bar.close, bar.volume)
+            for bar in reference_session.exec(
+                select(DailyPrice).order_by(DailyPrice.symbol, DailyPrice.date)
+            ).all()
+        ]
+    with Session(engine) as session:
+        cache = prices._BarCache()
+        cache.prefill(session)
+        # the prefilled record type is the lightweight `Bar`, never a hydrated `DailyPrice` ORM instance.
+        assert all(isinstance(bar, prices.Bar) for bars in cache._by_symbol.values() for bar in bars)
+        prefilled = [
+            (symbol, bar.date, bar.open, bar.high, bar.low, bar.close, bar.volume)
+            for symbol in sorted(cache._by_symbol)
+            for bar in cache._by_symbol[symbol]
+        ]
+    assert prefilled == reference
+
+
+def test_lazy_load_returns_bar_records_matching_plain_query_row_level(tiny_engine):
+    """The lazy per-symbol fallback inside `bars_asof` (already per-symbol-bounded — iter-19 only changes
+    its record type, never its bounding) also returns `Bar` records whose values match a plain reference
+    query for that symbol exactly."""
+    engine, days = tiny_engine
+    with Session(engine) as reference_session:
+        reference = [
+            (bar.date, bar.open, bar.high, bar.low, bar.close, bar.volume)
+            for bar in reference_session.exec(
+                select(DailyPrice).where(DailyPrice.symbol == "AAA").order_by(DailyPrice.date)
+            ).all()
+        ]
+    with Session(engine) as session:
+        cache = prices._BarCache()
+        # no prefill — this exercises ONLY the lazy per-symbol branch inside bars_asof.
+        loaded = cache.bars_asof(session, "AAA", days[-1])
+    assert all(isinstance(bar, prices.Bar) for bar in loaded)
+    assert [(bar.date, bar.open, bar.high, bar.low, bar.close, bar.volume) for bar in loaded] == reference
+
+
+def test_prefill_skips_requery_when_already_prefilled(tiny_engine):
+    """iter-19: a SECOND `prefill()` call on an already-fully-loaded cache — the exact nested-call shape
+    `_compute_coverage_uncached`'s own `prefilled_bar_cache` context plus `_membership_timeline`'s NESTED
+    `prefilled_bar_cache` call (on a `membership_timeline_cached` cache miss) produce on the SAME session —
+    must NOT re-run the expensive whole-table scan. Before this fix, `prefill()` re-queried unconditionally
+    on every call (the `if symbol not in self._by_symbol` guard only skipped OVERWRITING already-loaded
+    series, not the query itself), doubling the OOM'ing cost within a single request — invisible at ~122
+    symbols/5 years, catastrophic at 583 symbols/30 years. Proven by counting `session.exec` calls: a
+    second prefill with nothing new to load issues ZERO additional queries."""
+    engine, days = tiny_engine
+    with Session(engine) as session:
+        cache = prices._BarCache()
+        calls = {"n": 0}
+        orig_exec = session.exec
+
+        def _counting_exec(stmt, *a, **kw):
+            calls["n"] += 1
+            return orig_exec(stmt, *a, **kw)
+
+        session.exec = _counting_exec  # type: ignore[assignment]
+        cache.prefill(session)
+        after_first = calls["n"]
+        assert after_first > 0, "the first prefill should issue at least one query"
+
+        # a second call — the nested-call shape (same session, an expected_symbols set that is a SUBSET
+        # of what's already loaded) — must not re-scan the whole table.
+        cache.prefill(session, expected_symbols=["AAA"])
+        assert calls["n"] == after_first, (
+            f"a second prefill on an already-loaded cache re-queried ({calls['n']} vs {after_first} calls)"
+        )
+
+        # a THIRD call adding a genuinely NEW (no-bar) expected symbol still records it — WITHOUT a query
+        # (the cheap expected_symbols bookkeeping needs no DB round-trip).
+        cache.prefill(session, expected_symbols=["AAA", "ZZZ_NO_BARS"])
+        assert calls["n"] == after_first, "recording a new no-bar expected symbol must not issue a query"
+        assert cache._by_symbol["ZZZ_NO_BARS"] == []
+
+
 def test_prefill_expected_symbols_records_zero_bar_symbol_once(tiny_engine):
     """iter-37 regression guard (the root cause of the load-once break): a CANDIDATE-POOL symbol that has
     ZERO rows in `daily_prices` must be sourced from the prefilled cache as a count of 0 with AT MOST ONE

@@ -10,6 +10,6 @@
     {"n": 4, "journey": "J-04", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Evidence"}},
     {"n": 5, "journey": "J-04", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Regime: Risk-on"}},
     {"n": 6, "journey": "J-04", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Out-of-sample edge in the Risk-on regime"}},
-    {"n": 7, "journey": "J-04", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "+6.12%"}}
+    {"n": 7, "journey": "J-04", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "FAIL · holdout edge -0.68%"}}
   ]
 }

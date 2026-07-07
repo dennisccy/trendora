@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatIsoDate } from "@/lib/dates";
 import { SCORE_SIGNALS } from "@/lib/evidence";
+import { sectorLabel } from "@/lib/sector-label";
 import { cn } from "@/lib/utils";
 import {
   fetchEvidence,
@@ -178,7 +179,7 @@ function StockDetailBody({ data }: { data: StockDetailResponse }) {
           {NEW_PATTERNS.filter((p) => p.get(row).flagged).map((p) => (
             <PatternBadge key={p.key} label={p.badge} flag={p.get(row)} />
           ))}
-          <span className="text-xs text-text-muted">{row.sector}</span>
+          <span className="text-xs text-text-muted">{sectorLabel(row.sector)}</span>
           <Badge variant="default" className="num">
             as of {formatIsoDate(data.asof_date)}
           </Badge>

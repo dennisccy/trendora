@@ -1,0 +1,32 @@
+{
+  "phase": "goal-mcp-loop-iter-19",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-07-07T13:48:00.707419Z",
+  "started_at": "2026-07-07T10:22:46.612672Z",
+  "cli": "claude",
+  "note": "Dev complete. Both coupled fixes landed: (1) prices.py _BarCache.prefill() rewritten to a streamed, column-projected load (Bar NamedTuple) with a _prefilled skip-guard closing a nested double-scan found empirically (NOT the plan's literal 'second un-gated caller' hypothesis -- that was checked via the pre-existing test_data_manager_concurrency_load.py and confirmed already correct); (2) StockRow.sector: string -> string|null with a shared lib/sector-label.ts helper (compareSectors/sectorLabel), fixing the exact a.sector.localeCompare(b.sector) crash site plus every other consumer (tsc --noEmit 0 errors). error.tsx + global-error.tsx added. Measured live on the real 30-year DB: single cold /api/data 10.5s/~1.09GB peak, 6-concurrent cold /api/data 18.5s/~1.10GB peak (both well under the 60s/6144MB budget; confirms the single-flight holds under real concurrent load). Live-browser-verified (not just unit tests): Sector sort no-crash + nav intact, Sector filter Unassigned = 422/541 rows (byte-exact vs API), forced-exception error.tsx containment screenshot-confirmed. Two seed-dependent test files (test_scanner.py, test_bars.py) did not finish inside this session's time budget -- see dev handoff Known Issues for the specific low-risk reasoning and the exact re-run command for the reviewer.",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/prices.py (Bar NamedTuple; streamed/column-projected prefill() with _prefilled skip-guard; bars_asof() lazy branch adopts Bar; module bars_asof() return-type annotation)",
+    "apps/backend/tests/test_bar_cache.py (+3 tests: prefill/lazy-load byte-identity+Bar typing vs plain query; prefill skip-requery-when-already-loaded)",
+    "apps/backend/tests/test_data_manager_membership_cache.py (+1 test: cold compute_coverage() scans the bar cache exactly once despite the nested prefilled_bar_cache call)",
+    "config.yaml (server.memory_cap_mb stale comment fix: ~1.3M-row -> ~3.27M-row)",
+    "reports/perf-budgets.md (new -- item-A before/after measurement, live-measured)",
+    "apps/frontend/lib/sector-label.ts (new -- UNASSIGNED_SECTOR, sectorLabel, compareSectors)",
+    "apps/frontend/lib/sector-label.test.ts (new -- unit tests, node:assert convention)",
+    "apps/frontend/lib/api.ts (StockRow.sector: string -> string | null)",
+    "apps/frontend/app/stocks/page.tsx (null-safe sector comparator/filter-vocabulary/filter-predicate/cell)",
+    "apps/frontend/app/stocks/[ticker]/page.tsx (sector cell uses sectorLabel)",
+    "apps/frontend/app/scanner-runs/[runId]/page.tsx (sector cell uses sectorLabel)",
+    "apps/frontend/app/error.tsx (new -- route-level error boundary)",
+    "apps/frontend/app/global-error.tsx (new -- root error boundary)",
+    "docs/handoffs/goal-mcp-loop-iter-19-dev.md (new)",
+    "docs/handoffs/goal-mcp-loop-iter-19-frontend.md (new)",
+    "reports/phase-goal-mcp-loop-iter-19-implementation-summary.md (new)",
+    "runs/goal-mcp-loop-iter-19/status.json (this update)"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "Reviewer pass, then the canonical browser-qa-agent lane (browser_checks_run is still false -- the manual spot-checks in the dev handoff are not a substitute for the full canonical lane: J-01 sort asc+desc, J-12 verification, the full regression smoke list, and the highest-priority UT-29 anti-goal-#2 language sweep per the phase spec's TESTING REQUIREMENTS). Reviewer should also consider re-running tests/test_scanner.py and tests/test_bars.py (budget several minutes) per the dev handoff's Known Issues before final sign-off, though the documented reasoning there is that both are low-risk / do not exercise the changed code path in a new way."
+}

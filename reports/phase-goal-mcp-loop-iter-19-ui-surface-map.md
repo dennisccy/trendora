@@ -1,0 +1,42 @@
+# Phase goal-mcp-loop-iter-19 — UI Surface Map
+
+**Phase:** goal-mcp-loop-iter-19
+**Date:** 2026-07-07
+**Written by:** ui-impact-analyst
+
+---
+
+## Affected UI Surfaces
+
+| Route / Page | Component / Element | Change Type | Why Changed | What to Test |
+|-------------|--------------------|-----------:|-------------|-------------|
+| `/stocks` | Sector column sort control (`SORT_COMPARATORS.sector`, `stocks/page.tsx`) | Changed behavior (regression fix) | The prior comparator called `a.sector.localeCompare(b.sector)` directly; on the broadened ~548-name pool ~78% of rows have `sector === null`, so clicking "Sector" threw an uncaught `TypeError` with no error boundary in place, crashing the whole page (the shipped iter-18 regression). It now calls the null-safe `compareSectors()` helper. | On `/stocks` (default, unfiltered state), click the "Sector" column header once — verify the leaderboard re-sorts ascending by sector name with no crash and the sidebar nav/header still visible; click "Sector" again — verify it re-sorts descending, still with no crash. |
+| `/stocks` | Sector filter dropdown + filter-vocabulary memo (`stocks/page.tsx`) | Changed behavior + new option | The filter vocabulary previously derived straight from raw (nullable) sector values, so the null bucket had no honest option. It now maps every null to an explicit "Unassigned" bucket via `sectorLabel()`, and the filter predicate matches "Unassigned" against every null-sector row. | Open the Sector filter dropdown on `/stocks` — verify it lists an "Unassigned" option positioned alphabetically among the real sector names (currently between "Technology" and "Utilities"); select "Unassigned" — verify the leaderboard narrows to only rows with no mapped sector (422 of 541 rows in the current dataset) and the displayed row count reflects the narrowed set. |
+| `/stocks` | Leaderboard Sector table cell (`stocks/page.tsx`) | Changed display | The cell now renders `sectorLabel(row.sector)` instead of the raw (possibly null) value. | With no sector filter applied, scroll through the Sector column on `/stocks` — verify every row shows either a real GICS sector name (e.g., "Technology") or the literal text "Unassigned," and no row's Sector cell is ever blank. |
+| `/stocks/{ticker}` | Sector chip near the page header (`stocks/[ticker]/page.tsx`) | Changed display | Same `StockRow.sector` consumer fix — the chip now renders `sectorLabel(row.sector)`. | From `/stocks`, filter by "Unassigned," click into any listed ticker's detail page — verify the sector chip reads "Unassigned"; separately open a mapped ticker's detail page (e.g., `/stocks/NVDA`) — verify its chip is unaffected and still reads its real sector ("Technology"). |
+| `/scanner-runs/{runId}` | Sector column in the constituent results table (`scanner-runs/[runId]/page.tsx`) | Changed display | Same consumer fix. | Open any existing scanner run's detail page at `/scanner-runs/{runId}` — verify the Sector column shows "Unassigned" for rows with no mapped sector and a real sector name for the others, with no blank cells. |
+| `/data` | Page load / cold `GET /api/data` (Coverage + Universe Diagnostic panels; `data/page.tsx` itself is unchanged) | Changed behavior (backend reliability fix — page's own frontend code untouched) | `apps/backend/app/engine/prices.py`'s `_BarCache.prefill()` used to load the entire 3.27M-row `daily_prices` table as hydrated ORM objects in one shot (~6.8 GB peak, per the iter-18 incident), and a nested `prefilled_bar_cache` call inside `_membership_timeline` re-ran that same whole-table scan a SECOND time within one request — together these could exceed the backend's 6144 MB memory cap and hang the app on this page's first cold load. `prefill()` now streams a column-projected query and skips its scan once already run on that cache instance; every served value is unchanged (byte-identical, confirmed by `test_bar_cache.py`'s snapshot tests). | Restart the backend fresh (cold start) and immediately load `/data` — verify the Coverage and Universe Diagnostic panels render within about 20 seconds (measured: 10.5s for one cold load, 18.5s for 6 simultaneous cold loads — both well inside the 60-second budget in `reports/perf-budgets.md`), with no "Backend unavailable" pill and no backend crash; confirm the displayed coverage numbers match a subsequent warm reload of the same page. |
+| All routes (`app/`) | New route-level error boundary (`app/error.tsx`) | New component (crash containment) | No error boundary existed before this iteration; any uncaught client-side exception on any page (not only the sector-sort crash, which is separately fixed at its source above) blanked the entire application including the sidebar nav. | Force a client-side exception while on any page (e.g., via the browser devtools console: monkey-patch a function the page calls during a user action, such as `Array.prototype.sort`, then trigger that action) — verify a card reading "Something went wrong on this page" with a "Try again" button appears in place of the page's content, while the sidebar navigation and header remain visible and clickable; click "Try again" — verify the app attempts to re-render the page. |
+| Root application shell | New root error boundary (`app/global-error.tsx`) | New component (crash-containment failsafe) | Next.js requires a separate top-level boundary that activates only if the root layout itself (or `error.tsx`) throws — since that scenario means the shell that normally renders the sidebar is what's broken, this boundary renders its own bare `<html>/<body>` instead of depending on the (broken) layout. | Cannot be triggered through normal navigation (only fires if the root layout or `error.tsx` itself throws). To verify, temporarily add a `throw` at the top of `app/layout.tsx`'s render and reload any page — verify a standalone page reading "Trendora hit an unexpected error" with a "Try again" button renders with NO sidebar/nav (since it replaces the entire HTML document), then remove the forced throw. |
+
+<!-- Change Type options: New page | New component | Updated layout | Added navigation | Changed behavior | Removed element | New form | New table | New modal -->
+
+---
+
+## Backend-Only Changes (No UI Impact)
+
+- `apps/backend/tests/test_bar_cache.py`, `apps/backend/tests/test_data_manager_membership_cache.py` — new/updated test coverage for the prefill rewrite, the `Bar` record type, and the double-scan fix — test-only, no UI surface.
+- `config.yaml` — `server.memory_cap_mb`'s comment corrected from a stale "~1.3M-row" figure to the real ~3.27M-row figure; the 6144 MB cap itself is unchanged — a comment-only edit with no runtime or UI effect.
+- `reports/perf-budgets.md` — new engineering report recording the before/after memory and timing measurement behind the `/data` reliability fix (row above); a repo artifact for developers/reviewers, not served anywhere in the product UI.
+- `apps/frontend/lib/sector-label.ts` and its test `apps/frontend/lib/sector-label.test.ts` — the shared null → "Unassigned" mapping and null-safe comparator; no rendered surface of its own — its effect is exactly what the three `/stocks`, `/stocks/{ticker}`, and `/scanner-runs/{runId}` rows above display and test.
+- `apps/frontend/lib/api.ts` — `StockRow.sector: string` → `string | null` type correction; a type-only contract file with no rendered surface of its own — flipping it (and then fixing every call site the compiler flagged) is what produced the rows above; verified via `tsc --noEmit` (0 errors), not something a user can observe directly.
+
+---
+
+## Summary
+
+- **Frontend surfaces changed:** 6 — `/stocks`, `/stocks/{ticker}`, `/scanner-runs/{runId}`, `/data` (backend-driven reliability fix, page code itself untouched), plus 2 cross-cutting error boundaries (all routes; root shell)
+- **New pages/routes:** 0 (`error.tsx`/`global-error.tsx` are Next.js error-boundary infrastructure, not navigable routes — confirmed by the phase spec's own "Blueprint conformance: no new surfaces")
+- **Modified components:** 5 — 3 sub-elements on `/stocks` (sort comparator, filter dropdown, table cell) + 1 each on `/stocks/{ticker}` and `/scanner-runs/{runId}` (sector chip/column) — plus 2 new components (`error.tsx`, `global-error.tsx`)
+- **Navigation changes:** no
+- **Backend-only changes:** 7 files — 2 test files, 1 config comment, 1 new report, 2 frontend support/type files with no rendered surface of their own (`sector-label.ts`, `api.ts`), and 1 test for that support file

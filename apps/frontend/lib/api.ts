@@ -276,7 +276,11 @@ export interface FlatBaseBreakout {
 export interface StockRow {
   ticker: string;
   name: string;
-  sector: string; // GICS sector name (one of the 11 sector ETF names)
+  // GICS sector name (one of the 11 sector ETF names), or null for a pool name with no mapped sector
+  // (iter-19: the broadened 548-name pool left ~78% of names unmapped in `config.stock_sectors` — the
+  // backend honestly serves null rather than fabricating a sector). Consumers must use
+  // `lib/sector-label.ts`'s `sectorLabel`/`compareSectors` — never `.localeCompare` a raw `sector` value.
+  sector: string | null;
   leadership: ScoreBlock;
   entry_quality: ScoreBlock;
   risk: ScoreBlock; // higher score = MORE dangerous (colour-graded by danger direction)

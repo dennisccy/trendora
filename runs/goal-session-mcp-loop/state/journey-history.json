@@ -3,144 +3,164 @@
     "J-01": {
       "id": "J-01",
       "name": "Every score shows an evidence status",
-      "status": "regressed",
-      "last_verified_iter": "goal-mcp-loop-iter-18",
-      "last_passing_iter": "goal-mcp-loop-iter-17",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-19",
+      "last_passing_iter": "goal-mcp-loop-iter-19",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-18-evidence/UT-21-fail-crash.png",
-      "note": "REGRESSED (verdict driver). The DEFAULT /stocks leaderboard and the stock-detail page both render every score with a visible 'Not yet proven' status (evaluator opened UT-02-leaderboard-top.png: 541/541 rows, each of Leadership/Entry-Quality/Risk carries a 'Not yet proven' chip; UT-01-result.png: AAPL detail 55.78/69.70/33.12 each 'Not yet proven') — so the narrow display property still holds. BUT the /stocks leaderboard — J-01's primary home and the product's most-prominent page (1 click from home) — CRASHES to a full blank 'Application error: a client-side exception has occurred' page (all navigation wiped) the moment the user clicks the pre-existing 'Sector' column header to sort. Evaluator opened UT-21-fail-crash.png and confirmed the blank crash directly. Root cause = THIS iteration's data-basis change: scoring.py:377 cfg.stock_sectors.get(ticker) now returns sector:null for ~422/541 rows (~78%, the broadened pool has no GICS map outside the legacy ~122) flowing into the unguarded comparator apps/frontend/app/stocks/page.tsx:93 `a.sector.localeCompare(b.sector)` (file byte-UNMODIFIED this iter — git diff HEAD empty — a data-contract regression, not a code change), with NO error.tsx/global-error.tsx anywhere to contain the uncaught TypeError. Sector-sort has been live since iter-2; it now fails on the DEFAULT data state. Confirmed independently by ux-regression-reviewer (UX-REGRESSION-FAIL) and phase-closure-auditor (CLOSURE-FAIL, personally opened the same screenshot); NOT disclosed as a Known Issue in dev/review/QA. This is a prior-passing journey now failing -> REGRESSION. A related non-crash defect: the Sector filter dropdown will list a literal null (stocks/page.tsx:355-357). This is an UNSANCTIONED defect, categorically distinct from the goal.md-sanctioned edge non-survival."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-19-evidence/UT-02-result.png",
+      "note": "RECOVERED regressed->passing (the iter-18 verdict driver is fixed at its source AND contained). Evaluator personally opened UT-02-result.png (/stocks sorted by Sector ASCENDING: 'SECTOR ^', Communication Services->Industrials, 541/541 rows, full sidebar nav intact, every score carries a 'Not yet proven' chip), UT-03-result.png (Sector DESCENDING: 'SECTOR v', Utilities then a large 'Unassigned' block, nav intact, no crash), and UT-05-result.png (Sector filter = 'Unassigned' narrows to 422/541 rows, all Unassigned, nav intact) -- the EXACT click that crashed the whole app to a blank 'Application error' in iter-18 now works in both directions with the nav preserved. Root fix verified in the working-tree diff (base 8f1798be): apps/frontend/app/stocks/page.tsx:96 `a.sector.localeCompare(b.sector)` -> `compareSectors(a.sector, b.sector)`, filter vocabulary/predicate/cell all routed through the shared `sectorLabel` helper (null -> honest 'Unassigned', never a literal null option), and lib/api.ts widened StockRow.sector to `string | null` so tsc flagged every call site; new app/error.tsx + app/global-error.tsx contain any future uncaught client error to a card with nav preserved (UT-16-result.png opened: 'Something went wrong on this page' card + full sidebar). Backend scoring.py UNTOUCHED (sector stays honestly null, no fabricated GICS). Corroborated by UX-REGRESSION-PASS + CLOSURE-PASS + Audit PASS_WITH_GAPS, all of which independently opened the crash-driver and containment frames."
     },
     "J-02": {
       "id": "J-02",
       "name": "Drill into the proof behind a score",
       "status": "partial",
-      "last_verified_iter": "goal-mcp-loop-iter-18",
+      "last_verified_iter": "goal-mcp-loop-iter-19",
       "last_passing_iter": "goal-mcp-loop-iter-17",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-18-evidence/UT-01-result.png",
-      "note": "PARTIAL — structurally un-exercisable this iteration, per the spec pre-registration and goal.md's data-basis-change provision (NOT a regression). With the regenerated ledger holding ZERO PASS rows, no 'Proven' badge exists anywhere to drill into (the iter-1 empty-ledger analogue). The drill AFFORDANCE renders its honest not-proven state: UT-01-result.png (AAPL detail) shows the three score cards each with a 'Not yet proven' chip and the expandable score panels. iter-19+ may propose a new-basis claim through the normal pre-build referee gate (from the pre-registered candidate sets; goal.md forbids ad-hoc cohorts) to re-light a Proven drill. Do NOT score passing->failing."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-19-evidence/UT-10-result.png",
+      "note": "PARTIAL by design (goal.md data-basis-change provision + iter-19 spec OUT OF SCOPE; NOT a regression -- do NOT score passing->failing). Both ledgers remain all-FAIL from the iter-17/18 sanctioned reset, so no 'Proven' badge exists anywhere to drill into. The drill AFFORDANCE renders its honest not-proven state: UT-10-result.png (/stocks/NVDA) shows the three score cards (Leadership 34.24 / Entry Quality 52.54 / Risk 34.64) each with a 'Not yet proven' chip and expandable component breakdowns. iter-19 did ZERO evidence work by design. A future iteration may propose a new-basis claim from the pre-registered candidate sets through the pre-build referee gate to re-light a Proven drill."
     },
     "J-03": {
       "id": "J-03",
       "name": "Unproven / noise signals are honestly marked",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-18",
-      "last_passing_iter": "goal-mcp-loop-iter-18",
+      "last_verified_iter": "goal-mcp-loop-iter-19",
+      "last_passing_iter": "goal-mcp-loop-iter-19",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-18-evidence/TC-04-evidence-page.png",
-      "note": "PASSING (re-verified with FRESH pixels on the regenerated basis; byte-identity carry was NOT available). Honest not-proven marking is now trivially strong product-wide: UT-02-leaderboard-top.png shows every /stocks row's three scores read 'Not yet proven'; TC-04-evidence-page.png shows the /evidence leadership_score row read 'FAIL - holdout edge -0.03%' with the honest explanation 'holdout edge -0.0003136 is not in the claimed positive direction / does not beat the control out-of-sample'. proven_signals={} (evidence.py filters strictly on status==PASS; evaluator read the source + both ledgers directly: 7 canonical + 7 staging rows, ALL FAIL). Nothing false-reads Proven. NOTE: the /stocks sector-sort crash (see J-01) also lives on this surface but does not affect the honest-marking display property, so the regression is anchored to J-01, not double-counted here."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-19-evidence/UT-07-result.png",
+      "note": "PASSING (re-verified fresh, required-still-passing set). Browser-qa UT-07 parsed all 541 /stocks rows = 1623/1623 badges 'Not yet proven', 0 data-proven=true; corroborated in the UT-02/03/05 leaderboard frames the evaluator opened (every score chip reads 'Not yet proven') and UT-20-21 (/evidence 7/7 rows FAIL with honest reason strings). proven_signals={} (evidence.py strict status==PASS filter; certification engine git-diff EMPTY). Nothing false-reads Proven."
     },
     "J-04": {
       "id": "J-04",
       "name": "Regime-conditioned evidence",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-18",
-      "last_passing_iter": "goal-mcp-loop-iter-18",
+      "last_verified_iter": "goal-mcp-loop-iter-19",
+      "last_passing_iter": "goal-mcp-loop-iter-19",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-18-evidence/TC-04-evidence-page.png",
-      "note": "PASSING (contract sense on the regenerated basis). The regime-conditioned claim (canonical ledger row 2 = event-study Breakout-watch x Risk-on h20) now reads an honest FAIL (evaluator read the ledger directly: status=FAIL, p=0.9460, holdout edge -0.68%, register 2026-07-03) — its regime label persists with an honest verdict, which is the data-basis provision working. The /evidence page renders ledger rows verbatim with full fields (TC-04-evidence-page.png confirms the render pattern on row 1: hypothesis chips, OUT-OF-SAMPLE VERDICT, control, register date, 'Backs:' linkback). QA TC-13 asserts the row shows 'Regime: Risk-on' + FAIL + 2026-07-03. CAVEAT: the specific regime-row pixel is below the TC-04 fold and was NOT independently opened by the evaluator (corroborated by the ledger row + the working /evidence render pattern + QA TC-13, not by a dedicated regime-row capture)."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-19-evidence/UT-20-21-evidence-result.png",
+      "note": "PASSING (re-verified fresh; the iter-18 below-the-fold caveat is now RESOLVED). Evaluator personally opened UT-20-21-evidence-result.png and directly SAW the 'Breakout-watch setup' row carrying a second badge 'Regime: Risk-on' (a recognizable, non-blank, non-null regime label) alongside its honest FAIL verdict (holdout edge -0.68%, register 2026-07-03, 'Backs: Research event-study lab ->'). The regime label persisting with an honest verdict on the regenerated basis is the data-basis provision working."
     },
     "J-05": {
       "id": "J-05",
       "name": "Audit the evidence ledger",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-18",
-      "last_passing_iter": "goal-mcp-loop-iter-18",
+      "last_verified_iter": "goal-mcp-loop-iter-19",
+      "last_passing_iter": "goal-mcp-loop-iter-19",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-18-evidence/TC-04-evidence-page.png",
-      "note": "PASSING (re-verified fresh on the regenerated ledger). The /evidence audit surface renders the regenerated claims end-to-end: TC-04-evidence-page.png shows the leadership_score row with hypothesis (decile=10, direction=positive, factor=leadership_score, horizon=20, kind=factor, slice_kind=decile), OUT-OF-SAMPLE VERDICT 'FAIL - holdout edge -0.03%' + reason, and 'Backs: Stocks leaderboard ->' linkback. Evaluator read certified-claims.jsonl directly: exactly 7 rows, all FAIL, all register_date 2026-07-03, Bonferroni divisors 1..7 preserved, ZERO retired values (grep for old p/edge/date returned 0 hits). QA TC-14 confirms 7 rows auditable with all fields. The canonical UT-04 capture shows only a 'Checking backend...' skeleton (backend went down mid-run) — the reliable /evidence pixel is the QA-lane TC-04."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-19-evidence/UT-20-21-evidence-result.png",
+      "note": "PASSING (re-verified fresh). Evaluator opened UT-20-21-evidence-result.png: /evidence renders all 7 regenerated claim rows end-to-end (leadership_score, Breakout-watch setup, ma_stack D10, vcp_contraction D10 h20, vcp_contraction D10 h60, rs_spy_3m x high_proximity composite, rs_spy_3m D10 h60), each with hypothesis chips, OUT-OF-SAMPLE VERDICT, control-vs-SPY, registration date 2026-07-03, forward-walk score-to-date, and a 'Backs:' linkback. Evaluator also read certified-claims.jsonl directly: exactly 7 rows, all FAIL, Bonferroni divisors 1..7 preserved."
     },
     "J-06": {
       "id": "J-06",
       "name": "vcp_contraction top-decile certified edge surfaced on Evidence + Research factor lab",
       "status": "partial",
-      "last_verified_iter": "goal-mcp-loop-iter-18",
+      "last_verified_iter": "goal-mcp-loop-iter-19",
       "last_passing_iter": "goal-mcp-loop-iter-17",
       "first_seen_iter": "goal-mcp-loop-iter-8",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-18-evidence/TC-04-evidence-page.png",
-      "note": "PARTIAL by design, per goal.md's data-basis-change provision (NOT a regression; do NOT score passing->failing). The retired vcp_contraction D10 h20 edge (was +3.33% PASS) does not survive re-certification on the 30-year multi-regime holdout: canonical ledger row 4 now status=FAIL, p=0.9595, holdout edge -0.38%, register 2026-07-03 (evaluator read directly). The badge is honestly dark ('Not yet proven') and the displayed FAIL numbers byte-match the regenerated ledger. The J-06 CONTRACT (honest badge + correct number) holds; the specific certified edge simply recomputed away as sanctioned."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-19-evidence/UT-20-21-evidence-result.png",
+      "note": "PARTIAL by design (goal.md data-basis-change provision; NOT a regression; iter-19 did no evidence work). The retired vcp_contraction D10 h20 edge (was +3.33% PASS) does not survive re-certification on the 30-year multi-regime holdout -- canonical ledger row 4 = FAIL, holdout edge -0.38%, register 2026-07-03 (UT-20-21 shows the honestly-dark row; evaluator confirmed 7/7 FAIL in the ledger). The J-06 CONTRACT (honest badge + correct number) holds; the specific certified edge recomputed away as sanctioned."
     },
     "J-07": {
       "id": "J-07",
       "name": "Multi-horizon certified edge surfaced (the loop sees beyond the 20-day horizon)",
       "status": "partial",
-      "last_verified_iter": "goal-mcp-loop-iter-18",
+      "last_verified_iter": "goal-mcp-loop-iter-19",
       "last_passing_iter": "goal-mcp-loop-iter-17",
       "first_seen_iter": "goal-mcp-loop-iter-9",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-18-evidence/TC-04-evidence-page.png",
-      "note": "PARTIAL by design (data-basis provision; NOT a regression). The retired non-20 vcp_contraction D10 h60 edge (was +8.91% PASS) recomputes to canonical ledger row 5 status=FAIL, p=0.9995, holdout edge -1.64%, register 2026-07-03. Honest 'Not yet proven'; numbers byte-match the regenerated ledger. Multi-horizon MACHINERY is intact (horizons config + explorers untouched; shared engine git-diff empty) — only the specific certified edge did not reproduce."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-19-evidence/UT-20-21-evidence-result.png",
+      "note": "PARTIAL by design (data-basis provision; NOT a regression). The retired vcp_contraction D10 h60 edge (was +8.91% PASS) recomputes to canonical ledger row 5 = FAIL, holdout edge -1.64%, register 2026-07-03 (visible honestly-dark in UT-20-21). Multi-horizon machinery is intact (certification engine git-diff empty); only the specific certified edge did not reproduce."
     },
     "J-08": {
       "id": "J-08",
       "name": "Multi-factor combination certified edge surfaced on the Combination lab + Evidence",
       "status": "partial",
-      "last_verified_iter": "goal-mcp-loop-iter-18",
+      "last_verified_iter": "goal-mcp-loop-iter-19",
       "last_passing_iter": "goal-mcp-loop-iter-17",
       "first_seen_iter": "goal-mcp-loop-iter-9",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-18-evidence/TC-04-evidence-page.png",
-      "note": "PARTIAL by design (data-basis provision; NOT a regression). The retired rs_spy_3m x high_proximity h20 composite edge (was +4.69% PASS) recomputes to canonical ledger row 6 status=FAIL, p=0.4943, holdout edge +0.01%, register 2026-07-03 (evaluator read directly). Honest 'Not yet proven' on the combination lab + /evidence; numbers byte-match the regenerated ledger."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-19-evidence/UT-20-21-evidence-result.png",
+      "note": "PARTIAL by design (data-basis provision; NOT a regression). The retired rs_spy_3m x high_proximity h20 composite edge (was +4.69% PASS) recomputes to canonical ledger row 6 = FAIL, holdout edge +0.01%, register 2026-07-03 (honestly-dark in UT-20-21). Combination machinery intact; only the specific certified edge did not reproduce."
     },
     "J-09": {
       "id": "J-09",
       "name": "Relative-strength (rs_spy_3m) 60-day-horizon certified edge surfaced on Evidence + Research factor lab",
       "status": "partial",
-      "last_verified_iter": "goal-mcp-loop-iter-18",
+      "last_verified_iter": "goal-mcp-loop-iter-19",
       "last_passing_iter": "goal-mcp-loop-iter-17",
       "first_seen_iter": "goal-mcp-loop-iter-15",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-18-evidence/TC-04-evidence-page.png",
-      "note": "PARTIAL by design (data-basis provision; NOT a regression). The carried YELLOW FLAG resolved exactly as pre-registered: the retired rs_spy_3m D10 h60 edge (was +21.34% with OOS ~10x in-sample) was a retired-window artifact that does not reproduce on the deep multi-regime holdout. Canonical ledger row 7 now status=FAIL, p=0.9045, holdout edge -1.42%, register 2026-07-03 (evaluator read directly). Honest 'Not yet proven'; the +21.34% value renders NOWHERE (retired-value grep = 0 hits). The system working, not a regression."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-19-evidence/UT-20-21-evidence-result.png",
+      "note": "PARTIAL by design (data-basis provision; NOT a regression). The retired rs_spy_3m D10 h60 edge (was +21.34%, the OOS~10x-in-sample yellow flag) was a retired-window artifact that does not reproduce on the deep multi-regime holdout -- canonical ledger row 7 = FAIL, holdout edge -1.42%, register 2026-07-03 (honestly-dark in UT-20-21; the +21.34% value renders nowhere). The system working, not a regression."
     },
     "J-10": {
       "id": "J-10",
       "name": "The product surfaces deep (up to ~30-year) price history, honestly bounded per name",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-18",
-      "last_passing_iter": "goal-mcp-loop-iter-18",
+      "last_verified_iter": "goal-mcp-loop-iter-19",
+      "last_passing_iter": "goal-mcp-loop-iter-19",
       "first_seen_iter": "goal-mcp-loop-iter-16",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-18-evidence/UT-01-result.png",
-      "note": "PASSING (newly, was unknown) — deep price history surfaced and honestly bounded. Evaluator opened UT-01-result.png (AAPL detail): 'Full history' toggle active, deep chart with regime bands, caption '3185 bars - as of 2026-07-01 - history since 1996-01-02 - older bars weekly-sampled'; default 'Recent' is a bounded ~5y window beyond the old 2021 floor. QA TC-02 confirms ARM honestly short ('701 bars - history since 2023-09-14', no pre-IPO bars); TC-17 NVDA loads (real first bar 1999-01-22). Audit independently verified AAPL 1996-01-02 / NVDA 1999-01-22 / ARM short at the DB + caption + count level and confirmed the /bars endpoint weekly-SAMPLES real stored bars (never synthesized), bars_asof slice date<=as_of (no lookahead), unknown range -> 422. NON-BLOCKING F1 (audit): for >8y names the Full-history chart x-domain appears to plot only the trailing ~8y daily window (UT-01 x-axis starts ~2019) rather than back to 1996; the honest caption prevents any user deception, so this is a display refinement to confirm/widen live in iter-19, not a defect."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-19-evidence/UT-10-result.png",
+      "note": "PASSING (re-verified fresh AFTER the prefill rewrite -- the load-bearing byte-identity check). Evaluator opened UT-10-result.png (/stocks/NVDA): 'Full history' active, deep chart with regime bands, caption '3025 bars - as of 2026-07-01 - history since 1999-01-22 - older bars weekly-sampled'; UT-10-recent.png toggles to a bounded '1255 bars' window, both directions render without error. The streamed/column-projected `Bar` prefill re-serves byte-identical bars (test_bar_cache.py row-level snapshot tests green; UT-13 /data coverage numbers byte-identical across reloads). NON-BLOCKING F1 (carried): for >8y names the Full-history x-axis gridlines label ~2019-2026 though the caption/bar-count include 1999 -- a display-domain widening, not a data defect (honest caption prevents any deception)."
     },
     "J-11": {
       "id": "J-11",
-      "name": "Every displayed 'Proven' edge is re-certified on the new 30-year data — no stale edge survives",
+      "name": "Every displayed 'Proven' edge is re-certified on the new 30-year data -- no stale edge survives",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-18",
-      "last_passing_iter": "goal-mcp-loop-iter-18",
+      "last_verified_iter": "goal-mcp-loop-iter-19",
+      "last_passing_iter": "goal-mcp-loop-iter-19",
       "first_seen_iter": "goal-mcp-loop-iter-16",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-18-evidence/TC-04-evidence-page.png",
-      "note": "PASSING (newly, was unknown) — the ONE sanctioned ledger reset executed honestly and no stale edge survives. Evaluator read BOTH ledgers directly: certified-claims.jsonl = 7 rows, ALL verdict.status==FAIL, ALL register_date==2026-07-03, Bonferroni divisors 1..7 preserved (never bar-laundered), row p-values byte-match the spec verdict table (0.5352/0.9460/0.2769/0.9595/0.9995/0.4943/0.9045); staging-ledger.jsonl = 7 rows, all FAIL. A retired-value grep (0.0004998 / 21.34 / 6.36 / 8.91 / 4.69 / 3.33 / 2026-06-30 / 2026-07-01) across both ledgers returned ZERO hits. TC-04-evidence-page.png shows the leadership_score row rendering the honest FAIL verdict + '-0.03%' byte-matching regenerated row 1 (-0.0003136). proven_signals={} (evidence.py strict status==PASS filter) forces every badge product-wide to 'Not yet proven' (confirmed UT-01/UT-02). Shared certification engine git-diff EMPTY (referee/ledger/online_fdr/evidence/tools) — content regenerated, modules untouched (iter-9 regression proof). CAVEAT: the product-wide anti-goal-#2 language sweep (UT-29) was only ~25% executed before the canonical lane crashed — the 'no retired value / no confident number' property is strongly evidenced on the surfaces captured + at the ledger source, but the exhaustive product-wide sweep should be completed in iter-19."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-19-evidence/UT-20-21-evidence-result.png",
+      "note": "PASSING (re-verified fresh; the iter-18 language-sweep caveat is now RESOLVED). Evaluator read BOTH ledgers directly: certified-claims.jsonl = 7 rows all FAIL, staging-ledger.jsonl = 7 rows all FAIL, both git-UNCHANGED vs the iter-18 snapshot (base 8f1798be). UT-20-21 shows 7/7 /evidence rows FAIL, and UT-21 parsed 1623/1623 /stocks badges + 3/3 NVDA cards 'Not yet proven', 0 PASS anywhere. The product-wide anti-goal-#2 language sweep (UT-19) that was only ~25% run in iter-18 was COMPLETED this iter: a full-source grep across apps/frontend app/components/lib for buy/sell/price-target/return-promise/alpha -> zero violations. proven_signals={} forces every badge dark; certification engine git-diff EMPTY."
     },
     "J-12": {
       "id": "J-12",
       "name": "The universe is a broad, point-in-time dynamic set across the deep history",
-      "status": "partial",
-      "last_verified_iter": "goal-mcp-loop-iter-18",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-19",
+      "last_passing_iter": "goal-mcp-loop-iter-19",
       "first_seen_iter": "goal-mcp-loop-iter-16",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-18-evidence/UT-13-fail-no-universe-section.png",
-      "note": "PARTIAL (target; was unknown) — the BROAD universe half is confirmed, the point-in-time-dynamic + staleness-surfacing half is NOT cleanly browser-verified. Confirmed: the candidate pool is broadened (UT-02 shows 541/541 point-in-time members + '587 symbols' header over the ~548 pool); the recency/staleness gate landed correctly (audit + green unit suite verified universe_resolver.py REASON_STALE='stale_series', EXCLUSION_REASONS ordered history->staleness->price->ADV, threshold max_staleness_days=10 from config, no-lookahead). NOT cleanly verified: the /methodology membership-timeline VISUAL assertions (entries/exits across the deep history, a mid-history-IPO name ABSENT before min_history_bars and PRESENT after, the stale_series reason card surfaced). UT-13-fail-no-universe-section.png (the '-fail-' name is the tell) captured the /methodology page but the universe/timeline section was not located; QA's TC-08/TC-16/TC-18 only confirm 'page loads' + '587 symbols' (audit T1 flagged this looseness); and the canonical browser-qa lane crashed (exit 70) before completing. iter-19 must cleanly browser-verify the membership timeline + a mid-IPO absent-then-present name + the stale_series card."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-19-evidence/UT-15-entry-2020.png",
+      "note": "PARTIAL->PASSING (target; the crashed iter-18 lane never captured its browser assertions, now cleanly verified). Evaluator personally opened UT-15-entry-2020.png (/data Data Manager): the 'Dynamic-universe membership timeline' step-function chart spans 2005-02-25 -> 2026-07-01 (resolved universe size, max 542), and the year-2020 timeline table shows '2020-08-03 | +2 DDOG, NVDA' (a mid-history IPO entering at its real accrual date) with entries/exits across the deep history; browser-qa UT-15 confirmed DDOG ABSENT from all 2019 + early-2020 rows and PRESENT live on /stocks (#79, Technology) = absent-before/present-after. UT-14-result.png (opened) shows the 'Universe resolution as of 2026-07-01' card with STALE SERIES=1 fully in frame ('Last bar more than 10 calendar days before the as-of -- the series ended or halted, so the name exits membership...'), ADMITTED 541 of 548 pool. The broadened-pool + staleness-gate capability (landed + unit-verified in iter-18) is now browser-confirmed."
     },
     "J-13": {
       "id": "J-13",
       "name": "The Data Manager page reflects the broadened 548-symbol universe with an unambiguous availability legend",
       "status": "unknown",
-      "last_verified_iter": "goal-mcp-loop-iter-18",
+      "last_verified_iter": "goal-mcp-loop-iter-19",
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-16",
       "last_evidence_path": null,
-      "note": "Unknown — explicitly OUT OF SCOPE for iter-18 (this iter's /data change is limited to the staleness diagnostic surface). goal.md sequences J-13 (548-pool Fetch default, 'Expand universe' removal, availability-legend clarification) to iter-19. The post-swap 548-pool basis it needs now exists. Carried unknown."
+      "note": "Unknown -- explicitly OUT OF SCOPE for iter-19 (fix + verification pass only). goal.md sequences J-13 (548-pool Fetch default, 'Expand universe' job-option removal, split availability legend so cell-fill=price-completeness vs indicator=scored-snapshot no longer collide) as a later coherence pass. The post-swap 548-pool basis it needs now exists and /data is stable after the iter-19 OOM fix. Carried unknown -- a strong candidate for the next iteration."
     },
     "J-14": {
       "id": "J-14",
       "name": "The 30-year basis carries deep, honestly-sourced index context (benchmarks + macro), each labeled by vendor",
       "status": "unknown",
-      "last_verified_iter": "goal-mcp-loop-iter-18",
+      "last_verified_iter": "goal-mcp-loop-iter-19",
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-17",
       "last_evidence_path": null,
-      "note": "Unknown — steps 2-3 explicitly OUT OF SCOPE for iter-18. Step-1 data basis is DELIVERED (iter-17): _SPX/_NDX/_DJI committed but deliberately UNLOADED into daily_prices (audit reconciled 590 CSVs minus 3 world-index proxies = 587 DB symbols), _VIX deep from Yahoo, _TNX/_DXY/_VXN preserved as FRED-macro proxies, per-series vendor recorded in meta.json. Steps 2-3 (rendering the deep overlays + vendor labels on Dashboard/research/data) are their own post-swap iteration that also registers the vendor-label Data Contract value. Carried unknown."
+      "note": "Unknown -- steps 2-3 OUT OF SCOPE for iter-19. Step-1 data basis is DELIVERED (iter-17): _SPX/_NDX/_DJI committed, _VIX deep from Yahoo, _TNX/_DXY/_VXN preserved as FRED-macro proxies, per-series vendor recorded in meta.json. Steps 2-3 (render the deep overlays + vendor labels on Dashboard/research/data, registering the vendor-label Data Contract value) are their own post-swap iteration. Carried unknown."
+    },
+    "J-15": {
+      "id": "J-15",
+      "name": "Core pages and APIs stay fast on the deep basis -- measured, budgeted, never regressing",
+      "status": "unknown",
+      "last_verified_iter": "goal-mcp-loop-iter-19",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-mcp-loop-iter-19",
+      "last_evidence_path": null,
+      "note": "Unknown -- newly tracked (human-authored 'fast platform' Must-have journey in goal.md, not previously in the tracker). iter-19 made a DOWN-PAYMENT: it landed fast-platform item A (the /api/data bar-prefill OOM fix) and recorded its before/after in reports/perf-budgets.md (single cold /api/data 10.5s/~1.09GB, 6-concurrent 18.5s/~1.10GB, both under the 60s/6144MB budget). But iter-19 explicitly does NOT claim the full J-15 budget contract, which needs the measurement harness (scripts/measure-perf.sh, item K) + committed budgets across every endpoint/page + items B-J. Carried unknown/unbuilt."
+    },
+    "J-16": {
+      "id": "J-16",
+      "name": "Data jobs (Fetch + Backfill + warmup) are fast and honest about progress",
+      "status": "unknown",
+      "last_verified_iter": "goal-mcp-loop-iter-19",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-mcp-loop-iter-19",
+      "last_evidence_path": null,
+      "note": "Unknown -- newly tracked (human-authored 'fast platform' Must-have journey in goal.md, not previously in the tracker). Needs the committed measured baseline + items A/B/F optimizations + re-measured >=30% improvements as never-regress budgets (byte-identical per-(symbol,date) outputs). iter-19's item-A OOM fix is a prerequisite down-payment only. Carried unknown/unbuilt."
     }
   },
   "anti_goal_violations": [],
-  "updated_at": "2026-07-07T09:20:00Z"
+  "updated_at": "2026-07-07T16:05:00Z"
 }

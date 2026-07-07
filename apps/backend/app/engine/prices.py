@@ -19,12 +19,32 @@ import bisect
 import threading
 from contextlib import contextmanager
 from datetime import date as date_cls
-from typing import Iterable, Iterator, Optional
+from typing import Iterable, Iterator, NamedTuple, Optional
 
 from sqlalchemy import func
 from sqlmodel import Session, select
 
+from app.config import get_config
 from app.models import DailyPrice
+
+
+class Bar(NamedTuple):
+    """A lightweight, immutable row-slice used by the load-once bar cache (J-46) instead of a full
+    `DailyPrice` ORM instance (iter-19 — the OOM fix). Exposes EXACTLY the attributes every downstream
+    consumer reads off a cached bar — `.date/.open/.high/.low/.close/.volume` (confirmed by inspection:
+    `closes`/`highs`/`lows`/`volumes` below, `_visible_indices`/the chart payload in `api/stocks.py`, the
+    VCP/pattern detectors via those extractors) — so NO consumer code changes. It carries no `.id`/
+    `.symbol`: the cache already partitions bars by symbol (the dict key), and no consumer reads either
+    off a bar object. NOT a table/model — a plain in-memory column-projected record, built by streaming a
+    column-projected SELECT instead of materializing full `DailyPrice` ORM rows (~8 attributes + ORM
+    instrumentation each) for the whole 3.27M-row table at once."""
+
+    date: date_cls
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
 
 
 def latest_data_date(session: Session) -> Optional[date_cls]:
@@ -59,16 +79,41 @@ class _BarCache:
     has loaded every symbol up front, the hot path is a pure lock-free read of immutable lists."""
 
     def __init__(self) -> None:
-        self._by_symbol: dict[str, list[DailyPrice]] = {}
+        self._by_symbol: dict[str, list[Bar]] = {}
         self._dates_by_symbol: dict[str, list[date_cls]] = {}
         self._load_lock = threading.Lock()
+        # iter-19: whether the ONE expensive whole-table scan has already run on this cache instance. A
+        # nested `prefilled_bar_cache` call on the SAME already-prefilled session (the exact shape
+        # `_compute_coverage_uncached`'s own context + `_membership_timeline`'s NESTED context produce)
+        # must not re-pay the whole-table scan — see `prefill` below.
+        self._prefilled = False
 
     def prefill(self, session: Session, expected_symbols: Optional[Iterable[str]] = None) -> None:
-        """Load EVERY symbol's full date-ordered series ONCE, in ONE query, on `session` (the
+        """Load EVERY symbol's full date-ordered series ONCE, in ONE STREAMED query, on `session` (the
         orchestrating thread, before any worker fan-out). After this, a shared read across worker
         threads needs no further bar-store load — so a K-date parallel backfill loads each symbol once
         for the whole job (J-46), not once per worker session. Same rows/order as the lazy path: ordered
         by (symbol, date); the (symbol, date) unique constraint guarantees no ties.
+
+        iter-19 (the OOM fix): the query is now COLUMN-PROJECTED (`symbol, date, open, high, low, close,
+        volume` — not a whole `DailyPrice` ORM row) and consumed via `yield_per(batch)` (the
+        `_streamed_existing_keys` idiom in `forward_testing.py`) instead of `.all()`, which previously
+        materialized all 3.27M rows as hydrated ORM instances at once (~6.8 GB peak against the 6144 MB
+        cap). Each row builds a lightweight `Bar` record — same values, far less memory/object overhead.
+        `ORDER BY symbol, date` and the served contents are UNCHANGED (a pure loading-mechanism refactor;
+        see `test_bar_cache.py`'s byte-identical snapshot tests).
+
+        iter-19 (the nested-call cost): this whole-table scan now runs AT MOST ONCE per cache instance —
+        guarded by `self._prefilled`. Before this, a SECOND `prefill` call on an already-loaded cache (the
+        `if symbol not in self._by_symbol` guard only skipped OVERWRITING already-loaded series; the
+        expensive query itself re-ran unconditionally every call) re-paid the full scan for no new data.
+        That nested shape is not hypothetical: `_compute_coverage_uncached` opens its own
+        `prefilled_bar_cache`, and `_membership_timeline` (called from inside it, via
+        `membership_timeline_cached` on a cache miss) opens ANOTHER `prefilled_bar_cache` on the SAME
+        session — `bar_cache`'s re-entrancy meant the cache instance was reused, but `prefill` still
+        re-scanned. Invisible at ~122 symbols / 5 years; a doubled OOM at 583 symbols / 30 years. Skipping
+        the re-scan changes NOTHING about the final `_by_symbol`/`_dates_by_symbol` contents (the discarded
+        second scan's rows were always thrown away for already-loaded symbols) — a pure performance fix.
 
         iter-37 (load-once restored): the one prefill query only returns symbols that HAVE bars in
         `daily_prices`; a candidate-pool symbol with ZERO bars is therefore absent from the cache, so the
@@ -78,26 +123,45 @@ class _BarCache:
         loaded is recorded with an EMPTY series up front, so a no-bar symbol resolves to a trailing count of
         0 from the once-loaded cache with NO per-date re-load. The served value is byte-identical — an empty
         series has 0 trailing bars, exactly the grouped-count path's result (`below_history`). Recording an
-        absent symbol as `[]` is descriptive, not fabricated: it means "this name has no bars at/through D"."""
-        stmt = select(DailyPrice).order_by(DailyPrice.symbol, DailyPrice.date)
-        by_symbol: dict[str, list[DailyPrice]] = {}
-        for bar in session.exec(stmt).all():
-            by_symbol.setdefault(bar.symbol, []).append(bar)
-        # publish atomically under the lock so a concurrent reader sees a fully-built map, not a partial.
+        absent symbol as `[]` is descriptive, not fabricated: it means "this name has no bars at/through D".
+        This cheap bookkeeping still runs on EVERY call (even when the whole-table scan is skipped), so a
+        later call passing a WIDER `expected_symbols` set still records any newly-named no-bar candidate."""
         with self._load_lock:
-            for symbol, full in by_symbol.items():
-                if symbol not in self._by_symbol:  # never overwrite a series already loaded
-                    self._by_symbol[symbol] = full
-                    self._dates_by_symbol[symbol] = [bar.date for bar in full]
-            # record an EMPTY series for every expected (candidate-pool) symbol with no bars, so it is
-            # never lazy-loaded per-date later — load-once-per-job holds for no-bar names too.
-            if expected_symbols is not None:
+            need_scan = not self._prefilled
+        if need_scan:
+            batch = get_config().research.read_batch_size
+            stmt = (
+                select(
+                    DailyPrice.symbol, DailyPrice.date, DailyPrice.open, DailyPrice.high,
+                    DailyPrice.low, DailyPrice.close, DailyPrice.volume,
+                )
+                .order_by(DailyPrice.symbol, DailyPrice.date)
+            )
+            by_symbol: dict[str, list[Bar]] = {}
+            for symbol, d, o, h, lo, c, v in session.exec(stmt).yield_per(batch):
+                by_symbol.setdefault(symbol, []).append(Bar(d, o, h, lo, c, v))
+            # publish atomically under the lock so a concurrent reader sees a fully-built map, not a
+            # partial one; re-check `_prefilled` in case another thread raced us to the scan (rare —
+            # `_BarCache` is normally driven by one orchestrating thread — but the merge below is
+            # idempotent either way, so a lost race just discards redundant work, never corrupts state).
+            with self._load_lock:
+                if not self._prefilled:
+                    for symbol, full in by_symbol.items():
+                        if symbol not in self._by_symbol:  # never overwrite a series already loaded
+                            self._by_symbol[symbol] = full
+                            self._dates_by_symbol[symbol] = [bar.date for bar in full]
+                    self._prefilled = True
+        # record an EMPTY series for every expected (candidate-pool) symbol with no bars, so it is never
+        # lazy-loaded per-date later — load-once-per-job holds for no-bar names too. Cheap (no query), so
+        # it always runs, even when the whole-table scan above was skipped as already-done.
+        if expected_symbols is not None:
+            with self._load_lock:
                 for symbol in expected_symbols:
                     if symbol not in self._by_symbol:
                         self._by_symbol[symbol] = []
                         self._dates_by_symbol[symbol] = []
 
-    def bars_asof(self, session: Session, symbol: str, d: date_cls) -> list[DailyPrice]:
+    def bars_asof(self, session: Session, symbol: str, d: date_cls) -> list[Bar]:
         full = self._by_symbol.get(symbol)
         if full is None:
             # lazy load (defensive — a pre-filled cache rarely reaches here): guard the mutation so a
@@ -105,14 +169,20 @@ class _BarCache:
             with self._load_lock:
                 full = self._by_symbol.get(symbol)
                 if full is None:
-                    # one ordered query for the symbol's WHOLE series — the SAME ordering today's
-                    # bars_asof uses (order by date; the unique constraint guarantees no ties).
+                    # one ordered, COLUMN-PROJECTED query for the symbol's WHOLE series (iter-19: a `Bar`
+                    # record, not a hydrated `DailyPrice` ORM row) — the SAME ordering today's bars_asof
+                    # uses (order by date; the unique constraint guarantees no ties). Already per-symbol
+                    # bounded (a single name's history, not the whole table), so `.all()` stays exactly as
+                    # bounded as before — only the record type changes.
                     stmt = (
-                        select(DailyPrice)
+                        select(
+                            DailyPrice.date, DailyPrice.open, DailyPrice.high,
+                            DailyPrice.low, DailyPrice.close, DailyPrice.volume,
+                        )
                         .where(DailyPrice.symbol == symbol)
                         .order_by(DailyPrice.date)
                     )
-                    full = list(session.exec(stmt).all())
+                    full = [Bar(*row) for row in session.exec(stmt).all()]
                     self._by_symbol[symbol] = full
                     self._dates_by_symbol[symbol] = [bar.date for bar in full]
         # slice `date <= d` from the ascending series: bisect_right gives the count of dates <= d, so the
@@ -235,12 +305,14 @@ def active_bar_cache(session: Session) -> Optional["_BarCache"]:
     return _BAR_CACHES.get(id(session))
 
 
-def bars_asof(session: Session, symbol: str, d: date_cls) -> list[DailyPrice]:
+def bars_asof(session: Session, symbol: str, d: date_cls) -> list[DailyPrice] | list[Bar]:
     """All bars for `symbol` with date <= `d`, ascending. The backward no-lookahead boundary.
 
     When a `bar_cache(session)` context is active (J-46), this slices the symbol's once-loaded full
-    series in memory; otherwise it runs the original per-request date-bounded query (the default path,
-    byte-identical to before). Either way it returns exactly the bars with date <= d, ascending."""
+    series in memory (iter-19: lightweight `Bar` records); otherwise it runs the original per-request
+    date-bounded query against `DailyPrice` (the default path, byte-identical to before). Either way it
+    returns exactly the bars with date <= d, ascending, exposing the same `.date/.open/.high/.low/.close/
+    .volume` attributes — every consumer reads bars structurally and never depends on the concrete type."""
     cache = _BAR_CACHES.get(id(session))
     if cache is not None:
         return cache.bars_asof(session, symbol, d)
@@ -313,17 +385,19 @@ def bars_through_latest(session: Session, symbol: str) -> list[DailyPrice]:
 
 
 # --- ascending-series extractors (the indicator functions take plain float lists) ----------
-def closes(bars: list[DailyPrice]) -> list[float]:
+# `bars` may be `DailyPrice` rows (the default, uncached path) or `Bar` records (iter-19: the cache
+# path) — both expose the same `.close/.high/.low/.volume` attributes, so these read structurally.
+def closes(bars: list[DailyPrice] | list[Bar]) -> list[float]:
     return [b.close for b in bars]
 
 
-def highs(bars: list[DailyPrice]) -> list[float]:
+def highs(bars: list[DailyPrice] | list[Bar]) -> list[float]:
     return [b.high for b in bars]
 
 
-def lows(bars: list[DailyPrice]) -> list[float]:
+def lows(bars: list[DailyPrice] | list[Bar]) -> list[float]:
     return [b.low for b in bars]
 
 
-def volumes(bars: list[DailyPrice]) -> list[float]:
+def volumes(bars: list[DailyPrice] | list[Bar]) -> list[float]:
     return [b.volume for b in bars]

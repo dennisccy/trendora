@@ -1180,7 +1180,7 @@ server:
   limit_concurrency: 64                    # uvicorn --limit-concurrency: max simultaneous connections before 503 (light reads never starved by a heavy /api/data burst)
   timeout_keep_alive_seconds: 65           # uvicorn keep-alive idle timeout (a heavy /api/data warm read is ~10s; this bounds an idle-kept connection generously above that)
   graceful_timeout_seconds: 120            # uvicorn --timeout-graceful-shutdown: bound how long a heavy in-flight request may delay shutdown
-  memory_cap_mb: 6144                      # ulimit -v virtual-memory cap (MB) for the backend process: clears the one-copy ~1.3M-row bar prefill + headroom; a pathological N-copy spike is OOM-killed as ONE process, never a VM-wide swap freeze
+  memory_cap_mb: 6144                      # ulimit -v virtual-memory cap (MB) for the backend process: clears the one-copy ~3.27M-row bar prefill (iter-19: now a streamed, column-projected load — retained footprint ~0.4-0.5 GB, not the ~6.8 GB whole-table ORM `.all()` load this cap used to barely clear) + headroom; a pathological N-copy spike is OOM-killed as ONE process, never a VM-wide swap freeze
 
 # ----------------------------------------------------------------------------------------
 # iter-12 CONSUMED — Methodology / Glossary catalog (J-12). The SINGLE config-backed source that

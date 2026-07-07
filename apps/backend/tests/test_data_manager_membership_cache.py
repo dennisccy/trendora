@@ -34,10 +34,12 @@ from sqlmodel import Session, select
 from app.config import load_config
 from app.db import create_db_and_tables, make_engine
 from app.engine import data_manager
+from app.engine import prices as prices_module
 from app.engine.data_manager import (
     _membership_timeline,
     compute_coverage,
     membership_timeline_cached,
+    reset_coverage_cache,
 )
 from app.engine.research import _dataset_version, _membership_dataset_version
 from app.models import (
@@ -323,3 +325,48 @@ def test_empty_db_caches_empty_but_valid_timeline(tmp_path):
         rows = session.exec(select(MembershipTimelineCache)).all()
         assert len(rows) == 1
         assert membership_timeline_cached(session, cfg, []) == _membership_timeline(session, cfg, [])
+
+
+# ==================================================================================================
+# iter-19 — the coverage COLD PATH prefills the bar cache exactly ONCE (the OOM fix's data_manager-level
+# proof, on top of prices.py's own unit tests in test_bar_cache.py)
+# ==================================================================================================
+def test_cold_compute_coverage_prefills_bar_cache_exactly_once(tmp_path, monkeypatch):
+    """iter-19: a COLD `compute_coverage()` call (membership-timeline cache MISS) opens its OWN
+    `prefilled_bar_cache` (in `_compute_coverage_uncached`), and `_membership_timeline` — called from
+    inside `_compute_coverage_body`, via `membership_timeline_cached` on the miss — opens a NESTED
+    `prefilled_bar_cache` on the SAME session. `bar_cache`'s re-entrancy means both contexts share the SAME
+    `_BarCache` instance, but before iter-19, `_BarCache.prefill()` re-ran its expensive whole-table scan
+    UNCONDITIONALLY on every call regardless of instance state — so this ONE coverage request paid the
+    full-table scan TWICE. Invisible at ~122 symbols/5 years; a doubled contribution to the OOM at 583
+    symbols/30 years. Proven by counting how many of the (>= 2) `prefill()` calls actually reach the DB —
+    exactly one, after the fix."""
+    cfg = load_config()
+    engine = _three_snapshot_engine(tmp_path)
+    reset_coverage_cache()  # start cold so this call is guaranteed to be a real (uncached) compute
+
+    prefill_calls = {"total": 0, "real_scans": 0}
+    orig_prefill = prices_module._BarCache.prefill
+
+    def _counting_prefill(self, session, expected_symbols=None):
+        prefill_calls["total"] += 1
+        was_prefilled = self._prefilled
+        orig_prefill(self, session, expected_symbols=expected_symbols)
+        if not was_prefilled:
+            prefill_calls["real_scans"] += 1
+
+    monkeypatch.setattr(prices_module._BarCache, "prefill", _counting_prefill)
+
+    with Session(engine) as session:
+        compute_coverage(session, cfg)
+
+    # both the outer coverage context AND the nested membership-timeline context call `.prefill()` on the
+    # SAME cache instance (the cache-miss path) — but only ONE of those calls may reach the DB.
+    assert prefill_calls["total"] >= 2, (
+        f"expected >= 2 prefill() calls (outer coverage + nested membership timeline), "
+        f"got {prefill_calls['total']} — the nested-call shape this test targets did not occur"
+    )
+    assert prefill_calls["real_scans"] == 1, (
+        f"expected exactly ONE real bar-store scan across the nested prefill calls, "
+        f"got {prefill_calls['real_scans']}"
+    )

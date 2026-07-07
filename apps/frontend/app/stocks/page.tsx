@@ -20,6 +20,7 @@ import { formatIsoDate } from "@/lib/dates";
 import { fmtHighProximity, highProximityValue } from "@/lib/high-proximity";
 import { regimeVariant } from "@/lib/regime-variant";
 import { SCORE_SIGNALS } from "@/lib/evidence";
+import { compareSectors, sectorLabel } from "@/lib/sector-label";
 import { cn } from "@/lib/utils";
 import {
   fetchDashboard,
@@ -90,7 +91,9 @@ function fwdMddAt(row: StockRow, horizon: number): number | null {
 const SORT_COMPARATORS: Record<BaseSortKey, (a: StockRow, b: StockRow) => number> = {
   rank: (a, b) => a.rank - b.rank,
   ticker: (a, b) => a.ticker.localeCompare(b.ticker),
-  sector: (a, b) => a.sector.localeCompare(b.sector),
+  // iter-19: null-safe — ~78% of the broadened pool has no mapped sector; compareSectors sorts an
+  // "Unassigned" row deterministically alongside its peers instead of throwing on a null.
+  sector: (a, b) => compareSectors(a.sector, b.sector),
   leadership: (a, b) => a.leadership.score - b.leadership.score,
   entry_quality: (a, b) => a.entry_quality.score - b.entry_quality.score,
   risk: (a, b) => a.risk.score - b.risk.score,
@@ -351,9 +354,11 @@ function StocksInner() {
     return Array.from(new Set(rows.map((row) => row.setup.status)));
   }, [catalog, rows]);
 
-  // sectors present in the data, for the Sector filter (re-display of server rows only)
+  // sectors present in the data, for the Sector filter (re-display of server rows only). iter-19: a row
+  // with no mapped sector (null) maps to the honest "Unassigned" bucket — never a literal null/blank
+  // option — via the SAME shared helper the comparator + filter predicate use.
   const sectors = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.sector))).sort(),
+    () => Array.from(new Set(rows.map((r) => sectorLabel(r.sector)))).sort(),
     [rows],
   );
 
@@ -402,7 +407,9 @@ function StocksInner() {
     const patternEntry = patternKey ? PATTERNS.find((p) => p.key === patternKey) : null;
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
-      if (sector !== ALL && r.sector !== sector) return false;
+      // iter-19: compare through the SAME "Unassigned" mapping the filter vocabulary/comparator use, so
+      // selecting "Unassigned" matches every null-sector row (never excluded by a raw null !== "Unassigned").
+      if (sector !== ALL && sectorLabel(r.sector) !== sector) return false;
       if (setup !== ALL && r.setup.status !== setup) return false;
       if (patternEntry) {
         const flagged = patternEntry.get(r).flagged;
@@ -875,7 +882,7 @@ function StockTableRow({
           {row.ticker}
         </Link>
       </td>
-      <td className="px-3 py-2 text-xs text-text-muted">{row.sector}</td>
+      <td className="px-3 py-2 text-xs text-text-muted">{sectorLabel(row.sector)}</td>
       {/* goal-mcp-loop iter-1 — each score now carries an inline evidence-status badge BELOW it (purely
           additive; the ScoreBadge value is unchanged). Against the empty ledger every badge reads
           "Not yet proven". */}

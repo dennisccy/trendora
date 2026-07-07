@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "journey": "J-11",
+  "name": "Every displayed Proven edge is re-certified on the new 30-year data - no stale edge survives",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-11", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Evidence"}},
+    {"n": 2, "journey": "J-11", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "FAIL"}},
+    {"n": 3, "journey": "J-11", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "Not yet proven"}},
+    {"n": 4, "journey": "J-11", "action": {"type": "goto", "url": "/stocks/NVDA"}, "expect": {"text": "Not yet proven"}}
+  ]
+}

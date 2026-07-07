@@ -12,6 +12,7 @@ import { ScoreBadge } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatIsoDate, formatIsoDateTime } from "@/lib/dates";
+import { sectorLabel } from "@/lib/sector-label";
 import { cn } from "@/lib/utils";
 import { fetchRun, type RunDetail, type StockRow } from "@/lib/api";
 
@@ -208,7 +209,7 @@ function StoredStockRow({ row }: { row: StockRow }) {
     <tr className="border-b border-border transition-colors hover:bg-surface-2">
       <td className="num px-3 py-2 text-text-faint">{row.rank}</td>
       <td className="num px-3 py-2 font-semibold text-text">{row.ticker}</td>
-      <td className="px-3 py-2 text-xs text-text-muted">{row.sector}</td>
+      <td className="px-3 py-2 text-xs text-text-muted">{sectorLabel(row.sector)}</td>
       <td className="px-3 py-2">
         <ScoreBadge bucket={row.leadership.bucket} score={row.leadership.score} />
       </td>

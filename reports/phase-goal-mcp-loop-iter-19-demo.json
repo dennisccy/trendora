@@ -1,0 +1,130 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-19",
+  "base_url": "http://localhost:3255",
+  "iteration": 19,
+  "default_timeout_ms": 10000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Stock Leaderboard",
+      "narration": "Let's start on the Stocks page — home to every company Trendora tracks, ranked by strength, entry quality, and risk.",
+      "point_out": "The full leaderboard of 541 companies loads cleanly with real numbers — no error banner, no stuck loading skeleton.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "541 / 541" }
+    },
+    {
+      "n": 2,
+      "title": "Sort by Sector without a hitch",
+      "narration": "Now let's sort the leaderboard by Sector — this exact click used to crash the whole app, so it's worth seeing it work smoothly now.",
+      "point_out": "The table quietly re-sorts by sector name, an up arrow appears next to Sector, and the sidebar navigation stays right where it was.",
+      "journey": "J-01",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Sort by Sector" } },
+      "expect": { "target": { "css": "th[aria-sort=\"ascending\"]" } }
+    },
+    {
+      "n": 3,
+      "title": "Sort the other way too",
+      "narration": "One more click reverses the order, just to make sure the fix holds up in both directions.",
+      "point_out": "The arrow flips to point down, and a large block of honestly-labeled 'Unassigned' companies now sits near the top — proof the sort is genuinely re-ordering the real data, not silently failing.",
+      "journey": "J-01",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Sort by Sector, ascending" } },
+      "expect": { "target": { "css": "th[aria-sort=\"descending\"]" } }
+    },
+    {
+      "n": 4,
+      "title": "Isolate the unmapped companies",
+      "narration": "The Sector filter now offers an honest 'Unassigned' option, so it's easy to see exactly which companies don't have an industry label yet.",
+      "point_out": "The row count narrows from the full 541 down to just the Unassigned companies, and every visible row's Sector cell reads 'Unassigned' instead of being blank.",
+      "journey": "J-01",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks?sector=Unassigned" },
+      "expect": { "text": "422 / 541" }
+    },
+    {
+      "n": 5,
+      "title": "Check an individual unmapped company",
+      "narration": "Opening one of those companies' own detail pages shows the same honest labeling carried all the way through.",
+      "point_out": "Right beside the setup status, the page reads 'Unassigned' instead of a blank space or an error, and everything else on the page renders normally.",
+      "journey": "J-01",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/GL" },
+      "expect": { "text": "Unassigned" }
+    },
+    {
+      "n": 6,
+      "title": "Open the Data Manager page",
+      "narration": "The Data Manager page tracks how much price history is loaded — it used to risk hanging the whole app on a fresh visit, so let's confirm it now loads smoothly.",
+      "point_out": "The Dataset coverage panel appears quickly with real figures — no 'Backend unavailable' message and no long stall.",
+      "journey": "",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Dataset coverage" },
+      "timeout_ms": 15000
+    },
+    {
+      "n": 7,
+      "title": "Browse the universe's history",
+      "narration": "Further down the page, a timeline shows how the tracked universe has grown and changed over the decades — let's page back through a few earlier snapshots.",
+      "point_out": "Each page shows a real historical snapshot date with its own companies entering and exiting the universe — nothing here is invented.",
+      "journey": "J-12",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Next page of snapshot dates" } },
+      "expect": { "text": "Page 2 of" }
+    },
+    {
+      "n": 8,
+      "title": "See the honest evidence ledger",
+      "narration": "Finally, let's look at the Evidence page, where Trendora keeps itself honest about which patterns are actually proven.",
+      "point_out": "Every claim shows a clear pass/fail verdict and, where relevant, which market regime it was tested in — like this 'Regime: Risk-on' badge — and nothing is ever called proven until it has genuinely earned it.",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/evidence" },
+      "expect": { "text": "Regime: Risk-on" }
+    },
+    {
+      "n": 9,
+      "title": "Confirm a mapped company is unaffected",
+      "narration": "As a sanity check, a well-known company like NVIDIA still shows its real sector, completely unaffected by this fix.",
+      "point_out": "NVDA's detail page still reads 'Technology,' exactly as before.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/stocks/NVDA" },
+      "expect": { "text": "Technology" }
+    },
+    {
+      "n": 10,
+      "title": "See the full price history",
+      "narration": "On that same page, switching to the full price history still works, showing years of data in one view.",
+      "point_out": "The chart widens and the caption updates to show just how far back the history goes.",
+      "journey": "J-10",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "click", "target": { "role": "button", "name": "Full history" } },
+      "expect": { "text": "3025 bars" }
+    }
+  ]
+}
