@@ -110,6 +110,11 @@ def test_compute_coverage_exact(coverage_engine):
     """Exact coverage: price range D1..D4, two symbols, one snapshot date, three gap trading days."""
     engine, spy_days = coverage_engine
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     with Session(engine) as session:
         cov = compute_coverage(session, cfg)
 
@@ -130,6 +135,11 @@ def test_compute_coverage_gap_preview_capped_by_config(coverage_engine):
     """The gap preview length is bounded by `config.data_manager.gap_preview` (no magic cap in code)."""
     engine, _ = coverage_engine
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     cfg = cfg.model_copy(update={"data_manager": cfg.data_manager.model_copy(update={"gap_preview": 1})})
     with Session(engine) as session:
         cov = compute_coverage(session, cfg)
@@ -162,6 +172,11 @@ def test_compute_availability_exact_per_date_counts(coverage_engine):
     total_symbols == the distinct stored-symbol universe (== compute_coverage symbol_count == 2)."""
     engine, spy_days = coverage_engine
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     with Session(engine) as session:
         avail = compute_availability(session, cfg)
         cov = compute_coverage(session, cfg)
@@ -189,6 +204,11 @@ def test_compute_availability_consistent_with_coverage_snapshots(coverage_engine
     derivation of an existing coverage figure)."""
     engine, _ = coverage_engine
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     with Session(engine) as session:
         avail = compute_availability(session, cfg)
         cov = compute_coverage(session, cfg)
@@ -244,6 +264,11 @@ def _persymbol_cfg():
     value (10) — so the per-symbol table's in_universe/thin/missing are exact by construction and the
     thin threshold is provably read from config (No magic numbers)."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     universe = cfg.universe.model_copy(update={"symbols": ["AAA", "BBB", "CCC"]})
     indicators = cfg.indicators.model_copy(update={"min_history_bars": 10})
     return cfg.model_copy(update={"universe": universe, "indicators": indicators})
@@ -391,6 +416,11 @@ def test_validate_job_request_reads_config_max_range():
     """The max-range guard reads `config.data_manager.max_range_days` — shrinking it rejects a span that
     was previously allowed (no magic range literal in control code)."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     small = cfg.model_copy(
         update={"data_manager": cfg.data_manager.model_copy(update={"max_range_days": 3})}
     )
@@ -401,6 +431,11 @@ def test_validate_job_request_reads_config_max_range():
 
 def test_validate_job_request_rejects_inverted_and_unknown():
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     with pytest.raises(ValueError):
         validate_job_request("backfill", date(2024, 1, 10), date(2024, 1, 1), cfg)  # start > end
     with pytest.raises(ValueError):
@@ -421,6 +456,11 @@ def test_fetch_forced_failure_writes_no_bars_or_snapshots(tmp_path):
     """A fetch job whose provider fails for every symbol ends `failed` with an explicit error and writes
     ZERO `DailyPrice` rows and ZERO snapshots — never a fabricated price (anti-goal: real-data-only)."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     engine = make_engine(f"sqlite:///{tmp_path / 'fetch_fail.db'}")
     create_db_and_tables(engine)
     with Session(engine) as session:
@@ -449,11 +489,25 @@ def test_fetch_forced_failure_writes_no_bars_or_snapshots(tmp_path):
 # ==================================================================================================
 # Backfill on the real seed — grows n, lookahead-free, create-once/immutable (module-scoped, once)
 # ==================================================================================================
+
+
+def _daily_region_start(trading, cfg):
+    """iter-18: the snapshot cadence bounds the DEEP region to monthly targets, so job-range tests pick
+    their dates inside the config daily-density region (>= scanner.snapshot_cadence.daily_start), where
+    every trading day is a valid backfill target — these proofs are cadence-independent."""
+    start = cfg.scanner.snapshot_cadence.daily_start or trading[0]
+    return next(i for i, d in enumerate(trading) if d >= start)
+
 @pytest.fixture(scope="module")
 def backfilled_job(tmp_path_factory):
     """Load the seed, create one baseline run (so n_before > 0), run a backfill JOB over a 3-date range
     of older trading days, capture before/after facts, then run the SAME job again for idempotency."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     db_path = tmp_path_factory.mktemp("dm_seed") / "dm.db"
     engine = make_engine(f"sqlite:///{db_path}")
     create_db_and_tables(engine)
@@ -462,8 +516,9 @@ def backfilled_job(tmp_path_factory):
     with Session(engine) as session:
         trading = _trading_days(session, cfg)
     assert len(trading) > 320, "seed should provide a long trading calendar"
-    base_date = trading[300]
-    r_start, r_end = trading[305], trading[307]
+    _base = _daily_region_start(trading, cfg)
+    base_date = trading[_base + 300]
+    r_start, r_end = trading[_base + 305], trading[_base + 307]
     in_range = [d for d in trading if r_start <= d <= r_end]  # the gap dates the job will create
     horizon = cfg.walk_forward.default_horizon
 
@@ -583,6 +638,11 @@ def test_compute_provider_availability_env_detected(monkeypatch):
     set. The env VALUE / any key is NEVER in the output — only the env-var NAME + the boolean + a reason
     (anti-goal: Import keys are env-or-session, never persisted)."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     # No env keys set → yahoo available (no key), tiingo NOT available (needs key, env unset).
     monkeypatch.delenv("TIINGO_API_KEY", raising=False)
     sources = compute_provider_availability(cfg)
@@ -609,6 +669,11 @@ def test_seed_import_source_absent_without_flag(monkeypatch):
     validator REJECTS a `seed`-source job — it is a test/dev affordance, never in production."""
     monkeypatch.delenv(SEED_IMPORT_ENV_FLAG, raising=False)
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     assert seed_import_source_enabled() is False
     by_id = {s["id"]: s for s in compute_provider_availability(cfg)}
     assert SEED_IMPORT_SOURCE_ID not in by_id  # absent from the picker
@@ -622,6 +687,11 @@ def test_seed_import_source_present_only_when_flagged(monkeypatch):
     carrying NO env-var/key value — and it is NOT in the committed config catalog (no production leak)."""
     monkeypatch.setenv(SEED_IMPORT_ENV_FLAG, "1")
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     assert seed_import_source_enabled() is True
     # never in the committed config catalog (a test/dev affordance only)
     assert SEED_IMPORT_SOURCE_ID not in cfg.data_manager.provider_ids()
@@ -645,6 +715,11 @@ def test_seed_source_job_validates_through_existing_gate_when_flagged(monkeypatc
     eligibility gate accepts it). No second validation path."""
     monkeypatch.setenv(SEED_IMPORT_ENV_FLAG, "1")
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     # a fetch over seed needs no key (the seed reads no credential) — accepted with no api_key
     validate_job_request("fetch", date(2024, 1, 1), date(2024, 1, 2), cfg, source=SEED_IMPORT_SOURCE_ID)
     # an expand over seed passes the supports_market_cap eligibility gate (seed is cap-capable)
@@ -658,6 +733,11 @@ def test_seed_source_resolves_to_seed_provider(monkeypatch):
 
     monkeypatch.setenv(SEED_IMPORT_ENV_FLAG, "1")
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     provider = data_manager._resolve_live_provider(cfg, SEED_IMPORT_SOURCE_ID, None)
     assert isinstance(provider, SeedProvider)
     # the error-scrubber key for a seed job is None (no key → nothing to leak)
@@ -668,6 +748,11 @@ def test_resolve_provider_key_prefers_paste_then_env(monkeypatch):
     """The effective key is the pasted session key if present, else the env var; a no-key source returns
     None and ignores any pasted value (the key is request-only — never written anywhere)."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     yahoo = cfg.data_manager.provider_by_id("yahoo")
     tiingo = cfg.data_manager.provider_by_id("tiingo")
     assert resolve_provider_key(yahoo, "ignored") is None  # no-key source never uses a key
@@ -697,6 +782,11 @@ def test_pasted_api_key_never_persisted(tmp_path, caplog):
     persisted."""
     secret = "sk-PASTE-NEVER-PERSIST-7f3a9c"
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     engine = make_engine(f"sqlite:///{tmp_path / 'key.db'}")
     create_db_and_tables(engine)
     with Session(engine) as session:
@@ -769,6 +859,11 @@ def test_real_httpx_error_key_scrubbed_end_to_end(tmp_path, caplog):
     secret = "sk-REAL-HTTPX-SCRUB-5b2e1f"
     assert secret in _real_httpx_error_str_with_key(secret)  # sanity: there IS a key to scrub
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     engine = make_engine(f"sqlite:///{tmp_path / 'scrub.db'}")
     create_db_and_tables(engine)
     with Session(engine) as session:
@@ -815,6 +910,11 @@ def test_chunk_total_derives_from_config():
     """`chunk_total` = ceil(n_symbols / symbol_batch_size) × ceil(span / date_window_days). Varying either
     config dimension changes the plan size — proving No magic numbers (both come from config)."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     symbols = [f"S{i}" for i in range(10)]
     start, end = date(2024, 1, 1), date(2024, 1, 10)  # 10 calendar days
     # batch 5 over 10 symbols = 2 batches; window 5 over 10 days = 2 windows → 4 chunks
@@ -911,6 +1011,11 @@ def test_chunked_fetch_pauses_resumable_then_resumes_idempotently(tmp_path):
     `(symbol, date)` row."""
     secret = "sk-RESUME-KEY-NEVER-STORED-9c4"
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     batch = cfg.data_manager.import_chunking.symbol_batch_size
     symbols = all_seed_symbols(cfg)
     chunk0 = set(symbols[:batch])  # the first chunk's symbols (date_window=90 over 1 day → 1 window)
@@ -973,6 +1078,11 @@ def test_resume_unknown_or_completed_raises():
     """A resume of an unknown import → `LookupError` (API 404); a resume of a non-resumable (ok) import →
     `ValueError` (API 409). Never a fabricated job."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     engine = make_engine("sqlite:///:memory:")
     create_db_and_tables(engine)
     with pytest.raises(LookupError):
@@ -1044,6 +1154,11 @@ def test_expand_screens_pool_writes_universe_with_exact_passers_and_omissions(tm
     VALUE. A FETCHFAIL (no bars), a NOCAP (no market cap), a SMALLCAP (cap < min), and a CHEAP (price <
     min) are each omitted with the right reason; nothing is fabricated."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     seed_dir = tmp_path / "seed"
     _write_pool(seed_dir)
     engine = make_engine(f"sqlite:///{tmp_path / 'expand.db'}")
@@ -1093,6 +1208,11 @@ def test_expand_omitted_candidates_contribute_no_member_and_no_fabricated_bar(tm
     with a reason and contributes NO universe member and NO fabricated bar. FETCHFAIL/NOCAP/etc. are not
     in members; FETCHFAIL's symbol has zero stored DailyPrice rows."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     seed_dir = tmp_path / "seed"
     _write_pool(seed_dir)
     engine = make_engine(f"sqlite:///{tmp_path / 'nofab.db'}")
@@ -1121,6 +1241,11 @@ def test_expand_engine_decision_matches_screen_reasons_predicate(tmp_path):
     predicate (the one definition the offline runbook + test_universe_screen.py use) for the same
     reference values — proving the engine did not re-implement the rule."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     f = cfg.universe.filters
     seed_dir = tmp_path / "seed"
     _write_pool(seed_dir)
@@ -1148,6 +1273,11 @@ def test_expand_idempotent_no_duplicate_bars_no_snapshot_regen(tmp_path):
     """Idempotency / immutability: re-running expand over already-stored bars inserts NO duplicate
     (symbol, date) and writes/mutates NO scanner_runs / scanner_results / forward_returns (no DB regen)."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     seed_dir = tmp_path / "seed"
     _write_pool(seed_dir)
     engine = make_engine(f"sqlite:///{tmp_path / 'idem.db'}")
@@ -1187,6 +1317,11 @@ def test_expand_eligibility_gate_engine_rejects_non_market_cap_source():
     """Eligibility gate (engine layer): an `expand` job whose `source` has `supports_market_cap: false`
     (alpha_vantage / stooq) is rejected with an explicit ValueError — never a silent no-op."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     for ineligible in ("alpha_vantage", "stooq"):
         with pytest.raises(ValueError, match="market cap"):
             validate_job_request("expand", date(2024, 3, 1), date(2024, 3, 1), cfg, source=ineligible)
@@ -1199,6 +1334,11 @@ def test_expand_needs_key_source_without_key_rejected():
     explicitly (reuses the J-33 key gate) — never a silent expand."""
     import os as _os
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     prev = _os.environ.pop("TIINGO_API_KEY", None)
     try:
         with pytest.raises(ValueError, match="requires a key"):
@@ -1275,6 +1415,11 @@ def test_expand_cap_feed_rate_limited_pauses_resumable_never_fabricates(tmp_path
     `resumable` (distinct from failed) and writes NO universe.json — never a fabricated cap/member. The
     durable checkpoint (from the OHLCV fetch) makes it Resume-able."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     seed_dir = tmp_path / "seed"
     _write_pool(seed_dir, rows=[("PASSER1", "Technology", "test"), ("PASSER2", "Health Care", "test")])
     engine = make_engine(f"sqlite:///{tmp_path / 'cap429.db'}")
@@ -1317,6 +1462,11 @@ def test_expand_cap_fetch_real_httpx_key_scrubbed_end_to_end(tmp_path, caplog):
             raise ProviderUnavailableError(leak)
 
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     seed_dir = tmp_path / "seed"
     _write_pool(seed_dir, rows=[("PASSER1", "Technology", "test")])
     engine = make_engine(f"sqlite:///{tmp_path / 'capscrub.db'}")
@@ -1392,6 +1542,11 @@ def test_expand_batched_caps_screens_real_passers_one_batch_not_per_symbol(tmp_p
     expected passers/omissions, and resolves the caps in ONE batch call (cookie+crumb-once semantics) —
     never per-symbol. PASSER1/PASSER2 pass; SMALLCAP/CHEAP/NOCAP omitted with their honest reasons."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     seed_dir = tmp_path / "seed"
     _write_pool(seed_dir, rows=[r for r in _POOL_ROWS if r[0] != "FETCHFAIL"])  # all OHLCV-fetchable
     engine = make_engine(f"sqlite:///{tmp_path / 'batch_caps.db'}")
@@ -1427,6 +1582,11 @@ def test_expand_systemic_cap_auth_failure_pauses_resumable_not_all_omitted(tmp_p
     and does NOT record every candidate omitted (the bug J-84 fixes: 0-passers / 548-omitted). The durable
     checkpoint (from the OHLCV fetch) makes it Resume-able and SURVIVES a fresh DB session (restart)."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     seed_dir = tmp_path / "seed"
     _write_pool(seed_dir, rows=[("PASSER1", "Technology", "test"), ("PASSER2", "Health Care", "test")])
     engine = make_engine(f"sqlite:///{tmp_path / 'sys_auth.db'}")
@@ -1456,6 +1616,11 @@ def test_expand_resume_after_systemic_pause_zero_duplicate_ohlcv_fetch_then_comp
     universe.json. Asserts the recovered provider's `get_daily` is NEVER called on resume (covered chunks
     skipped) while the cap batch DOES re-run (that is the point of resuming)."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     seed_dir = tmp_path / "seed"
     _write_pool(seed_dir, rows=[("PASSER1", "Technology", "test"), ("PASSER2", "Health Care", "test")])
     engine = make_engine(f"sqlite:///{tmp_path / 'resume_sys.db'}")
@@ -1508,6 +1673,11 @@ def test_expand_systemic_pause_crumb_never_leaks_in_any_response_or_row(tmp_path
             raise RateLimitError(f"systemic auth failure with crumb={crumb}")
 
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     seed_dir = tmp_path / "seed"
     _write_pool(seed_dir, rows=[("PASSER1", "Technology", "test")])
     engine = make_engine(f"sqlite:///{tmp_path / 'crumbleak.db'}")
@@ -1844,6 +2014,11 @@ def _diag_cfg():
     value (5) — so the diagnostic categories + shortfalls are exact and the threshold is provably read from
     config (No magic numbers)."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     universe = cfg.universe.model_copy(update={"symbols": ["AAA", "BBB", "CCC", "DDD"]})
     indicators = cfg.indicators.model_copy(update={"min_history_bars": 5})
     return cfg.model_copy(update={"universe": universe, "indicators": indicators})
@@ -2067,6 +2242,11 @@ def test_seed_source_pull_is_gap_exact_and_idempotent(tmp_path, monkeypatch):
     path (no fork), and no second pull-constructor exists for the offline source."""
     monkeypatch.setenv(SEED_IMPORT_ENV_FLAG, "1")
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     # a tiny throwaway seed dir: SPY (calendar) + MU with a 2-day mid hole the seed can supply.
     seed_dir = tmp_path / "seed"
     prices = seed_dir / "prices"
@@ -2171,6 +2351,11 @@ def test_seed_source_expand_runs_offline_with_passers_and_omitted(tmp_path, monk
         _csv(sym)
     # BIGCAP passes (cap huge); SMALLCAP omitted (cap < min); HASBARS_NOCAP omitted (no cap); NOBARS omitted (empty_series)
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     min_cap = cfg.universe.filters.min_market_cap
     (overlay / "market_caps.csv").write_text(
         f"symbol,market_cap\nBIGCAP,{min_cap * 100:.0f}\nSMALLCAP,{min_cap / 2:.0f}\n"
@@ -2221,6 +2406,11 @@ def test_seed_source_expand_writes_to_overlay_not_committed_seed(tmp_path, monke
         lines.append(f"{d.isoformat()},{20+i}.0,{21+i}.0,{19+i}.0,{20+i}.0,5000000")
     (overlay / "prices" / "BIGCAP.csv").write_text("\n".join(lines) + "\n")
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     (overlay / "market_caps.csv").write_text(
         f"symbol,market_cap\nBIGCAP,{cfg.universe.filters.min_market_cap * 100:.0f}\n"
     )
@@ -2297,6 +2487,11 @@ def test_unfinished_imports_union(unfinished_engine):
     """The union = resumable checkpoints + partial/failed runs, MINUS soft-dismissed runs and MINUS a
     plain seed-load (non-job) row. Each carries a plain-language state + the right actions."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     with Session(unfinished_engine) as session:
         _add_resumable_checkpoint(session, "cp-1")
         partial = _add_provider_run(session, status="partial", ok=142, failed=16)
@@ -2329,6 +2524,11 @@ def test_unfinished_imports_union(unfinished_engine):
 def test_unfinished_imports_carries_no_key(unfinished_engine):
     """No row in the union carries a key value (neither the checkpoint nor the run summary has a key)."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     with Session(unfinished_engine) as session:
         _add_resumable_checkpoint(session, "cp-key")
         _add_provider_run(session, status="partial", ok=1, failed=1)
@@ -2341,6 +2541,11 @@ def test_dismiss_run_is_soft_and_preserves_audit(unfinished_engine):
     """Dismiss of a partial/failed RUN sets the soft-dismiss flag ONLY: the run LEAVES unfinished_imports
     but STAYS in the append-only Run-history audit (still queryable, never deleted)."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     with Session(unfinished_engine) as session:
         run = _add_provider_run(session, status="partial", ok=1, failed=1)
         run_id = run.id
@@ -2358,6 +2563,11 @@ def test_dismiss_run_is_soft_and_preserves_audit(unfinished_engine):
 def test_dismiss_checkpoint_deletes_only_job_control(unfinished_engine):
     """Dismiss of a resumable CHECKPOINT deletes ONLY that job-control row — no bar/snapshot is touched."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     with Session(unfinished_engine) as session:
         _add_resumable_checkpoint(session, "cp-del")
         # seed a snapshot + forward return that MUST survive the checkpoint delete
@@ -2375,6 +2585,11 @@ def test_dismiss_checkpoint_deletes_only_job_control(unfinished_engine):
 
 def test_dismiss_unknown_id_raises(unfinished_engine):
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     with Session(unfinished_engine) as session:
         with pytest.raises(LookupError):
             dismiss_import(session, "run", "99999", config=cfg)
@@ -2415,6 +2630,11 @@ def test_retry_run_redispatches_outstanding_only(tmp_path):
 def test_retry_run_unknown_and_non_retryable(tmp_path):
     """Retry of an unknown run raises LookupError; retry of a clean (ok) run raises ValueError."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     engine = make_engine(f"sqlite:///{tmp_path / 'retry2.db'}")
     create_db_and_tables(engine)
     with pytest.raises(LookupError):

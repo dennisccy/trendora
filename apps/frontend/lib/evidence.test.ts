@@ -10,6 +10,15 @@
  *   (c) a PRESENT, proven signal reads "Proven" and links to its `/evidence` backing entry;
  *   (d) a present-but-not-`proven` row is still treated as "Not yet proven" (defensive).
  */
+/*
+ * iter-18 NOTE (sanctioned data-basis reset): the fixtures below are SELF-CONTAINED SYNTHETIC
+ * payloads exercising resolver BEHAVIOR (PASS -> Proven, FAIL -> honest dark, linkbacks, formats).
+ * Values that historically mirrored live certified-claims ledger lines mirror the RETIRED basis;
+ * the live ledger was regenerated 2026-07-03 on the 30-year basis and currently holds ZERO PASS
+ * rows (every score/edge surface honestly reads "Not yet proven"). The backend frozen golden
+ * (tests/test_evidence.py::test_canonical_ledger_frozen_golden) pins the live file byte-for-byte.
+ */
+
 import assert from "node:assert";
 
 import {
@@ -115,12 +124,15 @@ check("SCORE_SIGNALS maps each score to its canonical factor-catalog signal key"
 
 // ======================================================================================================
 // J-02 proof drill-down — `proofFieldsFor` reads the backing claim VERBATIM (the iter-2 PRIMARY contract).
-// The values below MIRROR the real certified leadership_score entry the post-decompose gate wrote, so the
-// test pins the displayed-numbers-are-correct anti-goal: what the panel shows must equal the served entry.
+// SYNTHETIC retired-basis mirror (see the iter-18 NOTE at the top of this file): the values below MIRROR
+// the RETIRED pre-swap ledger's certified leadership_score entry — the regenerated 30-year ledger holds no
+// PASS row. The self-contained payload still pins the extraction contract: what the panel shows must equal
+// the served entry.
 // ======================================================================================================
 
-/** A proven row mirroring the REAL ledger entry (holdout edge / p-value / control excess / register date /
- *  cohort_n the gate certified for leadership_score), so the proof-field extraction is pinned to reality. */
+/** A proven row mirroring the RETIRED-basis ledger entry (holdout edge / p-value / control excess /
+ *  register date / cohort_n the pre-swap gate certified for leadership_score) — synthetic post-reset; the
+ *  proof-field extraction contract it pins is basis-independent. */
 function provenLeadershipRow(): ProvenSignal {
   return {
     signal: "leadership_score",
@@ -180,7 +192,7 @@ check("proofFieldsFor returns null for an absent, null-map, or not-`proven` sign
 
 // --- (g) the display formatters — exact strings (the panel re-formats; it fabricates nothing) -----------
 check("formatEvidencePct renders a signed percent (and an em dash for a missing value)", () => {
-  assert.strictEqual(formatEvidencePct(0.06359100763913017), "+6.36%"); // the real holdout edge / control excess
+  assert.strictEqual(formatEvidencePct(0.06359100763913017), "+6.36%"); // a realistic holdout edge / control excess (retired-basis value; see iter-18 NOTE)
   assert.strictEqual(formatEvidencePct(0.08909719710495288), "+8.91%"); // iter-11 J-07 — the real vcp h60 holdout edge / SPY control
   assert.strictEqual(formatEvidencePct(-0.004), "-0.40%");
   assert.strictEqual(formatEvidencePct(0), "+0.00%");
@@ -190,7 +202,7 @@ check("formatEvidencePct renders a signed percent (and an em dash for a missing 
 });
 
 check("formatPValue renders the p-value to 4 significant figures (with a small/missing fallback)", () => {
-  assert.strictEqual(formatPValue(0.0004997501249375312), "0.0004998"); // the real certified p-value
+  assert.strictEqual(formatPValue(0.0004997501249375312), "0.0004998"); // a realistic certified p-value (retired-basis value; see iter-18 NOTE)
   assert.strictEqual(formatPValue(0.05), "0.05");
   assert.strictEqual(formatPValue(0.0000000001), "< 0.0001");
   assert.strictEqual(formatPValue(null), "—");
@@ -199,12 +211,13 @@ check("formatPValue renders the p-value to 4 significant figures (with a small/m
 
 // ======================================================================================================
 // J-04 regime-conditioned evidence — the ClaimRow regime label + the honest non-score title/linkback.
-// The row below MIRRORS the real 2nd ledger entry the post-decompose gate certified (Breakout-watch ×
-// Risk-on event-study, signal: null), so these pin the J-04 display contract AND the J-05 no-regression
-// invariant (the leadership score row's title + linkback stay byte-identical).
+// The row below MIRRORS the RETIRED 2nd ledger entry the pre-swap post-decompose gate certified
+// (Breakout-watch × Risk-on event-study, signal: null) — synthetic post-reset (iter-18 NOTE at top). It
+// still pins the J-04 display contract AND the J-05 no-regression invariant (the leadership score row's
+// title + linkback stay byte-identical).
 // ======================================================================================================
 
-/** A certified (PASS) row mirroring the REAL iter-4 2nd ledger entry: the Breakout-watch setup's
+/** A certified (PASS) row mirroring the RETIRED iter-4 2nd ledger entry (synthetic post-reset): the Breakout-watch setup's
  *  event-study cohort sliced to the named `Risk-on` regime. It deliberately carries NO `signal` (it backs
  *  no per-stock score badge — it is regime-conditioned evidence in its own right). */
 function eventStudyRegimeRow(): CertifiedClaim {
@@ -282,7 +295,8 @@ check("claimSurface gives a signal-less event-study claim an honest title + a no
 
 // ======================================================================================================
 // J-06 — the read-side COHORT-SELECTOR matcher for a signal-less plain-factor decile cohort (iter-8).
-// The rows below MIRROR the real iter-8 ledger entries the post-decompose gate certified: the 4th entry
+// The rows below MIRROR the RETIRED iter-8 ledger entries the pre-swap gate certified (synthetic
+// post-reset — iter-18 NOTE at top): the 4th entry
 // (vcp_contraction D10 h20 PASS, holdout/control +0.0333, p 0.01149, signal-less) and the 3rd entry
 // (ma_stack D10 h20 FAIL). These pin the J-06 display contract: vcp_contraction's top-decile cohort reads
 // "Proven" (a PASS-backed match) and deep-links to its ledger row; every other factor top-decile cohort —
@@ -298,7 +312,7 @@ const VCP_COHORT: FactorCohort = {
   direction: "positive",
 };
 
-/** A certified (PASS) row mirroring the REAL 4th ledger entry: the vcp_contraction top-decile cohort.
+/** A certified (PASS) row mirroring the RETIRED 4th ledger entry (synthetic post-reset): the vcp_contraction top-decile cohort.
  *  It deliberately carries NO `signal` (a plain-factor cohort — it backs the factor lab + Evidence, never a
  *  per-stock score badge), so it MUST NOT enter the inline `proven_signals` map. */
 function vcpContractionRow(): CertifiedClaim {
@@ -328,7 +342,7 @@ function vcpContractionRow(): CertifiedClaim {
   };
 }
 
-/** A FAIL row mirroring the REAL 3rd ledger entry: the ma_stack top-decile cohort that did NOT clear the
+/** A FAIL row mirroring the RETIRED 3rd ledger entry (synthetic post-reset): the ma_stack top-decile cohort that did NOT clear the
  *  tightened referee bar. It is audit-listed but `proven: false` — a matched-but-non-PASS cohort that MUST
  *  resolve to "Not yet proven". */
 function maStackFailRow(): CertifiedClaim {
@@ -358,10 +372,10 @@ function maStackFailRow(): CertifiedClaim {
   };
 }
 
-/** A certified (PASS) row mirroring the REAL iter-11 5th ledger entry: the vcp_contraction top-decile cohort
- *  at the NON-20 forward-return horizon 60, promoted to the canonical ledger (`"ledger":"canonical"`). Like
- *  the h20 row it is signal-less (backs the factor lab + Evidence ONLY). Verdict values byte-match
- *  `certified-claims.jsonl` line 5 (the displayed-numbers-are-correct anti-goal). */
+/** A certified (PASS) row mirroring the RETIRED iter-11 5th ledger entry (synthetic post-reset): the
+ *  vcp_contraction top-decile cohort at the NON-20 forward-return horizon 60, promoted to the canonical
+ *  ledger (`"ledger":"canonical"`). Like the h20 row it is signal-less (backs the factor lab + Evidence
+ *  ONLY). Verdict values byte-matched the RETIRED `certified-claims.jsonl` line 5 (pre-swap basis). */
 function vcpContractionH60Row(): CertifiedClaim {
   return {
     signal: null,
@@ -429,7 +443,8 @@ check("resolveCohortEvidence matches the vcp_contraction h60 cohort => 'Proven' 
   assert.strictEqual(status.proven, true);
   assert.strictEqual(status.label, "Proven");
   assert.strictEqual(status.href, "/evidence#factor-vcp_contraction-d10-h60");
-  // the displayed h60 edge / control / p are read VERBATIM (byte-match the ledger — anti-goal #3)
+  // the displayed h60 edge / control / p are read VERBATIM (byte-match the served fixture payload — the
+  // anti-goal #3 display==served contract; values mirror the RETIRED basis, see iter-18 NOTE at top)
   assert.strictEqual(status.claim?.verdict.holdout_edge, 0.08909719710495288);
   assert.strictEqual(status.claim?.verdict.control_excess, 0.08909719710495288);
   assert.strictEqual(status.claim?.verdict.p_value, 0.0004997501249375312);
@@ -598,7 +613,8 @@ check("claimSurface keeps the score + event-study branches byte-identical (J-05 
 
 // ======================================================================================================
 // J-08 (iter-13) — the read-side COMBINATION-cohort matcher for a signal-less multi-factor composite cohort.
-// The row below MIRRORS the real 6th ledger entry the post-decompose gate certified: the
+// The row below MIRRORS the RETIRED 6th ledger entry the pre-swap gate certified (synthetic post-reset —
+// iter-18 NOTE at top): the
 // `rs_spy_3m × high_proximity` composite cohort @ h20 (PASS, holdout/control +0.04693, p 0.0009995,
 // signal-less, promoted to canonical). These pin the J-08 display contract: the certified composite reads
 // "Proven" (a PASS-backed leg-set match, order-independent) and deep-links to its ledger row; every other
@@ -615,11 +631,12 @@ const COMBINATION_COHORT: CombinationCohort = {
   direction: "positive",
 };
 
-/** A certified (PASS) row mirroring the REAL 6th ledger entry: the `rs_spy_3m × high_proximity` composite
- *  cohort @ h20, promoted to the canonical ledger (`"ledger":"canonical"`). It deliberately carries NO
- *  `signal` (a combination cohort — it backs the combination lab + Evidence ONLY, never a per-stock score
- *  badge), so it MUST NOT enter the inline `proven_signals` map. Verdict values byte-match
- *  `certified-claims.jsonl` line 6 (the displayed-numbers-are-correct anti-goal #3). */
+/** A certified (PASS) row mirroring the RETIRED 6th ledger entry (synthetic post-reset): the
+ *  `rs_spy_3m × high_proximity` composite cohort @ h20, promoted to the canonical ledger
+ *  (`"ledger":"canonical"`). It deliberately carries NO `signal` (a combination cohort — it backs the
+ *  combination lab + Evidence ONLY, never a per-stock score badge), so it MUST NOT enter the inline
+ *  `proven_signals` map. Verdict values byte-matched the RETIRED `certified-claims.jsonl` line 6
+ *  (pre-swap basis). */
 function combinationRow(): CertifiedClaim {
   return {
     signal: null,
@@ -822,7 +839,8 @@ check("the combination claim is signal-less and leaves the score/factor/event-st
 
 // ======================================================================================================
 // J-09 (iter-15) — the per-horizon COHORT matcher lights a SECOND factor's NON-20 certified horizon.
-// The row below MIRRORS the real 7th ledger entry the post-decompose gate certified: the signal-less
+// The row below MIRRORS the RETIRED 7th ledger entry the pre-swap gate certified (synthetic post-reset —
+// iter-18 NOTE at top): the signal-less
 // `rs_spy_3m` top-decile cohort @ h60, promoted to the canonical ledger (`"ledger":"canonical"`, strict
 // Bonferroni divisor 7). It pins the J-09 display contract: `rs_spy_3m`'s h60 cohort reads "Proven" (a
 // PASS-backed per-horizon match) deep-linking to its OWN row, while its h1/h5/h10/h20 cohorts stay
@@ -831,11 +849,12 @@ check("the combination claim is signal-less and leaves the score/factor/event-st
 // payload, one more PASS-backed entry — no factor-specific branch (iter-8 lesson).
 // ======================================================================================================
 
-/** A certified (PASS) row mirroring the REAL iter-15 7th ledger entry: the rs_spy_3m top-decile cohort at
- *  the NON-20 forward-return horizon 60, promoted to the canonical ledger (`"ledger":"canonical"`). Like the
- *  vcp_contraction factor rows it is signal-less (rs_spy_3m ∉ the three score columns — it backs the factor
- *  lab + Evidence ONLY, never a `/stocks` inline badge). Verdict values byte-match `certified-claims.jsonl`
- *  line 7 (the displayed-numbers-are-correct anti-goal #3): holdout/control +0.2134, p 0.0004998, divisor 7. */
+/** A certified (PASS) row mirroring the RETIRED iter-15 7th ledger entry (synthetic post-reset): the
+ *  rs_spy_3m top-decile cohort at the NON-20 forward-return horizon 60, promoted to the canonical ledger
+ *  (`"ledger":"canonical"`). Like the vcp_contraction factor rows it is signal-less (rs_spy_3m ∉ the three
+ *  score columns — it backs the factor lab + Evidence ONLY, never a `/stocks` inline badge). Verdict values
+ *  byte-matched the RETIRED `certified-claims.jsonl` line 7 (pre-swap basis): holdout/control +0.2134,
+ *  p 0.0004998, divisor 7. */
 function rsSpy3mH60Row(): CertifiedClaim {
   return {
     signal: null,
@@ -890,7 +909,8 @@ check("resolveCohortEvidence matches the rs_spy_3m h60 cohort => 'Proven' + a ho
   assert.strictEqual(status.label, "Proven");
   assert.strictEqual(status.href, "/evidence#factor-rs_spy_3m-d10-h60");
   assert.ok(status.href!.startsWith("/evidence#"), "the proven cohort badge must deep-link into /evidence");
-  // the displayed h60 edge / SPY control / p are read VERBATIM (byte-match certified-claims.jsonl row 7 — anti-goal #3)
+  // the displayed h60 edge / SPY control / p are read VERBATIM (byte-match the served fixture payload,
+  // which mirrors the RETIRED certified-claims.jsonl row 7 — the anti-goal #3 display==served contract)
   assert.strictEqual(status.claim?.verdict.holdout_edge, 0.21344270202534893);
   assert.strictEqual(status.claim?.verdict.control_excess, 0.21344270202534893);
   assert.strictEqual(status.claim?.verdict.p_value, 0.0004997501249375312);

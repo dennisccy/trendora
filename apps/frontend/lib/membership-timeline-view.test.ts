@@ -27,7 +27,7 @@ import type { MembershipTimelinePoint } from "./api.ts";
 
 // A small synthetic timeline spanning two years and several months, oldest-first as the payload serves it.
 function pt(date: string, size: number): MembershipTimelinePoint {
-  return { date, size, entries: [], exits: [], excluded: { below_history: 0, below_price: 0, below_adv: 0 } };
+  return { date, size, entries: [], exits: [], excluded: { below_history: 0, stale_series: 0, below_price: 0, below_adv: 0 } };
 }
 
 // 25 points: 2024 (Jan x3, Feb x2), 2025 (Mar x20) — enough to exercise multi-page pagination.

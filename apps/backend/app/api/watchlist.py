@@ -17,7 +17,8 @@ stored `entry_close` − 1 (an honest 0.00% against the frozen seed when no post
 when `entry_close` is null — never fabricated). This file holds NO scoring/threshold literal — it
 reads everything canonical.
 
-Status contract: `404` for a ticker outside `config.universe.symbols` (no fabricated row); `409`
+Status contract: `404` for a truly unknown ticker (iter-18: validated against the pool-broadened
+load set + stored bars — the same resolution as the chart endpoint; no fabricated row); `409`
 for a duplicate add (the unique `ticker` guarantees no duplicate row); `503` when no price data
 exists; `404` deleting a missing entry.
 """
@@ -105,8 +106,9 @@ def list_watchlist(session: Session = Depends(get_session)) -> dict:
 
 @router.post("/watchlist")
 def add_watchlist(payload: WatchlistCreate, session: Session = Depends(get_session)) -> dict:
-    """Add a stock to the watchlist. Validates the ticker against `config.universe.symbols`
-    (`404` if unknown — no fabricated row), captures `asof_date_added` + canonical `entry_close`
+    """Add a stock to the watchlist. Validates the ticker against the pool-broadened load set +
+    stored bars (iter-18 — the same resolution as the chart endpoint; `404` if truly unknown, no
+    fabricated row), captures `asof_date_added` + canonical `entry_close`
     ONCE, rejects a duplicate (`409` — no duplicate row), and returns the enriched GET-shaped row.
     `503` when no price data exists."""
     cfg = get_config()
@@ -114,10 +116,12 @@ def add_watchlist(payload: WatchlistCreate, session: Session = Depends(get_sessi
     if asof is None:
         raise HTTPException(status_code=503, detail="no price data available")
 
-    requested = payload.ticker.strip().upper()
-    symbol = next((s for s in cfg.universe.symbols if s.upper() == requested), None)
-    if symbol is None:
-        raise HTTPException(status_code=404, detail=f"unknown ticker: {payload.ticker}")
+    # iter-18: broadened membership — the SAME pool-broadened resolution the chart endpoint uses
+    # (pool ∪ context, stored-bars fallback), so a broadened leaderboard member can be watchlisted.
+    # Raises the same explicit 404 for a truly unknown ticker (no fabricated row).
+    from app.api.stocks import resolve_servable_symbol
+
+    symbol = resolve_servable_symbol(session, payload.ticker.strip(), cfg)
 
     if session.exec(select(Watchlist).where(Watchlist.ticker == symbol)).first() is not None:
         raise HTTPException(status_code=409, detail=f"{symbol} is already on the watchlist")

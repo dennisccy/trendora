@@ -50,12 +50,16 @@ from app.engine.scanner import run_scan
 from app.engine.setups import ALL_STATUSES
 from app.models import ForwardReturn, ScannerResult, ScannerRun
 
-# The honest caveat carried on every payload (anti-goal: Honest limitations surfaced). Walk-forward
-# evidence is computed on the CURRENT-membership universe, so delisted/dropped names are absent.
+# The honest caveat carried on every payload (anti-goal: Honest limitations surfaced). iter-18: the
+# basis now spans ~30 years (1996 -> present, per-name real listing depth) over the broadened
+# point-in-time candidate pool — but the pool itself is built from CURRENT index constituents, so
+# truly delisted names (absent from the free feed) are still missing across that whole span.
 SURVIVORSHIP_BIAS_LABEL = (
-    "Walk-forward evidence is measured on the current-membership universe and therefore carries "
-    "survivorship bias: names that were later delisted or dropped from the universe are absent, so "
-    "realized forward returns may be overstated. Read the edge as an upper bound, not a guarantee."
+    "Walk-forward evidence now spans up to ~30 years of history (1996 to present, each name from its "
+    "real first bar), but it is measured over a candidate pool built from CURRENT index members and "
+    "therefore carries survivorship bias: names that were delisted or dropped along the way are absent "
+    "from the whole span, so realized forward returns may be overstated. Read the edge as an upper "
+    "bound, not a guarantee."
 )
 
 # The A-E bucket vocabulary (string labels, not tunables) in display order — strongest to weakest.

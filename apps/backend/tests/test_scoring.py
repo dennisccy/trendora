@@ -17,6 +17,7 @@ from app.engine.indicators import sma
 from app.engine.prices import bars_asof, closes, latest_data_date
 from app.engine.scoring import score_stocks
 from app.engine.setups import ALL_STATUSES
+from app.engine.universe_screen import read_pool
 from app.engine.themes import theme_name
 from app.models import DailyPrice
 
@@ -37,7 +38,7 @@ def test_each_stock_has_three_bucketed_explainable_scores(loaded_engine):
     # iter-33 (J-93): one row per POINT-IN-TIME-RESOLVED member (the scored set == result["members"]),
     # a non-empty subset of the static universe at a full-universe date — not the static universe size.
     assert len(rows) == len(result["members"])
-    assert 0 < len(rows) <= len(cfg.universe.symbols)
+    assert 0 < len(rows) <= len(read_pool())  # iter-18: resolved members are a subset of the 548-pool
     assert result["benchmark"] == "SPY"
     assert [r["rank"] for r in rows] == list(range(1, len(rows) + 1))
     # ranked by leadership, non-increasing
@@ -62,7 +63,10 @@ def test_each_stock_has_three_bucketed_explainable_scores(loaded_engine):
         # setup status + reason ride on the same row (single composition path)
         assert row["setup"]["status"] in ALL_STATUSES
         assert isinstance(row["setup"]["reason"], str) and row["setup"]["reason"].strip()
-        assert row["sector"] in set(cfg.etfs.sector.values())
+        # iter-18: broadened-pool names have no `cfg.stock_sectors` mapping, so sector is honestly None
+        # (never a fabricated sector — pool-sector surfacing is J-13/J-14, out of scope). Config-universe
+        # names still carry a valid mapped sector.
+        assert row["sector"] is None or row["sector"] in set(cfg.etfs.sector.values())
 
 
 def test_gap_climax_is_na_and_excluded_never_fabricated(loaded_engine):

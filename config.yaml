@@ -103,6 +103,11 @@ universe:
     min_market_cap: 2000000000     # $2B
     min_dollar_vol: 50000000       # $50M average daily dollar volume
     min_price: 10                  # $10 minimum share price
+    # iter-18 (J-12 hardening) — the per-date RECENCY gate: a candidate whose LAST bar is more than this
+    # many calendar days before the resolve date D is excluded (`stale_series`), so a name whose data ends
+    # mid-history exits membership cleanly and never feeds a positionally-misaligned relative-strength
+    # window (`rs_vs`). ~2 trading weeks: no US-market-wide closure approaches this (9/11 was 7 days).
+    max_staleness_days: 10
   symbols:
     # AI / data-centre / semis
     - NVDA
@@ -702,12 +707,12 @@ decision_rules:
 # The replay window (history_years), the as-of cadence (daily|weekly|monthly|quarterly), the forward
 # horizons (trading days), the min_sample honesty threshold, the default served horizon, and the
 # control-group params all come from here (anti-goal: No magic numbers — no walk-forward literal in
-# calc code). `asof_cadence: quarterly` over a 2-year window yields a bounded as-of set (~8 dates,
-# intersected with seed trading days) so the first-boot backfill stays tractable while every cadence
-# run still leaves >= max(horizons)=60 post-snapshot bars; widen to monthly/weekly here (config, not
-# code) for denser evidence at the cost of a slower first boot.
+# calc code). iter-18 (30y basis): history_years raised 2 → 30 so the depth is actually used —
+# `asof_cadence: quarterly` over the deep window yields the bounded as-of set for `/api/backtest`
+# (~86 real dates: quarterly targets snapped to the SPY trading calendar, which honestly starts at
+# SPY's real first committed bar, 2005-02-25 — targets before it snap to no date, never fabricated).
 walk_forward:
-  history_years: 2
+  history_years: 30
   asof_cadence: quarterly
   horizons: [1, 5, 10, 20, 60]
   min_sample: 30
@@ -726,6 +731,21 @@ walk_forward:
       - { label: "1–10",  min: 1,  max: 10 }
       - { label: "11–50", min: 11, max: 50 }
       - { label: "51+",   min: 51, max: null }   # open top band (all remaining ranks)
+
+# ----------------------------------------------------------------------------------------
+# iter-18 (J-10 performance) — GET /api/stocks/{ticker}/bars presentation bounding on the deep
+# 30-year basis (app/api/stocks.py). The chart never ships every deep bar by default: with no
+# `range` param the served window is the trailing `default_years` before the resolved as-of;
+# `range=full` is the explicit whole-real-history opt-in, with bars older than
+# `downsample_beyond_years` before the as-of sampled at weekly density (every sampled bar is a
+# REAL stored daily bar — never synthesized/aggregated; the series' real first bar is always
+# kept). Display-bounding only — scores/setups keep reading the immutable snapshot (bars <= D)
+# and the no-lookahead boundary is untouched (anti-goal: No magic numbers — no window literal
+# in the endpoint).
+chart_bars:
+  default_years: 5
+  downsample_beyond_years: 8
+  downsample_interval: weekly
 
 # ----------------------------------------------------------------------------------------
 # iter-11 CONSUMED — Detected price patterns. The FIRST detected pattern is VCP (Volatility
@@ -1110,7 +1130,26 @@ triad:
 # exists (J-07) and the history has >=2 dated runs that differ from the latest (J-08). Parsed to
 # datetime.date by config.py (anti-goal: No magic numbers — no date literal in calc code).
 scanner:
-  bootstrap_dates: ["2022-10-07", "2025-04-04"]
+  # iter-18: two representative deep-regime dates added (goal.md §E) — 2008-11-21 (GFC trough week) and
+  # 2020-03-20 (COVID crash week), both REAL SPY trading days inside the committed 30y basis. (The dot-com
+  # 2000-03 regime predates SPY's real first committed bar, 2005-02-25 — the trading calendar honestly
+  # cannot snapshot it; disclosed, never fabricated.)
+  bootstrap_dates: ["2008-11-21", "2020-03-20", "2022-10-07", "2025-04-04"]
+  # iter-18 — the BOUNDED deep-history snapshot cadence (goal.md §C(3)/§F: the offline rebuild is borne
+  # once but stays bounded + config-driven). Trading days ON/AFTER `daily_start` keep FULL daily snapshot
+  # density; days BEFORE it are backfilled only at the first trading day of each calendar month
+  # (`monthly`). Walk-forward cadence dates + the bootstrap dates above are always allowed regardless.
+  # HONEST BOUNDING DISCLOSURE (iter-18 spec §D escape hatch, invoked): the originally-planned daily
+  # window (2021-01-04 → present, ~1,379 dates) proved intractable in-iteration on this host (~7s/date,
+  # GIL-bound sequential → 3+ hours), so the daily window is bounded to the LAST TRADING MONTH while the
+  # 2005→2026 span (SPY's real calendar) is covered at monthly density (~256 dates + quarterly
+  # walk-forward + bootstraps). The aborted denser pass left an immutable create-once DAILY stretch
+  # 2021-01→2021-04 in the snapshot pool (kept — real point-in-time snapshots computed by the same
+  # engines; extra honest density, never fabricated). Widen `daily_start` earlier HERE (config, not
+  # code) to densify the recent window when compute budget allows.
+  snapshot_cadence:
+    deep_cadence: monthly
+    daily_start: "2026-06-01"
 
 # ----------------------------------------------------------------------------------------
 # iter-28 CONSUMED — Fast-ready boot + background warm-up (J-40/J-41). EVERY startup/readiness/poll

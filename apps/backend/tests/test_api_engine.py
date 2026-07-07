@@ -22,6 +22,7 @@ from app.engine.scoring import score_stocks
 from app.engine.sectors import score_sectors
 from app.engine.setups import summarize_candidates
 from app.engine.themes import score_themes
+from app.engine.universe_screen import read_pool
 
 
 def test_api_sectors_equals_engine_output(loaded_engine):
@@ -166,8 +167,9 @@ def test_api_stocks_equals_engine_output(loaded_engine):
             assert "max_drawdown" in fr
             assert fr["max_drawdown"] is None or fr["max_drawdown"] <= 1e-12
     assert served["benchmark"] == "SPY"
-    # iter-33 (J-93): one row per point-in-time-resolved member (a non-empty subset of the static universe).
-    assert 0 < len(served["rows"]) <= len(cfg.universe.symbols)
+    # iter-33 (J-93) / iter-18: one row per point-in-time-resolved member (a non-empty subset of the
+    # broadened 548-name candidate pool — not the legacy static config.universe.symbols).
+    assert 0 < len(served["rows"]) <= len(read_pool())
 
 
 def test_api_stock_detail_equals_list_row_single_source_j06(loaded_engine):

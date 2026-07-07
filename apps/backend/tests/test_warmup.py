@@ -81,10 +81,21 @@ def _clear_warmup_registry():
         data_manager._JOBS.pop(WARMUP_JOB_ID, None)
 
 
-def _join_warmup(job_id: str, timeout: float = 600.0) -> None:
+def _join_warmup(job_id: str, timeout: float = 3000.0) -> None:
     """Block until the warm-up thread has SETTLED (reached a terminal status), so the test asserts on a
     final state. The warm-up runs in a daemon thread named `warmup-<id>`; join it, then confirm the
-    in-memory record reached `ok`/`failed` (the worker sets the status in its `finally`)."""
+    in-memory record reached `ok`/`failed` (the worker sets the status in its `finally`).
+
+    iter-18 basis budget: the deep 30-year / ~548-name pool makes each cadence `run_scan` score ~4.5x more
+    symbols than the retired ~122-name basis, so the full `_warmup_dates` sweep (bootstrap ∪ walk-forward
+    cadence) legitimately takes longer than the retired 600s cap allowed (observed ~200-300s/date under the
+    marathon full-suite contention -> the 8-date fast-cfg warm-up overran 600s and the daemon thread lingered,
+    which also cascaded into the single-flight thread-count proof). This is a TEST-fixture wall-clock
+    characteristic, NOT a product problem (the product serves the latest snapshot immediately and warms the
+    history in the background). The worker provably PROGRESSES (it is never hung — `test_iter27`'s full-universe
+    warm fixture completes the same sweep with no timeout), so a generous settle budget lets it reach its real
+    terminal state instead of the harness abandoning a still-progressing warm-up. Sequential/alone (the
+    sanctioned full-suite run) is well under this ceiling."""
     name = f"warmup-{job_id}"
     for t in threading.enumerate():
         if t.name == name:

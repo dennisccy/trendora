@@ -13,6 +13,15 @@
  *     to its `signal-…` row (honest — NOT special-cased to vcp only);
  *   - an empty / failed evidence fetch leaves EVERY horizon "Not yet proven" with no link (fail-safe honesty).
  */
+/*
+ * iter-18 NOTE (sanctioned data-basis reset): the fixtures below are SELF-CONTAINED SYNTHETIC
+ * payloads exercising resolver BEHAVIOR (PASS -> Proven, FAIL -> honest dark, linkbacks, formats).
+ * Values that historically mirrored live certified-claims ledger lines mirror the RETIRED basis;
+ * the live ledger was regenerated 2026-07-03 on the 30-year basis and currently holds ZERO PASS
+ * rows (every score/edge surface honestly reads "Not yet proven"). The backend frozen golden
+ * (tests/test_evidence.py::test_canonical_ledger_frozen_golden) pins the live file byte-for-byte.
+ */
+
 import assert from "node:assert";
 
 import { factorHorizonBadges } from "./factor-lab-evidence.ts";
@@ -30,7 +39,8 @@ function check(name: string, fn: () => void) {
 const HORIZONS = [1, 5, 10, 20, 60];
 const TOP_DECILE = 10;
 
-/** The REAL 1st ledger entry: the leadership_score score-column cohort (PASS, carries a `signal`). */
+/** The RETIRED 1st ledger entry (synthetic post-reset — iter-18 NOTE at top): the leadership_score
+ *  score-column cohort (PASS, carries a `signal`). */
 function leadershipRow(): CertifiedClaim {
   return {
     signal: "leadership_score",
@@ -59,7 +69,8 @@ function leadershipRow(): CertifiedClaim {
   };
 }
 
-/** The REAL 3rd ledger entry: ma_stack top-decile h20 that the referee REJECTED (a signal-less FAIL row). */
+/** The RETIRED 3rd ledger entry (synthetic post-reset): ma_stack top-decile h20 that the referee REJECTED
+ *  (a signal-less FAIL row). */
 function maStackFailRow(): CertifiedClaim {
   return {
     signal: null,
@@ -80,7 +91,8 @@ function maStackFailRow(): CertifiedClaim {
   };
 }
 
-/** The REAL 4th ledger entry: the vcp_contraction top-decile h20 cohort (PASS, signal-less). */
+/** The RETIRED 4th ledger entry (synthetic post-reset): the vcp_contraction top-decile h20 cohort (PASS,
+ *  signal-less). */
 function vcpH20Row(): CertifiedClaim {
   return {
     signal: null,
@@ -101,8 +113,9 @@ function vcpH20Row(): CertifiedClaim {
   };
 }
 
-/** The REAL 5th ledger entry (iter-11): the vcp_contraction top-decile @ h60 canonical PASS (signal-less).
- *  Verdict values byte-match `certified-claims.jsonl` line 5 — the displayed-numbers-are-correct contract. */
+/** The RETIRED 5th ledger entry (iter-11, synthetic post-reset): the vcp_contraction top-decile @ h60
+ *  canonical PASS (signal-less). Verdict values byte-matched the RETIRED `certified-claims.jsonl` line 5
+ *  (pre-swap basis) — the resolver contract they pin is basis-independent. */
 function vcpH60Row(): CertifiedClaim {
   return {
     signal: null,
@@ -164,7 +177,8 @@ check("vcp_contraction reads 'Proven' at h60 and h20 with horizon-distinct hrefs
   assert.strictEqual(h60.label, PROVEN_LABEL);
   assert.strictEqual(h60.label, "Proven");
   assert.strictEqual(h60.href, "/evidence#factor-vcp_contraction-d10-h60");
-  // the displayed h60 edge / control / p are read VERBATIM (byte-match the ledger — anti-goal #3)
+  // the displayed h60 edge / control / p are read VERBATIM (byte-match the served fixture payload — the
+  // anti-goal #3 display==served contract; values mirror the RETIRED basis, see iter-18 NOTE at top)
   assert.strictEqual(h60.claim?.verdict.holdout_edge, 0.08909719710495288);
   assert.strictEqual(h60.claim?.verdict.control_excess, 0.08909719710495288);
   assert.strictEqual(h60.claim?.verdict.p_value, 0.0004997501249375312);

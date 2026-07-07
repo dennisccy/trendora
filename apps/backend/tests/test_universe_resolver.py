@@ -1,8 +1,14 @@
-"""iter-33 (J-93 / J-94) — the per-as-of-date point-in-time universe resolver.
+"""iter-33 (J-93 / J-94) + iter-18 (J-12 hardening) — the per-as-of-date point-in-time universe resolver.
 
 FAST synthetic tests (no seed boot — iter-29 lesson): a tiny in-memory DB with hand-made bars + a
 throwaway candidate-pool CSV exercise every resolver leg in milliseconds. The seed-loading
 `loaded_engine`-fixture cross-checks live in test_universe_screen.py / test_data_manager.py.
+
+iter-18 adds the RECENCY/STALENESS gate: a candidate whose last bar is more than
+`universe.filters.max_staleness_days` calendar days before the resolve date D is excluded
+(`stale_series`) — a name whose data ends mid-history exits membership cleanly and can never feed a
+positionally-misaligned relative-strength window. Deterministic fixed gate order:
+history -> staleness -> price -> ADV.
 """
 from __future__ import annotations
 
@@ -20,6 +26,7 @@ from app.engine.universe_resolver import (
     REASON_BELOW_ADV,
     REASON_BELOW_HISTORY,
     REASON_BELOW_PRICE,
+    REASON_STALE,
     resolve_candidate,
     resolve_members,
     resolve_with_reasons,
@@ -31,8 +38,8 @@ from app.models import DailyPrice
 # Test config: a small, distinctive threshold set so the gates are easy to reason about.
 # --------------------------------------------------------------------------------------------------
 def _cfg():
-    """A real Config with a SMALL min_history_bars + clear price/ADV cutoffs so synthetic series are
-    cheap. Reads through model_copy so all other required keys stay valid."""
+    """A real Config with a SMALL min_history_bars + clear price/ADV/staleness cutoffs so synthetic
+    series are cheap. Reads through model_copy so all other required keys stay valid."""
     cfg = load_config().model_copy(deep=True)
     cfg = cfg.model_copy(
         update={"indicators": cfg.indicators.model_copy(update={"min_history_bars": 5})}
@@ -42,7 +49,12 @@ def _cfg():
             "universe": cfg.universe.model_copy(
                 update={
                     "filters": cfg.universe.filters.model_copy(
-                        update={"min_price": 10.0, "min_dollar_vol": 1000.0, "adv_window_days": 3}
+                        update={
+                            "min_price": 10.0,
+                            "min_dollar_vol": 1000.0,
+                            "adv_window_days": 3,
+                            "max_staleness_days": 7,
+                        }
                     )
                 }
             )
@@ -64,54 +76,118 @@ def _write_pool(tmp_path: Path, symbols: list[str]) -> Path:
 class _Bar:
     """A lightweight bar stand-in for the pure resolve_candidate unit (no DB)."""
 
-    def __init__(self, close, volume):
+    def __init__(self, close, volume, d=None):
         self.close = close
         self.volume = volume
+        self.date = d
+
+
+def _bars(n: int, close: float, volume: float, *, end: date) -> list[_Bar]:
+    """`n` consecutive daily bars ENDING at `end` (ascending), each with the given close/volume."""
+    return [_Bar(close, volume, end - timedelta(days=n - 1 - i)) for i in range(n)]
 
 
 # --------------------------------------------------------------------------------------------------
 # PURE resolve_candidate — each gate exercised in isolation (no DB).
 # --------------------------------------------------------------------------------------------------
-def test_resolve_candidate_admits_when_all_three_gates_pass():
-    cfg = _cfg()  # min_history=5, min_price=10, min_dollar_vol=1000, adv_window=3
-    bars = [_Bar(20.0, 100.0) for _ in range(5)]  # 5 bars, $20, ADV$ = 20*100 = 2000 >= 1000
-    r = resolve_candidate(bars, "AAA", cfg)
+D0 = date(2024, 6, 14)  # the pure-unit resolve date
+
+
+def test_resolve_candidate_admits_when_all_gates_pass():
+    cfg = _cfg()  # min_history=5, min_price=10, min_dollar_vol=1000, adv_window=3, staleness=7d
+    bars = _bars(5, 20.0, 100.0, end=D0)  # 5 bars, $20, ADV$ = 20*100 = 2000 >= 1000, last bar == D
+    r = resolve_candidate(bars, "AAA", cfg, D0)
     assert r.admitted is True and r.reason is None and r.bars == 5
 
 
 def test_resolve_candidate_below_history_excluded_first():
     cfg = _cfg()
-    bars = [_Bar(20.0, 100.0) for _ in range(4)]  # only 4 bars < 5
-    r = resolve_candidate(bars, "AAA", cfg)
+    bars = _bars(4, 20.0, 100.0, end=D0)  # only 4 bars < 5
+    r = resolve_candidate(bars, "AAA", cfg, D0)
     assert r.admitted is False and r.reason == REASON_BELOW_HISTORY and r.bars == 4
 
 
 def test_resolve_candidate_zero_bars_is_below_history():
     cfg = _cfg()
-    r = resolve_candidate([], "AAA", cfg)
+    r = resolve_candidate([], "AAA", cfg, D0)
     assert r.admitted is False and r.reason == REASON_BELOW_HISTORY and r.bars == 0
 
 
 def test_resolve_candidate_below_price_excluded():
     cfg = _cfg()
-    bars = [_Bar(9.0, 100000.0) for _ in range(5)]  # enough history + ADV but price $9 < $10
-    r = resolve_candidate(bars, "AAA", cfg)
+    bars = _bars(5, 9.0, 100000.0, end=D0)  # enough history + ADV but price $9 < $10
+    r = resolve_candidate(bars, "AAA", cfg, D0)
     assert r.admitted is False and r.reason == REASON_BELOW_PRICE
 
 
 def test_resolve_candidate_below_adv_excluded():
     cfg = _cfg()
-    bars = [_Bar(20.0, 1.0) for _ in range(5)]  # price ok, but ADV$ = 20*1 = 20 < 1000
-    r = resolve_candidate(bars, "AAA", cfg)
+    bars = _bars(5, 20.0, 1.0, end=D0)  # price ok, but ADV$ = 20*1 = 20 < 1000
+    r = resolve_candidate(bars, "AAA", cfg, D0)
     assert r.admitted is False and r.reason == REASON_BELOW_ADV
 
 
 def test_resolve_candidate_gate_order_history_before_price():
     """A candidate failing BOTH history and price records below_history (the first gate)."""
     cfg = _cfg()
-    bars = [_Bar(9.0, 1.0) for _ in range(2)]  # too few bars AND too cheap AND too thin
-    r = resolve_candidate(bars, "AAA", cfg)
+    bars = _bars(2, 9.0, 1.0, end=D0)  # too few bars AND too cheap AND too thin
+    r = resolve_candidate(bars, "AAA", cfg, D0)
     assert r.reason == REASON_BELOW_HISTORY  # history is checked first
+
+
+# --------------------------------------------------------------------------------------------------
+# iter-18 — the RECENCY/STALENESS gate (pure unit): boundary, order, and the misalignment closure.
+# --------------------------------------------------------------------------------------------------
+def test_resolve_candidate_stale_series_excluded():
+    """A candidate whose LAST bar is more than max_staleness_days before D is excluded as
+    stale_series — enough history, fine price, fine ADV, but the series has ENDED."""
+    cfg = _cfg()  # max_staleness_days = 7
+    last = D0 - timedelta(days=8)  # 8 > 7 — stale
+    bars = _bars(10, 20.0, 100.0, end=last)
+    r = resolve_candidate(bars, "AAA", cfg, D0)
+    assert r.admitted is False and r.reason == REASON_STALE and r.bars == 10
+
+
+def test_resolve_candidate_staleness_boundary_admitted_at_threshold():
+    """The gate is `> max_staleness_days` (a gap of EXACTLY the threshold still passes): last bar
+    D-7 with a 7-day threshold is admitted; last bar D-8 is excluded."""
+    cfg = _cfg()  # max_staleness_days = 7
+    at_threshold = resolve_candidate(_bars(10, 20.0, 100.0, end=D0 - timedelta(days=7)), "AAA", cfg, D0)
+    past_threshold = resolve_candidate(_bars(10, 20.0, 100.0, end=D0 - timedelta(days=8)), "AAA", cfg, D0)
+    assert at_threshold.admitted is True and at_threshold.reason is None
+    assert past_threshold.admitted is False and past_threshold.reason == REASON_STALE
+
+
+def test_resolve_candidate_last_bar_on_d_is_fresh():
+    cfg = _cfg()
+    r = resolve_candidate(_bars(6, 20.0, 100.0, end=D0), "AAA", cfg, D0)
+    assert r.admitted is True
+
+
+def test_resolve_candidate_gate_order_staleness_before_price_and_adv():
+    """Deterministic fixed gate order (history -> staleness -> price -> ADV): a STALE and CHEAP and
+    THIN candidate records stale_series (staleness precedes price/ADV), while a SHORT and stale
+    candidate still records below_history (history remains the first gate)."""
+    cfg = _cfg()
+    stale_cheap_thin = resolve_candidate(
+        _bars(10, 9.0, 1.0, end=D0 - timedelta(days=30)), "AAA", cfg, D0
+    )
+    assert stale_cheap_thin.reason == REASON_STALE
+    short_and_stale = resolve_candidate(
+        _bars(3, 20.0, 100.0, end=D0 - timedelta(days=30)), "AAA", cfg, D0
+    )
+    assert short_and_stale.reason == REASON_BELOW_HISTORY
+
+
+def test_exclusion_reasons_vocabulary_has_the_staleness_reason_in_gate_order():
+    """The reason vocabulary carries the new stale_series label, ordered exactly as the gates run."""
+    assert EXCLUSION_REASONS == (
+        REASON_BELOW_HISTORY,
+        REASON_STALE,
+        REASON_BELOW_PRICE,
+        REASON_BELOW_ADV,
+    )
+    assert REASON_STALE == "stale_series"
 
 
 # --------------------------------------------------------------------------------------------------
@@ -174,7 +250,7 @@ def test_resolve_no_lookahead_tail_invariance(tmp_path):
 
 
 def test_resolve_first_qualifying_date_entry(tmp_path):
-    """A name enters on the FIRST date it clears all three gates: it is cheap before, then becomes
+    """A name enters on the FIRST date it clears all gates: it is cheap before, then becomes
     admitted exactly when price crosses the threshold (history + ADV already satisfied)."""
     cfg = _cfg()  # min_history=5, min_price=10
     seed_dir = _write_pool(tmp_path, ["AAA"])
@@ -195,26 +271,56 @@ def test_resolve_first_qualifying_date_entry(tmp_path):
 
 def test_resolve_with_reasons_excluded_by_reason_counts(tmp_path):
     """The diagnostic reports admitted + the excluded-by-reason counts against the candidate-pool
-    denominator: one passer, one below_history, one below_price, one below_adv (= the whole pool)."""
-    cfg = _cfg()  # min_history=5, min_price=10, min_dollar_vol=1000, adv_window=3
-    seed_dir = _write_pool(tmp_path, ["PASS", "SHORT", "CHEAP", "THIN"])
+    denominator: one passer, one below_history, one below_price, one below_adv, one stale_series
+    (= the whole pool). The counts dict is keyed by the FULL 4-reason vocabulary."""
+    cfg = _cfg()  # min_history=5, min_price=10, min_dollar_vol=1000, adv_window=3, staleness=7d
+    seed_dir = _write_pool(tmp_path, ["PASS", "SHORT", "CHEAP", "THIN", "ENDED"])
     engine = make_engine(f"sqlite:///{tmp_path / 'd.db'}")
     create_db_and_tables(engine)
     start = date(2024, 1, 1)
     D = start + timedelta(days=9)
     with Session(engine) as session:
-        _seed_bars(session, "PASS", start, [20.0] * 10, volume=1000.0)   # admitted
+        _seed_bars(session, "PASS", start, [20.0] * 10, volume=1000.0)   # admitted (fresh through D)
         _seed_bars(session, "SHORT", start, [20.0] * 3, volume=1000.0)   # below_history (3 < 5)
         _seed_bars(session, "CHEAP", start, [5.0] * 10, volume=100000.0) # below_price ($5 < $10)
         _seed_bars(session, "THIN", start, [20.0] * 10, volume=1.0)      # below_adv (20*1 = 20 < 1000)
+        # ENDED: plenty of history but its data STOPS 30 days before D → stale_series (iter-18)
+        _seed_bars(session, "ENDED", start - timedelta(days=40), [20.0] * 10, volume=1000.0)
         out = resolve_with_reasons(session, D, cfg, seed_dir=seed_dir)
-    assert out["candidate_pool_count"] == 4
+    assert out["candidate_pool_count"] == 5
     assert out["admitted"] == ["PASS"] and out["admitted_count"] == 1
     assert out["excluded_counts"] == {
-        REASON_BELOW_HISTORY: 1, REASON_BELOW_PRICE: 1, REASON_BELOW_ADV: 1,
+        REASON_BELOW_HISTORY: 1, REASON_STALE: 1, REASON_BELOW_PRICE: 1, REASON_BELOW_ADV: 1,
     }
     assert sum(out["excluded_counts"].values()) == out["candidate_pool_count"] - out["admitted_count"]
     assert set(EXCLUSION_REASONS) == set(out["excluded_counts"])
+
+
+def test_stale_member_exits_membership_and_never_feeds_rs(tmp_path):
+    """iter-18 (J-12): the rs_vs positional-misalignment closure. A name whose data ends mid-history is
+    a member while fresh and EXITS cleanly once its last bar falls more than the staleness threshold
+    behind D — it is then NEVER in the resolved membership that `score_stocks` iterates, so its bars can
+    never be positionally aligned against a benchmark window ending at D."""
+    cfg = _cfg()  # staleness=7d
+    seed_dir = _write_pool(tmp_path, ["LIVE", "ENDS"])
+    engine = make_engine(f"sqlite:///{tmp_path / 's.db'}")
+    create_db_and_tables(engine)
+    start = date(2024, 1, 1)
+    ends_last = start + timedelta(days=19)  # ENDS trades for 20 days then stops
+    with Session(engine) as session:
+        _seed_bars(session, "LIVE", start, [20.0] * 60, volume=1000.0)
+        _seed_bars(session, "ENDS", start, [20.0] * 20, volume=1000.0)
+        # While ENDS is fresh (D == its last bar) both are members.
+        both = resolve_members(session, ends_last, cfg, seed_dir=seed_dir)
+        assert both == ["ENDS", "LIVE"]
+        # Within the threshold after its last bar it is STILL a member (holiday-gap tolerance)…
+        still = resolve_members(session, ends_last + timedelta(days=7), cfg, seed_dir=seed_dir)
+        assert "ENDS" in still
+        # …and once past the threshold it exits cleanly — LIVE alone remains.
+        after = resolve_with_reasons(session, ends_last + timedelta(days=8), cfg, seed_dir=seed_dir)
+        assert after["admitted"] == ["LIVE"]
+        ends_row = next(r for r in after["resolutions"] if r["symbol"] == "ENDS")
+        assert ends_row["reason"] == REASON_STALE
 
 
 def test_resolve_empty_db_is_honest_empty(tmp_path):

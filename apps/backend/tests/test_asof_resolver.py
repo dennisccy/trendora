@@ -34,6 +34,7 @@ from app.engine.scanner import (
     resolve_as_of_date,
     resolve_run,
 )
+from app.engine.universe_screen import read_pool
 from app.models import DailyPrice, ScannerResult, ScannerRun
 from app.seed_loader import load_seed
 
@@ -121,8 +122,10 @@ def test_resolve_run_create_once_then_immutable(tmp_path, config, seed_dir):
 
     assert runs_for_date_1 == runs_for_date_2 == 1  # exactly one run for the date (create-once)
     # iter-33 (J-93): the child-row count is the resolved-at-D membership (stable across the two views —
-    # no duplicate child rows), a non-empty subset of the static universe at a full-universe date.
-    assert results_1 == results_2 and 0 < results_1 <= len(config.universe.symbols)
+    # no duplicate child rows), a non-empty subset of the BROADENED candidate pool at a full-universe
+    # date. iter-18 resolves membership from `universe_screen.read_pool` (the 548-name 30y pool), NOT the
+    # legacy static `config.universe.symbols` (122) — so the upper bound is the pool size.
+    assert results_1 == results_2 and 0 < results_1 <= len(read_pool(seed_dir))
 
 
 def test_resolve_run_on_demand_has_no_lookahead(tmp_path, config, seed_dir):

@@ -680,7 +680,7 @@ function CoveragePanel({ data }: { data: DataOverviewResponse }) {
           definition={
             "The point-in-time SCORED universe resolved at the current as-of" +
             (c.universe_asof ? ` (${formatIsoDate(c.universe_asof)})` : "") +
-            ` — names with ≥ ${c.universe_diagnostic.thresholds.min_history_bars} bars, price, and liquidity from bars on/before that date. Step the global as-of to slide it. Of ${c.candidate_universe_count} candidate names / ${c.candidate_pool_count} pool.`
+            ` — names with ≥ ${c.universe_diagnostic.thresholds.min_history_bars} bars, a fresh series (last bar within ${c.universe_diagnostic.thresholds.max_staleness_days} days), price, and liquidity from bars on/before that date. Step the global as-of to slide it. Of ${c.candidate_universe_count} candidate names / ${c.candidate_pool_count} pool.`
           }
         />
         <DefinedMetric
@@ -955,6 +955,14 @@ function UniverseDiagnosticPanel({
       defn: `Fewer than ${t.min_history_bars} trailing bars on/before the as-of (incl. un-fetched pool names).`,
     },
     {
+      // iter-18 (J-12): the recency gate — a name whose data ENDED mid-history exits membership cleanly
+      // and never feeds a misaligned relative-strength window. Threshold read from the served config.
+      key: "stale_series",
+      label: "Stale series",
+      value: diagnostic.excluded.stale_series,
+      defn: `Last bar more than ${t.max_staleness_days} calendar days before the as-of — the series ended or halted, so the name exits membership (its months-old close can never misalign a relative-strength window).`,
+    },
+    {
       key: "below_price",
       label: "Below min price",
       value: diagnostic.excluded.below_price,
@@ -972,7 +980,7 @@ function UniverseDiagnosticPanel({
       <PanelTitle
         hint={`Why the scored universe is the size it is at the current as-of${
           asof ? ` (${formatIsoDate(asof)})` : ""
-        } — the point-in-time resolver admits a candidate only with ≥ ${t.min_history_bars} bars, price ≥ $${t.min_price}, and ${t.adv_window_days}-day liquidity, all from bars on/before the date. Reads the single global as-of (no second date control).`}
+        } — the point-in-time resolver admits a candidate only with ≥ ${t.min_history_bars} bars, a FRESH series (last bar within ${t.max_staleness_days} calendar days of the as-of), price ≥ $${t.min_price}, and ${t.adv_window_days}-day liquidity, all from bars on/before the date. Reads the single global as-of (no second date control).`}
       >
         <span className="inline-flex items-center gap-2">
           <Search className="h-4 w-4 text-text-faint" aria-hidden />
@@ -992,7 +1000,7 @@ function UniverseDiagnosticPanel({
             </span>
           </div>
         ) : null}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <DefinedMetric
             label="Admitted"
             tone="text-pos"
@@ -1248,7 +1256,7 @@ function MembershipTimelinePanel({ timeline }: { timeline: MembershipTimeline })
                       <th className="px-3 py-2 text-right font-medium">Size</th>
                       <th className="px-3 py-2 font-medium">Entries</th>
                       <th className="px-3 py-2 font-medium">Exits</th>
-                      <th className="px-3 py-2 text-right font-medium">Excl. hist / price / liq</th>
+                      <th className="px-3 py-2 text-right font-medium">Excl. hist / stale / price / liq</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1287,7 +1295,8 @@ function MembershipTimelinePanel({ timeline }: { timeline: MembershipTimeline })
                           )}
                         </td>
                         <td className="px-3 py-2 num text-right text-xs text-text-muted">
-                          {p.excluded.below_history} / {p.excluded.below_price} / {p.excluded.below_adv}
+                          {p.excluded.below_history} / {p.excluded.stale_series ?? 0} / {p.excluded.below_price} /{" "}
+                          {p.excluded.below_adv}
                         </td>
                       </tr>
                     ))}

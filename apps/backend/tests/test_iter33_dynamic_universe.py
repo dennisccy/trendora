@@ -17,6 +17,7 @@ from app.db import create_db_and_tables, make_engine
 from app.engine.data_manager import clear_snapshot_set, compute_coverage
 from app.engine.forward_testing import benchmark_symbols, forward_symbols_for_run
 from app.engine.scoring import score_stocks
+from app.engine.universe_screen import read_pool
 from app.models import DailyPrice, ScannerResult, ScannerRun
 
 
@@ -140,7 +141,7 @@ def test_coverage_universe_diagnostic_shape_and_thresholds(tmp_path):
     assert set(ud) == {
         "asof", "candidate_pool_count", "admitted_count", "excluded_total", "excluded", "thresholds",
     }
-    assert set(ud["excluded"]) == {"below_history", "below_price", "below_adv"}
+    assert set(ud["excluded"]) == {"below_history", "stale_series", "below_price", "below_adv"}  # iter-18 (J-12) adds stale_series
     assert ud["thresholds"]["min_history_bars"] == cfg.indicators.min_history_bars
     assert ud["thresholds"]["min_price"] == cfg.universe.filters.min_price
     assert ud["thresholds"]["min_dollar_vol"] == cfg.universe.filters.min_dollar_vol
@@ -197,7 +198,7 @@ def test_scores_byte_identical_for_resolved_membership(loaded_engine):
     # the scored set equals the resolved members (one row per member; no second universe computation).
     scored = {r["ticker"] for r in a["rows"]}
     assert scored == set(a["members"])
-    assert 0 < len(scored) <= len(cfg.universe.symbols)  # a non-empty subset at a warm date
+    assert 0 < len(scored) <= len(read_pool())  # iter-18: non-empty subset of the 548-pool at a warm date
 
 
 def test_resolved_membership_persisted_rows_match_members(loaded_engine):

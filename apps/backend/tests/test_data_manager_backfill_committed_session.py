@@ -50,12 +50,26 @@ def _with_backfill_workers(cfg, n: int):
 
 def _fresh_seed_engine(tmp_path, name: str):
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     db_path = tmp_path / f"{name}.db"
     engine = make_engine(f"sqlite:///{db_path}")
     create_db_and_tables(engine)
     load_seed(engine, cfg)
     return cfg, engine
 
+
+
+
+def _daily_region_start(trading, cfg):
+    """iter-18: the snapshot cadence bounds the DEEP region to monthly targets, so job-range tests pick
+    their dates inside the config daily-density region (>= scanner.snapshot_cadence.daily_start), where
+    every trading day is a valid backfill target — these proofs are cadence-independent."""
+    start = cfg.scanner.snapshot_cadence.daily_start or trading[0]
+    return next(i for i, d in enumerate(trading) if d >= start)
 
 def _multi_month_range(engine, cfg, n_dates: int):
     """A contiguous range of `n_dates` trading days from deep in the seed calendar — long enough that
@@ -64,7 +78,7 @@ def _multi_month_range(engine, cfg, n_dates: int):
     with Session(engine) as session:
         trading = _trading_days(session, cfg)
     assert len(trading) > 320, "seed should provide a long trading calendar"
-    start_idx = 250
+    start_idx = _daily_region_start(trading, cfg) + 250
     in_range = trading[start_idx : start_idx + n_dates]
     assert len(in_range) == n_dates
     return in_range[0], in_range[-1], in_range

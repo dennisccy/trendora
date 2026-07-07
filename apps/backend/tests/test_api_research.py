@@ -340,7 +340,10 @@ def test_regime_lab_as_of_scopes_pool_and_echoes_cutoff(loaded_engine):
         scoped = client.get("/api/research/regime-lab", params={"as_of": oldest}).json()
     assert all_history["asof_date"] is None
     assert scoped["asof_date"] == oldest
-    assert 0 < _total(scoped) < _total(all_history)  # the oldest cutoff pools strictly fewer, not empty
+    # iter-18: scoping still yields STRICTLY FEWER observations than all-history (the real as-of invariant).
+    # On the 30-year basis the OLDEST cutoff is a single sparse floor snapshot (2005-04-01, SPY's first
+    # committed bar), honestly empty at the default horizon — so the floor may pool 0, not "not empty".
+    assert 0 <= _total(scoped) < _total(all_history)
 
 
 def test_regime_lab_invalid_view_422(loaded_engine):
@@ -485,7 +488,10 @@ def test_phase_severity_lab_as_of_scopes_pool_and_echoes_cutoff(loaded_engine):
         scoped = client.get("/api/research/phase-severity-lab", params={"as_of": oldest}).json()
     assert all_history["asof_date"] is None
     assert scoped["asof_date"] == oldest
-    assert 0 < _total(scoped) < _total(all_history)  # the oldest cutoff pools strictly fewer, not empty
+    # iter-18: scoping still yields STRICTLY FEWER observations than all-history (the real as-of invariant).
+    # On the 30-year basis the OLDEST cutoff is a single sparse floor snapshot (2005-04-01, SPY's first
+    # committed bar), honestly empty at the default horizon — so the floor may pool 0, not "not empty".
+    assert 0 <= _total(scoped) < _total(all_history)
 
 
 def test_phase_severity_lab_invalid_view_422(loaded_engine):
@@ -628,7 +634,10 @@ def test_regime_phase_factor_as_of_scopes_and_echoes(loaded_engine):
         ).json()
     assert all_history["asof_date"] is None
     assert scoped["asof_date"] == oldest
-    assert 0 < _total(scoped) < _total(all_history)  # the oldest cutoff pools strictly fewer, not empty
+    # iter-18: scoping still yields STRICTLY FEWER observations than all-history (the real as-of invariant).
+    # On the 30-year basis the OLDEST cutoff is a single sparse floor snapshot (2005-04-01, SPY's first
+    # committed bar), honestly empty at the default horizon — so the floor may pool 0, not "not empty".
+    assert 0 <= _total(scoped) < _total(all_history)
 
 
 def test_regime_phase_factor_invalid_factor_and_view_422(loaded_engine):
@@ -769,7 +778,9 @@ def test_factor_combination_as_of_scopes_pool_and_echoes_resolved_cutoff(loaded_
         scoped = client.get(f"/api/research/factor-combination?as_of={oldest}").json()
     assert all_history["asof_date"] is None
     assert scoped["asof_date"] == oldest
-    assert 0 < scoped["pool_n"] <= all_history["pool_n"]  # expanding window: oldest cutoff is a subset
+    # iter-18: expanding-window subset (pool_n never grows toward the cutoff). On the 30-year basis the
+    # OLDEST cutoff's pool may be honestly empty (a single sparse floor snapshot), so 0 is admissible.
+    assert 0 <= scoped["pool_n"] <= all_history["pool_n"]
 
 
 def test_factor_combination_as_of_unparseable_422(loaded_engine):

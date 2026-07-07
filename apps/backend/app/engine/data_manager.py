@@ -416,17 +416,16 @@ def _universe_diagnostic(resolved: dict, cfg: Config) -> dict:
         "candidate_pool_count": resolved["candidate_pool_count"],
         "admitted_count": resolved["admitted_count"],
         "excluded_total": sum(excluded.values()),
-        "excluded": {
-            universe_resolver.REASON_BELOW_HISTORY: excluded[universe_resolver.REASON_BELOW_HISTORY],
-            universe_resolver.REASON_BELOW_PRICE: excluded[universe_resolver.REASON_BELOW_PRICE],
-            universe_resolver.REASON_BELOW_ADV: excluded[universe_resolver.REASON_BELOW_ADV],
-        },
+        # keyed by the FULL resolver vocabulary in gate order (iter-18 adds `stale_series` — the recency
+        # gate that exits a name whose data ended mid-history).
+        "excluded": {reason: excluded[reason] for reason in universe_resolver.EXCLUSION_REASONS},
         # the exact cutoffs the resolver gated on (config reads — surfaced so the UI never re-types them).
         "thresholds": {
             "min_history_bars": cfg.indicators.min_history_bars,
             "min_price": filters.min_price,
             "min_dollar_vol": filters.min_dollar_vol,
             "adv_window_days": filters.adv_window_days,
+            "max_staleness_days": filters.max_staleness_days,
         },
     }
 
@@ -2243,6 +2242,37 @@ def _record_date_failure(prog: JobProgress, d: date_cls, error: str) -> None:
         prog.date_failures.append({"date": d.isoformat(), "error": error})
 
 
+def _cadence_allowed_dates(
+    session: Session, trading_days: list[date_cls], cfg: Config
+) -> Optional[set]:
+    """iter-18 — the BOUNDED deep-history snapshot cadence (`scanner.snapshot_cadence`): the set of
+    trading days the backfill/rebuild may target, or None for "no filter" (daily density everywhere —
+    the pre-iter-18 behavior, byte-identical, which is also the config default).
+
+    Days ON/AFTER `daily_start` keep FULL daily density (the referee's recent-window power is
+    preserved). Days BEFORE it keep only the FIRST trading day of each calendar month (`monthly`) or
+    ISO week (`weekly`). Walk-forward cadence dates (`forward_testing.walk_forward_asof_dates` — the
+    `/api/backtest` as-of set) and `scanner.bootstrap_dates` are ALWAYS allowed, never filtered out, so
+    the replay + the seeded regime runs stay fully backed. Every allowed date is a REAL trading day
+    from the passed calendar — the cadence never fabricates a date."""
+    cadence = cfg.scanner.snapshot_cadence
+    if cadence.daily_start is None or cadence.deep_cadence == "daily":
+        return None  # daily everywhere — no filtering (the documented default)
+    allowed = {d for d in trading_days if d >= cadence.daily_start}
+    seen_buckets: set = set()
+    for d in trading_days:
+        if d >= cadence.daily_start:
+            break  # trading_days is ascending — the deep region is the prefix
+        bucket = (d.year, d.month) if cadence.deep_cadence == "monthly" else d.isocalendar()[:2]
+        if bucket not in seen_buckets:
+            seen_buckets.add(bucket)
+            allowed.add(d)  # the first trading day of this calendar month / ISO week
+    # the walk-forward as-of set + the bootstrap dates are snapshot dates BY CONTRACT — never filtered.
+    allowed.update(forward_testing.walk_forward_asof_dates(session, cfg))
+    allowed.update(cfg.scanner.bootstrap_dates)
+    return allowed
+
+
 def _cleanup_orphan_run(session: Session, d: date_cls) -> None:
     """J-68 — drop a half-written snapshot for `d` (whole-row): the create-once helpers COMMIT the
     `ScannerRun` (+ its children) before the forward-return INSERT, so a forward-return failure can leave
@@ -2297,7 +2327,14 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
     read-only connections (never shared mid-transaction); only THIS thread writes."""
     trading_days = _trading_days(session, cfg)
     snapshot_dates = set(session.exec(select(ScannerRun.asof_date)).all())
-    targets = [d for d in trading_days if prog.start <= d <= prog.end and d not in snapshot_dates]
+    # iter-18: the bounded deep-history cadence — None means "no filter" (daily everywhere, the default).
+    allowed = _cadence_allowed_dates(session, trading_days, cfg)
+    targets = [
+        d for d in trading_days
+        if prog.start <= d <= prog.end
+        and d not in snapshot_dates
+        and (allowed is None or d in allowed)
+    ]
     prog.dates_total = len(targets)
     prog.message = f"snapshots {prog.dates_done}/{prog.dates_total} dates"
     workers = cfg.data_manager.import_chunking.backfill_workers  # config pool size (No magic numbers)

@@ -360,14 +360,28 @@ export interface PriceBar {
   is_forward?: boolean; // J-20: true for bars dated AFTER the as-of D (display-only forward region)
 }
 
+/** The iter-18 chart range selection (J-10 performance on the ~30-year basis): `"default"` = the
+ *  bounded trailing window (config `chart_bars.default_years` before the as-of — the chart never ships
+ *  every deep bar by default); `"full"` = the explicit whole-real-history opt-in (weekly-sampled beyond
+ *  the config span; every sampled bar is a REAL stored daily bar — never synthesized). */
+export type BarsRange = "default" | "full";
+
 /** GET /api/stocks/{ticker}/bars payload. `ma` is keyed by each config MA period ("20","50",…) →
- *  a rolling moving-average series aligned 1:1 with `bars` (a number, or null for the warm-up gap).
- *  The chart PLOTS this server series — it never computes a moving average from the close array.
- *  `latest_date` is present only in the J-20 `through=latest` mode (the last bar shown = the right
- *  boundary); `asof_date` is always the resolved as-of D (the forward-region boundary). */
+ *  a rolling moving-average series aligned 1:1 with `bars` (a number, or null for the warm-up gap;
+ *  each value is the canonical DAILY series value at that bar — the server never recomputes an MA over
+ *  a sampled subset). The chart PLOTS this server series — it never computes a moving average from the
+ *  close array. `latest_date` is present only in the J-20 `through=latest` mode (the last bar shown =
+ *  the right boundary); `asof_date` is always the resolved as-of D (the forward-region boundary).
+ *  iter-18: `range` echoes the served range, `first_available_date` is the symbol's REAL first stored
+ *  bar (honest per-name depth — a post-IPO name stays short), `window_start` the first SHOWN bar, and
+ *  `downsampled` whether deep-region weekly sampling applied. */
 export interface BarsResponse {
   asof_date: string;
   ticker: string;
+  range: BarsRange;
+  first_available_date: string; // the symbol's real first stored bar (honest depth disclosure)
+  window_start: string; // the first bar actually shown for the selected range
+  downsampled: boolean; // true when the deep region is weekly-sampled (range=full on a deep series)
   bars: PriceBar[];
   ma: Record<string, (number | null)[]>;
   latest_date?: string; // J-20: latest seed bar shown (only in through=latest mode)
@@ -377,16 +391,22 @@ export interface BarsResponse {
  *  chart renders an explicit unavailable state (404 unknown ticker / 503 no data / 4xx bad as_of) —
  *  never fabricated. `asof` returns the bars with date <= D (the as-of chart; iter-8). Pass
  *  `through="latest"` (J-20) to render the DISPLAY-ONLY full path through the latest seed date with the
- *  as-of boundary marked (`is_forward` per bar + `latest_date`); the default (no `through`) stays <= D. */
+ *  as-of boundary marked (`is_forward` per bar + `latest_date`); the default (no `through`) stays <= D.
+ *  iter-18: pass `range="full"` for the explicit whole-real-history opt-in (default: the bounded
+ *  trailing window — same endpoint, presentation bounding only). */
 export async function fetchStockBars(
   ticker: string,
   asof?: string,
   signal?: AbortSignal,
   through?: string,
+  range?: BarsRange,
 ): Promise<BarsResponse> {
   let path = withAsOf(`/api/stocks/${encodeURIComponent(ticker)}/bars`, asof);
   if (through) {
     path += `${path.includes("?") ? "&" : "?"}through=${encodeURIComponent(through)}`;
+  }
+  if (range) {
+    path += `${path.includes("?") ? "&" : "?"}range=${encodeURIComponent(range)}`;
   }
   return getJSON<BarsResponse>(path, signal);
 }
@@ -2060,30 +2080,33 @@ export interface DataCoverage {
 }
 
 /** J-94 — the per-date coverage diagnostic. For the resolved as-of: the admitted count + the excluded-
- *  by-reason counts (below_history / below_price / below_adv) against the candidate-pool denominator, plus
- *  the exact config thresholds the resolver gated on (the UI states them, never re-types them). */
+ *  by-reason counts (below_history / stale_series / below_price / below_adv — iter-18 added the recency
+ *  gate) against the candidate-pool denominator, plus the exact config thresholds the resolver gated on
+ *  (the UI states them, never re-types them). */
 export interface UniverseDiagnostic {
   asof: string | null;
   candidate_pool_count: number;
   admitted_count: number;
   excluded_total: number;
-  excluded: { below_history: number; below_price: number; below_adv: number };
+  excluded: { below_history: number; stale_series: number; below_price: number; below_adv: number };
   thresholds: {
     min_history_bars: number;
     min_price: number;
     min_dollar_vol: number;
     adv_window_days: number;
+    max_staleness_days: number;
   };
 }
 
 /** J-96 — one point of the membership timeline: the resolved size (step function) + the deterministic
- *  entries/exits + the per-date excluded-by-reason counts, observed causally from that date's snapshot. */
+ *  entries/exits + the per-date excluded-by-reason counts, observed causally from that date's snapshot.
+ *  iter-18: `stale_series` (the recency gate — a name whose data ended exits cleanly) joins the counts. */
 export interface MembershipTimelinePoint {
   date: string;
   size: number;
   entries: string[];
   exits: string[];
-  excluded: { below_history: number; below_price: number; below_adv: number };
+  excluded: { below_history: number; stale_series: number; below_price: number; below_adv: number };
 }
 
 /** J-95(b) — the candidate pool's honest survivorship descriptor (current-constituent caveat). */

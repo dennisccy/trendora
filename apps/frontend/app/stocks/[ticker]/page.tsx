@@ -390,6 +390,10 @@ function StockChartPanel({ ticker }: { ticker: string }) {
   const [regimePoints, setRegimePoints] = useState<RegimePoint[]>([]);
   // Regime band toggle — a client display preference, default ON, persisted across reloads (J-45).
   const [regimeOn, setRegimeOn] = usePersistedToggle("trendora.detail.regimeBands", true);
+  // iter-18 (J-10): the chart RANGE — bounded recent window by default (the deep basis never ships every
+  // bar by default), with an explicit full-real-history opt-in. A display preference, persisted like the
+  // regime toggle; the selection is sent as the SAME endpoint's `range` param (no client-side slicing).
+  const [fullHistory, setFullHistory] = usePersistedToggle("trendora.detail.chartFullHistory", false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -397,13 +401,14 @@ function StockChartPanel({ ticker }: { ticker: string }) {
     // J-20: opt into the DISPLAY-ONLY full path through the latest seed date. At a historical as-of D
     // the chart shows the post-D region (labelled forward); the scores/setup/VCP below still read
     // `fetchStock` (the <= D snapshot) — the forward bars never reach the scoring path.
-    fetchStockBars(ticker, asOf ?? undefined, controller.signal, "latest")
+    // iter-18: the selected range rides the same request (server-side presentation bounding).
+    fetchStockBars(ticker, asOf ?? undefined, controller.signal, "latest", fullHistory ? "full" : undefined)
       .then((data) => setState(data.bars.length > 0 ? { kind: "ok", data } : { kind: "empty" }))
       .catch(() => {
         if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => controller.abort();
-  }, [ticker, asOf]);
+  }, [ticker, asOf, fullHistory]);
 
   // Regime history loads independently (same as-of); a failure just means no bands (never blocks the chart).
   useEffect(() => {
@@ -424,10 +429,13 @@ function StockChartPanel({ ticker }: { ticker: string }) {
       <CardHeader className="flex-row items-center justify-between space-y-0">
         <CardTitle>Price &amp; moving averages</CardTitle>
         <div className="flex items-center gap-3">
+          <ChartRangeControl full={fullHistory} onChange={setFullHistory} />
           <RegimeToggle on={regimeOn} onChange={setRegimeOn} />
           {state.kind === "ok" ? (
-            <span className="num text-xs text-text-faint">
-              {state.data.bars.length} bars · as of {formatIsoDate(state.data.asof_date)}
+            <span className="num text-xs text-text-faint" data-testid="chart-window-caption">
+              {state.data.bars.length} bars · as of {formatIsoDate(state.data.asof_date)} · history since{" "}
+              {formatIsoDate(state.data.first_available_date)}
+              {state.data.downsampled ? " · older bars weekly-sampled" : ""}
             </span>
           ) : null}
         </div>
@@ -479,6 +487,45 @@ function StockChartPanel({ ticker }: { ticker: string }) {
 
 /** J-45 Regime band toggle — a small, accessible switch in the chart controls (default ON, persisted
  *  client-side). Shows/hides the soft regime background bands; it changes no served value. */
+/** iter-18 (J-10) — the chart range control: a two-option segmented toggle between the BOUNDED recent
+ *  window (the server default — the deep basis never ships every bar by default) and the explicit
+ *  full-real-history opt-in (`range=full`, weekly-sampled beyond the config span server-side). Pure
+ *  presentation state — the selection changes only the SAME endpoint's `range` param; the page never
+ *  slices or recomputes a series client-side. */
+function ChartRangeControl({ full, onChange }: { full: boolean; onChange: (next: boolean) => void }) {
+  const options = [
+    { key: "recent", label: "Recent", full: false, title: "Bounded recent window (server default)" },
+    { key: "full", label: "Full history", full: true, title: "Entire real history — deep bars weekly-sampled" },
+  ];
+  return (
+    <div
+      className="flex items-center overflow-hidden rounded border border-border"
+      role="group"
+      aria-label="Chart range"
+      data-testid="chart-range-control"
+    >
+      {options.map((opt) => (
+        <button
+          key={opt.key}
+          type="button"
+          title={opt.title}
+          aria-pressed={full === opt.full}
+          onClick={() => onChange(opt.full)}
+          data-testid={`chart-range-${opt.key}`}
+          className={cn(
+            "px-2.5 py-1 text-xs transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+            full === opt.full
+              ? "bg-surface-2 text-text"
+              : "bg-surface text-text-muted hover:text-text active:bg-surface-2",
+          )}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function RegimeToggle({ on, onChange }: { on: boolean; onChange: (next: boolean) => void }) {
   return (
     <button

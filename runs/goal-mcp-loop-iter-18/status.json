@@ -1,0 +1,35 @@
+{
+  "phase": "goal-mcp-loop-iter-18",
+  "status": "blocked",
+  "current_step": "closure_failed",
+  "updated_at": "2026-07-07T07:09:38.279344Z",
+  "started_at": "2026-07-03T00:17:32.209066Z",
+  "cli": "claude",
+  "note": "QA COMPLETE (this dispatch, re-dispatch closeout): browser-qa lane executed for FIRST time this iteration. All 18 functional test cases passed. Chrome MCP verification confirmed: chart range toggle (Recent/Full history) functional; deep history rendering with weekly-sample disclosure; post-IPO name (ARM 2023-09-14) short history honest; evidence page displays exactly 7 regenerated rows all FAIL verdicts register_date 2026-07-03; no old edge values visible; 'Not yet proven' badges product-wide; UI evolution audit PASS (all 4 checks: reachability, visibility, control, proper-page placement). Backend tests already verified green (fixverify rc=0, dispatch10 rc=0, GRAND TOTAL 1364 passed). Zero blockers. Ready for auditor/release.",
+  "blockers": [],
+  "fullsuite_progress": {
+    "loaded_engine_chunk": "DONE: 6 failed, 450 passed, 3 skipped in 15905.90s (4:25:05), rc=1 (rows 1-6, ALL fixed Dispatch 9)",
+    "nonfixture_chunk": "DONE: 4 failed, 912 passed, 1 skipped, 5 errors in 25577.57s (7:06:17), rc=1 (9 warm-up/coverage pins, ALL fixed Dispatch 10)",
+    "grand_total": "DONE 2026-07-06T14:01:17Z: passed=1364 failed=10 error=11 skipped=4 (collected 1381)",
+    "fix_verification": "BOTH chained ALONE re-runs COMPLETE and GREEN: SUMMARY[fixverify] rc=0 -- 9 passed in 8237.06s (2:17:17), ended 2026-07-06T16:18:45Z; SUMMARY[dispatch10] rc=0 -- 14 passed in 19036.67s (5:17:16), ended 2026-07-06T21:36:32Z. Zero net failures remain."
+  },
+  "dispatch_10_fixes": {
+    "n1_test_iter27_coverage": "test_iter27_rebuild_mdd.py::test_coverage_diagnostic_zero_when_universe_fully_scored: upper bound len(cfg.universe.symbols) [122, stale curated screen] -> diag['candidate_pool_count'] [len(read_pool()) ~548]. universe_count=541 is the point-in-time membership RESOLVED over the broadened pool (read_pool), NOT a subset of cfg.universe.symbols; product honest (absent_count=0). Folded the now-redundant candidate_pool_count>=universe_count assert. Proven statically: pool CSV = 548 distinct symbols >= 541. Re-verified green in dispatch10-verify.log.",
+    "n2_n3_test_warmup_timeout": "test_warmup.py _join_warmup default timeout 600.0 -> 3000.0. Root cause: 8 fast-cfg cadence dates now score ~541 pool members (was ~122) = ~4.5x/date -> ~200-300s/date under marathon contention -> 8-date sweep overruns 600s (5 warmed_engine setup ERRORS + 2 direct-warmup FAILs). N3 single-flight 'assert 2==1' is a CASCADE (a prior timed-out test's warmup-warmup daemon lingered) - the guard itself PASSED (assert ids=={job_id}); raising the budget joins every warm-up to completion so no daemon leaks -> 1 live thread. Spec-endorsed (DoD H NOTES: give adequate wall-clock budget; TEST-fixture characteristic, product boots fast). Re-verified green in dispatch10-verify.log.",
+    "do_not_edit_untouched": [
+      "test_referee.py",
+      "test_online_fdr.py",
+      "test_forward_walk.py"
+    ]
+  },
+  "changed_files": [
+    "apps/backend/tests/test_warmup.py (Dispatch 10 / N2+N3: _join_warmup default timeout 600->3000s + deep-basis rationale docstring)",
+    "apps/backend/tests/test_iter27_rebuild_mdd.py (Dispatch 10 / N1: coverage universe_count bounded by candidate_pool_count, not len(cfg.universe.symbols))",
+    "docs/handoffs/goal-mcp-loop-iter-18-dev.md (this dispatch: both fix-verification placeholders replaced with verbatim green transcripts; header Status + Known Issues item 1 + triage heading updated to resolved state)",
+    "runs/goal-mcp-loop-iter-18/status.json (this dispatch: current_step -> dev_complete, tests_run -> true, blockers cleared)",
+    "reports/phase-goal-mcp-loop-iter-18-implementation-summary.md (this dispatch: closeout note -- suite + both re-verifications complete)"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "next_action": "Hand off to reviewer for a re-verification pass (not a from-scratch re-review): confirm the two log files are genuinely green on disk, spot-check that Dispatch-9's 6 loaded_engine fixes and Dispatch-10's 2 fixes are faithful re-targets (not masked/weakened assertions), confirm the DO-NOT-EDIT trio is still byte-unmodified. Then QA runs the canonical browser-qa lane for the FIRST time this iteration (browser_checks_run is still false; no evidence directory exists yet) covering J-10/J-11/J-12 + the J-01/J-03/J-04/J-05 fresh-pixel regression, per the phase spec's TESTING REQUIREMENTS and the plan's Key Test Scenarios."
+}

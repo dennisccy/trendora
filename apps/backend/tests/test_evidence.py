@@ -548,94 +548,74 @@ def test_resolve_ledger_path_config_default(monkeypatch):
 
 
 # ==================================================================================================
-# iter-9 LOAD-BEARING INVARIANT — the LIVE canonical ledger is byte-identical (honest history intact),
-# so `GET /api/evidence` proven-ness is unperturbed after the injectable-economy refactor.
+# iter-18 SANCTIONED REFRESH — the LIVE canonical ledger was REGENERATED from scratch on the 30-year
+# basis (goal.md "Data-basis change (sanctioned ledger reset)"): the SAME pre-registered 7-claim family
+# replayed in historical order (verbatim selectors, strict Bonferroni divisors 1..7 — including the
+# ma_stack re-test), each through verify_edge(ledger="canonical") against the rebuilt DB
+# (register_date 2026-07-03). On the deep multi-regime sealed holdout NONE of the retired-window edges
+# reproduced — every claim honestly FAILED (several with positive in-sample edges going NEGATIVE
+# out-of-sample: exactly the overfit signature the deep basis was expected to expose; goal.md §F). The
+# retired verdicts remain auditable via git history. proven_signals is EMPTY: every score/edge surface
+# reads "Not yet proven" until a claim independently re-certifies on this basis (anti-goal #1).
 # ==================================================================================================
 def test_canonical_ledger_frozen_golden(monkeypatch):
-    """The canonical `certified-claims.jsonl` entries are the immutable honest history the whole evidence
-    layer reads. The original four (lines 1/2/4 PASS, line 3 `ma_stack` FAIL — strict Bonferroni divisors
-    1..4) stay byte-identical, iter-11 (J-07) appended the FIFTH (the vcp_contraction top-decile edge at the
-    NON-20 horizon 60 — PASS, strict Bonferroni divisor 5, required_p 0.010), iter-13 (J-08) appended the
-    SIXTH (the `rs_spy_3m × high_proximity` composite (multi-factor) edge @ h20, promoted to canonical — PASS,
-    strict Bonferroni divisor 6, required_p 0.008333), and iter-15 (J-09) appends the SEVENTH: the `rs_spy_3m`
-    top-decile edge at the NON-20 horizon 60, promoted to canonical (PASS, strict Bonferroni divisor 7,
-    required_p 0.007143). All seven are strict Bonferroni and `proven_signals` stays exactly
-    `{leadership_score}` (the h60, combination, and rs_spy_3m claims are all signal-less — they MUST NOT enter
-    it). This pins the canonical golden so any accidental rewrite/reorder of the prior rows — or a stray
-    `signal` on a signal-less row — fails loudly."""
+    """Pins the REGENERATED canonical ledger byte-for-byte (the one sanctioned refresh): 7 entries,
+    verbatim historical selectors in historical order, strict Bonferroni divisors 1..7, register_date
+    2026-07-03, ALL verdicts FAIL, and the projected payload proves NOTHING (proven_signals == {}) —
+    no retired edge value (+21.34% / +6.36% / +8.91% / +4.69% / +6.12% / p=0.0004998) survives
+    anywhere. Any accidental rewrite/reorder — or a resurrected stale PASS — fails loudly."""
     monkeypatch.delenv(LEDGER_PATH_ENV, raising=False)
     from app.engine.ledger import read_entries
 
     ledger_file = REPO_ROOT / "runs/goal-session-mcp-loop/state/certified-claims.jsonl"
     entries = read_entries(str(ledger_file))
 
-    # exactly the seven honest-history entries, all strict Bonferroni with divisors 1..7 (the rs_spy_3m h60
-    # promotion tightened the user-facing bar 6→7 — permanent, honest history).
+    # exactly the seven replayed entries, in the verbatim historical order, all strict Bonferroni 1..7,
+    # all registered on the regeneration run date, all honest FAILs on the 30-year basis.
     assert len(entries) == 7
-    assert [e["verdict"]["status"] for e in entries] == ["PASS", "PASS", "FAIL", "PASS", "PASS", "PASS", "PASS"]
+    assert [e["verdict"]["status"] for e in entries] == ["FAIL"] * 7
     assert [e["verdict"]["deflation_divisor"] for e in entries] == [1, 2, 3, 4, 5, 6, 7]
     assert all(e["verdict"]["deflation"] == "bonferroni" for e in entries)
-    # the 6th row is a `combination` (no `factor` selector → None); the 7th is the rs_spy_3m factor; the prior
-    # five are unchanged.
+    assert all(e["register_date"] == "2026-07-03" for e in entries)
     assert [e["claim"].get("factor") for e in entries] == [
         "leadership_score", None, "ma_stack", "vcp_contraction", "vcp_contraction", None, "rs_spy_3m",
     ]
     assert [e["claim"].get("kind") for e in entries] == [
         "factor", "event-study", "factor", "factor", "factor", "combination", "factor",
     ]
+    # the verbatim selector shapes carried through the replay (incl. #1's signal stamp and the explicit
+    # canonical routing keys claims #5-#7 carried from their historical promotion gates).
+    assert entries[0]["claim"]["signal"] == "leadership_score"
+    assert entries[1]["claim"]["regime"] == "Risk-on" and entries[1]["claim"]["subject"] == "Breakout-watch"
+    assert entries[5]["claim"]["condition"] == ["rs_spy_3m:top:quintile", "high_proximity:top:tertile"]
+    assert all(entries[i]["claim"].get("ledger") == "canonical" for i in (4, 5, 6))
 
-    # the 5th (iter-11 J-07) entry: the vcp_contraction top-decile edge at the NON-20 horizon 60 — PASS,
-    # signal-less, verdict bytes FROZEN (the displayed h60 edge/p/control byte-match anti-goal #3).
-    h60 = entries[4]
-    assert h60["claim"]["horizon"] == 60
-    assert h60["claim"]["decile"] == 10
-    assert "signal" not in h60["claim"]  # signal-less — never lights a /stocks inline score badge
-    assert h60["verdict"]["status"] == "PASS"
-    assert h60["verdict"]["required_p"] == 0.01
-    assert h60["verdict"]["holdout_edge"] == 0.08909719710495288
-    assert h60["verdict"]["control_excess"] == 0.08909719710495288
-    assert h60["verdict"]["p_value"] == 0.0004997501249375312
+    # exact regenerated verdict pins (the displayed-numbers-are-correct anti-goal — every /evidence
+    # row byte-matches these): p-values, holdout edges, required_p, and the cohort/control accounting.
+    expected = [
+        # (p_value, holdout_edge, required_p, cohort_n, control_n)
+        (0.5352323838080959, -0.00031360673077383193, 0.05, 15485, 390),
+        (0.9460269865067467, -0.006842313773714405, 0.025, 5989, 146),
+        (0.2768615692153923, 0.002061821804493209, 0.016666666666666666, 15485, 377),
+        (0.95952023988006, -0.0037732016043003124, 0.0125, 15485, 381),
+        (0.9995002498750625, -0.016363899205616317, 0.01, 15322, 378),
+        (0.4942528735632184, 8.030187730850894e-05, 0.008333333333333333, 30768, 384),
+        (0.9045477261369316, -0.014155225763191797, 0.0071428571428571435, 15263, 383),
+    ]
+    for e, (p, edge, req, cohort_n, control_n) in zip(entries, expected):
+        assert e["verdict"]["p_value"] == p
+        assert e["verdict"]["holdout_edge"] == edge
+        assert e["verdict"]["control_excess"] == edge  # the referee reports the same holdout excess
+        assert e["verdict"]["required_p"] == req
+        assert e["cohort_n"] == cohort_n
+        assert e["control_n"] == control_n
+        # the honest referee ran with real power (a FAIL, never an INSUFFICIENT refusal)
+        assert e["verdict"]["holdout_dates"] >= 5
+        assert e["verdict"]["seed"] == 20240601  # determinism preserved
 
-    # the 6th (iter-13 J-08) entry: the rs_spy_3m × high_proximity composite edge @ h20 — PASS, signal-less,
-    # verdict bytes FROZEN (the displayed combination edge/p/control byte-match anti-goal #3).
-    combo = entries[5]
-    assert combo["claim"]["kind"] == "combination"
-    assert combo["claim"]["cohort"] == "composite"
-    assert combo["claim"]["condition"] == ["rs_spy_3m:top:quintile", "high_proximity:top:tertile"]
-    assert combo["claim"]["horizon"] == 20
-    assert combo["claim"]["direction"] == "positive"
-    assert combo["claim"]["ledger"] == "canonical"
-    assert "signal" not in combo["claim"]  # signal-less — never lights a /stocks inline score badge
-    assert combo["verdict"]["status"] == "PASS"
-    assert combo["verdict"]["required_p"] == 0.008333333333333333
-    assert combo["verdict"]["holdout_edge"] == 0.046931901591708916
-    assert combo["verdict"]["control_excess"] == 0.046931901591708916
-    assert combo["verdict"]["p_value"] == 0.0009995002498750624
-
-    # the 7th (iter-15 J-09) entry: the rs_spy_3m top-decile edge at the NON-20 horizon 60 — PASS, signal-less,
-    # verdict bytes FROZEN (the displayed h60 edge/p/control byte-match anti-goal #3). Its promotion tightened
-    # the user-facing Bonferroni bar 6→7 (divisor 7, required_p 0.007143) — permanent, honest history.
-    rs = entries[6]
-    assert rs["claim"]["kind"] == "factor"
-    assert rs["claim"]["factor"] == "rs_spy_3m"
-    assert rs["claim"]["slice_kind"] == "decile"
-    assert rs["claim"]["decile"] == 10
-    assert rs["claim"]["horizon"] == 60
-    assert rs["claim"]["direction"] == "positive"
-    assert rs["claim"]["ledger"] == "canonical"
-    assert "signal" not in rs["claim"]  # signal-less — never lights a /stocks inline score badge
-    assert rs["verdict"]["status"] == "PASS"
-    assert rs["verdict"]["deflation_divisor"] == 7
-    assert rs["verdict"]["required_p"] == 0.0071428571428571435
-    assert rs["verdict"]["holdout_edge"] == 0.21344270202534893
-    assert rs["verdict"]["control_excess"] == 0.21344270202534893
-    assert rs["verdict"]["p_value"] == 0.0004997501249375312
-
-    # the projected payload: 7 claim rows, and the ONLY inline-badge signal is STILL leadership_score (the
-    # signal-less h60 + combination + rs_spy_3m claims MUST NOT enter proven_signals — J-01/J-02/J-03 unaffected).
+    # the projected payload: 7 audit-listed rows, NOTHING proven — every badge reads "Not yet proven"
+    # (anti-goal #1: no unbacked "Proven"; the reset never resurrects a stale edge).
     payload = build_evidence_payload(str(ledger_file))
     assert len(payload["claims"]) == 7
-    assert set(payload["proven_signals"].keys()) == {"leadership_score"}
-    proven = payload["proven_signals"]["leadership_score"]
-    assert proven["proven"] is True
-    assert proven["claim"]["decile"] == 10 and proven["claim"]["horizon"] == 20
+    assert payload["proven_signals"] == {}
+    assert all(row["proven"] is False for row in payload["claims"])

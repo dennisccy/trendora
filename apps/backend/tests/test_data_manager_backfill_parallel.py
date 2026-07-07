@@ -43,12 +43,26 @@ def _with_backfill_workers(cfg, n: int):
 
 def _fresh_seed_engine(tmp_path, name: str):
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     db_path = tmp_path / f"{name}.db"
     engine = make_engine(f"sqlite:///{db_path}")
     create_db_and_tables(engine)
     load_seed(engine, cfg)
     return cfg, engine
 
+
+
+
+def _daily_region_start(trading, cfg):
+    """iter-18: the snapshot cadence bounds the DEEP region to monthly targets, so job-range tests pick
+    their dates inside the config daily-density region (>= scanner.snapshot_cadence.daily_start), where
+    every trading day is a valid backfill target — these proofs are cadence-independent."""
+    start = cfg.scanner.snapshot_cadence.daily_start or trading[0]
+    return next(i for i, d in enumerate(trading) if d >= start)
 
 def _snapshot_facts(engine, in_range):
     """Row-level facts for every in-range backfilled date: the full canonical record_json per result
@@ -93,7 +107,8 @@ def equality_run(tmp_path_factory):
     with Session(par_engine) as session:
         trading = _trading_days(session, cfg)
     assert len(trading) > 320, "seed should provide a long trading calendar"
-    r_start, r_end = trading[305], trading[308]  # a 4-date range → real fan-out
+    _base = _daily_region_start(trading, cfg)
+    r_start, r_end = trading[_base + 305], trading[_base + 308]  # a 4-date range → real fan-out
     in_range = [d for d in trading if r_start <= d <= r_end]
     assert len(in_range) == 4
 
@@ -230,7 +245,8 @@ def test_backfill_all_dates_fail_isolated_partial(tmp_path, monkeypatch):
     cfg, engine = _fresh_seed_engine(tmp_path, "boom")
     with Session(engine) as session:
         trading = _trading_days(session, cfg)
-    r_start, r_end = trading[305], trading[307]
+    _base = _daily_region_start(trading, cfg)
+    r_start, r_end = trading[_base + 305], trading[_base + 307]
     in_range = [d for d in trading if r_start <= d <= r_end]
     with Session(engine) as session:
         runs_before_n = session.scalar(select(func.count()).select_from(ScannerRun))
@@ -262,7 +278,8 @@ def test_backfill_single_date_failure_isolated_others_complete(tmp_path, monkeyp
     cfg, engine = _fresh_seed_engine(tmp_path, "one_bad")
     with Session(engine) as session:
         trading = _trading_days(session, cfg)
-    r_start, r_end = trading[305], trading[308]
+    _base = _daily_region_start(trading, cfg)
+    r_start, r_end = trading[_base + 305], trading[_base + 308]
     in_range = [d for d in trading if r_start <= d <= r_end]
     assert len(in_range) == 4
     bad_date = in_range[1]  # fail exactly ONE date
@@ -300,7 +317,8 @@ def test_backfill_progress_never_exceeds_total(tmp_path):
     cfg, engine = _fresh_seed_engine(tmp_path, "progress")
     with Session(engine) as session:
         trading = _trading_days(session, cfg)
-    r_start, r_end = trading[305], trading[307]
+    _base = _daily_region_start(trading, cfg)
+    r_start, r_end = trading[_base + 305], trading[_base + 307]
     in_range = [d for d in trading if r_start <= d <= r_end]
 
     job = create_job("backfill", r_start, r_end)

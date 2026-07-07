@@ -21,6 +21,7 @@ from sqlmodel import Session, select
 from app.config import load_config
 from app.engine.data_manager import compute_coverage
 from app.engine.methodology import build_catalog
+from app.engine.universe_screen import read_pool
 from app.models import Stock
 from app.seed_loader import DEFAULT_SEED_DIR, load_universe_screen_record
 from scripts.screen_universe import screen_reasons
@@ -87,7 +88,9 @@ def test_universe_size_is_one_value_across_methodology_and_data(loaded_engine, c
     assert methodology_size == candidate == coverage["candidate_universe_count"]
     # the dynamic universe_count is the as-of-resolved membership == the latest snapshot's scored rows.
     assert coverage["universe_count"] == scored_n
-    assert 0 < coverage["universe_count"] <= candidate  # a non-empty subset at a fully-warm date
+    # iter-18: the dynamic membership resolves from the broadened 548-name pool (read_pool), so it is a
+    # subset of the POOL — no longer bounded by the legacy static candidate universe (config.universe.symbols).
+    assert 0 < coverage["universe_count"] <= len(read_pool())  # a non-empty subset at a fully-warm date
     # universe_count is the screened universe, NOT the distinct priced-symbol count (which includes ETFs)
     assert coverage["symbol_count"] >= candidate
 

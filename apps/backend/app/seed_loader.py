@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timedelta, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -168,12 +169,50 @@ def load_reference_data(
     session.commit()
 
 
+@lru_cache(maxsize=16)
+def _pool_symbols_cached(seed_dir: Path) -> tuple[str, ...]:
+    """The candidate-pool symbols (in pool order) read from `universe_pool.csv`, memoized per-process by
+    seed dir (a hashable `Path`). iter-18 J-10 perf fix: the committed pool is immutable within a boot, so
+    `resolve_servable_symbol` — called on EVERY `/api/stocks/{ticker}/bars` request and every watchlist
+    add — no longer re-reads + re-parses the pool CSV from disk each call. A missing pool degrades to `()`
+    (honest — the context set alone; never a fabricated pool). Config is intentionally NOT a cache key: it
+    feeds only the cheap `all_seed_symbols` context prefix in `price_load_symbols`, never this file read."""
+    from app.engine.universe_screen import read_pool  # local import — keeps module import cycles impossible
+
+    try:
+        return tuple(row["symbol"] for row in read_pool(seed_dir))
+    except FileNotFoundError:
+        return ()  # no committed pool — the context set alone (honest, never fabricated)
+
+
+def price_load_symbols(config: Config, seed_dir: Path) -> list[str]:
+    """iter-18 (J-12) — the ordered symbol set `load_prices` loads: `all_seed_symbols(config)` ∪
+    `read_pool(seed_dir)`. The context set (universe + ETFs + ^VIX + legend + macro proxies) comes FIRST,
+    order-preserving and verbatim — no currently-loaded symbol is ever dropped by the broadening — then
+    the candidate-pool names not already present are appended in pool order. De-duplicated. A pool name
+    with no committed CSV is simply skipped by `load_prices` (a missing fixture is not a failure), so
+    broadening the set never data-gates the boot. A missing/uncommitted pool file degrades honestly to
+    the context set alone (the pre-iter-18 behavior) — never a fabricated pool. The expensive pool-CSV
+    read is memoized per-process by seed dir (`_pool_symbols_cached`) — the committed pool is immutable
+    within a boot, so the per-request ticker validation no longer re-parses it from disk each call."""
+    symbols = list(all_seed_symbols(config))
+    seen = set(symbols)
+    for sym in _pool_symbols_cached(seed_dir):
+        if sym not in seen:
+            seen.add(sym)
+            symbols.append(sym)
+    return symbols
+
+
 def load_prices(session: Session, config: Config, seed_dir: Path) -> tuple[int, int]:
-    """Bulk-load every symbol's committed bars into daily_prices. Returns (ok, failed)."""
+    """Bulk-load every symbol's committed bars into daily_prices — the full `price_load_symbols` union
+    (candidate pool ∪ context set; iter-18 broadened from the ~122-name context set alone so the
+    30-year basis actually loads the 548-name point-in-time pool). Returns (ok, failed); a name with no
+    committed CSV is counted failed and skipped honestly (never fabricated)."""
     provider = SeedProvider(seed_dir)
     symbols_ok = 0
     symbols_failed = 0
-    for symbol in all_seed_symbols(config):
+    for symbol in price_load_symbols(config, seed_dir):
         try:
             bars = provider.get_daily(symbol)
         except ProviderUnavailableError:

@@ -45,6 +45,12 @@ class UniverseFilters(BaseModel):
     min_dollar_vol: float
     min_price: float
     adv_window_days: int = 63  # ~3 trading months — the ADV liquidity window (the offline screen default)
+    # iter-18 (J-12 hardening): the per-date RECENCY gate — a candidate whose last bar is more than this
+    # many CALENDAR days before the resolve date D is excluded (`stale_series`), so a name whose data ends
+    # mid-history exits membership cleanly and can never feed a positionally-misaligned relative-strength
+    # window. OPTIONAL with the documented default (tunable from config; No magic numbers) so it is not a
+    # new REQUIRED key in every fixture. Validated positive on the parent `UniverseCfg`.
+    max_staleness_days: int = 10  # ~2 trading weeks — no US-market closure approaches this (9/11: 7 days)
 
 
 class UniverseCfg(BaseModel):
@@ -57,6 +63,10 @@ class UniverseCfg(BaseModel):
         if self.filters.adv_window_days <= 0:
             raise ValueError(
                 f"universe.filters.adv_window_days must be positive, got {self.filters.adv_window_days}"
+            )
+        if self.filters.max_staleness_days <= 0:
+            raise ValueError(
+                f"universe.filters.max_staleness_days must be positive, got {self.filters.max_staleness_days}"
             )
         return self
 
@@ -422,14 +432,33 @@ class DecisionRulesCfg(BaseModel):
     invalidation: InvalidationCfg
 
 
+class SnapshotCadenceCfg(BaseModel):
+    """iter-18 — the BOUNDED snapshot-backfill cadence over the deep 30-year basis (goal.md §C(3)/§F:
+    the offline rebuild cost is borne once but must stay bounded + config-driven). The data-manager
+    backfill/rebuild targets every covered trading day AT OR AFTER `daily_start` (full daily density —
+    preserves the referee's recent-window power) and only the `deep_cadence` boundary days BEFORE it
+    (`monthly` = the first trading day of each calendar month; `weekly` = the first trading day of each
+    ISO week). Walk-forward cadence dates and `scanner.bootstrap_dates` are ALWAYS allowed (never
+    filtered out) so `/api/backtest` + the seeded regime runs stay fully backed.
+
+    DEFAULTS preserve the pre-iter-18 behavior byte-identically: `daily_start: None` ⇒ no deep region ⇒
+    every covered trading day is a target (daily everywhere), exactly as before this block existed."""
+
+    model_config = ConfigDict(extra="allow")
+    deep_cadence: Literal["daily", "weekly", "monthly"] = "daily"
+    daily_start: Optional[date] = None  # None ⇒ daily density everywhere (the pre-iter-18 behavior)
+
+
 class ScannerCfg(BaseModel):
     """Scanner snapshot bootstrap (iter-5). `bootstrap_dates` are the historical as-of dates the
     scanner persists an immutable snapshot for (the latest data date is added programmatically in
     code, not listed here). ISO strings in config.yaml are coerced to `datetime.date` — there is no
-    date literal in calc code (anti-goal: No magic numbers); the scanner reads these."""
+    date literal in calc code (anti-goal: No magic numbers); the scanner reads these.
+    `snapshot_cadence` (iter-18) bounds the deep-history backfill density (see SnapshotCadenceCfg)."""
 
     model_config = ConfigDict(extra="allow")
     bootstrap_dates: list[date] = Field(min_length=1)
+    snapshot_cadence: SnapshotCadenceCfg = Field(default_factory=SnapshotCadenceCfg)
 
 
 class StartupCfg(BaseModel):
@@ -613,6 +642,35 @@ class WalkForwardCfg(BaseModel):
                 f"walk_forward.default_horizon ({self.default_horizon}) must be one of "
                 f"walk_forward.horizons ({self.horizons})"
             )
+        return self
+
+
+class ChartBarsCfg(BaseModel):
+    """iter-18 (J-10 performance) — the `/api/stocks/{ticker}/bars` PRESENTATION-bounding tunables on the
+    deep 30-year basis. The chart never ships every deep bar by default:
+
+      - `default_years` — with no `range` param the served window is the trailing `default_years` before
+        the resolved as-of (bounded default; a symbol whose data ended earlier falls back to its OWN
+        trailing window — real bars, never fabricated).
+      - `range=full` — the explicit opt-in serves the symbol's WHOLE real history (back to its real first
+        bar), with bars older than `downsample_beyond_years` before the as-of sampled at
+        `downsample_interval` density (every sampled bar is a REAL stored daily bar — sampling shows
+        fewer bars, it never synthesizes/aggregates one; the series' real first bar is always kept).
+
+    Display-bounding ONLY: scores/buckets/setups keep reading the immutable snapshot (bars <= D); the
+    no-lookahead as-of boundary is untouched. Every value is read from here (No magic numbers)."""
+
+    model_config = ConfigDict(extra="allow")
+    default_years: int = 5
+    downsample_beyond_years: int = 8
+    downsample_interval: Literal["weekly"] = "weekly"
+
+    @model_validator(mode="after")
+    def _validate(self) -> "ChartBarsCfg":
+        if self.default_years <= 0:
+            raise ValueError("chart_bars.default_years must be positive")
+        if self.downsample_beyond_years <= 0:
+            raise ValueError("chart_bars.downsample_beyond_years must be positive")
         return self
 
 
@@ -1996,6 +2054,10 @@ class Config(BaseModel):
     # still loads unchanged and serves the documented bounds.
     server: ServerOpsCfg = Field(default_factory=ServerOpsCfg)
     walk_forward: WalkForwardCfg
+    # iter-18 (J-10 performance) — the /bars presentation-bounding tunables (bounded default window,
+    # full-history opt-in, deep-region downsampling). Default-populated so a config/fixture predating it
+    # still loads and serves the documented bounds.
+    chart_bars: ChartBarsCfg = Field(default_factory=ChartBarsCfg)
     patterns: PatternsCfg
     methodology: MethodologyCfg
     research: ResearchCfg

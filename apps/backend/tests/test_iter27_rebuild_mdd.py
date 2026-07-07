@@ -203,11 +203,13 @@ def test_coverage_diagnostic_zero_when_universe_fully_scored(warm_engine):
     with Session(engine) as session:
         diag = _coverage_diagnostic_absent(session, cfg)
         cov = compute_coverage(session, cfg)
-    # iter-33 (J-93): universe_count is now the members RESOLVED at the latest snapshot date (the dynamic
-    # point-in-time membership), a subset of the static candidate universe; the candidate-pool denominator
-    # is carried beside it. Every resolved member IS in the latest snapshot, so absent_count is still 0.
-    assert 0 < diag["universe_count"] <= len(cfg.universe.symbols)
-    assert diag["candidate_pool_count"] >= diag["universe_count"]
+    # iter-33 (J-93): universe_count is the members RESOLVED at the latest snapshot date (the dynamic
+    # point-in-time membership drawn from the committed candidate pool via `read_pool`), bounded by the
+    # candidate-pool denominator carried beside it. iter-18 broadened the servable pool far beyond the
+    # legacy static `cfg.universe.symbols` screen result, so the resolved membership is bounded by
+    # `candidate_pool_count` (the pool it is drawn from) — NOT by `len(cfg.universe.symbols)`. Every
+    # resolved member IS in the latest snapshot, so absent_count is still 0.
+    assert 0 < diag["universe_count"] <= diag["candidate_pool_count"]
     assert diag["absent_count"] == 0  # every resolved-universe member is in the latest snapshot
     assert diag["absent_preview"] == []
     assert diag["latest_snapshot_date"] is not None

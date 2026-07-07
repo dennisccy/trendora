@@ -94,14 +94,13 @@ def test_rejection_offsets_missing_file_is_empty(tmp_path):
 
 
 def test_rejection_offsets_on_live_canonical_ledger():
-    """The DoD anchor: on the live canonical `certified-claims.jsonl` the derived rejection ordinals track the
-    honest history WITHOUT rewriting any entry. After iter-11 (J-07) promoted the vcp_contraction h60 winner,
-    iter-13 (J-08) promoted the rs_spy_3m × high_proximity combination winner, and iter-15 (J-09) promoted the
-    rs_spy_3m h60 winner, the ledger is lines 1/2/4/5/6/7 PASS, line 3 `ma_stack` FAIL — so the rejection
-    ordinals are `[1, 2, 4, 5, 6, 7]` over 7 trials (the FAIL at position 3 advances the ordinal but is not a
-    rejection)."""
+    """The DoD anchor, refreshed by the iter-18 SANCTIONED ledger reset: the regenerated canonical
+    `certified-claims.jsonl` replays the same 7-claim historical family on the 30-year basis and EVERY
+    verdict honestly FAILED — so the derived rejection ordinals are EMPTY over 7 trials (no PASS ever
+    landed; the retired [1, 2, 4, 5, 6, 7] history remains auditable via git). Nothing was rewritten —
+    the offsets are DERIVED from the regenerated entries."""
     assert _CANONICAL_LEDGER.exists(), f"missing canonical ledger at {_CANONICAL_LEDGER}"
-    assert ledger_mod.rejection_offsets(str(_CANONICAL_LEDGER)) == [1, 2, 4, 5, 6, 7]
+    assert ledger_mod.rejection_offsets(str(_CANONICAL_LEDGER)) == []
     assert ledger_mod.count_trials(str(_CANONICAL_LEDGER)) == 7
 
 
@@ -331,20 +330,25 @@ def test_explore_multi_horizon_staging_is_deterministic_and_staging_only(loaded_
     assert ledger_mod.read_entries(canonical) == []
 
 
-def test_explore_multi_horizon_staging_records_insufficient_on_thin_fixture(loaded_engine, tmp_path):
-    """The ERROR path (surfaced, not dropped, not crashing): on the thin quarterly test fixture every
-    candidate's sealed holdout has too few dates for the block bootstrap, so each is honestly recorded as
-    INSUFFICIENT — and every verdict carries `deflation == "lord++"`, proving the online-FDR economy is
-    ACTIVE in staging under the real (iter-10) config (`evidence.fdr.enabled: true`)."""
+def test_explore_multi_horizon_staging_verdicts_honest_under_active_fdr(loaded_engine, tmp_path):
+    """iter-18 refresh: the 30-year fixture DB is no longer thin (the walk-forward cadence spans
+    2005→2026, so every candidate's sealed holdout has real dates) — the old INSUFFICIENT-on-thin-fixture
+    shape no longer applies. What must STILL hold, basis-independent: every staging verdict runs under
+    the ACTIVE online-FDR economy (`deflation == "lord++"` — the iter-10 activation), and every verdict
+    is internally honest (PASS iff p_value < required_p; a non-PASS is FAIL or INSUFFICIENT, never a
+    fabricated success)."""
     staging = str(tmp_path / "staging-ledger.jsonl")
     with Session(loaded_engine) as session:
         out = explore_multi_horizon_staging(session, ledger_path=staging)
     assert len(out["results"]) == len(_EXPECTED_CANDIDATES)
     for r in out["results"]:
         v = r["verdict"]
-        assert v["status"] == "INSUFFICIENT"           # thin sealed holdout -> honestly refused
-        assert v["holdout_dates"] < 5                   # below DEFAULT_MIN_HOLDOUT_DATES (why it refused)
         assert v["deflation"] == DEFLATION_ONLINE_FDR   # FDR economy active in staging (iter-10 activation)
+        assert v["status"] in ("PASS", "FAIL", "INSUFFICIENT")
+        if v["status"] == "PASS":
+            assert v["p_value"] < v["required_p"]
+        elif v["status"] == "FAIL":
+            assert v["p_value"] >= v["required_p"]
 
 
 def test_explore_multi_horizon_staging_refuses_the_canonical_ledger(loaded_engine, config):
@@ -359,50 +363,31 @@ def test_explore_multi_horizon_staging_refuses_the_canonical_ledger(loaded_engin
             explore_multi_horizon_staging(session, config, ledger_path=canonical_path)
 
 
-def test_committed_staging_ledger_is_the_frozen_multi_horizon_discovery():
-    """The DoD anchor: the COMMITTED `staging-ledger.jsonl` is the frozen staging discovery — now 7 entries,
-    ALL under the online-FDR (`lord++`) economy: the 4 pre-registered SINGLE-FACTOR multi-horizon candidates
-    (iter-10, entries #1-4 — the discovery iter-11 promoted J-07 from) FOLLOWED BY the 3 pre-registered
-    2-factor COMBINATION candidates (iter-12, entries #5-7 — the basis iter-13 promotes J-08 from). This
-    staging exploration NEVER writes the canonical ledger (which iter-11 grew 4→5 by promoting the h60 winner).
+def test_committed_staging_ledger_is_the_regenerated_30y_discovery():
+    """The DoD anchor, refreshed by the iter-18 SANCTIONED ledger reset: the COMMITTED
+    `staging-ledger.jsonl` is the staging discovery REGENERATED on the 30-year basis — the 4
+    pre-registered SINGLE-FACTOR multi-horizon candidates (entries #1-4) followed by the 3
+    pre-registered 2-factor COMBINATION candidates (entries #5-7), all under the online-FDR
+    (`lord++`) economy, register_date 2026-07-03, replayed by the same two explorers that wrote the
+    retired discovery (auditable via git history).
 
-    Single-factor prefix (unchanged, iter-10): the economy visibly REPLENISHES — after the h10 FAIL and the
-    h60 PASSes the required_p LOOSENS, and 3 of 4 clear even the strict canonical divisor-5 bar (p<0.010).
-    Combination suffix (iter-12): the two 'obvious' anchor pairs FAIL out-of-sample at h20 (the low-ATR filter
-    HURTS the momentum/leadership edge — an honest referee refusal, anti-goal #1/#4 upheld), while `rs_spy_3m`
-    leaders that are ALSO near their 52-week high PASS with a raw block-bootstrap p that clears even the
-    canonical divisor-6 bar (p<0.00833) with margin — the real recorded basis iter-13 promotes to surface J-08."""
+    On the deep multi-regime sealed holdout EVERY candidate honestly FAILED — including the retired
+    winners (rs_spy_3m h60's old +21.34% OOS≫in-sample yellow flag resolves here exactly as
+    pre-registered: a retired-window artifact that does not reproduce). With ZERO discoveries the
+    LORD++ wealth is never replenished, so the required-p sequence strictly DECREASES across all 7
+    trials — the economy honestly starving (the mirror image of the retired ledger's replenishment).
+    No hand-authored row; PASS ordinals are EMPTY; the canonical ledger holds its own 7 regenerated
+    Bonferroni FAILs and was never touched by the staging exploration."""
     assert _STAGING_LEDGER.exists(), f"missing committed staging ledger at {_STAGING_LEDGER}"
     entries = ledger_mod.read_entries(str(_STAGING_LEDGER))
     assert len(entries) == 7
+    assert all(e["register_date"] == "2026-07-03" for e in entries)
 
-    # -- the SINGLE-FACTOR prefix (iter-10, entries #1-4) — the unchanged frozen multi-horizon discovery ----
+    # -- the SINGLE-FACTOR prefix (entries #1-4): the pre-registered multi-horizon set, config order --
     sf = entries[:4]
     sf_claims = [(e["claim"]["factor"], e["claim"]["horizon"], e["claim"]["decile"]) for e in sf]
     assert sf_claims == _EXPECTED_CANDIDATES
-    sf_verdicts = [e["verdict"] for e in sf]
-    assert all(v["deflation"] == DEFLATION_ONLINE_FDR for v in sf_verdicts)
-    # the honest status pattern: h10 did NOT persist (FAIL); all three h60 cohorts PASS.
-    assert [v["status"] for v in sf_verdicts] == ["FAIL", "PASS", "PASS", "PASS"]
-    # the EXACT LORD++ required-p levels — the economy replenishing after each discovery (bar LOOSENS).
-    sf_required_p = [v["required_p"] for v in sf_verdicts]
-    assert sf_required_p == [
-        pytest.approx(0.010937254144361815, abs=1e-15),  # trial 1, no priors  -> W0*g(1)
-        pytest.approx(0.003607948341404759, abs=1e-15),  # trial 2, no priors  -> W0*g(2)
-        pytest.approx(0.012823135192663515, abs=1e-15),  # trial 3, prior [2]  -> replenished
-        pytest.approx(0.026672635724664270, abs=1e-15),  # trial 4, prior [2,3]-> replenished more
-    ]
-    assert sf_required_p[3] > sf_required_p[2] > sf_required_p[1]  # wealth loosens the bar as discoveries land
-    # >= 1 SIGNAL-LESS single-factor candidate clears the canonical divisor-5 bar (the J-07 promotion winner).
-    signalless_pass_clears = [
-        e for e in sf
-        if e["verdict"]["status"] == "PASS"
-        and e["claim"]["factor"] != "leadership_score"          # signal-less (non-score column)
-        and e["verdict"]["p_value"] < 0.010                     # clears strict Bonferroni divisor-5
-    ]
-    assert len(signalless_pass_clears) >= 1
-
-    # -- the COMBINATION suffix (iter-12, entries #5-7) — the J-08 enablement basis -----------------------
+    # -- the COMBINATION suffix (entries #5-7): the pre-registered pairs, config order --------------
     comb = entries[4:]
     comb_claims = [
         (e["claim"]["kind"], e["claim"]["cohort"], e["claim"]["horizon"], e["claim"]["condition"]) for e in comb
@@ -412,54 +397,50 @@ def test_committed_staging_ledger_is_the_frozen_multi_horizon_discovery():
         ("combination", "composite", 20, _EXPECTED_COMBINATION_CANDIDATES[1]),
         ("combination", "composite", 20, _EXPECTED_COMBINATION_CANDIDATES[2]),
     ]
-    comb_verdicts = [e["verdict"] for e in comb]
-    assert all(v["deflation"] == DEFLATION_ONLINE_FDR for v in comb_verdicts)  # judged in the same economy
-    # honest referee: the two 'obvious' anchor pairs FAIL out-of-sample at h20; the RS-near-high pair PASSES.
-    assert [v["status"] for v in comb_verdicts] == ["FAIL", "FAIL", "PASS"]
-    # the EXACT LORD++ required-p levels for trials 5-7 (the economy continues from the 4 single-factor trials;
-    # trials 5+6 FAIL so the PASS-ordinal history stays [2,3,4] across the whole combination run).
-    comb_required_p = [v["required_p"] for v in comb_verdicts]
-    assert comb_required_p == [
-        pytest.approx(0.03180911589706088, abs=1e-15),   # trial 5, prior rejections [2,3,4]
-        pytest.approx(0.012799946614451493, abs=1e-15),  # trial 6, still [2,3,4] (#5 FAILed)
-        pytest.approx(0.007471079062231945, abs=1e-15),  # trial 7, still [2,3,4] (#6 FAILed)
+
+    verdicts = [e["verdict"] for e in entries]
+    assert all(v["deflation"] == DEFLATION_ONLINE_FDR for v in verdicts)  # the fenced staging economy
+    assert [v["status"] for v in verdicts] == ["FAIL"] * 7                # honest across the board
+
+    # the EXACT LORD++ levels: zero rejections ever -> the spending sequence alone -> strictly
+    # DECREASING required_p (wealth never replenished — the honest mirror of the retired discovery).
+    required_p = [v["required_p"] for v in verdicts]
+    assert required_p == [
+        pytest.approx(0.010937254144361815, abs=1e-15),   # trial 1, no priors -> W0*g(1)
+        pytest.approx(0.003607948341404759, abs=1e-15),   # trial 2, no priors -> W0*g(2)
+        pytest.approx(0.0018858810483017006, abs=1e-15),  # trial 3, still no rejections
+        pytest.approx(0.0011901790945358806, abs=1e-15),  # trial 4
+        pytest.approx(0.0008328298772260374, abs=1e-15),  # trial 5
+        pytest.approx(0.0006221087405026931, abs=1e-15),  # trial 6
+        pytest.approx(0.00048612889933074497, abs=1e-15), # trial 7
     ]
-    # each combination verdict carries the fields iter-13 reads to pick a promotable winner (DoD).
-    for e in comb:
+    assert all(required_p[i] > required_p[i + 1] for i in range(6))  # strictly decreasing (no discovery)
+
+    # the exact regenerated block-bootstrap p-values (displayed-numbers-are-correct anti-goal).
+    assert [v["p_value"] for v in verdicts] == [
+        pytest.approx(0.8920539730134932, abs=1e-15),
+        pytest.approx(0.9995002498750625, abs=1e-15),
+        pytest.approx(0.9045477261369316, abs=1e-15),
+        pytest.approx(0.6586706646676662, abs=1e-15),
+        pytest.approx(0.920039980009995, abs=1e-15),
+        pytest.approx(0.9215392303848076, abs=1e-15),
+        pytest.approx(0.4942528735632184, abs=1e-15),
+    ]
+    # honest verdict internal consistency + the promotion-basis fields every entry still carries.
+    for e in entries:
         v = e["verdict"]
+        assert v["p_value"] >= v["required_p"]  # a FAIL never quietly clears its bar
         for key in ("status", "p_value", "holdout_edge", "control_excess",
                     "cohort_n", "control_n", "deflation", "required_p"):
-            assert key in v, f"combination verdict missing {key!r}"
-        assert e["horizon"] == 20               # the horizon is recorded on the entry
-        assert len(e["claim"]["condition"]) == 2  # the two condition legs are recorded
-    # PASS iff p_value < required_p (honest clear / non-clear) — the same rule as the single-factor prefix.
-    for v in comb_verdicts:
-        if v["status"] == "PASS":
-            assert v["p_value"] < v["required_p"]
-        else:
-            assert v["p_value"] >= v["required_p"]
+            assert key in v, f"staging verdict missing {key!r}"
 
-    # the iter-13 deliverable: the WINNER (rs_spy_3m + high_proximity) clears the canonical divisor-6 bar —
-    # its RAW block-bootstrap p (economy-independent) is < 0.05/6 ≈ 0.00833 with margin — a real recorded
-    # basis to PROMOTE + surface J-08. The two anchor pairs are honest FAILs (a thin/weak composite refused).
-    winner = comb[2]
-    assert winner["claim"]["condition"] == _EXPECTED_COMBINATION_CANDIDATES[2]
-    assert winner["verdict"]["status"] == "PASS"
-    assert winner["verdict"]["p_value"] == pytest.approx(0.0009995002498750624, abs=1e-15)
-    assert winner["verdict"]["p_value"] < 0.05 / 6       # clears the canonical Bonferroni divisor-6 bar
-    assert winner["verdict"]["holdout_edge"] > 0         # a genuine positive out-of-sample edge
-
-    # -- whole-ledger aggregates + the untouched canonical ledger ----------------------------------------
-    # PASS ordinals over the 7 entries: #2,#3,#4 (single-factor) + #7 (the combination winner).
-    assert ledger_mod.rejection_offsets(str(_STAGING_LEDGER)) == [2, 3, 4, 7]
+    # -- whole-ledger aggregates + the untouched canonical ledger ---------------------------------
+    assert ledger_mod.rejection_offsets(str(_STAGING_LEDGER)) == []   # zero discoveries
     assert ledger_mod.count_trials(str(_STAGING_LEDGER)) == 7
-    # the canonical ledger is UNTOUCHED by any staging exploration — it grew ONLY by DELIBERATE promotion:
-    # iter-11's 5 strict-Bonferroni entries PLUS iter-13's promoted combination winner PLUS iter-15's promoted
-    # rs_spy_3m h60 winner = 7 entries (PASS ordinals 1,2,4,5,6,7). None of the 7 staging FDR trials above ever
-    # wrote canonical. The honesty fence: FDR is fenced to staging; canonical stays strict Bonferroni and only
-    # receives explicitly promoted winners.
+    # the canonical ledger holds its OWN regenerated 7-trial Bonferroni history (all FAIL) — the
+    # staging exploration never wrote it (the honesty fence held through the reset).
     assert ledger_mod.count_trials(str(_CANONICAL_LEDGER)) == 7
-    assert ledger_mod.rejection_offsets(str(_CANONICAL_LEDGER)) == [1, 2, 4, 5, 6, 7]
+    assert ledger_mod.rejection_offsets(str(_CANONICAL_LEDGER)) == []
 
 
 # ==================================================================================================

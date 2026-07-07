@@ -25,6 +25,7 @@ from app.engine.regime import score_regime
 from app.engine.scoring import score_stocks
 from app.engine.scanner import bootstrap_runs, run_scan
 from app.engine.universe_resolver import resolve_members
+from app.engine.universe_screen import read_pool
 from app.models import DailyPrice, ScannerResult, ScannerRun, SectorScoreRow, ThemeScoreRow
 from app.seed_loader import load_seed
 
@@ -95,7 +96,7 @@ def test_run_scan_persists_complete_snapshot(scanner_engine, config):
     with Session(scanner_engine) as session:
         expected_members = len(resolve_members(session, asof, config))
     assert len(results) == expected_members > 0  # a non-empty resolved set at a full-universe date
-    assert len(results) <= len(config.universe.symbols)
+    assert len(results) <= len(read_pool())  # iter-18: members are a subset of the broadened 548-name pool
     assert len(sectors) == len(config.etfs.sector) + len(config.etfs.industry)
     assert len(themes) == len(config.themes)
 
@@ -213,7 +214,7 @@ def test_is_vcp_mirrors_record_json_flag(scanner_engine, config):
         asof = latest_data_date(session)
         run = run_scan(session, asof, config)
         results = session.exec(select(ScannerResult).where(ScannerResult.run_id == run.id)).all()
-    assert 0 < len(results) <= len(config.universe.symbols)  # iter-33 (J-93): resolved-at-D subset
+    assert 0 < len(results) <= len(read_pool())  # iter-33/iter-18: resolved-at-D subset of the 548-pool
     for r in results:
         assert isinstance(r.is_vcp, bool)
         assert r.is_vcp == json.loads(r.record_json)["vcp"]["flagged"]  # faithful mirror
@@ -227,7 +228,7 @@ def test_new_pattern_mirrors_match_record_json(scanner_engine, config):
         asof = latest_data_date(session)
         run = run_scan(session, asof, config)
         results = session.exec(select(ScannerResult).where(ScannerResult.run_id == run.id)).all()
-    assert 0 < len(results) <= len(config.universe.symbols)  # iter-33 (J-93): resolved-at-D subset
+    assert 0 < len(results) <= len(read_pool())  # iter-33/iter-18: resolved-at-D subset of the 548-pool
     for r in results:
         record = json.loads(r.record_json)
         assert isinstance(r.is_pullback_to_rising_dma, bool)

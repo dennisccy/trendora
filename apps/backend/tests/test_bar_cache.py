@@ -202,6 +202,11 @@ class _SymbolLoadCounter:
 def seed_engine(tmp_path_factory):
     """One seed load + a few trading days reserved for a K-date backfill (module-scoped for speed)."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     from app.seed_loader import load_seed
     db_path = tmp_path_factory.mktemp("bar_cache_seed") / "bc.db"
     engine = make_engine(f"sqlite:///{db_path}")
@@ -220,8 +225,13 @@ def test_kdate_backfill_loads_each_symbol_at_most_once(seed_engine, monkeypatch)
     would be loaded >= K times). The shared pre-filled cache is what preserves load-once under the
     parallel build (workers READ the orchestrator's pre-loaded immutable series)."""
     engine, cfg, trading = seed_engine
-    # three CONSECUTIVE gap dates (no snapshot yet) → K = 3
-    r_start, r_end = trading[200], trading[202]
+    # three CONSECUTIVE gap dates (no snapshot yet) → K = 3. iter-18: the snapshot cadence bounds the
+    # DEEP region to monthly, so pick the K dates inside the config daily-density region (>= daily_start)
+    # where every trading day is a valid backfill target — the load-once proof is cadence-independent.
+    daily_start = cfg.scanner.snapshot_cadence.daily_start or trading[0]
+    daily_idx = next(i for i, d in enumerate(trading) if d >= daily_start)
+    assert daily_idx + 3 <= len(trading)
+    r_start, r_end = trading[daily_idx], trading[daily_idx + 2]
     in_range = [d for d in trading if r_start <= d <= r_end]
     assert len(in_range) >= 3  # K >= 3
     # ensure the parallel path is actually exercised (workers > 1 over a >1-date range).
@@ -290,8 +300,9 @@ def test_bootstrap_snapshots_equal_with_cache(seed_engine):
     from app.engine import scanner
     from app.models import ScannerResult
     # iter-33 (J-93): the universe is point-in-time, so use a date PAST the deterministic warm-up boundary
-    # (seed-start + min_history_bars) where the resolved universe is non-empty (day 150 ~2021-08 is still
-    # in warm-up → 0 members). day 300 (~2022-03) is comfortably full.
+    # where the resolved universe is non-empty. iter-18 (30y basis): the SPY trading calendar starts
+    # 2005-02-25, so day 300 is ~2006-05 — deep names (AAPL/MSFT from 1996) are far past the
+    # min_history_bars warm-up there and the resolved membership is comfortably non-empty.
     d = trading[300]
     with Session(engine) as session:
         run = scanner.run_scan(session, d, cfg)  # uses bars (cache inactive here — single date)

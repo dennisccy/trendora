@@ -65,6 +65,11 @@ class _CountingProvider(PriceProvider):
 
 def _fresh_seed_engine(tmp_path, name: str):
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     engine = make_engine(f"sqlite:///{tmp_path / f'{name}.db'}")
     create_db_and_tables(engine)
     load_seed(engine, cfg)
@@ -204,6 +209,11 @@ def test_symbols_counter_distinct_across_multi_window_plan(tmp_path):
     (distinct-symbol count). With a 24-day window over a ~30-day range there are 2 windows per symbol; the
     OLD per-(symbol, window) increment would read 2x the symbol count."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     # force a small window so the range splits into >= 2 windows per symbol → the multi-window plan.
     ic = cfg.data_manager.import_chunking.model_copy(update={"date_window_days": 10, "symbol_batch_size": 25})
     dm = cfg.data_manager.model_copy(update={"import_chunking": ic})
@@ -223,6 +233,15 @@ def test_symbols_counter_distinct_across_multi_window_plan(tmp_path):
     assert summary["symbols_ok"] <= summary["symbols_total"]  # monotone, never exceeds the total
 
 
+
+
+def _daily_region_start(trading, cfg):
+    """iter-18: the snapshot cadence bounds the DEEP region to monthly targets, so job-range tests pick
+    their dates inside the config daily-density region (>= scanner.snapshot_cadence.daily_start), where
+    every trading day is a valid backfill target — these proofs are cadence-independent."""
+    start = cfg.scanner.snapshot_cadence.daily_start or trading[0]
+    return next(i for i, d in enumerate(trading) if d >= start)
+
 def test_progress_payload_has_heartbeat_and_activity(tmp_path):
     """J-66 — the job payload carries a last-progress HEARTBEAT timestamp and a CURRENT-ACTIVITY line
     (the UI renders "updated Ns ago" + what is being worked on). Honest metadata — present and non-empty
@@ -230,7 +249,8 @@ def test_progress_payload_has_heartbeat_and_activity(tmp_path):
     cfg, engine = _fresh_seed_engine(tmp_path, "heartbeat")
     with Session(engine) as session:
         trading = data_manager._trading_days(session, cfg)
-    r_start, r_end = trading[305], trading[306]
+    _base = _daily_region_start(trading, cfg)
+    r_start, r_end = trading[_base + 305], trading[_base + 306]
     job = create_job("backfill", r_start, r_end)
     summary = run_data_job(job.job_id, config=_with_backfill_workers(cfg, 2), engine=engine)
 
@@ -246,7 +266,8 @@ def test_backfill_speedup_factor_in_backend_stages_payload(tmp_path):
     cfg, engine = _fresh_seed_engine(tmp_path, "speedup")
     with Session(engine) as session:
         trading = data_manager._trading_days(session, cfg)
-    r_start, r_end = trading[305], trading[308]
+    _base = _daily_region_start(trading, cfg)
+    r_start, r_end = trading[_base + 305], trading[_base + 308]
     job = create_job("backfill", r_start, r_end)
     summary = run_data_job(job.job_id, config=_with_backfill_workers(cfg, 4), engine=engine)
 
@@ -275,6 +296,11 @@ def test_covered_range_rerun_zero_provider_calls(tmp_path):
     covered symbols (the covered-range planner skips them against the trading calendar), reaching the end
     in seconds with `0 new bars` — never re-fetching a covered window."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     ic = cfg.data_manager.import_chunking.model_copy(update={"date_window_days": 90, "symbol_batch_size": 25})
     dm = cfg.data_manager.model_copy(update={"import_chunking": ic})
     cfg = cfg.model_copy(update={"data_manager": dm})
@@ -312,6 +338,11 @@ def test_partially_covered_window_still_fetches(tmp_path):
     """J-59 — a partially-covered window still FETCHES (a single missing trading day forces the fetch), and
     the per-(symbol, date) INSERT-new-only guard fills only the missing bars (no duplicate rows)."""
     cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
     ic = cfg.data_manager.import_chunking.model_copy(update={"date_window_days": 90, "symbol_batch_size": 25})
     dm = cfg.data_manager.model_copy(update={"import_chunking": ic})
     cfg = cfg.model_copy(update={"data_manager": dm})
@@ -363,7 +394,8 @@ def _both_job_fetch_done_backfill_fails(tmp_path, monkeypatch, name: str):
     cfg, engine = _fresh_seed_engine(tmp_path, name)
     with Session(engine) as session:
         trading = data_manager._trading_days(session, cfg)
-    r_start, r_end = trading[305], trading[307]
+    _base = _daily_region_start(trading, cfg)
+    r_start, r_end = trading[_base + 305], trading[_base + 307]
     in_range = [d for d in trading if r_start <= d <= r_end]
 
     # FETCH leg: a counting provider that succeeds (the seed range is already covered → 0 calls anyway,

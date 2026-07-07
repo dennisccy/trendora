@@ -153,11 +153,16 @@ def _universe_selection(config: Config) -> dict:
         # criterion is dropped per-date — documented, never silently asserted at a historical date).
         "per_date_rule": (
             f"As of any date D the scored membership is this candidate pool screened — from bars dated "
-            f"on or before D only — on price ≥ the minimum share price, average daily dollar volume ≥ the "
-            f"minimum, and at least {config.indicators.min_history_bars} trailing bars of history (the "
-            f"warm-up gate). The market-cap filter screens the candidate pool, not the per-date membership "
-            f"(market cap has no point-in-time series). The resolved count for a date is shown on Data "
-            f"Manager (universe_count)."
+            f"on or before D only — on at least {config.indicators.min_history_bars} trailing bars of "
+            f"history (the warm-up gate), data recency (a name whose last bar is more than "
+            f"{config.universe.filters.max_staleness_days} calendar days before D is excluded as a stale "
+            f"series — a name whose data ends mid-history exits membership cleanly and never feeds a "
+            f"misaligned relative-strength window), price ≥ the minimum share price, and average daily "
+            f"dollar volume ≥ the minimum. The market-cap filter screens the candidate pool, not the "
+            f"per-date membership (market cap has no point-in-time series). The resolved count for a "
+            f"date is shown on Data Manager (universe_count)."
         ),
+        # iter-18 (J-12): the staleness threshold surfaced beside the min-history gate (config read).
+        "per_date_max_staleness_days": config.universe.filters.max_staleness_days,
         "per_date_min_history_bars": config.indicators.min_history_bars,
     }

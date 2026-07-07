@@ -3,11 +3,14 @@ candidate names are universe MEMBERS as of a date D".
 
 This is the keystone of the dynamic, point-in-time universe. For a given as-of date D it reads the
 committed candidate pool (`universe_screen.read_pool`) and admits each candidate that, **from bars
-dated <= D only** (`prices.bars_asof`, the backward no-lookahead boundary), clears THREE config gates:
+dated <= D only** (`prices.bars_asof`, the backward no-lookahead boundary), clears FOUR config gates:
 
   1. trailing-bar count  >= `indicators.min_history_bars`  (the J-94 minimum-history / warm-up gate),
-  2. as-of close (bars[-1].close) >= `universe.filters.min_price`,
-  3. average daily dollar volume over `universe.filters.adv_window_days`
+  2. recency (iter-18, J-12): last bar within `universe.filters.max_staleness_days` calendar days of D
+     (a name whose data ends mid-history exits cleanly and never feeds a positionally-misaligned
+     relative-strength window),
+  3. as-of close (bars[-1].close) >= `universe.filters.min_price`,
+  4. average daily dollar volume over `universe.filters.adv_window_days`
      (the SAME measure the offline `expand` screen uses: mean of close*volume over the trailing
      window) >= `universe.filters.min_dollar_vol`.
 
@@ -15,7 +18,7 @@ The **market-cap criterion is DROPPED** from the per-date screen. Market cap is 
 with no committed point-in-time series; applying it per-historical-date would be lookahead-or-
 fabrication. The candidate pool is still BUILT by the market-cap-gated offline screen
 (`universe_screen.screen_reasons` / the `expand` job — that is where `config.universe.symbols` comes
-from); this resolver then screens THAT pool on the three point-in-time-safe criteria.
+from); this resolver then screens THAT pool on the four point-in-time-safe criteria.
 
 No magic numbers: every cutoff is sourced from the passed `Config` (added to
 `test_no_magic_numbers.CALC_FILES`). The only literals here are structural (0/1 indexing, the empty
@@ -46,18 +49,20 @@ from app.models import DailyPrice
 
 # The excluded-by-reason vocabulary (string labels, not tunables) — reused by the J-94 coverage
 # diagnostic and the J-96 membership timeline. Aligned with the existing coverage vocabulary
-# (`no_history`/`thin`) so the UI speaks one language.
+# (`no_history`/`thin`) so the UI speaks one language. Ordered exactly as the gates run
+# (history -> staleness -> price -> ADV) so the recorded reason is always the FIRST unmet criterion.
 REASON_BELOW_HISTORY = "below_history"  # < indicators.min_history_bars trailing bars (incl. zero bars)
+REASON_STALE = "stale_series"           # iter-18: last bar > universe.filters.max_staleness_days before D
 REASON_BELOW_PRICE = "below_price"      # as-of close < universe.filters.min_price
 REASON_BELOW_ADV = "below_adv"          # trailing ADV$ < universe.filters.min_dollar_vol
-EXCLUSION_REASONS = (REASON_BELOW_HISTORY, REASON_BELOW_PRICE, REASON_BELOW_ADV)
+EXCLUSION_REASONS = (REASON_BELOW_HISTORY, REASON_STALE, REASON_BELOW_PRICE, REASON_BELOW_ADV)
 
 
 @dataclass(frozen=True)
 class CandidateResolution:
     """One candidate's point-in-time resolution at D: `admitted` plus, when excluded, the FIRST gate it
-    failed (history -> price -> ADV, evaluated in that order). `bars` is the trailing-bar count read
-    from bars <= D (descriptive — never fabricated)."""
+    failed (history -> staleness -> price -> ADV, evaluated in that order). `bars` is the trailing-bar
+    count read from bars <= D (descriptive — never fabricated)."""
 
     symbol: str
     admitted: bool
@@ -76,16 +81,29 @@ def _adv_dollar(bars: list, adv_window_days: int) -> Optional[float]:
     return sum(pairs) / len(pairs)
 
 
-def resolve_candidate(bars: list, symbol: str, cfg: Config) -> CandidateResolution:
-    """Resolve ONE candidate from its already-fetched bars-as-of-D list (ascending, date <= D). Pure:
-    no DB access, no config of its own beyond the passed `cfg`. The gates are checked in a fixed order
-    (history -> price -> ADV) so the recorded `reason` is the FIRST unmet criterion (deterministic)."""
+def resolve_candidate(bars: list, symbol: str, cfg: Config, asof: date_cls) -> CandidateResolution:
+    """Resolve ONE candidate from its already-fetched bars-as-of-D list (ascending, date <= D) at the
+    resolve date `asof` (= D). Pure: no DB access, no config of its own beyond the passed `cfg`. The
+    gates are checked in a fixed order (history -> staleness -> price -> ADV) so the recorded `reason`
+    is the FIRST unmet criterion (deterministic).
+
+    iter-18 (J-12 hardening) — the RECENCY/STALENESS gate: a candidate whose LAST bar is more than
+    `universe.filters.max_staleness_days` calendar days before D is excluded (`stale_series`). A name
+    whose data ends mid-history thus exits membership cleanly at end-of-data and can never feed a
+    positionally-misaligned relative-strength window (`indicators.rs_vs` aligns trailing windows
+    positionally against the benchmark's window ending at D — only fresh members may be scored). The
+    gate runs BEFORE price/ADV because a stale series' "as-of" close is months old — data recency is a
+    validity precondition for the value gates, like the history gate. Reads only bars <= D + config
+    (no lookahead; no magic number — the threshold is `cfg.universe.filters.max_staleness_days`)."""
     filters = cfg.universe.filters
     min_history = cfg.indicators.min_history_bars
     bar_count = len(bars)
 
     if bar_count < min_history:
         return CandidateResolution(symbol, False, REASON_BELOW_HISTORY, bar_count)
+
+    if (asof - bars[-1].date).days > filters.max_staleness_days:
+        return CandidateResolution(symbol, False, REASON_STALE, bar_count)
 
     last_close = bars[-1].close
     if last_close is None or last_close < filters.min_price:
@@ -113,7 +131,7 @@ def resolve_with_reasons(
         "candidate_pool_count": <int>,         # the committed pool size (the denominator)
         "admitted": [<symbol>, ...],           # the resolved members at D (alphabetical)
         "admitted_count": <int>,
-        "excluded_counts": {below_history, below_price, below_adv},
+        "excluded_counts": {below_history, stale_series, below_price, below_adv},
         "resolutions": [CandidateResolution-as-dict, ...]  # one per pool candidate, alphabetical
       }
 
@@ -159,7 +177,7 @@ def resolve_with_reasons(
             )
             continue
         bars = bars_asof(session, symbol, asof)
-        resolutions.append(resolve_candidate(bars, symbol, cfg))
+        resolutions.append(resolve_candidate(bars, symbol, cfg, asof))
 
     admitted = sorted(r.symbol for r in resolutions if r.admitted)
     excluded_counts = {reason: 0 for reason in EXCLUSION_REASONS}
@@ -188,7 +206,7 @@ def resolve_members(
     seed_dir=None,
 ) -> list[str]:
     """The resolved universe MEMBERS at `asof` — the alphabetical list of candidates that clear all
-    three point-in-time gates from bars <= D. This is the SINGLE membership set `scoring.score_stocks`
+    four point-in-time gates from bars <= D. This is the SINGLE membership set `scoring.score_stocks`
     iterates (the persisted `ScannerResult` rows for the run ARE this membership). An early date before
     the warm-up boundary honestly returns a small/empty list (no fabricated members)."""
     return resolve_with_reasons(session, asof, config, seed_dir=seed_dir)["admitted"]

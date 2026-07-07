@@ -48,6 +48,7 @@ from app.engine.market_phase import (
     recovery_turn_dates,
     retrospective_cached,
 )
+from app.engine.prices import latest_data_date
 from app.engine.research import _dataset_version
 from app.models import DailyPrice, ForwardReturn, MarketPhaseCache, ScannerResult, ScannerRun
 
@@ -572,11 +573,21 @@ def test_emission_std_must_be_positive(tmp_path):
 # --------------------------------------------------------------------------------------------------
 def test_2022_bear_reproduction(loaded_engine):
     """A 2022-window as-of reproduces phase=Bear, a high severity reflecting the seed's SPY peak-to-trough
-    (~ -24.5%), and P(bear) trending toward 1; a 2026 as-of reads Expansion (low severity, low P(bear))."""
+    (~ -24.5%), and P(bear) trending toward 1; the LATEST calm tape (the seed's last data date) reads
+    Expansion (low severity, low P(bear)).
+
+    iter-18: the calm-tape as-of is `latest_data_date(session)` (the seed's last bar — 2026-07-01 on the
+    30-year basis), NOT a hard-coded 2026-05-28. On the retired ~5-year basis the seed ENDED at/before
+    2026-05-28, so that literal resolved to the latest (calm) run. The 30-year swap extended the seed to
+    2026-07-01, leaving 2026-05-28 in a GAP that the sparse walk-forward fixture (bootstrap + quarterly
+    dates, no monthly cadence) resolves back to the 2026-04-01 Risk-off quarterly run (Correction) — a
+    stale test-DATE assumption, NOT a regime error: the full-cadence PRODUCT resolves 2026-05-28 to its
+    2026-05-01 monthly Risk-on run → Expansion (severity 28.68). Pinning the LATEST data date keeps the
+    test asserting exactly what its `latest` variable documents: the calm latest tape reads Expansion."""
     cfg = load_config()
     with Session(loaded_engine) as session:
         bear = compute_market_phase(session, date(2022, 10, 7), cfg)
-        latest = compute_market_phase(session, date(2026, 5, 28), cfg)
+        latest = compute_market_phase(session, latest_data_date(session), cfg)
     assert bear["available"] is True
     assert bear["phase"] == "Bear"
     assert bear["severity"] >= 70  # in the Bear edge band
@@ -585,7 +596,7 @@ def test_2022_bear_reproduction(loaded_engine):
 
     assert latest["phase"] == "Expansion"
     assert latest["severity"] < 30
-    assert latest["p_bear"] is not None and latest["p_bear"] < 0.5  # falls back at the calm latest tape
+    assert latest["p_bear"] is not None and latest["p_bear"] < 0.5  # calm latest tape (seed's last date)
 
 
 def test_regime_input_equals_stored_run_regime(loaded_engine):

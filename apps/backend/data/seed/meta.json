@@ -1,967 +1,3584 @@
 {
-  "source": "Yahoo Finance chart API (query1.finance.yahoo.com/v8/finance/chart)",
-  "note": "REAL split/dividend-adjusted EOD OHLCV; frozen + committed; no key/secret used. Planned source Stooq now requires a captcha-obtained apikey (would violate No-secrets); Yahoo is free + no-key with the same guarantees. CYBR (CyberArk) was dropped from config after ingest \u2014 delisted (Palo Alto acquisition), no Yahoo data \u2014 so the committed seed covers every config symbol with zero failures.",
+  "source": "Stooq bulk US daily archive (local: data/d_us_txt, from stooq.com d_us_txt.zip)",
+  "provider": "stooq",
+  "note": "REAL split/dividend-adjusted EOD OHLCV read from Stooq's BULK US stocks+ETFs archive (data/d_us_txt/, the operator's d_us_txt.zip) \u2014 the SAME vendor and adjusted data as the per-symbol endpoint, consumed locally to bypass the standing per-IP export ACL. Provider tag stays 'stooq' (vendor unchanged); only the access method differs. Per-name first bar is the name's real first bar \u2014 never padded, fabricated, or vendor-spliced. Caret index series (^VIX/^TNX/^VXN/^DXY) and any name absent from this stocks+ETFs bundle are recorded absent below (they come from a separate Stooq indices bundle), never fabricated. Context series (iter-17, goal.md \u00a7H \u2014 mixed vendor, honestly disclosed per series): ^SPX/^NDX/^DJI staged DEEP from Stooq's world indices bundle (data/d_world_txt; vendor stooq \u2014 same vendor, local world archive), window-clipped to the pinned window; ^VIX from Yahoo (vendor yahoo; deep single pull, or the sanctioned verbatim live-seed copy on an unreachable endpoint \u2014 see its per-series note); ^TNX/^DXY/^VXN are the app's deterministic FRED-macro PROXIES copied BYTE-IDENTICAL from the live seed (vendor fred-macro-proxy), kept coherent with data/seed/macro/ and NEVER re-fetched from Yahoo. Each context record carries its per-series vendor; a proxy is never presented as a market index; no bar is fabricated, padded, interpolated, or vendor-spliced. iter-18: this manifest now describes the LIVE committed seed at data/seed/ (the atomic basis swap moved the staged prices tree here verbatim; nothing reads data/seed-stooq-30y/ anymore).",
+  "generated_at": "2026-07-03T00:42:19.381439+00:00",
   "window": {
-    "start": "2021-01-04",
-    "end": "2026-05-28"
+    "start": "1996-01-01",
+    "end": "2026-07-01"
   },
-  "symbols_ok": 159,
-  "symbols_failed": 0,
-  "failed": [],
+  "symbols_planned": 591,
+  "symbols_ok": 590,
+  "symbols_failed": 1,
+  "failed": [
+    "SATS"
+  ],
+  "failures": [
+    {
+      "symbol": "SATS",
+      "kind": "no_data",
+      "detail": "empty CSV (no rows in window)"
+    }
+  ],
+  "cap_events": [],
   "symbols": [
     {
+      "symbol": "SPY",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "QQQ",
+      "bars": 6869,
+      "first": "1999-03-10",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "IWM",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "RSP",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "XLK",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "XLF",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "XLE",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "XLV",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "XLI",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "XLY",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "XLP",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "XLU",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "XLB",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "XLRE",
+      "bars": 2693,
+      "first": "2015-10-08",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "XLC",
+      "bars": 2017,
+      "first": "2018-06-21",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SMH",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SOXX",
+      "bars": 5370,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "IGV",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CIBR",
+      "bars": 2762,
+      "first": "2015-07-08",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "HACK",
+      "bars": 2918,
+      "first": "2014-11-20",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SKYY",
+      "bars": 3767,
+      "first": "2011-07-08",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BOTZ",
+      "bars": 2459,
+      "first": "2016-09-16",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ROBO",
+      "bars": 3188,
+      "first": "2013-10-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "URA",
+      "bars": 3931,
+      "first": "2010-11-10",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "URNM",
+      "bars": 1650,
+      "first": "2019-12-05",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ITA",
+      "bars": 5069,
+      "first": "2006-05-05",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "XAR",
+      "bars": 3581,
+      "first": "2011-10-04",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "XHB",
+      "bars": 5131,
+      "first": "2006-02-06",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ITB",
+      "bars": 5069,
+      "first": "2006-05-05",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "KRE",
+      "bars": 5033,
+      "first": "2006-06-22",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "KBE",
+      "bars": 5186,
+      "first": "2005-11-15",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "XBI",
+      "bars": 5131,
+      "first": "2006-02-06",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "IBB",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BKCH",
+      "bars": 1246,
+      "first": "2021-07-15",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "WGMI",
+      "bars": 1101,
+      "first": "2022-02-09",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DIA",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
       "symbol": "NVDA",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 6901,
+      "first": "1999-01-22",
+      "last": "2026-07-01"
     },
     {
       "symbol": "AMD",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "AVGO",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 4251,
+      "first": "2009-08-05",
+      "last": "2026-07-01"
     },
     {
       "symbol": "MRVL",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 6531,
+      "first": "2000-06-30",
+      "last": "2026-07-01"
     },
     {
       "symbol": "ANET",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 3035,
+      "first": "2014-06-06",
+      "last": "2026-07-01"
     },
     {
       "symbol": "DELL",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 1885,
+      "first": "2018-12-31",
+      "last": "2026-07-01"
     },
     {
       "symbol": "SMCI",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 1623,
+      "first": "2020-01-15",
+      "last": "2026-07-01"
     },
     {
       "symbol": "VRT",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 1969,
+      "first": "2018-07-31",
+      "last": "2026-07-01"
     },
     {
       "symbol": "MU",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "MSFT",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "AMZN",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7321,
+      "first": "1997-05-16",
+      "last": "2026-07-01"
     },
     {
       "symbol": "GOOGL",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5501,
+      "first": "2004-08-19",
+      "last": "2026-07-01"
     },
     {
       "symbol": "META",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 3549,
+      "first": "2012-05-18",
+      "last": "2026-07-01"
     },
     {
       "symbol": "ORCL",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "PLTR",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 1444,
+      "first": "2020-09-30",
+      "last": "2026-07-01"
     },
     {
       "symbol": "CIEN",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7393,
+      "first": "1997-02-07",
+      "last": "2026-07-01"
     },
     {
       "symbol": "WDC",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "STX",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "LRCX",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7666,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "AMAT",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "KLAC",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "TXN",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7669,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "ADI",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "NXPI",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 3999,
+      "first": "2010-08-05",
+      "last": "2026-07-01"
     },
     {
       "symbol": "ON",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "MCHP",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "QCOM",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "INTC",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "TSM",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "ASML",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "ARM",
-      "bars": 678,
+      "bars": 701,
       "first": "2023-09-14",
-      "last": "2026-05-28"
+      "last": "2026-07-01"
     },
     {
       "symbol": "TER",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "ENTG",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "COHR",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "MPWR",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "SWKS",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "QRVO",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 2864,
+      "first": "2015-02-10",
+      "last": "2026-07-01"
     },
     {
       "symbol": "GFS",
-      "bars": 1149,
+      "bars": 1172,
       "first": "2021-10-28",
-      "last": "2026-05-28"
+      "last": "2026-07-01"
     },
     {
       "symbol": "CRWD",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 1773,
+      "first": "2019-06-12",
+      "last": "2026-07-01"
     },
     {
       "symbol": "PANW",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 3506,
+      "first": "2012-07-20",
+      "last": "2026-07-01"
     },
     {
       "symbol": "ZS",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 2084,
+      "first": "2018-03-16",
+      "last": "2026-07-01"
     },
     {
       "symbol": "FTNT",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 4178,
+      "first": "2009-11-17",
+      "last": "2026-07-01"
     },
     {
       "symbol": "S",
-      "bars": 1233,
+      "bars": 1256,
       "first": "2021-06-30",
-      "last": "2026-05-28"
+      "last": "2026-07-01"
     },
     {
       "symbol": "NET",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 1708,
+      "first": "2019-09-13",
+      "last": "2026-07-01"
     },
     {
       "symbol": "OKTA",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 2320,
+      "first": "2017-04-07",
+      "last": "2026-07-01"
     },
     {
       "symbol": "QLYS",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 3457,
+      "first": "2012-09-28",
+      "last": "2026-07-01"
     },
     {
       "symbol": "TENB",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 1993,
+      "first": "2018-07-26",
+      "last": "2026-07-01"
     },
     {
       "symbol": "RPD",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 2755,
+      "first": "2015-07-17",
+      "last": "2026-07-01"
     },
     {
       "symbol": "VRNS",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 3103,
+      "first": "2014-02-28",
+      "last": "2026-07-01"
     },
     {
       "symbol": "NOW",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 3520,
+      "first": "2012-06-29",
+      "last": "2026-07-01"
     },
     {
       "symbol": "CRM",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "ADBE",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "INTU",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "WDAY",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 3447,
+      "first": "2012-10-12",
+      "last": "2026-07-01"
     },
     {
       "symbol": "TEAM",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 2653,
+      "first": "2015-12-10",
+      "last": "2026-07-01"
     },
     {
       "symbol": "HUBS",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 2948,
+      "first": "2014-10-09",
+      "last": "2026-07-01"
     },
     {
       "symbol": "SNOW",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 1454,
+      "first": "2020-09-16",
+      "last": "2026-07-01"
     },
     {
       "symbol": "DDOG",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 1704,
+      "first": "2019-09-19",
+      "last": "2026-07-01"
     },
     {
       "symbol": "MDB",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 2185,
+      "first": "2017-10-19",
+      "last": "2026-07-01"
     },
     {
       "symbol": "SHOP",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 2794,
+      "first": "2015-05-21",
+      "last": "2026-07-01"
     },
     {
       "symbol": "CEG",
-      "bars": 1093,
-      "first": "2022-01-19",
-      "last": "2026-05-28"
+      "bars": 1115,
+      "first": "2022-01-20",
+      "last": "2026-07-01"
     },
     {
       "symbol": "VST",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 2297,
+      "first": "2017-05-11",
+      "last": "2026-07-01"
     },
     {
       "symbol": "NRG",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "CCJ",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "LEU",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7023,
+      "first": "1998-07-23",
+      "last": "2026-07-01"
     },
     {
       "symbol": "UEC",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5122,
+      "first": "2006-02-17",
+      "last": "2026-07-01"
     },
     {
       "symbol": "DNN",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5359,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "ETN",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "PWR",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "GEV",
-      "bars": 544,
-      "first": "2024-03-27",
-      "last": "2026-05-28"
+      "bars": 563,
+      "first": "2024-04-03",
+      "last": "2026-07-01"
     },
     {
       "symbol": "NVT",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 2051,
+      "first": "2018-05-03",
+      "last": "2026-07-01"
     },
     {
       "symbol": "POWL",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "HUBB",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 2642,
+      "first": "2015-12-28",
+      "last": "2026-07-01"
     },
     {
       "symbol": "AMSC",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "EMR",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "PH",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "LMT",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "RTX",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "NOC",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "GD",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "LHX",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "HII",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 3832,
+      "first": "2011-04-05",
+      "last": "2026-07-01"
     },
     {
       "symbol": "LDOS",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 4958,
+      "first": "2006-10-12",
+      "last": "2026-07-01"
     },
     {
       "symbol": "AXON",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "BA",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "KTOS",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "DHI",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "LEN",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "PHM",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "NVR",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "TOL",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "KBH",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "MTH",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "TPH",
-      "bars": 1346,
-      "first": "2021-01-04",
+      "bars": 3341,
+      "first": "2013-01-31",
       "last": "2026-05-13"
     },
     {
       "symbol": "BLDR",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5289,
+      "first": "2005-06-21",
+      "last": "2026-07-01"
     },
     {
       "symbol": "COIN",
-      "bars": 1287,
+      "bars": 1310,
       "first": "2021-04-14",
-      "last": "2026-05-28"
+      "last": "2026-07-01"
     },
     {
       "symbol": "MSTR",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "MARA",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 2999,
+      "first": "2014-07-29",
+      "last": "2026-07-01"
     },
     {
       "symbol": "RIOT",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 3731,
+      "first": "2011-08-29",
+      "last": "2026-07-01"
     },
     {
       "symbol": "CLSK",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 1615,
+      "first": "2020-01-27",
+      "last": "2026-07-01"
     },
     {
       "symbol": "HOOD",
-      "bars": 1213,
+      "bars": 1236,
       "first": "2021-07-29",
-      "last": "2026-05-28"
+      "last": "2026-07-01"
     },
     {
       "symbol": "LLY",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "NVO",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "VKTX",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 2810,
+      "first": "2015-04-29",
+      "last": "2026-07-01"
     },
     {
       "symbol": "AMGN",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "PFE",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "REGN",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5368,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "ISRG",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "AAPL",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "TSLA",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 4026,
+      "first": "2010-06-28",
+      "last": "2026-07-01"
     },
     {
       "symbol": "NFLX",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "COST",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "V",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 4600,
+      "first": "2008-03-18",
+      "last": "2026-07-01"
     },
     {
       "symbol": "MA",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5056,
+      "first": "2006-05-24",
+      "last": "2026-07-01"
     },
     {
       "symbol": "JPM",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "XOM",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "BKNG",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
     },
     {
       "symbol": "UBER",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 1795,
+      "first": "2019-05-10",
+      "last": "2026-07-01"
     },
     {
       "symbol": "WMT",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "HD",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
     },
     {
       "symbol": "GS",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 6829,
+      "first": "1999-05-04",
+      "last": "2026-07-01"
     },
     {
       "symbol": "ABNB",
-      "bars": 1356,
+      "bars": 1394,
+      "first": "2020-12-10",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "A",
+      "bars": 6689,
+      "first": "1999-11-18",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ABBV",
+      "bars": 3392,
+      "first": "2013-01-04",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ABT",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ACGL",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ACN",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ADM",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ADP",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ADSK",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AEE",
+      "bars": 7163,
+      "first": "1998-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AEP",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AES",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AFL",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AIG",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AIZ",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AJG",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AKAM",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ALB",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ALGN",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ALL",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ALLE",
+      "bars": 3161,
+      "first": "2013-12-04",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ALNY",
+      "bars": 5368,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AMCR",
+      "bars": 1773,
+      "first": "2019-06-12",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AME",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AMP",
+      "bars": 5229,
+      "first": "2005-09-15",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AMT",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AON",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AOS",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "APA",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "APD",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "APH",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "APO",
+      "bars": 3832,
+      "first": "2011-04-05",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "APP",
+      "bars": 1309,
+      "first": "2021-04-15",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "APTV",
+      "bars": 3672,
+      "first": "2011-11-21",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ARE",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ARES",
+      "bars": 3058,
+      "first": "2014-05-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ATO",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AVB",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AVY",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AWK",
+      "bars": 4576,
+      "first": "2008-04-22",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AXP",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "AZO",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BAC",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BALL",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BAX",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BBY",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BDX",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BEN",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BF-B",
+      "bars": 3987,
+      "first": "2010-08-23",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BG",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BIIB",
+      "bars": 7669,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BKR",
+      "bars": 2259,
+      "first": "2017-07-06",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BLK",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BMY",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BNY",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BR",
+      "bars": 4849,
+      "first": "2007-03-22",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BRK-B",
+      "bars": 7583,
+      "first": "1996-05-09",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BRO",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BSX",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BX",
+      "bars": 4786,
+      "first": "2007-06-21",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "BXP",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "C",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CAG",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CAH",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CARR",
+      "bars": 1567,
+      "first": "2020-04-06",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CASY",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CAT",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CB",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CBOE",
+      "bars": 4036,
+      "first": "2010-06-14",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CBRE",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CCEP",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CCI",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CCL",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CDNS",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CDW",
+      "bars": 3272,
+      "first": "2013-06-27",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CF",
+      "bars": 5254,
+      "first": "2005-08-10",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CFG",
+      "bars": 2959,
+      "first": "2014-09-24",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CHD",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CHRW",
+      "bars": 7216,
+      "first": "1997-10-16",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CHTR",
+      "bars": 4144,
+      "first": "2009-12-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CI",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CINF",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CL",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CLX",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CMCSA",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CME",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CMG",
+      "bars": 5139,
+      "first": "2006-01-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CMI",
+      "bars": 7664,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CMS",
+      "bars": 7667,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CNC",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CNP",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "COF",
+      "bars": 7669,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "COO",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "COP",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "COR",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CPAY",
+      "bars": 3905,
+      "first": "2010-12-17",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CPB",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CPRT",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CPT",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CRH",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CRL",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CSCO",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CSGP",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CSX",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CTAS",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CTSH",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CTVA",
+      "bars": 1779,
+      "first": "2019-06-04",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CVNA",
+      "bars": 2306,
+      "first": "2017-04-28",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CVS",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "CVX",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "D",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DAL",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DASH",
+      "bars": 1395,
+      "first": "2020-12-09",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DD",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DE",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DECK",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DG",
+      "bars": 4181,
+      "first": "2009-11-12",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DGX",
+      "bars": 7420,
+      "first": "1996-12-26",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DHR",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DIS",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DLR",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DLTR",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DOC",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DOV",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DOW",
+      "bars": 1821,
+      "first": "2019-04-03",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DPZ",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DRI",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DTE",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DUK",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DVA",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DVN",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "DXCM",
+      "bars": 5336,
+      "first": "2005-04-13",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EA",
+      "bars": 3651,
+      "first": "2011-12-21",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EBAY",
+      "bars": 6982,
+      "first": "1998-09-24",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ECL",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ED",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EFX",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EG",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EIX",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EL",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ELV",
+      "bars": 7669,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EME",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EOG",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EPAM",
+      "bars": 3617,
+      "first": "2012-02-10",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EQIX",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EQR",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EQT",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ERIE",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ES",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ESS",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ETR",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EVRG",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EW",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EXC",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EXE",
+      "bars": 1352,
+      "first": "2021-02-11",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EXPD",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EXPE",
+      "bars": 5269,
+      "first": "2005-07-20",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "EXR",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "F",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FANG",
+      "bars": 3447,
+      "first": "2012-10-12",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FAST",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FCX",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FDS",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FDX",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FE",
+      "bars": 7202,
+      "first": "1997-11-10",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FER",
+      "bars": 536,
+      "first": "2024-05-10",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FFIV",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FICO",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FIS",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FISV",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FITB",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FIX",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FOX",
+      "bars": 1836,
+      "first": "2019-03-13",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FOXA",
+      "bars": 1836,
+      "first": "2019-03-13",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FRT",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FSLR",
+      "bars": 4933,
+      "first": "2006-11-16",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "FTV",
+      "bars": 2511,
+      "first": "2016-07-06",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "GDDY",
+      "bars": 2829,
+      "first": "2015-04-01",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "GE",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "GEHC",
+      "bars": 886,
+      "first": "2022-12-16",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "GEN",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "GILD",
+      "bars": 7667,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "GIS",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "GL",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "GLW",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "GM",
+      "bars": 3927,
+      "first": "2010-11-17",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "GNRC",
+      "bars": 4121,
+      "first": "2010-02-10",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "GOOG",
+      "bars": 3084,
+      "first": "2014-03-27",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "GPC",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "GPN",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "GRMN",
+      "bars": 6423,
+      "first": "2000-12-08",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "GWW",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "HAL",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "HAS",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "HBAN",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "HCA",
+      "bars": 3847,
+      "first": "2011-03-15",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "HIG",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "HLT",
+      "bars": 3155,
+      "first": "2013-12-12",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "HON",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "HPE",
+      "bars": 2679,
+      "first": "2015-11-03",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "HPQ",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "HRL",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "HSIC",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "HST",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "HSY",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "HUM",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "HWM",
+      "bars": 2428,
+      "first": "2016-11-01",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "IBKR",
+      "bars": 1716,
+      "first": "2019-09-03",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "IBM",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ICE",
+      "bars": 5186,
+      "first": "2005-11-15",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "IDXX",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "IEX",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "IFF",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "INCY",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "INSM",
+      "bars": 3833,
+      "first": "2011-04-01",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "INVH",
+      "bars": 2366,
+      "first": "2017-02-01",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "IP",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "IQV",
+      "bars": 3306,
+      "first": "2013-05-09",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "IR",
+      "bars": 2296,
+      "first": "2017-05-12",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "IRM",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "IT",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ITW",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "IVZ",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "J",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "JBHT",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "JBL",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "JCI",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "JKHY",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "JNJ",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "KDP",
+      "bars": 4572,
+      "first": "2008-04-28",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "KEY",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "KEYS",
+      "bars": 2929,
+      "first": "2014-11-05",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "KHC",
+      "bars": 2764,
+      "first": "2015-07-06",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "KIM",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "KKR",
+      "bars": 4015,
+      "first": "2010-07-14",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "KMB",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "KMI",
+      "bars": 3865,
+      "first": "2011-02-15",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "KO",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "KR",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "KVUE",
+      "bars": 792,
+      "first": "2023-05-04",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "L",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "LH",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "LII",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "LIN",
+      "bars": 1924,
+      "first": "2018-11-01",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "LITE",
+      "bars": 2742,
+      "first": "2015-08-05",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "LNT",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "LOW",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "LULU",
+      "bars": 4762,
+      "first": "2007-07-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "LUV",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "LVS",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "LYB",
+      "bars": 4069,
+      "first": "2010-04-28",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "LYV",
+      "bars": 5166,
+      "first": "2005-12-14",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MAA",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MAR",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MAS",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MCD",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MCK",
+      "bars": 7669,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MCO",
+      "bars": 6472,
+      "first": "2000-10-03",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MDLZ",
+      "bars": 4967,
+      "first": "2006-10-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MDT",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MELI",
+      "bars": 4752,
+      "first": "2007-08-09",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MET",
+      "bars": 6598,
+      "first": "2000-04-05",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MGM",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MKC",
+      "bars": 6814,
+      "first": "1999-05-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MLM",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MMM",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MNST",
+      "bars": 7607,
+      "first": "1996-01-03",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MO",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MOS",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MPC",
+      "bars": 3769,
+      "first": "2011-07-06",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MRK",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MRNA",
+      "bars": 1900,
+      "first": "2018-12-07",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MRSH",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MS",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MSCI",
+      "bars": 4684,
+      "first": "2007-11-14",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MSI",
+      "bars": 5370,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MTB",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "MTD",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "NCLH",
+      "bars": 3382,
+      "first": "2013-01-18",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "NDAQ",
+      "bars": 5368,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "NDSN",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "NEE",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "NEM",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "NI",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "NKE",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "NSC",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "NTAP",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "NTRS",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "NUE",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "NWS",
+      "bars": 3275,
+      "first": "2013-06-24",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "NWSA",
+      "bars": 3275,
+      "first": "2013-06-24",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "O",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ODFL",
+      "bars": 5370,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "OKE",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "OMC",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ORLY",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "OTIS",
+      "bars": 1567,
+      "first": "2020-04-06",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "OXY",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PAYX",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PCAR",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PCG",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PDD",
+      "bars": 1993,
+      "first": "2018-07-26",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PEG",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PEP",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PFG",
+      "bars": 6211,
+      "first": "2001-10-23",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PG",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PGR",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PKG",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PLD",
+      "bars": 7666,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PM",
+      "bars": 4601,
+      "first": "2008-03-17",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PNC",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PNR",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PNW",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PODD",
+      "bars": 4813,
+      "first": "2007-05-14",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "POOL",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PPG",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PPL",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PRU",
+      "bars": 6173,
+      "first": "2001-12-13",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PSA",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PSKY",
+      "bars": 5368,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PSX",
+      "bars": 3560,
+      "first": "2012-05-03",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PTC",
+      "bars": 3159,
+      "first": "2013-12-06",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "PYPL",
+      "bars": 2764,
+      "first": "2015-07-06",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "Q",
+      "bars": 170,
+      "first": "2025-10-27",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "RCL",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "REG",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "RF",
+      "bars": 6315,
+      "first": "2001-05-14",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "RJF",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "RL",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "RMD",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ROK",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ROL",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ROP",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ROST",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "RSG",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "RVTY",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SBAC",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SBUX",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SCHW",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SHW",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SJM",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SLB",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SNA",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SNDK",
+      "bars": 346,
+      "first": "2025-02-13",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SNPS",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SO",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SOLV",
+      "bars": 564,
+      "first": "2024-04-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SPG",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SPGI",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SRE",
+      "bars": 7042,
+      "first": "1998-06-29",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "STE",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "STLD",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "STT",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "STZ",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SW",
+      "bars": 496,
+      "first": "2024-07-10",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SWK",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SYF",
+      "bars": 2997,
+      "first": "2014-07-31",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SYK",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "SYY",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "T",
+      "bars": 7674,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TAP",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TDG",
+      "bars": 5106,
+      "first": "2006-03-14",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TDY",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TECH",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TEL",
+      "bars": 4791,
+      "first": "2007-06-14",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TFC",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TGT",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TJX",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TKO",
+      "bars": 6456,
+      "first": "2000-10-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TMO",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TMUS",
+      "bars": 4831,
+      "first": "2007-04-18",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TPL",
+      "bars": 5365,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TPR",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TRGP",
+      "bars": 3911,
+      "first": "2010-12-09",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TRI",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TRMB",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TROW",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TRV",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TSCO",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TSN",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TT",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TTD",
+      "bars": 2457,
+      "first": "2016-09-21",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TTWO",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TXT",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "TYL",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "UAL",
+      "bars": 5140,
+      "first": "2006-01-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "UDR",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "UHS",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ULTA",
+      "bars": 4699,
+      "first": "2007-10-24",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "UNH",
+      "bars": 7673,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "UNP",
+      "bars": 7672,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "UPS",
+      "bars": 6695,
+      "first": "1999-11-10",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "URI",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "USB",
+      "bars": 7668,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "VEEV",
+      "bars": 3195,
+      "first": "2013-10-16",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "VICI",
+      "bars": 2114,
+      "first": "2018-02-01",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "VLO",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "VLTO",
+      "bars": 688,
+      "first": "2023-10-03",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "VMC",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "VRSK",
+      "bars": 4208,
+      "first": "2009-10-06",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "VRSN",
+      "bars": 7145,
+      "first": "1998-01-30",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "VRTX",
+      "bars": 5367,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "VTR",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "VTRS",
+      "bars": 1423,
+      "first": "2020-10-29",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "VZ",
+      "bars": 7671,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "WAB",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "WAT",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "WBD",
+      "bars": 1064,
+      "first": "2022-04-04",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "WEC",
+      "bars": 7666,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "WELL",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "WFC",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "WM",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "WMB",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "WRB",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "WSM",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "WST",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "WTW",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "WY",
+      "bars": 7670,
+      "first": "1996-01-02",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "WYNN",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "XEL",
+      "bars": 6503,
+      "first": "2000-08-21",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "XYL",
+      "bars": 3684,
+      "first": "2011-11-03",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "XYZ",
+      "bars": 2667,
+      "first": "2015-11-19",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "YUM",
+      "bars": 7240,
+      "first": "1997-09-17",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ZBH",
+      "bars": 6260,
+      "first": "2001-08-08",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ZBRA",
+      "bars": 5369,
+      "first": "2005-02-25",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "ZTS",
+      "bars": 3373,
+      "first": "2013-02-01",
+      "last": "2026-07-01"
+    },
+    {
+      "symbol": "^SPX",
+      "bars": 7674,
+      "first": "1996-01-02",
+      "last": "2026-07-01",
+      "vendor": "stooq"
+    },
+    {
+      "symbol": "^NDX",
+      "bars": 7674,
+      "first": "1996-01-02",
+      "last": "2026-07-01",
+      "vendor": "stooq"
+    },
+    {
+      "symbol": "^DJI",
+      "bars": 7674,
+      "first": "1996-01-02",
+      "last": "2026-07-01",
+      "vendor": "stooq"
+    },
+    {
+      "symbol": "^TNX",
+      "bars": 1357,
       "first": "2021-01-04",
-      "last": "2026-05-28"
+      "last": "2026-05-28",
+      "vendor": "fred-macro-proxy",
+      "note": "deterministic FRED-macro proxy copied byte-identical from the live seed \u2014 never re-fetched from Yahoo; coherent with data/seed/macro/; honestly short"
     },
     {
-      "symbol": "SPY",
-      "bars": 1356,
+      "symbol": "^DXY",
+      "bars": 1357,
       "first": "2021-01-04",
-      "last": "2026-05-28"
+      "last": "2026-05-28",
+      "vendor": "fred-macro-proxy",
+      "note": "deterministic FRED-macro proxy copied byte-identical from the live seed \u2014 never re-fetched from Yahoo; coherent with data/seed/macro/; honestly short"
     },
     {
-      "symbol": "QQQ",
-      "bars": 1356,
+      "symbol": "^VXN",
+      "bars": 1357,
       "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "IWM",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "RSP",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "XLK",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "XLF",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "XLE",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "XLV",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "XLI",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "XLY",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "XLP",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "XLU",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "XLB",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "XLRE",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "XLC",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "SMH",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "SOXX",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "IGV",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "CIBR",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "HACK",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "SKYY",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "BOTZ",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "ROBO",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "URA",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "URNM",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "ITA",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "XAR",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "XHB",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "ITB",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "KRE",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "KBE",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "XBI",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "IBB",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "BKCH",
-      "bars": 1224,
-      "first": "2021-07-14",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "WGMI",
-      "bars": 1079,
-      "first": "2022-02-08",
-      "last": "2026-05-28"
+      "last": "2026-05-28",
+      "vendor": "fred-macro-proxy",
+      "note": "deterministic FRED-macro proxy copied byte-identical from the live seed \u2014 never re-fetched from Yahoo; coherent with data/seed/macro/; honestly short"
     },
     {
       "symbol": "^VIX",
-      "bars": 1357,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
-    },
-    {
-      "symbol": "DIA",
-      "bars": 1356,
-      "first": "2021-01-04",
-      "last": "2026-05-28"
+      "bars": 7675,
+      "first": "1996-01-02",
+      "last": "2026-07-01",
+      "vendor": "yahoo",
+      "note": "deep single-pull Yahoo series, window-clipped \u2014 never spliced"
     }
-  ]
+  ],
+  "basis_swap": {
+    "iteration": "goal-mcp-loop-iter-18",
+    "swapped_at": "2026-07-03T00:42:19.381448+00:00",
+    "staged_from": "data/seed-stooq-30y (iter-16 equities + iter-17 index/macro context; staging dir retired by this swap)",
+    "replaced_basis": "Yahoo ~5y seed (2021-01-04 -> 2026-05-28, 162 series) -- retired; auditable via git history",
+    "note": "goal.md sanctioned data-basis change: the 30-year Stooq basis becomes the live committed seed at data/seed/. data/seed/macro/ and universe_pool.csv preserved byte-identical. Every prior certified claim was measured on the retired basis; BOTH evidence ledgers are regenerated from scratch on this basis (no verdict carried forward)."
+  }
 }
