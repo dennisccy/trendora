@@ -1,17 +1,17 @@
 # Iteration Summary — goal-mcp-loop-iter-19
 
-**Verdict:** PASS
+**Verdict:** CONTINUE
 **Iteration type:** goal-full
 **Date:** 2026-07-07
 **Iteration:** 19
 
 ## In plain words
 
-**What you can do now:** Browse a leaderboard of several hundred companies with up to 30 years of price history each, sort and filter that list by sector — including an honest "Unassigned" label for companies with no sector on file — switch a stock's chart between a recent view and its full history, keep a personal watchlist, and see an honest "not yet proven" evidence status on every score and past trading idea, with full reasoning auditable on the Evidence page.
+**What you can do now:** Browse a leaderboard of hundreds of companies with up to 30 years of price history each, sort and filter that list by sector — including an honest "Unassigned" label for companies with no sector on file — and switch a stock's chart between a recent view and its full history. Every score, evidence-ledger entry, and past trading idea carries an honest status (right now everything reads "not yet proven" while the system re-earns its results on the deeper history), you can see evidence tied to the current market regime, and you can browse the company list as it looked on any past date, including newer companies as they joined. If something goes wrong on a page, you now get a calm "try again" message instead of a blank screen.
 
-**What changed this time:** This round fixed the crash that happened when sorting the stock list by "Sector" (most of the newly-added companies have no sector on file, and clicking that column used to blank the whole screen, wiping out the navigation menu too). It also fixed a memory problem that could freeze the Data page shortly after a restart, confirmed that the deeper company-history timeline displays correctly, and added a safety net so any future unexpected error shows a calm "Something went wrong, try again" message instead of wiping out the whole app.
+**What changed this time:** The crash that used to wipe out the entire stock list when sorting by "Sector" is fixed — sorting and filtering by sector now works for every company, including the roughly 4-in-5 with no sector on file (they now show a plain "Unassigned" label instead of a blank cell or a crash). The Data page also no longer risks freezing or crashing the server right after a restart, and any future unexpected error now shows a calm "Something went wrong" message with a retry button instead of blanking the whole app.
 
-**What's next:** With this crash fixed and verified, the next round can focus on trying to honestly re-earn "Proven" status for some of the trading ideas that didn't survive the recent deeper-history retest, plus a few small polish items like widening long-history charts and re-running a couple of slower background checks.
+**What's next:** Next we'll clean up the Data page so it matches the larger company list by default and make its status legend easier to read, now that the crash is fixed and the platform is stable again.
 
 ## Headline
 
@@ -20,47 +20,46 @@ Stocks leaderboard no longer crashes when sorting by Sector
 ## Direction
 
 **Signal:** improving
-**Why:** This iteration browser-verified a fix for the exact `/stocks` Sector-sort crash that drove last iteration's REGRESSION verdict (J-01), and separately completed the browser verification of the broadened universe's membership timeline (J-12) — both previously broken or incomplete. Six independent artifacts this iteration (dev handoff, review PASS, QA PASS, canonical browser-QA PASS 23/24, ux-regression UX-REGRESSION-PASS, phase-closure CLOSURE-PASS) all corroborate zero new regressions and zero anti-goal violations. `journey-history.json` itself has not yet been updated by the goal-evaluator (it still shows J-01 as "regressed" from iter-18), so this signal reflects this iteration's own fresh verification evidence rather than a re-classified journey-history entry.
+**Why:** This iteration recovered J-01 (the `/stocks` Sector-sort crash) from regressed to passing and completed J-12's browser verification (partial to passing), cleanly closing out iteration 18's REGRESSION with a surgical, byte-identity-preserving fix. No new regressions or anti-goal violations occurred, and the five journeys held at "partial" (J-02, J-06–J-09) are correctly unchanged by the sanctioned data-basis reset rather than a fresh setback. With the crash fixed and the backend stable, the evaluator recommends resuming forward feature work on J-13 next.
 
 **Trend (last 5 iters):**
-- Newly passing this iter: J-01, J-12 (per this iteration's dev/QA/browser-QA/ux-regression/closure evidence — journey-history.json and eval.md have not yet been updated by the goal-evaluator for iteration 19)
-- Newly passing in last 5 iters total (iters 15-19): J-01, J-09, J-10, J-11, J-12
-- Regressions in last 5 iters: J-01 (iter-18) — now fixed and re-verified this iteration
+- Newly passing this iter: J-01, J-12
+- Newly passing in last 5 iters total: J-01, J-09, J-10, J-11, J-12
+- Regressions in last 5 iters: J-01 (iter-18)
 - Anti-goal violations in last 5 iters: none
 - Iters with no journey state change: 2 of last 5 (iter-16, iter-17)
 
-**Latest evaluator reasoning:** "The UNSANCTIONED half is a REGRESSION: I opened UT-21-fail-crash.png and confirmed the /stocks leaderboard crashes to a blank "Application error" (all nav wiped) on Sector-sort — a prior-passing interaction (live since iter-2) broken by THIS iteration's broadened pool returning sector:null for ~78% of rows (scoring.py:377) into the unguarded comparator stocks/page.tsx:93 (git diff on that file EMPTY — a data-contract regression, not a code change) with no error.tsx to contain it. Two independent gates concur (UX-REGRESSION-FAIL, CLOSURE-FAIL) while status.json/qa.md falsely reported "zero blockers / 18/18 pass / ready to ship" with the crash screenshot in their own cited evidence folder. Per decision-tree rule 1 (a passing journey now failing), verdict = REGRESSION." (goal-mcp-loop-iter-18)
+**Latest evaluator reasoning:** iter-19 cleanly closes the iter-18 REGRESSION: the `/stocks` Sector-sort crash on the ~78%-null-sector 30-year pool is fixed at its source (null-safe comparator + shared `sectorLabel` helper + `string|null` contract type) and contained (new `error.tsx`/`global-error.tsx`), and the coupled `/api/data` prefill OOM is fixed by a streamed column-projected `Bar` load — both browser-verified end-to-end. J-01 recovers regressed->passing and J-12 goes partial->passing; J-03/J-04/J-05/J-10/J-11 re-verified on fresh pixels; both ledgers stay all-FAIL and the certification engine is byte-unchanged. Not GOAL_ACHIEVED — J-02/J-06/J-07/J-08/J-09 remain sanctioned-partial and J-13/J-14/J-15/J-16 are unbuilt/unknown — so the loop resumes normal forward progress.
 
 ## What was done
 
-- Fixed the `/stocks` Sector-sort crash: added a shared null-safe `sectorLabel`/`compareSectors` helper so the ~78% of companies with no mapped GICS sector show "Unassigned" (in the sort, filter dropdown, and table cell) instead of throwing.
-- Fixed the backend `/api/data` OOM: rewrote `_BarCache.prefill()` from a whole-table `.all()` load (~6.8 GB peak) to a streamed, column-projected query (~1.09 GB peak; 10.5s single cold / 18.5s at 6-concurrent), plus a `_prefilled` guard closing a nested double-scan found empirically.
-- Added crash containment: new `error.tsx` (route-level) and `global-error.tsx` (root-level) boundaries so an uncaught client exception shows a contained card with the sidebar nav intact instead of a blank app.
-- Corrected the `StockRow.sector` TypeScript contract from `string` to `string | null` and re-validated every consumer (`tsc --noEmit`: 0 errors).
-- Ran the canonical browser-QA lane to completion: 23/24 PASS (1 P3 SKIP with a documented static-verification substitute) — closing the exact lane that crashed mid-run in iteration 18.
-- Cleared review (PASS), QA (PASS), ux-regression (UX-REGRESSION-PASS), audit (PASS_WITH_GAPS, no fixes needed), and phase-closure (CLOSURE-PASS).
-- Recorded the item-A before/after performance measurement in a new `reports/perf-budgets.md`.
-- Verified 2 target journeys pass browser QA: J-01 (Sector-sort, UT-01/02/03) and J-12 (membership timeline, UT-15).
+- Fixed the `/stocks` Sector-sort crash: a null-safe `compareSectors`/`sectorLabel` helper replaced the direct `.localeCompare` call; unmapped companies (~78% of the pool) now show "Unassigned" instead of crashing or leaving a blank cell.
+- Fixed the `/api/data` bar-prefill OOM: rewrote `prefill()` to a streamed, column-projected `Bar` load plus a nested double-scan guard, cutting peak memory roughly sixfold and completing cold loads in 10-18s instead of hanging.
+- Added crash containment: new `error.tsx` + `global-error.tsx` render a contained "Something went wrong" card with nav preserved instead of a blank app on any future uncaught error.
+- Widened `StockRow.sector` to `string | null` and re-validated every consumer (`/stocks`, `/stocks/{ticker}`, `/scanner-runs/{runId}`) via `tsc --noEmit` (0 errors).
+- Recorded the before/after memory and timing measurement in `reports/perf-budgets.md` (single cold request 10.5s/~1.09GB; 6-concurrent 18.5s/~1.10GB, both well under budget).
+- Verified 2 target journey(s) (J-01, J-12) pass browser QA (23/24 overall, one documented P3 skip), and re-confirmed J-03/J-04/J-05/J-10/J-11 on fresh pixels with no regressions.
 
 ## What's left
 
-- J-02, J-06, J-07, J-08, J-09 remain "partial" by design — their previously-certified trading edges didn't survive re-certification on the deeper 30-year history (a sanctioned ledger reset, not a regression); a new pre-registered claim is needed to re-light any of them.
-- J-13 (Data Manager 548-symbol legend) and J-14 (deep index/macro display) remain unknown — explicitly deferred, out of scope this iteration.
-- Two seed-heavy backend test files (`test_scanner.py`, `test_bars.py`) were not run to completion this session; low-risk per dev/audit reasoning, recommended re-run when a multi-minute budget is available.
-- The `/stocks/{ticker}` Full-history chart's x-axis still doesn't visually extend to a deep-history name's true first bar (F1) — a pre-acknowledged, non-blocking carry item.
-- `perf-budgets.md` reports resident memory (RSS) rather than virtual memory (VSZ), the actual basis for the `ulimit -v` cap — a measurement-precision nicety to add later (B2).
-- `return-attribution.tsx` still renders an unmapped sector as a blank cell rather than the new "Unassigned" label used elsewhere (F3) — pre-existing, non-blocking.
-- The goal-evaluator has not yet run for this iteration: `journey-history.json` still shows J-01 as "regressed" and J-12 as "partial" from iteration 18, pending formal re-classification against this iteration's dev/review/QA/browser-QA/ux-regression/audit/closure evidence (all of which independently confirm both are now fixed).
+- Journey J-02 (drill into the proof behind a score) stays partial — no "Proven" claim exists to drill into; both ledgers remain all-FAIL from the sanctioned 30-year data-basis reset, not a regression.
+- Journeys J-06/J-07/J-08/J-09 (the previously-certified trading edges) stay partial — none of the retired edges survived re-certification on the deeper history; re-earning them is separate, later evidence work.
+- Journey J-13 (Data Manager coherence with the 548-company default + a clearer availability legend) is unknown — the evaluator's primary next target.
+- Journey J-14 (deep index/macro overlays with vendor labels) is unknown — the underlying data landed in iteration 17; the rendering/labeling steps are still open.
+- Journeys J-15/J-16 ("fast platform" speed + honest job progress) are unknown — this iteration's OOM fix is a down payment only; the measurement harness and remaining optimizations are still open.
+- Two backend test files (`test_scanner.py`, `test_bars.py`) were not run to completion this session (slow real-seed-load fixtures); judged low-risk but recommended for independent re-confirmation.
+- Non-blocking carry-forwards from the audit: the Full-history chart x-axis doesn't visually extend to a deep-history name's true first bar (F1); `perf-budgets.md` samples resident memory rather than the virtual-memory figure the cap actually enforces (B2); `return-attribution.tsx` still shows a blank cell instead of "Unassigned" for unmapped sectors (F3).
+- `status.json`'s `note`/`browser_checks_run`/`next_action` fields are stale relative to the pipeline's actual completed state (documentation hygiene only, does not affect the verdict).
 
 ## Next step
 
-No blocking issues remain — the phase-closure-auditor returned CLOSURE-PASS and the audit's own recommendation is to proceed. Non-blocking carry-forward items for a future iteration: re-run `test_scanner.py`/`test_bars.py` for independent confirmation (low-risk, already gated by other tests), widen the Full-history chart's x-domain for deep-history names (F1), add a VmSize sample to `perf-budgets.md` for a precise cap-distance figure (B2), and reconcile the `return-attribution.tsx` blank-vs-"Unassigned" terminology inconsistency (F3). Since no `eval.md` exists yet for this iteration, the goal-evaluator should now run to confirm J-01 and J-12 return to "passing" given this iteration's browser-verified fixes, and assess whether the remaining partial journeys (J-02, J-06–J-09) or unknown journeys (J-13, J-14) change the path toward GOAL_ACHIEVED.
+iter-20 (**full**) — resume forward feature work now the regression is closed and the backend is stable. Primary target per goal.md sequencing: **J-13** (Data Manager coherence with the 548 default — point Fetch at the 548 pool, remove the "Expand universe" job option + dead code, split the availability legend so cell-fill=price-completeness vs indicator=scored-snapshot stop colliding). Equally ready alternatives: **J-14** (deep `_SPX/_NDX/_DJI` + macro overlays with per-series vendor labels, registering the vendor-label Data Contract value) or the **fast-platform mechanical backend pass** (items B+C+D+G+H toward J-15/J-16). Full depth because each ships a new user-facing surface and/or a byte-identity-gated data-path change needing the audit + ux-regression + closure guards (which just proved their worth catching iter-18). Non-blocking carry-forwards (do NOT reopen iter-19): F1 Full-history chart x-domain widening; B1 genuine cold-restart `/api/data` re-repro; B2 sample VmSize (not RSS) in perf-budgets.md; T1 re-run `tests/test_scanner.py`+`tests/test_bars.py` when a seed-load budget allows; F3 `return-attribution.tsx` null-sector "Unassigned" consistency.
 
 ## Quick verify
 
 From `reports/phase-goal-mcp-loop-iter-19-what-to-click.md`:
 
-1. Open http://localhost:3255/stocks in your browser
+1. Open `http://localhost:3255/stocks` in your browser
 2. Click the word "Sector" in the column header row of the table
 3. Click "Sector" again
 4. Above the table, click the dropdown labeled "Sector" (it currently reads "All sectors") and select "Unassigned"
@@ -83,4 +82,5 @@ From `reports/phase-goal-mcp-loop-iter-19-what-to-click.md`:
 | QA | PASS | reports/qa/goal-mcp-loop-iter-19-qa.md |
 | Audit | PASS_WITH_GAPS | docs/handoffs/goal-mcp-loop-iter-19-audit.md |
 | Closure | CLOSURE-PASS | reports/phase-goal-mcp-loop-iter-19-closure-verdict.md |
+| Goal evaluation | CONTINUE | runs/goal-session-mcp-loop/iter-19/eval.md |
 | Journey history | — | runs/goal-session-mcp-loop/state/journey-history.json |
