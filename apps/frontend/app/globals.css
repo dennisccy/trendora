@@ -47,6 +47,26 @@
      unambiguous indicator regardless of which density bucket it rings. */
   --snapshot: #a78bfa;
 
+  /* J-14 (iter-22) — categorical line-color EXTENSION for multi-line index/benchmark charts
+     (index-regime-chart.tsx, phase-cross-view-chart.tsx). Those charts cycle a fixed color array by
+     `index % length`; before this iteration it held 5 entries (--accent/--pos/--warn/--neg/
+     --text-muted) for the 5 configured ETF lines. Adding the J-14 deep index/macro benchmarks
+     (^SPX/^NDX/^DJI/^VIX/^TNX) can render up to 10 lines at once, which would wrap the old 5-token
+     array and reuse a color (e.g. line 6 = line 1's exact `--accent` again) — an indistinguishable
+     collision, not just a close shade. These 4 tokens (used as slots 7-10, after --snapshot as slot 6)
+     were derived with the dataviz-skill categorical-palette method: OKLCH hue-gap search across the
+     existing 6 slots' hue wheel, then Machado-2009 CVD-separation validated with
+     scripts/validate_palette.js --mode dark --surface #111722 --pairs all (chart lines can sit next to
+     each other at any date, so every pair is checked, not just neighbors) — worst-case protan/deutan
+     ΔE 12.5 across the full 10-slot set (target 12.0; the pre-existing 6 tokens' own lightness/chroma
+     characteristics are unchanged, carried forward as-is). Every line ALSO carries a text legend/
+     tooltip label (never color-alone identity), satisfying the method's secondary-encoding requirement
+     at this slot count. */
+  --chart-orange: #fb8d3f;
+  --chart-lime: #4bcd51;
+  --chart-blue: #55b8e2;
+  --chart-pink: #f47cd5;
+
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
 }

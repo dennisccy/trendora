@@ -956,6 +956,21 @@ def compute_availability(session: Session, config: Optional[Config] = None) -> d
 #   * Removal FABRICATES NOTHING — it only deletes; it never recomputes or invents a replacement value
 #     (no scoring/scanner recompute is reachable from this path).
 # --------------------------------------------------------------------------------------------------
+def _read_seed_meta_rows(seed_dir: Optional[str | Path] = None) -> list[dict]:
+    """The raw `symbols[]` rows from the committed-seed manifest (`<seed_dir>/meta.json`) — the ONE parse
+    path `load_seed_windows` (J-39) and `load_seed_meta` (J-14) both build their views from, so there is
+    never a second `json.loads(meta.json)` call anywhere. An absent/unreadable manifest yields `[]`, never
+    a crash (each caller degrades honestly from there)."""
+    path = Path(seed_dir or DEFAULT_SEED_DIR) / "meta.json"
+    if not path.exists():
+        return []
+    try:
+        meta = json.loads(path.read_text())
+    except (ValueError, OSError):
+        return []
+    return meta.get("symbols") or []
+
+
 def load_seed_windows(seed_dir: Optional[str | Path] = None) -> dict[str, tuple[date_cls, date_cls]]:
     """Read the committed-seed manifest (`<seed_dir>/meta.json`) into the per-symbol seed window map
     `{symbol: (first_date, last_date)}` — the authoritative seed-vs-user-added boundary J-39 reads. A
@@ -963,21 +978,38 @@ def load_seed_windows(seed_dir: Optional[str | Path] = None) -> dict[str, tuple[
     (or a symbol absent from the manifest) is USER-ADDED (removable). An absent/unreadable manifest yields
     an empty map (so every bar is treated user-added — the safe default for a host with no committed seed
     manifest), never a crash."""
-    path = Path(seed_dir or DEFAULT_SEED_DIR) / "meta.json"
-    if not path.exists():
-        return {}
-    try:
-        meta = json.loads(path.read_text())
-    except (ValueError, OSError):
-        return {}
     windows: dict[str, tuple[date_cls, date_cls]] = {}
-    for row in meta.get("symbols") or []:
+    for row in _read_seed_meta_rows(seed_dir):
         symbol = row.get("symbol")
         first = row.get("first")
         last = row.get("last")
         if symbol and first and last:
             windows[symbol] = (date_cls.fromisoformat(first), date_cls.fromisoformat(last))
     return windows
+
+
+def load_seed_meta(seed_dir: Optional[str | Path] = None) -> dict[str, dict]:
+    """iter-22 (J-14) — the SIBLING seed-manifest reader `indexes.compute_index_series` uses for the
+    per-series data-VENDOR label + honest first-bar disclosure. Shares `load_seed_windows`'s exact parse
+    (`_read_seed_meta_rows` — never a second `json.loads(meta.json)` call) but returns a per-symbol dict
+    `{symbol: {"first": date|None, "last": date|None, "vendor": str|None}}`. `vendor` is the raw manifest
+    key (e.g. `"stooq"`/`"yahoo"`/`"fred-macro-proxy"`) — display-label mapping is the presentation
+    layer's job (`indexes._vendor_label`), not this reader's. A symbol with no vendor record in the
+    manifest (e.g. the SPY/QQQ/IWM/RSP/DIA ETF lines) yields `vendor: None` — never a fabricated vendor.
+    An absent/unreadable manifest yields an empty map, never a crash (mirrors `load_seed_windows`)."""
+    entries: dict[str, dict] = {}
+    for row in _read_seed_meta_rows(seed_dir):
+        symbol = row.get("symbol")
+        if not symbol:
+            continue
+        first = row.get("first")
+        last = row.get("last")
+        entries[symbol] = {
+            "first": date_cls.fromisoformat(first) if first else None,
+            "last": date_cls.fromisoformat(last) if last else None,
+            "vendor": row.get("vendor"),
+        }
+    return entries
 
 
 def is_seed_bar(

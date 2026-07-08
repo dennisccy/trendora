@@ -455,10 +455,20 @@ export interface IndexSeriesPoint {
   pct: number; // normalized % vs the range-start close (first point ~0)
 }
 
-/** One config-listed index ETF line: its `symbol`, legend `name`, and the rebased % `points`. */
+/** One config-listed index ETF line: its `symbol`, legend `name`, and the rebased % `points`.
+ *
+ *  iter-22 (J-14) additive fields, sourced from the committed-seed manifest (never a UI recompute):
+ *  `vendor` is the honest data vendor ("Stooq" | "Yahoo" | "FRED-macro proxy"), `null` when the
+ *  manifest has no vendor record for this symbol (e.g. the SPY/QQQ/IWM/RSP/DIA ETF lines) — never a
+ *  fabricated vendor. `first` is the symbol's REAL first bar date (yyyy-MM-dd) from the manifest,
+ *  independent of the selected range — NOT `points[0].date`, which is range-clamped. `first` is
+ *  `null` (rendered "—") for the SAME null-vendor symbols the manifest has no record for, matching the
+ *  backend contract (`compute_index_series` emits `first: null` when there is no manifest row). */
 export interface IndexSeries {
   symbol: string;
   name: string;
+  vendor: string | null;
+  first: string | null;
   points: IndexSeriesPoint[];
 }
 

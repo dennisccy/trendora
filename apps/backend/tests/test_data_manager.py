@@ -44,6 +44,7 @@ from app.engine.data_manager import (
     get_job,
     get_provider_run,
     is_seed_bar,
+    load_seed_meta,
     load_seed_windows,
     preview_removal,
     recent_runs,
@@ -1908,6 +1909,49 @@ def test_load_seed_windows_and_is_seed_bar(removal_engine):
     assert is_seed_bar("AAA", date(2024, 1, 13), windows) is False
     # a symbol not in the manifest at all → user-added everywhere
     assert is_seed_bar("ZZZ", date(2024, 1, 5), windows) is False
+
+
+def _write_seed_meta_with_vendor(seed_dir: Path, rows: list[dict]) -> None:
+    """Like `_write_seed_meta` but allows an optional per-row `vendor` key (J-14's `load_seed_meta`
+    sibling reader) -- a row with NO `vendor` key exercises the honest `vendor: None` path, exactly like
+    the real SPY/QQQ/IWM/RSP/DIA manifest entries."""
+    seed_dir.mkdir(parents=True, exist_ok=True)
+    meta = {"source": "test seed", "symbols_ok": len(rows), "symbols_failed": 0, "symbols": rows}
+    (seed_dir / "meta.json").write_text(json.dumps(meta) + "\n")
+
+
+def test_load_seed_meta_exposes_vendor_and_first_last_sharing_one_parse(tmp_path):
+    """J-14: `load_seed_meta` is the SIBLING reader `indexes.compute_index_series` uses for the vendor
+    label + honest first-bar disclosure -- it shares `load_seed_windows`'s `meta.json` parse (no second
+    `json.loads` call anywhere) but returns per-symbol {first, last, vendor}. A symbol with NO vendor
+    record (an ETF like SPY) yields `vendor: None` -- never a fabricated vendor. `load_seed_windows`
+    itself stays UNCHANGED (same shape, same values) -- this is an ADDITIVE sibling, not a modification."""
+    seed_dir = tmp_path / "seed"
+    _write_seed_meta_with_vendor(seed_dir, [
+        {"symbol": "SPY", "first": "2005-02-25", "last": "2026-07-01", "bars": 5369},
+        {"symbol": "^SPX", "first": "1996-01-02", "last": "2026-07-01", "bars": 7674, "vendor": "stooq"},
+        {"symbol": "^VIX", "first": "1996-01-02", "last": "2026-07-01", "bars": 7675, "vendor": "yahoo"},
+        {"symbol": "^TNX", "first": "2021-01-04", "last": "2026-05-28", "bars": 1357, "vendor": "fred-macro-proxy"},
+    ])
+
+    meta = load_seed_meta(seed_dir)
+    assert meta["SPY"] == {"first": date(2005, 2, 25), "last": date(2026, 7, 1), "vendor": None}
+    assert meta["^SPX"] == {"first": date(1996, 1, 2), "last": date(2026, 7, 1), "vendor": "stooq"}
+    assert meta["^VIX"]["vendor"] == "yahoo"
+    assert meta["^TNX"]["vendor"] == "fred-macro-proxy"
+    assert "ZZZ" not in meta  # an unlisted symbol is simply absent -- never a fabricated entry
+
+    # the PRE-EXISTING J-39 reader is untouched -- same shape, same values, sharing the same parse.
+    windows = load_seed_windows(seed_dir)
+    assert windows["SPY"] == (date(2005, 2, 25), date(2026, 7, 1))
+    assert windows["^SPX"] == (date(1996, 1, 2), date(2026, 7, 1))
+
+
+def test_load_seed_meta_missing_manifest_degrades_honestly(tmp_path):
+    """An absent manifest yields an EMPTY map (never a crash) -- the same honest-degrade contract
+    `load_seed_windows` already has."""
+    seed_dir = tmp_path / "no-such-seed"
+    assert load_seed_meta(seed_dir) == {}
 
 
 def test_preview_removal_deletes_nothing(removal_engine):

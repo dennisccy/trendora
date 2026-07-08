@@ -21,6 +21,7 @@ import {
 import { useAsOf } from "@/components/asof-provider";
 import { AvailabilityHeatmap } from "@/components/availability-heatmap";
 import { EmptyState } from "@/components/empty-state";
+import { IndexVendorPanel } from "@/components/index-vendor-panel";
 import { PageHeading } from "@/components/page-heading";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -466,6 +467,11 @@ export default function DataManagerPage() {
               seed coverage, honest blocked-NA for a walled/uncommitted series, and the per-leg
               config-default-OFF flags. Read-only descriptive metadata; never a key value. */}
           <MacroFeedPanel macro={state.data.macro} />
+
+          {/* iter-22 (J-14): the index/benchmark/macro vendor-disclosure panel — reads the SAME
+              GET /api/indexes payload the Dashboard major-indexes chart reads (an additional reader,
+              not a new endpoint or a meta.json re-parse). Independent loading/error/empty state. */}
+          <IndexVendorPanel />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <JobForm

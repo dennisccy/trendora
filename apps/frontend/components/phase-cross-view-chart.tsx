@@ -34,10 +34,18 @@ import type { IndexSeries, MarketPhaseTimelinePoint, RegimePoint } from "@/lib/a
  * It RE-FORMATS server values only — NO client-side return / severity / probability math. The phase bands
  * read the served phase label per date via the shared `lib/phase` mapping (the SAME the Market-Phase card
  * timeline uses — coherence). Post-as-of points render display-only behind the as-of marker (J-49).
+ *
+ * iter-22 (J-14): this pane plots the SAME `series` as the J-44 card, so its palette was extended
+ * identically (5 -> 10 slots; see the `--chart-*` token comment in globals.css) to avoid the same
+ * color-collision the deep index/macro benchmarks would otherwise cause once more than 5 lines render
+ * at once. The legend + tooltip also show each series' honest data vendor (omitted when null).
  */
 
 // Palette tokens for the index lines, cycled (one source: globals.css vars). Same order as the J-44 card.
-const LINE_PALETTE_VARS = ["--accent", "--pos", "--warn", "--neg", "--text-muted"] as const;
+const LINE_PALETTE_VARS = [
+  "--accent", "--pos", "--warn", "--neg", "--text-muted",
+  "--snapshot", "--chart-orange", "--chart-lime", "--chart-blue", "--chart-pink",
+] as const;
 
 function lineColorVar(index: number): string {
   return LINE_PALETTE_VARS[index % LINE_PALETTE_VARS.length];
@@ -59,7 +67,7 @@ const VELOCITY_SCALE_ID = "phase-velocity";
 
 interface CrossTooltip {
   date: string;
-  values: { symbol: string; pct: number; color: string }[];
+  values: { symbol: string; pct: number; color: string; vendor: string | null }[];
   phase: string | null;
   severity: number | null;
   pBear: number | null;
@@ -141,7 +149,18 @@ export function PhaseCrossViewChart({
           horzLines: { color: token("--border") },
         },
         rightPriceScale: { borderColor: token("--border-strong") },
-        timeScale: { borderColor: token("--border-strong") },
+        timeScale: {
+          borderColor: token("--border-strong"),
+          // iter-22 (J-14 audit fix): lightweight-charts 5.2.0 enforces a default minBarSpacing floor of
+          // 0.5 px/bar. With the ~7.7k-bar 30-year deep basis (^SPX back to 1996-01-02) in a ~1,000 px
+          // pane, `fitContent()` below hits that floor and can only fit the most-recent ~2k bars (~8 yr) —
+          // silently hiding the committed 1996 ^SPX/^NDX/^DJI history this iteration exists to surface
+          // (DoD (a): the deep benchmark line must extend before SPY's 2005 start on the default view).
+          // Lowering the floor lets `fitContent()` fit the FULL window by default with no manual zoom/pan.
+          // 0.02 px/bar fits ~7.7k bars in a pane as narrow as ~154 px, covering every card width down to
+          // mobile (~328 px pane → 0.043 px/bar needed) with headroom for a still-deeper future basis.
+          minBarSpacing: 0.02,
+        },
         crosshair: { mode: lwc.CrosshairMode.Normal },
         localization: {
           priceFormatter: (price: number) => `${price.toFixed(1)}%`,
@@ -279,7 +298,12 @@ export function PhaseCrossViewChart({
         series.forEach((s, index) => {
           const data = param.seriesData.get(bottomLineSeries[index]) as { value?: number } | undefined;
           if (data && typeof data.value === "number") {
-            values.push({ symbol: s.symbol, pct: data.value, color: token(lineColorVar(index)) });
+            values.push({
+              symbol: s.symbol,
+              pct: data.value,
+              color: token(lineColorVar(index)),
+              vendor: s.vendor,
+            });
           }
         });
         const pt = phaseByDate.get(date) ?? null;
@@ -342,6 +366,7 @@ function CrossTooltipBox({ tooltip }: { tooltip: CrossTooltip }) {
             <span className="flex items-center gap-1.5 text-text-muted">
               <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: v.color }} aria-hidden />
               {v.symbol}
+              {v.vendor ? <span className="text-text-faint">· {v.vendor}</span> : null}
             </span>
             <span className="num text-text">{v.pct >= 0 ? "+" : ""}{v.pct.toFixed(2)}%</span>
           </li>
@@ -422,6 +447,7 @@ function CrossLegend({
               aria-hidden
             />
             {s.name}
+            {s.vendor ? <span className="text-text-faint">({s.vendor})</span> : null}
           </span>
         ))}
         {hasRegimeBands

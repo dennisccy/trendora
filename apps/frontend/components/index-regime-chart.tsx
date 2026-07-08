@@ -33,10 +33,20 @@ import type { IndexSeries, RegimePoint } from "@/lib/api";
  *
  * Line colors come from the DESIGN SYSTEM palette tokens (globals.css), cycled per series; the legend
  * mirrors that order so a line and its legend swatch always match.
+ *
+ * iter-22 (J-14): the deep index/macro benchmarks widen `index_chart.symbols` from 5 to up to 10
+ * simultaneously-rendered lines, so the palette below was extended from 5 to 10 slots (see the
+ * `--chart-*` token comment in globals.css for the derivation) — the first 5 slots are UNCHANGED
+ * (every existing line keeps its exact color). The legend + tooltip also show each series' honest data
+ * VENDOR (Stooq/Yahoo/FRED-macro proxy) next to its name, read verbatim from the server (never a UI
+ * recompute) — omitted entirely when `vendor` is null (the SPY/QQQ/IWM/RSP/DIA ETF lines).
  */
 
 // Palette tokens for the index lines, cycled (one source: globals.css vars).
-const LINE_PALETTE_VARS = ["--accent", "--pos", "--warn", "--neg", "--text-muted"] as const;
+const LINE_PALETTE_VARS = [
+  "--accent", "--pos", "--warn", "--neg", "--text-muted",
+  "--snapshot", "--chart-orange", "--chart-lime", "--chart-blue", "--chart-pink",
+] as const;
 
 function lineColorVar(index: number): string {
   return LINE_PALETTE_VARS[index % LINE_PALETTE_VARS.length];
@@ -52,7 +62,7 @@ function isoFromTime(time: Time): string {
 
 interface TooltipState {
   date: string; // ISO yyyy-MM-dd
-  values: { symbol: string; pct: number; color: string }[];
+  values: { symbol: string; pct: number; color: string; vendor: string | null }[];
   regimeLabel: string | null;
   regimeScore: number | null;
 }
@@ -179,6 +189,7 @@ export function IndexRegimeChart({
               symbol: s.symbol,
               pct: data.value,
               color: token(lineColorVar(index)),
+              vendor: s.vendor,
             });
           }
         });
@@ -228,6 +239,7 @@ function IndexTooltip({ tooltip }: { tooltip: TooltipState }) {
             <span className="flex items-center gap-1.5 text-text-muted">
               <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: v.color }} aria-hidden />
               {v.symbol}
+              {v.vendor ? <span className="text-text-faint">· {v.vendor}</span> : null}
             </span>
             <span className="num text-text">{v.pct >= 0 ? "+" : ""}{v.pct.toFixed(2)}%</span>
           </li>
@@ -274,6 +286,7 @@ function IndexLegend({
             aria-hidden
           />
           {s.name}
+          {s.vendor ? <span className="text-text-faint">({s.vendor})</span> : null}
         </span>
       ))}
       {hasBands

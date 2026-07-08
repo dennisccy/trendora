@@ -24,13 +24,32 @@ explicit 422 — never a silent fallback to a fabricated range).
 from __future__ import annotations
 
 from datetime import date as date_cls, timedelta
+from pathlib import Path
 from typing import Optional
 
 from sqlmodel import Session
 
 from app.config import Config, IndexRangePreset, get_config
+from app.engine.data_manager import load_seed_meta
 from app.engine.prices import bars_asof, bars_through_latest
 from app.engine.scanner import resolve_as_of_date
+
+# iter-22 (J-14) — the honest display label for each committed-seed manifest vendor key (`data/seed/
+# meta.json` `symbols[].vendor`). A key with no mapping falls back to the raw key itself (never a crash,
+# never a fabricated label) — every currently-committed key is mapped below.
+_VENDOR_LABELS: dict[str, str] = {
+    "stooq": "Stooq",
+    "yahoo": "Yahoo",
+    "fred-macro-proxy": "FRED-macro proxy",
+}
+
+
+def _vendor_label(raw: Optional[str]) -> Optional[str]:
+    """The honest display label for a `meta.json` vendor key, or `None` when the manifest has no vendor
+    record for this symbol (e.g. the SPY/QQQ/IWM/RSP/DIA ETF lines) — never a fabricated vendor."""
+    if not raw:
+        return None
+    return _VENDOR_LABELS.get(raw, raw)
 
 
 class UnknownRangeError(Exception):
@@ -68,6 +87,7 @@ def compute_index_series(
     range_key: Optional[str] = None,
     config: Optional[Config] = None,
     full: bool = False,
+    seed_dir: Optional[str | Path] = None,
 ) -> dict:
     """Normalized-% display series for the config-listed index ETFs over the selected range preset.
 
@@ -78,7 +98,7 @@ def compute_index_series(
           "range": {"key": "...", "label": "...", "days": <int|null>, "start": "yyyy-MM-dd"|null},
           "ranges": [{"key": "...", "label": "..."}, ...],   # all presets, for the switcher (from config)
           "series": [                       # one line per CONFIGURED symbol THAT HAS bars in the range
-            {"symbol": "SPY", "name": "S&P 500 (SPY)",
+            {"symbol": "SPY", "name": "S&P 500 (SPY)", "vendor": "Stooq"|None, "first": "yyyy-MM-dd",
              "points": [{"date": "yyyy-MM-dd", "pct": <float, rebased to range start>}, ...]},
             ...
           ],
@@ -88,6 +108,15 @@ def compute_index_series(
     point is exactly 0.0% and all lines share one scale. A configured symbol with no bar in the range is
     omitted entirely (no `series` entry → no legend). Raises `AsOfError` for an invalid as-of and
     `UnknownRangeError` for an unknown range key — never a fabricated row/range.
+
+    iter-22 (J-14) — `vendor` and `first` are ADDITIVE per-series fields sourced from the committed-seed
+    manifest (`data_manager.load_seed_meta`, the SAME `meta.json` parse `load_seed_windows` uses — no
+    second read path). `vendor` is the honest display label ("Stooq"/"Yahoo"/"FRED-macro proxy") or
+    `None` when the manifest has no vendor record for the symbol (e.g. the SPY/QQQ/IWM/RSP/DIA ETF
+    lines) — never a fabricated vendor. `first` is the symbol's REAL first bar date from the manifest,
+    independent of the selected range/`full` — deliberately NOT `points[0]["date"]`, which is
+    range-clamped (e.g. ~3 months ago on a "3M" preset) and would silently misrepresent how far back the
+    series' real history goes. `seed_dir` is a test seam (defaults to the committed seed dir).
 
     `full` (J-49 — clamp-optional, dashboard card only): when `False` (the default — every existing
     consumer, incl. the stock-detail-fed path) bars are read via `bars_asof` (date <= resolved), so NO
@@ -103,6 +132,7 @@ def compute_index_series(
     resolved = resolve_as_of_date(session, as_of, cfg)
     preset = _resolve_preset(cfg, range_key)
     start = _range_start(resolved, preset)
+    seed_meta = load_seed_meta(seed_dir)
 
     series: list[dict] = []
     for entry in cfg.index_chart.symbols:
@@ -123,7 +153,15 @@ def compute_index_series(
             {"date": bar.date.isoformat(), "pct": round((bar.close / base - 1.0) * 100.0, 4)}
             for bar in bars
         ]
-        series.append({"symbol": entry.symbol, "name": entry.name, "points": points})
+        meta_row = seed_meta.get(entry.symbol) or {}
+        first_date = meta_row.get("first")
+        series.append({
+            "symbol": entry.symbol,
+            "name": entry.name,
+            "vendor": _vendor_label(meta_row.get("vendor")),
+            "first": first_date.isoformat() if first_date else None,
+            "points": points,
+        })
 
     return {
         "asof_date": resolved.isoformat(),

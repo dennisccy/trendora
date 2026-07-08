@@ -57,6 +57,22 @@ def test_api_indexes_unknown_range_is_422(loaded_engine):
     assert resp.status_code == 422
 
 
+def test_api_indexes_includes_vendor_and_first_for_deep_series(loaded_engine):
+    """J-14: on the real committed seed, the deep Stooq equity-index benchmark `^SPX` is configured
+    (`index_chart.symbols`) and loaded -- its served `vendor`/`first` byte-match `meta.json`. The
+    pre-existing SPY ETF line carries the additive keys too, honestly `vendor: None` (no manifest
+    vendor record for it)."""
+    with TestClient(main.app) as client:
+        resp = client.get("/api/indexes")
+    assert resp.status_code == 200
+    series = {s["symbol"]: s for s in resp.json()["series"]}
+    assert "^SPX" in series
+    assert series["^SPX"]["vendor"] == "Stooq"
+    assert series["^SPX"]["first"] == "1996-01-02"
+    assert "vendor" in series["SPY"] and "first" in series["SPY"]
+    assert series["SPY"]["vendor"] is None
+
+
 def test_api_indexes_all_range_first_point_is_zero_and_bounded_to_asof(loaded_engine):
     cfg = load_config()
     with Session(loaded_engine) as session:

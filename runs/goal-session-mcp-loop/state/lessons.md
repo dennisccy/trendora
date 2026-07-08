@@ -172,3 +172,26 @@ blanket-SKIP failure mode; an empty evidence dir over a real live stack is the a
 test-plan verbatim; any journey whose surface depends on an environment/seed-data precondition
 (`universe.json`, committed screen records) that gates content behind an honesty check; and any
 browser-qa dispatch where the precondition probe may race service startup.
+
+## iter-22 — 2026-07-08T18:20:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** An in-pipeline audit-FAIL -> dev-fix cycle re-runs review/QA/audit but does NOT
+automatically re-invoke the canonical `browser-qa-agent` or the `ux-regression-reviewer`.
+When the fix touches the actual rendered UI (here: `minBarSpacing: 0.02` on
+`phase-cross-view-chart.tsx` to surface the deep 1996 chart window — the exact defect
+UT-03/ux-regression measured), both of those gates' reports-of-record stay frozen at their
+pre-fix FAIL, and phase-closure correctly FAILs on the stale contradiction (`ui-test-results.md`
+= FAIL, `ux-regression.md` = UX-REGRESSION-FAIL) even though review/QA/audit all re-PASS and the
+fix is genuinely correct (verified here by QA TC-01 + auditor pixel pre/post compare + my own read
+of TC-01-chart-area.png showing lines rebased to ~0% at the 1996 far-left). The QA agent's own
+TC-* retest is NOT a substitute for the DoD-named `browser-qa-agent` lane. Result: the target
+journey advances to `partial`, not `passing`, and the next iter is a verification-only re-run —
+the recurring iter-13/iter-20 tax. Corollary for the DEVELOPER doing an audit-fail fix pass on a
+rendered surface: request a fresh canonical browser-qa + ux-regression re-run as part of the same
+fix pass, not just review/QA/audit, or closure will bounce it.
+**Applies to:** any iter where an audit/review FAIL is remediated by a dev fix pass that changes a
+user-visible rendered surface (chart config, layout, a component's visible output) — the fix pass
+must regenerate the `browser-qa-agent` `ui-test-results.md` and the `ux-regression.md` against the
+fixed build before closure can pass; a `qa.md` TC-* retest does not satisfy the "pass via
+browser-qa-agent" DoD.

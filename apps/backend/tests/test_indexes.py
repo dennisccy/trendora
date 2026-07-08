@@ -11,7 +11,9 @@ Covers the anti-goal-bearing behaviors of `app.engine.indexes.compute_index_seri
 """
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
+from pathlib import Path
 
 import pytest
 import yaml
@@ -227,6 +229,14 @@ def _engine_with_bars():
     engine = make_engine("sqlite:///:memory:")
     create_db_and_tables(engine)
     return engine
+
+
+def _write_meta(seed_dir: Path, rows: list[dict]) -> None:
+    """Write a minimal committed-seed manifest (`meta.json`) for the J-14 vendor/first tests -- each row
+    is `{"symbol", "first", "last", ["vendor"]}`; a row with NO `vendor` key exercises the honest
+    `vendor: None` (no fabricated vendor) path, exactly like the real SPY/QQQ/IWM/RSP/DIA entries."""
+    seed_dir.mkdir(parents=True, exist_ok=True)
+    (seed_dir / "meta.json").write_text(json.dumps({"symbols": rows}) + "\n")
 
 
 def test_rebase_at_range_start_and_hand_computed_series(tmp_path):
@@ -512,3 +522,83 @@ def test_default_range_non_preset_value_still_rejected(tmp_path):
 
     with pytest.raises(ConfigError):
         _cfg_with_default_range(tmp_path, "definitely-not-a-preset")
+
+
+# --- J-14: per-series vendor label + honest first-bar disclosure (deep index/macro context) ---------
+# `compute_index_series` attaches two ADDITIVE fields to each series entry: `vendor` (the display label
+# read from the committed-seed manifest, `data_manager.load_seed_meta` -- "stooq"/"yahoo"/
+# "fred-macro-proxy" -> "Stooq"/"Yahoo"/"FRED-macro proxy", `None` when the manifest has no vendor record)
+# and `first` (the symbol's REAL first bar date from the manifest -- independent of the selected range,
+# never `points[0]["date"]`, which is range-clamped). Neither existing key (`symbol`/`name`/`points`) nor
+# their VALUES change -- proven by every pre-existing test above continuing to pass unmodified.
+
+
+def test_series_includes_vendor_and_honest_first_date_from_seed_meta(tmp_path):
+    cfg = _cfg(tmp_path)
+    engine = _engine_with_bars()
+    seed_dir = tmp_path / "seed"
+    _write_meta(seed_dir, [
+        {"symbol": "SPY", "first": "2005-02-25", "last": "2026-07-01"},  # no vendor key -> honest None
+        {"symbol": "QQQ", "first": "1999-03-10", "last": "2026-07-01", "vendor": "stooq"},
+    ])
+    with Session(engine) as session:
+        # bars start 2026-01-01 -- deliberately UNRELATED to meta.json's 2005/1999 dates, so a passing
+        # `first` assertion proves the value came from the manifest, never from `points[0]["date"]`.
+        _insert_bars(session, "SPY", [100.0, 101.0, 102.0])
+        _insert_bars(session, "QQQ", [50.0, 51.0, 52.0])
+        session.commit()
+        result = compute_index_series(
+            session, as_of="2026-01-03", range_key="all", config=cfg, seed_dir=seed_dir
+        )
+
+    series = {s["symbol"]: s for s in result["series"]}
+    assert series["SPY"]["vendor"] is None
+    assert series["SPY"]["first"] == "2005-02-25"
+    assert series["QQQ"]["vendor"] == "Stooq"
+    assert series["QQQ"]["first"] == "1999-03-10"
+    # the pre-existing fields are untouched
+    assert series["SPY"]["points"][0] == {"date": "2026-01-01", "pct": 0.0}
+
+
+def test_vendor_label_mapping_for_all_three_categories(tmp_path):
+    """The three committed vendor keys map to their honest display labels; a `fred-macro-proxy` entry
+    reads as EXACTLY that -- never as a market index (anti-goal)."""
+    cfg = _cfg(tmp_path)
+    engine = _engine_with_bars()
+    seed_dir = tmp_path / "seed"
+    _write_meta(seed_dir, [
+        {"symbol": "SPY", "first": "2005-02-25", "last": "2026-07-01", "vendor": "stooq"},
+        {"symbol": "QQQ", "first": "1999-03-10", "last": "2026-07-01", "vendor": "yahoo"},
+        {"symbol": "DIA", "first": "2005-02-25", "last": "2026-07-01", "vendor": "fred-macro-proxy"},
+    ])
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", [100.0])
+        _insert_bars(session, "QQQ", [50.0])
+        _insert_bars(session, "DIA", [200.0])
+        session.commit()
+        result = compute_index_series(
+            session, as_of="2026-01-01", range_key="all", config=cfg, seed_dir=seed_dir
+        )
+
+    series = {s["symbol"]: s for s in result["series"]}
+    assert series["SPY"]["vendor"] == "Stooq"
+    assert series["QQQ"]["vendor"] == "Yahoo"
+    assert series["DIA"]["vendor"] == "FRED-macro proxy"
+
+
+def test_missing_seed_meta_yields_null_vendor_and_first(tmp_path):
+    """No `meta.json` at all (an unreadable/absent manifest) -> every series honestly gets
+    `vendor: None`/`first: None` -- never a crash, never a fabricated vendor or date."""
+    cfg = _cfg(tmp_path)
+    engine = _engine_with_bars()
+    seed_dir = tmp_path / "seed-does-not-exist"
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", [100.0, 101.0])
+        session.commit()
+        result = compute_index_series(
+            session, as_of="2026-01-02", range_key="all", config=cfg, seed_dir=seed_dir
+        )
+
+    spy = result["series"][0]
+    assert spy["vendor"] is None
+    assert spy["first"] is None

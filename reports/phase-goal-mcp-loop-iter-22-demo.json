@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-22",
+  "base_url": "http://localhost:3255",
+  "iteration": 22,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "New: five more benchmarks, each labeled by source",
+      "narration": "The dashboard's main chart now tracks five more market benchmarks -- including the S&P 500, Nasdaq 100, and Dow indexes -- right alongside the originals.",
+      "point_out": "Look at the legend under the chart: the five new lines each carry a small tag like (Stooq), (Yahoo), or (FRED-macro proxy) showing exactly where that data comes from, and every line now has its own distinct color.",
+      "journey": "J-14",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "FRED-macro proxy" }
+    },
+    {
+      "n": 2,
+      "title": "Every regime label links to its evidence",
+      "narration": "Clicking the market regime's evidence link takes you straight to the page that keeps every claim honest.",
+      "point_out": "The Evidence page still shows every trading idea's real, unfiltered test result -- nothing is marked proven without passing a strict, independent check.",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "See evidence proven in this regime →" } },
+      "expect": { "text": "FAIL" }
+    },
+    {
+      "n": 3,
+      "title": "New: see exactly where the index data comes from",
+      "narration": "The Data Manager page now has a table that spells out, for every benchmark and index line, who supplied the data and how far back it honestly goes.",
+      "point_out": "The new provenance table lists all ten series with a vendor badge and a real first-recorded date -- several tracing all the way back to 1996.",
+      "journey": "J-14",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Data Manager" } },
+      "expect": { "text": "FRED-macro proxy" }
+    },
+    {
+      "n": 4,
+      "title": "The stock leaderboard stays clean",
+      "narration": "Even with the new benchmark data loaded in, the main stock leaderboard keeps listing only real, tradable companies.",
+      "point_out": "None of the new index or macro symbols show up in this list, and the total company count still lines up with the Data Manager page.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Stocks" } },
+      "expect": { "text": "541 / 541" }
+    },
+    {
+      "n": 5,
+      "title": "Open a company's price history",
+      "narration": "Every company on the leaderboard has its own detail page with a full price chart.",
+      "point_out": "The candlestick chart with its moving averages loads cleanly, with a simple toggle nearby to widen the view.",
+      "journey": "J-10",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/INTC" },
+      "expect": { "text": "INTC" }
+    },
+    {
+      "n": 6,
+      "title": "Zoom out to thirty years of history in one click",
+      "narration": "One click swaps the recent few years for the company's entire multi-decade price history.",
+      "point_out": "The chart widens dramatically, and the caption honestly notes the older stretch is weekly-sampled to keep things fast.",
+      "journey": "J-10",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Full history" } },
+      "expect": { "text": "weekly-sampled" }
+    }
+  ]
+}

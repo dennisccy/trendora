@@ -1,0 +1,33 @@
+{
+  "phase": "goal-mcp-loop-iter-22",
+  "status": "blocked",
+  "current_step": "closure_failed",
+  "updated_at": "2026-07-08T16:55:51.654405Z",
+  "started_at": "2026-07-08T12:00:25.164507Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "config.yaml",
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/app/engine/indexes.py",
+    "apps/backend/scripts/load_missing_index_symbols.py",
+    "apps/backend/tests/test_indexes.py",
+    "apps/backend/tests/test_api_indexes.py",
+    "apps/backend/tests/test_data_manager.py",
+    "apps/backend/tests/test_load_missing_index_symbols.py",
+    "apps/frontend/lib/api.ts",
+    "apps/frontend/app/globals.css",
+    "apps/frontend/components/index-regime-chart.tsx",
+    "apps/frontend/components/phase-cross-view-chart.tsx",
+    "apps/frontend/components/index-vendor-panel.tsx",
+    "apps/frontend/app/data/page.tsx",
+    "docs/handoffs/goal-mcp-loop-iter-22-dev.md",
+    "docs/handoffs/goal-mcp-loop-iter-22-frontend.md",
+    "reports/phase-goal-mcp-loop-iter-22-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "qa_passed": true,
+  "next_action": "review",
+  "fix_pass": "audit-fail-remediation: F1 (minBarSpacing on live cross-view chart) + F2 (IndexSeries.first nullable); backend untouched"
+}

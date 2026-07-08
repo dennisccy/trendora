@@ -302,6 +302,23 @@ index_chart:
     - { symbol: IWM, name: "Russell 2000 (IWM)" }
     - { symbol: RSP, name: "S&P 500 Equal-Weight (RSP)" }
     - { symbol: DIA, name: "Dow 30 (DIA)" }   # bar-less until its one-shot fetch — honestly omitted
+    # iter-22 (J-14) — deep Stooq equity-index benchmarks (real first bar 1996-01-02, per data/seed/
+    # meta.json), reaching well before the ETFs' ~1999/2005 floors above. Presentation-only: NOT added to
+    # etfs.index, so these never become a scored candidate or an RS/scoring benchmark. Already-built
+    # local databases need scripts/load_missing_index_symbols.py to pick these up (see its docstring); a
+    # fresh database loads them automatically via the existing load_prices -> all_seed_symbols path.
+    - { symbol: "^SPX", name: "S&P 500 Index (^SPX)" }
+    - { symbol: "^NDX", name: "Nasdaq 100 Index (^NDX)" }
+    - { symbol: "^DJI", name: "Dow Jones Industrial Average (^DJI)" }
+    # iter-22 (J-14) — already-loaded Yahoo + FRED-macro-proxy series, listed here too (alongside
+    # `etfs.volatility`/`macro.series[].proxy_symbol`, which already load them) so the chart legend + the
+    # /data vendor-disclosure panel show all three honest vendor categories (Stooq/Yahoo/FRED-macro
+    # proxy) required by J-14. `^VIX` is ALSO the regime VIX-gate input (etfs.volatility) — listing it
+    # here only adds a presentation line; it does not change that computation. `^TNX` is a deterministic
+    # FRED-macro PROXY, never the literal market 10-year yield — its display name says so explicitly
+    # (anti-goal: a proxy must never be presented as a real market index).
+    - { symbol: "^VIX", name: "CBOE Volatility Index (^VIX)" }
+    - { symbol: "^TNX", name: "10Y-2Y spread proxy (^TNX)" }
   range_presets:          # key (API/URL value) -> label + trailing-calendar-day window (null = all)
     - { key: "3M", label: "3M", days: 92 }
     - { key: "6M", label: "6M", days: 183 }
