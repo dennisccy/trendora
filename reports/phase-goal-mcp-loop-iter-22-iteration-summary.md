@@ -1,60 +1,60 @@
 # Iteration Summary — goal-mcp-loop-iter-22
 
-**Verdict:** FAIL
+**Verdict:** CONTINUE
 **Iteration type:** goal-full
 **Date:** 2026-07-08
 **Iteration:** 22
 
 ## In plain words
 
-**What you can do now:** Browse a leaderboard of hundreds of companies with up to 30 years of price history each, sort that list by sector, and switch any stock's chart between a recent view and its full history. Every score, evidence entry, and past trading idea carries an honest "proven" or "not yet proven" status tied to the current market regime, backed by a full evidence ledger you can audit yourself, and companies join and leave the list honestly as their real trading histories start and end. On the Data Manager page, refreshing prices covers the entire company list in one click, with a calendar that clearly separates "we have price data for this day" from "we've already scored it." If something goes wrong on a page, you get a calm retry message instead of a blank screen.
+**What you can do now:** You can browse a leaderboard of hundreds of companies with an honest evidence status shown on every score, and drill into a fully auditable history of every past trading idea the system has tested — each one clearly marked "proven" or "not yet proven," tied to the current market mood. You can view up to thirty years of price history for any stock, switching between a recent view and the full history, and you can look at the company list the way it looked on any past date. On the Data Manager page you can see a coverage calendar showing what price and scoring data is available across the whole company list.
 
-**What changed this time:** The team built a deeper view of market history — three major stock-market benchmarks (the S&P 500, Nasdaq, and Dow) now show on the dashboard's chart going back to 1996, three decades instead of one, plus a volatility gauge and an economic-indicator line — and every line on that chart, plus a new page section, now honestly says which data provider it came from. Along the way, they found and fixed a bug where that deep history loaded correctly but stayed hidden off-screen by default; the fix works in every check run so far, but the team wants one more specific hands-on check on the fixed version before calling this feature fully done.
+**What changed this time:** The dashboard's main chart now shows three decades of market history for the S&P 500, Nasdaq, and Dow — back to 1996, three times further than before — plus a volatility gauge and an economic-indicator line, and every line now honestly discloses which data provider it came from, both on the chart and in a new section of the Data Manager page. Partway through, the team caught a bug where that deep history was loading correctly but staying hidden off-screen unless someone scrolled far back manually; that's now fixed so the full three decades show automatically when the page opens. The team's own process still calls for one more hands-on confirmation check before this feature is officially marked finished, so it isn't quite checked off yet.
 
-**What's next:** Next, the team will do one more hands-on check to confirm the new dashboard chart and data-source labels display correctly by default, then mark this feature complete.
+**What's next:** Next, the team will do that final confirming check on the new deep-history chart (making sure it looks right for everyone, not just in one test) and then mark it fully complete.
 
 ## Headline
 
-J-14 deep 1996 index/vendor-label chart shipped and fixed; CLOSURE-FAIL pending a fresh browser-QA re-run
+Dashboard chart now shows S&P 500/Nasdaq/Dow back to 1996, labeled by data vendor
 
 ## Direction
 
 **Signal:** holding
-**Why:** J-14's underlying code (deep 1996 benchmark lines + honest vendor labels) is built and independently confirmed correct by the reviewer, the QA agent's own spot-check, and the auditor's pixel-level comparison, but the phase is blocked on a process/evidence gap, not a product gap: the canonical browser-qa-agent report and the ux-regression report were both written against the pre-fix build and were never regenerated after the chart-config fix, so CLOSURE-FAIL (this iteration's controlling verdict, since the goal-evaluator has not yet run) keeps J-14 from being marked passing. No journey regressed — J-01, J-03, J-04, J-05, J-10, and J-12 were all freshly re-confirmed via live browser evidence in the same run — and no anti-goal was violated, so this reads as holding rather than regressing or stalling.
+**Why:** iter-22 shipped J-14 (deep 1996 index/vendor context) code-complete and multi-channel verified — audit PASS_WITH_GAPS, review PASS, QA PASS — but the canonical browser-qa-agent and ux-regression-reviewer were never re-run against the post-audit-fix build, so phase-closure returned CLOSURE-FAIL and J-14 landed at partial rather than passing, the same verification-gap pattern seen in iter-13 and iter-20. No journey regressed, all six required-still-passing journeys (J-01, J-03, J-04, J-05, J-10, J-12) re-verified live, and all anti-goals held, so the project is holding steady rather than moving backward, with one clearly-scoped verification re-run standing between it and the next passing flip.
 
 **Trend (last 5 iters):**
-- Newly passing this iter: none (J-14 targeted but blocked at CLOSURE-FAIL before the evaluator ran; not yet confirmed passing)
-- Newly passing in last 5 iters total: J-01, J-10, J-11, J-12, J-13 (iters 18-21)
+- Newly passing this iter: none
+- Newly passing in last 5 iters total: J-10, J-11 (iter-18), J-01, J-12 (iter-19), J-13 (iter-21)
 - Regressions in last 5 iters: J-01 (iter-18)
 - Anti-goal violations in last 5 iters: none
 - Iters with no journey state change: 0 of last 5
 
-**Latest evaluator reasoning:** "The iter-20 verification gap is closed and I verified every status change against artifacts I personally opened, not the handoffs. The canonical browser-qa-agent lane RAN LIVE this time (~59 min, engine.log 10:34->11:33; it correctly overrode a stale dispatch SKIP flag by independently re-verifying both services at HTTP 200 — the exact iter-20 blanket-SKIP failure this iteration existed to retire) and produced a non-empty, 12-PNG md5-distinct evidence dir." (goal-mcp-loop-iter-21 evaluator log entry — no eval.md exists yet for iter-22, which is still blocked pre-evaluation.)
+**Latest evaluator reasoning:** The J-14 code deliverable landed COMPLETE and is independently verified correct on multiple channels — deep ^SPX/^NDX/^DJI/^VIX/^TNX context surfaced on the Dashboard chart with honest per-series vendor labels, plus a new /data provenance panel, all byte-matching meta.json — but the DoD's "pass via browser-qa-agent" was not satisfied on the FIXED code. An audit-FAIL → dev-fix (minBarSpacing: 0.02, which surfaces the deep 1996 window) → re-review/re-QA/re-audit cycle happened, yet the canonical browser-qa-agent and ux-regression-reviewer were never re-run against the fixed build, so both reports-of-record are stale FAILs and phase-closure returned CLOSURE-FAIL (status.json = blocked / closure_failed). Per the iter-13/iter-20 precedent, J-14 advances unknown → partial, not passing. No journey regressed; all anti-goals upheld; coherence is COHERENCE-WARN (not FAIL) → CONTINUE.
 
 ## What was done
 
-- Added three deep equity-index benchmarks (S&P 500, Nasdaq 100, Dow Jones) to the Dashboard chart, extending history back to 1996-01-02, and loaded their bars into the live database (+23,022 rows, 590 distinct symbols).
-- Added a CBOE Volatility Index line and a "10Y-2Y spread proxy" macro line to the same chart.
-- Labeled every chart line (legend + tooltip) with its honest data vendor (Stooq / Yahoo / FRED-macro proxy), added a matching disclosure panel on `/data`, and extended the chart's color palette from 5 to 10 distinct colors.
-- Preserved byte-identity on the existing five ETF chart lines and the scored `/stocks` universe (541 symbols, zero leaked index rows).
-- Found and fixed a critical bug where the new 1996 history loaded correctly but stayed hidden off-screen by default; a chart-config fix now makes the full 30-year window the default view, independently confirmed by the reviewer and the auditor.
-- The canonical browser-qa-agent lane recorded FAIL for the sole target journey (J-14) against the pre-fix build and has not yet been re-run against the fix (0 of 1 target journeys confirmed passing this iteration); the same run confirmed 6 of 7 required-still-passing regression journeys (J-01, J-03, J-04, J-05, J-10, J-12) remain intact.
-- Re-ran review and the audit after the fix (PASS / PASS_WITH_GAPS), but the canonical browser-qa-agent and ux-regression reports were not regenerated — phase closure FAILED on that unreconciled evidence gap.
+- Added deep `^SPX`/`^NDX`/`^DJI` equity-index benchmarks (to 1996) plus `^VIX` and a `^TNX` macro proxy to the Dashboard chart, now defaulting to the full 30-year view.
+- Labeled every chart line with its honest data vendor (Stooq / Yahoo / FRED-macro proxy) in the legend and tooltip; omitted the label where no vendor record exists.
+- Added a new "Index & benchmark data provenance" panel on `/data` listing every series' vendor and first-bar date, reading the same `/api/indexes` payload.
+- Extended the chart's color palette from 5 to 10 distinct, CVD-checked colors so no two lines collide.
+- Fixed an audit-flagged critical defect (`minBarSpacing: 0.02`) so the deep 1996 history renders in the chart's default view instead of staying hidden off-screen.
+- Loaded the 3 new deep-index symbols into `daily_prices` via a new idempotent loader script; existing lines' math stayed byte-identical and the scored universe stayed at 541 symbols (no leak).
+- Live-replayed the 6 required-still-passing regression journeys (J-01, J-03, J-04, J-05, J-10, J-12) clean via browser QA; target journey J-14 did not cleanly pass the canonical browser-qa lane and stays partial pending a re-run.
 
 ## What's left
 
-- Blocking: the canonical browser-qa-agent report for J-14 is stale (written before the fix) and must be regenerated end-to-end against the fixed build before it can count as a pass.
-- Blocking: the UX-regression report is also stale and still labels the same defect "Blocking" — needs re-running once fresh browser-qa evidence exists.
-- Blocking: the user-visible-changes report's claim that the deep lines render automatically was disproven by QA and has only been "corrected" by the developer's own say-so, not independent re-verification — needs reconciling once the re-run confirms the fix.
-- J-14 (this iteration's target journey) has not yet flipped to passing — blocked behind the three items above, not because the underlying feature is wrong.
-- J-13 (required-still-passing) did not get a dedicated live regression replay this iteration (non-blocking, low risk since its component is unmodified, but flagged for the next regression pass).
-- Non-blocking: the macro-proxy line's disclosed "first bar" date (2021-01-04) understates its actual database history (back to 2005) — a pre-existing, spec-compliant inconsistency with no in-scope fix.
-- Not visible yet: the same vendor-label/palette fix was also applied to an orphaned chart component that no page currently links to (a cleanup candidate, not a defect).
-- The full backend test run for the new API fields (using an expensive 30-year test fixture) had not finished at handoff time and should be confirmed green.
+- J-14 (deep index/vendor context, this iteration's target) is partial — the code is complete and independently verified, but not yet cleanly canonical-verified.
+- Closure blocker: the canonical browser-qa-agent report is a stale pre-fix FAIL and must be re-run against the current build (the Definition of Done names this specific agent).
+- Closure blocker: the ux-regression-reviewer report is a stale FAIL that explicitly calls the same gap "Blocking" and must be re-run against fresh evidence.
+- Closure blocker: the user-visible-changes report's "renders automatically" claim was disproven pre-fix and needs independent (not developer self-assessed) reconciliation.
+- J-13 (Data Manager availability legend) carries forward on byte-identity grounds but is owed a dedicated live replay — its last full canonical check was iteration 21.
+- J-02, J-06, J-07, J-08, J-09 (evidence re-certification) remain sanctioned-partial — no staging candidate yet clears the divisor-8 statistical bar needed to re-promote a proven edge.
+- J-15, J-16 (platform speed budgets) remain unbuilt.
+- `test_api_indexes.py`'s full test run had not finished at handoff time; byte-identity is covered at the unit level and via a live API check in the meantime.
 
 ## Next step
 
-Re-invoke the browser-qa-agent against the current, already-fixed build (clear the frontend build cache and confirm both services are reachable first) to regenerate a full, fresh `ui-test-results.md` covering all 19 planned cases — not just the one that failed — and confirm it now reads PASS. Then re-run the ux-regression-reviewer against that fresh evidence so its blocking flag lifts, and reconcile or regenerate `user-visible-changes.md` so its capability claim rests on independent verification rather than the developer's own assessment. Do not reopen the J-14 implementation itself — the phase auditor and closure auditor agree the underlying fix is correct; this is expected to be a fast confirmatory re-run, not a rediscovery of a defect.
+iter-23 (FULL) — verification-only re-run, no new feature code (the J-14 implementation and the `minBarSpacing: 0.02` fix are done and correct). Clear `apps/frontend/.next`, bring up both prod-mode services, and confirm reachability before dispatching QA. Re-run the canonical browser-qa-agent live over all 19 ui-test-plan cases against the fixed build to flip UT-03 FAIL→PASS; add a dedicated J-13 live replay to close the audit-B5/ux-regression coverage gap; re-run ux-regression-reviewer to UX-REGRESSION-PASS and reconcile user-visible-changes.md; then re-run phase-closure to CLOSURE-PASS. On a clean run J-14 flips partial→passing. GOAL_ACHIEVED is still not reachable next iteration regardless: J-02/J-06/J-07/J-08/J-09 need a new-basis staging-discovery + honest promotion (no staging winner clears the divisor-8 bar today), and J-15/J-16 (fast-platform perf) remain unbuilt.
 
 ## Quick verify
 
@@ -64,7 +64,7 @@ From `reports/phase-goal-mcp-loop-iter-22-what-to-click.md`:
 2. Look at the row of labels (the legend) directly below the chart, and the small colored dot to the left of each label
 3. Move your mouse pointer anywhere over the chart's plotted lines
 4. Refresh the page (press F5)
-5. Click "Data Manager" in the left sidebar
+5. Click **"Data Manager"** in the left sidebar
 
 ## Artifacts
 
@@ -83,4 +83,5 @@ From `reports/phase-goal-mcp-loop-iter-22-what-to-click.md`:
 | QA | PASS | reports/qa/goal-mcp-loop-iter-22-qa.md |
 | Audit | PASS_WITH_GAPS | docs/handoffs/goal-mcp-loop-iter-22-audit.md |
 | Closure | CLOSURE-FAIL | reports/phase-goal-mcp-loop-iter-22-closure-verdict.md |
+| Goal evaluation | CONTINUE | runs/goal-session-mcp-loop/iter-22/eval.md |
 | Journey history | — | runs/goal-session-mcp-loop/state/journey-history.json |
