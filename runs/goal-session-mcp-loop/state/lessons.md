@@ -150,3 +150,25 @@ port; and confirm `start-frontend.sh` frees the frontend port before binding.
 **Verdict:** CONTINUE
 **Lesson:** On a Frontend-Present visual-only iteration, the canonical browser-qa lane can record a blanket SKIP (both services down at precondition, `curl 000`) while the QA report still self-reports PASS by grading browser-typed cases (TC-03..12/TC-16) from *code inspection* and asserting "frontend is running" — a false-completion pattern. Two root causes compounded: (a) `scripts/start-frontend.sh`'s `.next/.qa-serve-base` staleness stamp checks only the baked backend URL, never frontend-source freshness, so it silently served a STALE pre-iter-20 bundle (caught only because the ux-regression reviewer forced `rm -rf .next` and drove the live DOM); (b) both services happened to be fully down when browser-qa checked. The closure + audit + ux-regression triad caught it (CLOSURE-FAIL / T3-T5 / WARN) while status.json + qa.md read "complete/ready". Do NOT flip a target journey to `passing` on code-verification + a non-canonical live DOM check when the evidence dir is empty and closure FAILED — mark it `partial` and require a clean canonical browser-qa re-run.
 **Applies to:** any Frontend-Present iteration whose content is visual/UX; any iter where `reports/phase-*-ui-test-results.md` is a blanket SKIP or the evidence dir is empty; always pre-empt with `rm -rf apps/frontend/.next` + confirm both prod services reachable BEFORE dispatching browser-qa; never accept a QA/status "ready to ship" over an empty evidence dir or a CLOSURE-FAIL.
+
+## iter-21 — 2026-07-08T12:40:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A required-still-passing replay journey can literally FAIL a P1 UT case without being
+a regression — verify against the journey's OWN canonical golden script, not the test-plan wording.
+Iter-21's UT-21 (J-12) FAILED because it looks for a universe count on `/methodology`, but
+`runs/goal-session-mcp-loop/journey-scripts/J-12.json` has ZERO `/methodology` references (it targets
+`/data` x3 + `/stocks` x1), and the `/methodology` Universe Selection section is correctly suppressed
+by the pre-existing J-22 anti-fabrication gate (`apps/backend/app/api/methodology.py:35-36` pops
+`universe_selection` when `apps/backend/data/seed/universe.json` is absent — it is). The substantive
+claim held live (`/data` 541 == `/stocks` 541/541). Before calling any P1 UT failure a regression:
+(1) grep the journey's golden script for the failing page/assertion; (2) find the source-level cause
+and check `git diff` shows the implicated files were untouched this iter; (3) confirm the substantive
+capability elsewhere. A stale test reference is a test-plan defect (retarget it), not a `passing->failing`.
+Second takeaway (positive): the browser-qa-agent correctly overrode a stale dispatch `SKIP` flag by
+independently re-verifying reachability (both services 200) — this is the fix for the iter-0/2/4/13/20
+blanket-SKIP failure mode; an empty evidence dir over a real live stack is the anti-pattern, not this.
+**Applies to:** any iter whose DoD includes required-still-passing replays or carries forward a UT
+test-plan verbatim; any journey whose surface depends on an environment/seed-data precondition
+(`universe.json`, committed screen records) that gates content behind an honesty check; and any
+browser-qa dispatch where the precondition probe may race service startup.

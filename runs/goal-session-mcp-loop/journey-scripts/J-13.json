@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "journey": "J-13",
+  "name": "Data Manager — widened Fetch scope, honest Backfill run, two-group availability legend",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-13", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "587 symbols"}},
+    {"n": 2, "journey": "J-13", "action": {"type": "click", "target": {"role": "button", "name": "Start"}}, "expect": {"text": "Snapshots backfilled"}},
+    {"n": 3, "journey": "J-13", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "SCORED SNAPSHOT — INDICATOR"}}
+  ]
+}
