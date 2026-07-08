@@ -39,7 +39,7 @@ from app.engine.data_manager import (
     unfinished_imports,
 )
 from app.models import DailyPrice, DataProviderRun, ImportCheckpoint, ScannerRun
-from app.seed_loader import all_seed_symbols, load_seed
+from app.seed_loader import load_seed, price_load_symbols
 
 
 def _noop_sleep(_seconds: float) -> None:
@@ -222,11 +222,16 @@ def test_symbols_counter_distinct_across_multi_window_plan(tmp_path):
     engine = make_engine(f"sqlite:///{tmp_path / 'multiwindow.db'}")
     create_db_and_tables(engine)
     _seed_calendar(engine, [date(2024, 1, 2), date(2024, 1, 3)])
-    n_symbols = len(all_seed_symbols(cfg))
+    # J-13 (iter-20): a generic fetch now targets `price_load_symbols(cfg, seed_dir)` (context ∪ pool). Pin
+    # an explicit EMPTY temp `seed_dir` (no committed `universe_pool.csv`) so it degrades honestly to the
+    # SAME context-only set `all_seed_symbols` gave before — keeping this test fast/deterministic.
+    n_symbols = len(price_load_symbols(cfg, tmp_path))
 
     # a ~30-day range with window_days=10 → 3 windows per symbol-batch (the multi-window fan-out).
     job = create_job("fetch", date(2024, 1, 2), date(2024, 1, 31), source="yahoo")
-    summary = run_data_job(job.job_id, config=cfg, engine=engine, provider=_CountingProvider(), sleep_fn=_noop_sleep)
+    summary = run_data_job(
+        job.job_id, config=cfg, engine=engine, provider=_CountingProvider(), sleep_fn=_noop_sleep, seed_dir=tmp_path,
+    )
 
     assert summary["symbols_total"] == n_symbols
     assert summary["symbols_ok"] == n_symbols  # DISTINCT — not n_symbols * windows (the 318/159 bug)
@@ -310,7 +315,10 @@ def test_covered_range_rerun_zero_provider_calls(tmp_path):
     # build a real trading calendar: SPY bars across the fetch range (so the calendar covers the window).
     cal_dates = [date(2024, 1, d) for d in range(2, 31)]
     _seed_calendar(engine, cal_dates)
-    symbols = all_seed_symbols(cfg)
+    # J-13 (iter-20): a generic fetch now targets `price_load_symbols(cfg, seed_dir)` (context ∪ pool). Pin
+    # an explicit EMPTY temp `seed_dir` (no committed `universe_pool.csv`) so it degrades honestly to the
+    # SAME context-only set `all_seed_symbols` gave before — keeping this test fast/deterministic.
+    symbols = price_load_symbols(cfg, tmp_path)
     # pre-store EVERY symbol's bars across the whole calendar → the range is fully covered. SPY is already
     # seeded by `_seed_calendar` (the calendar anchor), so skip it to avoid a UNIQUE collision.
     with Session(engine) as session:
@@ -324,7 +332,9 @@ def test_covered_range_rerun_zero_provider_calls(tmp_path):
 
     counting = _CountingProvider()
     job = create_job("fetch", date(2024, 1, 2), date(2024, 1, 30), source="yahoo")
-    summary = run_data_job(job.job_id, config=cfg, engine=engine, provider=counting, sleep_fn=_noop_sleep)
+    summary = run_data_job(
+        job.job_id, config=cfg, engine=engine, provider=counting, sleep_fn=_noop_sleep, seed_dir=tmp_path,
+    )
 
     assert counting.calls == 0, "a fully-covered range must perform ZERO provider calls (J-59 planner)"
     assert summary["status"] == "ok"
@@ -351,7 +361,10 @@ def test_partially_covered_window_still_fetches(tmp_path):
     create_db_and_tables(engine)
     cal_dates = [date(2024, 1, d) for d in range(2, 6)]  # 4 trading days
     _seed_calendar(engine, cal_dates)
-    symbols = all_seed_symbols(cfg)
+    # J-13 (iter-20): a generic fetch now targets `price_load_symbols(cfg, seed_dir)` (context ∪ pool). Pin
+    # an explicit EMPTY temp `seed_dir` (no committed `universe_pool.csv`) so it degrades honestly to the
+    # SAME context-only set `all_seed_symbols` gave before — keeping this test fast/deterministic.
+    symbols = price_load_symbols(cfg, tmp_path)
     # pre-store only the FIRST trading day for every symbol → each window is PARTIALLY covered. SPY's
     # day-0 bar is already seeded by `_seed_calendar`; skip it to avoid a UNIQUE collision.
     with Session(engine) as session:
@@ -371,7 +384,9 @@ def test_partially_covered_window_still_fetches(tmp_path):
 
     provider = _CalendarProvider()
     job = create_job("fetch", cal_dates[0], cal_dates[-1], source="yahoo")
-    summary = run_data_job(job.job_id, config=cfg, engine=engine, provider=provider, sleep_fn=_noop_sleep)
+    summary = run_data_job(
+        job.job_id, config=cfg, engine=engine, provider=provider, sleep_fn=_noop_sleep, seed_dir=tmp_path,
+    )
 
     assert provider.calls > 0, "a partially-covered window must still fetch (J-59)"
     assert summary["status"] == "ok"

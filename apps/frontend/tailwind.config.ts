@@ -23,7 +23,7 @@ const config: Config = {
         neg: "var(--neg)",
         warn: "var(--warn)",
         text: { DEFAULT: "var(--text)", muted: "var(--text-muted)", faint: "var(--text-faint)" },
-        // J-74 availability-heatmap density scale (six perceptually-ordered multi-hue buckets) +
+        // J-13 (iter-20) availability-heatmap density scale (six monotonic single-hue buckets) +
         // the per-bucket day-number text-contrast tokens. One source: globals.css CSS vars (no cell hex).
         heat: {
           0: "var(--heat-0)",
@@ -41,6 +41,9 @@ const config: Config = {
           4: "var(--heat-text-4)",
           5: "var(--heat-text-5)",
         },
+        // J-13 (iter-20) — the "scored snapshot exists" ring indicator, deliberately non-green and
+        // outside the heat-* hue family (see globals.css).
+        snapshot: "var(--snapshot)",
         // shadcn/ui semantic aliases (so generated primitives theme correctly)
         background: "var(--bg)",
         foreground: "var(--text)",

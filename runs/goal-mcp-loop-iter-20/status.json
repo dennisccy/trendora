@@ -1,0 +1,28 @@
+{
+  "phase": "goal-mcp-loop-iter-20",
+  "status": "blocked",
+  "current_step": "closure_failed",
+  "updated_at": "2026-07-08T07:54:10.787836Z",
+  "started_at": "2026-07-07T14:46:53.375543Z",
+  "cli": "claude",
+  "note": "Dev complete for J-13, with the code-review FAIL now fixed. Build: app/engine/data_manager.py's generic-fetch symbol-set branch calls price_load_symbols(cfg, seed_dir) instead of all_seed_symbols(cfg) -- the generic Fetch job covers the full committed ~548-pool union the ~162-context set (588 total, verified live), not just the context set. compute_availability is byte-identical (untouched; confirmed by a new frozen-output test). Frontend: removed the 'Expand universe' job kind + all its dead supporting code from /data; re-encoded the availability heatmap legend into two labeled groups (Price data -- cell fill / Scored snapshot -- indicator), replaced the old 5-hue ramp (ending in amber) with a monotonic single-hue blue ramp, and moved the snapshot ring from green (--pos) to a dedicated violet --snapshot token. REVIEW-FIX RETRY (reports/reviews/goal-mcp-loop-iter-20-review.md, verdict FAIL): fixed exactly the 3 findings and nothing else -- (CRITICAL) renamed the new tests/test_data_manager.py _RecordingOkProvider to _PoolRecordingProvider so it no longer shadows a pre-existing same-named class (the shadow made the pool-coverage test die with AttributeError every run); (MINOR) removed the fabricated 'dataviz-skill validator' / scripts/validate_palette.js attribution from globals.css + both handoffs and reworded honestly as ad-hoc inline OKLCH+WCAG computation (no color/token value changed); (NOTE) tightened the pool-membership assertion from a 5-name sample to the full 'pool <= fetched'. BLOCKER RESOLVED: the prior session's disk-quota (EDQUOT) exhaustion is gone; ran the reviewer's exact scoped 4-file pytest command to completion -> 102 passed in 408.10s, 0 failed (the single previously-failing shadowed-class test is now green). Backend imports cleanly.",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/data_manager.py (import swap all_seed_symbols -> price_load_symbols; fresh-fetch branch now targets price_load_symbols(cfg, seed_dir))",
+    "apps/backend/tests/test_data_manager.py (import update; fixed 2 pre-existing tests that hardcoded the old fetch-scope; +2 new tests: fetch-job pool/context coverage, compute_availability byte-identical pin) [review-fix retry: renamed new class _RecordingOkProvider -> _PoolRecordingProvider to end a name shadow; tightened pool assertion to 'pool <= fetched']",
+    "apps/backend/tests/test_data_manager_jobs_pipeline.py (import update; fixed 3 pre-existing tests that hardcoded the old fetch-scope)",
+    "apps/backend/tests/test_data_manager_parallel.py (fixed 7 pre-existing tests -- 3 needed an explicit seed_dir, 4 needed their data_manager.all_seed_symbols monkeypatch retargeted to data_manager.price_load_symbols)",
+    "apps/backend/scripts/benchmark_pipeline.py (bonus fix, not in the plan: retargeted its own all_seed_symbols monkeypatch-by-assignment to price_load_symbols)",
+    "apps/frontend/app/data/page.tsx (removed the Expand universe job kind + all its dead supporting code)",
+    "apps/frontend/components/availability-heatmap.tsx (two-group legend, snapshot ring/text token swap, tooltip/caption/header copy naming Fetch/Backfill)",
+    "apps/frontend/app/globals.css (--heat-0..5 monotonic single-hue blue ramp; new --snapshot violet token) [review-fix retry: reworded the density-ramp comment to drop the fabricated validator citation -- no hex/token value changed]",
+    "apps/frontend/tailwind.config.ts (registered the new snapshot color token)",
+    "docs/handoffs/goal-mcp-loop-iter-20-dev.md [review-fix retry: added Fix Notes section; corrected Design Rationale tool attribution]",
+    "docs/handoffs/goal-mcp-loop-iter-20-frontend.md [review-fix retry: corrected color-validation tool attribution]",
+    "reports/phase-goal-mcp-loop-iter-20-implementation-summary.md [review-fix retry: updated Known Limitations/Incomplete Items -- the deferred test run is now completed and green]",
+    "runs/goal-mcp-loop-iter-20/status.json (this update)"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "Review FAIL is fixed and the scoped backend suite is fully green (102 passed, 0 failed) -- proceed with the normal reviewer re-review, then the canonical browser-qa-agent lane for J-13 (browser_checks_run still false) in PROD mode (start-backend.sh / start-frontend.sh, never dev.sh), plus the required-still-passing regression replay (J-01, J-03, J-05, J-10, J-12) per the phase spec."
+}

@@ -13,21 +13,27 @@ import type { AvailabilityCell, AvailabilityResponse } from "@/lib/api";
  * J-61 — the per-trading-date availability heatmap on `/data`.
  *
  * READ-ONLY presentation of the `GET /api/data/availability` payload (one cell per benchmark trading
- * day): a month-banded calendar grid colored by `symbols_with_bars` density on a J-74 PERCEPTUALLY-
- * ORDERED MULTI-HUE scale (slate → blue → teal → green → amber across the six density buckets, so
- * neighbouring buckets are unambiguously different on the dark background — replacing the old single-hue
- * teal-opacity ramp where buckets 1–3 were near-identical), a distinct ring marker on days that also
- * have an immutable snapshot, a legend mapping each colour to its coverage level, and exact figures on
- * hover (date, symbols-with-bars / total, snapshot yes/no). A SPARSE day (e.g. 3-of-158) is visually
- * distinct from a FULL day; a low-coverage day is a clearly different hue, not just muted. The day-number
- * stays legible in EVERY bucket (a per-bucket text-contrast token, J-70). All dates render `yyyy-MM-dd`
- * via the shared `formatIsoDate` (J-42).
+ * day), encoding TWO DELIBERATELY SEPARATE signals that must never look alike while meaning different
+ * things:
+ *   - cell FILL = price-data completeness (`symbols_with_bars` density) — filled by the Fetch job — on
+ *     a J-13 (iter-20) MONOTONIC SINGLE-HUE blue scale (dark → bright across the six buckets, each step
+ *     validated distinct). This reverses the prior J-74 multi-hue ramp, whose "full" bucket was amber
+ *     (this page's warning colour) and collided with the green bucket beside it.
+ *   - ring INDICATOR = whether an immutable scored snapshot exists — produced by the Backfill job — in a
+ *     dedicated violet `--snapshot` token outside the fill scale's hue family (and no longer `--pos`
+ *     green, which collided with the old green bucket).
+ * A day can be fully-filled but ringless (a Backfill gap) or ringed on a partial-fill day — the two
+ * signals vary independently. A two-group legend + the header/caption copy name the Fetch→fills /
+ * Backfill→scores mapping explicitly; hover/focus a cell for exact figures (date, symbols-with-bars /
+ * total, snapshot yes/no) via `title`/`aria-label` and the readout panel. A SPARSE day (e.g. 3-of-158) is
+ * visually distinct from a FULL day. The day-number stays legible in EVERY bucket (a per-bucket
+ * text-contrast token, J-70). All dates render `yyyy-MM-dd` via the shared `formatIsoDate` (J-42).
  *
- * J-74: the colour scale + the per-bucket day-number text-contrast classes are defined ONCE here from the
- * design-token system (the `heat-*` / `heat-text-*` Tailwind tokens registered in tailwind.config.ts,
- * backed by globals.css CSS vars) — NO hardcoded hex lives in an individual cell (anti-goal: No magic
- * numbers / coherence invariant 10). This is a pure re-style of the SAME payload: no new fetch, no
- * recompute, all J-61/J-70 data-* attributes and behaviours preserved verbatim.
+ * The colour scale + the per-bucket day-number text-contrast classes are defined ONCE here from the
+ * design-token system (the `heat-*` / `heat-text-*` / `snapshot` Tailwind tokens registered in
+ * tailwind.config.ts, backed by globals.css CSS vars) — NO hardcoded hex lives in an individual cell
+ * (anti-goal: No magic numbers / coherence invariant 10). This is a presentation-only re-style of the
+ * SAME payload: no new fetch, no recompute, all J-61/J-70 data-* attributes and behaviours preserved.
  *
  * Clicking a day, or shift-clicking a second day to select a range, calls `onPrefillRange(start, end)`
  * — the page wires that into the JOB FORM's Start/End inputs. These are JOB PARAMETERS, NEVER the global
@@ -53,11 +59,13 @@ function densityBucket(withBars: number, total: number): DensityBucket {
   return 1;
 }
 
-/** J-74 — the perceptually-ordered MULTI-HUE density scale (low → full), defined ONCE from the design-token
- *  system: each `bg-heat-N` is a distinct hue (slate → blue → cyan → teal-green → green → amber) registered
- *  in tailwind.config.ts (CSS vars in globals.css) — NO per-cell hex. Neighbouring buckets are clearly
- *  different hues on the dark background, so a sparse 3-of-158 day reads as an obviously different colour
- *  from a full day (not merely a fainter teal as before). Each bucket carries a matching-hue border. */
+/** J-13 (iter-20) — the MONOTONIC SINGLE-HUE (blue) density scale (low → full), defined ONCE from the
+ *  design-token system: each `bg-heat-N` is the SAME hue at increasing lightness, registered in
+ *  tailwind.config.ts (CSS vars in globals.css) — NO per-cell hex. The top ("full") bucket is
+ *  deliberately NOT amber (this page's warning colour). The six steps are validated distinct (monotone
+ *  lightness, a minimum lightness gap between neighbours, the darkest step still readable on the
+ *  surface), so a sparse 3-of-158 day still reads as an obviously different shade from a full day — not
+ *  just "not amber." Each bucket carries a matching-hue border. */
 const BUCKET_CLASS: Record<DensityBucket, string> = {
   0: "bg-heat-0 border border-border",
   1: "bg-heat-1 border border-heat-1",
@@ -67,10 +75,11 @@ const BUCKET_CLASS: Record<DensityBucket, string> = {
   5: "bg-heat-5 border border-heat-5",
 };
 
-/** J-70/J-74 — per-bucket day-number text token (design tokens only — NO hardcoded hex). The darkest
- *  buckets (0–1, slate/blue) take near-white `text-heat-text-N` (== `--text`); the brighter saturated
- *  buckets (2–5, cyan→amber) take the dark base (== `--bg`) so the number reads with strong contrast on
- *  every fill — including the dark-on-dark empty/low-density case. Defined ONCE here. */
+/** J-70/J-74 — per-bucket day-number text token (design tokens only — NO hardcoded hex). The two darkest
+ *  buckets (0–1) take near-white `text-heat-text-N` (== `--text`); the four brighter buckets (2–5, same
+ *  blue hue at increasing lightness — J-13/iter-20) take the dark base (== `--bg`) so the number reads
+ *  with strong contrast on every fill — including the dark-on-dark empty/low-density case. Defined ONCE
+ *  here. */
 const BUCKET_TEXT_CLASS: Record<DensityBucket, string> = {
   0: "text-heat-text-0",
   1: "text-heat-text-1",
@@ -194,10 +203,12 @@ export function AvailabilityHeatmap({
           <h2 className="text-sm font-semibold text-text">Per-date availability</h2>
         </div>
         <p className="mt-0.5 text-xs text-text-faint">
-          For each benchmark trading day: how many symbols have a bar (the cell density) and whether an
-          immutable snapshot exists (the ring). Descriptive metadata read from the dataset — not a
-          recomputed score. Click a day to prefill the job dates below; shift-click a second day for a
-          range. (These are job parameters — they never change the global as-of date.)
+          Two separate signals per trading day: the cell fill is how many symbols have price data
+          (filled by Fetch), and the ring is whether a scored snapshot exists (produced by Backfill). A
+          day can have one without the other — that is exactly a Backfill gap. Descriptive metadata read
+          from the dataset, not a recomputed score. Click a day to prefill the job dates below;
+          shift-click a second day for a range. (These are job parameters — they never change the global
+          as-of date.)
         </p>
       </div>
 
@@ -228,24 +239,33 @@ export function AvailabilityHeatmap({
 
       {state.kind === "ok" && state.data.cells.length > 0 ? (
         <div className="space-y-4 p-4">
-          {/* Legend + hovered-day exact figures */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2" data-testid="availability-legend">
-              <span className="text-xs text-text-faint">Coverage</span>
-              <div className="flex items-center gap-1">
-                {LEGEND.map(({ bucket, label }) => (
-                  <span key={bucket} className="flex items-center gap-1" title={label}>
-                    <span className={cn("h-3 w-3 rounded-sm", BUCKET_CLASS[bucket])} aria-hidden />
-                    <span className="text-[10px] text-text-faint">{label}</span>
-                  </span>
-                ))}
-              </div>
-              <span className="ml-2 flex items-center gap-1 text-[10px] text-text-faint">
-                <span className="relative inline-flex h-3 w-3 items-center justify-center" aria-hidden>
-                  <span className="h-3 w-3 rounded-sm bg-heat-3 ring-2 ring-pos ring-offset-0" />
+          {/* Legend (TWO labeled, unmistakably separate groups — J-13/iter-20) + hovered-day figures */}
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex flex-col gap-1.5" data-testid="availability-legend">
+              <div className="flex flex-wrap items-center gap-2" data-testid="availability-legend-density">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-text-faint">
+                  Price data — cell fill
                 </span>
-                snapshot
-              </span>
+                <div className="flex items-center gap-1">
+                  {LEGEND.map(({ bucket, label }) => (
+                    <span key={bucket} className="flex items-center gap-1" title={label}>
+                      <span className={cn("h-3 w-3 rounded-sm", BUCKET_CLASS[bucket])} aria-hidden />
+                      <span className="text-[10px] text-text-faint">{label}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2" data-testid="availability-legend-snapshot">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-text-faint">
+                  Scored snapshot — indicator
+                </span>
+                <span className="flex items-center gap-1 text-[10px] text-text-faint">
+                  <span className="relative inline-flex h-3 w-3 items-center justify-center" aria-hidden>
+                    <span className="h-3 w-3 rounded-sm bg-heat-3 ring-2 ring-snapshot ring-offset-0" />
+                  </span>
+                  a scored snapshot exists for that day
+                </span>
+              </div>
             </div>
 
             {/* The exact figures for the hovered/focused day — read verbatim from the cell, no recompute. */}
@@ -259,7 +279,7 @@ export function AvailabilityHeatmap({
                   </span>{" "}
                   symbols ·{" "}
                   {hovered.snapshot_exists ? (
-                    <span className="text-pos">snapshot yes</span>
+                    <span className="text-snapshot">snapshot yes</span>
                   ) : (
                     <span className="text-text-faint">snapshot no</span>
                   )}
@@ -303,8 +323,8 @@ export function AvailabilityHeatmap({
                         data-snapshot={cell.snapshot_exists ? "yes" : "no"}
                         data-selected={selected ? "yes" : "no"}
                         aria-pressed={selected}
-                        aria-label={`${cell.date}: ${cell.symbols_with_bars} of ${cell.total_symbols} symbols, snapshot ${cell.snapshot_exists ? "yes" : "no"}`}
-                        title={`${cell.date} · ${cell.symbols_with_bars}/${cell.total_symbols} symbols · snapshot ${cell.snapshot_exists ? "yes" : "no"}`}
+                        aria-label={`${cell.date}: ${cell.symbols_with_bars} of ${cell.total_symbols} symbols have price data from Fetch; ${cell.snapshot_exists ? "a scored snapshot exists from Backfill" : "no scored snapshot yet — a Backfill gap"}`}
+                        title={`${cell.date} · ${cell.symbols_with_bars}/${cell.total_symbols} symbols have price data (Fetch) · ${cell.snapshot_exists ? "scored snapshot exists (Backfill)" : "no snapshot yet — Backfill gap"}`}
                         onMouseEnter={() => setHovered(cell)}
                         onMouseLeave={() => setHovered((h) => (h?.date === cell.date ? null : h))}
                         onFocus={() => setHovered(cell)}
@@ -317,8 +337,9 @@ export function AvailabilityHeatmap({
                           "hover:brightness-110 hover:ring-1 hover:ring-accent",
                           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
                           (selected || isAnchor) && "ring-2 ring-accent ring-offset-1 ring-offset-surface",
-                          // the snapshot ring marker — a positive-toned ring distinct from the selection ring
-                          cell.snapshot_exists && !selected && !isAnchor && "ring-2 ring-pos",
+                          // the snapshot ring marker — a dedicated violet token, distinct from the accent
+                          // selection ring AND from every heat-* density hue (J-13/iter-20)
+                          cell.snapshot_exists && !selected && !isAnchor && "ring-2 ring-snapshot",
                         )}
                       >
                         {/* the day-of-month number — non-interactive text inside the single button */}
@@ -332,10 +353,11 @@ export function AvailabilityHeatmap({
           </div>
 
           <p className="border-t border-border pt-2 text-[11px] text-text-faint">
-            Cell density = symbols with a bar on that day ÷ total stored symbols ({state.data.total_symbols}).
-            Each coverage level is a distinct hue (slate → blue → teal → green → amber; see the legend
-            above); a day with an immutable snapshot carries a ring. A trading day with no non-benchmark
-            bars is shown honestly (the lowest level), never omitted as if covered.
+            Cell fill = symbols with a bar on that day ÷ total stored symbols ({state.data.total_symbols}),
+            filled by Fetch — one hue from dark (none) to bright (full; see the legend above). The ring =
+            an immutable scored snapshot exists for that day, produced by Backfill, in a distinct colour
+            never used by the fill. A trading day with no non-benchmark bars is shown honestly (the lowest
+            level), never omitted as if covered.
           </p>
         </div>
       ) : null}

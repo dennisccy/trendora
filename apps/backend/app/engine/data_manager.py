@@ -73,7 +73,7 @@ from app.engine.research import (
     _dataset_version,  # single-sourced cache stamp (J-72/J-87) — never duplicated
     _membership_dataset_version,  # J-100: the NARROW membership-cache stamp (no forward-return term)
 )
-from app.seed_loader import all_seed_symbols
+from app.seed_loader import price_load_symbols
 
 # Injectable sleep (J-34): the chunked fetch's inter-request delay + 429 backoff call this. Tests pass
 # their own recorder so backoff/sleep add NO wall-clock (MEMORY: backend-test-suite-runtime).
@@ -2950,14 +2950,18 @@ def _run_job(
                     #   - an EXPAND fetches the committed POOL (J-35),
                     #   - a J-37 PULL fetches EXACTLY the diagnosed-gap symbols (`symbols_override`) — the
                     #     gap-exact fetch dispatched through this SAME chunked engine (no second fetch path),
-                    #   - otherwise a generic fetch fetches the existing seed set.
+                    #   - otherwise a generic fetch keeps the WHOLE committed pool ∪ context fresh (J-13,
+                    #     iter-20) — `price_load_symbols` is the SAME union `load_prices` already uses, so
+                    #     the generic Fetch job covers every pool name (not just the ~122-name context set)
+                    #     WITHOUT dropping the context symbols (benchmarks/ETFs/^VIX/macro proxies) the old
+                    #     `all_seed_symbols`-only default kept fresh (an honest-coverage regression to avoid).
                     # Everything downstream (plan, checkpoint, per-(symbol,date) idempotency) is reused.
                     if is_expand:
                         symbols = [row["symbol"] for row in pool]
                     elif symbols_override is not None:
                         symbols = list(symbols_override)
                     else:
-                        symbols = all_seed_symbols(cfg)
+                        symbols = price_load_symbols(cfg, seed_dir)
                     chunks = _chunk_plan(cfg, symbols, prog.start, prog.end)
                     start_chunk = 0
                     checkpoint = _start_checkpoint(session, cfg, prog, symbols, len(chunks))

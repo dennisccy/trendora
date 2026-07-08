@@ -100,9 +100,11 @@ def _time_fetch_stage(cfg, symbols, latency_s: float) -> dict:
                 from app.models import DailyPrice
                 session.add(DailyPrice(symbol="SPY", date=date_cls(2024, 1, 2), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
                 session.commit()
-            # restrict the seed symbol set to the chosen N for a quick, comparable timing
-            orig = data_manager.all_seed_symbols
-            data_manager.all_seed_symbols = lambda _c, _s=symbols: list(_s)
+            # restrict the seed symbol set to the chosen N for a quick, comparable timing. J-13 (iter-20):
+            # a generic fetch's symbol plan now comes from `data_manager.price_load_symbols` (context ∪
+            # pool), not `all_seed_symbols` alone — patch the function `_run_job` actually calls.
+            orig = data_manager.price_load_symbols
+            data_manager.price_load_symbols = lambda _c, _s, _syms=symbols: list(_syms)
             try:
                 job = create_job("fetch", fetch_day, fetch_day, source="yahoo")
                 t0 = time.perf_counter()
@@ -112,7 +114,7 @@ def _time_fetch_stage(cfg, symbols, latency_s: float) -> dict:
                 )
                 timings[label] = time.perf_counter() - t0
             finally:
-                data_manager.all_seed_symbols = orig
+                data_manager.price_load_symbols = orig
     return timings
 
 

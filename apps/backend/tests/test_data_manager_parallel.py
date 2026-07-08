@@ -102,7 +102,12 @@ def test_fan_out_is_bounded_by_fetch_workers(tmp_path):
     _seed_calendar(engine)
     provider = _ConcurrencyTrackingProvider()
     job = create_job("fetch", date(2024, 3, 1), date(2024, 3, 1), source="yahoo")
-    summary = run_data_job(job.job_id, config=cfg, engine=engine, provider=provider, sleep_fn=_noop_sleep)
+    # J-13 (iter-20): a generic fetch now targets `price_load_symbols(cfg, seed_dir)` (context ∪ pool). Pin
+    # an explicit EMPTY temp `seed_dir` (no committed `universe_pool.csv`) so it degrades honestly to the
+    # SAME context-only set `all_seed_symbols` gave before — keeping this test's symbol universe small.
+    summary = run_data_job(
+        job.job_id, config=cfg, engine=engine, provider=provider, sleep_fn=_noop_sleep, seed_dir=tmp_path,
+    )
     assert summary["status"] == "ok"
     assert provider.max_in_flight <= workers  # never more than the configured pool size in flight
     assert provider.max_in_flight >= 2  # but it DID actually run in parallel (a real pool, not serial)
@@ -119,7 +124,11 @@ def test_fetch_workers_one_is_serial(tmp_path):
     _seed_calendar(engine)
     provider = _ConcurrencyTrackingProvider()
     job = create_job("fetch", date(2024, 3, 1), date(2024, 3, 1), source="yahoo")
-    summary = run_data_job(job.job_id, config=cfg, engine=engine, provider=provider, sleep_fn=_noop_sleep)
+    # J-13 (iter-20): pin an explicit EMPTY temp `seed_dir` (no committed `universe_pool.csv`) so the
+    # fetch scope degrades honestly to the SAME context-only set `all_seed_symbols` gave before.
+    summary = run_data_job(
+        job.job_id, config=cfg, engine=engine, provider=provider, sleep_fn=_noop_sleep, seed_dir=tmp_path,
+    )
     assert summary["status"] == "ok"
     assert provider.max_in_flight == 1  # strictly serial
     with Session(engine) as session:
@@ -155,7 +164,9 @@ def test_one_insert_per_chunk(tmp_path, monkeypatch):
     monkeypatch.setattr(Session, "execute", _counting_execute)
 
     # restrict the symbol plan to 4 symbols → with batch 2 that is exactly 2 chunks
-    monkeypatch.setattr(data_manager, "all_seed_symbols", lambda _cfg: ["AAA", "BBB", "CCC", "DDD"])
+    # J-13 (iter-20): a generic fetch's symbol plan now comes from `data_manager.price_load_symbols`
+    # (context ∪ pool), not `all_seed_symbols` alone — patch the function `_run_job` actually calls.
+    monkeypatch.setattr(data_manager, "price_load_symbols", lambda _cfg, _seed_dir: ["AAA", "BBB", "CCC", "DDD"])
     job = create_job("fetch", date(2024, 3, 1), date(2024, 3, 1), source="yahoo")
     summary = run_data_job(job.job_id, config=cfg, engine=engine, provider=_OkProvider(), sleep_fn=_noop_sleep)
     assert summary["status"] == "ok"
@@ -189,7 +200,9 @@ def test_mid_chunk_429_leaves_no_partial_chunk_rows(tmp_path, monkeypatch):
     engine = make_engine(f"sqlite:///{tmp_path / 'partial.db'}")
     create_db_and_tables(engine)
     _seed_calendar(engine)
-    monkeypatch.setattr(data_manager, "all_seed_symbols", lambda _cfg: ["AAA", "BBB", "CCC", "DDD"])
+    # J-13 (iter-20): a generic fetch's symbol plan now comes from `data_manager.price_load_symbols`
+    # (context ∪ pool), not `all_seed_symbols` alone — patch the function `_run_job` actually calls.
+    monkeypatch.setattr(data_manager, "price_load_symbols", lambda _cfg, _seed_dir: ["AAA", "BBB", "CCC", "DDD"])
     provider = _SecondSymbol429(ok_count=2)  # 2 symbols succeed, then a persistent 429 in the same chunk
     job = create_job("fetch", date(2024, 3, 1), date(2024, 3, 1), source="yahoo")
     summary = run_data_job(job.job_id, config=cfg, engine=engine, provider=provider, sleep_fn=_noop_sleep)
@@ -240,8 +253,11 @@ def test_parallel_pause_then_resume_no_duplicate_rows(tmp_path):
     fetch_day = date(2024, 3, 1)
     job = create_job("fetch", fetch_day, fetch_day, source="tiingo")
     paused = _ChunkGated429(chunk0)  # only chunk 0's symbols succeed → pause entering chunk 1
+    # J-13 (iter-20): pin an explicit EMPTY temp `seed_dir` (no committed `universe_pool.csv`) so the
+    # fetch scope degrades honestly to the SAME context-only set `symbols` (`all_seed_symbols`) above.
     summary1 = run_data_job(
-        job.job_id, config=cfg, engine=engine, provider=paused, api_key=secret, sleep_fn=_noop_sleep
+        job.job_id, config=cfg, engine=engine, provider=paused, api_key=secret, sleep_fn=_noop_sleep,
+        seed_dir=tmp_path,
     )
     assert summary1["status"] == "resumable"
     assert summary1["chunk_index"] == 1 and summary1["chunk_total"] >= 2  # chunk 0 committed, paused at 1
@@ -260,7 +276,8 @@ def test_parallel_pause_then_resume_no_duplicate_rows(tmp_path):
 
     resumed = _OkForAll()
     summary2 = resume_data_job(
-        job.job_id, config=cfg, engine=engine, provider=resumed, api_key=secret, sleep_fn=_noop_sleep
+        job.job_id, config=cfg, engine=engine, provider=resumed, api_key=secret, sleep_fn=_noop_sleep,
+        seed_dir=tmp_path,
     )
     assert summary2["status"] == "ok"
     assert summary2["chunk_index"] == summary2["chunk_total"]
@@ -303,7 +320,9 @@ def test_non_429_error_scrubbed_under_parallelism(tmp_path, monkeypatch):
     engine = make_engine(f"sqlite:///{tmp_path / 'leak.db'}")
     create_db_and_tables(engine)
     _seed_calendar(engine)
-    monkeypatch.setattr(data_manager, "all_seed_symbols", lambda _cfg: ["AAA", "BBB", "CCC", "DDD"])
+    # J-13 (iter-20): a generic fetch's symbol plan now comes from `data_manager.price_load_symbols`
+    # (context ∪ pool), not `all_seed_symbols` alone — patch the function `_run_job` actually calls.
+    monkeypatch.setattr(data_manager, "price_load_symbols", lambda _cfg, _seed_dir: ["AAA", "BBB", "CCC", "DDD"])
     # tiingo is a needs-key source → the resolved key drives the scrubber
     provider = _KeyLeaking404(secret, fail_symbol="CCC")
     job = create_job("fetch", date(2024, 3, 1), date(2024, 3, 1), source="tiingo")
@@ -338,7 +357,9 @@ def test_worker_exception_does_not_strand_job(tmp_path, monkeypatch):
     engine = make_engine(f"sqlite:///{tmp_path / 'boom.db'}")
     create_db_and_tables(engine)
     _seed_calendar(engine)
-    monkeypatch.setattr(data_manager, "all_seed_symbols", lambda _cfg: ["AAA", "BBB", "CCC", "DDD"])
+    # J-13 (iter-20): a generic fetch's symbol plan now comes from `data_manager.price_load_symbols`
+    # (context ∪ pool), not `all_seed_symbols` alone — patch the function `_run_job` actually calls.
+    monkeypatch.setattr(data_manager, "price_load_symbols", lambda _cfg, _seed_dir: ["AAA", "BBB", "CCC", "DDD"])
     job = create_job("fetch", date(2024, 3, 1), date(2024, 3, 1), source="yahoo")
     # Snapshot pre-existing `data-job-*` daemons (async jobs from EARLIER tests in the full suite may
     # still be winding down — `threading.enumerate()` is process-global). We assert only that THIS

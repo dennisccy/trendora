@@ -71,7 +71,8 @@ from app.models import (
     SectorScoreRow,
     ThemeScoreRow,
 )
-from app.seed_loader import all_seed_symbols, load_seed
+from app.engine.universe_screen import read_pool
+from app.seed_loader import DEFAULT_SEED_DIR, all_seed_symbols, load_seed, price_load_symbols
 
 
 def _noop_sleep(_seconds: float) -> None:
@@ -254,6 +255,33 @@ def test_compute_availability_empty_db_is_empty_but_valid():
     with Session(engine) as session:
         avail = compute_availability(session, load_config())
     assert avail == {"total_symbols": 0, "trading_day_count": 0, "cells": []}
+
+
+def test_compute_availability_byte_identical_after_fetch_scope_widening(coverage_engine):
+    """J-13 (iter-20) anti-goal #3 guard: widening the generic Fetch job's target symbol set (now
+    `price_load_symbols`, covering the full committed pool) must NOT change `compute_availability`'s
+    output — it derives purely from stored `DailyPrice` / `ScannerRun` rows, never from the fetch job's
+    symbol-set config (the function has no reference to `all_seed_symbols`, `price_load_symbols`, or any
+    `seed_dir`). Pins the exact fields/values on the SAME fixed DB the other availability tests use, so
+    any future coupling between the two is caught immediately."""
+    engine, spy_days = coverage_engine
+    cfg = load_config()
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
+    with Session(engine) as session:
+        avail = compute_availability(session, cfg)
+
+    d1, d2, d3, d4 = (d.isoformat() for d in spy_days)
+    assert avail == {
+        "total_symbols": 2,
+        "trading_day_count": 4,
+        "cells": [
+            {"date": d1, "symbols_with_bars": 2, "total_symbols": 2, "snapshot_exists": False},
+            {"date": d2, "symbols_with_bars": 2, "total_symbols": 2, "snapshot_exists": True},
+            {"date": d3, "symbols_with_bars": 1, "total_symbols": 2, "snapshot_exists": False},
+            {"date": d4, "symbols_with_bars": 1, "total_symbols": 2, "snapshot_exists": False},
+        ],
+    }
 
 
 # ==================================================================================================
@@ -470,11 +498,15 @@ def test_fetch_forced_failure_writes_no_bars_or_snapshots(tmp_path):
         prices_before = session.scalar(select(func.count()).select_from(DailyPrice))
         runs_before = session.scalar(select(func.count()).select_from(ScannerRun))
 
+    # J-13 (iter-20): a generic fetch now targets `price_load_symbols(cfg, seed_dir)` (context ∪ pool), so
+    # this job-mechanics test pins an explicit EMPTY temp `seed_dir` (no committed `universe_pool.csv`) —
+    # `price_load_symbols` then degrades honestly to the context-only set, keeping this test fast/small
+    # exactly as before (never silently exercising the real ~588-name committed pool).
     job = create_job("fetch", date(2024, 1, 2), date(2024, 1, 31))
-    summary = run_data_job(job.job_id, config=cfg, engine=engine, provider=_FailingProvider())
+    summary = run_data_job(job.job_id, config=cfg, engine=engine, provider=_FailingProvider(), seed_dir=tmp_path)
 
     assert summary["status"] == "failed"
-    assert summary["symbols_total"] == len(all_seed_symbols(cfg))
+    assert summary["symbols_total"] == len(price_load_symbols(cfg, tmp_path))
     assert summary["symbols_failed"] == summary["symbols_total"] and summary["symbols_ok"] == 0
     assert summary["bars_fetched"] == 0 and summary["snapshots_created"] == 0
     assert summary["errors"]  # explicit per-symbol failure messages
@@ -484,6 +516,62 @@ def test_fetch_forced_failure_writes_no_bars_or_snapshots(tmp_path):
         assert session.scalar(select(func.count()).select_from(ScannerRun)) == runs_before  # no snapshots
         dpr = session.exec(select(DataProviderRun).order_by(DataProviderRun.id.desc())).first()
     assert dpr is not None and dpr.status == "failed"  # the failure is recorded honestly
+
+
+# ==================================================================================================
+# J-13 (iter-20) — the generic Fetch job now targets the full committed pool ∪ context
+# (`price_load_symbols`), not just the smaller context-only `all_seed_symbols` default.
+# ==================================================================================================
+class _PoolRecordingProvider(PriceProvider):
+    """Returns one bar per symbol and records every symbol it was asked for (zero wall-clock).
+
+    NOTE: distinct name from the unrelated `_RecordingOkProvider` defined later in this module (used by
+    the api-key anti-goal test, no `.fetched`) — a shared name would let the later module-level
+    definition shadow this one, so this test would silently instantiate the wrong class.
+    """
+
+    def __init__(self):
+        self.fetched: list[str] = []
+
+    def get_daily(self, symbol, start=None, end=None):
+        self.fetched.append(symbol)
+        return [Bar(date=date(2024, 1, 2), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0)]
+
+
+def test_fetch_job_symbol_set_covers_committed_pool_and_context(tmp_path):
+    """J-13 (iter-20): a generic Fetch job's target symbol set is `price_load_symbols(cfg, seed_dir)` — a
+    SUPERSET of the committed candidate pool AND every context symbol (benchmarks/ETFs/^VIX/macro proxies),
+    not the smaller context-only set the pre-iter-20 default (`all_seed_symbols` alone) used. Runs against
+    the REAL committed seed dir (the actual pool) with a fake zero-wall-clock provider, so it stays fast."""
+    cfg = load_config()
+    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
+    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
+    # are create-once/isolation/parallelism, not the bounded-density policy).
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
+    engine = make_engine(f"sqlite:///{tmp_path / 'pool_fetch.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 1, 2), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    expected = price_load_symbols(cfg, DEFAULT_SEED_DIR)  # the real committed pool ∪ context
+    context = set(all_seed_symbols(cfg))
+    pool = {row["symbol"] for row in read_pool(DEFAULT_SEED_DIR)}
+    pool_only_sample = sorted(pool - context)[:5]
+    assert pool_only_sample, "the committed pool must have names beyond the context set for this test to mean anything"
+    assert len(expected) >= 548  # the committed pool's documented floor (goal.md J-13/§A)
+
+    provider = _PoolRecordingProvider()
+    job = create_job("fetch", date(2024, 1, 2), date(2024, 1, 2), source="yahoo")
+    summary = run_data_job(job.job_id, config=cfg, engine=engine, provider=provider, sleep_fn=_noop_sleep)
+
+    assert summary["status"] == "ok"
+    assert summary["symbols_total"] == len(expected)
+    assert summary["symbols_total"] > len(context)  # strictly bigger than the pre-iter-20 default
+    fetched = set(provider.fetched)
+    assert context <= fetched  # every context symbol still covered (no coverage regression)
+    assert pool <= fetched     # every committed-pool name now covered too (not just the 5-name sample)
 
 
 # ==================================================================================================
@@ -1017,6 +1105,12 @@ def test_chunked_fetch_pauses_resumable_then_resumes_idempotently(tmp_path):
     _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
     cfg = cfg.model_copy(update={"scanner": _sc})
     batch = cfg.data_manager.import_chunking.symbol_batch_size
+    # J-13 (iter-20): a generic fetch now targets `price_load_symbols(cfg, seed_dir)` (context ∪ pool).
+    # This test pins an explicit EMPTY temp `seed_dir` (no committed `universe_pool.csv`) on BOTH the
+    # fresh run and the resume, so `price_load_symbols` degrades honestly to the SAME context-only set
+    # `all_seed_symbols` gave before — keeping this exact-list-equality test valid unchanged (a resume's
+    # symbol list actually replays the checkpoint's persisted plan regardless, but pinning `seed_dir`
+    # keeps the fresh run's plan small/deterministic and documents the dependency explicitly).
     symbols = all_seed_symbols(cfg)
     chunk0 = set(symbols[:batch])  # the first chunk's symbols (date_window=90 over 1 day → 1 window)
     engine = make_engine(f"sqlite:///{tmp_path / 'resume.db'}")
@@ -1030,7 +1124,8 @@ def test_chunked_fetch_pauses_resumable_then_resumes_idempotently(tmp_path):
     job = create_job("fetch", fetch_day, fetch_day, source="tiingo")
     paused_provider = _OkForThen429(chunk0)
     summary1 = run_data_job(
-        job.job_id, config=cfg, engine=engine, provider=paused_provider, api_key=secret, sleep_fn=_noop_sleep
+        job.job_id, config=cfg, engine=engine, provider=paused_provider, api_key=secret, sleep_fn=_noop_sleep,
+        seed_dir=tmp_path,
     )
     assert summary1["status"] == "resumable"  # distinct from failed — a graceful pause
     assert summary1["chunk_index"] == 1 and summary1["chunk_total"] >= 2  # paused after chunk 0 completed
@@ -1053,7 +1148,8 @@ def test_chunked_fetch_pauses_resumable_then_resumes_idempotently(tmp_path):
     # --- Resume with a recovered provider → continues from chunk 1, idempotent, completes -------------
     resumed_provider = _OkForAll()
     summary2 = resume_data_job(
-        job.job_id, config=cfg, engine=engine, provider=resumed_provider, api_key=secret, sleep_fn=_noop_sleep
+        job.job_id, config=cfg, engine=engine, provider=resumed_provider, api_key=secret, sleep_fn=_noop_sleep,
+        seed_dir=tmp_path,
     )
     assert summary2["status"] == "ok"  # the import completed
     assert summary2["chunk_index"] == summary2["chunk_total"]  # all chunks done

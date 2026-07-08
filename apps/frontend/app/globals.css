@@ -18,24 +18,34 @@
   --text-muted: #8b98a9;
   --text-faint: #5b6677;
 
-  /* J-74 — the availability-heatmap density scale (six buckets, low → full coverage).
-     A perceptually-ordered, clearly-separated MULTI-HUE progression so neighbouring buckets are
-     unambiguously different on the dark background: slate (none) → blue → teal → green → amber.
-     The ONLY place these hex values live; cells reference the registered Tailwind tokens, never hex. */
-  --heat-0: #2b3445; /* none      — muted slate (a hair above the surface so an empty day still reads as a cell) */
-  --heat-1: #3b6fb0; /* <25%      — blue */
-  --heat-2: #2f9bb0; /* 25–50%    — cyan/teal */
-  --heat-3: #2bb38f; /* 50–75%    — teal-green */
-  --heat-4: #4cc35a; /* 75–<100%  — green */
-  --heat-5: #f0b429; /* full      — amber */
-  /* Per-bucket day-number text contrast (J-70): the darkest buckets (0–1) need near-white text;
-     the brighter mid/high buckets (2–5) take the dark base for a strong contrast on saturated fills. */
-  --heat-text-0: var(--text); /* near-white on the dark slate */
-  --heat-text-1: var(--text); /* near-white on the mid blue */
-  --heat-text-2: var(--bg);   /* dark on the bright cyan */
-  --heat-text-3: var(--bg);   /* dark on the teal-green */
-  --heat-text-4: var(--bg);   /* dark on the green */
-  --heat-text-5: var(--bg);   /* dark on the amber */
+  /* J-13 (iter-20) — the availability-heatmap density scale (six buckets, low → full coverage).
+     goal.md directs a MONOTONIC SINGLE-HUE scale, reversing the prior J-74 multi-hue ramp: that
+     ramp's top ("full") bucket was amber (#f0b429) — this page's WARNING colour (--warn) — which
+     both collided with the 75–<100% green bucket beside it and mis-signalled "full coverage" as a
+     caution state. This single blue hue removes both collisions; the six steps are validated
+     distinct (monotone lightness, >= 0.06 OKLCH ΔL per adjacent step, darkest step still >= 2:1
+     contrast on --surface — each step hand-computed in OKLCH + WCAG, not eyeballed). The ONLY place these
+     hex values live; cells reference the registered Tailwind tokens, never hex. */
+  --heat-0: #39516f; /* none      — darkest blue (still clearly a cell, never invisible on --surface) */
+  --heat-1: #3d6ba4; /* <25%      */
+  --heat-2: #4d86cb; /* 25–50%    */
+  --heat-3: #669bdb; /* 50–75%    */
+  --heat-4: #83b0e7; /* 75–<100%  */
+  --heat-5: #a6c8f2; /* full      — brightest blue (deliberately NOT amber) */
+  /* Per-bucket day-number text contrast (J-70): the two darkest buckets (0–1) need near-white text;
+     the four brighter buckets (2–5) take the dark base for a strong contrast on the lighter fills. */
+  --heat-text-0: var(--text); /* near-white on the darkest blue */
+  --heat-text-1: var(--text); /* near-white on the mid-dark blue */
+  --heat-text-2: var(--bg);   /* dark on the mid-bright blue */
+  --heat-text-3: var(--bg);   /* dark on the bright blue */
+  --heat-text-4: var(--bg);   /* dark on the brighter blue */
+  --heat-text-5: var(--bg);   /* dark on the brightest blue */
+
+  /* J-13 (iter-20) — the "a scored snapshot exists" ring marker on the availability heatmap (was
+     `--pos`/green, which collided with the old ramp's green buckets). Violet shares no hue family
+     with the --heat-* blue scale, --pos (green), --neg (red), or --warn (amber) — it reads as an
+     unambiguous indicator regardless of which density bucket it rings. */
+  --snapshot: #a78bfa;
 
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, monospace;
