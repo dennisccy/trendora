@@ -50,6 +50,7 @@ import {
   retryDataJob,
   startDataJob,
   type AvailabilityResponse,
+  type DataCapacity,
   type DataJob,
   type DataJobKind,
   type DataOverviewResponse,
@@ -126,6 +127,18 @@ function fmtDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = Math.round(seconds % 60);
   return `${m}m ${s}s`;
+}
+
+/** Item K (iter-24): human-readable byte size for the storage-footprint card (1024-based B/KB/MB/GB/TB).
+ *  Pure DISPLAY formatting of the server-provided byte count — no size is computed here. */
+function fmtBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "—";
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** exponent;
+  const decimals = exponent === 0 ? 0 : value < 10 ? 2 : 1;
+  return `${value.toFixed(decimals)} ${units[exponent]}`;
 }
 
 /** J-66: a plain-language "updated Ns ago" heartbeat string from the job's `last_progress_at`. Pure
@@ -422,6 +435,9 @@ export default function DataManagerPage() {
       {state.kind === "ok" ? (
         <>
           <CoveragePanel data={state.data} />
+          {/* item K (iter-24 fast-platform pass): the read-only DB storage-footprint card (file size +
+              three row counts) from the additive GET /api/data `capacity` field. */}
+          <StorageCapacityPanel capacity={state.data.capacity} />
           {/* J-85: the universe-vs-latest-snapshot coverage diagnostic banner (only when members are
               absent) + the confirm-gated "Rebuild snapshots for current universe" action. The rebuild
               POSTs kind="rebuild" and surfaces its progress through the SAME live job card / poll path
@@ -723,6 +739,51 @@ function CoveragePanel({ data }: { data: DataOverviewResponse }) {
         )}
       </p>
       <PerSymbolCoverageTable rows={c.per_symbol} symbolCount={c.symbol_count} universeCount={c.candidate_universe_count} />
+    </Card>
+  );
+}
+
+/** Item K (iter-24 fast-platform pass) — the DB storage-footprint snapshot: on-disk file size + row
+ *  counts for the three largest tables, read verbatim from the additive `GET /api/data` `capacity`
+ *  field. Pure presentation of stored values (recomputes nothing); an honest zero state on a cold DB
+ *  (the backend's `compute_capacity` already returns 0s there — no separate empty-state branch needed).
+ *  On a backend-fetch failure this card simply doesn't render (the page's existing "Backend unavailable"
+ *  error card already covers that — see the `state.kind === "error"` branch above). */
+function StorageCapacityPanel({ capacity }: { capacity: DataCapacity }) {
+  return (
+    <Card className="p-0" data-testid="storage-capacity-panel">
+      <PanelTitle hint="The database's current on-disk footprint — file size and row counts for the three largest tables. Descriptive metadata read from stored rows; it recomputes no canonical value.">
+        <span className="inline-flex items-center gap-2">
+          <Database className="h-4 w-4 text-text-faint" aria-hidden />
+          Storage footprint
+        </span>
+      </PanelTitle>
+      <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <DefinedMetric
+          label="Database file"
+          testId="capacity-db-file-bytes"
+          value={fmtBytes(capacity.db_file_bytes)}
+          definition="The on-disk size of the SQLite database file."
+        />
+        <DefinedMetric
+          label="Price bars"
+          testId="capacity-daily-prices-rows"
+          value={capacity.daily_prices_rows.toLocaleString()}
+          definition="Rows in daily_prices — one per (symbol, date) stored bar."
+        />
+        <DefinedMetric
+          label="Scanner rows"
+          testId="capacity-scanner-results-rows"
+          value={capacity.scanner_results_rows.toLocaleString()}
+          definition="Rows in scanner_results — one per (snapshot run, stock) scored result."
+        />
+        <DefinedMetric
+          label="Forward returns"
+          testId="capacity-forward-returns-rows"
+          value={capacity.forward_returns_rows.toLocaleString()}
+          definition="Rows in forward_returns — one per (snapshot run, symbol, horizon) realized return."
+        />
+      </div>
     </Card>
   );
 }

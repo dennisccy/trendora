@@ -135,6 +135,9 @@ def data_overview(
             "heartbeat_stale_seconds": jp.heartbeat_stale_seconds,
             "per_symbol_ticks": jp.per_symbol_ticks,
         },
+        # iter-24 fast-platform item K: the DB storage-footprint snapshot (file size + row counts) —
+        # additive, pure DB introspection over stored rows; no canonical value recomputed.
+        "capacity": data_manager.compute_capacity(session, cfg),
     }
 
 

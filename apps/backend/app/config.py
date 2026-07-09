@@ -523,8 +523,9 @@ class ServerOpsCfg(BaseModel):
       - `graceful_timeout_seconds` — uvicorn `--timeout-graceful-shutdown`: bounds how long a heavy in-flight
                                      request may delay shutdown.
       - `memory_cap_mb`            — `ulimit -v` virtual-memory cap (MB) for the backend process: clears the
-                                     one-copy ~1.3M-row bar prefill + headroom, so a pathological N-copy
-                                     spike is OOM-killed as ONE process rather than swap-thrashing the VM.
+                                     one-copy ~3.27M-row bar prefill (iter-19: a streamed, column-projected
+                                     load — retained footprint ~0.4-0.5 GB) + headroom, so a pathological
+                                     N-copy spike is OOM-killed as ONE process rather than swap-thrashing the VM.
 
     Default-populated (a config predating it — and the inline test fixtures — still loads unchanged). Every
     value MUST be positive; an invalid block raises `ValueError` at load, never a silent default."""
@@ -1649,9 +1650,78 @@ def resolve_ref(config: "Config", ref: str) -> object:
     return node
 
 
+class DatabasePragmasCfg(BaseModel):
+    """iter-24 fast-platform item B — the SQLite connection PRAGMAs `app.db.make_engine` applies via an
+    `event.listen(engine, "connect")` hook, sourced from config so no PRAGMA value is a literal in
+    `app.db` (anti-goal: No magic numbers). Applied ONLY when `database.url` is a sqlite URL — the ONE
+    dialect-specific site in the codebase; a future Postgres `database.url` never sees these.
+
+      - `journal_mode`   — "WAL" lets readers proceed concurrently with a writer's transaction (the
+                           default "DELETE" journal blocks readers while a write is in flight — the
+                           exact contention the concurrent warmup-write / API-read workload hits).
+      - `synchronous`    — "NORMAL" (vs "FULL") skips an fsync between WAL commits. Paired with WAL this
+                           is SQLite's own documented safe combination for a single-host app. TRADE-OFF
+                           (accepted, documented): the last commit can be lost on a power loss / OS
+                           crash (NOT on an ordinary process crash/kill) — acceptable for this local
+                           research app; never appropriate for a durability-critical store.
+      - `busy_timeout_ms`  — milliseconds a connection waits on a lock before raising "database is
+                           locked", instead of failing immediately (SQLite's own default is 0).
+      - `cache_size`     — SQLite page-cache size; negative = KiB (the default -262144 = 256 MB).
+      - `mmap_size_bytes`  — memory-map window size (bytes) SQLite uses for read I/O. DEFAULT 0
+                           (mmap DISABLED): a non-zero value reserves that many bytes of VIRTUAL address
+                           space PER pooled connection, so `mmap_size_bytes` x (pool_size + max_overflow)
+                           must stay well under the `server.memory_cap_mb` `ulimit -v` cap AND leave room
+                           for the ~3.27M-row cold bar prefill. At 1 GB x the default pool this exhausted
+                           the 6144 MB cap and crashed the first cold `/api/data` load (iter-24 audit / UT-16).
+      - `temp_store`     — "MEMORY" keeps temporary b-trees/sort spills off disk.
+
+    Boot-validated: `journal_mode`/`synchronous`/`temp_store` against SQLite's own documented PRAGMA
+    vocabularies; `busy_timeout_ms` must be `>= 0`. An invalid block raises `ConfigError`, never a
+    silent default."""
+
+    model_config = ConfigDict(extra="allow")
+    journal_mode: str = "WAL"
+    synchronous: str = "NORMAL"
+    busy_timeout_ms: int = 30000
+    cache_size: int = -262144
+    mmap_size_bytes: int = 0  # mmap disabled by default — see the field note above (iter-24 audit / UT-16)
+    temp_store: str = "MEMORY"
+
+    @model_validator(mode="after")
+    def _validate(self) -> "DatabasePragmasCfg":
+        journal_modes = {"WAL", "DELETE", "TRUNCATE", "PERSIST", "MEMORY", "OFF"}
+        sync_modes = {"OFF", "NORMAL", "FULL", "EXTRA"}
+        temp_stores = {"DEFAULT", "FILE", "MEMORY"}
+        if self.journal_mode.upper() not in journal_modes:
+            raise ValueError(f"database.pragmas.journal_mode must be one of {sorted(journal_modes)}")
+        if self.synchronous.upper() not in sync_modes:
+            raise ValueError(f"database.pragmas.synchronous must be one of {sorted(sync_modes)}")
+        if self.temp_store.upper() not in temp_stores:
+            raise ValueError(f"database.pragmas.temp_store must be one of {sorted(temp_stores)}")
+        if self.busy_timeout_ms < 0:
+            raise ValueError("database.pragmas.busy_timeout_ms must be >= 0")
+        return self
+
+
 class DatabaseCfg(BaseModel):
+    """iter-24 fast-platform item B — `pragmas` (sqlite-only connection tuning) + the pool sizing
+    `app.db.make_engine` applies (`pool_size`/`max_overflow`, config-keyed — no inline literal). Both
+    default-populated so a config/fixture predating them still loads and serves today's SQLAlchemy
+    defaults would otherwise leave implicit (`QueuePool` sizes to 5/10 by default; here made explicit)."""
+
     model_config = ConfigDict(extra="allow")
     url: str = Field(min_length=1)
+    pragmas: DatabasePragmasCfg = Field(default_factory=DatabasePragmasCfg)
+    pool_size: int = 10
+    max_overflow: int = 20
+
+    @model_validator(mode="after")
+    def _validate(self) -> "DatabaseCfg":
+        if self.pool_size < 1:
+            raise ValueError("database.pool_size must be >= 1")
+        if self.max_overflow < 0:
+            raise ValueError("database.max_overflow must be >= 0")
+        return self
 
 
 class ProviderCatalogEntry(BaseModel):

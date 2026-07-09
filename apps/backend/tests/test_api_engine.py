@@ -18,9 +18,11 @@ from app.config import load_config
 from app.db import create_db_and_tables, make_engine
 from app.engine.prices import latest_data_date
 from app.engine.regime import score_regime
+from app.engine.scanner import resolve_run
 from app.engine.scoring import score_stocks
 from app.engine.sectors import score_sectors
 from app.engine.setups import summarize_candidates
+from app.engine.snapshot_serving import filtered_stock_rows, stored_stock_rows
 from app.engine.themes import score_themes
 from app.engine.universe_screen import read_pool
 
@@ -196,6 +198,42 @@ def test_api_stock_detail_is_case_insensitive(loaded_engine):
         resp = client.get("/api/stocks/nvda")
     assert resp.status_code == 200
     assert resp.json()["row"]["ticker"] == "NVDA"
+
+
+def test_filtered_stock_rows_byte_identical_to_full_scan_row(loaded_engine):
+    """Item D (iter-24 fast-platform pass): `filtered_stock_rows` (the ticker-indexed query
+    `stock_detail_payload` + the watchlist path now use) returns a row byte-identical to the SAME
+    ticker's row from the full-scan `stored_stock_rows` -- the optimization changes ONLY how the row is
+    fetched, never its content. Case-insensitive (mirrors the detail endpoint's prior `.upper() ==`)."""
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        run = resolve_run(session, None, cfg)
+        full = {r["ticker"]: r for r in stored_stock_rows(session, run, cfg)}
+        filtered = filtered_stock_rows(session, run, ["NVDA", "aapl"], cfg)
+    assert {r["ticker"] for r in filtered} == {"NVDA", "AAPL"}
+    for row in filtered:
+        assert row == full[row["ticker"]]
+
+
+def test_filtered_stock_rows_returns_only_requested_rows_not_the_whole_run(loaded_engine):
+    """The filtered fetch narrows the RESULT SET at the SQL level -- it returns exactly the requested
+    ticker's row(s), not the run's full ~400+ row set filtered/deserialized in Python (the actual
+    mechanism behind the item-D speedup: fewer rows fetched, fewer record_json blobs parsed)."""
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        run = resolve_run(session, None, cfg)
+        full_count = len(stored_stock_rows(session, run, cfg))
+        filtered = filtered_stock_rows(session, run, ["NVDA"], cfg)
+    assert len(filtered) == 1
+    assert full_count > 50  # a real broad-universe run -- filtering to 1 is a genuine reduction
+
+
+def test_filtered_stock_rows_unknown_ticker_is_empty_not_an_error(loaded_engine):
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        run = resolve_run(session, None, cfg)
+        assert filtered_stock_rows(session, run, ["NOTREAL"], cfg) == []
+        assert filtered_stock_rows(session, run, [], cfg) == []
 
 
 def test_api_themes_equals_engine_output(loaded_engine):

@@ -17,9 +17,10 @@ from __future__ import annotations
 
 import json
 from datetime import date as date_cls
-from typing import Optional
+from typing import Iterable, Optional
 
 from fastapi import HTTPException
+from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.config import Config, get_config
@@ -210,16 +211,46 @@ def stocks_payload(session: Session, run: ScannerRun, config: Optional[Config] =
     }
 
 
+def filtered_stock_rows(
+    session: Session, run: ScannerRun, tickers: Iterable[str], config: Optional[Config] = None
+) -> list[dict]:
+    """Item D (iter-24 fast-platform pass) — the SAME row shape `stored_stock_rows` serves (record_json
+    rehydration + the J-75 stored `forward_returns` attachment), scoped to an explicit ticker set via an
+    indexed `ScannerResult.ticker` filter, instead of `json.loads`-ing every one of the run's ~400+
+    `record_json` blobs to return a handful. Matches case-insensitively (mirrors `stock_detail_payload`'s
+    former `.upper()` comparison, so a URL-cased ticker like `nvda` still resolves) by comparing uppercased
+    tickers on both sides; `tickers` may be given in any case. Ordered by rank — the SAME order
+    `stored_stock_rows` yields, so a caller taking the first match preserves prior tie-break behavior.
+    Recomputes nothing; byte-identical payload shape to the full-scan path for the same rows."""
+    cfg = config or get_config()
+    horizons = list(cfg.walk_forward.horizons)
+    wanted = {t.upper() for t in tickers if t}
+    if not wanted:
+        return []
+    results = session.exec(
+        select(ScannerResult)
+        .where(ScannerResult.run_id == run.id, func.upper(ScannerResult.ticker).in_(wanted))
+        .order_by(ScannerResult.rank)
+    ).all()
+    by_symbol = _forward_returns_by_symbol(session, run, cfg)
+    rows: list[dict] = []
+    for result in results:
+        row = json.loads(result.record_json)
+        row["forward_returns"] = _forward_returns_for_row(row["ticker"], by_symbol, horizons)
+        rows.append(row)
+    return rows
+
+
 def stock_detail_payload(
     session: Session, run: ScannerRun, ticker: str, config: Optional[Config] = None
 ) -> dict:
     """The `/api/stocks/{ticker}` (detail) shape: the SAME stored row the leaderboard serves (J-06),
     carrying the SAME stored forward returns (J-75). `404` for a ticker absent from this run — never a
-    fabricated row."""
-    target = ticker.upper()
-    for row in stored_stock_rows(session, run, config):
-        if row["ticker"].upper() == target:
-            return {"asof_date": run.asof_date.isoformat(), "benchmark": run.benchmark, "row": row}
+    fabricated row. Item D: uses the ticker-filtered fetch (one indexed query for this run + ticker)
+    instead of deserializing every row in the run to find one."""
+    rows = filtered_stock_rows(session, run, [ticker], config)
+    if rows:
+        return {"asof_date": run.asof_date.isoformat(), "benchmark": run.benchmark, "row": rows[0]}
     raise HTTPException(status_code=404, detail=f"unknown ticker: {ticker}")
 
 

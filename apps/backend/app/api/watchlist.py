@@ -25,7 +25,7 @@ exists; `404` deleting a missing entry.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Iterable, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -34,7 +34,7 @@ from sqlmodel import Session, select
 from app.config import Config, get_config
 from app.db import get_session
 from app.engine.prices import close_on, latest_data_date
-from app.engine.snapshot_serving import resolved_run, stocks_payload
+from app.engine.snapshot_serving import filtered_stock_rows, resolved_run
 from app.models import Watchlist
 
 router = APIRouter(tags=["watchlist"])
@@ -50,11 +50,16 @@ class WatchlistCreate(BaseModel):
     reason: str
 
 
-def _canonical_rows(session: Session, cfg: Config) -> dict[str, dict]:
+def _canonical_rows(session: Session, cfg: Config, tickers: Iterable[str]) -> dict[str, dict]:
     """The SAME stored snapshot rows `/api/stocks` serves at the latest date, indexed by ticker
     (single source → J-06). iter-8: read from the latest persisted IMMUTABLE snapshot — never a live
-    `score_stocks` recompute (anti-goal: No recompute in the read path)."""
-    rows = stocks_payload(session, resolved_run(session, None, cfg))["rows"]
+    `score_stocks` recompute (anti-goal: No recompute in the read path). Item D (iter-24): scoped to the
+    caller's OWN ticker set via the ticker-filtered fetch, instead of deserializing the whole leaderboard
+    (~400+ rows) just to enrich a handful of watchlist entries."""
+    tickers = list(tickers)
+    if not tickers:
+        return {}
+    rows = filtered_stock_rows(session, resolved_run(session, None, cfg), tickers, cfg)
     return {row["ticker"]: row for row in rows}
 
 
@@ -94,10 +99,11 @@ def list_watchlist(session: Session = Depends(get_session)) -> dict:
     asof = latest_data_date(session)
     if asof is None:
         raise HTTPException(status_code=503, detail="no price data available")
-    rows_by_ticker = _canonical_rows(session, get_config())
     entries = session.exec(
         select(Watchlist).order_by(Watchlist.created_at.desc(), Watchlist.id.desc())
     ).all()
+    # Item D (iter-24): scope the canonical-row fetch to exactly THIS caller's watchlist tickers.
+    rows_by_ticker = _canonical_rows(session, get_config(), (entry.ticker for entry in entries))
     return {
         "asof_date": asof.isoformat(),
         "entries": [_enrich(entry, rows_by_ticker, session, asof) for entry in entries],
@@ -136,7 +142,7 @@ def add_watchlist(payload: WatchlistCreate, session: Session = Depends(get_sessi
     session.add(entry)
     session.commit()
     session.refresh(entry)
-    return _enrich(entry, _canonical_rows(session, cfg), session, asof)
+    return _enrich(entry, _canonical_rows(session, cfg, [symbol]), session, asof)
 
 
 @router.delete("/watchlist/{entry_id}")

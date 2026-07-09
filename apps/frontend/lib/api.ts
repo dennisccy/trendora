@@ -2282,6 +2282,17 @@ export interface MacroAvailability {
   publication_lag_note: string;
 }
 
+/** Item K (iter-24 fast-platform pass) — the DB storage-footprint snapshot: on-disk file size + row
+ *  counts for the three largest tables. Pure DB introspection over stored rows (recomputes no canonical
+ *  value); an honest all-zero snapshot on a cold/empty DB (never an error). Presentation of stored
+ *  values only — the frontend re-formats this, it never derives a size/count itself. */
+export interface DataCapacity {
+  db_file_bytes: number;
+  daily_prices_rows: number;
+  scanner_results_rows: number;
+  forward_returns_rows: number;
+}
+
 export interface DataOverviewResponse {
   coverage: DataCoverage;
   runs: DataRun[];
@@ -2290,6 +2301,7 @@ export interface DataOverviewResponse {
   resumable_imports: ResumableImport[]; // J-34 paused imports (survive a backend restart); never a key
   unfinished_imports: UnfinishedImport[]; // J-38 unified unfinished imports (resumable + partial + failed)
   job_progress: JobProgressConfig; // J-66 poll/heartbeat/granularity knobs (config-driven)
+  capacity: DataCapacity; // item K (iter-24) — the DB storage-footprint snapshot
 }
 
 export type DataJobKind = "fetch" | "backfill" | "both" | "expand" | "rebuild";

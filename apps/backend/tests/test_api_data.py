@@ -95,6 +95,21 @@ def test_get_data_overview_shape(data_api_engine):
         assert set(s) == {"id", "label", "needs_key", "env_var", "supports_market_cap", "available", "reason"}
 
 
+def test_get_data_overview_carries_capacity_snapshot(data_api_engine):
+    """Item K (iter-24 fast-platform pass): GET /api/data carries an additive `capacity` key — the DB
+    storage-footprint snapshot (file size + row counts for the three largest tables), exact on the tiny
+    fixture (2 daily_prices rows from the two seeded SPY bars, 0 scanner_results, 0 forward_returns)."""
+    with Session(data_api_engine) as session:
+        payload = data_overview(session=session)
+    assert "capacity" in payload  # additive — every existing key from test_get_data_overview_shape stays
+    cap = payload["capacity"]
+    assert set(cap) == {"db_file_bytes", "daily_prices_rows", "scanner_results_rows", "forward_returns_rows"}
+    assert cap["daily_prices_rows"] == 2
+    assert cap["scanner_results_rows"] == 0
+    assert cap["forward_returns_rows"] == 0
+    assert cap["db_file_bytes"] > 0  # a real file-backed temp DB
+
+
 def test_get_data_availability_shape(data_api_engine):
     """J-61 — GET /api/data/availability returns the per-trading-date availability payload over the SAME
     bars `compute_coverage` reads. On the tiny fixture (two SPY days, no other symbols, no snapshots):

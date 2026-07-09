@@ -237,6 +237,20 @@ def _missing_data_diagnostic(session: Session, cfg: Config) -> dict:
         symbol: (int(count or 0), first, last) for symbol, count, first, last in stats_rows
     }
 
+    # item H (iter-24 fast-platform pass): ONE bulk query for every universe member's own dates, bounded
+    # to `universe` (~len(config.universe.symbols) members — no unbounded whole-table scan) — replaces
+    # the FORMER one-`DailyPrice.date`-query-per-member loop (a query per member that HAS data, run on
+    # every cold `/api/data` coverage compute). Grouped in Python into per-symbol date sets BEFORE the
+    # existing gap-diff logic below, which is otherwise UNCHANGED — byte-identical output (a symbol's
+    # bars outside its own [first, last] range, if any, are irrelevant to that logic either way, so
+    # narrowing the query to `[first, last]` per symbol would have been equivalent; fetching the full
+    # per-symbol series here is simpler and still strictly bounded to the universe).
+    own_dates_by_symbol: dict[str, set[date_cls]] = {}
+    for symbol, d in session.exec(
+        select(DailyPrice.symbol, DailyPrice.date).where(DailyPrice.symbol.in_(universe))
+    ):
+        own_dates_by_symbol.setdefault(symbol, set()).add(d)
+
     no_history: list[dict] = []
     thin: list[dict] = []
     intra_gaps: list[dict] = []
@@ -273,12 +287,7 @@ def _missing_data_diagnostic(session: Session, cfg: Config) -> dict:
         # (c) intra-series gap — trading days (benchmark calendar) MISSING inside the member's own
         # first→last range. Measured against the SAME calendar; never a fabricated date.
         if first is not None and last is not None:
-            own_dates = set(session.exec(
-                select(DailyPrice.date)
-                .where(DailyPrice.symbol == symbol)
-                .where(DailyPrice.date >= first)
-                .where(DailyPrice.date <= last)
-            ).all())
+            own_dates = own_dates_by_symbol.get(symbol, set())
             missing_in_range = sorted(
                 d for d in calendar_set if first <= d <= last and d not in own_dates
             )
@@ -937,6 +946,34 @@ def compute_availability(session: Session, config: Optional[Config] = None) -> d
         "total_symbols": total_symbols,
         "trading_day_count": len(cells),
         "cells": cells,
+    }
+
+
+def compute_capacity(session: Session, config: Optional[Config] = None) -> dict:
+    """iter-24 fast-platform item K — the DB storage-footprint snapshot: on-disk file size + row counts
+    for the three largest tables (`daily_prices` / `scanner_results` / `forward_returns`). PURE DB
+    introspection over stored rows — it recomputes NO canonical score/return/bucket and reads no engine
+    output; it exists purely so an operator can see the platform's current storage footprint on the Data
+    Manager (goal.md fast-platform item K), served as an additive `capacity` field on the existing
+    `GET /api/data` payload. `config` is accepted for the SAME uniform `(session, config=None)` signature
+    every `compute_*` function here has (unused today; a natural home for a future capacity-tripwire
+    threshold, per goal.md's item K). Honest all-zero snapshot on a cold/empty DB (file absent or a
+    non-file bind, e.g. an in-memory test URL) — never an error."""
+    db_file_bytes = 0
+    try:
+        database = session.get_bind().url.database
+        if database:
+            path = Path(database)
+            if path.is_file():
+                db_file_bytes = path.stat().st_size
+    except Exception:
+        db_file_bytes = 0  # defensive: an unresolvable bind never crashes this read-only snapshot
+
+    return {
+        "db_file_bytes": db_file_bytes,
+        "daily_prices_rows": int(session.scalar(select(func.count()).select_from(DailyPrice)) or 0),
+        "scanner_results_rows": int(session.scalar(select(func.count()).select_from(ScannerResult)) or 0),
+        "forward_returns_rows": int(session.scalar(select(func.count()).select_from(ForwardReturn)) or 0),
     }
 
 

@@ -1,7 +1,7 @@
 {
   "session_id": "mcp-loop",
   "started_at": "2026-06-29T20:34:38.534484Z",
-  "current_iter": 24,
+  "current_iter": 25,
   "cli": "claude",
   "agent_backend": "interactive",
   "halt_config": {
@@ -10,12 +10,12 @@
     "regression_halt": true
   },
   "status": "in_progress",
-  "last_verdict": "CONTINUE",
+  "last_verdict": "REGRESSION",
   "next_depth": "full",
   "auto_release": false,
   "push_per_iter": true,
   "push_branch": "goal/mcp-loop",
-  "updated_at": "2026-07-09T00:47:26.971917Z",
+  "updated_at": "2026-07-09T09:04:48.318284Z",
   "finished_at": "2026-07-08T06:14:41.734490Z",
   "total_iterations": 20,
   "wall_time_seconds": 24928,

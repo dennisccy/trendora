@@ -81,9 +81,15 @@ class ThemeMember(SQLModel, table=True):
 
 class DailyPrice(SQLModel, table=True):
     __tablename__ = "daily_prices"
+    # iter-24 fast-platform item C: the explicit `ix_daily_prices_symbol_date` index that used to live
+    # here was a byte-for-byte DUPLICATE of the index SQLite already builds for the `UniqueConstraint`
+    # below (a second index write on every bar insert, no query-plan benefit) — removed. A live DB still
+    # carrying it from an older model version has it swept by the guarded `app.db._ensure_index_hygiene`
+    # startup step (DROP INDEX IF EXISTS), which also ADDS `ix_daily_prices_date` (a date-only index:
+    # `func.max(DailyPrice.date)` and the coverage/availability `group_by(date)` scans read it, and it is
+    # NOT covered by the (symbol, date) unique index, whose leading column is symbol).
     __table_args__ = (
         UniqueConstraint("symbol", "date", name="uq_daily_prices_symbol_date"),
-        Index("ix_daily_prices_symbol_date", "symbol", "date"),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -357,9 +363,15 @@ class ForwardReturn(SQLModel, table=True):
     Backtest + the Research event study — never recomputed when served."""
 
     __tablename__ = "forward_returns"
+    # iter-24 fast-platform item C: the explicit `ix_forward_returns_run_symbol` index that used to live
+    # here was a redundant PREFIX of the `UniqueConstraint` below (any `run_id`-leading query the prefix
+    # served, the unique index already serves) — removed. A live DB still carrying it from an older model
+    # version has it swept by the guarded `app.db._ensure_index_hygiene` startup step (DROP INDEX IF
+    # EXISTS). The single-column `run_id`/`symbol` indexes below (from `Field(index=True)`) are NOT
+    # prefixes of this 3-column unique index (a lone `symbol` filter across every run needs its own
+    # index) and stay untouched.
     __table_args__ = (
         UniqueConstraint("run_id", "symbol", "horizon", name="uq_forward_returns_run_symbol_horizon"),
-        Index("ix_forward_returns_run_symbol", "run_id", "symbol"),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)

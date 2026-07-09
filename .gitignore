@@ -65,6 +65,10 @@ htmlcov/
 # Data / db
 *.db
 *.db-journal
+# iter-24 fast-platform item B: WAL-mode sidecar files (journal_mode=WAL leaves these next to the DB
+# file until a clean checkpoint/close) — same never-commit rule as the DB file itself.
+*.db-shm
+*.db-wal
 .data/
 # Repo-root data/ holds the operator's raw Stooq bulk archives (d_us_txt.zip / extracted tree,
 # and any indices bundle) — large scratch inputs to scripts/ingest_seed.py, NOT repo artifacts.

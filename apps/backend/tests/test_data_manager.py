@@ -23,7 +23,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from sqlalchemy import func
+from sqlalchemy import event, func
 from sqlmodel import Session, select
 
 from app.config import load_config
@@ -37,6 +37,7 @@ from app.engine.data_manager import (
     _missing_data_diagnostic,
     _trading_days,
     compute_availability,
+    compute_capacity,
     compute_coverage,
     compute_provider_availability,
     create_job,
@@ -256,6 +257,52 @@ def test_compute_availability_empty_db_is_empty_but_valid():
     with Session(engine) as session:
         avail = compute_availability(session, load_config())
     assert avail == {"total_symbols": 0, "trading_day_count": 0, "cells": []}
+
+
+# ==================================================================================================
+# iter-24 fast-platform item K — DB storage-footprint snapshot (pure introspection, no recompute)
+# ==================================================================================================
+def test_compute_capacity_exact_counts_and_real_file_size(coverage_engine):
+    """Exact row counts on the coverage fixture (6 daily_prices rows: 4 SPY + 2 AAA; 0 scanner_results —
+    the fixture's lone ScannerRun has no children; 0 forward_returns) + a real, positive on-disk file
+    size for the temp DB file backing this engine."""
+    engine, _spy_days = coverage_engine
+    with Session(engine) as session:
+        cap = compute_capacity(session)
+    assert cap["daily_prices_rows"] == 6
+    assert cap["scanner_results_rows"] == 0
+    assert cap["forward_returns_rows"] == 0
+    assert cap["db_file_bytes"] > 0  # a real file-backed temp DB
+
+
+def test_compute_capacity_empty_db_is_honest_zero_snapshot():
+    """A cold/empty in-memory DB reports an honest all-zero snapshot — never an error, never a
+    fabricated size (an in-memory URL has no resolvable file, so the size is honestly 0)."""
+    engine = make_engine("sqlite:///:memory:")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        cap = compute_capacity(session)
+    assert cap == {
+        "db_file_bytes": 0,
+        "daily_prices_rows": 0,
+        "scanner_results_rows": 0,
+        "forward_returns_rows": 0,
+    }
+
+
+def test_compute_capacity_recomputes_no_canonical_value(coverage_engine, monkeypatch):
+    """compute_capacity is pure DB introspection — patch the scan/scoring entry points to raise; it
+    must still produce the correct counts (proving neither is reachable)."""
+    engine, _spy_days = coverage_engine
+
+    def _boom(*_a, **_k):  # pragma: no cover - only fires on a wrong call
+        raise AssertionError("compute_capacity MUST NOT recompute any canonical score/return/bucket")
+
+    monkeypatch.setattr("app.engine.scanner.run_scan", _boom, raising=False)
+    monkeypatch.setattr("app.engine.scoring.score_stocks", _boom, raising=False)
+    with Session(engine) as session:
+        cap = compute_capacity(session)
+    assert cap["daily_prices_rows"] == 6
 
 
 def test_compute_availability_byte_identical_after_fetch_scope_widening(coverage_engine):
@@ -2285,6 +2332,66 @@ def test_diagnostic_no_canonical_recompute(diagnostic_engine, monkeypatch):
     with Session(engine) as session:
         diag = _missing_data_diagnostic(session, cfg)
     assert diag["affected_count"] == 4  # produced without recomputing anything
+
+
+def _build_diagnostic_db(tmp_path, symbols_with_data: list[str]):
+    """A hand-built DB like `diagnostic_engine`, parametrized by how many universe members have full
+    (6-day, gap-free) data -- for proving the item-H query count is INDEPENDENT of member count."""
+    engine = make_engine(f"sqlite:///{tmp_path / f'diag_{len(symbols_with_data)}.db'}")
+    create_db_and_tables(engine)
+    days = [date(2024, 1, 1) + __import__("datetime").timedelta(days=i) for i in range(6)]
+    with Session(engine) as session:
+        for d in days:
+            session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        for sym in symbols_with_data:
+            for d in days:
+                session.add(DailyPrice(symbol=sym, date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+    return engine
+
+
+def _diag_cfg_for(symbols: list[str]):
+    cfg = load_config()
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
+    universe = cfg.universe.model_copy(update={"symbols": symbols})
+    indicators = cfg.indicators.model_copy(update={"min_history_bars": 5})
+    return cfg.model_copy(update={"universe": universe, "indicators": indicators})
+
+
+def _count_daily_prices_selects(engine, cfg) -> int:
+    queries: list[str] = []
+
+    def _count(conn, cursor, statement, parameters, context, executemany):
+        lowered = statement.lower()
+        if "daily_prices" in lowered and lowered.strip().startswith("select"):
+            queries.append(statement)
+
+    event.listen(engine, "before_cursor_execute", _count)
+    try:
+        with Session(engine) as session:
+            _missing_data_diagnostic(session, cfg)
+    finally:
+        event.remove(engine, "before_cursor_execute", _count)
+    return len(queries)
+
+
+def test_diagnostic_query_count_does_not_scale_with_universe_size(tmp_path):
+    """Item H (iter-24 fast-platform pass): the diagnostic's `daily_prices` SELECT count is INDEPENDENT
+    of how many universe members have data -- the former per-member N+1 loop would make this count grow
+    linearly with member count (2 members -> 2 extra queries, 8 members -> 8 extra queries); the ONE
+    bulk own-dates query bounded to the universe (replacing that loop) keeps the count CONSTANT.
+    (The fixed total also includes two unrelated, pre-existing `daily_prices` reads from `_trading_days`
+    building the benchmark calendar -- `latest_data_date` + SPY's own `bars_asof` -- which this test
+    does not need to enumerate by name; it only needs them to be as constant as everything else.)"""
+    small_engine = _build_diagnostic_db(tmp_path, ["AAA", "BBB"])
+    large_engine = _build_diagnostic_db(tmp_path, ["AAA", "BBB", "CCC", "DDD", "EEE", "FFF", "GGG", "HHH"])
+
+    small_count = _count_daily_prices_selects(small_engine, _diag_cfg_for(["AAA", "BBB"]))
+    large_count = _count_daily_prices_selects(large_engine, _diag_cfg_for(["AAA", "BBB", "CCC", "DDD", "EEE", "FFF", "GGG", "HHH"]))
+
+    assert small_count == large_count  # O(1) in universe size -- never one extra query per member
+    assert small_count <= 4  # sanity bound: calendar (2) + grouped stats (1) + bulk own-dates (1)
 
 
 # ==================================================================================================

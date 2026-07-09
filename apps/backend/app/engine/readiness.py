@@ -22,14 +22,14 @@ progress and the analytics pages show their "warming up (n/m)" state — both re
 """
 from __future__ import annotations
 
+from datetime import date as date_cls
 from typing import Optional
 
 from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.config import Config, get_config
-from app.engine.prices import latest_data_date
-from app.engine.scanner import get_run_for_date
+from app.engine.prices import bar_cache, latest_data_date
 from app.engine.warmup import _warmup_dates, get_warmup
 from app.models import DailyPrice, ScannerRun
 
@@ -41,6 +41,49 @@ UNAVAILABLE = "unavailable"
 def _latest_run_date(session: Session):
     """The most recent persisted run's as-of date, or None when no snapshot is stored yet."""
     return session.scalar(select(func.max(ScannerRun.asof_date)))
+
+
+# --------------------------------------------------------------------------------------------------
+# iter-24 fast-platform item G — memoize the cadence-date set `/api/health` re-derives on every poll.
+#
+# `_warmup_dates` (which `compute_readiness` calls below) derives its calendar via `walk_forward_asof_dates`
+# (`forward_testing.py`), which calls `bars_asof(session, benchmark, latest)` for SPY — on the DEFAULT
+# (uncached) path that is a full ORM-row `select(DailyPrice)` query materializing every SPY bar (the exact
+# iter-19 OOM-fix shape, just not yet applied to this call site). `/api/health` is polled every
+# ~2s (`startup.health_poll_interval_seconds`), so re-deriving this on every poll is wasted work: the
+# cadence-date SET only changes when new price data lands (moving `latest_data_date`) or the process loads
+# a different config — both captured by the memo key below.
+#
+# Single-entry memo keyed by `(latest_date, id(cfg))`: production reuses ONE `cfg` object for the process
+# lifetime (`get_config()` is `@lru_cache(maxsize=1)`), so `id(cfg)` is stable there; two tests loading
+# separate config fixtures get distinct ids, so a memo from one config is never served to another. The
+# cold (cache-miss) compute is wrapped in `bar_cache(session)` so the underlying SPY `bars_asof` call
+# routes through the COLUMN-PROJECTED `_BarCache` lazy-load path (iter-19's `Bar` records) instead of the
+# raw ORM-row query — reusing the existing load-once-bar-cache machinery rather than a second, duplicate
+# calendar-fetch implementation. Byte-identical output either way (`bar_cache` is a pure loading
+# optimization — same rows, same order); only the memo skips re-deriving it entirely on a poll hit.
+_cadence_memo_key: Optional[tuple] = None
+_cadence_memo_dates: list[date_cls] = []
+
+
+def _cached_warmup_dates(session: Session, cfg: Config, latest_data: date_cls) -> list[date_cls]:
+    """`_warmup_dates(session, cfg)`, memoized for the steady-state polling case (no re-derivation on
+    repeated calls with the same `(latest_date, cfg)`)."""
+    global _cadence_memo_key, _cadence_memo_dates
+    key = (latest_data, id(cfg))
+    if key != _cadence_memo_key:
+        with bar_cache(session):
+            _cadence_memo_dates = _warmup_dates(session, cfg)
+        _cadence_memo_key = key
+    return _cadence_memo_dates
+
+
+def reset_readiness_cache() -> None:
+    """Clear the in-process cadence-date memo (tests that mutate the DB/config under the SAME cfg
+    object and need a forced fresh derive)."""
+    global _cadence_memo_key, _cadence_memo_dates
+    _cadence_memo_key = None
+    _cadence_memo_dates = []
 
 
 def compute_readiness(
@@ -75,9 +118,19 @@ def compute_readiness(
     # The in-memory warm-up record (when present) supplies the live `status`/`message` for the badge, but
     # the DB-derived `done`/`total` keep the signal correct on a warm DB even with no thread running.
     if db_ok and latest_data is not None:
-        cadence_dates = _warmup_dates(session, cfg)
+        # item G (iter-24): the memoized cadence-date derivation (see `_cached_warmup_dates` above) —
+        # re-derived only when `latest_data` or the config object changes, not on every poll.
+        cadence_dates = _cached_warmup_dates(session, cfg, latest_data)
         total = len(cadence_dates)
-        done = sum(1 for d in cadence_dates if get_run_for_date(session, d) is not None)
+        # ONE grouped existence query instead of one `get_run_for_date` point-query per cadence date.
+        # `ScannerRun.asof_date` is unique (one run per date), so the count of persisted dates that are
+        # IN `cadence_dates` is exactly `sum(1 for d in cadence_dates if a run exists for d)`.
+        persisted_dates = set(
+            session.exec(
+                select(ScannerRun.asof_date).where(ScannerRun.asof_date.in_(cadence_dates))
+            ).all()
+        ) if cadence_dates else set()
+        done = len(persisted_dates)
     else:
         cadence_dates = []
         total = 0

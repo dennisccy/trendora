@@ -94,6 +94,30 @@ data_manager:
 # is correct regardless of the process working directory.
 database:
   url: "sqlite:///apps/backend/data/trendora.db"
+  # iter-24 fast-platform item B — sqlite-only connect-event PRAGMAs (app.db.make_engine). WAL lets
+  # readers proceed while a writer holds a transaction (the default DELETE journal blocks them); NORMAL
+  # sync skips an fsync between WAL commits (WAL+NORMAL is SQLite's own documented safe pairing for a
+  # single-host app — worst case: the last commit is lost on a power cut, never on an ordinary process
+  # crash). busy_timeout avoids an immediate "database is locked"; cache_size/mmap_size_bytes/temp_store
+  # size the page cache / read mmap window / temp-spill location. Applied ONLY for a sqlite database.url.
+  pragmas:
+    journal_mode: "WAL"
+    synchronous: "NORMAL"
+    busy_timeout_ms: 30000
+    cache_size: -262144          # negative = KiB -> 256 MB page cache
+    mmap_size_bytes: 0           # mmap DISABLED (iter-24 audit). A non-zero mmap_size reserves that many
+                                 # bytes of VIRTUAL address space PER pooled connection; at 1 GB x the
+                                 # pool (pool_size 10 + max_overflow 20) just ~6 connections exhausted the
+                                 # server.memory_cap_mb=6144 `ulimit -v` cap BEFORE the cold /api/data bar
+                                 # prefill even ran -> MemoryError/PyO3-panic crash on the first /data load
+                                 # after a restart (browser-qa UT-16, reproduced 2/2). The 256 MB page cache
+                                 # above (demand-resident, not a virtual reservation) keeps reads fast.
+    temp_store: "MEMORY"
+  # Pool sized to the uvicorn worker/concurrency shape (the server: block further below allows up to
+  # server.limit_concurrency=64 simultaneous connections; pool_size + max_overflow comfortably covers
+  # that without over-provisioning idle sqlite connections).
+  pool_size: 10
+  max_overflow: 20
 
 # ----------------------------------------------------------------------------------------
 # Stock universe: ~120 liquid US common stocks spanning the example themes. The filter

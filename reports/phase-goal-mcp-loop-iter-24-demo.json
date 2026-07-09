@@ -1,0 +1,127 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-24",
+  "base_url": "http://localhost:3255",
+  "iteration": 24,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the dashboard",
+      "narration": "Let's start at Trendora's home dashboard, where traders get their first look at the market each day.",
+      "point_out": "A green status badge in the corner confirms the backend is up and ready to serve real data.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Ready" }
+    },
+    {
+      "n": 2,
+      "title": "Check the Data Manager's storage footprint",
+      "narration": "From the sidebar we head into the Data Manager, which now shows exactly how much data the platform is holding.",
+      "point_out": "Right below the existing dataset numbers, a brand-new Storage footprint card shows the database's file size plus the price-bar, scanner-result, and forward-return counts it holds.",
+      "journey": "J-15",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Data Manager" } },
+      "expect": { "text": "Storage footprint" }
+    },
+    {
+      "n": 3,
+      "title": "Browse the stock leaderboard",
+      "narration": "Next stop is the stock leaderboard, where hundreds of companies are ranked side by side on the same scores.",
+      "point_out": "Each row carries its own leadership, entry-quality, risk, and setup scores.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "AAPL" }
+    },
+    {
+      "n": 4,
+      "title": "Search for Apple (AAPL)",
+      "narration": "Typing a ticker into the search box instantly narrows hundreds of rows down to the one we want.",
+      "point_out": "AAPL's row shows its sector and its \"Megacap Leaders\" theme alongside its scores.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "placeholder": "Search ticker or name…" }, "text": "AAPL" },
+      "expect": { "text": "Megacap Leaders" }
+    },
+    {
+      "n": 5,
+      "title": "Open AAPL's own page",
+      "narration": "Clicking straight into AAPL's detail page confirms it tells the exact same story as the leaderboard row.",
+      "point_out": "The leadership score reads 55.78, matching the leaderboard exactly, with no discrepancy between the two views.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "AAPL" } },
+      "expect": { "text": "55.78" }
+    },
+    {
+      "n": 6,
+      "title": "Switch to the full price history",
+      "narration": "Toggling the chart from Recent to Full history pulls up decades of price action for the same stock.",
+      "point_out": "The chart redraws with far more history, and a small note explains the older bars are weekly-sampled to keep the chart readable.",
+      "journey": "J-10",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Full history" } },
+      "expect": { "text": "older bars weekly-sampled" }
+    },
+    {
+      "n": 7,
+      "title": "Back to the Data Manager",
+      "narration": "Returning to the Data Manager confirms the same storage numbers we saw earlier haven't drifted.",
+      "point_out": "The Storage footprint figures read exactly the same as before, even after browsing elsewhere.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Storage footprint" }
+    },
+    {
+      "n": 8,
+      "title": "Test the job form with a bad date",
+      "narration": "We try entering a nonsense date into the data-job form to make sure it still catches the mistake.",
+      "point_out": "A clear red message flags the invalid date, and the Start button stays disabled until it's corrected.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "label": "Start date" }, "text": "2024-13-40" },
+      "expect": { "text": "Enter a valid date as yyyy-MM-dd" }
+    },
+    {
+      "n": 9,
+      "title": "Peek at the watchlist",
+      "narration": "A quick stop at the watchlist shows the names being tracked, each still carrying its trusted scores.",
+      "point_out": "Saved tickers appear here with the reason they were added, alongside the same scores shown on the leaderboard.",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/watchlist" }
+    },
+    {
+      "n": 10,
+      "title": "Visit the evidence ledger",
+      "narration": "Last stop is the evidence ledger, the audit trail behind every trading idea this product has tested.",
+      "point_out": "Every idea's real, out-of-sample track record lives here, so nothing is ever called proven unless it actually earned that label.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/evidence" }
+    }
+  ]
+}

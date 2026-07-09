@@ -73,3 +73,65 @@ compute/storage pass) and the full J-15/J-16 endpoint-by-endpoint budget table (
 `/stocks/{ticker}`, `/api/data` warm path, `/api/health`, page time-to-interactive) are **out of scope for
 iter-19** (goal.md sequencing: "iter-19 lands item A only"). They are deferred to the iterations goal.md
 already schedules for that work, which will append their own measured rows here.
+
+## Items B/C/D/G/H/K — mechanical backend pass + storage-footprint card (iter-24)
+
+Measured 2026-07-09T06:23:22Z on this host (Linux 7.0.0-27-generic x86_64) via `scripts/measure-perf.sh` against PROD MODE
+(`start-backend.sh`/`start-frontend.sh`, backend :8255 / frontend :3255).
+
+**Warm endpoint latencies:**
+
+| Endpoint | Wall time | Budget |
+|---|---|---|
+| `GET /api/health` | 0.092038s | ≤ 0.1 s |
+| `GET /api/stocks` | 0.095589s | ≤ 1.5 s |
+| `GET /api/stocks/AAPL` | 0.002907s | ≤ 0.3 s |
+| `GET /api/data` | 0.014924s | ≤ 1.5 s |
+
+**Warm page latencies (HTTP response time; the browser-qa lane verifies true interactivity):**
+
+| Page | Wall time | Budget |
+|---|---|---|
+| `/stocks` | 0.008216s | ≤ 3 s |
+| `/stocks/AAPL` | 0.006776s | ≤ 3 s |
+| `/data` | 0.005676s | ≤ 3 s |
+| `/evidence` | 0.005887s | ≤ 3 s |
+
+**DB capacity snapshot** (item K; from `GET /api/data`'s additive `capacity` field):
+
+| Metric | Value |
+|---|---|
+| DB file size | 1307414528 bytes |
+| `daily_prices` rows | 3293160 |
+| `scanner_results` rows | 165755 |
+| `forward_returns` rows | 821054 |
+
+**Bounded backfill timing** (item K harness; `--backfill-days 5`): 2005-02-28 → 2005-03-07 (0 cadence-eligible dates in this exact range (the coverage gap list is not cadence-filtered; this backend's cadence is already fully warm) -- an honest no-op, not a failure): status=ok, 0 date(s) covered, 0 snapshot(s) created, 0.23s wall time
+
+**Reading the numbers:** every J-15 budget is met with wide headroom on this warm run (`/api/health`
+0.092 s vs the tight 0.1 s budget; every other endpoint/page well under 1/10th of its budget).
+
+**Cold `/api/data` path — CORRECTED by the iter-24 audit (was falsely claimed "re-verified").** The
+original iter-24 entry here claimed the cold path "was re-verified ... items C/G/H's query-plan changes did
+not reintroduce the OOM" — but its cited evidence was a `/api/health` (readiness) boot, NOT an actual
+`GET /api/data` cold-boot request (a different code path; the warm `GET /api/data` 0.0149 s above is a
+cache-hit, not a cold-boot number). browser-qa (UT-16) then exercised the REAL cold `/data` load on a fresh
+restart and reproduced a backend crash 2/2 times — `MemoryError` in the bar-prefill's `cursor.fetchmany()`,
+then a fatal PyO3 panic. **Root cause (audit, confirmed by a controlled ablation):** item B's new
+`database.pragmas.mmap_size_bytes = 1073741824` (1 GB) reserves ~1 GB of VIRTUAL address space PER pooled
+connection; at `pool_size=10 + max_overflow=20` just ~6 live connections reached 6154 MB — past the
+`server.memory_cap_mb = 6144` `ulimit -v` cap — BEFORE the ~3.27M-row prefill allocated anything, so the
+prefill's own heap then tipped the process over. **Fix (audit):** `mmap_size_bytes: 0` (mmap disabled;
+SQLite's own default). Re-verified end-to-end under the real 6144 MB `RLIMIT_AS` with the same 5-live-pooled-
+connection model: at mmap=1 GB the cold `_compute_coverage_uncached` prefill crashes with `MemoryError` at
+exactly 6144 MB VmSize (reproduces UT-16); at mmap=0 the identical run peaks at **471 MB** and returns the
+full 19-key coverage payload — the cold path completes well under the 60 s / 6144 MB budget. The 256 MB
+page cache (demand-resident, not a virtual reservation) is unaffected, so read latency is unchanged.
+**Byte-identity:** every optimized path (items B/C/D/G/H) re-serves stored values
+verbatim — proven by the existing `test_api_engine.py`/`test_api_watchlist.py` byte-identity suites passing
+UNEDITED, plus new targeted tests for each item (`test_db.py`, `test_data_manager.py`, `test_health.py`);
+no displayed number changed. **Index hygiene (item C) applied for real:** this run's boot dropped the
+byte-for-byte-duplicate `ix_daily_prices_symbol_date` and the redundant `ix_forward_returns_run_symbol`
+from the live committed DB (confirmed present before, absent after) and added `ix_daily_prices_date` — the
+guarded migration is not just unit-tested, it ran against the real 3.27M-row table in ~1.3 s.
+

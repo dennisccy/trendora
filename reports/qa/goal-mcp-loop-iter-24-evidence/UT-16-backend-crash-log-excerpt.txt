@@ -1,0 +1,80 @@
+Evidence for UT-06 / UT-16 FAIL: backend crash log excerpts, /tmp/browser-qa-backend-8255.log
+Reproduced 2/2 times: fresh backend boot -> first browser load of /data -> backend crash.
+
+=== Reproduction #1 (process 2882944, first cold /data request after restart) ===
+File ".../app/api/data.py", line 119, in data_overview
+    "coverage": data_manager.compute_coverage(session, cfg, as_of=resolved_asof),
+File ".../app/engine/data_manager.py", line 740, in compute_coverage
+File ".../app/engine/data_manager.py", line 801, in _compute_coverage_uncached
+File ".../app/engine/prices.py", line 276, in prefilled_bar_cache
+    cache.prefill(session, expected_symbols=expected_symbols)
+File ".../app/engine/prices.py", line 141, in prefill
+    for symbol, d, o, h, lo, c, v in session.exec(stmt).yield_per(batch):
+File ".../sqlalchemy/engine/cursor.py", line 1187, in fetchmany
+    l = dbapi_cursor.fetchmany(size)
+MemoryError
+INFO:     127.0.0.1:47152 - "GET /api/data HTTP/1.1" 500 Internal Server Error
+
+(a second, concurrent/retried request to the same endpoint failed the same way moments later,
+also ending in MemoryError inside cursor.fetchmany(); then:)
+Exception ignored in thread started by: <object repr() failed>
+MemoryError:
+
+After this, the process (still alive per `ps`) stopped responding to ANY request, including
+GET /api/health -- 8 consecutive polls at 2s timeout each all failed with no response (16s+
+total unresponsiveness observed). Process memory at that point (/proc/<pid>/status):
+  VmPeak: 6291456 kB   VmSize: 6291456 kB   (== exactly the configured ulimit -v cap of
+                                              6144 MB = 6144*1024 kB)
+  VmRSS:  3056204 kB   (~2.9 GB resident -- well under the virtual cap)
+This VmSize-pinned-exactly-at-the-ulimit-v-ceiling signature, with VmRSS well below it, is the
+classic fingerprint of virtual-address-space exhaustion rather than physical-memory exhaustion.
+
+=== Reproduction #2 (process 2886542, second independent clean boot) ===
+Backend was confirmed stable for 30+ consecutive seconds (30x /api/health polls, all 200 OK,
+readiness: ready 89/89) BEFORE the browser touched /data at all -- ruling out a boot-timing race
+as the cause. The moment the browser loaded /data (visible in the log as the /api/methodology
+and /api/runs calls the page also fires), the process hit a second, more severe failure:
+
+object address  : 0x771007b2d060
+object refcount : 3
+object type     : 0x143af08
+object type name: MemoryError
+object repr     :
+lost sys.stderr
+MemoryErrorthread '<unnamed>' panicked at /root/.cargo/registry/src/index.crates.io-6f17d22bba15001f/pyo3-0.22.6/src/types/string.rs:168:18:
+Python API call failed
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+memory allocation of 56 bytes failed
+
+This time the process terminated outright (confirmed via `ps` immediately after: no uvicorn
+process at all; curl to /api/health: connection refused, http_code=000). A Rust panic during a
+PyO3 string allocation failing at only 56 bytes indicates the process's virtual address space was
+so exhausted that even a trivial allocation could not succeed.
+
+=== Scope check (same boot as reproduction #2's successor process, 2887992) ===
+Without touching /api/data again, these all succeeded normally:
+  GET /api/stocks       200, 0.080s
+  GET /api/stocks/AAPL  200, 0.004s
+  GET /api/health       200, 0.092s
+-> the defect is narrowly scoped to GET /api/data's compute_coverage -> prefilled_bar_cache path
+   on a cold cache (i.e., the /data page), not a general backend instability.
+
+=== Config evidence (config.yaml) feeding the working hypothesis ===
+database:
+  pragmas:
+    mmap_size_bytes: 1073741824   # 1 GB read-mmap window -- NEW this iteration (item B)
+  pool_size: 10                   # NEW this iteration (item B)
+  max_overflow: 20                # NEW this iteration (item B)
+server:
+  memory_cap_mb: 6144   # ulimit -v cap; comment says it was sized for "the one-copy ~3.27M-row
+                         # bar prefill ... retained footprint ~0.4-0.5 GB" -- i.e. calibrated only
+                         # for the Python-heap prefill cache, with no apparent accounting for the
+                         # NEW per-connection mmap window x pool_size/max_overflow added by the
+                         # same iteration's item B.
+
+Working hypothesis (inference from the above, not confirmed by a controlled ablation test):
+item B's new mmap_size_bytes (1 GB) x pool_size/max_overflow (up to 30 pooled sqlite connections)
+can inflate the process's virtual address space well past the pre-existing memory_cap_mb (6144 MB)
+ulimit -v ceiling -- a ceiling whose own docstring reasoning does not mention the new mmap window.
+Whether this reproduces on every cold boot or only when combined with concurrent system memory
+pressure was not established with certainty; it reproduced on 2 of 2 attempts in this session.

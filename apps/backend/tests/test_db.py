@@ -300,3 +300,180 @@ def test_seed_load_populates_reference_and_prices(loaded_engine):
     counts = _counts(loaded_engine)
     assert counts["prices"] > 100_000  # ~158 symbols x ~1.3k bars
     assert counts["stocks"] >= 100
+
+
+# ==================================================================================================
+# iter-24 fast-platform item B — sqlite-only connect-event PRAGMAs (config-sourced, no literal in app.db)
+# ==================================================================================================
+def test_sqlite_pragmas_applied_on_connect(tmp_path):
+    """A fresh sqlite connection gets the configured journal_mode/synchronous/busy_timeout PRAGMAs
+    applied — proven by reading them back via `PRAGMA` queries on a real connection."""
+    from app.db import make_engine
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'pragma.db'}")
+    with engine.connect() as conn:
+        journal_mode = conn.exec_driver_sql("PRAGMA journal_mode").scalar()
+        synchronous = conn.exec_driver_sql("PRAGMA synchronous").scalar()
+        busy_timeout = conn.exec_driver_sql("PRAGMA busy_timeout").scalar()
+        cache_size = conn.exec_driver_sql("PRAGMA cache_size").scalar()
+        mmap_size = conn.exec_driver_sql("PRAGMA mmap_size").scalar()
+        temp_store = conn.exec_driver_sql("PRAGMA temp_store").scalar()
+    assert journal_mode.lower() == "wal"
+    assert synchronous == 1  # SQLite's own PRAGMA synchronous vocabulary: 0=OFF,1=NORMAL,2=FULL,3=EXTRA
+    assert busy_timeout == 30000
+    assert cache_size == -262144
+    # mmap DISABLED (0): a non-zero mmap_size reserves that many bytes of VIRTUAL address space per pooled
+    # connection; at 1 GB x the pool it exhausted the 6144 MB ulimit -v cap and crashed the cold /api/data
+    # load (iter-24 audit / browser-qa UT-16). The 256 MB page cache above keeps reads fast without it.
+    assert mmap_size == 0
+    assert temp_store == 2  # SQLite's own PRAGMA temp_store vocabulary: 0=DEFAULT,1=FILE,2=MEMORY
+
+
+def test_sqlite_pragmas_are_config_sourced_not_a_literal(tmp_path):
+    """The applied PRAGMA values come from `database.pragmas` — not a hardcoded literal in app.db —
+    proven by overriding one value in a custom config and reading back the DIFFERENT applied value."""
+    from app.config import load_config
+    from app.db import make_engine
+
+    cfg = load_config()
+    custom_pragmas = cfg.database.pragmas.model_copy(update={"busy_timeout_ms": 5000})
+    custom_database = cfg.database.model_copy(update={"pragmas": custom_pragmas})
+    custom_cfg = cfg.model_copy(update={"database": custom_database})
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'pragma_custom.db'}", config=custom_cfg)
+    with engine.connect() as conn:
+        busy_timeout = conn.exec_driver_sql("PRAGMA busy_timeout").scalar()
+    assert busy_timeout == 5000
+
+
+def test_pool_size_is_config_sourced(tmp_path):
+    """The engine's pool is sized from `database.pool_size`/`max_overflow` (config), not a bare literal."""
+    from app.config import load_config
+    from app.db import make_engine
+
+    cfg = load_config()
+    custom_database = cfg.database.model_copy(update={"pool_size": 3, "max_overflow": 7})
+    custom_cfg = cfg.model_copy(update={"database": custom_database})
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'pool.db'}", config=custom_cfg)
+    assert engine.pool.size() == 3
+    assert engine.pool._max_overflow == 7
+
+
+def test_is_sqlite_url_detection():
+    """The ONE dialect-specific gate (used by both connect_args and the PRAGMA hook) correctly
+    distinguishes sqlite URLs (file-based and in-memory) from every other dialect."""
+    from app.db import _is_sqlite_url
+
+    assert _is_sqlite_url("sqlite:///path/to.db") is True
+    assert _is_sqlite_url("sqlite://") is True
+    assert _is_sqlite_url("sqlite:///:memory:") is True
+    assert _is_sqlite_url("postgresql://user:pass@localhost/db") is False
+    assert _is_sqlite_url("mysql://user:pass@localhost/db") is False
+
+
+def test_non_sqlite_url_skips_sqlite_connect_args():
+    """A non-sqlite URL never gets `check_same_thread` (the sqlite-only connect_args) — the dialect
+    gate keeps every query ORM-portable. Checked at the connect_args-construction level (constructing a
+    REAL non-sqlite engine would require a DBAPI driver this project never installs)."""
+    from app.db import _is_sqlite_url
+
+    url = "postgresql://user:pass@localhost/db"
+    connect_args = {"check_same_thread": False} if _is_sqlite_url(url) else {}
+    assert connect_args == {}
+
+
+# ==================================================================================================
+# iter-24 fast-platform item C — index hygiene (guarded startup DROP/CREATE, mirrors _ADDITIVE_COLUMNS)
+# ==================================================================================================
+def test_index_hygiene_drops_duplicates_and_adds_date_index(tmp_path):
+    """After create_db_and_tables, the byte-for-byte-duplicate ix_daily_prices_symbol_date and the
+    redundant ix_forward_returns_run_symbol are ABSENT, and the new ix_daily_prices_date is PRESENT.
+    The untouched single-column run_id/symbol indexes on forward_returns stay present."""
+    from sqlalchemy import inspect
+
+    from app.db import create_db_and_tables, make_engine
+
+    db = tmp_path / "idx.db"
+    engine = make_engine(f"sqlite:///{db}")
+    create_db_and_tables(engine)
+    insp = inspect(engine)
+    price_indexes = {ix["name"] for ix in insp.get_indexes("daily_prices")}
+    fr_indexes = {ix["name"] for ix in insp.get_indexes("forward_returns")}
+
+    assert "ix_daily_prices_symbol_date" not in price_indexes
+    assert "ix_daily_prices_date" in price_indexes
+    assert "ix_forward_returns_run_symbol" not in fr_indexes
+    assert {"ix_forward_returns_run_id", "ix_forward_returns_symbol"} <= fr_indexes
+
+
+def test_index_hygiene_removes_stale_duplicate_from_legacy_db(tmp_path):
+    """A DB built under the OLDER model (still carrying the now-removed duplicate/redundant indexes)
+    gets them dropped the next time create_db_and_tables runs — proving the guarded migration acts on a
+    REAL legacy DB, not just a fresh one that never creates them."""
+    from sqlalchemy import inspect, text
+
+    from app.db import create_db_and_tables, make_engine
+
+    db = tmp_path / "legacy_idx.db"
+    engine = make_engine(f"sqlite:///{db}")
+    create_db_and_tables(engine)  # the current model creates neither duplicate index
+    with engine.begin() as conn:
+        # Simulate the OLD model's now-removed duplicate/redundant indexes on a legacy DB.
+        conn.execute(text("CREATE INDEX ix_daily_prices_symbol_date ON daily_prices (symbol, date)"))
+        conn.execute(text("CREATE INDEX ix_forward_returns_run_symbol ON forward_returns (run_id, symbol)"))
+    before = {ix["name"] for ix in inspect(engine).get_indexes("daily_prices")}
+    assert "ix_daily_prices_symbol_date" in before
+
+    create_db_and_tables(make_engine(f"sqlite:///{db}"))  # re-applies the guarded drop/add step
+
+    insp_after = inspect(make_engine(f"sqlite:///{db}"))
+    after_prices = {ix["name"] for ix in insp_after.get_indexes("daily_prices")}
+    after_fr = {ix["name"] for ix in insp_after.get_indexes("forward_returns")}
+    assert "ix_daily_prices_symbol_date" not in after_prices
+    assert "ix_forward_returns_run_symbol" not in after_fr
+
+
+def test_index_hygiene_idempotent_on_second_run(tmp_path):
+    """The guarded DROP/CREATE step never errors on a second call (fresh DB, then re-applied)."""
+    from app.db import create_db_and_tables, make_engine
+
+    db = tmp_path / "idx_idempotent.db"
+    engine = make_engine(f"sqlite:///{db}")
+    create_db_and_tables(engine)
+    create_db_and_tables(make_engine(f"sqlite:///{db}"))  # must not raise
+
+
+def test_query_plan_bars_asof_uses_unique_index_after_dedup(tmp_path):
+    """EXPLAIN QUERY PLAN proves the exact `bars_asof` filter shape (symbol=? AND date<=?) still resolves
+    via an index (SQLite's own autoindex for the (symbol, date) unique constraint) after the duplicate
+    explicit index is dropped — a SEARCH, never a table SCAN. A FRESH engine is used for the plan check
+    (a pooled connection can otherwise serve a stale cached plan referencing the just-dropped index name
+    — a sqlite/DBAPI statement-cache artifact, not a real-server behavior)."""
+    from app.db import create_db_and_tables, make_engine
+
+    db = tmp_path / "plan.db"
+    create_db_and_tables(make_engine(f"sqlite:///{db}"))
+
+    with make_engine(f"sqlite:///{db}").connect() as conn:
+        rows = conn.exec_driver_sql(
+            "EXPLAIN QUERY PLAN SELECT * FROM daily_prices "
+            "WHERE symbol = 'AAPL' AND date <= '2024-01-01' ORDER BY date"
+        ).fetchall()
+    plan = " ".join(str(tuple(r)) for r in rows).lower()
+    assert "search" in plan and "using index" in plan  # an index SEARCH, not a table SCAN
+    assert "ix_daily_prices_symbol_date" not in plan  # the dropped duplicate is never chosen (it is gone)
+
+
+def test_query_plan_max_date_uses_new_date_index(tmp_path):
+    """EXPLAIN QUERY PLAN proves `max(date)` (read on ~every request via `latest_data_date`) resolves
+    through the new `ix_daily_prices_date` index."""
+    from app.db import create_db_and_tables, make_engine
+
+    db = tmp_path / "plan2.db"
+    create_db_and_tables(make_engine(f"sqlite:///{db}"))
+
+    with make_engine(f"sqlite:///{db}").connect() as conn:
+        rows = conn.exec_driver_sql("EXPLAIN QUERY PLAN SELECT max(date) FROM daily_prices").fetchall()
+    plan = " ".join(str(tuple(r)) for r in rows).lower()
+    assert "ix_daily_prices_date" in plan
