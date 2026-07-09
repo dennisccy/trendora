@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-23",
+  "base_url": "http://localhost:3255",
+  "iteration": 23,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the dashboard",
+      "narration": "Trendora opens on a market command center — a chart that already reaches back three decades, with every benchmark line honestly labeled by where its data comes from.",
+      "point_out": "Look at the far-left edge of the chart: the deep index and volatility lines run all the way back to 1996, while the newer ETF lines start later — exactly as expected.",
+      "journey": "J-14",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "S&P 500 Index (^SPX)" }
+    },
+    {
+      "n": 2,
+      "title": "Follow the market regime to its evidence",
+      "narration": "The dashboard reads today's market regime and links straight to the track record behind it, so no score sits unexplained.",
+      "point_out": "This ledger entry shows exactly how a Risk-on-regime idea performed out of sample — and it's honest about the loss.",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "See evidence proven in this regime →" } },
+      "expect": { "text": "Out-of-sample edge in the Risk-on regime" }
+    },
+    {
+      "n": 3,
+      "title": "Audit the evidence ledger",
+      "narration": "Every past trading idea on this ledger is graded against real, out-of-sample results — right now every single one honestly reads FAIL, nothing dressed up.",
+      "point_out": "Each row links back to exactly where it would apply — click through and you land on the real stock list it was tested against.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Backs: Stocks leaderboard →" } },
+      "expect": { "text": "541 / 541" }
+    },
+    {
+      "n": 4,
+      "title": "Browse and sort the stock list",
+      "narration": "All 541 currently tracked companies are right here, and every score is honestly marked not-yet-proven until real evidence backs it.",
+      "point_out": "Try sorting by sector — the table reorders instantly, with nothing lost or hidden in the shuffle.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Sort by Sector" } },
+      "expect": { "text": "Unassigned" }
+    },
+    {
+      "n": 5,
+      "title": "Drill into a single stock",
+      "narration": "Every ticker — like NVIDIA here — gets its own page carrying the same no-hype scoring shown on the full list.",
+      "point_out": "Leadership, Entry Quality, and Risk are all marked \"Not yet proven\" — the honesty rule follows the stock everywhere.",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/NVDA" },
+      "expect": { "text": "Not yet proven" }
+    },
+    {
+      "n": 6,
+      "title": "See three decades of history in one click",
+      "narration": "A single toggle swaps the chart from a recent window to the stock's entire trading history.",
+      "point_out": "The caption now reports thousands of bars, with older history clearly and honestly marked as weekly-sampled.",
+      "journey": "J-10",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Full history" } },
+      "expect": { "text": "older bars weekly-sampled" }
+    },
+    {
+      "n": 7,
+      "title": "Check where the chart's data comes from",
+      "narration": "The Data Manager page discloses exactly which vendor supplied every index and macro line on that dashboard chart, and how far back its history genuinely goes.",
+      "point_out": "Even an economic-indicator proxy is labeled honestly by its real source — never a fabricated figure.",
+      "journey": "J-14",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "FRED-macro proxy" }
+    },
+    {
+      "n": 8,
+      "title": "Read the data coverage calendar",
+      "narration": "The same page's coverage calendar makes two things visually obvious at once: which days simply have price data, and which days also have a fully scored snapshot.",
+      "point_out": "A violet ring marks a scored day; the legend spells out exactly what each color and ring mean.",
+      "journey": "J-13",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Scored snapshot — indicator" }
+    },
+    {
+      "n": 9,
+      "title": "One consistent company count everywhere",
+      "narration": "The number of actively tracked companies always matches, whether you're looking at the stock list or the data manager's own count.",
+      "point_out": "541 companies today, counted the same way on both pages.",
+      "journey": "J-12",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Dynamic-universe membership timeline" }
+    }
+  ]
+}

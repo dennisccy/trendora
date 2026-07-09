@@ -195,3 +195,9 @@ user-visible rendered surface (chart config, layout, a component's visible outpu
 must regenerate the `browser-qa-agent` `ui-test-results.md` and the `ux-regression.md` against the
 fixed build before closure can pass; a `qa.md` TC-* retest does not satisfy the "pass via
 browser-qa-agent" DoD.
+
+## iter-23 — 2026-07-09T01:00:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A DoD line that pins a specific SLOW test as a green gate (`test_api_indexes.py` at "backend pytest green") is a trap when that test has never actually run to completion — on its first-ever run (the ~2h 30y/590-symbol fixture) it surfaced a latent test-only defect (KeyError:'^TNX', a full/clamped symbol-symmetry assertion that is invalid for a symbol honestly omitted before its first bar in clamped mode). Worse, the same spec put `apps/backend/` OUT OF SCOPE, so fixing the pinned test to meet the DoD contradicted the scope fence; the auditor resolved it pragmatically as a test-only fix + in-process KeyError reproduction (the literal "12 passed" full re-run was reasonably deferred as the fixture fork-locks the box). It did not gate J-14 (its own two direct assertions were in the passing 11, and the default browser path is unaffected).
+**Applies to:** any spec author / decomposer writing a verification-only or backend-frozen iteration — do NOT cite a slow, rarely/never-completed test as a hard DoD gate unless it has been confirmed green at least once; if a pinned test can only pass by touching frozen source, the DoD and the scope fence contradict — resolve it in the spec, not mid-audit. Also: full-vs-clamped (or full-history-vs-as-of) API symmetry assertions must tolerate honest pre-first-bar omission.

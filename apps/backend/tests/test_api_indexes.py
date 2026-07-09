@@ -176,9 +176,17 @@ def test_api_indexes_full_param_serves_through_latest_and_echoes_asof(loaded_eng
     clamped_max = max(p["date"] for s in clamped["series"] for p in s["points"])
     assert full_max > clamped_max  # the post-as-of context is present only in full mode
     assert full_max == latest.isoformat()  # ...through the latest stored date
-    # value identity on the overlapping <= D range (no second compute path)
+    # value identity on the overlapping <= D range (no second compute path). A symbol whose FIRST
+    # bar is after the (early) as-of is honestly omitted from the clamped series (zero bars <= D) yet
+    # still appears in full mode (it has bars overall) -- e.g. ^TNX (and, on a wider ingest, SPY) at
+    # an early as-of. That asymmetry is CORRECT product behavior (the honest omission is pinned by
+    # test_indexes.py::test_barless_configured_symbol_omitted_from_series_and_legend). So: assert full
+    # is a superset of clamped, then compare the overlap only for symbols present in BOTH modes.
     clamped_by_sym = {s["symbol"]: s["points"] for s in clamped["series"]}
+    assert set(clamped_by_sym).issubset({s["symbol"] for s in full["series"]})
     for s in full["series"]:
+        if s["symbol"] not in clamped_by_sym:
+            continue  # honestly absent pre-first-bar in clamped mode; nothing to overlap-compare
         overlap = [p for p in s["points"] if p["date"] <= clamped["asof_date"]]
         assert overlap == clamped_by_sym[s["symbol"]]
 

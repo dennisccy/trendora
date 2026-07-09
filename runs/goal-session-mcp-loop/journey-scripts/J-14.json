@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "journey": "J-14",
+  "name": "The 30-year basis carries deep, honestly-sourced index context (benchmarks + macro), each labeled by vendor",
+  "default_timeout_ms": 10000,
+  "steps": [
+    {"n": 1, "journey": "J-14", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Regime × phase cross-view"}},
+    {"n": 2, "journey": "J-14", "action": {"type": "goto", "url": "/"}, "expect": {"text": "S&P 500 Index (^SPX)"}},
+    {"n": 3, "journey": "J-14", "action": {"type": "goto", "url": "/"}, "expect": {"text": "CBOE Volatility Index (^VIX)"}},
+    {"n": 4, "journey": "J-14", "action": {"type": "goto", "url": "/"}, "expect": {"text": "10Y-2Y spread proxy (^TNX)"}},
+    {"n": 5, "journey": "J-14", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "Index & benchmark data provenance"}},
+    {"n": 6, "journey": "J-14", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "1996-01-02"}},
+    {"n": 7, "journey": "J-14", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "FRED-macro proxy"}}
+  ]
+}
