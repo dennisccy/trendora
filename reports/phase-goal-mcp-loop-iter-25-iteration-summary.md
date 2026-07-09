@@ -1,57 +1,59 @@
 # Iteration Summary — goal-mcp-loop-iter-25
 
-**Verdict:** PASS
+**Verdict:** CONTINUE
 **Iteration type:** goal-full
 **Date:** 2026-07-09
 **Iteration:** 25
 
 ## In plain words
 
-**What you can do now:** You can browse a leaderboard of hundreds of stocks where every score carries an honest "proven" or "not yet proven" label — never a confident number without backing. You can open any stock and view up to thirty years of price history, switching between a recent view and the full history. You can visit the Evidence page to see every trading idea the product has tested and how it turned out, and jump there directly from the dashboard's current market-mood panel. You can also open the Data Manager page to see how much data is stored, how current it is, and a clear legend explaining it, plus a dashboard chart of three decades of major stock-index history, a volatility gauge, and a rate-spread indicator, each labeled with where its numbers came from.
+**What you can do now:** On Trendora you can browse a leaderboard of hundreds of companies with an honest "proven" or "not yet proven" status on every score, open the full evidence ledger to see every trading idea the system has tested (right now every one honestly reads "FAIL" while the deeper thirty-year history is being re-proven), and follow the market-regime panel through to the evidence backing it. You can view up to thirty years of price history for any stock in a recent or full view, browse the company list as it looked on any past date, and check the Data Manager page's color-coded calendar of data availability across the whole company list — including in the moment right after the app restarts, which is now confirmed safe.
 
-**What changed this time:** Nothing new to look at — this round re-tested a bug found last round. A crash risk that could take down the whole product the moment someone opened the Data Manager page right after a restart is now confirmed fixed: the team restarted the real service twice from cold and it loaded cleanly both times in about ten seconds, and a separate live browser check confirmed the same result.
+**What changed this time:** Nothing new to see — but a serious problem discovered last round is now confirmed fixed: opening the Data Manager page immediately after the app restarts no longer risks crashing the whole app. The team restarted the real service from a cold stop twice, and an independent live check in an actual browser confirmed the page loads normally in about ten seconds each time, safely under the memory limit, with every other page rechecked and working normally afterward.
 
-**What's next:** Now that this fix is confirmed, work is expected to turn either to re-testing some previously-retired trading ideas on the newer, deeper data, or to further speeding up the behind-the-scenes data jobs — a few trading-idea checks and one speed goal are still open before everything is finished.
+**What's next:** Next, the team will either speed up the background data-refresh jobs or try to certify a new trading edge on the updated thirty-year data — whichever line of work is ready first.
 
 ## Headline
 
-Verify the /data cold-load OOM fix; recover J-13, close J-15
+Cold-load OOM fix verified live — J-13 recovers, J-15 passes; iter-24 regression closed
 
 ## Direction
 
 **Signal:** improving
-**Why:** iter-25 was a pure verification pass that live-confirmed the `mmap_size_bytes: 0` fix eliminates the iter-24 cold-path OOM crash: two independent, live cold-restart reproductions (browser-qa UT-02/UT-03) show the backend surviving and `/data` rendering in ~10s each time, recovering J-13 to passing and clearing J-15's cold-path acceptance criterion. Both gates that caught the iter-24 regression (ux-regression-reviewer, phase-closure-auditor) now PASS on fresh, live evidence with zero source-code drift, so this reads as a genuine recovery rather than new risk.
+**Why:** iter-25 was the fix-verification recovery pass iter-24's REGRESSION demanded — J-13 recovered from regressed to passing and target J-15 flipped from partial to passing after two independent live cold-restart reproductions confirmed the `mmap_size_bytes: 0` fix holds, and the critical anti-goal #8 violation is now resolved. All eight required-still-passing journeys (J-01, J-03, J-04, J-05, J-10, J-11, J-12, J-14) were freshly live-replayed clean, and iter-26 already has a clear, scoped next target (J-16 perf, or J-02/06-09 evidence re-certification).
 
 **Trend (last 5 iters):**
 - Newly passing this iter: J-13, J-15
-- Newly passing in last 5 iters total: J-13, J-14, J-15
+- Newly passing in last 5 iters total: J-13 (iter-21, recovered iter-25), J-14 (iter-23), J-15 (iter-25)
 - Regressions in last 5 iters: J-13 (iter-24)
-- Anti-goal violations in last 5 iters: 1 critical (anti-goal #8 — cold-path OOM crash, iter-24; resolved this iteration)
+- Anti-goal violations in last 5 iters: 1 critical (iter-24, anti-goal #8 — cold `/data` OOM crash; resolved iter-25)
 - Iters with no journey state change: 0 of last 5
 
-**Latest evaluator reasoning:** No `eval.md` exists yet for iter-25; the most recent recorded evaluator entry (iteration 24) reads: "iter-24 shipped a CRITICAL anti-goal #8 violation that the QA lane fail-opened past, and the auditor's applied fix is not verified by the canonical lane — the exact iter-18 pattern, so REGRESSION per decision-tree rule 1 (a prior-passing journey now failing AND a critical anti-goal violated)... NOT CONTINUE — a critical anti-goal was violated and a prior-passing journey broke: the framework halts for human review, it does not auto-loop (iter-18 precedent verbatim)."
+**Latest evaluator reasoning:** "iter-25 is the fix-VERIFICATION recovery pass the iter-24 REGRESSION asked for, and it landed cleanly. The already-committed `config.yaml:108 mmap_size_bytes: 0` fix (mmap disabled, zero source diff this iteration) was re-verified LIVE by the canonical browser-qa lane with two independent cold-restart reproductions: `/data` now renders fully populated as the first request after a cold backend boot (~10.2s / ~10.5s), the backend survives, and downstream pages load — so **J-13 recovers regressed -> passing** and target **J-15 flips partial -> passing**, with the iter-24 CRITICAL anti-goal #8 violation now RESOLVED. Not GOAL_ACHIEVED: J-02/J-06/J-07/J-08/J-09 remain sanctioned-partial (30-year data-basis reset, ledgers all-FAIL, no staging winner clears Bonferroni divisor-8) and J-16 is deliberately unbuilt."
 
 ## What was done
 
-- Confirmed the already-committed `mmap_size_bytes: 0` fix (`config.yaml:108`, applied by the iter-24 audit) is still present and unmodified, with zero `apps/backend`/`apps/frontend` source drift.
-- Live-drove two independent full-stop → cold-start → `/data`-as-first-request cycles against the real 30-year database, sampling backend memory throughout — both completed in ~9.4–9.5s at ~1.8–1.9GB peak (well under the 6144MB cap), backend staying alive both times.
-- Re-ran the canonical browser-qa lane live over the cold-restart sequence plus the full required-still-passing set — 14/14 tests passed, 0 skipped, with md5-distinct evidence screenshots.
-- Corrected `reports/perf-budgets.md` with real fresh-restart cold-path measurements (replacing the prior iteration's ablation-only estimate) and re-confirmed all warm-path budgets still hold.
-- Re-ran `ux-regression-reviewer` (UX-REGRESSION-PASS) and `phase-closure-auditor` (CLOSURE-PASS), formally re-clearing the two gates that failed at iter-24.
-- Verified the 2 target journeys (J-13, J-15) pass browser QA, alongside 8 required-still-passing journeys (J-01, J-03, J-04, J-05, J-10, J-11, J-12, J-14) freshly live-replayed rather than carried over.
+- Re-confirmed the iter-24 audit fix (`config.yaml:108 mmap_size_bytes: 0`) is intact at HEAD with zero source diff across backend, frontend, and config this iteration.
+- Live-drove two full cold-restart cycles via HTTP-level RSS sampling: both completed in ~9.4–9.5s with peak RSS ~1.8–1.9GB (well under the 6144MB cap), backend survived both times.
+- Canonical browser-qa lane independently reproduced the same result twice in a live browser (~10.2s/~10.5s), confirmed the contained "Backend unavailable" error card and downstream `/stocks` survival, and verified 14/14 test cases pass with 0 skipped.
+- Freshly live-replayed all 8 required-still-passing journeys (J-01, J-03, J-04, J-05, J-10, J-11, J-12, J-14), closing the iter-24 crash-aborted replay gap.
+- Corrected `reports/perf-budgets.md` with real fresh-restart cold-path measurements, replacing the prior iteration's ablation-only estimate; all warm budgets re-confirmed holding.
+- Ran the DoD-named byte-identity backend test selection unedited: 123 passed, 0 failed.
+- Auditor caught and fixed a QA-lane evidence mis-citation (a storage-card claim had cited what was actually the error-card screenshot) without touching the canonical evidence.
+- `ux-regression-reviewer` and `phase-closure-auditor` both flipped from FAIL (iter-24) to PASS/CLOSURE-PASS on this rebuilt evidence, formally clearing the iter-24 regression and confirming anti-goal #8 resolved.
 
 ## What's left
 
-- J-02, J-06, J-07, J-08, J-09 remain sanctioned-partial: no staging candidate currently clears the canonical Bonferroni divisor-8 bar, so no "Proven" badge exists yet to drill into on the 30-year basis.
-- J-16 (fast, honest data jobs) is still unbuilt — needs a committed measured baseline plus the prescribed optimizations, deliberately deferred out of this regression-recovery pass.
-- A QA-lane evidence-hygiene defect (a mis-cited screenshot on the storage-card check) was caught and reconciled by the auditor; the underlying QA-lane rigor gaps (an over-budget health-check timing marked PASS; a same-instant storage-card-to-API byte comparison not captured with full rigor) are non-blocking carry-forwards.
-- `scripts/measure-perf.sh` still hardcodes a stale iteration label in its auto-appended output — a future tidy pass should parameterize it.
-- The dead-duplicate chart components (`index-regime-chart.tsx` / `major-indexes-card.tsx`, a coherence-WARN carry-forward) remain un-deleted, deferred to a dedicated tidy iteration.
-- The `/data` page's no-retry desync after a backend hiccup (a pre-existing, non-blocking design gap) remains open for a future iteration.
+- Journeys J-02, J-06, J-07, J-08, J-09 (evidence re-certification — drill-into-proof, vcp_contraction, multi-horizon, multi-factor combination, and rs_spy_3m 60-day edges) remain sanctioned-partial: the 30-year data-basis reset means every previously-certified edge honestly recomputes to FAIL, and no staging candidate currently clears the tightened Bonferroni bar (divisor 8).
+- Journey J-16 (Data jobs — Fetch/Backfill/warmup speed and honesty) remains unknown/unbuilt — deliberately deferred out of this recovery pass (rubric rule 5: never bundle a risky journey into a regression-recovery iteration).
+- The same-instant storage-card ↔ `/api/data` byte-diff wasn't rigorously captured this iteration (non-blocking) — flagged for the next `/data`-touching iteration.
+- The `/data` page still lacks an auto-retry when a transient backend hiccup strands it beside an already-recovered status badge (non-blocking, P3 follow-up).
+- QA-lane rigor gap: its `/api/health` warm-budget figure (0.210s) exceeded the ≤0.1s budget yet was marked PASS; the authoritative warm figure (0.090s) lives in `perf-budgets.md`.
+- Dead-duplicate `index-regime-chart.tsx` / `major-indexes-card.tsx` components remain undeleted (coherence-WARN carry-forward), deferred to a dedicated tidy iteration.
 
 ## Next step
 
-No `eval.md` was available yet for this iteration to carry a verbatim Next-Step Recommendation, so per the fallback rule: run the full pipeline on the next phase. The phase spec's own notes and the auditor's recommended next step both anticipate the evaluator will register CONTINUE (not GOAL_ACHIEVED) on this clean recovery, since J-02/J-06–J-09 remain sanctioned-partial and J-16 is still unbuilt; the most-ready candidates are a new-basis staging-discovery pass toward re-certifying one of those factors, or landing the deferred J-16 fast-platform work — alongside the non-blocking carry-forwards noted above (QA-lane evidence-hygiene tightening, the `/data` no-retry desync, and the dead-duplicate chart-component cleanup).
+iter-26 (FULL). Two remaining gaps to GOAL_ACHIEVED, in priority order: (1) J-16 — fast-platform data-jobs perf (goal.md item F + A/B warmup-cache): commit the measured baseline, land the byte-identity-gated scoring-window change, and re-measure per-date backfill + full warmup ≥30% improvement as never-regress budgets, gated on a byte-identical harness (any per-(symbol,date) diff means fix the window, never accept drift) — the most tractable unbuilt work, self-contained; (2) J-02/J-06/J-07/J-08/J-09 — evidence re-certification on the 30-year basis via a new pre-registered staging exploration, promoting only a winner that clears the canonical Bonferroni divisor-8 with margin (explicit `"ledger":"canonical"`), honoring the honest-stop guard since no staging winner clears divisor-8 today (report, don't force). FULL depth either way — J-16 needs the audit/ux-regression/closure guards and must not be bundled with the evidence work (rubric rule 5). Non-blocking carry-forwards: the `/data` no-retry desync (F1), a clean same-instant storage-card↔API byte-diff (T3), deleting the dead-duplicate chart components, and hardening the non-terminal QA lane's evidence rigor.
 
 ## Quick verify
 
@@ -80,4 +82,5 @@ From `reports/phase-goal-mcp-loop-iter-25-what-to-click.md`:
 | QA | PASS | reports/qa/goal-mcp-loop-iter-25-qa.md |
 | Audit | PASS_WITH_GAPS | docs/handoffs/goal-mcp-loop-iter-25-audit.md |
 | Closure | CLOSURE-PASS | reports/phase-goal-mcp-loop-iter-25-closure-verdict.md |
+| Goal evaluation | CONTINUE | runs/goal-session-mcp-loop/iter-25/eval.md |
 | Journey history | — | runs/goal-session-mcp-loop/state/journey-history.json |
