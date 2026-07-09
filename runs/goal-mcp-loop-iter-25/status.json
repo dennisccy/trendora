@@ -1,0 +1,21 @@
+{
+  "phase": "goal-mcp-loop-iter-25",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-07-09T13:44:28.308127Z",
+  "started_at": "2026-07-09T09:32:48.846947Z",
+  "cli": "claude",
+  "note": "Verification-only pass, zero source-code changes (by design). Confirmed config.yaml:108 mmap_size_bytes: 0 (iter-24 audit fix) still at HEAD, git diff HEAD clean on config.yaml and on apps/backend/apps/frontend. Live-drove the cold-path repro TWICE against the real 30-year/583-symbol DB: full backend stop -> fresh scripts/start-backend.sh cold start -> GET /api/data as the first/first-heavy request, RSS sampled every 0.2s. Both runs: HTTP 200, ~9.4-9.5s, peak RSS ~1.8-1.9 GB (well under the 6144 MB ulimit -v cap), backend stayed alive -- flips iter-24's UT-16 (crash reproduced 2/2) to fixed, verified 2/2 at the live HTTP level. Re-ran scripts/measure-perf.sh's warm methodology: all J-15 warm budgets hold, DB capacity payload byte-identical to every prior recorded figure. Ran the DoD-named targeted test selection unedited (test_bar_cache.py, test_api_engine.py, test_health.py, test_data_manager.py): 123 passed, 0 failed, in 7156.23s (1:59:16) -- the loaded_engine session fixture's one-time 30-year seed-load+bootstrap dominates wall time, consistent with iter-24's own precedent (2:49:37 for a similar 5-file selection), confirmed not a hang via /proc sampling (100% CPU, stable RSS) throughout. Corrected reports/perf-budgets.md with two new iter-25 sections (live cold-path measurement + warm re-confirmation), replacing the iter-24 audit's ablation-only claim. Both servers cleanly stopped before finishing; no source drift outside reports/perf-budgets.md.",
+  "blockers": [],
+  "changed_files": [
+    "reports/perf-budgets.md (appended: live-verified cold-path section + warm re-confirmation section)",
+    "docs/handoffs/goal-mcp-loop-iter-25-dev.md (new)",
+    "reports/phase-goal-mcp-loop-iter-25-implementation-summary.md (new)",
+    "reports/phase-goal-mcp-loop-iter-25-user-visible-changes.md (new)",
+    "runs/goal-mcp-loop-iter-25/status.json (this update)"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "qa_verdict": "PASS",
+  "next_action": "Ready for auditor and phase-closure gates. All 15 functional tests passed. Backend 123/123 tests from dev handoff. Cold-path OOM fix verified in dev handoff (2 successful runs, 9.4-9.5s, peak RSS ~1.8-1.9 GB). Config.yaml:108 mmap_size_bytes:0 confirmed. Storage card values match API. All critical endpoints responding. No blockers."
+}

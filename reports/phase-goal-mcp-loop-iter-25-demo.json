@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-25",
+  "base_url": "http://localhost:3255",
+  "iteration": 25,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Today's market regime, at a glance",
+      "narration": "Open the Trendora dashboard — no sign-in required. It shows today's market regime and links straight to the evidence behind that call.",
+      "point_out": "The Market Regime panel reads 'Risk-on 72.25' with a link into the evidence ledger.",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Risk-on 72.25" }
+    },
+    {
+      "n": 2,
+      "title": "One click to the honest evidence ledger",
+      "narration": "Follow the dashboard's link straight into the evidence ledger backing today's regime.",
+      "point_out": "The Breakout-watch claim for this regime is honestly marked FAIL with its real holdout number — nothing is shown as proven unless it actually passed.",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "See evidence proven in this regime" } },
+      "expect": { "text": "Out-of-sample edge in the Risk-on regime" }
+    },
+    {
+      "n": 3,
+      "title": "Browse the full leaderboard",
+      "narration": "Head to the Stocks leaderboard, showing every company in the tracked universe with its scores.",
+      "point_out": "541 / 541 confirms the whole universe is represented, and every score still carries an honest 'Not yet proven' tag.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "541 / 541" }
+    },
+    {
+      "n": 4,
+      "title": "Sort the leaderboard by sector",
+      "narration": "Click the Sector column to regroup the whole leaderboard by industry.",
+      "point_out": "The table regroups alphabetically by sector (Communication Services, Consumer Discretionary, ...) with no crash or blank table.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Sort by Sector" } },
+      "expect": { "text": "Communication Services" }
+    },
+    {
+      "n": 5,
+      "title": "A single stock's detail page",
+      "narration": "Open a single company's detail page to see its price chart and the same honest scoring shown on the leaderboard.",
+      "point_out": "The same 'Not yet proven' honesty label follows every score onto the stock's own page.",
+      "journey": "J-10",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/AAPL" },
+      "expect": { "text": "Not yet proven" }
+    },
+    {
+      "n": 6,
+      "title": "See decades of price history",
+      "narration": "Click 'Full' on the chart toggle to expand from the recent window out to decades of price history.",
+      "point_out": "The chart redraws with deep history and a note that older bars are weekly-sampled — a real re-render, not just a label flip.",
+      "journey": "J-10",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "css": "[data-testid=\"chart-range-full\"]" } },
+      "expect": { "text": "weekly-sampled" }
+    },
+    {
+      "n": 7,
+      "title": "The Data Manager page — proven solid again",
+      "narration": "Visit the Data Manager page, which tracks how much data Trendora holds and how complete it is.",
+      "point_out": "Dataset coverage and Storage footprint both render fully — 541 companies, 3,293,160 price bars, 1.22 GB on disk. This is the exact page that could previously crash the whole app right after a restart; it now loads cleanly every time.",
+      "journey": "J-13",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "3,293,160" }
+    }
+  ]
+}

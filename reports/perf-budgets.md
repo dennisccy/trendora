@@ -135,3 +135,87 @@ byte-for-byte-duplicate `ix_daily_prices_symbol_date` and the redundant `ix_forw
 from the live committed DB (confirmed present before, absent after) and added `ix_daily_prices_date` — the
 guarded migration is not just unit-tested, it ran against the real 3.27M-row table in ~1.3 s.
 
+## Cold `/api/data` path — LIVE-VERIFIED by the iter-25 developer pass (real HTTP, not an ablation)
+
+**No source change this iteration.** `config.yaml:108`'s `mmap_size_bytes: 0` was already committed at
+HEAD (`665565a`, the iter-24 audit fix); confirmed clean vs HEAD before this measurement, with
+`pool_size`/`max_overflow`/`memory_cap_mb` untouched. The prior section's "471 MB" figure came from the
+iter-24 audit's controlled ablation of `_compute_coverage_uncached`'s prefill under a simulated
+pooled-connection model — real evidence of the ROOT CAUSE, but not an end-to-end HTTP request through the
+live FastAPI/uvicorn stack. Per the session lesson ("an engine-level fix is not journey evidence until the
+canonical lane re-runs it live"), iter-25 closes that gap with two independent LIVE cold-boot repros
+against the real committed 30-year/583-symbol DB — full `kill -TERM` backend stop + fresh
+`scripts/start-backend.sh` cold start between them, never accepting an `/api/health` boot as a substitute
+(a different code path than the heavy `/api/data` bar-prefill).
+
+**Measured 2026-07-09 (this host, backend :8255, `memory_cap_mb: 6144` `ulimit -v` applied, peak RSS
+sampled from `/proc/<pid>/status` `VmRSS` at 0.2 s intervals for the request's duration):**
+
+| Run | Sequence | `GET /api/data` | Wall time | Peak backend RSS | Backend survived? |
+|---|---|---|---|---|---|
+| 1 | cold-start → (an unrelated background process on this host pinged `/api/health` ×4 first — see note below) → `/api/data` | HTTP 200 | 9.522 s | ~1,814 MB (1,857,632 KB `VmRSS`) | **YES** |
+| 2 | cold-start → (same unrelated process pinged `/api/health` ×1) → `/api/data` as the first/only HEAVY request | HTTP 200 | 9.387 s | ~1,859 MB (1,903,228 KB `VmRSS`) | **YES** |
+
+Both runs: HTTP 200, well inside the ≤ 60 s budget, and well inside the 6144 MB `ulimit -v` cap (peak RSS
+~1.8 GB leaves ~4.3 GB of headroom — higher than the 471 MB ablation figure since this measurement carries
+the full live stack's overhead: uvicorn/FastAPI/SQLAlchemy pool + ORM machinery + JSON serialization on top
+of the prefill itself, not just the prefill in isolation — still nowhere near the cap). The backend process
+never crashed and never OOM'd in either run, and stayed up afterward to serve warm requests. **This flips
+iter-24's UT-16 (browser-qa reproduced the crash 2/2) to fixed, verified 2/2.** Both cold responses'
+`capacity` payloads were byte-identical to each other AND to every previously-recorded figure in this file
+(`db_file_bytes 1307414528`, `daily_prices_rows 3293160`, `scanner_results_rows 165755`,
+`forward_returns_rows 821054`) — no drift, cold or warm.
+
+**Note on the stray `/api/health` hits:** an unrelated background process on this host (not started by this
+verification pass) polled `/api/health` a few times immediately after each backend boot. This does not
+weaken the repro: `mmap_size_bytes: 0` removes the per-pooled-connection virtual-memory reservation that
+caused the original OOM regardless of which endpoint opens a connection first, so a few cheap health pings
+before the real test cannot mask or worsen the crash; run 2 confirms `/api/data` was still the first and
+only HEAVY (prefill-triggering) request in that process's lifetime.
+
+## Warm budgets — re-confirmed on the fixed build (2026-07-09T11:48:59Z, iter-25)
+
+Re-ran `scripts/measure-perf.sh` (methodology unchanged; output captured to a scratch file rather than
+appended here directly, to avoid the script's hardcoded "(iter-24)" section label — the numbers below are
+transcribed verbatim from that run) against the same PROD-mode services used for the cold-path repro
+above, backend :8255 / frontend :3255, immediately after the cold `/api/data` hit (i.e. now warm):
+
+**Warm endpoint latencies:**
+
+| Endpoint | Wall time | Budget | Holds? |
+|---|---|---|---|
+| `GET /api/health` | 0.090045s | ≤ 0.1 s | yes |
+| `GET /api/stocks` | 0.058175s | ≤ 1.5 s | yes |
+| `GET /api/stocks/AAPL` | 0.003139s | ≤ 0.3 s | yes |
+| `GET /api/data` | 0.013954s | ≤ 1.5 s | yes |
+
+**Warm page latencies (HTTP response time; the browser-qa lane verifies true interactivity):**
+
+| Page | Wall time | Budget | Holds? |
+|---|---|---|---|
+| `/stocks` | 0.007822s | ≤ 3 s | yes |
+| `/stocks/AAPL` | 0.007391s | ≤ 3 s | yes |
+| `/data` | 0.010037s | ≤ 3 s | yes |
+| `/evidence` | 0.007531s | ≤ 3 s | yes |
+
+**DB capacity snapshot** (unchanged — byte-identical to every prior measurement in this file):
+
+| Metric | Value |
+|---|---|
+| DB file size | 1307414528 bytes |
+| `daily_prices` rows | 3293160 |
+| `scanner_results` rows | 165755 |
+| `forward_returns` rows | 821054 |
+
+**Bounded backfill timing** (`--backfill-days 5`): 2005-02-28 → 2005-03-07 (0 cadence-eligible dates in
+this exact range — this backend's cadence is already fully warm — an honest no-op, not a failure):
+status=ok, 0 date(s) covered, 0 snapshot(s) created, 0.23s wall time.
+
+**Reading the numbers:** every J-15 budget — cold AND warm — is met on this iteration's build, with the
+same wide headroom as before. No source code changed this iteration; this section exists purely to replace
+the prior ablation-only cold-path claim with a real, live, end-to-end HTTP-level measurement.
+
+**Test-suite corroboration (byte-identity, unedited):** `test_bar_cache.py`, `test_api_engine.py`,
+`test_health.py`, `test_data_manager.py` (123 tests, the DoD-named selection) ran with zero source edits:
+`123 passed in 7156.23s (1:59:16)`. No displayed value drifted.
+

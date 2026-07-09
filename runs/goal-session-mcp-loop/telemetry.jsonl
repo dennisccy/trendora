@@ -457,3 +457,21 @@
 {"agent":"readme-maintainer","status":"ok","wait_seconds":11,"run_seconds":290,"rc":"0","ts":"2026-07-09T09:04:46Z","session_id":"mcp-loop","iter":24,"event":"dispatch_wait","cli":"claude"}
 {"agent":"readme-maintainer","exit_status":0,"duration_seconds":301,"retries":0,"ts":"2026-07-09T09:04:46Z","session_id":"mcp-loop","iter":24,"event":"agent_invocation_end","cli":"claude"}
 {"iter_name":"goal-mcp-loop-iter-24","verdict":"REGRESSION","next_depth":"full","journey_deltas":{"newly_passing":3,"newly_failing":0,"regressed":1,"anti_goal_violations":1},"ts":"2026-07-09T09:04:48Z","session_id":"mcp-loop","iter":24,"event":"iter_end","cli":"claude"}
+{"verdict":"REGRESSION","sha":"665565a","ts":"2026-07-09T09:04:48Z","session_id":"mcp-loop","iter":24,"event":"wip_parked","cli":"claude"}
+{"branch":"goal/mcp-loop","success":true,"skipped":"halt_verdict","verdict":"REGRESSION","ts":"2026-07-09T09:04:48Z","session_id":"mcp-loop","iter":24,"event":"iter_push","cli":"claude"}
+{"reason":"REGRESSION_HALT","detected_at_step":"post_evaluator","ts":"2026-07-09T09:04:48Z","session_id":"mcp-loop","iter":24,"event":"halt","cli":"claude"}
+{"final_verdict":"REGRESSION_HALT","total_iterations":25,"wall_time_seconds":94158,"quota_pause_count":0,"ts":"2026-07-09T09:04:49Z","session_id":"mcp-loop","iter":24,"event":"session_end","cli":"claude"}
+{"mode":"resume","max_iterations":0,"stall_window":3,"auto_release":false,"ts":"2026-07-09T09:22:28Z","session_id":"mcp-loop","iter":null,"event":"session_start","cli":"claude"}
+{"iter_name":"goal-mcp-loop-iter-25","prior_verdict":"REGRESSION","prior_depth":"full","snapshot_sha":"0717e7f3c347a9f5ccae938d1b96545f0874bf4c","ts":"2026-07-09T09:22:31Z","session_id":"mcp-loop","iter":25,"event":"iter_start","cli":"claude"}
+{"agent":"goal-decomposer","ts":"2026-07-09T09:22:31Z","session_id":"mcp-loop","iter":25,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"goal-decomposer","status":"ok","wait_seconds":12,"run_seconds":605,"rc":"0","ts":"2026-07-09T09:32:48Z","session_id":"mcp-loop","iter":25,"event":"dispatch_wait","cli":"claude"}
+{"agent":"goal-decomposer","exit_status":0,"duration_seconds":617,"retries":0,"ts":"2026-07-09T09:32:48Z","session_id":"mcp-loop","iter":25,"event":"agent_invocation_end","cli":"claude"}
+{"depth":"full","target_journeys":"J-13, J-15","ts":"2026-07-09T09:32:48Z","session_id":"mcp-loop","iter":25,"event":"iter_dispatch","cli":"claude"}
+{"agent":"coherence-auditor","ts":"2026-07-09T13:52:02Z","session_id":"mcp-loop","iter":25,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"coherence-auditor","status":"ok","wait_seconds":4,"run_seconds":242,"rc":"0","ts":"2026-07-09T13:56:08Z","session_id":"mcp-loop","iter":25,"event":"dispatch_wait","cli":"claude"}
+{"agent":"coherence-auditor","exit_status":0,"duration_seconds":246,"retries":0,"ts":"2026-07-09T13:56:08Z","session_id":"mcp-loop","iter":25,"event":"agent_invocation_end","cli":"claude"}
+{"verdict":"COHERENCE-PASS","ts":"2026-07-09T13:56:08Z","session_id":"mcp-loop","iter":25,"event":"coherence_audit","cli":"claude"}
+{"agent":"goal-evaluator","ts":"2026-07-09T13:56:10Z","session_id":"mcp-loop","iter":25,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"goal-evaluator","status":"ok","wait_seconds":5,"run_seconds":648,"rc":"0","ts":"2026-07-09T14:07:03Z","session_id":"mcp-loop","iter":25,"event":"dispatch_wait","cli":"claude"}
+{"agent":"goal-evaluator","exit_status":0,"duration_seconds":653,"retries":0,"ts":"2026-07-09T14:07:03Z","session_id":"mcp-loop","iter":25,"event":"agent_invocation_end","cli":"claude"}
+{"iter_name":"goal-mcp-loop-iter-25","verdict":"CONTINUE","next_depth":"full","journey_deltas":{"newly_passing":10,"newly_failing":0,"regressed":0,"anti_goal_violations":1},"ts":"2026-07-09T14:07:03Z","session_id":"mcp-loop","iter":25,"event":"iter_end","cli":"claude"}
