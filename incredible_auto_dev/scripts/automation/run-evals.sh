@@ -72,6 +72,10 @@ _run_self_test scripts/automation/lib/render_iteration_summary.py self-test
 _run_self_test scripts/automation/lib/demo_runner.py self-test
 _run_self_test scripts/automation/lib/merge_ui_test_results.py self-test
 _run_self_test scripts/automation/lib/mcp_sync_selftest.py self-test
+# Agent-contract static linter (SAFE-2): fixture assertions, then lints the live
+# tree — agents/*/body.md + templates verdict vocabulary vs lib/verdicts.py,
+# agent.yaml model_tier/version presence. Red here = writer→reader drift.
+_run_self_test scripts/automation/lib/lint_contracts.py self-test
 
 # Bash-level self-test for the generic project-gate mechanism (M2).
 if bash scripts/automation/lib/project-gates.sh self-test >/dev/null 2>&1; then
@@ -122,8 +126,16 @@ else
   _fail "self-test: parallel.sh (run: bash scripts/automation/lib/parallel.sh self-test)"
 fi
 
+# Opt-in pre-commit eval guard (SAFE-1): installer + hook behavior in a scratch repo.
+if bash scripts/automation/install-git-hooks.sh --self-test >/dev/null 2>&1; then
+  _pass "self-test: install-git-hooks.sh (pre-commit eval guard)"
+else
+  _fail "self-test: install-git-hooks.sh (run: bash scripts/automation/install-git-hooks.sh --self-test)"
+fi
+
 # Goal-mode deterministic gates (verdict cross-checks, diff scan/bounding).
 _run_self_test scripts/automation/lib/goal_gate.py self-test
+_run_self_test scripts/automation/lib/goal_lint.py self-test
 _run_self_test scripts/automation/lib/scan_diff.py self-test
 _run_self_test scripts/automation/lib/diff_bound.py self-test
 if bash scripts/automation/lib/goal-gates.sh --self-test >/dev/null 2>&1; then
@@ -135,7 +147,7 @@ fi
 
 # ── 2c. Standalone unit-test scripts (API-free by design) ────────────────────
 _log "2c. tests/automation unit tests"
-for _t in tests/automation/test-quota-retry.sh tests/automation/test-install-gate.sh tests/automation/test-goal-checkpoints.sh tests/automation/test-goal-async-tail.sh; do
+for _t in tests/automation/test-quota-retry.sh tests/automation/test-install-gate.sh tests/automation/test-goal-checkpoints.sh tests/automation/test-goal-async-tail.sh tests/automation/test-intent-checkpoint.sh tests/automation/test-doc-drift.sh tests/automation/test-github-preflight.sh; do
   if bash "$_t" >/dev/null 2>&1; then
     _pass "unit: $_t"
   else

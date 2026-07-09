@@ -19,7 +19,11 @@ You can use both modes in the same project. They write to disjoint artifact name
 
 ### 1. Author `docs/goal.md`
 
-Start from `templates/project-goal.md` and fill in every section. The two sections required by goal mode (and ignored by phase mode) are:
+**Recommended:** run `/goal-init` inside Claude Code — it interviews you section-by-section and drafts `docs/goal.md` for you (playback confirmation before any write, structural self-check after).
+
+**Manual alternative:** start from `templates/project-goal.md` and fill in every section yourself.
+
+Either way, the two sections required by goal mode (and ignored by phase mode) are:
 
 ```markdown
 ## Must-have user journeys
@@ -99,6 +103,7 @@ Halt verdicts:
 - `STALLED` — no journey progress for `--stall-window` iterations; edit `goal.md` (clearer journeys, narrower scope) and `--resume`
 - `REGRESSION_HALT` — a previously-passing journey now fails; review, fix manually if needed, then resume with `--acknowledge-regression`
 - `AWAITING_BLUEPRINT_APPROVAL` — only when you ran with `--require-blueprint-approval`: paused after baseline (or after a structural blueprint change) for you to review `state/blueprint.md`; `--resume` to continue (counts as approval)
+- `AWAITING_INTENT_REVIEW` — only when you ran with `--intent-checkpoint` / `--intent-checkpoint-at N`: paused once mid-session for you to read `runs/goal-session-<sid>/intent-review.md` ("is this still the product you wanted?"); `--resume` to continue (counts as acknowledgment; fires once per session)
 - `AWAITING_GITHUB_AUTH` — paused at startup because per-iter push is on but a push to `origin` wouldn't authenticate (expired GitHub session, or no remote); fix auth (the run will offer to launch `gh auth login` for you when interactive) and `--resume`
 
 ## Common workflows
@@ -186,6 +191,20 @@ $EDITOR runs/goal-session-my-app/state/blueprint.md   # check IA + Data Contract
 
 `--require-blueprint-approval` is a per-run flag — pass it on each invocation/resume to keep the review pause on (it also pauses on any later structural blueprint change). `--auto-approve-blueprint` is still accepted but is now the default.
 
+### Mid-session intent checkpoint (opt-in)
+
+Goal mode normally runs hands-off from `goal.md` to `GOAL_ACHIEVED` — if the journeys encode the wrong product, you find out at the end. `--intent-checkpoint` adds one resumable mid-session pause: when **≥ 50% of the Must-have journeys pass**, the loop stops with `AWAITING_INTENT_REVIEW` and writes `runs/goal-session-<sid>/intent-review.md` — a deterministic packet (no model call) with the journey digest, the project story, the assumption-ledger tail, links to the HTML reports, and targeted questions (the still-failing journeys and any `Reversible: no` assumptions). Prefer an iteration count instead? `--intent-checkpoint-at N` fires when the loop reaches iteration N (same convention as `--max-iter`). Both are off by default and fire at most once per session:
+
+```bash
+./scripts/automation/run-goal.sh --session-id my-app --intent-checkpoint
+# ... loop pauses once half the journeys pass ...
+$EDITOR runs/goal-session-my-app/intent-review.md   # is this the product you wanted?
+# drifting? edit docs/goal.md (journeys / anti-goals) before resuming
+./scripts/automation/run-goal.sh --resume --session-id my-app   # resuming = acknowledged
+```
+
+Like the blueprint pause, these are per-run flags; the once-per-session memory lives in `state/.intent-review-done`, so a later resume never re-fires it.
+
 ### Start over
 
 ```bash
@@ -237,6 +256,29 @@ goal(my-app): iter 2 — CONTINUE (passing+2 failing+0 regressed+0)
 goal(my-app): iter 1 — CONTINUE (passing+1 failing+0 regressed+0)
 goal(my-app): iter 0 — CONTINUE (passing+0 failing+3 regressed+0)
 ```
+
+## Continuous improvement (opt-in)
+
+By default a session **finalizes** at `GOAL_ACHIEVED`. Opting in to continuous improvement changes that: once every Must-have journey passes, the **goal-proposer** agent surveys the finished product (via the read-only tools your guidance file names), detects vision gaps (Vision / Key Capabilities claims no journey covers), writes an improvement backlog to `runs/goal-session-<sid>/state/enhancement-proposals.jsonl`, and appends the best 1–2 proposals as new Must-have journeys inside the `<!-- AUTO:journeys -->` block of `docs/goal.md` — so the loop keeps building. When nothing worth building survives its validation screen, it reports a **dry** result and the session finalizes exactly as before (the honest stop — it never invents work to keep looping).
+
+The opt-in is two files, both outside the framework subtree. `run-goal.sh` dispatches the proposer only when BOTH exist:
+
+```bash
+# 1. The guidance file — every project-specific judgment the proposer uses.
+mkdir -p project-extensions/hooks
+cp templates/proposer-guidance.md project-extensions/proposer-guidance.md
+$EDITOR project-extensions/proposer-guidance.md   # fill in all six sections
+
+# 2. The post-goal hook — deterministic prep run before the proposer. A no-op is enough:
+cat > project-extensions/hooks/post-goal.sh <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+```
+
+The hook is where a project refreshes a pre-screen snapshot for the proposer to read (e.g. write a `usage-scan.json` into the session state dir, and name that file in the guidance). It runs with `SESSION_ID`, `SESSION_DIR`, `REPO_ROOT`, and `GOAL_FILE` exported, is invoked via `bash` (no `chmod +x` needed), and is non-fatal — a failing hook logs a warning and the proposer still runs. If you have no prep step, the minimal no-op above is all you need.
+
+Each cycle writes `state/proposer-result.json` with the outcome (`extended` vs `dry`, plus a one-line summary naming any vision gaps found). The proposer edits **only** the `AUTO:journeys` block — human journeys and Anti-goals are never touched, and Anti-goals still bind every proposed journey. Every promoted journey bakes your consistency (Data Contract) and `[NEW]`-walkthrough requirements into its Acceptance, so the normal pipeline gates verify it like any other journey.
 
 ## Worked example: tiny goal
 
@@ -301,6 +343,7 @@ Then:
 
 ## See also
 
+- `/goal-init` ([`commands/goal-init.md`](../commands/goal-init.md)) — guided interview that drafts `docs/goal.md` for you
 - [`templates/project-goal.md`](../templates/project-goal.md) — full goal template with all required sections
 - [`.claude/architecture/goal-mode.md`](../.claude/architecture/goal-mode.md) — internal architecture
 - [`docs/goal-mode-telemetry.md`](goal-mode-telemetry.md) — telemetry event schema
