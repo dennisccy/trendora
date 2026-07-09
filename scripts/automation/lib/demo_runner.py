@@ -17,7 +17,9 @@ needs no changes.
 Self-test (no browser, no network):
   python3 demo_runner.py self-test
 
-Exit codes: 0 ok/soft-skip · 2 bad args/JSON · 3 playwright missing · 4 no DISPLAY (live).
+Exit codes: 0 ok/soft-skip · 2 bad args/JSON · 3 playwright missing · 4 no DISPLAY (live)
+· 5 verify found ≥1 FAIL · 6 browser infrastructure failure (launch/crash — verify only;
+callers route replay journeys back to the LLM lane so nothing is silently unverified).
 """
 from __future__ import annotations
 
@@ -129,6 +131,22 @@ def compute_verdict(any_captured: bool, has_soft_notes: bool, not_yet: bool) -> 
     return "RECORDED"
 
 
+def compute_regression_verdict(results: list[dict]) -> str:
+    """Overall verdict for a deterministic regression-replay run (verify mode).
+
+    Unlike the showcase verdicts above, replay treats a journey's `expect`s as
+    HARD assertions: FAIL if any journey failed; SKIPPED if none ran or all were
+    skipped (e.g. no golden script on file); otherwise PASS."""
+    verdicts = [r.get("verdict") for r in results]
+    if not verdicts:
+        return "SKIPPED"
+    if "FAIL" in verdicts:
+        return "FAIL"
+    if all(v == "SKIP" for v in verdicts):
+        return "SKIPPED"
+    return "PASS"
+
+
 def _today() -> str:
     return datetime.date.today().isoformat()
 
@@ -161,6 +179,59 @@ def render_results_md(phase_id: str, frontend_url: str, iteration, captured: lis
               f"- **Frontend URL:** {frontend_url}",
               f"- **Browser:** Chromium via Playwright ({mode})",
               f"- **Demo mode:** {mode}", ""]
+    return "\n".join(lines)
+
+
+def render_regression_results_md(phase_id: str, frontend_url: str, iteration,
+                                 results: list[dict], mode: str = "verify") -> str:
+    """Emit a ui-test-results.md-compatible report for deterministic regression
+    replay — byte-shaped like templates/ui-test-results.md so the goal-evaluator
+    reads it exactly like the LLM browser-qa output (top `**Browser QA Verdict:**`
+    line, one `UT-<journey>` row per journey, evidence screenshots). `results` is
+    a list of {journey, name, verdict (PASS/FAIL/SKIP), expected, actual, evidence}."""
+    overall = compute_regression_verdict(results)
+    total = len(results)
+    n_pass = sum(1 for r in results if r.get("verdict") == "PASS")
+    n_skip = sum(1 for r in results if r.get("verdict") == "SKIP")
+    lines = [f"# Regression Replay — {phase_id}", ""]
+    lines.append(f"**Phase:** {phase_id}")
+    lines.append(f"**Date:** {_today()}")
+    lines.append("**Written by:** demo_runner.py (deterministic replay)")
+    if iteration is not None:
+        lines.append(f"**Iteration:** {iteration}")
+    lines += ["", "---", "",
+              f"**Browser QA Verdict:** {overall}", "",
+              f"**Overall:** {n_pass}/{total} journeys passed ({n_skip} skipped)", "",
+              "---", "", "## Results Table", "",
+              "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |",
+              "|---------|------|------|----------|----------|--------|---------|----------|"]
+    for r in results:
+        tid = f"UT-{r.get('journey', '')}"
+        name = str(r.get("name", "")).replace("|", "\\|")
+        exp = str(r.get("expected", "")).replace("|", "\\|")
+        act = str(r.get("actual", "")).replace("|", "\\|")
+        ev = r.get("evidence", "none") or "none"
+        lines.append(f"| {tid} | {name} | regression | P1 | {exp} | {act} | {r.get('verdict', '')} | {ev} |")
+    lines.append("")
+    failed = [r for r in results if r.get("verdict") == "FAIL"]
+    skipped = [r for r in results if r.get("verdict") == "SKIP"]
+    if failed:
+        lines += ["## Failed Tests", ""]
+        for r in failed:
+            lines += [f"### UT-{r.get('journey', '')} — {r.get('name', '')}", "",
+                      "**Verdict:** FAIL",
+                      f"**Failure:** {r.get('actual', '')}",
+                      f"**Evidence:** `{r.get('evidence', 'none')}`", ""]
+    if skipped:
+        lines += ["## Skipped Tests", ""]
+        for r in skipped:
+            lines += [f"### UT-{r.get('journey', '')} — {r.get('name', '')}", "",
+                      "**Verdict:** SKIPPED",
+                      f"**Reason:** {r.get('actual', '')}", ""]
+    lines += ["## Environment", "",
+              f"- **Frontend URL:** {frontend_url}",
+              f"- **Browser:** Chromium via Playwright (deterministic replay, {mode})",
+              f"- **Test Date:** {_today()}", ""]
     return "\n".join(lines)
 
 
@@ -324,6 +395,72 @@ def _t_script_md_roundtrip() -> None:
     assert narr.get(2) == "We open the form.", narr
 
 
+def _t_regression_verdict_matrix() -> None:
+    assert compute_regression_verdict([]) == "SKIPPED"
+    assert compute_regression_verdict([{"verdict": "PASS"}, {"verdict": "PASS"}]) == "PASS"
+    assert compute_regression_verdict([{"verdict": "PASS"}, {"verdict": "FAIL"}]) == "FAIL"
+    assert compute_regression_verdict([{"verdict": "SKIP"}, {"verdict": "SKIP"}]) == "SKIPPED"
+    assert compute_regression_verdict([{"verdict": "SKIP"}, {"verdict": "PASS"}]) == "PASS"
+    assert compute_regression_verdict([{"verdict": "FAIL"}, {"verdict": "SKIP"}]) == "FAIL"
+
+
+def _t_regression_results_md() -> None:
+    results = [
+        {"journey": "J-06", "name": "View dashboard", "verdict": "PASS",
+         "expected": "e", "actual": "ok", "evidence": "reports/qa/x/J-06-verify.png"},
+        {"journey": "J-07", "name": "Filter the table", "verdict": "FAIL",
+         "expected": "e", "actual": 'step 03 expected "Results" did not appear',
+         "evidence": "reports/qa/x/J-07-verify.png"},
+        {"journey": "J-09", "name": "Export report", "verdict": "SKIP",
+         "expected": "e", "actual": "no golden script on file", "evidence": "none"},
+    ]
+    md = render_regression_results_md("goal-x-iter-5", "http://localhost:3017", 5, results, "verify")
+    # one journey FAILED → overall FAIL, with the marker line the goal-evaluator parses
+    assert "**Browser QA Verdict:** FAIL" in md, md
+    assert "## Results Table" in md
+    # one UT row per journey, using the journey id as the test id
+    for tid in ("UT-J-06", "UT-J-07", "UT-J-09"):
+        assert tid in md, tid
+    assert "## Failed Tests" in md and "## Skipped Tests" in md
+    assert "1/3 journeys passed (1 skipped)" in md, md
+
+
+def _t_launch_chromium_retries() -> None:
+    # A flaky launch succeeds on the retry; a dead one raises after N attempts
+    # (no browser involved — fake pw objects).
+    class _FlakyChromium:
+        calls = 0
+        @staticmethod
+        def launch(**_kw):
+            _FlakyChromium.calls += 1
+            if _FlakyChromium.calls < 2:
+                raise RuntimeError("Timeout 45000ms exceeded launching chromium")
+            return "browser-handle"
+
+    class _FlakyPW:
+        chromium = _FlakyChromium
+
+    assert _launch_chromium(_FlakyPW, headless=True, attempts=2) == "browser-handle"
+    assert _FlakyChromium.calls == 2
+
+    class _DeadChromium:
+        calls = 0
+        @staticmethod
+        def launch(**_kw):
+            _DeadChromium.calls += 1
+            raise RuntimeError("boom")
+
+    class _DeadPW:
+        chromium = _DeadChromium
+
+    try:
+        _launch_chromium(_DeadPW, headless=True, attempts=2)
+        raise AssertionError("expected the launch failure to propagate")
+    except RuntimeError as exc:
+        assert "boom" in str(exc)
+    assert _DeadChromium.calls == 2
+
+
 _SELF_TEST_CHECKS = [
     _t_normalize_url_relative,
     _t_normalize_url_rewrites_localhost,
@@ -338,6 +475,9 @@ _SELF_TEST_CHECKS = [
     _t_verdict_matrix,
     _t_results_md_roundtrip,
     _t_script_md_roundtrip,
+    _t_regression_verdict_matrix,
+    _t_regression_results_md,
+    _t_launch_chromium_retries,
 ]
 
 
@@ -577,6 +717,59 @@ def _write_skipped_results(opts, reason: str) -> None:
     Path(opts.results).write_text(md, encoding="utf-8")
 
 
+def run_lint(opts) -> int:
+    """Validate golden replay scripts WITHOUT a browser (no playwright needed).
+
+    Prints one line per requested journey: `<J-XX> ok` when the golden parses
+    and validates, `<J-XX> invalid: <reason>` otherwise (a missing file counts
+    as invalid). goal-iter-lean.sh uses this to quarantine broken goldens into
+    the LLM lane BEFORE the replay partition — a broken golden used to surface
+    only as a replay SKIP that nothing re-confirmed, silently leaving that
+    journey unverified for the iteration. Always exits 0; callers decide per
+    line."""
+    scripts_dir = Path(opts.scripts_dir or ".")
+    journeys = [j.strip() for j in (opts.journeys or "").split(",") if j.strip()]
+    for jid in journeys:
+        sp = scripts_dir / f"{jid}.json"
+        if not sp.exists():
+            print(f"{jid} invalid: no golden script on file")
+            continue
+        try:
+            data = json.loads(sp.read_text(encoding="utf-8"))
+        except Exception as exc:  # noqa: BLE001
+            print(f"{jid} invalid: not valid JSON: {str(exc)[:100]}")
+            continue
+        errs = validate_script(data)
+        if errs:
+            print(f"{jid} invalid: " + "; ".join(errs)[:160])
+        elif isinstance(data, dict) and data.get("not_yet"):
+            print(f"{jid} invalid: marked not_yet")
+        else:
+            print(f"{jid} ok")
+    return 0
+
+
+def _launch_chromium(pw, headless: bool, attempts: int = 2, timeout_ms: int = 45000,
+                     args: list | None = None):
+    """Launch chromium with a bounded timeout and one fast retry.
+
+    A cold chromium on a loaded machine intermittently exceeds Playwright's
+    default 30s launch timeout (observed in a real session: one launch timeout
+    turned a ~20-min browser-qa step into a ~40-min spike AND left the replay
+    lane's journeys silently unverified). Bounded attempts turn that failure
+    mode into ≤ ~90s before the caller's fallback engages."""
+    last_exc: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            return pw.chromium.launch(headless=headless, timeout=timeout_ms, args=args or [])
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            print(f"[demo_runner] chromium launch attempt {attempt}/{attempts} failed: "
+                  f"{str(exc).splitlines()[0][:140]}", file=sys.stderr)
+    assert last_exc is not None
+    raise last_exc
+
+
 def run_record(script: dict, opts, base_url: str) -> int:
     phase_id = opts.phase_id or script.get("phase_id") or "?"
     iteration = opts.iteration if opts.iteration is not None else script.get("iteration")
@@ -600,7 +793,7 @@ def run_record(script: dict, opts, base_url: str) -> int:
     script_steps: list[dict] = []
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
+        browser = _launch_chromium(pw, headless=True)
         ctx_kwargs: dict = {"viewport": {"width": 1280, "height": 800}}
         if opts.video:
             ctx_kwargs["record_video_dir"] = str(out_dir / "video")
@@ -683,7 +876,7 @@ def run_live(script: dict, opts, base_url: str) -> int:
           "A Chrome window will open; press Enter in THIS terminal to advance.\n")
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=False, args=["--start-maximized"])
+        browser = _launch_chromium(pw, headless=False, args=["--start-maximized"])
         context = browser.new_context(no_viewport=True)
         page = context.new_page()
         for i, step in enumerate(steps, 1):
@@ -729,14 +922,137 @@ def run_live(script: dict, opts, base_url: str) -> int:
     return 0
 
 
+def run_verify(opts, base_url: str) -> int:
+    """Deterministic regression replay (no model in the loop).
+
+    Replays each listed journey's stored golden script (`<scripts-dir>/<J-XX>.json`)
+    in a FRESH browser context — so each journey's own sign-in/setup runs from a
+    clean state and journeys never bleed into each other — treats every step's
+    `expect` as a HARD assertion, captures one end-state screenshot per journey for
+    evidence, and writes a ui-test-results.md the goal-evaluator consumes unchanged.
+
+    Returns 0 when nothing failed, 5 when ≥1 journey FAILED (so the caller can
+    re-confirm just those journeys with the LLM agent — guards against a brittle
+    selector causing a false regression). A journey with no/invalid golden script
+    is SKIP (the caller routes those to the LLM lane)."""
+    from playwright.sync_api import sync_playwright
+
+    scripts_dir = Path(opts.scripts_dir or ".")
+    journeys = [j.strip() for j in (opts.journeys or "").split(",") if j.strip()]
+    phase_id = opts.phase_id or "?"
+    iteration = opts.iteration
+    evidence_dir = Path(opts.evidence_dir) if opts.evidence_dir else None
+    if evidence_dir:
+        evidence_dir.mkdir(parents=True, exist_ok=True)
+
+    def _write(results: list[dict]) -> None:
+        if opts.results:
+            Path(opts.results).parent.mkdir(parents=True, exist_ok=True)
+            Path(opts.results).write_text(
+                render_regression_results_md(phase_id, base_url, iteration, results, "verify"),
+                encoding="utf-8")
+
+    if not journeys:
+        _write([])
+        print("[demo_runner] verify: no journeys to replay (SKIPPED).")
+        return 0
+
+    results: list[dict] = []
+    try:
+        with sync_playwright() as pw:
+            browser = _launch_chromium(pw, headless=True)
+            for jid in journeys:
+                sp = scripts_dir / f"{jid}.json"
+                if not sp.exists():
+                    results.append({"journey": jid, "name": jid, "verdict": "SKIP",
+                                    "expected": "replay golden script",
+                                    "actual": "no golden script on file", "evidence": "none"})
+                    continue
+                try:
+                    data = json.loads(sp.read_text(encoding="utf-8"))
+                except Exception as exc:  # noqa: BLE001
+                    results.append({"journey": jid, "name": jid, "verdict": "SKIP",
+                                    "expected": "replay golden script",
+                                    "actual": f"golden script not valid JSON: {str(exc)[:120]}",
+                                    "evidence": "none"})
+                    continue
+                errs = validate_script(data)
+                if errs or data.get("not_yet"):
+                    results.append({"journey": jid, "name": jid, "verdict": "SKIP",
+                                    "expected": "replay golden script",
+                                    "actual": "invalid golden script: " + "; ".join(errs) if errs
+                                    else "golden script marked not_yet", "evidence": "none"})
+                    continue
+                name = data.get("name") or data.get("title") or jid
+                steps = data.get("steps") or []
+                default_tmo = _default_timeout(data, opts)
+                context = browser.new_context(viewport={"width": 1280, "height": 800})
+                page = context.new_page()
+                verdict, actual = "PASS", "journey replayed end-to-end; all expects held"
+                for step in steps:
+                    n = int(step.get("n", 0))
+                    tmo = max(1000, min(int(step.get("timeout_ms", default_tmo)), 20000))
+                    try:
+                        _do_action(page, step["action"], base_url, tmo)
+                    except Exception as exc:  # noqa: BLE001
+                        verdict = "FAIL"
+                        actual = (f"step {n:02d} could not perform "
+                                  f"{step['action'].get('type')}: {str(exc).splitlines()[0][:140]}")
+                        break
+                    exp = step.get("expect")
+                    if exp and not _check_expect(page, exp, tmo):
+                        verdict = "FAIL"
+                        actual = f"step {n:02d} expected {_expect_desc(exp)} did not appear"
+                        break
+                shot_rel = "none"
+                if evidence_dir:
+                    _settle_for_capture(page, default_tmo)
+                    shot_abs = evidence_dir / f"{jid}-verify.png"
+                    try:
+                        page.screenshot(path=str(shot_abs))
+                        shot_rel = _rel(str(shot_abs), opts.repo_root)
+                    except Exception:  # noqa: BLE001
+                        pass
+                results.append({"journey": jid, "name": name, "verdict": verdict,
+                                "expected": "journey replays end-to-end; all expects hold",
+                                "actual": actual, "evidence": shot_rel})
+                context.close()
+            browser.close()
+    except Exception as exc:  # noqa: BLE001
+        # Browser INFRASTRUCTURE failure (launch timeout, mid-run crash) — not a
+        # journey verdict. Record what did not get replayed and return 6 so the
+        # caller (goal-iter-lean.sh) routes every replay journey back to the LLM
+        # lane. Previously this crashed with rc=1 and the replay journeys were
+        # silently left unverified for the iteration.
+        done = {r["journey"] for r in results}
+        for jid in journeys:
+            if jid not in done:
+                results.append({"journey": jid, "name": jid, "verdict": "SKIP",
+                                "expected": "replay golden script",
+                                "actual": "browser infrastructure failure: "
+                                          + str(exc).splitlines()[0][:140],
+                                "evidence": "none"})
+        _write(results)
+        print("[demo_runner] verify: browser infrastructure failure — routing replay "
+              f"journeys to the LLM lane (rc 6): {str(exc).splitlines()[0][:140]}",
+              file=sys.stderr)
+        return 6
+
+    _write(results)
+    overall = compute_regression_verdict(results)
+    n_fail = sum(1 for r in results if r["verdict"] == "FAIL")
+    print(f"[demo_runner] verify: {len(results)} journey(s), {n_fail} failed (verdict: {overall})")
+    return 5 if n_fail else 0
+
+
 def main(argv: list[str]) -> int:
     if argv and argv[0] in ("self-test", "--self-test"):
         return _self_test(argv[1:])
 
     import argparse
     p = argparse.ArgumentParser(prog="demo_runner.py", description="Deterministic browser demo executor.")
-    p.add_argument("--json", required=True, help="path to the executable demo-script JSON")
-    p.add_argument("--mode", default="record", choices=["live", "record", "session-live"])
+    p.add_argument("--json", default=None, help="path to the executable demo-script JSON (record/live)")
+    p.add_argument("--mode", default="record", choices=["live", "record", "session-live", "verify", "lint"])
     p.add_argument("--base-url", default="http://localhost:3000")
     p.add_argument("--out-dir", default=None, help="screenshot dir, e.g. reports/demo/<id>")
     p.add_argument("--results", default=None, help="demo-results.md output path")
@@ -747,12 +1063,22 @@ def main(argv: list[str]) -> int:
     p.add_argument("--caption", action="store_true")
     p.add_argument("--repo-root", default=None)
     p.add_argument("--timeout-ms", type=int, default=8000)
+    p.add_argument("--scripts-dir", default=None,
+                   help="verify mode: dir of per-journey golden scripts (<J-XX>.json)")
+    p.add_argument("--journeys", default=None,
+                   help="verify mode: comma-separated journey IDs to replay")
+    p.add_argument("--evidence-dir", default=None,
+                   help="verify mode: per-journey screenshot evidence dir")
     opts = p.parse_args(argv)
     live = opts.mode in ("live", "session-live")
+    verify = opts.mode == "verify"
+
+    if opts.mode == "lint":
+        return run_lint(opts)   # pure validation — needs no browser/playwright
 
     if not _playwright_available():
         sys.stderr.write(_PLAYWRIGHT_HELP + "\n")
-        if not live:
+        if not live and not verify:
             _write_skipped_results(opts, "Playwright (Python) not installed; demo skipped.")
         return 3
 
@@ -765,6 +1091,13 @@ def main(argv: list[str]) -> int:
                 "[demo_runner] Live mode needs a display (X11/Wayland). Set DISPLAY, run record "
                 "mode (./scripts/automation/demo.sh <id>), or set CHAIN_DEMO_LIVE_FALLBACK_RECORD=true.\n")
             return 4
+
+    if verify:
+        return run_verify(opts, opts.base_url or "http://localhost:3000")
+
+    if not opts.json:
+        sys.stderr.write("[demo_runner] --json is required for record/live modes.\n")
+        return 2
 
     try:
         with open(opts.json, encoding="utf-8") as fh:

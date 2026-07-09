@@ -246,6 +246,38 @@ _is_signal_exit() {
   [[ $rc -eq 130 || $rc -eq 137 || $rc -eq 143 ]]
 }
 
+# A transport/dispatch-unavailable exit (70) from the interactive backend: the
+# pump/session went away — a transport failure, NOT an agent-quality failure.
+# (lib/quota-retry.sh defines DISPATCH_UNAVAILABLE_EXIT_CODE; default 70.)
+_is_transport_failure() {
+  local rc="$1"
+  [[ $rc -eq ${DISPATCH_UNAVAILABLE_EXIT_CODE:-70} ]]
+}
+
+# Guard a step's exit code for fatal, non-quality conditions that must STOP the
+# phase immediately instead of being retried or warned-past. Call right after a
+# step's `|| rc=$?` (and after any local quota/75 handling, which stays per-loop).
+#   - signal kill (130/137/143): abort WITHOUT advancing the checkpoint, so resume
+#     re-runs the in-flight step (see _is_signal_exit / anti-patterns #20).
+#   - transport failure (70): the interactive pump/dispatch is unavailable. Stop
+#     cleanly and resumably — do NOT run downstream steps against missing artifacts,
+#     consume a retry attempt, or call fail()/the summarizer (which would itself try
+#     to dispatch and stall). The goal-mode outer loop turns this 70 into an
+#     AWAITING_PUMP pause; a standalone phase run just exits 70.
+# Quota (75) is intentionally NOT handled here — each loop handles it locally.
+_guard_step_rc() {
+  local rc="$1" label="${2:-step}"
+  if _is_signal_exit "$rc"; then
+    log "  $label interrupted by signal (exit $rc) — aborting WITHOUT advancing checkpoint; resume will re-run it."
+    exit "$rc"
+  fi
+  if _is_transport_failure "$rc"; then
+    log "  $label: interactive pump/dispatch unavailable (exit $rc) — pausing the run."
+    log "    The interactive session/pump went away. Resume with /goal-resume after re-opening it."
+    exit "$rc"
+  fi
+}
+
 _run_phase_aborted() {
   echo "" >&2
   log "Interrupted by signal — aborting WITHOUT advancing checkpoint."
@@ -376,7 +408,9 @@ case "$CURRENT_STEP" in
   qa_failed)
     SKIP_PLAN=true; SKIP_TEST_PLAN=true; SKIP_DEV_REVIEW=true
     SKIP_UI_IMPACT=true; SKIP_UI_TEST_DESIGN=true; SKIP_BROWSER_QA=true ;;
-  browser_qa_complete)
+  post_dev_parallel_complete|browser_qa_complete)
+    # post_dev_parallel_complete: the Step 4-7 parallel fanout finished (UI chain
+    # 4-6 done); resume from QA (Step 7) onward — same skips as browser_qa_complete.
     SKIP_PLAN=true; SKIP_TEST_PLAN=true; SKIP_DEV_REVIEW=true
     SKIP_UI_IMPACT=true; SKIP_UI_TEST_DESIGN=true; SKIP_BROWSER_QA=true ;;
   ui_test_designed)
@@ -389,7 +423,11 @@ case "$CURRENT_STEP" in
     SKIP_PLAN=true; SKIP_TEST_PLAN=true; SKIP_DEV_REVIEW=true ;;
   review_failed)
     SKIP_PLAN=true; SKIP_TEST_PLAN=true ;;
-  dev_complete_attempt_*)
+  dev_complete|dev_complete_attempt_*)
+    # Bare `dev_complete` is written by the developer agent itself
+    # (dev-phase.sh / goal-iter-lean.sh); the attempt-suffixed form is
+    # run-phase.sh's own checkpoint. Both mean "dev done, resume at review" —
+    # without the bare arm, a resume on it silently re-ran the whole phase.
     SKIP_PLAN=true; SKIP_TEST_PLAN=true
     if verdict_passes "$REVIEW_REPORT"; then
       SKIP_DEV_REVIEW=true
@@ -542,16 +580,15 @@ if [[ "$SKIP_DEV_REVIEW" == "false" ]]; then
       log "  [attempt $ATTEMPT/$MAX_RETRIES] Skipping dev (already completed), running reviewer..."
     else
       log "  [attempt $ATTEMPT/$MAX_RETRIES] Running dev agent..."
+      [[ $ATTEMPT -ge 2 ]] && escalate_model_on
       dev_rc=0
       _run_step "$SCRIPT_DIR/dev-phase.sh" "$PHASE" || dev_rc=$?
+      escalate_model_off
       if [[ $dev_rc -eq 75 ]]; then
         ATTEMPT=$((ATTEMPT - 1))  # don't count quota failures as attempts
         continue
       fi
-      if _is_signal_exit "$dev_rc"; then
-        log "  Step 3 (dev) interrupted by signal (exit $dev_rc) — aborting."
-        exit "$dev_rc"
-      fi
+      _guard_step_rc "$dev_rc" "Step 3 (dev)"
       [[ $dev_rc -ne 0 ]] && log "  Warning: dev-phase.sh exited with error (attempt $ATTEMPT) -- continuing to review"
       update_status "$PHASE" "in_progress" "dev_complete_attempt_${ATTEMPT}"
     fi
@@ -566,10 +603,7 @@ if [[ "$SKIP_DEV_REVIEW" == "false" ]]; then
       ATTEMPT=$((ATTEMPT - 1))
       continue
     fi
-    if _is_signal_exit "$rev_rc"; then
-      log "  Step 3 (review) interrupted by signal (exit $rev_rc) — aborting."
-      exit "$rev_rc"
-    fi
+    _guard_step_rc "$rev_rc" "Step 3 (review)"
     [[ $rev_rc -ne 0 ]] && log "  Warning: review-phase.sh exited with error (attempt $ATTEMPT) -- checking verdict"
 
     if verdict_passes "$REVIEW_REPORT"; then
@@ -606,10 +640,7 @@ if [[ "$FRONTEND_PRESENT" == "yes" \
    && "$SKIP_QA" == "false" ]]; then
   fanout_rc=0
   _run_post_dev_fanout || fanout_rc=$?
-  if _is_signal_exit "$fanout_rc"; then
-    log "  Fanout (Step 4-7/11) interrupted by signal (exit $fanout_rc) — aborting; resume will re-run."
-    exit "$fanout_rc"
-  fi
+  _guard_step_rc "$fanout_rc" "Fanout (Step 4-7/11)"
   if [[ $fanout_rc -eq 75 ]]; then
     log "  Fanout (Step 4-7/11) hit quota (exit 75) — outer loop will handle."
     exit 75
@@ -617,11 +648,13 @@ if [[ "$FRONTEND_PRESENT" == "yes" \
   if [[ $fanout_rc -ne 0 ]]; then
     log "  Warning: post-dev fanout exited $fanout_rc — sequential retry will pick up any failed step"
   fi
-  # The UI chain steps (4, 5, 6, 6.5) are always idempotent and write their
-  # artifacts (or N/A stubs) regardless — mark them complete unconditionally.
-  SKIP_UI_IMPACT=true
-  SKIP_UI_TEST_DESIGN=true
-  SKIP_BROWSER_QA=true
+  # Mark each UI-chain step complete ONLY if it actually produced its artifact(s).
+  # On an early Branch-UI abort (e.g. ui-test-design failed mid-chain) the downstream
+  # artifacts are absent; flipping SKIP unconditionally would wrongly bypass the
+  # sequential Step 4/5/6 retry blocks below that exist to re-run the missing step.
+  [[ -s "$USER_VISIBLE" && -s "$UI_SURFACE_MAP" ]] && SKIP_UI_IMPACT=true
+  [[ -s "$UI_TEST_PLAN" && -s "$WHAT_TO_CLICK" ]]  && SKIP_UI_TEST_DESIGN=true
+  [[ -s "$UI_TEST_RESULTS" ]]                      && SKIP_BROWSER_QA=true
   update_status "$PHASE" "in_progress" "post_dev_parallel_complete"
   # Step 7 (QA): only skip the existing retry loop if QA passed in the fanout.
   # Otherwise leave SKIP_QA=false so the sequential retry path runs as today.
@@ -642,10 +675,7 @@ if [[ "$SKIP_UI_IMPACT" == "false" ]]; then
     ui_rc=0
     _run_step "$SCRIPT_DIR/ui-impact-phase.sh" "$PHASE" || ui_rc=$?
     if [[ $ui_rc -eq 75 && $ui_q -lt 2 ]]; then ui_q=$((ui_q+1)); continue; fi
-    if _is_signal_exit "$ui_rc"; then
-      log "  Step 4 (ui-impact) interrupted by signal (exit $ui_rc) — aborting."
-      exit "$ui_rc"
-    fi
+    _guard_step_rc "$ui_rc" "Step 4 (ui-impact)"
     [[ $ui_rc -ne 0 && $ui_rc -ne 75 ]] && log "  Warning: ui-impact-phase.sh exited with error -- continuing"
     break
   done
@@ -666,10 +696,7 @@ if [[ "$SKIP_UI_TEST_DESIGN" == "false" ]]; then
       utd_rc=0
       _run_step "$SCRIPT_DIR/ui-test-design-phase.sh" "$PHASE" || utd_rc=$?
       if [[ $utd_rc -eq 75 && $utd_q -lt 2 ]]; then utd_q=$((utd_q+1)); continue; fi
-      if _is_signal_exit "$utd_rc"; then
-        log "  Step 5 (ui-test-design) interrupted by signal (exit $utd_rc) — aborting; resume will re-run this step."
-        exit "$utd_rc"
-      fi
+      _guard_step_rc "$utd_rc" "Step 5 (ui-test-design)"
       [[ $utd_rc -ne 0 && $utd_rc -ne 75 ]] && log "  Warning: ui-test-design-phase.sh exited with error -- continuing"
       break
     done
@@ -697,10 +724,7 @@ if [[ "$SKIP_BROWSER_QA" == "false" ]]; then
       bqa_rc=0
       _run_step "$SCRIPT_DIR/browser-qa-phase.sh" "$PHASE" || bqa_rc=$?
       if [[ $bqa_rc -eq 75 && $bqa_q -lt 2 ]]; then bqa_q=$((bqa_q+1)); continue; fi
-      if _is_signal_exit "$bqa_rc"; then
-        log "  Step 6 (browser-qa) interrupted by signal (exit $bqa_rc) — aborting; resume will re-run this step."
-        exit "$bqa_rc"
-      fi
+      _guard_step_rc "$bqa_rc" "Step 6 (browser-qa)"
       [[ $bqa_rc -ne 0 && $bqa_rc -ne 75 ]] && log "  Warning: browser-qa-phase.sh exited with error -- continuing"
       break
     done
@@ -726,10 +750,7 @@ if [[ "$SKIP_BROWSER_QA" == "false" && "$FRONTEND_PRESENT" == "yes" ]]; then
   log "Step 6.5/11 -- Product demo (showcase)..."
   demo_rc=0
   _run_step "$SCRIPT_DIR/demo-phase.sh" "$PHASE" || demo_rc=$?
-  if _is_signal_exit "$demo_rc"; then
-    log "  Step 6.5 (demo) interrupted by signal (exit $demo_rc) — aborting; resume will re-run this step."
-    exit "$demo_rc"
-  fi
+  _guard_step_rc "$demo_rc" "Step 6.5 (demo)"
   if [[ $demo_rc -eq 75 ]]; then
     log "  Step 6.5 (demo) hit quota (exit 75) — outer loop will handle."
     exit 75
@@ -762,10 +783,7 @@ if [[ "$SKIP_QA" == "false" ]]; then
       QA_ATTEMPT=$((QA_ATTEMPT - 1))  # don't count quota failures
       continue
     fi
-    if _is_signal_exit "$qa_rc"; then
-      log "  Step 7 (qa) interrupted by signal (exit $qa_rc) — aborting."
-      exit "$qa_rc"
-    fi
+    _guard_step_rc "$qa_rc" "Step 7 (qa)"
     [[ $qa_rc -ne 0 ]] && log "  Warning: qa-phase.sh exited with error (attempt $QA_ATTEMPT) -- checking verdict"
 
     if verdict_passes "$QA_REPORT"; then
@@ -779,20 +797,16 @@ if [[ "$SKIP_QA" == "false" ]]; then
 
     log "  QA: FAIL (attempt $QA_ATTEMPT) -- fixing then re-reviewing..."
     qd_rc=0
+    escalate_model_on
     _run_step "$SCRIPT_DIR/dev-phase.sh" "$PHASE" || qd_rc=$?
+    escalate_model_off
     [[ $qd_rc -eq 75 ]] && { QA_ATTEMPT=$((QA_ATTEMPT - 1)); continue; }
-    if _is_signal_exit "$qd_rc"; then
-      log "  Step 7 fix-mode (dev) interrupted by signal (exit $qd_rc) — aborting."
-      exit "$qd_rc"
-    fi
+    _guard_step_rc "$qd_rc" "Step 7 fix-mode (dev)"
     [[ $qd_rc -ne 0 ]] && log "  Warning: dev-phase.sh exited with error -- continuing"
     qr_rc=0
     _run_step "$SCRIPT_DIR/review-phase.sh" "$PHASE" || qr_rc=$?
     [[ $qr_rc -eq 75 ]] && { QA_ATTEMPT=$((QA_ATTEMPT - 1)); continue; }
-    if _is_signal_exit "$qr_rc"; then
-      log "  Step 7 fix-mode (review) interrupted by signal (exit $qr_rc) — aborting."
-      exit "$qr_rc"
-    fi
+    _guard_step_rc "$qr_rc" "Step 7 fix-mode (review)"
     [[ $qr_rc -ne 0 ]] && log "  Warning: review-phase.sh exited with error -- continuing"
   done
 
@@ -817,10 +831,7 @@ if [[ "$SKIP_UX_REGRESSION" == "false" ]]; then
       uxr_rc=0
       _run_step "$SCRIPT_DIR/ux-regression-phase.sh" "$PHASE" || uxr_rc=$?
       if [[ $uxr_rc -eq 75 && $uxr_q -lt 2 ]]; then uxr_q=$((uxr_q+1)); continue; fi
-      if _is_signal_exit "$uxr_rc"; then
-        log "  Step 8 (ux-regression) interrupted by signal (exit $uxr_rc) — aborting."
-        exit "$uxr_rc"
-      fi
+      _guard_step_rc "$uxr_rc" "Step 8 (ux-regression)"
       [[ $uxr_rc -ne 0 && $uxr_rc -ne 75 ]] && log "  Warning: ux-regression-phase.sh exited with error -- continuing"
       break
     done
@@ -858,10 +869,7 @@ if [[ "$SKIP_AUDIT" == "false" ]]; then
       AUDIT_ATTEMPT=$((AUDIT_ATTEMPT - 1))  # don't count quota failures
       continue
     fi
-    if _is_signal_exit "$aud_rc"; then
-      log "  Step 9 (audit) interrupted by signal (exit $aud_rc) — aborting."
-      exit "$aud_rc"
-    fi
+    _guard_step_rc "$aud_rc" "Step 9 (audit)"
     [[ $aud_rc -ne 0 ]] && log "  Warning: phase-audit.sh exited with error (attempt $AUDIT_ATTEMPT) -- checking verdict"
 
     if verdict_passes "$AUDIT_REPORT"; then
@@ -875,30 +883,23 @@ if [[ "$SKIP_AUDIT" == "false" ]]; then
 
     log "  Audit: FAIL (attempt $AUDIT_ATTEMPT) -- applying hardening fixes..."
     ad_rc=0
+    escalate_model_on
     _run_step "$SCRIPT_DIR/dev-phase.sh" "$PHASE" || ad_rc=$?
+    escalate_model_off
     [[ $ad_rc -eq 75 ]] && { AUDIT_ATTEMPT=$((AUDIT_ATTEMPT - 1)); continue; }
-    if _is_signal_exit "$ad_rc"; then
-      log "  Step 9 hardening (dev) interrupted by signal (exit $ad_rc) — aborting."
-      exit "$ad_rc"
-    fi
+    _guard_step_rc "$ad_rc" "Step 9 hardening (dev)"
     [[ $ad_rc -ne 0 ]] && log "  Warning: dev-phase.sh exited with error -- continuing"
     ar_rc=0
     _run_step "$SCRIPT_DIR/review-phase.sh" "$PHASE" || ar_rc=$?
     [[ $ar_rc -eq 75 ]] && { AUDIT_ATTEMPT=$((AUDIT_ATTEMPT - 1)); continue; }
-    if _is_signal_exit "$ar_rc"; then
-      log "  Step 9 hardening (review) interrupted by signal (exit $ar_rc) — aborting."
-      exit "$ar_rc"
-    fi
+    _guard_step_rc "$ar_rc" "Step 9 hardening (review)"
     [[ $ar_rc -ne 0 ]] && log "  Warning: review-phase.sh exited with error -- continuing"
 
     log "  Re-running QA after hardening..."
     aq_rc=0
     _run_step "$SCRIPT_DIR/qa-phase.sh" "$PHASE" || aq_rc=$?
     [[ $aq_rc -eq 75 ]] && { AUDIT_ATTEMPT=$((AUDIT_ATTEMPT - 1)); continue; }
-    if _is_signal_exit "$aq_rc"; then
-      log "  Step 9 hardening (qa) interrupted by signal (exit $aq_rc) — aborting."
-      exit "$aq_rc"
-    fi
+    _guard_step_rc "$aq_rc" "Step 9 hardening (qa)"
     if ! verdict_passes "$QA_REPORT"; then
       fail "QA failed during audit hardening. See: $QA_REPORT" "audit_qa_failed"
     fi
@@ -922,6 +923,7 @@ if [[ "$SKIP_CLOSURE" == "false" ]]; then
     clo_rc=0
     _run_step "$SCRIPT_DIR/phase-closure-check.sh" "$PHASE" || clo_rc=$?
     if [[ $clo_rc -eq 75 && $clo_q -lt 2 ]]; then clo_q=$((clo_q+1)); continue; fi
+    _guard_step_rc "$clo_rc" "Step 10 (closure)"
     [[ $clo_rc -ne 0 && $clo_rc -ne 75 ]] && log "  Warning: phase-closure-check.sh exited with error -- checking verdict"
     break
   done

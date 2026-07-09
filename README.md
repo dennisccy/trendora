@@ -5,11 +5,11 @@ A reusable framework for running phased software development with Claude AI agen
 ## What This Is
 
 A collection of:
-- **14 Claude agent definitions** covering the full dev lifecycle, UI visibility, per-iteration summary, and an auto-recorded product demo
-- **18 automation shell scripts** orchestrating an 11-step pipeline plus an on-demand demo viewer
-- **5 security hooks** guarding against supply-chain attacks, dangerous commands, and vague artifacts
-- **9 skills** providing reusable methodologies for UI analysis, test design, and doc updates
-- **18 report templates** for consistent handoffs across all agents
+- **Claude agent definitions** covering the full dev lifecycle, UI visibility, per-iteration summary, and an auto-recorded product demo — every agent is listed in [Agent Roles](#agent-roles)
+- **Automation shell scripts** orchestrating an 11-step pipeline plus an on-demand demo viewer
+- **Security hooks** guarding against supply-chain attacks, dangerous commands, and vague artifacts
+- **Skills** providing reusable methodologies for UI analysis, test design, and doc updates
+- **Report templates** for consistent handoffs across all agents
 - **A modular CLAUDE.md system** (core rules, workflow, project config, anti-patterns, architecture docs)
 
 The chain has checkpoint/resume, quota-exhaustion auto-retry, and a verdict-gated pipeline where each stage must pass before the next runs.
@@ -76,17 +76,27 @@ Goal mode skips per-phase authoring. You write a single `docs/goal.md` with extr
 ./scripts/automation/run-goal.sh --session-id my-app
 ```
 
-Optional flags: `--max-iter N` (cap, default 30), `--stall-window N` (default 3), `--auto-release` (opens PR from `goal/<sid>` branch on `GOAL_ACHIEVED`), `--push-per-iter` / `--no-push-per-iter` (per-iter commits land on a single per-session branch; default ON), `--push-branch <name>` (override the default `goal/<sid>` name), `--auto-approve-blueprint` (skip the one-time blueprint review), `--resume`, `--reset`, `--acknowledge-regression`.
+Optional flags: `--max-iter N` (optional hard cap on iterations; **unlimited by default**), `--stall-window N` (default 3), `--auto-release` (opens PR from `goal/<sid>` branch on `GOAL_ACHIEVED`), `--push-per-iter` / `--no-push-per-iter` (per-iter commits land on a single per-session branch; default ON), `--push-branch <name>` (override the default `goal/<sid>` name), `--require-blueprint-approval` (pause after baseline to review the drafted blueprint; **off by default — the blueprint is auto-approved**), `--resume`, `--reset`, `--acknowledge-regression`.
 
-After baseline, the loop **pauses once** (`AWAITING_BLUEPRINT_APPROVAL`) for you to review the drafted coherence blueprint at `runs/goal-session-my-app/state/blueprint.md` (~3 min: sane navigation? every shared value has one source?). Edit it if needed and `--resume` (resuming counts as approval), or pass `--auto-approve-blueprint` to skip the pause entirely. From then on the run is unattended again, and a `coherence-auditor` enforces the blueprint every iteration.
+After baseline the decomposer drafts a coherence blueprint at `runs/goal-session-my-app/state/blueprint.md` and, **by default, auto-approves it and keeps running unattended** — a `coherence-auditor` then enforces the blueprint every iteration. If you'd rather review it first (~3 min: sane navigation? every shared value has one source?), start with `--require-blueprint-approval`: the loop pauses once (`AWAITING_BLUEPRINT_APPROVAL`), and you edit the file if needed then `--resume` (resuming counts as approval).
 
-**4. Inspect** `runs/goal-session-my-app/summary.md` when the loop halts. Halt verdicts: `GOAL_ACHIEVED` (success), `BUDGET_EXHAUSTED`, `STALLED`, `REGRESSION_HALT`, `ABORTED`, `AWAITING_BLUEPRINT_APPROVAL` (resumable pause for blueprint review), `AWAITING_GITHUB_AUTH` (resumable pause — push-per-iter is on but `origin` won't authenticate; the run offers `gh auth login` when interactive, else `gh auth login && gh auth setup-git` then `--resume`).
+**4. Inspect** `runs/goal-session-my-app/summary.md` when the loop halts. Halt verdicts: `GOAL_ACHIEVED` (success), `BUDGET_EXHAUSTED`, `STALLED`, `REGRESSION_HALT`, `ABORTED`, `AWAITING_BLUEPRINT_APPROVAL` (resumable pause for blueprint review — only with `--require-blueprint-approval`), `AWAITING_GITHUB_AUTH` (resumable pause — push-per-iter is on but `origin` won't authenticate; the run offers `gh auth login` when interactive, else `gh auth login && gh auth setup-git` then `--resume`).
 
 Because per-iter push is on by default, goal mode checks at startup that a push to `origin` would authenticate, so an expired GitHub session can't stall a mid-run push on a credential prompt. Pushes are also run with `GIT_TERMINAL_PROMPT=0` so they fail fast (non-fatally) instead of hanging. Skip the startup check with `CHAIN_SKIP_GITHUB_PREFLIGHT=true`.
 
 Quota exhaustion is NOT a halt — the loop pauses and auto-resumes when the quota resets.
 
 See [`docs/goal-mode-quickstart.md`](docs/goal-mode-quickstart.md) for the full guide.
+
+### Run Goal Mode inside Claude Code (interactive)
+
+Prefer to run it from an interactive Claude Code session, with the work billed to your **interactive plan allowance** instead of the headless Agent SDK credit? Start `claude`, then:
+
+```text
+/goal my-app
+```
+
+`/goal` runs the **same** engine until the goal is achieved or an existing rule halts/pauses it — same stop rules, resume, and quota handling — but dispatches each agent as a subagent in your live session. Companion commands: `/goal-status`, `/goal-resume`, `/goal-pause`, `/goal-step`. The pump runs quietly (the full timestamped chain log streams to `runs/goal-session-<sid>/engine.log`); press Ctrl+C then `/goal-pause` to pause cleanly and `/goal-resume` to continue. It is for individual development use; shared/team production automation should use the programmatic `run-goal.sh` path with an API key. Full guide: [`docs/goal-mode-interactive.md`](docs/goal-mode-interactive.md).
 
 ## Pipeline (11 Steps)
 
@@ -331,8 +341,10 @@ Iteration name `goal-<sid>-iter-<N>` is used as the "phase name" so existing scr
 | `goal-decomposer` | strong | (goal mode) | Reads goal + state, writes next iteration spec, picks lean/full depth; drafts the blueprint at baseline |
 | `goal-evaluator` | strong | (goal mode) | Skeptical done/regression/stall judgment, updates journey-history; vetoes GOAL_ACHIEVED on COHERENCE-FAIL |
 | `coherence-auditor` | standard | (goal mode) | Audits each iteration's diff against the blueprint (information architecture + data contract); hard-fails only on objective drift |
+| `goal-proposer` | strong | (goal mode, opt-in) | After every Must-have journey passes, surveys the whole product through the project's usefulness lens (`project-extensions/proposer-guidance.md`), writes an enhancement-proposals backlog, and appends the best survivors as new Must-have journeys in `docs/goal.md` AUTO:journeys — runs only when that guidance file exists |
+| `readme-maintainer` | standard | (goal mode) | After each iteration, refreshes the project-root README's marker-delimited AUTO blocks so capabilities and "How to run" stay accurate; non-blocking showcase step, never gates the pipeline |
 
-Model tiers are defined in `config/agent-models.yaml`. Change assignments there and run `./scripts/automation/sync-agent-models.sh`.
+Model tiers: each agent's `model_tier` lives in `agents/<name>/agent.yaml`; tiers resolve to model ids in `config/model-tiers.yaml`. Edit, then `python3 scripts/automation/sync-cli-assets.py` and commit the regenerated mirrors.
 
 ## Commands
 
@@ -364,9 +376,10 @@ Model tiers are defined in `config/agent-models.yaml`. Change assignments there 
 ./scripts/automation/demo.sh <sid> --delivered         # open the GOAL_ACHIEVED "delivered" wrap
 
 # Utilities
+./scripts/automation/run-evals.sh                      # offline eval suite (<30s, no API) — run before every framework commit
+bash scripts/automation/install-git-hooks.sh           # OPT-IN pre-commit eval guard (fast subset, <10s) — see Tests
 ./scripts/automation/generate-test-plan.sh phase-1     # write test plan before dev
 ./scripts/automation/ui-audit-phase.sh phase-1         # standalone UI audit
-./scripts/automation/sync-agent-models.sh              # sync model assignments
 ./scripts/automation/check-install.sh "pip install X"  # check install safety
 ./scripts/automation/update-docs.sh --framework        # update framework docs
 ./scripts/automation/update-docs.sh phase-1            # update project docs
@@ -378,11 +391,11 @@ bash scripts/automation/render-summary.sh --session-index <sid>        # re-rend
 ./scripts/automation/run-goal.sh --session-id my-app                    # full goal-mode loop
 ./scripts/automation/run-goal.sh --session-id my-app --resume           # resume an in-flight session
 ./scripts/automation/run-goal.sh --session-id my-app --reset            # discard session and restart
-./scripts/automation/run-goal.sh --session-id my-app --max-iter 50      # raise iteration cap
+./scripts/automation/run-goal.sh --session-id my-app --max-iter 50      # set an optional iteration budget (no cap by default)
 ./scripts/automation/run-goal.sh --session-id my-app --stall-window 5   # widen stall window
 ./scripts/automation/run-goal.sh --session-id my-app --auto-release     # release-manager runs once on GOAL_ACHIEVED
 ./scripts/automation/run-goal.sh --session-id my-app --acknowledge-regression  # continue past REGRESSION_HALT
-./scripts/automation/run-goal.sh --session-id my-app --auto-approve-blueprint  # skip the one-time blueprint review pause
+./scripts/automation/run-goal.sh --session-id my-app --require-blueprint-approval  # pause after baseline to review the blueprint (off by default)
 ./scripts/automation/goal-iter-lean.sh <iter-name>                      # single lean iteration (advanced)
 ```
 
@@ -422,7 +435,7 @@ bash scripts/automation/render-summary.sh --session-index <sid>        # re-rend
 | File | Purpose |
 |------|---------|
 | `.claude/project-template.md` | Project stack, test commands, architecture rules |
-| `config/agent-models.yaml` | Agent-to-model-tier assignments |
+| `config/model-tiers.yaml` + `agents/*/agent.yaml` | Tier→model map + per-agent tier |
 | `config/install-security-policy.json` | Package allowlists and deny patterns |
 | `.claude/settings.json` | Claude Code tool permissions |
 | `docs/goal.md` | Project vision and success criteria (goal mode also reads Must-have user journeys + Anti-goals) |
@@ -439,87 +452,48 @@ This framework is designed to be added to project repos as a submodule or subtre
 - **Framework docs**: [`.claude/architecture/`](.claude/architecture/README.md) -- how this framework works
 - **Project docs**: `docs/architecture/` -- what the project has built (auto-updated per phase)
 
-## Token Optimization — Pending Work
+## Improvement Roadmap
 
-Tier 1 (safe, mechanical) shipped in commit `15507dc` (May 2026): telemetry on by default, CLAUDE.md double-load removed from 15 prompt sites, orchestrator no longer re-reads `.claude/architecture/*.md`, goal-mode `evaluator-log.md` / `lessons.md` pre-trimmed and inlined, orphan `ui-workflow-inference` skill wired up.
-
-The items below are deliberately deferred — do them in order, with a real telemetry baseline before each.
-
-### Step 0 — Establish a baseline (do this first)
-
-With `CHAIN_TELEMETRY_TOKENS` now defaulting to true, the next phase or goal iteration writes per-call usage to:
-- Phase mode: `runs/<phase>/trace/trace.jsonl`
-- Goal mode: `runs/goal-session-<sid>/telemetry.jsonl`
-
-Analyze with: `python3 scripts/automation/lib/analyze_telemetry.py runs/<phase>/trace/trace.jsonl` — gives per-agent input/output/cache/cost breakdown. Without this baseline, everything below is guesswork.
-
-### Tier 1 polish (low-risk leftovers)
-
-- [x] **Shipped** — Remove the duplicated "Token and Questioning Policy" footer from each agent file (`.claude/agents/*.md`). Agent-specific bullets are kept (e.g., developer.md "Ask only about: schema decisions, lifecycle states…"); generic paraphrasing of `core.md` is gone. See `agents/<name>/body.md`.
-- [x] **Shipped** — Drop `CLAUDE.md` from the "Always read first" list in the 11 remaining agent files. CLAUDE.md is auto-loaded into the system prompt; each agent now has a friendly one-line reassurance instead of re-reading the file.
-- [ ] Inline only the sections each agent needs from `.claude/project-template.md` — release-manager needs the never-commit list (5 lines); developer needs most of it. Add a helper in `lib/common.sh` that emits the right slice per agent. (Deferred until measured token win is meaningful.)
-
-### Tier 2 (needs baseline data first)
-
-- [x] **Shipped — Per-agent `--effort` overrides.** Resolved per agent via `lib/agent_permissions.py effort <agent>`. `developer`, `reviewer`, `auditor`, `orchestrator`, `goal-decomposer`, `goal-evaluator`, `browser-qa-agent`, and `demo-narrator` stay at `--effort max`. `release-manager`, `qa`, `ui-test-designer`, `phase-closure-auditor`, and `ui-impact-analyst` drop to `--effort medium`. Escape hatch: `CHAIN_DISABLE_EFFORT_OVERRIDE=true`.
-- [ ] **Move orchestrator from Opus → Sonnet** (`config/agent-models.yaml`). Plan-writing is structured-output work. A/B against 2–3 historical phases — revert if plan quality drops.
-- [ ] **Move goal-decomposer from Opus → Sonnet.** Same rationale as orchestrator. Keep goal-evaluator on Opus (skeptical adversarial judgment).
-- [ ] **Skip `generate-test-plan.sh` (Step 2/11) when the spec already lists test scenarios.** Need a clear heuristic for "spec has tests" — don't skip silently.
-- [ ] **Cap audit-failure full-rerun.** `run-phase.sh:649-679` re-runs dev + review + QA on audit fail. If telemetry shows that path firing often, switch to fix-only mode.
-
-### Pipeline parallelism (shipped)
-
-- [x] **Parallel post-dev fanout.** Branch A (ui-impact → ui-test-design → browser-qa → demo) runs in parallel with Branch B (qa-validate), with shared services. See the [Faster Iterations](#faster-iterations) section. Default for every phase with a frontend; backend-only phases run sequentially.
-
-### Tier 3 (don't touch unless data forces)
-
-- ~~Downgrade qa below Haiku~~ — qa drives Chrome MCP browser flows; lower may misread DOM. If browser checks regress, **upgrade** to Sonnet, not down.
-- ~~Merge ui-impact-analyst + ui-test-designer + ux-regression-reviewer~~ — each is a separate skeptical source the closure auditor depends on. Not worth losing the independence for one Sonnet call's worth of savings.
-- ~~Eliminate retries~~ — they exist for quality reasons. Only consider capping the audit-failure full-rerun (see Tier 2 above).
-
-### How to know when to stop
-
-If a 30-iteration goal session costs <$X and a phase costs <$Y (your numbers), it's not worth more optimization — invest the time in features instead.
-
-## Pipeline Hardening (Strengthen Claude-only Weak Spots) — Pending Work
-
-Benchmark evidence (May 2026) shows Opus 4.7 trails GPT-5.5 on Terminal-Bench 2.0 by 13.3 points and emits ~3.5x more output tokens per task. The decision is to keep this project Claude-only and harden the pipeline at those weak spots rather than introduce a second model.
-
-### Shipped (or in this branch)
-
-- [x] **Test-failure digest script** (`scripts/automation/lib/test_failure_digest.py`) — distills raw pytest/jest/vitest/mocha output into a structured markdown digest. Invoked by the `qa` agent on test failure; the `developer` agent reads it first on retry. Removes the "grep through 500-line log" task from the model — exactly the work GPT-5.5 leads on.
-- [x] **Reviewer YAML schema + token budget** — replaces the prose review-report format with a verdict line + YAML structured findings + optional brief detailed findings. Hard caps: PASS ≤ 200 tokens, PASS_WITH_NOTES ≤ 400, FAIL ≤ 800 (vs. ~1200–2500 today).
-
-### Deferred — do these one at a time, with telemetry before/after
-
-- [ ] **Move `reviewer` from Opus to Sonnet 4.6** (or Haiku 4.5 for cheap quick reviews). Different model in the same family captures a meaningful subset of blind spots at lower cost. `sync-agent-models.sh` already supports per-agent model assignment. Ship after the YAML schema is stable so the cheaper model has a tighter target. See also Token Optimization Tier 2 for the orchestrator equivalent.
-- [ ] **Extended-thinking on `auditor` + adversarial framing.** Set `thinking.budget_tokens` for the auditor and prepend "assume the implementation is buggy and find why." Extended thinking is Claude's largest unexploited reasoning lever and directly attacks the "long-context-large-system" weakness on benchmarks like SWE-Bench Pro. Test budget vs. latency on 2–3 phases before rolling out broadly.
-- [ ] **Goal-mode iteration-state synthesis.** Have `goal-evaluator` produce a fresh `iteration-state.md` after each iteration, prepended to the next iteration's context. Don't rely on the model's recall of `journey-history.json`. Combats long-loop context drift — which is where Opus 4.7 weakens most relative to GPT-5.5. Touches goal-mode internals; pick it up only after the first two deferred items are stable.
-
-### How to know when each is worth doing
-
-For each deferred item, the trigger is a measured regression — not a guess:
-
-| Item | Signal that says "do it now" |
-|------|------------------------------|
-| Reviewer → Sonnet | Reviewer output tokens still > Sonnet's typical budget after the YAML schema change |
-| Auditor extended-thinking | Auditor returns PASS on phases that ship with bugs (audit gap data from real phases) |
-| Iteration-state synthesis | Goal-mode iterations show drift symptoms — repeated work, forgotten journeys, or loops that re-test fixed regressions |
-
-Without these signals, all three are speculative work — better spent on features.
+All pending framework improvements — including the former "Token Optimization — Pending Work" and "Pipeline Hardening — Pending Work" backlogs that used to live here — are maintained in one canonical file: [`docs/improvement-roadmap.md`](docs/improvement-roadmap.md). It holds ~50 specified items (problem, file:line anchors, change spec, definition of done, verification commands, rollback) written so any maintainer session can execute one at a time, plus the executor ground rules and the process for adding new items. Every absorbed item from the old sections is traceable in that file's §17 ledger (several were already shipped and are marked as such).
 
 ## Known Limitations
 
 1. **Service bootstrap**: QA expects `CHAIN_START_BACKEND_CMD` or `scripts/start-backend.sh`.
 2. **Claude Code only**: Hooks and agent definitions are Claude Code-specific.
 3. **Model tier costs**: Assumes access to Claude API with multiple model tiers.
-4. **No CI integration**: Pipeline is CLI-only. GitHub Actions integration is not included.
+4. **Pipeline is CLI-only**: Phase/goal runs don't execute in CI. GitHub Actions covers only the offline eval suite (`.github/workflows/evals.yml` — see Tests).
 5. **Chrome MCP optional for phase mode**: Browser checks require Chrome MCP. Without it, browser tests are skipped.
 6. **Chrome MCP required for goal mode**: The goal-evaluator anchors its `GOAL_ACHIEVED` decision on browser-qa journey results. Without Chrome MCP, browser tests are SKIPPED and the evaluator will likely emit `ESCALATE` indefinitely.
 
 ## Tests
 
 ```bash
+./scripts/automation/run-evals.sh         # full offline eval suite (<30s, no API credits)
 ./tests/automation/test-install-gate.sh   # supply-chain gate unit tests
 ./tests/automation/test-quota-retry.sh    # quota-retry unit tests
 ```
+
+### Eval guard: pre-commit hook + CI branch protection
+
+Two layers keep a red eval suite from landing on `main` (roadmap SAFE-1):
+
+- **Local (opt-in)** — install a pre-commit hook that runs the fast pure-python
+  eval subset (the `_run_self_test` registrations in `run-evals.sh`; well under
+  10s) and blocks the commit on any failure:
+
+  ```bash
+  bash scripts/automation/install-git-hooks.sh              # install (never installed automatically)
+  bash scripts/automation/install-git-hooks.sh --uninstall  # remove
+  ```
+
+  The hook is local-only (`.git/hooks/pre-commit`), is **never auto-installed**
+  by any pipeline script, and prints how to run the full suite. Emergency
+  bypass: `git commit --no-verify` — CI still gates the push.
+
+- **CI (recommended)** — `.github/workflows/evals.yml` (workflow
+  `harness-evals`) already runs the full suite on every push and PR to `main`.
+  To make it a hard gate, enable branch protection: GitHub → **Settings →
+  Branches → Add branch protection rule** → branch pattern `main` → check
+  **Require status checks to pass before merging** → search for and select
+  **`offline eval suite`** (the `harness-evals` job). From then on a red eval
+  suite blocks the merge instead of just reporting.

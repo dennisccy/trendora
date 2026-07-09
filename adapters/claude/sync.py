@@ -6,6 +6,7 @@ Generates:
   .claude/settings.json        (permissions + hooks + passthrough plugins)
   .claude/skills/<name>.md     (mirrored from skills/)
   .claude/hooks/<name>.sh      (mirrored from hooks/)
+  .claude/commands/<name>.md   (slash commands, mirrored from commands/)
 
 Leaves alone:
   .claude/core.md, workflow.md, anti-patterns.md, project-template.md
@@ -25,11 +26,25 @@ sys.path.insert(0, str(_HERE.parents[2]))
 
 from adapters.lib import translate as T  # noqa: E402
 
+# Load the per-agent permission policy (the single source of truth for tool
+# denials) so we can MATERIALIZE each agent's disallowed_tools into frontmatter.
+# Headless `claude -p` applies these via --disallowedTools at runtime; subagent
+# dispatch (the interactive backend) instead reads them from the agent's
+# frontmatter, so writing them here keeps the two execution paths equivalent.
+import importlib.util as _ilu  # noqa: E402
+_AP_PATH = T.REPO / "scripts" / "automation" / "lib" / "agent_permissions.py"
+_ap_spec = _ilu.spec_from_file_location("agent_permissions", _AP_PATH)
+_agent_permissions = _ilu.module_from_spec(_ap_spec)
+_ap_spec.loader.exec_module(_agent_permissions)
+
 CLAUDE_DIR = T.REPO / ".claude"
 CLAUDE_AGENTS = CLAUDE_DIR / "agents"
 CLAUDE_SKILLS = CLAUDE_DIR / "skills"
 CLAUDE_HOOKS = CLAUDE_DIR / "hooks"
+CLAUDE_COMMANDS = CLAUDE_DIR / "commands"
 CLAUDE_SETTINGS = CLAUDE_DIR / "settings.json"
+CLAUDE_SETTINGS_LOCAL = CLAUDE_DIR / "settings.local.json"
+MCP_JSON = T.PROJECT_ROOT / ".mcp.json"
 
 
 # ── Agent file rendering ──────────────────────────────────────────────────────
@@ -51,6 +66,21 @@ def _yaml_inline_list(items: list[str]) -> str:
     return "[" + ", ".join(rendered) + "]"
 
 
+def _disallowed_tools_for(spec: T.AgentSpec) -> list[str]:
+    """Full deny list for an agent: hard defaults (all agents) + the non-release
+    git/merge denials (unless this is the release agent) + any agent.yaml extras.
+    Mirrors agent_permissions.disallowed_for but reads the already-loaded spec
+    (no filesystem access) so sync stays deterministic and CWD-independent."""
+    ap = _agent_permissions
+    denials: list[str] = list(ap.HARD_DEFAULT_DENIALS_ALL)
+    if spec.name != ap.RELEASE_AGENT_NAME:
+        denials.extend(ap.HARD_DEFAULT_DENIALS_NON_RELEASE)
+    for x in (spec.tools_disallowed or []):
+        if isinstance(x, str) and x and x not in denials:
+            denials.append(x)
+    return denials
+
+
 def render_agent_md(spec: T.AgentSpec, tiers: dict) -> str:
     model = spec.claude_overrides.get("model_override") or T.resolve_model(
         spec.model_tier, "claude", tiers
@@ -64,8 +94,9 @@ def render_agent_md(spec: T.AgentSpec, tiers: dict) -> str:
         # Map neutral tool names → Claude vocabulary; pass-through if unknown.
         mapped = T.map_tools(spec.tools_allowed, "claude")
         fields["tools"] = _yaml_inline_list(mapped)
-    if spec.tools_disallowed:
-        fields["disallowed_tools"] = _yaml_inline_list(spec.tools_disallowed)
+    _denials = _disallowed_tools_for(spec)
+    if _denials:
+        fields["disallowed_tools"] = _yaml_inline_list(_denials)
     if spec.max_budget_usd is not None:
         fields["max_budget_usd"] = f"{spec.max_budget_usd:g}"
     if spec.version:
@@ -126,6 +157,12 @@ def sync_hooks(*, dry_run: bool = False) -> int:
     return T.mirror_directory(T.NEUTRAL_HOOKS, CLAUDE_HOOKS, dry_run=dry_run)
 
 
+def sync_commands(*, dry_run: bool = False) -> int:
+    # Slash commands are a Claude Code concept: project `.claude/commands/*.md`
+    # are auto-discovered as `/<filename>`. Mirrored verbatim from neutral source.
+    return T.mirror_directory(T.NEUTRAL_COMMANDS, CLAUDE_COMMANDS, dry_run=dry_run)
+
+
 # ── settings.json ─────────────────────────────────────────────────────────────
 
 
@@ -179,6 +216,43 @@ def _hooks_block_for_claude() -> dict:
     return out
 
 
+# ── MCP servers (project .mcp.json + settings trust) ──────────────────────────
+
+# Keys Claude Code understands in a .mcp.json server entry; CLI-specific extras
+# in the neutral server cfg are dropped so the generated file stays valid.
+_CLAUDE_MCP_KEYS = ("command", "args", "env", "url", "headers", "timeout")
+
+
+def _claude_mcp_server(cfg: dict) -> dict:
+    out: dict = {"type": cfg.get("type", "stdio")}
+    for k in _CLAUDE_MCP_KEYS:
+        if k in cfg:
+            out[k] = cfg[k]
+    return out
+
+
+def _mcp_allow_entries(servers: dict) -> list[str]:
+    """Whole-server allow tokens (mcp__<name>) in deterministic order, so every
+    tool a configured server exposes is usable headlessly without a prompt."""
+    return [f"mcp__{name}" for name in sorted(servers)]
+
+
+def _settings_local_with_mcp(existing: dict, servers: dict) -> dict:
+    """Merge MCP trust + allow into an existing settings.local.json object,
+    preserving everything already there. This goes to the project-LOCAL settings
+    file so the shared, subtree-tracked settings.json is never touched."""
+    desired = dict(existing)
+    desired["enableAllProjectMcpServers"] = True
+    perms = dict(desired.get("permissions") or {})
+    allow = list(perms.get("allow") or [])
+    for entry in _mcp_allow_entries(servers):
+        if entry not in allow:
+            allow.append(entry)
+    perms["allow"] = allow
+    desired["permissions"] = perms
+    return desired
+
+
 def render_settings_json() -> str:
     perms = T.load_permissions()
     passthrough = T.load_passthrough("claude")
@@ -211,6 +285,46 @@ def sync_settings(*, dry_run: bool = False) -> int:
     return 1
 
 
+def sync_mcp_json(*, dry_run: bool = False) -> int:
+    """Write .mcp.json at the project root from the merged server set. With no
+    servers (the default until a project opts in) do nothing — never create or
+    delete the file — so generated config is byte-identical to before."""
+    servers = T.merged_mcp_servers()
+    if not servers:
+        return 0
+    obj = {"mcpServers": {name: _claude_mcp_server(cfg) for name, cfg in servers.items()}}
+    rendered = json.dumps(obj, indent=2, ensure_ascii=False) + "\n"
+    if MCP_JSON.exists() and MCP_JSON.read_text(encoding="utf-8") == rendered:
+        return 0
+    if dry_run:
+        return 1
+    MCP_JSON.write_text(rendered, encoding="utf-8")
+    return 1
+
+
+def sync_settings_local(*, dry_run: bool = False) -> int:
+    """Emit the project's MCP trust + allow into .claude/settings.local.json — the
+    project-LOCAL settings file — so the shared, subtree-tracked .claude/settings.json
+    is NEVER altered by a project overlay (and can never carry one project's servers
+    upstream). Existing local settings are preserved. No servers ⇒ left untouched."""
+    servers = T.merged_mcp_servers()
+    if not servers:
+        return 0
+    existing: dict = {}
+    if CLAUDE_SETTINGS_LOCAL.exists():
+        try:
+            existing = json.loads(CLAUDE_SETTINGS_LOCAL.read_text(encoding="utf-8")) or {}
+        except (OSError, json.JSONDecodeError):
+            existing = {}
+    rendered = json.dumps(_settings_local_with_mcp(existing, servers), indent=2, ensure_ascii=False) + "\n"
+    if CLAUDE_SETTINGS_LOCAL.exists() and CLAUDE_SETTINGS_LOCAL.read_text(encoding="utf-8") == rendered:
+        return 0
+    if dry_run:
+        return 1
+    CLAUDE_SETTINGS_LOCAL.write_text(rendered, encoding="utf-8")
+    return 1
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 
@@ -218,8 +332,11 @@ def sync_all(*, dry_run: bool = False) -> dict[str, int]:
     return {
         "agents": sync_agents(dry_run=dry_run),
         "settings": sync_settings(dry_run=dry_run),
+        "mcp": sync_mcp_json(dry_run=dry_run),
+        "mcp_local": sync_settings_local(dry_run=dry_run),
         "skills": sync_skills(dry_run=dry_run),
         "hooks": sync_hooks(dry_run=dry_run),
+        "commands": sync_commands(dry_run=dry_run),
     }
 
 

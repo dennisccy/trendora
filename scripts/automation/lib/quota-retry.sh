@@ -86,13 +86,40 @@
 : "${CHAIN_CLAUDE_STREAM_RETRY_SLEEP:=45}"
 : "${CHAIN_DISABLE_AUTO_WAIT:=false}"
 : "${CHAIN_CLAUDE_PRE_RETRY_HOOK:=}"
+# Capture whether the operator EXPLICITLY provided the flat runtime cap before
+# the := default masks that fact. An explicit flat cap keeps its historical
+# meaning (one cap for every agent) and disables the per-agent timeout table
+# (see _agent_timeout_for). Guarded so a second sourcing in the same process
+# doesn't mistake our own default for an operator value.
+if [[ -z "${_CHAIN_RUNTIME_EXPLICIT+x}" ]]; then
+  _CHAIN_RUNTIME_EXPLICIT="${CHAIN_CLAUDE_MAX_RUNTIME_SECONDS+set}"
+fi
 : "${CHAIN_CLAUDE_MAX_RUNTIME_SECONDS:=7200}"
+# Per-agent runtime caps (headless timeout + interactive inflight): resolved by
+# _agent_timeout_for from CHAIN_TIMEOUT_<AGENT> env > agents/<name>/agent.yaml
+# max_runtime_seconds > the table in lib/agent_permissions.py > flat global.
+# CHAIN_AGENT_TIMEOUTS=false reverts to the flat global for every agent.
+: "${CHAIN_AGENT_TIMEOUTS:=true}"
+# One bounded in-place retry after a runtime-cap kill (GNU timeout 124/137):
+# observed hangs (ep_poll / MCP socket cleanup) are transient, and artifacts
+# already written before the hang are visible to the fresh attempt.
+: "${CHAIN_CLAUDE_TIMEOUT_RETRIES:=1}"
 : "${CHAIN_CLAUDE_DISABLE_CACHE_HYGIENE:=false}"
 : "${CHAIN_TELEMETRY_TOKENS:=true}"
 : "${CHAIN_DISABLE_EFFORT_OVERRIDE:=false}"
 : "${CHAIN_TRACE_DIR:=}"
 : "${CHAIN_DISABLE_TRACE:=false}"
 : "${CHAIN_DISABLE_PERMISSION_ISOLATION:=false}"
+# Model routing (headless): resolve each agent's model from its frontmatter /
+# tier and pass --model explicitly. Before this existed, frontmatter models
+# were INERT in headless mode — every agent ran on the CLI's ambient default.
+#   CHAIN_MODEL_OVERRIDE   one-shot forced model id (escalation ladder,
+#                          two-key confirm); wins over frontmatter
+#   CHAIN_EFFORT_OVERRIDE  one-shot forced --effort value; wins over policy
+#   CHAIN_DISABLE_MODEL_ROUTING=true  revert to ambient-default behavior
+: "${CHAIN_DISABLE_MODEL_ROUTING:=false}"
+: "${CHAIN_MODEL_OVERRIDE:=}"
+: "${CHAIN_EFFORT_OVERRIDE:=}"
 
 # ── CLI selection ─────────────────────────────────────────────────────────────
 # Which CLI provider drives agent invocations. Set per-run by run-phase.sh / per-session
@@ -105,6 +132,9 @@
 : "${CHAIN_CODEX_MAX_STREAM_RETRIES:=2}"
 : "${CHAIN_CODEX_STREAM_RETRY_SLEEP:=45}"
 : "${CHAIN_CODEX_FALLBACK_SLEEP_SECONDS:=600}"   # OpenAI rate limits typically reset in <60s, but be safe
+if [[ -z "${_CHAIN_CODEX_RUNTIME_EXPLICIT+x}" ]]; then
+  _CHAIN_CODEX_RUNTIME_EXPLICIT="${CHAIN_CODEX_MAX_RUNTIME_SECONDS+set}"
+fi
 : "${CHAIN_CODEX_MAX_RUNTIME_SECONDS:=7200}"
 
 # Exit code returned when quota retries are exhausted.
@@ -112,10 +142,67 @@
 # Callers (run-phase.sh) use this to distinguish quota exhaustion from code failures.
 QUOTA_EXHAUSTED_EXIT_CODE=75
 
+# Exit code returned by the interactive dispatch backend when the pump/session
+# became unavailable (heartbeat went stale before a request was picked up, or a
+# claimed in-flight agent exceeded CHAIN_DISPATCH_INFLIGHT_TIMEOUT). This is a
+# transport/infrastructure failure, NOT an agent-quality failure: callers
+# (run-phase.sh, goal-iter-lean.sh, run-goal.sh) use it to pause the run cleanly
+# and resumably instead of treating a missing handoff as a code-review failure.
+# 70 = EX_SOFTWARE (POSIX sysexits.h) — sibling convention to the 75 above; it is
+# produced in exactly one place (lib/interactive-dispatch.sh).
+DISPATCH_UNAVAILABLE_EXIT_CODE=70
+
 # Sentinel file paths — per CLI so Claude and Codex don't trip over each other
 # on machines where both are configured.
 _QUOTA_SENTINEL="/tmp/claude-quota-exhausted"
 _CODEX_QUOTA_SENTINEL="/tmp/codex-quota-exhausted"
+
+# Resolve the runtime cap for the CURRENT agent (seconds; empty = caller keeps
+# its flat global). Shared by the headless timeout and the interactive inflight
+# check so both backends bound a hung agent the same way — a hung 20-minute
+# reviewer should fail in ~1h, not burn the flat 2h cap.
+#
+#   $1 = "set" when the flat global was EXPLICITLY provided by the operator.
+#        That preserves the historical flat-cap meaning and disables the
+#        yaml/table defaults — but a CHAIN_TIMEOUT_<AGENT> env var (also an
+#        operator choice, and more specific) still wins.
+_agent_timeout_for() {
+  local flat_explicit="${1:-}"
+  local agent="${CHAIN_CURRENT_AGENT:-}"
+  if [[ "${CHAIN_AGENT_TIMEOUTS:-true}" != "true" || -z "$agent" ]]; then
+    printf ''
+    return 0
+  fi
+  local env_key v
+  env_key="CHAIN_TIMEOUT_$(printf '%s' "$agent" | tr 'a-z-' 'A-Z_')"
+  v="${!env_key:-}"
+  if [[ "$v" =~ ^[0-9]+$ ]]; then
+    printf '%s' "$v"
+    return 0
+  fi
+  if [[ "$flat_explicit" == "set" ]]; then
+    printf ''
+    return 0
+  fi
+  local _perms
+  _perms="$(dirname "${BASH_SOURCE[0]}")/agent_permissions.py"
+  if [[ -f "$_perms" ]]; then
+    v=$(python3 "$_perms" timeout "$agent" 2>/dev/null) || v=""
+    if [[ "$v" =~ ^[0-9]+$ ]]; then
+      printf '%s' "$v"
+      return 0
+    fi
+  fi
+  printf ''
+}
+
+# Interactive dispatch backend (CHAIN_AGENT_BACKEND=interactive): instead of
+# spawning `claude -p`, hand each agent prompt to a foreground Claude Code
+# session ("the pump") over a file channel so the work runs as interactive
+# subagents. Sourced here so every caller of agent_with_quota_retry gets
+# _interactive_invoke. No-op for the claude/codex backends.
+_INTERACTIVE_DISPATCH_LIB="$(dirname "${BASH_SOURCE[0]}")/interactive-dispatch.sh"
+[[ -f "$_INTERACTIVE_DISPATCH_LIB" ]] && source "$_INTERACTIVE_DISPATCH_LIB"
 
 # Append a trace record to $CHAIN_TRACE_DIR/trace.jsonl and copy stdout into
 # $CHAIN_TRACE_DIR/<NNNN>-<agent>.log. No-op if CHAIN_TRACE_DIR is unset, the
@@ -155,6 +242,11 @@ _trace_record_invocation() {
   local ts
   ts=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
+  # Model/effort/backend attribution. The sidecar (spread last) carries the
+  # ground-truth model claude actually ran; _CHAIN_TRACE_MODEL is the resolved
+  # intent (frontmatter/override) used when no sidecar exists (e.g. the
+  # interactive backend). Empty values are omitted, and a sidecar model wins.
+  local backend="${CHAIN_AGENT_BACKEND:-${CHAIN_CLI:-claude}}"
   if command -v jq >/dev/null 2>&1; then
     local args_json
     args_json=$(printf '%s\n' "$@" | jq -R . 2>/dev/null | jq -s -c . 2>/dev/null) || args_json='[]'
@@ -167,20 +259,26 @@ _trace_record_invocation() {
       --argjson step "$step" \
       --arg agent "$agent" \
       --arg cli "$cli" \
+      --arg backend "$backend" \
+      --arg model "${_CHAIN_TRACE_MODEL:-}" \
+      --arg effort "${_CHAIN_TRACE_EFFORT:-}" \
       --arg ts "$ts" \
       --argjson exit_code "$invocation_exit" \
       --argjson duration_seconds "$duration_seconds" \
       --arg stdout_path "$stdout_filename" \
       --argjson args "$args_json" \
       --argjson usage "$usage_json" \
-      '{step:$step, agent:$agent, cli:$cli, ts:$ts, exit_code:$exit_code, duration_seconds:$duration_seconds, stdout_path:$stdout_path, args:$args} + $usage' 2>/dev/null) || record=""
+      '{step:$step, agent:$agent, cli:$cli, backend:$backend, ts:$ts, exit_code:$exit_code, duration_seconds:$duration_seconds, stdout_path:$stdout_path, args:$args}
+       + (if $model != "" then {model:$model} else {} end)
+       + (if $effort != "" then {effort:$effort} else {} end)
+       + $usage' 2>/dev/null) || record=""
     if [[ -n "$record" ]]; then
       printf '%s\n' "$record" >> "$trace_dir/trace.jsonl"
     fi
   else
-    # Minimal fallback (jq absent): step + agent + cli + ts + stdout path only
-    printf '{"step":%d,"agent":"%s","cli":"%s","ts":"%s","exit_code":%d,"duration_seconds":%d,"stdout_path":"%s"}\n' \
-      "$step" "$agent" "$cli" "$ts" "$invocation_exit" "$duration_seconds" "$stdout_filename" \
+    # Minimal fallback (jq absent): step + agent + cli + backend + ts + stdout path only
+    printf '{"step":%d,"agent":"%s","cli":"%s","backend":"%s","ts":"%s","exit_code":%d,"duration_seconds":%d,"stdout_path":"%s"}\n' \
+      "$step" "$agent" "$cli" "$backend" "$ts" "$invocation_exit" "$duration_seconds" "$stdout_filename" \
       >> "$trace_dir/trace.jsonl"
   fi
 }
@@ -391,6 +489,7 @@ _claude_invoke() {
   local max_retries="${CHAIN_CLAUDE_MAX_QUOTA_RETRIES}"
   local stream_retry_count=0
   local max_stream_retries="${CHAIN_CLAUDE_MAX_STREAM_RETRIES}"
+  local timeout_retry_count=0
   local tmp_log
 
   while true; do
@@ -432,19 +531,49 @@ _claude_invoke() {
     # Telemetry: when CHAIN_TELEMETRY_TOKENS=true, request stream-json output and
     # route through claude_stream_renderer.py so the final usage block lands in
     # $CHAIN_CLAUDE_USAGE_SIDECAR for telemetry capture.
+    local _perms_script
+    _perms_script="$(dirname "${BASH_SOURCE[0]}")/agent_permissions.py"
+
     local _effort="max"
-    if [[ "$CHAIN_DISABLE_EFFORT_OVERRIDE" != "true" && -n "${CHAIN_CURRENT_AGENT:-}" ]]; then
-      local _perms_script_for_effort
-      _perms_script_for_effort="$(dirname "${BASH_SOURCE[0]}")/agent_permissions.py"
-      if [[ -f "$_perms_script_for_effort" ]]; then
+    if [[ -n "${CHAIN_EFFORT_OVERRIDE:-}" ]]; then
+      _effort="$CHAIN_EFFORT_OVERRIDE"
+    elif [[ "$CHAIN_DISABLE_EFFORT_OVERRIDE" != "true" && -n "${CHAIN_CURRENT_AGENT:-}" ]]; then
+      if [[ -f "$_perms_script" ]]; then
         local _eff_lookup
-        _eff_lookup=$(python3 "$_perms_script_for_effort" effort "$CHAIN_CURRENT_AGENT" 2>/dev/null) || _eff_lookup=""
+        _eff_lookup=$(python3 "$_perms_script" effort "$CHAIN_CURRENT_AGENT" 2>/dev/null) || _eff_lookup=""
         if [[ -n "$_eff_lookup" ]]; then
           _effort="$_eff_lookup"
         fi
       fi
     fi
+    _CHAIN_TRACE_EFFORT="$_effort"
+
+    # Per-agent --model routing: override > frontmatter/tier resolution > none.
+    # Empty result ⇒ no --model flag (ambient default), never an error.
+    local _model=""
+    if [[ "${CHAIN_DISABLE_MODEL_ROUTING:-false}" != "true" ]]; then
+      if [[ -n "${CHAIN_MODEL_OVERRIDE:-}" ]]; then
+        _model="$CHAIN_MODEL_OVERRIDE"
+      elif [[ -n "${CHAIN_CURRENT_AGENT:-}" && -f "$_perms_script" ]]; then
+        _model=$(python3 "$_perms_script" model "$CHAIN_CURRENT_AGENT" 2>/dev/null) || _model=""
+      fi
+    fi
+    # Recorded intent; the usage sidecar (ground truth) still wins in the trace merge.
+    _CHAIN_TRACE_MODEL="$_model"
+
+    # Per-agent runtime cap: a specific cap (env/yaml/table) tightens the flat
+    # global for the agents whose typical durations are well known; agents with
+    # no entry — and every agent when the operator exported an explicit flat
+    # cap — keep the flat CHAIN_CLAUDE_MAX_RUNTIME_SECONDS.
+    local _runtime_cap="$CHAIN_CLAUDE_MAX_RUNTIME_SECONDS"
+    local _agent_cap
+    _agent_cap="$(_agent_timeout_for "${_CHAIN_RUNTIME_EXPLICIT:-}")"
+    [[ -n "$_agent_cap" ]] && _runtime_cap="$_agent_cap"
+
     local -a _claude_extra_args=(--effort "$_effort")
+    if [[ -n "$_model" ]]; then
+      _claude_extra_args+=(--model "$_model")
+    fi
     if [[ "$CHAIN_CLAUDE_DISABLE_CACHE_HYGIENE" != "true" ]]; then
       _claude_extra_args+=(--exclude-dynamic-system-prompt-sections)
     fi
@@ -494,19 +623,29 @@ _claude_invoke() {
     # grandchildren of timeout aren't timed out — which is fine here because
     # we only care about claude's own runtime. See:
     # https://www.gnu.org/software/coreutils/manual/html_node/timeout-invocation.html
-    if [[ "${CHAIN_CLAUDE_MAX_RUNTIME_SECONDS:-0}" -gt 0 ]] && command -v timeout >/dev/null 2>&1; then
+    if [[ "${_runtime_cap:-0}" -gt 0 ]] && command -v timeout >/dev/null 2>&1; then
       if [[ -n "$_renderer_path" ]]; then
-        timeout --foreground --kill-after=60 "$CHAIN_CLAUDE_MAX_RUNTIME_SECONDS" claude "${_claude_extra_args[@]}" "$@" 2>&1 \
+        timeout --foreground --kill-after=60 "$_runtime_cap" claude "${_claude_extra_args[@]}" "$@" 2>&1 \
           | python3 "$_renderer_path" 2>&1 \
           | tee "$tmp_log"
         exit_code="${PIPESTATUS[0]}"
       else
-        timeout --foreground --kill-after=60 "$CHAIN_CLAUDE_MAX_RUNTIME_SECONDS" claude "${_claude_extra_args[@]}" "$@" 2>&1 | tee "$tmp_log"
+        timeout --foreground --kill-after=60 "$_runtime_cap" claude "${_claude_extra_args[@]}" "$@" 2>&1 | tee "$tmp_log"
         exit_code="${PIPESTATUS[0]}"
       fi
-      # GNU timeout returns 124 on SIGTERM, 137 on SIGKILL — log and treat as failure.
+      # GNU timeout returns 124 on SIGTERM, 137 on SIGKILL — log, then retry
+      # in place once (observed hangs are transient: ep_poll / MCP socket
+      # cleanup after the real work finished; artifacts already on disk are
+      # visible to the fresh attempt). Persisting past the bounded retries is
+      # a real failure.
       if [[ $exit_code -eq 124 || $exit_code -eq 137 ]]; then
-        echo "[quota-retry] $(date -Iseconds) *** claude exceeded CHAIN_CLAUDE_MAX_RUNTIME_SECONDS (${CHAIN_CLAUDE_MAX_RUNTIME_SECONDS}s) and was terminated ***" >&2
+        echo "[quota-retry] $(date -Iseconds) *** claude exceeded its runtime cap (${_runtime_cap}s, agent=${CHAIN_CURRENT_AGENT:-unattributed}) and was terminated ***" >&2
+        if [[ $timeout_retry_count -lt ${CHAIN_CLAUDE_TIMEOUT_RETRIES:-1} ]] && ! _quota_is_exhausted "$tmp_log"; then
+          timeout_retry_count=$((timeout_retry_count + 1))
+          echo "[quota-retry] $(date -Iseconds) Retrying in place (timeout retry $timeout_retry_count/${CHAIN_CLAUDE_TIMEOUT_RETRIES:-1})..." >&2
+          rm -f "$tmp_log"
+          continue
+        fi
         echo "[quota-retry] $(date -Iseconds) If artifacts were written before the hang, downstream steps can still proceed." >&2
       fi
     else
@@ -742,8 +881,8 @@ _codex_invoke() {
         _codex_prompt="$2"
         shift 2
         ;;
-      --effort|--exclude-dynamic-system-prompt-sections|--output-format|--verbose|--include-partial-messages|--disallowedTools|--max-budget-usd)
-        # Claude-only flags. Drop. Some take a value (effort/output-format/disallowedTools/max-budget-usd); skip the next arg.
+      --effort|--model|--exclude-dynamic-system-prompt-sections|--output-format|--verbose|--include-partial-messages|--disallowedTools|--max-budget-usd)
+        # Claude-only flags. Drop. Some take a value (effort/model/output-format/disallowedTools/max-budget-usd); skip the next arg.
         case "$1" in
           --exclude-dynamic-system-prompt-sections|--verbose|--include-partial-messages) shift ;;
           *) shift 2 ;;
@@ -812,16 +951,23 @@ _codex_invoke() {
       fi
     fi
 
+    # Per-agent runtime cap (same table as the Claude backend; an explicitly
+    # exported flat CHAIN_CODEX_MAX_RUNTIME_SECONDS keeps the flat meaning).
+    local _codex_runtime_cap="$CHAIN_CODEX_MAX_RUNTIME_SECONDS"
+    local _codex_agent_cap
+    _codex_agent_cap="$(_agent_timeout_for "${_CHAIN_CODEX_RUNTIME_EXPLICIT:-}")"
+    [[ -n "$_codex_agent_cap" ]] && _codex_runtime_cap="$_codex_agent_cap"
+
     local exit_code
-    if [[ "${CHAIN_CODEX_MAX_RUNTIME_SECONDS:-0}" -gt 0 ]] && command -v timeout >/dev/null 2>&1; then
+    if [[ "${_codex_runtime_cap:-0}" -gt 0 ]] && command -v timeout >/dev/null 2>&1; then
       if [[ -n "$_renderer_path" ]]; then
-        timeout --foreground --kill-after=60 "$CHAIN_CODEX_MAX_RUNTIME_SECONDS" \
+        timeout --foreground --kill-after=60 "$_codex_runtime_cap" \
           codex "${_codex_extra_args[@]}" 2>&1 \
           | python3 "$_renderer_path" 2>&1 \
           | tee "$tmp_log"
         exit_code="${PIPESTATUS[0]}"
       else
-        timeout --foreground --kill-after=60 "$CHAIN_CODEX_MAX_RUNTIME_SECONDS" \
+        timeout --foreground --kill-after=60 "$_codex_runtime_cap" \
           codex "${_codex_extra_args[@]}" 2>&1 | tee "$tmp_log"
         exit_code="${PIPESTATUS[0]}"
       fi
@@ -919,11 +1065,15 @@ _codex_invoke() {
 
 agent_with_quota_retry() {
   local cli="${CHAIN_CLI:-claude}"
-  case "$cli" in
-    claude) _claude_invoke "$@" ;;
-    codex)  _codex_invoke  "$@" ;;
+  # CHAIN_AGENT_BACKEND overrides the CLI for dispatch only (assets/personas
+  # still come from CHAIN_CLI). Defaults to the CLI, so absence = today's behaviour.
+  local backend="${CHAIN_AGENT_BACKEND:-$cli}"
+  case "$backend" in
+    interactive) _interactive_invoke "$@" ;;
+    claude)      _claude_invoke "$@" ;;
+    codex)       _codex_invoke  "$@" ;;
     *)
-      echo "[quota-retry] Unknown CHAIN_CLI: '$cli' (expected: claude or codex)" >&2
+      echo "[quota-retry] Unknown agent backend: '$backend' (expected: interactive, claude, or codex; from CHAIN_AGENT_BACKEND or CHAIN_CLI)" >&2
       return 2
       ;;
   esac

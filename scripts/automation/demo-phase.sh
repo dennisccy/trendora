@@ -98,6 +98,17 @@ else
   FRONTEND_PRESENT="no"
   if detect_frontend_in_plan "$PLAN_FILE"; then
     FRONTEND_PRESENT="yes"
+  elif [[ ! -f "$PLAN_FILE" ]]; then
+    # Lean goal-mode iterations never write runs/<iter>/plan.md, which used to
+    # make EVERY lean demo a silent backend-only stub. Fall back to the
+    # iteration spec, then to evidence: executed journey rows (PASS/FAIL, not
+    # SKIPPED) in the browser-qa results prove a working frontend — the demo
+    # runs after browser-qa, so those rows exist by now.
+    if detect_frontend_in_plan "$SPEC"; then
+      FRONTEND_PRESENT="yes"
+    elif grep -E '^\| UT-J-[0-9]+ ' "$UI_TEST_RESULTS" 2>/dev/null | grep -qE '\| (PASS|FAIL) \|'; then
+      FRONTEND_PRESENT="yes"
+    fi
   fi
 fi
 
@@ -194,8 +205,10 @@ fi
 # ensure_services_running, and a one-shot probe would race it and wrongly record
 # SKIPPED — the same trap browser-qa-phase.sh already guards against with the
 # matching 90s budget. In the warm-app common case the first probe succeeds at
-# 0s, so this adds no latency.
-if ! _wait_for_url "$FRONTEND_URL" "frontend" 90 "demo"; then
+# 0s, so this adds no latency. On the standalone (non-shared) path it also heals
+# a corrupt `.next` once (rm -rf .next + restart) rather than waiting out the
+# budget against a 500 and then recording a SKIP.
+if ! _wait_for_frontend_ready "$FRONTEND_URL" "frontend" 90 "demo"; then
   echo "[demo] Frontend at $FRONTEND_URL did not respond after 90s — recording SKIPPED and exiting." >&2
   if [[ "$MODE" == "record" ]]; then
     # Surface the REAL reason, not just the timeout: a missing-dependency hint

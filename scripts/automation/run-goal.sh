@@ -3,29 +3,39 @@
 #
 # Reads docs/goal.md (which must include Must-have user journeys + Anti-goals)
 # and iterates `decompose -> execute -> evaluate` adaptively until either the
-# goal-evaluator declares GOAL_ACHIEVED or a hard halt fires (max iterations,
-# stall, regression).
+# goal-evaluator declares GOAL_ACHIEVED or a hard halt fires (stall, regression,
+# or an optional --max-iter budget — there is no iteration cap by default).
 #
 # Usage:
 #   ./scripts/automation/run-goal.sh [--session-id <id>] [--max-iter N]
 #                                    [--stall-window N] [--resume] [--reset]
 #                                    [--auto-release]
 #                                    [--acknowledge-regression]
-#                                    [--auto-approve-blueprint]
+#                                    [--require-blueprint-approval]
+#                                    [--intent-checkpoint] [--intent-checkpoint-at N]
 #                                    [--no-push-per-iter] [--push-per-iter]
 #                                    [--push-branch <name>]
 #
 # Flags:
 #   --session-id <id>            Session identifier (auto-generated if omitted)
-#   --max-iter N                 Hard cap on iterations (default: 30)
+#   --max-iter N                 Optional hard cap on iterations (default: unlimited; 0 = no cap)
 #   --stall-window N             Halt if last N iterations show no journey progress (default: 3)
 #   --resume                     Resume an existing session
 #   --reset                      Discard the named session and start fresh
 #   --auto-release               On GOAL_ACHIEVED, run release-manager once for the whole session
 #   --acknowledge-regression     Continue past a prior REGRESSION_HALT
-#   --auto-approve-blueprint     Skip the one-time blueprint-review pause after baseline (and any
-#                                structural re-approval pause); use the AI-drafted blueprint as-is.
-#                                Per-run flag — pass it on each invocation/resume to keep it on.
+#   --require-blueprint-approval Pause after baseline for the human to review/edit state/blueprint.md
+#                                (and on structural nav-skeleton changes). OFF by default — goal mode
+#                                auto-approves the AI-drafted blueprint and runs hands-off.
+#                                (--auto-approve-blueprint is still accepted but is now the default.)
+#   --intent-checkpoint          Opt-in mid-session pause (once per session): when >=50% of the
+#                                Must-have journeys pass, pause resumably with a deterministic
+#                                intent-review.md asking "is this still the product you wanted?".
+#                                OFF by default. --resume acknowledges and continues.
+#   --intent-checkpoint-at N     Same pause, but fire when the loop reaches iteration N (same
+#                                convention as --max-iter) instead of the 50% threshold. OFF by
+#                                default; combinable with --intent-checkpoint (first trigger wins;
+#                                still fires at most once per session).
 #   --push-per-iter              [Default ON for new sessions.] Commit + push each successful
 #                                iteration (CONTINUE / ESCALATE / GOAL_ACHIEVED) to a per-session
 #                                branch. No model invocation, no PR per iter — the branch is
@@ -40,13 +50,18 @@
 #
 # Halt verdicts written to runs/goal-session-<sid>/session.json.status:
 #   GOAL_ACHIEVED   - goal-evaluator declared done
-#   BUDGET_EXHAUSTED - max iterations reached
+#   BUDGET_EXHAUSTED - max iterations reached (only when --max-iter > 0 is set)
 #   STALLED          - journey-history hash unchanged for stall_window iterations
 #   REGRESSION_HALT  - goal-evaluator emitted REGRESSION verdict
 #   ABORTED          - user interrupted (SIGINT/SIGTERM)
-#   AWAITING_BLUEPRINT_APPROVAL - paused after baseline (or after a structural blueprint change) for
-#                                 the human to review/edit state/blueprint.md; resume with --resume
-#                                 (resuming counts as approval) or pre-empt with --auto-approve-blueprint
+#   AWAITING_BLUEPRINT_APPROVAL - only with --require-blueprint-approval: paused after baseline (or a
+#                                 structural blueprint change) for the human to review/edit
+#                                 state/blueprint.md; resume with --resume (resuming counts as approval)
+#   AWAITING_INTENT_REVIEW - only with --intent-checkpoint / --intent-checkpoint-at: paused once
+#                            mid-session for the human to read intent-review.md ("is this the
+#                            product you wanted?"); resume with --resume (counts as acknowledgment)
+#   AWAITING_PUMP    - interactive pump/dispatch was unavailable mid-iteration (the foreground
+#                      session/pump went away); resumable — /goal-resume re-runs the same iteration
 #
 # Quota exhaustion is NOT a halt: claude_with_quota_retry transparently sleeps
 # until the quota resets and resumes.
@@ -55,6 +70,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/telemetry.sh"
+source "$SCRIPT_DIR/lib/goal-gates.sh"
 
 # Pull --cli (and --force-cli) out of the args BEFORE the existing parse loop,
 # so the loop below sees only its known flags.
@@ -67,15 +83,23 @@ fi
 
 # ── Defaults ──────────────────────────────────────────────────────────────
 SESSION_ID=""
-MAX_ITER=30
+MAX_ITER=0          # 0 = unlimited; NEW sessions default to 60 unless --max-iter is passed (explicit 0 keeps unlimited); resume honors the value stored in session.json
+MAX_ITER_EXPLICIT=false
 STALL_WINDOW=3
 RESUME=false
 RESET=false
 AUTO_RELEASE=false
 ACK_REGRESSION=false
-# Skip the one-time blueprint-approval pause (and any structural re-approval
-# pause). Per-run flag; pass it on each invocation/resume if you want it.
-AUTO_APPROVE_BLUEPRINT=false
+# Blueprint review pause. Auto-approved by DEFAULT (goal mode is hands-off): the
+# AI-drafted blueprint is accepted as-is and any structural re-approval marker is
+# cleared, so the loop never pauses for it. Pass --require-blueprint-approval to
+# restore the one-time baseline review pause (and structural re-approval pauses).
+AUTO_APPROVE_BLUEPRINT=true
+# Interactive dispatch backend: run each agent as a subagent in the foreground
+# Claude Code session (the "pump") via a file channel instead of headless
+# `claude -p`, so the work bills to the interactive plan allowance. Pinned
+# per-session (like --cli). Off by default (headless / Agent SDK path).
+INTERACTIVE=false
 # Per-iter push is ON by default for new sessions. Pass --no-push-per-iter to
 # opt out. On resume, the persisted session.json value wins unless overridden
 # by an explicit CLI flag (--push-per-iter or --no-push-per-iter).
@@ -87,18 +111,28 @@ PUSH_FLAG_USER="default"
 # Set in the resume branch (off | continuing | opting-in). Stays empty for
 # new sessions; the branch-lifecycle block only consults it when RUN_MODE=resume.
 RESUME_PUSH_MODE=""
+# Intent checkpoint (NEED-7): opt-in mid-session resumable pause asking the
+# human "is this still the product you wanted?". OFF by default; fires at most
+# once per session. --intent-checkpoint triggers at >=50% journeys passing;
+# --intent-checkpoint-at N triggers when the loop reaches iteration N.
+INTENT_CHECKPOINT=false
+INTENT_CHECKPOINT_AT=0
 
 # ── Parse flags ───────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --session-id)              SESSION_ID="$2"; shift 2 ;;
-    --max-iter)                MAX_ITER="$2"; shift 2 ;;
+    --max-iter)                MAX_ITER="$2"; MAX_ITER_EXPLICIT=true; shift 2 ;;
     --stall-window)            STALL_WINDOW="$2"; shift 2 ;;
     --resume)                  RESUME=true; shift ;;
     --reset)                   RESET=true; shift ;;
     --auto-release)            AUTO_RELEASE=true; shift ;;
     --acknowledge-regression)  ACK_REGRESSION=true; shift ;;
-    --auto-approve-blueprint)  AUTO_APPROVE_BLUEPRINT=true; shift ;;
+    --auto-approve-blueprint)  AUTO_APPROVE_BLUEPRINT=true; shift ;;   # now the default; kept for back-compat
+    --require-blueprint-approval) AUTO_APPROVE_BLUEPRINT=false; shift ;;
+    --interactive)             INTERACTIVE=true; shift ;;
+    --intent-checkpoint)       INTENT_CHECKPOINT=true; shift ;;
+    --intent-checkpoint-at)    INTENT_CHECKPOINT_AT="$2"; shift 2 ;;
     --push-per-iter)           PUSH_PER_ITER=true;  PUSH_FLAG_USER="yes"; shift ;;
     --no-push-per-iter)        PUSH_PER_ITER=false; PUSH_FLAG_USER="no";  shift ;;
     --push-branch)             PUSH_BRANCH="$2"; shift 2 ;;
@@ -117,6 +151,7 @@ fi
 
 GOAL_SESSION_DIR_LOCAL="$REPO_ROOT/runs/goal-session-${SESSION_ID}"
 SESSION_JSON="$GOAL_SESSION_DIR_LOCAL/session.json"
+ENGINE_PID_FILE="$GOAL_SESSION_DIR_LOCAL/engine.pid"
 
 # Resume: pin CHAIN_CLI from session.json unless the user explicitly overrode it.
 # A mismatch errors out unless --force-cli is given.
@@ -137,16 +172,74 @@ if [[ "$RESUME" == "true" && -f "$SESSION_JSON" ]]; then
   fi
 fi
 
+# Resume self-heal: if a previous engine for this session is still running (e.g.
+# the user pressed Ctrl+C in the interactive pump, which never reaches the
+# detached engine), stop it cleanly before starting a new one — otherwise two
+# engines would race on the same session. SIGTERM fires the old engine's on_abort
+# (clean ABORTED checkpoint); SIGKILL only if it ignores us. The /proc cmdline
+# check guards against a stale pidfile whose PID was reused by another process.
+if [[ "$RESUME" == "true" && -f "$ENGINE_PID_FILE" ]]; then
+  _prev_pid="$(cat "$ENGINE_PID_FILE" 2>/dev/null || echo "")"
+  if [[ -n "$_prev_pid" ]] && kill -0 "$_prev_pid" 2>/dev/null \
+     && grep -qa "run-goal" "/proc/$_prev_pid/cmdline" 2>/dev/null; then
+    echo "[run-goal] Resume: a prior engine (pid $_prev_pid) is still running — stopping it cleanly first." >&2
+    kill -TERM "$_prev_pid" 2>/dev/null || true
+    for _ in $(seq 1 20); do kill -0 "$_prev_pid" 2>/dev/null || break; sleep 0.5; done
+    if kill -0 "$_prev_pid" 2>/dev/null; then
+      echo "[run-goal] Prior engine ignored SIGTERM; sending SIGKILL." >&2
+      kill -KILL "$_prev_pid" 2>/dev/null || true
+    fi
+  fi
+  rm -f "$ENGINE_PID_FILE" 2>/dev/null || true
+fi
+
+# ── Resolve the agent dispatch backend (interactive vs headless) ───────────
+# Pinned per-session like --cli: on resume, adopt the persisted backend unless
+# --interactive is re-asserted on the command line.
+if [[ "$RESUME" == "true" && -f "$SESSION_JSON" && "$INTERACTIVE" != "true" ]]; then
+  PERSISTED_BACKEND=$(python3 -c "import json;print(json.load(open('$SESSION_JSON')).get('agent_backend',''))" 2>/dev/null || echo "")
+  if [[ "$PERSISTED_BACKEND" == "interactive" ]]; then
+    INTERACTIVE=true
+  fi
+fi
+if [[ "$INTERACTIVE" == "true" ]]; then
+  AGENT_BACKEND="interactive"
+else
+  AGENT_BACKEND="headless"
+fi
+
+# Interactive: tee the engine's full (headless-style) stdout+stderr to a session
+# log, timestamped per line, so the user can watch the real chain narrative
+# (`tail -f runs/goal-session-<sid>/engine.log`) without it costing pump-context
+# tokens — the pump never reads this file. Headless's live terminal stream is
+# left untouched. python3 is already a hard dependency; -u keeps it line-flushed.
+if [[ "$INTERACTIVE" == "true" ]]; then
+  ENGINE_LOG="$GOAL_SESSION_DIR_LOCAL/engine.log"
+  mkdir -p "$GOAL_SESSION_DIR_LOCAL"
+  exec > >(python3 -u -c 'import sys, datetime
+for ln in sys.stdin:
+    sys.stdout.write(datetime.datetime.now().strftime("%H:%M:%S ") + ln)' \
+          | tee -a "$ENGINE_LOG") 2>&1
+fi
+
 require_cli
 ensure_cli_assets_synced "$CHAIN_CLI"
 JOURNEY_HISTORY="$GOAL_SESSION_DIR_LOCAL/state/journey-history.json"
 EVALUATOR_LOG="$GOAL_SESSION_DIR_LOCAL/state/evaluator-log.md"
 LESSONS_FILE="$GOAL_SESSION_DIR_LOCAL/state/lessons.md"
+# Assumption ledger (NEED-5): append-only record of interpretation calls the
+# decomposer/evaluator made where the goal was ambiguous. Created lazily by the
+# agents on first append; absent file renders as a placeholder in prompts.
+ASSUMPTIONS_FILE="$GOAL_SESSION_DIR_LOCAL/state/assumptions.md"
 # Coherence blueprint (information architecture + data contract). Drafted by the
 # baseline decomposer, approved once by the human, enforced each iteration.
 BLUEPRINT_FILE="$GOAL_SESSION_DIR_LOCAL/state/blueprint.md"
 BLUEPRINT_APPROVED="$GOAL_SESSION_DIR_LOCAL/state/blueprint.approved"
 BLUEPRINT_REAPPROVAL="$GOAL_SESSION_DIR_LOCAL/state/blueprint.reapproval-requested"
+# Intent checkpoint (NEED-7): the deterministic review packet and the once-per-
+# session marker (touched when --resume acknowledges the pause).
+INTENT_REVIEW_FILE="$GOAL_SESSION_DIR_LOCAL/intent-review.md"
+INTENT_REVIEW_DONE="$GOAL_SESSION_DIR_LOCAL/state/.intent-review-done"
 SUMMARY_FILE="$GOAL_SESSION_DIR_LOCAL/summary.md"
 GOAL_FILE="$REPO_ROOT/docs/goal.md"
 
@@ -166,11 +259,21 @@ _run_iteration_summarizer() {
   local eval_log_inline=""
   eval_log_inline=$(_tail_or_placeholder "$EVALUATOR_LOG" 300 "(none yet)")
 
+  # Assumption ledger tail (NEED-6): inlined so the summary's "Assumptions
+  # made" section can surface interpretation calls to the human.
+  local assumptions_inline=""
+  assumptions_inline=$(_tail_or_placeholder "$ASSUMPTIONS_FILE" 200 "(no assumptions recorded yet)")
+
   local project_story_md="$REPO_ROOT/runs/goal-session-${SESSION_ID}/state/project-story.md"
   mkdir -p "$REPO_ROOT/runs/goal-session-${SESSION_ID}/state"
 
   cd "$REPO_ROOT"
-  export CHAIN_CURRENT_AGENT=iteration-summarizer
+  # record_* pair (not a bare export): attributes telemetry/trace to this agent
+  # and clears CHAIN_CURRENT_AGENT afterwards so attribution can't bleed into
+  # later inline calls.
+  record_agent_invocation_start "iteration-summarizer"
+  local _sum_start=$CHAIN_AGENT_START_EPOCH
+  local _sum_rc=0
   claude_with_quota_retry -p "You are the iteration-summarizer agent.
 
 mode: normal
@@ -192,6 +295,12 @@ Recent evaluator log entries (last 300 lines, pre-trimmed):
 ${eval_log_inline}
 ---
 
+Assumption ledger tail (recent entries, pre-trimmed; '(no assumptions recorded
+yet)' means empty — see the 'Assumptions made' section of your instructions):
+---
+${assumptions_inline}
+---
+
 Write the iteration summary to: $summary_md
 
 This is a GOAL-MODE iteration. After writing the iteration summary, also
@@ -205,7 +314,69 @@ form '**Verdict:** VALUE' where VALUE is one of: GOAL_ACHIEVED, CONTINUE,
 ESCALATE, REGRESSION, STALLED, PASS, FAIL, IN-PROGRESS.
 
 When finished, STOP." \
-    || echo "[run-goal] Warning: iteration-summarizer call failed (non-blocking)"
+    || { _sum_rc=$?; echo "[run-goal] Warning: iteration-summarizer call failed (non-blocking)"; }
+  record_agent_invocation_end "iteration-summarizer" "$_sum_start" "$_sum_rc"
+}
+
+# Maintain the PROJECT's README.md so it always reflects current capabilities and
+# carries a How-to-run section. Non-blocking — failures only log. Runs every
+# iteration in goal mode (headless or interactive). The agent edits only
+# marker-delimited AUTO blocks so any hand-written prose is preserved, and grounds
+# all run/install/test commands in .claude/project-template.md.
+_run_readme_maintainer() {
+  local iter_name="$1"
+  local agent_file="$REPO_ROOT/.claude/agents/readme-maintainer.md"
+  [[ -f "$agent_file" ]] || { echo "[run-goal] Warning: readme-maintainer agent missing, skipping README update"; return 0; }
+
+  # Token gate: skip the dispatch when this iteration provably changed nothing
+  # user-visible (only test/report/handoff/spec churn). Conservative by design —
+  # any app/config/script/doc change, a missing snapshot, or a git error runs
+  # the agent as before. CHAIN_README_EVERY_ITER=true restores the old behavior.
+  if [[ "${CHAIN_README_EVERY_ITER:-false}" != "true" ]]; then
+    local _snap _changed
+    _snap="$(cat "$GOAL_SESSION_DIR_LOCAL/iter-${CURRENT_ITER}/snapshot-sha" 2>/dev/null || echo "")"
+    if [[ -n "$_snap" ]]; then
+      _changed="$( { git -C "$REPO_ROOT" diff --name-only "$_snap" 2>/dev/null; git -C "$REPO_ROOT" status --porcelain 2>/dev/null | awk '{print $NF}'; } | sort -u )" || _changed="__git_error__"
+      if [[ -n "$_changed" && "$_changed" != "__git_error__" ]]; then
+        local _visible
+        _visible="$(printf '%s\n' "$_changed" | grep -Ev '^(tests?/|runs/|reports/|docs/handoffs/|docs/phases/)' || true)"
+        if [[ -z "$_visible" ]]; then
+          echo "[run-goal] readme-maintainer: skipped — iteration touched only test/report/handoff/spec paths (no user-visible change). Set CHAIN_README_EVERY_ITER=true to disable this gate."
+          return 0
+        fi
+      fi
+    fi
+  fi
+
+  cd "$REPO_ROOT"
+  record_agent_invocation_start "readme-maintainer"
+  local _rm_start=$CHAIN_AGENT_START_EPOCH
+  local _rm_rc=0
+  claude_with_quota_retry -p "You are the readme-maintainer agent.
+
+Phase id: $iter_name
+Target file: README.md (the project-root README of THIS repository)
+Agent instructions: .claude/agents/readme-maintainer.md  <-- read this first
+Skill: .claude/skills/readme-maintenance.md  <-- the marker-scoped editing method
+Run-command source of truth: .claude/project-template.md  <-- Stack, Test commands, Service start commands, URLs
+README skeleton (use only if README.md is absent): templates/project-readme.md
+Capabilities inputs (read what exists, silently skip what doesn't):
+- reports/phase-${iter_name}-user-visible-changes.md
+- reports/phase-${iter_name}-implementation-summary.md
+- reports/phase-${iter_name}-iteration-summary.md
+(CLAUDE.md is already in your system prompt -- do not Read it again.)
+
+Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
+
+Refresh README.md so it reflects the CURRENT project and includes a 'How to run'
+section. Edit ONLY the marker-delimited AUTO blocks described in your skill;
+never delete human-written prose outside them. Ground every install/run/test
+command in .claude/project-template.md — if a needed field is still a template
+placeholder (<e.g., ...>), write a 'TODO:' line rather than inventing a command.
+
+When finished, STOP." \
+    || { _rm_rc=$?; echo "[run-goal] Warning: readme-maintainer call failed (non-blocking)"; }
+  record_agent_invocation_end "readme-maintainer" "$_rm_start" "$_rm_rc"
 }
 
 # Generate the one-time "delivered" wrap when goal-evaluator returns
@@ -227,7 +398,9 @@ _render_final_delivered() {
   mkdir -p "$REPO_ROOT/reports"
 
   cd "$REPO_ROOT"
-  export CHAIN_CURRENT_AGENT=iteration-summarizer
+  record_agent_invocation_start "iteration-summarizer"
+  local _dw_start=$CHAIN_AGENT_START_EPOCH
+  local _dw_rc=0
   claude_with_quota_retry -p "You are the iteration-summarizer agent.
 
 mode: delivered
@@ -252,7 +425,8 @@ NOT also rewrite the iteration summary in this mode. Friendly, factual, no
 journey IDs, no file names.
 
 When finished, STOP." \
-    || echo "[run-goal] Warning: delivered-wrap iteration-summarizer call failed (non-blocking)"
+    || { _dw_rc=$?; echo "[run-goal] Warning: delivered-wrap iteration-summarizer call failed (non-blocking)"; }
+  record_agent_invocation_end "iteration-summarizer" "$_dw_start" "$_dw_rc"
 
   if [[ -f "$renderer" ]]; then
     python3 "$renderer" delivered "$sid" --repo-root="$REPO_ROOT" 2>&1 \
@@ -279,6 +453,99 @@ _render_session_index_html() {
   [[ -f "$renderer" ]] || return 0
   python3 "$renderer" session-index "$SESSION_ID" --repo-root="$REPO_ROOT" 2>&1 \
     | sed 's/^/[run-goal] /' || echo "[run-goal] Warning: session-index HTML render failed (non-blocking)"
+}
+
+# ── Showcase tail (demo → summary → README → renders), inline or forked ──────
+# These steps are non-gating showcase/maintenance, but they used to sit
+# 6-13 min on the loop's critical path between the evaluator and the next
+# decomposer (measured: summarizer ~5.7m + readme ~4.5m + renders). For
+# CONTINUE/ESCALATE verdicts they now run as a background group that overlaps
+# the NEXT iteration's decomposer; the group is joined — and its artifacts
+# committed — BEFORE the next executor dispatch, so developer/reviewer N+1 see
+# exactly the tree the sequential ordering produced. Halt verdicts keep the
+# inline path so final summaries are always complete before the session ends.
+# Disable with CHAIN_ASYNC_SHOWCASE=false.
+_SHOWCASE_PID=""
+_SHOWCASE_ITER=""
+
+_run_showcase_steps() {
+  local iter_name="$1" depth="$2"
+  # Demo first (lean depth only — full depth records inside run-phase.sh).
+  # demo-phase.sh boots its own services idempotently; _join_showcase_tail
+  # clears them so the next iteration's browser-qa never reuses a server tree
+  # that is still serving iteration N's code.
+  if [[ "$depth" == "lean" ]]; then
+    bash "$SCRIPT_DIR/demo-phase.sh" "$iter_name" \
+      || echo "[run-goal] demo-phase.sh exited non-zero — continuing (showcase, non-gating)"
+  fi
+  _run_iteration_summarizer "$iter_name"
+  _run_readme_maintainer "$iter_name"
+  _render_iter_html "$iter_name"
+  _render_session_index_html
+}
+
+_fork_showcase_tail() {
+  local iter_name="$1" depth="$2"
+  _SHOWCASE_ITER="$CURRENT_ITER"
+  ( _run_showcase_steps "$iter_name" "$depth" ) &
+  _SHOWCASE_PID=$!
+  echo "[run-goal] Showcase tail (demo → summary → README → renders) running in the background (pid $_SHOWCASE_PID); the loop proceeds."
+}
+
+# _join_showcase_tail [--kill]
+#   default: bounded wait for the group, clear its demo services, then commit
+#            (+push) its artifacts when push-per-iter is on. Scoped add — the
+#            next iteration's freshly written spec stays uncommitted, exactly
+#            as it does under the sequential ordering.
+#   --kill:  reap immediately without committing (Ctrl-C / dead-pump paths,
+#            where the group's own agent dispatches cannot succeed anyway).
+_join_showcase_tail() {
+  [[ -n "${_SHOWCASE_PID:-}" ]] || return 0
+  local mode="${1:-}"
+  if [[ "$mode" == "--kill" ]]; then
+    if declare -F _kill_pid_tree >/dev/null 2>&1; then
+      _kill_pid_tree "$_SHOWCASE_PID" 2>/dev/null || true
+    else
+      kill "$_SHOWCASE_PID" 2>/dev/null || true
+    fi
+    wait "$_SHOWCASE_PID" 2>/dev/null || true
+    _SHOWCASE_PID=""
+    return 0
+  fi
+  local timeout_s="${CHAIN_ASYNC_SHOWCASE_JOIN_TIMEOUT:-900}"
+  local waited=0
+  if kill -0 "$_SHOWCASE_PID" 2>/dev/null; then
+    echo "[run-goal] Waiting for the background showcase tail of iter ${_SHOWCASE_ITER} (bounded ${timeout_s}s)..."
+  fi
+  while kill -0 "$_SHOWCASE_PID" 2>/dev/null; do
+    if [[ "$waited" -ge "$timeout_s" ]]; then
+      echo "[run-goal] Showcase tail exceeded ${timeout_s}s — killing it (non-gating; artifacts may be partial)." >&2
+      if declare -F _kill_pid_tree >/dev/null 2>&1; then
+        _kill_pid_tree "$_SHOWCASE_PID" 2>/dev/null || true
+      else
+        kill "$_SHOWCASE_PID" 2>/dev/null || true
+      fi
+      break
+    fi
+    sleep 2
+    waited=$((waited + 2))
+  done
+  wait "$_SHOWCASE_PID" 2>/dev/null || true
+  _SHOWCASE_PID=""
+  # Clear any services the demo recording booted (fresh-serving-tree guarantee).
+  kill_phase_servers 2>/dev/null || true
+  if [[ "$PUSH_PER_ITER" == "true" ]]; then
+    local _p
+    for _p in reports runs README.md; do
+      [[ -e "$REPO_ROOT/$_p" ]] && git -C "$REPO_ROOT" add -A -- "$_p" 2>/dev/null || true
+    done
+    if ! git -C "$REPO_ROOT" diff --cached --quiet 2>/dev/null; then
+      if git -C "$REPO_ROOT" commit --quiet -m "chore(goal): iter ${_SHOWCASE_ITER} showcase artifacts (demo/summary/README/renders)" 2>/dev/null; then
+        GIT_TERMINAL_PROMPT=0 git -C "$REPO_ROOT" push -u origin HEAD >/dev/null 2>&1 \
+          || echo "[run-goal] Showcase commit push failed (non-blocking; the next iteration's push carries it)." >&2
+      fi
+    fi
+  fi
 }
 
 # Tail an append-only state file to the last N lines, or return a placeholder
@@ -391,7 +658,12 @@ import json, datetime
 d = json.load(open("$SESSION_JSON"))
 d["status"] = "AWAITING_GITHUB_AUTH"
 d["updated_at"] = datetime.datetime.now(datetime.UTC).isoformat().replace('+00:00','Z')
-json.dump(d, open("$SESSION_JSON","w"), indent=2); open("$SESSION_JSON","a").write("\n")
+import os as _os, tempfile as _tf
+_fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
+with _os.fdopen(_fd, "w") as _f:
+    json.dump(d, _f, indent=2)
+    _f.write("\n")
+_os.replace(_tmp, "$SESSION_JSON")
 PY
   record_telemetry_event "halt" '{"reason":"AWAITING_GITHUB_AUTH","detected_at_step":"preflight"}'
   echo ""
@@ -405,6 +677,115 @@ PY
   echo "Run without pushing:  add --no-push-per-iter"
   echo "════════════════════════════════════════════════════════════════════"
   exit 0
+}
+
+# ── Intent checkpoint review packet (NEED-7) ──────────────────────────────
+# Assembles runs/goal-session-<sid>/intent-review.md DETERMINISTICALLY — pure
+# read/format of existing artifacts, no model dispatch. Every section fails
+# safe to a placeholder so the pause can never crash the engine.
+assemble_intent_review() {
+  local digest story ledger_tail blocking irreversible latest_iter_md latest_iter_html links
+  digest="$(python3 "$SCRIPT_DIR/lib/goal_gate.py" digest "$JOURNEY_HISTORY" 2>/dev/null \
+    || echo "(journey digest unavailable — read $JOURNEY_HISTORY)")"
+  story="$(cat "$GOAL_SESSION_DIR_LOCAL/state/project-story.md" 2>/dev/null \
+    || echo "(no project story yet — the first iterations have not written one)")"
+  ledger_tail="$(_tail_or_placeholder "$ASSUMPTIONS_FILE" 60 "(no assumptions recorded yet)")"
+  # Still-failing journeys via goal_gate's own status semantics
+  # (PASSING_STATUSES), so this list can never drift from the gates.
+  blocking="$(python3 - "$SCRIPT_DIR/lib/goal_gate.py" "$JOURNEY_HISTORY" <<'PY' 2>/dev/null || echo "(journey history unavailable)"
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("goal_gate", sys.argv[1])
+gg = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(gg)
+data = gg._load_history(sys.argv[2])
+if data is None:
+    print("(journey history unavailable)")
+else:
+    rows = [
+        f"- **{jid}** ({j.get('name', '') if isinstance(j, dict) else ''}): "
+        f"{j.get('status', '?') if isinstance(j, dict) else '?'}"
+        for jid, j in sorted(data["journeys"].items())
+        if not isinstance(j, dict) or j.get("status") not in gg.PASSING_STATUSES
+    ]
+    print("\n".join(rows) if rows else "(none — every journey currently passes)")
+PY
+)"
+  # Hard-to-reverse assumptions: ledger blocks whose **Reversible:** line says no.
+  irreversible="$(python3 - "$ASSUMPTIONS_FILE" <<'PY' 2>/dev/null || echo "(assumption ledger unreadable)"
+import re, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+if not p.exists():
+    print("(none recorded)")
+    raise SystemExit
+out = []
+for block in re.split(r"(?m)^##\s+", p.read_text(encoding="utf-8"))[1:]:
+    if not re.search(r"(?mi)^\*\*Reversible:\*\*\s*no\b", block):
+        continue
+    header = block.splitlines()[0].strip()
+    amb = re.search(r"(?mi)^\*\*Ambiguity:\*\*\s*(.+)$", block)
+    chose = re.search(r"(?mi)^\*\*We chose:\*\*\s*(.+)$", block)
+    out.append(
+        f"- {header} — {amb.group(1).strip() if amb else '(ambiguity unrecorded)'}"
+        f" → chose: {chose.group(1).strip() if chose else '(choice unrecorded)'}"
+    )
+print("\n".join(out) if out else "(none — all recorded assumptions are reversible)")
+PY
+)"
+  latest_iter_md="$(ls -1 "$REPO_ROOT"/reports/phase-goal-"${SESSION_ID}"-iter-*-iteration-summary.md 2>/dev/null | sort -V | tail -1 || true)"
+  links="- Session index (HTML): file://$REPO_ROOT/reports/goal-session-${SESSION_ID}-index.html"
+  if [[ -n "$latest_iter_md" ]]; then
+    links+=$'\n'"- Latest iteration summary: ${latest_iter_md#"$REPO_ROOT"/}"
+    latest_iter_html="${latest_iter_md%-iteration-summary.md}-summary.html"
+    [[ -f "$latest_iter_html" ]] && links+="  (HTML: ${latest_iter_html#"$REPO_ROOT"/})"
+  else
+    links+=$'\n'"- Latest iteration summary: (none written yet)"
+  fi
+  cat > "$INTENT_REVIEW_FILE" <<EOF
+# Intent Review — session ${SESSION_ID} (paused before iteration ${CURRENT_ITER})
+
+Generated deterministically by run-goal.sh (\`--intent-checkpoint\` /
+\`--intent-checkpoint-at\`) — no model wrote this. The engine paused so YOU can
+check the product is becoming what you wanted before more gets built on it.
+
+**Progress:** ${_intent_passing} of ${_intent_total} Must-have journeys pass.
+
+## Journey digest
+
+\`\`\`
+${digest}
+\`\`\`
+
+## Where the product stands (project story)
+
+${story}
+
+## Recent assumptions (ledger tail)
+
+${ledger_tail}
+
+## Full reports
+
+${links}
+
+## Targeted questions
+
+1. **Still-failing journeys — is this still what you want built next?**
+
+${blocking}
+
+2. **Hard-to-reverse assumptions (\`Reversible: no\`) — veto any wrong call NOW:**
+
+${irreversible}
+
+## How to respond
+
+- Direction is right → just resume; no other action needed:
+  \`./scripts/automation/run-goal.sh --resume --session-id ${SESSION_ID}\`
+- Drifting → edit \`docs/goal.md\` (journeys / anti-goals) BEFORE resuming;
+  future iterations plan from your edited text.
+- This checkpoint fires once per session; resuming acknowledges it.
+EOF
 }
 
 # ── Session init / load ───────────────────────────────────────────────────
@@ -474,6 +855,10 @@ if [[ -f "$SESSION_JSON" ]]; then
   RUN_MODE="resume"
 else
   validate_goal_file
+  # Advisory quality lint (NEED-3): prints warnings, NEVER blocks the engine.
+  if [[ "${CHAIN_GOAL_LINT:-true}" == "true" ]]; then
+    python3 "$SCRIPT_DIR/lib/goal_lint.py" "$GOAL_FILE" || true
+  fi
   CURRENT_ITER=0
   PRIOR_STATUS="new"
   echo "[run-goal] Initializing new session: $SESSION_ID"
@@ -488,6 +873,7 @@ data = {
   "started_at": datetime.datetime.now(datetime.UTC).isoformat().replace('+00:00', 'Z'),
   "current_iter": 0,
   "cli": "${CHAIN_CLI:-claude}",
+  "agent_backend": "$AGENT_BACKEND",
   "halt_config": {
     "max_iterations": $MAX_ITER,
     "stall_window": $STALL_WINDOW,
@@ -520,23 +906,45 @@ EOF
   RUN_MODE="new"
 fi
 
-# Allow --max-iter override on resume; also persist the resolved push_per_iter
-# / push_branch values so a subsequent resume picks them up (key may have been
-# absent in older sessions that pre-date the per-iter push feature).
+# New sessions get a default iteration cap (a fail-open loop with a
+# never-halting evaluator previously ran unbounded). --max-iter always wins,
+# and an explicit --max-iter 0 keeps a session unlimited. Resume honors the
+# value already stored in session.json rather than silently resetting it.
+if [[ "$RUN_MODE" == "new" && "$MAX_ITER_EXPLICIT" != "true" ]]; then
+  MAX_ITER=60
+  echo "[run-goal] Default iteration cap: $MAX_ITER (override with --max-iter N; 0 = unlimited)."
+fi
+
+# Persist halt config; also persist the resolved push_per_iter / push_branch
+# values so a subsequent resume picks them up (key may have been absent in
+# older sessions that pre-date the per-iter push feature).
 python3 - <<PY
 import json
 d = json.load(open("$SESSION_JSON"))
 d.setdefault("halt_config", {})
-d["halt_config"]["max_iterations"] = $MAX_ITER
+if "$RUN_MODE" == "new" or "$MAX_ITER_EXPLICIT" == "true":
+    d["halt_config"]["max_iterations"] = $MAX_ITER
+else:
+    d["halt_config"].setdefault("max_iterations", $MAX_ITER)
 d["halt_config"]["stall_window"] = $STALL_WINDOW
 if $( [[ "$AUTO_RELEASE" == "true" ]] && echo "True" || echo "False" ):
   d["auto_release"] = True
 d["push_per_iter"] = $( [[ "$PUSH_PER_ITER" == "true" ]] && echo "True" || echo "False" )
 d["push_branch"] = "$PUSH_BRANCH"
-if "$RUN_MODE" == "resume" and d.get("status") in ("REGRESSION_HALT", "AWAITING_BLUEPRINT_APPROVAL"):
+d["agent_backend"] = "$AGENT_BACKEND"
+if "$RUN_MODE" == "resume" and d.get("status") in ("REGRESSION_HALT", "AWAITING_BLUEPRINT_APPROVAL", "AWAITING_PUMP", "AWAITING_INTENT_REVIEW"):
   d["status"] = "in_progress"
-json.dump(d, open("$SESSION_JSON","w"), indent=2); open("$SESSION_JSON","a").write("\n")
+import os as _os, tempfile as _tf
+_fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
+with _os.fdopen(_fd, "w") as _f:
+    json.dump(d, _f, indent=2)
+    _f.write("\n")
+_os.replace(_tmp, "$SESSION_JSON")
 PY
+
+# The effective cap is whatever session.json now holds (resume may have kept a
+# stored value that differs from this invocation's $MAX_ITER default).
+MAX_ITER=$(python3 -c "import json; print(json.load(open('$SESSION_JSON')).get('halt_config', {}).get('max_iterations', 0))" 2>/dev/null || echo "$MAX_ITER")
 
 # Resuming from a blueprint-approval pause: the human has reviewed (and possibly
 # edited) state/blueprint.md. Treat the act of resuming as approval, and clear any
@@ -547,9 +955,38 @@ if [[ "$RUN_MODE" == "resume" && "$PRIOR_STATUS" == "AWAITING_BLUEPRINT_APPROVAL
   rm -f "$BLUEPRINT_REAPPROVAL"
 fi
 
+# Resuming from an intent-review pause: the human has read intent-review.md
+# (and possibly edited docs/goal.md). Resuming IS the acknowledgment — touch
+# the marker so the checkpoint never fires again this session.
+if [[ "$RUN_MODE" == "resume" && "$PRIOR_STATUS" == "AWAITING_INTENT_REVIEW" ]]; then
+  echo "[run-goal] Resuming from intent review — acknowledged; the checkpoint will not fire again this session."
+  touch "$INTENT_REVIEW_DONE"
+fi
+
 # ── Export shared env for invoked agents ──────────────────────────────────
 export GOAL_SESSION_ID="$SESSION_ID"
 export GOAL_SESSION_DIR="$GOAL_SESSION_DIR_LOCAL"
+
+# Interactive dispatch backend: export the backend selector + the file-channel
+# directory so every nested script (run-phase.sh, goal-iter-lean.sh, *-phase.sh)
+# routes its agent calls through _interactive_invoke (see lib/quota-retry.sh and
+# lib/interactive-dispatch.sh). Clear any stale channel files from a prior,
+# interrupted run so the pump and engine start from a clean channel.
+if [[ "$INTERACTIVE" == "true" ]]; then
+  export CHAIN_AGENT_BACKEND="interactive"
+  export CHAIN_DISPATCH_DIR="$GOAL_SESSION_DIR_LOCAL/dispatch"
+  mkdir -p "$CHAIN_DISPATCH_DIR"
+  rm -f "$CHAIN_DISPATCH_DIR"/req.* "$CHAIN_DISPATCH_DIR"/*.res "$CHAIN_DISPATCH_DIR"/*.started "$CHAIN_DISPATCH_DIR/.awaiting-pump" 2>/dev/null || true
+  # Seed the pump heartbeat FRESH at launch. A stale .pump-alive surviving from
+  # a prior session made the engine's first dispatch race the pump's first
+  # await call: if the engine won, Tier A read an hours-old mtime and aborted
+  # with "pump heartbeat stale" before the pump ever beat (the bug users worked
+  # around by manually pre-touching the file). Seeding (not deleting) keeps the
+  # Tier A abort armed for a pump that genuinely never starts.
+  touch "$CHAIN_DISPATCH_DIR/.pump-alive"
+  echo "[run-goal] Interactive dispatch backend ON — agents run as subagents in the foreground session (the pump)."
+  echo "[run-goal]   Dispatch channel: $CHAIN_DISPATCH_DIR"
+fi
 
 # Auto-enable replay/time-travel trace capture unless the user opts out.
 # Each successful claude invocation appends a record to <session>/trace/trace.jsonl
@@ -647,10 +1084,19 @@ QUOTA_PAUSE_COUNT_FILE="$GOAL_SESSION_DIR_LOCAL/.quota-pause-count"
 [[ -f "$QUOTA_PAUSE_COUNT_FILE" ]] || echo "0" > "$QUOTA_PAUSE_COUNT_FILE"
 
 journey_history_hash() {
+  # Hash ONLY stall-relevant fields. The evaluator bumps last_verified_iter
+  # (and evidence paths) on every re-verification even when no journey's
+  # STATE changed, so hashing the whole journey dict made consecutive hashes
+  # always differ — is_stalled() could never fire and the deterministic
+  # stall backstop was dead code. Status + last_passing_iter freeze exactly
+  # when real progress freezes.
   python3 -c "
 import hashlib, json, sys
 data = json.load(open('$JOURNEY_HISTORY'))
-canonical = {'journeys': data.get('journeys', {})}
+journeys = data.get('journeys', {}) or {}
+canonical = {'journeys': {jid: {'status': (j or {}).get('status'),
+                                'last_passing_iter': (j or {}).get('last_passing_iter')}
+                          for jid, j in journeys.items()}}
 print(hashlib.sha1(json.dumps(canonical, sort_keys=True).encode()).hexdigest())
 "
 }
@@ -677,6 +1123,14 @@ else:
 write_session_summary() {
   local final_verdict="$1"
   local total_iterations="$2"
+  # Settle any background showcase tail first so the summary/index reflect the
+  # final artifact set. When the pump is gone (AWAITING_PUMP) or the user hit
+  # Ctrl-C (ABORTED), the group's own agent dispatches cannot succeed — reap it
+  # immediately instead of waiting out its bounded join.
+  case "$final_verdict" in
+    AWAITING_PUMP|ABORTED) _join_showcase_tail --kill ;;
+    *)                     _join_showcase_tail ;;
+  esac
   local now_epoch=$(date +%s)
   local wall_time=$(( now_epoch - SESSION_START_EPOCH ))
   local quota_pauses
@@ -689,7 +1143,12 @@ d["finished_at"] = __import__("datetime").datetime.now(__import__("datetime").UT
 d["total_iterations"] = $total_iterations
 d["wall_time_seconds"] = $wall_time
 d["quota_pause_count"] = $quota_pauses
-json.dump(d, open("$SESSION_JSON","w"), indent=2); open("$SESSION_JSON","a").write("\n")
+import os as _os, tempfile as _tf
+_fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
+with _os.fdopen(_fd, "w") as _f:
+    json.dump(d, _f, indent=2)
+    _f.write("\n")
+_os.replace(_tmp, "$SESSION_JSON")
 PY
   # Branch info (only when push_per_iter is on)
   local branch_section=""
@@ -741,6 +1200,12 @@ else:
 ## Telemetry
 
 See \`runs/goal-session-${SESSION_ID}/telemetry.jsonl\` for the structured event log.
+
+## Iteration timing
+
+\`\`\`
+$(python3 "$SCRIPT_DIR/lib/analyze_telemetry.py" --wall "$GOAL_SESSION_DIR_LOCAL/telemetry.jsonl" 2>/dev/null || echo "(timing report unavailable)")
+\`\`\`
 EOF
   record_telemetry_event "session_end" "$(jq -cn --arg fv "$final_verdict" --argjson ti $total_iterations --argjson wt $wall_time --argjson qp $quota_pauses '{final_verdict:$fv, total_iterations:$ti, wall_time_seconds:$wt, quota_pause_count:$qp}' 2>/dev/null || printf '{"final_verdict":"%s","total_iterations":%d}' "$final_verdict" "$total_iterations")"
   echo "[run-goal] Session summary: $SUMMARY_FILE"
@@ -749,9 +1214,18 @@ EOF
   [[ -f "$_idx_html" ]] && echo "[run-goal] Session HTML: file://$_idx_html"
 }
 
-# Trap: on SIGINT/SIGTERM, write ABORTED summary
+# Record this engine's PID so /goal-pause and a resuming run can find and stop it
+# across separate command invocations (the interactive pump's in-memory PID is
+# not available to a later /goal-pause). Cleaned up on any exit, including the
+# on_abort path below (which exits 130 → the EXIT trap fires).
+echo "$$" > "$ENGINE_PID_FILE" 2>/dev/null || true
+trap '_join_showcase_tail --kill 2>/dev/null; rm -f "$ENGINE_PID_FILE" 2>/dev/null || true' EXIT
+
+# Trap: on SIGINT/SIGTERM, write ABORTED summary. Kill the background showcase
+# tail FIRST so Ctrl-C never blocks on a non-gating summary/README agent.
 on_abort() {
   echo "[run-goal] Aborted by user signal. Writing summary." >&2
+  _join_showcase_tail --kill 2>/dev/null || true
   write_session_summary "ABORTED" "$CURRENT_ITER"
   exit 130
 }
@@ -764,7 +1238,7 @@ preflight_github_access
 # ── Main loop ─────────────────────────────────────────────────────────────
 while true; do
   # 1. Halt checks (always first)
-  if [[ $CURRENT_ITER -ge $MAX_ITER ]]; then
+  if [[ "$MAX_ITER" -gt 0 && $CURRENT_ITER -ge $MAX_ITER ]]; then
     echo "[run-goal] BUDGET_EXHAUSTED — reached max-iter cap of $MAX_ITER."
     record_telemetry_event "halt" '{"reason":"BUDGET_EXHAUSTED","detected_at_step":"pre_decomposer"}'
     write_session_summary "BUDGET_EXHAUSTED" "$CURRENT_ITER"
@@ -799,7 +1273,12 @@ import json, datetime
 d = json.load(open("$SESSION_JSON"))
 d["status"] = "AWAITING_BLUEPRINT_APPROVAL"
 d["updated_at"] = datetime.datetime.now(datetime.UTC).isoformat().replace('+00:00','Z')
-json.dump(d, open("$SESSION_JSON","w"), indent=2); open("$SESSION_JSON","a").write("\n")
+import os as _os, tempfile as _tf
+_fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
+with _os.fdopen(_fd, "w") as _f:
+    json.dump(d, _f, indent=2)
+    _f.write("\n")
+_os.replace(_tmp, "$SESSION_JSON")
 PY
     record_telemetry_event "halt" '{"reason":"AWAITING_BLUEPRINT_APPROVAL","detected_at_step":"pre_decomposer"}'
     echo ""
@@ -827,11 +1306,90 @@ PY
     exit 0
   fi
 
+  # 1c. Intent checkpoint (NEED-7) — opt-in mid-session pause for the human:
+  # "is this still the product you wanted?". Cloned from the blueprint gate
+  # above: fires at the TOP of the loop (never mid-iteration), writes a
+  # resumable status, exits 0; --resume acknowledges it (sibling block next to
+  # the blueprint resume-as-approval). Fires at most once per session
+  # (state/.intent-review-done). intent-review.md is assembled
+  # deterministically — no model dispatch. Triggers: --intent-checkpoint at
+  # passing/total >= 50%; --intent-checkpoint-at N when the loop reaches
+  # iteration N (same convention as --max-iter).
+  _need_intent_review=false
+  _intent_total=0
+  _intent_passing=0
+  if [[ ! -f "$INTENT_REVIEW_DONE" ]] \
+     && [[ "$INTENT_CHECKPOINT" == "true" || "$INTENT_CHECKPOINT_AT" -gt 0 ]]; then
+    read -r _intent_total _intent_passing <<<"$(
+      { python3 "$SCRIPT_DIR/lib/goal_gate.py" journeys "$JOURNEY_HISTORY" 2>/dev/null || true; } \
+        | python3 -c 'import json, sys
+try:
+    d = json.loads(sys.stdin.read() or "{}")
+    print(int(d.get("total", 0)), int(d.get("passing", 0)))
+except Exception:
+    print(0, 0)'
+    )"
+    if [[ "$INTENT_CHECKPOINT_AT" -gt 0 && $CURRENT_ITER -ge $INTENT_CHECKPOINT_AT ]]; then
+      _need_intent_review=true
+    elif [[ "$INTENT_CHECKPOINT" == "true" && "$_intent_total" -gt 0 \
+            && $(( 2 * _intent_passing )) -ge "$_intent_total" ]]; then
+      _need_intent_review=true
+    fi
+  fi
+  if [[ "$_need_intent_review" == "true" ]]; then
+    assemble_intent_review
+    python3 - <<PY
+import json, datetime
+d = json.load(open("$SESSION_JSON"))
+d["status"] = "AWAITING_INTENT_REVIEW"
+d["updated_at"] = datetime.datetime.now(datetime.UTC).isoformat().replace('+00:00','Z')
+import os as _os, tempfile as _tf
+_fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
+with _os.fdopen(_fd, "w") as _f:
+    json.dump(d, _f, indent=2)
+    _f.write("\n")
+_os.replace(_tmp, "$SESSION_JSON")
+PY
+    record_telemetry_event "halt" '{"reason":"AWAITING_INTENT_REVIEW","detected_at_step":"pre_decomposer"}'
+    echo ""
+    echo "════════════════════════════════════════════════════════════════════"
+    echo "[run-goal] PAUSED — intent checkpoint: is this the product you wanted?"
+    echo "════════════════════════════════════════════════════════════════════"
+    echo "Progress: ${_intent_passing} of ${_intent_total} Must-have journeys pass."
+    echo ""
+    echo "Review (~5 min):  $INTENT_REVIEW_FILE"
+    echo "  1. Journey digest + targeted questions — is what's still failing what"
+    echo "     you want built next?"
+    echo "  2. Hard-to-reverse assumptions — veto any wrong interpretation NOW."
+    echo "If the product is drifting, edit docs/goal.md (journeys / anti-goals)"
+    echo "before resuming — future iterations plan from your edited text."
+    echo ""
+    echo "Resume:  ./scripts/automation/run-goal.sh --resume --session-id $SESSION_ID"
+    echo "(The checkpoint fires once per session; resuming acknowledges it.)"
+    echo "════════════════════════════════════════════════════════════════════"
+    exit 0
+  fi
+
   ITER_NAME="goal-${SESSION_ID}-iter-${CURRENT_ITER}"
   ITER_DIR="$GOAL_SESSION_DIR_LOCAL/iter-${CURRENT_ITER}"
   mkdir -p "$ITER_DIR"
+  # Stale-artifact hygiene: a prior ABORTED/AWAITING_PUMP attempt of this same
+  # iteration may have left eval.md / coherence.md behind; parsing them would
+  # certify a verdict the re-run never produced. Delete them UNLESS a completion
+  # marker says the previous attempt genuinely finished that step: eval.md is
+  # covered by the .evaluated marker (the evaluator step below reuses it), and
+  # coherence.md by its step checkpoint (the coherence step below reuses it —
+  # the checkpoint's tree-hash re-verification happens at that site).
+  if [[ ! -f "$ITER_DIR/.evaluated" ]]; then
+    rm -f "$ITER_DIR/eval.md" 2>/dev/null || true
+  fi
+  if ! step_done_valid coherence --dir "$ITER_DIR" "$ITER_DIR/coherence.md"; then
+    rm -f "$ITER_DIR/coherence.md" 2>/dev/null || true
+  fi
   export GOAL_ITER_INDEX="$CURRENT_ITER"
   export GOAL_ITER_NAME="$ITER_NAME"
+  # Lets goal-iter-lean.sh fork the coherence audit concurrently with browser-qa.
+  export GOAL_BLUEPRINT_FILE="$BLUEPRINT_FILE"
 
   # Capture a working-tree snapshot at the start of this iteration. This is a
   # zero-impact recording: `git stash create` builds a stash commit object
@@ -839,11 +1397,16 @@ PY
   # `git diff <sha>..HEAD` to see exactly what this iteration changed, and
   # `git reset --hard <sha>` (advanced) to roll back. Best-effort; failures
   # write an empty file and do not block the iteration.
+  # First-write-wins: a RESUMED attempt of this same iteration must keep the
+  # original pre-development baseline — re-capturing here would make the
+  # coherence-auditor diff against a post-development tree and see nothing.
   if git -C "$REPO_ROOT" rev-parse --git-dir >/dev/null 2>&1; then
-    if _snap=$(git -C "$REPO_ROOT" stash create 2>/dev/null); then
-      printf '%s' "$_snap" > "$ITER_DIR/snapshot-sha"
-    else
-      : > "$ITER_DIR/snapshot-sha"
+    if [[ ! -f "$ITER_DIR/snapshot-sha" ]]; then
+      if _snap=$(git -C "$REPO_ROOT" stash create 2>/dev/null); then
+        printf '%s' "$_snap" > "$ITER_DIR/snapshot-sha"
+      else
+        : > "$ITER_DIR/snapshot-sha"
+      fi
     fi
   fi
 
@@ -851,6 +1414,12 @@ PY
   PRIOR_DEPTH=$(python3 -c "import json; print(json.load(open('$SESSION_JSON')).get('next_depth') or 'lean')")
 
   record_telemetry_event "iter_start" "$(jq -cn --arg n "$ITER_NAME" --arg pv "$PRIOR_VERDICT" --arg pd "$PRIOR_DEPTH" --arg ss "$(cat "$ITER_DIR/snapshot-sha" 2>/dev/null || echo "")" '{iter_name:$n, prior_verdict:$pv, prior_depth:$pd, snapshot_sha:$ss}' 2>/dev/null || printf '{"iter_name":"%s"}' "$ITER_NAME")"
+
+  # Mark experiment-knob-active iterations so the --tripwire window knows which
+  # iterations to judge (opt-in speed experiments, .claude/model-orchestration.md).
+  if [[ -n "${CHAIN_AGENT_EFFORT:-}" ]]; then
+    record_telemetry_event "iter_config" "$(jq -cn --arg k "CHAIN_AGENT_EFFORT" --arg v "$CHAIN_AGENT_EFFORT" '{key:$k, value:$v}' 2>/dev/null || printf '{"key":"CHAIN_AGENT_EFFORT","value":"%s"}' "$CHAIN_AGENT_EFFORT")"
+  fi
 
   echo ""
   echo "════════════════════════════════════════════════════════════════════"
@@ -870,8 +1439,29 @@ PY
   # 200 lines is conservative and covers multi-paragraph entries.
   EVALUATOR_LOG_TAIL=$(_tail_or_placeholder "$EVALUATOR_LOG" 200 "(no entries yet — first iteration)")
   LESSONS_TAIL=$(_tail_or_placeholder "$LESSONS_FILE" 200 "(no lessons recorded yet)")
+  ASSUMPTIONS_TAIL=$(_tail_or_placeholder "$ASSUMPTIONS_FILE" 200 "(no assumptions recorded yet)")
+  # Token-lean goal view (T1/T8): stable passing journeys digested to one line,
+  # vision/anti-goals/failing journeys verbatim; plus an inline journey digest.
+  # Both fail safe (full file / placeholder) — see lib/goal_gate.py.
+  GOAL_SLICE_PATH="$ITER_DIR/goal-slice.md"
+  python3 "$SCRIPT_DIR/lib/goal_gate.py" goal-slice "$GOAL_FILE" \
+    --history "$JOURNEY_HISTORY" --out "$GOAL_SLICE_PATH" 2>/dev/null \
+    || cp "$GOAL_FILE" "$GOAL_SLICE_PATH" 2>/dev/null || GOAL_SLICE_PATH="$GOAL_FILE"
+  JOURNEY_DIGEST=$(python3 "$SCRIPT_DIR/lib/goal_gate.py" digest "$JOURNEY_HISTORY" 2>/dev/null || echo "(journey digest unavailable — read $JOURNEY_HISTORY)")
   cd "$REPO_ROOT"
-  _decomp_start=$(record_agent_invocation_start "goal-decomposer")
+  ITER_SPEC_PATH="$REPO_ROOT/docs/phases/${ITER_NAME}.md"
+  # Resume-skip: a prior attempt of this same iteration already wrote a spec
+  # that parses (checkpoint + Depth line) — don't redo the planning call.
+  # The guarded section below is not re-indented; it ends at the matching `fi`
+  # after the spec-existence check.
+  if step_done_valid decomposer --dir "$ITER_DIR" "$ITER_SPEC_PATH" \
+     && grep -qiE '(\*\*)?Depth:(\*\*)?[[:space:]]*(lean|full)' "$ITER_SPEC_PATH"; then
+    echo "[run-goal] Resume: goal-decomposer already completed for iteration $CURRENT_ITER (checkpoint + spec verified) — skipping."
+    record_telemetry_event "step_skipped" "$(jq -cn --arg n "$ITER_NAME" '{step:"goal-decomposer", iter_name:$n, reason:"checkpoint"}' 2>/dev/null || printf '{"step":"goal-decomposer"}')"
+  else
+  step_invalidate_from decomposer "$ITER_DIR"
+  record_agent_invocation_start "goal-decomposer"   # bare call: must NOT be $(...) or the CHAIN_CURRENT_AGENT export is lost to a subshell
+  _decomp_start=$CHAIN_AGENT_START_EPOCH
   _decomp_rc=0
   claude_with_quota_retry -p "You are the goal-decomposer agent for goal-mode iteration planning.
 
@@ -883,7 +1473,8 @@ Prior verdict: $PRIOR_VERDICT
 Prior depth: $PRIOR_DEPTH
 
 Project template: .claude/project-template.md
-Project goal: $GOAL_FILE  <-- read 'Must-have user journeys' and 'Anti-goals'
+Project goal (SLICED — vision + anti-goals + failing/target journeys verbatim; stable passing journeys digested to one line): $GOAL_SLICE_PATH
+  Full goal file: $GOAL_FILE — Read it ONLY if a digested journey becomes relevant to your plan.
 Agent instructions: .claude/agents/goal-decomposer.md  <-- read this first
 (CLAUDE.md is already in your system prompt — do not Read it again.)
 
@@ -895,14 +1486,22 @@ Lessons learned (full file, append-only):
 \`\`\`
 $LESSONS_TAIL
 \`\`\`
-Journey history: $JOURNEY_HISTORY  <-- read for full journey state
+Assumption ledger (append-only): $ASSUMPTIONS_FILE  <-- when a spec decision requires interpreting an ambiguous goal, append an entry per your agent instructions; zero entries is normal. Do not read the full file — recent tail below.
+Recent assumption entries (pre-trimmed):
+\`\`\`
+$ASSUMPTIONS_TAIL
+\`\`\`
+Journey state (inline digest; Read $JOURNEY_HISTORY only for fields the digest omits):
+\`\`\`
+$JOURNEY_DIGEST
+\`\`\`
 
 $( [[ $CURRENT_ITER -gt 0 && -f "$GOAL_SESSION_DIR_LOCAL/iter-$((CURRENT_ITER-1))/eval.md" ]] && echo "Last iteration eval: $GOAL_SESSION_DIR_LOCAL/iter-$((CURRENT_ITER-1))/eval.md")
 
 Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
 
 Write the iteration spec to: docs/phases/${ITER_NAME}.md
-$( if [[ "$DECOMPOSER_MODE" == "baseline" ]]; then echo "BASELINE also: draft the coherence blueprint to $BLUEPRINT_FILE per your agent instructions (Information Architecture + Data Contract, ~one screen, from docs/goal.md's Product Shape + Must-have journeys + Key Capabilities). The loop pauses for human approval of this file after baseline."; else echo "Also keep $BLUEPRINT_FILE current per your agent instructions: register any new displayed value in the Data Contract and place new pages under an existing Information-Architecture home (additive edits only). For a nav-skeleton change, make the edit AND write a one-line reason to $BLUEPRINT_REAPPROVAL."; fi )
+$( if [[ "$DECOMPOSER_MODE" == "baseline" ]]; then echo "BASELINE also: draft the coherence blueprint to $BLUEPRINT_FILE per your agent instructions (Information Architecture + Data Contract, ~one screen, from docs/goal.md's Product Shape + Must-have journeys + Key Capabilities). The blueprint is auto-approved by default and the loop proceeds; pass --require-blueprint-approval to pause for human review after baseline."; else echo "Also keep $BLUEPRINT_FILE current per your agent instructions: register any new displayed value in the Data Contract and place new pages under an existing Information-Architecture home (additive edits only). For a nav-skeleton change, make the edit AND write a one-line reason to $BLUEPRINT_REAPPROVAL."; fi )
 
 The spec MUST include a 'Goal Mode Metadata' section with at minimum:
   - Mode: $DECOMPOSER_MODE
@@ -913,6 +1512,20 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
 
   record_agent_invocation_end "goal-decomposer" "$_decomp_start" "$_decomp_rc"
 
+  # Transport loss (exit 70) is infrastructure, not a planning failure: pause
+  # resumably like the executor/coherence sites do, instead of the previous
+  # (incorrect) hard ABORTED that forced a full manual restart.
+  if [[ "$_decomp_rc" -eq "${DISPATCH_UNAVAILABLE_EXIT_CODE:-70}" ]]; then
+    echo "[run-goal] Interactive pump/dispatch unavailable during goal-decomposer — pausing (resume re-runs iteration $CURRENT_ITER)." >&2
+    if [[ -n "${CHAIN_DISPATCH_DIR:-}" && -f "${CHAIN_DISPATCH_DIR}/.awaiting-pump" ]]; then
+      echo "[run-goal]   $(cat "${CHAIN_DISPATCH_DIR}/.awaiting-pump" 2>/dev/null)" >&2
+    fi
+    echo "[run-goal]   Resume after re-opening the pump session:  /goal-resume $SESSION_ID" >&2
+    record_telemetry_event "halt" '{"reason":"AWAITING_PUMP","detected_at_step":"decomposer"}'
+    write_session_summary "AWAITING_PUMP" "$CURRENT_ITER"
+    exit 0
+  fi
+
   if [[ $_decomp_rc -ne 0 ]]; then
     echo "[run-goal] goal-decomposer failed with exit $_decomp_rc — aborting." >&2
     record_telemetry_event "halt" '{"reason":"DECOMPOSER_FAILED","detected_at_step":"decomposer"}'
@@ -920,21 +1533,54 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
     exit "$_decomp_rc"
   fi
 
-  ITER_SPEC_PATH="$REPO_ROOT/docs/phases/${ITER_NAME}.md"
   if [[ ! -f "$ITER_SPEC_PATH" ]]; then
     echo "[run-goal] goal-decomposer did not write spec at $ITER_SPEC_PATH — aborting." >&2
     write_session_summary "ABORTED" "$CURRENT_ITER"
     exit 1
   fi
 
+  step_mark_done decomposer --dir "$ITER_DIR" "$ITER_SPEC_PATH"
+  fi  # end of the decomposer resume-skip guard
+
+  # ── Post-decompose gate (generic, project-local, default-off) ───────────────
+  # Extension point M2: if the project provides project-extensions/gates/
+  # post-decompose.sh, run it with the iteration context BEFORE any build work.
+  # A non-zero exit BLOCKS the iteration (e.g. an evidence-derived proposal whose
+  # statistical referee did not certify it). Absent script ⇒ skipped entirely, so
+  # other projects sharing this framework behave exactly as before.
+  if [[ -f "$REPO_ROOT/project-extensions/gates/post-decompose.sh" ]]; then
+    echo "[run-goal] Post-decompose gate: project-extensions/gates/post-decompose.sh ..."
+    mkdir -p "$ITER_DIR"
+    _gate_rc=0
+    (
+      export SESSION_ID ITER_NAME REPO_ROOT
+      export ITER="$CURRENT_ITER" \
+             SPEC_PATH="$ITER_SPEC_PATH" \
+             SESSION_DIR="$GOAL_SESSION_DIR_LOCAL" \
+             LEDGER_PATH="$GOAL_SESSION_DIR_LOCAL/state/certified-claims.jsonl" \
+             STAGING_LEDGER_PATH="$GOAL_SESSION_DIR_LOCAL/state/staging-ledger.jsonl" \
+             GATE_VERDICT_PATH="$ITER_DIR/gate-post-decompose.json"
+      run_project_gate post-decompose
+    ) || _gate_rc=$?
+    if [[ "$_gate_rc" -ne 0 ]]; then
+      echo "[run-goal] Post-decompose gate BLOCKED iteration $CURRENT_ITER (exit $_gate_rc)." >&2
+      if [[ -f "$ITER_DIR/gate-post-decompose.json" ]]; then
+        echo "[run-goal]   verdict: $ITER_DIR/gate-post-decompose.json" >&2
+      fi
+      record_telemetry_event "halt" '{"reason":"GATE_BLOCKED_POST_DECOMPOSE","detected_at_step":"post_decomposer"}'
+      write_session_summary "GATE_BLOCKED" "$CURRENT_ITER"
+      exit 0
+    fi
+  fi
+
   # Parse depth
   DEPTH=$(grep -m1 -E '^[[:space:]]*-?[[:space:]]*\*\*Depth:\*\*' "$ITER_SPEC_PATH" \
             | sed -E 's/.*\*\*Depth:\*\*[[:space:]]*//; s/[[:space:]]+$//' \
-            | tr '[:upper:]' '[:lower:]')
+            | tr '[:upper:]' '[:lower:]') || true
   if [[ -z "$DEPTH" ]]; then
     DEPTH=$(grep -m1 -E '^[[:space:]]*-?[[:space:]]*Depth:' "$ITER_SPEC_PATH" \
               | sed -E 's/.*Depth:[[:space:]]*//; s/[[:space:]]+$//' \
-              | tr '[:upper:]' '[:lower:]')
+              | tr '[:upper:]' '[:lower:]') || true
   fi
   if [[ "$DEPTH" != "lean" && "$DEPTH" != "full" ]]; then
     echo "[run-goal] Could not parse Depth (expected 'lean' or 'full') from $ITER_SPEC_PATH. Defaulting to lean." >&2
@@ -948,7 +1594,18 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
   echo "[run-goal] Target journeys: ${TARGET_JOURNEYS:-(none parsed)}"
   record_telemetry_event "iter_dispatch" "$(jq -cn --arg d "$DEPTH" --arg tj "$TARGET_JOURNEYS" '{depth:$d, target_journeys:$tj}' 2>/dev/null || printf '{"depth":"%s"}' "$DEPTH")"
 
-  # 3. Dispatch
+  # 2c. Join the previous iteration's background showcase tail (if any) BEFORE
+  # dispatching build work: its artifacts get committed here, so developer /
+  # reviewer of THIS iteration see exactly the tree the sequential ordering
+  # would have produced. Overlapping it with the decomposer above is where the
+  # ~6-13 min saving comes from.
+  _join_showcase_tail
+
+  # 3. Dispatch. Reset the per-iteration exit code first: _exec_rc is a plain
+  # shell var, so a stale 70 from a prior iteration would otherwise survive into
+  # this one (the `:-0` default only fills an UNSET var) and mis-fire the
+  # transport-pause check below.
+  _exec_rc=0
   if [[ "$DEPTH" == "full" ]]; then
     _full_extra_args=(--no-finalize)
     echo "[run-goal] Dispatching FULL pipeline via run-phase.sh ${_full_extra_args[*]} ..."
@@ -962,7 +1619,24 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
     echo "[run-goal] Dispatching LEAN pipeline via goal-iter-lean.sh ..."
     bash "$SCRIPT_DIR/goal-iter-lean.sh" "$ITER_NAME" || _exec_rc=$?
   fi
-  _exec_rc=${_exec_rc:-0}
+
+  # Transport/dispatch-unavailable (exit 70) from the interactive backend: the
+  # pump/session went away mid-iteration. This is infrastructure, not agent
+  # quality — pause cleanly and resumably instead of running the coherence-auditor
+  # and goal-evaluator (which would also fail to dispatch) on an empty iteration.
+  # current_iter is NOT advanced (it only moves after the evaluator), so
+  # /goal-resume re-runs this same iteration from the decomposer.
+  if [[ "$_exec_rc" -eq "${DISPATCH_UNAVAILABLE_EXIT_CODE:-70}" ]]; then
+    echo "[run-goal] Interactive pump/dispatch unavailable during iteration $CURRENT_ITER — pausing." >&2
+    if [[ -n "${CHAIN_DISPATCH_DIR:-}" && -f "${CHAIN_DISPATCH_DIR}/.awaiting-pump" ]]; then
+      echo "[run-goal]   $(cat "${CHAIN_DISPATCH_DIR}/.awaiting-pump" 2>/dev/null)" >&2
+    fi
+    echo "[run-goal]   Resume after re-opening the pump session:  /goal-resume $SESSION_ID" >&2
+    echo "[run-goal]   (or: ./scripts/automation/run-goal.sh --resume --session-id $SESSION_ID --interactive)" >&2
+    record_telemetry_event "halt" '{"reason":"AWAITING_PUMP","detected_at_step":"executor"}'
+    write_session_summary "AWAITING_PUMP" "$CURRENT_ITER"
+    exit 0
+  fi
 
   # 3b. Coherence auditor — information-architecture + data-contract drift gate.
   # Goal-mode only; one integration point covering both lean and full dispatch.
@@ -972,41 +1646,73 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
   # safety-net agent can never wedge the session.
   COHERENCE_OUTPUT="$ITER_DIR/coherence.md"
   if [[ $CURRENT_ITER -gt 0 && -f "$BLUEPRINT_FILE" ]]; then
+    _coh_dispatched=""
+    _coh_stubbed=""
+    # Resume-skip: a prior attempt's audit is reusable only when its checkpoint,
+    # the verdict line, AND the tree state all verify (a drifted tree means the
+    # audited diff is no longer this iteration's diff).
+    if step_done_valid coherence --verify-tree --dir "$ITER_DIR" "$COHERENCE_OUTPUT" \
+       && grep -qE '^\*\*Verdict:\*\* COHERENCE-(PASS|WARN|FAIL)' "$COHERENCE_OUTPUT"; then
+      echo "[run-goal] Resume: coherence audit already completed for iteration $CURRENT_ITER (checkpoint + tree verified) — reusing $COHERENCE_OUTPUT."
+      record_telemetry_event "step_skipped" "$(jq -cn --arg n "$ITER_NAME" '{step:"coherence-auditor", iter_name:$n, reason:"checkpoint"}' 2>/dev/null || printf '{"step":"coherence-auditor"}')"
+    else
+    step_invalidate_from coherence "$ITER_DIR"
+    _coh_dispatched=1
     echo "[run-goal] Step 2b: coherence-auditor"
     _snapshot_sha="$(cat "$ITER_DIR/snapshot-sha" 2>/dev/null || echo "")"
-    cd "$REPO_ROOT"
-    _coh_start=$(record_agent_invocation_start "coherence-auditor")
     _coh_rc=0
-    claude_with_quota_retry -p "You are the coherence-auditor agent for goal-mode coherence enforcement.
-
-Session ID: $SESSION_ID
-Iteration index: $CURRENT_ITER
-Iter name: $ITER_NAME
-
-Blueprint (the contract): $BLUEPRINT_FILE
-Iter spec: $ITER_SPEC_PATH
-Agent instructions: .claude/agents/coherence-auditor.md  <-- read this first
-Methodology: .claude/skills/coherence-audit.md
-(CLAUDE.md is already in your system prompt — do not Read it again.)
-
-This iteration's changes: run \`git diff ${_snapshot_sha}\` (and \`git status\` / \`git diff HEAD\` for uncommitted changes). If the snapshot SHA is empty, fall back to \`git diff HEAD~1\`.
-UI surface map (read if it exists): reports/phase-${ITER_NAME}-ui-surface-map.md
-
-Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
-
-Write your verdict to: $COHERENCE_OUTPUT
-The verdict line MUST appear first and start exactly with:
-**Verdict:** COHERENCE-PASS
-  or **Verdict:** COHERENCE-WARN
-  or **Verdict:** COHERENCE-FAIL" || _coh_rc=$?
-    record_agent_invocation_end "coherence-auditor" "$_coh_start" "$_coh_rc"
+    dispatch_coherence_audit "$SESSION_ID" "$CURRENT_ITER" "$ITER_NAME" \
+      "$BLUEPRINT_FILE" "$ITER_SPEC_PATH" "$COHERENCE_OUTPUT" "$_snapshot_sha" || _coh_rc=$?
+    # Pump loss (transport 70) is infrastructure, not an audit result — without
+    # this guard a dead pump fabricated a COHERENCE-PASS via the crash stub below.
+    if [[ "$_coh_rc" -eq "${DISPATCH_UNAVAILABLE_EXIT_CODE:-70}" ]]; then
+      echo "[run-goal] Interactive pump/dispatch unavailable during coherence audit — pausing (resume re-runs iteration $CURRENT_ITER)." >&2
+      record_telemetry_event "halt" '{"reason":"AWAITING_PUMP","detected_at_step":"coherence_auditor"}'
+      write_session_summary "AWAITING_PUMP" "$CURRENT_ITER"
+      exit 0
+    fi
+    fi  # end of the coherence resume-skip guard
     if [[ ! -f "$COHERENCE_OUTPUT" ]]; then
       echo "[run-goal] coherence-auditor wrote no output — recording non-blocking PASS and continuing." >&2
       printf '**Verdict:** COHERENCE-PASS\n\n(Coherence auditor produced no output; treated as a non-blocking pass.)\n' > "$COHERENCE_OUTPUT"
+      _coh_stubbed=1
     fi
-    _coh_verdict=$(grep -m1 -E '^\*\*Verdict:\*\*' "$COHERENCE_OUTPUT" | sed -E 's/^\*\*Verdict:\*\*[[:space:]]*//' | awk '{print $1}')
+    _coh_verdict=$(grep -m1 -E '^\*\*Verdict:\*\*' "$COHERENCE_OUTPUT" | sed -E 's/^\*\*Verdict:\*\*[[:space:]]*//' | awk '{print $1}') || true
     echo "[run-goal] Coherence verdict: ${_coh_verdict:-unknown}"
     record_telemetry_event "coherence_audit" "$(jq -cn --arg v "${_coh_verdict:-unknown}" '{verdict:$v}' 2>/dev/null || printf '{"verdict":"%s"}' "${_coh_verdict:-unknown}")"
+    # Checkpoint: only a genuine agent-produced audit is reusable on resume —
+    # never the non-blocking crash stub above (a re-run may produce a real one).
+    if [[ -n "$_coh_dispatched" && -z "$_coh_stubbed" && "${_coh_rc:-1}" -eq 0 ]]; then
+      step_mark_done coherence --dir "$ITER_DIR" --verdict "${_coh_verdict:-unknown}" "$COHERENCE_OUTPUT"
+    fi
+  fi
+
+  # 3c. Pre-evaluator deterministic artifacts (gates + token-lean context).
+  #   - journey-history.pre.json: snapshot BEFORE the evaluator rewrites it —
+  #     the regression cross-check compares against this (skipped on the
+  #     .evaluated reuse path, where the prior attempt's snapshot must survive)
+  #   - scan-report.md / iter-diff.md: full-diff secret scan + bounded diff view
+  #   - goal-slice refresh with this iteration's Target journeys kept verbatim
+  #   - journeys-changed.md: recorded-passing journeys whose goal.md spec text
+  #     no longer matches their recorded spec_hash (mid-session goal edit)
+  if [[ ! -f "$ITER_DIR/.evaluated" ]]; then
+    cp "$JOURNEY_HISTORY" "$ITER_DIR/journey-history.pre.json" 2>/dev/null || true
+  fi
+  _snapshot_sha_for_gates="$(cat "$ITER_DIR/snapshot-sha" 2>/dev/null || echo "")"
+  goal_gate_build_diff_artifacts "$ITER_DIR" "$_snapshot_sha_for_gates" "$REPO_ROOT" || true
+  _spec_targets="$(grep -m1 -E 'Target journeys:' "$ITER_SPEC_PATH" 2>/dev/null | sed -E 's/.*Target journeys:\*?\*?[[:space:]]*//' | tr -d ' ' )" || _spec_targets=""
+  python3 "$SCRIPT_DIR/lib/goal_gate.py" goal-slice "$GOAL_FILE" \
+    --history "$JOURNEY_HISTORY" ${_spec_targets:+--targets "$_spec_targets"} \
+    --out "$GOAL_SLICE_PATH" 2>/dev/null || true
+  JOURNEY_DIGEST=$(python3 "$SCRIPT_DIR/lib/goal_gate.py" digest "$JOURNEY_HISTORY" 2>/dev/null || echo "(journey digest unavailable — read $JOURNEY_HISTORY)")
+  # Goal-edit drift note: journeys recorded passing whose goal.md text changed
+  # since their spec_hash was recorded (the user's mid-session veto mechanism).
+  # Histories without spec_hash (pre-NEED-9 sessions) produce no note by design.
+  python3 "$SCRIPT_DIR/lib/goal_gate.py" hash-journeys "$GOAL_FILE" \
+    --history "$JOURNEY_HISTORY" --out-changed "$ITER_DIR/journeys-changed.md" \
+    >/dev/null 2>&1 || true
+  if [[ -f "$ITER_DIR/journeys-changed.md" ]]; then
+    echo "[run-goal] Goal-edit drift: passing journeys whose goal.md text changed since last verification — see $ITER_DIR/journeys-changed.md"
   fi
 
   # 4. Goal evaluator
@@ -1014,8 +1720,20 @@ The verdict line MUST appear first and start exactly with:
   EVAL_OUTPUT="$ITER_DIR/eval.md"
   # Pre-trim — evaluator spec asks for "last 5 entries"; 300 lines covers it.
   EVALUATOR_LOG_TAIL_5=$(_tail_or_placeholder "$EVALUATOR_LOG" 300 "(no entries yet — first evaluation)")
+  # Recompute the assumptions tail fresh (not the decomposer-time value): the
+  # decomposer may have appended entries earlier in this same iteration.
+  ASSUMPTIONS_TAIL=$(_tail_or_placeholder "$ASSUMPTIONS_FILE" 200 "(no assumptions recorded yet)")
+  if [[ -f "$ITER_DIR/.evaluated" && -f "$EVAL_OUTPUT" ]]; then
+    # A prior attempt of this iteration completed its evaluation but crashed
+    # before current_iter advanced. Re-running the evaluator would double-append
+    # evaluator-log.md/lessons.md and re-churn journey-history — reuse instead.
+    echo "[run-goal] Iteration $CURRENT_ITER already evaluated (.evaluated marker) — reusing existing eval.md, skipping evaluator re-dispatch."
+    cd "$REPO_ROOT"
+    _eval_rc=0
+  else
   cd "$REPO_ROOT"
-  _eval_start=$(record_agent_invocation_start "goal-evaluator")
+  record_agent_invocation_start "goal-evaluator"   # bare call: must NOT be $(...) or the CHAIN_CURRENT_AGENT export is lost to a subshell
+  _eval_start=$CHAIN_AGENT_START_EPOCH
   _eval_rc=0
   claude_with_quota_retry -p "You are the goal-evaluator agent for goal-mode iteration evaluation.
 
@@ -1024,12 +1742,15 @@ Iteration index: $CURRENT_ITER
 Iter name: $ITER_NAME
 Depth dispatched: $DEPTH
 
-Project goal: $GOAL_FILE  <-- read 'Must-have user journeys' and 'Anti-goals'
+Project goal (SLICED — vision + anti-goals + target/failing journeys verbatim; stable passing journeys digested): $GOAL_SLICE_PATH
+  Full goal file: $GOAL_FILE — Read it ONLY if a digested journey becomes relevant.
 Iter spec: $ITER_SPEC_PATH
 Agent instructions: .claude/agents/goal-evaluator.md  <-- read this first
 (CLAUDE.md is already in your system prompt — do not Read it again.)
 
 Iteration artifacts (read what exists):
+  Deterministic diff scan (FULL diff — secrets/deps/license): $ITER_DIR/scan-report.md
+  Bounded diff view (complete file list; hunks capped, header lists omissions): $ITER_DIR/iter-diff.md
   Dev handoff: docs/handoffs/${ITER_NAME}-dev.md
   Review report: reports/reviews/${ITER_NAME}-review.md
   QA report: reports/qa/${ITER_NAME}-qa.md (full mode only)
@@ -1037,15 +1758,27 @@ Iteration artifacts (read what exists):
   Browser QA results: reports/phase-${ITER_NAME}-ui-test-results.md
   Evidence: reports/qa/${ITER_NAME}-evidence/
   Coherence audit: $COHERENCE_OUTPUT  <-- COHERENCE-FAIL vetoes GOAL_ACHIEVED and drives a consolidation CONTINUE
+  Goal-edit drift note: $ITER_DIR/journeys-changed.md  <-- if present, each listed journey's prior pass is VOID until re-verified against the CURRENT goal text (your step 3)
+
+Journey state (inline digest — your methodology's section A table starts here):
+\`\`\`
+$JOURNEY_DIGEST
+\`\`\`
 
 Prior session state:
   Journey history: $JOURNEY_HISTORY  <-- update this with new state (full atomic write)
   Evaluator log: $EVALUATOR_LOG  <-- append a new entry; do not overwrite or read the full file (last 5 entries pre-trimmed below)
   Lessons file: $LESSONS_FILE  <-- append a brief lesson entry capturing a non-obvious takeaway (1-3 sentences). Skip if nothing surprising happened.
+  Assumption ledger: $ASSUMPTIONS_FILE  <-- append an entry when a scoring decision required interpreting an ambiguous goal (step 5b of your instructions). Skip when none — zero entries is normal.
 
 Recent evaluator log entries (last 5, pre-trimmed):
 \`\`\`
 $EVALUATOR_LOG_TAIL_5
+\`\`\`
+
+Recent assumption entries (pre-trimmed):
+\`\`\`
+$ASSUMPTIONS_TAIL
 \`\`\`
 
 Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
@@ -1066,28 +1799,68 @@ STOP." || _eval_rc=$?
 
   record_agent_invocation_end "goal-evaluator" "$_eval_start" "$_eval_rc"
 
+  # Pump loss (transport 70) during evaluation: pause resumably. This must be
+  # checked BEFORE the missing-file ABORTED branch (which mislabeled pump loss)
+  # and before any parse (a stale eval.md must never be certified here — the
+  # iteration-start hygiene deletes stale ones, this guard covers the fresh 70).
+  if [[ "$_eval_rc" -eq "${DISPATCH_UNAVAILABLE_EXIT_CODE:-70}" ]]; then
+    echo "[run-goal] Interactive pump/dispatch unavailable during evaluation — pausing (resume re-runs iteration $CURRENT_ITER)." >&2
+    record_telemetry_event "halt" '{"reason":"AWAITING_PUMP","detected_at_step":"goal_evaluator"}'
+    write_session_summary "AWAITING_PUMP" "$CURRENT_ITER"
+    exit 0
+  fi
+
   if [[ ! -f "$EVAL_OUTPUT" ]]; then
     echo "[run-goal] goal-evaluator did not write $EVAL_OUTPUT — treating as ABORTED." >&2
     write_session_summary "ABORTED" "$CURRENT_ITER"
     exit 1
   fi
+  fi  # end .evaluated reuse guard
 
-  # Parse verdict
-  VERDICT=$(grep -m1 -E '^\*\*Verdict:\*\*' "$EVAL_OUTPUT" | sed -E 's/^\*\*Verdict:\*\*[[:space:]]*//' | awk '{print $1}')
-  NEXT_DEPTH=$(grep -m1 -E 'Depth Recommendation For Next Iteration:' "$EVAL_OUTPUT" | sed -E 's/.*Iteration:\*?\*?[[:space:]]*//' | awk '{print $1}' | tr '[:upper:]' '[:lower:]')
+  # Parse verdict (guarded: a malformed verdict line must surface as an empty
+  # VERDICT for the fallthrough handling, not kill the engine via pipefail)
+  VERDICT=$(grep -m1 -E '^\*\*Verdict:\*\*' "$EVAL_OUTPUT" | sed -E 's/^\*\*Verdict:\*\*[[:space:]]*//' | awk '{print $1}') || true
+  NEXT_DEPTH=$(grep -m1 -E 'Depth Recommendation For Next Iteration:' "$EVAL_OUTPUT" | sed -E 's/.*Iteration:\*?\*?[[:space:]]*//' | awk '{print $1}' | tr '[:upper:]' '[:lower:]') || true
   [[ "$NEXT_DEPTH" != "lean" && "$NEXT_DEPTH" != "full" ]] && NEXT_DEPTH="lean"
+
+  # Mark this iteration's evaluation as complete (with the parsed verdict) so a
+  # crash between here and the current_iter advance can resume without a second
+  # evaluator pass. Only written for a well-formed verdict.
+  if [[ -n "$VERDICT" ]]; then
+    printf '{"iter": %s, "verdict": "%s"}\n' "$CURRENT_ITER" "$VERDICT" > "$ITER_DIR/.evaluated" 2>/dev/null || true
+  fi
+
+  # ── Deterministic verdict gates (lib/goal-gates.sh) ─────────────────────────
+  # Placed BEFORE the session.json write so every downstream consumer (deltas,
+  # telemetry, per-iter push, halt cases) sees the FINAL verdict. GOAL_ACHIEVED
+  # must survive the mechanical gates + the two-key confirm; malformed verdicts
+  # are bounded (2 consecutive → ABORT_MALFORMED); undeclared regressions are
+  # surfaced. Disable via CHAIN_GOAL_GATES=false.
+  _coherence_expected="false"
+  [[ $CURRENT_ITER -gt 0 && -f "$BLUEPRINT_FILE" ]] && _coherence_expected="true"
+  _raw_verdict="$VERDICT"
+  VERDICT="$(goal_gate_filter_verdict "$_raw_verdict" "$ITER_DIR" "$EVAL_OUTPUT" "$JOURNEY_HISTORY" "$COHERENCE_OUTPUT" "$_coherence_expected" "$REPO_ROOT/reports/phase-${ITER_NAME}-ui-test-results.md" "$GOAL_SESSION_DIR_LOCAL" "$GOAL_SLICE_PATH")"
+  if [[ "$VERDICT" != "$_raw_verdict" ]]; then
+    echo "[run-goal] Verdict gate: evaluator said '$_raw_verdict' → final verdict '$VERDICT'."
+    record_telemetry_event "deterministic_gate" "$(jq -cn --arg r "$_raw_verdict" --arg f "$VERDICT" '{raw:$r, final:$f}' 2>/dev/null || printf '{"raw":"%s","final":"%s"}' "$_raw_verdict" "$VERDICT")"
+  fi
 
   # Capture journey-history hash for stall detection
   HASH=$(journey_history_hash)
   echo "$HASH" >> "$GOAL_SESSION_DIR_LOCAL/.history-hashes"
 
-  # Build the iteration summary MD (via summarizer agent), then render its HTML.
-  # The MD is the source of truth — the renderer just visualizes it.
-  # Non-blocking; the session index is also refreshed below so the
-  # feature-organized user-manual view stays current mid-session.
-  _run_iteration_summarizer "$ITER_NAME"
-  _render_iter_html "$ITER_NAME"
-  _render_session_index_html
+  # Showcase tail (demo → summary MD → README → HTML renders). The MD is the
+  # source of truth — the renderer just visualizes it. Non-blocking either way:
+  # halt verdicts run it INLINE here (final artifacts must be complete before
+  # the session summary); CONTINUE/ESCALATE defer it to a background fork after
+  # the push below, overlapping the next iteration's decomposer.
+  _async_showcase="no"
+  if [[ "${CHAIN_ASYNC_SHOWCASE:-true}" == "true" ]]; then
+    case "$VERDICT" in CONTINUE|ESCALATE) _async_showcase="yes" ;; esac
+  fi
+  if [[ "$_async_showcase" != "yes" ]]; then
+    _run_showcase_steps "$ITER_NAME" "$DEPTH"
+  fi
   _iter_md="$REPO_ROOT/reports/phase-${ITER_NAME}-iteration-summary.md"
   _iter_html="$REPO_ROOT/reports/phase-${ITER_NAME}-summary.html"
   _session_index_html="$REPO_ROOT/reports/goal-session-${SESSION_ID}-index.html"
@@ -1104,7 +1877,12 @@ d["last_verdict"] = "$VERDICT"
 d["next_depth"] = "$NEXT_DEPTH"
 d["status"] = "in_progress"
 d["updated_at"] = __import__("datetime").datetime.now(__import__("datetime").UTC).isoformat().replace('+00:00','Z')
-json.dump(d, open("$SESSION_JSON","w"), indent=2); open("$SESSION_JSON","a").write("\n")
+import os as _os, tempfile as _tf
+_fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
+with _os.fdopen(_fd, "w") as _f:
+    json.dump(d, _f, indent=2)
+    _f.write("\n")
+_os.replace(_tmp, "$SESSION_JSON")
 PY
 
   # Compute deltas (best-effort)
@@ -1127,6 +1905,28 @@ except Exception as e:
 ")
 
   record_telemetry_event "iter_end" "$(jq -cn --arg n "$ITER_NAME" --arg v "$VERDICT" --arg nd "$NEXT_DEPTH" --argjson dl "$DELTAS" '{iter_name:$n, verdict:$v, next_depth:$nd, journey_deltas:$dl}' 2>/dev/null || printf '{"iter_name":"%s","verdict":"%s"}' "$ITER_NAME" "$VERDICT")"
+
+  # Where did this iteration's wall time go? Human-readable per-step breakdown
+  # from the telemetry events just recorded (non-blocking, no model).
+  python3 "$SCRIPT_DIR/lib/analyze_telemetry.py" --wall --iter "$CURRENT_ITER" \
+    "$GOAL_SESSION_DIR_LOCAL/telemetry.jsonl" 2>/dev/null | sed 's/^/[run-goal] /' || true
+
+  # Experiment tripwire: while an opt-in speed knob is active, revert it the
+  # moment quality moves in the window (REGRESSION verdict, journey
+  # regressions, repeated first-attempt review FAILs). Exit 3 = TRIP; any
+  # other non-zero rc is an analyzer error and must NOT trigger a revert.
+  if [[ -n "${CHAIN_AGENT_EFFORT:-}" ]]; then
+    _trip_rc=0
+    python3 "$SCRIPT_DIR/lib/analyze_telemetry.py" --tripwire --window 3 \
+      "$GOAL_SESSION_DIR_LOCAL/telemetry.jsonl" > "$ITER_DIR/.tripwire-report" 2>/dev/null || _trip_rc=$?
+    if [[ "$_trip_rc" -eq 3 ]]; then
+      echo "[run-goal] EXPERIMENT TRIPWIRE: quality moved under CHAIN_AGENT_EFFORT='$CHAIN_AGENT_EFFORT' — reverting the knob for the rest of this run." >&2
+      sed 's/^/[run-goal]   /' "$ITER_DIR/.tripwire-report" >&2 2>/dev/null || true
+      record_telemetry_event "experiment_reverted" "$(jq -cn --arg k "CHAIN_AGENT_EFFORT" --arg v "$CHAIN_AGENT_EFFORT" '{key:$k, value:$v}' 2>/dev/null || printf '{"key":"CHAIN_AGENT_EFFORT"}')"
+      unset CHAIN_AGENT_EFFORT
+    fi
+    rm -f "$ITER_DIR/.tripwire-report" 2>/dev/null || true
+  fi
 
   echo "[run-goal] Verdict: $VERDICT (next depth: $NEXT_DEPTH)"
 
@@ -1186,15 +1986,108 @@ except Exception as e:
         fi
         ;;
       REGRESSION|STALLED)
+        # (inline showcase already ran for these halt verdicts)
         echo "[run-goal] push-per-iter: skipping push for $VERDICT — branch left at prior iter's HEAD for inspection."
+        # Park the iteration's uncommitted work as a local WIP commit (no push).
+        # Left loose, it was exposed to manual cleanup (git checkout/--reset) and
+        # would otherwise be silently folded into the NEXT iteration's commit
+        # under a misleading message, breaking attribution and bisect.
+        if [[ -n "$(git -C "$REPO_ROOT" status --porcelain 2>/dev/null)" ]]; then
+          _park_sha=""
+          if git -C "$REPO_ROOT" add -A 2>/dev/null && \
+             git -C "$REPO_ROOT" commit --quiet -m "wip(goal): iter $CURRENT_ITER $VERDICT — parked uncommitted work (not pushed)" 2>/dev/null; then
+            _park_sha="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || echo "")"
+            echo "[run-goal] push-per-iter: parked uncommitted work as local WIP commit ${_park_sha} (amend/revert freely before resuming)."
+            python3 - <<PY 2>/dev/null || true
+import json, os, tempfile
+d = json.load(open("$SESSION_JSON"))
+d["parked_wip_sha"] = "${_park_sha}"
+_fd, _tmp = tempfile.mkstemp(dir=os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
+with os.fdopen(_fd, "w") as _f:
+    json.dump(d, _f, indent=2)
+    _f.write("\n")
+os.replace(_tmp, "$SESSION_JSON")
+PY
+          else
+            echo "[run-goal] push-per-iter: WARNING — could not park uncommitted work (git add/commit failed); it remains loose in the working tree." >&2
+          fi
+          record_telemetry_event "wip_parked" "$(jq -cn --arg v "$VERDICT" --arg sha "${_park_sha:-}" '{verdict:$v, sha:$sha}' 2>/dev/null || echo '{}')"
+        fi
         record_telemetry_event "iter_push" "$(jq -cn --arg b "$PUSH_BRANCH" --arg verdict "$VERDICT" '{branch:$b, success:true, skipped:"halt_verdict", verdict:$verdict}' 2>/dev/null || echo '{}')"
         ;;
     esac
   fi
 
+  # 4c. Deferred showcase tail: fork AFTER the push so the iteration's own
+  # commit is exactly what the sequential ordering produced; the group's
+  # artifacts land via _join_showcase_tail before the next executor dispatch.
+  if [[ "$_async_showcase" == "yes" ]]; then
+    _fork_showcase_tail "$ITER_NAME" "$DEPTH"
+  fi
+
   # 5. Halt-on-verdict
   case "$VERDICT" in
     GOAL_ACHIEVED)
+      # ── Continuous-improvement opt-in (framework mechanism "M3") ────────────────
+      # DEFAULT-OFF: fires ONLY when the project provides BOTH
+      #   project-extensions/hooks/post-goal.sh   AND
+      #   project-extensions/proposer-guidance.md
+      # (both OUTSIDE the framework subtree). Absent either ⇒ this block is skipped
+      # and the session finalizes exactly as before, so other projects sharing this
+      # framework are unaffected. When opted in: run the project's deterministic prep
+      # hook, then dispatch the generic goal-proposer agent (it surveys the product,
+      # keeps only hold-out survivors, writes the proposals backlog, and surgically
+      # appends new Must-have journeys into the goal file's <!-- AUTO:journeys -->
+      # block). CONTINUE the loop iff it extended the goal — the unmodified decomposer
+      # then builds the new (not-yet-passing) journey next iteration. If the proposer
+      # is dry (nothing survived), fall through to the normal terminal halt below.
+      if [[ -f "$REPO_ROOT/project-extensions/hooks/post-goal.sh" \
+            && -f "$REPO_ROOT/project-extensions/proposer-guidance.md" ]]; then
+        echo "[run-goal] Continuous improvement: all journeys passing — post-goal hook + goal-proposer ..."
+        _state_dir="$GOAL_SESSION_DIR_LOCAL/state"
+        mkdir -p "$_state_dir"
+        rm -f "$_state_dir/proposer-result.json"
+        # 1. deterministic project prep (non-fatal): e.g. refresh the triad scan snapshot.
+        (
+          export SESSION_ID REPO_ROOT GOAL_FILE \
+                 SESSION_DIR="$GOAL_SESSION_DIR_LOCAL" \
+                 LEDGER_PATH="$GOAL_SESSION_DIR_LOCAL/state/certified-claims.jsonl" \
+                 STAGING_LEDGER_PATH="$GOAL_SESSION_DIR_LOCAL/state/staging-ledger.jsonl"
+          run_project_hook post-goal
+        ) || echo "[run-goal] post-goal hook returned non-zero (non-fatal) — continuing." >&2
+        # 2. dispatch the generic goal-proposer agent (works headless AND interactive pump).
+        cd "$REPO_ROOT"
+        record_agent_invocation_start "goal-proposer"
+        _prop_start=$CHAIN_AGENT_START_EPOCH
+        _prop_rc=0
+        claude_with_quota_retry -p "You are the goal-proposer agent for goal-mode continuous improvement.
+
+Session ID: $SESSION_ID
+Session state dir: $GOAL_SESSION_DIR_LOCAL/state
+Goal file: $GOAL_FILE  <-- extend ONLY the <!-- AUTO:journeys --> block
+Project guidance: project-extensions/proposer-guidance.md  <-- read this FIRST; it governs everything
+Agent instructions: .claude/agents/goal-proposer.md  <-- read this first
+(CLAUDE.md is already in your system prompt — do not Read it again.)
+
+Every Must-have journey is passing. Survey the whole product per the guidance, keep only hold-out
+survivors, write the proposals backlog, and promote the best 1-2 into new Must-have journeys in the
+goal file's AUTO:journeys block (follow the goal-self-extension skill; bake the consistency + walkthrough
+requirements into each journey's Acceptance). If nothing new survives, leave the goal file UNTOUCHED.
+Then write $GOAL_SESSION_DIR_LOCAL/state/proposer-result.json with keys extended, n_new_journeys,
+n_proposals, dry.
+
+Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly. Do NOT write product code or start services." || _prop_rc=$?
+        record_agent_invocation_end "goal-proposer" "$_prop_start" "$_prop_rc"
+        # 3. continue the loop iff the proposer extended the goal with new buildable journey(s).
+        _prop_extended=$(python3 -c "import json,sys; print('yes' if json.load(open('$_state_dir/proposer-result.json')).get('extended') else 'no')" 2>/dev/null || echo "no")
+        if [[ "$_prop_extended" == "yes" ]]; then
+          echo "[run-goal] Continuous improvement: goal extended with new journey(s) — continuing to build them."
+          record_telemetry_event "goal_extended" "$(jq -cn --arg s "$SESSION_ID" '{session:$s}' 2>/dev/null || echo '{}')"
+          CURRENT_ITER=$((CURRENT_ITER+1))
+          continue
+        fi
+        echo "[run-goal] Continuous improvement: proposer found nothing new (dry) — finalizing the session."
+      fi
       # Render the one-time delivered wrap BEFORE write_session_summary so the
       # session-index renderer (invoked inside write_session_summary) can find
       # delivered.html and surface a prominent link to it. Non-blocking.
@@ -1241,7 +2134,12 @@ except Exception as e:
 import json
 d = json.load(open("$SESSION_JSON"))
 d["status"] = "REGRESSION_HALT"
-json.dump(d, open("$SESSION_JSON","w"), indent=2); open("$SESSION_JSON","a").write("\n")
+import os as _os, tempfile as _tf
+_fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
+with _os.fdopen(_fd, "w") as _f:
+    json.dump(d, _f, indent=2)
+    _f.write("\n")
+_os.replace(_tmp, "$SESSION_JSON")
 PY
       record_telemetry_event "halt" '{"reason":"REGRESSION_HALT","detected_at_step":"post_evaluator"}'
       write_session_summary "REGRESSION_HALT" "$((CURRENT_ITER+1))"
@@ -1256,6 +2154,15 @@ PY
       ;;
     CONTINUE|ESCALATE)
       CURRENT_ITER=$((CURRENT_ITER+1))
+      ;;
+    ABORT_MALFORMED)
+      # The gate saw 2 consecutive malformed/unknown evaluator verdicts —
+      # something is systematically wrong (prompt drift, model failure).
+      # Halting beats the old behavior of silently CONTINUE-ing forever.
+      echo "[run-goal] ABORT_MALFORMED — two consecutive malformed evaluator verdicts. Inspect $ITER_DIR/eval.md, fix the cause (or run with CHAIN_GOAL_GATES=false to bypass), then --resume." >&2
+      record_telemetry_event "halt" '{"reason":"ABORT_MALFORMED","detected_at_step":"verdict_gate"}'
+      write_session_summary "ABORTED" "$CURRENT_ITER"
+      exit 1
       ;;
     *)
       echo "[run-goal] Unknown verdict '$VERDICT' — treating as CONTINUE." >&2

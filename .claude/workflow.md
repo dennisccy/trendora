@@ -239,11 +239,11 @@ The `Frontend Present:` line is machine-read by `qa-phase.sh` to decide whether 
 
 | Tier | Model | Used for |
 |------|-------|----------|
-| strong | claude-opus-4-8 | Complex reasoning: planning, code generation, auditing |
-| standard | claude-sonnet-4-6 | Solid tasks: code review, test plan generation |
+| strong | claude-opus-4-8 | Judgment: goal evaluation/decomposition, skeptical audit, confirms |
+| standard | claude-sonnet-5 | Solid tasks: code review, test plan generation |
 | light | claude-haiku-4-5 | Routine workflow: QA execution, git/GitHub operations |
 
-Model assignments are in `config/agent-models.yaml`. Update models there and run `sync-agent-models.sh` to propagate.
+Model assignments: each agent picks a tier (`model_tier`) in `agents/<name>/agent.yaml`; the tier resolves to a concrete model in `config/model-tiers.yaml`. Edit those, then re-render with `python3 scripts/automation/sync-cli-assets.py --cli claude` and commit the regenerated `.claude/agents/*.md`.
 
 ---
 
@@ -299,7 +299,7 @@ Per-iteration code/test artifacts use the standard phase-mode paths (`runs/<iter
 
 | Halt | Detected by | User recovery |
 |---|---|---|
-| `BUDGET_EXHAUSTED` | `current_iter >= max_iterations` (default 30) | `run-goal.sh --resume --max-iter N` (raised cap) |
+| `BUDGET_EXHAUSTED` | `current_iter >= max_iterations` (only when `--max-iter N` is set; **no cap by default**) | `run-goal.sh --resume --max-iter N` (raised cap) |
 | `STALLED` (hash) | Last `stall_window` (default 3) journey-history hashes are identical | Edit `goal.md`, then `--resume` |
 | `REGRESSION_HALT` | Evaluator emitted `REGRESSION` | `run-goal.sh --resume --acknowledge-regression` |
 | `ABORTED` | SIGINT/SIGTERM | `run-goal.sh --resume --session-id <id>` |
