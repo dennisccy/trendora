@@ -41,7 +41,7 @@ from sqlmodel import Session, select
 
 from app.config import load_config
 from app.db import create_db_and_tables, make_engine
-from app.engine import data_manager, warmup as warmup_mod
+from app.engine import data_manager, prices, warmup as warmup_mod
 from app.engine.forward_testing import backfill_forward_returns
 from app.engine.prices import latest_data_date
 from app.engine.readiness import compute_readiness
@@ -212,6 +212,52 @@ def test_warmup_produced_every_cadence_snapshot_and_forward_returns(warmed_engin
         n_fr = session.scalar(select(func.count()).select_from(ForwardReturn))
         assert n_fr > 0               # the warm-up inserted realized forward returns
     assert warmed_engine["warmup_record"]["status"] == "ok"
+
+
+def test_warmup_loads_each_symbol_at_most_once_across_cadence_and_forward_returns(early_engine, monkeypatch):
+    """iter-26 (J-16, fast-platform item F): the warm-up's cadence loop (`run_scan` x N dates) AND its
+    trailing `backfill_forward_returns` call now share ONE `bar_cache` context (the `warmup.py` fix —
+    the call moved inside the `with bar_cache(session):` block and now passes `session`, not `engine`),
+    so together they load each symbol's full series AT MOST ONCE for the whole warm-up run — not once
+    per cadence date, and not a SECOND time for the forward-return backfill (which used to open a brand
+    new, uncached session). Instrumented exactly like
+    `test_bar_cache.py::test_kdate_backfill_loads_each_symbol_at_most_once` (every full-series bar-store
+    load: the lazy `bars_asof` fallback AND `prefill`; `bars_after`'s cache path routes through the
+    same instrumented `bars_asof`, since it calls `self.bars_asof(...)` to ensure the load).
+
+    The iter-36 (J-96) membership-timeline warm step (`_warm_membership_timeline`) is a SEPARATE,
+    pre-existing, out-of-scope feature: it deliberately opens its OWN new session (never the cadence
+    loop's) and therefore pays its own one-time prefill regardless of this fix — confirmed unrelated
+    (its own test, `test_warmup_precomputes_membership_timeline_cache`, passes unedited). It is
+    no-op'd here so this proof isolates exactly the two pieces iter-26 changed."""
+    engine, cfg = early_engine
+    monkeypatch.setattr(warmup_mod, "_warm_membership_timeline", lambda engine, cfg: None)
+    load_counts: dict[str, int] = {}
+    orig_bars_asof = prices._BarCache.bars_asof
+    orig_prefill = prices._BarCache.prefill
+
+    def _counting_bars_asof(self, session, symbol, d):
+        if symbol not in self._by_symbol:  # a real lazy bar-store load is about to happen
+            load_counts[symbol] = load_counts.get(symbol, 0) + 1
+        return orig_bars_asof(self, session, symbol, d)
+
+    def _counting_prefill(self, session, expected_symbols=None):
+        before = set(self._by_symbol)
+        orig_prefill(self, session, expected_symbols=expected_symbols)
+        for symbol in self._by_symbol:
+            if symbol not in before:  # newly loaded by this prefill
+                load_counts[symbol] = load_counts.get(symbol, 0) + 1
+
+    monkeypatch.setattr(prices._BarCache, "bars_asof", _counting_bars_asof)
+    monkeypatch.setattr(prices._BarCache, "prefill", _counting_prefill)
+
+    job_id = start_warmup(engine, cfg)
+    _join_warmup(job_id)
+    rec = data_manager.get_job(job_id)
+    assert rec["status"] == "ok"
+    assert rec["forward_returns_inserted"] > 0, "the warm-up should have inserted realized forward returns"
+    assert load_counts, "the warm-up should have loaded at least one symbol's bar series"
+    assert max(load_counts.values()) == 1, f"a symbol was loaded more than once: {load_counts}"
 
 
 # ==================================================================================================

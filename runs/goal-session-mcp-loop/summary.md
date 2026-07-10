@@ -1,39 +1,39 @@
 # Goal Session Summary — mcp-loop
 
-**Final verdict:** REGRESSION_HALT
-**Total iterations:** 25
-**Wall time (seconds):** 94158
+**Final verdict:** AWAITING_PUMP
+**Total iterations:** 26
+**Wall time (seconds):** 27463
 **Quota pauses:** 0
 **Started:** 2026-06-29T20:34:38.534484Z
-**Finished:** 2026-07-09T09:04:48.986338Z
+**Finished:** 2026-07-10T07:02:17.721211Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/mcp-loop`. Open a PR with:
 
     gh pr create --base main --head goal/mcp-loop \
-      --title "feat: mcp-loop — REGRESSION_HALT" \
+      --title "feat: mcp-loop — AWAITING_PUMP" \
       --body-file runs/goal-session-mcp-loop/summary.md
 
 ## Final journey state
 
 | Journey | Status | Last passing iter |
 |---|---|---|
-| J-01 | passing | goal-mcp-loop-iter-24 |
+| J-01 | passing | goal-mcp-loop-iter-25 |
 | J-02 | partial | goal-mcp-loop-iter-17 |
-| J-03 | passing | goal-mcp-loop-iter-23 |
-| J-04 | passing | goal-mcp-loop-iter-23 |
-| J-05 | passing | goal-mcp-loop-iter-23 |
+| J-03 | passing | goal-mcp-loop-iter-25 |
+| J-04 | passing | goal-mcp-loop-iter-25 |
+| J-05 | passing | goal-mcp-loop-iter-25 |
 | J-06 | partial | goal-mcp-loop-iter-17 |
 | J-07 | partial | goal-mcp-loop-iter-17 |
 | J-08 | partial | goal-mcp-loop-iter-17 |
 | J-09 | partial | goal-mcp-loop-iter-17 |
-| J-10 | passing | goal-mcp-loop-iter-24 |
-| J-11 | passing | goal-mcp-loop-iter-23 |
-| J-12 | passing | goal-mcp-loop-iter-24 |
-| J-13 | regressed | goal-mcp-loop-iter-23 |
-| J-14 | passing | goal-mcp-loop-iter-23 |
-| J-15 | partial | - |
+| J-10 | passing | goal-mcp-loop-iter-25 |
+| J-11 | passing | goal-mcp-loop-iter-25 |
+| J-12 | passing | goal-mcp-loop-iter-25 |
+| J-13 | passing | goal-mcp-loop-iter-25 |
+| J-14 | passing | goal-mcp-loop-iter-25 |
+| J-15 | passing | goal-mcp-loop-iter-25 |
 | J-16 | unknown | - |
 
 ## Anti-goal violations
@@ -229,15 +229,26 @@ See `runs/goal-session-mcp-loop/telemetry.jsonl` for the structured event log.
       coherence-auditor            4.2m  calls=1
       pump-wait                  0.7m
       unattributed (glue)      440.2m
-  session: 25 completed iteration(s), mean wall 146.1m
-      total goal-decomposer            476.4m
-      total goal-evaluator             216.4m
-      total iteration-summarizer        82.7m
-      total coherence-auditor           82.3m
+  goal-mcp-loop-iter-25  depth=full  verdict=CONTINUE  wall=284.5m
+      goal-evaluator              10.9m  calls=1
+      goal-decomposer             10.3m  calls=1
+      coherence-auditor            4.1m  calls=1
+      pump-wait                  0.3m
+      unattributed (glue)      259.3m
+  goal-mcp-loop-iter-26  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      iteration-summarizer        10.5m  calls=1
+      goal-decomposer             10.4m  calls=1
+  goal-mcp-loop-iter-26  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      (resume-skipped: goal-decomposer)
+  session: 26 completed iteration(s), mean wall 151.4m
+      total goal-decomposer            497.2m
+      total goal-evaluator             227.3m
+      total iteration-summarizer        93.2m
+      total coherence-auditor           86.4m
       total readme-maintainer           45.6m
       total developer                   30.9m
       total browser-qa-agent            24.5m
       total reviewer                    11.4m
       total AWAITING_PUMP paused gaps: 549.3m
-      halts: DECOMPOSER_FAILED, GATE_BLOCKED_POST_DECOMPOSE, STALLED, DECOMPOSER_FAILED, AWAITING_PUMP, DECOMPOSER_FAILED, DECOMPOSER_FAILED, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT
+      halts: DECOMPOSER_FAILED, GATE_BLOCKED_POST_DECOMPOSE, STALLED, DECOMPOSER_FAILED, AWAITING_PUMP, DECOMPOSER_FAILED, DECOMPOSER_FAILED, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, AWAITING_PUMP
 ```

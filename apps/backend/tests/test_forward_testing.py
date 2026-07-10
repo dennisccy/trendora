@@ -16,7 +16,7 @@ real engines on the committed seed under a REDUCED walk-forward cadence (module-
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from statistics import stdev
 
 import pytest
@@ -33,7 +33,7 @@ from app.engine.forward_testing import (
     max_drawdown,
     walk_forward_asof_dates,
 )
-from app.engine.prices import bars_after, bars_asof, close_on, latest_data_date
+from app.engine.prices import bar_cache, bars_after, bars_asof, close_on, latest_data_date
 from app.engine.scanner import run_scan
 from app.models import (
     DailyPrice,
@@ -124,6 +124,78 @@ def test_close_on_is_the_asof_close(tiny_price_engine):
         assert close_on(session, "AAA", date(2024, 1, 7)) == 13.0  # latest <= 2024-01-07 is 2024-01-05
         assert close_on(session, "AAA", date(2023, 12, 31)) is None  # before all data
         assert close_on(session, "MISSING", days[0]) is None
+
+
+# ==================================================================================================
+# iter-26 (J-16, fast-platform item F) — close_on / bars_after cache-awareness
+#
+# `close_on`/`bars_after` are now cache-aware: inside an active `bar_cache(session)` context they
+# derive their answer from the once-loaded cached series instead of issuing a raw query. Proves the
+# cache-aware path is BYTE-IDENTICAL to the default (no-context) path, for both a long-history and a
+# short-history symbol. ADDITIVE — the tests above (`test_close_on_is_the_asof_close`,
+# `test_bars_after_returns_only_future_bars_ascending`, `test_bars_after_limit_is_the_unbounded_prefix`)
+# are unedited; a new fixture keeps this proof independent of `tiny_price_engine`.
+# ==================================================================================================
+@pytest.fixture()
+def two_symbol_price_engine(tmp_path):
+    """"AAA": short history (5 bars, same shape/gap as `tiny_price_engine`) and "BBB": long history (30
+    consecutive daily bars, no gap) — sharing no dates, so each symbol's cache load is independent."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'two_symbol.db'}")
+    create_db_and_tables(engine)
+    short_days = [date(2024, 1, d) for d in (2, 3, 4, 5, 8)]  # a gap at the 6th/7th (weekend-like)
+    long_days = [date(2024, 2, 1) + timedelta(days=i) for i in range(30)]  # consecutive, no gap
+    with Session(engine) as session:
+        for i, d in enumerate(short_days):
+            c = float(10 + i)
+            session.add(DailyPrice(symbol="AAA", date=d, open=c, high=c + 1, low=c - 1, close=c, volume=100.0 + i))
+        for i, d in enumerate(long_days):
+            c = float(100 + i)
+            session.add(DailyPrice(symbol="BBB", date=d, open=c, high=c + 1, low=c - 1, close=c, volume=1000.0 + i))
+        session.commit()
+    return engine, short_days, long_days
+
+
+def test_close_on_cache_aware_matches_uncached(two_symbol_price_engine):
+    """close_on's cache-aware path (an active bar_cache) is byte-identical to the default uncached
+    query, for a long-history symbol ("BBB") and a short-history symbol ("AAA"), each probed at an
+    in-range date, a gap/non-trading date, and a before-all-data date."""
+    engine, short_days, long_days = two_symbol_price_engine
+    probes = {
+        "AAA": [short_days[2], date(2024, 1, 7), date(2023, 12, 31)],
+        "BBB": [long_days[10], long_days[-1], date(2024, 1, 31)],
+    }
+    with Session(engine) as plain:
+        uncached = {(sym, d): close_on(plain, sym, d) for sym, ds in probes.items() for d in ds}
+    with Session(engine) as cached_session, bar_cache(cached_session):
+        cached = {(sym, d): close_on(cached_session, sym, d) for sym, ds in probes.items() for d in ds}
+    assert cached == uncached
+    assert cached[("AAA", short_days[2])] == 12.0  # the bar ON 2024-01-04
+    assert cached[("BBB", long_days[10])] == 110.0  # the bar 10 days into BBB's series
+
+
+def test_bars_after_cache_aware_matches_uncached(two_symbol_price_engine):
+    """bars_after's cache-aware path is byte-identical to the default uncached query — unlimited AND
+    with a limit — for both a long-history and a short-history symbol."""
+    engine, short_days, long_days = two_symbol_price_engine
+    cuts = {"AAA": short_days[0], "BBB": long_days[5]}
+    with Session(engine) as plain:
+        uncached_full = {s: [(b.date, b.close) for b in bars_after(plain, s, d)] for s, d in cuts.items()}
+        uncached_limited = {
+            s: [(b.date, b.close) for b in bars_after(plain, s, d, limit=2)] for s, d in cuts.items()
+        }
+    with Session(engine) as cached_session, bar_cache(cached_session):
+        cached_full = {
+            s: [(b.date, b.close) for b in bars_after(cached_session, s, d)] for s, d in cuts.items()
+        }
+        cached_limited = {
+            s: [(b.date, b.close) for b in bars_after(cached_session, s, d, limit=2)]
+            for s, d in cuts.items()
+        }
+    assert cached_full == uncached_full
+    assert cached_limited == uncached_limited
+    for sym in cuts:
+        assert cached_limited[sym] == cached_full[sym][:2]
+        assert all(bar_date > cuts[sym] for bar_date, _ in cached_full[sym])  # no-lookahead: strictly > D
 
 
 # ==================================================================================================

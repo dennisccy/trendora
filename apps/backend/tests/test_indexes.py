@@ -66,6 +66,9 @@ _CFG = {
         "atr_period": 5, "high_window_52w": 20, "vol_avg_period": 5,
         "min_history_bars": 40, "breadth_short_ma": 5, "breadth_long_ma": 10,
         "hv_window": 5, "semivol_window": 5, "vol_contraction_recent": 3, "vol_contraction_prior": 5,
+        # iter-26 (J-16 item F): required window; >= this fixture's own max (high_window_52w=20) and
+        # >= the patterns block's min_history_bars below (20).
+        "max_lookback_bars": 20,
     },
     "sectors": {
         "weights": {"rs_spy_1m": 0.20, "rs_spy_3m": 0.25, "rs_spy_6m": 0.20, "ma_stack": 0.15, "dist_from_high": 0.10, "vol_trend": 0.10},

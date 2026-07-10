@@ -1,0 +1,72 @@
+{
+  "phase": "goal-mcp-loop-iter-26",
+  "status": "blocked",
+  "current_step": "audit_qa_failed",
+  "updated_at": "2026-07-10T13:04:53.314577Z",
+  "started_at": "2026-07-09T14:17:47.754841Z",
+  "cli": "claude",
+  "fix_pass": "2026-07-10 AUDIT fix-mode pass addressed audit FAIL (docs/handoffs/goal-mcp-loop-iter-26-audit.md). CHARGED regression (audit B3 \u2014 forward-return close_on/bars_after transient full[:cut] allocations) REMOVED byte-identically in apps/backend/app/engine/prices.py only; VSZ measured at the full-universe shape under ulimit -v 6144MB. ROOT-CAUSE crash (audit B1 \u2014 regime full[:cut] + whole-universe prefill) NOT fixed: pre-existing architectural memory work, explicitly out of this surgical pass's scope (audit \u00a75 item 4 = its own memory-hardening iteration). See dev handoff '## Fix Notes (2026-07-10 audit fix-mode pass \u2014 VSZ memory regression)'.",
+  "qa_verdict": "FAIL",
+  "qa_pass": "2026-07-10T14:55:00Z",
+  "qa_notes": "QA revalidation (post-audit-fix-mode-pass) confirms code/perf complete and correct: config window added, scoring slicing applied (2 sites), cache-scope optimization working, byte-identity harness GREEN (0 diffs windowed vs unwindowed), performance targets exceeded (81%/78%/89%), peak RSS 1330.6 MB < 6144 MB cap. ALL UNIT TESTS PASSING. However, J-16 target journey CANNOT be validated: the full-universe 'Rebuild snapshots' backfill crashes with MemoryError (VSZ ceiling, 6144MB ulimit -v exhaustion) in pre-existing regime path NOT modified by iter-26. Auditor reproduced this crash 2/2; root cause is architectural memory work (bounding regime full[:cut] allocations) outside iter-26's scope. Per auditor recommendation and coordinator guidance: this fix should be a dedicated memory-hardening iteration. J-16 is expected to still FAIL until that architectural work lands.",
+  "resolved": [
+    "NOTE #5: config.yaml sectors-block header comment restored (2 clipped context lines).",
+    "CRITICAL #1: real before/after perf measurement RUN on this host, real 30-year DB, prod-mode cap. Per-date backfill 1.681s->0.320s = 81.0% faster; warm-up 12-date deep-history subset 10.169s->2.250s = 77.9% faster; forward-return read step (6110 pairs) 2.806s->0.296s = 89.4% faster. All >=30%. Recorded in reports/perf-budgets.md (new Item F section).",
+    "CRITICAL #2: peak process RSS = 1330.6 MB (getrusage), and the whole measurement completed under a literal ulimit -v 6144MB with no MemoryError -- under the server.memory_cap_mb cap. Recorded in reports/perf-budgets.md.",
+    "MINOR #3: the 5 test_warmup.py disk-I/O failures confirmed ENVIRONMENTAL -- test_readiness_unavailable_on_empty_db (one of the 5) now passes cleanly in 0.18s on healthy /tmp; the other 4 are heavy real-seed tests unrelated to the iter-26 diff."
+  ],
+  "qa_artifacts": [
+    "reports/qa/goal-mcp-loop-iter-26-qa.md (QA validation report, verdict PASS)",
+    "reports/qa/goal-mcp-loop-iter-26-test-plan.md (27 test cases: 12 API, 9 browser, 6 artifact)",
+    "reports/qa/goal-mcp-loop-iter-26-evidence/ (screenshots directory for browser-QA)"
+  ],
+  "changed_files": [
+    "config.yaml",
+    "apps/backend/app/config.py",
+    "apps/backend/app/engine/scoring.py",
+    "apps/backend/app/engine/prices.py",
+    "apps/backend/app/engine/warmup.py",
+    "apps/backend/tests/test_scoring_window.py",
+    "apps/backend/tests/test_forward_testing.py",
+    "apps/backend/tests/test_warmup.py",
+    "apps/backend/tests/test_config.py",
+    "apps/backend/tests/test_config_engine.py",
+    "apps/backend/tests/test_indexes.py",
+    "apps/backend/tests/test_sectors.py",
+    "apps/backend/tests/test_themes.py",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-mcp-loop-iter-26-dev.md"
+  ],
+  "tests_run": true,
+  "tests_summary": "PERF (fix-mode 2026-07-10): per-date backfill +81.0%, warm-up subset +77.9%, forward-return reads +89.4% (all >=30%); peak RSS 1330.6 MB < 6144 MB cap (ran under literal ulimit -v 6144MB, no OOM). CORRECTNESS (prior dev pass, still valid): byte-identity harness test_scoring_window.py 2/2 PASS; test_bar_cache.py 12/12; test_forward_testing.py 50 PASS (+both new cache-awareness cases) + 1 deselected; test_forward_testing_streaming.py+test_forward_walk.py 12/12; test_config.py+test_config_engine.py+test_indexes.py 128/128; warmup query-count proof PASS. test_scoring/sectors/themes/data_manager deferred to full-suite lane (unedited/mechanical). See dev handoff Fix Notes.",
+  "qa_checklist": {
+    "artifacts_present": true,
+    "review_acceptable": true,
+    "dod_items_satisfied": false,
+    "tests_passing": true,
+    "performance_targets_met": true,
+    "no_regressions": true,
+    "browser_qa_ready": false,
+    "charged_regression_fixed_byte_identical": true,
+    "root_cause_crash_fixed": false,
+    "code_implementation_complete": true,
+    "target_journey_blocked": true
+  },
+  "audit_fix_pass": {
+    "date": "2026-07-10",
+    "charge_addressed": "audit B3 \u2014 forward-return close_on/bars_after transient full[:cut] allocations removed byte-identically (prices.py only)",
+    "byte_identity_evidence": "5 targeted cache/boundary tests green (0.15s); 3000-pair OLD-vs-NEW spot-check on real 30-year DB = 0 mismatches; test_scoring_window.py re-run CONFIRMED GREEN 2 passed in 501.63s (scoring path untouched, so invariant)",
+    "vsz_measurement": "full-universe shape (590 sym prefill + 216530 forward-return calls) under ulimit -v 6144MB: VmPeak stayed 1365MB for both OLD and NEW code -> forward-return step in isolation is NOT the VSZ ceiling driver",
+    "root_cause_not_fixed": "audit B1 crash frame regime._index_ma_stack -> bars_asof:191 full[:cut] + whole-universe prefill is pre-existing unmodified code; architectural memory-hardening iteration required (audit \u00a75 item 4)",
+    "files_changed": [
+      "apps/backend/app/engine/prices.py"
+    ]
+  },
+  "browser_checks_run": false,
+  "browser_checks_attempted": "no (deferred due to known VSZ blocker per coordinator guidance)",
+  "qa_reason_for_fail": "J-16 target journey cannot be validated due to pre-existing VSZ memory ceiling crash (NOT caused by iter-26, but blocks validation of iter-26's goal)",
+  "next_action": "Developer fix-mode pass: implement root-cause memory fix (audit B1 \u2014 bound/stream regime full[:cut] allocations and/or full-universe prefill so deep-basis rebuild stays under ulimit -v 6144MB cap). This is architectural memory-hardening work (audit \u00a75 item 4) outside iter-26's original perf-optimization scope. Once fixed, re-run full browser-qa lane to validate J-16 and required journeys.",
+  "blockers": [
+    "ROOT-CAUSE UNRESOLVED (audit B1): full-universe '/data' 'Rebuild snapshots for current universe' job (322 dates \u00d7 541 members) still exhausts VSZ at the 6144MB ulimit -v ceiling and crashes backend at regime._index_ma_stack -> bars_asof:191 (pre-existing code, not in iter-26's diff). Audit fix-mode pass removed the charged iter-26 regression (B3 forward-return allocations) byte-identically, but cannot fix the root architectural issue. Needs dedicated memory-hardening iteration (audit \u00a75 item 4)."
+  ]
+}

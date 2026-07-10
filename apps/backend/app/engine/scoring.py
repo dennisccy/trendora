@@ -111,6 +111,14 @@ def _raw_components(
     window_3m = icfg.rs_windows["3m"]
 
     bars = bars_asof(session, ticker, asof)
+    # iter-26 (J-16, fast-platform item F): a 30-year bars_asof series can carry ~5,300 bars on a
+    # late as-of date, but every component below reads only a TRAILING window off the end (the
+    # largest is `high_window_52w`, 252). Slicing to the last `max_lookback_bars` bars BEFORE any
+    # indicator runs is byte-identical (every consumer already computes from the series' end — see
+    # `test_scoring_window.py`) and avoids feeding thousands of irrelevant older bars through them. A
+    # member with fewer than max_lookback_bars bars keeps its whole (shorter) series — short-history
+    # NA propagation is unaffected.
+    bars = bars[-icfg.max_lookback_bars:]
     series = closes(bars)
     vols = volumes(bars)
     hi, lo = highs(bars), lows(bars)
@@ -337,6 +345,10 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
         # as-of bars read ONCE (date <= asof, no lookahead), reused for BOTH the invalidation level
         # and the VCP detector — no extra DB round-trip.
         bars = bars_asof(session, ticker, asof)
+        # iter-26 (J-16, item F): same bounded trailing-window slice as `_raw_components` above — every
+        # pattern detector below reads only a trailing window (the largest min_history_bars is 90),
+        # well within max_lookback_bars — byte-identical, see `test_scoring_window.py`.
+        bars = bars[-icfg.max_lookback_bars:]
         inv_closes = closes(bars)
         # invalidation level: the canonical `sma` over the config invalidation period (the level ==
         # the chart's MA-series endpoint).

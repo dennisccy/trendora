@@ -649,6 +649,15 @@ indicators:
   semivol_window: 63                 # downside-semivolatility window (negative leg only, MAR=0)
   vol_contraction_recent: 21         # recent realized-vol window for the contraction ratio (numerator)
   vol_contraction_prior: 63          # prior realized-vol baseline window for the ratio (denominator)
+  # iter-26 (J-16, fast-platform item F): the TRUE maximum trailing lookback any scoring/pass-3
+  # consumer needs is `high_window_52w` (252) -- every other window above (ma_periods max 200,
+  # rs_windows max 126, vol_avg_period*2 100, vcp/pullback/flat_base min_history_bars <= 90) is
+  # smaller. `scoring.py` slices each member's as-of bar series to the last `max_lookback_bars`
+  # bars BEFORE indicator/pattern computation (bars_asof on a 30-year basis can return ~5,300 bars
+  # on late dates, but every indicator only ever reads a trailing window off the end) -- 320 =
+  # 252 + a ~68-bar safety margin. The byte-identity harness (test_scoring_window.py), not this
+  # value, is the authority: it must show 0 diffs windowed vs. unwindowed; widen this if it ever doesn't.
+  max_lookback_bars: 320
 
 # ----------------------------------------------------------------------------------------
 # iter-2 CONSUMED — Sector/industry leadership. Component weights (must cover every component

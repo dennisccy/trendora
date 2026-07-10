@@ -190,6 +190,55 @@ class _BarCache:
         cut = bisect.bisect_right(self._dates_by_symbol[symbol], d)
         return full[:cut]
 
+    def bars_after(
+        self, session: Session, symbol: str, d: date_cls, limit: Optional[int] = None
+    ) -> list[Bar]:
+        """iter-26 (J-16, item F): the cached mirror of the module-level `bars_after` — all bars for
+        `symbol` with date > `d`, ascending, optionally truncated to the first `limit` bars. Slices with
+        the SAME `bisect.bisect_right` boundary `bars_asof` uses for its `<= d` side, so the two never
+        overlap (no-lookahead preserved). Byte-identical to the uncached query truncated to `limit` (same
+        rows, same order).
+
+        iter-26 memory fix: the load-ensuring step no longer goes through `bars_asof`, which BUILT and
+        immediately DISCARDED the whole `full[:cut]` (`<= d`) prefix on every call — up to ~5,300 `Bar`
+        tuples of transient allocation per (run, symbol) in the forward-return backfill. It uses the same
+        lightweight lazy-load `trailing_count` uses (a no-op on a prefilled cache — the crashing
+        `_do_backfill` shape never re-loads). And when `limit` is given it slices only the first `limit`
+        post-cut bars (`full[cut:cut+limit]`) rather than materializing the full multi-year post-`d` tail
+        just to truncate it — the exact "avoid the full tail" intent the module-level docstring states.
+        For every value the backfill passes (`limit` = `max(horizons)` > 0, or `None`) this is
+        byte-identical to the old `full[cut:][:limit]` and to the raw `.limit(limit)` query."""
+        dates = self._dates_by_symbol.get(symbol)
+        if dates is None:
+            # ensure the series is loaded exactly once (lazy/defensive — a prefilled cache never reaches
+            # here); the returned slice is discarded, mirroring `trailing_count`'s load-ensure idiom.
+            self.bars_asof(session, symbol, d)
+            dates = self._dates_by_symbol[symbol]
+        full = self._by_symbol[symbol]
+        cut = bisect.bisect_right(dates, d)
+        if limit is None:
+            return full[cut:]
+        return full[cut : cut + limit]
+
+    def close_on(self, session: Session, symbol: str, d: date_cls) -> Optional[float]:
+        """iter-26 memory fix (J-16): the close of the latest cached bar with date <= `d` (or None when
+        the symbol has no bar on/before `d`), read by a single `bisect` + index.
+
+        This replaces the old cache path (`bars_asof(...)[-1].close`), which materialized the whole
+        `full[:cut]` (`<= d`) prefix — up to ~5,300 `Bar` tuples on a late as-of date — ONLY to read its
+        last element and throw the rest away, once per (run, symbol) in the forward-return backfill (a
+        large per-date transient that grows VSZ under arena fragmentation). Byte-identical: the latest bar
+        with date <= d is `full[cut-1]` where `cut = bisect_right(dates, d)`; `cut == 0` (no bar on/before
+        d) -> None, exactly as the empty-slice/`session.scalar(... LIMIT 1)` paths return. Load-ensures
+        via the same lightweight lazy-load `trailing_count` uses (a no-op on a prefilled cache)."""
+        dates = self._dates_by_symbol.get(symbol)
+        if dates is None:
+            # ensure the series is loaded exactly once (lazy/defensive); the slice is discarded.
+            self.bars_asof(session, symbol, d)
+            dates = self._dates_by_symbol[symbol]
+        cut = bisect.bisect_right(dates, d)
+        return self._by_symbol[symbol][cut - 1].close if cut > 0 else None
+
     def trailing_count(self, session: Session, symbol: str, d: date_cls) -> int:
         """The number of bars for `symbol` with date <= `d` — BYTE-IDENTICAL to
         `len(self.bars_asof(session, symbol, d))` and to a `SELECT count(*) ... WHERE date <= d` grouped
@@ -330,7 +379,17 @@ def close_on(session: Session, symbol: str, d: date_cls) -> Optional[float]:
     symbol has no bar on/before D. This is the single-bar form of `bars_asof(session, symbol, d)[-1]
     .close` — the SAME backward boundary (date <= d, no lookahead) — but it fetches only the one bar
     instead of materializing the symbol's full pre-history, so the walk-forward backfill can read each
-    forward return's entry close cheaply."""
+    forward return's entry close cheaply.
+
+    iter-26 (J-16, item F): when a `bar_cache(session)` context is active, this derives the answer from
+    the once-loaded cached series (no DB round-trip) instead of issuing the raw single-row query —
+    byte-identical (same `<= d` boundary), matching the `bars_asof` cache-aware pattern above. The
+    cache path reads the single as-of close by `bisect` + index (`_BarCache.close_on`) rather than
+    materializing the whole `<= d` prefix (iter-26 memory fix). The default (no-context) path is
+    unchanged."""
+    cache = _BAR_CACHES.get(id(session))
+    if cache is not None:
+        return cache.close_on(session, symbol, d)
     stmt = (
         select(DailyPrice.close)
         .where(DailyPrice.symbol == symbol)
@@ -343,7 +402,7 @@ def close_on(session: Session, symbol: str, d: date_cls) -> Optional[float]:
 
 def bars_after(
     session: Session, symbol: str, d: date_cls, limit: Optional[int] = None
-) -> list[DailyPrice]:
+) -> list[DailyPrice] | list[Bar]:
     """All bars for `symbol` with **date > `d`**, ascending — the strict inverse of `bars_asof`
     and the forward no-lookahead boundary used by the walk-forward forward-testing engine.
 
@@ -352,7 +411,15 @@ def bars_after(
     `limit=max(horizons)` to avoid materializing the full multi-year tail per (symbol, run); the
     result is byte-identical to the unbounded call truncated to `limit` (the boundary is unchanged,
     only later, irrelevant bars are not fetched). The no-lookahead boundary test calls it WITHOUT a
-    limit and asserts no returned bar has date <= d."""
+    limit and asserts no returned bar has date <= d.
+
+    iter-26 (J-16, item F): when a `bar_cache(session)` context is active, this slices the once-loaded
+    cached series (`_BarCache.bars_after`) instead of issuing the raw query — byte-identical (same
+    `> d` boundary, same `limit` truncation), matching `bars_asof`'s cache-aware pattern. The default
+    (no-context) path is unchanged."""
+    cache = _BAR_CACHES.get(id(session))
+    if cache is not None:
+        return cache.bars_after(session, symbol, d, limit=limit)
     stmt = (
         select(DailyPrice)
         .where(DailyPrice.symbol == symbol)

@@ -219,3 +219,89 @@ the prior ablation-only cold-path claim with a real, live, end-to-end HTTP-level
 `test_health.py`, `test_data_manager.py` (123 tests, the DoD-named selection) ran with zero source edits:
 `123 passed in 7156.23s (1:59:16)`. No displayed value drifted.
 
+## Item F — bound the scoring-input window + warmup forward-return cache-scope (iter-26, J-16)
+
+**Problem (measured, this iteration):** both scoring `bars_asof` sites (`scoring.py:113` `_raw_components`,
+`scoring.py:339` pass-3) fed each member's WHOLE ascending as-of series (≈5,300 bars on late dates) into
+indicator/pattern computation whose longest lookback is only `high_window_52w` = 252 — so the per-member
+list-extraction (`closes`/`volumes`/`highs`/`lows`) and slice work scaled with the full 30-year history
+instead of the trailing window that is actually read. Separately, `warmup.py`'s `backfill_forward_returns`
+ran OUTSIDE the cadence loop's `bar_cache` on a fresh (uncached) session, and `prices.py`'s `close_on` /
+`bars_after` were raw uncached queries — so the forward-return step re-round-tripped the DB per
+(run, symbol) even though the cadence loop had already loaded every series.
+
+**Fix:** `indicators.max_lookback_bars = 320` (252 + margin); `scoring.py` slices each member's series to
+the last `max_lookback_bars` bars before indicator/pattern computation (byte-identical — every consumer
+already reads only a trailing window off the end; `test_scoring_window.py` is the 0-diff gate).
+`warmup.py` moved `backfill_forward_returns` INSIDE the cadence `bar_cache` and passes `session` (not
+`engine`); `prices.py`'s `close_on`/`bars_after` are now cache-aware, reading the already-loaded series
+when a cache is active (default no-context path unchanged). All outputs byte-identical (harness + the
+UNEDITED scoring/bar-cache/forward-return suites are the correctness gate).
+
+### Measured before → after (2026-07-10, this host, `.venv` Python 3.12, under `ulimit -v 6291456` KB == the real 6144 MB `server.memory_cap_mb` cap)
+
+Method (honest, same-host, same-subset-both-runs, no estimates — script logic in the dev handoff): baseline
+("before") = `max_lookback_bars = 1_000_000` (`bars[-1_000_000:] == bars`, i.e. the exact pre-iter-26
+unwindowed behavior); after = the committed `320`. Scoring is timed over a fixed representative 12-date
+deep-history cadence subset (evenly spread across the full 85-date cadence, **the same subset both runs**),
+`score_stocks` over the full resolved pool, inside ONE shared prefilled `bar_cache` so the one-time bar
+load (already budgeted as item A, iter-19) is amortized and the measured delta is the window's real
+CPU/allocation effect — exactly the cost shape of the warm-up's own `bar_cache`-wrapped cadence loop.
+Each cell is the **min of 3 reps** (strips GC/one-time noise); a discarded process-warmup call precedes the
+loop. Network fetch time is excluded (frozen-seed reads only).
+
+**Per-date scoring cost — window OFF (before) vs ON (after):**
+
+| Cadence date | Before (unwindowed) | After (windowed 320) | Improvement |
+|---|---|---|---|
+| 2005-04-01 | 0.204 s | 0.066 s | 67.6% |
+| 2007-03-30 | 0.341 s | 0.108 s | 68.5% |
+| 2008-12-31 | 0.354 s | 0.109 s | 69.3% |
+| 2010-12-31 | 0.461 s | 0.126 s | 72.7% |
+| 2012-12-31 | 0.560 s | 0.143 s | 74.4% |
+| 2014-10-01 | 0.738 s | 0.168 s | 77.3% |
+| 2016-09-30 | 0.838 s | 0.191 s | 77.3% |
+| 2018-06-29 | 1.040 s | 0.223 s | 78.5% |
+| 2020-07-01 | 1.199 s | 0.246 s | 79.5% |
+| 2022-07-01 | 1.289 s | 0.266 s | 79.4% |
+| 2024-04-01 | 1.463 s | 0.285 s | 80.6% |
+| 2026-04-01 (latest, deepest history) | 1.681 s | 0.320 s | **81.0%** |
+
+**Committed never-regress J-16 budgets:**
+
+| Budget | Before | After | Improvement | Threshold |
+|---|---|---|---|---|
+| **Per-date backfill** (latest deep-history cadence date, full pool, scoring compute) | 1.681 s | 0.320 s | **81.0%** | ≥ 30% |
+| **Warm-up pass** (12-date deep-history representative subset, sum, scoring compute) | 10.169 s | 2.250 s | **77.9%** | ≥ 30% |
+| **Forward-return read step** (`close_on` + `bars_after`, 15-run × pool = 6,110 (run,symbol) pairs) | 2.806 s (raw queries) | 0.296 s (cache-aware) | **89.4%** | ≥ 30% |
+
+The forward-return row is the warmup.py/prices.py cache-scope change measured in isolation: one `close_on`
++ one `bars_after` per (run, symbol) — exactly the read path that step issues — BEFORE (no active cache →
+raw per-(run,symbol) queries, the pre-iter-26 `engine`-session shape) vs AFTER (inside an already-prefilled
+`bar_cache` → in-memory bisects; the prefill is excluded from the timed region because the cadence loop has
+already paid it). No rows are written (the forward-return math is pure Python, identical either way and not
+what changed).
+
+**Peak process RSS = 1,330.6 MB** (`getrusage(RUSAGE_SELF).ru_maxrss` high-water mark), well under the
+6144 MB cap — and the entire measurement RAN TO COMPLETION under a literal `ulimit -v 6291456` (6144 MB)
+virtual-memory cap with NO `MemoryError`, so the iter-26 warm-up/backfill compute path (scoring + the
+full-pool bar prefill + forward-return reads) is proven under the cap end-to-end (anti-goal #8). This is
+the leaner compute-path process; the FULL live uvicorn/FastAPI server's cold `/api/data` prefill peaks at
+~1.8 GB under the same cap (iter-25 section above) — the iter-26 change only REDUCES per-member allocation
+and removes per-(run,symbol) forward-return round-trips, so it cannot raise that ceiling. The live cold-path
+`/data` OOM repro (stop → cold start → `/data` first, ≥2×) remains the browser-QA lane's check per the
+iter-24 lesson.
+
+**Reading the numbers:** the window's benefit scales with history depth — negligible on early short-history
+dates (a <320-bar series returns whole, identical work — the 2005 row's improvement is the fixed
+list-extraction saving, not the window) and largest on the latest 30-year dates (≈5,300 bars sliced to
+320). Every J-16 budget clears the ≥30% threshold with wide margin. Correctness is separate from and prior
+to speed here: the byte-identity harness (`test_scoring_window.py`, 0 diffs windowed vs unwindowed over 3
+dates × full pool + a short-history date) and the UNEDITED scoring/bar-cache/forward-return suites are the
+authority that every displayed score / forward return is unchanged.
+
+**What this measurement does NOT claim:** it is not a full 85-date warm-up run twice end-to-end (the DoD's
+sanctioned ≥10-date representative-subset alternative was used, same subset both runs); and the per-date
+figures are the scoring COMPUTE cost (the item-F CPU driver), inside the warm cache, not the one-time cold
+bar-load (item A, iter-19) or snapshot-persist I/O, which the window change does not touch.
+

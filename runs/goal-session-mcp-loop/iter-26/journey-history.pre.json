@@ -1,0 +1,174 @@
+{
+  "journeys": {
+    "J-01": {
+      "id": "J-01",
+      "name": "Every score shows an evidence status",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-0",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-08-sector-sorted.png",
+      "note": "PASSING -- FRESH LIVE replay this iter (UT-08). Evaluator PERSONALLY OPENED UT-08-sector-sorted.png: /stocks '541 / 541', sorted by SECTOR (arrow up, rows grouped alphabetically Communication Services->Consumer Discretionary: GOOGL/META/NFLX then MTH/ABNB/KBH/TOL), every Leadership/Entry Quality/Risk cell carries a 'Not yet proven' tag, 'Market Regime Risk-on 72.25', 'Research-only - decision support - no orders' header. This is the exact Sector-sort interaction that CRASHED the app at iter-18 and rode the cold-path-cascade outage risk at iter-24 -- now clean on a healthy backend that no longer OOM-crashes (anti-goal #8 resolved this iter). Zero source diff vs HEAD."
+    },
+    "J-02": {
+      "id": "J-02",
+      "name": "Drill into the proof behind a score",
+      "status": "partial",
+      "last_verified_iter": "goal-mcp-loop-iter-23",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
+      "first_seen_iter": "goal-mcp-loop-iter-0",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-23-evidence/UT-19-evidence-ledger.png",
+      "note": "PARTIAL by design (goal.md data-basis-change provision); OUT OF SCOPE for iter-25 (verification-only recovery pass; zero evidence work, ledgers git-unchanged all-FAIL, no ## Evidence Claim). No 'Proven' badge exists to drill into. Re-lighting a Proven drill needs a separate new-basis staging-discovery + honest-promotion iteration; no staging winner currently clears the canonical Bonferroni divisor-8 bar. NOT a regression."
+    },
+    "J-03": {
+      "id": "J-03",
+      "name": "Unproven / noise signals are honestly marked",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-0",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-08-stocks-leaderboard.png",
+      "note": "PASSING -- FRESH LIVE replay this iter (UT-09), closing the iter-24 incomplete-replay gap (iter-24 aborted mid-run on the /data crash). Every score badge on every visible /stocks row reads 'Not yet proven' (UT-08 leaderboard, evaluator-opened via UT-08-sector-sorted); /evidence raw HTML = 14 'FAIL' / 0 'PASS' (UT-11, evaluator-opened UT-11-evidence-ledger: leadership_score/Breakout-watch/ma_stack all FAIL with explicit honest reasons). Zero engine/scoring diff vs HEAD."
+    },
+    "J-04": {
+      "id": "J-04",
+      "name": "Regime-conditioned evidence",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-0",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-10-dashboard-to-evidence.png",
+      "note": "PASSING -- FRESH LIVE replay this iter (UT-10), closing the iter-24 incomplete-replay gap. Dashboard 'Market Regime -- Risk-on 72.25' with 'See evidence proven in this regime ->' link; clicking a[href=/evidence] lands on /evidence with the backing 'Breakout-watch setup / Regime: Risk-on / Out-of-sample edge in the Risk-on regime / FAIL holdout edge -0.68%' row visible (not 404/blank). Regime engine git-diff empty vs HEAD."
+    },
+    "J-05": {
+      "id": "J-05",
+      "name": "Audit the evidence ledger",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-0",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-11-evidence-ledger.png",
+      "note": "PASSING -- FRESH LIVE replay this iter (UT-11), closing the iter-24 incomplete-replay gap. Evaluator PERSONALLY OPENED UT-11-evidence-ledger.png: all 7 canonical ledger rows render FAIL with the full field set (hypothesis chips, out-of-sample verdict + explicit reason, control-vs-SPY %, registration date 2026-07-03, forward-walk 'Pending', 'Backs: ... ->' linkback). Subtitle states the honest contract verbatim. app/evidence/* + ledger.py git-diff empty; both ledgers 7-canonical/7-staging all-FAIL, unchanged."
+    },
+    "J-06": {
+      "id": "J-06",
+      "name": "vcp_contraction top-decile certified edge surfaced on Evidence + Research factor lab",
+      "status": "partial",
+      "last_verified_iter": "goal-mcp-loop-iter-23",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
+      "first_seen_iter": "goal-mcp-loop-iter-8",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-23-evidence/UT-19-evidence-ledger.png",
+      "note": "PARTIAL by design (goal.md data-basis-change provision; NOT a regression; OUT OF SCOPE for iter-25 -- verification-only recovery pass, zero evidence work, ledgers git-unchanged). The retired vcp_contraction D10 h20 edge stays canonical ledger row = FAIL (-0.38%) on the 30-year multi-regime holdout. The J-06 contract (honest badge + correct number) holds; only the specific certified edge recomputed away as sanctioned."
+    },
+    "J-07": {
+      "id": "J-07",
+      "name": "Multi-horizon certified edge surfaced (the loop sees beyond the 20-day horizon)",
+      "status": "partial",
+      "last_verified_iter": "goal-mcp-loop-iter-23",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
+      "first_seen_iter": "goal-mcp-loop-iter-9",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-23-evidence/UT-19-evidence-ledger.png",
+      "note": "PARTIAL by design (data-basis provision; NOT a regression; OUT OF SCOPE for iter-25). The retired vcp_contraction D10 h60 edge stays canonical ledger row = FAIL (-1.64%, ledger=canonical). Multi-horizon machinery intact (certification engine git-diff empty); only the specific certified edge did not reproduce."
+    },
+    "J-08": {
+      "id": "J-08",
+      "name": "Multi-factor combination certified edge surfaced on the Combination lab + Evidence",
+      "status": "partial",
+      "last_verified_iter": "goal-mcp-loop-iter-23",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
+      "first_seen_iter": "goal-mcp-loop-iter-9",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-23-evidence/UT-19-evidence-ledger.png",
+      "note": "PARTIAL by design (data-basis provision; NOT a regression; OUT OF SCOPE for iter-25). The retired rs_spy_3m x high_proximity h20 composite stays canonical ledger row = FAIL (+0.01%, p=0.4943, ledger=canonical). Combination machinery intact; only the specific certified edge did not reproduce."
+    },
+    "J-09": {
+      "id": "J-09",
+      "name": "Relative-strength (rs_spy_3m) 60-day-horizon certified edge surfaced on Evidence + Research factor lab",
+      "status": "partial",
+      "last_verified_iter": "goal-mcp-loop-iter-23",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
+      "first_seen_iter": "goal-mcp-loop-iter-15",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-23-evidence/UT-19-evidence-ledger.png",
+      "note": "PARTIAL by design (data-basis provision; NOT a regression; OUT OF SCOPE for iter-25). The retired rs_spy_3m D10 h60 edge (was +21.34%) stays canonical ledger row = FAIL (-1.42%) on the deep multi-regime holdout; the +21.34% value renders nowhere. The system working, not a regression."
+    },
+    "J-10": {
+      "id": "J-10",
+      "name": "The product surfaces deep (up to ~30-year) price history, honestly bounded per name",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-16",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-12-aapl-recent.png",
+      "note": "PASSING -- FRESH LIVE replay this iter (UT-12). /stocks/AAPL Full<->Recent toggle: aria-pressed flips true/false both directions; direct in-page canvas getImageData confirms the chart holds real non-black content and its content-checksum genuinely changes Recent(164889104)<->Full(678520951) = a real re-render, no JS exception. NOTE: the AAPL price-chart canvas screenshots as a solid black rectangle under this CDP env (documented compositing limitation, not a product defect); UT-12 verified via the pixel-buffer read instead, a direct read of true rendered output. prices.py + app/stocks/[ticker] git-diff empty vs HEAD."
+    },
+    "J-11": {
+      "id": "J-11",
+      "name": "Every displayed 'Proven' edge is re-certified on the new 30-year data -- no stale edge survives",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-16",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-11-evidence-ledger.png",
+      "note": "PASSING -- FRESH LIVE replay this iter (UT-11), closing the iter-24 incomplete-replay gap. /evidence raw HTML = 14 'FAIL' / 0 'PASS'; both ledgers git-UNMODIFIED, all-FAIL (7 canonical / 7 staging). No stale edge can survive because none is proven -- no retired +21.34%/+6.36% value renders anywhere. No ## Evidence Claim this iter (Bonferroni divisor stays 8)."
+    },
+    "J-12": {
+      "id": "J-12",
+      "name": "The universe is a broad, point-in-time dynamic set across the deep history",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-16",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-02-run1-data-fullpage.png",
+      "note": "PASSING -- FRESH LIVE this iter (UT-13). /data 'Universe (as of date)' = 541 == /stocks '541 / 541' (both read from the same freshly cold-started backend); Symbols=590 (distinct from the 541 universe), Trading days 5369, dynamic-universe membership timeline + per-symbol coverage table all render (evaluator opened UT-02-run1-data-fullpage.png). Universe-resolver untouched. Unlike iter-24, this /data render now survives a COLD boot (see J-13)."
+    },
+    "J-13": {
+      "id": "J-13",
+      "name": "The Data Manager page reflects the broadened 548-symbol universe with an unambiguous availability legend",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-16",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-02-run1-data-fullpage.png",
+      "note": "regressed -> PASSING (the iter-24 verdict driver recovered). The iter-24 cold-load OOM crash is FIXED and re-verified LIVE by the canonical browser-qa lane 2/2. Evaluator PERSONALLY OPENED UT-02-run1-data-fullpage.png + UT-03-run2-data-fullpage.png (md5-distinct f8793ca9 / 54a454a7): after a full backend stop -> cold start -> /data as the FIRST request, /data renders fully populated (coverage 1996-01-02->2026-07-01, Universe 541, Symbols 590, Storage 1.22GB/3,293,160/166,213/823,409, availability heatmap, index provenance) in ~10.2s/10.5s, backend survived, downstream /stocks 541/541 loaded, /api/health 200 after -- two independent repros, not a fluke. Evaluator OPENED UT-06-backend-unavailable.png: on a genuinely-down backend /data shows exactly ONE contained red 'Backend unavailable' card with full nav/shell intact ('No figures ... rather than fabricated values') -- a contained boundary, NOT the iter-18/24 blank app-error crash. Fix = config.yaml:108 mmap_size_bytes:0 (mmap disabled), committed at HEAD 665565a, zero source diff this iter; pool_size/max_overflow/cache_size/memory_cap_mb unchanged. Both gates that caught iter-24 now PASS (UX-REGRESSION-PASS, CLOSURE-PASS)."
+    },
+    "J-14": {
+      "id": "J-14",
+      "name": "The 30-year basis carries deep, honestly-sourced index context (benchmarks + macro), each labeled by vendor",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-17",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-02-run1-data-fullpage.png",
+      "note": "PASSING -- FRESH LIVE replay this iter (UT-14), closing the iter-24 incomplete-replay gap. Evaluator opened UT-02-run1-data-fullpage.png 'Index & benchmark data provenance' section: S&P 500 (^SPX)->Stooq, Nasdaq 100 (^NDX)->Stooq, Dow 30 (^DJI)->Stooq, CBOE Volatility (^VIX)->Yahoo (primary indexes vendor-disclosed); 10Y-2Y spread (^TNX)->'FRED-macro proxy' (explicitly labeled a proxy, never a primary index). config index_chart symbols + chart components git-diff empty vs HEAD."
+    },
+    "J-15": {
+      "id": "J-15",
+      "name": "Core pages and APIs stay fast on the deep basis -- measured, budgeted, never regressing",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-19",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-02-run1-data-fullpage.png",
+      "note": "partial -> PASSING (target). J-15's OWN acceptance criterion 'cold /api/data completes <=60s without OOM under the 6144 MB cap' is now browser-verified GREEN: the iter-24 OOM crash is fixed (mmap_size_bytes:0) and re-verified live 2/2 -- cold /data renders in ~10.2s/10.5s (UT-02/UT-03), peak RSS ~1.8-1.9GB (perf-budgets.md live section: 9.522s/9.387s, ~1,814/1,859 MB, well under 6144 MB), backend survived. Warm budgets re-confirmed on the fixed build (perf-budgets.md 2026-07-09): /api/health 0.090s<=0.1s, /api/stocks fast, /api/stocks/AAPL <=0.3s, /api/data 0.014s<=1.5s warm, page TTIs <=3s. reports/perf-budgets.md corrected (retracts the iter-24 ablation-only claim, adds the live cold-path + warm re-confirmation). Both halves now green -> passing (warm half was iter-24-verified; cold half verified this iter)."
+    },
+    "J-16": {
+      "id": "J-16",
+      "name": "Data jobs (Fetch + Backfill + warmup) are fast and honest about progress",
+      "status": "unknown",
+      "last_verified_iter": "goal-mcp-loop-iter-19",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-mcp-loop-iter-19",
+      "last_evidence_path": null,
+      "note": "Unknown -- DELIBERATELY OUT OF SCOPE for iter-25 (the recovery pass's spec defers J-16 + item F, the byte-identity-gated scoring-window change, to its own iteration per rubric rule 5 'never bundle a risky journey into a regression-recovery pass'). Needs the committed measured baseline + items A/B/F optimizations + re-measured >=30% improvements as never-regress budgets (byte-identical per-(symbol,date) outputs). Carried unknown/unbuilt -- the SOLE remaining unbuilt Must-have; the other gap to GOAL_ACHIEVED is the J-02/06/07/08/09 evidence re-certification."
+    }
+  },
+  "anti_goal_violations": [
+    {
+      "iter": "goal-mcp-loop-iter-24",
+      "anti_goal": "Resilience to data-shape and data-scale change: widening the data basis (new nulls, broader pools, deeper history) must never crash an existing page or exhaust a service's memory -- every existing consumer of a widened field is re-validated, the UI degrades gracefully (contained error boundary, honest '--'/NA placeholder, never a blank application-error page), and unbounded whole-table ORM loads are forbidden on the deep basis. (critical)",
+      "severity": "critical",
+      "evidence": "ORIGIN (iter-24): browser-qa UT-16 + UT-06 reproduced 2/2 on fresh restarts -- first cold GET /api/data load OOM-crashed the backend (MemoryError in cursor.fetchmany() prices.py:141 + json.dumps(), then a fatal PyO3 panic killing uvicorn; VmSize pinned at exactly 6144 MB ulimit -v while VmRSS ~2.9 GB = virtual-address-space exhaustion). Root cause: iter-24 item B added config.yaml mmap_size_bytes=1073741824 (1 GB per-connection read-mmap) x pool_size=10/max_overflow=20. RESOLVED (iter-25): the auditor's fix config.yaml:108 mmap_size_bytes=0 (mmap disabled; committed at HEAD 665565a, zero source diff this iter, pool/cap unchanged) was re-verified LIVE by the canonical browser-qa lane -- UT-02/UT-03 stop->cold-start->/data-as-first-request 2/2 clean (~10.2s/10.5s, real content, backend survived, downstream /stocks 541/541 loaded, /api/health 200 after); UT-06 confirms a single contained 'Backend unavailable' card (nav/shell intact, honest 'no fabricated values') on a genuinely-down backend, never a blank app-error page; perf-budgets.md live section records peak RSS ~1.8-1.9 GB (well under the 6144 MB cap). Both independent gates that caught iter-24 now clear: UX-REGRESSION-PASS + CLOSURE-PASS. Evaluator personally opened UT-02-run1-data-fullpage.png, UT-03-run2-data-fullpage.png, and UT-06-backend-unavailable.png. resolved=true.",
+      "resolved": true
+    }
+  ],
+  "updated_at": "2026-07-09T19:30:00Z"
+}

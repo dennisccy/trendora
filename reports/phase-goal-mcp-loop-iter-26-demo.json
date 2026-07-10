@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-26",
+  "base_url": "http://localhost:3255",
+  "iteration": 26,
+  "default_timeout_ms": 15000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Data Manager overview",
+      "narration": "Let's take a look at the Data Manager, which gives an at-a-glance view of how much market history and how many symbols the system has on hand.",
+      "point_out": "The Dataset coverage and Storage footprint panels are fully populated with real numbers — decades of price history, hundreds of tracked symbols, and millions of stored price bars, with no error card in sight.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "1996-01-02" }
+    }
+  ]
+}

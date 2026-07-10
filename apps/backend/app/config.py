@@ -280,6 +280,11 @@ class IndicatorsCfg(BaseModel):
     semivol_window: int
     vol_contraction_recent: int
     vol_contraction_prior: int
+    # iter-26 (J-16, fast-platform item F): the bounded trailing-window `scoring.py` slices each
+    # member's as-of bar series to (bars[-N:]) BEFORE indicator/pattern computation, so a 30-year
+    # bars_asof series is never fed whole into a ~252-bar-max indicator. Validated below to be >= every
+    # individually-configured window on THIS model; the byte-identity harness is the real authority.
+    max_lookback_bars: int
 
     @model_validator(mode="after")
     def _validate(self) -> "IndicatorsCfg":
@@ -301,10 +306,30 @@ class IndicatorsCfg(BaseModel):
             "semivol_window": self.semivol_window,
             "vol_contraction_recent": self.vol_contraction_recent,
             "vol_contraction_prior": self.vol_contraction_prior,
+            "max_lookback_bars": self.max_lookback_bars,
         }
         nonpositive = sorted(k for k, v in scalars.items() if v <= 0)
         if nonpositive:
             raise ValueError(f"indicators values must be positive: {nonpositive}")
+        # iter-26 sanity guard (not the correctness authority — the byte-identity harness is): the
+        # window must cover every consumer fed by a bars_asof-sliced series on THIS model (a
+        # different model's pattern min_history_bars is cross-checked on Config below, mirroring
+        # `_pattern_ma_period_is_an_indicator_period`'s "a sub-model cannot see indicators" note).
+        max_needed = max(
+            max(self.ma_periods),
+            max(self.rs_windows.values()) + 1,  # rs_vs needs window + 1 bars
+            self.high_window_52w,
+            2 * self.vol_avg_period,  # vol_trend needs 2 * period bars
+            self.atr_period + 1,
+            self.hv_window + 1,
+            self.semivol_window + 1,
+            self.vol_contraction_recent + self.vol_contraction_prior + 1,
+        )
+        if self.max_lookback_bars < max_needed:
+            raise ValueError(
+                f"indicators.max_lookback_bars ({self.max_lookback_bars}) must be >= the largest "
+                f"configured indicator window ({max_needed})"
+            )
         return self
 
 
@@ -2225,6 +2250,26 @@ class Config(BaseModel):
             raise ValueError(
                 f"patterns.pullback_to_rising_dma.ma_period ({period}) must be one of "
                 f"indicators.ma_periods ({self.indicators.ma_periods})"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _max_lookback_bars_covers_pattern_history(self) -> "Config":
+        """iter-26 (J-16, fast-platform item F) sanity guard: `indicators.max_lookback_bars` — the
+        window `scoring.py` slices every as-of bar series to before indicator/pattern computation —
+        must be >= every pattern detector's own `min_history_bars`, so a detector's short-history NA
+        gate is never tripped early by an over-narrow window. Cross-checked here (not on `PatternsCfg`)
+        because a sub-model cannot see `indicators` — same reason as `_pattern_ma_period_is_an_indicator_period`
+        above. This is a sanity guard, not the correctness authority: the byte-identity harness is."""
+        needed = max(
+            self.patterns.vcp.min_history_bars,
+            self.patterns.pullback_to_rising_dma.min_history_bars,
+            self.patterns.flat_base_breakout.min_history_bars,
+        )
+        if self.indicators.max_lookback_bars < needed:
+            raise ValueError(
+                f"indicators.max_lookback_bars ({self.indicators.max_lookback_bars}) must be >= the "
+                f"largest pattern min_history_bars ({needed})"
             )
         return self
 

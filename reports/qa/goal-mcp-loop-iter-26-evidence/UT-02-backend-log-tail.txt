@@ -1,0 +1,200 @@
+    return full[:cut]
+           ~~~~^^^^^^
+  File "/home/dennis-chan/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 2302, in _compute_one_backfill_date
+    payload = scanner.compute_run_payload(wsession, d, cfg)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/scanner.py", line 68, in compute_run_payload
+    regime = score_regime(session, asof, cfg)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 100, in score_regime
+    index_ma_stack = _index_ma_stack(session, asof, cfg)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 39, in _index_ma_stack
+    stack = ind.ma_stack(closes(bars_asof(session, symbol, asof)), cfg.indicators.ma_periods)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 333, in bars_asof
+    return cache.bars_asof(session, symbol, d)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 191, in bars_asof
+    return full[:cut]
+           ~~~~^^^^^^
+  File "/home/dennis-chan/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 2302, in _compute_one_backfill_date
+    payload = scanner.compute_run_payload(wsession, d, cfg)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/scanner.py", line 68, in compute_run_payload
+    regime = score_regime(session, asof, cfg)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 100, in score_regime
+    index_ma_stack = _index_ma_stack(session, asof, cfg)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 39, in _index_ma_stack
+    stack = ind.ma_stack(closes(bars_asof(session, symbol, asof)), cfg.indicators.ma_periods)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 333, in bars_asof
+    return cache.bars_asof(session, symbol, d)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 191, in bars_asof
+    return full[:cut]
+           ~~~~^^^^^^
+  File "/home/dennis-chan/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 2302, in _compute_one_backfill_date
+    payload = scanner.compute_run_payload(wsession, d, cfg)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/scanner.py", line 68, in compute_run_payload
+    regime = score_regime(session, asof, cfg)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 100, in score_regime
+    index_ma_stack = _index_ma_stack(session, asof, cfg)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 39, in _index_ma_stack
+    stack = ind.ma_stack(closes(bars_asof(session, symbol, asof)), cfg.indicators.ma_periods)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 333, in bars_asof
+    return cache.bars_asof(session, symbol, d)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 191, in bars_asof
+    return full[:cut]
+           ~~~~^^^^^^
+  File "/home/dennis-chan/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 2302, in _compute_one_backfill_date
+    payload = scanner.compute_run_payload(wsession, d, cfg)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/scanner.py", line 68, in compute_run_payload
+    regime = score_regime(session, asof, cfg)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 100, in score_regime
+    index_ma_stack = _index_ma_stack(session, asof, cfg)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 39, in _index_ma_stack
+    stack = ind.ma_stack(closes(bars_asof(session, symbol, asof)), cfg.indicators.ma_periods)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 333, in bars_asof
+    return cache.bars_asof(session, symbol, d)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 191, in bars_asof
+    return full[:cut]
+           ~~~~^^^^^^
+  File "/home/dennis-chan/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 2302, in _compute_one_backfill_date
+    payload = scanner.compute_run_payload(wsession, d, cfg)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/scanner.py", line 68, in compute_run_payload
+    regime = score_regime(session, asof, cfg)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 100, in score_regime
+    index_ma_stack = _index_ma_stack(session, asof, cfg)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 39, in _index_ma_stack
+    stack = ind.ma_stack(closes(bars_asof(session, symbol, asof)), cfg.indicators.ma_periods)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 333, in bars_asof
+    return cache.bars_asof(session, symbol, d)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 191, in bars_asof
+    return full[:cut]
+           ~~~~^^^^^^
+  File "/home/dennis-chan/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 2302, in _compute_one_backfill_date
+    payload = scanner.compute_run_payload(wsession, d, cfg)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/scanner.py", line 68, in compute_run_payload
+    regime = score_regime(session, asof, cfg)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 100, in score_regime
+    index_ma_stack = _index_ma_stack(session, asof, cfg)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 39, in _index_ma_stack
+    stack = ind.ma_stack(closes(bars_asof(session, symbol, asof)), cfg.indicators.ma_periods)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 333, in bars_asof
+    return cache.bars_asof(session, symbol, d)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 191, in bars_asof
+    return full[:cut]
+           ~~~~^^^^^^
+  File "/home/dennis-chan/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 2302, in _compute_one_backfill_date
+    payload = scanner.compute_run_payload(wsession, d, cfg)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/scanner.py", line 68, in compute_run_payload
+    regime = score_regime(session, asof, cfg)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 100, in score_regime
+    index_ma_stack = _index_ma_stack(session, asof, cfg)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 39, in _index_ma_stack
+    stack = ind.ma_stack(closes(bars_asof(session, symbol, asof)), cfg.indicators.ma_periods)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 333, in bars_asof
+    return cache.bars_asof(session, symbol, d)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 191, in bars_asof
+    return full[:cut]
+           ~~~~^^^^^^
+  File "/home/dennis-chan/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 2302, in _compute_one_backfill_date
+    payload = scanner.compute_run_payload(wsession, d, cfg)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/scanner.py", line 68, in compute_run_payload
+    regime = score_regime(session, asof, cfg)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 100, in score_regime
+    index_ma_stack = _index_ma_stack(session, asof, cfg)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 39, in _index_ma_stack
+    stack = ind.ma_stack(closes(bars_asof(session, symbol, asof)), cfg.indicators.ma_periods)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 333, in bars_asof
+    return cache.bars_asof(session, symbol, d)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 191, in bars_asof
+    return full[:cut]
+           ~~~~^^^^^^
+  File "/home/dennis-chan/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/concurrent/futures/thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 2302, in _compute_one_backfill_date
+    payload = scanner.compute_run_payload(wsession, d, cfg)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/scanner.py", line 68, in compute_run_payload
+    regime = score_regime(session, asof, cfg)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 100, in score_regime
+    index_ma_stack = _index_ma_stack(session, asof, cfg)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/regime.py", line 39, in _index_ma_stack
+    stack = ind.ma_stack(closes(bars_asof(session, symbol, asof)), cfg.indicators.ma_periods)
+                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 333, in bars_asof
+    return cache.bars_asof(session, symbol, d)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/prices.py", line 191, in bars_asof
+    return full[:cut]
+           ~~~~^^^^^^
+  File "/home/dennis-chan/.local/share/uv/python/cpython-3.12.13-linux-x86_64-gnu/lib/python3.12/asyncio/base_tasks.py", line 10, in _task_repr_info
+    info = base_futures._future_repr_info(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/uvicorn/protocols/http/httptools_impl.py", line 414, in run_asgi
+    self.logger.error(msg, exc_info=exc)
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/starlette/middleware/errors.py", line 260, in error_response
+    return PlainTextResponse("Internal Server Error", status_code=500)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+MemoryError

@@ -69,6 +69,9 @@ VALID = {
         "semivol_window": 63,
         "vol_contraction_recent": 21,
         "vol_contraction_prior": 63,
+        # iter-26 (J-16 item F): required window; mirrors config.yaml's real value (>= high_window_52w
+        # 252 + margin; >= the patterns block's largest min_history_bars, 90).
+        "max_lookback_bars": 320,
     },
     "sectors": {
         "weights": {

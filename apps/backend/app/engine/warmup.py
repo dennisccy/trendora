@@ -150,10 +150,19 @@ def _run_warmup(engine: Engine, cfg: Config, prog: "data_manager.JobProgress") -
                     # tick the message on each batch boundary (and the final date) so progress is live
                     if index % batch_size == 0 or index == len(dates):
                         prog.message = f"history {prog.dates_done}/{prog.dates_total}"
-        # the realized forward returns over every persisted cadence snapshot (idempotent INSERT-only,
-        # concurrency-safe) — the SAME engine the synchronous boot ran, only rescheduled.
-        result = backfill_forward_returns(engine, cfg)
-        prog.forward_returns_inserted = result["rows_inserted"]
+                # iter-26 (J-16, item F): the realized forward returns over every persisted cadence
+                # snapshot (idempotent INSERT-only, concurrency-safe) — the SAME engine the synchronous
+                # boot ran, only rescheduled. Moved INSIDE this `with bar_cache(session):` block AND
+                # passed `session` (not `engine`): `backfill_forward_returns` branches on
+                # `isinstance(session_or_engine, Session)` — passed the engine, it used to open a BRAND
+                # NEW session with a different id(), which the cache registry (keyed by id(session))
+                # never finds, so every close_on/bars_after call re-queried the DB per (run, symbol)
+                # regardless of the cache above. Passing this SAME session reuses the exact cache already
+                # active, so its close_on/bars_after calls (now cache-aware — see prices.py) read the
+                # already-loaded series instead of round-tripping the DB. Output is byte-identical either
+                # way (same rows/values; only the load path changes).
+                result = backfill_forward_returns(session, cfg)
+                prog.forward_returns_inserted = result["rows_inserted"]
         # iter-36 (J-96): precompute the dynamic-universe membership-timeline cache OFF the boot path so
         # the FIRST `GET /api/data` after a boot/rebuild serves the cached payload rather than paying the
         # O(dates × pool) `resolve_with_reasons` derivation synchronously (the iter-35 regression). This is
