@@ -189,15 +189,66 @@ the system measures itself, and how it survives the next model change.
   tell the user it may be stale.
 
 ### EVO-2 · Automatic post-session retrospective
-- **Priority:** P0 · **Effort:** L (2 slices) · **Risk:** MED · **Status:** TODO
+- **Priority:** P0 · **Effort:** L (2 slices) · **Risk:** MED · **Status:** DONE
+  *(slice (a) — deterministic collector + terminal-halt wiring — implemented 2026-07-10:
+  `scripts/automation/lib/retro_collect.sh` (new) writes `state/retro-input.md` with the
+  stable sections Outcome / Verdict sequence / Agent economics / Friction counters /
+  Lessons tail / Halt context; sourceless counters are the literal `unknown (<why>)`.
+  Wired into `write_session_summary` (`run-goal.sh:1263-1273` after slice (b)'s edits)
+  behind `CHAIN_SESSION_RETRO` (default `true`; documented in
+  `.claude/model-orchestration.md` knob table), firing on
+  GOAL_ACHIEVED/STALLED/REGRESSION_HALT/BUDGET_EXHAUSTED only, non-blocking.
+  Slice (a) certified 2026-07-10 by a non-implementer session per G8: 23/23 asserts +
+  full evals green, wiring claims re-verified against code, digest judged sufficient
+  as the drafting agent's sole input — no collector amendments needed.
+  Slice (b) — drafting agent — implemented 2026-07-10 by that certifying session: new
+  `agents/retro-analyst/` (model_tier light, tools [Read, Write]) reads ONLY the digest
+  and writes `reports/goal-session-<sid>-retro.md` — ≤5 candidate items in this file's
+  §4 shape, each citing its exact digest line, PROPOSALS-ONLY banner, zero items a
+  valid output, report ≤120 lines. Dispatched by `_run_retro_analyst`
+  (`run-goal.sh:329`, the summarizer wrapper pattern) from inside write_session_summary
+  immediately after the collector — same knob + same terminal filter + digest-exists
+  guard, non-blocking (a failed dispatch prints one warning, changes no exit code).
+  No `templates/retro.md` was needed — body.md carries the report skeleton (the Files
+  line below listed it as an either/or with the agent). Tests:
+  `tests/automation/test-goal-retro.sh` now 32 asserts (the stub plays the drafting
+  model: both-files DoD on STALLED, neither file on AWAITING_PUMP/knob-off, broken
+  collector → no orphan dispatch, failed dispatch → exit codes unchanged + one
+  warning), still registered in `run-evals.sh` §2c.
+  ABORT_MALFORMED call-site audit (slice (b) optional step): NOT changed. Every
+  session.json status consumer falls through safely on an unknown status EXCEPT
+  `run-goal.sh:1176` (`AWAITING_PUMP|ABORTED) _join_showcase_tail --kill`), which
+  special-cases "ABORTED" — passing ABORT_MALFORMED would flip that halt from
+  reap-immediately to bounded-join, so per the audit gate the call site
+  (`run-goal.sh:2245-2251`) still passes "ABORTED" and malformed-x2 halts still get NO
+  retro. A future slice shipping the rename must extend that case list plus the three
+  status-enum docs (`.claude/workflow.md:305`, `skills/goal-interactive-dispatch.md:147`,
+  `docs/goal-mode-telemetry.md:37/:115` — the last already omits ABORT_MALFORMED as an
+  emitted halt reason today, pre-existing drift, not introduced here).
+  Slice (b) certified DONE 2026-07-10 by a fresh non-implementer session per G8:
+  32/32 retro asserts + 93/93 evals green; agent contract (light tier, tools exactly
+  [Read, Write], digest-only input, ≤5 §4-shape items with verbatim evidence quotes,
+  PROPOSALS-ONLY banner, zero-items valid, ≤120 lines, never edits the roadmap),
+  wiring guards, the `run-goal.sh:1176` ABORTED special-case, and all three catalog
+  surfaces (CLAUDE.md list, agents.md count 20, README row) re-verified against code;
+  `sync-cli-assets --check` clean; plus one user-approved (G9) real light-tier smoke
+  dispatch (claude-haiku-4-5) against a collector-built synthetic digest — well-formed
+  4-item report, verbatim evidence quotes, product-only lesson correctly skipped, no
+  stray writes. EVO-2 complete; body archiving left to a future tidy pass (REL-1
+  precedent).)*
 - **Problem:** every session generates evidence about what hurt (halts, quota pauses,
   review-FAIL loops, wall-time spikes, lessons) — and none of it flows back into
   framework improvements. The feedback loop is the evolution engine's core.
 - **Current state:** terminal halts are decided in the verdict/halt switch
-  (`run-goal.sh:1777-1919`); the showcase tail is the proven non-blocking pattern
-  (forked for CONTINUE, inline for halts, `run-goal.sh:1601-1612` / `:1770-1775`);
-  wall/token aggregation exists (`lib/analyze_telemetry.py`, `build_wall_report` ~`:273`,
-  JSON output supported); lessons tail inlining exists (`:520-525`).
+  (`run-goal.sh:2066-2210`), but EVERY halt — terminal and resumable — funnels through
+  `write_session_summary()` (`run-goal.sh:1123`), the single choke point slice (a) wired
+  (AWAITING_* pauses and the GOAL_ACHIEVED+proposer-extended `continue` never reach a
+  terminal summary); the showcase tail is the proven non-blocking pattern (forked for
+  CONTINUE `run-goal.sh:2063`, inline for halts `:1900`); wall/token aggregation exists
+  (`lib/analyze_telemetry.py`, `build_wall_report` `:273`, `--json` output supported);
+  lessons tail inlining exists (`run-goal.sh:1469`); verdict-per-iteration telemetry:
+  `iter_end` `:1945`, `deterministic_gate` rewrites `:1883`, `review_verdict`
+  (`goal-iter-lean.sh:210`).
 - **Change spec:**
   1. **Slice (a) — deterministic collector + wiring.** New
      `scripts/automation/lib/retro_collect.sh` (or `.py`): writes
@@ -210,7 +261,7 @@ the system measures itself, and how it survives the next model change.
      `CHAIN_SESSION_RETRO` (default `true`, escape hatch documented). Sandbox test
      asserting it runs on STALLED and not on AWAITING_PUMP.
   2. **Slice (b) — drafting agent.** Light-tier dispatch (reuse the
-     `_run_iteration_summarizer` wrapper pattern, `run-goal.sh:244-277`) reading ONLY
+     `_run_iteration_summarizer` wrapper pattern, `run-goal.sh:251`) reading ONLY
      `retro-input.md`, writing `reports/goal-session-<sid>-retro.md`: 1-5 candidate
      framework-improvement items in this file's §4 item format, each citing its
      evidence line from retro-input. PROPOSALS ONLY — the agent never edits this
@@ -230,7 +281,87 @@ the system measures itself, and how it survives the next model change.
   catalog count in CLAUDE.md ("19 agents"), flag it — CLAUDE.md is ask-first class.
 
 ### EVO-3 · Automated benchmark harness
-- **Priority:** P0 · **Effort:** L (3 slices) · **Risk:** MED · **Status:** TODO
+- **Priority:** P0 · **Effort:** L (3 slices) · **Risk:** MED · **Status:** IN-PROGRESS
+  *(slice (a) — fixture project — implemented 2026-07-10:
+  `benchmarks/fixtures/todo-app/` is a runnable but deliberately BARE Flask +
+  vanilla-JS + pytest scaffold — shell page + `/health` on fixed port 5177, storage
+  = one runtime-created `todos.json`, journeys deliberately UNIMPLEMENTED (the
+  benchmark measures the chain BUILDING them, not verifying pre-built ones).
+  `docs/goal.md` carries J-01 add / J-02 toggle+persist / J-03 filter with numbered
+  steps + browser-observable Acceptance lines and 2 checkable anti-goals —
+  goal_lint exit 0 (clean, not just <2) and validate_goal_file-compatible. Nested
+  `.claude/project-template.md` truthfully filled for THIS app (fixture content,
+  never a sync-cli-assets target — judgment-fixture nesting precedent); scaffold
+  tests green (3/3: import, GET / 200 + runtime store creation, /health 200) via a
+  gitignored `.venv/` (system python 3.14 ships no flask/pytest); README documents
+  the slice-(b) consumption contract (copy → scratch dir → git init →
+  `run-goal.sh --session-id bench-<date> --max-iter 2`) and hand-verification.
+  Authored independently of tests/judgment/** — zero shared files, so the two eval
+  assets cannot drift into coupling. No runner, no `benchmarks/results/`, no
+  engine runs (every benchmark run is G9 ask-first spend). Slices (b) runner +
+  (c) compare/baseline remain; slice (a) certification per G8 folds into the
+  slice-(b) session.)*
+  *(slice (b) — runner + pre-registration ledger — implemented 2026-07-10, same
+  session as the G8 fresh-eyes certification of slice (a) (certified: fixture
+  tests 3/3 green, app boots on 5177 with `/` and `/health` → 200, goal_lint
+  exit 0, journeys confirmed browser-observable and genuinely unimplemented in
+  the scaffold — no todo logic in `app.py`/`app.js` — and `run-evals.sh` green;
+  certifier was not slice (a)'s implementer. One recorded nit, no edit: the
+  fixture project-template's "commits directly to main" line vs the engine's
+  default `goal/<sid>` push branch — fixture prose, no behavioral effect).
+  `scripts/automation/run-benchmark.sh`: always prints plan + cost estimate,
+  then REFUSES without `--yes-spend` (G9), without `--hypothesis` (G8), and on
+  a dirty framework tree unless `--allow-dirty` (recorded as
+  `framework_dirty:true` + diffstat) — every refusal BEFORE any side effect.
+  Run sequence: PRE entry appended to `benchmarks/experiments.md` (append-only
+  ledger, created this slice) BEFORE the engine launches → scratch repo =
+  subrepo set (`.claude/ scripts/ config/ templates/ CLAUDE.md` [+`.mcp.json`])
+  + fixture overlay (fixture files win collisions, so its project-template
+  replaces the framework placeholder; `.venv`/`__pycache__`/`.pytest_cache`/
+  `todos.json` excluded) + fresh git repo (main, deterministic goal-chain
+  author) with a LOCAL BARE origin, so the engine's ls-remote preflight and
+  push-per-iter exercise their real code paths with zero network → engine
+  `run-goal.sh --session-id bench-<UTCdate-hhmm> --max-iter 2` headless
+  (nonzero/paused engine = recorded RESULT, not a runner crash) → results JSON
+  `benchmarks/results/<UTCts>-<sha12>.json` (meta: every CHAIN_* env var at
+  launch + model-tiers sha256; outcome: journeys passing/total from
+  journey-history, attempt-1 review FAILs + malformed verdicts counted with
+  `retro_collect.sh`'s exact telemetry semantics, wall seconds; economics:
+  `analyze_telemetry.py --json` embedded verbatim; missing sources = literal
+  `unknown (<why>)`), validated for required keys before success → POST entry
+  with headline + per-predicate evaluations. `--predict` comparisons over
+  top-level result keys make verdict-vs-prediction mechanical (all true
+  CONFIRMED / all false REFUTED / else MIXED); without predicates the POST line
+  is the literal MANUAL instruction — the runner never self-grades free text.
+  Engine command injectable via `CHAIN_BENCH_ENGINE_CMD` — a documented TEST
+  SEAM strictly DOWNSTREAM of the spend gates (G5) and recorded in `chain_env`,
+  so a stubbed run is visibly stubbed. 40 offline assertions in
+  `tests/automation/test-benchmark-runner.sh` (registered in run-evals §2c,
+  ~0.9s, suite 95/95): refusals-before-side-effects, scratch layout + canary
+  exclusions, results schema/counts vs a stub engine's known artifacts,
+  PRE-precedes-engine asserted BY the stub, all four verdict paths,
+  keep/cleanup rules. ZERO engine runs this session (G6/G9). Slice (c) —
+  `benchmark_compare.py` + docs + the first REAL baseline run (G9
+  user-approved spend) — remains; slice (b) certification per G8 folds into
+  the slice-(c) session.)*
+  *(slice (b) certified 2026-07-10 by a fresh non-implementer session per G8
+  (the slice-(c) session): 40/40 runner asserts + full evals green; gate order
+  re-verified against code — both refusals + the dirty-tree check fire before
+  ANY side effect (first write is the PRE append, `run-benchmark.sh:183`), PRE
+  strictly precedes engine launch, and the `CHAIN_BENCH_ENGINE_CMD` seam is
+  consulted only downstream of every gate with its value recorded in
+  `chain_env`; live refusal probes on the real repo (no flags and
+  --hypothesis-only → exit 2, plan printed, ledger byte-identical, no results
+  dir) plus a dirty-tree refusal re-proven on a clone; ZERO-SPEND dry assembly
+  (`CHAIN_BENCH_ENGINE_CMD='true'`) run inside a discarded git clone so the
+  probe's PRE/POST entries landed in the clone's ledger — the real append-only
+  ledger kept zero probe trace, nothing was ever deleted from it. Assembled
+  scratch verified: subrepo set + fixture overlay (fixture project-template won
+  the collision; `.venv`/`todos.json`/`benchmarks` excluded; 1 commit on main,
+  deterministic author, local bare origin ls-remote-reachable), then proven
+  AGENT-RUNNABLE exactly as the chain finds it — venv bootstrap per the fixture
+  project-template, pytest 3/3, app boot with `/health` 200 on port 5177,
+  goal_lint exit 0 inside scratch. No runner defects found; no edits needed.)*
 - **Problem:** "did my framework change help or hurt?" currently has no answer a weaker
   maintainer can trust. The per-session tripwire compares within a session; nothing
   compares across framework versions.
@@ -292,7 +423,9 @@ the system measures itself, and how it survives the next model change.
   3. Resync mirrors + `sync-cli-assets.py --cli claude --check`.
   4. Update the table in `.claude/model-orchestration.md` in the SAME commit.
   5. `./scripts/automation/run-evals.sh` green.
-  6. Run REL-1 judgment fixtures (mark "pending REL-1" until it ships).
+  6. Run REL-1 judgment fixtures: `./scripts/automation/run-judgment-evals.sh
+     --yes-spend` (G9: user-approved spend; the runner prints the estimate and
+     refuses without the flag).
   7. Run EVO-3 benchmark before/after (mark "pending EVO-3" until it ships).
   8. First-session watchlist: `gate-report.md` appears on any GOAL_ACHIEVED;
      `[escalation]` lines in the engine log; per-model rows in
@@ -635,7 +768,26 @@ benchmark (or a real session's telemetry) before AND after (G8).
 ## 10. P1 — Reliability & weaker-model hardening
 
 ### REL-1 · Judgment eval fixtures (golden verdict cases)
-- **Priority:** P1 · **Effort:** L (slice per judge) · **Risk:** LOW · **Status:** TODO
+- **Priority:** P1 · **Effort:** L (slice per judge) · **Risk:** LOW · **Status:** DONE
+  *(slice (a) — goal-evaluator cases + runner — implemented 2026-07-09; slice (b) —
+  reviewer cases, scratch-git diff representation, runner per-judge builders —
+  implemented 2026-07-09 (user-directed follow-on session); slice (c) — auditor cases +
+  phase-audit.sh runner builder — certified and confirm-run 2026-07-10 by a fresh
+  session (not the implementer) per G8, closing all three slices.
+  Confirmed real runs (user-approved spend):
+  (a) 2026-07-09, judge = claude-opus-4-8 @ effort max: 5/5 verdict classes correct —
+  case-01-clean-goal-achieved → GOAL_ACHIEVED (342s), case-02-first-failure-continue →
+  CONTINUE (234s), case-03-regression-broken-journey → REGRESSION (262s),
+  case-04-goal-drift-void-pass → CONTINUE (322s), case-05-secret-committed →
+  REGRESSION (196s).
+  (b) 2026-07-09, judge = claude-sonnet-5 @ effort max: 4/4 verdict classes correct —
+  case-01-clean-pass → PASS (172s), case-02-minor-nit-not-fail →
+  PASS_WITH_NOTES (149s), case-03-hardcoded-credential → FAIL (177s),
+  case-04-spec-contradiction → FAIL (192s).
+  (c) 2026-07-10, judge = claude-opus-4-8 @ effort max: 4/4 verdict classes correct —
+  case-01-clean-pass → PASS (220s), case-02-documented-gap-not-fail →
+  PASS_WITH_GAPS (352s), case-03-qa-green-spec-contradiction → FAIL (325s),
+  case-04-paid-service-live-key → FAIL (328s).)*
 - **Problem:** the single biggest retirement risk is silent judge regression — a weaker
   evaluator/reviewer/auditor emitting plausible-but-wrong verdicts. The eval suite
   checks parsers and gates, not judgment.

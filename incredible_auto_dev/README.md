@@ -343,6 +343,7 @@ Iteration name `goal-<sid>-iter-<N>` is used as the "phase name" so existing scr
 | `coherence-auditor` | standard | (goal mode) | Audits each iteration's diff against the blueprint (information architecture + data contract); hard-fails only on objective drift |
 | `goal-proposer` | strong | (goal mode, opt-in) | After every Must-have journey passes, surveys the whole product through the project's usefulness lens (`project-extensions/proposer-guidance.md`), writes an enhancement-proposals backlog, and appends the best survivors as new Must-have journeys in `docs/goal.md` AUTO:journeys — runs only when that guidance file exists |
 | `readme-maintainer` | standard | (goal mode) | After each iteration, refreshes the project-root README's marker-delimited AUTO blocks so capabilities and "How to run" stay accurate; non-blocking showcase step, never gates the pipeline |
+| `retro-analyst` | light | (goal mode, terminal halts) | At a terminal goal-session halt, reads ONLY the frozen `state/retro-input.md` evidence digest and drafts 1-5 candidate framework-improvement proposals to `reports/goal-session-<sid>-retro.md` for human triage; proposals only, non-blocking, never edits the roadmap |
 
 Model tiers: each agent's `model_tier` lives in `agents/<name>/agent.yaml`; tiers resolve to model ids in `config/model-tiers.yaml`. Edit, then `python3 scripts/automation/sync-cli-assets.py` and commit the regenerated mirrors.
 
@@ -442,6 +443,8 @@ bash scripts/automation/render-summary.sh --session-index <sid>        # re-rend
 | `runs/goal-session-<sid>/session.json` | Goal-mode session state (halt config, current iteration, last verdict) |
 | `runs/goal-session-<sid>/state/journey-history.json` | Per-journey pass/fail/regressed status across iterations |
 | `runs/goal-session-<sid>/telemetry.jsonl` | Structured event log for the session — see [`docs/goal-mode-telemetry.md`](docs/goal-mode-telemetry.md) |
+
+**Temp-file hygiene:** every run gets its own `/tmp/iad.<run-id>.<pid>` dir, exported as `TMPDIR`, so pytest/playwright/service-log temp files are isolated per run and removed on exit (goal mode clears the previous iteration's dir at each iteration boundary). A startup janitor sweeps strays from crashed runs, including stale `/tmp/pytest-of-$USER` entries. Knobs: `CHAIN_TMPDIR_DISABLE=true` (leave the environment alone), `CHAIN_TMP_JANITOR=false` (skip the sweep), `CHAIN_TMP_MAX_AGE_HOURS=24` (janitor age gate). See `.claude/anti-patterns.md` #21.
 
 ## Subrepo Usage
 

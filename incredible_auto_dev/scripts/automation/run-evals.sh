@@ -119,6 +119,15 @@ else
   _fail "self-test: common.sh (kill-tree / self-heal)"
 fi
 
+# Per-run tmp isolation helpers: init/adopt, owner-guarded cleanup, rotate, and
+# the age+pid-liveness janitor (incl. never-touch-the-quota-sentinels).
+if bash scripts/automation/lib/chain-tmp.sh self-test >/dev/null 2>&1; then
+  _pass "self-test: chain-tmp.sh (tmpdir init/cleanup/rotate/janitor)"
+else
+  bash scripts/automation/lib/chain-tmp.sh self-test || true
+  _fail "self-test: chain-tmp.sh"
+fi
+
 # Parallel two-branch runner (previously had a self-test that nothing invoked).
 if bash scripts/automation/lib/parallel.sh self-test >/dev/null 2>&1; then
   _pass "self-test: parallel.sh"
@@ -138,6 +147,8 @@ _run_self_test scripts/automation/lib/goal_gate.py self-test
 _run_self_test scripts/automation/lib/goal_lint.py self-test
 _run_self_test scripts/automation/lib/scan_diff.py self-test
 _run_self_test scripts/automation/lib/diff_bound.py self-test
+# Benchmark results comparator (EVO-3): delta table + REGRESS/OK/UNKNOWN verdict.
+_run_self_test scripts/automation/lib/benchmark_compare.py --self-test
 if bash scripts/automation/lib/goal-gates.sh --self-test >/dev/null 2>&1; then
   _pass "self-test: goal-gates.sh (verdict gates + two-key confirm, stubbed dispatch)"
 else
@@ -147,7 +158,7 @@ fi
 
 # ── 2c. Standalone unit-test scripts (API-free by design) ────────────────────
 _log "2c. tests/automation unit tests"
-for _t in tests/automation/test-quota-retry.sh tests/automation/test-install-gate.sh tests/automation/test-goal-checkpoints.sh tests/automation/test-goal-async-tail.sh tests/automation/test-intent-checkpoint.sh tests/automation/test-doc-drift.sh tests/automation/test-github-preflight.sh; do
+for _t in tests/automation/test-quota-retry.sh tests/automation/test-install-gate.sh tests/automation/test-goal-checkpoints.sh tests/automation/test-goal-async-tail.sh tests/automation/test-intent-checkpoint.sh tests/automation/test-doc-drift.sh tests/automation/test-github-preflight.sh tests/automation/test-tmp-cleanup.sh tests/automation/test-goal-retro.sh tests/automation/test-benchmark-runner.sh; do
   if bash "$_t" >/dev/null 2>&1; then
     _pass "unit: $_t"
   else
@@ -166,6 +177,19 @@ if bash .claude/hooks/guard-dangerous-commands.sh "rm -rf /" >/dev/null 2>&1; th
   _fail "hook: guard-dangerous-commands FAILED to block 'rm -rf /'"
 else
   _pass "hook: guard-dangerous-commands blocks 'rm -rf /'"
+fi
+# Regression guard for the /tmp rm ban: the old fixed-substring "rm -rf /"
+# pattern matched EVERY absolute-path rm — on the Codex backend (where this
+# hook is the real gate) that banned the allow-listed /tmp cleanup outright.
+if bash .claude/hooks/guard-dangerous-commands.sh "rm -rf /tmp/pytest-of-user/pytest-1" >/dev/null 2>&1; then
+  _pass "hook: guard-dangerous-commands allows /tmp cleanup (rm-ban regression)"
+else
+  _fail "hook: guard-dangerous-commands wrongly blocks /tmp cleanup (rm-ban regression)"
+fi
+if bash .claude/hooks/guard-dangerous-commands.sh "cd /x && rm -rf /etc" >/dev/null 2>&1; then
+  _fail "hook: guard-dangerous-commands FAILED to block chained 'rm -rf /etc'"
+else
+  _pass "hook: guard-dangerous-commands blocks chained 'rm -rf /etc'"
 fi
 _lint_tmp=$(mktemp /tmp/eval-lint-XXXX.py); echo "x = 1" > "$_lint_tmp"
 if bash .claude/hooks/post-edit-lint.sh "$_lint_tmp" >/dev/null 2>&1; then
