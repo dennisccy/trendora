@@ -1,0 +1,182 @@
+{
+  "journeys": {
+    "J-01": {
+      "id": "J-01",
+      "name": "Every score shows an evidence status",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-0",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-08-sector-sorted.png",
+      "note": "iter-26 REPLAY GAP: required-still-passing but SKIPPED by browser-qa behind the backend outage (browser-qa aborted after the UT-02 crash; evidence dir holds only UT-01/UT-02). Per coordinator note treated as UNVERIFIED this iter, not passing-fresh. Carried at last-good passing on zero apps/frontend diff + byte-identity-gated backend (test_scoring_window.py 0 diffs) -- no regression mechanism on the /stocks surface itself; the transient outage was caused by the QA agent's heavy full-universe Rebuild job, not a /stocks defect. last_verified_iter left at iter-25 (last live pixel UT-08: /stocks 541/541, all 'Not yet proven', no crash). MUST replay live on the fixed backend next iter."
+    },
+    "J-02": {
+      "id": "J-02",
+      "name": "Drill into the proof behind a score",
+      "status": "partial",
+      "last_verified_iter": "goal-mcp-loop-iter-23",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
+      "first_seen_iter": "goal-mcp-loop-iter-0",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-23-evidence/UT-19-evidence-ledger.png",
+      "note": "PARTIAL by design (goal.md data-basis-change provision); iter-26 did ZERO evidence work (item-F perf only) so unchanged. No 'Proven' badge exists to drill into (both ledgers all-FAIL). Re-lighting a Proven drill needs a separate new-basis staging-discovery + honest-promotion iteration; no staging winner currently clears the canonical Bonferroni divisor-8 bar. NOT a regression."
+    },
+    "J-03": {
+      "id": "J-03",
+      "name": "Unproven / noise signals are honestly marked",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-0",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-08-stocks-leaderboard.png",
+      "note": "iter-26 REPLAY GAP: required-still-passing but SKIPPED behind the outage. Treated UNVERIFIED. Carried at last-good passing on zero engine/scoring diff + byte-identity harness 0 diffs (score/bucket/setup/detected-patterns all identical windowed vs unwindowed). last_verified_iter left at iter-25 (all badges 'Not yet proven'; ledgers all-FAIL). MUST replay live next iter."
+    },
+    "J-04": {
+      "id": "J-04",
+      "name": "Regime-conditioned evidence",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-0",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-10-dashboard-to-evidence.png",
+      "note": "iter-26 REPLAY GAP: required-still-passing but SKIPPED behind the outage. Treated UNVERIFIED. Carried at last-good passing; regime engine git-diff empty vs HEAD (regime.py NOT in iter-26 diff). last_verified_iter left at iter-25 (Dashboard 'Market Regime -- Risk-on', evidence linkback). MUST replay live next iter."
+    },
+    "J-05": {
+      "id": "J-05",
+      "name": "Audit the evidence ledger",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-0",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-11-evidence-ledger.png",
+      "note": "iter-26 REPLAY GAP: required-still-passing but SKIPPED behind the outage. Treated UNVERIFIED. Carried at last-good passing; app/evidence/* + ledger.py git-diff empty, both ledgers 7-canonical/7-staging all-FAIL and byte-identical. last_verified_iter left at iter-25. MUST replay live next iter."
+    },
+    "J-06": {
+      "id": "J-06",
+      "name": "vcp_contraction top-decile certified edge surfaced on Evidence + Research factor lab",
+      "status": "partial",
+      "last_verified_iter": "goal-mcp-loop-iter-23",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
+      "first_seen_iter": "goal-mcp-loop-iter-8",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-23-evidence/UT-19-evidence-ledger.png",
+      "note": "PARTIAL by design (goal.md data-basis-change provision; NOT a regression). iter-26 did ZERO evidence work; retired vcp_contraction D10 h20 edge stays canonical ledger row = FAIL on the 30-year multi-regime holdout. The J-06 contract (honest badge + correct number) holds; only the specific certified edge recomputed away as sanctioned."
+    },
+    "J-07": {
+      "id": "J-07",
+      "name": "Multi-horizon certified edge surfaced (the loop sees beyond the 20-day horizon)",
+      "status": "partial",
+      "last_verified_iter": "goal-mcp-loop-iter-23",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
+      "first_seen_iter": "goal-mcp-loop-iter-9",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-23-evidence/UT-19-evidence-ledger.png",
+      "note": "PARTIAL by design (data-basis provision; NOT a regression). iter-26 zero evidence work; retired vcp_contraction D10 h60 edge stays canonical ledger row = FAIL. Multi-horizon machinery intact (certification engine git-diff empty); only the specific certified edge did not reproduce."
+    },
+    "J-08": {
+      "id": "J-08",
+      "name": "Multi-factor combination certified edge surfaced on the Combination lab + Evidence",
+      "status": "partial",
+      "last_verified_iter": "goal-mcp-loop-iter-23",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
+      "first_seen_iter": "goal-mcp-loop-iter-9",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-23-evidence/UT-19-evidence-ledger.png",
+      "note": "PARTIAL by design (data-basis provision; NOT a regression). iter-26 zero evidence work; retired rs_spy_3m x high_proximity h20 composite stays canonical ledger row = FAIL. Combination machinery intact; only the specific certified edge did not reproduce."
+    },
+    "J-09": {
+      "id": "J-09",
+      "name": "Relative-strength (rs_spy_3m) 60-day-horizon certified edge surfaced on Evidence + Research factor lab",
+      "status": "partial",
+      "last_verified_iter": "goal-mcp-loop-iter-23",
+      "last_passing_iter": "goal-mcp-loop-iter-17",
+      "first_seen_iter": "goal-mcp-loop-iter-15",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-23-evidence/UT-19-evidence-ledger.png",
+      "note": "PARTIAL by design (data-basis provision; NOT a regression). iter-26 zero evidence work; retired rs_spy_3m D10 h60 edge (was +21.34%) stays canonical ledger row = FAIL; the +21.34% value renders nowhere. The system working, not a regression."
+    },
+    "J-10": {
+      "id": "J-10",
+      "name": "The product surfaces deep (up to ~30-year) price history, honestly bounded per name",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-16",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-12-aapl-recent.png",
+      "note": "iter-26 REPLAY GAP: required-still-passing but SKIPPED behind the outage. Treated UNVERIFIED. Carried at last-good passing; app/stocks/[ticker] + chart path untouched, and the scoring-window slice is byte-identity-gated. last_verified_iter left at iter-25 (Full<->Recent toggle re-render verified via pixel-buffer read). MUST replay live next iter."
+    },
+    "J-11": {
+      "id": "J-11",
+      "name": "Every displayed 'Proven' edge is re-certified on the new 30-year data -- no stale edge survives",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-16",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-11-evidence-ledger.png",
+      "note": "Carried passing (byte-identity; NOT in iter-26's required-still-passing set, untouched). Both ledgers git-UNMODIFIED, all-FAIL (7 canonical / 7 staging); no ## Evidence Claim this iter (Bonferroni divisor stays 8); no stale edge can survive because none is proven."
+    },
+    "J-12": {
+      "id": "J-12",
+      "name": "The universe is a broad, point-in-time dynamic set across the deep history",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-16",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-02-run1-data-fullpage.png",
+      "note": "iter-26 REPLAY GAP: required-still-passing but SKIPPED behind the outage. Treated UNVERIFIED. Carried at last-good passing; universe-resolver untouched. last_verified_iter left at iter-25 (/data Universe 541 == /stocks 541/541, membership timeline). MUST replay live next iter."
+    },
+    "J-13": {
+      "id": "J-13",
+      "name": "The Data Manager page reflects the broadened 548-symbol universe with an unambiguous availability legend",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-16",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-02-run1-data-fullpage.png",
+      "note": "iter-26 REPLAY GAP: required-still-passing but SKIPPED behind the outage. Treated UNVERIFIED. Carried at last-good passing; availability-heatmap.tsx zero-diff (apps/frontend untouched). CAVEAT: /data is the very surface that goes dark during the anti-goal #8 crash (UT-01 rendered it clean BEFORE the job; UT-02 job crashed the backend so /data then showed 'Backend unavailable'). The /data legend/heatmap code is intact -- the outage is the shared backend crash, not a J-13 defect. last_verified_iter left at iter-25. MUST replay live on the fixed backend next iter."
+    },
+    "J-14": {
+      "id": "J-14",
+      "name": "The 30-year basis carries deep, honestly-sourced index context (benchmarks + macro), each labeled by vendor",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-17",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-02-run1-data-fullpage.png",
+      "note": "Carried passing (byte-identity; NOT in iter-26's required-still-passing set, untouched). config index_chart symbols + chart components git-diff empty vs HEAD; vendor provenance labels unchanged."
+    },
+    "J-15": {
+      "id": "J-15",
+      "name": "Core pages and APIs stay fast on the deep basis -- measured, budgeted, never regressing",
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-25",
+      "last_passing_iter": "goal-mcp-loop-iter-25",
+      "first_seen_iter": "goal-mcp-loop-iter-19",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-25-evidence/UT-02-run1-data-fullpage.png",
+      "note": "iter-26 REPLAY GAP + CAVEAT: required-still-passing but SKIPPED behind the outage; UT-04 (cold /data no-OOM, the iter-24-lesson test) was NOT run. Treated UNVERIFIED. J-15's own 'no OOM / never crash on the deep basis' spirit is directly undercut by this iteration's anti-goal #8 crash (full-universe Rebuild OOM'd the backend at the VSZ ceiling), but its specific cold-path test was SKIPPED, not observed to fail, and the crash was on a heavy job, not a core page/API -- so carried, NOT marked regressed. Next iter MUST re-verify J-15's cold-path AND add a full-universe long-job memory budget (VSZ+RSS). last_verified_iter left at iter-25."
+    },
+    "J-16": {
+      "id": "J-16",
+      "name": "Data jobs (Fetch + Backfill + warmup) are fast and honest about progress",
+      "status": "failing",
+      "last_verified_iter": "goal-mcp-loop-iter-26",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-mcp-loop-iter-19",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-26-evidence/UT-02-fail-backend-unavailable.png",
+      "spec_hash": "4b6c4051eb3c172a039915797063425155902356334d2a0dc9fb326aac5bd198",
+      "note": "unknown -> FAILING (target). The direct browser proof (UT-02) was EXECUTED and FAILED: running the sanctioned J-16 path ('Rebuild snapshots for current universe', 322 dates x 541 members -- the pre-filled Backfill range was a genuine 0/0 no-op) crashed the ENTIRE backend with a MemoryError (VSZ pinned at the 6144 MB ulimit -v ceiling; RSS ~4.93 GB). Evaluator PERSONALLY OPENED UT-02-fail-backend-unavailable.png (/data stuck on 'Checking backend...' with blank skeleton panels) and UT-02-backend-log-tail.txt (MemoryError repeating through data_manager._compute_one_backfill_date -> scanner.compute_run_payload -> regime.score_regime -> regime._index_ma_stack -> prices.bars_asof:333 -> _BarCache.bars_asof:191 -> full[:cut]). Partial-progress nuance (does NOT rescue the journey): the honest-tick sub-criterion showed positive (counter 0->117->246/322, no premature 'done'), and the perf/byte-identity half is real and correct (81%/78%/89% improvements; test_scoring_window.py 0 diffs) -- but J-16's own DoD requires no memory regression / no OOM under the cap AND a browser-qa pass, both of which failed. This is a VERIFIED failure (a reproduced crash), not merely an unverified capability, so failing (not partial). The root-cause fix (audit B1: bound/stream regime full[:cut] + full-universe prefill) is NOT applied -- pending its own memory-hardening iteration."
+    }
+  },
+  "anti_goal_violations": [
+    {
+      "iter": "goal-mcp-loop-iter-24",
+      "anti_goal": "Resilience to data-shape and data-scale change: widening the data basis (new nulls, broader pools, deeper history) must never crash an existing page or exhaust a service's memory -- every existing consumer of a widened field is re-validated, the UI degrades gracefully (contained error boundary, honest '--'/NA placeholder, never a blank application-error page), and unbounded whole-table ORM loads are forbidden on the deep basis. (critical)",
+      "severity": "critical",
+      "evidence": "ORIGIN (iter-24): browser-qa UT-16 + UT-06 reproduced 2/2 on fresh restarts -- first cold GET /api/data load OOM-crashed the backend (MemoryError in cursor.fetchmany() prices.py:141 + json.dumps(), then a fatal PyO3 panic killing uvicorn; VmSize pinned at exactly 6144 MB ulimit -v while VmRSS ~2.9 GB = virtual-address-space exhaustion). Root cause: iter-24 item B added config.yaml mmap_size_bytes=1073741824 (1 GB per-connection read-mmap) x pool_size=10/max_overflow=20. RESOLVED (iter-25): the auditor's fix config.yaml:108 mmap_size_bytes=0 (mmap disabled; committed at HEAD 665565a) was re-verified LIVE by the canonical browser-qa lane -- UT-02/UT-03 stop->cold-start->/data-as-first-request 2/2 clean (~10.2s/10.5s, real content, backend survived); UT-06 confirms a single contained 'Backend unavailable' card on a genuinely-down backend, never a blank app-error page. Both gates that caught iter-24 cleared: UX-REGRESSION-PASS + CLOSURE-PASS. resolved=true.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-mcp-loop-iter-26",
+      "anti_goal": "Resilience to data-shape and data-scale change: widening the data basis (new nulls, broader pools, deeper history) must never crash an existing page or exhaust a service's memory -- every existing consumer of a widened field is re-validated, the UI degrades gracefully (contained error boundary, honest '--'/NA placeholder, never a blank application-error page), and unbounded whole-table ORM loads are forbidden on the deep basis. (critical)",
+      "severity": "critical",
+      "evidence": "browser-qa UT-02 (J-16 target proof) ran the sanctioned full-universe 'Rebuild snapshots for current universe' backfill (322 dates x 541 members) and crashed the ENTIRE backend with a MemoryError; reproduced identically many times in UT-02-backend-log-tail.txt. Coordinator independently confirmed the wedged process pinned VSZ at exactly 6,291,456 KB = 6144 MB (the ulimit -v ceiling from server.memory_cap_mb) with RSS 4,932 MB = virtual-address-space exhaustion (a DIFFERENT signal than peak RSS, which stayed under its cap). After the crash every data endpoint returned HTTP 500 and did not self-heal; /api/health gave a false-positive 200 before it too failed. Crash frame _BarCache.bars_asof:191 (full[:cut]) reached via the PRE-EXISTING regime path (regime._index_ma_stack, regime.py:39/100), inside the pre-existing _do_backfill whose prefilled_bar_cache(session, expected_symbols=pool_symbols) loads the entire 3.29M-bar universe up front (data_manager.py:2500). CAUSATION: git diff HEAD shows iter-26 touched only config.py/config.yaml/scoring.py/prices.py/warmup.py (+tests/reports), NOT regime.py/data_manager.py/scanner.py -- so iter-26 is not PROVEN to have caused the crash; auditor B3/ux-regression charge that iter-26's cache-aware close_on/bars_after newly routed the same job's ~6,110 forward-return lookups through _BarCache slice allocations (removed byte-identically in the audit fix-mode pass, reviewer-verified; measured NOT to be the VSZ driver in isolation but never at the crashing full-universe shape). Root-cause fix (audit B1) deliberately NOT applied (unverifiable live; backend terminated). Gates: QA FAIL, browser-QA FAIL, audit FAIL, UX-REGRESSION-FAIL; reviewer PASS_WITH_NOTES (flags crash unfixed); coherence COHERENCE-PASS (operational, not IA/data-contract drift). Evidence: reports/phase-goal-mcp-loop-iter-26-ui-test-results.md (Critical Finding + UT-02), reports/qa/goal-mcp-loop-iter-26-evidence/UT-02-backend-log-tail.txt + UT-02-fail-backend-unavailable.png, docs/handoffs/goal-mcp-loop-iter-26-audit.md B1/B3, reports/phase-goal-mcp-loop-iter-26-ux-regression.md.",
+      "resolved": false
+    }
+  ],
+  "updated_at": "2026-07-10T14:30:00Z"
+}

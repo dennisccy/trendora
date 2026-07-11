@@ -25,7 +25,7 @@ from sqlmodel import Session
 from app.config import Config, get_config
 from app.engine import indicators as ind
 from app.engine.labels import label_for
-from app.engine.prices import bars_asof, closes
+from app.engine.prices import bars_asof_window, close_on, closes
 
 
 def _pct(fraction: Optional[float]) -> Optional[float]:
@@ -33,10 +33,19 @@ def _pct(fraction: Optional[float]) -> Optional[float]:
 
 
 def _index_ma_stack(session: Session, asof: date_cls, cfg: Config) -> Optional[float]:
-    """Mean bullish MA-stack fraction across the configured broad-index ETFs."""
+    """Mean bullish MA-stack fraction across the configured broad-index ETFs.
+
+    iter-27 (J-16 memory fix): `ma_stack` only ever reads a trailing window off the end of `closes`
+    (the longest configured MA period), so this reads through the bounded `bars_asof_window` — trailing
+    `cfg.indicators.max_lookback_bars` bars, the canonical bound already validated `>= max(ma_periods)`
+    (`IndicatorsCfg._validate`) — instead of `bars_asof`'s whole `<= asof` prefix. Byte-identical result
+    (`bars_asof_window(...) == bars_asof(...)[-max_lookback_bars:]` by construction); see
+    `test_scoring_window.py`."""
     values: list[float] = []
+    lookback = cfg.indicators.max_lookback_bars
     for symbol in cfg.etfs.index:
-        stack = ind.ma_stack(closes(bars_asof(session, symbol, asof)), cfg.indicators.ma_periods)
+        bars = bars_asof_window(session, symbol, asof, lookback)
+        stack = ind.ma_stack(closes(bars), cfg.indicators.ma_periods)
         if stack is not None:
             values.append(stack)
     return (sum(values) / len(values)) if values else None
@@ -45,12 +54,23 @@ def _index_ma_stack(session: Session, asof: date_cls, cfg: Config) -> Optional[f
 def _universe_stats(session: Session, asof: date_cls, cfg: Config) -> dict:
     """Single pass over the universe: breadth above the short/long DMA + net new-high/low.
     Symbols without enough history for a given metric are excluded from that metric's
-    denominator (universe-relative, never fabricated)."""
+    denominator (universe-relative, never fabricated).
+
+    iter-27 (J-16 memory fix): every metric below reads only a trailing window off the end of `series`
+    (`sma`'s `breadth_short_ma`/`breadth_long_ma`, and the `high_window_52w`-bar `window` slice) — so
+    this reads through the bounded `bars_asof_window` (trailing `max_lookback_bars` = 320 bars) instead
+    of `bars_asof`'s whole `<= asof` prefix (up to ~5,300 bars on a late date, per symbol, across the
+    full universe — the dominant per-(symbol,date) VSZ driver on the full-universe rebuild). `320 >=
+    breadth_long_ma (200)` and `320 >= high_window_52w (252)` (validated: both are covered by
+    `max(ma_periods)=200`/`high_window_52w` in `IndicatorsCfg._validate`'s `max_needed`), so `len(series)
+    >= icfg.high_window_52w` and `series[-icfg.high_window_52w:]` below stay byte-identical — windowing
+    only truncates bars OLDER than the tail these reads ever touch."""
     icfg = cfg.indicators
     above_short = above_long = new_highs = new_lows = 0
     eval_short = eval_long = eval_hl = 0
+    lookback = icfg.max_lookback_bars
     for symbol in cfg.universe.symbols:
-        series = closes(bars_asof(session, symbol, asof))
+        series = closes(bars_asof_window(session, symbol, asof, lookback))
         if not series:
             continue
         last = series[-1]
@@ -85,11 +105,15 @@ def _universe_stats(session: Session, asof: date_cls, cfg: Config) -> dict:
 
 
 def _latest_vix(session: Session, asof: date_cls, cfg: Config) -> Optional[float]:
+    """iter-27 (J-16 memory fix): the old body (`closes(bars_asof(...))[-1]`) built the WHOLE `<= asof`
+    prefix only to read its last close. `close_on` is the already-optimized (iter-26) single-value
+    accessor for exactly this read — O(1) via `_BarCache.close_on`'s bisect+index when a cache is
+    active, a single-row `LIMIT 1` query otherwise — byte-identical (same `<= asof` boundary, same
+    "no bar -> None" behavior as the old empty-series check)."""
     symbols = cfg.etfs.volatility
     if not symbols:
         return None
-    series = closes(bars_asof(session, symbols[0], asof))
-    return series[-1] if series else None
+    return close_on(session, symbols[0], asof)
 
 
 def score_regime(session: Session, asof: date_cls, config: Optional[Config] = None) -> dict:

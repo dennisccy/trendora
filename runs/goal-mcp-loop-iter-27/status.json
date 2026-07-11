@@ -1,0 +1,33 @@
+{
+  "phase": "goal-mcp-loop-iter-27",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-07-11T23:26:19.509349Z",
+  "started_at": "2026-07-10T13:46:16.691508Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/app/config.py",
+    "config.yaml",
+    "incredible_auto_dev/scripts/start-backend.sh",
+    "apps/backend/app/engine/prices.py",
+    "apps/backend/app/engine/regime.py",
+    "apps/backend/app/engine/scoring.py",
+    "apps/backend/tests/test_scoring_window.py",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-mcp-loop-iter-27-dev.md",
+    "reports/phase-goal-mcp-loop-iter-27-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "next_action": "review",
+  "fix_pass": {
+    "attempt": 2,
+    "audit_verdict_addressed": "FAIL (B1 anti-goal #8 not resolved; B2 cross-job VSZ/arena accumulation)",
+    "fix_summary": "server.malloc_arena_max=2 exported by start-backend.sh (caps glibc arenas) + gc.collect()+malloc_trim(0) in _do_backfill finally; read-side windowing kept, prices/regime/scoring untouched this pass",
+    "byte_identity": "test_scoring_window.py 4/4, test_bar_cache.py 12/12, test_forward_testing cache-awareness 5/5, test_config(_engine) 111/111",
+    "live_two_rebuild": "PASS - both rebuilds ok (322 dates, 597044 fwd returns each, identical); peak VmPeak 5147876 KB both runs (no cross-run growth); 1116 MB / 18% margin under 6291456 KB ceiling; /api/health,/api/data,/api/stocks 200 throughout",
+    "cold_api_data_repro": "PASS x2 (VmPeak ~3.5GB, byte-identical capacity)"
+  }
+}

@@ -10,3 +10,9 @@
 **Ambiguity:** J-16's target proof (UT-02) was executed and the backend crashed, but its perf/byte-identity half is real and one honest-progress sub-criterion showed positive (counter ticked 0->117->246 with no premature "done") — so J-16 could be read as `partial` (capability landed, verification incomplete) rather than `failing`.
 **We chose:** `failing`, because there is a VERIFIED negative outcome (a reproduced backend-wide crash) and J-16's own DoD explicitly requires no-OOM/no-crash under the cap plus a browser-qa pass — both violated. This session reserves `partial` for "correct-but-not-cleanly-verified" (a verification gap), not for a verified failure.
 **Reversible:** yes
+
+## iter-27 — goal-evaluator
+
+**Ambiguity:** Anti-goal #7 ("No hard-coded credentials, API keys, or tokens in source files") vs the deterministic scan-report flagging 12 CRITICAL secrets in this iteration's commit range. All 12 are planted fake keys inside the vendored `incredible_auto_dev/tests/judgment/` framework subtree (self-test fixtures designed to be detected), which entered via a framework squash-merge, not the iteration's product dev work — leaving open whether "source files" in the anti-goal covers vendored framework test tooling committed into the same repo.
+**We chose:** Read anti-goal #7 as scoped to the Trendora PRODUCT source (`apps/`, `config.yaml`, product `data/`/`scripts/`), not the vendored multi-agent framework's own judgment-eval fixtures. The iter-27 product diff (6 backend memory files + config.yaml) carries zero credentials; the flagged keys are non-real (AWS-doc example + fictional LISTVAULT) fixtures whose purpose is to BE flagged. Scored anti-goal #7 upheld / not a violation. Checked fail-closed first (are these real, exploitable, product secrets? no) and corroborated by reviewer + auditor + coherence all treating the subtree as out-of-scope framework tooling.
+**Reversible:** yes

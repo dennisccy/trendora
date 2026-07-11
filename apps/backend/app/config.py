@@ -551,6 +551,16 @@ class ServerOpsCfg(BaseModel):
                                      one-copy ~3.27M-row bar prefill (iter-19: a streamed, column-projected
                                      load — retained footprint ~0.4-0.5 GB) + headroom, so a pathological
                                      N-copy spike is OOM-killed as ONE process rather than swap-thrashing the VM.
+      - `malloc_arena_max`         — the `MALLOC_ARENA_MAX` glibc allocator cap the start script exports
+                                     (iter-27, anti-goal #8). By default glibc creates up to `8 x ncpus`
+                                     independent malloc arenas (up to 128 on this 16-core host); each retains
+                                     its own freed-but-not-returned address space, so a long-lived
+                                     multi-threaded server (uvicorn threadpool + the parallel backfill workers)
+                                     fragments VSZ across many arenas and pins the `ulimit -v` ceiling on a
+                                     second full-universe rebuild. Capping the arena count bounds that
+                                     fragmentation — the dominant VSZ lever behind the iter-26/iter-27
+                                     rebuild crash — while leaving all computed values byte-identical (it only
+                                     changes how the allocator lays out memory, never what is stored/served).
 
     Default-populated (a config predating it — and the inline test fixtures — still loads unchanged). Every
     value MUST be positive; an invalid block raises `ValueError` at load, never a silent default."""
@@ -560,6 +570,7 @@ class ServerOpsCfg(BaseModel):
     timeout_keep_alive_seconds: int = 65
     graceful_timeout_seconds: int = 120
     memory_cap_mb: int = 6144
+    malloc_arena_max: int = 2
 
     @model_validator(mode="after")
     def _validate(self) -> "ServerOpsCfg":
@@ -569,6 +580,7 @@ class ServerOpsCfg(BaseModel):
                 "timeout_keep_alive_seconds": self.timeout_keep_alive_seconds,
                 "graceful_timeout_seconds": self.graceful_timeout_seconds,
                 "memory_cap_mb": self.memory_cap_mb,
+                "malloc_arena_max": self.malloc_arena_max,
             }.items() if v <= 0
         )
         if bad:

@@ -1,11 +1,11 @@
 # Goal Session Summary — mcp-loop
 
 **Final verdict:** AWAITING_PUMP
-**Total iterations:** 26
-**Wall time (seconds):** 27463
+**Total iterations:** 27
+**Wall time (seconds):** 52444
 **Quota pauses:** 0
 **Started:** 2026-06-29T20:34:38.534484Z
-**Finished:** 2026-07-10T07:02:17.721211Z
+**Finished:** 2026-07-11T12:10:35.229852Z
 
 ## Branch
 
@@ -34,11 +34,12 @@ This session pushed iteration commits to `goal/mcp-loop`. Open a PR with:
 | J-13 | passing | goal-mcp-loop-iter-25 |
 | J-14 | passing | goal-mcp-loop-iter-25 |
 | J-15 | passing | goal-mcp-loop-iter-25 |
-| J-16 | unknown | - |
+| J-16 | failing | - |
 
 ## Anti-goal violations
 
 - [critical] Resilience to data-shape and data-scale change: widening the data basis (new nulls, broader pools, deeper history) must never crash an existing page or exhaust a service's memory -- every existing consumer of a widened field is re-validated, the UI degrades gracefully (contained error boundary, honest '--'/NA placeholder, never a blank application-error page), and unbounded whole-table ORM loads are forbidden on the deep basis. (critical) (iter goal-mcp-loop-iter-24)
+- [critical] Resilience to data-shape and data-scale change: widening the data basis (new nulls, broader pools, deeper history) must never crash an existing page or exhaust a service's memory -- every existing consumer of a widened field is re-validated, the UI degrades gracefully (contained error boundary, honest '--'/NA placeholder, never a blank application-error page), and unbounded whole-table ORM loads are forbidden on the deep basis. (critical) (iter goal-mcp-loop-iter-26)
 
 ## Telemetry
 
@@ -240,15 +241,28 @@ See `runs/goal-session-mcp-loop/telemetry.jsonl` for the structured event log.
       goal-decomposer             10.4m  calls=1
   goal-mcp-loop-iter-26  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
       (resume-skipped: goal-decomposer)
-  session: 26 completed iteration(s), mean wall 151.4m
-      total goal-decomposer            497.2m
-      total goal-evaluator             227.3m
-      total iteration-summarizer        93.2m
-      total coherence-auditor           86.4m
-      total readme-maintainer           45.6m
+  goal-mcp-loop-iter-26  depth=full  verdict=REGRESSION  wall=232.2m
+      goal-evaluator              10.8m  calls=1
+      coherence-auditor            3.8m  calls=1
+      iteration-summarizer         3.5m  calls=1
+      readme-maintainer            1.6m  calls=1
+      (resume-skipped: goal-decomposer)
+      pump-wait                  0.2m
+      unattributed (glue)      212.6m
+  goal-mcp-loop-iter-27  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      goal-decomposer              6.8m  calls=1
+      pump-wait                  0.4m
+  goal-mcp-loop-iter-27  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      (resume-skipped: goal-decomposer)
+  session: 27 completed iteration(s), mean wall 154.4m
+      total goal-decomposer            504.0m
+      total goal-evaluator             238.1m
+      total iteration-summarizer        96.7m
+      total coherence-auditor           90.2m
+      total readme-maintainer           47.2m
       total developer                   30.9m
       total browser-qa-agent            24.5m
       total reviewer                    11.4m
-      total AWAITING_PUMP paused gaps: 549.3m
-      halts: DECOMPOSER_FAILED, GATE_BLOCKED_POST_DECOMPOSE, STALLED, DECOMPOSER_FAILED, AWAITING_PUMP, DECOMPOSER_FAILED, DECOMPOSER_FAILED, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, AWAITING_PUMP
+      total AWAITING_PUMP paused gaps: 720.8m
+      halts: DECOMPOSER_FAILED, GATE_BLOCKED_POST_DECOMPOSE, STALLED, DECOMPOSER_FAILED, AWAITING_PUMP, DECOMPOSER_FAILED, DECOMPOSER_FAILED, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, AWAITING_PUMP, REGRESSION_HALT, AWAITING_PUMP, AWAITING_PUMP
 ```

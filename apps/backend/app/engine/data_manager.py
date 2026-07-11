@@ -27,6 +27,9 @@ from __future__ import annotations
 
 import copy
 import csv
+import ctypes
+import ctypes.util
+import gc
 import hashlib
 import json
 import os
@@ -2367,6 +2370,36 @@ def _cleanup_orphan_run(session: Session, d: date_cls) -> None:
         session.rollback()
 
 
+def _release_process_memory() -> None:
+    """iter-27 (J-16, anti-goal #8) — after a heavy full-universe backfill/rebuild stage finishes, return
+    the just-freed memory to the OS so a SECOND consecutive full-universe rebuild in the SAME long-lived
+    server process starts from a lean baseline instead of stacking on the first run's retained address space.
+
+    Root cause this addresses (iter-27 audit finding B2, re-confirmed here by a two-run in-process probe):
+    the per-job `_BarCache` object IS dropped when `_do_backfill`'s `with prefilled_bar_cache(...)` block
+    exits — the accumulation is NOT a leaked Python object. It is at the process VSZ / glibc malloc-arena
+    level: the ~1.5 GB of `Bar` lists (plus per-(date,symbol) transients and SQLAlchemy result buffers) are
+    freed back to the allocator's arenas, but glibc does not automatically return that (fragmented) address
+    space to the OS — so run 1 leaves VmSize inflated and run 2 re-allocates on top of it, pinning VSZ at
+    the `ulimit -v` ceiling and wedging the backend (the reproduced iter-26/iter-27 crash signature).
+
+    Two best-effort, fully byte-identity-NEUTRAL steps (they change WHEN freed memory is returned, never any
+    computed value): `gc.collect()` reclaims the now-unreferenced cache/transients deterministically (not at
+    the next cyclic-GC threshold, so they cannot linger resident into the next job's prefill), and glibc
+    `malloc_trim(0)` hands the emptied arenas' pages back to the OS. Paired with the `MALLOC_ARENA_MAX` cap
+    the start script exports (which bounds how many independently-fragmenting arenas glibc creates across the
+    server's worker threads on a many-core host — the dominant VSZ lever), consecutive rebuilds stay under
+    the cap with margin. `malloc_trim` is glibc-only; on any other libc the `gc.collect()` still runs and the
+    trim is silently skipped."""
+    gc.collect()
+    try:
+        libc_name = ctypes.util.find_library("c") or "libc.so.6"
+        libc = ctypes.CDLL(libc_name)
+        libc.malloc_trim(0)  # glibc: return free heap/arena pages to the OS (no-op elsewhere)
+    except (OSError, AttributeError):  # non-glibc / symbol absent — gc.collect() above already ran
+        pass
+
+
 def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engine) -> None:
     """For each in-range trading day with bars but NO snapshot, create the immutable snapshot then INSERT
     its realized forward returns (bars > D). No scan/return math is re-implemented and no snapshot is
@@ -2497,43 +2530,51 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
     # once-loaded cache instead of re-issuing a per-symbol lazy load EVERY snapshot date / per worker
     # session (the iter-36 defect that broke load-once for no-bar candidates). Byte-identical served values.
     pool_symbols = {row["symbol"] for row in read_pool()}
-    with prefilled_bar_cache(session, expected_symbols=pool_symbols) as shared_cache:
-        if workers <= 1 or len(targets) <= 1:
-            # serial baseline (workers=1) — compute + persist inline, one date at a time, in order. A
-            # per-date compute failure is caught here (isolated), not raised — the rest still run.
-            for d in targets:
-                compute_error: Optional[str] = None
-                payload: Optional[dict] = None
-                secs = 0.0
-                try:
-                    _, payload, secs = _compute_one_backfill_date(eng, cfg, d, shared_cache)
-                except Exception as exc:  # noqa: BLE001 — isolate this date's compute failure
-                    compute_error = str(exc)
-                _persist_isolated(d, payload, secs, compute_error)
-            return
-        # PARALLEL: fan out the per-date compute; persist results IN DATE ORDER on this thread as they
-        # arrive. A worker compute exception is captured PER DATE (never raised out of the drain loop, so
-        # it never aborts the whole stage or deadlocks); the `with ThreadPoolExecutor` joins every worker
-        # before returning, so no thread outlives the job (the iter-28 determinism lesson).
-        pending: dict[date_cls, tuple[Optional[dict], float, Optional[str]]] = {}
-        next_idx = 0
-        with ThreadPoolExecutor(max_workers=min(workers, len(targets))) as pool:
-            future_to_date = {
-                pool.submit(_compute_one_backfill_date, eng, cfg, d, shared_cache): d for d in targets
-            }
-            for future in as_completed(future_to_date):
-                d = future_to_date[future]
-                try:
-                    _, payload, secs = future.result()
-                    pending[d] = (payload, secs, None)
-                except Exception as exc:  # noqa: BLE001 — capture this date's compute failure, keep draining
-                    pending[d] = (None, 0.0, str(exc))
-                # drain any now-contiguous prefix in target (date) order, so writes are strictly ordered.
-                while next_idx < len(targets) and targets[next_idx] in pending:
-                    cur = targets[next_idx]
-                    cur_payload, cur_secs, cur_err = pending.pop(cur)
-                    _persist_isolated(cur, cur_payload, cur_secs, cur_err)
-                    next_idx += 1
+    # iter-27 (anti-goal #8): the `with prefilled_bar_cache(...)` block drops the ~1.5 GB shared `_BarCache`
+    # on exit, but glibc retains that freed address space by default — so a SECOND consecutive full-universe
+    # rebuild in the same long-lived process stacks on run 1's inflated VSZ and hits the `ulimit -v` ceiling.
+    # `_release_process_memory()` (gc.collect + malloc_trim) in the `finally` returns it to the OS on EVERY
+    # exit path (serial `return`, parallel fall-through, or an exception), so each rebuild starts lean.
+    try:
+        with prefilled_bar_cache(session, expected_symbols=pool_symbols) as shared_cache:
+            if workers <= 1 or len(targets) <= 1:
+                # serial baseline (workers=1) — compute + persist inline, one date at a time, in order. A
+                # per-date compute failure is caught here (isolated), not raised — the rest still run.
+                for d in targets:
+                    compute_error: Optional[str] = None
+                    payload: Optional[dict] = None
+                    secs = 0.0
+                    try:
+                        _, payload, secs = _compute_one_backfill_date(eng, cfg, d, shared_cache)
+                    except Exception as exc:  # noqa: BLE001 — isolate this date's compute failure
+                        compute_error = str(exc)
+                    _persist_isolated(d, payload, secs, compute_error)
+                return
+            # PARALLEL: fan out the per-date compute; persist results IN DATE ORDER on this thread as they
+            # arrive. A worker compute exception is captured PER DATE (never raised out of the drain loop, so
+            # it never aborts the whole stage or deadlocks); the `with ThreadPoolExecutor` joins every worker
+            # before returning, so no thread outlives the job (the iter-28 determinism lesson).
+            pending: dict[date_cls, tuple[Optional[dict], float, Optional[str]]] = {}
+            next_idx = 0
+            with ThreadPoolExecutor(max_workers=min(workers, len(targets))) as pool:
+                future_to_date = {
+                    pool.submit(_compute_one_backfill_date, eng, cfg, d, shared_cache): d for d in targets
+                }
+                for future in as_completed(future_to_date):
+                    d = future_to_date[future]
+                    try:
+                        _, payload, secs = future.result()
+                        pending[d] = (payload, secs, None)
+                    except Exception as exc:  # noqa: BLE001 — capture this date's compute failure, keep draining
+                        pending[d] = (None, 0.0, str(exc))
+                    # drain any now-contiguous prefix in target (date) order, so writes are strictly ordered.
+                    while next_idx < len(targets) and targets[next_idx] in pending:
+                        cur = targets[next_idx]
+                        cur_payload, cur_secs, cur_err = pending.pop(cur)
+                        _persist_isolated(cur, cur_payload, cur_secs, cur_err)
+                        next_idx += 1
+    finally:
+        _release_process_memory()
 
 
 # --------------------------------------------------------------------------------------------------

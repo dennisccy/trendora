@@ -305,3 +305,151 @@ sanctioned ≥10-date representative-subset alternative was used, same subset bo
 figures are the scoring COMPUTE cost (the item-F CPU driver), inside the warm cache, not the one-time cold
 bar-load (item A, iter-19) or snapshot-persist I/O, which the window change does not touch.
 
+## Item G — bound the regime/scoring `full[:cut]` allocations for the full-universe rebuild (iter-27, J-16 memory fix)
+
+**Problem (iter-26 audit finding B1, VSZ = `ulimit -v` ceiling, not RSS):** driving the full-universe (322
+dates × 541 members) "Rebuild snapshots" job crashed the live backend with a `MemoryError` at
+`prices.py:191` (`_BarCache.bars_asof`, `full[:cut]`), reached via `regime._index_ma_stack`. The dying
+process was pinned at **VSZ 6,291,456 KB = 6144 MB** (the `ulimit -v` ceiling) while **RSS was only ~4,932
+MB** — virtual-address-space exhaustion, not an RSS overflow. Root cause: `regime.py`'s three `bars_asof`
+call sites (`_index_ma_stack`, `_universe_stats`, `_latest_vix`) read the WHOLE `<= asof` prefix (up to
+~5,300 `Bar` tuples on a late date) even though each only needs a bounded trailing window — repeated every
+(date × symbol) across the full rebuild.
+
+**Fix:** an additive `_BarCache.bars_asof_window(session, symbol, d, lookback)` / module-level
+`bars_asof_window(...)` (`prices.py`) computes `full[max(0, cut - lookback):cut]` directly — the trailing
+`lookback` bars with date <= d — WITHOUT ever materializing the discarded `full[:cut]` prefix.
+`bars_asof`/every other existing consumer is untouched. `regime.py`'s `_index_ma_stack`/`_universe_stats`
+now read through `bars_asof_window(..., lookback=cfg.indicators.max_lookback_bars)` (the SAME canonical
+320-bar bound iter-26 validated); `_latest_vix` now reads through the already-optimized `close_on`
+(O(1) via bisect) instead of building a whole prefix to read one value. As a second, pre-sanctioned
+mitigation (plan fallback lever 1 — applied because the isolated measurement below could not, on its own,
+rule out needing it), `scoring.py`'s two existing sites (`_raw_components`, pass-3) now read through
+`bars_asof_window(..., lookback=icfg.max_lookback_bars)` directly instead of the iter-26 two-step
+`bars_asof(...)` + `bars[-N:]` slice — mathematically identical, so no test changed shape.
+**Byte-identity gate:** `test_scoring_window.py` — the existing `score_stocks` windowed-vs-unwindowed
+harness (unaffected by construction) PLUS two new iter-27 proofs: `score_regime` windowed-vs-unwindowed
+over the same 3 real cadence dates (0 diffs), and direct `bars_asof_window(...) ==
+bars_asof(...)[-lookback:]` equivalence (default + cache-active paths, long/short-history symbols, every
+boundary case: empty/no-bar symbol, `d` before the first bar, `d` after the last bar, `lookback` >
+available history) — all PASS. `test_forward_testing.py`'s cache-awareness cases and `test_bar_cache.py`
+(unedited) stay green.
+
+### Measured (2026-07-10, this host, `.venv` Python 3.12, literal `ulimit -v 6291456` KB = 6144 MB)
+
+**Sanity check that the cap is real (not a silent no-op):** under the identical `ulimit -v 6291456` wrapper,
+a deliberate 7 GiB `bytearray` allocation raised `MemoryError` immediately
+(`resource.getrlimit(RLIMIT_AS) == (6442450944, 6442450944)` bytes = 6144 MB). The cap genuinely bounds the
+process — a measurement that completes under it is not vacuous.
+
+**Method:** an isolated, single-process harness (`data_manager.create_job("rebuild", ...)` +
+`run_data_job(...)`, the SAME code path `POST /api/data/jobs {kind: "rebuild"}` drives) run to completion
+under the literal cap, sampling `VmPeak`/`VmSize`/`VmRSS`/`VmHWM` from `/proc/self/status` every 0.25 s on a
+background sampler thread for the whole run. Run on TWO database shapes, before vs. after the fix on each:
+(1) a **fresh temp DB** loaded from the committed seed via `load_seed` (the byte-identity harness's own
+seed), and (2) an **isolated copy** of this host's actual accumulated dev database (590 symbols, 3,293,160
+`daily_prices` rows, 265 pre-existing snapshots that "rebuild" clears then recomputes — never the live
+shared file; a throwaway copy) to get closer to the shape the live crash actually occurred on.
+
+| Run | Symbols | Peak VmPeak/VmSize | Peak VmRSS | Wall time | Status |
+|---|---|---|---|---|---|
+| Fresh seed, BEFORE fix (unwindowed `regime.py`) | 590 (seed) | 3,385.4 MB | 2,875.2 MB | 176.6 s | `ok`, 322/322 dates, 0 failures |
+| Fresh seed, AFTER fix (`regime.py` windowed) | 590 (seed) | 3,385.4 MB | 2,875.4 MB | 164.8 s | `ok`, 322/322 dates, 0 failures |
+| Dev-DB copy, BEFORE fix | 590 (live) | 3,314.6 MB | 2,803.0 MB | 153.9 s | `ok`, 322/322 dates, 0 failures |
+| Dev-DB copy, AFTER fix (`regime.py` + `scoring.py` windowed) | 590 (live) | 3,313.6 MB | 2,803.8 MB | 144.7 s | `ok`, 322/322 dates, 0 failures |
+
+**Committed never-regress budget (this isolated harness): peak VmPeak/VmSize < 3,400 MB, peak VmRSS <
+2,900 MB, both < 6144 MB with >= 2,700 MB (>= 44%) margin, on the full 322-date × 590-member rebuild shape
+under a literal 6144 MB `ulimit -v`.**
+
+**Honest limitation — this measurement does NOT prove the live crash is resolved, and says so plainly:**
+all four runs, before AND after the fix, complete comfortably under budget with nearly IDENTICAL peaks —
+the isolated harness never reproduces the reported crash, even in the pre-fix state. This means the
+isolated single-process harness (a bare `create_job`/`run_data_job` call in a fresh, short-lived process)
+is not sensitive enough to isolate this specific fix's effect, most likely because:
+- The dominant fixed cost in this harness is the whole-universe `prefilled_bar_cache` prefill itself
+  (~1.5 GB of the peak is already reached before the first date's compute finishes) — a cost this fix does
+  not target and does not change (by design: `bars_asof_window` reads from the SAME cached full series,
+  it does not shrink what the cache retains).
+- The live crash occurred inside a long-lived, busy `uvicorn`/FastAPI process that had already served
+  other requests (and its own background warm-up pass) before the rebuild job started — carrying
+  additional baseline VSZ (framework/route/module overhead) and, plausibly, more allocator arena
+  fragmentation from a longer, more varied allocation history — neither of which a fresh, short (~150 s),
+  single-purpose script replicates.
+- The diagnosed mechanism (many variably-sized transient `full[:cut]` allocations causing glibc arena
+  fragmentation) is a real, well-documented failure mode or long-lived processes; it plausibly compounds
+  over the live server's uptime in a way this isolated harness's short run cannot exhibit either way.
+
+**What IS proven here:** (1) the rebuild job's own compute path, run in isolation on the real accumulated
+dev-DB shape, has a bounded, well-behaved memory footprint with wide margin under the cap — a genuine
+never-regress floor; (2) the fix is byte-identity-correct (proven above) and removes exactly the diagnosed
+per-(date,symbol) discarded-prefix allocation pattern from `regime.py`'s three call sites and `scoring.py`'s
+two call sites, addressing the mechanism named in the iter-26 audit and this iteration's spec by
+construction. **What remains open:** whether this fix (plus the already-generous isolated headroom) is
+sufficient to prevent the crash on the LIVE, long-running server is a claim only the live browser-qa J-16
+lane (stop → cold-start → drive the actual "Rebuild snapshots" job on `/data`) can settle — the canonical,
+DoD-mandated check, run as a separate, later pipeline step. This report does not claim that check's result.
+
+## Item H — resolve the two-rebuild VSZ crash on the LIVE server (iter-27 fix-mode, J-16, anti-goal #8)
+
+**Problem (iter-27 audit finding B1, re-confirmed by an in-process two-run probe):** Item G's read-side
+windowing was byte-identity-correct but NOT sufficient — driving the full-universe "Rebuild snapshots" job
+on the LIVE backend still crashed it. The audit traced why: the crash is not a single-run overflow (a lone
+rebuild fits) but a **cross-job accumulation**. The per-job `_BarCache` IS dropped when `_do_backfill`'s
+`with prefilled_bar_cache(...)` block exits — but glibc does not return that freed, fragmented address
+space to the OS, and on a 16-core host glibc spreads allocations across up to `8*ncpus = 128` independent
+arenas (the uvicorn threadpool + the parallel backfill workers), each retaining its own reserved VSZ. So
+run 1 leaves `VmSize` inflated and a SECOND consecutive rebuild in the same long-lived process re-allocates
+on top of it, pins `VmSize`/`VmPeak` at the `6,291,456 KB` (`ulimit -v`) ceiling, and wedges the backend
+(`MemoryError` escaping into `/api/health` `compute_readiness` + the job-status endpoint — 130 occurrences).
+
+**Fix (this iteration — byte-identity-neutral memory hygiene only; no computed value changes):**
+1. `server.malloc_arena_max: 2` (config), exported as `MALLOC_ARENA_MAX` by `scripts/start-backend.sh`
+   before uvicorn starts — caps glibc's per-thread arena count so VSZ no longer fragments across ~128
+   independently-retained arenas (the dominant VSZ lever).
+2. `data_manager._release_process_memory()` (`gc.collect()` + glibc `malloc_trim(0)`) in `_do_backfill`'s
+   `finally`, so every backfill/rebuild stage hands its freed cache/transient pages back to the OS on exit —
+   the next rebuild starts lean instead of stacking on the retained arenas.
+The read-side windowing (Item G) is KEPT and built upon; `prices.py`/`regime.py`/`scoring.py` are untouched
+this iteration. **Byte-identity gate (re-proven, unedited paths):** `test_scoring_window.py` 4/4 (472.51s),
+`test_bar_cache.py` 12/12, `test_forward_testing.py` cache-awareness 5/5, `test_config.py`/`test_config_engine.py`
+111/111 — all green. The two live rebuilds produced **identical** output (322 snapshots, **597,044 forward
+returns each run** — bit-for-bit).
+
+### LIVE before → after — two consecutive full-universe rebuilds in ONE long-lived server process (2026-07-11, this host, `scripts/start-backend.sh` under `ulimit -v 6291456` KB = 6144 MB, `MALLOC_ARENA_MAX=2`, throwaway copy of the real 590-symbol / 3,293,160-row DB; backend VmPeak/VmSize/VmRSS sampled from `/proc/<pid>/status`)
+
+| Run | VmPeak (peak VSZ) | margin under 6144 MB ceiling | VmRSS peak | Job result | Backend / `/api/health` |
+|---|---|---|---|---|---|
+| **BEFORE run 1** (iter-27 audit B1) | 6,073,864 KB (5,932 MB) | **212 MB (3.4%)** | ~4,977,412 KB | ok | 200 |
+| **BEFORE run 2** (iter-27 audit B1) | **6,291,456 KB = the ceiling** | **0 — CRASH** | — | `MemoryError` | **WEDGED (130 MemoryError, 7+ min unresponsive)** |
+| **AFTER run 1** (this fix) | **5,147,876 KB (5,027 MB)** | **1,116 MB (18%)** | 4,138,140 KB | ok, 322 dates, 597,044 fwd returns | 200 throughout |
+| **AFTER run 2** (this fix, no restart) | **5,147,876 KB (5,027 MB) — NO growth vs run 1** | **1,116 MB (18%)** | 4,138,140 KB | ok, 322 dates, 597,044 fwd returns | 200 throughout |
+
+After both rebuilds: `/api/health` = 200, `/api/data` = 200, `/api/stocks` = 200. The AFTER fix cut the
+single-run peak by **~926 MB** (6,073,864 → 5,147,876 KB) AND **eliminated the cross-run accumulation** (run
+2's peak equals run 1's exactly, versus the BEFORE run 2 which climbed 218 MB straight into the ceiling).
+
+**Cold `GET /api/data` no-OOM repro (DoD, iter-24 lesson — stop → cold-start → `/api/data` as the FIRST
+heavy request, ×2, socket-poll readiness):** cycle 1 = 200 in 30 s, VmPeak 3,594,680 KB, backend alive,
+`/api/health`+`/api/stocks` 200; cycle 2 = 200 in 31 s, VmPeak 3,590,584 KB, alive, 200. `capacity` payload
+byte-identical both cycles (`db_file_bytes 1307414528`, `daily_prices_rows 3293160`) — the global allocator
+cap did not regress the cold prefill path.
+
+**Supporting in-process probe (same `create_job('rebuild')` + `run_data_job` path, `ulimit -v 6291456`) —
+isolates the two levers and shows the accumulation trend directly:**
+
+| Config | Run 1 peak VmSize | Run 2 peak VmSize | Run 3 peak VmSize | Settle VmSize (after trim) |
+|---|---|---|---|---|
+| BEFORE (default arenas, no trim) | 3,306,200 KB | **3,844,648 KB (+538 MB, climbing)** | — | 1,168,844 → 1,887,932 KB (retained, +719 MB) |
+| AFTER (`MALLOC_ARENA_MAX=2` + gc/trim) | 3,043,576 KB | 3,579,744 KB | **3,606,184 KB (+26 MB — plateau)** | 856,168 → 1,496,760 → 1,600,056 KB |
+
+(The isolated harness peaks ~3.0–3.8 GB — it never reproduces the live 6 GB because a short single-purpose
+process carries far less framework/threadpool arena baseline than the long-lived uvicorn server; that gap
+is exactly why the live lane above is the authoritative one. What the harness DOES show unambiguously: the
+BEFORE peak climbs run→run while the AFTER peak plateaus.)
+
+**Committed never-regress budget (LIVE): two consecutive full-universe rebuilds in one server process stay
+under 6144 MB `VmPeak`/`VmSize` AND `VmRSS` with >= 1,000 MB margin, with run 2's peak not exceeding run 1's,
+and `/api/health`/`/api/data`/`/api/stocks` 200 throughout.** anti-goal #8 resolved on the driven J-16 path
+(final confirmation is the canonical browser-qa J-16 lane, per the iter-24 lesson).
+

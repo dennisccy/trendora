@@ -190,6 +190,48 @@ class _BarCache:
         cut = bisect.bisect_right(self._dates_by_symbol[symbol], d)
         return full[:cut]
 
+    def bars_asof_window(
+        self, session: Session, symbol: str, d: date_cls, lookback: int
+    ) -> list[Bar]:
+        """iter-27 (J-16 memory fix): the trailing `lookback` bars with date <= `d` — BYTE-IDENTICAL to
+        `self.bars_asof(session, symbol, d)[-lookback:]` (same rows, same order) but computed WITHOUT
+        ever materializing the full `<= d` prefix (`full[:cut]`) as an intermediate allocation. On a late
+        as-of date a symbol's `<= d` prefix can carry ~5,300 bars while a caller (regime's MA-stack /
+        breadth / 52-week-high inputs) only reads a bounded trailing window (`cfg.indicators
+        .max_lookback_bars`) — this accessor slices `full[max(0, cut - lookback):cut]` directly, a list
+        slice that allocates exactly `min(lookback, cut)` elements, never the larger `cut`-length prefix
+        `bars_asof` builds (only to have a caller immediately discard everything but its own tail).
+
+        Boundary cases (all fall out of the one formula, no special-casing needed):
+          - `cut == 0` (d before the symbol's first bar, or a no-bar symbol): `max(0, 0 - lookback) == 0`,
+            so `full[0:0] == []` — matches `bars_asof(...)[-lookback:]` on an empty list.
+          - `cut == len(full)` (d on/after the symbol's last bar): identical to slicing the full series'
+            tail.
+          - `lookback >= cut` (fewer than `lookback` bars available on/before `d`, e.g. a short-history
+            symbol near its point-in-time entry): `max(0, cut - lookback) == 0`, so the WHOLE `<= d`
+            prefix is returned — matching `full[:cut][-lookback:]` on a list shorter than `lookback`."""
+        full = self._by_symbol.get(symbol)
+        if full is None:
+            # lazy load (defensive — a pre-filled cache rarely reaches here): the SAME load-ensure path
+            # `bars_asof` uses (already per-symbol bounded — this call site adds no new unbounded query).
+            with self._load_lock:
+                full = self._by_symbol.get(symbol)
+                if full is None:
+                    stmt = (
+                        select(
+                            DailyPrice.date, DailyPrice.open, DailyPrice.high,
+                            DailyPrice.low, DailyPrice.close, DailyPrice.volume,
+                        )
+                        .where(DailyPrice.symbol == symbol)
+                        .order_by(DailyPrice.date)
+                    )
+                    full = [Bar(*row) for row in session.exec(stmt).all()]
+                    self._by_symbol[symbol] = full
+                    self._dates_by_symbol[symbol] = [bar.date for bar in full]
+        dates = self._dates_by_symbol[symbol]
+        cut = bisect.bisect_right(dates, d)
+        return full[max(0, cut - lookback):cut]
+
     def bars_after(
         self, session: Session, symbol: str, d: date_cls, limit: Optional[int] = None
     ) -> list[Bar]:
@@ -372,6 +414,39 @@ def bars_asof(session: Session, symbol: str, d: date_cls) -> list[DailyPrice] | 
         .order_by(DailyPrice.date)
     )
     return list(session.exec(stmt).all())
+
+
+def bars_asof_window(
+    session: Session, symbol: str, d: date_cls, lookback: int
+) -> list[DailyPrice] | list[Bar]:
+    """The trailing `lookback` bars for `symbol` with date <= `d`, ascending — BYTE-IDENTICAL to
+    `bars_asof(session, symbol, d)[-lookback:]` (same rows, same order; the same backward no-lookahead
+    boundary, date <= d). `bars_asof` itself and every other existing consumer are UNCHANGED — this is
+    an ADDITIVE, bounded sibling for callers that only ever read a trailing window off the end of the
+    as-of series (iter-27, J-16 memory fix: `regime.py`'s MA-stack/breadth/52-week-high inputs, bounded
+    to `cfg.indicators.max_lookback_bars` — the same canonical bound `scoring.py` already validated).
+
+    When a `bar_cache(session)` context is active, this slices the once-loaded cached series directly
+    (`_BarCache.bars_asof_window` — never materializes the discarded earlier prefix). Otherwise it runs
+    a bounded `WHERE date <= d ORDER BY date DESC LIMIT lookback` query and reverses the (at most
+    `lookback`-row) result to ascending order: the DESC + LIMIT + reverse round-trip returns exactly the
+    same rows, in the same order, as `ORDER BY date ASC` over the full `<= d` prefix truncated to its
+    last `lookback` rows — without the database (or this process) ever materializing the earlier,
+    discarded rows. Fewer than `lookback` bars on/before `d` (short history, or `d` before the first
+    bar) returns whatever is available, ascending — the same short-list behavior as `[-lookback:]`."""
+    cache = _BAR_CACHES.get(id(session))
+    if cache is not None:
+        return cache.bars_asof_window(session, symbol, d, lookback)
+    stmt = (
+        select(DailyPrice)
+        .where(DailyPrice.symbol == symbol)
+        .where(DailyPrice.date <= d)
+        .order_by(DailyPrice.date.desc())
+        .limit(lookback)
+    )
+    rows = list(session.exec(stmt).all())
+    rows.reverse()
+    return rows
 
 
 def close_on(session: Session, symbol: str, d: date_cls) -> Optional[float]:
