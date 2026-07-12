@@ -281,7 +281,7 @@ the system measures itself, and how it survives the next model change.
   catalog count in CLAUDE.md ("19 agents"), flag it — CLAUDE.md is ask-first class.
 
 ### EVO-3 · Automated benchmark harness
-- **Priority:** P0 · **Effort:** L (3 slices) · **Risk:** MED · **Status:** IN-PROGRESS
+- **Priority:** P0 · **Effort:** L (3 slices) · **Risk:** MED · **Status:** DONE
   *(slice (a) — fixture project — implemented 2026-07-10:
   `benchmarks/fixtures/todo-app/` is a runnable but deliberately BARE Flask +
   vanilla-JS + pytest scaffold — shell page + `/health` on fixed port 5177, storage
@@ -362,7 +362,45 @@ the system measures itself, and how it survives the next model change.
   AGENT-RUNNABLE exactly as the chain finds it — venv bootstrap per the fixture
   project-template, pytest 3/3, app boot with `/health` 200 on port 5177,
   goal_lint exit 0 inside scratch. No runner defects found; no edits needed.)*
-- **Problem:** "did my framework change help or hurt?" currently has no answer a weaker
+  *(slice (c) — compare tool + FIRST REAL BASELINE — implemented 2026-07-10 by
+  that same certifying session: `scripts/automation/lib/benchmark_compare.py`
+  (delta table over wall / est. cost / tokens in+out / journeys passing /
+  attempt-1 review FAILs / malformed verdicts / final status+verdict; REGRESS
+  if wall or cost +>25% or journeys-passing dropped; any of those three verdict
+  inputs missing or literal "unknown (...)" → INCOMPARABLE → verdict UNKNOWN,
+  never a guessed number — regress-worthy comparable signals survive as a note;
+  exit 0 OK / 3 REGRESS / 4 UNKNOWN / 2 usage; `--self-test` registered in
+  run-evals §2, suite 96/96).
+  Baseline attempt 1 (bench-20260710-2110 @ b172cea005aa) ABORTED in 2s with
+  zero agent spend: slice (b) exported the invalid `CHAIN_AGENT_BACKEND=headless`
+  (quota-retry accepts interactive|claude|codex; headless dispatch = `claude`) —
+  a defect the offline suite structurally cannot catch (stub engines echo the
+  env var unvalidated; only a real engine validates it). Runner+test fixed
+  (commit c48f250); aborted attempt kept as a record: results JSON committed,
+  ledger PRE/POST retained with an appended dated correction line (append-only).
+  Attempt 2 = THE RECORDED BASELINE (fresh G9 approval, fresh PRE entry):
+  bench-20260710-2117 @ c48f25047126 · hypothesis "chain reaches GOAL_ACHIEVED
+  with 3/3 journeys within --max-iter 2 on the todo-app fixture" →
+  **verdict-vs-prediction: REFUTED** (mechanical; both predicates false) ·
+  final_status=BUDGET_EXHAUSTED · last_verdict=CONTINUE · journeys 0/3 (all
+  honestly `unknown` — zero browser evidence) · iterations 2 (verify-only
+  baseline + one full-depth build) · wall 5095s (~85 min) · est. cost $10.89
+  (106.5k in / 153.6k out tokens, 12 invocations; goal-evaluator $4.16 +
+  goal-decomposer $2.46 dominate) · results
+  `benchmarks/results/20260710-224206-c48f25047126.json`. GENUINE CHAIN
+  RESULT, not infra (environment healthy; friction counters zero): the chain
+  built all three journeys to reviewer-PASS / COHERENCE-PASS / 15-of-15-pytest
+  quality, but its browser-QA lane produced ZERO evidence in both iterations —
+  (a) the generic `scripts/start-backend.sh` template in the subrepo set
+  (uvicorn, apps/backend layout) shadowed the fixture project-template's
+  `.venv/bin/python app.py`, so nothing served on 5177 (README Known
+  Limitation 1 made concrete); (b) a headless write-permission prompt blocked
+  the QA report and the retro-analyst report from persisting. Both are
+  framework gaps the baseline exists to expose — prime §16-promotion
+  candidates; fixing them should move journeys 0→3 in the next compare.
+  Compare sanity: baseline-vs-baseline → all deltas 0, verdict OK, exit 0.
+  Standing usage rule: §9 "When to benchmark". EVO-3 complete; body archiving
+  left to a future tidy pass (REL-1 precedent).)*
   maintainer can trust. The per-session tripwire compares within a session; nothing
   compares across framework versions.
 - **Current state:** no `benchmarks/` dir. Headless engine is scriptable
@@ -410,7 +448,19 @@ the system measures itself, and how it survives the next model change.
   NEVER wire this into CI.
 
 ### EVO-4 · Model-cutover playbook
-- **Priority:** P0 · **Effort:** S · **Risk:** LOW · **Status:** TODO
+- **Priority:** P0 · **Effort:** S · **Risk:** LOW · **Status:** DONE
+  *(implemented 2026-07-11: `docs/model-cutover-playbook.md` — all 9 steps as exact
+  command(s) · expected evidence · failure/abort path, every command verified against
+  the scripts' own headers; three unmissable user checkpoints (step 2 tier-change
+  approval, step 6 judgment-fixture G9 gate, step 7 per-run benchmark G9 gate) with a
+  spend-class label on every step (step 1 preflight = cents but still tell the user;
+  step 6 = the runner's printed estimate; step 7 ≈ $11 + ~1.5h wall per run at baseline
+  scale); rollback section mirrors steps 2-6 around a single-commit revert; cross-links
+  landed both ways — one line in the letter's deployment section and one in
+  maintenance-protocol §6, playbook links out to §9 "When to benchmark",
+  run-judgment-evals.sh and REL-1's fixtures. Verify grep hits all three files; evals
+  96/96. S item — implementer flips DONE (G8 fresh-session certification is M/L-only);
+  body archiving left to a future tidy pass (REL-1 precedent).)*
 - **Problem:** the Fable→Opus/Sonnet cutover was done once, by a strong model, with the
   procedure living in its head and partially in the letter. The next cutover will be
   done by a weaker model.
@@ -426,7 +476,13 @@ the system measures itself, and how it survives the next model change.
   6. Run REL-1 judgment fixtures: `./scripts/automation/run-judgment-evals.sh
      --yes-spend` (G9: user-approved spend; the runner prints the estimate and
      refuses without the flag).
-  7. Run EVO-3 benchmark before/after (mark "pending EVO-3" until it ships).
+  7. Run the EVO-3 benchmark before AND after the flip (§9 "When to benchmark"):
+     `./scripts/automation/run-benchmark.sh --hypothesis '<prediction>'
+     [--predict '<key OP value>']... --yes-spend` on the pre-cutover sha, again
+     on the post-cutover sha, then `python3
+     scripts/automation/lib/benchmark_compare.py benchmarks/results/<pre>.json
+     benchmarks/results/<post>.json` — REGRESS (exit 3) → do not proceed with
+     the cutover without a human decision.
   8. First-session watchlist: `gate-report.md` appears on any GOAL_ACHIEVED;
      `[escalation]` lines in the engine log; per-model rows in
      `analyze_telemetry.py <session>/telemetry.jsonl`.
@@ -481,6 +537,25 @@ Clean lean iteration ≈ 109 min (developer ~41m, reviewer ~21m, browser-qa ~20m
 evaluator ~17m, decomposer ~8m — typicals from the timeout table comments,
 `scripts/automation/lib/agent_permissions.py:88-110`). Rule for ALL items here: EVO-3
 benchmark (or a real session's telemetry) before AND after (G8).
+
+**When to benchmark (standing rule — the EVO-3 harness):**
+- BEFORE and AFTER any SPEED-*/TOKEN-* experiment in this section, and during
+  EVO-4 model cutovers (playbook step 7). Same fixture, same `--max-iter`.
+- Run (G9 — user-approved spend per run; order-of-dollars, ~1.5-5h wall):
+  `./scripts/automation/run-benchmark.sh --hypothesis '<one-line prediction>'
+  [--predict '<key OP value>']... --yes-spend`. The runner refuses without the
+  hypothesis (G8) or on a dirty tree — commit first; the PRE entry in
+  `benchmarks/experiments.md` (append-only ledger) is written BEFORE the engine
+  launches and the POST entry grades `--predict` predicates mechanically
+  (CONFIRMED/REFUTED/MIXED). Predicate keys = scalar keys of the results JSON's
+  meta+outcome blocks (e.g. `final_status`, `journeys_passing_after`).
+- Compare: `python3 scripts/automation/lib/benchmark_compare.py <old>.json
+  <new>.json` → delta table + verdict OK / REGRESS / UNKNOWN (exit 0/3/4);
+  REGRESS = wall or cost +>25% or journeys-passing dropped; incomparable
+  verdict inputs → UNKNOWN, never a guess.
+- Afterwards commit the new results JSON + ledger entries; whatever completed
+  IS the measurement — a rerun for a prettier number needs fresh approval and
+  a fresh PRE entry.
 
 ### SPEED-1 · Refactor browser-qa into a function (no behavior change)
 - **Priority:** P1 · **Effort:** S · **Risk:** LOW · **Status:** TODO
@@ -1048,14 +1123,19 @@ territory).
 - **Problem:** `scan_diff.py` catches common credential shapes only (letter explicitly:
   "regex-grade… not exotic secrets").
 - **Current state:** per-iteration diff scan via `goal_gate_build_diff_artifacts`
-  (`lib/goal-gates.sh`) → `iter-<N>/scan-report.md`; CRITICAL blocks GOAL_ACHIEVED
-  (`goal-gates.sh:79-146`).
+  (`lib/goal-gates.sh:57`) → `iter-<N>/scan-report.md`; CRITICAL blocks GOAL_ACHIEVED
+  (`goal_gate_achievement`, `goal-gates.sh:107`). The scanned diff is the PRODUCT diff:
+  harness bookkeeping is path-excluded via `CHAIN_SCAN_BOOKKEEPING_EXCLUDES` (SEC-5).
 - **Change spec:** new `scripts/automation/lib/security_scan.sh`: if `gitleaks` (or
   `trufflehog`) is on PATH — run it in diff mode per iteration (append findings to
   `scan-report.md` with the same CRITICAL semantics) and full-tree on GOAL_ACHIEVED
   before the two-key confirm; if absent — one WARN line ("gitleaks not installed —
-  regex scan only") and proceed. Eval fixture: planted fake secret detected in a
-  fixture diff (skip cleanly when tool absent so CI stays green).
+  regex scan only") and proceed. Diff mode MUST consume the same bookkeeping-excluded
+  diff `goal_gate_build_diff_artifacts` builds (SEC-5) — feeding gitleaks the raw
+  tracked+untracked tree reintroduces the self-scan recursion (anti-pattern #22); the
+  full-tree pass on GOAL_ACHIEVED must likewise skip `runs/ reports/ docs/handoffs/
+  docs/phases/`. Eval fixture: planted fake secret detected in a fixture diff (skip
+  cleanly when tool absent so CI stays green).
 - **DoD:** with gitleaks installed, planted secret → CRITICAL → gate demotion; without,
   behavior unchanged + warning; evals green both ways.
 - **Verify:** `bash -n scripts/automation/lib/security_scan.sh &&
@@ -1118,6 +1198,32 @@ territory).
 - **Verify:** CI run on a branch push; `grep -n security .github/workflows/*.yml`
 - **Files:** `.github/workflows/evals.yml` (or new `security.yml`), docs.
 - **Rollback:** delete the job.
+
+### SEC-5 · Scan-input hygiene: the gate scans the product diff, never harness bookkeeping
+- **Priority:** P1 · **Effort:** S · **Risk:** LOW · **Status:** DONE
+  *(implemented 2026-07-11 from the tapeology `yahoo_fetch` handoff
+  (`upstream-scanner-recursion-fix.md`): `goal_gate_build_diff_artifacts`
+  (`lib/goal-gates.sh:57`) folded EVERY untracked file into the scanned diff with no
+  path exclusion, so the harness's own `runs/`+`reports/` artifacts — including the
+  scanner's previous `scan-report.md`, which quotes matched tokens — were re-scanned
+  each build: self-referential CRITICAL findings compounding 1 → 3 → … and blocking
+  GOAL_ACHIEVED on a clean product. Fix: `CHAIN_SCAN_BOOKKEEPING_EXCLUDES`
+  (default `runs reports docs/handoffs docs/phases`, knob table in
+  `.claude/model-orchestration.md`) applied as `:(exclude)` pathspec to BOTH the
+  tracked diff and the untracked enumeration; untracked files now diffed by relative
+  path (proper `a/… b/…` headers — the old absolute-path+sed combo mangled them to
+  `bpath`, which also defeated `diff_bound.py`'s excludes); provenance footer on
+  `scan-report.md`; empty/crashed scan-report now reads as WARN, not PASS;
+  `scan_diff.py` self-test fixtures assembled at runtime (keyword+value split) with a
+  self-scan structural guard. Deliberately PATH-based, never value-allowlisting —
+  `case-05-secret-committed` still proves a fake credential in product source stays
+  CRITICAL. Regression: `goal-gates.sh --self-test` cases 11/12 (git-backed:
+  bookkeeping quoting a credential scans CLEAN untracked AND tracked; the same
+  credential in product source stays CRITICAL). Residual accepted blind spot: a secret
+  pasted ONLY into a handoff/report/spec is no longer scanned per-iteration — SEC-1's
+  full-tree pass on GOAL_ACHIEVED is the designated cover; until then that text is
+  agent-generated prose, the same class as the traces that caused the recursion.
+  Anti-pattern #22.)*
 
 ---
 
@@ -1400,6 +1506,94 @@ but appreciated.
   (`analyze_telemetry.py:96/:212`) — no new instrumentation.
 - **Why staged:** caps appear respected today; this is hygiene, not a win. Best
   absorbed into SAFE-2's session rather than run standalone.
+
+### CAND-SVC-BOOT · start-backend template shadows the project's real start command (staged — do not start)
+- **Proposed:** P1 · Effort S (benchmark-local fix) or M (general boot-path fallback) ·
+  Risk LOW (fixture/runner side) to MED (touching the engine's service boot).
+- **Source:** EVO-3 first real baseline (bench-20260710-2117 @ c48f25047126) — README
+  Known Limitation 1 ("QA expects `CHAIN_START_BACKEND_CMD` or `scripts/start-backend.sh`",
+  `README.md:464`) made concrete. Staged 2026-07-11.
+- **Problem:** the deterministic service-boot lane never consults the project's documented
+  start command. Resolution order today (`goal-iter-lean.sh:333-340`; `qa-phase.sh:73-78`
+  same pattern): `CHAIN_START_BACKEND_CMD` env → else `bash scripts/start-backend.sh` if
+  the file exists → else nothing. The generic framework template
+  (`scripts/start-backend.sh:26-34`: `cd apps/backend` + uvicorn, port 8000+hash-offset at
+  `:12-16`) ships in the subrepo set the benchmark assembly copies wholesale
+  (`run-benchmark.sh:208-222`); the fixture has no `scripts/` dir of its own, so the
+  FastAPI-flavored template lands uncontested and shadows the fixture project-template's
+  documented command (`.venv/bin/python app.py` serving 127.0.0.1:5177 —
+  `benchmarks/fixtures/todo-app/.claude/project-template.md:102-106`). The health probe is
+  blind the same way: default `http://localhost:8000/health` (`goal-iter-lean.sh:342-344`;
+  hash-offset resolved it to :8763 in the run) — the fixture's 5177 appears nowhere.
+- **Evidence:** `benchmarks/results/20260710-224206-c48f25047126.json` — journeys 0/3
+  while the chain built all three to reviewer-PASS / COHERENCE-PASS / 15-of-15-pytest
+  quality; ledger POST assessment under `## POST bench-20260710-2117`
+  (`benchmarks/experiments.md`). Kept scratch: the iter-1 backend service log is the single
+  line `cd: .../scratch/apps/backend: No such file or directory`
+  (`runs/goal-bench-20260710-2117-iter-1/service-logs/qa-backend-8763.log`);
+  `trace/0014-qa.log` shows the QA agent correctly diagnosing the mismatch and attempting
+  to rewrite start-backend.sh itself — blocked by CAND-HEADLESS-PERMS, so the two gaps
+  compound.
+- **Sketch (root-cause hypotheses, not a design):** (a) benchmark-local: the fixture ships
+  its own `scripts/start-backend.sh` (the overlay already lets fixture files win
+  collisions, and maintenance-protocol §3.4 blesses localizing exactly this file
+  per-deployment), and/or `run-benchmark.sh` exports `CHAIN_START_BACKEND_CMD` /
+  `CHAIN_BACKEND_PORT` / `CHAIN_BACKEND_HEALTH_URL` derived from the fixture's template;
+  (b) general (retires Known Limitation 1 for every adopter): a middle resolution tier that
+  reads the project-template's `SERVICE START COMMANDS` section before falling back to the
+  generic script — needs a parse contract + eval fixture (G3) and care around
+  `ensure_services_running` (`lib/common.sh:770`, `_start_service_with_retries` `:582`).
+- **Why staged / verify idea:** engine boot-path changes are MED risk and the human should
+  pick (a), (b), or both (EVO-1 promotion). Verify per §9 "When to benchmark": rerun the
+  benchmark with `--predict 'journeys_passing_after>=3'` — the fix should move journeys
+  0→3 and `benchmark_compare.py` renders the delta against the recorded baseline (exactly
+  the compare the baseline + tool exist for).
+
+### CAND-HEADLESS-PERMS · headless write-permission prompt silently voids QA + retro reports (staged — do not start)
+- **Proposed:** P1 · Effort S (runner-side guard + loud tripwire) · Risk LOW-MED (the
+  trust-flag variant writes user-global `~/.claude.json` — ask-first class).
+- **Source:** same EVO-3 baseline (bench-20260710-2117). Staged 2026-07-11.
+- **Problem:** headless dispatches carry no permission flags beyond the per-agent deny
+  overlay (`--disallowedTools` + budget, `lib/quota-retry.sh:603-643`) — write access
+  relies entirely on the allow list in `.claude/settings.json`. Claude Code honors that
+  list only in a TRUSTED workspace: trust is keyed by absolute path in `~/.claude.json`
+  (`projects[<path>].hasTrustDialogAccepted`), a benchmark scratch is a fresh mktemp path
+  every run — never trusted — and no headless run can answer the trust/permission prompt.
+  NOT a missing-file problem: the scratch carried BOTH `settings.json` and the gitignored
+  `settings.local.json`, byte-identical to the repo's (`run-benchmark.sh:218` `cp -a`
+  copies gitignored files too), and every agent trace opens with "Ignoring 122
+  permissions.allow entries … this workspace has not been trusted".
+- **Evidence:** kept-scratch traces (`runs/goal-session-bench-20260710-2117/trace/` in
+  `~/.cache/chain-bench-tmp/bench-bench-20260710-2117.EMAuTK/scratch`): `0014-qa.log` —
+  trust banner at line 1, tail: "I can't write the QA report due to permission
+  restrictions" — the QA verdict exists ONLY in stdout, no artifact (`reports/qa/` empty);
+  `0028-retro-analyst.log` — ends "am writing the report to the output path now", yet no
+  `reports/goal-session-*-retro.md` exists while the engine-shell-written
+  `state/retro-input.md` does (shell writes unaffected; agent Write blocked).
+  `~/.claude.json`: `hasTrustDialogAccepted` is `false` for the scratch path and `true`
+  for this repo → PRODUCTION headless runs in an already-trusted checkout are NOT
+  affected on this machine; every benchmark scratch is, and so is the first headless run
+  on any never-trusted adopter path. Friction counters were all zero — nothing surfaced
+  the missing evidence; the damage mode is SILENT. Open point for promotion: denials were
+  not uniform — iteration-summarizer/reviewer wrote `reports/` files in the SAME untrusted
+  workspace (trace `0026` wrote two) while both blocked dispatches were light-tier (qa,
+  retro-analyst); pin the mechanism with a controlled probe (stub dispatch in an untrusted
+  scratch, observe which tool calls deny) before designing the fix.
+- **Sketch (root-cause hypotheses, not a design):** (a) runner-side guard — cheapest,
+  no global state: after the first dispatch, grep its trace for the "Ignoring N
+  permissions.allow entries" banner and ABORT the run loudly (a voided run still costs
+  ~$11); (b) runner pre-trusts the scratch path (write
+  `projects[<scratch>].hasTrustDialogAccepted: true` into `~/.claude.json` before launch,
+  remove after) — touches user-global config, needs explicit human sign-off; (c) the
+  tripwire wanted REGARDLESS of (a)/(b): any qa/browser-qa/retro dispatch that returns
+  without its expected report file on disk → LOUD `[missing-evidence]` banner + telemetry
+  event, never a silent `unknown` (the silent-missing-evidence failure mode is the damage
+  here).
+- **Why staged / verify idea:** which layer to fix (runner vs engine vs both) and any
+  `~/.claude.json` write are human decisions (G1/EVO-1). Verify: post-fix benchmark rerun
+  shows the QA report + retro report present in scratch and the trust banner absent from
+  every trace; the tripwire is unit-testable offline with a stub dispatch that writes no
+  report.
 
 ---
 
