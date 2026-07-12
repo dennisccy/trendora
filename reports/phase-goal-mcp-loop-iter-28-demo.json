@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-28",
+  "base_url": "http://localhost:3255",
+  "iteration": 28,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "See today's market mood at a glance",
+      "narration": "The Dashboard opens with the Market Regime card, showing today's overall market read at a glance.",
+      "point_out": "The colored regime badge and score near the top of the page.",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Risk-on" }
+    },
+    {
+      "n": 2,
+      "title": "See what's driving that reading",
+      "narration": "Expanding the breakdown shows exactly which signals feed into the regime score, so nothing is a black box.",
+      "point_out": "Each named component (index trend, breadth, new highs, the volatility gate) with its own contribution.",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": { "role": "button", "name": "Why this regime — component breakdown" }
+      },
+      "expect": { "text": "VIX gate" }
+    },
+    {
+      "n": 3,
+      "title": "Jump straight to the proof",
+      "narration": "A direct link connects the regime card to the evidence ledger, so anyone can check what's actually been proven before trusting a signal.",
+      "point_out": "The evidence ledger opens, showing each tracked idea with its honest pass/fail verdict.",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": { "role": "link", "name": "See evidence proven in this regime →" }
+      },
+      "expect": { "text": "vcp_contraction" }
+    },
+    {
+      "n": 4,
+      "title": "Browse the ranked stock leaderboard",
+      "narration": "The stock leaderboard ranks every name by leadership, entry quality, and risk, with every single score labeled by whether it's backed by proof.",
+      "point_out": "Hundreds of ranked rows, each score tagged 'Not yet proven' until a signal earns certified evidence.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "Not yet proven" }
+    },
+    {
+      "n": 5,
+      "title": "Drill into one stock",
+      "narration": "Opening a single stock shows the same three scores in more detail, alongside its full price history.",
+      "point_out": "AAPL's Leadership, Entry Quality, and Risk scores, each still honestly marked as unproven.",
+      "journey": "J-10",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/AAPL" },
+      "expect": { "text": "Not yet proven" }
+    },
+    {
+      "n": 6,
+      "title": "Stretch the chart back through decades",
+      "narration": "Switching to full history stretches the chart back through decades of real trading data, with no shortcuts or gaps.",
+      "point_out": "The price chart extends much further back while staying smooth and continuous.",
+      "journey": "J-10",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": { "role": "button", "name": "Full history" }
+      }
+    },
+    {
+      "n": 7,
+      "title": "Visit the Data Manager",
+      "narration": "The Data Manager page shows exactly how much data the product is standing on: dataset coverage, storage footprint, and job progress for the whole tracked universe.",
+      "point_out": "The coverage panels and the '590 symbols' badge confirming the full universe is accounted for.",
+      "journey": "J-13",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": { "role": "link", "name": "Data Manager" }
+      },
+      "expect": { "text": "590 symbols" }
+    },
+    {
+      "n": 8,
+      "title": "Audit the evidence ledger directly",
+      "narration": "The evidence ledger is reachable from the main menu at any time, not just from the regime card — it lists every idea the product has ever tested, and how each one actually held up.",
+      "point_out": "Every card reads a plain pass-or-fail verdict, with the control comparison and registration date shown alongside it — nothing is marked proven unless it earned it.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": { "role": "link", "name": "Evidence" }
+      },
+      "expect": { "text": "FAIL" }
+    },
+    {
+      "n": 9,
+      "title": "Check another name — still honest",
+      "narration": "Switching to a completely different stock shows the same honesty: even after a fresh round of testing, nothing new has been proven yet, so the product keeps saying so plainly instead of hinting otherwise.",
+      "point_out": "MU's scores render right alongside the same 'Not yet proven' labeling seen everywhere else in the product.",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/stocks/MU" },
+      "expect": { "text": "Not yet proven" }
+    }
+  ]
+}

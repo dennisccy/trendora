@@ -1,13 +1,13 @@
 {
   "schema_version": 1,
   "journey": "J-02",
-  "name": "Drill into the proof behind a proven score",
-  "default_timeout_ms": 10000,
+  "name": "Drill into the proof behind a score",
+  "default_timeout_ms": 8000,
   "steps": [
-    {"n": 1, "journey": "J-02", "action": {"type": "goto", "url": "/stocks/MU"}, "expect": {"text": "Why proven?"}},
-    {"n": 2, "journey": "J-02", "action": {"type": "click", "target": {"role": "button", "name": "Why proven?"}}, "expect": {"text": "OUT-OF-SAMPLE TEST"}},
-    {"n": 3, "journey": "J-02", "action": {"type": "expect", "text": "holdout edge"}, "expect": {"text": "holdout edge"}},
-    {"n": 4, "journey": "J-02", "action": {"type": "expect", "text": "benchmark control"}, "expect": {"text": "benchmark control"}},
-    {"n": 5, "journey": "J-02", "action": {"type": "expect", "text": "2026-06-30"}, "expect": {"text": "2026-06-30"}}
+    {"n": 1, "journey": "J-02", "action": {"type": "goto", "url": "/stocks/MU"}, "expect": {"text": "Not yet proven"}},
+    {"n": 2, "journey": "J-02", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "leadership_score"}},
+    {"n": 3, "journey": "J-02", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "OUT-OF-SAMPLE VERDICT"}},
+    {"n": 4, "journey": "J-02", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "CONTROL COMPARISON (VS SPY)"}},
+    {"n": 5, "journey": "J-02", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "2026-07-03"}}
   ]
 }

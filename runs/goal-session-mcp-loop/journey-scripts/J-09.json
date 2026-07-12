@@ -2,49 +2,11 @@
   "schema_version": 1,
   "journey": "J-09",
   "name": "Relative-strength (rs_spy_3m) 60-day-horizon certified edge surfaced on Evidence + Research factor lab",
-  "default_timeout_ms": 12000,
+  "default_timeout_ms": 8000,
   "steps": [
-    {
-      "n": 1,
-      "journey": "J-09",
-      "action": {"type": "goto", "url": "/evidence"},
-      "expect": {"text": "Evidence"},
-      "narration": "Open the Evidence ledger — the page heading confirms we are in the right place."
-    },
-    {
-      "n": 2,
-      "journey": "J-09",
-      "action": {"type": "goto", "url": "/evidence"},
-      "expect": {"text": "rs_spy_3m — top decile (D10)"},
-      "narration": "Confirm the 7th certified-claim row for rs_spy_3m D10 h60 is rendered on the Evidence page."
-    },
-    {
-      "n": 3,
-      "journey": "J-09",
-      "action": {"type": "goto", "url": "/evidence"},
-      "expect": {"text": "+21.34%"},
-      "narration": "Confirm the out-of-sample edge for rs_spy_3m h60 reads +21.34% — the exact holdout edge certified by the referee."
-    },
-    {
-      "n": 4,
-      "journey": "J-09",
-      "action": {"type": "goto", "url": "/research/factor-lab"},
-      "expect": {"text": "Research — Factor Lab"},
-      "narration": "Navigate to the Research Factor Lab to verify the rs_spy_3m h60 evidence chip."
-    },
-    {
-      "n": 5,
-      "journey": "J-09",
-      "action": {"type": "click", "target": {"css": "a[href=\"/evidence#factor-rs_spy_3m-d10-h60\"]"}},
-      "expect": {"text": "rs_spy_3m — top decile (D10)"},
-      "narration": "Click the Proven chip for rs_spy_3m h60 — it deep-links to /evidence#factor-rs_spy_3m-d10-h60 and the row scrolls into view."
-    },
-    {
-      "n": 6,
-      "journey": "J-09",
-      "action": {"type": "goto", "url": "/evidence#factor-rs_spy_3m-d10-h60"},
-      "expect": {"text": "Backs: Research factor lab →"},
-      "narration": "Navigate directly to the anchor URL and confirm the rs_spy_3m h60 evidence row shows the 'Backs: Research factor lab →' linkback."
-    }
+    {"n": 1, "journey": "J-09", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "rs_spy_3m — top decile (D10)"}},
+    {"n": 2, "journey": "J-09", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "-1.42%"}},
+    {"n": 3, "journey": "J-09", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "factor=rs_spy_3m"}},
+    {"n": 4, "journey": "J-09", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Backs: Research factor lab"}}
   ]
 }

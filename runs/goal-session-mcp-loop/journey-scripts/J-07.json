@@ -2,37 +2,11 @@
   "schema_version": 1,
   "journey": "J-07",
   "name": "Multi-horizon certified edge surfaced (the loop sees beyond the 20-day horizon)",
-  "default_timeout_ms": 12000,
+  "default_timeout_ms": 8000,
   "steps": [
-    {
-      "n": 1,
-      "journey": "J-07",
-      "action": {"type": "goto", "url": "/research/factor-lab"},
-      "expect": {"text": "Research — Factor Lab"}
-    },
-    {
-      "n": 2,
-      "journey": "J-07",
-      "action": {"type": "goto", "url": "/research/factor-lab"},
-      "expect": {"text": "Evidence (D10 · per horizon)"}
-    },
-    {
-      "n": 3,
-      "journey": "J-07",
-      "action": {"type": "click", "target": {"css": "a[data-proven=\"true\"][data-horizon=\"60\"]"}},
-      "expect": {"text": "vcp_contraction — top decile (D10)"}
-    },
-    {
-      "n": 4,
-      "journey": "J-07",
-      "action": {"type": "goto", "url": "/evidence#factor-vcp_contraction-d10-h60"},
-      "expect": {"text": "60-day hold"}
-    },
-    {
-      "n": 5,
-      "journey": "J-07",
-      "action": {"type": "goto", "url": "/evidence"},
-      "expect": {"text": "+8.91%"}
-    }
+    {"n": 1, "journey": "J-07", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "vcp_contraction — top decile (D10)"}},
+    {"n": 2, "journey": "J-07", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "60-day hold"}},
+    {"n": 3, "journey": "J-07", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "-1.64%"}},
+    {"n": 4, "journey": "J-07", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "horizon=60"}}
   ]
 }

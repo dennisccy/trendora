@@ -1,0 +1,24 @@
+{
+  "phase": "goal-mcp-loop-iter-28",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-07-12T20:22:31Z",
+  "started_at": "2026-07-12T21:10:00Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "docs/handoffs/goal-mcp-loop-iter-28-dev.md",
+    "runs/goal-mcp-loop-iter-28/status.json"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "review",
+  "verify_only_pass": {
+    "evidence_claim_registered": false,
+    "product_source_diff_empty": true,
+    "ledgers_diff_empty": true,
+    "targeted_tests": "tests/test_evidence.py::test_canonical_ledger_frozen_golden, tests/test_staging_ledger_routing.py::test_committed_staging_ledger_is_the_regenerated_30y_discovery",
+    "targeted_tests_result": "2 passed, 0 failed (0.23s)",
+    "finding": "plateau - complete §4.1/§4.2 pre-registered candidate set exhausted; 7 canonical + 7 staging entries all FAIL; escape valve routes to human candidate-set revision"
+  }
+}
