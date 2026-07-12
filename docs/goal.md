@@ -95,13 +95,26 @@ ones, with honest "this isn't proven yet" markers when the evidence is thin or f
     4. Assert at least one badge is present and none of the displayed scores lack a status
   - Acceptance: no score on the leaderboard is presented without a visible evidence status.
 
-- **J-02: Drill into the proof behind a score**
+- **J-02: Drill into the evidence behind a score**
+  *(Re-scoped 2026-07-12 — owner decision at the iter-28 plateau, evaluator menu option 2: acceptance is outcome-neutral; see the "Evidence-frontier plateau" note in Loop mechanics.)*
   - Steps:
     1. From `/stocks`, click a stock to open `/stocks/{ticker}`
-    2. Locate a score with a "Proven" badge and expand/click it
-    3. Assert the panel shows: the out-of-sample test result, the control comparison
-       (vs SPY/QQQ/sector ETF/random), and the certified-claim id + registration date
-  - Acceptance: the user can see *why* a score is considered proven — the test, the controls, and the date.
+    2. Locate each score's evidence-status element (the inline "Proven" / "Not yet proven" badge
+       beside the score) and read the recorded state it surfaces
+    3. When a passing certified-claim backs a score, assert its "Why proven?" drill-down expands to
+       show: the out-of-sample test result, the control comparison (vs SPY/QQQ/sector ETF/random),
+       and the certified-claim id + registration date, linking to the backing `/evidence` row
+    4. When no passing claim backs a score (the current all-FAIL 30-year ledger), assert the badge
+       honestly reads "Not yet proven", its explanatory text names the Evidence ledger as the audit
+       path (reachable via the persistent Evidence nav), and NO proof panel or fabricated proof
+       renders anywhere on the page
+  - Acceptance: the user can always see what the evidence says about a score — the proof (test,
+    controls, claim id + date) when a PASS row exists, an honest "not yet proven" state when none
+    does — read from the single source `GET /api/evidence`, never recomputed in the UI. The journey
+    passes in EITHER state so long as the surfacing is honest and correct; the absence of a PASS is
+    the referee working (anti-goal #1/#4 upheld), never a journey failure. If a future
+    owner-registered claim earns a PASS row backing a score, these same steps verify the Proven
+    path with no re-scope.
 
 - **J-03: Unproven / noise signals are honestly marked**
   - Steps:
@@ -125,47 +138,71 @@ ones, with honest "this isn't proven yet" markers when the evidence is thin or f
     3. Click a claim and assert it links back to the surface(s) whose badge it backs
   - Acceptance: the user can audit every "proven" claim the platform relies on, end to end.
 
-- **J-07: Multi-horizon certified edge surfaced (the loop sees beyond the 20-day horizon)**
+- **J-07: Multi-horizon certified evidence outcome surfaced (the loop sees beyond the 20-day horizon)**
+  *(Re-scoped 2026-07-12 — owner decision at the iter-28 plateau, evaluator menu option 2: acceptance is outcome-neutral; see the "Evidence-frontier plateau" note in Loop mechanics.)*
   - Steps:
-    1. The iteration carries a machine-readable `## Evidence Claim` for a factor cohort at a
-       NON-20 forward-return horizon (1/5/10/60) — e.g.
-       `{"kind":"factor","factor":"<key>","slice_kind":"decile","decile":10,"horizon":60,"direction":"positive"}` —
-       that the post-decompose gate certifies through the referee BEFORE any code is built
-       (a non-PASS verdict blocks the iteration).
-    2. Visit `/evidence` and locate the new certified-claim row; assert its horizon is the
-       non-20 value and it renders the standard fields (hypothesis incl. horizon, out-of-sample
-       verdict, SPY control, registration date, forward-walk score-to-date, "Backs: Research
-       factor lab →").
-    3. Open `/research/factor-lab` for that factor; assert its cohort at that horizon shows a
-       "Proven" badge linking to this ledger entry, while uncertified horizons read "Not yet proven".
+    1. The multi-horizon cohort this journey registered (the pre-registered §4.1 promotion —
+       vcp_contraction top-decile h60, routed `"ledger":"canonical"`) already has its referee
+       verdict RECORDED in the canonical ledger — re-refereed at the sanctioned 2026-07-03 ledger
+       reset; read it, don't recompute (currently FAIL on the 30-year basis — see the
+       "Evidence-frontier plateau" note in Loop mechanics). This journey carries NO new
+       `## Evidence Claim`: the pre-registered claim was already consumed, and a re-submission of a
+       closed FAIL would both block the iteration and tighten the Bonferroni divisor for no
+       possible gain.
+    2. Visit `/evidence` and locate the recorded NON-20-horizon claim row; assert its horizon is
+       the non-20 value and it renders the standard fields with the RECORDED verdict and
+       byte-matching numbers (hypothesis incl. horizon, out-of-sample verdict + holdout edge + the
+       referee's reason, SPY control, registration date, forward-walk score-to-date, "Backs:
+       Research factor lab →").
+    3. Open `/research/factor-lab` for that factor; assert each horizon's cohort badge reads
+       "Proven" IFF a PASS certified-claim row backs that exact cohort (factor + decile + horizon +
+       direction), else "Not yet proven" — with the current all-FAIL ledger, EVERY horizon
+       (h1/h5/h10/h20/h60) must read "Not yet proven".
   - Acceptance:
     - **Consistency (single source):** the row + factor-lab badge read the canonical
-      `GET /api/evidence` payload verbatim; the claim is a NEW entry in the EXISTING
-      `certified-claims.jsonl` (no new computing module, no new serving endpoint).
-    - **Correctness:** displayed edge / p-value / control byte-match the referee verdict for
-      the same as-of — never a UI recompute.
-    - **Honest status / anti-goals:** a signal-less factor claim backs ONLY the factor lab,
-      never a `/stocks` inline badge (J-01/J-02/J-03 unaffected); "Proven" only with a PASS,
-      else "Not yet proven" (anti-goal #1); no return/price/buy-sell language; determinism +
-      no-lookahead preserved (scoring ≤ as-of, forward returns > as-of; sealed temporal holdout).
-    - **Walkthrough:** a `[NEW]`-flagged demo-narrator walkthrough of the multi-horizon row +
-      badge, viewable via `demo.sh mcp-loop --session-live`.
+      `GET /api/evidence` payload verbatim; the claim is the RECORDED entry in the EXISTING
+      `certified-claims.jsonl` (no new computing module, no new serving endpoint, no re-referee).
+    - **Correctness:** the displayed edge / p-value / control byte-match the recorded referee
+      verdict for the same as-of — FAIL verdicts included — never a UI recompute.
+    - **Honest status / anti-goals:** acceptance is OUTCOME-NEUTRAL — the journey passes in EITHER
+      state so long as the surfacing is honest and correct; the absence of a PASS is the referee
+      working (anti-goal #1/#4 upheld), never a journey failure. A signal-less factor claim
+      concerns ONLY the factor lab, never a `/stocks` inline badge (J-01/J-02/J-03 unaffected);
+      "Proven" only with a PASS, else "Not yet proven" (anti-goal #1); no return/price/buy-sell
+      language; determinism + no-lookahead preserved (scoring ≤ as-of, forward returns > as-of;
+      sealed temporal holdout). If a future owner-registered claim on this cohort earns a PASS,
+      these same steps verify the Proven path with no journey re-scope.
+    - **Walkthrough:** session walkthrough coverage of these evidence surfaces exists (the
+      `/evidence` ledger + factor-lab steps of the session demo), viewable via
+      `demo.sh mcp-loop --session-live`; no `[NEW]` flag — the UI is unchanged, and flagging it
+      `[NEW]` would be dishonest.
 
-- **J-08: Multi-factor combination certified edge surfaced on the Combination lab + Evidence**
+- **J-08: Multi-factor combination certified evidence outcome surfaced on the Combination lab + Evidence**
+  *(Re-scoped 2026-07-12 — owner decision at the iter-28 plateau, evaluator menu option 2: acceptance is outcome-neutral; see the "Evidence-frontier plateau" note in Loop mechanics.)*
   - Steps:
-    1. The iteration carries a `## Evidence Claim` for a curated 2-factor composite cohort drawn
-       from the pre-registered combination candidate set — e.g.
-       `{"kind":"combination","cohort":"composite","horizon":20,"direction":"positive","condition":["rs_spy_3m:top:quintile","atr_pct:bottom:tertile"]}` —
-       certified by the gate BEFORE any code is built (a non-PASS verdict blocks the iteration).
-    2. Visit `/evidence`, locate the new combination certified-claim row, and assert the standard
-       fields plus a "Backs: Multi-factor combination lab →" linkback.
+    1. The combination cohort this journey registered (the pre-registered §4.2 promotion — the
+       composite `["rs_spy_3m:top:quintile","high_proximity:top:tertile"]` at h20, routed
+       `"ledger":"canonical"`) already has its referee verdict RECORDED in the canonical ledger —
+       re-refereed at the sanctioned 2026-07-03 ledger reset; read it, don't recompute (currently
+       FAIL on the 30-year basis — see the "Evidence-frontier plateau" note in Loop mechanics).
+       This journey carries NO new `## Evidence Claim`: the pre-registered claim was already
+       consumed, and a re-submission of a closed FAIL would both block the iteration and tighten
+       the Bonferroni divisor for no possible gain.
+    2. Visit `/evidence`, locate the recorded combination claim row, and assert it renders the
+       standard fields with the RECORDED verdict and byte-matching numbers, plus a
+       "Backs: Multi-factor combination lab →" linkback.
     3. Open `/research/factor-combination`, reproduce/select that combination, and assert its
-       composite cohort shows a "Proven" badge linking to this ledger entry; uncertified
-       combinations read "Not yet proven".
-  - Acceptance: same Consistency / Correctness / Honest-status / Walkthrough bar as J-07
-    (canonical `GET /api/evidence` single source; byte-match; signal-less ⇒ no `/stocks` badge;
-    PASS-gated; no return/price/buy-sell; deterministic; `[NEW]` walkthrough). The combination
-    MUST come from the pre-registered candidate set — never an ad-hoc data-mined cohort.
+       composite cohort badge reads "Proven" IFF a PASS certified-claim row backs that exact
+       cohort, else "Not yet proven" — with the current all-FAIL ledger it must read "Not yet
+       proven", and no combination anywhere reads "Proven".
+  - Acceptance: same OUTCOME-NEUTRAL Consistency / Correctness / Honest-status / Walkthrough bar as
+    J-07 (canonical `GET /api/evidence` single source; byte-match of the recorded verdict, FAIL
+    included; signal-less ⇒ no `/stocks` badge; "Proven" ONLY with a PASS, else "Not yet proven";
+    the absence of a PASS is the referee working, never a journey failure; no
+    return/price/buy-sell; deterministic; session walkthrough coverage exists, no `[NEW]` flag for
+    unchanged UI). The combination MUST remain the pre-registered §4.2 candidate — never an ad-hoc
+    data-mined cohort. If a future owner-registered claim on this cohort earns a PASS, these same
+    steps verify the Proven path with no journey re-scope.
 
 - **J-10: The product surfaces deep (up to ~30-year) price history, honestly bounded per name**
   - Steps:
@@ -313,80 +350,204 @@ ones, with honest "this isn't proven yet" markers when the evidence is thin or f
       done early; no fabricated or partial data marked complete.
     - **Walkthrough:** a `[NEW]` walkthrough of the before/after job timings from the budgets table.
 
+- **J-17: The statistical budget is visible before it is spent**
+  *(Pulled from the improvement backlog 2026-07-13 — owner decision after the iter-28 plateau. The backlog card **B-903** in `docs/improvement-backlog.md` is the binding detailed spec — read its What / How / Config surface / ★ Canonical value / ★ Do NOT touch / Traps before planning. ★ Evidence Claim: N/A — this journey must not introduce proven-language and carries NO Evidence Claim.)*
+  - Steps:
+    1. Visit the budget panel; assert it shows: total trials, the current canonical required_p, the reusable-holdout (Thresholdout) budget where the referee tracks one, and staging FDR wealth, each with a spend-over-time view.
+    2. Submit a fixture claim in the test environment; assert the panel's figures move exactly as the referee's accounting dictates.
+  - Acceptance:
+    - **Consistency (single source):** the panel re-reads the referee/ledger accounting; no parallel computation.
+    - **Correctness:** fixture spend matches hand computation.
+    - **Honest status / anti-goals:** budget pressure is displayed, never smoothed; no proven-language.
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of the budget panel, viewable via `demo.sh mcp-loop --session-live`.
+
+- **J-18: Every evidence claim must match a pre-registration — enforced by the gate**
+  *(Pulled from the improvement backlog 2026-07-13 — owner decision after the iter-28 plateau. The backlog card **B-901** in `docs/improvement-backlog.md` is the binding detailed spec — read its What / How / Config surface / ★ Canonical value / ★ Do NOT touch / Traps before planning. ★ Evidence Claim: N/A — this journey must not introduce proven-language and carries NO Evidence Claim.)*
+  - Steps:
+    1. Visit `/research/registry`; assert it lists every registered hypothesis with selectors, rationale, registration date, source, and status (incl. historical backfills labeled as such).
+    2. In the test environment, submit an iteration claim matching a registry row; assert the gate proceeds to the referee.
+    3. Submit a claim with no registry row; assert the gate refuses it BEFORE any referee computation, with a message naming the registry requirement.
+  - Acceptance:
+    - **Consistency (single source):** the page and the gate read the same registry file.
+    - **Correctness:** lookup matching is exact on selectors (fixture-proven).
+    - **Honest status / anti-goals:** enforcement is on; refusals are loud; the registry is append-only (withdrawn registrations get status rows, never deletions).
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of the registry and a refused unregistered claim, viewable via `demo.sh mcp-loop --session-live`.
+
+- **J-19: Dead hypotheses are browsable so nobody retries them blindly**
+  *(Pulled from the improvement backlog 2026-07-13 — owner decision after the iter-28 plateau. The backlog card **B-902** in `docs/improvement-backlog.md` is the binding detailed spec — read its What / How / Config surface / ★ Canonical value / ★ Do NOT touch / Traps before planning. ★ Evidence Claim: N/A — this journey must not introduce proven-language and carries NO Evidence Claim.)*
+  - Steps:
+    1. Visit `/research/graveyard`; assert every non-PASS verdict renders with selectors, verdict kind, date, and its registration lineage.
+    2. Assert closed proposals (e.g., the ma_stack closed FAIL) appear with their "permanent" marking.
+    3. Assert each entry links to the revisit-protocol rule stating what would qualify a re-test (backlog B-406 / §0: FAIL is final; a re-test requires a materially changed precondition, registered as a NEW candidate citing the closed verdict).
+  - Acceptance:
+    - **Consistency (single source):** the page re-reads ledgers + registry verbatim.
+    - **Correctness:** one entry matches its ledger row.
+    - **Honest status / anti-goals:** failures displayed as first-class information; no deletion path exists.
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of the graveyard, viewable via `demo.sh mcp-loop --session-live`.
+
+- **J-20: A single daily preflight verdict guards every decision surface**
+  *(Pulled from the improvement backlog 2026-07-13 — owner decision after the iter-28 plateau. The backlog card **B-301** in `docs/improvement-backlog.md` is the binding detailed spec — read its What / How / Config surface / ★ Canonical value / ★ Do NOT touch / Traps before planning. ★ Evidence Claim: N/A — this journey must not introduce proven-language and carries NO Evidence Claim.)*
+  - Steps:
+    1. With a healthy state, visit the dashboard, `/stocks`, a stock detail, `/watchlist`, and `/evidence`; assert each shows the same quiet GO state from the readiness payload.
+    2. Induce a critical condition in a controlled way (e.g., point freshness at a stale fixture or plant a critical sentinel anomaly in the test environment); assert every surface now shows the same DEGRADED/NO-GO banner with the concrete reasons, including the words "do not rely on today's board" for NO-GO.
+    3. Assert the verdict and reasons come from one endpoint (no page computes its own).
+  - Acceptance:
+    - **Consistency (single source):** one readiness computation; every banner re-reads it verbatim; no per-page logic.
+    - **Correctness:** each induced input maps to its configured verdict exactly as the fixture matrix specifies.
+    - **Honest status / anti-goals:** degraded states are loud, never suppressed; language is factual; no auto-trading implications (it gates *trust*, not orders).
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of GO and induced NO-GO states across two surfaces, viewable via `demo.sh mcp-loop --session-live`.
+
+- **J-21: Live data cannot silently diverge from the validated seed**
+  *(Pulled from the improvement backlog 2026-07-13 — owner decision after the iter-28 plateau. The backlog card **B-304** in `docs/improvement-backlog.md` is the binding detailed spec — read its What / How / Config surface / ★ Canonical value / ★ Do NOT touch / Traps before planning. ★ Evidence Claim: N/A — this journey must not introduce proven-language and carries NO Evidence Claim.)*
+  - Steps:
+    1. Run a live fetch in a controlled environment where one symbol's overlap region was re-adjusted; assert the drift report names the symbol, the mismatching dates, and classifies it as an adjustment seam.
+    2. Assert readiness degrades with that reason while the mismatch stands.
+    3. Run a clean fetch; assert the report is green and readiness recovers.
+  - Acceptance:
+    - **Consistency (single source):** the drift artifact is computed in the fetch pipeline once; data page and readiness re-read it.
+    - **Correctness:** the reported mismatch dates match the fixture's construction.
+    - **Honest status / anti-goals:** no auto-repair or silent acceptance; the affected names are listed; determinism preserved.
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of a seam detection and the readiness effect, viewable via `demo.sh mcp-loop --session-live`.
+
+- **J-22: The certifier itself is calibrated (placebo + tripwire audit)**
+  *(Pulled from the improvement backlog 2026-07-13 — owner decision after the iter-28 plateau. The backlog card **B-102** in `docs/improvement-backlog.md` is the binding detailed spec — read its What / How / Config surface / ★ Canonical value / ★ Do NOT touch / Traps before planning. ★ Evidence Claim: N/A — this journey must not introduce proven-language and carries NO Evidence Claim.)*
+  - Steps:
+    1. Run the referee-audit job (config-seeded null factors + one lookahead-contaminated factor) against an isolated throwaway ledger.
+    2. Visit `/research/referee-audit`; assert it shows: number of null trials, empirical false-pass rate with a confidence interval, the configured α, and the contaminated-factor verdict labeled "expected: rejected".
+    3. Assert the page states the run date and that results come from the persisted audit artifact.
+    4. Assert `/evidence` is unchanged (no new claims appeared from the audit).
+  - Acceptance:
+    - **Consistency (single source):** the panel re-reads the persisted audit artifact verbatim; nothing is recomputed in the UI; the real ledgers and Thresholdout budget are untouched (byte-identical before/after).
+    - **Correctness:** the displayed false-pass rate equals the artifact's; re-running with the same seed reproduces it exactly.
+    - **Honest status / anti-goals:** no proven-language is introduced; if the contaminated factor is NOT caught, the panel renders a prominent failure state (never hides it); determinism preserved via config seeds.
+    - **Walkthrough:** a `[NEW]`-flagged demo-narrator walkthrough of the referee-audit panel, viewable via `demo.sh mcp-loop --session-live`.
+
+- **J-23: The watchlist discloses its real concentration (correlations, clusters, effective bets)**
+  *(Pulled from the improvement backlog 2026-07-13 — owner decision after the iter-28 plateau. The backlog card **B-204** in `docs/improvement-backlog.md` is the binding detailed spec — read its What / How / Config surface / ★ Canonical value / ★ Do NOT touch / Traps before planning. ★ Evidence Claim: N/A — this journey must not introduce proven-language and carries NO Evidence Claim.)*
+  - Steps:
+    1. Add several correlated names and one unrelated name to the watchlist.
+    2. Visit `/watchlist`; assert the X-ray shows a pairwise correlation view, cluster groupings, sector/theme concentration, and a headline "effective independent bets" figure with its window stated.
+    3. Assert names with insufficient overlapping history render NA in the matrix rather than a fabricated value.
+  - Acceptance:
+    - **Consistency (single source):** the X-ray payload is computed once, engine-side, with the watchlist response; the page re-reads it; the ENB helper is the same module used by the evidence correlation audit.
+    - **Correctness:** a spot-checked pair correlation matches an offline computation over the same window.
+    - **Honest status / anti-goals:** descriptive only — no "trim/add" recommendations; honest NA; no proven-language.
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of the X-ray on a demo watchlist, viewable via `demo.sh mcp-loop --session-live`.
+
+- **J-24: Every stock shows an honest "how much can this hurt" risk-budget card**
+  *(Pulled from the improvement backlog 2026-07-13 — owner decision after the iter-28 plateau. The backlog card **B-201** in `docs/improvement-backlog.md` is the binding detailed spec — read its What / How / Config surface / ★ Canonical value / ★ Do NOT touch / Traps before planning. ★ Evidence Claim: N/A — this journey must not introduce proven-language and carries NO Evidence Claim.)*
+  - Steps:
+    1. Open `/stocks/{ticker}` for a liquid name; assert a risk card shows ATR%, downside volatility, an overnight-gap profile (median / p95 / worst), the worst historical 20-day window, and distance-to-invalidation — each with a universe-percentile context label.
+    2. Open a short-history name; assert components without sufficient history render NA with the reason.
+    3. Assert `/methodology` documents each new component's formula and window.
+  - Acceptance:
+    - **Consistency (single source):** all card values come from the stored snapshot record (computed once at scan time); the leaderboard columns re-read the same fields; no UI recomputation.
+    - **Correctness:** a spot-checked gap-profile value byte-matches the engine's computation for the same as-of.
+    - **Honest status / anti-goals:** no new proven-language (descriptive stats, no badges); NA over fabrication for thin history; no position advice.
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of the risk card on one stock, viewable via `demo.sh mcp-loop --session-live`.
+
+- **J-25: Drawdown and dry-spell expectations are visible, phase-conditional, and honest**
+  *(Pulled from the improvement backlog 2026-07-13 — owner decision after the iter-28 plateau. The backlog card **B-205** in `docs/improvement-backlog.md` is the binding detailed spec — read its What / How / Config surface / ★ Canonical value / ★ Do NOT touch / Traps before planning. ★ Evidence Claim: N/A — this journey must not introduce proven-language and carries NO Evidence Claim. Note: the current ledger's claims are all FAIL — the expectations panel is descriptive history for each claim's cohort and renders regardless of verdict, outcome-neutral.)*
+  - Steps:
+    1. Open a certified claim's detail on `/evidence`; assert an expectations panel shows historical distributions (median / p90) of max-drawdown depth, underwater duration, time-to-recover, and longest losing streak — split by market phase at entry, each with sample size.
+    2. Assert phases below the honesty floor render "insufficient (n=…)".
+    3. Assert the wording is historical ("historically saw"), with no forward-promise phrasing.
+  - Acceptance:
+    - **Consistency (single source):** the payload is computed once in the forward-testing aggregation from stored returns/excursions and the causal phase timeline; surfaces re-read it.
+    - **Correctness:** one cell (e.g., Correction-phase median depth) re-verified offline matches.
+    - **Honest status / anti-goals:** distributions of history only — no forecasts, no reassurance language; thin cells say insufficient; phase labels are the stored causal ones.
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of one claim's expectations panel, viewable via `demo.sh mcp-loop --session-live`.
+
 <!-- Continuous-improvement auto-journeys: the goal-proposer appends NEW Must-have journeys ONLY
      between the two markers below (see the goal-self-extension skill). The human-authored journeys
      above and the Anti-goals below are never machine-edited. An empty block = nothing auto-proposed yet. -->
 <!-- AUTO:journeys -->
 
-- **J-06: vcp_contraction top-decile certified edge surfaced on Evidence + Research factor lab**
+- **J-06: vcp_contraction top-decile certified evidence outcome surfaced on Evidence + Research factor lab**
+  *(Re-scoped 2026-07-12 — owner decision at the iter-28 plateau, evaluator menu option 2: acceptance is outcome-neutral; see the "Evidence-frontier plateau" note in Loop mechanics.)*
   - Steps:
-    1. The iteration carries a machine-readable `## Evidence Claim` for the vcp_contraction top-decile cohort —
-       `{"kind":"factor","factor":"vcp_contraction","slice_kind":"decile","decile":10,"horizon":20,"direction":"positive"}` —
-       so the post-decompose gate certifies it through the referee (sealed out-of-sample holdout + SPY
-       control + multiple-testing deflation) BEFORE any code is built; a non-PASS verdict (FAIL/INSUFFICIENT)
-       blocks the iteration.
-    2. Visit `/evidence` and locate the new vcp_contraction certified-claim row.
-    3. Assert it renders the same fields as the existing claim rows: hypothesis, out-of-sample verdict,
-       control comparison (vs SPY), registration date, forward-walk score-to-date, and a
+    1. The vcp_contraction top-decile h20 cohort's referee verdict (the claim this journey
+       originally registered) is already RECORDED in the canonical ledger — re-refereed at the
+       sanctioned 2026-07-03 ledger reset; read it, don't recompute (currently FAIL on the 30-year
+       basis — see the "Evidence-frontier plateau" note in Loop mechanics). This journey carries NO
+       new `## Evidence Claim`: the claim was already consumed, and a re-submission of a closed
+       FAIL would both block the iteration and tighten the Bonferroni divisor for no possible gain.
+    2. Visit `/evidence` and locate the recorded vcp_contraction certified-claim row.
+    3. Assert it renders the same fields as the other claim rows, with the RECORDED verdict and
+       byte-matching numbers: hypothesis, out-of-sample verdict (+ holdout edge + the referee's
+       reason), control comparison (vs SPY), registration date, forward-walk score-to-date, and a
        "Backs: Research factor lab →" linkback.
-    4. Open the Research factor lab (`/research/factor-lab`) for the vcp_contraction factor and assert its
-       top-decile cohort shows an evidence badge reading "Proven" that links to this ledger entry.
+    4. Open the Research factor lab (`/research/factor-lab`) for the vcp_contraction factor and
+       assert its top-decile cohort badge reads "Proven" IFF a PASS certified-claim row backs that
+       exact cohort, else "Not yet proven" — with the current all-FAIL ledger it must read "Not yet
+       proven", and no factor's cohort anywhere reads "Proven".
   - Acceptance:
     - **Consistency (single source):** the vcp_contraction ledger row and the factor-lab badge read the canonical
       `GET /api/evidence` payload verbatim (the ledger row re-displays `claims[]`; the badge looks up the
-      resolved evidence status — it NEVER recomputes proven-ness or re-fetches from a new path). The vcp_contraction
-      certified-claim is a NEW entry in the EXISTING `certified-claims.jsonl` ledger already served by
-      `GET /api/evidence` — **no new computing module and no new serving endpoint** are introduced (same
-      evidence-status contract value, one additional reader), so the Data Contract's single source of truth
-      is preserved (no new shared value to register).
+      resolved evidence status — it NEVER recomputes proven-ness or re-fetches from a new path). The
+      vcp_contraction claim is the RECORDED entry in the EXISTING `certified-claims.jsonl` ledger already
+      served by `GET /api/evidence` — **no new computing module and no new serving endpoint** (same
+      evidence-status contract value), so the Data Contract's single source of truth is preserved.
     - **Correctness:** the displayed out-of-sample edge, p-value, and control comparison byte-match the
-      referee verdict written to `certified-claims.jsonl` for the same as-of — never a recompute in the UI.
-    - **Honest status / anti-goals:** like the Breakout-watch setup claim, the vcp_contraction factor claim carries
-      NO per-stock `signal`, so it backs ONLY the Research factor lab and never lights or overwrites a
-      `/stocks` inline score badge (J-01/J-02/J-03 unaffected). The factor-lab cohort reads "Proven" ONLY
-      because a PASS certified-claim backs it; absent a PASS verdict it must read "Not yet proven"
-      (anti-goal #1 upheld). No return promise, price target, or buy/sell signal is shown — only the evidence
-      status plus the realized hold-out statistic. Determinism + no-lookahead preserved (scoring ≤ as-of,
-      forward returns > as-of; the referee uses a sealed temporal holdout).
-    - **Walkthrough:** a `[NEW]`-flagged demo-narrator walkthrough of the new vcp_contraction ledger row and the
-      factor-lab "Proven" badge is produced (plain-language narration + a real-data screenshot example),
-      viewable via `demo.sh mcp-loop --session-live`.
+      recorded referee verdict written to `certified-claims.jsonl` for the same as-of — FAIL verdicts
+      included — never a recompute in the UI.
+    - **Honest status / anti-goals:** acceptance is OUTCOME-NEUTRAL — the journey passes in EITHER state
+      (a PASS-backed "Proven" path or the honest FAIL / "Not yet proven" state) so long as the surfacing
+      is honest and correct; the absence of a PASS is the referee working (anti-goal #1/#4 upheld), never
+      a journey failure. The vcp_contraction factor claim carries NO per-stock `signal`, so it concerns
+      ONLY the Research factor lab and never lights or overwrites a `/stocks` inline score badge
+      (J-01/J-02/J-03 unaffected). The factor-lab cohort reads "Proven" ONLY when a PASS certified-claim
+      backs it; absent a PASS verdict it must read "Not yet proven" (anti-goal #1 upheld). No return
+      promise, price target, or buy/sell signal is shown — only the evidence status plus the realized
+      hold-out statistic. Determinism + no-lookahead preserved (scoring ≤ as-of, forward returns > as-of;
+      the referee uses a sealed temporal holdout). If a future owner-registered claim on this cohort earns
+      a PASS, these same steps verify the Proven path with no journey re-scope.
+    - **Walkthrough:** session walkthrough coverage of these evidence surfaces exists (the `/evidence`
+      ledger + factor-lab badge steps of the session demo), viewable via `demo.sh mcp-loop --session-live`;
+      no `[NEW]` flag is required — the UI is unchanged, and flagging it `[NEW]` would be dishonest.
 
-- **J-09: Relative-strength (rs_spy_3m) 60-day-horizon certified edge surfaced on Evidence + Research factor lab**
+- **J-09: Relative-strength (rs_spy_3m) 60-day-horizon certified evidence outcome surfaced on Evidence + Research factor lab**
+  *(Re-scoped 2026-07-12 — owner decision at the iter-28 plateau, evaluator menu option 2: acceptance is outcome-neutral; see the "Evidence-frontier plateau" note in Loop mechanics.)*
   - Steps:
-    1. The iteration carries a machine-readable `## Evidence Claim` for the rs_spy_3m top-decile cohort at the
-       NON-20 60-day horizon — promoted from the pre-registered multi-horizon staging winner
-       (`project-extensions/proposer-guidance.md` §4.1 #3; recorded staging block-bootstrap p=0.00049975) via an
-       explicit canonical ledger route —
-       `{"kind":"factor","factor":"rs_spy_3m","slice_kind":"decile","decile":10,"horizon":60,"direction":"positive","ledger":"canonical"}` —
-       so the post-decompose gate certifies it through the referee (sealed out-of-sample holdout + SPY control +
-       multiple-testing deflation at the canonical Bonferroni divisor) BEFORE any code is built; a non-PASS verdict
-       (FAIL/INSUFFICIENT) blocks the iteration.
-    2. Visit `/evidence` and locate the new rs_spy_3m certified-claim row; assert it renders the same fields as the
-       existing claim rows: hypothesis (incl. the 60-day horizon), out-of-sample verdict, control comparison (vs SPY),
-       registration date, forward-walk score-to-date, and a "Backs: Research factor lab →" linkback.
-    3. Open the Research factor lab (`/research/factor-lab`) for the rs_spy_3m factor and assert its top-decile cohort
-       at the 60-day horizon shows an evidence badge reading "Proven" that links to this ledger entry, while its
-       uncertified horizons (h1/h5/h10/h20) read "Not yet proven".
+    1. The rs_spy_3m top-decile 60-day cohort this journey registered (the pre-registered
+       `project-extensions/proposer-guidance.md` §4.1 #3 candidate, routed `"ledger":"canonical"`)
+       already has its referee verdict RECORDED in the canonical ledger — re-refereed at the
+       sanctioned 2026-07-03 ledger reset; read it, don't recompute (currently FAIL on the 30-year
+       basis — see the "Evidence-frontier plateau" note in Loop mechanics). This journey carries NO
+       new `## Evidence Claim`: the claim was already consumed, and a re-submission of a closed
+       FAIL would both block the iteration and tighten the Bonferroni divisor for no possible gain.
+    2. Visit `/evidence` and locate the recorded rs_spy_3m certified-claim row; assert it renders
+       the same fields as the other claim rows, with the RECORDED verdict and byte-matching
+       numbers: hypothesis (incl. the 60-day horizon), out-of-sample verdict (+ holdout edge + the
+       referee's reason), control comparison (vs SPY), registration date, forward-walk
+       score-to-date, and a "Backs: Research factor lab →" linkback.
+    3. Open the Research factor lab (`/research/factor-lab`) for the rs_spy_3m factor and assert
+       its top-decile badge at EVERY horizon reads "Proven" IFF a PASS certified-claim row backs
+       that exact cohort, else "Not yet proven" — with the current all-FAIL ledger, h60 AND the
+       untested horizons (h1/h5/h10/h20) must ALL read "Not yet proven".
   - Acceptance:
     - **Consistency (single source):** the rs_spy_3m ledger row and the factor-lab badge read the canonical
       `GET /api/evidence` payload verbatim (the row re-displays `claims[]`; the badge resolves status via the EXISTING
       per-horizon cohort matcher `resolveCohortEvidence` — it NEVER recomputes proven-ness or re-fetches from a new
-      path). The claim is a NEW entry in the EXISTING `certified-claims.jsonl` already served by `GET /api/evidence` —
-      **no new computing module and no new serving endpoint** (same evidence-status contract value, one additional
-      reader position), so the Data Contract's single source of truth is preserved (no new shared value to register).
-    - **Correctness:** the displayed out-of-sample edge, p-value, and SPY control byte-match the referee verdict
-      written to `certified-claims.jsonl` for the same as-of — never a recompute in the UI.
-    - **Honest status / anti-goals:** rs_spy_3m ∉ the three score columns, so the claim carries NO `signal` and backs
-      ONLY the Research factor lab — it never lights or overwrites a `/stocks` inline score badge (J-01/J-02/J-03
-      unaffected; `proven_signals` stays `{leadership_score}`). The factor-lab cohort reads "Proven" ONLY because a
-      PASS certified-claim backs it; absent a PASS verdict it reads "Not yet proven" (anti-goal #1 upheld). No return
-      promise, price target, or buy/sell signal is shown — only the evidence status plus the realized hold-out
-      statistic. Determinism + no-lookahead preserved (scoring ≤ as-of, forward returns > as-of; the referee uses a
-      sealed temporal holdout). The cohort MUST be the pre-registered §4.1 candidate — never an ad-hoc data-mined slice.
-    - **Walkthrough:** a `[NEW]`-flagged demo-narrator walkthrough of the new rs_spy_3m ledger row and the factor-lab
-      "Proven" badge is produced (plain-language narration + a real-data screenshot example), viewable via
-      `demo.sh mcp-loop --session-live`.
+      path). The claim is the RECORDED entry in the EXISTING `certified-claims.jsonl` already served by
+      `GET /api/evidence` — **no new computing module and no new serving endpoint**, so the Data Contract's single
+      source of truth is preserved.
+    - **Correctness:** the displayed out-of-sample edge, p-value, and SPY control byte-match the recorded referee
+      verdict written to `certified-claims.jsonl` for the same as-of — FAIL verdicts included — never a recompute
+      in the UI.
+    - **Honest status / anti-goals:** acceptance is OUTCOME-NEUTRAL — the journey passes in EITHER state (a
+      PASS-backed "Proven" path or the honest FAIL / "Not yet proven" state) so long as the surfacing is honest and
+      correct; the absence of a PASS is the referee working (anti-goal #1/#4 upheld), never a journey failure.
+      rs_spy_3m ∉ the three score columns, so the claim carries NO `signal` and concerns ONLY the Research factor
+      lab — it never lights or overwrites a `/stocks` inline score badge (J-01/J-02/J-03 unaffected). The factor-lab
+      cohort reads "Proven" ONLY when a PASS certified-claim backs it; absent a PASS verdict it reads "Not yet
+      proven" (anti-goal #1 upheld). No return promise, price target, or buy/sell signal is shown. Determinism +
+      no-lookahead preserved (scoring ≤ as-of, forward returns > as-of; sealed temporal holdout). The cohort remains
+      the pre-registered §4.1 candidate — never an ad-hoc data-mined slice. If a future owner-registered claim on
+      this cohort earns a PASS, these same steps verify the Proven path with no journey re-scope.
+    - **Walkthrough:** session walkthrough coverage of these evidence surfaces exists (the `/evidence` ledger +
+      factor-lab badge steps of the session demo), viewable via `demo.sh mcp-loop --session-live`; no `[NEW]` flag
+      is required — the UI is unchanged, and flagging it `[NEW]` would be dishonest.
 
 <!-- /AUTO:journeys -->
 
@@ -453,6 +614,32 @@ will refuse to certify on a sample too thin to believe.
 > edge "Proven", and refresh the frozen-golden tests. This is the one sanctioned reset of the otherwise
 > append-only ledger; J-01..J-09 remain valid contracts (honest badges, correct numbers) but their
 > specific certified edges recompute.
+
+> **Evidence-frontier plateau (owner decision 2026-07-12):** the reset above has RUN. At the
+> sanctioned 2026-07-03 re-referee the COMPLETE pre-registered candidate registry
+> (`proposer-guidance.md` §4.1 four singles + §4.2 three combinations, mirrored in `config.triad`)
+> was consumed on the 30-year basis, and the empirical hunt is over: 7/7 canonical + 7/7 staging
+> verdicts FAIL, most wrong-direction out-of-sample (the in-sample edge REVERSED out-of-sample in
+> 5/7 canonical and 6/7 staging rows; best row ma_stack h20, p=0.277) — genuine out-of-sample
+> non-edges on this basis, NOT a multiple-testing-bar artifact a looser economy could rescue. The
+> staging LORD++ economy is exhausted: zero discoveries ever replenished its wealth, so the next
+> staging bar (α₈ ≈ 0.00039) sits BELOW the block-bootstrap p-floor (≈ 0.0005 at B=2000) — staging
+> is CLOSED until the owner re-parameterizes it; the canonical bar stands at divisor 8
+> (required_p = 0.00625). The owner therefore re-scoped J-02/J-06/J-07/J-08/J-09 (iter-28 evaluator
+> menu, option 2) to the outcome-neutral honest-surfacing contract now written into those journeys:
+> they verify honest, correct, drillable surfacing of the RECORDED referee verdict in EITHER state,
+> never that an edge exists (that is the market's property, not the product's). Their
+> re-verification is expected to be a lean, verify-only pass — iter-28 browser-qa already
+> demonstrated every assertion live. Forward rule for any FUTURE edge hunt: owner-registered
+> candidates ONLY — a NEW pre-registered card per `docs/improvement-backlog.md` §0 (pre-sanctioned
+> families: B-401 quantile spreads, B-402 regime-conditioning, B-403 sector cohorts, B-406 revisit
+> protocol), routed with an explicit `"ledger":"canonical"` and the honest-stop guard (promote only
+> a winner clearing the bar with margin; report, don't force, if none clears) — NEVER a
+> re-submission of a closed FAIL (divisor 8→9 for no possible gain), and NOT through staging while
+> its wealth is exhausted. Separately (2026-07-13), the owner pulled nine NO-SPEND backlog cards as
+> Must-have journeys J-17..J-25 (B-903/B-901/B-902 governance, B-301/B-304 daily-ops, B-102
+> certifier audit, B-204/B-201/B-205 risk analytics) — none carries an Evidence Claim, so none can
+> collide with this closure.
 
 ## Improvement direction (engineering): open the aperture + sustainable trial economy
 
