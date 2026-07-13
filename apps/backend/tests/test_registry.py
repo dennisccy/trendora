@@ -23,6 +23,7 @@ import json
 from pathlib import Path
 
 from app.config import REPO_ROOT
+from app.engine import registry as registry_mod
 from app.engine.ledger import append_entry, read_entries
 from app.engine.registry import (
     REGISTRY_PATH_ENV,
@@ -31,6 +32,7 @@ from app.engine.registry import (
     match_registration,
     resolve_registry_path,
 )
+from app.mcp import tools as mcp_tools
 
 _CANONICAL_LEDGER = REPO_ROOT / "runs/goal-session-mcp-loop/state/certified-claims.jsonl"
 _STAGING_LEDGER = REPO_ROOT / "runs/goal-session-mcp-loop/state/staging-ledger.jsonl"
@@ -280,3 +282,13 @@ def test_committed_registry_has_no_proven_language():
     banned = {"proven", "pass", "confirmed", "verified", "certified"}
     for row in rows:
         assert row["status"].lower() not in banned
+
+
+# ==================================================================================================
+# Drift insurance (iter-30 audit-O1 carry-forward, iter-31 recommended cheap add): the selector-key
+# tuple this module matches on must stay byte-identical to `app.mcp.tools`'s copy -- the graveyard
+# (iter-31, J-19) leans on `match_registration` for lineage, so a silent drift between the two tuples
+# would silently break lineage matching for any claim carrying a key added to one copy but not the other.
+# ==================================================================================================
+def test_claim_selector_keys_matches_mcp_tools_verbatim():
+    assert registry_mod._CLAIM_SELECTOR_KEYS == mcp_tools._CLAIM_SELECTOR_KEYS

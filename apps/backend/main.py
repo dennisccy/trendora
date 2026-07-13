@@ -20,6 +20,7 @@ from app.api import (
     dashboard,
     data,
     evidence,
+    graveyard,
     health,
     indexes,
     market_phase,
@@ -133,6 +134,8 @@ def create_app() -> FastAPI:
     application.include_router(evidence.router, prefix="/api")
     # goal-mcp-loop iter-30 (J-18) — the read-only pre-registration registry (GET /api/research/registry).
     application.include_router(registry.router, prefix="/api")
+    # goal-mcp-loop iter-31 (J-19) — the read-only negative-results graveyard (GET /api/research/graveyard).
+    application.include_router(graveyard.router, prefix="/api")
     return application
 
 

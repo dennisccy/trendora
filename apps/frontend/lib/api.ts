@@ -11,6 +11,7 @@ import type {
   EvidenceLedgerResponse,
   ProvenSignal,
 } from "@/lib/evidence";
+import type { GraveyardEntry, GraveyardResponse, RevisitProtocol } from "@/lib/graveyard";
 import type { PreRegistrationRow, RegistryResponse } from "@/lib/registry";
 
 // Re-export the read-side evidence types (goal-mcp-loop iter-1) so callers import them from the API client
@@ -20,6 +21,9 @@ export type { CertifiedClaim, EvidenceLedgerResponse, ProvenSignal };
 
 // Re-export the pre-registration registry types (goal-mcp-loop iter-30, J-18) alongside `fetchRegistry`.
 export type { PreRegistrationRow, RegistryResponse };
+
+// Re-export the negative-results graveyard types (goal-mcp-loop iter-31, J-19) alongside `fetchGraveyard`.
+export type { GraveyardEntry, GraveyardResponse, RevisitProtocol };
 
 /** The build-time configured backend base (`NEXT_PUBLIC_API_URL`, default localhost). The configured
  *  backend PORT (`NEXT_PUBLIC_API_PORT`) is read alongside so the runtime resolver can host-swap to the
@@ -360,6 +364,16 @@ export async function fetchEvidence(signal?: AbortSignal): Promise<EvidenceLedge
  *  error or non-200 so the page renders an explicit "Backend unavailable" state. */
 export async function fetchRegistry(signal?: AbortSignal): Promise<RegistryResponse> {
   return getJSON<RegistryResponse>("/api/research/registry", signal);
+}
+
+// --- negative-results graveyard (goal-mcp-loop iter-31, J-19 / backlog B-902) ---------------
+/** GET /api/research/graveyard — the read-only negative-results graveyard: every NON-PASS referee
+ *  verdict across BOTH the canonical and staging certified-claims ledgers, read VERBATIM and tagged with
+ *  its origin ledger + registration lineage. Re-formats nothing; introduces no proven-language (a
+ *  verdict-kind badge, never "Proven"/"Not yet proven"). Throws on network error or non-200 so the page
+ *  renders an explicit "Backend unavailable" state. */
+export async function fetchGraveyard(signal?: AbortSignal): Promise<GraveyardResponse> {
+  return getJSON<GraveyardResponse>("/api/research/graveyard", signal);
 }
 
 // --- stock price/MA/volume series for the detail chart (iter-4) -----------------------------

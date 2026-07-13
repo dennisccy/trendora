@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-31",
+  "base_url": "http://localhost:3255",
+  "iteration": 31,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Start at the Dashboard",
+      "narration": "Every session starts here on the Dashboard — let's head into Research to see what's new this time.",
+      "point_out": "The familiar left sidebar, with Research as the seventh item.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" }
+    },
+    {
+      "n": 2,
+      "title": "Open the Research hub",
+      "narration": "Research now has a second card under its governance section — alongside the registry sits a brand-new graveyard of every idea that didn't pan out.",
+      "point_out": "Below the ten labs and the registry card, a new \"Negative-results graveyard\" card with an archive icon.",
+      "journey": "J-19",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Research" } },
+      "expect": { "text": "Negative-results graveyard" }
+    },
+    {
+      "n": 3,
+      "title": "Open the negative-results graveyard",
+      "narration": "This new page lists every idea the system has ever tested and rejected, so nobody wastes time re-deriving a dead idea from scratch.",
+      "point_out": "Fourteen rows, each with plain-language selectors and a red FAIL badge — and on the ma_stack row, a small \"permanent\" tag marking it closed for good.",
+      "journey": "J-19",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Negative-results graveyard" } },
+      "expect": { "text": "permanent" }
+    },
+    {
+      "n": 4,
+      "title": "See the rule for revisiting a dead idea",
+      "narration": "Every rejected idea links straight to the one rule that governs whether — and how — it could ever be retested.",
+      "point_out": "The \"Revisit protocol\" panel: a closed idea needs a materially new precondition, like two more years of data, before anyone can even propose testing it again.",
+      "journey": "J-19",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Revisit protocol →" } },
+      "expect": { "text": "materially changed precondition" }
+    },
+    {
+      "n": 5,
+      "title": "Confirm the original hub is untouched",
+      "narration": "Heading back to Research shows the original ten labs and the registry exactly where they've always been — the graveyard just joins them, nothing was displaced.",
+      "point_out": "The same ten lab cards in the same order, starting with \"Factor Lab,\" with both governance cards now sitting together beneath them.",
+      "journey": "J-19",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Back to Research" } },
+      "expect": { "text": "Factor Lab" }
+    },
+    {
+      "n": 6,
+      "title": "Check that nothing else changed",
+      "narration": "A quick look at the existing Evidence page confirms this new addition didn't disturb anything else in the product.",
+      "point_out": "All seven tracked claims still show their honest red FAIL badge, exactly as before.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/evidence" },
+      "expect": { "text": "FAIL" }
+    },
+    {
+      "n": 7,
+      "title": "Jump straight to the graveyard any time",
+      "narration": "The new graveyard page also works as a direct link on its own — no need to click through Research every time to find it.",
+      "point_out": "The same fourteen rows load right away on a fresh visit, each dated 2026-07-03.",
+      "journey": "J-19",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/graveyard" },
+      "expect": { "text": "2026-07-03" }
+    }
+  ]
+}

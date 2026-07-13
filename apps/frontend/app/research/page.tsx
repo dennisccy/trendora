@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  Archive,
   ArrowRight,
   BookMarked,
   Boxes,
@@ -75,10 +76,10 @@ export default function ResearchHubPage() {
         })}
       </div>
 
-      {/* goal-mcp-loop iter-30 (J-18) — Governance & process: the first of several forthcoming governance
-          surfaces (registry now; graveyard / budget / referee-audit to follow). Kept a SEPARATE section,
-          not an 11th RESEARCH_LABS entry — that array's reading order is a J-113 contract over the ten
-          analytical labs; a governance/process link is architecturally distinct, not a lab. */}
+      {/* goal-mcp-loop iter-30 (J-18) / iter-31 (J-19) — Governance & process: registry + graveyard now,
+          budget / referee-audit still to follow. Kept a SEPARATE section, not an 11th RESEARCH_LABS
+          entry — that array's reading order is a J-113 contract over the ten analytical labs; a
+          governance/process link is architecturally distinct, not a lab. */}
       <div className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">Governance &amp; process</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="research-governance">
@@ -99,6 +100,28 @@ export default function ResearchHubPage() {
             <p className="text-sm text-text-muted">
               Every hypothesis the system has ever registered or tested — selectors, rationale,
               registration date, and source. The gate refuses to certify anything that isn&apos;t here.
+            </p>
+          </Link>
+
+          {/* goal-mcp-loop iter-31 (J-19) — the negative-results graveyard: every referee-rejected
+              hypothesis across both ledgers, so nobody re-derives a dead idea from scratch. */}
+          <Link
+            href={asofHref("/research/graveyard")}
+            data-testid="research-governance-link-graveyard"
+            className={cn(
+              "group flex flex-col gap-2 rounded-lg border border-border bg-surface p-4 transition-colors",
+              "hover:border-accent hover:bg-surface-2",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <Archive className="h-5 w-5 text-accent" aria-hidden />
+              <h3 className="text-base font-semibold text-text">Negative-results graveyard</h3>
+              <ArrowRight className="ml-auto h-4 w-4 text-text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent" aria-hidden />
+            </div>
+            <p className="text-sm text-text-muted">
+              Every hypothesis the referee has rejected, across the canonical and staging ledgers — its
+              verdict, deflation context, and registration lineage. Nobody retries a dead idea blindly.
             </p>
           </Link>
         </div>

@@ -1,0 +1,26 @@
+{
+  "phase": "goal-mcp-loop-iter-31",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-07-13T17:28:33.127039Z",
+  "started_at": "2026-07-13T15:14:13.611868Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/graveyard.py",
+    "apps/backend/app/api/graveyard.py",
+    "apps/backend/main.py",
+    "apps/backend/tests/test_graveyard.py",
+    "apps/backend/tests/test_api_graveyard.py",
+    "apps/backend/tests/test_registry.py",
+    "apps/frontend/lib/graveyard.ts",
+    "apps/frontend/lib/api.ts",
+    "apps/frontend/app/research/graveyard/page.tsx",
+    "apps/frontend/app/research/page.tsx",
+    "apps/frontend/app/research/registry/page.tsx"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "qa_verdict": "PASS",
+  "next_action": "complete"
+}

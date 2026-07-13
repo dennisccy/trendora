@@ -40,6 +40,24 @@ export default function RegistryPage() {
     return () => controller.abort();
   }, []);
 
+  // Scroll to a `#registration-<id>` deep-link target once the rows have rendered. The browser's native
+  // scroll-to-fragment fires only on a full/hard page load; on a client-side (SPA) navigation into this
+  // route — e.g. clicking a graveyard row's Lineage link (goal-mcp-loop iter-31, J-19) — the target row
+  // is fetched AFTER the route commits, so the fragment resolves to nothing and no scroll happens. This
+  // effect runs after the rows mount (`state.kind === "ok"`) and brings the anchored row into view; the
+  // row's `scroll-mt-20` positions it just below the sticky header. No hash ⇒ no-op (plain browsing is
+  // unchanged). rAF defers one frame so layout is settled before scrolling.
+  useEffect(() => {
+    if (state.kind !== "ok") return;
+    const hash = window.location.hash;
+    if (!hash) return;
+    const raf = requestAnimationFrame(() => {
+      const target = document.getElementById(hash.slice(1));
+      if (target) target.scrollIntoView({ block: "start" });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [state.kind]);
+
   const rows = state.kind === "ok" ? state.data.registrations : [];
 
   return (
@@ -128,7 +146,12 @@ function RegistryTable({ rows }: { rows: PreRegistrationRow[] }) {
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.id} data-testid="registry-row" className="border-b border-border align-top last:border-b-0">
+              <tr
+                key={row.id}
+                id={`registration-${row.id}`}
+                data-testid="registry-row"
+                className="scroll-mt-20 border-b border-border align-top last:border-b-0"
+              >
                 <td className="px-4 py-3">
                   <SelectorChips selectors={row.selectors} />
                 </td>
