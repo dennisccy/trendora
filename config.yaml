@@ -1085,6 +1085,25 @@ evidence:
     w0_fraction: 0.5        # initial alpha-wealth W0 = w0_fraction * alpha (0..1)
     gamma_exponent: 1.6     # polynomial spending-sequence decay exponent (> 1 so Σ γ_j converges)
     gamma_terms: 1000       # explicit terms for the ζ(gamma_exponent) normalizer (Euler–Maclaurin tail beyond)
+  # goal-mcp-loop iter-30 CONSUMED — the pre-registration registry (J-18 / backlog B-901): the append-only
+  # state/pre-registrations.jsonl BOTH GET /api/research/registry (via app.engine.registry) and the
+  # post-decompose gate (verify_claim.py) read through the SAME loader module, so the registry page a human
+  # browses and the machine cross-check an incoming Evidence Claim runs through can never disagree. `enforce`
+  # is the gate's teeth: when true, verify_claim.py refuses (BLOCKED, exit 3, before any referee computation)
+  # any Evidence Claim whose exact selectors do not match a registry row. ACTIVATED here (enforce: true) only
+  # after the backfill (11 rows — every proposer-guidance.md §4.1/§4.2 candidate ∪ every distinct claim
+  # selector-set in both ledgers, deduplicated) was verified complete against both ledgers (see the iter-30
+  # dev handoff) — it blocks nothing today because no current/near-term iteration submits a `## Evidence
+  # Claim` (goal.md's Evidence-frontier plateau note), and permanently closes the ad-hoc-mining door for every
+  # future one. A relative path resolves against the repo root; the runtime override TRENDORA_REGISTRY_PATH
+  # takes precedence when set; run-goal.sh exports it alongside LEDGER_PATH / STAGING_LEDGER_PATH.
+  registry:
+    path: runs/goal-session-mcp-loop/state/pre-registrations.jsonl
+    enforce: true            # iter-30: flipped true — the backfill (11 rows) is verified complete against
+                              # both ledgers (test_registry.py's round-trip tests) and the gate fixtures
+                              # (test_gate_registry_enforcement.py) prove registered/unregistered/near-miss
+                              # behave correctly. Blocks nothing today (no iteration currently carries a
+                              # ## Evidence Claim); closes the ad-hoc-mining door for every future one.
 
 # ----------------------------------------------------------------------------------------
 # Analyst-loop triad scan (app.engine.triad_scan / scan_product_triad). Tunables for the

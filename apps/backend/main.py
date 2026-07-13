@@ -25,6 +25,7 @@ from app.api import (
     market_phase,
     methodology,
     regime_history,
+    registry,
     research,
     runs,
     sectors,
@@ -130,6 +131,8 @@ def create_app() -> FastAPI:
     application.include_router(market_phase.router, prefix="/api")
     # goal-mcp-loop iter-1 — the read-only certified-claims ledger surface (GET /api/evidence).
     application.include_router(evidence.router, prefix="/api")
+    # goal-mcp-loop iter-30 (J-18) — the read-only pre-registration registry (GET /api/research/registry).
+    application.include_router(registry.router, prefix="/api")
     return application
 
 

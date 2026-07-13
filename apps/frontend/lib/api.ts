@@ -11,11 +11,15 @@ import type {
   EvidenceLedgerResponse,
   ProvenSignal,
 } from "@/lib/evidence";
+import type { PreRegistrationRow, RegistryResponse } from "@/lib/registry";
 
 // Re-export the read-side evidence types (goal-mcp-loop iter-1) so callers import them from the API client
 // alongside `fetchEvidence`. These are DISTINCT from `EvidenceAggregate` below (the Backtest forward-tested
 // aggregate) — do not confuse the two.
 export type { CertifiedClaim, EvidenceLedgerResponse, ProvenSignal };
+
+// Re-export the pre-registration registry types (goal-mcp-loop iter-30, J-18) alongside `fetchRegistry`.
+export type { PreRegistrationRow, RegistryResponse };
 
 /** The build-time configured backend base (`NEXT_PUBLIC_API_URL`, default localhost). The configured
  *  backend PORT (`NEXT_PUBLIC_API_PORT`) is read alongside so the runtime resolver can host-swap to the
@@ -347,6 +351,15 @@ export async function fetchStock(ticker: string, asof?: string, signal?: AbortSi
  *  back to the fail-safe "Not yet proven" — never a fabricated "Proven". */
 export async function fetchEvidence(signal?: AbortSignal): Promise<EvidenceLedgerResponse> {
   return getJSON<EvidenceLedgerResponse>("/api/evidence", signal);
+}
+
+// --- pre-registration registry (goal-mcp-loop iter-30, J-18 / backlog B-901) ----------------
+/** GET /api/research/registry — the read-only pre-registration registry: every hypothesis ever
+ *  registered/tested, read VERBATIM from the SAME file + loader the post-decompose gate cross-checks an
+ *  incoming Evidence Claim against. Re-formats nothing; introduces no proven-language. Throws on network
+ *  error or non-200 so the page renders an explicit "Backend unavailable" state. */
+export async function fetchRegistry(signal?: AbortSignal): Promise<RegistryResponse> {
+  return getJSON<RegistryResponse>("/api/research/registry", signal);
 }
 
 // --- stock price/MA/volume series for the detail chart (iter-4) -----------------------------

@@ -2101,24 +2101,52 @@ class FdrCfg(BaseModel):
         return self
 
 
+_DEFAULT_REGISTRY_PATH = "runs/goal-session-mcp-loop/state/pre-registrations.jsonl"
+
+
+class RegistryCfg(BaseModel):
+    """The pre-registration registry config (goal-mcp-loop iter-30; J-18 / backlog B-901). `path` is the
+    append-only `state/pre-registrations.jsonl` BOTH `GET /api/research/registry` (via
+    `app.engine.registry`) and the post-decompose gate (`verify_claim.py`, a non-HTTP consumer) read
+    through the SAME loader module (`app.engine.registry.load_registrations`) — so the registry page a
+    human browses and the machine cross-check an incoming Evidence Claim runs through can never disagree.
+    Resolved relative to `REPO_ROOT` when relative; the resolver (`app.engine.registry.resolve_registry_
+    path`, NOT this model) applies the runtime `TRENDORA_REGISTRY_PATH` override, mirroring
+    `EvidenceCfg.ledger_path` / `resolve_ledger_path()` exactly.
+
+    `enforce` is DEFAULT-OFF in code (mirrors `FdrCfg.enabled=False`) so a config / inline test fixture
+    predating this block still loads and behaves byte-identically: with `enforce=False` the gate's
+    registry cross-check is skipped entirely (the exact pre-iter-30 behavior). The real `config.yaml`
+    flips this to `true` ONLY after the backfill is verified complete (B-901's own sequencing — see the
+    dev handoff) — never before, and never as a formality (Critical Implementation Detail in the iter-30
+    plan)."""
+
+    model_config = ConfigDict(extra="allow")
+    path: str = Field(default=_DEFAULT_REGISTRY_PATH, min_length=1)
+    enforce: bool = False
+
+
 class EvidenceCfg(BaseModel):
-    """Read-side evidence config (goal-mcp-loop iter-1; iter-9 adds the staging economy). `ledger_path` is
-    the certified-claims ledger the read-only `GET /api/evidence` reads — the SAME append-only file the
-    post-decompose gate writes, so the UI's displayed proven-ness is consistent with what the referee
-    certified. Resolved relative to `REPO_ROOT` when relative; the resolver
-    (`app.engine.evidence.resolve_ledger_path`, NOT this model) applies the runtime `TRENDORA_LEDGER_PATH`
-    override. The path lives in config, never as a literal in the resolver/endpoint (anti-goal: No magic
-    numbers).
+    """Read-side evidence config (goal-mcp-loop iter-1; iter-9 adds the staging economy; iter-30 adds the
+    pre-registration registry). `ledger_path` is the certified-claims ledger the read-only `GET
+    /api/evidence` reads — the SAME append-only file the post-decompose gate writes, so the UI's displayed
+    proven-ness is consistent with what the referee certified. Resolved relative to `REPO_ROOT` when
+    relative; the resolver (`app.engine.evidence.resolve_ledger_path`, NOT this model) applies the runtime
+    `TRENDORA_LEDGER_PATH` override. The path lives in config, never as a literal in the resolver/endpoint
+    (anti-goal: No magic numbers).
 
     iter-9 adds the INTERNAL exploration seam — `staging_ledger_path` (a NEVER-served staging ledger the
     online-FDR economy explores in, so exploration cannot tighten the canonical Bonferroni bar) and `fdr`
-    (the DEFAULT-OFF LORD++ economy config). Both are default-populated so a config / inline test fixture
-    predating this block still loads unchanged, and default-off keeps canonical behavior byte-identical."""
+    (the DEFAULT-OFF LORD++ economy config). iter-30 adds `registry` (the DEFAULT-OFF pre-registration
+    gate cross-check config, `RegistryCfg`). All three are default-populated so a config / inline test
+    fixture predating any of these blocks still loads unchanged, and default-off keeps canonical/pre-
+    existing behavior byte-identical."""
 
     model_config = ConfigDict(extra="allow")
     ledger_path: str = Field(default=_DEFAULT_LEDGER_PATH, min_length=1)
     staging_ledger_path: str = Field(default=_DEFAULT_STAGING_LEDGER_PATH, min_length=1)
     fdr: FdrCfg = Field(default_factory=FdrCfg)
+    registry: RegistryCfg = Field(default_factory=RegistryCfg)
 
 
 def _default_evidence() -> "EvidenceCfg":

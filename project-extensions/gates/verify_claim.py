@@ -15,9 +15,19 @@ Per-claim ledger routing (iter-9): each Evidence Claim MAY carry an optional
     "canonical" (explicit, for a deliberately promoted winner) -> the user-facing
                 certified-claims ledger ($LEDGER_PATH), ALWAYS strict Bonferroni.
 
+Pre-registration cross-check (iter-30, J-18 / backlog B-901): BEFORE routing/referee,
+when config `evidence.registry.enforce` is true, each claim is cross-checked against
+the pre-registration registry ($TRENDORA_REGISTRY_PATH, via the SAME
+`app.engine.registry.match_registration` the registry page reads through) by EXACT
+selector-set equality — no fuzzy/superset matching. No match -> BLOCK (exit 3) BEFORE
+any referee computation: no `verify_edge` call, no ledger write, no Bonferroni-bar
+tightening. This is a PURE pre-check: a match (or enforcement off) falls through to
+the existing routing + `verify_edge` call completely unchanged.
+
     exit 0  => no claim, OR every claim CERTIFIED (PASS)        -> iteration may build
     exit 3  => a claim was NOT certified (FAIL / INSUFFICIENT), OR a routing failure
-               (unrecognized "ledger" value / the required *_LEDGER_PATH unset)
+               (unrecognized "ledger" value / the required *_LEDGER_PATH unset), OR
+               (enforcement on) a claim matched no pre-registration row
                -> block the iteration (FAIL-CLOSED — never a silent certification)
 
 A summary is written to $GATE_VERDICT_PATH when set. The referee counts independent
@@ -36,8 +46,18 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 from sqlmodel import Session  # noqa: E402
 
+from app.config import get_config  # noqa: E402
 from app.db import get_engine  # noqa: E402
+from app.engine import registry as registry_mod  # noqa: E402
 from app.mcp import tools  # noqa: E402
+
+# The BLOCKED reason a claim gets when it matches no pre-registration row (enforcement on). Names the
+# registry requirement (the gate's message must be loud + actionable — B-901 DoD).
+_REGISTRY_BLOCK_REASON = (
+    "no matching pre-registration row in the registry (state/pre-registrations.jsonl, "
+    "GET /api/research/registry) — register this hypothesis's EXACT selectors at /research/registry "
+    "before submitting an Evidence Claim"
+)
 
 # A "## Evidence Claim" section runs until the next "## " heading (or EOF).
 _CLAIM_SECTION = re.compile(r"^##\s+Evidence Claim\b.*?(?=^\#\#\s|\Z)", re.MULTILINE | re.DOTALL)
@@ -115,6 +135,16 @@ def main() -> int:
                 # Routing failure (unrecognized ledger / unset path) -> BLOCK, never a silent write.
                 results.append({"claim": claim, "ledger": kind, "status": "BLOCKED", "reason": route_error})
                 print(f"[gate] BLOCKED: {claim}  ({route_error})", file=sys.stderr)
+                blocked = True
+                continue
+            # Pre-registration cross-check (iter-30, J-18 / B-901) — a PURE pre-check, gated on
+            # evidence.registry.enforce. No match -> BLOCK before any referee computation (no verify_edge
+            # call, no ledger write). A match, or enforcement off, falls through completely unchanged.
+            if get_config().evidence.registry.enforce and registry_mod.match_registration(claim) is None:
+                results.append(
+                    {"claim": claim, "ledger": kind, "status": "BLOCKED", "reason": _REGISTRY_BLOCK_REASON}
+                )
+                print(f"[gate] BLOCKED: {claim}  ({_REGISTRY_BLOCK_REASON})", file=sys.stderr)
                 blocked = True
                 continue
             try:

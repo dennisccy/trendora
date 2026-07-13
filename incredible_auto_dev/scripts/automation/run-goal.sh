@@ -1636,6 +1636,7 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
              SESSION_DIR="$GOAL_SESSION_DIR_LOCAL" \
              LEDGER_PATH="$GOAL_SESSION_DIR_LOCAL/state/certified-claims.jsonl" \
              STAGING_LEDGER_PATH="$GOAL_SESSION_DIR_LOCAL/state/staging-ledger.jsonl" \
+             TRENDORA_REGISTRY_PATH="$GOAL_SESSION_DIR_LOCAL/state/pre-registrations.jsonl" \
              GATE_VERDICT_PATH="$ITER_DIR/gate-post-decompose.json"
       run_project_gate post-decompose
     ) || _gate_rc=$?
@@ -2139,7 +2140,8 @@ PY
           export SESSION_ID REPO_ROOT GOAL_FILE \
                  SESSION_DIR="$GOAL_SESSION_DIR_LOCAL" \
                  LEDGER_PATH="$GOAL_SESSION_DIR_LOCAL/state/certified-claims.jsonl" \
-                 STAGING_LEDGER_PATH="$GOAL_SESSION_DIR_LOCAL/state/staging-ledger.jsonl"
+                 STAGING_LEDGER_PATH="$GOAL_SESSION_DIR_LOCAL/state/staging-ledger.jsonl" \
+                 TRENDORA_REGISTRY_PATH="$GOAL_SESSION_DIR_LOCAL/state/pre-registrations.jsonl"
           run_project_hook post-goal
         ) || echo "[run-goal] post-goal hook returned non-zero (non-fatal) — continuing." >&2
         # 2. dispatch the generic goal-proposer agent (works headless AND interactive pump).

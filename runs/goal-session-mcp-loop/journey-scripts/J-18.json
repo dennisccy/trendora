@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "journey": "J-18",
+  "name": "Pre-registration registry — discoverable from Research hub, lists every registered hypothesis",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-18", "action": {"type": "goto", "url": "/research"}, "expect": {"text": "Pre-registration registry"}},
+    {"n": 2, "journey": "J-18", "action": {"type": "click", "target": {"role": "link", "name": "Pre-registration registry"}}, "expect": {"text": "factor=vcp_contraction"}}
+  ]
+}

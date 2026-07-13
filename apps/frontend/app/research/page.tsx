@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   ArrowRight,
+  BookMarked,
   Boxes,
   Gauge,
   GitCompareArrows,
@@ -72,6 +73,35 @@ export default function ResearchHubPage() {
           </Link>
           );
         })}
+      </div>
+
+      {/* goal-mcp-loop iter-30 (J-18) — Governance & process: the first of several forthcoming governance
+          surfaces (registry now; graveyard / budget / referee-audit to follow). Kept a SEPARATE section,
+          not an 11th RESEARCH_LABS entry — that array's reading order is a J-113 contract over the ten
+          analytical labs; a governance/process link is architecturally distinct, not a lab. */}
+      <div className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">Governance &amp; process</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="research-governance">
+          <Link
+            href={asofHref("/research/registry")}
+            data-testid="research-governance-link-registry"
+            className={cn(
+              "group flex flex-col gap-2 rounded-lg border border-border bg-surface p-4 transition-colors",
+              "hover:border-accent hover:bg-surface-2",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <BookMarked className="h-5 w-5 text-accent" aria-hidden />
+              <h3 className="text-base font-semibold text-text">Pre-registration registry</h3>
+              <ArrowRight className="ml-auto h-4 w-4 text-text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent" aria-hidden />
+            </div>
+            <p className="text-sm text-text-muted">
+              Every hypothesis the system has ever registered or tested — selectors, rationale,
+              registration date, and source. The gate refuses to certify anything that isn&apos;t here.
+            </p>
+          </Link>
+        </div>
       </div>
     </div>
   );

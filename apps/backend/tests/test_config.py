@@ -883,3 +883,35 @@ def test_malformed_fdr_block_in_full_config_raises(tmp_path):
     }
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))
+
+
+# ==================================================================================================
+# iter-30 — the pre-registration registry config (evidence.registry.{path,enforce}; J-18 / backlog B-901).
+# ==================================================================================================
+def test_real_config_activates_registry_enforcement_iter30():
+    """The real config.yaml carries the iter-30 pre-registration registry, ACTIVATED (`enforce: true`)
+    after the backfill was verified complete — the gate's teeth are on. The CODE default is still off
+    (proven by `test_registry_defaults_when_omitted`)."""
+    cfg = load_config()
+    assert cfg.evidence.registry.path.endswith("pre-registrations.jsonl")
+    assert cfg.evidence.registry.enforce is True
+
+
+def test_registry_defaults_when_omitted(tmp_path):
+    """A config OMITTING the `evidence.registry` block still loads (additive, default-populated) — so a
+    config / inline test fixture predating iter-30 is unaffected and stays default-OFF (the gate's
+    registry cross-check is skipped entirely, byte-identical to pre-iter-30 behavior)."""
+    cfg = load_config(_write(tmp_path, MINIMAL_VALID))
+    assert cfg.evidence.registry.enforce is False
+    assert cfg.evidence.registry.path  # the built-in default path
+
+
+def test_registry_config_omitted_inside_a_present_evidence_block(tmp_path):
+    """A full config that DOES carry `evidence` but omits the nested `registry` sub-block (e.g. an
+    iter-9-era fixture) still loads, default-populated and default-OFF — the same additive guarantee
+    `fdr`/`staging_ledger_path` already have."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["evidence"] = {"ledger_path": "runs/x/certified-claims.jsonl"}
+    cfg = load_config(_write(tmp_path, data))
+    assert cfg.evidence.registry.enforce is False
+    assert cfg.evidence.registry.path.endswith("pre-registrations.jsonl")
