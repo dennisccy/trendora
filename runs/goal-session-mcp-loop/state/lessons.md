@@ -243,3 +243,15 @@ browser-qa-agent" DoD.
 **Verdict:** STALLED
 **Lesson:** The browser-qa lane graded the five all-FAIL evidence journeys (J-02/J-06/J-07/J-08/J-09) as "PASS" by scoring only the honest-status half ("Not yet proven" badge is correct + numbers byte-match the FAIL verdict) — but each journey's acceptance requires a *Proven* certified edge to surface/drill, which the all-FAIL ledger cannot provide. A journey whose title is "certified edge surfaced" is NOT passed by an honest "no edge here" state, however correct; that is anti-goal #1 upheld, not journey acceptance. When a journey's success criterion is the PRESENCE of a proven artifact, an honest-absence screenshot is `partial`, never `passing`.
 **Applies to:** any future evaluator scoring J-02/J-06/J-07/J-08/J-09 (or any "surface a certified/proven X" journey) against an all-FAIL ledger — do not let a browser-qa PASS on the honest-status half flip the journey to passing; the achievement gate needs a real PASS certified-claim, which is human-unblock-gated here.
+
+## iter-29 — 2026-07-13T06:48:16Z
+
+**Verdict:** CONTINUE
+**Lesson:** md5-collisions among deterministic `-verify.png` REPLAY frames are benign when the colliding journeys legitimately share an endpoint (J-04/05/06/07/08/09-verify all ended on the `/evidence` top viewport = one identical frame; J-13/14-verify both ended on `/data`). This is NOT the iter-11/13/25 reused-frame failure: the discriminator is (a) each TARGET journey's CITED evidence is a distinct fresh capture, and (b) opening ONE colliding frame shows a real, byte-correct page (J-05-verify.png was a genuine `/evidence` with leadership_score FAIL -0.03% matching the ledger), and (c) replay PASS is assertion-driven, not screenshot-driven. Don't panic at the dup-md5 scan, but do open one to confirm it isn't a shared ERROR page — and flag element-clip captures as the fix so each journey's frame is independently distinct.
+**Applies to:** any evaluator reading merged browser-qa + deterministic-replay evidence dirs; especially lean verify-only iters where several journeys share `/evidence` or `/data` as their endpoint.
+
+## iter-29b — 2026-07-13T06:48:16Z
+
+**Verdict:** CONTINUE
+**Lesson:** A STALLED plateau (iter-28: five evidence journeys with no promotable edge, all unblock paths human-owned) was correctly resolved NOT by more code but by an OWNER goal.md amendment (eb19cee) that re-scoped the journeys to outcome-neutral acceptance + pulled backlog cards as new journeys. The evaluator's job on the follow-up lean pass is to verify the EXISTING product now satisfies the NEW contract (against the current goal text / fresh spec_hash), not to re-litigate the old strict contract — and to remember the amendment can ADD Must-have journeys (J-17..J-25), so a clean flip of the old five does NOT mean GOAL_ACHIEVED. Always re-hash the journey set after a goal.md edit and add any newly-appeared Must-haves as `unknown`.
+**Applies to:** any iteration immediately following a STALLED-with-menu verdict that the owner resolved via a goal.md re-scope/extension.

@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "journey": "J-06",
-  "name": "vcp_contraction top-decile certified edge surfaced on Evidence + Research factor lab",
+  "name": "vcp_contraction top-decile certified evidence outcome surfaced on Evidence + Research factor lab",
   "default_timeout_ms": 8000,
   "steps": [
     {"n": 1, "journey": "J-06", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "vcp_contraction — top decile (D10)"}},
     {"n": 2, "journey": "J-06", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "factor=vcp_contraction"}},
-    {"n": 3, "journey": "J-06", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "-0.38%"}},
+    {"n": 3, "journey": "J-06", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "FAIL · holdout edge -0.38%"}},
     {"n": 4, "journey": "J-06", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Backs: Research factor lab"}}
   ]
 }

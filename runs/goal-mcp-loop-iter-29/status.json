@@ -1,0 +1,24 @@
+{
+  "phase": "goal-mcp-loop-iter-29",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-07-13T06:07:09Z",
+  "started_at": "2026-07-13T06:00:00Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "docs/handoffs/goal-mcp-loop-iter-29-dev.md",
+    "runs/goal-mcp-loop-iter-29/status.json"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "review",
+  "verify_only_pass": {
+    "evidence_claim_registered": false,
+    "product_source_diff_empty": true,
+    "ledgers_diff_empty": true,
+    "targeted_tests": "tests/test_evidence.py::test_canonical_ledger_frozen_golden, tests/test_staging_ledger_routing.py::test_committed_staging_ledger_is_the_regenerated_30y_discovery",
+    "targeted_tests_result": "2 passed, 0 failed (0.19s)",
+    "finding": "confirms the eb19cee owner amendment (docs/goal.md-only, outcome-neutral re-scope of J-02/J-06/J-07/J-08/J-09) is satisfied by the existing, unchanged product surface; canonical ledger byte-matched: 7 entries, 0 PASS, divisor 8; journey-history.json flip from partial to passing is the evaluator's call, not made by this pass"
+  }
+}

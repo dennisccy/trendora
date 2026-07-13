@@ -1,11 +1,12 @@
 {
   "schema_version": 1,
   "journey": "J-08",
-  "name": "Multi-factor combination certified edge surfaced on the Combination lab + Evidence",
+  "name": "Multi-factor combination certified evidence outcome surfaced on the Combination lab + Evidence",
   "default_timeout_ms": 8000,
   "steps": [
     {"n": 1, "journey": "J-08", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "rs_spy_3m × high_proximity — composite"}},
     {"n": 2, "journey": "J-08", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "condition=rs_spy_3m:top:quintile,high_proximity:top:tertile"}},
-    {"n": 3, "journey": "J-08", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Backs: Multi-factor combination lab"}}
+    {"n": 3, "journey": "J-08", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "FAIL · holdout edge +0.01%"}},
+    {"n": 4, "journey": "J-08", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Backs: Multi-factor combination lab"}}
   ]
 }

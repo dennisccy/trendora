@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "journey": "J-09",
-  "name": "Relative-strength (rs_spy_3m) 60-day-horizon certified edge surfaced on Evidence + Research factor lab",
+  "name": "Relative-strength (rs_spy_3m) 60-day-horizon certified evidence outcome surfaced on Evidence + Research factor lab",
   "default_timeout_ms": 8000,
   "steps": [
     {"n": 1, "journey": "J-09", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "rs_spy_3m — top decile (D10)"}},
-    {"n": 2, "journey": "J-09", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "-1.42%"}},
+    {"n": 2, "journey": "J-09", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "FAIL · holdout edge -1.42%"}},
     {"n": 3, "journey": "J-09", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "factor=rs_spy_3m"}},
     {"n": 4, "journey": "J-09", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Backs: Research factor lab"}}
   ]
