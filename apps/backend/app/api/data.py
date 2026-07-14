@@ -27,6 +27,7 @@ from sqlmodel import Session
 from app.config import get_config
 from app.db import get_engine, get_session
 from app.engine import data_manager, scanner
+from app.engine.drift import read_drift_report
 from app.engine.prices import latest_data_date
 
 router = APIRouter(tags=["data"])
@@ -138,6 +139,10 @@ def data_overview(
         # iter-24 fast-platform item K: the DB storage-footprint snapshot (file size + row counts) —
         # additive, pure DB introspection over stored rows; no canonical value recomputed.
         "capacity": data_manager.compute_capacity(session, cfg),
+        # iter-35 (J-21/B-304): the live-vs-seed drift report — the SAME reader `compute_preflight` uses
+        # (`read_drift_report`, a tiny-file read; no recompute, no second parse path). `None` when no
+        # fetch has run yet (honest inert — the frontend renders a quiet "no fetch yet" state, not clean).
+        "drift": read_drift_report(),
     }
 
 

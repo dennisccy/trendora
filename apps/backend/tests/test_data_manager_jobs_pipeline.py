@@ -16,15 +16,18 @@ wall-clock). J-67 (transaction-sound parallel backfill + per-date isolation) liv
 """
 from __future__ import annotations
 
+import csv
 import json
 from datetime import date
+from pathlib import Path
 
 import pytest
 from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.config import load_config
-from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError
+from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError, RateLimitError
+from app.data_providers.seed_provider import symbol_to_filename
 from app.db import create_db_and_tables, make_engine
 from app.engine import data_manager, scanner
 from app.engine.data_manager import (
@@ -38,6 +41,7 @@ from app.engine.data_manager import (
     sweep_orphaned_runs,
     unfinished_imports,
 )
+from app.engine.drift import read_drift_report
 from app.models import DailyPrice, DataProviderRun, ImportCheckpoint, ScannerRun
 from app.seed_loader import load_seed, price_load_symbols
 
@@ -496,3 +500,171 @@ def test_stage_checkpoint_survives_restart_resume_at_backfill(tmp_path, monkeypa
     with Session(fresh_engine) as session:
         for d in in_range:
             assert scanner.get_run_for_date(session, d) is not None
+
+
+# ==================================================================================================
+# iter-35 (J-21/B-304) — the post-fetch drift validation stage: runs end-to-end on a completed fetch,
+# does NOT run on a resumable pause, does NOT re-run on a skip-fetch/backfill-only resume
+# ==================================================================================================
+def _light_fetch_engine(tmp_path, name: str):
+    """A tiny engine for the drift-wiring tests below: schema only, NO committed-seed load. These tests
+    fetch exactly one synthetic symbol and need no universe/sector/theme data, so they deliberately skip
+    `load_seed`'s expensive full 30-year/590-symbol seed (unlike `_fresh_seed_engine` above) — narrower,
+    faster, and avoids inflating this file's already-heavy total fixture-setup cost with four MORE full
+    seed loads for tests that don't need one."""
+    cfg = load_config()
+    engine = make_engine(f"sqlite:///{tmp_path / f'{name}.db'}")
+    create_db_and_tables(engine)
+    return cfg, engine
+
+
+class _FixedBarsProvider(PriceProvider):
+    """Returns a FIXED, pre-configured set of bars per symbol (deterministic — drives a real drift
+    comparison through the actual fetch pipeline, not just `build_drift_report` in isolation). Counts
+    calls so a test can assert ZERO provider calls on a skip-fetch resume."""
+
+    def __init__(self, bars_by_symbol: dict[str, list[Bar]]):
+        self._bars = bars_by_symbol
+        self.calls = 0
+
+    def get_daily(self, symbol, start=None, end=None):
+        self.calls += 1
+        bars = self._bars.get(symbol, [])
+        return [b for b in bars if (start is None or b.date >= start) and (end is None or b.date <= end)]
+
+
+def _write_seed_csv(seed_dir: Path, symbol: str, bars: list[Bar]) -> None:
+    """A tiny committed-seed CSV for ONE symbol, in the exact `SeedProvider`-readable shape (mirrors
+    `data_manager._write_universe_csv`'s header/column shape)."""
+    prices_dir = seed_dir / "prices"
+    prices_dir.mkdir(parents=True, exist_ok=True)
+    path = prices_dir / symbol_to_filename(symbol)
+    with path.open("w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=["date", "open", "high", "low", "close", "volume"])
+        writer.writeheader()
+        for bar in bars:
+            writer.writerow({
+                "date": bar.date.isoformat(), "open": bar.open, "high": bar.high,
+                "low": bar.low, "close": bar.close, "volume": bar.volume,
+            })
+
+
+def test_drift_stage_writes_report_on_completed_fetch_end_to_end(tmp_path, monkeypatch):
+    """A REAL fetch through the full `_run_job` pipeline, with a committed seed CSV re-adjusted vs the
+    live provider's return, proves the drift artifact is correctly written end-to-end (not merely that
+    `build_drift_report` works in isolation — this is the wiring itself)."""
+    monkeypatch.setenv("TRENDORA_DRIFT_REPORT_PATH", str(tmp_path / "drift-report.json"))
+    cfg, engine = _light_fetch_engine(tmp_path, "drift_e2e")
+    d = date(2024, 3, 1)
+    _seed_calendar(engine, [d])  # AAA has no prior bars -> the fetch is NOT J-59-covered, it really runs
+
+    seed_dir = tmp_path / "seed_e2e"
+    _write_seed_csv(seed_dir, "AAA", [Bar(date=d, open=100.0, high=101.0, low=99.0, close=100.0, volume=1000.0)])
+    # the "live" fetch returns a RE-ADJUSTED close for the same date -- an adjustment seam.
+    provider = _FixedBarsProvider({"AAA": [Bar(date=d, open=100.0, high=101.0, low=99.0, close=95.0, volume=1000.0)]})
+
+    job = create_job("fetch", d, d)
+    summary = run_data_job(
+        job.job_id, config=cfg, engine=engine, provider=provider, sleep_fn=_noop_sleep,
+        seed_dir=seed_dir, symbols=["AAA"],
+    )
+    assert summary["status"] == "ok"
+    report = read_drift_report()
+    assert report is not None
+    assert report["status"] == "drift"
+    assert report["affected"] == [
+        {"symbol": "AAA", "mismatching_dates": ["2024-03-01"], "classification": "adjustment_seam"}
+    ]
+
+
+def test_drift_stage_writes_clean_report_when_fetch_matches_seed(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRENDORA_DRIFT_REPORT_PATH", str(tmp_path / "drift-report.json"))
+    cfg, engine = _light_fetch_engine(tmp_path, "drift_clean_e2e")
+    d = date(2024, 3, 1)
+    _seed_calendar(engine, [d])
+
+    seed_dir = tmp_path / "seed_clean_e2e"
+    bar = Bar(date=d, open=100.0, high=101.0, low=99.0, close=100.0, volume=1000.0)
+    _write_seed_csv(seed_dir, "AAA", [bar])
+    provider = _FixedBarsProvider({"AAA": [bar]})  # byte-identical re-fetch
+
+    job = create_job("fetch", d, d)
+    run_data_job(
+        job.job_id, config=cfg, engine=engine, provider=provider, sleep_fn=_noop_sleep,
+        seed_dir=seed_dir, symbols=["AAA"],
+    )
+    report = read_drift_report()
+    assert report is not None and report["status"] == "clean" and report["affected"] == []
+
+
+def test_drift_stage_does_not_run_on_a_resumable_pause(tmp_path, monkeypatch):
+    """A persistent-429 fetch pauses `resumable` -- the chunk's bars were DISCARDED (never committed), so
+    the drift stage must NOT run (there is nothing durably fetched to honestly compare)."""
+    monkeypatch.setenv("TRENDORA_DRIFT_REPORT_PATH", str(tmp_path / "drift-report.json"))
+    cfg, engine = _light_fetch_engine(tmp_path, "drift_resumable")
+    d = date(2024, 3, 1)
+    _seed_calendar(engine, [d])
+
+    class _Always429(PriceProvider):
+        def get_daily(self, symbol, start=None, end=None):
+            raise RateLimitError("HTTP 429 at https://provider/x")
+
+    job = create_job("fetch", d, d)
+    summary = run_data_job(
+        job.job_id, config=cfg, engine=engine, provider=_Always429(), sleep_fn=_noop_sleep,
+        seed_dir=tmp_path / "unused_seed", symbols=["AAA"],
+    )
+    assert summary["status"] == "resumable"
+    assert read_drift_report() is None  # the stage never ran -- nothing written
+
+
+def test_drift_stage_does_not_rerun_on_skip_fetch_backfill_only_resume(tmp_path, monkeypatch):
+    """A `both` job whose FETCH stage completes (writing a real drift artifact) but whose BACKFILL stage
+    fails resumes at the backfill stage with ZERO provider calls (J-59) -- the drift stage, which lives
+    entirely inside the fetch branch, must NOT re-run on that resume: a resumed fetch with a provider that
+    WOULD produce a different (drift) result if the fetch stage actually re-ran must leave the ORIGINAL
+    artifact byte-identical."""
+    monkeypatch.setenv("TRENDORA_DRIFT_REPORT_PATH", str(tmp_path / "drift-report.json"))
+    cfg, engine = _light_fetch_engine(tmp_path, "drift_skip_fetch")
+    d = date(2024, 3, 1)
+    _seed_calendar(engine, [d])
+
+    seed_dir = tmp_path / "seed_skip_fetch"
+    bar = Bar(date=d, open=100.0, high=101.0, low=99.0, close=100.0, volume=1000.0)
+    _write_seed_csv(seed_dir, "AAA", [bar])
+    provider = _FixedBarsProvider({"AAA": [bar]})  # clean -- byte-identical re-fetch
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("forced backfill fault")
+
+    job = create_job("both", d, d)
+    with monkeypatch.context() as fault_mp:  # scoped -- restores compute_run_payload without undoing
+        fault_mp.setattr(scanner, "compute_run_payload", _boom)  # the env var set above
+        summary = run_data_job(
+            job.job_id, config=cfg, engine=engine, provider=provider, sleep_fn=_noop_sleep,
+            seed_dir=seed_dir, symbols=["AAA"],
+        )
+    assert summary["status"] in ("partial", "failed")
+    first_report = read_drift_report()
+    assert first_report is not None and first_report["status"] == "clean"
+
+    with Session(engine) as session:
+        cp = get_checkpoint(session, job.job_id)
+        assert cp is not None and cp.status == "failed_backfill"
+        stages = json.loads(cp.completed_stages_json)
+        assert "fetch" in stages and "backfill" not in stages  # confirms this IS the skip-fetch resume path
+
+    # a TELLTALE provider that would flip the artifact to "drift" if the fetch stage re-ran (it must not).
+    # This fixture's tiny DB carries no real universe/sector data, so the resumed BACKFILL is kept under
+    # the SAME harmless per-date fault (isolated, caught -- see `_record_date_failure`/`_do_backfill`
+    # above) as the original run, keeping this test hermetic and independent of what a REAL scanner run
+    # would need; only that the fetch stage (and therefore the drift check) did NOT re-run is asserted,
+    # which is this test's entire point.
+    telltale = _FixedBarsProvider({"AAA": [Bar(date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0)]})
+    with monkeypatch.context() as resume_fault_mp:
+        resume_fault_mp.setattr(scanner, "compute_run_payload", _boom)
+        resume_data_job(
+            job.job_id, config=cfg, engine=engine, provider=telltale, sleep_fn=_noop_sleep, seed_dir=seed_dir,
+        )
+    assert telltale.calls == 0, "resume-at-backfill must perform ZERO provider calls (fetch stage skipped)"
+    assert read_drift_report() == first_report, "a skip-fetch resume must leave the drift artifact untouched"

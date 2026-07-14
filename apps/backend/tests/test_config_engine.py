@@ -147,7 +147,7 @@ VALID = {
     # iter-33 made `readiness` required (daily preflight-verdict tunables come from config, never code).
     "readiness": {
         "freshness_max_age_days": 5,
-        "severity": {"servability": "no-go", "freshness": "degraded", "integrity": "no-go"},
+        "severity": {"servability": "no-go", "freshness": "degraded", "integrity": "no-go", "drift": "degraded"},
         "verdict_history_path": "runs/x/preflight-verdict-history.jsonl",
     },
     # iter-6 made `walk_forward` required (forward-testing params come from config, never code).

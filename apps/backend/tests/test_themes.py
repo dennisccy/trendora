@@ -141,7 +141,7 @@ _SYNTH_CFG = {
     },
     "readiness": {  # iter-33: readiness is a required config section (daily preflight-verdict tunables)
         "freshness_max_age_days": 5,
-        "severity": {"servability": "no-go", "freshness": "degraded", "integrity": "no-go"},
+        "severity": {"servability": "no-go", "freshness": "degraded", "integrity": "no-go", "drift": "degraded"},
         "verdict_history_path": "runs/x/preflight-verdict-history.jsonl",
     },
     "walk_forward": {  # iter-6: walk_forward is a required config section

@@ -48,9 +48,10 @@ from sqlmodel import Session, select
 
 from app.config import Config, ImportChunkingCfg, ProviderCatalogEntry, get_config
 from app.data_providers import make_provider
-from app.data_providers.base import PriceProvider, ProviderUnavailableError, RateLimitError
-from app.data_providers.seed_provider import symbol_to_filename
+from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError, RateLimitError
+from app.data_providers.seed_provider import SeedProvider, symbol_to_filename
 from app.db import get_engine
+from app.engine import drift as drift_module
 from app.engine import forward_testing, scanner
 from app.engine.prices import attach_shared_cache, bar_cache, bars_asof, latest_data_date, prefilled_bar_cache
 from app.engine import universe_resolver
@@ -2191,6 +2192,8 @@ def _run_chunked_fetch(
     sleep_fn: Callable[[float], None],
     start_chunk: int,
     covered_chunks: Optional[set[int]] = None,
+    overlap_sink: Optional[dict[str, list[Bar]]] = None,
+    overlap_days: int = 0,
 ) -> None:
     """Run the chunk plan from `start_chunk`, persisting the checkpoint AFTER each completed chunk (so
     `next_chunk_index` only advances once a chunk's bars are durably committed). Within EACH chunk the
@@ -2209,7 +2212,15 @@ def _run_chunked_fetch(
         skipped by `_existing_dates`, so no duplicate fetch of committed bars.
       * a non-429 `ProviderUnavailableError` for a symbol ⇒ count it failed, record a REDACTED error
         (the resolved key scrubbed on THIS thread), and continue the chunk — unchanged semantics.
-    """
+
+    iter-35 (J-21/B-304): when `overlap_sink` is given, every "ok" result's freshly-fetched bars are
+    accumulated into it (keyed by symbol), trimmed to the last `overlap_days` entries per symbol as they
+    arrive — a BOUNDED per-symbol window, never the whole fetched history (the iter-24/26 anti-goal-#8
+    lesson). This captures the RAW fetch BEFORE the `_existing_dates` new-only filter below, because a
+    date already covered by a prior fetch/backfill is exactly the "overlap" the live-vs-seed drift check
+    needs to see — the INSERT-new-only DB write silently discards a re-adjusted value for an
+    already-stored date, so the drift artifact must be built from what the provider ACTUALLY returned,
+    never a DB re-read. `overlap_sink` defaults to `None`, so every pre-iter-35 call site is unaffected."""
     chunking = cfg.data_manager.import_chunking
     workers = chunking.fetch_workers  # the bounded pool size (config — No magic numbers)
     covered_chunks = covered_chunks or set()
@@ -2256,6 +2267,15 @@ def _run_chunked_fetch(
                 _record_error(prog, scrub(res.error or f"{res.symbol}: provider error"))
                 prog.message = _fetch_message(prog)
                 continue
+            if overlap_sink is not None and res.bars:
+                # iter-35 (J-21/B-304): capture the RAW fetch for the post-fetch drift check, bounded to
+                # the last `overlap_days` bars per symbol (see the docstring above) -- independent of
+                # whether these dates end up written below (an already-covered date is exactly what the
+                # overlap check needs to see, and INSERT-new-only would otherwise hide it).
+                bucket = overlap_sink.setdefault(res.symbol, [])
+                bucket.extend(res.bars)
+                if overlap_days > 0 and len(bucket) > overlap_days:
+                    del bucket[:-overlap_days]
             already = _existing_dates(session, res.symbol, ws, we)
             for bar in res.bars:
                 if bar.date not in already:
@@ -2282,6 +2302,50 @@ def _run_chunked_fetch(
         # the chunk fully completed + committed → advance the durable resume point + cumulative counters
         prog.chunk_index = chunk_idx + 1
         _advance_checkpoint(session, checkpoint, prog, next_idx=chunk_idx + 1, status="running")
+
+
+# --------------------------------------------------------------------------------------------------
+# iter-35 (J-21/B-304) -- the post-fetch live-vs-seed drift validation stage
+# --------------------------------------------------------------------------------------------------
+def _check_drift(
+    cfg: Config,
+    seed_dir: Path,
+    fetched_bars: dict[str, list[Bar]],
+    prog: JobProgress,
+    scrub: Callable[[str], str],
+) -> None:
+    """The post-fetch validation stage (J-21/B-304): byte/fixed-precision compare this job's freshly-
+    fetched bars (`overlap_sink`, accumulated by `_run_chunked_fetch`) against the COMMITTED SEED CSVs
+    (via the SAME `SeedProvider` the offline default path reads — no second CSV parser) over the
+    configured overlap window, and persist the SINGLE drift-report artifact via
+    `app.engine.drift.write_drift_report` (re-read by `compute_preflight` and `GET /api/data`). A symbol
+    with no committed seed history (e.g. a brand-new universe member) is honestly skipped — no crash, no
+    fabricated comparison.
+
+    Best-effort: this is a VALIDATION side-check, never the primary job — any failure here is recorded
+    (scrubbed, so a redacted key never leaks) and SWALLOWED, mirroring the `_create_run_record`
+    bookkeeping-failure discipline elsewhere in this module. It NEVER mutates/reconciles the fetched bars
+    (B-304 "Do NOT touch the fetched data") and never queries the DB (a tiny per-symbol CSV read only)."""
+    if not fetched_bars:
+        return  # nothing was actually fetched this job (e.g. every symbol failed) -- nothing to compare
+    try:
+        seed_provider = SeedProvider(seed_dir)
+        seed_bars: dict[str, list[Bar]] = {}
+        for symbol in fetched_bars:
+            try:
+                seed_bars[symbol] = seed_provider.get_daily(symbol)
+            except ProviderUnavailableError:
+                continue  # no committed seed history for this symbol -- honest skip, not a crash
+        report = drift_module.build_drift_report(
+            fetched_bars, seed_bars,
+            overlap_days=cfg.data_quality.drift.overlap_days,
+            # a DETERMINISTIC job parameter (never `date.today()` -- anti-goal #5), mirroring the J-20
+            # freshness-anchor precedent.
+            reference=prog.end.isoformat(),
+        )
+        drift_module.write_drift_report(report)
+    except Exception as exc:  # noqa: BLE001 -- a drift-check failure must not crash the fetch job
+        _record_error(prog, scrub(f"drift check failed: {exc}"))
 
 
 def _compute_one_backfill_date(
@@ -3023,6 +3087,10 @@ def _run_job(
     # not forked); they differ only in the symbol set (all seed symbols vs the committed POOL) and in the
     # EXTRA screen step expand runs afterward.
     pool: list[dict] = []
+    # iter-35 (J-21/B-304): the bounded per-symbol accumulator `_run_chunked_fetch` fills with this job's
+    # RAW freshly-fetched bars (tail-trimmed to `overlap_days`) for the post-fetch drift check below. Left
+    # `None` when the feature is config-disabled, so `_run_chunked_fetch` skips the accumulation entirely.
+    overlap_sink: Optional[dict[str, list]] = {} if cfg.data_quality.drift.enabled else None
     checkpoint: Optional[ImportCheckpoint] = None  # hoisted: an expand finalizes it AFTER the screen step
     backfill_failed = False  # J-59: a `both`/`backfill` backfill-stage failure (drives failed_backfill)
     # J-60: create the run-history record IMMEDIATELY (status `running`) so the job appears in Run history
@@ -3087,6 +3155,7 @@ def _run_job(
                     session, cfg, prog, live, chunks=chunks, checkpoint=checkpoint,
                     scrub=scrub, sleep_fn=sleep_fn, start_chunk=start_chunk,
                     covered_chunks=covered_chunks,
+                    overlap_sink=overlap_sink, overlap_days=cfg.data_quality.drift.overlap_days,
                 )
                 # J-59: record fetch-stage completion (so a `both`/`backfill` resume skips it; the durable
                 # checkpoint mirrors it). Only when the fetch actually completed (not on a graceful pause).
@@ -3101,6 +3170,11 @@ def _run_job(
                     items_processed=prog.symbols_ok + prog.symbols_failed,
                     concurrency=cfg.data_manager.import_chunking.fetch_workers,
                 )
+                # iter-35 (J-21/B-304): the post-fetch drift validation stage -- ONLY when the fetch
+                # actually completed (never on a `resumable` pause, whose chunk's bars were discarded, not
+                # committed) and the feature is config-enabled (`overlap_sink` is None when disabled).
+                if overlap_sink is not None and prog.status != "resumable":
+                    _check_drift(cfg, seed_dir, overlap_sink, prog, scrub)
                 if prog.status == "resumable":
                     paused = True  # graceful pause — checkpoint already persisted resumable
                 elif not is_expand:

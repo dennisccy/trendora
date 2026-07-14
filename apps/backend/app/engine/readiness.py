@@ -32,6 +32,7 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.config import REPO_ROOT, Config, get_config
+from app.engine import drift as drift_module
 from app.engine.evidence import resolve_ledger_path
 from app.engine.graveyard import resolve_staging_ledger_path
 from app.engine.ledger import append_entry, read_entries
@@ -214,7 +215,7 @@ def _ledger_file_ok(path: str) -> tuple[bool, str]:
 
 
 def compute_preflight(session: Session, config: Optional[Config] = None) -> dict:
-    """Compute the single daily preflight verdict (Data Contract value) — a PURE composition over three
+    """Compute the single daily preflight verdict (Data Contract value) — a PURE composition over four
     inputs that exist now, recomputing none of them:
 
       - **servability** — reuses `compute_readiness`'s OWN liveness check verbatim (no second
@@ -227,6 +228,13 @@ def compute_preflight(session: Session, config: Optional[Config] = None) -> dict
       - **DB/ledger integrity** — the DB is reachable AND the canonical/staging/registry JSONL files
         (`resolve_ledger_path` / `resolve_staging_ledger_path` / `resolve_registry_path` — the EXACT
         existing resolvers, never duplicated) exist and parse. Tiny-file reads only.
+      - **drift** (iter-35, J-21 / backlog B-304) — the live-vs-seed overlap-check artifact, re-read
+        VERBATIM via `app.engine.drift.read_drift_report()` (a tiny-file read, never a DB query/scan —
+        anti-goal #8, mirroring the integrity component above). `ok` when the artifact is ABSENT (no
+        fetch has run yet — servability/freshness/integrity behave IDENTICALLY to a pre-iter-35 backend
+        in this case, the J-20 non-regression guarantee) or its `status == "clean"`; breached when
+        `status == "drift"` (the detail names every affected symbol) or the artifact exists but could
+        not be parsed (an honest degraded reason — never silently treated as clean).
 
     The overall verdict is the WORST of every breached component's configured severity (`GO` when
     nothing is breached). Returns `{verdict, reasons, components, as_of, reference}` (the spec names the
@@ -305,6 +313,29 @@ def compute_preflight(session: Session, config: Optional[Config] = None) -> dict
         if not problems
         else "Integrity check failed: " + "; ".join(problems) + ".",
     )
+
+    # --- drift: the live-vs-seed overlap-check artifact (iter-35, J-21 / backlog B-304) — a tiny-file
+    # read via the SINGLE reader `read_drift_report`, never a DB query/scan (anti-goal #8). A MISSING
+    # artifact means no fetch has run yet (honest inert -> ok, byte-identical to a pre-iter-35 backend);
+    # `status == "clean"` -> ok; `status == "drift"` -> breached, naming every affected symbol; any other
+    # status (the artifact exists but could not be parsed) -> breached with an honest degraded reason,
+    # never silently treated as clean.
+    drift_report = drift_module.read_drift_report()
+    if drift_report is None:
+        _apply("drift", True, "No fetch has run yet — nothing to compare against the committed seed.")
+    elif drift_report.get("status") == drift_module.STATUS_CLEAN:
+        _apply("drift", True, "The most recent fetch matched the committed seed over the overlap window.")
+    elif drift_report.get("status") == drift_module.STATUS_DRIFT:
+        symbols = sorted(a.get("symbol", "?") for a in drift_report.get("affected") or [])
+        _apply(
+            "drift", False,
+            "Live-vs-seed drift detected (adjustment seam) for: " + ", ".join(symbols) + ".",
+        )
+    else:
+        _apply(
+            "drift", False,
+            "Drift report is unreadable: the artifact exists but could not be parsed.",
+        )
 
     reference = latest_data.isoformat() if latest_data else None
     return {

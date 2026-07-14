@@ -68,7 +68,8 @@ def test_health_carries_additive_preflight_field(loaded_engine, tmp_path, monkey
     assert preflight["verdict"] in {"GO", "DEGRADED", "NO-GO"}
     assert isinstance(preflight["reasons"], list)
     assert preflight["as_of"] == preflight["reference"]  # same value under both spec-named keys
-    assert set(preflight["components"]) == {"servability", "freshness", "integrity"}
+    # iter-35 (J-21/B-304) added the 4th `drift` component (the live-vs-seed overlap check).
+    assert set(preflight["components"]) == {"servability", "freshness", "integrity", "drift"}
     for component in preflight["components"].values():
         assert set(component) == {"ok", "severity", "detail"}
         assert component["severity"] in {"degraded", "no-go"}

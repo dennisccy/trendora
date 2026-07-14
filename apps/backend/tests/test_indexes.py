@@ -105,7 +105,7 @@ _CFG = {
     },
     "readiness": {
         "freshness_max_age_days": 5,
-        "severity": {"servability": "no-go", "freshness": "degraded", "integrity": "no-go"},
+        "severity": {"servability": "no-go", "freshness": "degraded", "integrity": "no-go", "drift": "degraded"},
         "verdict_history_path": "runs/x/preflight-verdict-history.jsonl",
     },
     "walk_forward": {

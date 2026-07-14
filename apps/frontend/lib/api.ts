@@ -2361,6 +2361,29 @@ export interface DataCapacity {
   forward_returns_rows: number;
 }
 
+/** iter-35 (J-21/B-304) — one symbol whose overlap window disagreed between a live fetch and the
+ *  committed seed: the exact mismatching dates + the honest classification (an "adjustment_seam" — the
+ *  vendor silently re-adjusted already-committed history). Never a fabricated diagnosis. */
+export interface DriftAffectedSymbol {
+  symbol: string;
+  mismatching_dates: string[];
+  classification: string;
+}
+
+/** iter-35 (J-21/B-304) — the live-vs-seed drift report: the SAME artifact the readiness `drift`
+ *  preflight component reads (`app.engine.drift.read_drift_report`), served here VERBATIM — no
+ *  recompute, no second parse path (the Data Contract single-source requirement). `status` is
+ *  `"clean"` (the last fetch matched the seed over the overlap window), `"drift"` (a mismatch —
+ *  `affected` names every symbol + its mismatching dates), or `"unreadable"` (the artifact exists but
+ *  could not be parsed — an honest degraded state, never silently treated as clean). Descriptive
+ *  integrity reporting only — no proven/not-proven language. */
+export interface DriftReport {
+  status: "clean" | "drift" | "unreadable";
+  reference: string | null;
+  overlap_days: number | null;
+  affected: DriftAffectedSymbol[];
+}
+
 export interface DataOverviewResponse {
   coverage: DataCoverage;
   runs: DataRun[];
@@ -2370,6 +2393,9 @@ export interface DataOverviewResponse {
   unfinished_imports: UnfinishedImport[]; // J-38 unified unfinished imports (resumable + partial + failed)
   job_progress: JobProgressConfig; // J-66 poll/heartbeat/granularity knobs (config-driven)
   capacity: DataCapacity; // item K (iter-24) — the DB storage-footprint snapshot
+  // iter-35 (J-21/B-304): `null` when no fetch has ever run (honest inert — the card renders a quiet
+  // "no fetch yet" state, distinct from a confirmed "clean").
+  drift: DriftReport | null;
 }
 
 export type DataJobKind = "fetch" | "backfill" | "both" | "expand" | "rebuild";

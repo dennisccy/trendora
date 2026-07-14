@@ -545,17 +545,18 @@ class ReadinessCfg(BaseModel):
         negative override, via a temporary `TRENDORA_CONFIG` alt-file) is the sanctioned lever for
         inducing the DEGRADED/NO-GO test states without mutating committed seed data.
       - `severity` — which verdict a breached component forces, keyed by component name (`servability` /
-        `freshness` / `integrity`): `"degraded"` or `"no-go"`. Owner-reviewed config (B-301's "making
-        NO-GO too easy is alarm fatigue" trap) — MUST cover all three components and include at least one
-        `"degraded"` and one `"no-go"` entry so both states are inducible for the fixture matrix.
+        `freshness` / `integrity` / `drift`, the last added iter-35 for J-21/B-304): `"degraded"` or
+        `"no-go"`. Owner-reviewed config (B-301's "making NO-GO too easy is alarm fatigue" trap) — MUST
+        cover all four components and include at least one `"degraded"` and one `"no-go"` entry so both
+        states are inducible for the fixture matrix.
       - `verdict_history_path` — the append-only verdict-transition log path (written only when the
         verdict changes, never on every ~2s poll). A relative path resolves against the repo root; the
         `READINESS_VERDICT_HISTORY_PATH` env override takes precedence (test/gate seam — mirrors
         `app.engine.evidence.LEDGER_PATH_ENV`).
 
-    Boot-validated: `severity` must name exactly `{servability, freshness, integrity}` with every value
-    one of `"degraded"`/`"no-go"`, covering both. An invalid block raises `ConfigError`, never a silent
-    default."""
+    Boot-validated: `severity` must name exactly `{servability, freshness, integrity, drift}` with every
+    value one of `"degraded"`/`"no-go"`, covering both. An invalid block raises `ConfigError`, never a
+    silent default."""
 
     model_config = ConfigDict(extra="allow")
     freshness_max_age_days: int
@@ -564,7 +565,7 @@ class ReadinessCfg(BaseModel):
 
     @model_validator(mode="after")
     def _validate(self) -> "ReadinessCfg":
-        required_components = {"servability", "freshness", "integrity"}
+        required_components = {"servability", "freshness", "integrity", "drift"}
         missing = sorted(required_components - set(self.severity))
         if missing:
             raise ValueError(f"readiness.severity missing components: {missing}")
@@ -2174,6 +2175,58 @@ class RegistryCfg(BaseModel):
     enforce: bool = False
 
 
+_DEFAULT_DRIFT_REPORT_PATH = "runs/goal-session-mcp-loop/state/drift-report.json"
+
+
+class DriftCfg(BaseModel):
+    """Live-vs-seed drift monitor tunables (goal-mcp-loop iter-35, J-21 / backlog B-304 — OVERLAP CHECK
+    ONLY). `app.engine.drift` reads every tunable from here — no magic number in the module or in
+    `data_manager`'s post-fetch wiring (anti-goal: No magic numbers).
+
+      - `enabled` — DEFAULT-ON gate for the post-fetch validation stage in `data_manager._run_job`; an
+        emergency off-switch (`False` skips the stage entirely — byte-identical to pre-iter-35 fetch
+        behavior), never the shipped default.
+      - `overlap_days` — how many of the most recent dates COMMON to a fetch and the committed seed are
+        byte/fixed-precision compared (a BOUNDED per-symbol window, never the whole history — the
+        iter-24/26 anti-goal-#8 lesson). MUST be `>= 1`.
+      - `report_path` — the drift-report artifact location. Resolved relative to `REPO_ROOT` when
+        relative; the resolver (`app.engine.drift.resolve_drift_report_path`, NOT this model) applies
+        the runtime `TRENDORA_DRIFT_REPORT_PATH` override, mirroring `EvidenceCfg.ledger_path` /
+        `resolve_ledger_path()` exactly.
+
+    Boot-validated: `overlap_days >= 1`. Default-populated so a config / inline test fixture predating
+    this block still loads unchanged — the stage stays INERT (no artifact ever written) until an actual
+    fetch runs, so adding this block alone changes no committed-seed behavior."""
+
+    model_config = ConfigDict(extra="allow")
+    enabled: bool = True
+    overlap_days: int = 20
+    report_path: str = Field(default=_DEFAULT_DRIFT_REPORT_PATH, min_length=1)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "DriftCfg":
+        if self.overlap_days < 1:
+            raise ValueError(f"data_quality.drift.overlap_days must be >= 1, got {self.overlap_days}")
+        return self
+
+
+class DataQualityCfg(BaseModel):
+    """Data-integrity report tunables (goal-mcp-loop iter-35). Currently carries only the live-vs-seed
+    drift monitor (`drift`); the DEFERRED B-304 sub-checks (distribution envelope, the B-113-dependent
+    junction seam scan) plug into this SAME block when they land (never a parallel config block).
+    Default-populated so a config / inline test fixture predating this block still loads unchanged."""
+
+    model_config = ConfigDict(extra="allow")
+    drift: DriftCfg = Field(default_factory=DriftCfg)
+
+
+def _default_data_quality() -> "DataQualityCfg":
+    """The built-in default data-quality config — used when a config predating the block (or an inline
+    test fixture) omits `data_quality`. The real `config.yaml` restates it explicitly as the single
+    documented source."""
+    return DataQualityCfg()
+
+
 class EvidenceCfg(BaseModel):
     """Read-side evidence config (goal-mcp-loop iter-1; iter-9 adds the staging economy; iter-30 adds the
     pre-registration registry). `ledger_path` is the certified-claims ledger the read-only `GET
@@ -2259,6 +2312,10 @@ class Config(BaseModel):
     # populated so a config / inline test fixture predating it still loads; the real `config.yaml` restates
     # the gate's certified-claims ledger path explicitly as the single documented source.
     evidence: EvidenceCfg = Field(default_factory=_default_evidence)
+    # goal-mcp-loop iter-35 (J-21 / backlog B-304) — the live-vs-seed drift monitor's config (overlap
+    # check only). Default-populated so a config / inline test fixture predating it still loads
+    # unchanged; the real `config.yaml` restates it explicitly as the single documented source.
+    data_quality: DataQualityCfg = Field(default_factory=_default_data_quality)
 
     @field_validator("themes")
     @classmethod

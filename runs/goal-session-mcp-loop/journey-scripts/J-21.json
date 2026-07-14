@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "journey": "J-21",
+  "name": "Live-vs-seed drift monitor feeds the preflight verdict",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-21", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "Live-vs-seed drift"}},
+    {"n": 2, "journey": "J-21", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "Byte/fixed-precision compares the last N dates a Fetch job returns against the committed seed."}},
+    {"n": 3, "journey": "J-21", "action": {"type": "goto", "url": "/"}, "expect": {"text": "today's board"}}
+  ]
+}

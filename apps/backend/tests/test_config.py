@@ -147,11 +147,11 @@ MINIMAL_VALID = {
         "health_poll_idle_interval_seconds": 30.0,
     },
     # iter-33 made `readiness` required (the daily preflight-verdict tunables come from config, never
-    # code): the freshness threshold + the per-component severity map (must cover all three components
-    # and include at least one "degraded" and one "no-go").
+    # code): the freshness threshold + the per-component severity map (must cover all four components —
+    # iter-35 added `drift` — and include at least one "degraded" and one "no-go").
     "readiness": {
         "freshness_max_age_days": 5,
-        "severity": {"servability": "no-go", "freshness": "degraded", "integrity": "no-go"},
+        "severity": {"servability": "no-go", "freshness": "degraded", "integrity": "no-go", "drift": "degraded"},
         "verdict_history_path": "runs/x/preflight-verdict-history.jsonl",
     },
     # iter-6 made `walk_forward` required (forward-testing params come from config, never code).

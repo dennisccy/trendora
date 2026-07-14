@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Database,
+  GitCompare,
   History,
   KeyRound,
   Loader2,
@@ -55,6 +56,7 @@ import {
   type DataJobKind,
   type DataOverviewResponse,
   type DataRun,
+  type DriftReport,
   type MacroAvailability,
   type MembershipTimeline,
   type MissingDataDiagnostic,
@@ -438,6 +440,11 @@ export default function DataManagerPage() {
           {/* item K (iter-24 fast-platform pass): the read-only DB storage-footprint card (file size +
               three row counts) from the additive GET /api/data `capacity` field. */}
           <StorageCapacityPanel capacity={state.data.capacity} />
+          {/* iter-35 (J-21/B-304): the live-vs-seed drift report from the SAME additive `/api/data`
+              payload (no new fetch) -- quiet when clean/absent, loud amber when a re-adjustment or an
+              unreadable artifact is reported. The site-wide preflight banner (already generic) reflects
+              the same signal via its own `drift` reason when readiness degrades. */}
+          <DriftReportPanel drift={state.data.drift} />
           {/* J-85: the universe-vs-latest-snapshot coverage diagnostic banner (only when members are
               absent) + the confirm-gated "Rebuild snapshots for current universe" action. The rebuild
               POSTs kind="rebuild" and surfaces its progress through the SAME live job card / poll path
@@ -784,6 +791,69 @@ function StorageCapacityPanel({ capacity }: { capacity: DataCapacity }) {
           definition="Rows in forward_returns — one per (snapshot run, symbol, horizon) realized return."
         />
       </div>
+    </Card>
+  );
+}
+
+/** iter-35 (J-21/B-304) — the live-vs-seed drift report: whether the most recent Fetch job's overlap
+ *  window agreed with the committed seed. Mirrors `StorageCapacityPanel`'s Card/PanelTitle pattern.
+ *  Reads the additive `drift` field from the SAME `/api/data` payload already in use (no new fetch).
+ *  Quiet/neutral when no fetch has run yet or the last one was clean; LOUD (amber, matching the
+ *  preflight banner's DEGRADED treatment) when a re-adjustment was detected or the artifact could not be
+ *  read — descriptive integrity reporting only, never a proven/not-proven claim, never auto-repairs. */
+function DriftReportPanel({ drift }: { drift: DriftReport | null | undefined }) {
+  return (
+    <Card className="p-0" data-testid="drift-report-panel">
+      <PanelTitle hint="Byte/fixed-precision compares the last N dates a Fetch job returns against the committed seed. A mismatch means the live provider silently re-adjusted already-committed history (an adjustment seam) — descriptive integrity reporting, recomputes nothing, never auto-repairs or re-fetches.">
+        <span className="inline-flex items-center gap-2">
+          <GitCompare className="h-4 w-4 text-text-faint" aria-hidden />
+          Live-vs-seed drift
+        </span>
+      </PanelTitle>
+
+      {!drift ? (
+        <p className="p-4 text-xs text-text-muted" data-testid="drift-status-absent">
+          No fetch has run yet — nothing to compare against the committed seed.
+        </p>
+      ) : drift.status === "clean" ? (
+        <p className="flex items-center gap-2 p-4 text-xs text-pos" data-testid="drift-status-clean">
+          <span className="h-1.5 w-1.5 rounded-full bg-pos" aria-hidden />
+          The most recent fetch matched the committed seed over the last{" "}
+          <span className="num">{drift.overlap_days ?? "—"}</span> common date(s).
+        </p>
+      ) : drift.status === "drift" ? (
+        <div
+          className="m-4 flex items-start gap-2 rounded-md border border-warn bg-warn/10 p-3 text-xs text-warn"
+          data-testid="drift-status-drift"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <div className="space-y-2">
+            <p className="font-semibold">
+              Live-vs-seed drift detected — the provider re-adjusted already-committed history for{" "}
+              <span className="num">{drift.affected.length}</span> symbol{drift.affected.length === 1 ? "" : "s"}.
+            </p>
+            <ul className="space-y-1">
+              {drift.affected.map((a) => (
+                <li key={a.symbol} data-testid={`drift-affected-${a.symbol}`}>
+                  <span className="num font-semibold">{a.symbol}</span>
+                  {": "}
+                  <span className="num">{a.mismatching_dates.map((d) => fmtDate(d)).join(", ")}</span>
+                  {" — "}
+                  <span className="italic">adjustment seam</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ) : (
+        <div
+          className="m-4 flex items-start gap-2 rounded-md border border-warn bg-warn/10 p-3 text-xs text-warn"
+          data-testid="drift-status-unreadable"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          <span>The drift report exists but could not be read. Re-run a Fetch job to regenerate it.</span>
+        </div>
+      )}
     </Card>
   );
 }

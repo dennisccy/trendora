@@ -110,6 +110,33 @@ def test_get_data_overview_carries_capacity_snapshot(data_api_engine):
     assert cap["db_file_bytes"] > 0  # a real file-backed temp DB
 
 
+def test_get_data_overview_carries_absent_drift_on_a_cold_db(data_api_engine, monkeypatch, tmp_path):
+    """iter-35 (J-21/B-304): GET /api/data carries an additive `drift` key — the SAME reader
+    `compute_preflight` uses (`read_drift_report`). On a cold DB with no fetch ever run, the artifact is
+    absent -> `None` (honest inert), served as a normal 200 -- never a 500."""
+    monkeypatch.setenv("TRENDORA_DRIFT_REPORT_PATH", str(tmp_path / "never-written-drift-report.json"))
+    with Session(data_api_engine) as session:
+        payload = data_overview(session=session)
+    assert "drift" in payload  # additive — every existing key stays present
+    assert payload["drift"] is None
+
+
+def test_get_data_overview_drift_field_equals_read_drift_report_verbatim(data_api_engine, monkeypatch, tmp_path):
+    """The served `drift` field is the SINGLE reader's output verbatim — no recompute, no second parse
+    path (the Data Contract single-source requirement)."""
+    from app.engine.drift import write_drift_report
+
+    monkeypatch.setenv("TRENDORA_DRIFT_REPORT_PATH", str(tmp_path / "written-drift-report.json"))
+    written = {
+        "status": "drift", "reference": "2024-03-01", "overlap_days": 20,
+        "affected": [{"symbol": "AAPL", "mismatching_dates": ["2024-02-28"], "classification": "adjustment_seam"}],
+    }
+    write_drift_report(written)
+    with Session(data_api_engine) as session:
+        payload = data_overview(session=session)
+    assert payload["drift"] == written
+
+
 def test_get_data_availability_shape(data_api_engine):
     """J-61 — GET /api/data/availability returns the per-trading-date availability payload over the SAME
     bars `compute_coverage` reads. On the tiny fixture (two SPY days, no other symbols, no snapshots):

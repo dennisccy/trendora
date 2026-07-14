@@ -302,3 +302,15 @@ only byte-identity-carried and must be closed by a following lean verify pass.
 **Applies to:** every FULL goal-mode iteration carrying a Required-still-passing set; any
 evaluator scoring a required-still-passing journey; framework maintainers (fix: add the replay
 lane to run-phase.sh's full path, or force a lean verify pass after each full feature iter).
+
+## iter-35 — 2026-07-14T21:10:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A FULL feature iter can satisfy the "required-still-passing deterministic replay" DoD line via the LIVE browser-qa lane (the DoD's "AND/OR live browser-qa" clause) and reach CLOSURE-PASS even though `run-phase.sh` has no replay lane and no `regression-replay-results.md` is written — this is materially different from iter-33, where closure FAILED because the required set was byte-identity-carried ONLY with a false "replay runs next step" compensating claim. Consequence for the depth decision: when a full iter ends CLOSURE-PASS with the required set live-re-verified, the follow-on lean pass is a hygiene/record closeout (deterministically re-verify the byte-identity-carried journeys + record the replay), NOT a mandatory failure-remediation like iter-34 was. Do not conflate the two: check whether closure actually failed before treating the lean closeout as blocking.
+**Applies to:** any FULL goal-mode feature iter that modifies a cross-cutting surface (here compute_preflight/the preflight banner) and carries a required-still-passing set; and the evaluator's depth recommendation after such an iter.
+
+## iter-35 — 2026-07-14T21:10:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The stale production-frontend-build trap (iter-20/21) RECURRED: `start-frontend.sh` only rebuilds `.next` when `BUILD_ID` is absent or the backend-URL stamp changed — NOT when frontend source changed after the last build — so browser-qa initially saw ZERO "drift" on `/data` (the whole `DriftReportPanel` missing, `BUILD_ID` stamped ~2h before the source edit). The browser-qa agent caught it, forced a rebuild, and re-verified; every PASS rests on post-rebuild DOM assertions. The durable fix (a dev/QA-launch mtime-vs-BUILD_ID check that rebuilds before handing off to browser-qa) still has not landed, so it keeps biting frontend-touching iters.
+**Applies to:** any iter that changes `apps/frontend/**`; the browser-qa lane must confirm `.next/BUILD_ID` postdates the touched source (or force a rebuild) BEFORE trusting a "card missing / zero occurrences" observation as a product defect.

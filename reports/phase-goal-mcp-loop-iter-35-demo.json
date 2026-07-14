@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-35",
+  "base_url": "http://localhost:3255",
+  "iteration": 35,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Dashboard",
+      "narration": "Let's start on the Dashboard — the first thing anyone sees when they open Trendora.",
+      "point_out": "A quiet green status strip just below the header confirms today's board is safe to trust — this is the same site-wide health check that now also watches for live-data drift.",
+      "journey": "J-20",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "GO — today's board is current." }
+    },
+    {
+      "n": 2,
+      "title": "Discover the new live-data drift check",
+      "narration": "One click from anywhere opens the Data Manager, home to Trendora's data-integrity checks — including a brand-new one this update.",
+      "point_out": "A new \"Live-vs-seed drift\" card now sits right under \"Storage footprint,\" with a plain-language sentence explaining exactly what it checks — no hovering or clicking required to read it.",
+      "journey": "J-21",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Data Manager" } },
+      "expect": { "text": "Byte/fixed-precision compares the last N dates a Fetch job returns against the committed seed." }
+    },
+    {
+      "n": 3,
+      "title": "See the same check reflected site-wide",
+      "narration": "Head back to the Dashboard, and notice the top status strip already agrees with what the drift card just showed.",
+      "point_out": "The banner and the drift card read the exact same saved report — if a mismatch is ever found, this same strip turns amber everywhere in the app, not just on the Data Manager page.",
+      "journey": "J-21",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Dashboard" } },
+      "expect": { "text": "GO — today's board is current." }
+    },
+    {
+      "n": 4,
+      "title": "Confirm nothing else moved",
+      "narration": "Back on the Data Manager page, the rest of the page looks exactly as it always has.",
+      "point_out": "The \"Rebuild snapshots for current universe\" panel still renders normally right below the new card — the new check was slotted in without disturbing anything around it.",
+      "journey": "J-13",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Data Manager" } },
+      "expect": { "text": "Rebuild snapshots for current universe" }
+    },
+    {
+      "n": 5,
+      "title": "Check the leaderboard is untouched",
+      "narration": "Let's swing by the Stocks leaderboard to make sure everything else in the app is unaffected.",
+      "point_out": "Ranked rows still carry their honest \"Proven\" / \"Not yet proven\" evidence badges next to each score, exactly as before.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Stocks" } },
+      "expect": { "text": "Not yet proven" }
+    },
+    {
+      "n": 6,
+      "title": "Check the evidence ledger is untouched",
+      "narration": "Finally, a quick look at the evidence ledger confirms it's exactly as it was.",
+      "point_out": "Every certified claim, including \"leadership_score,\" still lists its real out-of-sample result — nothing about this page changed.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/evidence" },
+      "expect": { "text": "leadership_score" }
+    }
+  ]
+}

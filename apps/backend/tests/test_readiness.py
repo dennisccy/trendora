@@ -45,7 +45,10 @@ def _readiness_cfg(cfg, **overrides):
 
 def _point_ledgers_at(monkeypatch, tmp_dir, *, ok: bool) -> None:
     """Point all three ledger/registry resolvers at `tmp_dir`: valid-but-empty files when `ok`, else
-    paths that are never created (the honest "missing" integrity failure)."""
+    paths that are never created (the honest "missing" integrity failure). Also points the iter-35
+    drift-report resolver at a guaranteed-ABSENT path under `tmp_dir` (never created here), so the new
+    `drift` preflight component is deterministically `ok` (no fetch has run yet) regardless of the real
+    repo's filesystem state — the drift-specific fixture tests below point it elsewhere explicitly."""
     for filename, env_var in (
         ("certified-claims.jsonl", "TRENDORA_LEDGER_PATH"),
         ("staging-ledger.jsonl", "STAGING_LEDGER_PATH"),
@@ -55,6 +58,7 @@ def _point_ledgers_at(monkeypatch, tmp_dir, *, ok: bool) -> None:
         if ok:
             target.write_text("")
         monkeypatch.setenv(env_var, str(target))
+    monkeypatch.setenv("TRENDORA_DRIFT_REPORT_PATH", str(tmp_dir / "drift-report.json"))
 
 
 # ==================================================================================================
@@ -123,7 +127,12 @@ def test_preflight_fixture_matrix(loaded_engine, empty_engine, unscanned_engine,
         assert result["verdict"] == expected_verdict, f"{label}: got {result}"
         assert set(result) == {"verdict", "reasons", "components", "as_of", "reference"}
         assert result["as_of"] == result["reference"]  # same value under both spec-named keys
-        assert set(result["components"]) == {"servability", "freshness", "integrity"}
+        # iter-35 (J-21/B-304) added the 4th `drift` component; `_point_ledgers_at` points it at an
+        # absent path for every row above, so it is always `ok` here (no fetch has run in this matrix) —
+        # the drift-specific behavior (breach on a written "drift"/unreadable artifact) is covered by its
+        # own dedicated tests below, not re-derived per row of this pre-existing 3-axis matrix.
+        assert set(result["components"]) == {"servability", "freshness", "integrity", "drift"}
+        assert result["components"]["drift"]["ok"] is True, f"{label}: {result['components']['drift']}"
         for component, expected_ok in expected_oks.items():
             assert result["components"][component]["ok"] is expected_ok, f"{label}/{component}: {result}"
         if expected_verdict == GO:
@@ -146,6 +155,7 @@ def test_preflight_components_always_carry_configured_severity(loaded_engine, tm
     assert result["components"]["servability"]["severity"] == cfg.readiness.severity["servability"]
     assert result["components"]["freshness"]["severity"] == cfg.readiness.severity["freshness"]
     assert result["components"]["integrity"]["severity"] == cfg.readiness.severity["integrity"]
+    assert result["components"]["drift"]["severity"] == cfg.readiness.severity["drift"]
 
 
 # ==================================================================================================
@@ -193,7 +203,7 @@ def test_readiness_cfg_rejects_severity_missing_both_states():
     with pytest.raises(ValueError, match="degraded.*no-go|no-go.*degraded"):
         ReadinessCfg(
             freshness_max_age_days=5,
-            severity={"servability": "no-go", "freshness": "no-go", "integrity": "no-go"},
+            severity={"servability": "no-go", "freshness": "no-go", "integrity": "no-go", "drift": "no-go"},
             verdict_history_path="x.jsonl",
         )
 
@@ -204,9 +214,33 @@ def test_readiness_cfg_rejects_unknown_severity_value():
     with pytest.raises(ValueError, match="must be one of"):
         ReadinessCfg(
             freshness_max_age_days=5,
-            severity={"servability": "critical", "freshness": "degraded", "integrity": "no-go"},
+            severity={"servability": "critical", "freshness": "degraded", "integrity": "no-go", "drift": "degraded"},
             verdict_history_path="x.jsonl",
         )
+
+
+def test_readiness_cfg_rejects_severity_missing_drift_component():
+    """iter-35 (J-21/B-304): `drift` joins the required component set — a severity map covering the
+    original three but omitting `drift` alone is rejected, exactly like an original omission."""
+    from app.config import ReadinessCfg
+
+    with pytest.raises(ValueError, match="missing components"):
+        ReadinessCfg(
+            freshness_max_age_days=5,
+            severity={"servability": "no-go", "freshness": "degraded", "integrity": "no-go"},  # drift missing
+            verdict_history_path="x.jsonl",
+        )
+
+
+def test_readiness_cfg_accepts_severity_with_all_four_components():
+    from app.config import ReadinessCfg
+
+    cfg = ReadinessCfg(
+        freshness_max_age_days=5,
+        severity={"servability": "no-go", "freshness": "degraded", "integrity": "no-go", "drift": "degraded"},
+        verdict_history_path="x.jsonl",
+    )
+    assert cfg.severity["drift"] == "degraded"
 
 
 # ==================================================================================================
@@ -239,6 +273,89 @@ def test_compute_readiness_shape_unchanged_by_preflight_addition(loaded_engine):
     assert set(result) == {"state", "warmup"}
     assert result["state"] in {"ready", "initializing", "unavailable"}
     assert set(result["warmup"]) == {"done", "total", "status", "message"}
+
+
+# ==================================================================================================
+# iter-35 (J-21/B-304): the `drift` component -- ok when absent/clean, breached on a written artifact,
+# worst-severity composition across all FOUR components still correct
+# ==================================================================================================
+def test_drift_component_ok_when_artifact_absent(loaded_engine, tmp_path_factory, monkeypatch):
+    """No fetch has ever run -> the drift artifact is absent -> `ok` (the J-20 non-regression
+    guarantee: GO stays GO with the drift component wired in but inert)."""
+    cfg = load_config()
+    _point_ledgers_at(monkeypatch, tmp_path_factory.mktemp("drift_absent"), ok=True)
+    with Session(loaded_engine) as session:
+        result = compute_preflight(session, config=cfg)
+    assert result["components"]["drift"]["ok"] is True
+    assert result["verdict"] == GO
+
+
+def test_drift_component_ok_when_artifact_clean(loaded_engine, tmp_path_factory, monkeypatch):
+    from app.engine.drift import write_drift_report
+
+    cfg = load_config()
+    tmp_dir = tmp_path_factory.mktemp("drift_clean")
+    _point_ledgers_at(monkeypatch, tmp_dir, ok=True)
+    monkeypatch.setenv("TRENDORA_DRIFT_REPORT_PATH", str(tmp_dir / "written-drift-report.json"))
+    write_drift_report({"status": "clean", "reference": "2024-03-01", "overlap_days": 20, "affected": []})
+    with Session(loaded_engine) as session:
+        result = compute_preflight(session, config=cfg)
+    assert result["components"]["drift"]["ok"] is True
+    assert result["verdict"] == GO
+
+
+def test_drift_component_breached_on_drift_status_names_affected_symbols(loaded_engine, tmp_path_factory, monkeypatch):
+    from app.engine.drift import write_drift_report
+
+    cfg = load_config()
+    tmp_dir = tmp_path_factory.mktemp("drift_breach")
+    _point_ledgers_at(monkeypatch, tmp_dir, ok=True)
+    monkeypatch.setenv("TRENDORA_DRIFT_REPORT_PATH", str(tmp_dir / "written-drift-report.json"))
+    write_drift_report({
+        "status": "drift", "reference": "2024-03-01", "overlap_days": 20,
+        "affected": [{"symbol": "AAPL", "mismatching_dates": ["2024-02-28"], "classification": "adjustment_seam"}],
+    })
+    with Session(loaded_engine) as session:
+        result = compute_preflight(session, config=cfg)
+    assert result["components"]["drift"]["ok"] is False
+    assert "AAPL" in result["components"]["drift"]["detail"]
+    assert result["components"]["drift"]["detail"] in result["reasons"]
+    assert result["verdict"] == DEGRADED  # config default: readiness.severity.drift == "degraded"
+
+
+def test_drift_component_breached_on_unreadable_artifact(loaded_engine, tmp_path_factory, monkeypatch):
+    cfg = load_config()
+    tmp_dir = tmp_path_factory.mktemp("drift_unreadable")
+    _point_ledgers_at(monkeypatch, tmp_dir, ok=True)
+    drift_path = tmp_dir / "corrupt-drift-report.json"
+    drift_path.write_text("{not valid json")
+    monkeypatch.setenv("TRENDORA_DRIFT_REPORT_PATH", str(drift_path))
+    with Session(loaded_engine) as session:
+        result = compute_preflight(session, config=cfg)  # must not raise
+    assert result["components"]["drift"]["ok"] is False
+    assert "unreadable" in result["components"]["drift"]["detail"].lower()
+
+
+def test_drift_breach_composes_with_other_breaches_worst_severity_wins(loaded_engine, tmp_path_factory, monkeypatch):
+    """A drift breach (config-default `degraded`) alongside an integrity breach (config-default `no-go`)
+    still yields the WORST verdict, NO-GO -- the 4th component doesn't change the existing worst-of
+    composition rule."""
+    from app.engine.drift import write_drift_report
+
+    cfg = load_config()
+    tmp_dir = tmp_path_factory.mktemp("drift_plus_integrity")
+    _point_ledgers_at(monkeypatch, tmp_dir, ok=False)  # integrity breach (no-go)
+    drift_path = tmp_dir / "written-drift-report.json"
+    monkeypatch.setenv("TRENDORA_DRIFT_REPORT_PATH", str(drift_path))  # override the absent default
+    write_drift_report({
+        "status": "drift", "reference": "x", "overlap_days": 20,
+        "affected": [{"symbol": "ZZZ", "mismatching_dates": ["2024-01-01"], "classification": "adjustment_seam"}],
+    })
+    with Session(loaded_engine) as session:
+        result = compute_preflight(session, config=cfg)
+    assert result["components"]["integrity"]["ok"] is False
+    assert result["components"]["drift"]["ok"] is False
+    assert result["verdict"] == NO_GO  # integrity's no-go outranks drift's degraded
 
 
 # ==================================================================================================
