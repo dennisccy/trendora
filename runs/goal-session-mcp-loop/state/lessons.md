@@ -267,3 +267,20 @@ browser-qa-agent" DoD.
 **Verdict:** CONTINUE
 **Lesson:** The "audit-fix landed but the canonical browser-qa lane was never re-run against it" verification gap recurred a 4th time (iter-13/20/22/31), and this time the QA lane actively fail-opened around it — it deferred ALL browser tests, graded PASS purely from the 22 backend unit tests, and wrote "ready to ship" while the browser-qa-agent's own artifact read FAIL on UT-07. The saving grace was closure independently re-reading the fix in the working tree (CLOSURE-PASS with a transparent Non-Blocking Note), but the pattern is durable: a green QA verdict here can rest on unit tests alone, so the evaluator must always cross-read the browser-qa `ui-test-results.md` verdict directly rather than trusting `qa.md`/`status.json` (status.json even carried `browser_checks_run: false` while 11 browser tests had in fact run). When the canonical lane's last recorded word on a target journey is FAIL and only the auditor re-checked the fix, score the journey `partial`, not `passing`.
 **Applies to:** any iteration where browser-qa returns FAIL and a later stage (audit) applies + self-verifies a fix without the canonical browser-qa lane being re-run; and any iteration whose `qa.md` grades PASS while deferring the browser lane.
+
+## iter-32 — 2026-07-14T01:04:27Z
+
+**Verdict:** CONTINUE
+**Lesson:** The iter-31 "hold J-19 partial + fold its one clean re-verification frame into the next
+FULL iteration's browser-qa lane" rider pattern worked exactly as designed: iter-32 delivered a new
+surface (J-17) AND flipped J-19 partial->passing at zero extra cost, because the browser-qa lane was
+running for J-17 anyway (UT-11 rode alongside UT-01..UT-14). This validates a scoping rule for future
+partials — when a journey lands `partial` ONLY because a canonical-lane-not-re-run gap on an
+already-in-tree fix (a scroll-assist, a formatting refinement), and the next iter runs a full
+browser-qa lane regardless, fold the one re-verification frame in as a rider rather than spending a
+dedicated verification-only iteration (contrast iter-21/23/25, which correctly WERE dedicated passes
+because their blocker was a reproduced crash / an empty evidence dir, not a free rider).
+**Applies to:** any iteration that ends with a journey at `partial` due to a "correct-but-canonical-
+lane-not-re-run" gap on an in-tree fix — decide rider-vs-dedicated by whether the next iter's
+browser-qa lane runs anyway AND whether the fix is a rendered-surface refinement (rider) vs an
+unverified crash/data-path fix (dedicated).

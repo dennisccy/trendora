@@ -56,3 +56,20 @@
 **Ambiguity:** J-19's goal.md acceptance (steps 1-3 + the 4 bullets) is fully browser-verified PASS; the disputed UT-07 is the lineage link's *auto-scroll-to-exact-row* assist, which the ui-test-designer elevated to a P1 and the DoD's TESTING REQUIREMENTS phrase as "a row's lineage link resolves to its registry row." The click DOES resolve to the correct registry URL + fragment and the target row exists in the DOM — only the scroll-into-position didn't fire on SPA navigation (fixed post-lane, but the canonical lane wasn't re-run). So it is open whether J-19 is "passing" (its own goal.md acceptance is met and the failure is an out-of-acceptance refinement now fixed) or "partial" (a DoD-named P1 browser case reads FAIL and the fix is not canonically re-verified).
 **We chose:** Held J-19 at `partial`, not `passing` — treating the lineage-link scroll as a real (if minor) part of the "links to its registry row" acceptance AND, decisively, applying the session's "correct-but-not-cleanly-canonical-verified = partial" discipline (the auditor's own browser re-check is not the DoD-named canonical lane). The asymmetry drove it: the overall verdict is CONTINUE regardless (7 journeys unbuilt), and iter-32 runs a full browser-qa lane anyway, so re-recording one clean UT-07 frame is nearly free — whereas marking `passing` on a canonical-FAIL-not-re-run would erode exactly the guard that caught iter-18/24. A human who judges the graveyard's core sufficient could reasonably flip this to `passing`.
 **Reversible:** yes
+
+## iter-32 — goal-evaluator
+
+**Ambiguity:** J-11 ("Every displayed 'Proven' edge is re-certified... no stale edge survives") is in
+iter-32's required-still-passing set but got NO dedicated golden replay or browser case this iteration
+(J-11.json exists but was not run; audit T1 + ux-regression both flagged the gap). Whether J-11 must
+be re-verified via its OWN dedicated case each iteration, or whether "0-PASS ledger + byte-identical
+certification economy + corroborating /evidence and /stocks frames both showing 0 'Proven'" suffices,
+is left open.
+**We chose:** Scored J-11 `passing` on byte-identity + corroboration rather than holding it `unknown`.
+Grounds: the invariant is trivially satisfied on a 0-PASS ledger (no 'Proven' edge exists to go
+stale), the entire economy is git-diff EMPTY (no stale-edge mechanism), and I directly observed 0
+'Proven' on both surfaces J-11 depends on (UT-13 /evidence 7 FAIL/0 PASS; UT-14 /stocks 3 'Not yet
+proven'/row). Matches the audit/ux-regression/closure consensus that the risk is nil. Recorded here
+(not silent) because it accepts corroboration in lieu of a dedicated re-verification; a human who
+wants the required set fully closed should add the J-11 replay to iter-33 (recommended in the eval).
+**Reversible:** yes

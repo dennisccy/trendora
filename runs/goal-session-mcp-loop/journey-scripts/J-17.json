@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "journey": "J-17",
+  "name": "Certification-budget accounting panel — total trials, required_p, Thresholdout remaining, staging LORD++ wealth, each with spend-over-time",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-17", "action": {"type": "goto", "url": "/research"}, "expect": {"text": "Certification-budget accounting"}},
+    {"n": 2, "journey": "J-17", "action": {"type": "click", "target": {"testid": "research-governance-link-budget"}}, "expect": {"text": "Certification-budget accounting"}},
+    {"n": 3, "journey": "J-17", "action": {"type": "goto", "url": "/research/budget"}, "expect": {"text": "Next canonical trial will be #8"}},
+    {"n": 4, "journey": "J-17", "action": {"type": "goto", "url": "/research/budget"}, "expect": {"text": "0.00625"}},
+    {"n": 5, "journey": "J-17", "action": {"type": "goto", "url": "/research/budget"}, "expect": {"text": "of 1 total · spent 0.1"}},
+    {"n": 6, "journey": "J-17", "action": {"type": "goto", "url": "/research/budget"}, "expect": {"text": "0.0003926"}}
+  ]
+}

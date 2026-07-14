@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-32",
+  "base_url": "http://localhost:3255",
+  "iteration": 32,
+  "default_timeout_ms": 10000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Research hub",
+      "narration": "Let's start in the Research hub, where every governance and process tool lives side by side.",
+      "point_out": "A new third card has appeared here: Certification-budget accounting, next to the pre-registration registry and the graveyard of rejected ideas.",
+      "journey": "J-17",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/research"},
+      "expect": {"text": "Certification-budget accounting"}
+    },
+    {
+      "n": 2,
+      "title": "Check the certification budget",
+      "narration": "One click opens the new budget panel, showing exactly how much of the platform's statistical credibility has been spent so far.",
+      "point_out": "Four figures: trials run to date, the bar the next trial must clear, remaining Thresholdout budget, and the internal staging economy's level, each with its own small trend line, and no proven language anywhere on the page.",
+      "journey": "J-17",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "click", "target": {"role": "link", "name": "Certification-budget accounting"}},
+      "expect": {"text": "0.00625"}
+    },
+    {
+      "n": 3,
+      "title": "Browse the graveyard of rejected ideas",
+      "narration": "Over in the graveyard, every idea the system has ever tested and turned down is listed out in the open, not hidden away.",
+      "point_out": "Fourteen rejected ideas, each honestly marked FAIL with its own reason, including entries from the platform's earliest research track.",
+      "journey": "J-19",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/research/graveyard"},
+      "expect": {"text": "FAIL"}
+    },
+    {
+      "n": 4,
+      "title": "Jump from a rejected idea to its registration",
+      "narration": "Clicking a rejected idea's lineage link jumps straight back to where that idea was first registered.",
+      "point_out": "The page now scrolls itself right to the matching row, so there is no more landing at the top and hunting for it by hand.",
+      "journey": "J-19",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "click", "target": {"css": "[data-testid='graveyard-lineage-link']"}},
+      "expect": {"target": {"css": "#registration-factor-leadership_score-d10-h20"}}
+    },
+    {
+      "n": 5,
+      "title": "Confirm the registration table still holds up",
+      "narration": "A quick look at the top of the registration table confirms nothing else moved.",
+      "point_out": "All eleven registrations are still there across five columns, including the one permanently closed idea.",
+      "journey": "J-18",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {"type": "goto", "url": "/research/registry"},
+      "expect": {"text": "closed"}
+    },
+    {
+      "n": 6,
+      "title": "Revisit the evidence ledger",
+      "narration": "The evidence ledger, the single source of truth for what has actually been proven, still shows every claim honestly.",
+      "point_out": "All seven certified claims still read FAIL, including the multi-factor combination test, with no claim overstating itself as proven.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/evidence"},
+      "expect": {"text": "FAIL"}
+    },
+    {
+      "n": 7,
+      "title": "Check the main leaderboard",
+      "narration": "Finally, the main stock leaderboard is untouched by any of this work.",
+      "point_out": "Every row still shows a plain Not yet proven badge on each of its three scores, so nothing is claimed as a winner until it has actually earned that.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/stocks"},
+      "expect": {"text": "Not yet proven"}
+    }
+  ]
+}

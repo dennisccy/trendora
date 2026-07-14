@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "journey": "J-19",
+  "name": "Negative-results graveyard lineage link scrolls the matching registry row into view",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-19", "action": {"type": "goto", "url": "/research/graveyard"}, "expect": {"text": "Negative-results graveyard"}},
+    {"n": 2, "journey": "J-19", "action": {"type": "click", "target": {"text": "factor-leadership_score-d10-h20 →"}}, "expect": {"text": "factor=leadership_score"}}
+  ]
+}

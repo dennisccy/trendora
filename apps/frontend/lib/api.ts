@@ -6,6 +6,7 @@
  */
 
 import { resolveApiBase } from "@/lib/api-base";
+import type { BudgetResponse, BudgetSpendPoint, CanonicalBudget, StagingBudget } from "@/lib/budget";
 import type {
   CertifiedClaim,
   EvidenceLedgerResponse,
@@ -24,6 +25,9 @@ export type { PreRegistrationRow, RegistryResponse };
 
 // Re-export the negative-results graveyard types (goal-mcp-loop iter-31, J-19) alongside `fetchGraveyard`.
 export type { GraveyardEntry, GraveyardResponse, RevisitProtocol };
+
+// Re-export the certification-budget accounting types (goal-mcp-loop iter-32, J-17) alongside `fetchBudget`.
+export type { BudgetResponse, BudgetSpendPoint, CanonicalBudget, StagingBudget };
 
 /** The build-time configured backend base (`NEXT_PUBLIC_API_URL`, default localhost). The configured
  *  backend PORT (`NEXT_PUBLIC_API_PORT`) is read alongside so the runtime resolver can host-swap to the
@@ -374,6 +378,17 @@ export async function fetchRegistry(signal?: AbortSignal): Promise<RegistryRespo
  *  renders an explicit "Backend unavailable" state. */
 export async function fetchGraveyard(signal?: AbortSignal): Promise<GraveyardResponse> {
   return getJSON<GraveyardResponse>("/api/research/graveyard", signal);
+}
+
+// --- certification-budget accounting (goal-mcp-loop iter-32, J-17 / backlog B-903) ----------
+/** GET /api/research/budget — the read-only certification-budget accounting panel: total canonical
+ *  trials to date, the current canonical `required_p` bar, the Thresholdout budget remaining, and the
+ *  staging LORD++ next-trial level — each with a per-trial spend-over-time series, re-read (or
+ *  re-derived via the SAME referee/ledger seams the certifier uses — never a parallel computation).
+ *  Introduces no proven-language. Throws on network error or non-200 so the page renders an explicit
+ *  "Backend unavailable" state. */
+export async function fetchBudget(signal?: AbortSignal): Promise<BudgetResponse> {
+  return getJSON<BudgetResponse>("/api/research/budget", signal);
 }
 
 // --- stock price/MA/volume series for the detail chart (iter-4) -----------------------------

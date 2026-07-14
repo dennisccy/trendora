@@ -14,6 +14,7 @@ import {
   Thermometer,
   TrendingDown,
   TrendingUp,
+  Wallet,
   Waves,
 } from "lucide-react";
 
@@ -76,10 +77,10 @@ export default function ResearchHubPage() {
         })}
       </div>
 
-      {/* goal-mcp-loop iter-30 (J-18) / iter-31 (J-19) — Governance & process: registry + graveyard now,
-          budget / referee-audit still to follow. Kept a SEPARATE section, not an 11th RESEARCH_LABS
-          entry — that array's reading order is a J-113 contract over the ten analytical labs; a
-          governance/process link is architecturally distinct, not a lab. */}
+      {/* goal-mcp-loop iter-30 (J-18) / iter-31 (J-19) / iter-32 (J-17) — Governance & process:
+          registry + graveyard + budget now; referee-audit still to follow. Kept a SEPARATE section,
+          not an 11th RESEARCH_LABS entry — that array's reading order is a J-113 contract over the ten
+          analytical labs; a governance/process link is architecturally distinct, not a lab. */}
       <div className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-text-faint">Governance &amp; process</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3" data-testid="research-governance">
@@ -122,6 +123,29 @@ export default function ResearchHubPage() {
             <p className="text-sm text-text-muted">
               Every hypothesis the referee has rejected, across the canonical and staging ledgers — its
               verdict, deflation context, and registration lineage. Nobody retries a dead idea blindly.
+            </p>
+          </Link>
+
+          {/* goal-mcp-loop iter-32 (J-17) — the certification-budget accounting panel: total trials,
+              the current canonical bar, Thresholdout budget remaining, and the staging LORD++ wealth —
+              so nothing silently spends the year's statistical credibility. */}
+          <Link
+            href={asofHref("/research/budget")}
+            data-testid="research-governance-link-budget"
+            className={cn(
+              "group flex flex-col gap-2 rounded-lg border border-border bg-surface p-4 transition-colors",
+              "hover:border-accent hover:bg-surface-2",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent",
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <Wallet className="h-5 w-5 text-accent" aria-hidden />
+              <h3 className="text-base font-semibold text-text">Certification-budget accounting</h3>
+              <ArrowRight className="ml-auto h-4 w-4 text-text-faint transition-transform group-hover:translate-x-0.5 group-hover:text-accent" aria-hidden />
+            </div>
+            <p className="text-sm text-text-muted">
+              Total trials, the current canonical bar, the Thresholdout budget remaining, and the
+              staging LORD++ wealth — each over time, re-read from the same referee/ledger accounting.
             </p>
           </Link>
         </div>

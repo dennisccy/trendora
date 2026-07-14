@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import (
     backtest,
+    budget,
     dashboard,
     data,
     evidence,
@@ -136,6 +137,9 @@ def create_app() -> FastAPI:
     application.include_router(registry.router, prefix="/api")
     # goal-mcp-loop iter-31 (J-19) — the read-only negative-results graveyard (GET /api/research/graveyard).
     application.include_router(graveyard.router, prefix="/api")
+    # goal-mcp-loop iter-32 (J-17) — the read-only certification-budget accounting panel
+    # (GET /api/research/budget).
+    application.include_router(budget.router, prefix="/api")
     return application
 
 

@@ -1,0 +1,23 @@
+{
+  "phase": "goal-mcp-loop-iter-32",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-07-14T00:43:21.479116Z",
+  "started_at": "2026-07-13T23:00:12.537829Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/budget_accounting.py",
+    "apps/backend/app/api/budget.py",
+    "apps/backend/main.py",
+    "apps/backend/tests/test_budget_accounting.py",
+    "apps/backend/tests/test_api_budget.py",
+    "apps/frontend/lib/budget.ts",
+    "apps/frontend/lib/api.ts",
+    "apps/frontend/app/research/budget/page.tsx",
+    "apps/frontend/app/research/page.tsx"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "next_action": "complete"
+}
