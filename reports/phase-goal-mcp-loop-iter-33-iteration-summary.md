@@ -1,63 +1,72 @@
 # Iteration Summary — goal-mcp-loop-iter-33
 
-**Verdict:** FAIL
+**Verdict:** CONTINUE
 **Iteration type:** goal-full
 **Date:** 2026-07-14
 **Iteration:** 33
 
 ## In plain words
 
-**What you can do now:** You can scan a leaderboard of hundreds of stocks where every score is honestly labeled as either backed by tested evidence or "not yet proven," open the full evidence behind any score, and browse a complete, auditable record of every trading idea the system has tested — moving-average, breakout, multi-factor, and relative-strength ideas, all still honestly unproven on the current data. You can view up to thirty years of price history and market-index context for any stock, and the page that manages your data connections stays fast even on its heaviest job. The system refuses to test a new idea unless it was registered first, lets you browse a graveyard of every rejected idea with a working link back to its registration, and shows at a glance how much of the platform's testing budget has been used.
+**What you can do now:** You can browse a leaderboard of hundreds of stocks where every score is honestly labeled as either backed by tested evidence or "not yet proven," open the full evidence behind any score, and look through a complete, auditable record of every trading idea the system has ever tested or rejected — including a working link back to each rejected idea's original registration and a live view of how much of the platform's testing budget has been used. You can view up to thirty years of price history and market-index context for any stock, and the page that manages your data connections stays fast even on its heaviest job. The system refuses to test any brand-new idea unless it was written down and registered first. And now, every single page carries one shared status strip that tells you at a glance whether today's board is safe to rely on — quietly green on a normal day, or an unmissable amber or red warning naming the exact problem when something's off.
 
-**What changed this time:** Every page in the app now shows a small status strip near the top telling you, at a glance, whether today's information is safe to rely on — a quiet green line on a normal day, or an unmissable colored banner naming the exact problem in plain English (for example, data going stale, or a record-keeping file going missing) when something's wrong. It's the same single answer everywhere, so no page can ever quietly disagree with another.
+**What changed this time:** This round added that shared status strip: a quiet green "GO" message when everything checks out, an amber "DEGRADED" banner naming the specific issue (like data that's gotten stale), or, for a serious problem such as a missing data file, an unmissable red banner that always says "do not rely on today's board." It's the same message on every page, computed in one place, so you'll never see one page look fine while another quietly disagrees.
 
-**What's next:** Next, the team needs to finish double-checking that this new status strip didn't disturb a handful of older pages, then formally wrap up this round before moving on to a live-data watchdog or a self-check on the testing process itself.
+**What's next:** Next, the team will quickly double-check that a handful of older pages weren't disturbed by the new banner, then start building a watchdog that checks whether live data has quietly drifted from what was already validated.
 
 ## Headline
 
-Daily preflight verdict banner (GO/DEGRADED/NO-GO) ships on every page, computed once in the backend
+Daily preflight verdict banner (GO/DEGRADED/NO-GO) ships on every page; J-20 passes, closure gap remains
 
 ## Direction
 
-**Signal:** holding
-**Why:** This iteration's formal Verdict is FAIL only because phase-closure-auditor caught a process gap, not a product regression: J-20 (the preflight GO/DEGRADED/NO-GO banner) shipped cleanly through review, QA (20/20 browser tests), and ux-regression, but the DoD-mandated deterministic replay for six required-still-passing journeys (J-01, J-02, J-04, J-05, J-13, J-18) was never actually run — QA and ux-regression both pointed to a "next pipeline step" that doesn't exist for a Depth:full iteration. Journey-history still shows J-01..J-19 passing with zero regressions and zero anti-goal violations, and the fix is a few minutes of replaying six existing golden scripts, so direction reads holding rather than regressing.
+**Signal:** improving
+**Why:** J-20 (the daily preflight verdict banner) shipped cleanly and was canonically browser-QA verified 20/20 with no post-lane fix, so it flips unknown -> passing. The iteration still ended CLOSURE-FAIL because 6 of 7 required-still-passing journeys (J-01, J-02, J-04, J-05, J-13, J-18) were never deterministically replayed — a process gap the evaluator scored as low-risk, not a regression, since none of their underlying logic files were touched. Five journeys (J-21..J-25) remain unbuilt so GOAL_ACHIEVED stays out of reach, but the last five iterations have each moved at least one journey forward with zero regressions and zero anti-goal violations.
 
 **Trend (last 5 iters):**
-- Newly passing this iter: none (closure gate blocked before the goal-evaluator could run; J-20 remains unconfirmed)
-- Newly passing in last 5 iters total: J-02, J-06, J-07, J-08, J-09, J-17, J-18, J-19
+- Newly passing this iter: J-20
+- Newly passing in last 5 iters total: J-02, J-06, J-07, J-08, J-09, J-18, J-17, J-19, J-20
 - Regressions in last 5 iters: none
 - Anti-goal violations in last 5 iters: none
-- Iters with no journey state change: 1 of last 5
+- Iters with no journey state change: 0 of last 5
 
-**Latest evaluator reasoning:** No goal-evaluator has run for iter-33 yet (the closure gate failed first); most recent verified reasoning is from iter-32: "iter-32 is a clean, textbook additive read-only iteration that shipped J-17 AND closed the iter-31 J-19 partial in one pass, and I verified every status change against artifacts I personally opened, not the handoffs. THE REGRESSION PROOF (iter-9 lesson, spec NOTES): the iter-diff is 10 files, entirely additive — 6 new files (budget_accounting.py, api/budget.py, budget/page.tsx, lib/budget.ts, 2 tests) + 4 additive edits (main.py router include, research/page.tsx third card, lib/api.ts fetchBudget, README bullet); certified-claims.jsonl / staging-ledger.jsonl / pre-registrations.jsonl + referee.py/ledger.py/online_fdr.py/evidence.py/tools.py/scoring.py + registry/page.tsx are ALL git-diff EMPTY vs HEAD (canonical divisor stays 8), so there is no regression mechanism for J-01..J-16/J-18."
+**Latest evaluator reasoning:** iter-33 delivered its target J-20 (the single daily preflight verdict, backlog B-301) cleanly and to an unusually high evidence standard — but the iteration ended CLOSURE-FAIL on a separate Definition-of-Done line: 6 of 7 required-still-passing journeys (J-01/J-02/J-04/J-05/J-13/J-18) were never deterministically replayed, and the QA + ux-regression reports papered over it with a materially false "the replay lane runs in the next phase step" claim (the closure auditor caught it). J-20's own acceptance is fully, cleanly, canonically browser-verified on the final build (no post-lane fix; audit made zero repo changes), so it flips to passing; the replay gap is a low-risk process/evidence gap that a cheap lean closeout closes. Not GOAL_ACHIEVED (J-21..J-25 unbuilt); not a regression (no journey broke, no critical anti-goal).
 
 ## What was done
 
-- Shipped J-20: one canonical daily preflight verdict (`GO`/`DEGRADED`/`NO-GO` + plain-language reasons), computed once by a new `compute_preflight` composer and rendered as a single layout-level banner mounted once in `app/layout.tsx`, appearing on all 27 routes.
-- Added the verdict as an additive `preflight` field on the existing `GET /api/health` response; all pre-existing fields (state/warmup) stay byte-identical.
-- Made the DEGRADED-vs-NO-GO severity mapping and the freshness threshold config-driven (`ReadinessCfg` / new `readiness:` block) instead of hardcoded.
-- Added an append-only verdict-transition history log that writes only when the verdict actually changes.
-- Investigated and closed the iter-32 J-11 replay gap — confirmed J-11 passes live via a dedicated `demo_runner.py` verify run.
-- Added a per-input-combination backend fixture-matrix test (8 rows) plus config-wiring, byte-identity, and error-case tests for the new composer.
-- Verified 1 target journey (J-20) passes browser QA: 20/20 UI test cases across all 5 required decision surfaces in all three verdict states, single-source confirmed, zero regressions to the readiness badge, leaderboard badges, evidence ledger, or nav.
+- Shipped `compute_preflight`, a pure composer that reduces servability, data-freshness, and DB/ledger-integrity checks into one GO/DEGRADED/NO-GO verdict with plain-language reasons.
+- Served the verdict as an additive `preflight` field on the existing `GET /api/health` endpoint — pre-existing state/warmup fields left byte-identical.
+- Mounted a new layout-level `PreflightBanner` once in the shared app shell; it renders identically on every page (quiet GO strip; loud amber DEGRADED / red NO-GO banners, with NO-GO always containing the exact phrase "do not rely on today's board").
+- Added a config-driven severity map (new `readiness:` block in `config.yaml` + `ReadinessCfg`) and a bounded, append-only verdict-history log that writes only on real verdict transitions.
+- Closed the iter-32 replay gap for J-11 with a dedicated golden-script verification (PASS, 0 failed).
+- Verified 1 target journey (J-20) passes browser QA — 20/20 UI test cases across GO/DEGRADED/NO-GO states on all 5 required surfaces (25 md5-distinct frames).
 
 ## What's left
 
-- Required-still-passing deterministic replay for J-01, J-02, J-04, J-05, J-13, J-18 was never executed this iteration (only J-11 got a genuine re-verification) — phase-closure-auditor returned CLOSURE-FAIL on this gap, and QA/ux-regression's claim that it would run "in the next phase step" does not apply to a Depth:full iteration.
-- J-20 cannot be scored `passing` in the journey ledger until the replay above runs clean and phase-closure-auditor is re-run — the goal-evaluator has not yet executed for this iteration.
-- The banner shows only the flattened reasons text; the backend's per-check breakdown (servability/freshness/integrity) and the freshness reference date aren't shown anywhere in the UI yet (by design, deferred).
-- The new verdict-change history log has no page to view it yet (feeds a future "digest" journey).
-- Three future inputs that would enrich the verdict — an anomaly detector, a live-vs-seed drift check (J-21), and a "replay as of a past date" check — are not built yet.
-- 18 of the 25 new backend tests (the loaded_engine-dependent correctness matrix) still haven't completed a formal in-pipeline pytest run (the auditor independently reproduced the same assertions outside pytest and judges the risk closed, but the canonical run itself remains outstanding).
-- Six Must-have journeys remain fully unbuilt: J-21 (live-data drift), J-22 (certifier self-audit), J-23 (watchlist concentration), J-24 (per-stock risk-budget card), J-25 (drawdown-expectations panel).
+- Five Must-have journeys remain unbuilt: J-21 (live-data drift monitor), J-22 (certifier self-audit), J-23 (watchlist concentration view), J-24 (per-stock risk-budget card), J-25 (drawdown-expectations panel) — GOAL_ACHIEVED stays out of reach until each ships.
+- CLOSURE-FAIL: 6 of 7 required-still-passing journeys (J-01, J-02, J-04, J-05, J-13, J-18) were not deterministically replayed this iteration; the QA/ux-regression reports incorrectly claimed the replay would run in a pipeline step that doesn't exist for full-depth iterations.
+- The verdict's individual component breakdown (servability/freshness/integrity) and its reference date are computed but not shown anywhere in the UI — only the combined reasons list is displayed.
+- The verdict-history log is recorded on disk but there is no page in the product to view it yet.
+- 18 of 25 new backend tests (the `loaded_engine`-dependent fixture matrix) were not formally confirmed via a completed pytest run this session — independently verified correct by direct execution and by the auditor, but the canonical run itself never finished.
+- Housekeeping gaps flagged by review/audit: no autouse test-isolation for the verdict-history log path, and `compute_preflight` redundantly re-invokes `compute_readiness` (harmless but doubles a DB round-trip on the poll path).
 
 ## Next step
 
-Run the deterministic replay against the six golden scripts that already exist for J-01, J-02, J-04, J-05, J-13, and J-18 (`demo_runner.py --mode verify` against `runs/goal-session-mcp-loop/journey-scripts/`), fold the results into the browser-QA evidence, correct the QA/ux-regression reports' incorrect "runs in the next phase step" claim (that replay lane only exists for Depth:lean iterations), and re-run phase-closure-auditor. This is expected to be a quick, low-risk fix — none of the six journeys' own files were touched this iteration — after which the goal-evaluator can run and score J-20.
+iter-34 = LEAN verification-only closeout (no new feature code — J-20 is already passing): run the deterministic replay lane against the on-disk golden scripts for J-01, J-02, J-04, J-05, J-13, J-18, fold the results into ui-test-results, and re-clear closure to CLOSURE-PASS; also correct the QA/ux-regression reports' false claim that this replay "runs in the next phase step." Systemic flag for a human/framework fix: the required-still-passing replay DoD line is structurally unsatisfiable by any FULL iteration, since the full-depth pipeline path has no replay lane — that gap should be closed (e.g. always follow a full iteration with a lean verify pass, or add the replay lane to the full path). Then iter-35 = FULL J-21 (backlog B-304, live-vs-seed drift monitor), which feeds directly into the J-20 verdict via its extensibility seam. Non-blocking carry-forwards: an autouse test-isolation fixture for the verdict-history path, threading the already-computed readiness dict into `compute_preflight`, backgrounding the canonical pytest run for `test_readiness.py`/`test_health.py`, and readme-maintainer bullets for the preflight banner + budget panel.
 
 ## Assumptions made
 
-none recorded
+- iter-33 · goal-evaluator — Ambiguity: whether J-20 should score `passing` or `partial` given the iteration ended CLOSURE-FAIL, when the CLOSURE-FAIL is about six OTHER required journeys' replay gap, not J-20's own evidence. We chose: `passing` — J-20's own canonical browser-qa evidence is complete and clean on the final build with no post-lane fix, so marking it `partial` would misattribute a different journey's replay gap to J-20; the guard is honored instead at the overall verdict (CONTINUE, not GOAL_ACHIEVED) and by naming the replay gap explicitly on J-01/02/04/05/13/18. Reversible: yes
+- iter-33 · goal-decomposer — Ambiguity: B-301's "market-calendar aware" freshness requirement is underspecified for a frozen offline seed, where a wall-clock "now" would make a healthy GO state impossible and break determinism. We chose: anchor freshness to a deterministic, seed-derived reference (the seed's own latest date, so a fully-loaded seed reads GO), counted in trading days via the existing SPY calendar, with a controlled config/env override — never wall-clock — to induce the stale test states. Reversible: yes
+- iter-32 · goal-evaluator — Ambiguity: whether J-11 must be re-verified via its own dedicated case each iteration, or whether byte-identity plus corroborating frames showing 0 "Proven" suffices. We chose: scored J-11 `passing` on byte-identity + corroboration; recommended adding a dedicated replay next iteration (closed this iteration). Reversible: yes
+- iter-31 · goal-evaluator — Ambiguity: whether J-19 should score `passing` (its own acceptance is met; the lineage-scroll failure is a minor refinement, now fixed) or `partial` (a DoD-named P1 browser case read FAIL and the fix wasn't canonically re-verified). We chose: `partial`, applying the session's "correct-but-not-cleanly-canonical-verified = partial" discipline. Reversible: yes
+- iter-31 · goal-decomposer — Ambiguity: whether the STAGING ledger's non-PASS verdicts are in scope for J-19's graveyard, and whether composition should be backend- or frontend-side. We chose: surface both ledgers' non-PASS verdicts via a new backend composition endpoint — the graveyard's purpose includes staging explorations, and the honesty fence is preserved (staging carries 0 PASS). Reversible: yes
+- iter-30 · goal-evaluator — Ambiguity: the DoD literally read "≥14 ledger-derived rows" but the committed registry has 11. We chose: scored the backfill-completeness line as met by 11 rows, treating "≥14" as an uncomputed estimate and the substantive dedup clause (14 raw entries minus 3 cross-ledger duplicates = 11) as the real bar. Reversible: yes
+- iter-30 · goal-decomposer — Ambiguity: whether "every registered hypothesis" for the registry backfill meant the canonical ledger only or the union of both ledgers' distinct claims. We chose: the union of the pre-registered candidate rows and every distinct claim across both ledgers, deduplicated by hypothesis, each labeled by source. Reversible: yes
+- iter-29 · goal-evaluator — Ambiguity: J-02's DoD requires the three inline "Not yet proven" score badges visible on the stock detail page, but both captured frames show them below the fold. We chose: scored J-02 `passing`, backed by DOM assertions, factor-lab corroboration, leaderboard-scale evidence, and zero code diff since the last live capture. Reversible: yes
+- iter-28 · goal-evaluator — Ambiguity: whether an honest all-FAIL rendering on five evidence journeys satisfies each journey's written acceptance, or only its anti-goal guardrail. We chose: held all five at `partial` since the proven-edge half of each journey's acceptance was absent; later resolved by the owner's iter-29 re-scope. Reversible: yes
+- iter-28 · goal-decomposer — Ambiguity: how many iterations to keep re-attempting the five evidence journeys when a staging exploration surfaces no promotable edge. We chose: a verify-only plateau-acknowledgement pass with no new evidence claim, since the complete pre-registered candidate set already tested all-FAIL. Reversible: yes
+- iter-27 · goal-evaluator — Ambiguity: whether 12 flagged "secret" findings — all planted fake keys inside the vendored framework's own test fixtures — count as a real anti-goal-#7 credentials violation. We chose: scoped the check to Trendora's own product source, not the vendored framework's self-test tooling — not a violation. Reversible: yes
+- iter-26b · goal-evaluator — Ambiguity: whether a journey (J-16) whose proof attempt crashed the backend should read `partial` (capability real, verification incomplete) or `failing` (a verified negative outcome). We chose: `failing`, because a reproduced backend-wide crash is a verified negative outcome, not merely an unfinished verification. Reversible: yes
 
 ## Quick verify
 
@@ -86,4 +95,5 @@ From `reports/phase-goal-mcp-loop-iter-33-what-to-click.md`:
 | QA | PASS | reports/qa/goal-mcp-loop-iter-33-qa.md |
 | Audit | PASS_WITH_GAPS | docs/handoffs/goal-mcp-loop-iter-33-audit.md |
 | Closure | CLOSURE-FAIL | reports/phase-goal-mcp-loop-iter-33-closure-verdict.md |
+| Goal evaluation | CONTINUE | runs/goal-session-mcp-loop/iter-33/eval.md |
 | Journey history | — | runs/goal-session-mcp-loop/state/journey-history.json |
