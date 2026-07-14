@@ -1,0 +1,7 @@
+{"reasons": [], "reference": "2026-07-01", "verdict": "GO"}
+{"reasons": ["Latest data (2026-07-01) is 0 trading day(s) old, exceeding the configured maximum of -1 day(s)."], "reference": "2026-07-01", "verdict": "DEGRADED"}
+{"reasons": ["Integrity check failed: evidence ledger missing (/tmp/claude-1000/-home-dennis-chan-Git-trendora/594c6239-7661-422e-a7a2-9bc4514b0ea5/scratchpad/does-not-exist.jsonl)."], "reference": "2026-07-01", "verdict": "NO-GO"}
+{"reasons": [], "reference": "2026-07-01", "verdict": "GO"}
+{"reasons": ["Latest data (2026-07-01) is 0 trading day(s) old, exceeding the configured maximum of -1 day(s)."], "reference": "2026-07-01", "verdict": "DEGRADED"}
+{"reasons": ["Integrity check failed: evidence ledger missing (/tmp/iad.goal-mcp-loop-iter-33.2778307/qa-config-overrides/does-not-exist-ledger.jsonl)."], "reference": "2026-07-01", "verdict": "NO-GO"}
+{"reasons": [], "reference": "2026-07-01", "verdict": "GO"}

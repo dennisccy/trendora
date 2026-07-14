@@ -1236,6 +1236,26 @@ startup:
   health_poll_idle_interval_seconds: 30.0  # slower poll cadence the badge backs off to once Ready (>= active)
 
 # ----------------------------------------------------------------------------------------
+# goal-mcp-loop iter-33 CONSUMED — the daily preflight verdict (J-20 / backlog B-301).
+# `app.engine.readiness:compute_preflight` extends `compute_readiness` into a composite
+# GO/DEGRADED/NO-GO verdict, rendered as the layout-level PreflightBanner on every decision surface.
+# `freshness_max_age_days` is the trading-day staleness threshold measured against a DETERMINISTIC,
+# seed-resolved reference (the seed's own latest available date — never `date.today()`, anti-goal #5),
+# so a fully-loaded seed always reads 0 days old (GO); lowering this value (e.g. via a temporary
+# TRENDORA_CONFIG override) is the sanctioned lever for inducing DEGRADED/NO-GO without mutating the
+# committed seed. `severity` maps each composed input to the verdict a breach forces — owner-reviewed
+# (B-301: "making NO-GO too easy is alarm fatigue"); both `degraded` and `no-go` must appear so the
+# fixture matrix can induce each. `verdict_history_path` is the append-only transition log (written
+# only when the verdict changes, never on every ~2s poll).
+readiness:
+  freshness_max_age_days: 5
+  severity:
+    servability: no-go
+    freshness: degraded
+    integrity: no-go
+  verdict_history_path: runs/goal-session-mcp-loop/state/preflight-verdict-history.jsonl
+
+# ----------------------------------------------------------------------------------------
 # iter-42 (J-100) CONSUMED — bounded-resource SERVER ops guards. The SINGLE source of the uvicorn
 # concurrency cap, the heavy-endpoint request timeout, and the per-process virtual-memory cap the
 # start script enforces (anti-goal: No magic numbers — NO concurrency/timeout/memory literal lives in

@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 
-import { fetchHealth, type ReadinessState, type WarmupProgress } from "@/lib/api";
+import { fetchHealth, type PreflightStatus, type ReadinessState, type WarmupProgress } from "@/lib/api";
 
 /**
  * Global backend readiness state (iter-28, J-40). A single client context, mounted in the app shell, that
@@ -14,12 +14,18 @@ import { fetchHealth, type ReadinessState, type WarmupProgress } from "@/lib/api
  * `poll_idle_interval_seconds` — no client-side poll literal): it polls fast while `initializing`/loading
  * (so the flip to Ready shows within ~a poll of warm-up completion) and backs off to the idle cadence once
  * `ready`. On a network/non-200 it surfaces `unavailable` honestly — never a fabricated "ready".
+ *
+ * iter-33 (J-20): the SAME poll also carries the daily preflight verdict (`preflight`) — the layout-level
+ * `PreflightBanner`'s ONLY read path (no second fetch, no per-page recompute).
  */
 export interface ReadinessContextValue {
   /** The honest backend readiness state, or null before the first poll resolves. */
   state: ReadinessState | null;
   /** The background warm-up progress (history n/m), or null before the first poll. */
   warmup: WarmupProgress | null;
+  /** The single GO/DEGRADED/NO-GO preflight verdict, or null before the first poll resolves / on a
+   *  failed poll (the backend is unreachable — the banner renders its own honest NO-GO in that case). */
+  preflight: PreflightStatus | null;
   /** True until the first poll has resolved (so callers can show a neutral "checking" state). */
   loading: boolean;
 }
@@ -34,6 +40,7 @@ const BOOTSTRAP_ACTIVE_MS = 2_000;
 export function ReadinessProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<ReadinessState | null>(null);
   const [warmup, setWarmup] = useState<WarmupProgress | null>(null);
+  const [preflight, setPreflight] = useState<PreflightStatus | null>(null);
   const [loading, setLoading] = useState(true);
   // the config-derived cadences (seconds) from the latest payload; refs so the polling loop reads the
   // freshest value without re-subscribing.
@@ -51,6 +58,7 @@ export function ReadinessProvider({ children }: { children: React.ReactNode }) {
         if (!active) return;
         setState(data.readiness);
         setWarmup(data.warmup);
+        setPreflight(data.preflight);
         // adopt the config-derived poll cadences (seconds → ms); never a client-side literal.
         activeMs.current = Math.max(250, Math.round(data.poll_interval_seconds * 1000));
         idleMs.current = Math.max(activeMs.current, Math.round(data.poll_idle_interval_seconds * 1000));
@@ -60,6 +68,7 @@ export function ReadinessProvider({ children }: { children: React.ReactNode }) {
         if (!active) return;
         setState("unavailable"); // honest — never a fabricated ok
         setWarmup(null);
+        setPreflight(null); // honest — the banner renders its own NO-GO for a null preflight, never blank
         nextDelay = activeMs.current; // keep retrying at the active cadence until the backend answers
       } finally {
         if (active) {
@@ -77,8 +86,8 @@ export function ReadinessProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<ReadinessContextValue>(
-    () => ({ state, warmup, loading }),
-    [state, warmup, loading],
+    () => ({ state, warmup, preflight, loading }),
+    [state, warmup, preflight, loading],
   );
 
   return <ReadinessContext.Provider value={value}>{children}</ReadinessContext.Provider>;

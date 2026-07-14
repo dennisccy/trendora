@@ -49,6 +49,44 @@ def test_health_carries_readiness_and_warmup(loaded_engine):
 
 
 # ==================================================================================================
+# iter-33 (J-20 / backlog B-301) -- the additive daily preflight verdict on the SAME /api/health payload
+# ==================================================================================================
+def test_health_carries_additive_preflight_field(loaded_engine, tmp_path, monkeypatch):
+    """The `preflight` field is ADDITIVE: every EXISTING key stays present (the J-40 contract is
+    untouched) and the new field carries the exact GO/DEGRADED/NO-GO shape -- never a second endpoint."""
+    # Redirect the verdict-history append so this test never writes the REAL session's history log.
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    with TestClient(main.app) as client:
+        body = client.get("/api/health").json()
+    existing_keys = {
+        "status", "db_ok", "provider", "last_run_date", "seed_latest_date", "symbol_count",
+        "readiness", "warmup", "poll_interval_seconds", "poll_idle_interval_seconds",
+    }
+    assert existing_keys <= set(body)  # every pre-iter-33 key is still present, unchanged
+    preflight = body["preflight"]
+    assert set(preflight) == {"verdict", "reasons", "components", "as_of", "reference"}
+    assert preflight["verdict"] in {"GO", "DEGRADED", "NO-GO"}
+    assert isinstance(preflight["reasons"], list)
+    assert preflight["as_of"] == preflight["reference"]  # same value under both spec-named keys
+    assert set(preflight["components"]) == {"servability", "freshness", "integrity"}
+    for component in preflight["components"].values():
+        assert set(component) == {"ok", "severity", "detail"}
+        assert component["severity"] in {"degraded", "no-go"}
+
+
+def test_health_preflight_is_single_source(loaded_engine, tmp_path, monkeypatch):
+    """The served `preflight` field equals a DIRECT `compute_preflight` call for the same session/config
+    -- the endpoint re-displays the ONE composer's output verbatim, never a second/divergent computation."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    cfg = load_config()
+    with TestClient(main.app) as client:
+        served = client.get("/api/health").json()["preflight"]
+    with Session(loaded_engine) as session:
+        direct = readiness.compute_preflight(session, config=cfg)
+    assert served == direct
+
+
+# ==================================================================================================
 # iter-24 fast-platform item G — cheap readiness probe (memoized cadence dates + one grouped query)
 # ==================================================================================================
 def test_readiness_memoizes_cadence_dates_across_repeated_calls(loaded_engine, monkeypatch):

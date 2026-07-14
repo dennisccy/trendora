@@ -22,20 +22,35 @@ progress and the analytics pages show their "warming up (n/m)" state — both re
 """
 from __future__ import annotations
 
+import json
+import os
 from datetime import date as date_cls
+from pathlib import Path
 from typing import Optional
 
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from app.config import Config, get_config
+from app.config import REPO_ROOT, Config, get_config
+from app.engine.evidence import resolve_ledger_path
+from app.engine.graveyard import resolve_staging_ledger_path
+from app.engine.ledger import append_entry, read_entries
 from app.engine.prices import bar_cache, latest_data_date
+from app.engine.registry import resolve_registry_path
 from app.engine.warmup import _warmup_dates, get_warmup
 from app.models import DailyPrice, ScannerRun
 
 READY = "ready"
 INITIALIZING = "initializing"
 UNAVAILABLE = "unavailable"
+
+# The three composite preflight verdicts (iter-33, J-20 / backlog B-301). String values are the exact
+# DoD-mandated spelling ("NO-GO", hyphenated) — never re-derived elsewhere.
+GO = "GO"
+DEGRADED = "DEGRADED"
+NO_GO = "NO-GO"
+_VERDICT_RANK = {GO: 0, DEGRADED: 1, NO_GO: 2}  # for "worst breached component wins" composition
+_SEVERITY_TO_VERDICT = {"degraded": DEGRADED, "no-go": NO_GO}
 
 
 def _latest_run_date(session: Session):
@@ -174,3 +189,166 @@ def compute_readiness(
             "message": message,
         },
     }
+
+
+# ====================================================================================================
+# Daily preflight verdict (iter-33, J-20 / backlog B-301) — a composite GO/DEGRADED/NO-GO verdict
+# layered on top of `compute_readiness` above. See `app.config.ReadinessCfg` for the tunables.
+# ====================================================================================================
+def _ledger_file_ok(path: str) -> tuple[bool, str]:
+    """`(True, "")` when `path` exists and every non-blank line parses as JSON (the honest "empty
+    ledger" case — zero lines — also counts as ok, mirroring `app.engine.ledger.read_entries`); `(False,
+    <reason>)` when the file is missing or contains unparseable JSON. Tiny-file read only — never a DB
+    query or a whole-table scan (anti-goal #8)."""
+    if not os.path.exists(path):
+        return False, f"missing ({path})"
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            for line in handle:
+                line = line.strip()
+                if line:
+                    json.loads(line)
+    except (OSError, json.JSONDecodeError) as exc:
+        return False, f"unparseable ({path}: {exc})"
+    return True, ""
+
+
+def compute_preflight(session: Session, config: Optional[Config] = None) -> dict:
+    """Compute the single daily preflight verdict (Data Contract value) — a PURE composition over three
+    inputs that exist now, recomputing none of them:
+
+      - **servability** — reuses `compute_readiness`'s OWN liveness check verbatim (no second
+        computation): breached iff its `state == "unavailable"`.
+      - **freshness** — the latest bar's age in trading days vs a deterministic, seed-resolved reference
+        (always the latest data date itself — never `date.today()`, anti-goal #5), so a fully-loaded
+        seed is always 0 days old. Breached when that age exceeds `config.readiness.freshness_max_age_days`
+        (an owner-configured threshold; lowering it — e.g. below zero — is the sanctioned lever for
+        inducing a breach without mutating committed seed data) or when there is no price data at all.
+      - **DB/ledger integrity** — the DB is reachable AND the canonical/staging/registry JSONL files
+        (`resolve_ledger_path` / `resolve_staging_ledger_path` / `resolve_registry_path` — the EXACT
+        existing resolvers, never duplicated) exist and parse. Tiny-file reads only.
+
+    The overall verdict is the WORST of every breached component's configured severity (`GO` when
+    nothing is breached). Returns `{verdict, reasons, components, as_of, reference}` (the spec names the
+    freshness anchor "as_of/reference" — both keys are served, same value, so either name finds it) —
+    `components` carries every input's `{ok, severity, detail}` regardless of outcome; `reasons` collects
+    the breached components' plain-language `detail` strings, in composition order, for direct display."""
+    cfg = config or get_config()
+    rcfg = cfg.readiness
+    readiness_result = compute_readiness(session, config=cfg)
+
+    try:
+        latest_data = latest_data_date(session)
+        db_ok = True
+    except Exception:  # pragma: no cover - DB unreachable is surfaced, never faked
+        latest_data = None
+        db_ok = False
+
+    components: dict[str, dict] = {}
+    reasons: list[str] = []
+    verdict = GO
+
+    def _apply(name: str, ok: bool, detail: str) -> None:
+        nonlocal verdict
+        severity = rcfg.severity[name]
+        components[name] = {"ok": ok, "severity": severity, "detail": detail}
+        if not ok:
+            reasons.append(detail)
+            mapped = _SEVERITY_TO_VERDICT[severity]
+            if _VERDICT_RANK[mapped] > _VERDICT_RANK[verdict]:
+                verdict = mapped
+
+    # --- servability: compute_readiness's own liveness check, verbatim ---
+    servable = readiness_result["state"] != UNAVAILABLE
+    _apply(
+        "servability",
+        servable,
+        "Backend is serving the latest snapshot."
+        if servable
+        else "No servable snapshot: the database is unreachable or no run is persisted for the latest data date.",
+    )
+
+    # --- freshness: trading-day age of the latest bar vs the deterministic seed-resolved reference ---
+    if latest_data is None:
+        _apply("freshness", False, "Data freshness could not be determined: no price data is loaded.")
+    else:
+        age_days = 0  # the reference IS the latest available bar (never date.today()) -- see docstring
+        fresh = age_days <= rcfg.freshness_max_age_days
+        if fresh:
+            detail = (
+                f"Latest data ({latest_data.isoformat()}) is {age_days} trading day(s) old "
+                f"(max {rcfg.freshness_max_age_days})."
+            )
+        else:
+            detail = (
+                f"Latest data ({latest_data.isoformat()}) is {age_days} trading day(s) old, exceeding "
+                f"the configured maximum of {rcfg.freshness_max_age_days} day(s)."
+            )
+        _apply("freshness", fresh, detail)
+
+    # --- DB / ledger integrity: DB reachable AND the three canonical JSONL files exist + parse ---
+    problems: list[str] = []
+    if not db_ok:
+        problems.append("the database is unreachable")
+    for label, resolver in (
+        ("evidence ledger", resolve_ledger_path),
+        ("staging ledger", resolve_staging_ledger_path),
+        ("pre-registration registry", resolve_registry_path),
+    ):
+        ok, reason = _ledger_file_ok(resolver())
+        if not ok:
+            problems.append(f"{label} {reason}")
+    _apply(
+        "integrity",
+        not problems,
+        "The database and all ledger/registry files are reachable and parse."
+        if not problems
+        else "Integrity check failed: " + "; ".join(problems) + ".",
+    )
+
+    reference = latest_data.isoformat() if latest_data else None
+    return {
+        "verdict": verdict,
+        "reasons": reasons,
+        "components": components,
+        # the spec names this "as_of/reference" (either name); both keys carry the SAME deterministic
+        # freshness anchor so a reader using either name finds it -- never two different values.
+        "as_of": reference,
+        "reference": reference,
+    }
+
+
+# The environment-variable NAME the verdict-history path may be overridden with (test/gate seam — the
+# NAME only, never a path VALUE literal in code). Mirrors `app.engine.evidence.LEDGER_PATH_ENV`.
+VERDICT_HISTORY_PATH_ENV = "READINESS_VERDICT_HISTORY_PATH"
+
+
+def resolve_verdict_history_path() -> str:
+    """The verdict-history log path: the `READINESS_VERDICT_HISTORY_PATH` env override if set, else
+    `config.readiness.verdict_history_path` resolved against `REPO_ROOT` when relative. Mirrors
+    `app.engine.evidence.resolve_ledger_path()` exactly."""
+    override = os.environ.get(VERDICT_HISTORY_PATH_ENV)
+    if override:
+        return override
+    configured = Path(get_config().readiness.verdict_history_path)
+    if not configured.is_absolute():
+        configured = REPO_ROOT / configured
+    return str(configured)
+
+
+def record_verdict_transition(
+    verdict: str, reasons: list[str], reference: Optional[str], path: Optional[str] = None
+) -> bool:
+    """Append ONE verdict-history entry iff `verdict` differs from the LAST recorded one (append-only;
+    bounded growth — this is the "only on a transition, never on every ~2s poll" guard). Returns True iff
+    an entry was appended. `path` defaults to `resolve_verdict_history_path()`; a test may pass a
+    `tmp_path` file instead (mirrors `app.engine.budget_accounting.build_budget_payload`'s optional-path
+    pattern). Reuses `app.engine.ledger`'s existing `read_entries`/`append_entry` verbatim — no second
+    JSONL read/write implementation."""
+    resolved = path if path is not None else resolve_verdict_history_path()
+    entries = read_entries(resolved)
+    last_verdict = entries[-1].get("verdict") if entries else None
+    if last_verdict == verdict:
+        return False
+    append_entry(resolved, {"verdict": verdict, "reasons": reasons, "reference": reference})
+    return True

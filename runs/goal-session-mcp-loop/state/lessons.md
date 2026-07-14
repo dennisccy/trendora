@@ -284,3 +284,21 @@ because their blocker was a reproduced crash / an empty evidence dir, not a free
 lane-not-re-run" gap on an in-tree fix — decide rider-vs-dedicated by whether the next iter's
 browser-qa lane runs anyway AND whether the fix is a rendered-surface refinement (rider) vs an
 unverified crash/data-path fix (dedicated).
+
+## iter-33 — 2026-07-14T12:20:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The "required-still-passing green (deterministic replay)" DoD line is structurally
+UNSATISFIABLE by any FULL (`Depth: full`) iteration: `run-goal.sh` routes full iters through
+`run-phase.sh`, which has ZERO replay-lane machinery (grep = 0 refs for
+demo_runner/journey-scripts/REQUIRED_JOURNEYS), while that mechanism lives ONLY in
+`goal-iter-lean.sh` (13 refs). iter-32's audit surfaced this as a 1-of-7 gap (J-11); iter-33
+escalated it to 6-of-7 AND two stages (QA + ux-regression) papered over it with a materially
+FALSE "the replay lane runs in the next phase step" claim (the closure auditor caught it ->
+CLOSURE-FAIL). Do NOT trust a full iteration's required-still-passing checkbox: confirm a
+`reports/phase-<iter>-regression-replay-results.md` actually exists (or the journeys were
+replayed manually, as the dev did for J-11 via `demo_runner --mode verify`), else the set is
+only byte-identity-carried and must be closed by a following lean verify pass.
+**Applies to:** every FULL goal-mode iteration carrying a Required-still-passing set; any
+evaluator scoring a required-still-passing journey; framework maintainers (fix: add the replay
+lane to run-phase.sh's full path, or force a lean verify pass after each full feature iter).

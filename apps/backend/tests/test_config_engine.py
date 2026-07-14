@@ -144,6 +144,12 @@ VALID = {
         "health_poll_interval_seconds": 2.0,
         "health_poll_idle_interval_seconds": 30.0,
     },
+    # iter-33 made `readiness` required (daily preflight-verdict tunables come from config, never code).
+    "readiness": {
+        "freshness_max_age_days": 5,
+        "severity": {"servability": "no-go", "freshness": "degraded", "integrity": "no-go"},
+        "verdict_history_path": "runs/x/preflight-verdict-history.jsonl",
+    },
     # iter-6 made `walk_forward` required (forward-testing params come from config, never code).
     # J-19 made `walk_forward.attribution` required (rank-band edges + list size come from config).
     "walk_forward": {

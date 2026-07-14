@@ -532,6 +532,54 @@ class StartupCfg(BaseModel):
         return self
 
 
+class ReadinessCfg(BaseModel):
+    """Daily preflight-verdict tunables (iter-33, J-20 / backlog B-301). `app.engine.readiness:
+    compute_preflight` extends `compute_readiness` into a composite GO/DEGRADED/NO-GO verdict; every
+    number/mapping it uses lives here (mirrors `StartupCfg`'s shape exactly — boot-validated,
+    `extra="allow"`, no inline literal in the module):
+
+      - `freshness_max_age_days` — the trading-day-age threshold the freshness component breaches past.
+        Age is measured against a DETERMINISTIC, seed-resolved reference (never `date.today()` —
+        anti-goal #5): the reference is always the seed's own latest available data date, so a
+        fully-loaded seed is 0 trading days old (GO) by construction. Lowering this value (e.g. a
+        negative override, via a temporary `TRENDORA_CONFIG` alt-file) is the sanctioned lever for
+        inducing the DEGRADED/NO-GO test states without mutating committed seed data.
+      - `severity` — which verdict a breached component forces, keyed by component name (`servability` /
+        `freshness` / `integrity`): `"degraded"` or `"no-go"`. Owner-reviewed config (B-301's "making
+        NO-GO too easy is alarm fatigue" trap) — MUST cover all three components and include at least one
+        `"degraded"` and one `"no-go"` entry so both states are inducible for the fixture matrix.
+      - `verdict_history_path` — the append-only verdict-transition log path (written only when the
+        verdict changes, never on every ~2s poll). A relative path resolves against the repo root; the
+        `READINESS_VERDICT_HISTORY_PATH` env override takes precedence (test/gate seam — mirrors
+        `app.engine.evidence.LEDGER_PATH_ENV`).
+
+    Boot-validated: `severity` must name exactly `{servability, freshness, integrity}` with every value
+    one of `"degraded"`/`"no-go"`, covering both. An invalid block raises `ConfigError`, never a silent
+    default."""
+
+    model_config = ConfigDict(extra="allow")
+    freshness_max_age_days: int
+    severity: dict[str, str]
+    verdict_history_path: str
+
+    @model_validator(mode="after")
+    def _validate(self) -> "ReadinessCfg":
+        required_components = {"servability", "freshness", "integrity"}
+        missing = sorted(required_components - set(self.severity))
+        if missing:
+            raise ValueError(f"readiness.severity missing components: {missing}")
+        allowed_severities = {"degraded", "no-go"}
+        bad = sorted(f"{k}={v}" for k, v in self.severity.items() if v not in allowed_severities)
+        if bad:
+            raise ValueError(f"readiness.severity values must be one of {sorted(allowed_severities)}: {bad}")
+        if not allowed_severities <= set(self.severity.values()):
+            raise ValueError(
+                "readiness.severity must configure at least one component as 'degraded' and at least "
+                "one as 'no-go' so the fixture matrix can induce both states"
+            )
+        return self
+
+
 class ServerOpsCfg(BaseModel):
     """iter-42 (J-100) — bounded-resource SERVER ops guards. The SINGLE source of the uvicorn concurrency
     cap, the keep-alive + graceful-shutdown timeouts, and the per-process virtual-memory cap the start
@@ -2184,6 +2232,7 @@ class Config(BaseModel):
     stock_industries: dict[str, list[str]] = Field(default_factory=dict)
     scanner: ScannerCfg
     startup: StartupCfg  # iter-28 (J-40/J-41) fast-ready boot + warm-up tunables (boot-validated above)
+    readiness: ReadinessCfg  # iter-33 (J-20) daily preflight-verdict tunables (boot-validated above)
     # iter-42 (J-100) — bounded-resource server ops guards (uvicorn concurrency/timeout caps + the process
     # ulimit -v memory cap) the start script reads. Default-populated so a config/test fixture predating it
     # still loads unchanged and serves the documented bounds.

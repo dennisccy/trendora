@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-33",
+  "base_url": "http://localhost:3255",
+  "iteration": 33,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "See today's trust verdict at a glance",
+      "narration": "Every page now opens with one simple answer: is today's board safe to rely on? A thin green strip right under the header tells you at a glance, sitting alongside the familiar 'Ready' badge you already know.",
+      "point_out": "The new green strip reading \"GO — today's board is current.\" just below the header.",
+      "journey": "J-20",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "GO — today's board is current." }
+    },
+    {
+      "n": 2,
+      "title": "The same verdict follows you to Stocks",
+      "narration": "Head over to the Stocks leaderboard and the identical green strip is right there too, so you never wonder whether this page's data is trustworthy before you scroll further.",
+      "point_out": "The same GO strip sits above the ranked leaderboard, with every stock's evidence badge still fully visible beneath it.",
+      "journey": "J-20",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Stocks" } },
+      "expect": { "text": "GO — today's board is current." }
+    },
+    {
+      "n": 3,
+      "title": "Drill into a single stock — still covered",
+      "narration": "Open a single stock, like NVDA, and the same trust verdict sits right above its scores and evidence badge.",
+      "point_out": "The GO strip above NVDA's Leadership, Entry Quality, and Risk scores.",
+      "journey": "J-20",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/NVDA" },
+      "expect": { "text": "GO — today's board is current." }
+    },
+    {
+      "n": 4,
+      "title": "Your watchlist carries the same guarantee",
+      "narration": "Your saved watchlist gets the identical strip, so a personal shortlist is covered exactly like every other page.",
+      "point_out": "The GO strip above the watchlist table.",
+      "journey": "J-20",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Watchlist" } },
+      "expect": { "text": "GO — today's board is current." }
+    },
+    {
+      "n": 5,
+      "title": "Even the evidence ledger is covered",
+      "narration": "The Evidence page, where every claim's real track record lives, shows the same banner too — so you know the ledger itself is trustworthy before you read it.",
+      "point_out": "The GO strip above the certified-claims ledger table.",
+      "journey": "J-20",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Evidence" } },
+      "expect": { "text": "GO — today's board is current." }
+    },
+    {
+      "n": 6,
+      "title": "The verdict reaches the research tools too",
+      "narration": "It's not just the main pages — Research and its labs inherit the exact same banner, because it's built once into the shared shell instead of being bolted onto each page separately.",
+      "point_out": "The identical GO strip above the Research lab list.",
+      "journey": "J-20",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Research" } },
+      "expect": { "text": "GO — today's board is current." }
+    },
+    {
+      "n": 7,
+      "title": "...all the way into a specific lab",
+      "narration": "One level deeper, in the Factor Lab, the banner is still exactly the same strip with exactly the same words — one verdict, everywhere, always.",
+      "point_out": "The same GO strip above the Factor Lab table.",
+      "journey": "J-20",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/factor-lab" },
+      "expect": { "text": "GO — today's board is current." }
+    },
+    {
+      "n": 8,
+      "title": "No collisions, even on busier pages",
+      "narration": "Even on the Data Manager page, which already has its own status panels, the new strip sits cleanly on its own line without overlapping anything. And on a bad day, this same strip turns amber or red with a plain-English reason — though today, everything checks out green.",
+      "point_out": "The thin GO strip sitting above Data Manager's own coverage panels, clearly separate from them.",
+      "journey": "J-20",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "click", "target": { "role": "link", "name": "Data Manager" } },
+      "expect": { "text": "GO — today's board is current." }
+    }
+  ]
+}

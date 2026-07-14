@@ -106,6 +106,30 @@ export interface WarmupProgress {
   message: string;
 }
 
+// --- daily preflight verdict (iter-33, J-20 / backlog B-301) ------------------------------
+/** The single canonical GO/DEGRADED/NO-GO verdict computed ONCE by the backend
+ *  (app.engine.readiness.compute_preflight) and served on the SAME /api/health payload. The frontend
+ *  NEVER computes this itself — it renders this value verbatim (single source). */
+export type PreflightVerdict = "GO" | "DEGRADED" | "NO-GO";
+
+/** One composed input's contribution to the verdict (servability / freshness / integrity). */
+export interface PreflightComponent {
+  ok: boolean;
+  severity: string;
+  detail: string;
+}
+
+export interface PreflightStatus {
+  verdict: PreflightVerdict;
+  /** Plain-language reason strings for every breached component, in composition order. */
+  reasons: string[];
+  components: Record<string, PreflightComponent>;
+  /** The deterministic, seed-resolved freshness anchor (ISO date), or null with no price data. Served
+   *  under both names (`as_of`/`reference` are the SAME value) since the spec names it either way. */
+  as_of: string | null;
+  reference: string | null;
+}
+
 export interface HealthStatus {
   status: string;
   db_ok: boolean;
@@ -119,6 +143,8 @@ export interface HealthStatus {
   // the config-derived poll cadences the badge derives its interval from (no client-side poll literal).
   poll_interval_seconds: number;
   poll_idle_interval_seconds: number;
+  // iter-33 (J-20): the single daily preflight verdict (additive).
+  preflight: PreflightStatus;
 }
 
 /** Fetch backend health + readiness. Throws on network error or non-200 so callers can render an

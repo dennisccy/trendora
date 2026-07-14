@@ -78,3 +78,24 @@ wants the required set fully closed should add the J-11 replay to iter-33 (recom
 **Ambiguity:** B-301's preflight "data freshness (latest bar age vs expectation), market-calendar aware" is underspecified for an offline/DETERMINISTIC app that runs against a FROZEN committed seed (goal.md Constraints): "now"/"expectation" is undefined, and a wall-clock `date.today()` anchor would both make the healthy `GO` state impossible (the seed's latest bar is always "stale" vs the real current date) and break determinism (anti-goal #5) / demo reproducibility.
 **We chose:** Anchor freshness to a DETERMINISTIC config/seed-derived reference (default = the seed's own latest available date, so a fully-loaded seed reads `GO`), count the age in trading days via the existing SPY market calendar, and induce the stale (DEGRADED/NO-GO) test state via a controlled config/env override (`readiness.freshness_max_age_days` / a pinned reference) — never wall-clock time and never by mutating committed seed data.
 **Reversible:** yes
+
+## iter-33 — goal-evaluator
+
+**Ambiguity:** The iteration ended CLOSURE-FAIL, and this session's strong precedent (iter-20/22/24/31)
+is that a TARGET journey does not flip to `passing` in a CLOSURE-FAIL iteration. But in every prior
+case the CLOSURE-FAIL was about the TARGET's OWN canonical browser evidence (skipped / stale / a
+post-lane fix not re-verified). Here J-20's own evidence is complete and clean on the FINAL build (no
+post-lane fix — audit made zero repo changes; closure explicitly EXEMPTS J-20 — "tested to an unusually
+high standard ... not the source of the blocking finding"); the CLOSURE-FAIL is entirely about a
+DIFFERENT DoD line (6 OTHER required journeys — J-01/02/04/05/13/18 — not deterministically replayed
+because full iters route through run-phase.sh, which lacks the replay lane). So it was open whether
+J-20 is `passing` or `partial`.
+**We chose:** Scored J-20 `passing`. The session's `partial` discipline exists to avoid claiming a
+journey done when ITS OWN canonical lane didn't verify it — a guard fully satisfied for J-20 (browser-qa
+PASS 20/20 on the final build; all 3 states md5-distinct; exact NO-GO phrase pixel-confirmed;
+single-source UT-19; correctness matrix auditor-verified against the real compute_preflight). Marking
+`partial` would misattribute a replay gap in OTHER journeys to J-20's own evidence, which is false and
+contradicts the closure auditor's own read. The guard is instead honored at the OVERALL level: verdict
+is CONTINUE (not GOAL_ACHIEVED), the required-still-passing replay gap is recorded explicitly on
+J-01/02/04/05/13/18, and the mandated next step is the cheap lean replay closeout that re-clears closure.
+**Reversible:** yes

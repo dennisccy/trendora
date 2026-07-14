@@ -103,6 +103,11 @@ _CFG = {
         "readiness_budget_seconds": 30.0, "warmup_batch_size": 1,
         "health_poll_interval_seconds": 2.0, "health_poll_idle_interval_seconds": 30.0,
     },
+    "readiness": {
+        "freshness_max_age_days": 5,
+        "severity": {"servability": "no-go", "freshness": "degraded", "integrity": "no-go"},
+        "verdict_history_path": "runs/x/preflight-verdict-history.jsonl",
+    },
     "walk_forward": {
         "history_years": 2, "asof_cadence": "quarterly", "horizons": [1, 5, 10, 20, 60],
         "min_sample": 30, "default_horizon": 20,

@@ -5,6 +5,7 @@ import "./globals.css";
 import { AsOfProvider } from "@/components/asof-provider";
 import { AsOfSwitcher } from "@/components/asof-switcher";
 import { HealthBadge } from "@/components/health-badge";
+import { PreflightBanner } from "@/components/preflight-banner";
 import { ReadinessProvider } from "@/components/readiness-provider";
 import { Sidebar } from "@/components/sidebar";
 import { ASOF_HEADER, isValidIsoDate } from "@/lib/dates";
@@ -43,6 +44,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                     <HealthBadge />
                   </div>
                 </header>
+                <PreflightBanner />
                 <main className="flex-1 overflow-x-auto p-6">{children}</main>
               </div>
             </div>

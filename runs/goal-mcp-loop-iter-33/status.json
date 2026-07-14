@@ -1,0 +1,29 @@
+{
+  "phase": "goal-mcp-loop-iter-33",
+  "status": "blocked",
+  "current_step": "closure_failed",
+  "updated_at": "2026-07-14T10:35:48.294860Z",
+  "started_at": "2026-07-14T06:26:32.571554Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/config.py",
+    "config.yaml",
+    "apps/backend/app/engine/readiness.py",
+    "apps/backend/app/api/health.py",
+    "apps/backend/tests/test_readiness.py",
+    "apps/backend/tests/test_health.py",
+    "apps/backend/tests/test_config.py",
+    "apps/backend/tests/test_config_engine.py",
+    "apps/backend/tests/test_themes.py",
+    "apps/backend/tests/test_sectors.py",
+    "apps/backend/tests/test_indexes.py",
+    "apps/frontend/lib/api.ts",
+    "apps/frontend/components/readiness-provider.tsx",
+    "apps/frontend/components/preflight-banner.tsx",
+    "apps/frontend/app/layout.tsx"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "next_action": "review"
+}

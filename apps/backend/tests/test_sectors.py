@@ -138,6 +138,11 @@ _SYNTH_CFG = {
         "health_poll_interval_seconds": 2.0,
         "health_poll_idle_interval_seconds": 30.0,
     },
+    "readiness": {  # iter-33: readiness is a required config section (daily preflight-verdict tunables)
+        "freshness_max_age_days": 5,
+        "severity": {"servability": "no-go", "freshness": "degraded", "integrity": "no-go"},
+        "verdict_history_path": "runs/x/preflight-verdict-history.jsonl",
+    },
     "walk_forward": {  # iter-6: walk_forward is a required config section
         "history_years": 2, "asof_cadence": "quarterly", "horizons": [1, 5, 10, 20, 60],
         "min_sample": 30, "default_horizon": 20,

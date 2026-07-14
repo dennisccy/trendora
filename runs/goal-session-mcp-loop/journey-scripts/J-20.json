@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "journey": "J-20",
+  "name": "A single daily preflight verdict guards every decision surface",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-20", "action": {"type": "goto", "url": "/"}, "expect": {"text": "GO — today's board is current."}},
+    {"n": 2, "journey": "J-20", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "GO — today's board is current."}},
+    {"n": 3, "journey": "J-20", "action": {"type": "goto", "url": "/stocks/NVDA"}, "expect": {"text": "GO — today's board is current."}},
+    {"n": 4, "journey": "J-20", "action": {"type": "goto", "url": "/watchlist"}, "expect": {"text": "GO — today's board is current."}},
+    {"n": 5, "journey": "J-20", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "GO — today's board is current."}}
+  ]
+}
