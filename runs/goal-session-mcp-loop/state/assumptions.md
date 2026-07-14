@@ -73,3 +73,8 @@ proven'/row). Matches the audit/ux-regression/closure consensus that the risk is
 (not silent) because it accepts corroboration in lieu of a dedicated re-verification; a human who
 wants the required set fully closed should add the J-11 replay to iter-33 (recommended in the eval).
 **Reversible:** yes
+
+## iter-33 — goal-decomposer
+**Ambiguity:** B-301's preflight "data freshness (latest bar age vs expectation), market-calendar aware" is underspecified for an offline/DETERMINISTIC app that runs against a FROZEN committed seed (goal.md Constraints): "now"/"expectation" is undefined, and a wall-clock `date.today()` anchor would both make the healthy `GO` state impossible (the seed's latest bar is always "stale" vs the real current date) and break determinism (anti-goal #5) / demo reproducibility.
+**We chose:** Anchor freshness to a DETERMINISTIC config/seed-derived reference (default = the seed's own latest available date, so a fully-loaded seed reads `GO`), count the age in trading days via the existing SPY market calendar, and induce the stale (DEGRADED/NO-GO) test state via a controlled config/env override (`readiness.freshness_max_age_days` / a pinned reference) — never wall-clock time and never by mutating committed seed data.
+**Reversible:** yes
