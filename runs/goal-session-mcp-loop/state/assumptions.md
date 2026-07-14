@@ -99,3 +99,9 @@ contradicts the closure auditor's own read. The guard is instead honored at the 
 is CONTINUE (not GOAL_ACHIEVED), the required-still-passing replay gap is recorded explicitly on
 J-01/02/04/05/13/18, and the mandated next step is the cheap lean replay closeout that re-clears closure.
 **Reversible:** yes
+
+## iter-34 — goal-evaluator
+
+**Ambiguity:** J-20 was this iteration's named Target to "re-confirm passing via browser-qa on the final tree," but only its GO state was re-induced live this pass (all 5 surfaces, single-source, DOM===API); the loud DEGRADED/NO-GO states — including the mandated "do not rely on today's board" phrase — were NOT re-induced live (a tool-permission boundary). J-20's acceptance names all three states. It was open whether a GO-only live re-confirmation counts as "re-confirmed passing."
+**We chose:** Scored J-20 `passing` (re-confirmed). Grounds: J-20 was ALREADY fully verified passing at iter-33 (all three states, exact NO-GO phrase, browser-qa 20/20 on the final build — the iter-33 CLOSURE-FAIL was about OTHER journeys' replay gap, not J-20's own evidence), and readiness.py + config.yaml + all apps/frontend are git-identical to that verified iter-33 commit (4561da1) — zero product diff this iter — so there is no regression mechanism for the loud states. The live GO re-confirmation + byte-identity carry of the loud states is sufficient; requiring a fresh live NO-GO induction on an already-verified, byte-identical journey would be verification for its own sake. The pipeline artifact (merged ui-test-results) discloses the GO-only live scope openly; this entry records that the SCORING acceptance of it is my call.
+**Reversible:** yes

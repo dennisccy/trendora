@@ -1,0 +1,33 @@
+{
+  "phase": "goal-mcp-loop-iter-34",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-07-14T11:35:18Z",
+  "started_at": "2026-07-14T11:35:18Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "docs/handoffs/goal-mcp-loop-iter-34-dev.md",
+    "runs/goal-mcp-loop-iter-34/status.json"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "review",
+  "verify_only_pass": {
+    "evidence_claim_registered": false,
+    "product_source_diff_empty": true,
+    "ledgers_diff_empty": true,
+    "blueprint_clarification_already_present": true,
+    "targeted_tests": "tests/test_evidence.py::test_canonical_ledger_frozen_golden, tests/test_staging_ledger_routing.py::test_committed_staging_ledger_is_the_regenerated_30y_discovery",
+    "targeted_tests_result": "2 passed, 0 failed (0.19s)",
+    "service_readiness_check": {
+      "performed": true,
+      "method": "rm -rf apps/frontend/.next; prod-mode start-backend.sh + start-frontend.sh on isolated ports 18471/18472",
+      "backend_health": "HTTP 200 /api/health after 1s; readiness=ready; preflight.verdict=GO; symbol_count=590; warmup 89/89",
+      "frontend_build": "cold next build succeeded from removed .next; HTTP 200 / after 5s (Ready in 275ms)",
+      "spot_checked_pages_200": ["/stocks", "/evidence", "/research/registry", "/research/graveyard", "/research/budget"],
+      "shutdown_clean": true
+    },
+    "finding": "iter-33 CLOSURE-FAIL replay gap closeout: confirms zero product-source/ledger diff (git diff HEAD empty on apps/**, config.yaml, seed, both ledgers), no ## Evidence Claim registered (divisor stays 8), blueprint.md iter-34 clarification already present from decomposition, and both services boot clean from a forced-fresh prod build with the backend's own /api/health preflight reading GO. The developer step is a deliberate no-op on code; the regression-replay-results.md + merged ui-test-results.md artifacts are produced next by the browser-qa step (goal-iter-lean.sh Step 3), not by this pass."
+  }
+}
