@@ -960,6 +960,16 @@ research:
       - { key: rising,  label: "Rising stress (velocity > 0)" }
       - { key: flat,    label: "Flat (velocity = 0)" }
       - { key: falling, label: "Falling stress (velocity < 0)" }
+  # iter-36 CONSUMED — the referee-calibration harness (J-22 / backlog B-102). Every tunable
+  # app.engine.referee_audit reads lives here (anti-goal: No magic numbers). `n_null_trials` is the real
+  # offline-run count (200); a test/CI fixture overrides this down to ~20 via an explicit cfg override,
+  # NEVER by editing this committed default. The harness runs ONLY when explicitly invoked
+  # (`python -m app.engine.referee_audit`) — this block alone changes no runtime behavior.
+  referee_audit:
+    n_null_trials: 200
+    seed: 20240601
+    contaminated_factor_horizon: 5
+    report_path: runs/goal-session-mcp-loop/state/referee-audit-report.json
 
 # ----------------------------------------------------------------------------------------
 # iter-29 CONSUMED — Market Phase & drawdown-Severity layer (J-87). The read-only derivation

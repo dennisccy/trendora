@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "journey": "J-22",
+  "name": "Referee audit — certifier calibration: null-trial false-pass rate + CI, configured alpha, contaminated-factor tripwire labeled 'expected: rejected', run date from persisted artifact",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-22", "action": {"type": "goto", "url": "/research"}, "expect": {"text": "Referee audit"}},
+    {"n": 2, "journey": "J-22", "action": {"type": "click", "target": {"testid": "research-governance-link-referee-audit"}}, "expect": {"text": "Referee audit"}},
+    {"n": 3, "journey": "J-22", "action": {"type": "goto", "url": "/research/referee-audit"}, "expect": {"text": "source factor: leadership_score"}},
+    {"n": 4, "journey": "J-22", "action": {"type": "goto", "url": "/research/referee-audit"}, "expect": {"text": "16 of 200 trials"}},
+    {"n": 5, "journey": "J-22", "action": {"type": "goto", "url": "/research/referee-audit"}, "expect": {"text": "expected: rejected"}},
+    {"n": 6, "journey": "J-22", "action": {"type": "goto", "url": "/research/referee-audit"}, "expect": {"text": "2026-07-01"}}
+  ]
+}

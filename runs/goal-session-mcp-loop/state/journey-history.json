@@ -4,12 +4,12 @@
       "id": "J-01",
       "name": "Every score shows an evidence status",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-35",
-      "last_passing_iter": "goal-mcp-loop-iter-35",
+      "last_verified_iter": "goal-mcp-loop-iter-36",
+      "last_passing_iter": "goal-mcp-loop-iter-36",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-35-evidence/UT-11-stocks-leaderboard.png",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-36-evidence/TC-17-stocks-page.png",
       "spec_hash": "6e558ff93d61d8fee78d71ae7c5625e0f1ce1ab48075942dcf21c48d42dbed80",
-      "note": "Required-still-passing (iter-35). LIVE-re-verified by the canonical browser-qa lane (UT-11): evaluator OPENED UT-11-stocks-leaderboard.png -- /stocks 541/541, every Leadership/Entry-Quality/Risk score carries a 'Not yet proven' evidence badge (1623 badge elements, first='Not yet proven'), GO banner, no console error. Un-regressed by iter-35 (no /stocks code in the diff). spec_hash re-verified against current goal text (unchanged; no journeys-changed.md)."
+      "note": "Required-still-passing (iter-36). Evaluator OPENED TC-17-stocks-page.png (QA-lane /stocks capture): 541/541, every Leadership/Entry-Quality/Risk score carries a 'Not yet proven' evidence badge, Market Regime 'Risk-on' 72.25, 'Research-only - decision support - no orders' header, GO banner, no crash -- J-01 acceptance shown live. CAVEAT: the DEDICATED canonical browser-qa /stocks case was NOT in this FULL iter's dispatched UT plan and the golden-script replay lane does not run in run-phase.sh (the recurring iter-33 structural gap) -> closure returned CLOSURE-FAIL on that required-set DoD line (narrow; exempts J-22). Diff never touches /stocks or the scoring/evidence engine (only referee_audit + config + research hub card) -> no regression mechanism. Next lean pass runs the golden-script replay to formally close it. spec_hash re-verified (unchanged; no journeys-changed.md)."
     },
     "J-02": {
       "id": "J-02",
@@ -20,18 +20,18 @@
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-34-evidence/J-02-verify.png",
       "spec_hash": "22320cbbf653978824cddac8404453242bc716a956d0974bec331522cc2457f4",
-      "note": "iter-35 byte-identity carry (NOT in the iter-35 required set; last deterministically replayed iter-34, PASS). Stock-detail + evidence code paths git-untouched by iter-35 (diff confined to drift/config/fetch-pipeline/frontend-data-page/tests) -> no regression mechanism. Outcome-neutral acceptance satisfied by the honest 'Not yet proven' state. spec_hash unchanged."
+      "note": "iter-36 byte-identity carry (NOT in the iter-36 required set; last deterministically replayed iter-34, PASS). Stock-detail + evidence code paths git-untouched by iter-36 (diff confined to referee_audit module/api/config/main/research-hub-card/lib-api/tests) -> no regression mechanism. Outcome-neutral acceptance satisfied by the honest 'Not yet proven' state. spec_hash unchanged."
     },
     "J-03": {
       "id": "J-03",
       "name": "Unproven / noise signals are honestly marked",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-34",
-      "last_passing_iter": "goal-mcp-loop-iter-34",
+      "last_verified_iter": "goal-mcp-loop-iter-36",
+      "last_passing_iter": "goal-mcp-loop-iter-36",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-34-evidence/J-03-verify.png",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-36-evidence/UT-13-result.png",
       "spec_hash": "60c48ed55bb05b6526f7fee20132b7ab1d87813284c7e2c23fe543bda08284ef",
-      "note": "iter-35 byte-identity carry (NOT in the iter-35 required set; last deterministically replayed iter-34, PASS). Incidentally corroborated: the evaluator opened UT-12 (/evidence) this iter and saw all 7 ledger cards read FAIL, 0 'Proven' -- honest marking intact. Ledger + evidence code git-untouched by iter-35. spec_hash unchanged."
+      "note": "Required-still-passing (iter-36). LIVE-re-verified by the canonical browser-qa lane (UT-13, the /evidence isolation frame): evaluator OPENED UT-13-result.png -- /evidence renders 7 claim-row cards, EVERY one badged FAIL, 0 PASS / 0 'Proven', honest 'reads Proven ONLY when... everything else honestly reads Not yet proven' subtitle. Honest-marking intact. Ledger + evidence code git-untouched by iter-36. spec_hash re-verified (unchanged)."
     },
     "J-04": {
       "id": "J-04",
@@ -42,18 +42,18 @@
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-34-evidence/J-04-verify.png",
       "spec_hash": "13aaa363d0a255c4dbddb53cba885373a35fdf3ffe077f8841ad42e64a175724",
-      "note": "iter-35 byte-identity carry (NOT in the iter-35 required set; last deterministically replayed iter-34, PASS). Incidentally corroborated on UT-07/UT-08 dashboard frames the evaluator opened: Market Regime 72.25 'Risk-on' renders; the 'Breakout-watch setup [Regime: Risk-on]' card is on the UT-12 /evidence frame. Scoring/regime code git-untouched by iter-35. spec_hash unchanged."
+      "note": "iter-36 byte-identity carry (NOT in the iter-36 required set; last deterministically replayed iter-34, PASS). Incidentally corroborated on the UT-13 /evidence frame the evaluator opened: the 'Breakout-watch setup [Regime: Risk-on]' regime-conditioned card renders (FAIL, holdout edge -0.68%). Scoring/regime code git-untouched by iter-36. spec_hash unchanged."
     },
     "J-05": {
       "id": "J-05",
       "name": "Audit the evidence ledger",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-35",
-      "last_passing_iter": "goal-mcp-loop-iter-35",
+      "last_verified_iter": "goal-mcp-loop-iter-36",
+      "last_passing_iter": "goal-mcp-loop-iter-36",
       "first_seen_iter": "goal-mcp-loop-iter-0",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-35-evidence/UT-12-evidence-page.png",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-36-evidence/UT-13-result.png",
       "spec_hash": "f711589a5f5f897abda945758915347f7128d8bc7b92b4007416b103dc20955a",
-      "note": "Required-still-passing (iter-35). LIVE-re-verified by the canonical browser-qa lane (UT-12): evaluator OPENED UT-12-evidence-page.png -- a REAL /evidence certified-claims ledger ('the single source of proven-ness' subtitle), 7 evidence-claim-row cards, all FAIL / 0 PASS, displayed numbers byte-match certified-claims.jsonl (leadership_score -0.03%, Breakout-watch -0.68%, ma_stack +0.21% p=0.2769, vcp_contraction -0.38%), REGISTRATION 2026-07-03, Backs-links, no error/empty state. Browser-qa filesystem cross-check: certified-claims.jsonl line count = 7 == rendered rows (no new ledger entry this iter). All 3 ledger state files git-untouched. spec_hash re-verified (unchanged)."
+      "note": "Required-still-passing (iter-36). Evaluator OPENED UT-13-result.png -- the FULLY AUDITABLE /evidence certified-claims ledger: 7 rows, each showing HYPOTHESIS (selector chips), OUT-OF-SAMPLE VERDICT (FAIL + holdout edge), CONTROL COMPARISON (vs SPY), REGISTRATION DATE (2026-07-03), FORWARD-WALK SCORE-TO-DATE, Backs-links; displayed numbers byte-match certified-claims.jsonl (leadership_score -0.03%, Breakout-watch -0.68%, ma_stack +0.21% p=0.2769, vcp_contraction -0.38% and 60d -1.64%, rs_spy_3m x high_proximity +0.01% p=0.4943, rs_spy_3m 60d -1.42%). Evaluator's own git diff HEAD on all 3 real ledgers = EMPTY (7 entries, 0 PASS). CAVEAT: the QA report's TC-19 row for J-05 was unevidenced ('No regression detected' -- a conclusion) and no DEDICATED golden-script replay ran this FULL iter -> closure CLOSURE-FAIL on that DoD line (narrow). The evaluator's independent evidence walk (UT-13, opened) DID find J-05's ledger-audit acceptance surface live -- see assumptions.md. Ledger/evidence code git-untouched; next lean pass runs the golden replay to formally close it. spec_hash re-verified (unchanged)."
     },
     "J-06": {
       "id": "J-06",
@@ -64,7 +64,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-8",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-34-evidence/J-06-verify.png",
       "spec_hash": "d48b923d0bd4d9bf881efc864cf6fb11f7c639550dcb7a5c4b857576032fb3c2",
-      "note": "iter-35 byte-identity carry (NOT in the iter-35 required set; last deterministically replayed iter-34, PASS). Corroborated on UT-12: 'vcp_contraction -- top decile (D10)' row badged FAIL, holdout edge -0.38%, byte-matching the ledger. Ledger + factor-lab code git-untouched by iter-35. spec_hash unchanged."
+      "note": "iter-36 byte-identity carry (NOT in the iter-36 required set; last deterministically replayed iter-34, PASS). Corroborated on UT-13: 'vcp_contraction -- top decile (D10)' row badged FAIL, holdout edge -0.38%, byte-matching the ledger. Ledger + factor-lab code git-untouched by iter-36. spec_hash unchanged."
     },
     "J-07": {
       "id": "J-07",
@@ -75,7 +75,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-9",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-34-evidence/J-07-verify.png",
       "spec_hash": "ee1ca41feae2be63b451392b9d4be7d8d44fa27d09825c7c63c604bfcd787a6d",
-      "note": "iter-35 byte-identity carry (NOT in the iter-35 required set; last deterministically replayed iter-34, PASS). Multi-horizon vcp_contraction outcome honest (FAIL every horizon; 0 'Proven'). Ledger + triad_scan/engine git-untouched by iter-35. spec_hash unchanged."
+      "note": "iter-36 byte-identity carry (NOT in the iter-36 required set; last deterministically replayed iter-34, PASS). Corroborated on UT-13: the vcp_contraction 60-day-hold row renders FAIL (-1.64%) beside the 20-day row -- multi-horizon surfacing honest, 0 'Proven'. Ledger + triad_scan/engine git-untouched by iter-36. spec_hash unchanged."
     },
     "J-08": {
       "id": "J-08",
@@ -86,7 +86,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-9",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-34-evidence/J-08-verify.png",
       "spec_hash": "084a0aac3bf0709079d1edf5804e73d54e4f7ab6873e4b92c1d603cc932453ba",
-      "note": "iter-35 byte-identity carry (NOT in the iter-35 required set; last deterministically replayed iter-34, PASS). Multi-factor combination ('composite rank-blend') outcome honest (FAIL / 'Not yet proven'). Combination lab + ledger git-untouched by iter-35. spec_hash unchanged."
+      "note": "iter-36 byte-identity carry (NOT in the iter-36 required set; last deterministically replayed iter-34, PASS). Corroborated on UT-13: 'rs_spy_3m x high_proximity -- composite' row renders FAIL (+0.01%, p=0.4943) -- multi-factor combination outcome honest / 'Not yet proven'. Combination lab + ledger git-untouched by iter-36. spec_hash unchanged."
     },
     "J-09": {
       "id": "J-09",
@@ -97,7 +97,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-15",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-34-evidence/J-09-verify.png",
       "spec_hash": "35ca32dc9de6f26c71a59918c29083e238cb8af21d0a19b81da6c29340bdcb9a",
-      "note": "iter-35 byte-identity carry (NOT in the iter-35 required set; last deterministically replayed iter-34, PASS). rs_spy_3m 60-day-horizon outcome honest (FAIL / 'Not yet proven'); the retired +21.34% value renders nowhere. Factor lab + ledger git-untouched by iter-35. spec_hash unchanged."
+      "note": "iter-36 byte-identity carry (NOT in the iter-36 required set; last deterministically replayed iter-34, PASS). Corroborated on UT-13: 'rs_spy_3m -- top decile (D10) - 60-day hold' row renders FAIL (-1.42%); the retired +21.34% value renders nowhere. Factor lab + ledger git-untouched by iter-36. spec_hash unchanged."
     },
     "J-10": {
       "id": "J-10",
@@ -108,18 +108,18 @@
       "first_seen_iter": "goal-mcp-loop-iter-16",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-34-evidence/J-10-verify.png",
       "spec_hash": "458604f26eb7a828c53588a9e91d7b8bf9b3578555024c1a61b32a0043cb740f",
-      "note": "iter-35 byte-identity carry (NOT in the iter-35 required set; last deterministically replayed iter-34, PASS). Incidentally corroborated: the deep 1996->2026 cross-view chart still renders on the UT-07/UT-08 dashboard frames the evaluator opened. prices.py/scoring.py + chart components + /api/bars git-untouched by iter-35. spec_hash unchanged."
+      "note": "iter-36 byte-identity carry (NOT in the iter-36 required set; last deterministically replayed iter-34, PASS). prices.py/scoring.py + chart components + /api/bars git-untouched by iter-36 (no data-path change this iter). spec_hash unchanged."
     },
     "J-11": {
       "id": "J-11",
       "name": "Every displayed 'Proven' edge is re-certified on the new 30-year data -- no stale edge survives",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-34",
-      "last_passing_iter": "goal-mcp-loop-iter-34",
+      "last_verified_iter": "goal-mcp-loop-iter-36",
+      "last_passing_iter": "goal-mcp-loop-iter-36",
       "first_seen_iter": "goal-mcp-loop-iter-16",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-34-evidence/J-11-verify.png",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-36-evidence/UT-13-result.png",
       "spec_hash": "24f6b1cbc5ddb95d4510fbf54114a9ad8da4c91d0229a9d698f3b4ad4832bf98",
-      "note": "iter-35 byte-identity carry (NOT in the iter-35 required set; last deterministically replayed iter-34, PASS). Invariant trivially upheld on a 0-PASS/7-FAIL ledger (no 'Proven' edge exists to go stale); evaluator confirmed 0 'Proven' on UT-11 (/stocks) + UT-12 (/evidence). Certification economy git-untouched by iter-35. spec_hash unchanged."
+      "note": "Required-still-passing (iter-36). Invariant trivially upheld on a 0-PASS/7-FAIL ledger (no 'Proven' edge exists to go stale; iter-32 precedent). Evaluator OPENED UT-13-result.png -- 0 PASS / 0 'Proven' on /evidence; ALSO opened TC-17 -- 0 'Proven' on /stocks; ALSO ran git diff HEAD on all 3 real ledgers = EMPTY (the J-22 audit's 200+1 throwaway trials did NOT leak; canonical stays 7 FAIL). CAVEAT: the QA report's TC-20 row for J-11 was unevidenced ('Unproven signals correctly marked' -- no value/screenshot) and no DEDICATED golden replay ran this FULL iter -> closure CLOSURE-FAIL on that DoD line (narrow). The evaluator's independent evidence walk (UT-13 + TC-17, opened) DID confirm the no-stale-edge invariant live -- see assumptions.md. Certification economy git-untouched; next lean pass runs the golden replay to formally close it. spec_hash re-verified (unchanged)."
     },
     "J-12": {
       "id": "J-12",
@@ -130,7 +130,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-16",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-34-evidence/J-12-verify.png",
       "spec_hash": "36321a68d8aebced1c563e480dfa469e01e99639b93871bd428e3ca1cd842068",
-      "note": "iter-35 byte-identity carry (NOT in the iter-35 required set; last deterministically replayed iter-34, PASS). Corroborated on the UT-03 /data frame the evaluator opened: PRICE HISTORY 1996-01-02->2026-07-01, UNIVERSE (as of date) 541, CANDIDATE 122, SYMBOLS 590 point-in-time, per-symbol coverage table. universe_resolver + membership timeline + scoring git-untouched by iter-35. spec_hash unchanged."
+      "note": "iter-36 byte-identity carry (NOT in the iter-36 required set; last deterministically replayed iter-34, PASS). Corroborated on the UT-04/TC-17 top-bar chips the evaluator opened: '590 symbols', 'seed 2026-07-01'. universe_resolver + membership timeline + scoring git-untouched by iter-36. spec_hash unchanged."
     },
     "J-13": {
       "id": "J-13",
@@ -141,7 +141,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-16",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-35-evidence/UT-10-panel-order.png",
       "spec_hash": "9b942381d3bf3d4bfeba23510fc5928c86d69b3d85bd1d31589220ef8ced396e",
-      "note": "Required-still-passing (iter-35; /data is the surface the new DriftReportPanel was added to). LIVE-re-verified by the canonical browser-qa lane (UT-10): heading order Dataset coverage -> Storage footprint -> Live-vs-seed drift -> Rebuild snapshots (new card slotted in ADDITIVELY, no existing card moved/split/removed); all 7 coverage tiles present with values. Evaluator ALSO opened the UT-03 /data frame directly: full coverage panel renders (SYMBOLS 590, TRADING DAYS 5369, SNAPSHOT DATES 322, BACKFILL GAPS 5047, per-symbol table ^DJI/^SPX/AAPL...). availability-heatmap.tsx + data_manager.compute_availability git-untouched (only an additive DriftReportPanel inserted into data/page.tsx). spec_hash re-verified (unchanged)."
+      "note": "iter-36 byte-identity carry (NOT in the iter-36 required set; last live-re-verified iter-35). availability-heatmap.tsx + data_manager.compute_availability + data/page.tsx git-untouched by iter-36. spec_hash unchanged."
     },
     "J-14": {
       "id": "J-14",
@@ -152,7 +152,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-17",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-34-evidence/J-14-verify.png",
       "spec_hash": "4445b4b40ba4917fa43a2ec8c85f1c933fedbfb8b23dc64cddff2aac45505337",
-      "note": "iter-35 byte-identity carry (NOT in the iter-35 required set; last deterministically replayed iter-34, PASS). Incidentally corroborated on the UT-07/UT-08 dashboard frames the evaluator opened: the cross-view chart legend shows vendor tags (S&P 500 Index (^SPX) Stooq, Nasdaq 100 (^NDX) Stooq, Dow Jones (^DJI) Stooq, ^VIX Yahoo, 10Y-2Y spread proxy (^TNX) FRED-macro proxy). config index_chart + chart + meta.json git-untouched by iter-35. spec_hash unchanged."
+      "note": "iter-36 byte-identity carry (NOT in the iter-36 required set; last deterministically replayed iter-34, PASS). config index_chart + chart + meta.json git-untouched by iter-36. spec_hash unchanged."
     },
     "J-15": {
       "id": "J-15",
@@ -163,7 +163,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-19",
       "last_evidence_path": "reports/phase-goal-mcp-loop-iter-27-ui-test-results.md#UT-12",
       "spec_hash": "46ba4f20940e385b9856f5445d7e4f2a247b77fba3884b070fb563c71a485cd7",
-      "note": "Carried passing on byte-identity -- NOT in iter-35's required set (perf journey, no golden script). Perf-relevant backend files (prices/scoring/warmup/db) git-untouched this iter. The one fetch-path change (drift stage) is a bounded per-symbol overlap compare + a tiny-file artifact read on the health poll (NO DB scan; audit-confirmed) -> no /api latency regression mechanism. last_verified_iter left at iter-27. spec_hash unchanged."
+      "note": "Carried passing on byte-identity -- NOT in iter-36's required set (perf journey, no golden script). Perf-relevant backend files (prices/scoring/warmup/db) git-untouched this iter. The J-22 harness is offline-CLI-only (never reachable from any serving path -- audit B2 grep-confirmed); the endpoint only reads a tiny persisted artifact (no DB) -> no /api latency regression mechanism. last_verified_iter left at iter-27. spec_hash unchanged."
     },
     "J-16": {
       "id": "J-16",
@@ -174,51 +174,51 @@
       "first_seen_iter": "goal-mcp-loop-iter-19",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-35-qa.md#test_data_manager_jobs_pipeline",
       "spec_hash": "4b6c4051eb3c172a039915797063425155902356334d2a0dc9fb326aac5bd198",
-      "note": "Required-still-passing (iter-35; the FETCH job path data_manager._run_job was directly modified -- a new post-fetch drift-validation stage). RE-VERIFIED via 4 dedicated wiring integration tests running a REAL fetch through _run_job (test_data_manager_jobs_pipeline.py, 18/18 per QA; re-run independently by the reviewer and auditor): test_drift_stage_writes_report_on_completed_fetch_end_to_end (fires on a completed fetch, asserts exact symbol+dates), test_drift_stage_writes_clean_report_when_fetch_matches_seed, test_drift_stage_does_not_run_on_a_resumable_pause (stays inert), test_drift_stage_does_not_rerun_on_skip_fetch_backfill_only_resume. The stage is additive + gated (overlap_sink is not None and prog.status != 'resumable'); the bounded per-symbol accumulator (del bucket[:-overlap_days]) respects the iter-24/26 anti-goal-#8 memory lesson. NO browser/golden-script frame (perf/data-job journey; verification is the integration tests -- see assumptions.md). iter-24 + iter-26 anti-goal #8 crashes remain resolved=true. spec_hash unchanged."
+      "note": "iter-36 byte-identity carry (NOT in the iter-36 required set; last re-verified iter-35 via integration tests). data_manager job path git-untouched by iter-36 (the J-22 harness is a separate offline CLI, not a fetch/backfill/warmup job). iter-24 + iter-26 anti-goal #8 crashes remain resolved=true. spec_hash unchanged."
     },
     "J-17": {
       "id": "J-17",
       "name": "The statistical budget is visible before it is spent",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-34",
-      "last_passing_iter": "goal-mcp-loop-iter-34",
+      "last_verified_iter": "goal-mcp-loop-iter-36",
+      "last_passing_iter": "goal-mcp-loop-iter-36",
       "first_seen_iter": "goal-mcp-loop-iter-29",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-34-evidence/J-17-verify.png",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-36-evidence/UT-12-budget-banner.png",
       "spec_hash": "77ead4f8c659b0caadb540cca7d5efe4331531f553e6ca00c3f14ac0e9e52252",
-      "note": "iter-35 byte-identity carry (NOT in the iter-35 required set; last deterministically replayed iter-34, PASS). budget_accounting.py/api/budget.py/budget page git-untouched by iter-35. spec_hash unchanged."
+      "note": "Required-still-passing (iter-36). LIVE-corroborated by the canonical browser-qa lane: UT-09 clicked the 'Certification-budget accounting' card and confirmed /research/budget loaded (heading rendered) with the backend DOWN, and UT-11/UT-12-budget-banner confirmed the budget page loads; UT-13-note cross-checks '/research/budget: Total trials to date 7 / Next canonical #8 / required p 0.00625 = 0.05/8' UNCHANGED (proving the J-22 audit's 200+1 trials did not leak into the budget accounting). budget_accounting.py/api/budget.py/budget page git-untouched by iter-36. NOTE: no DEDICATED golden replay ran this FULL iter (the run-phase.sh replay-lane gap) -> folded into the next lean closeout. spec_hash re-verified (unchanged)."
     },
     "J-18": {
       "id": "J-18",
       "name": "Every evidence claim must match a pre-registration -- enforced by the gate",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-34",
-      "last_passing_iter": "goal-mcp-loop-iter-34",
+      "last_verified_iter": "goal-mcp-loop-iter-36",
+      "last_passing_iter": "goal-mcp-loop-iter-36",
       "first_seen_iter": "goal-mcp-loop-iter-29",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-34-evidence/J-18-verify.png",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-36-evidence/UT-11-result.png",
       "spec_hash": "dd5dd50cb21961f8e9307385a98aed814a2488e056da58708e689b210793dea9",
-      "note": "iter-35 byte-identity carry (NOT in the iter-35 required set; last deterministically replayed iter-34, PASS). registry/page.tsx + verify_claim.py + pre-registrations.jsonl git-untouched by iter-35 (the drift artifact is a separate integrity report, not a certification claim; divisor stays 8). spec_hash unchanged."
+      "note": "Required-still-passing (iter-36). LIVE-corroborated by the canonical browser-qa lane (UT-11): clicked the 'Pre-registration registry' governance card via data-testid and confirmed window.location.href = /research/registry with the heading 'Pre-registration registry' rendered, no 404/error. registry/page.tsx + verify_claim.py + pre-registrations.jsonl git-untouched by iter-36 (evaluator confirmed pre-registrations.jsonl git diff EMPTY; divisor stays 8). NOTE: no DEDICATED golden replay ran this FULL iter (the run-phase.sh replay-lane gap) -> folded into the next lean closeout. spec_hash re-verified (unchanged)."
     },
     "J-19": {
       "id": "J-19",
       "name": "Dead hypotheses are browsable so nobody retries them blindly",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-34",
-      "last_passing_iter": "goal-mcp-loop-iter-34",
+      "last_verified_iter": "goal-mcp-loop-iter-36",
+      "last_passing_iter": "goal-mcp-loop-iter-36",
       "first_seen_iter": "goal-mcp-loop-iter-29",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-34-evidence/J-19-verify.png",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-36-evidence/UT-11-result.png",
       "spec_hash": "b03ca464f14b5ce294415b2dccdf872a18750ae62e610b302f3ca24392e048ac",
-      "note": "iter-35 byte-identity carry (NOT in the iter-35 required set; last deterministically replayed iter-34, PASS). graveyard.py + /research/graveyard page + registry/page.tsx git-untouched by iter-35. spec_hash unchanged."
+      "note": "Required-still-passing (iter-36). LIVE-corroborated by the canonical browser-qa lane (UT-11): clicked the 'Negative-results graveyard' governance card via data-testid and confirmed window.location.href = /research/graveyard with the heading 'Negative-results graveyard' rendered, no 404/error. graveyard.py + /research/graveyard page + registry/page.tsx git-untouched by iter-36. NOTE: no DEDICATED golden replay ran this FULL iter (the run-phase.sh replay-lane gap) -> folded into the next lean closeout. spec_hash re-verified (unchanged)."
     },
     "J-20": {
       "id": "J-20",
       "name": "A single daily preflight verdict guards every decision surface",
       "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-35",
-      "last_passing_iter": "goal-mcp-loop-iter-35",
+      "last_verified_iter": "goal-mcp-loop-iter-36",
+      "last_passing_iter": "goal-mcp-loop-iter-36",
       "first_seen_iter": "goal-mcp-loop-iter-29",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-35-evidence/UT-09-banner-go-absent-dashboard.png",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-36-evidence/UT-09-result.png",
       "spec_hash": "6c365561197fea361488ca0fac37a0b7e915469d52b29e12c7b6c5099ac497a8",
-      "note": "Required-still-passing (iter-35; compute_preflight was directly modified -- a new 4th 'drift' component added after 'integrity'). LIVE-re-verified by the canonical browser-qa lane that the banner STILL composes GO/DEGRADED correctly WITH the new component, single-source. Evaluator OPENED: UT-07-banner-degraded-dashboard.png (loud amber 'DEGRADED -- treat today's board with caution.' + 'Live-vs-seed drift detected (adjustment seam) for: AAPL, MSFT.' identical on / and /stocks = site-wide, layout-mounted), UT-08-banner-recovered-go.png (quiet green 'GO -- today's board is current.', 0 <li> reasons after a clean fixture), UT-09-banner-go-absent-dashboard.png (GO / 0 reasons on / , /stocks, /data when the artifact is ABSENT -- the LOAD-BEARING J-20 non-regression: absent drift artifact => component ok => verdict UNCHANGED from iter-34). preflight-banner.tsx + readiness-provider + layout git-diff EMPTY (banner renders reasons generically via .map(); the new reason string flows through with zero frontend code). NOTE: /api/health payload is NOT byte-identical (it gains the spec-mandated 4th drift component) but the verdict stays GO / reasons stays empty / servability-freshness-integrity untouched -- the property J-20 actually requires (audit sec.5). No Evidence Claim; ledgers byte-identical; divisor 8. spec_hash re-verified (unchanged)."
+      "note": "Required-still-passing (iter-36; the cross-cutting preflight banner renders ON the new /research/referee-audit page). LIVE-re-verified by the canonical browser-qa lane AND on frames the evaluator opened: the quiet green 'GO -- today's board is current.' strip is single-instance directly below the header on UT-04 (/research/referee-audit), TC-17 (/stocks), and UT-13 (/evidence) -- all opened by the evaluator; UT-12 confirms identical GO on /research, /research/referee-audit, /evidence, /research/budget (single-source, no per-page divergence); UT-09 exercised the loud NO-GO degraded state ('NO-GO -- do not rely on today's board. Backend is unavailable...') when the backend was stopped, contained, nav intact. preflight-banner.tsx + readiness-provider + layout git-untouched by iter-36 (referee_audit deliberately NOT wired into compute_preflight -- correct boundary, ux-regression-confirmed zero diff). spec_hash re-verified (unchanged)."
     },
     "J-21": {
       "id": "J-21",
@@ -229,17 +229,18 @@
       "first_seen_iter": "goal-mcp-loop-iter-29",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-35-evidence/UT-03-drift-detected-2-symbols.png",
       "spec_hash": "a0d6f7524c5b7b1a3aaeaae730613cde8b0d33cbda8fadd1c2899161ad353f0d",
-      "note": "TARGET (iter-35, backlog B-304, overlap check only). unknown -> passing. Delivered cleanly through the FULL pipeline (Review PASS_WITH_NOTES, QA PASS_WITH_NOTES 252/252 backend, Audit PASS_WITH_GAPS 'Proceed', Browser-QA PASS 14/14, UX-REGRESSION-PASS, CLOSURE-PASS, COHERENCE-PASS, scan CLEAN). A new PURE app.engine.drift byte/fixed-precision (6dp EXACT, never a tolerance window -- the B-304 trap) compares a fetch's returned bars vs the committed seed CSVs over the last overlap_days=20 COMMON dates (bounded per-symbol -- never whole-history, anti-goal #8); persists ONE artifact re-read verbatim by BOTH compute_preflight's new drift component AND an additive GET /api/data field (single source; coherence-confirmed one comparator/one writer/one reader). Evaluator OPENED: UT-03-drift-detected-2-symbols.png (DEGRADED banner names 'AAPL, MSFT' as adjustment seam; browser-qa DOM: card rows 'AAPL: 2026-07-08, 2026-07-09 -- adjustment seam' + 'MSFT: 2026-07-07 -- adjustment seam', GOOGL absent, amber border-warn), UT-07 (DEGRADED site-wide on Dashboard), UT-08 (recovers to GO on a clean fixture). Determinism: reference = prog.end.isoformat() deterministic anchor, never date.today() (anti-goal #5, code-confirmed). No proven-language, no auto-repair (B-304 'Do NOT touch the fetched data'), no key leak (Bar has no credential field + scrub on error path). read_drift_report NEVER raises: missing->None inert (UT-02), unparseable->honest 'unreadable' (UT-05, degrades honestly, verified stable 50+ requests), backend-down->contained 'Backend unavailable' card, zero drift fragment (UT-14). No Evidence Claim; divisor 8. spec_hash recorded (a0d6f752, matches goal_gate). GAPS carried (non-blocking): B1 overlap window trims last-N-fetched not last-N-common (deployment-unreachable -- seed is never behind the board); B2 no anti-goal-#7 artifact-scrub regression test (structurally safe today)."
+      "note": "iter-36 byte-identity carry (NOT in the iter-36 required set; last live-re-verified iter-35, backlog B-304 overlap check). app.engine.drift + compute_preflight drift component + /api/data drift field git-untouched by iter-36. J-21.json golden script exists but was NOT folded into a replay run this iter -> fold into the next lean closeout alongside J-22.json. spec_hash unchanged."
     },
     "J-22": {
       "id": "J-22",
       "name": "The certifier itself is calibrated (placebo + tripwire audit)",
-      "status": "unknown",
-      "last_verified_iter": null,
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-mcp-loop-iter-36",
+      "last_passing_iter": "goal-mcp-loop-iter-36",
       "first_seen_iter": "goal-mcp-loop-iter-29",
-      "last_evidence_path": null,
-      "note": "NEW Must-have journey (backlog B-102, owner goal.md HEAD eb19cee). UNBUILT. The iter-35 evaluator's NAMED next feature target: referee-audit panel (/research/referee-audit) -- null-factor empirical false-pass rate + CI + configured alpha + contaminated-factor tripwire ('expected: rejected'), run against a THROWAWAY ledger; real certified/staging ledgers + Thresholdout budget MUST stay byte-identical; /evidence unchanged (no new claims). No Evidence Claim (divisor stays 8). The FOURTH + final governance surface, adjacent to the iter-30/31/32 cluster. Read backlog card B-102 before planning. No spec_hash."
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-36-evidence/UT-04-result.png",
+      "spec_hash": "3fe7864e35bf1986bfb33b300d30444ada4a924d753b5b9d910afd791ab41f0d",
+      "note": "TARGET (iter-36, backlog B-102). unknown -> passing -- the 4th + FINAL governance surface. J-22's OWN evidence is complete and clean on the FINAL build (browser-qa PASS 13/13; audit applied ZERO fixes to a rendered surface -> NO post-lane partial-trap, the iter-13/20/22/31 condition is ABSENT; J-22.json golden script linted + live-replayed PASS). Evaluator OPENED UT-04-result.png (the a673b79 real-artifact frame shared across UT-01/03/04/05/10-after/12): /research/referee-audit shows NULL TRIALS 200 (source factor: leadership_score), EMPIRICAL FALSE-PASS RATE 0.08 ('16 of 200 trials - 95% CI [0.04984, 0.126]'), CONFIGURED alpha 0.05, RUN DATE 2026-07-01 (seed 20240601 - contaminated horizon 5d), and the loud red tripwire card 'Tripwire: the lookahead-contaminated factor was NOT rejected ... expected: rejected ... certified [PASS] ... p=0.0004998 < alpha/1=0.05'. The tripwire (contaminated_caught=false) is the DoD-SANCTIONED honest 'OR' branch, not a defect -- a factor whose value equals its own realized 5d forward return is a tautology no temporal holdout can reject (dev Known-Issue #2, audit F1). PASS badge is red/danger, NEVER accent (anti-goal #1 upheld; source-verified contaminatedStatusVariant). 'Research-only - decision support - no orders' header (anti-goal #2). ISOLATION (dominant failure mode): evaluator's OWN git diff HEAD on certified-claims.jsonl / staging-ledger.jsonl / pre-registrations.jsonl = EMPTY (byte-identical), corroborating dev + QA + audit + coherence; harness writes ONLY a throwaway ledger, imports no real ledger resolver (audit: isolation correct BY CONSTRUCTION). Displayed numbers byte-match the persisted artifact JSON (evaluator re-read it). Determinism seed-based (same seed reproduces the exact rate). No Evidence Claim -> divisor stays 8. scan CLEAN, coherence COHERENCE-PASS, Review PASS_WITH_NOTES, QA PASS, Audit PASS_WITH_GAPS 'Proceed'. Iteration ended CLOSURE-FAIL but the closure auditor EXPLICITLY EXEMPTS J-22 ('narrow, not a verdict on the J-22 feature itself; J-22's own deliverable is thoroughly and rigorously verified') -- the block is the required-still-passing DoD line (J-05/J-11 QA over-claim + no inline replay), mirroring iter-33 J-20 exactly. spec_hash recorded (3fe7864e, matches goal_gate). GAPS (non-blocking): B1 artifact git-untracked (release/showcase git-add); F1 tripwire prose stronger than the tautology warrants (owner call, deferred to B-204 sweep); B2 offline assembler materializes a horizon-slice in Python not SQL (offline-only, never a serving path)."
     },
     "J-23": {
       "id": "J-23",
@@ -249,7 +250,7 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-29",
       "last_evidence_path": null,
-      "note": "NEW Must-have journey (backlog B-204, owner goal.md HEAD eb19cee). UNBUILT. Watchlist correlation/cluster X-ray + effective-independent-bets; ENB helper shared with the evidence correlation audit; honest NA over fabrication. No Evidence Claim. Deferred to a future FULL iteration. Read backlog card B-204 before planning. No spec_hash."
+      "note": "NEW Must-have journey (backlog B-204, owner goal.md HEAD eb19cee). UNBUILT. Watchlist correlation/cluster X-ray + effective-independent-bets; ENB helper shared with the evidence correlation audit; honest NA over fabrication. No Evidence Claim. The next FULL feature target (risk-analytics cluster; one risky journey per iter). Read backlog card B-204 before planning. No spec_hash."
     },
     "J-24": {
       "id": "J-24",
@@ -288,5 +289,5 @@
       "resolved": true
     }
   ],
-  "updated_at": "2026-07-14T21:10:00Z"
+  "updated_at": "2026-07-15T07:25:00Z"
 }

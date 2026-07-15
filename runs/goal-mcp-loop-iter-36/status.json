@@ -1,0 +1,27 @@
+{
+  "phase": "goal-mcp-loop-iter-36",
+  "status": "blocked",
+  "current_step": "closure_failed",
+  "updated_at": "2026-07-15T06:03:11.678042Z",
+  "started_at": "2026-07-14T21:39:01.199968Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/referee_audit.py",
+    "apps/backend/app/api/referee_audit.py",
+    "apps/backend/tests/test_referee_audit.py",
+    "apps/backend/tests/test_api_referee_audit.py",
+    "apps/backend/app/config.py",
+    "apps/backend/main.py",
+    "config.yaml",
+    "apps/frontend/lib/referee-audit.ts",
+    "apps/frontend/lib/api.ts",
+    "apps/frontend/app/research/referee-audit/page.tsx",
+    "apps/frontend/app/research/page.tsx",
+    "runs/goal-session-mcp-loop/state/referee-audit-report.json",
+    "runs/goal-session-mcp-loop/state/referee-audit-throwaway-ledger.jsonl"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "next_action": "review"
+}

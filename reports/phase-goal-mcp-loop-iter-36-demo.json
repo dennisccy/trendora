@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-36",
+  "base_url": "http://localhost:3255",
+  "iteration": 36,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Discover the new Referee Audit card",
+      "narration": "Let's check out the newest addition to the Research hub — a report that checks whether Trendora's own fact-checker can be trusted.",
+      "point_out": "Scroll to 'Governance & process' — there are 4 cards now instead of 3, and the newest one is 'Referee audit.'",
+      "journey": "J-22",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research" },
+      "expect": { "text": "Referee audit" }
+    },
+    {
+      "n": 2,
+      "title": "Open the Referee Audit report",
+      "narration": "Opening it shows how well that fact-checker grades itself, tested against 200 fake patterns it should always reject.",
+      "point_out": "Four numbers load right away — 200 test trials, a 0.08 false-alarm rate, the 0.05 bar it's held to, and the date this check last ran.",
+      "journey": "J-22",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "css": "[data-testid='research-governance-link-referee-audit']" } },
+      "expect": { "text": "source factor: leadership_score" }
+    },
+    {
+      "n": 3,
+      "title": "See the tripwire warning",
+      "narration": "The real test: a pattern that secretly peeks at future prices was slipped in, just to see if the fact-checker would catch the cheat.",
+      "point_out": "It didn't catch it this time — so instead of staying quiet, the page shows a loud red warning explaining exactly what happened.",
+      "journey": "J-22",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/referee-audit" },
+      "expect": { "text": "the lookahead-contaminated factor was NOT rejected" }
+    },
+    {
+      "n": 4,
+      "title": "Back to the Research hub",
+      "narration": "Heading back to Research shows the new report sitting comfortably alongside the ones that were already there.",
+      "point_out": "All four governance cards are present, in the same order as before — nothing else moved.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Back to Research" } },
+      "expect": { "text": "Referee audit" }
+    },
+    {
+      "n": 5,
+      "title": "Confirm the budget card still works",
+      "narration": "A quick check that nothing else broke — the existing budget-tracking card still opens exactly like it always has.",
+      "point_out": "Its own numbers load normally, confirming this update didn't disturb its neighbors.",
+      "journey": "J-17",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "css": "[data-testid='research-governance-link-budget']" } },
+      "expect": { "text": "Total trials to date" }
+    },
+    {
+      "n": 6,
+      "title": "Confirm the evidence ledger is untouched",
+      "narration": "One last check: did any of those 200 practice trials accidentally sneak into Trendora's real evidence ledger?",
+      "point_out": "They didn't — the evidence page looks exactly as it did before, still honestly marked, with nothing new added.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/evidence" },
+      "expect": { "text": "single source of proven-ness" }
+    }
+  ]
+}

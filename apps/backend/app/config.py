@@ -1294,6 +1294,11 @@ class ResearchCfg(BaseModel):
     severity_velocity: "SeverityVelocityCfg" = Field(
         default_factory=lambda: _default_severity_velocity()
     )
+    # iter-36 (J-22) — the referee-calibration harness tunables (backlog B-102). Defaulted so a config /
+    # inline test fixture predating this block still loads unchanged — the harness runs ONLY when
+    # explicitly invoked (`python -m app.engine.referee_audit`), so adding this block alone changes no
+    # runtime behavior.
+    referee_audit: "RefereeAuditCfg" = Field(default_factory=lambda: _default_referee_audit())
 
     @model_validator(mode="after")
     def _validate(self) -> "ResearchCfg":
@@ -1343,6 +1348,63 @@ def _default_severity_velocity() -> "SeverityVelocityCfg":
             VelocitySign(key=VELOCITY_SIGN_FALLING, label="Falling stress (velocity < 0)"),
         ],
     )
+
+
+_DEFAULT_REFEREE_AUDIT_REPORT_PATH = "runs/goal-session-mcp-loop/state/referee-audit-report.json"
+# Mirrors `referee.DEFAULT_SEED` — a deterministic default so a fresh config still reproduces the same
+# calibration run byte-for-byte without an explicit override.
+_DEFAULT_REFEREE_AUDIT_SEED = 20240601
+_DEFAULT_CONTAMINATED_FACTOR_HORIZON = 5
+
+
+class RefereeAuditCfg(BaseModel):
+    """Referee-calibration harness tunables (goal-mcp-loop iter-36, J-22 / backlog B-102).
+    `app.engine.referee_audit` reads every tunable from here — no magic number in the module (anti-goal:
+    No magic numbers).
+
+      - `n_null_trials` — how many seeded null (per-date label-permuted) certifications the harness runs
+        to measure the empirical false-pass rate. 200 for the real offline artifact; a test/CI fixture
+        overrides this down to ~20 via an explicit `cfg` override passed to `run_referee_audit`, NEVER by
+        editing this committed default.
+      - `seed` — the harness's own deterministic seed. Every null trial's permutation + bootstrap draw
+        derives from `seed + trial_ordinal`, so the SAME seed reproduces the SAME false-pass rate
+        byte-identically (mirrors `referee.DEFAULT_SEED`'s role for the harness itself).
+      - `contaminated_factor_horizon` — the forward-return horizon the lookahead-contaminated factor's
+        "value equals its own realized forward return" construction uses, both to rank the per-date
+        top-decile cohort and as the horizon `certify_edge` purges/embargoes against.
+      - `report_path` — the persisted audit-report artifact location. Resolved relative to `REPO_ROOT`
+        when relative; the resolver (`app.engine.referee_audit.resolve_referee_audit_path`, NOT this
+        model) applies the runtime `TRENDORA_REFEREE_AUDIT_PATH` override, mirroring
+        `DriftCfg.report_path` / `resolve_drift_report_path()` exactly.
+
+    Boot-validated: `n_null_trials >= 1`, `contaminated_factor_horizon >= 1`. Default-populated so a
+    config / inline test fixture predating this block still loads unchanged — the harness runs ONLY when
+    explicitly invoked (job-style; adding this block alone changes no runtime behavior, since nothing
+    calls `run_referee_audit` automatically)."""
+
+    model_config = ConfigDict(extra="allow")
+    n_null_trials: int = 200
+    seed: int = _DEFAULT_REFEREE_AUDIT_SEED
+    contaminated_factor_horizon: int = _DEFAULT_CONTAMINATED_FACTOR_HORIZON
+    report_path: str = Field(default=_DEFAULT_REFEREE_AUDIT_REPORT_PATH, min_length=1)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "RefereeAuditCfg":
+        if self.n_null_trials < 1:
+            raise ValueError(f"research.referee_audit.n_null_trials must be >= 1, got {self.n_null_trials}")
+        if self.contaminated_factor_horizon < 1:
+            raise ValueError(
+                "research.referee_audit.contaminated_factor_horizon must be >= 1, got "
+                f"{self.contaminated_factor_horizon}"
+            )
+        return self
+
+
+def _default_referee_audit() -> "RefereeAuditCfg":
+    """The built-in default referee-audit config — used when a config predating the block (or an inline
+    test fixture) omits `research.referee_audit`. The real `config.yaml` restates it explicitly as the
+    single documented source."""
+    return RefereeAuditCfg()
 
 
 # iter-29 (J-87 / J-88) — the named severity-component weight set. The deterministic drawdown-severity

@@ -14,6 +14,11 @@ import type {
 } from "@/lib/evidence";
 import type { GraveyardEntry, GraveyardResponse, RevisitProtocol } from "@/lib/graveyard";
 import type { PreRegistrationRow, RegistryResponse } from "@/lib/registry";
+import type {
+  RefereeAuditContaminatedVerdict,
+  RefereeAuditReport,
+  RefereeAuditResponse,
+} from "@/lib/referee-audit";
 
 // Re-export the read-side evidence types (goal-mcp-loop iter-1) so callers import them from the API client
 // alongside `fetchEvidence`. These are DISTINCT from `EvidenceAggregate` below (the Backtest forward-tested
@@ -28,6 +33,9 @@ export type { GraveyardEntry, GraveyardResponse, RevisitProtocol };
 
 // Re-export the certification-budget accounting types (goal-mcp-loop iter-32, J-17) alongside `fetchBudget`.
 export type { BudgetResponse, BudgetSpendPoint, CanonicalBudget, StagingBudget };
+
+// Re-export the referee-calibration report types (goal-mcp-loop iter-36, J-22) alongside `fetchRefereeAudit`.
+export type { RefereeAuditContaminatedVerdict, RefereeAuditReport, RefereeAuditResponse };
 
 /** The build-time configured backend base (`NEXT_PUBLIC_API_URL`, default localhost). The configured
  *  backend PORT (`NEXT_PUBLIC_API_PORT`) is read alongside so the runtime resolver can host-swap to the
@@ -415,6 +423,16 @@ export async function fetchGraveyard(signal?: AbortSignal): Promise<GraveyardRes
  *  "Backend unavailable" state. */
 export async function fetchBudget(signal?: AbortSignal): Promise<BudgetResponse> {
   return getJSON<BudgetResponse>("/api/research/budget", signal);
+}
+
+// --- referee-calibration report (goal-mcp-loop iter-36, J-22 / backlog B-102) ---------------
+/** GET /api/research/referee-audit — the read-only referee-calibration report: the empirical false-pass
+ *  rate + binomial CI over seeded null factors, the configured α, and the lookahead-contaminated-factor
+ *  verdict (labeled "expected: rejected") — re-read VERBATIM from the persisted offline-audit artifact
+ *  (`report: null` when the harness has never run). Introduces no proven-language. Throws on network
+ *  error or non-200 so the page renders an explicit "Backend unavailable" state. */
+export async function fetchRefereeAudit(signal?: AbortSignal): Promise<RefereeAuditResponse> {
+  return getJSON<RefereeAuditResponse>("/api/research/referee-audit", signal);
 }
 
 // --- stock price/MA/volume series for the detail chart (iter-4) -----------------------------

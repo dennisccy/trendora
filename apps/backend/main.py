@@ -26,6 +26,7 @@ from app.api import (
     indexes,
     market_phase,
     methodology,
+    referee_audit,
     regime_history,
     registry,
     research,
@@ -140,6 +141,9 @@ def create_app() -> FastAPI:
     # goal-mcp-loop iter-32 (J-17) — the read-only certification-budget accounting panel
     # (GET /api/research/budget).
     application.include_router(budget.router, prefix="/api")
+    # goal-mcp-loop iter-36 (J-22) — the read-only referee-calibration report
+    # (GET /api/research/referee-audit).
+    application.include_router(referee_audit.router, prefix="/api")
     return application
 
 
