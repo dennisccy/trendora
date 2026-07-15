@@ -1,403 +1,65 @@
-## Iteration 0 — goal-mcp-loop-iter-0
-
-**Date:** 2026-06-29T20:53:00Z
-**Verdict:** ESCALATE
-**Depth dispatched:** lean
-**Journey deltas:**
-- Newly passing: none
-- Newly failing: none
-- Regressed: none
-- Anti-goal violations: none (zero source diff — verify-only baseline)
-- Seeded as UNKNOWN: J-01, J-02, J-03, J-04, J-05 (no browser evidence captured)
-
-**Reasoning:** The baseline lean iteration's browser-QA lane never executed. telemetry.jsonl shows goal-decomposer → developer → reviewer → goal-evaluator with NO browser-qa-agent invocation; status.json reports browser_checks_run=false / current_step=dev_complete; reports/phase-goal-mcp-loop-iter-0-ui-test-results.md is absent and reports/qa/goal-mcp-loop-iter-0-evidence/ is empty (not even the goal-iter-lean.sh:392 SKIPPED stub was written). The iteration's sole deliverable — empirical J-01..J-05 verification — was therefore not produced, so all five journeys are UNKNOWN (I do not infer pass/fail from the developer's static code scan). git porcelain shows only untracked iteration artifacts (zero source diff) ⇒ no anti-goal could be violated; no coherence.md exists ⇒ no coherence veto (N/A on a no-op diff). Not REGRESSION (no prior-passing journey), not STALLED (iter 0, clear next step).
-
-**Next-step recommendation:** Force a FULL iter-1 that stands up the read-side evidence path end to end — GET /api/evidence reading the certified-claims ledger via app.engine.ledger, the "Proven / Not yet proven" badge inline on /stocks + stock detail, the /evidence ledger page, and the Evidence nav entry — so that against the empty ledger every score honestly reads "Not yet proven" (structurally satisfies J-01, J-03, and J-05's ledger surface). Defer J-02 (drill into a PROVEN score) and J-04 (regime-conditioned PROVEN evidence) to a later iteration that proposes a `## Evidence Claim` and earns a referee PASS at the post-decompose gate (empty ledger ⇒ zero "Proven" badges by design). Full depth chosen because iter-1 introduces new public surfaces (nav section + page + cross-surface badges) needing ui-impact-analyst / ux-regression-reviewer / phase-closure gating, and because iter-0 captured no browser evidence the more robust full browser-QA lane should run next.
-
-## Iteration 1 — goal-mcp-loop-iter-1
-
-**Date:** 2026-06-29T22:37:16Z
-**Verdict:** CONTINUE
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly passing: J-01, J-03
-- Newly partial: J-05 (ledger surface delivered; populated-claim linkback pending a certified claim)
-- Newly failing: none
-- Regressed: none
-- Still deferred-unknown: J-02, J-04 (both need a referee-certified PASS claim)
-- Anti-goal violations: none
-
-**Reasoning:** The full pipeline closed the iter-0 browser-QA gap — status.json shows browser_checks_run=true / qa_complete, reports/phase-goal-mcp-loop-iter-1-ui-test-results.md exists (PASS, 12/15 PASS + 3 P2/P3 SKIP for un-automatable DevTools network-blocking states), and 4 distinct real screenshots back the claims. Verified visually: /stocks renders 120 rows each with three "Not yet proven" chips below intact grades+scores (J-01); MU detail shows 94.58/23.66/53.11 byte-identical to the leaderboard each with a "Not yet proven" chip (J-03, no recompute); /evidence is nav-reachable in 1 click with an honest empty state + all five claim fields (J-05 surface). The ledger file is absent and the resolver/badge are fail-safe (proven only on verdict.status==PASS + a named signal), so NOTHING reads "Proven" — anti-goals clean, COHERENCE-PASS. Not GOAL_ACHIEVED: J-02/J-04 deferred-unknown and J-05 only partial (steps 2-3 need a real claim). Not REGRESSION/STALLED (no prior pass to break; clear next step).
-
-**Next-step recommendation:** Run iter-2 as the first CERTIFIED iteration (full): propose a narrow regime-conditioned `## Evidence Claim` that earns a referee PASS at the post-decompose gate, AND wire app.mcp.tools.verify_edge to stamp claim.signal (dev-handoff known gap — without it even a real PASS stays "Not yet proven"), AND build the J-02 drill panel (OOS test + controls + claim id/date). That one iteration advances J-02, completes J-05 end-to-end (populated row + linkback), and sets up J-04. Optionally fold in the coherence WARN (extract SCORE_SIGNALS to lib/evidence.ts).
-
-## Iteration 2 — goal-mcp-loop-iter-2
-
-**Date:** 2026-06-30T01:08:00Z
-**Verdict:** CONTINUE
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly passing: none (browser-verified)
-- Newly failing: none
-- Regressed: none
-- Backend milestone (not a journey-state change): first referee-certified claim landed (leadership_score PASS); /api/evidence serves proven_signals.leadership_score.proven==true
-- Still unknown (targeted but unverified): J-02 (code shipped + gate PASS + API proven, but browser lane SKIPPED)
-- Still partial: J-05 (data now exists; populated-row + linkback browser proof still missing)
-- Still deferred-unknown: J-04 (out of scope iter-2)
-- Carried passing (NOT re-verified — browser lane skipped): J-01, J-03
-- Anti-goal violations: none (secret scan clean; no return/buy-sell language; no second computation path; determinism preserved; claim survived sealed holdout + SPY control + bonferroni)
-
-**Reasoning:** The data half genuinely succeeded — gate-post-decompose.json shows blocked=false with a single PASS, certified-claims.jsonl holds the first entry (holdout 279 dates, in-sample 828, SPY control n=1137, bonferroni, p=0.0004998<0.05, signal=leadership_score), and QA's curl (TC-13) confirms /api/evidence serves it byte-identical. Coherence=PASS, review=PASS, anti-goals clean. BUT the user-facing journeys were never browser-verified: status.json browser_checks_run=false, both reports/phase-...-ui-test-results.md and reports/qa/...-qa.md SKIPPED every browser test (frontend stuck on 'Checking backend...'), the only screenshot TC-01-stocks-page.png shows an empty leaderboard (a harness frontend->backend connectivity failure, not a code regression — next build + tsc + units all green), and no audit handoff was produced. Per the iter-1 lesson embedded in this very spec, a ledger row + green build/units/API does NOT equal a browser-proven badge flip. So J-02 stays unknown, J-05 stays partial, and J-01/J-03 are carried (not re-verified). Not GOAL_ACHIEVED (targets unverified). Not REGRESSION (no prior-pass broke; empty leaderboard is connectivity, not code). Not STALLED (clear, fixable next step; real backend progress). ESCALATE doesn't fit (already full). CONTINUE, full.
-
-**Next-step recommendation:** iter-3 = full browser-verification pass of already-shipped code (do NOT rebuild dev work). (1) Fix the harness root cause — frontend :3255 can't reach backend :8255 ('Checking backend...' / empty leaderboard / no regime / no themes): service-start order, API base URL, or health-proxy. (2) Browser-verify J-02 (proof drill-down matches /api/evidence), J-05 (populated row + linkback round-trip), and the Leadership badge flip to 'Proven' on /stocks + detail with Entry Quality + Risk still 'Not yet proven' (J-01/J-03). Treat browser_checks_run=false + all-SKIP results as a hard verification gap, never as a pass.
-
-## Iteration 3 — goal-mcp-loop-iter-3
-
-**Date:** 2026-06-30T02:42:00Z
-**Verdict:** CONTINUE
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly passing: J-02 (was unknown), J-05 (was partial)
-- Re-confirmed fresh (after the iter-2 verification gap): J-01, J-03
-- Newly failing: none
-- Regressed: none
-- Still unknown (correctly out of scope): J-04 (no regime-scoped certified claim exists yet)
-- Anti-goal violations: none (zero apps/ diff; secret scan clean; no buy/sell/price/alpha language; determinism/no-lookahead untouched; only Leadership reads "Proven", backed by the certified leadership_score PASS)
-
-**Reasoning:** The iter-2 hard verification gap is closed — the browser-QA lane actually ran this time (status.json browser_checks_run=true, current_step=qa_complete; reports/phase-goal-mcp-loop-iter-3-ui-test-results.md = PASS 16/16, 0 skipped; non-empty evidence dir with real captures). The fix was operational and minimal exactly as the iter-2 evaluator predicted: scripts/start-frontend.sh switched `next dev` -> stamp-guarded `next start`, with ZERO apps/ source diff (git diff --stat HEAD: only the one script + two journey-script JSONs + telemetry). Verified visually: UT-02-result.png is a real populated /stocks (120/120 rows, health "Ready") with Leadership green "Proven" chips and Entry Quality + Risk muted "Not yet proven" (J-01/J-03); UT-06-result.png shows the same on /stocks/MU with values byte-identical to the leaderboard; UT-12-evidence-page.png shows the fully-populated leadership_score PASS row with all five fields + the "Backs: Stocks leaderboard ->" link, and UT-14 confirms that linkback round-trips to the populated leaderboard (J-05). J-02: the detail "Why proven?" toggle + the in-panel "View backing evidence row ->" link (href /evidence#signal-leadership_score, confirmed navigating in UT-09) + the panel's exact OOS values (PASS/+6.36%/p=0.0004998/n=12,297/vs SPY/registered 2026-06-30) rendering byte-identically on /evidence -> passing, though I note the panel-named screenshots (UT-07/UT-08/TC-05/UT-16) are byte-identical full-page-top frames that stop above the expanded panel (it renders below the fold; confirmed via DOM + /evidence mirror + linkback, not via a pixel capture of the panel itself). Coherence=PASS (one op script + two test JSONs; no IA/data-contract drift) -> no structural veto. Not GOAL_ACHIEVED: J-04 is a Must-have journey still unknown (never attempted; no regime-scoped certified claim). Not REGRESSION (no prior-pass broke). Not STALLED (clear next step + real progress). Minor process gap: the post-QA audit handoff is absent (status stops at qa_complete) — does not change journey evidence.
-
-**Next-step recommendation:** iter-4 (full) = tackle J-04, the sole remaining Must-have journey. Spec MUST include a narrow, regime-conditioned ## Evidence Claim (regime-scoped cohort) so the post-decompose referee gate certifies it BEFORE code; prefer a narrow regime slice over a broad data-mined one. On PASS, surface the regime-conditioned evidence labeled with the regime it holds in (Dashboard regime + Evidence/Research), browser-verify it, and GOAL_ACHIEVED becomes reachable. A gate FAIL/INSUFFICIENT correctly blocks — propose a different narrow cohort next. Carry: produce the auditor handoff next full run; add `tsx` frontend devDependency (reviewer NOTE); browser-QA must scroll below-the-fold disclosures into frame before capturing.
-
-## Iteration 4 — goal-mcp-loop-iter-4
-
-**Date:** 2026-06-30T04:05:00Z
-**Verdict:** CONTINUE
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly partial: J-04 (was unknown — regime-conditioned-evidence feature delivered, gate-certified, and QA-lane-verified, but the canonical browser-qa lane SKIPPED so session-standard verification is incomplete)
-- Re-confirmed fresh (pixel): J-05 (TC-03 shows the leadership row byte-unchanged + new regime row didn't break the list)
-- Carried passing (NO fresh iter-4 pixel; code paths untouched + QA-textual reconfirm): J-01, J-03 (/stocks), J-02 (/stocks/{ticker})
-- Newly failing: none
-- Regressed: none
-- Backend milestone (not a journey-state change): session's first REGIME-CONDITIONED edge certified — gate-post-decompose.json blocked=false, certified-claims.jsonl 2nd entry = Breakout-watch x Risk-on event-study PASS (holdout +6.12% vs SPY, p=0.0004998 < alpha/2=0.025, 107 holdout dates / 277 in-sample, signal=null)
-- Anti-goal violations: none (zero apps/backend/app diff; secret scan clean; no buy/sell/return-promise language — only a guard comment; proven_signals unit-tested to stay {leadership_score} only; determinism/no-lookahead untouched; displayed numbers byte-identical to the ledger)
-
-**Reasoning:** The feature half genuinely succeeded and I personally inspected the proof — TC-01 (Dashboard Risk-on 76.05 + "See evidence proven in this regime ->" affordance) and TC-03 (/evidence "Regime: Risk-on" Breakout-watch row, +6.12% vs SPY, p=0.0004998 < alpha/2=0.025, registered 2026-06-30, "Backs: Research event-study lab ->", values byte-identical to certified-claims.jsonl line 2; leadership row byte-unchanged with "Backs: Stocks leaderboard ->"). Gate PASS, coherence=PASS, review=PASS, QA=PASS, anti-goals clean, diff surgical and frontend-only. BUT GOAL_ACHIEVED is withheld on a verification-integrity gap: the canonical browser-qa-agent lane reported all 11 SKIP ("frontend not running" — a stale next-server held :3255, per the dev handoff's Known Issues), which is the exact iter-0/iter-2 pattern the spec's OWN embedded lesson designates a HARD verification gap; the two real screenshots come from the QA agent's PARALLEL lane (TC-* naming), not the canonical lane; J-01/J-02/J-03 have NO fresh iter-4 pixels (only QA-textual TC-07/TC-08 + untouched code); and the spec-required post-QA audit handoff is ABSENT (current_step=qa_complete — same iter-3 gap the iter-4 spec explicitly required closing). For the terminal success verdict that is too thin a base. Not REGRESSION (no prior-pass broke; J-05 pixel-verified unchanged; J-01/J-02/J-03 paths untouched; no critical anti-goal). Not STALLED (real progress; concrete cheap next step). ESCALATE doesn't apply (already full). CONTINUE, full.
-
-**Next-step recommendation:** iter-5 (full) = the final decisive verification pass, NO new feature code beyond a harness fix. (1) Free :3255 before the browser-qa lane binds (kill orphan next-server; start-frontend.sh lacks dev.sh's pre-bind fuser -k — this is why the canonical lane SKIPPED). (2) Capture fresh canonical UT-* screenshots for ALL FIVE journeys: J-04 (Dashboard affordance -> /evidence regime row scrolled into frame), J-05 (leadership linkback round-trip), J-01/J-03 (/stocks all-three-status), J-02 (/stocks/{ticker} drill-down). (3) Produce the post-QA audit handoff (docs/handoffs/goal-mcp-loop-iter-5-audit.md) — the audit stage has stopped at qa_complete twice now. On a clean full run all five journeys go green through the session-standard lane and GOAL_ACHIEVED is reachable.
-
-## Iteration 5 — goal-mcp-loop-iter-5
-
-**Date:** 2026-06-30T05:30:00Z
-**Verdict:** CONTINUE
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly passing: <none — J-04 held at partial>
-- Newly failing: <none>
-- Regressed: <none — no product/journey regression; zero apps/ diff>
-- Anti-goal violations: <none — anti_goal_violations remains []>
-
-**Reasoning:** The ONE code deliverable landed and is correct — `scripts/start-frontend.sh` now frees `$FRONTEND_PORT` before bind (review PASS, dev's live error-case test serves the fresh bundle; git diff = only that script + telemetry, zero `apps/` diff). BUT the two gating verification deliverables iter-5 existed to produce are BOTH absent: the canonical `reports/phase-goal-mcp-loop-iter-5-ui-test-results.md` does NOT exist (broad search confirms) and `docs/handoffs/goal-mcp-loop-iter-5-audit.md` does NOT exist; status.json is stuck at `qa_complete`/`next_action: auditor`. The screenshots that exist (UT-04/05/07/09) are from the QA agent's PARALLEL Chrome MCP lane — explicitly disqualified by the session standard (QA report TC-11 itself marks the canonical lane "PENDING") — and are incomplete on their own terms: UT-07≡UT-09 are byte-identical duplicates (md5 cfe695e8…) so J-05's round-trip wasn't captured, and UT-05 shows only the MU score cards at a historical as-of, not the J-02 proof drill-down. Engine.log L402-413 reveals the REAL root cause (not the port the dev fixed): the post-dev parallel Branch-UI chain aborted at `ui-test-design` ("user-visible-changes report not found" though ui-impact reported writing it) so the canonical browser-qa-agent lane + ux-regression + closure never ran, and the `invalid step 'post_dev_parallel_complete'` bug (also iter-4 L343) defeated the sequential-retry fallback so the auditor never ran. Cannot GOAL_ACHIEVED: J-04 stays `partial`, gating artifacts missing. Not REGRESSION (nothing passing→failing; harness-only). Not STALLED (a precise, named, actionable harness fix is now identified).
-
-**Next-step recommendation:** iter-6 (FULL — auditor only runs in the full pipeline). ONE allowed code change, in the HARNESS not `apps/`: fix the post-dev Branch-UI chain so the canonical lane actually runs — (a) make `ui-test-design-phase.sh` find the `phase-*-user-visible-changes.md` that `ui-impact-phase.sh` writes (path/timing mismatch at engine.log L402 vs L406), and (b) fix the `invalid step 'post_dev_parallel_complete'` update_status call (L412-413) so the sequential-retry fallback re-runs the aborted Branch-UI steps (browser-qa-agent, ux-regression, closure) AND the auditor. DoD for iter-6: `reports/phase-goal-mcp-loop-iter-6-ui-test-results.md` exists with non-SKIP UT-* for all five journeys (J-04 → passing; J-02 EXPANDED proof panel scrolled into frame; J-05 round-trip as a DISTINCT screenshot, not a dup of /evidence) AND `docs/handoffs/goal-mcp-loop-iter-6-audit.md` exists. The keep-`apps/`-frozen + port-free fix from iter-5 stand. ESCALATION FLAG: this is the 2nd consecutive canonical-lane miss and 3rd consecutive absent auditor — if iter-6 ALSO fails to run the canonical lane + auditor, treat the session as STALLED (harness needs hands-on human repair, not another loop).
-
-## Iteration 6 — goal-mcp-loop-iter-6
-
-**Date:** 2026-06-30T06:30:00Z
-**Verdict:** GOAL_ACHIEVED
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly passing: J-04 (partial → passing — first canonical pass; regime-conditioned evidence)
-- Re-verified passing on the canonical lane (last canonical pixel was iter-3/iter-4): J-01, J-02, J-03, J-05
-- Newly failing: none
-- Regressed: none
-- Anti-goal violations: none
-
-**Reasoning:** The iter-5 ESCALATION FLAG is fully resolved. Iter-6 fixed the four named harness defects and, as direct proof, the CANONICAL browser-qa-agent lane ran end-to-end (engine.log L468-483: ui-impact → ui-test-design → browser-qa "Done. Report: …phase-goal-mcp-loop-iter-6-ui-test-results.md", PASS 5/5) AND the auditor ran (engine.log L515 `[audit attempt 1/3]` → audit handoff PASS_WITH_GAPS) — both for the first time in 2-3 iters, with no `invalid step 'post_dev_parallel_complete'` abort and no ui-test-design "report not found" abort (contrast iter-4 L334-343, iter-5 L405-413). All five Must-have journeys pass on the canonical lane; J-04 flips partial→passing. I personally inspected UT-J-04-dashboard.png (Risk-on 76.05 + "See evidence proven in this regime →" affordance), UT-J-04-regime-evidence.png ("Regime: Risk-on" claim scrolled into frame), UT-J-01-stocks-badges.png (120/120, every score has a status), and UT-J-02-proof-panel.png (score cards). Zero `apps/` diff (git-verified), coherence COHERENCE-PASS, ledger unchanged at 2 referee-certified PASS claims, displayed numbers byte-match certified-claims.jsonl (+6.36%/+6.12%, p=0.0004998, cohorts 12297/4720, dates 2026-06-30); all seven anti-goals upheld. Corroboration: Review PASS, QA PASS (60/60 evals), Closure CLOSURE-PASS, Audit PASS_WITH_GAPS "Proceed". Two non-blocking gaps remain (B2: `browser_checks_run` flag never wired to true — judged on the demonstrated canonical lane per instructions, not the stale flag; T1: J-02 inline expanded-panel below-the-fold — content corroborated via /evidence row + ledger byte-match + frozen iter-3 pixel, so functionally passing).
-
-**Next-step recommendation:** Halt — goal achieved. Every goal.md success criterion is met (visible evidence status on every score, auditable proof behind each "proven" claim, honest "Not yet proven" marking, regime-conditioned evidence, zero uncertified edges — gate-enforced, 2 PASS claims). Optional future maintenance (NOT required): one lean harness/QA pass could close the two carry-forwards — wire `browser_checks_run=true` when the fanout produces a non-SKIP ui-test-results.md (B2), and scroll the J-02 expanded proof panel into frame before capture (T1).
-
-## Iteration 7 — goal-mcp-loop-iter-7
-
-**Date:** 2026-06-30T19:00:00Z
-**Verdict:** GOAL_ACHIEVED
-**Depth dispatched:** lean
-**Journey deltas:**
-- Newly passing: none (all five already passing at iter-6)
-- Re-confirmed passing on the canonical lane: J-01, J-02, J-03, J-04, J-05
-- Newly failing: none
-- Regressed: none
-- Anti-goal violations: none
-
-**Reasoning:** Verify-only re-confirmation, exactly as the spec mandated. The canonical browser-qa lane ran and returned PASS 5/5 (reports/phase-goal-mcp-loop-iter-7-ui-test-results.md, 0 skipped) with real freshly-captured screenshots. I personally inspected one+ pixel per journey: UT-J-01-result.png (md5 617da05) — /stocks 120/120 rows, every Leadership "Proven", every Entry Quality + Risk "Not yet proven", Regime "Risk-on 76.05" (J-01 + J-03); UT-J-02-result.png (md5 80c7cdd) — /stocks/MU three score cards, expanded panel below the fold (recurring T1) but replay asserted the panel texts, corroborated by the /evidence row + ledger byte-match + frozen iter-3 pixel; UT-J-04-dashboard.png (md5 0a0c589) — Regime affordance; UT-J-04-result.png ≡ UT-J-05-result.png (md5 cfe695e8) — /evidence ledger with both PASS claims, regime-labeled, backing links, values byte-matching certified-claims.jsonl (+6.36%/+6.12%, p=0.0004998). git-verified ZERO apps/ diff (tracked + untracked both empty); only non-product changes (J-02 test script, telemetry, session.json). Ledger unchanged at exactly 2 referee-certified PASS entries; 13/13 evidence/byte-match unit tests green; coherence COHERENCE-PASS (not COHERENCE-FAIL); review PASS; all seven anti-goals upheld (only Leadership reads "Proven", backed by the certified claim; no buy/sell/return language; displayed numbers correct; both claims survived the referee; no new uncertified edge). AUTO:journeys block empty — no new auto-proposed scope. Every goal.md success criterion is met with positive evidence and no open FAILING/PARTIAL journey. Not REGRESSION (nothing passing→failing), not STALLED (terminal success, not an unproductive loop), not CONTINUE/ESCALATE (no remaining tractable scope and no structural veto). GOAL_ACHIEVED.
-
-**Next-step recommendation:** Halt — goal achieved. Optional non-blocking maintenance only (NOT required): scroll the J-02 expanded proof panel into frame (T1), and capture J-05's step-3 round-trip as a distinct landed-on /stocks frame instead of reusing the /evidence list image (UT-J-04-result and UT-J-05-result are byte-identical this iteration). Both are corroborated and do not gate the goal.
-
-## Iteration 8 — goal-mcp-loop-iter-8
-
-**Date:** 2026-06-30T22:12:00Z
-**Verdict:** GOAL_ACHIEVED
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly passing: J-06 (vcp_contraction top-decile certified edge on the Research factor lab + a 4th /evidence claim row)
-- Newly failing: none
-- Regressed: none
-- Anti-goal violations: none (all seven upheld; the rejected ma_stack cohort is the only FAIL ledger entry and correctly reads "Not yet proven" on both surfaces)
-
-**Reasoning:** Verified the full chain independently rather than trusting handoffs. The gate certified vcp_contraction PASS as certified-claims.jsonl line 4 (holdout +0.0333, p=0.011494 < required_p 0.0125, divisor 4, no `signal` key). git diff confirms ZERO apps/backend/app/** change — only apps/frontend/* + tests — so the engine/referee/`/api/evidence` shape and determinism/no-lookahead are untouched. Personally inspected UT-05 (/evidence: all four rows, vcp PASS +3.33% byte-matching the ledger, honest "Out-of-sample edge" subtitle, "Backs: Research factor lab →"), UT-15 (/stocks: 120/120 rows, Leadership "Proven", Entry Quality + Risk "Not yet proven", hasVcp=false — no inline badge), UT-16 (MU detail with the drill-down DOM-asserted), and the factor-lab frames (leadership "Proven", ma_stack/others "Not yet proven"). Coherence is COHERENCE-PASS. All six Must-have journeys pass; secret-scan of the diff is clean.
-
-**Next-step recommendation:** Halt — goal achieved. J-01…J-06 all green and the AUTO:journeys block carries no further unbuilt scope. If the continuous-improvement proposer extends docs/goal.md again, dispatch lean for a verify-only re-confirmation; escalate to full only if the new journey ships a referee-gated "proven" claim or touches the shared evidence resolver / a new public-surface badge.
-
-## Iteration 9 — goal-mcp-loop-iter-9
-
-**Date:** 2026-07-01T01:52:58Z
-**Verdict:** CONTINUE
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly passing: none (backend enablement milestone by design — no journey flips; cf. iter-2 "backend milestone, not a journey-state change")
-- Newly failing: none
-- Regressed: none (J-01..J-06 non-regression confirmed via the spec-mandated canonical byte-identity path, browser SKIPPED by design)
-- Newly tracked as UNKNOWN (unbuilt by design): J-07, J-08 — two NEW human-authored Must-have journeys added to goal.md; iter-9 is Part A enablement only
-- Anti-goal violations: none (all seven upheld; anti_goal_violations stays [])
-- Backend milestone: the sustainable trial economy landed — a PURE LORD++ online-FDR module + injectable deflation policy (default Bonferroni) + isolated staging ledger + per-claim gate routing, all default-off
-
-**Reasoning:** iter-9 delivered exactly its scoped deliverable — Part A of goal.md's engineering direction ("build the economy first, then widen the scan") — and did so cleanly through the full pipeline (status current_step=closure_passed; audit handoff PRESENT and PASS — contrast the missing-auditor gaps of iters 3/4/5; review PASS, QA 14/14 PASS, coherence COHERENCE-PASS). This is explicitly enablement-only: the spec states J-07/J-08 "Neither flips to passing this iteration," so no journey changes state. I independently verified the load-bearing invariant three ways rather than trusting handoffs: (1) certified-claims.jsonl is git-UNMODIFIED (working tree clean; last touched iter-8 commit 8043863; 4 entries PASS/PASS/FAIL/PASS, all deflation=bonferroni, divisors 1-4, signal=leadership_score only on L1); (2) test_referee.py + test_forward_walk.py have ZERO diff and pass green — the strongest possible proof the default deflation path reproduces today byte-identically; (3) the honesty fence is in code — `use_fdr = ledger==LEDGER_STAGING and fdr_cfg.enabled`, so canonical NEVER runs FDR even with fdr.enabled=True, and referee defaults `test_level=None → alpha_per_test/divisor`. Secret+language scan of the full diff clean; online_fdr.py grep-confirmed pure (no RNG/IO/clock); proven_signals stays {leadership_score}; no Evidence-Claim block so the gate passes through (no canonical-bar tightening). NOT GOAL_ACHIEVED — J-07/J-08 unbuilt/unknown (goal re-opened when goal.md was extended). NOT REGRESSION — nothing passing→failing; canonical byte-identical; no critical anti-goal. NOT STALLED — real enablement progress + a crisp named next step. NOT ESCALATE — already full.
-
-**Next-step recommendation:** iter-10 (FULL) — Part B Phase 1, surface J-07. Explore a NON-20 horizon (1/5/10/60) for a factor-decile cohort in the NEW staging ledger under the online-FDR economy, then promote exactly one OOS winner to canonical via an `## Evidence Claim` carrying an explicit `"ledger":"canonical"` key (gate certifies under strict Bonferroni, divisor 5, required_p=0.010). On PASS, surface the /evidence row + factor-lab "Proven" badge at that horizon and browser-verify J-07. FULL because it ships a new referee-gated "Proven" claim + a new public-surface badge. CRITICAL author reminder (audit §5): the gate default is now `staging` — a badge-bound claim MUST set `"ledger":"canonical"` explicitly or the winner is certified into staging and silently never surfaces. iter-11 repeats for a PRE-REGISTERED 2-factor combination → J-08; GOAL_ACHIEVED reachable once both land verified.
-
-## Iteration 10 — goal-mcp-loop-iter-10
-
-**Date:** 2026-07-01T04:19:25Z
-**Verdict:** CONTINUE
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly passing: none (discovery/enablement milestone by design — no journey flips; mirrors iter-9 "Part A enablement, not a journey-state change")
-- Re-verified passing via the canonical byte-identity path: J-01, J-02, J-03, J-04, J-05, J-06
-- Newly failing: none
-- Regressed: none (canonical certified-claims.jsonl git-EMPTY diff vs HEAD; browser SKIPPED by design, Frontend Present: no)
-- Still `unknown` (unbuilt by design): J-07 (discovery prerequisite DONE this iter; surfacing is iter-11), J-08 (deferred to a later iter)
-- Anti-goal violations: none (all seven upheld; anti_goal_violations stays [])
-- Backend milestone: Part B Phase 1 landed — multi-horizon aperture (config.triad.horizons: [1,5,10,20,60]) + activated online-FDR (LORD++) staging economy + a FIXED pre-registered 4-candidate set explored into the INTERNAL staging ledger
-
-**Reasoning:** iter-10 delivered exactly its scoped discovery-only deliverable — Part B Phase 1 of goal.md's engineering direction ("build the economy first, then widen the scan") — cleanly through the full pipeline (status current_step=closure_passed; Review PASS_WITH_NOTES, QA PASS 15/15, Audit PASS_WITH_GAPS, Closure CLOSURE-PASS, coherence COHERENCE-PASS). Enablement-only by design: the spec states J-07 "does NOT flip to passing this iteration — it stays `unknown`," so no journey changes state. I independently verified the load-bearing invariants rather than trusting handoffs: (1) `git diff HEAD` is EMPTY for certified-claims.jsonl, all of apps/frontend/, apps/backend/app/routers/, and apps/backend/app/engine/evidence.py — the honesty fence holds and every user-facing number is byte-identical; (2) the three DO-NOT-EDIT default-path suites (test_referee/test_forward_walk/test_evidence) have ZERO diff; (3) the only app/engine change is triad_scan.py (the new explorer) — referee/online_fdr/ledger/mcp-tools are byte-identical to iter-9, so FDR is activated purely by config and fenced by the unchanged use_fdr guard; (4) read staging-ledger.jsonl directly — 4 verdicts, all deflation=lord++, three PASS at p=0.00049975 clearing the divisor-5 bar (two signal-less), vcp_contraction h10 honestly FAILED (p=0.057); the FDR bar visibly loosens (required_p 0.0109→0.0036→0.0128→0.0267). Secret scan + buy/sell/price-target language scan of the full diff: zero hits. NOT GOAL_ACHIEVED — J-07/J-08 are `unknown`/unbuilt (rules forbid GOAL_ACHIEVED with any unknown journey). NOT REGRESSION. NOT STALLED (real load-bearing progress + a concrete, high-confidence next step). NOT ESCALATE (already full).
-
-**Next-step recommendation:** iter-11 (FULL) — surface J-07. Promote the signal-less vcp_contraction D10 @ h60 winner (p=0.00049975 < 0.010; +0.089 edge, more credible than rs_spy_3m h60's +0.21 which the auditor flagged as a p-floor PASS to scrutinize) via a canonical `## Evidence Claim` that sets `"ledger":"canonical"` EXPLICITLY (an omitted key defaults to staging and the winner silently never surfaces — iter-9b lesson), certified at divisor 5 / required_p=0.010. Then surface the /evidence row + factor-lab "Proven" badge at h60 (uncertified horizons read "Not yet proven") and browser-verify J-07. FULL because it ships a new referee-gated canonical "Proven" claim (permanently tightens the user-facing Bonferroni bar to divisor 6) + a new public-surface badge — the exact high-stakes write that needs the AUDITOR. iter-12+ handles the pre-registered 2-factor combination → J-08; GOAL_ACHIEVED reachable once both land verified.
-
-## Iteration 11 — goal-mcp-loop-iter-11
-
-**Date:** 2026-07-01T06:31:31Z
-**Verdict:** CONTINUE
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly passing: J-07 (unknown -> passing — vcp_contraction D10 @ h60 promoted to canonical; the loop's first surfaced edge beyond the 20-day horizon)
-- Re-verified passing: J-01, J-02, J-03 (byte-identity: proven_signals pinned {leadership_score}, zero /stocks code change; UT-07/UT-08/UT-11 corroborate honest dark chips), J-04 (Breakout-watch regime row visually confirmed), J-05 (5 rows, prior 4 visually unchanged), J-06 (h20 vcp chip still Proven; h20 subtitle no "60-day")
-- Newly failing: none
-- Regressed: none
-- Still unknown (unbuilt by design, out of scope): J-08 — the SOLE remaining Must-have journey
-- Anti-goal violations: none (all seven upheld)
-
-**Reasoning:** iter-11 delivered exactly its scoped J-07 surfacing through the full pipeline (Review PASS, QA PASS, Audit PASS, Closure passed, coherence COHERENCE-PASS). I verified the load-bearing facts independently rather than trusting handoffs: (1) my own `git diff HEAD` shows ZERO apps/backend/app/** change and exactly ONE appended ledger line — the h60 entry byte-exact to the spec Evidence Claim (PASS, +8.91%, p=0.0004998, bonferroni divisor 5, required_p=0.01, horizon=60, ledger=canonical, NO signal key), prior four rows byte-identical; (2) a secret / buy-sell / price-target / predict scan of the frontend+ledger diff is clean; (3) J-07's four browser assertions are DOM-level against a live :3255/:8255 stack and converge with the byte-exact ledger + green unit tests + dev live curl. NOT GOAL_ACHIEVED — J-08 is unknown/unbuilt (rules forbid GOAL_ACHIEVED with any unknown journey). NOT REGRESSION (no prior-passing journey failing; no critical anti-goal). NOT STALLED (clear progress + concrete next step). NOT ESCALATE (already full). SKEPTICAL FINDING (non-blocking): the 11 evidence PNGs collapse to 3 distinct images by md5 — none shows the vcp_contraction row / h60 chip / h60 /evidence row scrolled into the viewport, so the iter-3 lesson recurred despite being specced verbatim, and the auditor's "scrolled-into-frame screenshots" claim is overstated. J-07 still passes on the DOM+ledger+unit-test channels; the pixel artifact is a documentation gap, not a functional one.
-
-**Next-step recommendation:** iter-12 (FULL) — surface J-08. Promote ONE PRE-REGISTERED 2-factor combination (from the config-backed candidate set, never an ad-hoc data-mined cohort) via an explicit `"ledger":"canonical"` `## Evidence Claim`; it now faces Bonferroni divisor 6 (required_p ~= 0.00833) after iter-11's canonical write, so promote only a candidate whose recorded raw p clears 0.00833 with margin. Surface the new combination row on /evidence + a "Proven" badge on /research/factor-combination (uncertified combinations read "Not yet proven"); keep it signal-less so J-01/J-02/J-03 stay unaffected. FULL because it ships a NEW referee-gated canonical claim + a new public-surface badge (the auditor-grade high-stakes write). BROWSER-QA HARD REQUIREMENT: actually scroll each asserted badge/row into the viewport and capture DISTINCT screenshots (do not relabel one full-page capture across many UT ids). GOAL_ACHIEVED becomes reachable the moment J-08 lands browser-verified with J-01..J-07 non-regressed.
-
-## Iteration 12 — goal-mcp-loop-iter-12
-
-**Date:** 2026-07-01T07:59:28Z
-**Verdict:** CONTINUE
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly passing: none (backend-only combination-staging DISCOVERY milestone by design — no journey flips, mirrors iter-10 for J-07)
-- Re-verified passing via the byte-identity / frozen-golden path: J-01, J-02, J-03, J-04, J-05, J-06, J-07
-- Newly failing: none
-- Regressed: none
-- Still `unknown` (surfacing deferred to iter-13, its discovery prerequisite DONE this iter): J-08 — the SOLE remaining Must-have journey
-- Anti-goal violations: none (all seven upheld; `anti_goal_violations` stays `[]`)
-- Backend milestone: the deferred "combinations" half of goal.md Part B Phase 1 landed — a FIXED pre-registered 3-pair 2-factor combination candidate set (config.triad.combination_candidates + proposer-guidance §4.2 mirror) explored through the UNCHANGED referee into the internal staging ledger (4→7 entries) under the online-FDR economy
-
-**Reasoning:** iter-12 delivered exactly its scoped discovery/enablement deliverable cleanly through the full pipeline (Review PASS, QA PASS 134/134, Audit PASS, Closure passed, coherence COHERENCE-PASS). Independently verified: `git diff HEAD` is ZERO for certified-claims.jsonl (5 entries byte-identical), apps/frontend, app/api, evidence.py, referee.py, tools.py, online_fdr.py, samples.py, and the three DO-NOT-EDIT suites; the only app change is triad_scan.py (the new combination explorer). Read the staging ledger's 3 appended verdicts directly: all kind=combination cohort=composite h20 deflation=lord++, written ONLY to the staging file — #5 rs_spy_3m+atr_pct FAIL (p=0.727, holdout −0.0046), #6 leadership_score+atr_pct FAIL (p=0.791, holdout −0.0067), #7 rs_spy_3m+high_proximity PASS (raw p=0.0009995, holdout +0.0469). Winner #7's raw p clears the canonical divisor-6 bar (0.00833) with margin — the real promotable basis iter-13 needs. `ma_stack` (iter-8 closed FAIL) is used nowhere — only documented as excluded. Secret + buy/sell/price-target language scans clean. NOT GOAL_ACHIEVED (J-08 unknown). NOT REGRESSION. NOT STALLED. NOT ESCALATE.
-
-**Next-step recommendation:** iter-13 (FULL) — surface J-08. Promote staging winner #7 (rs_spy_3m:top:quintile + high_proximity:top:tertile) to canonical via an EXPLICIT `"ledger":"canonical"` `## Evidence Claim` (iter-9b: omitted key silently re-stages), then surface it on /research/factor-combination (composite "Proven" badge) + a new /evidence combination row — both as additional READERS of the SAME GET /api/evidence payload (no new module/endpoint). Read the recorded staging verdict, don't recompute. Honor the honest-stop guard (report, don't force, if the winner no longer clears the bar). BROWSER-QA HARD REQUIREMENT: scroll each asserted badge/row into the viewport + md5-check DISTINCT screenshots (recurring iter-3/iter-11 lesson). GOAL_ACHIEVED becomes reachable the moment J-08 lands browser-verified with J-01..J-07 non-regressed.
-
-## Iteration 13 — goal-mcp-loop-iter-13
-
-**Date:** 2026-07-01T10:17:36Z
-**Verdict:** CONTINUE
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly passing: none
-- J-08: unknown -> **partial** (substantive combination-edge capability landed and is well-supported on the ledger/API/unit-test/coherence channels, but NOT cleanly browser-verified — see below)
-- Re-verified passing (non-regressed): J-01, J-02, J-03, J-04, J-05, J-06, J-07
-- Newly failing: none
-- Regressed: none
-- Anti-goal violations: none (all seven upheld; `anti_goal_violations` stays `[]`)
-
-**Reasoning:** iter-13 landed the terminal J-08 basis correctly at the data/logic layer, but stopped short of a clean browser verification, so GOAL_ACHIEVED is premature. Independently verified: `git diff HEAD` on certified-claims.jsonl is exactly ONE appended line — a genuine honest PASS (rs_spy_3m:top:quintile × high_proximity:top:tertile, composite, h20, holdout +4.69%, control +4.69%, p=0.0009995 < required_p=0.008333 at Bonferroni divisor 6, ~8x margin; prior 5 rows byte-identical); `apps/backend/app/**` zero-diff; GET /api/evidence serves the row proven=true/signal=null; proven_signals stays {leadership_score}; resolveCombinationEvidence is pure read-side (37/37 unit tests); coherence COHERENCE-PASS; Review PASS. HOWEVER: browser-qa OVERALL verdict is **FAIL** (UT-05 P1 + UT-14 — the deep-link anchor does not scroll the /evidence combination row into the viewport), phase-closure independently returned **CLOSURE-FAIL**, and the audit's additive hash-scroll fix to `app/evidence/page.tsx` (applied 10:51, AFTER the 10:17-10:33 browser run) is UNVERIFIED — no browser-qa re-run occurred. SKEPTICAL SCREENSHOT FINDING (4th recurrence of the iter-3/iter-11 lesson, and the iter-13 spec's HARD requirement): the evidence PNGs collapse to ~7 distinct images by md5; the 'Proven' badge screenshot UT-03 (md5 e866ea14, shared by UT-01/04/11) is a relabeled DEFAULT-state frame that actually shows the FAILED rs_spy_3m × atr_pct pair reading 'Not yet proven' — there is NO valid pixel showing the composite 'Proven' badge — and UT-05-fail/UT-06 show a red 'Backend unavailable' pill. So the core J-08 'Proven' flip rests on DOM-text assertions + unit tests, not corroborated pixels. NOT GOAL_ACHIEVED (J-08 not cleanly verified). NOT REGRESSION (the scroll gap is pre-existing and product-wide — it equally affects the J-02/J-05/J-06/J-07 deep-links that were already passing — and iter-13 IMPROVED it; no previously-passing journey now fails). NOT STALLED (single tractable remediation). NOT ESCALATE (remaining work is a verification re-run — lean).
-
-**Next-step recommendation:** iter-14 (LEAN) — verification-only, no new feature code. (1) Bring the stack up (frontend :3255, backend :8255) and KEEP the backend up for the whole run (the 'Backend unavailable' pill appeared mid-run in iter-13). (2) Re-run the canonical browser-qa-agent lane WITH the audit's `app/evidence/page.tsx` scroll fix already in place; confirm UT-05 + UT-14 flip FAIL->PASS. (3) Capture md5-DISTINCT, correctly-labeled screenshots that actually show: (a) the /research/factor-combination composite 'Proven' badge for the certified rs_spy_3m × high_proximity @ h20 selection scrolled into the viewport (compose high_proximity as leg 2 — the config default atr_pct is the FAILED pair and correctly reads 'Not yet proven'), and (b) the 6th /evidence combination row scrolled into view. (4) Write a PASS ui-test-results so closure passes. On that clean re-run J-08 flips to passing and GOAL_ACHIEVED is declarable — J-08 is the SOLE remaining Must-have journey.
-
-## Iteration 14 — goal-mcp-loop-iter-14
-
-**Date:** 2026-07-01T12:22:00Z
-**Verdict:** GOAL_ACHIEVED
-**Depth dispatched:** lean
-**Journey deltas:**
-- Newly passing: J-08 (partial -> passing — the SOLE remaining Must-have journey, now cleanly browser-verified)
-- Re-verified passing (non-regressed): J-01, J-02, J-03, J-04, J-05, J-06, J-07
-- Newly failing: none
-- Regressed: none
-- Anti-goal violations: none (all seven upheld; `anti_goal_violations` stays `[]`)
-
-**Reasoning:** iter-14 was the verification-only re-run the iter-13 evaluator asked for, and it landed cleanly. Independently verified (not taken from the dev handoff): `git diff HEAD` = only `telemetry.jsonl` (zero app/engine/ledger/config change); `certified-claims.jsonl` byte-identical (6 rows); the committed hash-scroll `useEffect` (evidence/page.tsx L57-63) is at HEAD unmodified. Opened the actual terminal-gate screenshots: UT-J-08-07-fullpage.png shows `/research/factor-combination` with leg 2 correctly composed to `high_proximity:top:tertile` (NOT the default `atr_pct` pair) and the "Combined (composite rank-blend)" row (n=23929) carrying a teal "Proven" badge — directly refuting the iter-13 relabeled-default-frame failure; UT-J-08-12-evidence-fullpage.png shows the deep-linked 6th `/evidence` combination row with every standard field. Read `certified-claims.jsonl` row 6 directly and byte-confirmed the rendered numbers (holdout_edge=0.046931901591708916 → +4.69%, p_value=0.0009995002498750624, divisor 6, required_p=0.008333, register 2026-07-01) — anti-goal #3 upheld. The `/evidence` full-page capture simultaneously re-renders J-03 (ma_stack FAIL), J-04 (Regime: Risk-on), J-05 (6 rows), J-06 (vcp h20), J-07 (vcp h60), and the J-01/J-02 backing leadership_score row. Screenshot hygiene (5th-recurrence guard) finally clean: the three asserted-state PNGs are md5-distinct and correctly labeled; the four 5855-byte blank frames are headless-Chrome scroll-repaint artifacts, not the referenced evidence. COHERENCE-PASS, Review PASS. Every Must-have journey J-01..J-08 has positive `passing` evidence and no anti-goal is violated → GOAL_ACHIEVED.
-
-**Honest caveat (non-blocking):** J-01/J-02 have no dedicated fresh `/stocks` screenshot this iteration — they are kept `passing` on the strength of the zero app-diff since their iter-13 pixel-verified pass, the dev-live DOM re-check (360 inline badges, 0 combination leakage), and the leadership_score backing row rendering live in UT-J-08-12. With byte-identical `/stocks` code there is no regression mechanism.
-
-**Next-step recommendation:** Halt — goal achieved. J-08 was the terminal journey. If the operator has opted into the continuous-improvement goal-self-extension loop, any next proposed journey must follow the pre-registered candidate-set discipline and route through the staging ledger first — do NOT casually append another canonical claim (each one permanently tightens the Bonferroni bar, now divisor 6 → 7; documented footgun, lessons iter-10/iter-12).
-
-## Iteration 15 — goal-mcp-loop-iter-15
-
-**Date:** 2026-07-01T13:32:59Z
-**Verdict:** GOAL_ACHIEVED
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly passing: J-09 (rs_spy_3m top-decile @ h60 canonical edge — the auto-appended continuous-improvement journey, now certified as ledger row 7 and surfaced)
-- Re-verified passing (non-regressed): J-01, J-02, J-03, J-04, J-05, J-06, J-07, J-08
-- Newly failing: none
-- Regressed: none
-- Anti-goal violations: none (all seven upheld; `anti_goal_violations` stays `[]`)
-
-**Reasoning:** iter-15 promoted the pre-registered §4.1 #3 staging winner (rs_spy_3m D10 h60) to the canonical ledger and surfaced it, closing the auto-appended J-09 cleanly through the FULL pipeline (Review PASS, QA PASS 14/14 evidence + 39/39 frontend + 10/10 functional, browser-qa PASS 13/13, ux-regression UX-REGRESSION-PASS, Audit PASS_WITH_GAPS, Closure CLOSURE-PASS, COHERENCE-PASS). Independently verified, not taken from the handoff: `git diff HEAD` touches ZERO app source — only three TEST files (evidence/staging golden refresh 6→7), the +1 gate-appended ledger row, docs/goal.md (the J-09 auto-journey), blueprint (3 additive lines), and state/telemetry; `app/engine/{referee,ledger,forward_walk,evidence}.py`, `tools.py`, `lib/evidence.ts`, `lib/factor-lab-evidence.ts`, `config.yaml` are byte-identical → the J-01..J-08 surfaces have no regression mechanism. Read `certified-claims.jsonl` row 7 directly and byte-confirmed the rendered numbers: control_excess=holdout_edge=0.21344270202534893 → "+21.34%", deflation=bonferroni, deflation_divisor=7, required_p=0.0071428571428571435 → "alpha/7=0.007143", p_value=0.0004997501249375312 → "0.0004998", register 2026-07-01, status=PASS, n_trials_at_test=7 — a genuine PASS clearing the divisor-7 bar by ~14× (anti-goal #3 upheld, honest-stop not fired). **Screenshot finding (5th-recurrence guard, and a correction to the audit):** the money frame the audit's F1 declared missing is in fact present — UT-01-initial.png (md5 583c1b11, 379023 B, a distinct full-page capture the audit overlooked while focused on the reused/blank frames) shows row 7 in full (PASS · rs_spy_3m top decile · 60-day hold · +21.34% · alpha/7 · Backs: Research factor lab) AND simultaneously re-renders J-01/J-02 (leadership_score PASS +6.36%, Backs: Stocks leaderboard), J-03 (ma_stack FAIL honestly marked), J-04 (Regime: Risk-on), J-05 (all 7 rows), J-06 (vcp h20 +3.33%), J-07 (vcp h60 +8.91%), J-08 (rs_spy_3m×high_proximity composite +4.69%). The one genuinely un-pixeled element is the factor-lab "Proven" chip on the rs_spy_3m h60 cohort (every factor-lab capture is scrolled to the top-of-table Proximity/Risk rows), but it is grounded by the triangle the spec endorses: browser-qa DOM assertions (UT-07 data-proven=true/text=Proven/href=/evidence#factor-rs_spy_3m-d10-h60 for h60; data-proven=false for h1/h5/h10/h20) + unit cases ee/ff (39/39, unedited evidence.ts) + the byte-identical general matcher that visibly lights vcp_contraction h20/h60 identically (UT-11) + the confirmed /evidence row's linkback + deep-link. Signal-less confirmed: proven_signals=[leadership_score] (backend golden test + live API + UT-13), zero rs_spy_3m on /stocks (UT-12 grep), /stocks inline badges unchanged (TC-06). Yellow flag (the designated audit focus): the +0.2134 OOS edge is ~10× its in-sample edge (0.02038) — implausibly large, iter-10 auditor B3 — but a real referee PASS at strict Bonferroni divisor 7, surfaced verbatim under the "descriptive, not predictive · read the edge as an upper bound" framing; the seeded-data/engine magnitude is OUT OF SCOPE (anti-goal #5 determinism), scrutinized and cleared by both the coherence-auditor and phase auditor as honest-to-surface, non-blocking — NOT an anti-goal violation. Every Must-have journey J-01..J-09 has positive `passing` evidence, no anti-goal is violated, coherence PASS → GOAL_ACHIEVED. NOT REGRESSION (zero app-diff, all prior journeys re-verified). NOT CONTINUE/ESCALATE/STALLED.
-
-**Next-step recommendation:** Halt — goal (as extended by J-09) achieved. If the continuous-improvement loop extends again, the next iteration should run FULL (a new canonical promotion tightens the Bonferroni bar 7→8 permanently and needs the audit/closure/ux-regression guards that scrutinized this iteration's yellow flag), route the candidate through the STAGING ledger with an explicit `"ledger":"canonical"` only on a deliberately promoted winner (iter-9b/10 footgun), and honor the honest-stop guard on any non-PASS. Two carry-forward items (non-blocking): (1) harden the browser-qa lane to element-clip the actual asserted chip/row (or fail the capture) — the 5855-byte blank-frame + reused-top-of-table pattern has now recurred iter-11/13/14/15; (2) the +0.2134 OOS≫in-sample magnitude is a seeded-data/engine characteristic worth a dedicated backlog look IF the engine ever comes into scope (out of scope now).
-
-## Iteration 16 — goal-mcp-loop-iter-16
-
-**Date:** 2026-07-02T00:04:05Z
-**Verdict:** STALLED
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly passing: none (Part-A enablement, spec-designed no-flip — and the data deliverable probe-blocked)
-- Newly tracked as UNKNOWN: J-10 (target — tooling+validation delivered, staged 30y asset BLOCKED by Stooq's standing per-IP export ACL), J-11, J-12, J-13 (unbuilt by design; all sequenced behind the blocked iter-17 swap)
-- Carried passing via the spec-prescribed byte-identity channel: J-01..J-09 (evaluator-verified: 0-diff on apps/backend/app/**, apps/frontend/**, config.yaml, both ledgers 7+7 rows; own pytest run 65 passed/8 skipped reproduces audit post-fix counts)
-- Newly failing: none
-- Regressed: none
-- Anti-goal violations: none (`anti_goal_violations` stays `[]`; audit B1 — env key would have persisted into committed meta.json on HTTP failure — was a PREVENTED near-miss: no key set, nothing staged, fixed in-audit with `redact_stooq_key` + regression test, evaluator-verified in place)
-
-**Reasoning:** iter-16 succeeded at everything autonomously reachable: ingest_seed.py gained the provider-routed/staged/resumable stooq path (21 offline unit tests), the 7-validation staged-seed suite is proven load-bearing (synthetic-tree pass + 5 planted violations caught, per audit T2), and the mandatory live probe ran against real Stooq — hitting `Access denied` from the CSV export endpoint (per-IP standing ACL, reproduced independently by the auditor; bulk path 401; STOOQ_API_KEY unset; consistent with the iter-3 lesson in config.yaml). The spec's sanctioned probe-hard-failure branch executed exactly: zero symbols staged, zero fabrication, blocker evidenced, human decision surfaced (coverage manifest §6). Full pipeline clean: Review PASS_WITH_NOTES, QA PASS 15/15, Audit PASS_WITH_GAPS (B1 fixed in-audit), Closure CLOSURE-PASS, COHERENCE-PASS, browser lane correctly SKIPPED (Frontend Present: no). NOT GOAL_ACHIEVED (J-10..J-13 unknown). NOT REGRESSION (byte-identity; no critical violation occurred). NOT CONTINUE despite the spec's pre-registered guidance: CONTINUE mechanically dispatches iter-17 unattended (run-goal.sh:1499-1501), which this iteration's own dev handoff ("iter-17 must wait for the human unblock") and audit §5 ("must NOT be scheduled until the human operator resolves the blocker") explicitly forbid; all three unblock paths (network / STOOQ_API_KEY / amend goal.md provider) are human actions, goal.md bars provider substitution, and no autonomous journey-advancing work exists (re-probing a standing ACL is waste; staleness gate / chart windowing / J-13 legend are all explicitly sequenced post-swap and flip nothing pre-swap). STALLED — exercised early per the charter's "I cannot identify productive next work" provision — is the only resumable halt-for-human verdict and matches the situation exactly (option (c) is literally "edit goal.md"). The iteration itself is scored a SUCCESS (sanctioned honest-partial), not a failure.
-
-**Next-step recommendation:** halt for the human decision, then `--resume`. (1) Human picks coverage-manifest §6 option (a) run the fetch from an ACL-accepted network (~20-35 min, resumable), (b) export a sanctioned STOOQ_API_KEY (redaction fix makes persistence impossible), or (c) amend goal.md's provider. (2) On resume with the staged asset present + `test_seed_staged_30y.py` green: iter-17 = the ATOMIC swap + SANCTIONED ledger reset (FULL — the session's highest-stakes write; every J-01..J-09 "Proven" surface recomputes): seed-dir flip, pool-broadened load_prices, resolve_candidate staleness gate, DB rebuild, bounded backfill, ledger regeneration, frozen-golden/seed-pin refresh, survivorship-span update. (3) If option (c): decomposer re-plans Part A on the new provider (machinery is provider-agnostic except the fetch client). Carry-forward: cap `_solve_stooq_pow` iterations (audit B2).
-
-## Iteration 17 — goal-mcp-loop-iter-17
-
-**Date:** 2026-07-02T23:48:35Z
-**Verdict:** CONTINUE
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly passing: none (§H enablement, spec-designed no-flip — the iter-9/10/12/16 lineage)
-- Newly tracked as UNKNOWN: J-14 (target — its step-1 data basis is DELIVERED into the staged asset; steps 2–3 are post-swap surfacing)
-- Still unknown (unbuilt by design, sequenced behind iter-18): J-10 (blocker RESOLVED — staged asset now exists + swap-complete), J-11, J-12, J-13
-- Carried passing via the byte-identity channel: J-01..J-09 (evaluator-verified: git diff HEAD empty on apps/backend/app/**, apps/frontend/**, config.yaml, data/seed/**, both ledgers 7+7 rows; unedited DoD suites green 64/64, run independently by reviewer AND QA)
-- Newly failing: none
-- Regressed: none
-- Anti-goal violations: none (`anti_goal_violations` stays `[]`)
-
-**Reasoning:** iter-17 (a clean re-dispatch of an interrupted first attempt) delivered §H exactly: the staged 30-year seed's index/macro context is complete and vendor-disclosed with ZERO runtime change. I verified every load-bearing claim on disk rather than trusting handoffs: (1) `_SPX`/`_NDX`/`_DJI` — 7,674 bars each, 1996-01-02 → 2026-07-01, correct schema, and my own awk sweep found ZERO pre-1996 rows (the 1789-era world-archive rows provably clipped); (2) `_VIX` — 7,675 bars deep from Yahoo, and my own overlap computation reproduces max |Δ|=0.0 across OHLC on all 1,357 shared dates with zero live dates missing (single-vendor, zero-seam); (3) `_TNX`/`_DXY`/`_VXN` — `cmp`-IDENTICAL to the live seed (never re-fetched from Yahoo, honoring §H's proxy prohibition); (4) swap-completeness — my own set-diff shows all 162 live CSVs ⊆ 590 staged, AND my own bounded run of `test_seed_staged_30y.py` = 12/12 green including the committed iter-18 gate test; (5) staged `meta.json` — 591/590/1 accounting (SATS the only honest absence), exactly 7 vendor-tagged records (stooq ×3 / yahoo ×1 / fred-macro-proxy ×3), window pins unchanged (1996-01-01 → 2026-07-01), proxy disclaimer present exactly once; (6) protected paths — zero diff on app/frontend/config/live-seed/both-ledgers; (7) secret scan — the only hits are a docstring phrase and the PLANTED fake key inside the required B1 redaction failure-path test; B2's `_POW_MAX_ITERATIONS=10_000_000` cap is in the script. Full pipeline clean: Review PASS_WITH_NOTES (independent re-verification), QA PASS 15/15 + 124 backend tests, Audit PASS_WITH_GAPS (sole gap B1: full-suite counts honestly deferred — mechanically covered, correctly re-assigned to iter-18 where runtime code actually changes), Closure CLOSURE-PASS, COHERENCE-PASS, browser lane correctly SKIPPED (Frontend Present: no). NOT GOAL_ACHIEVED (J-10..J-14 unknown). NOT REGRESSION (byte-identity; no critical violation). NOT STALLED — the defining difference from iter-16: the human unblock landed (commit 8be979d) and iter-17 finished the staged asset, so the highest-stakes next step is now dispatchable UNATTENDED. NOT ESCALATE (already full).
-
-**Next-step recommendation:** iter-18 (FULL) = the ATOMIC basis swap + sanctioned ledger reset. (1) Verify `test_swap_completeness_staged_superset_of_live` green at start (it is). (2) Atomically: seed-dir flip, pool-broadened `load_prices`, `resolve_candidate` recency/staleness gate, DB rebuild, bounded backfill (coarser deep-history cadence), regenerate BOTH ledgers from scratch, refresh frozen-golden/seed-pin suites, survivorship-span update. (3) Run the bounded sequential FULL backend suite with real counts (retires audit gap B1). (4) Browser-verify post-swap: J-10 deep-history honesty, J-11 no-stale-edge (no old +21.34%/+6.36%/p=0.0004998 unless independently re-certified), all J-01..J-05 badges reflecting the REGENERATED ledger. (5) PRE-REGISTERED for the iter-18 evaluator: J-06..J-09's specific retired-window edges may honestly fail re-certification — per goal.md's data-basis-change provision that is the system WORKING, not a REGRESSION; judge them against the honest-badge/correct-number contract on the new basis.
-
-## Iteration 18 — goal-mcp-loop-iter-18
-
-**Date:** 2026-07-07T09:20:00Z
-**Verdict:** REGRESSION
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly passing: J-10 (deep price history surfaced, honestly bounded), J-11 (sanctioned all-FAIL ledger reset; no stale edge survives)
-- Regressed: **J-01** (/stocks leaderboard full-page crash on Sector-sort — the verdict driver)
-- Newly partial (target, incomplete verification): J-12 (broadened universe confirmed 541/541 + staleness gate unit-verified; /methodology membership-timeline browser assertions NOT cleanly captured)
-- Sanctioned partial per goal.md data-basis provision (NOT regressions): J-02 (no Proven badge to drill), J-06/J-07/J-08/J-09 (retired edges honestly recompute to FAIL)
-- Re-verified passing on FRESH pixels (regenerated basis; byte-identity carry unavailable): J-03, J-04, J-05
-- Out of scope, carried unknown: J-13, J-14
-- Anti-goal violations: none (all seven upheld; anti_goal_violations stays [])
-
-**Reasoning:** The two halves of this iteration diverge sharply, and I verified both against artifacts I personally opened rather than the handoffs. The SANCTIONED half succeeded honestly: I read both ledgers directly (7 canonical + 7 staging rows, ALL FAIL, register 2026-07-03, Bonferroni divisors 1..7 preserved, retired-value grep = 0 hits), confirmed the shared certification engine is git-diff-EMPTY (iter-9 regression proof) and `proven_signals={}` (evidence.py strict status==PASS) forces every badge to "Not yet proven" (UT-01/UT-02/TC-04) — so J-06..J-09's edge non-survival and J-02's un-exercisability are the goal.md-sanctioned reset working (partial, not regression), and J-10/J-11 flip to passing. The UNSANCTIONED half is a REGRESSION: I opened UT-21-fail-crash.png and confirmed the /stocks leaderboard crashes to a blank "Application error" (all nav wiped) on Sector-sort — a prior-passing interaction (live since iter-2) broken by THIS iteration's broadened pool returning sector:null for ~78% of rows (scoring.py:377) into the unguarded comparator stocks/page.tsx:93 (git diff on that file EMPTY — a data-contract regression, not a code change) with no error.tsx to contain it. Two independent gates concur (UX-REGRESSION-FAIL, CLOSURE-FAIL) while status.json/qa.md falsely reported "zero blockers / 18/18 pass / ready to ship" with the crash screenshot in their own cited evidence folder. Per decision-tree rule 1 (a passing journey now failing), verdict = REGRESSION. Not GOAL_ACHIEVED (J-01 regressed + J-12 partial + J-02/J-06..J-09 partial + CLOSURE-FAIL). Not CONTINUE (a prior-passing journey broke — the framework halts for human review, not auto-loop). Not STALLED (fix is a surgical null-guard, not a human-owned blocker). Coherence COHERENCE-PASS (no structural veto — the crash is functional, not IA/data-contract drift).
-
-**Next-step recommendation:** Halt for human review; on `--acknowledge-regression`, iter-19 (FULL) is a fix + complete-verification pass, no new feature/evidence work: (1) harden stocks/page.tsx:93 sector comparator + lines 355-357 filter vocab against null, fix api.ts:279 `sector: string|null`, add error.tsx/global-error.tsx containment; (2) complete the canonical browser-qa lane that crashed at exit 70 (re-verify UT-21 fix, Watchlist 404/409 negative paths, Backtest 2005-02-25 floor, and the goal.md-CRITICAL product-wide P1 anti-goal-#2 language sweep UT-29 — only ~25% ran); (3) cleanly browser-verify J-12's /methodology membership timeline + mid-IPO absent-then-present + stale_series card; (4) reconcile status.json + qa.md against the real evidence set and re-run the auditor to incorporate the ux-regression verdict; (5) non-blocking F1 — confirm/widen the Full-history chart x-domain for >8y names. On a clean re-run J-01 returns to passing and J-12 flips to passing.
-
-## Iteration 19 — goal-mcp-loop-iter-19
-
-**Date:** 2026-07-07T16:05:00Z
-**Verdict:** CONTINUE
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly passing: J-01 (regressed -> passing — the iter-18 verdict driver, the /stocks Sector-sort crash, is fixed + contained), J-12 (partial -> passing — membership timeline + staleness card now cleanly browser-verified)
-- Re-verified passing on FRESH pixels (regenerated 30-year basis): J-03, J-04 (Regime label now directly opened, resolving iter-18 caveat), J-05, J-10 (byte-identical bars after prefill rewrite), J-11 (language sweep now completed product-wide, resolving iter-18 caveat)
-- Still partial by design (goal.md data-basis provision — NOT regressions): J-02, J-06, J-07, J-08, J-09 (ledgers all-FAIL; iter-19 did zero evidence work)
-- Newly tracked as UNKNOWN (unbuilt): J-15, J-16 (human-authored "fast platform" Must-haves; iter-19 landed item-A OOM fix as a down-payment only)
-- Carried unknown (out of scope): J-13, J-14
-- Newly failing: none
-- Regressed: none
-- Anti-goal violations: none (all 8 upheld; anti_goal_violations stays [])
-
-**Reasoning:** iter-19 cleanly closes the iter-18 REGRESSION and its coupled OOM defect. I verified every status change against artifacts I personally opened, not the handoffs. J-01: opened UT-02/UT-03/UT-05 — the exact Sector-sort click that blanked the app in iter-18 now sorts asc+desc with the sidebar nav intact and narrows to 422/541 "Unassigned"; working-tree diff (base 8f1798be) confirms the surgical fix (`localeCompare` -> shared `compareSectors`/`sectorLabel`, StockRow.sector widened to `string|null` so tsc flagged every site, new error.tsx/global-error.tsx containment opened in UT-16). J-12: opened UT-15-entry-2020 (DDOG enters 2020-08-03 on the membership timeline, absent-before/present-after) + UT-14 (STALE SERIES=1 card in frame). Backend engine untouched except prices.py (streamed column-projected `Bar` prefill; scoring/referee/evidence/ledger/forward_walk git-diff EMPTY -> honesty fence + no-lookahead intact); both ledgers 7+7 all-FAIL and git-unchanged (UT-20-21/UT-21: 1623/1623 "Not yet proven", 0 PASS). scan-report CLEAN, coherence COHERENCE-PASS. The two gates that CAUGHT iter-18 both now PASS (UX-REGRESSION-PASS, CLOSURE-PASS) and the auditor (PASS_WITH_GAPS, "Proceed") explicitly reconciled the "no -fail- frame under blockers:[]" DoD check — the exact iter-18 contradiction is absent (0 -fail- frames). NOT GOAL_ACHIEVED (J-02/06/07/08/09 partial; J-13/14/15/16 unknown). NOT REGRESSION (no passing->failing; J-01 recovered; no critical anti-goal). NOT STALLED (clear tractable next work). NOT ESCALATE (already full; review PASS, not fail-open; J-01 did not fail two consecutive iters). CONTINUE.
-
-**Next-step recommendation:** iter-20 (FULL) — resume forward feature work now that the regression is closed and the backend is stable. Best next target per goal.md sequencing: J-13 (Data Manager coherence with the 548 default — point Fetch at the 548 pool, remove the "Expand universe" job option + its dead code, and split the availability legend so cell-fill=price-completeness and the indicator=scored-snapshot no longer collide on green/amber) — a self-contained IA/UX journey now unblocked by the stable /data path. Alternatives of similar readiness: J-14 (render the deep _SPX/_NDX/_DJI + macro overlays with per-series vendor labels, registering the vendor-label Data Contract value) or the fast-platform mechanical backend pass (items B+C+D+G+H — SQLite WAL pragmas, duplicate-index hygiene, the stock-detail/watchlist whole-leaderboard deserialization, the /api/data N+1, the readiness-probe cost) toward J-15/J-16. FULL because each ships a new user-facing surface and/or a byte-identity-gated data-path change needing the audit/ux-regression/closure guards. Non-blocking carry-forwards (do NOT reopen iter-19): F1 Full-history chart x-domain widening; B1 a genuine cold-restart /api/data re-repro; B2 VmSize (not RSS) sampling in perf-budgets.md; T1 re-run tests/test_scanner.py + tests/test_bars.py when a seed-load budget is available; F3 return-attribution.tsx null-sector "Unassigned" consistency.
-
-## Iteration 20 — goal-mcp-loop-iter-20
-
-**Date:** 2026-07-08T09:30:00Z
-**Verdict:** CONTINUE
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly partial: J-13 (unknown -> partial — target; the J-13 code deliverable landed COMPLETE and independently verified correct, but the canonical browser-qa lane SKIPPED and closure returned CLOSURE-FAIL, so it is not cleanly canonical-verified)
-- Carried passing (byte-identity + fresh LIVE spot-check by ux-regression): J-01 (Sector-sort x2, no crash, nav intact), J-03 (incidental "Not yet proven" corroboration)
-- Carried passing (byte-identity; REPLAY GAP — required-still-passing set NOT live-replayed because browser lane SKIPPED): J-05, J-10, J-12
-- Carried passing (byte-identity; untouched): J-04, J-11
-- Still partial by design (goal.md data-basis provision — NOT regressions; iter-20 did zero evidence work): J-02, J-06, J-07, J-08, J-09
-- Carried unknown (out of scope): J-14, J-15, J-16
-- Newly failing: none
-- Regressed: none
-- Anti-goal violations: none (all 8 upheld; anti_goal_violations stays [])
-
-**Reasoning:** The two halves diverge and I verified both against artifacts I personally opened, not the handoffs. The CODE half succeeded cleanly: `git diff` confirms the load-bearing backend change is exactly the one-line fetch-scope swap (`data_manager.py`: `all_seed_symbols(cfg)` -> `price_load_symbols(cfg, seed_dir)`, the same `all_seed_symbols ∪ read_pool` union `load_prices` already uses), `compute_availability` is byte-identical (new frozen-output test `test_compute_availability_byte_identical_after_fetch_scope_widening`; coherence Data Contract check; audit B2), the Expand removal is surgical (grep 0 app-source hits), the two-group legend + monotonic blue ramp (#a6c8f2 top, not amber) + violet `--snapshot` ring (#a78bfa, not green) match spec, and the new copy is pure descriptive metadata with zero buy/sell/return/price-target language (anti-goal #2 clean). Scan CLEAN, coherence COHERENCE-PASS, review PASS (retry after a FAIL — 3 findings fixed), zero ledger/engine diff. The ux-regression reviewer FORCED a clean `.next` rebuild and LIVE-verified all three J-13 steps via Chrome DOM/computed-style, and the auditor (PASS_WITH_GAPS) states "the deliverable is correct; the gaps are entirely in the verification chain." BUT the canonical browser-qa lane recorded a blanket SKIP (0/22 — both services unreachable, `curl 000` on :3255 and :8255), the evidence dir is EMPTY, `browser_checks_run: false`, and phase-closure returned CLOSURE-FAIL on exactly that gap (DoD line 1 unmet by the named agent; 3 required-still-passing journeys J-05/J-10/J-12 unreplayed; QA report internally contradicts ui-test-results on service reachability by grading browser cases from code inspection). Per the session's own repeated lesson (iter-0/2/4/13) and the spec's NOTES ("do not accept a status.json/QA 'ready to ship' over an empty evidence dir; trust the ux-regression/closure verdicts"), a correct diff + code-verification + a non-canonical live DOM check is NOT a browser-proven journey — so J-13 advances unknown->partial (iter-13 J-08 precedent), NOT passing. Verdict per decision tree: not REGRESSION (no passing->failing; J-01 live-confirmed intact; stable journeys byte-identical; no critical anti-goal). Not STALLED (the blocker is services-down + a stale-bundle harness trap — operationally fixable, NOT a human-owned action). Not GOAL_ACHIEVED (J-13 partial + sanctioned-partials + unknowns + CLOSURE-FAIL). Not ESCALATE (already full; review PASSED after its fix-retry, not fail-open; no journey failed two consecutive iters). CONTINUE, full.
-
-**Next-step recommendation:** iter-21 (FULL) — verification-only re-run, NO new feature code (the J-13 code is done and correct). (1) `rm -rf apps/frontend/.next` to dodge the `start-frontend.sh` staleness-stamp trap (it checks only the backend URL, served a stale pre-iter-20 bundle this iter). (2) Bring up BOTH prod-mode services and confirm reachability BEFORE dispatching QA. (3) Re-run the canonical browser-qa-agent over the existing ui-test-plan (execute, not code-inspect, all 22 / min 14 P1 cases) with real md5-distinct full-page/element-clip screenshots into the empty evidence dir (legend + both hovered cells in frame). (4) Live-replay J-05/J-10/J-12 (UT-19/20/21). (5) Reconcile the QA report's Browser-Checks section + set browser_checks_run=true. (6) Re-run phase-closure -> CLOSURE-PASS. On a clean run J-13 flips partial->passing and GOAL_ACHIEVED becomes reachable. FULL because closure FAILED and must formally re-clear and the QA contradiction needs a fresh QA/audit/ux-regression pass. File the start-frontend.sh freshness-stamp gap (audit O1) as a non-blocking tooling follow-up; do NOT reopen the J-13 UI implementation.
-
-## Iteration 21 — goal-mcp-loop-iter-21
-
-**Date:** 2026-07-08T12:40:00Z
-**Verdict:** CONTINUE
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly passing: J-13 (partial -> passing — target; clean canonical LIVE browser-qa verification, closing the iter-20 SKIP gap)
-- Re-verified passing on FRESH LIVE pixels (closing iter-20's replay gap): J-01 (UT-17 Sector-sort, no crash), J-03 (UT-18 "Not yet proven"), J-05 (UT-19 /evidence), J-10 (UT-20 deep-history chart)
-- Re-verified passing (substantive live check; NOT a regression): J-12 (/data 541 == /stocks 541/541; UT-21 literal FAIL targets a mistargeted /methodology page J-12.json never used)
-- Carried passing (byte-identity; untouched, zero source diff): J-04, J-11
-- Still partial by design (goal.md data-basis provision — NOT regressions; iter-21 did zero evidence work): J-02, J-06, J-07, J-08, J-09
-- Carried unknown (out of scope, unbuilt): J-14, J-15, J-16
-- Newly failing: none
-- Regressed: none
-- Anti-goal violations: none (all 8 upheld; anti_goal_violations stays [])
-
-**Reasoning:** The iter-20 verification gap is closed and I verified every status change against artifacts I personally opened, not the handoffs. The canonical browser-qa-agent lane RAN LIVE this time (~59 min, engine.log 10:34->11:33; it correctly overrode a stale dispatch SKIP flag by independently re-verifying both services at HTTP 200 — the exact iter-20 blanket-SKIP failure this iteration existed to retire) and produced a non-empty, 12-PNG md5-distinct evidence dir. J-13 flips partial->passing: every DoD-named case PASSED live with computed-style precision — I opened UT-10 (two-group legend + blue #a6c8f2 ramp NOT amber + violet #a78bfa rings + Fetch->fills/Backfill->scores caption + "Research-only - decision support - no orders" header), UT-12 (violet ring on real cells), and the md5-distinct UT-14 hover pair. `git diff HEAD` on all 5 J-13 files is EMPTY (verification-only confirmed; the conversation-start snapshot showing them modified was stale). The overall browser-QA verdict is FAIL only because of two non-J-13 cases, both independently verified as non-regressions: UT-16 (P2) is a compliant coarser page-level honest-degrade (satisfies anti-goal #8; sidebar intact, no blank crash, no fabrication), and UT-21 (P1, J-12) targets `/methodology`'s Universe Selection section — which J-12's own golden script J-12.json NEVER references (I grepped: 0 hits; it targets /data x3 + /stocks x1) and which is correctly suppressed by the pre-existing J-22 anti-fabrication gate (methodology.py pops universe_selection when universe.json is absent — I confirmed that file is genuinely absent), in files neither iter-20 nor iter-21 touched. The substantive J-12 claim (cross-page universe-count consistency) holds live: /data "541" == /stocks "541/541" (UT-17 pixel). Both ledgers git-unchanged, all-FAIL (canonical 7/0-PASS/7-FAIL, staging 7-FAIL) -> anti-goals #1/#4/#6 upheld; scan CLEAN -> #7. Full pipeline: Review PASS, QA PASS (Browser-Checks reconciled by auditor T1), Audit PASS_WITH_GAPS, UX-REGRESSION-WARN (non-blocking, grounded in the same two root causes), Closure CLOSURE-PASS, Coherence COHERENCE-PASS. NOT GOAL_ACHIEVED (J-02/06/07/08/09 sanctioned-partial; J-14/15/16 unknown). NOT REGRESSION (no passing->failing; J-12 substantive capability intact; no critical anti-goal). NOT STALLED (operationally fixable blocker was fixed; clear tractable next work). NOT ESCALATE (already full; review PASSED; no journey failed two consecutive iters). CONTINUE.
-
-**Next-step recommendation:** iter-22 (FULL). J-13 was the last non-evidence journey. Best next targets in priority order: (1) J-14 — deep index/macro overlays with per-series vendor labels (its step-1 data basis is already staged from iter-17; registers the vendor-label Data Contract value; new user-facing surface -> needs full guards); (2) J-15/J-16 — fast-platform perf: commit the measure-perf harness + budgets, land the mechanical backend pass (items B/C/D/G/H), re-measure >=30% byte-identical; (3) re-certify J-02/J-06/J-07/J-08/J-09 on the 30-year basis via the pre-registered staging exploration -> promote ONLY a winner clearing the canonical Bonferroni bar (divisor 8) with margin (explicit "ledger":"canonical"; honor honest-stop). Non-blocking follow-ups (do NOT reopen J-13): retarget UT-21 at /data-vs-/stocks (or gate the /methodology check on universe.json) so "section correctly absent" scores PASS; loosen UT-16's expected text to the page-level gate; carry the start-frontend.sh freshness-stamp gap (O1).
-
-## Iteration 22 — goal-mcp-loop-iter-22
-
-**Date:** 2026-07-08T18:20:00Z
-**Verdict:** CONTINUE
-**Depth dispatched:** full
-**Journey deltas:**
-- Newly partial: J-14 (unknown -> partial — target; J-14 code deliverable landed COMPLETE and independently verified correct on multiple channels, but the DoD-named canonical browser-qa lane + ux-regression were never re-run against the fixed code, so closure returned CLOSURE-FAIL — not cleanly canonical-verified)
-- Re-verified passing on FRESH live pixels (required-still-passing set): J-01 (UT-14 541/541 no leak), J-03 (UT-18 all "Not yet proven"), J-04 (UT-15 Regime Risk-on + evidence link), J-05 (UT-18 all-FAIL ledger), J-10 (UT-17 Full/Recent toggle), J-12 (UT-16 541==541)
-- Carried passing (byte-identity + UT-02 smoke; DEDICATED-REPLAY GAP, non-blocking): J-13 (availability-heatmap.tsx zero-diff; +3 symbols moved denominator 587->590 without crash; last dedicated pixel iter-21)
-- Carried passing (byte-identity + live corroboration): J-11
-- Still partial by design (goal.md data-basis provision — NOT regressions; iter-22 did zero evidence work): J-02, J-06, J-07, J-08, J-09
-- Carried unknown (out of scope, unbuilt): J-15, J-16
-- Newly failing: none
-- Regressed: none
-- Anti-goal violations: none (all 8 upheld; anti_goal_violations stays [])
-
-**Reasoning:** I verified every status change against artifacts I personally opened, not the handoffs. The J-14 code half succeeded cleanly and surgically (11 files, 329/17): config adds ^SPX/^NDX/^DJI/^VIX/^TNX to index_chart.symbols and — git-verified — NOT to etfs.index (no scored-universe leak; leaderboard stays 541/541, UT-14 zero carets); engine-core (scoring/referee/evidence/ledger/forward) is zero-diff so determinism/no-lookahead/honesty-fence hold; both ledgers are byte-unchanged all-FAIL (no new ## Evidence Claim — pure surfacing iter); scan CLEAN; no buy/sell/return language; the /data panel byte-matches meta.json (^SPX first=1996-01-02, UT-07). I opened UT-03-fail-fullpage.png (the pre-fix FAIL was REAL — x-axis at 2018, deep 1996 history hidden) and TC-01-chart-area.png (post-fix: all lines start near 0% at the far-left = the 1996 rebase base -> DoD (a) substantively met), plus the legend/tooltip vendor tags (DoD b). BUT GOAL_ACHIEVED/passing is withheld on a verification-integrity gap that is the exact iter-13/iter-20 pattern: an audit-FAIL->dev-fix (minBarSpacing:0.02) cycle happened, but the canonical browser-qa-agent (ui-test-results.md still reads FAIL on UT-03, mtime 16:21, pre-fix) and ux-regression-reviewer (UX-REGRESSION-FAIL, "Blocking", 16:39, pre-fix) were NEVER re-run against the fixed 17:11 build, and phase-closure returned CLOSURE-FAIL (status.json blocked/closure_failed) on precisely that — the DoD requires J-14 to "pass via browser-qa-agent", and the post-fix corroboration (QA TC-01 17:34, auditor pixel pre/post 17:47, dev live hover) is strong but is NOT the DoD-named lane. Per the decision tree: not REGRESSION (no passing->failing; all 7 required-still-passing re-verified non-regressed; J-13 byte-identity + smoke with an untouched component; no critical anti-goal). Not STALLED (the blocker is a re-run of the canonical browser-qa + ux-regression against already-fixed code — operationally fixable, not human-owned). Not GOAL_ACHIEVED (J-14 partial + J-02/06/07/08/09 sanctioned-partial + J-15/16 unknown + CLOSURE-FAIL). Not ESCALATE (already full; review PASSED after its fix-retry, not fail-open; J-14 did not fail two consecutive iters). Coherence COHERENCE-WARN (not FAIL) -> no structural veto. CONTINUE, full.
+You are the goal-evaluator agent for goal-mode iteration evaluation.
+
+Session ID: mcp-loop
+Iteration index: 39
+Iter name: goal-mcp-loop-iter-39
+Depth dispatched: lean
+
+Project goal (SLICED — vision + anti-goals + target/failing journeys verbatim; stable passing journeys digested): /home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/iter-39/goal-slice.md
+  Full goal file: /home/dennis-chan/Git/trendora/docs/goal.md — Read it ONLY if a digested journey becomes relevant.
+Iter spec: /home/dennis-chan/Git/trendora/docs/phases/goal-mcp-loop-iter-39.md
+Agent instructions: .claude/agents/goal-evaluator.md  <-- read this first
+(CLAUDE.md is already in your system prompt — do not Read it again.)
+
+Iteration artifacts (read what exists):
+  Deterministic diff scan (product diff; harness bookkeeping excluded — secrets/deps/license): /home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/iter-39/scan-report.md
+  Bounded diff view (complete file list; hunks capped, header lists omissions): /home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/iter-39/iter-diff.md
+  Dev handoff: docs/handoffs/goal-mcp-loop-iter-39-dev.md
+  Review report: reports/reviews/goal-mcp-loop-iter-39-review.md
+  QA report: reports/qa/goal-mcp-loop-iter-39-qa.md (full mode only)
+  Audit handoff: docs/handoffs/goal-mcp-loop-iter-39-audit.md (full mode only)
+  Browser QA results: reports/phase-goal-mcp-loop-iter-39-ui-test-results.md
+  Evidence: reports/qa/goal-mcp-loop-iter-39-evidence/
+  Coherence audit: /home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/iter-39/coherence.md  <-- COHERENCE-FAIL vetoes GOAL_ACHIEVED and drives a consolidation CONTINUE
+  Goal-edit drift note: /home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/iter-39/journeys-changed.md  <-- if present, each listed journey's prior pass is VOID until re-verified against the CURRENT goal text (your step 3)
+
+Journey state (inline digest — your methodology's section A table starts here):
+```
+J-01 | passing         | last_passing=goal-mcp-loop-iter-37 | Every score shows an evidence status
+J-02 | passing         | last_passing=goal-mcp-loop-iter-37 | Drill into the evidence behind a score
+J-03 | passing         | last_passing=goal-mcp-loop-iter-37 | Unproven / noise signals are honestly marked
+J-04 | passing         | last_passing=goal-mcp-loop-iter-37 | Regime-conditioned evidence
+J-05 | passing         | last_passing=goal-mcp-loop-iter-37 | Audit the evidence ledger
+J-06 | passing         | last_passing=goal-mcp-loop-iter-37 | vcp_contraction top-decile certified evidence outcome surfaced on Evidence + Research factor lab
+J-07 | passing         | last_passing=goal-mcp-loop-iter-37 | Multi-horizon certified evidence outcome surfaced (the loop sees beyond the 20-day horizon)
+J-08 | passing         | last_passing=goal-mcp-loop-iter-37 | Multi-factor combination certified evidence outcome surfaced on the Combination lab + Evidence
+J-09 | passing         | last_passing=goal-mcp-loop-iter-37 | Relative-strength (rs_spy_3m) 60-day-horizon certified evidence outcome surfaced on Evidence + Research factor lab
+J-10 | passing         | last_passing=goal-mcp-loop-iter-37 | The product surfaces deep (up to ~30-year) price history, honestly bounded per name
+J-11 | passing         | last_passing=goal-mcp-loop-iter-37 | Every displayed 'Proven' edge is re-certified on the new 30-year data -- no stale edge survives
+J-12 | passing         | last_passing=goal-mcp-loop-iter-37 | The universe is a broad, point-in-time dynamic set across the deep history
+J-13 | passing         | last_passing=goal-mcp-loop-iter-37 | The Data Manager page reflects the broadened 548-symbol universe with an unambiguous availability legend
+J-14 | passing         | last_passing=goal-mcp-loop-iter-37 | The 30-year basis carries deep, honestly-sourced index context (benchmarks + macro), each labeled by vendor
+J-15 | passing         | last_passing=goal-mcp-loop-iter-27 | Core pages and APIs stay fast on the deep basis -- measured, budgeted, never regressing
+J-16 | passing         | last_passing=goal-mcp-loop-iter-35 | Data jobs (Fetch + Backfill + warmup) are fast and honest about progress
+J-17 | passing         | last_passing=goal-mcp-loop-iter-37 | The statistical budget is visible before it is spent
+J-18 | passing         | last_passing=goal-mcp-loop-iter-37 | Every evidence claim must match a pre-registration -- enforced by the gate
+J-19 | passing         | last_passing=goal-mcp-loop-iter-37 | Dead hypotheses are browsable so nobody retries them blindly
+J-20 | passing         | last_passing=goal-mcp-loop-iter-37 | A single daily preflight verdict guards every decision surface
+J-21 | passing         | last_passing=goal-mcp-loop-iter-37 | Live data cannot silently diverge from the validated seed
+J-22 | passing         | last_passing=goal-mcp-loop-iter-37 | The certifier itself is calibrated (placebo + tripwire audit)
+J-23 | passing         | last_passing=goal-mcp-loop-iter-38 | The watchlist discloses its real concentration (correlations, clusters, effective bets)
+J-24 | unknown         | last_passing=- | Every stock shows an honest 'how much can this hurt' risk-budget card
+J-25 | unknown         | last_passing=- | Drawdown and dry-spell expectations are visible, phase-conditional, and honest
+```
+
+Prior session state:
+  Journey history: /home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/state/journey-history.json  <-- update this with new state (full atomic write)
+  Evaluator log: /home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/state/evaluator-log.md  <-- append a new entry; do not overwrite or read the full file (last 5 entries pre-trimmed below)
+  Lessons file: /home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/state/lessons.md  <-- append a brief lesson entry capturing a non-obvious takeaway (1-3 sentences). Skip if nothing surprising happened.
+  Assumption ledger: /home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/state/assumptions.md  <-- append an entry when a scoring decision required interpreting an ambiguous goal (step 5b of your instructions). Skip when none — zero entries is normal.
+
+Recent evaluator log entries (last 5, pre-trimmed):
+```
 
 **Next-step recommendation:** iter-23 (FULL) — verification-only re-run, NO new feature code (the J-14 impl + minBarSpacing fix are done and correct). (1) rm -rf apps/frontend/.next; bring up BOTH prod-mode services + confirm reachability BEFORE QA. (2) Re-run the canonical browser-qa-agent LIVE over all 19 ui-test-plan cases against the fixed build; regenerate ui-test-results.md to PASS with md5-distinct screenshots, confirming UT-03 flips FAIL->PASS (deep ^SPX line in the default view before SPY's 2005 start). (3) Add a DEDICATED J-13 live replay (fill-vs-snapshot legend, hover tooltip, 548-pool Fetch) to close audit-B5; refresh its golden 587->590 if it pins the denominator. (4) Re-run ux-regression -> UX-REGRESSION-PASS + reconcile user-visible-changes.md. (5) Re-run phase-closure -> CLOSURE-PASS. On a clean run J-14 flips partial->passing. GOAL_ACHIEVED still NOT reachable next iter: J-02/06/07/08/09 need a new-basis staging-discovery + honest promotion (no staging winner clears divisor-8 today), and J-15/16 (fast-platform perf) are unbuilt. Non-blocking carry-forwards (do NOT reopen J-14): delete the dead duplicate index-regime-chart.tsx/major-indexes-card.tsx (coherence-WARN); clarify ^TNX first-bar semantics (audit F4); confirm test_api_indexes.py green (audit T2); blueprint IA-label rename.
 
@@ -698,24 +360,178 @@
 **Reasoning:** iter-38 delivered J-23 as a textbook strictly-additive, single-source, read-only surface, and I verified every status change against artifacts I personally opened, not the handoffs. J-23 flips unknown->passing: I OPENED four frames — UT-01-result.png (the full X-ray: ENB headline "~ 2.0 effective independent bets (over the last 126 trading days)" with the window EXPLICITLY stated; 2x2 correlation matrix ABBVxMSFT -0.11 / diagonal 1.00 fully populated; two SEPARATE clusters below the 0.70 threshold; sector bars with ABBV's null sector correctly bucketed "Unassigned"; theme bars; "Shared setup" Avoid 2.100% reusing the entries-table color token; "Descriptive only ... No recommendations." subtitle + "no orders" header), UT-08-after-add.png (add AAPL -> 3 saved, 3x3 matrix, ENB recomputed "~ 2.9", every bar re-derived — the existing add form works AND the X-ray updates), and UT-15-one-entry / UT-15-zero-entries (the honest "Not enough names yet for an X-ray" insufficient state and the distinct "Your watchlist is empty" empty state — anti-goal #8 graceful degradation, no crash/500/blank at either). THE REGRESSION PROOF (iter-9 lesson): my own `git diff <snapshot c99722d>` on product source is purely ADDITIVE — 2 new engine modules (concentration.py, watchlist_xray.py) + additive edits to watchlist.py/config.py/config.yaml/watchlist page/api.ts — and touches ZERO of the required-still-passing journeys' logic (scoring/regime/evidence/ledger/referee/forward_testing/prices/readiness/snapshot_serving/tools + frontend layout/stocks/evidence/data all git-untouched); all three ledgers are BYTE-IDENTICAL (7/7 FAIL, 0 PASS -> canonical Bonferroni divisor stays 8, no Evidence Claim). Anti-goals all upheld and independently checked: #1/#3 no proven-language + single ENB helper (grep: only concentration.py effective_number_of_bets/correlation_matrix/eigvalsh; the "1.8 vs ~2" is the mathematically-correct exact eigenvalue value {2,0,1}->9/5 for the idealized perfectly-correlated+independent matrix, hand-derived and tested, NOT a defect; -0.114 matches offline to 10+ digits; ENB matches closed-form 2/(1+rho^2)); #2 no advice ("No recommendations." + "no orders"; the only trim/reduce/rebalance-class hits are a backend docstring + the negative disclaimer); #5 deterministic (anchored to latest_data_date, bounded bars_asof_window <= as-of, determinism test passes); #8 bounded per-symbol reads never a whole-table load + honest NA + honest empty/insufficient states verified live + null-sector bucketed. scan CLEAN, coherence COHERENCE-PASS (one canonical value, one reader, no IA drift), Review PASS_WITH_NOTES, QA PASS, Audit PASS_WITH_GAPS (0 fixes to any rendered surface -> NO post-lane partial-trap, the exact iter-13/20/22/31 condition ABSENT), UX-REGRESSION-PASS. THE CLOSURE-FAIL is real but NARROW and does NOT touch J-23: it is the required-still-passing DoD line — a FULL iter routes through run-phase.sh which has NO deterministic-replay lane, so J-01/02/03/05/10/13/20 were not golden-replayed (QA marked TC-17 PASS on a bare HTTP-200 smoke, the exact iter-33/iter-36 overclaim). Closure EXPLICITLY exempts J-23 ("J-23's own deliverable is genuinely well-built and well-evidenced ... This is not the blocking issue"). Two P2 browser tests SKIPPED for sanctioned reasons (UT-12 process-tree safety; UT-13 short-history NA — no short-history-eligible ticker exists in the addable universe, satisfied by backend test_short_history_member_is_honest_na_never_fabricated). Verdict per decision tree: NOT REGRESSION (no passing->failing; required set carried on byte-identity with no regression mechanism + J-20 live-corroborated; no unresolved critical anti-goal). NOT STALLED (the fix is a cheap autonomous lean replay + J-24/J-25 are tractable unbuilt work, not human-owned). NOT GOAL_ACHIEVED (J-24/J-25 unknown/unbuilt + CLOSURE-FAIL leaves the required-set replay line formally open). NOT ESCALATE (already full; review PASS_WITH_NOTES not fail-open; J-23 passed first build, not a 2-consecutive same-journey failure). Coherence PASS -> no consolidation owed. CONTINUE.
 
 **Next-step recommendation:** iter-39 = LEAN verify-only closeout (the iter-33->34 / iter-36->37 pattern; the deterministic-replay lane lives ONLY in goal-iter-lean.sh, so a FULL iter re-skips it): run demo_runner.py --mode verify over the required-still-passing golden scripts J-01/J-02/J-03/J-05/J-10/J-13/J-20 (all present on disk), FOLD IN the new J-23.json golden (linted clean this iter), write reports/phase-goal-mcp-loop-iter-38-regression-replay-results.md, and re-clear closure -> CLOSURE-PASS + correct the QA TC-17 row. This is hygiene/record closeout, NOT failure-remediation (J-23's own evidence is clean). THEN iter-40 = FULL J-24 (backlog B-201 per-stock risk-budget card) and iter-41 = FULL J-25 (backlog B-205 phase-conditional drawdown/dry-spell), one risky surface per iter; after those three, GOAL_ACHIEVED becomes reachable. SYSTEMIC FLAG (recurred at iter-33, iter-36, AND now iter-38 — three times): the "required-still-passing deterministic replay" DoD line is structurally UNSATISFIABLE by any FULL iter; durable framework fix owed to the maintainer — add the replay lane to run-phase.sh / the full path of run-goal.sh, or run the closure one-liner replay inline inside full iters. Non-blocking carry-forwards (do NOT bundle): B1 (tighten WatchlistXrayCfg validator `>` -> `>=` next config-touching iter); F1 (surface enb_member_count in the ENB headline when this section is next touched); T2 (optional 3-ticker composer test asserting clusters+ENB together over the B-204 fixture).
+```
 
-## Iteration 39 — goal-mcp-loop-iter-39
+Recent assumption entries (pre-trimmed):
+```
 
-**Date:** 2026-07-15T15:45:00Z
-**Verdict:** CONTINUE
-**Depth dispatched:** lean
-**Journey deltas:**
-- Newly passing: none (verify-only closeout — all 21 built journeys were already passing)
-- Re-verified via DETERMINISTIC golden-script replay this iter (13/13 PASS — the Required-still-passing set): J-04, J-06, J-07, J-08, J-09, J-11, J-12, J-14, J-17, J-18, J-19, J-21, J-22
-- Re-verified via a fresh LLM browser-qa walk this iter (the 8 Target journeys = the iter-38 byte-identity-carried set the CLOSURE-FAIL named): J-01, J-02, J-03, J-05, J-10, J-13, J-20, J-23 — merged ui-test-results 21/21 PASS
-- Carried passing on byte-identity (NOT re-verified — perf journeys, no golden script, spec OUT OF SCOPE): J-15 (last_verified left at iter-27), J-16 (left at iter-35)
-- Still unknown (unbuilt by design): J-24, J-25
-- Newly failing: none
-- Regressed: none
-- Anti-goal violations: none NEW; the iter-24 and iter-26 critical #8 entries stay resolved=true (0 unresolved criticals)
+## iter-26 — goal-evaluator
 
-**Reasoning:** iter-39 is the lean verify-only closeout the iter-38 CONTINUE mandated, and it closed the recurring iter-38 CLOSURE-FAIL "required-still-passing deterministic replay" gap with ZERO product change. I verified every load-bearing claim against artifacts I personally opened, not the handoffs. Depth lean was mandatory (the deterministic-replay lane lives only in goal-iter-lean.sh; a full iter routes through run-phase.sh which has 0 replay-lane refs and would re-skip it — the exact iter-33/36/38 structural gap). ZERO product diff, confirmed FOUR independent ways: my own `git diff HEAD` AND `git diff <snapshot bee2286>` both empty on apps/backend/app + apps/frontend + config.yaml + apps/backend/data/seed + all 3 ledgers; iter-diff.md = a single README.md prose-only hunk (describing the already-shipped J-23 X-ray); scan-report CLEAN; coherence + reviewer independently reproduced it. Ledgers verified 7/7 FAIL / 0 PASS in both certified-claims.jsonl and staging-ledger.jsonl (canonical Bonferroni divisor stays 8); pre-registrations 11 entries; no ## Evidence Claim. Freshly-computed goal_gate spec hashes match all recorded hashes (no journeys-changed.md; no goal-edit drift). The 21 built journeys were re-verified 21/21 PASS across two lanes: (1) demo_runner --mode verify produced regression-replay-results.md 13/13 assertion-driven PASS over the Required-still-passing set; (2) the LLM browser-qa lane freshly walked the 8 Target journeys with specific opened-able evidence. I OPENED: J-01-result.png (/stocks 541/541, every score "Not yet proven", 0 bare "Proven", "no orders" header), J-05-result.png (/evidence 7 FAIL cards, numbers -0.03/-0.68/+0.21/-0.38/-1.64/+0.01/-1.42% byte-matching certified-claims.jsonl, "Backs:" linkback), J-23-result.png (/watchlist "≈ 2.0 effective independent bets (over the last 126 trading days)", ABBV-MSFT -0.11, clusters, sector/theme/shared-setup bars, "Descriptive only ... No recommendations."), plus J-06-verify.png (real /evidence ledger — confirms the benign 567f90bb shared-md5 group is not an error frame; lessons.md iter-29) and J-18-verify.png (real /research/registry). md5-scan: the only replay-frame dup group is J-04/06/07/08/09 (all /evidence, 567f90bb — expected shared-endpoint artifact, same family as iter-34/37); all 8 result frames + the other verify frames are md5-distinct. All 8 anti-goals upheld (scan CLEAN; 0 "Proven"/all-FAIL ledger; "no orders" + "No recommendations."; no Evidence Claim; zero code diff = no lookahead/OOM regression mechanism; dev pre-replay prod smoke = 18 pages HTTP 200 + preflight GO + clean log, no OOM). Coherence COHERENCE-PASS (no consolidation owed); Review PASS (no fail-open). The coherence auditor's mid-flight note — "the 8 Target journeys are absent from the replay report" — was a 15:14 snapshot BEFORE the LLM lane completed (15:39); I confirmed the merged result covers 21/21 with opened-able frames, so the flag resolved cleanly and is not a genuine coverage gap. Verdict per decision tree: NOT REGRESSION (0 passing->failing; 0 unresolved critical anti-goals). NOT STALLED (iteration succeeded; J-24/J-25 are autonomously-buildable dev work with binding backlog cards B-201/B-205, not human-owned blockers). NOT GOAL_ACHIEVED (J-24 + J-25 unbuilt/unknown — no Must-have may be unknown at achievement; coherence PASS but journeys incomplete). NOT ESCALATE (lean-by-design and mandated so; review PASS not fail-open; no journey failed 2 consecutive iters; a clean planned pass — the coherence timing flag resolved, not cross-cutting ambiguity). CONTINUE.
+**Ambiguity:** Decision-tree rule 1 says "a critical anti-goal violation is unresolved -> REGRESSION," but the crash frame (regime `full[:cut]` + the pre-existing full-universe prefill in `_do_backfill`) is unmodified by iter-26's diff, so it is genuinely uncertain whether iter-26 CAUSED the anti-goal #8 violation or merely surfaced a pre-existing latent VSZ bomb while probing a heavier fallback job path.
+**We chose:** Scored REGRESSION on the ground that a critical anti-goal is demonstrably, reproducibly violated on the current tree and is unresolved (root-cause fix deliberately not applied) — the verdict does not depend on this-iteration causation (matching the auditor's and ux-regression reviewer's explicit reasoning, and the iter-24 memory-crash precedent). The framework's fail-closed rule for critical anti-goal violations is to halt for human review rather than auto-loop.
+**Reversible:** yes
 
-**Skeptical finding (non-blocking):** The literal iter-39 DoD asked for `demo_runner --mode verify` over ALL 21 goldens (folding in J-23.json "for the first time"); in fact only the 13 Required-still-passing goldens ran through demo_runner, while the 8 Target journeys (incl. J-23) were re-verified by the LLM browser-qa lane instead. This is the established lean-closeout split (iter-34/iter-37 covered their Target journeys the same way) and leaves NO journey un-re-verified — every built journey has fresh opened-able PASS evidence this iter. The one residual: J-23.json's golden script still has zero demo_runner replay coverage despite two "fold it in" mandates — recorded as a non-blocking carry-forward for the next lean pass (assumptions.md + lessons.md), not a journey-status problem (J-23 is solidly passing on the opened LLM frame + iter-38's own clean canonical evidence + zero diff).
+## iter-26b — goal-evaluator
 
-**Next-step recommendation:** iter-40 = FULL J-24 (backlog B-201 per-stock risk-budget card — ATR%, downside vol, gap profile median/p95/worst, worst 20d window, distance-to-invalidation, each with a universe-percentile label; values from the stored snapshot record, no UI recompute; NA over fabrication; /methodology documents each formula). FULL because it ships a new served surface + endpoint + displayed values needing the audit/ux-regression/closure guards; no Evidence Claim (divisor stays 8). CARRY the systemic flag (recurred iter-33/36/38): a FULL iter re-creates the replay gap (run-phase.sh has no replay lane), so iter-40 must run the closure one-liner replay inline OR be followed by a lean verify pass (as iter-34/37/39 were). FOLD into the next lean replay: run J-23.json through demo_runner (its golden has never been deterministically replayed). Then iter-41 = FULL J-25 (backlog B-205 phase-conditional drawdown/dry-spell). After J-24 + J-25, all 25 Must-haves pass and GOAL_ACHIEVED becomes reachable. Durable framework fix owed to the maintainer: add the replay lane to run-phase.sh / the full path of run-goal.sh.
+**Ambiguity:** J-16's target proof (UT-02) was executed and the backend crashed, but its perf/byte-identity half is real and one honest-progress sub-criterion showed positive (counter ticked 0->117->246 with no premature "done") — so J-16 could be read as `partial` (capability landed, verification incomplete) rather than `failing`.
+**We chose:** `failing`, because there is a VERIFIED negative outcome (a reproduced backend-wide crash) and J-16's own DoD explicitly requires no-OOM/no-crash under the cap plus a browser-qa pass — both violated. This session reserves `partial` for "correct-but-not-cleanly-verified" (a verification gap), not for a verified failure.
+**Reversible:** yes
+
+## iter-27 — goal-evaluator
+
+**Ambiguity:** Anti-goal #7 ("No hard-coded credentials, API keys, or tokens in source files") vs the deterministic scan-report flagging 12 CRITICAL secrets in this iteration's commit range. All 12 are planted fake keys inside the vendored `incredible_auto_dev/tests/judgment/` framework subtree (self-test fixtures designed to be detected), which entered via a framework squash-merge, not the iteration's product dev work — leaving open whether "source files" in the anti-goal covers vendored framework test tooling committed into the same repo.
+**We chose:** Read anti-goal #7 as scoped to the Trendora PRODUCT source (`apps/`, `config.yaml`, product `data/`/`scripts/`), not the vendored multi-agent framework's own judgment-eval fixtures. The iter-27 product diff (6 backend memory files + config.yaml) carries zero credentials; the flagged keys are non-real (AWS-doc example + fictional LISTVAULT) fixtures whose purpose is to BE flagged. Scored anti-goal #7 upheld / not a violation. Checked fail-closed first (are these real, exploitable, product secrets? no) and corroborated by reviewer + auditor + coherence all treating the subtree as out-of-scope framework tooling.
+**Reversible:** yes
+
+## iter-28 — goal-decomposer
+
+**Ambiguity:** goal.md's loop mechanics leave open how many iterations to keep re-attempting the five evidence journeys (J-02/J-06/J-07/J-08/J-09) when a staging exploration surfaces no promotable edge — keep trying vs. acknowledge a plateau. iter-28's dispatch inherited a prior FULL recommendation to "run a new-basis staging exploration and promote a divisor-8-clearing winner."
+**We chose:** A verify-only / plateau-acknowledgement pass with NO `## Evidence Claim`, after verifying directly on disk that the complete pre-registered candidate set (proposer-guidance.md §4.1 + §4.2) has already been re-tested on the 30-year basis and ALL FAIL (7 canonical + 7 staging, six of seven staging members wrong-direction; best holdout +8.03e-05 vs required_p=0.00625) — so no candidate is promotable and re-submitting any would self-defeat by permanently tightening the divisor. Per the §4.2 escape valve, the remaining unblock is a human revision of the pre-registered registry; the decomposer surfaces that to the evaluator rather than manufacturing a claim.
+**Reversible:** yes
+
+## iter-28 — goal-evaluator
+
+**Ambiguity:** The browser-qa lane marked J-02/J-06/J-07/J-08/J-09 "PASS (see note)", scoring the honest-status half of each journey (badge correctly reads "Not yet proven", displayed numbers byte-match the FAIL verdict). Each journey's written acceptance, however, requires a *Proven* certified edge to surface (J-06/07/08/09: "certified edge surfaced… cohort shows a 'Proven' badge") or drill into (J-02: "Locate a score with a 'Proven' badge and expand it"). The goal text leaves open whether an honest all-FAIL rendering satisfies the journey or only its anti-goal-#1 guardrail.
+**We chose:** Held all five at `partial`, not `passing`, per the strict journey acceptance and the 10-iteration session precedent (sanctioned-partial since the iter-18 data-basis reset): the honest-status half is satisfied but the proven-edge half is absent because no certified edge exists on the 30-year basis. A browser-qa PASS on the honest-status half does not constitute journey acceptance; GOAL_ACHIEVED remains gated on a real PASS certified-claim, which is human-unblock-gated (widen the pre-registered candidate registry or re-scope the journeys in goal.md).
+**Reversible:** yes
+
+## iter-29 — goal-evaluator
+
+**Ambiguity:** J-02's DoD requires "each score's inline evidence-status element reads 'Not yet proven'" on `/stocks/{ticker}`. Both captured frames (J-02-stock-detail-badges.png, J-02-verify.png) show the AAPL detail page rendering with the "no orders" header and NO fabricated proof panel, but the three inline score badges sit BELOW the captured fold — so there is no single pixel directly showing the three "Not yet proven" score badges on the detail page itself.
+**We chose:** Scored J-02 `passing`. The acceptance is met by the visible negative assertion (no fabricated proof panel — the load-bearing anti-goal #1 check) PLUS strong multi-channel corroboration in lieu of the direct pixel: (a) the browser-qa DOM assertion (3x `data-testid=evidence-badge` `data-proven=false`, tooltip naming the Evidence ledger, click-diff test showing no proof panel expands); (b) the same three scores (Leadership/Entry Quality/Risk) demonstrably reading "Not yet proven" at every horizon on the factor-lab fullpage the evaluator opened; (c) J-01's 3,246 "Not yet proven" leaderboard instances from the same `GET /api/evidence` source; (d) zero code diff since the iter-28 live capture. This mirrors the iter-14 precedent (J-01/J-02 kept passing on zero-diff + DOM re-check + backing-row rendering). Under the owner's outcome-neutral re-scope, the honest "Not yet proven" state IS the acceptance.
+**Reversible:** yes
+
+## iter-30 — goal-decomposer
+**Ambiguity:** B-901's backfill instruction ("registry complete for all existing registrations" / "proposer-guidance tables + already-certified claims as historical rows") leaves the SCOPE of "every registered hypothesis" open — whether "already-certified claims" means the canonical ledger only or every distinct claim across BOTH the canonical and staging ledgers (including FAILs and the closed ma_stack), and how the §4.1/§4.2 candidate tables relate. This session has 0 PASS, so "certified" is itself ambiguous.
+**We chose:** Backfill = the UNION of the proposer-guidance §4.1/§4.2 pre-registered candidate rows and every distinct claim selector-set across BOTH `certified-claims.jsonl` and `staging-ledger.jsonl`, deduplicated by hypothesis, each labeled with its source + recorded status (the closed `ma_stack` FAIL included as a `closed` row) — the honest superset that makes the registry the true pre-registration memory the enforcement gate checks against and J-19's graveyard later reads. A narrower reading would under-populate the registry and wrongly refuse a future legitimate revisit once enforcement is on.
+**Reversible:** yes
+
+## iter-30 — goal-evaluator
+
+**Ambiguity:** The iter-30 DoD literally reads "Backfill complete: registry contains ... (≥14 ledger-derived rows)", but the committed registry has 11 rows. The goal text leaves open whether the binding requirement is the literal "≥14" or the substantive clause "the proposer-guidance §4.1/§4.2 rows ∪ every distinct claim from both ledgers, deduplicated by hypothesis".
+**We chose:** Scored the DoD's backfill-completeness line as MET by 11 rows — treating "≥14" as the decomposer's uncomputed estimate (not a binding threshold) and the substantive dedup clause as the real bar. Grounds: 14 raw ledger entries contain 3 exact-selector-set cross-ledger duplicates (staging candidates later promoted under ledger:canonical with identical selectors), and `match_registration` must map one exact selector-set to ONE row, so 11 is the forced-correct count; `test_registry.py`'s round-trip tests prove every one of the 14 raw entries matches exactly one backfilled row (completeness satisfied), the dev flagged the deviation, and the reviewer + auditor independently re-derived 11 against the live ledgers. Not a silent call (documented in 3 pipeline reports), recorded here because the SCORING decision accepts a count that differs from the literal DoD checkbox.
+**Reversible:** yes
+
+## iter-31 — goal-decomposer
+**Ambiguity:** J-19's "every non-PASS verdict" (backlog B-902 "read-compose from ledgers + registry; page") leaves open (a) whether the STAGING ledger's non-PASS verdicts are in scope — the blueprint's iter-9/10/12 clarifications declared the staging ledger "internal-only ... never read by any page, never served, never displayed" — and (b) whether the composition is backend-side (a new endpoint) or frontend-side (the page reads existing endpoints).
+**We chose:** Surface BOTH ledgers' NON-PASS verdicts via a NEW backend composition endpoint `GET /api/research/graveyard` (a new PURE `app.engine.graveyard` read-compose module joining `ledger.read_entries` over both ledgers with `registry.match_registration` lineage). Grounds: the graveyard's stated purpose (institutional memory of what does NOT work, so no future model re-derives a dead idea) squarely includes the staging explorations — exactly the dead ideas most likely re-derived; the honesty fence is preserved (the graveyard shows ONLY non-PASS, staging carries 0 PASS, so no staging edge is ever surfaced as proven, and `/evidence` + `proven_signals` + the "Proven" badge stay byte-identical); `GET /api/evidence` serves the canonical ledger only, so a frontend-only compose cannot reach the staging FAILs without a new served surface regardless; and both B-902's named "UI-recompute" failure mode and the blueprint's compute-once-serve-verbatim discipline point to backend composition. This narrows the prior "staging internal-only" invariant, documented in the blueprint iter-31 clarification.
+**Reversible:** yes
+
+## iter-31 — goal-evaluator
+
+**Ambiguity:** J-19's goal.md acceptance (steps 1-3 + the 4 bullets) is fully browser-verified PASS; the disputed UT-07 is the lineage link's *auto-scroll-to-exact-row* assist, which the ui-test-designer elevated to a P1 and the DoD's TESTING REQUIREMENTS phrase as "a row's lineage link resolves to its registry row." The click DOES resolve to the correct registry URL + fragment and the target row exists in the DOM — only the scroll-into-position didn't fire on SPA navigation (fixed post-lane, but the canonical lane wasn't re-run). So it is open whether J-19 is "passing" (its own goal.md acceptance is met and the failure is an out-of-acceptance refinement now fixed) or "partial" (a DoD-named P1 browser case reads FAIL and the fix is not canonically re-verified).
+**We chose:** Held J-19 at `partial`, not `passing` — treating the lineage-link scroll as a real (if minor) part of the "links to its registry row" acceptance AND, decisively, applying the session's "correct-but-not-cleanly-canonical-verified = partial" discipline (the auditor's own browser re-check is not the DoD-named canonical lane). The asymmetry drove it: the overall verdict is CONTINUE regardless (7 journeys unbuilt), and iter-32 runs a full browser-qa lane anyway, so re-recording one clean UT-07 frame is nearly free — whereas marking `passing` on a canonical-FAIL-not-re-run would erode exactly the guard that caught iter-18/24. A human who judges the graveyard's core sufficient could reasonably flip this to `passing`.
+**Reversible:** yes
+
+## iter-32 — goal-evaluator
+
+**Ambiguity:** J-11 ("Every displayed 'Proven' edge is re-certified... no stale edge survives") is in
+iter-32's required-still-passing set but got NO dedicated golden replay or browser case this iteration
+(J-11.json exists but was not run; audit T1 + ux-regression both flagged the gap). Whether J-11 must
+be re-verified via its OWN dedicated case each iteration, or whether "0-PASS ledger + byte-identical
+certification economy + corroborating /evidence and /stocks frames both showing 0 'Proven'" suffices,
+is left open.
+**We chose:** Scored J-11 `passing` on byte-identity + corroboration rather than holding it `unknown`.
+Grounds: the invariant is trivially satisfied on a 0-PASS ledger (no 'Proven' edge exists to go
+stale), the entire economy is git-diff EMPTY (no stale-edge mechanism), and I directly observed 0
+'Proven' on both surfaces J-11 depends on (UT-13 /evidence 7 FAIL/0 PASS; UT-14 /stocks 3 'Not yet
+proven'/row). Matches the audit/ux-regression/closure consensus that the risk is nil. Recorded here
+(not silent) because it accepts corroboration in lieu of a dedicated re-verification; a human who
+wants the required set fully closed should add the J-11 replay to iter-33 (recommended in the eval).
+**Reversible:** yes
+
+## iter-33 — goal-decomposer
+**Ambiguity:** B-301's preflight "data freshness (latest bar age vs expectation), market-calendar aware" is underspecified for an offline/DETERMINISTIC app that runs against a FROZEN committed seed (goal.md Constraints): "now"/"expectation" is undefined, and a wall-clock `date.today()` anchor would both make the healthy `GO` state impossible (the seed's latest bar is always "stale" vs the real current date) and break determinism (anti-goal #5) / demo reproducibility.
+**We chose:** Anchor freshness to a DETERMINISTIC config/seed-derived reference (default = the seed's own latest available date, so a fully-loaded seed reads `GO`), count the age in trading days via the existing SPY market calendar, and induce the stale (DEGRADED/NO-GO) test state via a controlled config/env override (`readiness.freshness_max_age_days` / a pinned reference) — never wall-clock time and never by mutating committed seed data.
+**Reversible:** yes
+
+## iter-33 — goal-evaluator
+
+**Ambiguity:** The iteration ended CLOSURE-FAIL, and this session's strong precedent (iter-20/22/24/31)
+is that a TARGET journey does not flip to `passing` in a CLOSURE-FAIL iteration. But in every prior
+case the CLOSURE-FAIL was about the TARGET's OWN canonical browser evidence (skipped / stale / a
+post-lane fix not re-verified). Here J-20's own evidence is complete and clean on the FINAL build (no
+post-lane fix — audit made zero repo changes; closure explicitly EXEMPTS J-20 — "tested to an unusually
+high standard ... not the source of the blocking finding"); the CLOSURE-FAIL is entirely about a
+DIFFERENT DoD line (6 OTHER required journeys — J-01/02/04/05/13/18 — not deterministically replayed
+because full iters route through run-phase.sh, which lacks the replay lane). So it was open whether
+J-20 is `passing` or `partial`.
+**We chose:** Scored J-20 `passing`. The session's `partial` discipline exists to avoid claiming a
+journey done when ITS OWN canonical lane didn't verify it — a guard fully satisfied for J-20 (browser-qa
+PASS 20/20 on the final build; all 3 states md5-distinct; exact NO-GO phrase pixel-confirmed;
+single-source UT-19; correctness matrix auditor-verified against the real compute_preflight). Marking
+`partial` would misattribute a replay gap in OTHER journeys to J-20's own evidence, which is false and
+contradicts the closure auditor's own read. The guard is instead honored at the OVERALL level: verdict
+is CONTINUE (not GOAL_ACHIEVED), the required-still-passing replay gap is recorded explicitly on
+J-01/02/04/05/13/18, and the mandated next step is the cheap lean replay closeout that re-clears closure.
+**Reversible:** yes
+
+## iter-34 — goal-evaluator
+
+**Ambiguity:** J-20 was this iteration's named Target to "re-confirm passing via browser-qa on the final tree," but only its GO state was re-induced live this pass (all 5 surfaces, single-source, DOM===API); the loud DEGRADED/NO-GO states — including the mandated "do not rely on today's board" phrase — were NOT re-induced live (a tool-permission boundary). J-20's acceptance names all three states. It was open whether a GO-only live re-confirmation counts as "re-confirmed passing."
+**We chose:** Scored J-20 `passing` (re-confirmed). Grounds: J-20 was ALREADY fully verified passing at iter-33 (all three states, exact NO-GO phrase, browser-qa 20/20 on the final build — the iter-33 CLOSURE-FAIL was about OTHER journeys' replay gap, not J-20's own evidence), and readiness.py + config.yaml + all apps/frontend are git-identical to that verified iter-33 commit (4561da1) — zero product diff this iter — so there is no regression mechanism for the loud states. The live GO re-confirmation + byte-identity carry of the loud states is sufficient; requiring a fresh live NO-GO induction on an already-verified, byte-identical journey would be verification for its own sake. The pipeline artifact (merged ui-test-results) discloses the GO-only live scope openly; this entry records that the SCORING acceptance of it is my call.
+**Reversible:** yes
+
+## iter-35 — goal-decomposer
+**Ambiguity:** B-304's card lists THREE post-fetch checks (overlap byte-compare, distribution-envelope, and a B-113-detector junction seam scan) and its own DoD says "all three checks run on every FETCH," but J-21's binding journey acceptance exercises only the OVERLAP check (step 1 = a re-adjusted overlap region classified as an adjustment seam) + the readiness degrade/recover effect; the B-113 sentinel detectors the seam scan depends on are unbuilt (no sentinel/drift/quality module exists in app/engine/).
+**We chose:** Scope iter-35 to the overlap comparator + the single persisted drift-report artifact + the compute_preflight drift component + the /data report section (the journey's binding acceptance), DEFERRING the distribution-envelope check and the B-113-dependent junction seam scan (neither required by J-21's acceptance; the seam scan's B-113 dependency does not exist). "J-21 passing" = overlap-seam detection (symbol + mismatching dates + adjustment-seam classification) + readiness degrade/recover + single-source artifact, per the journey text — NOT the full B-304 card DoD ("all three checks"). The overlap byte-mismatch itself yields the "adjustment seam" label, so the deferred seam scan is an additional detector, not the source of that classification.
+**Reversible:** yes
+
+## iter-35 — goal-evaluator
+
+**Ambiguity:** J-21 step 1 ("Run a live fetch in a controlled environment where one symbol's overlap region was re-adjusted; assert the drift report names the symbol...") and J-16's "re-verify via a live fetch-job run" both read as a single end-to-end observation of an operator running a Fetch that returns re-adjusted bars and seeing the card/report update. In fact browser-qa induced the drift/clean/unreadable UI states by WRITING the drift-report artifact directly (not by driving the `/data` Fetch control), and J-16's fetch-path re-verification was pytest integration tests, not a browser-driven live fetch. So no single browser observation captured the full "click Fetch -> live provider returns re-adjusted bars -> job completes -> card updates" click-path.
+**We chose:** Scored J-21 and J-16 `passing` on a two-halves decomposition: the fetch->artifact half proven by the real-`_run_job` integration test `test_drift_stage_writes_report_on_completed_fetch_end_to_end` (asserts exact symbol + dates on a genuinely-completed fetch), and the artifact->UI half proven by browser-qa's direct-injection DOM assertions (UT-03/04/05/06) + the banner tests (UT-07/08/09). Grounds: the artifact IS the single-source Data Contract seam both readers consume, so verifying "correct artifact from a real fetch" + "correct UI from an artifact" covers the whole path; the auditor and ux-regression reviewer both judged the decomposition acceptable (T1, non-blocking) and recommended a live-Fetch-UI spot-check as a future, not a gate. Recorded because the SCORING accepts the decomposition in lieu of a single end-to-end browser-driven live-fetch observation.
+**Reversible:** yes
+
+## iter-36 — goal-decomposer
+**Ambiguity:** J-22 step 1 ("Run the referee-audit job ... against an isolated throwaway ledger") and the Correctness clause ("re-running with the same seed reproduces it exactly") read as a single live end-to-end run, but the Consistency clause says the panel "re-reads the persisted audit artifact verbatim; nothing is recomputed in the UI" and B-102 sizes the null battery at 200 offline / 20 CI trials — leaving open whether J-22's browser/QA acceptance requires a live 200-trial run in the QA lane or a bounded/offline seeded run whose persisted artifact the panel (and browser-qa) read.
+**We chose:** Satisfy J-22 via a two-halves decomposition (mirroring the iter-35 J-21 fetch→artifact→UI split): the job→artifact half is proven by a fast SEEDED CI/integration test (same seed reproduces the false-pass rate exactly + the tripwire is caught + the real ledgers/budget stay byte-identical + it never imports the full seed), and the artifact→UI half is proven by browser-qa reading the PERSISTED artifact on /research/referee-audit. The 200-trial battery runs OFFLINE and persists the artifact; the browser-qa/demo lane reads the persisted artifact rather than re-running 200 heavy certify_edge trials live (anti-goal #8 / iter-24-26 OOM discipline — the panel "re-reads, never recomputes").
+**Reversible:** yes
+
+## iter-36 — goal-evaluator
+
+**Ambiguity:** The iteration ended CLOSURE-FAIL, and this session's `partial` discipline (iter-13/20/22/31) withholds `passing` from a target whose canonical evidence is incomplete. But — exactly as at iter-33 (J-20) — J-22's OWN canonical browser-qa evidence is complete and clean on the FINAL build (13/13 UT PASS; the auditor applied ZERO fixes to a rendered surface, so there is no post-lane partial-trap), and the CLOSURE-FAIL is entirely about a DIFFERENT DoD line (the required-still-passing replay/live-verification of OTHER journeys — J-05/J-11). So it was open whether J-22 is `passing` or `partial`.
+**We chose:** Scored J-22 `passing`. The `partial` guard exists to avoid claiming a journey done when ITS OWN canonical lane didn't verify it — fully satisfied here (browser-qa PASS 13/13 on the final build, all displayed numbers byte-match the artifact, isolation byte-identical confirmed 4+ ways incl. my own git diff, no post-lane fix). The closure auditor itself EXEMPTS J-22 ("not a verdict on the J-22 feature itself; J-22's own deliverable is thoroughly and rigorously verified"). Marking `partial` would misattribute an OTHER-journeys replay gap to J-22's own evidence, which is false and contradicts the closure auditor's read. The guard is honored at the OVERALL level instead: verdict is CONTINUE (not GOAL_ACHIEVED), the required-set gap is recorded explicitly, and the mandated next step is the lean replay closeout that re-clears closure.
+**Reversible:** yes
+
+## iter-36 — goal-evaluator
+
+**Ambiguity:** The DoD requires J-01/J-03/J-05/J-11/J-17/J-18/J-19/J-20 to be "LIVE-re-verified via the browser-qa lane ... OR the closure one-liner replay run inline." Neither happened cleanly: the canonical browser-qa lane's dispatched plan (UT-01–13) EXCLUDED the required set by design, the QA lane's TC-19 (J-05) / TC-20 (J-11) rows are unevidenced conclusions with no screenshot, and no golden-script replay ran (a FULL iter has no replay lane). Closure named J-05 and J-11 as the two unverified rows. So it was open whether to carry J-05/J-11 at last-good `passing` (iter-35/iter-34, honoring the closure gap) or mark them re-verified iter-36.
+**We chose:** Marked J-05 and J-11 (and J-01/J-03) re-verified `passing` at iter-36, on the strength of frames the evaluator PERSONALLY opened: UT-13 (/evidence) shows J-05's fully-auditable ledger (7 rows with hypothesis/out-of-sample-verdict/control/registration-date/forward-walk, numbers byte-matching certified-claims.jsonl) and J-11's no-stale-edge invariant (0 PASS; trivially upheld on a 0-PASS ledger — iter-32 precedent), and TC-17 (/stocks) shows J-01's "Not yet proven" badges. I credited my own independent evidence walk over the QA report's sloppy rows and the strict DoD-named-lane requirement — the diff never touches the scoring/regime/evidence code paths these journeys depend on, so there is no regression mechanism. The DoD's DEDICATED per-journey golden replay is still formally open and is the mandated next lean-closeout step; this call bumps last_verified to iter-36 but does not skip that closeout.
+**Reversible:** yes
+
+## iter-38 — goal-decomposer
+**Ambiguity:** J-23's acceptance says "the ENB helper is the same module used by the evidence correlation audit," implying that audit already exists — but the evidence correlation audit (backlog B-104) is UNBUILT and no ENB / correlation-matrix helper exists anywhere in the codebase, leaving open whether iter-38 should defer J-23 until B-104 supplies the helper, or build the helper itself.
+**We chose:** Build the ONE canonical ENB/correlation helper (`app.engine.concentration`, `ENB=(Σλ)²/Σλ²` over the correlation-matrix eigenvalues) in this iteration as the single source, per the B-204 trap ("share B-104's helper — build whichever card lands first, reuse in the second"); the future B-104 evidence correlation audit imports the SAME helper. No second ENB implementation is created, so the journey's single-source constraint is honored even though B-204 lands before B-104.
+**Reversible:** yes
+
+## iter-38 — goal-evaluator
+
+**Ambiguity:** J-23's DoD says "J-23 passes via browser-qa — all three journey steps: ... (3) a name with insufficient overlapping history renders NA in the matrix rather than a fabricated value." The live browser test (UT-13) was SKIPPED because no short-history-eligible ticker exists in this environment's addable universe (the four most-recent-IPO candidates — ARM 701 bars, CRWD/MPWR/SNOW 1255 bars — all far exceed the 60-day min_overlap_days floor and the 126-day correlation window), so step 3 was verified by a backend unit test rather than a live browser observation.
+**We chose:** Scored J-23 `passing` with step 3 satisfied by `test_short_history_member_is_honest_na_never_fabricated` (asserts `correlation_matrix["OLD"]["NEW"] is None`, `clusters == [["NEW"],["OLD"]]`, `ENB == 1.0`) plus the honest-NA machinery in `concentration.py` (returns None, never a fabricated 0, for undefined/zero-variance/too-short pairs) and the fully-populated real matrix I opened (no fabricated cells). The environmental constraint is genuine (not a lane skipping work), the test verifies the exact NA property step 3 requires, and the frontend NA-render path exists in `correlation-heatmap.tsx`; this mirrors the iter-35 J-21 / iter-36 J-22 fetch→artifact→UI two-halves decomposition the auditor/ux-regression accepted. The residual gap (the specific NA-cell visual inside a populated matrix, live) is narrow and disclosed; a live short-history browser check is a reasonable future spot-check, not a gate.
+**Reversible:** yes
+
+## iter-38 — goal-evaluator
+
+**Ambiguity:** The iteration ended CLOSURE-FAIL, and this session's `partial` discipline (iter-13/20/22/31) withholds `passing` from a target whose canonical evidence is incomplete. But — exactly as at iter-33 (J-20) and iter-36 (J-22) — J-23's OWN canonical browser-qa evidence is complete and clean on the FINAL build (13/15 UT PASS, 2 P2 SKIPs sanctioned; the auditor applied ZERO fixes to any rendered surface, so no post-lane partial-trap), and the CLOSURE-FAIL is entirely about a DIFFERENT DoD line (the required-still-passing deterministic replay of OTHER journeys J-01/02/03/05/10/13/20, which a FULL iter structurally skips). So it was open whether J-23 is `passing` or `partial`.
+**We chose:** Scored J-23 `passing`. The `partial` guard exists to avoid claiming a journey done when ITS OWN canonical lane didn't verify it — fully satisfied here, and the closure auditor itself EXEMPTS J-23 ("J-23's own deliverable is genuinely well-built and well-evidenced ... This is not the blocking issue"). Marking `partial` would misattribute an OTHER-journeys replay gap to J-23's own evidence, which is false and contradicts the closure auditor's read. The guard is honored at the OVERALL level instead: verdict is CONTINUE (not GOAL_ACHIEVED), the required-set replay gap is recorded explicitly (last_verified_iter left at iter-37 for J-01/02/03/05/10/13/20), and the mandated next step is the lean replay closeout (iter-39) that re-clears closure.
+**Reversible:** yes
+```
+
+Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
+
+Write your verdict to: /home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/iter-39/eval.md
+
+The verdict line MUST appear at the top of /home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/iter-39/eval.md and start exactly with:
+**Verdict:** GOAL_ACHIEVED
+  or **Verdict:** CONTINUE
+  or **Verdict:** ESCALATE
+  or **Verdict:** REGRESSION
+  or **Verdict:** STALLED
+
+Also include a 'Depth Recommendation For Next Iteration:' line: lean or full.
+
+Then update /home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/state/journey-history.json (full atomic write) and append an entry to /home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/state/evaluator-log.md.
+STOP.
+
+Environment note: this pipeline run isolates temp files. Before running tests or any command that writes temporary files, run: export TMPDIR="/tmp/iad.goal-mcp-loop-iter-39.2778307" TMP="/tmp/iad.goal-mcp-loop-iter-39.2778307" TEMP="/tmp/iad.goal-mcp-loop-iter-39.2778307"
