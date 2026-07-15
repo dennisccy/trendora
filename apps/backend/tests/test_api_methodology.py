@@ -56,6 +56,8 @@ GLOSSARY_SPOT_CHECK_TERMS = {
     "breadth > 50-DMA", "DMA", "rank-IC", "universe", "decile", "MAE", "MFE", "expectancy",
     "hit-rate", "dispersion", "walk-forward", "survivorship bias", "horizon", "excess return",
     "composite", "quantile", "ATR%", "pivot", "invalidation",
+    # iter-40 (J-24 / B-201 risk-budget card)
+    "overnight-gap profile", "worst 20-day window", "distance-to-invalidation %",
 }
 
 

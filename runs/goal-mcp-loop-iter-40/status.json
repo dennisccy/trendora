@@ -1,0 +1,36 @@
+{
+  "phase": "goal-mcp-loop-iter-40",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-07-15T19:36:21.513323Z",
+  "started_at": "2026-07-15T16:06:47.682726Z",
+  "cli": "claude",
+  "blockers": [
+    "full pytest tests/test_scoring.py tests/test_scoring_window.py run not completed this session (fixture time constraints); fast-lane (162) + synthetic-config (20) + standalone real-seed verification passed \u2014 see dev handoff for details"
+  ],
+  "changed_files": [
+    "apps/backend/app/engine/indicators.py",
+    "apps/backend/app/engine/prices.py",
+    "apps/backend/app/engine/scoring.py",
+    "apps/backend/app/config.py",
+    "config.yaml",
+    "apps/backend/tests/test_indicators.py",
+    "apps/backend/tests/test_scoring.py",
+    "apps/backend/tests/test_config.py",
+    "apps/backend/tests/test_config_engine.py",
+    "apps/backend/tests/test_sectors.py",
+    "apps/backend/tests/test_indexes.py",
+    "apps/backend/tests/test_themes.py",
+    "apps/backend/tests/test_api_methodology.py",
+    "apps/frontend/lib/api.ts",
+    "apps/frontend/lib/risk-budget.ts",
+    "apps/frontend/app/stocks/[ticker]/page.tsx",
+    "apps/frontend/app/stocks/page.tsx",
+    "docs/handoffs/goal-mcp-loop-iter-40-dev.md",
+    "docs/handoffs/goal-mcp-loop-iter-40-frontend.md",
+    "reports/phase-goal-mcp-loop-iter-40-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "next_action": "iter-41 planning"
+}

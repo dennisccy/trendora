@@ -197,6 +197,19 @@ def vol_contraction(closes: Sequence[float], recent: int, prior: int) -> Optiona
     return _population_stdev(rets[-recent:]) / prior_vol  # the later (recent) block / baseline
 
 
+def _percentile(sorted_values: Sequence[float], pct: float) -> float:
+    """Linear-interpolation percentile (the standard definition) of an ALREADY-ASCENDING-SORTED
+    sequence at `pct` in [0,1]. A single-value sequence returns that value regardless of `pct`."""
+    n = len(sorted_values)
+    if n == 1:
+        return sorted_values[0]
+    rank = pct * (n - 1)
+    lower = int(rank)
+    upper = min(lower + 1, n - 1)
+    frac = rank - lower
+    return sorted_values[lower] + (sorted_values[upper] - sorted_values[lower]) * frac
+
+
 def downside_vol(closes: Sequence[float], window: int) -> Optional[float]:
     """Downside / semi-volatility (downside leg ONLY): the trailing downside semideviation of the last
     `window` daily simple returns about MAR=0 — `sqrt(mean(min(r, 0)**2))`. Only NEGATIVE returns
@@ -212,3 +225,82 @@ def downside_vol(closes: Sequence[float], window: int) -> Optional[float]:
     if rets is None:
         return NA
     return sqrt(sum(min(r, 0) ** 2 for r in rets) / len(rets))
+
+
+# --- iter-40 risk-budget family (J-24 / B-201) -----------------------------------------------
+# Two more NA-graceful, config-windowed, bars<=D-only functions, computed once in the scoring/snapshot
+# path and STORED (additively) for the stock-detail risk-budget card + leaderboard columns — like the
+# iter-13 volatility family above, they enter NO weighted score.
+
+def overnight_gap_profile(
+    opens: Sequence[float], closes: Sequence[float], window: int
+) -> Optional[dict]:
+    """The overnight-gap risk profile over the trailing `window` sessions — the risk an invalidation
+    level cannot protect against, since a level only triggers on a gradual decline, not a jump past it.
+
+    Distribution of `|open_i - close_{i-1}| / close_{i-1}` (the overnight gap magnitude) over the
+    window: `median` / `p95` (linear-interpolation percentiles) / `worst` (the max), each expressed as
+    a PERCENT (directly comparable to ATR%/HV). Plus `overnight_variance_share`: the population
+    variance of the SIGNED overnight leg (`open_i/close_{i-1} - 1`) as a PERCENT of the population
+    variance of the SAME window's signed total daily return (`close_i/close_{i-1} - 1`) — how much of
+    the day's realized variance already happened before the open.
+
+    NA (`None`) if fewer than `window`+1 aligned open/close bars are available (insufficient history —
+    never a fabricated value). `overnight_variance_share` alone is NA when the window's total-return
+    variance is exactly zero (an undefined ratio — mirrors `vol_contraction`'s zero-denominator guard)
+    while `median`/`p95`/`worst` still report the real, independently-computable gap distribution."""
+    if window <= 0:
+        raise ValueError(f"overnight_gap_profile window must be positive, got {window}")
+    if len(opens) != len(closes):
+        raise ValueError("overnight_gap_profile requires opens/closes of equal length")
+    if len(closes) < window + 1:
+        return NA
+    o = opens[-(window + 1):]
+    c = closes[-(window + 1):]
+    gaps: list[float] = []
+    overnight_rets: list[float] = []
+    total_rets: list[float] = []
+    for i in range(1, len(c)):
+        prev_close = c[i - 1]
+        if prev_close == 0:
+            return NA
+        overnight_ret = (o[i] - prev_close) / prev_close
+        total_ret = (c[i] - prev_close) / prev_close
+        gaps.append(abs(overnight_ret))
+        overnight_rets.append(overnight_ret)
+        total_rets.append(total_ret)
+
+    sorted_gaps = sorted(gaps)
+    total_variance = _population_stdev(total_rets) ** 2
+    overnight_variance = _population_stdev(overnight_rets) ** 2
+    share = (overnight_variance / total_variance * 100) if total_variance != 0 else NA
+
+    return {
+        "median": _percentile(sorted_gaps, 0.5) * 100,
+        "p95": _percentile(sorted_gaps, 0.95) * 100,
+        "worst": sorted_gaps[-1] * 100,
+        "overnight_variance_share": share,
+    }
+
+
+def worst_20d_window(closes: Sequence[float], window: int) -> Optional[float]:
+    """The most negative trailing `window`-trading-day return ANYWHERE in the given (full as-of)
+    `closes` series — expressed as a PERCENT. Distinct from a forward max-drawdown figure (which
+    measures forward from one as-of date): this scans every trailing `window`-bar return the whole
+    series contains and keeps the worst (most negative) one — the deepest historical drawdown-window
+    depth. NA if fewer than `window`+1 closes (not even one trailing window computable) or a divisor
+    close is zero (an undefined return — never fabricated)."""
+    if window <= 0:
+        raise ValueError(f"worst_20d_window window must be positive, got {window}")
+    n = len(closes)
+    if n < window + 1:
+        return NA
+    worst: Optional[float] = None
+    for i in range(window, n):
+        base = closes[i - window]
+        if base == 0:
+            return NA
+        ret = closes[i] / base - 1
+        if worst is None or ret < worst:
+            worst = ret
+    return worst * 100

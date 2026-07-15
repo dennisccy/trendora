@@ -319,6 +319,38 @@ export interface FlatBaseBreakout {
   detail?: Record<string, number | null>; // base_depth_pct, dist_below_pivot_pct, volume_ratio
 }
 
+/** One risk-budget component (iter-40, J-24 / B-201): a stored value + its CROSS-SECTIONAL universe
+ *  percentile in [0,1] (higher percentile = MORE risk by this measure — the card's "pXX of universe"
+ *  framing), both read verbatim from the server — never recomputed client-side. `value`/`percentile`
+ *  null together = NA (insufficient history); `percentile` is never present without `value`. */
+export interface RiskBudgetComponent {
+  value: number | null;
+  percentile: number | null;
+}
+
+/** The overnight-gap risk profile (iter-40, J-24 / B-201): the distribution of overnight moves over the
+ *  gap window (median / p95 / worst), plus the overnight share of the same window's return variance —
+ *  the risk an invalidation level cannot protect against (a gap jumps past it, it does not breach it). */
+export interface GapProfile {
+  median: RiskBudgetComponent;
+  p95: RiskBudgetComponent;
+  worst: RiskBudgetComponent;
+  overnight_variance_share: RiskBudgetComponent;
+}
+
+/** The per-stock "how much can this hurt" risk-budget bundle (iter-40, J-24 / B-201) — computed ONCE by
+ *  `scoring:score_stocks` and served verbatim on the SAME two stock endpoints the rest of `StockRow`
+ *  comes from (no new endpoint, no UI recompute). Descriptive statistics only — no proven-language, no
+ *  position advice (anti-goals #1/#2). Historical scanner rows predating iter-40 carry no `risk_budget`
+ *  key at all (honest absence, never a fabricated NA) — optional on `StockRow` for that reason. */
+export interface RiskBudget {
+  atr_pct: RiskBudgetComponent;
+  downside_vol: RiskBudgetComponent;
+  gap_profile: GapProfile;
+  worst_20d_window: RiskBudgetComponent;
+  distance_to_invalidation_pct: RiskBudgetComponent;
+}
+
 export interface StockRow {
   ticker: string;
   name: string;
@@ -343,6 +375,10 @@ export interface StockRow {
   // Backtest reads (never recomputed). `return` is null (NA) where no stored row exists for that horizon
   // (so at/near the latest date all five are NA — never fabricated). Order maps to config horizons.
   forward_returns: StockForwardReturn[];
+  // iter-40 (J-24 / B-201): the risk-budget card/leaderboard-column bundle. Optional — a scanner row
+  // persisted before iter-40 carries no `risk_budget` key at all (honest absence; only the served
+  // bootstrap + latest snapshots regenerate with it, historical runs stay as they were).
+  risk_budget?: RiskBudget;
 }
 
 /** One forward-return entry: the realized return at `horizon` trading days, or null (NA) when no stored

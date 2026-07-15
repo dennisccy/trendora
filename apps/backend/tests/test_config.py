@@ -76,6 +76,9 @@ MINIMAL_VALID = {
         # iter-26 (J-16 item F): required window; mirrors config.yaml's real value (>= high_window_52w
         # 252 + margin; >= the patterns block's largest min_history_bars, 90).
         "max_lookback_bars": 320,
+        # iter-40 (J-24 / B-201 risk-budget) required windows (required + validated positive).
+        "gap_window": 20,
+        "worst_window_days": 20,
     },
     "sectors": {
         "weights": {

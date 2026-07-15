@@ -658,6 +658,14 @@ indicators:
   # 252 + a ~68-bar safety margin. The byte-identity harness (test_scoring_window.py), not this
   # value, is the authority: it must show 0 diffs windowed vs. unwindowed; widen this if it ever doesn't.
   max_lookback_bars: 320
+  # iter-40 (J-24, B-201 risk-budget card): the overnight-gap-profile window (median/p95/worst gap +
+  # overnight share of same-window return variance) -- 20 trading days (~1 trading month), read from
+  # the SAME max_lookback_bars-bounded trailing slice, so "20-day return variance" in the served copy
+  # matches this value exactly (no separate literal).
+  gap_window: 20
+  # The worst-trailing-N-day-return window scanned over each name's FULL as-of history (not bounded by
+  # max_lookback_bars -- see scoring.py pass-3) -- 20 trading days, matching gap_window's span.
+  worst_window_days: 20
 
 # ----------------------------------------------------------------------------------------
 # iter-2 CONSUMED — Sector/industry leadership. Component weights (must cover every component
@@ -1884,6 +1892,22 @@ methodology:
       category: factor_stats
       definition: "Volatility computed from NEGATIVE returns only — the kind of volatility that actually hurts. Used so 'risk' never penalises healthy upside movement."
       where: "Research → Factor Lab volatility family, risk-adjusted ratios."
+    - term: "overnight-gap profile"
+      category: factor_stats
+      definition: "The distribution of overnight moves (|open − prior close| / prior close) over the gap window: the median, p95 (a near-worst case), and worst gap, plus the overnight share of the same window's close-to-close return variance. The risk an invalidation level cannot protect against, since a level only triggers on a gradual decline, never a jump past it."
+      where: "Stocks, Stock Detail risk-budget card."
+      thresholds:
+        - { label: "Gap window", cmp: "=", ref: "indicators.gap_window", unit: " bars" }
+    - term: "worst 20-day window"
+      category: factor_stats
+      definition: "The most negative trailing 20-trading-day return found ANYWHERE in a name's full available as-of history — the deepest historical drawdown-window depth. Distinct from a forward max-drawdown figure, which measures forward from one as-of date."
+      where: "Stock Detail risk-budget card."
+      thresholds:
+        - { label: "Window", cmp: "=", ref: "indicators.worst_window_days", unit: " bars" }
+    - term: "distance-to-invalidation %"
+      category: factor_stats
+      definition: "The percent distance of the latest close above the invalidation level (the same level named in the setup's invalidation note) — how much room exists before the long thesis is technically wrong."
+      where: "Stock Detail risk-budget card."
     - term: "pivot"
       category: factor_stats
       definition: "The breakout trigger price at the top of a base (e.g. the base high in a VCP or flat base) — a buy is referenced TO the pivot, and proximity to it is a pattern condition."

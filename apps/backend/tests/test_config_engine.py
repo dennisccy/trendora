@@ -72,6 +72,9 @@ VALID = {
         # iter-26 (J-16 item F): required window; mirrors config.yaml's real value (>= high_window_52w
         # 252 + margin; >= the patterns block's largest min_history_bars, 90).
         "max_lookback_bars": 320,
+        # iter-40 (J-24 / B-201 risk-budget) required windows (required + validated positive).
+        "gap_window": 20,
+        "worst_window_days": 20,
     },
     "sectors": {
         "weights": {
@@ -325,6 +328,40 @@ def test_indicators_nonpositive_volatility_window_raises(tmp_path):
     """A non-positive volatility-family window fails the boot loudly — never a silent default."""
     data = copy.deepcopy(VALID)
     data["indicators"]["hv_window"] = 0
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+# --- iter-40 (J-24 / B-201): risk-budget windows ---------------------------------------------
+def test_real_config_exposes_risk_budget_windows():
+    """The real config.yaml exposes the two typed risk-budget windows, both positive (anti-goal: No
+    magic numbers)."""
+    icfg = load_config().indicators
+    assert icfg.gap_window > 0 and icfg.worst_window_days > 0
+
+
+def test_indicators_nonpositive_gap_window_raises(tmp_path):
+    """A non-positive gap_window fails the boot loudly — never a silent default."""
+    data = copy.deepcopy(VALID)
+    data["indicators"]["gap_window"] = 0
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_indicators_nonpositive_worst_window_days_raises(tmp_path):
+    """A non-positive worst_window_days fails the boot loudly — never a silent default."""
+    data = copy.deepcopy(VALID)
+    data["indicators"]["worst_window_days"] = 0
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_indicators_max_lookback_bars_must_cover_gap_window(tmp_path):
+    """max_lookback_bars must be >= gap_window + 1 (the byte-identity-window guard, mirroring the
+    hv_window/semivol_window treatment)."""
+    data = copy.deepcopy(VALID)
+    data["indicators"]["max_lookback_bars"] = 5
+    data["indicators"]["gap_window"] = 400  # exceeds the shrunk max_lookback_bars
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))
 

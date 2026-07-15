@@ -186,3 +186,75 @@ def test_downside_vol_na_when_too_short():
 def test_downside_vol_rejects_nonpositive_window():
     with pytest.raises(ValueError):
         ind.downside_vol([100, 90, 81], 0)
+
+
+# --- overnight_gap_profile (J-24 / B-201 risk-budget) ---------------------------------------
+# Fixture derivation (window=4, 5 bars): overnight_ret_i is set to EXACTLY 0.5 * total_ret_i at every
+# step, so Var(overnight) = 0.5^2 * Var(total) exactly regardless of Var(total)'s actual value, making
+# overnight_variance_share = 0.25 (25.0%) an EXACT expected value, not an approximation of an
+# approximation.
+#   day1: total +10.0% (close 100->110),   overnight +5.0% (open 105 from prior close 100)
+#   day2: total  -6.0% (close 110->103.4), overnight -3.0% (open 106.7 from prior close 110)
+#   day3: total  +4.0% (close 103.4->107.536), overnight +2.0% (open 105.468 from prior close 103.4)
+#   day4: total  -8.0% (close 107.536->98.93312), overnight -4.0% (open 103.23456 from prior close 107.536)
+# abs gaps = [5.0, 3.0, 2.0, 4.0] -> sorted [2.0, 3.0, 4.0, 5.0] (percent)
+#   median (linear-interp rank=1.5): 3.0 + (4.0-3.0)*0.5 = 3.5
+#   p95    (linear-interp rank=2.85): 4.0 + (5.0-4.0)*0.85 = 4.85
+#   worst = max = 5.0
+_GAP_CLOSES = [100, 110, 103.4, 107.536, 98.93312]
+_GAP_OPENS = [100, 105, 106.7, 105.468, 103.23456]
+
+
+def test_overnight_gap_profile_exact():
+    profile = ind.overnight_gap_profile(_GAP_OPENS, _GAP_CLOSES, 4)
+    assert profile["median"] == pytest.approx(3.5)
+    assert profile["p95"] == pytest.approx(4.85)
+    assert profile["worst"] == pytest.approx(5.0)
+    assert profile["overnight_variance_share"] == pytest.approx(25.0)
+
+
+def test_overnight_gap_profile_na_when_too_short():
+    # needs window+1 = 5 aligned bars; only 3 given
+    assert ind.overnight_gap_profile([100, 101, 102], [100, 101, 102], 4) is None
+
+
+def test_overnight_gap_profile_rejects_nonpositive_window():
+    with pytest.raises(ValueError):
+        ind.overnight_gap_profile(_GAP_OPENS, _GAP_CLOSES, 0)
+
+
+def test_overnight_gap_profile_rejects_mismatched_lengths():
+    with pytest.raises(ValueError):
+        ind.overnight_gap_profile([100, 101], [100, 101, 102], 1)
+
+
+def test_overnight_gap_profile_share_na_on_zero_total_variance():
+    # closes flat at 100 (every total return is exactly 0 -> undefined variance ratio -> NA), but
+    # opens still vary, so the gap distribution itself stays a real, non-fabricated number.
+    closes = [100, 100, 100, 100, 100]
+    opens = [100, 105, 95, 102, 98]
+    profile = ind.overnight_gap_profile(opens, closes, 4)
+    # abs gaps = [5, 5, 2, 2] -> sorted [2, 2, 5, 5]
+    assert profile["median"] == pytest.approx(3.5)   # 2 + (5-2)*0.5
+    assert profile["p95"] == pytest.approx(5.0)       # 5 + (5-5)*0.85
+    assert profile["worst"] == pytest.approx(5.0)
+    assert profile["overnight_variance_share"] is None
+
+
+# --- worst_20d_window (J-24 / B-201 risk-budget) ---------------------------------------------
+def test_worst_20d_window_exact():
+    # window=3; trailing 3-day returns ending at each valid index:
+    #   idx3: 80/100 - 1  = -20.0%
+    #   idx4: 105/90 - 1  = +16.666...%
+    #   idx5: 70/95  - 1  = -26.315...%   <- most negative (worst)
+    closes = [100, 90, 95, 80, 105, 70]
+    assert ind.worst_20d_window(closes, 3) == pytest.approx((70 / 95 - 1) * 100)
+
+
+def test_worst_20d_window_na_when_too_short():
+    assert ind.worst_20d_window([100, 90, 95], 3) is None  # needs window+1 = 4 closes
+
+
+def test_worst_20d_window_rejects_nonpositive_window():
+    with pytest.raises(ValueError):
+        ind.worst_20d_window([100, 90, 95, 80], 0)

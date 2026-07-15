@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AlertTriangle, ArrowLeft, SearchX } from "lucide-react";
@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatIsoDate } from "@/lib/dates";
 import { SCORE_SIGNALS } from "@/lib/evidence";
+import { fmtRiskPercentile, fmtRiskValue, isRiskBudgetNa } from "@/lib/risk-budget";
 import { sectorLabel } from "@/lib/sector-label";
 import { cn } from "@/lib/utils";
 import {
@@ -27,6 +28,7 @@ import {
   type BarsResponse,
   type ProvenSignal,
   type RegimePoint,
+  type RiskBudgetComponent,
   type ScoreBlock,
   type StockDetailResponse,
   type StockRow,
@@ -190,6 +192,11 @@ function StockDetailBody({ data }: { data: StockDetailResponse }) {
       {/* theme membership + concrete invalidation level (server-computed, rendered verbatim) */}
       <ThemeAndInvalidationCard row={row} />
 
+      {/* iter-40 (J-24 / B-201) — the "how much can this hurt" risk-budget card: ATR% / downside vol /
+          overnight-gap profile / worst-20d window / distance-to-invalidation, each re-read verbatim from
+          the served row with its universe-percentile context (never recomputed client-side). */}
+      <RiskBudgetCard row={row} />
+
       {/* detected patterns — each a separate pattern with its own pivot + invalidation level. VCP always
           shows (incl. a not-detected state); the iter-9 patterns show a card only when flagged. */}
       <VcpCard vcp={row.vcp} />
@@ -266,6 +273,89 @@ function ThemeAndInvalidationCard({ row }: { row: StockRow }) {
           <p className={cn("text-sm", naInvalidation ? "text-warn" : "text-text-muted")}>
             {row.invalidation.note}
           </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** One risk-budget metric tile: a label, the server value(s) (re-displayed verbatim), and — when
+ *  present — the "pXX of universe" percentile chip. NA (no value) renders the warn-coloured "NA" text,
+ *  mirroring `ThemeAndInvalidationCard`'s `naInvalidation` short-history treatment above — never a
+ *  fabricated 0. Purely descriptive: no badge, no proven-language, no position advice (anti-goals #1/#2). */
+function RiskMetricTile({
+  label,
+  component,
+  children,
+}: {
+  label: string;
+  /** The metric that drives the tile's NA state + (when present) its percentile chip. For the
+   *  multi-line gap-profile tile this is the p95 sub-component (the "near-worst case" headline the
+   *  card's percentile chip speaks to — median/worst render as plain supporting lines via `children`). */
+  component: RiskBudgetComponent | null | undefined;
+  /** Custom value content; defaults to `fmtRiskValue(component.value)` when omitted. */
+  children?: ReactNode;
+}) {
+  const na = isRiskBudgetNa(component);
+  const pctLabel = fmtRiskPercentile(component?.percentile);
+  return (
+    <div className="space-y-1 rounded-md border border-border bg-surface-2 p-3">
+      <p className="text-xs uppercase tracking-wide text-text-faint">{label}</p>
+      {na ? (
+        <p className="num text-sm text-warn" title="Insufficient history for this component (NA)">
+          NA — insufficient history
+        </p>
+      ) : (
+        <>
+          <div className="num text-sm text-text">{children ?? fmtRiskValue(component?.value)}</div>
+          {pctLabel ? <p className="text-[11px] text-text-faint">{pctLabel}</p> : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** The J-24 / B-201 "how much can this hurt" risk-budget card: ATR% (reused from the Risk score),
+ *  downside volatility (reused), the overnight-gap profile (median/p95/worst + overnight share of
+ *  20-day return variance), the worst historical 20-day window, and distance-to-invalidation % — every
+ *  value + its universe-percentile label read VERBATIM from the served row (single source; the card
+ *  never recomputes a risk-budget number). Absent entirely for a row served before iter-40 (an honest
+ *  omission, not an error — see `StockRow.risk_budget`'s optionality). */
+function RiskBudgetCard({ row }: { row: StockRow }) {
+  const rb = row.risk_budget;
+  if (!rb) return null;
+  return (
+    <Card data-testid="risk-budget-card">
+      <CardHeader>
+        <CardTitle>Risk budget</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-xs text-text-faint">
+          How much plausible damage this name carries — volatility, overnight-gap exposure the
+          invalidation level cannot protect against, the worst historical 20-day window, and distance
+          from where the thesis is wrong. Descriptive only; not a recommendation.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <RiskMetricTile label="ATR %" component={rb.atr_pct} />
+          <RiskMetricTile label="Downside volatility" component={rb.downside_vol} />
+          <RiskMetricTile label="Worst 20-day window" component={rb.worst_20d_window} />
+          <RiskMetricTile label="Distance to invalidation" component={rb.distance_to_invalidation_pct} />
+          {/* Median/worst are ATOMIC with p95 (overnight_gap_profile returns the whole distribution or
+              NA together — only overnight_variance_share can independently drop out), so gating on the
+              p95 component's own NA state (RiskMetricTile's default behavior) safely covers all three. */}
+          <RiskMetricTile label="Overnight gap · p95" component={rb.gap_profile.p95}>
+            <div className="space-y-0.5">
+              <p>p95 {fmtRiskValue(rb.gap_profile.p95.value)}</p>
+              <p className="text-xs text-text-faint">
+                median {fmtRiskValue(rb.gap_profile.median.value)} · worst{" "}
+                {fmtRiskValue(rb.gap_profile.worst.value)}
+              </p>
+            </div>
+          </RiskMetricTile>
+          <RiskMetricTile
+            label="Overnight share of 20d variance"
+            component={rb.gap_profile.overnight_variance_share}
+          />
         </div>
       </CardContent>
     </Card>

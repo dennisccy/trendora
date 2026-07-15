@@ -529,6 +529,10 @@ def bars_through_latest(session: Session, symbol: str) -> list[DailyPrice]:
 # --- ascending-series extractors (the indicator functions take plain float lists) ----------
 # `bars` may be `DailyPrice` rows (the default, uncached path) or `Bar` records (iter-19: the cache
 # path) — both expose the same `.close/.high/.low/.volume` attributes, so these read structurally.
+def opens(bars: list[DailyPrice] | list[Bar]) -> list[float]:
+    return [b.open for b in bars]
+
+
 def closes(bars: list[DailyPrice] | list[Bar]) -> list[float]:
     return [b.close for b in bars]
 

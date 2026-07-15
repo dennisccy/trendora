@@ -100,6 +100,8 @@ _SYNTH_CFG = {
         # iter-26 (J-16 item F): required window; >= this fixture's own max (high_window_52w=20) and
         # >= the patterns block's min_history_bars below (20).
         "max_lookback_bars": 20,
+        # iter-40 (J-24 / B-201 risk-budget) required windows — synthetic small scale.
+        "gap_window": 5, "worst_window_days": 5,
     },
     "sectors": {
         "weights": {"rs_spy_1m": 0.20, "rs_spy_3m": 0.25, "rs_spy_6m": 0.20, "ma_stack": 0.15, "dist_from_high": 0.10, "vol_trend": 0.10},

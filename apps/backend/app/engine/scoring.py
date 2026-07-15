@@ -33,7 +33,7 @@ lookahead). Numeric literals are structural only (0/1/2/4/100); every period/wei
 from __future__ import annotations
 
 from datetime import date as date_cls
-from typing import Optional
+from typing import Callable, Optional
 
 from sqlmodel import Session, select
 
@@ -42,7 +42,7 @@ from app.engine import indicators as ind
 from app.engine.buckets import to_bucket
 from app.engine.normalize import cross_sectional_percentiles
 from app.engine.patterns import detect_flat_base_breakout, detect_pullback_to_rising_dma, detect_vcp
-from app.engine.prices import bars_asof, bars_asof_window, closes, highs, lows, volumes
+from app.engine.prices import bars_asof, bars_asof_window, closes, highs, lows, opens, volumes
 from app.engine.regime import score_regime
 from app.engine.sectors import score_sectors
 from app.engine.universe_resolver import resolve_members
@@ -88,6 +88,30 @@ def _avg_dollar_volume(series: list[float], vols: list[float], period: int) -> O
         return None
     recent = list(zip(series[-period:], vols[-period:]))
     return sum(close * volume for close, volume in recent) / period
+
+
+# --- iter-40 (J-24 / B-201) risk-budget card ------------------------------------------------
+# A per-stock "how much can this hurt" bundle, computed ONCE in pass-3 from the SAME as-of bars
+# already in hand (ATR% / downside-vol REUSE the existing pass-1/pass-3 values — no second
+# computation), stored ADDITIVELY on the row (enters NO weighted score — CONTRAST with the
+# `_build_score` components above). Each leaf is `{"value": <float|None>, "percentile": <float|None>}`
+# — `percentile` is filled in AFTER every row is assembled (see `_apply_risk_budget_percentile` below).
+
+def _risk_budget_leaf(value: Optional[float]) -> dict:
+    return {"value": value, "percentile": None}
+
+
+def _apply_risk_budget_percentile(rows: list[dict], leaf: Callable[[dict], dict], negate: bool = False) -> None:
+    """Attach a CROSS-SECTIONAL percentile (over the SAME as-of scan's resolved members — never across
+    time) to the risk-budget leaf `leaf(row)` on every row, mirroring pass-2's
+    `cross_sectional_percentiles` pattern. Oriented so a HIGHER percentile always means MORE risk (the
+    card's "pXX of universe" = riskier-than-XX% framing): `negate=True` for a component where a
+    SMALLER/more-negative raw value is MORE dangerous (`worst_20d_window`, `distance_to_invalidation_pct`)."""
+    orient = _neg if negate else (lambda v: v)
+    present = {row["ticker"]: orient(leaf(row)["value"]) for row in rows if leaf(row)["value"] is not None}
+    percentiles = cross_sectional_percentiles(present)
+    for row in rows:
+        leaf(row)["percentile"] = percentiles.get(row["ticker"])
 
 
 def _raw_components(
@@ -385,6 +409,36 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
         )
         downside_vol = ind.downside_vol(inv_closes, icfg.semivol_window)
 
+        # iter-40 (J-24 / B-201): the risk-budget bundle — a per-stock "how much can this hurt" set of
+        # DESCRIPTIVE components, computed ONCE here and stored ADDITIVELY (enters NO weighted score,
+        # like the iter-13 volatility family above). ATR% / downside-vol REUSE the values already
+        # computed above (raws["atr_pct"] from pass-1's `_raw_components`; the `downside_vol` local
+        # just computed) — never a second `ind.atr_pct`/`ind.downside_vol` call. The gap profile reads
+        # the SAME bounded `bars` slice already fetched for `inv_closes` above (no extra bar fetch).
+        gap_profile = ind.overnight_gap_profile(opens(bars), inv_closes, icfg.gap_window)
+        # The worst-20d window is read from the name's FULL as-of history (bars <= asof), NOT the
+        # max_lookback_bars-bounded slice above — a deliberate, logged interpretation (NOTES,
+        # assumptions.md iter-40). When a `bar_cache` context is active (bootstrap/backfill — the
+        # common heavy-traffic path), `bars_asof` slices the already-resident cached series (no new DB
+        # round trip); an uncached ad-hoc as-of date pays a one-time query per ticker, same as any other
+        # never-before-scanned date's first (and only, since runs are immutable) compute.
+        worst_20d = ind.worst_20d_window(closes(bars_asof(session, ticker, asof)), icfg.worst_window_days)
+        # Distance-to-invalidation %, REFRAMED (not recomputed) from the invalidation dict already built
+        # above — reuses the SAME `_pct_from_ma` helper `extension`/`support_nearby` already use, so the
+        # level itself is computed exactly once (by `_invalidation` above).
+        dist_to_invalidation_pct = _pct_from_ma(invalidation["price"], invalidation["level"])
+
+        risk_budget = {
+            "atr_pct": _risk_budget_leaf(raws["atr_pct"]),
+            "downside_vol": _risk_budget_leaf(downside_vol * 100 if downside_vol is not None else None),
+            "gap_profile": {
+                key: _risk_budget_leaf(gap_profile[key] if gap_profile else None)
+                for key in ("median", "p95", "worst", "overnight_variance_share")
+            },
+            "worst_20d_window": _risk_budget_leaf(worst_20d),
+            "distance_to_invalidation_pct": _risk_budget_leaf(dist_to_invalidation_pct),
+        }
+
         rows.append({
             "ticker": ticker,
             "name": ticker,
@@ -402,8 +456,26 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
             "hv": hv,
             "vcp_contraction": vcp_contraction,
             "downside_vol": downside_vol,
+            # iter-40 (J-24 / B-201) — the risk-budget card/leaderboard-column bundle, never a score input.
+            "risk_budget": risk_budget,
             "rank": None,
         })
+
+    # iter-40 (J-24 / B-201) — cross-sectional percentiles for the risk-budget bundle. Unlike pass-2's
+    # component percentiles (computed BEFORE row assembly, since `_build_score` needs them), these are
+    # read from the just-built `rows` (see "Percentile pass" note): every ticker's raw risk-budget
+    # value must be known before any one ticker's peer-rank can be computed. Order-independent of the
+    # rank assignment below. `worst_20d_window` / `distance_to_invalidation_pct` are NEGATED before
+    # ranking (a smaller/more-negative raw value is MORE dangerous) so a HIGHER percentile always means
+    # MORE risk everywhere on the card (the "pXX of universe" framing) — see `_apply_risk_budget_percentile`.
+    _apply_risk_budget_percentile(rows, lambda r: r["risk_budget"]["atr_pct"])
+    _apply_risk_budget_percentile(rows, lambda r: r["risk_budget"]["downside_vol"])
+    _apply_risk_budget_percentile(rows, lambda r: r["risk_budget"]["gap_profile"]["median"])
+    _apply_risk_budget_percentile(rows, lambda r: r["risk_budget"]["gap_profile"]["p95"])
+    _apply_risk_budget_percentile(rows, lambda r: r["risk_budget"]["gap_profile"]["worst"])
+    _apply_risk_budget_percentile(rows, lambda r: r["risk_budget"]["gap_profile"]["overnight_variance_share"])
+    _apply_risk_budget_percentile(rows, lambda r: r["risk_budget"]["worst_20d_window"], negate=True)
+    _apply_risk_budget_percentile(rows, lambda r: r["risk_budget"]["distance_to_invalidation_pct"], negate=True)
 
     # ranked leaderboard: by Leadership descending (tie-break ticker for determinism)
     rows.sort(key=lambda row: (-row["leadership"]["score"], row["ticker"]))

@@ -19,6 +19,7 @@ import { TermInfo } from "@/components/ui/term-info";
 import { formatIsoDate } from "@/lib/dates";
 import { fmtHighProximity, highProximityValue } from "@/lib/high-proximity";
 import { regimeVariant } from "@/lib/regime-variant";
+import { fmtRiskValue } from "@/lib/risk-budget";
 import { SCORE_SIGNALS } from "@/lib/evidence";
 import { compareSectors, sectorLabel } from "@/lib/sector-label";
 import { cn } from "@/lib/utils";
@@ -31,6 +32,7 @@ import {
   type DashboardResponse,
   type MethodologyCatalog,
   type ProvenSignal,
+  type RiskBudgetComponent,
   type StockRow,
   type StocksResponse,
   type ThemeRow,
@@ -70,9 +72,34 @@ const PATTERNS: { key: string; label: string; badge: string; get: (row: StockRow
 /** A base sortable column, plus the dynamic forward-return columns `fwd_<horizon>` (J-75) and the paired
  *  max-drawdown columns `mdd_<horizon>` (J-86). */
 type BaseSortKey = "rank" | "ticker" | "sector" | "leadership" | "entry_quality" | "risk" | "setup";
+/** iter-40 (J-24 / B-201) — the five risk-budget leaderboard columns, config-driven like `PATTERNS`
+ *  above (adding a column is ONE entry here — the header, cell, and comparator all read this list). Each
+ *  `get` re-reads the SAME served `risk_budget` field the Stock Detail risk-budget card shows (never
+ *  recomputed client-side) — `?.` degrades an absent (pre-iter-40) `risk_budget` to the honest NA cell. */
+type RiskBudgetColumnKey = "rb_atr_pct" | "rb_downside_vol" | "rb_gap_p95" | "rb_worst_20d" | "rb_dist_invalidation";
+const RISK_BUDGET_COLUMNS: {
+  key: RiskBudgetColumnKey;
+  label: string;
+  term: string;
+  get: (row: StockRow) => RiskBudgetComponent | null | undefined;
+}[] = [
+  { key: "rb_atr_pct", label: "ATR%", term: "ATR%", get: (r) => r.risk_budget?.atr_pct },
+  {
+    key: "rb_downside_vol", label: "Downside vol", term: "downside volatility (semivol)",
+    get: (r) => r.risk_budget?.downside_vol,
+  },
+  { key: "rb_gap_p95", label: "Gap p95", term: "overnight-gap profile", get: (r) => r.risk_budget?.gap_profile.p95 },
+  { key: "rb_worst_20d", label: "Worst 20d", term: "worst 20-day window", get: (r) => r.risk_budget?.worst_20d_window },
+  {
+    key: "rb_dist_invalidation", label: "Dist. to invalidation", term: "distance-to-invalidation %",
+    get: (r) => r.risk_budget?.distance_to_invalidation_pct,
+  },
+];
+
 // J-106 adds the `high_proximity` column key (handled by an explicit NA-last branch in comparatorFor,
-// NOT routed through SORT_COMPARATORS — that base map has no null handling).
-type SortKey = BaseSortKey | "high_proximity" | `fwd_${number}` | `mdd_${number}`;
+// NOT routed through SORT_COMPARATORS — that base map has no null handling). iter-40 adds the five
+// risk-budget columns the SAME way.
+type SortKey = BaseSortKey | "high_proximity" | RiskBudgetColumnKey | `fwd_${number}` | `mdd_${number}`;
 type SortDir = "asc" | "desc";
 
 /** J-75 — a stock's realized forward return at `horizon` from the served `forward_returns` (NA → null).
@@ -128,6 +155,21 @@ function comparatorFor(key: SortKey, dir: SortDir): (a: StockRow, b: StockRow) =
       const bv = highProximityValue(b.leadership.components);
       if (av === null && bv === null) return 0;
       if (av === null) return 1; // NA last regardless of direction
+      if (bv === null) return -1;
+      return (av - bv) * sign;
+    };
+  }
+  // iter-40 (J-24 / B-201) — the five risk-budget columns, read verbatim from the SAME served
+  // `risk_budget` field the detail card shows (never recomputed). NA (short history, or a row served
+  // before iter-40) always sorts LAST regardless of direction, exactly like `high_proximity` above.
+  const riskBudgetColumn = RISK_BUDGET_COLUMNS.find((c) => c.key === key);
+  if (riskBudgetColumn) {
+    const sign = dir === "asc" ? 1 : -1;
+    return (a, b) => {
+      const av = riskBudgetColumn.get(a)?.value ?? null;
+      const bv = riskBudgetColumn.get(b)?.value ?? null;
+      if (av === null && bv === null) return 0;
+      if (av === null) return 1;
       if (bv === null) return -1;
       return (av - bv) * sign;
     };
@@ -661,6 +703,20 @@ function StocksInner() {
                   dir={sortDir}
                   onSort={onSort}
                 />
+                {/* iter-40 (J-24 / B-201) — the five risk-budget columns, re-reading the SAME served
+                    `risk_budget` field the Stock Detail risk-budget card shows (never recomputed),
+                    each client-side sortable (view transform, NA-last). */}
+                {RISK_BUDGET_COLUMNS.map((col) => (
+                  <SortHeader
+                    key={col.key}
+                    col={col.key}
+                    label={col.label}
+                    term={col.term}
+                    activeKey={sortKey}
+                    dir={sortDir}
+                    onSort={onSort}
+                  />
+                ))}
                 <SortHeader
                   col="setup"
                   label="Setup"
@@ -831,6 +887,21 @@ function HighProximityCell({ value }: { value: number | null }) {
   return <span className="num text-text">{fmtHighProximity(value)}</span>;
 }
 
+/** iter-40 (J-24 / B-201) — one risk-budget leaderboard cell: the served value (already a percent
+ *  number — `fmtRiskValue` only appends "%", it never multiplies by 100), read VERBATIM — the SAME
+ *  value the Stock Detail risk-budget card shows (single source; never recomputed). NA (short history,
+ *  or a row served before iter-40) renders a muted "NA" that always sorts last. */
+function RiskBudgetCell({ value }: { value: number | null | undefined }) {
+  if (value === null || value === undefined) {
+    return (
+      <span className="num text-text-muted" title="Insufficient history for this component (NA)">
+        NA
+      </span>
+    );
+  }
+  return <span className="num text-text">{fmtRiskValue(value)}</span>;
+}
+
 /** J-86 — one colour-graded max-drawdown cell: the served realized drawdown (<= 0; NA → "NA" muted), read
  *  verbatim. A real (negative) drawdown reads red via the shared `mddClass` helper. */
 function MaxDrawdownCell({ value }: { value: number | null }) {
@@ -910,6 +981,14 @@ function StockTableRow({
       <td className="px-3 py-2 text-right" data-testid="high-proximity">
         <HighProximityCell value={highProximityValue(row.leadership.components)} />
       </td>
+      {/* iter-40 (J-24 / B-201) — five risk-budget cells, re-reading the SAME served `risk_budget`
+          field the Stock Detail risk-budget card shows (never recomputed); NA-honest (muted "NA") on
+          short history or a row served before iter-40. */}
+      {RISK_BUDGET_COLUMNS.map((col) => (
+        <td key={col.key} className="px-3 py-2 text-right" data-testid={col.key}>
+          <RiskBudgetCell value={col.get(row)?.value} />
+        </td>
+      ))}
       <td className="px-3 py-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <Badge variant={setupVariant(row.setup.status)}>{row.setup.status}</Badge>

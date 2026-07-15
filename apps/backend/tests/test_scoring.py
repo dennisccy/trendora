@@ -9,12 +9,14 @@ deterministic; and the as-of date bounds the computation (no lookahead).
 """
 from __future__ import annotations
 
+import pytest
 from sqlmodel import Session, select
 
 from app.config import load_config
+from app.engine import indicators as ind
 from app.engine.buckets import to_bucket
 from app.engine.indicators import sma
-from app.engine.prices import bars_asof, closes, latest_data_date
+from app.engine.prices import bars_asof, bars_asof_window, closes, latest_data_date, opens
 from app.engine.scoring import score_stocks
 from app.engine.setups import ALL_STATUSES
 from app.engine.universe_screen import read_pool
@@ -328,6 +330,154 @@ def test_volatility_values_ride_the_row_but_enter_no_score(loaded_engine, monkey
     nvda = _row(baseline_rows, "NVDA")
     assert isinstance(nvda["hv"], float) and nvda["hv"] != 999.0
     assert isinstance(nvda["vcp_contraction"], float) and isinstance(nvda["downside_vol"], float)
+
+
+RISK_BUDGET_SCALAR_KEYS = ("atr_pct", "downside_vol", "worst_20d_window", "distance_to_invalidation_pct")
+RISK_BUDGET_GAP_KEYS = ("median", "p95", "worst", "overnight_variance_share")
+
+
+def test_risk_budget_fields_present_with_cross_sectional_percentiles(loaded_engine):
+    """iter-40 (J-24 / B-201): every row carries an additive `risk_budget` block — ATR% / downside vol /
+    the overnight-gap profile (median/p95/worst/overnight-variance-share) / worst-20d window /
+    distance-to-invalidation %, each `{value, percentile}` — computed for a real, ample-history name
+    (NVDA), with percentiles that are genuinely CROSS-SECTIONAL (not a fabricated constant)."""
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        result = score_stocks(session, asof, cfg)
+    rows = result["rows"]
+    nvda = _row(rows, "NVDA")
+    rb = nvda["risk_budget"]
+
+    for key in RISK_BUDGET_SCALAR_KEYS:
+        leaf = rb[key]
+        assert set(leaf) == {"value", "percentile"}
+        assert isinstance(leaf["value"], float)
+        assert leaf["percentile"] is not None and 0 <= leaf["percentile"] <= 1
+
+    assert set(rb["gap_profile"]) == set(RISK_BUDGET_GAP_KEYS)
+    for key in RISK_BUDGET_GAP_KEYS:
+        leaf = rb["gap_profile"][key]
+        assert set(leaf) == {"value", "percentile"}
+        assert isinstance(leaf["value"], float)
+        assert leaf["percentile"] is not None and 0 <= leaf["percentile"] <= 1
+
+    # genuinely cross-sectional: not every peer shares NVDA's percentile (never a fabricated constant).
+    atr_percentiles = {r["ticker"]: r["risk_budget"]["atr_pct"]["percentile"] for r in rows}
+    assert len(set(atr_percentiles.values())) > 1
+
+
+def test_risk_budget_gap_p95_byte_matches_offline_recomputation(loaded_engine):
+    """Correctness (DoD): a spot-checked overnight-gap p95 value byte-matches an INDEPENDENT offline
+    recomputation from the same as-of bars — the served number is never a UI/second-path recompute."""
+    cfg = load_config()
+    icfg = cfg.indicators
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        result = score_stocks(session, asof, cfg)
+        nvda_bars = bars_asof_window(session, "NVDA", asof, icfg.max_lookback_bars)
+    expected = ind.overnight_gap_profile(opens(nvda_bars), closes(nvda_bars), icfg.gap_window)
+    assert expected is not None  # NVDA has ample history
+
+    nvda = _row(result["rows"], "NVDA")
+    assert nvda["risk_budget"]["gap_profile"]["p95"]["value"] == pytest.approx(expected["p95"])
+    assert nvda["risk_budget"]["gap_profile"]["median"]["value"] == pytest.approx(expected["median"])
+
+
+def test_risk_budget_worst_20d_byte_matches_offline_recomputation(loaded_engine):
+    """The worst-20d window reads the name's FULL as-of history (not the max_lookback_bars-bounded
+    slice — logged interpretation, assumptions.md iter-40); spot-check against an independent
+    recomputation over the SAME full series."""
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        result = score_stocks(session, asof, cfg)
+        nvda_full_closes = closes(bars_asof(session, "NVDA", asof))
+    expected = ind.worst_20d_window(nvda_full_closes, cfg.indicators.worst_window_days)
+    assert expected is not None
+
+    nvda = _row(result["rows"], "NVDA")
+    assert nvda["risk_budget"]["worst_20d_window"]["value"] == pytest.approx(expected)
+
+
+def test_risk_budget_atr_and_downside_vol_are_reused_not_recomputed(loaded_engine, monkeypatch):
+    """B-201 ★ Do NOT touch / trap guard: ATR% and downside-vol MUST be REUSED from pass-1/pass-3's
+    existing computation for the risk-budget card, never called a second time. Wrap both indicator
+    functions with a call counter and assert each fires exactly once per resolved member."""
+    cfg = load_config()
+    calls = {"atr_pct": 0, "downside_vol": 0}
+    real_atr_pct, real_downside_vol = ind.atr_pct, ind.downside_vol
+
+    def _counting_atr_pct(*a, **k):
+        calls["atr_pct"] += 1
+        return real_atr_pct(*a, **k)
+
+    def _counting_downside_vol(*a, **k):
+        calls["downside_vol"] += 1
+        return real_downside_vol(*a, **k)
+
+    monkeypatch.setattr("app.engine.indicators.atr_pct", _counting_atr_pct)
+    monkeypatch.setattr("app.engine.indicators.downside_vol", _counting_downside_vol)
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        result = score_stocks(session, asof, cfg)
+
+    n_members = len(result["members"])
+    assert calls["atr_pct"] == n_members       # once per ticker (pass-1 only) — never a second call
+    assert calls["downside_vol"] == n_members  # once per ticker (pass-3 only) — never a second call
+
+    nvda = _row(result["rows"], "NVDA")
+    risk_atr = next(c for c in nvda["risk"]["components"] if c["name"] == "atr_pct")
+    # the SAME reused raw value — `risk.components[].raw` is rounded to 4dp for the score-breakdown
+    # display (`_build_score`'s `round(raw, 4)`); `risk_budget.atr_pct.value` stores the SAME
+    # unrounded `raws["atr_pct"]` (matching the unrounded convention the iter-13 `downside_vol`/`hv`/
+    # `vcp_contraction` top-level fields already use) — round for an exact, not merely approximate, check.
+    assert round(nvda["risk_budget"]["atr_pct"]["value"], 4) == risk_atr["raw"]
+
+
+def test_risk_budget_values_ride_the_row_but_enter_no_score(loaded_engine, monkeypatch):
+    """CRITICAL keystone (iter-40 / J-24 / B-201 ★ Do NOT touch score weights): the risk-budget
+    components ride on every canonical row for the stock-detail card + leaderboard columns, but enter
+    NO weighted score. Force the two new indicator functions to an absurd constant and assert every
+    row's three scores + A-E buckets + setup status + rank are BYTE-IDENTICAL to baseline — proving the
+    values never feed `_build_score`. Mirrors `test_volatility_values_ride_the_row_but_enter_no_score`."""
+    cfg = load_config()
+    risk_budget_keys = {
+        "atr_pct", "downside_vol", "gap_profile", "worst_20d_window", "distance_to_invalidation_pct",
+    }
+    for weights in (cfg.scores.leadership.weights, cfg.scores.entry_quality.weights, cfg.scores.risk.weights):
+        assert not (risk_budget_keys & set(weights))
+
+    def _snapshot(rows):
+        return {
+            r["ticker"]: (
+                r["leadership"]["score"], r["leadership"]["bucket"],
+                r["entry_quality"]["score"], r["entry_quality"]["bucket"],
+                r["risk"]["score"], r["risk"]["bucket"],
+                r["setup"]["status"], r["rank"],
+            )
+            for r in rows
+        }
+
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        baseline_rows = score_stocks(session, asof, cfg)["rows"]
+        baseline = _snapshot(baseline_rows)
+        for r in baseline_rows:
+            assert "risk_budget" in r
+
+        # force the two NEW indicator functions to an absurd constant — must perturb NO score/bucket/setup
+        monkeypatch.setattr(
+            "app.engine.indicators.overnight_gap_profile",
+            lambda *a, **k: {"median": 999.0, "p95": 999.0, "worst": 999.0, "overnight_variance_share": 999.0},
+        )
+        monkeypatch.setattr("app.engine.indicators.worst_20d_window", lambda *a, **k: 999.0)
+        forced_rows = score_stocks(session, asof, cfg)["rows"]
+
+    assert _snapshot(forced_rows) == baseline  # risk-budget additions changed nothing in any score path
+    nvda = _row(forced_rows, "NVDA")
+    assert nvda["risk_budget"]["gap_profile"]["p95"]["value"] == 999.0        # the monkeypatch took effect
+    assert nvda["risk_budget"]["worst_20d_window"]["value"] == 999.0
 
 
 def test_asof_bounds_the_computation_no_lookahead(loaded_engine):

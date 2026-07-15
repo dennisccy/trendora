@@ -285,6 +285,15 @@ class IndicatorsCfg(BaseModel):
     # bars_asof series is never fed whole into a ~252-bar-max indicator. Validated below to be >= every
     # individually-configured window on THIS model; the byte-identity harness is the real authority.
     max_lookback_bars: int
+    # iter-40 (J-24, B-201 risk-budget card): the overnight-gap-profile window (median/p95/worst +
+    # overnight variance share, `indicators:overnight_gap_profile`) — read from the SAME
+    # `max_lookback_bars`-bounded trailing slice `scoring.py` already fetches (no extra bar fetch).
+    gap_window: int
+    # The worst-trailing-N-day-return window (`indicators:worst_20d_window`) — scans the name's FULL
+    # as-of history (NOT the max_lookback_bars-bounded slice; see scoring.py pass-3), so this value is
+    # NOT itself bounded by max_lookback_bars — it is still validated positive below alongside every
+    # other indicator window (No magic numbers).
+    worst_window_days: int
 
     @model_validator(mode="after")
     def _validate(self) -> "IndicatorsCfg":
@@ -307,6 +316,8 @@ class IndicatorsCfg(BaseModel):
             "vol_contraction_recent": self.vol_contraction_recent,
             "vol_contraction_prior": self.vol_contraction_prior,
             "max_lookback_bars": self.max_lookback_bars,
+            "gap_window": self.gap_window,
+            "worst_window_days": self.worst_window_days,
         }
         nonpositive = sorted(k for k, v in scalars.items() if v <= 0)
         if nonpositive:
@@ -315,6 +326,10 @@ class IndicatorsCfg(BaseModel):
         # window must cover every consumer fed by a bars_asof-sliced series on THIS model (a
         # different model's pattern min_history_bars is cross-checked on Config below, mirroring
         # `_pattern_ma_period_is_an_indicator_period`'s "a sub-model cannot see indicators" note).
+        # iter-40: gap_window/worst_window_days folded in alongside hv_window/semivol_window (mirrored
+        # treatment) — even though worst_window_days's consumer reads the FULL as-of history rather
+        # than this bounded slice, keeping every configured indicator window <= max_lookback_bars is a
+        # cheap, harmless general consistency guard.
         max_needed = max(
             max(self.ma_periods),
             max(self.rs_windows.values()) + 1,  # rs_vs needs window + 1 bars
@@ -324,6 +339,8 @@ class IndicatorsCfg(BaseModel):
             self.hv_window + 1,
             self.semivol_window + 1,
             self.vol_contraction_recent + self.vol_contraction_prior + 1,
+            self.gap_window + 1,
+            self.worst_window_days + 1,
         )
         if self.max_lookback_bars < max_needed:
             raise ValueError(

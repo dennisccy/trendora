@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-40",
+  "base_url": "http://localhost:3255",
+  "iteration": 40,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "A new 'how much can this hurt' card",
+      "narration": "Every stock's detail page now includes a Risk budget card that spells out, in plain percentages, how much a name could realistically hurt you.",
+      "point_out": "Below the Themes and Invalidation section, six tiles show ATR%, downside volatility, the worst historical 20-day drop, distance to the invalidation level, and an overnight-gap profile — each compared against the rest of the universe.",
+      "journey": "J-24",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/AAPL" },
+      "expect": { "text": "Descriptive only; not a recommendation." }
+    },
+    {
+      "n": 2,
+      "title": "The same risk measures, ranked market-wide",
+      "narration": "The stocks leaderboard now carries five new sortable risk columns, so you can rank the entire universe by risk exposure, not just by opportunity score.",
+      "point_out": "Scroll right past 'Proximity to 52w high' to see the new ATR%, Downside vol, Gap p95, Worst 20d, and Dist. to invalidation columns, each showing a real number or an honest 'NA'.",
+      "journey": "J-24",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "590 / 590" }
+    },
+    {
+      "n": 3,
+      "title": "Sort by risk, not just by score",
+      "narration": "Clicking a risk column header re-ranks every stock by that measure, and names without enough history to compute it honestly sink to the bottom instead of being hidden.",
+      "point_out": "Watch the row order change and a sort arrow appear next to 'Worst 20d'.",
+      "journey": "J-24",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Worst 20d" } }
+    },
+    {
+      "n": 4,
+      "title": "Definitions built right into the table",
+      "narration": "Every new risk column carries its own info icon, so anyone can check exactly how a measure is defined without leaving the leaderboard.",
+      "point_out": "The popup names the metric, explains it in plain language, and states the exact lookback window it's computed over.",
+      "journey": "J-24",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Gap p95 info" } },
+      "expect": { "text": "overnight-gap profile" }
+    },
+    {
+      "n": 5,
+      "title": "A glossary that keeps up with new metrics",
+      "narration": "The methodology page's glossary now documents every new risk term — its formula and the exact time window it uses — right alongside the site's existing definitions.",
+      "point_out": "The 'Factor Lab & Statistics' category gains three new entries; no new category was needed.",
+      "journey": "J-24",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/methodology" },
+      "expect": { "text": "FACTOR LAB & STATISTICS" }
+    },
+    {
+      "n": 6,
+      "title": "Searching for a new term",
+      "narration": "Typing a new risk term into the glossary's search box instantly narrows the list to the one matching definition — the same search box that already covers every other term on the site.",
+      "point_out": "The single matching result, 'distance-to-invalidation %', appears with its plain-language definition.",
+      "journey": "J-24",
+      "new": true,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "placeholder": "Search terms and definitions…" }, "text": "distance-to-invalidation" },
+      "expect": { "text": "distance-to-invalidation %" }
+    },
+    {
+      "n": 7,
+      "title": "Scores stay exactly as they were",
+      "narration": "Back on a stock's detail page, the Leadership, Entry Quality, and Risk scores — and their honest 'Not yet proven' badges — look exactly as they did before the new card arrived.",
+      "point_out": "Nothing about the existing scores or evidence badges changed; the new risk card lives entirely on its own, higher up the page.",
+      "journey": "J-01",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/AAPL" },
+      "expect": { "text": "Not yet proven" }
+    },
+    {
+      "n": 8,
+      "title": "Deep price history still works",
+      "narration": "Further down the same page, the price chart still expands to a stock's full trading history at the click of a button, undisturbed by the new card above it.",
+      "point_out": "The chart redraws with a longer bar count and an updated 'as of' caption.",
+      "journey": "J-10",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Full history" } },
+      "expect": { "text": "as of 2026-07-01" }
+    }
+  ]
+}

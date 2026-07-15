@@ -338,3 +338,22 @@ lane to run-phase.sh's full path, or force a lean verify pass after each full fe
 **Verdict:** CONTINUE
 **Lesson:** The lean closeout lane splits re-verification into two mechanisms — deterministic `demo_runner --mode verify` for the Required-still-passing set, and a fresh LLM browser walk for the Target set — so a NEW golden script assigned to the Target set never actually runs through `demo_runner`, even when a DoD explicitly mandates "fold it in for the first time." iter-39 was told (twice: iter-38 recommendation + iter-39 DoD) to deterministically replay J-23.json, but J-23 landed in the Target set and was LLM-walked instead, leaving J-23.json's golden with zero replay coverage. If the intent is to exercise a new golden deterministically, it must be in the Required-still-passing set (or explicitly replayed), not the Target set. Second, non-obvious gotcha: the coherence auditor reads pipeline artifacts mid-flight — at iter-39 it snapshotted `regression-replay-results.md` (13 journeys) BEFORE the LLM lane wrote `ui-test-results.md` (21 journeys) and raised a "Target journeys missing" coverage alarm that was pure timing; always reconcile against the LATER-completing merged report before treating a mid-flight coverage flag as real.
 **Applies to:** any future lean verify-only closeout that "folds in" a newly-linted golden script (confirm it lands in the deterministically-replayed Required set, or run it through demo_runner explicitly); and any evaluation where the coherence auditor flags an evidence-coverage gap on a report that another lane writes later.
+
+## iter-40 — 2026-07-15T21:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The canonical browser-qa lane can SKIP an entire target (0/16 here) on a Chrome-MCP
+DevTools-port-binding outage while the product is fully up (curl 200, field populated) AND other
+browser-driving agents in the SAME run succeed — the functional-QA agent captured TC-01 ~17 min
+earlier, and the demo-narrator drove Playwright fine (`reports/demo/goal-mcp-loop-iter-40/step-0*.png`).
+Those two lanes' frames + the auditor's full-float-precision byte-match re-derivation together closed the
+exact "leaderboard columns + /methodology never live-screenshotted" gap the closure/audit/ux-regression
+reports flagged (they focus on the QA/browser-qa lanes and did not fold in the demo frames). Practical
+rule: when the canonical browser-qa lane SKIPs on infra, do NOT default the target to `unknown` — first
+open the functional-QA evidence dir AND `reports/demo/<iter>/` for real acceptance-state frames, and
+weigh the auditor's byte-match (stronger than a click-through) before scoring. Also flag the Chrome-MCP
+port issue to the coordinator so the next browser-dependent iter (J-25) does not silently inherit the
+same degraded-evidence condition.
+**Applies to:** any iter whose canonical browser-qa lane returns SKIPPED (Chrome MCP / frontend infra);
+any evaluator facing "target's own canonical lane didn't run" — check demo + functional-QA frames + audit
+byte-match before treating a journey as unverified.
