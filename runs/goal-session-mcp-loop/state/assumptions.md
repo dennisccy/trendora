@@ -186,3 +186,8 @@ unit-verified-only, and a healthy-Chrome-MCP canonical pass over the leaderboard
 carried forward to the next lean closeout. A human who wants the DoD-named lane satisfied before
 crediting the target could reasonably hold this at `partial`; the overall verdict is CONTINUE either way.
 **Reversible:** yes
+
+## iter-41 — goal-decomposer
+**Ambiguity:** B-205 describes underwater-duration / time-to-recover as "pure aggregation helpers" extending the forward_testing aggregation, but leaves open whether they are computed on-read from bars or stored per-observation, and whether populating the deep historical phases (Correction/Bear) needs a backfill of new columns — the readings yield the SAME displayed numbers but very different memory/latency risk profiles and iteration scope.
+**We chose:** Store `underwater_days` + `time_to_recover_days` as two append-only `ForwardReturn` columns computed ONCE alongside `max_drawdown` in `_insert_run_forward_returns` from the same first-`horizon` post-bars (iter-27 J-86 precedent), and populate the historical phases via a bounded, memory-hardened backfill — because on-read per-observation bar reads on `GET /api/evidence` would regress the J-15 latency budget, while the deep Correction/Bear phases need populated coverage to clear the honesty floor. Phase-at-entry is the causal `phase_context_by_date` label (never retrospective); loss-streak is taken at the walk-forward cadence (no overlapping-horizon double-count); serving is an additive `expectations` field on the EXISTING `GET /api/evidence` (no new endpoint).
+**Reversible:** yes
