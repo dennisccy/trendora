@@ -1,0 +1,38 @@
+{
+  "phase": "goal-mcp-loop-iter-37",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-07-15T06:52:43Z",
+  "started_at": "2026-07-15T06:52:43Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "docs/handoffs/goal-mcp-loop-iter-37-dev.md",
+    "runs/goal-mcp-loop-iter-37/status.json"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "review",
+  "verify_only_pass": {
+    "target_journeys": ["J-05", "J-11"],
+    "folded_in_goldens": ["J-21", "J-22"],
+    "total_golden_scripted_journeys": 20,
+    "evidence_claim_registered": false,
+    "product_source_diff_empty": true,
+    "ledgers_diff_empty": true,
+    "ledgers_content_check": "certified-claims.jsonl: 7 entries, divisors 1..7, all status=FAIL; staging-ledger.jsonl: 7 entries, divisors 1..7, all status=FAIL; 0 PASS in either file; canonical Bonferroni divisor stays 8",
+    "blueprint_clarification_already_present": true,
+    "golden_scripts_on_disk": "20/20 present in runs/goal-session-mcp-loop/journey-scripts/ (J-01..J-14, J-17..J-22)",
+    "targeted_tests": "tests/test_evidence.py::test_canonical_ledger_frozen_golden, tests/test_staging_ledger_routing.py::test_committed_staging_ledger_is_the_regenerated_30y_discovery",
+    "targeted_tests_result": "2 passed, 0 failed (0.21s)",
+    "service_readiness_check": {
+      "performed": true,
+      "method": "rm -rf apps/frontend/.next; prod-mode start-backend.sh + start-frontend.sh on isolated ports 18471/18472",
+      "backend_health": "HTTP 200 /api/health after 3s; readiness settled to ready; warmup 89/89 status ok; preflight.verdict=GO (servability/freshness/integrity/drift all ok); backend log clean, no errors",
+      "frontend_build": "cold next build succeeded from removed .next (all routes compiled, 0 errors/warnings); HTTP 200 / after 8s (Ready in 251ms)",
+      "spot_checked_pages_200": ["/", "/stocks", "/sectors", "/themes", "/backtest", "/evidence", "/data", "/watchlist", "/research", "/research/registry", "/research/graveyard", "/research/budget", "/research/referee-audit", "/research/samples", "/scanner-runs", "/methodology"],
+      "shutdown_clean": true
+    },
+    "finding": "iter-36 CLOSURE-FAIL replay gap closeout: confirms zero product-source/ledger diff (git diff HEAD empty on apps/**, config.yaml, seed, both ledgers), no ## Evidence Claim registered (divisor stays 8), blueprint.md iter-37 clarification already present from decomposition, all 20 required golden scripts present on disk (including the newly-folded J-21/J-22), and both services boot clean from a forced-fresh prod build with the backend's own /api/health preflight reading GO. The developer step is a deliberate no-op on code; the regression-replay-results.md + merged ui-test-results.md artifacts (with fresh dedicated rows for J-05 and J-11) are produced next by the browser-qa step (goal-iter-lean.sh Step 3), not by this pass."
+  }
+}

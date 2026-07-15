@@ -8,8 +8,7 @@
     {"n": 2, "journey": "J-05", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "leadership_score"}},
     {"n": 3, "journey": "J-05", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "FAIL · holdout edge -0.03%"}},
     {"n": 4, "journey": "J-05", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "2026-07-03"}},
-    {"n": 5, "journey": "J-05", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "vcp_contraction — top decile (D10)"}},
-    {"n": 6, "journey": "J-05", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "ma_stack — top decile (D10)"}},
-    {"n": 7, "journey": "J-05", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "rs_spy_3m — top decile (D10)"}}
+    {"n": 5, "journey": "J-05", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Pending — monitored as new data matures"}},
+    {"n": 6, "journey": "J-05", "action": {"type": "click", "target": {"text": "Backs: Stocks leaderboard"}}, "expect": {"text": "Stock Leaderboard"}}
   ]
 }

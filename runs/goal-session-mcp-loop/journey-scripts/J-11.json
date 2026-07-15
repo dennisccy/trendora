@@ -5,8 +5,10 @@
   "default_timeout_ms": 8000,
   "steps": [
     {"n": 1, "journey": "J-11", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Evidence"}},
-    {"n": 2, "journey": "J-11", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "FAIL"}},
-    {"n": 3, "journey": "J-11", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "Not yet proven"}},
-    {"n": 4, "journey": "J-11", "action": {"type": "goto", "url": "/stocks/NVDA"}, "expect": {"text": "Not yet proven"}}
+    {"n": 2, "journey": "J-11", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "FAIL · holdout edge -1.64%"}},
+    {"n": 3, "journey": "J-11", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "2026-07-03"}},
+    {"n": 4, "journey": "J-11", "action": {"type": "goto", "url": "/research/factor-lab"}, "expect": {"text": "~30 years of history"}},
+    {"n": 5, "journey": "J-11", "action": {"type": "click", "target": {"testid": "factor-evidence-vcp_contraction"}}, "expect": {"text": "Decile grid — forward return"}},
+    {"n": 6, "journey": "J-11", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "Not yet proven"}}
   ]
 }
