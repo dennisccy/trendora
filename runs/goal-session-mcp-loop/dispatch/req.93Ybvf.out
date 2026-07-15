@@ -1,0 +1,10 @@
+I read the full dispatch prompt (`runs/goal-session-mcp-loop/dispatch/prompt-req.93Ybvf.md`, all 480 lines across paginated reads) plus every input artifact that exists for `goal-mcp-loop-iter-37`: the iter spec, dev handoff, review, merged UI test results, regression-replay results, `eval.md`, `journey-history.json`, and the existing `project-story.md`. I confirmed (via read attempts) that this lean iteration has no QA/audit/closure/ux-regression/implementation-summary/user-visible-changes/what-to-click/ui-surface-map/ui-test-plan artifacts, matching the spec's own "developer step is a no-op, lean cycle skips those steps" framing.
+
+Findings used to build the summary:
+- Verdict: **CONTINUE** (from `eval.md`, iteration type **goal-lean**), zero product diff, 20/20 journeys passing after this iteration's replay closed the iter-36 CLOSURE-FAIL gap on J-05/J-11.
+- Direction signal: **holding** — no newly-passing journey this iter, no regression, no journeys in a `failing` state (only 3 unbuilt/`unknown`: J-23/J-24/J-25), and the last 5 iters show steady progress (J-20/J-21/J-22 landed) with 2 of 5 being no-state-change verify passes.
+- Assumptions: condensed the 10 most recent entries from the inline ledger tail (iter-32 through iter-38) into plain bullets, newest-first, without copying the ledger's `## iter-N` headings.
+
+Wrote two files:
+- `/home/dennis-chan/Git/trendora/reports/phase-goal-mcp-loop-iter-37-iteration-summary.md`
+- `/home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/state/project-story.md` (rewoven end-to-end through iteration 37, ~330 words)

@@ -1304,6 +1304,19 @@ server:
   malloc_arena_max: 2                      # iter-27 (anti-goal #8): MALLOC_ARENA_MAX exported by start-backend.sh. glibc otherwise creates up to 8*ncpus (128 on a 16-core host) independent malloc arenas, each retaining freed-but-unreturned address space; across the uvicorn threadpool + parallel backfill workers that fragments VSZ and pins the ulimit -v ceiling on a SECOND full-universe rebuild. Capping to 2 arenas bounds that fragmentation (the dominant VSZ lever behind the iter-26/iter-27 rebuild crash) — byte-identical outputs (allocator layout only, never a stored/served value)
 
 # ----------------------------------------------------------------------------------------
+# goal-mcp-loop iter-38 (J-23 / backlog B-204) — the watchlist concentration X-ray. EVERY tunable the
+# canonical app.engine.watchlist_xray:build_xray_payload composer (and the ONE shared ENB/correlation
+# helper it calls, app.engine.concentration) reads lives here (anti-goal: No magic numbers) — the
+# trailing correlation window, the connected-component cluster threshold, and the per-member
+# overlap-history honesty floor (below which a member renders NA rather than a fabricated correlation).
+# Computed fresh on every GET /api/watchlist read; no persisted field (watchlist storage schema untouched).
+watchlist:
+  xray:
+    corr_window_days: 126        # ~6 trading months trailing bars_asof_window lookback (bars <= as-of)
+    cluster_threshold: 0.7       # Pearson correlation at/above which two members join the same cluster
+    min_overlap_days: 60         # a member's own return series shorter than this renders NA throughout
+
+# ----------------------------------------------------------------------------------------
 # iter-12 CONSUMED — Methodology / Glossary catalog (J-12). The SINGLE config-backed source that
 # EXPLAINS every setup status + the VCP pattern: a plain-language meaning, the exact thresholds that
 # define each (referenced LIVE from the canonical config blocks above — never re-typed, so they always

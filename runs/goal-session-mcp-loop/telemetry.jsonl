@@ -806,3 +806,11 @@
 {"agent":"goal-decomposer","exit_status":0,"duration_seconds":708,"retries":0,"ts":"2026-07-15T07:40:05Z","session_id":"mcp-loop","iter":38,"event":"agent_invocation_end","cli":"claude"}
 {"depth":"full","target_journeys":"J-23","ts":"2026-07-15T07:40:06Z","session_id":"mcp-loop","iter":38,"event":"iter_dispatch","cli":"claude"}
 {"agent":"iteration-summarizer","ts":"2026-07-15T07:50:52Z","session_id":"mcp-loop","iter":37,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"coherence-auditor","ts":"2026-07-15T13:27:38Z","session_id":"mcp-loop","iter":38,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"coherence-auditor","status":"ok","wait_seconds":0,"run_seconds":262,"rc":"0","ts":"2026-07-15T13:32:00Z","session_id":"mcp-loop","iter":38,"event":"dispatch_wait","cli":"claude"}
+{"agent":"coherence-auditor","exit_status":0,"duration_seconds":263,"retries":0,"ts":"2026-07-15T13:32:01Z","session_id":"mcp-loop","iter":38,"event":"agent_invocation_end","cli":"claude"}
+{"verdict":"COHERENCE-PASS","ts":"2026-07-15T13:32:01Z","session_id":"mcp-loop","iter":38,"event":"coherence_audit","cli":"claude"}
+{"agent":"goal-evaluator","ts":"2026-07-15T13:32:01Z","session_id":"mcp-loop","iter":38,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"goal-evaluator","status":"ok","wait_seconds":0,"run_seconds":896,"rc":"0","ts":"2026-07-15T13:46:57Z","session_id":"mcp-loop","iter":38,"event":"dispatch_wait","cli":"claude"}
+{"agent":"goal-evaluator","exit_status":0,"duration_seconds":896,"retries":0,"ts":"2026-07-15T13:46:57Z","session_id":"mcp-loop","iter":38,"event":"agent_invocation_end","cli":"claude"}
+{"iter_name":"goal-mcp-loop-iter-38","verdict":"CONTINUE","next_depth":"lean","journey_deltas":{"newly_passing":1,"newly_failing":0,"regressed":0,"anti_goal_violations":2},"ts":"2026-07-15T13:46:57Z","session_id":"mcp-loop","iter":38,"event":"iter_end","cli":"claude"}

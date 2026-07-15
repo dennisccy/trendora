@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-38",
+  "base_url": "http://localhost:3255",
+  "iteration": 38,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Start at the Dashboard",
+      "narration": "Every session starts here on the Dashboard — let's head over to the Watchlist to see what's new this time.",
+      "point_out": "The familiar left sidebar, with Watchlist among the items.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" }
+    },
+    {
+      "n": 2,
+      "title": "Open the Watchlist",
+      "narration": "The Watchlist page hasn't moved — same saved-stocks table as always — but scrolling down now reveals something brand new underneath it.",
+      "point_out": "The existing entries table for ABBV and MSFT, and below it a new \"Concentration X-ray\" card headlined \"≈ 2.0 effective independent bets\".",
+      "journey": "J-23",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Watchlist" } },
+      "expect": { "text": "≈ 2.0" }
+    },
+    {
+      "n": 3,
+      "title": "See how correlated the two names really are",
+      "narration": "A real, computed correlation shows exactly how ABBV and MSFT move relative to each other — a number, not just a guess or a color with nothing behind it.",
+      "point_out": "The ABBV × MSFT cell reading \"-0.11\" in red, right where the two rows and columns cross.",
+      "journey": "J-23",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/watchlist" },
+      "expect": { "text": "-0.11" }
+    },
+    {
+      "n": 4,
+      "title": "See the cluster grouping",
+      "narration": "Because ABBV and MSFT aren't correlated enough to move together, the X-ray keeps them as two separate clusters instead of merging them into one.",
+      "point_out": "Two separate gray badges — \"ABBV\" and \"MSFT\" — under the Clusters heading, not one joined badge.",
+      "journey": "J-23",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/watchlist" },
+      "expect": { "text": "Names grouped when their correlation is at or above 0.70." }
+    },
+    {
+      "n": 5,
+      "title": "See where the watchlist is concentrated",
+      "narration": "Three bar breakdowns show sector, theme, and shared-setup concentration for the whole list — including an honest \"Unassigned\" bucket for any stock without a mapped sector, never a blank or crashed row.",
+      "point_out": "The \"Technology\" and \"Unassigned\" sector bars, three theme bars, and a single red \"Avoid\" setup bar that reuses the exact same red used in the table above.",
+      "journey": "J-23",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/watchlist" },
+      "expect": { "text": "Unassigned" }
+    },
+    {
+      "n": 6,
+      "title": "Check the methodology behind the headline",
+      "narration": "Clicking the small info icon next to \"effective independent bets\" opens a plain-language explanation of exactly how that number is worked out.",
+      "point_out": "The tooltip spelling out both the 126-trading-day window and the 60-day minimum-history requirement, in plain language.",
+      "journey": "J-23",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "What is effective independent bets?" } },
+      "expect": { "text": "eigenvalues of the pairwise correlation matrix" }
+    },
+    {
+      "n": 7,
+      "title": "Add a new name",
+      "narration": "Typing a new ticker into the existing Add form sets up a live test of the X-ray — the next step shows the whole grid grow to include it.",
+      "point_out": "\"AAPL\" typed into the Ticker field, ready to add.",
+      "journey": "J-23",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "placeholder": "e.g. ANET" }, "text": "AAPL" }
+    },
+    {
+      "n": 8,
+      "title": "Watch the X-ray update live",
+      "narration": "Adding AAPL grows the correlation grid from 2×2 to 3×3 automatically — every figure recalculates from the real saved list, nothing is hand-entered.",
+      "point_out": "The new AAPL row in the entries table, and the correlation grid now covering three names instead of two.",
+      "journey": "J-23",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Add" } },
+      "expect": { "text": "3 saved" }
+    },
+    {
+      "n": 9,
+      "title": "Remove the demo name and confirm the list is restored",
+      "narration": "Removing AAPL again shrinks the grid straight back to the original ABBV/MSFT view, confirming the new section never disturbs the existing watchlist.",
+      "point_out": "The entries table back to two rows, and the X-ray matching its original figures.",
+      "journey": "J-23",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "click", "target": { "role": "button", "name": "Remove AAPL from the watchlist" } },
+      "expect": { "text": "2 saved" }
+    }
+  ]
+}

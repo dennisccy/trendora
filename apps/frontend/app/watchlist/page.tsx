@@ -2,15 +2,18 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Plus, Star, Trash2 } from "lucide-react";
+import { AlertTriangle, Network, Plus, Star, Trash2 } from "lucide-react";
 
 import { useAsOfHref } from "@/components/asof-provider";
+import { CorrelationHeatmap } from "@/components/correlation-heatmap";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 import { formatIsoDate } from "@/lib/dates";
+import { sectorLabel } from "@/lib/sector-label";
 import { cn } from "@/lib/utils";
 import {
   addWatchlistEntry,
@@ -18,6 +21,7 @@ import {
   removeWatchlistEntry,
   type WatchlistEntry,
   type WatchlistResponse,
+  type WatchlistXray,
 } from "@/lib/api";
 
 type State =
@@ -229,6 +233,8 @@ export default function WatchlistPage() {
               </tbody>
             </table>
           </Card>
+
+          <WatchlistXraySection xray={state.data.xray} />
         </>
       ) : null}
     </div>
@@ -308,5 +314,159 @@ function WatchlistSkeleton() {
         <div key={i} className="h-8 w-full animate-pulse rounded bg-surface-2" />
       ))}
     </Card>
+  );
+}
+
+/**
+ * J-23 (backlog B-204) — the watchlist concentration X-ray: how correlated, clustered, and
+ * concentrated the watchlist really is. Purely descriptive (no advice / no proven-language) — reads
+ * the `xray` field `GET /api/watchlist` already carries, verbatim; no separate fetch, no browser-side
+ * correlation/ENB recompute. Fewer than two names renders a distinct "not enough names yet" state
+ * (same visual family as the zero-entries EmptyState above, different copy) — the "Backend
+ * unavailable" page-level error state already covers this section since it rides the same response.
+ */
+function WatchlistXraySection({ xray }: { xray: WatchlistXray }) {
+  if (xray.status === "insufficient") {
+    return (
+      <EmptyState
+        icon={Network}
+        title="Not enough names yet for an X-ray"
+        description="Add at least one more stock to your watchlist to see how concentrated it is — pairwise correlation, clusters, and effective independent bets, all read from your saved list."
+      />
+    );
+  }
+
+  return (
+    <Card className="space-y-4 p-4" data-testid="watchlist-xray">
+      <div>
+        <h2 className="text-sm font-semibold text-text">Concentration X-ray</h2>
+        <p className="mt-0.5 text-xs text-text-faint">
+          Descriptive only — how correlated, clustered, and concentrated your watchlist really is. No
+          recommendations.
+        </p>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="num text-lg font-semibold text-text" data-testid="watchlist-xray-enb">
+          {xray.effective_number_of_bets === null ? "NA" : `≈ ${xray.effective_number_of_bets.toFixed(1)}`}
+        </span>
+        <span className="text-xs text-text-muted">
+          effective independent bets (over the last {xray.window_days} trading days)
+        </span>
+        <InfoTooltip
+          label="What is effective independent bets?"
+          content={
+            <>
+              How many genuinely independent positions your watchlist behaves like, derived from the
+              eigenvalues of the pairwise correlation matrix over the trailing {xray.window_days} trading
+              days. Perfectly correlated names count as one bet; fully independent names each count as
+              their own. A name with under {xray.min_overlap_days} days of overlapping history is
+              excluded and shown as NA.
+            </>
+          }
+        />
+      </div>
+
+      <CorrelationHeatmap xray={xray} />
+
+      <div data-testid="watchlist-xray-clusters">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-text-faint">Clusters</h3>
+        <p className="mt-0.5 text-[11px] text-text-faint">
+          Names grouped when their correlation is at or above {xray.cluster_threshold.toFixed(2)}.
+        </p>
+        <div className="mt-1.5 flex flex-wrap gap-2">
+          {xray.clusters.map((cluster) => (
+            <Badge key={cluster.join("-")} variant={cluster.length > 1 ? "accent" : "default"}>
+              {cluster.join(" · ")}
+            </Badge>
+          ))}
+        </div>
+      </div>
+
+      <ConcentrationBars
+        title="Sector concentration"
+        testId="watchlist-xray-sector"
+        entries={xray.sector_concentration.map((e) => ({
+          key: e.sector ?? "unassigned",
+          label: sectorLabel(e.sector),
+          count: e.count,
+          pct: e.pct,
+        }))}
+      />
+      <ConcentrationBars
+        title="Theme concentration"
+        testId="watchlist-xray-theme"
+        entries={xray.theme_concentration.map((e) => ({ key: e.slug, label: e.name, count: e.count, pct: e.pct }))}
+      />
+      <ConcentrationBars
+        title="Shared setup"
+        testId="watchlist-xray-setup"
+        entries={xray.setup_concentration.map((e) => ({
+          key: e.status,
+          label: e.status,
+          count: e.count,
+          pct: e.pct,
+          variant: setupVariant(e.status), // the SAME status->color mapping the table's Setup column uses
+        }))}
+      />
+    </Card>
+  );
+}
+
+/** A small horizontal bar list shared by the sector / theme / setup concentration breakdowns. Zero-
+ *  count entries are hidden (the backend payload may carry all six setup statuses for a stable shape;
+ *  only what's actually present on the watchlist is worth showing). An entry MAY carry a `variant` —
+ *  used ONLY for setup status, which already has an established meaning-bearing color (reused from
+ *  `setupVariant`, the SAME mapping the table's Setup column uses); sector/theme names carry no such
+ *  established meaning, so their label stays plain text rather than an arbitrary/misleading color. The
+ *  bar fill is ALWAYS the existing `accent` token — no new color scale. */
+function ConcentrationBars({
+  title,
+  entries,
+  testId,
+}: {
+  title: string;
+  entries: {
+    key: string;
+    label: string;
+    count: number;
+    pct: number;
+    variant?: "ok" | "warn" | "danger" | "accent" | "default";
+  }[];
+  testId: string;
+}) {
+  const present = entries.filter((e) => e.count > 0);
+  return (
+    <div data-testid={testId}>
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-text-faint">{title}</h3>
+      {present.length === 0 ? (
+        <p className="mt-1 text-xs text-text-faint">None on this watchlist.</p>
+      ) : (
+        <div className="mt-1.5 space-y-1">
+          {present.map((e) => (
+            <div key={e.key} className="flex items-center gap-2 text-xs">
+              {e.variant ? (
+                <Badge variant={e.variant} className="w-32 shrink-0 justify-start truncate">
+                  {e.label}
+                </Badge>
+              ) : (
+                <span className="w-32 shrink-0 truncate text-text-muted" title={e.label}>
+                  {e.label}
+                </span>
+              )}
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-2">
+                <div
+                  className="h-full rounded-full bg-accent"
+                  style={{ width: `${Math.round(e.pct * 100)}%` }}
+                />
+              </div>
+              <span className="num w-16 shrink-0 text-right text-text-faint">
+                {e.count} · {Math.round(e.pct * 100)}%
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

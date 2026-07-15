@@ -9,7 +9,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-01-verify.png",
       "spec_hash": "6e558ff93d61d8fee78d71ae7c5625e0f1ce1ab48075942dcf21c48d42dbed80",
-      "note": "iter-38 (FULL J-23): required-still-passing but NOT deterministically replayed this iter -- a FULL iter routes through run-phase.sh which has no replay lane (the CLOSURE-FAIL gap). Carried at last-good passing on byte-identity: the iter-38 product diff (concentration.py + watchlist_xray.py new; watchlist.py/config.py/config.yaml/watchlist page/api.ts additive) touches ZERO of J-01's logic (scoring/snapshot_serving/evidence untouched, evaluator-verified git diff), and both ledgers are byte-identical (7/7 FAIL). Incidentally corroborated on the UT-01-result.png frame the evaluator OPENED: the /watchlist entries table renders live Leadership/Entry-Quality/Risk score badges from the same scanner source J-01 depends on, and the 'Research-only - no orders' header holds. last_verified_iter left at iter-37; iter-39 lean closeout to replay. spec_hash re-verified (unchanged; matches goal_gate)."
+      "note": "iter-37 lean verify-only closeout. Re-verified via the deterministic golden-script replay lane (demo_runner.py --mode verify, 18/18 PASS on the Required-still-passing set) -- this is the lane a FULL iter structurally skips (run-phase.sh has no replay lane), closing the iter-36 CLOSURE-FAIL replay gap. J-01-verify.png md5 95533c1d (a real /stocks-family frame; benign shared-endpoint md5 with J-05/J-12). Zero product diff this iter (only README.md +2/-1 doc catch-up). Additionally corroborated on the J-05-backlink-stocks.png frame the evaluator OPENED (541/541 leaderboard, every Leadership/Entry-Quality/Risk score carries a 'Not yet proven' badge, 'no orders' header, GO strip). spec_hash re-verified (unchanged; no journeys-changed.md)."
     },
     "J-02": {
       "id": "J-02",
@@ -20,7 +20,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-02-verify.png",
       "spec_hash": "22320cbbf653978824cddac8404453242bc716a956d0974bec331522cc2457f4",
-      "note": "iter-38 (FULL J-23): required-still-passing, carried at last-good passing on byte-identity (CLOSURE-FAIL replay gap; deterministic replay deferred to iter-39 lean closeout). J-02's stock-detail/evidence-drill logic is git-untouched by the iter-38 additive diff; ledgers byte-identical. last_verified_iter left at iter-37. spec_hash re-verified (unchanged)."
+      "note": "iter-37 lean verify-only closeout. Re-verified via deterministic golden-script replay (PASS; J-02-verify.png md5 01d4190a, distinct). Outcome-neutral acceptance satisfied by the honest 'Not yet proven' state. Zero product diff this iter. spec_hash re-verified (unchanged)."
     },
     "J-03": {
       "id": "J-03",
@@ -31,7 +31,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-03-verify.png",
       "spec_hash": "60c48ed55bb05b6526f7fee20132b7ab1d87813284c7e2c23fe543bda08284ef",
-      "note": "iter-38 (FULL J-23): required-still-passing, carried at last-good passing on byte-identity (CLOSURE-FAIL replay gap; replay deferred to iter-39 lean closeout). Honest-marking logic git-untouched; ledgers byte-identical (0 PASS). The new /watchlist X-ray introduces NO proven-language (grep clean; evaluator-confirmed) so the honesty contract J-03 enforces is not weakened. last_verified_iter left at iter-37. spec_hash re-verified (unchanged)."
+      "note": "iter-37 lean verify-only closeout. Re-verified via deterministic golden-script replay (PASS; J-03-verify.png md5 4b0272d5, distinct). Honest-marking intact; corroborated on the J-05-backlink-stocks + J-11-vcp-crosscheck frames the evaluator opened (every score 'Not yet proven', 0 'Proven' anywhere). Zero product diff this iter. spec_hash re-verified (unchanged)."
     },
     "J-04": {
       "id": "J-04",
@@ -42,7 +42,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-04-verify.png",
       "spec_hash": "13aaa363d0a255c4dbddb53cba885373a35fdf3ffe077f8841ad42e64a175724",
-      "note": "iter-38 (FULL J-23): NOT in the required-still-passing set; carried passing on byte-identity (regime/evidence logic git-untouched; ledgers byte-identical). spec_hash re-verified (unchanged)."
+      "note": "iter-37 lean verify-only closeout. Re-verified via deterministic golden-script replay (PASS). J-04-verify.png md5 567f90bb (the benign shared /evidence frame -- evaluator opened the J-06 member of this group and confirmed it is a REAL /evidence ledger showing the 'Breakout-watch setup [Regime: Risk-on]' regime-conditioned card FAIL -0.68%, NOT an error frame). Zero product diff this iter. spec_hash re-verified (unchanged)."
     },
     "J-05": {
       "id": "J-05",
@@ -53,7 +53,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-0",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-05-ledger-list.png",
       "spec_hash": "f711589a5f5f897abda945758915347f7128d8bc7b92b4007416b103dc20955a",
-      "note": "iter-38 (FULL J-23): required-still-passing, carried at last-good passing on byte-identity (CLOSURE-FAIL replay gap; replay deferred to iter-39 lean closeout). /evidence + ledger.py + certified-claims.jsonl git-untouched; evaluator's own git diff on all 3 ledgers EMPTY (7 FAIL / 0 PASS; divisor stays 8). last_verified_iter left at iter-37. spec_hash re-verified (unchanged)."
+      "note": "TARGET (iter-37) -- the iter-36 CLOSURE-FAIL-named row, now FORMALLY CLOSED via a fresh, dedicated LLM browser-qa live walk PLUS a linted+replayed golden self-check (J-05.json). Evaluator OPENED J-05-ledger-list.png: the FULLY AUDITABLE /evidence ledger, 7 claim cards, each with all five required fields -- HYPOTHESIS (selector chips), OUT-OF-SAMPLE VERDICT (FAIL + holdout edge + reason), CONTROL COMPARISON (VS SPY), REGISTRATION DATE (2026-07-03), FORWARD-WALK SCORE-TO-DATE ('Pending -- monitored as new data matures'); each card carries a 'Backs: <surface>' linkback. Displayed numbers byte-match certified-claims.jsonl (leadership_score -0.03%, Breakout-watch -0.68%, ma_stack +0.21% p=0.2769, vcp_contraction -0.38% and 60d -1.64%, rs_spy_3m x high_proximity +0.01%, rs_spy_3m 60d -1.42%). ALSO opened J-05-backlink-stocks.png: clicking 'Backs: Stocks leaderboard' navigates to /stocks (Stock Leaderboard, 541/541) -- step-3 linkback acceptance met end-to-end. Review PASS, coherence COHERENCE-PASS, scan CLEAN, zero product/ledger diff (git diff HEAD empty; 7 FAIL / 0 PASS). spec_hash re-verified (unchanged, matches goal_gate)."
     },
     "J-06": {
       "id": "J-06",
@@ -64,7 +64,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-8",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-06-verify.png",
       "spec_hash": "d48b923d0bd4d9bf881efc864cf6fb11f7c639550dcb7a5c4b857576032fb3c2",
-      "note": "iter-38 (FULL J-23): NOT in the required-still-passing set; carried passing on byte-identity (factor-lab/evidence logic git-untouched; ledgers byte-identical). spec_hash re-verified (unchanged)."
+      "note": "iter-37 lean verify-only closeout. Re-verified via deterministic golden-script replay (PASS). Evaluator OPENED J-06-verify.png (md5 567f90bb, the shared-group representative): a REAL /evidence ledger (leadership_score -0.03%, Breakout-watch -0.68%, ma_stack starting) -- confirms the 567f90bb shared-md5 group (J-04/06/07/08/09/20) is the benign shared-endpoint artifact the spec NOTES predicted, NOT an error frame. vcp_contraction top-decile row honest FAIL. Zero product diff. spec_hash re-verified (unchanged)."
     },
     "J-07": {
       "id": "J-07",
@@ -75,7 +75,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-9",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-07-verify.png",
       "spec_hash": "ee1ca41feae2be63b451392b9d4be7d8d44fa27d09825c7c63c604bfcd787a6d",
-      "note": "iter-38 (FULL J-23): NOT in the required-still-passing set; carried passing on byte-identity (evidence logic git-untouched; ledgers byte-identical). spec_hash re-verified (unchanged)."
+      "note": "iter-37 lean verify-only closeout. Re-verified via deterministic golden-script replay (PASS; J-07-verify.png md5 567f90bb benign shared /evidence frame). Multi-horizon surfacing honest -- corroborated on the J-05-ledger-list frame (vcp_contraction 20-day AND 60-day-hold rows both FAIL). Zero product diff. spec_hash re-verified (unchanged)."
     },
     "J-08": {
       "id": "J-08",
@@ -86,7 +86,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-9",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-08-verify.png",
       "spec_hash": "084a0aac3bf0709079d1edf5804e73d54e4f7ab6873e4b92c1d603cc932453ba",
-      "note": "iter-38 (FULL J-23): NOT in the required-still-passing set; carried passing on byte-identity (combination-lab/evidence logic git-untouched; ledgers byte-identical). spec_hash re-verified (unchanged)."
+      "note": "iter-37 lean verify-only closeout. Re-verified via deterministic golden-script replay (PASS; J-08-verify.png md5 567f90bb benign shared /evidence frame). Corroborated on the J-05-ledger-list frame: 'rs_spy_3m x high_proximity -- composite' row FAIL +0.01% -- multi-factor combination outcome honest/'Not yet proven'. Zero product diff. spec_hash re-verified (unchanged)."
     },
     "J-09": {
       "id": "J-09",
@@ -97,7 +97,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-15",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-09-verify.png",
       "spec_hash": "35ca32dc9de6f26c71a59918c29083e238cb8af21d0a19b81da6c29340bdcb9a",
-      "note": "iter-38 (FULL J-23): NOT in the required-still-passing set; carried passing on byte-identity (factor-lab/evidence logic git-untouched; ledgers byte-identical). spec_hash re-verified (unchanged)."
+      "note": "iter-37 lean verify-only closeout. Re-verified via deterministic golden-script replay (PASS; J-09-verify.png md5 567f90bb benign shared /evidence frame). Corroborated on the J-05-ledger-list frame: 'rs_spy_3m -- top decile (D10) - 60-day hold' row FAIL -1.42%; the retired +21.34% value renders nowhere (J-11 no-stale-edge). Zero product diff. spec_hash re-verified (unchanged)."
     },
     "J-10": {
       "id": "J-10",
@@ -108,7 +108,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-16",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-10-verify.png",
       "spec_hash": "458604f26eb7a828c53588a9e91d7b8bf9b3578555024c1a61b32a0043cb740f",
-      "note": "iter-38 (FULL J-23): required-still-passing, carried at last-good passing on byte-identity (CLOSURE-FAIL replay gap; replay deferred to iter-39 lean closeout). prices.py/scoring.py + chart components + /api/bars git-untouched; the new watchlist X-ray reads the EXISTING bounded prices.bars_asof_window (same accessor J-10's chart path uses), no new price reader. last_verified_iter left at iter-37. spec_hash re-verified (unchanged)."
+      "note": "iter-37 lean verify-only closeout. Re-verified via deterministic golden-script replay (PASS; J-10-verify.png md5 87b8f920, distinct). prices.py/scoring.py + chart components + /api/bars git-untouched (zero product diff this iter). spec_hash re-verified (unchanged)."
     },
     "J-11": {
       "id": "J-11",
@@ -119,7 +119,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-16",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-11-vcp-crosscheck.png",
       "spec_hash": "24f6b1cbc5ddb95d4510fbf54114a9ad8da4c91d0229a9d698f3b4ad4832bf98",
-      "note": "iter-38 (FULL J-23): NOT in the required-still-passing set; carried passing on byte-identity. Invariant trivially upheld on a 0-PASS ledger (no 'Proven' edge exists to go stale); evaluator's git diff on all 3 ledgers EMPTY; the new /watchlist X-ray introduces no proven-language and serves no certified edge. spec_hash re-verified (unchanged)."
+      "note": "TARGET (iter-37) -- the iter-36 CLOSURE-FAIL-named row, now FORMALLY CLOSED via a fresh, dedicated LLM browser-qa live walk PLUS a linted+replayed golden self-check (J-11.json). Evaluator OPENED J-11-vcp-crosscheck.png: the REAL /research/factor-lab -- the '~30 years of history (1996 to present, each name from its real first bar)' disclosure + survivorship-bias caveat confirm evidence is computed on the rebuilt 30-year basis; the vcp_contraction row shows 'Not yet proven' at EVERY horizon (1d/5d/10d/20d/60d); no factor/cohort anywhere reads 'Proven'. Byte-match (merged results): /evidence vcp_contraction -0.38% (h20) / -1.64% (h60) == /api/evidence control_excess -0.003773 / -0.016364 -- UI serves verbatim, no recompute. No pre-refresh stale value (21.34 / 6.36 / 0.0004998) present anywhere (grep clean). Invariant also trivially upheld on a 0-PASS/7-FAIL ledger. Evaluator's git diff HEAD on all 3 real ledgers = EMPTY (certification economy byte-identical; divisor stays 8). Review PASS, coherence COHERENCE-PASS, scan CLEAN. spec_hash re-verified (unchanged, matches goal_gate)."
     },
     "J-12": {
       "id": "J-12",
@@ -130,7 +130,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-16",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-12-verify.png",
       "spec_hash": "36321a68d8aebced1c563e480dfa469e01e99639b93871bd428e3ca1cd842068",
-      "note": "iter-38 (FULL J-23): NOT in the required-still-passing set; carried passing on byte-identity. Corroborated on the '590 symbols' / 'seed 2026-07-01' top-bar chips visible on the UT-01-result.png frame the evaluator opened. universe_resolver git-untouched. spec_hash re-verified (unchanged)."
+      "note": "iter-37 lean verify-only closeout. Re-verified via deterministic golden-script replay (PASS; J-12-verify.png md5 95533c1d benign shared /stocks-family frame). Corroborated on the top-bar chips of frames the evaluator opened ('590 symbols', 'seed 2026-07-01'; J-05-backlink 541/541). Zero product diff. spec_hash re-verified (unchanged)."
     },
     "J-13": {
       "id": "J-13",
@@ -141,7 +141,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-16",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-13-verify.png",
       "spec_hash": "9b942381d3bf3d4bfeba23510fc5928c86d69b3d85bd1d31589220ef8ced396e",
-      "note": "iter-38 (FULL J-23): required-still-passing, carried at last-good passing on byte-identity (CLOSURE-FAIL replay gap; replay deferred to iter-39 lean closeout). availability-heatmap.tsx + data_manager.compute_availability + data/page.tsx git-untouched. last_verified_iter left at iter-37. spec_hash re-verified (unchanged)."
+      "note": "iter-37 lean verify-only closeout. Re-verified via deterministic golden-script replay (PASS; J-13-verify.png md5 943c5314, a real /data frame shared with J-14). availability-heatmap.tsx + data_manager.compute_availability + data/page.tsx git-untouched (zero product diff this iter). spec_hash re-verified (unchanged)."
     },
     "J-14": {
       "id": "J-14",
@@ -152,7 +152,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-17",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-14-verify.png",
       "spec_hash": "4445b4b40ba4917fa43a2ec8c85f1c933fedbfb8b23dc64cddff2aac45505337",
-      "note": "iter-38 (FULL J-23): NOT in the required-still-passing set; carried passing on byte-identity (config index_chart + chart + meta.json git-untouched). spec_hash re-verified (unchanged)."
+      "note": "iter-37 lean verify-only closeout. Re-verified via deterministic golden-script replay (PASS; J-14-verify.png md5 943c5314, a real /data frame shared with J-13). config index_chart + chart + meta.json git-untouched (zero product diff this iter). spec_hash re-verified (unchanged)."
     },
     "J-15": {
       "id": "J-15",
@@ -163,7 +163,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-19",
       "last_evidence_path": "reports/phase-goal-mcp-loop-iter-27-ui-test-results.md#UT-12",
       "spec_hash": "46ba4f20940e385b9856f5445d7e4f2a247b77fba3884b070fb563c71a485cd7",
-      "note": "iter-38 byte-identity carry -- NOT re-verified this iter (perf journey, no golden script; spec OUT OF SCOPE). perf-relevant backend files (prices/scoring/warmup/db) untouched by the iter-38 additive diff; the new watchlist X-ray reads only the SMALL watchlist ticker set via the bounded bars_asof_window (never a whole-table load -- anti-goal #8 discipline preserved), so no new perf hotspot on the deep basis. last_verified_iter left at iter-27. spec_hash unchanged."
+      "note": "iter-37 byte-identity carry -- NOT re-verified this iter (perf journey, no golden script; spec OUT OF SCOPE). Zero product diff (only README.md +2/-1); perf-relevant backend files (prices/scoring/warmup/db) untouched. The dev's prod-mode service-readiness smoke test corroborates (16 pages HTTP 200, backend /api/health preflight GO, warmup 89/89, clean log, no OOM) but is NOT a formal budget measurement. last_verified_iter left at iter-27. spec_hash unchanged."
     },
     "J-16": {
       "id": "J-16",
@@ -174,7 +174,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-19",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-35-qa.md#test_data_manager_jobs_pipeline",
       "spec_hash": "4b6c4051eb3c172a039915797063425155902356334d2a0dc9fb326aac5bd198",
-      "note": "iter-38 byte-identity carry -- NOT re-verified this iter (no golden script; spec OUT OF SCOPE). data_manager job path git-untouched. iter-24 + iter-26 anti-goal #8 crashes remain resolved=true. last_verified_iter left at iter-35. spec_hash unchanged."
+      "note": "iter-37 byte-identity carry -- NOT re-verified this iter (no golden script; spec OUT OF SCOPE). Zero product diff; data_manager job path untouched. iter-24 + iter-26 anti-goal #8 crashes remain resolved=true. last_verified_iter left at iter-35 (last integration-test re-verification). spec_hash unchanged."
     },
     "J-17": {
       "id": "J-17",
@@ -185,7 +185,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-29",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-17-verify.png",
       "spec_hash": "77ead4f8c659b0caadb540cca7d5efe4331531f553e6ca00c3f14ac0e9e52252",
-      "note": "iter-38 (FULL J-23): NOT in the required-still-passing set; carried passing on byte-identity. budget_accounting.py/api/budget.py/budget page git-untouched; both ledgers byte-identical 7-FAIL so trials-to-date 7 / next canonical #8 / required_p 0.00625 unchanged. spec_hash re-verified (unchanged)."
+      "note": "iter-37 lean verify-only closeout. Re-verified via deterministic golden-script replay (PASS; J-17-verify.png md5 9b5d851c, distinct -- a real /research/budget frame). budget_accounting.py/api/budget.py/budget page git-untouched (zero product diff this iter); both ledgers byte-identical 7-FAIL so trials-to-date 7 / next canonical #8 / required_p 0.00625 unchanged. spec_hash re-verified (unchanged)."
     },
     "J-18": {
       "id": "J-18",
@@ -196,7 +196,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-29",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-18-verify.png",
       "spec_hash": "dd5dd50cb21961f8e9307385a98aed814a2488e056da58708e689b210793dea9",
-      "note": "iter-38 (FULL J-23): NOT in the required-still-passing set; carried passing on byte-identity. registry/page.tsx + verify_claim.py + pre-registrations.jsonl git-untouched (divisor stays 8; no Evidence Claim registered by iter-38). spec_hash re-verified (unchanged)."
+      "note": "iter-37 lean verify-only closeout. Re-verified via deterministic golden-script replay (PASS). Evaluator OPENED J-18-verify.png (md5 22dd211f, distinct): the REAL /research/registry 'Pre-registration registry' page -- 5 columns (SELECTORS/RATIONALE/REGISTERED/SOURCE/STATUS), selectors as chips, 2026-07-03 dates, 'backfill' pills, neutral-gray status badges (tested/closed), 'gate refuses to certify any Evidence Claim that does not match a row here' subtitle. registry/page.tsx + verify_claim.py + pre-registrations.jsonl git-untouched (zero product diff; divisor stays 8). spec_hash re-verified (unchanged)."
     },
     "J-19": {
       "id": "J-19",
@@ -207,7 +207,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-29",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-19-verify.png",
       "spec_hash": "b03ca464f14b5ce294415b2dccdf872a18750ae62e610b302f3ca24392e048ac",
-      "note": "iter-38 (FULL J-23): NOT in the required-still-passing set; carried passing on byte-identity (graveyard.py + /research/graveyard page + registry/page.tsx git-untouched). spec_hash re-verified (unchanged)."
+      "note": "iter-37 lean verify-only closeout. Re-verified via deterministic golden-script replay (PASS; J-19-verify.png md5 3e81bd96, distinct -- a real /research/graveyard frame; the golden asserts the lineage link scrolls the matching registry row into view, the iter-32 close-out). graveyard.py + /research/graveyard page + registry/page.tsx git-untouched (zero product diff this iter). spec_hash re-verified (unchanged)."
     },
     "J-20": {
       "id": "J-20",
@@ -216,9 +216,9 @@
       "last_verified_iter": "goal-mcp-loop-iter-37",
       "last_passing_iter": "goal-mcp-loop-iter-37",
       "first_seen_iter": "goal-mcp-loop-iter-29",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-38-evidence/UT-01-result.png",
+      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-20-verify.png",
       "spec_hash": "6c365561197fea361488ca0fac37a0b7e915469d52b29e12c7b6c5099ac497a8",
-      "note": "iter-38 (FULL J-23): required-still-passing; deterministic golden-script replay deferred to iter-39 lean closeout (CLOSURE-FAIL replay gap). BUT directly corroborated live this iter: the evaluator OPENED UT-01-result.png / UT-08-after-add.png / UT-15-one-entry.png / UT-15-zero-entries.png and the quiet green single-instance 'GO -- today's board is current.' strip renders directly below the header on the /watchlist surface in every one -- J-20's own acceptance names /watchlist as a surface its banner must guard, so this is direct (not merely byte-identity) corroboration on a fresh frame. preflight-banner.tsx + readiness-provider + layout.tsx git-untouched. last_verified_iter left at iter-37 pending the formal replay. spec_hash re-verified (unchanged)."
+      "note": "iter-37 lean verify-only closeout. Re-verified via deterministic golden-script replay (PASS; J-20-verify.png md5 567f90bb benign shared /evidence frame). The quiet green 'GO -- today's board is current.' single-instance strip was also visible directly below the header on EVERY frame the evaluator opened (J-05-ledger-list /evidence, J-05-backlink /stocks, J-11-vcp-crosscheck /research/factor-lab, J-06 /evidence, J-18 /research/registry) -- single-source, no per-page divergence. The dev's readiness smoke confirmed /api/health preflight verdict=GO with all four components (servability/freshness/integrity/drift) ok. preflight-banner.tsx + readiness-provider + layout git-untouched (zero product diff). spec_hash re-verified (unchanged)."
     },
     "J-21": {
       "id": "J-21",
@@ -229,7 +229,7 @@
       "first_seen_iter": "goal-mcp-loop-iter-29",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-21-verify.png",
       "spec_hash": "a0d6f7524c5b7b1a3aaeaae730613cde8b0d33cbda8fadd1c2899161ad353f0d",
-      "note": "iter-38 (FULL J-23): NOT in the required-still-passing set; carried passing on byte-identity (app.engine.drift + compute_preflight drift component + /api/data drift field git-untouched). spec_hash re-verified (unchanged)."
+      "note": "iter-37 lean verify-only closeout. FIRST deterministic golden-script replay of J-21.json (folded in this iter; iter-35 shipped it but closed via live browser re-verification, deferring the replay). Replay PASS (J-21-verify.png md5 9ef829e4, distinct). app.engine.drift + compute_preflight drift component + /api/data drift field git-untouched (zero product diff this iter). Replay debt from iter-35 now paid down. spec_hash re-verified (unchanged)."
     },
     "J-22": {
       "id": "J-22",
@@ -240,18 +240,17 @@
       "first_seen_iter": "goal-mcp-loop-iter-29",
       "last_evidence_path": "reports/qa/goal-mcp-loop-iter-37-evidence/J-22-verify.png",
       "spec_hash": "3fe7864e35bf1986bfb33b300d30444ada4a924d753b5b9d910afd791ab41f0d",
-      "note": "iter-38 (FULL J-23): NOT in the required-still-passing set; carried passing on byte-identity (referee_audit module/api/page git-untouched; both real ledgers byte-identical, isolation intact; divisor stays 8). spec_hash re-verified (unchanged)."
+      "note": "iter-37 lean verify-only closeout. FIRST deterministic golden-script replay of J-22.json (folded in this iter; iter-36 shipped it and CLOSURE-FAILed on the required-set replay gap this pass closes). Replay PASS (J-22-verify.png md5 875a4495, distinct -- a real /research/referee-audit frame). Per the iter-36 lesson, the loud-red contaminated-factor tripwire ('expected: rejected') is the PERMANENT honest state by construction (a tautological lookahead-contaminated factor no temporal holdout can reject), so a replay assertion expecting it is PASS not FAIL -- not a regression. referee_audit module/api/page git-untouched; both real ledgers byte-identical (isolation intact; divisor stays 8). spec_hash re-verified (unchanged)."
     },
     "J-23": {
       "id": "J-23",
       "name": "The watchlist discloses its real concentration (correlations, clusters, effective bets)",
-      "status": "passing",
-      "last_verified_iter": "goal-mcp-loop-iter-38",
-      "last_passing_iter": "goal-mcp-loop-iter-38",
+      "status": "unknown",
+      "last_verified_iter": null,
+      "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-29",
-      "last_evidence_path": "reports/qa/goal-mcp-loop-iter-38-evidence/UT-01-result.png",
-      "spec_hash": "c0d24d116761b909b9cbdf290d4a2fb8a32871c6e90e85f618c66e057c979a13",
-      "note": "TARGET (iter-38, FULL, backlog B-204). unknown -> passing. Watchlist concentration X-ray delivered as a strictly-additive engine-side value re-read verbatim by the page. Evaluator OPENED four frames: UT-01-result.png (the full X-ray -- ENB headline '~ 2.0 effective independent bets (over the last 126 trading days)' with window explicitly stated; 2x2 correlation matrix ABBVxMSFT -0.11 / diagonal 1.00, fully populated; two separate clusters below the 0.70 threshold; SECTOR bars Technology 1.50% + ABBV's null sector correctly bucketed 'Unassigned' 1.50%; THEME bars; SHARED SETUP Avoid 2.100% reusing the entries-table color token; 'Descriptive only ... No recommendations.' subtitle + 'no orders' header), UT-08-after-add.png (add AAPL -> 3 saved, 3x3 matrix, ENB recomputed '~ 2.9', all bars re-derived -- existing add form works AND X-ray updates), UT-15-one-entry.png ('Not enough names yet for an X-ray' honest insufficient state), UT-15-zero-entries.png ('Your watchlist is empty', X-ray absent, distinct wording -- anti-goal #8 honest degradation, no crash/500/blank). Own canonical browser-qa lane 13/15 PASS (2 P2 SKIP: UT-12 backend-unavailable process-tree-safety, UT-13 short-history NA -- no short-history-eligible ticker exists in the addable universe, satisfied by backend test_short_history_member_is_honest_na_never_fabricated asserting correlation_matrix['OLD']['NEW'] is None + clusters [['NEW'],['OLD']] + ENB 1.0; assumptions.md). Single ENB helper confirmed (grep: only concentration.py effective_number_of_bets/correlation_matrix/eigvalsh). No proven-language / no advice-language (evaluator grep clean; the only 'recommendations' hit is the negative 'No recommendations.' disclaimer, the only 'diversifying' hit a backend docstring). ENB '~2' DoD target is intuition; exact eigenvalue math for the idealized perfectly-correlated+independent matrix [[1,1,0],[1,1,0],[0,0,1]] is 9/5=1.8 (hand-derived, tested) -- correct, not a defect. Correctness: -0.114 matches offline to 10+ digits; ENB matches closed-form 2/(1+rho^2). Deterministic (anchored to latest_data_date, bounded bars_asof_window <= as-of). Ledgers byte-identical (no Evidence Claim; divisor stays 8). scan CLEAN, coherence COHERENCE-PASS, Review PASS_WITH_NOTES, QA PASS, Audit PASS_WITH_GAPS (zero fixes to any rendered surface -> no post-lane partial-trap). Scored passing under CLOSURE-FAIL because the closure block is entirely the OTHER journeys' (required-still-passing) replay gap -- closure EXPLICITLY exempts J-23 ('J-23's own deliverable is genuinely well-built and well-evidenced ... This is not the blocking issue') -- exactly the iter-33 J-20 / iter-36 J-22 precedent (assumptions.md). spec_hash recorded from goal_gate (verified against current goal text)."
+      "last_evidence_path": null,
+      "note": "NEW Must-have journey (backlog B-204, owner goal.md HEAD eb19cee). UNBUILT. Watchlist correlation/cluster X-ray + effective-independent-bets; ENB helper shared with the evidence correlation audit; honest NA over fabrication. No Evidence Claim. The next FULL feature target (iter-38; risk-analytics cluster, one risky journey per iter). Read backlog card B-204 before planning. No spec_hash (not verified this iter)."
     },
     "J-24": {
       "id": "J-24",
@@ -261,7 +260,7 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-29",
       "last_evidence_path": null,
-      "note": "NEW Must-have journey (backlog B-201, owner goal.md HEAD eb19cee). UNBUILT. Per-stock risk-budget card (ATR%, downside vol, gap profile median/p95/worst, worst 20d window, distance-to-invalidation) with universe percentiles; values from the stored snapshot record (no UI recompute); NA over fabrication. No Evidence Claim. Next FULL feature target after the iter-39 lean replay closeout. Read backlog card B-201 before planning. No spec_hash (not verified this iter)."
+      "note": "NEW Must-have journey (backlog B-201, owner goal.md HEAD eb19cee). UNBUILT. Per-stock risk-budget card (ATR%, downside vol, gap profile median/p95/worst, worst 20d window, distance-to-invalidation) with universe percentiles; values from the stored snapshot record (no UI recompute); NA over fabrication. No Evidence Claim. Deferred to a future FULL iteration (after J-23). Read backlog card B-201 before planning. No spec_hash."
     },
     "J-25": {
       "id": "J-25",
@@ -271,7 +270,7 @@
       "last_passing_iter": null,
       "first_seen_iter": "goal-mcp-loop-iter-29",
       "last_evidence_path": null,
-      "note": "NEW Must-have journey (backlog B-205, owner goal.md HEAD eb19cee). UNBUILT. Claim-detail expectations panel (max-drawdown / underwater / time-to-recover / losing-streak distributions split by market phase at entry, each with sample size; thin cells say 'insufficient (n=..)'); descriptive history only, no forecasts. No Evidence Claim. Deferred to a future FULL iteration (after J-23 and J-24). Read backlog card B-205 before planning. No spec_hash."
+      "note": "NEW Must-have journey (backlog B-205, owner goal.md HEAD eb19cee). UNBUILT. Claim-detail expectations panel (max-drawdown / underwater / time-to-recover / losing-streak distributions split by market phase at entry, each with sample size; thin cells say 'insufficient (n=..)'); descriptive history only, no forecasts. No Evidence Claim. Deferred to a future FULL iteration (after J-23). Read backlog card B-205 before planning. No spec_hash."
     }
   },
   "anti_goal_violations": [
@@ -290,5 +289,5 @@
       "resolved": true
     }
   ],
-  "updated_at": "2026-07-15T14:40:00Z"
+  "updated_at": "2026-07-15T08:20:00Z"
 }

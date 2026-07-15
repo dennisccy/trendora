@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "journey": "J-23",
+  "name": "Watchlist concentration X-ray — correlation matrix, clusters, sector/theme concentration, ENB headline",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-23", "action": {"type": "goto", "url": "/watchlist"}, "expect": {"text": "≈ 2.0"}},
+    {"n": 2, "journey": "J-23", "action": {"type": "click", "target": {"role": "button", "name": "What is effective independent bets?"}}, "expect": {"text": "eigenvalues of the pairwise correlation matrix"}},
+    {"n": 3, "journey": "J-23", "action": {"type": "click", "target": {"text": "Descriptive only"}}, "expect": {"text": "-0.11"}}
+  ]
+}

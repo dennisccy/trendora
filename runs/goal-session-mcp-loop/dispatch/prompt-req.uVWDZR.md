@@ -1,9 +1,7 @@
 You are the iteration-summarizer agent.
 
-mode: normal
-Phase id: goal-mcp-loop-iter-37
-Output path (iteration summary): /home/dennis-chan/Git/trendora/reports/phase-goal-mcp-loop-iter-37-iteration-summary.md
-Output path (project story, GOAL MODE ONLY): /home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/state/project-story.md
+Phase id: goal-mcp-loop-iter-38
+Output path: /home/dennis-chan/Git/trendora/reports/phase-goal-mcp-loop-iter-38-iteration-summary.md
 Agent instructions: .claude/agents/iteration-summarizer.md  <-- read this first
 Template: templates/iteration-summary.md  <-- exact section structure your output must follow
 (CLAUDE.md is already in your system prompt -- do not Read it again.)
@@ -11,8 +9,9 @@ Template: templates/iteration-summary.md  <-- exact section structure your outpu
 Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
 
 Read every relevant input listed in your agent instructions. Files that don't
-exist should be silently skipped. Use what is present. The dispatch wrapper
-has pre-trimmed evaluator-log.md below — use the inline content.
+exist should be silently skipped -- do not warn, do not ask. Use what is present.
+The dispatch wrapper has pre-trimmed evaluator-log.md (last 300 lines below);
+use the inline content, do not read the file directly.
 
 Recent evaluator log entries (last 300 lines, pre-trimmed):
 ---
@@ -318,157 +317,7 @@ Recent evaluator log entries (last 300 lines, pre-trimmed):
 **Next-step recommendation:** iter-38 = FULL J-23 (backlog B-204 watchlist concentration X-ray — pairwise correlation view, cluster groupings, sector/theme concentration, headline "effective independent bets" with its window; the ENB helper is the SAME module the evidence correlation audit uses — single source; NA over fabrication for insufficient overlap; NO Evidence Claim, divisor stays 8). FULL because it ships a new served surface + endpoint needing the audit/ux-regression/closure guards. Read the binding B-204 card in docs/improvement-backlog.md before planning. CARRY the systemic flag: a FULL iter re-creates the replay gap (run-phase.sh has no replay lane), so iter-38 must either run the closure one-liner replay inline OR be followed by a lean verify pass (what iter-34 and iter-37 were). Three journeys remain (J-23 -> J-24/J-25, the risk-analytics cluster, one risky journey per iter); after them GOAL_ACHIEVED becomes reachable. Durable framework fix (recorded, not owed to any iter): add the replay lane to run-phase.sh / the full path of run-goal.sh.
 ---
 
-Assumption ledger tail (recent entries, pre-trimmed; '(no assumptions recorded
-yet)' means empty — see the 'Assumptions made' section of your instructions):
----
-
-## iter-26 — goal-evaluator
-
-**Ambiguity:** Decision-tree rule 1 says "a critical anti-goal violation is unresolved -> REGRESSION," but the crash frame (regime `full[:cut]` + the pre-existing full-universe prefill in `_do_backfill`) is unmodified by iter-26's diff, so it is genuinely uncertain whether iter-26 CAUSED the anti-goal #8 violation or merely surfaced a pre-existing latent VSZ bomb while probing a heavier fallback job path.
-**We chose:** Scored REGRESSION on the ground that a critical anti-goal is demonstrably, reproducibly violated on the current tree and is unresolved (root-cause fix deliberately not applied) — the verdict does not depend on this-iteration causation (matching the auditor's and ux-regression reviewer's explicit reasoning, and the iter-24 memory-crash precedent). The framework's fail-closed rule for critical anti-goal violations is to halt for human review rather than auto-loop.
-**Reversible:** yes
-
-## iter-26b — goal-evaluator
-
-**Ambiguity:** J-16's target proof (UT-02) was executed and the backend crashed, but its perf/byte-identity half is real and one honest-progress sub-criterion showed positive (counter ticked 0->117->246 with no premature "done") — so J-16 could be read as `partial` (capability landed, verification incomplete) rather than `failing`.
-**We chose:** `failing`, because there is a VERIFIED negative outcome (a reproduced backend-wide crash) and J-16's own DoD explicitly requires no-OOM/no-crash under the cap plus a browser-qa pass — both violated. This session reserves `partial` for "correct-but-not-cleanly-verified" (a verification gap), not for a verified failure.
-**Reversible:** yes
-
-## iter-27 — goal-evaluator
-
-**Ambiguity:** Anti-goal #7 ("No hard-coded credentials, API keys, or tokens in source files") vs the deterministic scan-report flagging 12 CRITICAL secrets in this iteration's commit range. All 12 are planted fake keys inside the vendored `incredible_auto_dev/tests/judgment/` framework subtree (self-test fixtures designed to be detected), which entered via a framework squash-merge, not the iteration's product dev work — leaving open whether "source files" in the anti-goal covers vendored framework test tooling committed into the same repo.
-**We chose:** Read anti-goal #7 as scoped to the Trendora PRODUCT source (`apps/`, `config.yaml`, product `data/`/`scripts/`), not the vendored multi-agent framework's own judgment-eval fixtures. The iter-27 product diff (6 backend memory files + config.yaml) carries zero credentials; the flagged keys are non-real (AWS-doc example + fictional LISTVAULT) fixtures whose purpose is to BE flagged. Scored anti-goal #7 upheld / not a violation. Checked fail-closed first (are these real, exploitable, product secrets? no) and corroborated by reviewer + auditor + coherence all treating the subtree as out-of-scope framework tooling.
-**Reversible:** yes
-
-## iter-28 — goal-decomposer
-
-**Ambiguity:** goal.md's loop mechanics leave open how many iterations to keep re-attempting the five evidence journeys (J-02/J-06/J-07/J-08/J-09) when a staging exploration surfaces no promotable edge — keep trying vs. acknowledge a plateau. iter-28's dispatch inherited a prior FULL recommendation to "run a new-basis staging exploration and promote a divisor-8-clearing winner."
-**We chose:** A verify-only / plateau-acknowledgement pass with NO `## Evidence Claim`, after verifying directly on disk that the complete pre-registered candidate set (proposer-guidance.md §4.1 + §4.2) has already been re-tested on the 30-year basis and ALL FAIL (7 canonical + 7 staging, six of seven staging members wrong-direction; best holdout +8.03e-05 vs required_p=0.00625) — so no candidate is promotable and re-submitting any would self-defeat by permanently tightening the divisor. Per the §4.2 escape valve, the remaining unblock is a human revision of the pre-registered registry; the decomposer surfaces that to the evaluator rather than manufacturing a claim.
-**Reversible:** yes
-
-## iter-28 — goal-evaluator
-
-**Ambiguity:** The browser-qa lane marked J-02/J-06/J-07/J-08/J-09 "PASS (see note)", scoring the honest-status half of each journey (badge correctly reads "Not yet proven", displayed numbers byte-match the FAIL verdict). Each journey's written acceptance, however, requires a *Proven* certified edge to surface (J-06/07/08/09: "certified edge surfaced… cohort shows a 'Proven' badge") or drill into (J-02: "Locate a score with a 'Proven' badge and expand it"). The goal text leaves open whether an honest all-FAIL rendering satisfies the journey or only its anti-goal-#1 guardrail.
-**We chose:** Held all five at `partial`, not `passing`, per the strict journey acceptance and the 10-iteration session precedent (sanctioned-partial since the iter-18 data-basis reset): the honest-status half is satisfied but the proven-edge half is absent because no certified edge exists on the 30-year basis. A browser-qa PASS on the honest-status half does not constitute journey acceptance; GOAL_ACHIEVED remains gated on a real PASS certified-claim, which is human-unblock-gated (widen the pre-registered candidate registry or re-scope the journeys in goal.md).
-**Reversible:** yes
-
-## iter-29 — goal-evaluator
-
-**Ambiguity:** J-02's DoD requires "each score's inline evidence-status element reads 'Not yet proven'" on `/stocks/{ticker}`. Both captured frames (J-02-stock-detail-badges.png, J-02-verify.png) show the AAPL detail page rendering with the "no orders" header and NO fabricated proof panel, but the three inline score badges sit BELOW the captured fold — so there is no single pixel directly showing the three "Not yet proven" score badges on the detail page itself.
-**We chose:** Scored J-02 `passing`. The acceptance is met by the visible negative assertion (no fabricated proof panel — the load-bearing anti-goal #1 check) PLUS strong multi-channel corroboration in lieu of the direct pixel: (a) the browser-qa DOM assertion (3x `data-testid=evidence-badge` `data-proven=false`, tooltip naming the Evidence ledger, click-diff test showing no proof panel expands); (b) the same three scores (Leadership/Entry Quality/Risk) demonstrably reading "Not yet proven" at every horizon on the factor-lab fullpage the evaluator opened; (c) J-01's 3,246 "Not yet proven" leaderboard instances from the same `GET /api/evidence` source; (d) zero code diff since the iter-28 live capture. This mirrors the iter-14 precedent (J-01/J-02 kept passing on zero-diff + DOM re-check + backing-row rendering). Under the owner's outcome-neutral re-scope, the honest "Not yet proven" state IS the acceptance.
-**Reversible:** yes
-
-## iter-30 — goal-decomposer
-**Ambiguity:** B-901's backfill instruction ("registry complete for all existing registrations" / "proposer-guidance tables + already-certified claims as historical rows") leaves the SCOPE of "every registered hypothesis" open — whether "already-certified claims" means the canonical ledger only or every distinct claim across BOTH the canonical and staging ledgers (including FAILs and the closed ma_stack), and how the §4.1/§4.2 candidate tables relate. This session has 0 PASS, so "certified" is itself ambiguous.
-**We chose:** Backfill = the UNION of the proposer-guidance §4.1/§4.2 pre-registered candidate rows and every distinct claim selector-set across BOTH `certified-claims.jsonl` and `staging-ledger.jsonl`, deduplicated by hypothesis, each labeled with its source + recorded status (the closed `ma_stack` FAIL included as a `closed` row) — the honest superset that makes the registry the true pre-registration memory the enforcement gate checks against and J-19's graveyard later reads. A narrower reading would under-populate the registry and wrongly refuse a future legitimate revisit once enforcement is on.
-**Reversible:** yes
-
-## iter-30 — goal-evaluator
-
-**Ambiguity:** The iter-30 DoD literally reads "Backfill complete: registry contains ... (≥14 ledger-derived rows)", but the committed registry has 11 rows. The goal text leaves open whether the binding requirement is the literal "≥14" or the substantive clause "the proposer-guidance §4.1/§4.2 rows ∪ every distinct claim from both ledgers, deduplicated by hypothesis".
-**We chose:** Scored the DoD's backfill-completeness line as MET by 11 rows — treating "≥14" as the decomposer's uncomputed estimate (not a binding threshold) and the substantive dedup clause as the real bar. Grounds: 14 raw ledger entries contain 3 exact-selector-set cross-ledger duplicates (staging candidates later promoted under ledger:canonical with identical selectors), and `match_registration` must map one exact selector-set to ONE row, so 11 is the forced-correct count; `test_registry.py`'s round-trip tests prove every one of the 14 raw entries matches exactly one backfilled row (completeness satisfied), the dev flagged the deviation, and the reviewer + auditor independently re-derived 11 against the live ledgers. Not a silent call (documented in 3 pipeline reports), recorded here because the SCORING decision accepts a count that differs from the literal DoD checkbox.
-**Reversible:** yes
-
-## iter-31 — goal-decomposer
-**Ambiguity:** J-19's "every non-PASS verdict" (backlog B-902 "read-compose from ledgers + registry; page") leaves open (a) whether the STAGING ledger's non-PASS verdicts are in scope — the blueprint's iter-9/10/12 clarifications declared the staging ledger "internal-only ... never read by any page, never served, never displayed" — and (b) whether the composition is backend-side (a new endpoint) or frontend-side (the page reads existing endpoints).
-**We chose:** Surface BOTH ledgers' NON-PASS verdicts via a NEW backend composition endpoint `GET /api/research/graveyard` (a new PURE `app.engine.graveyard` read-compose module joining `ledger.read_entries` over both ledgers with `registry.match_registration` lineage). Grounds: the graveyard's stated purpose (institutional memory of what does NOT work, so no future model re-derives a dead idea) squarely includes the staging explorations — exactly the dead ideas most likely re-derived; the honesty fence is preserved (the graveyard shows ONLY non-PASS, staging carries 0 PASS, so no staging edge is ever surfaced as proven, and `/evidence` + `proven_signals` + the "Proven" badge stay byte-identical); `GET /api/evidence` serves the canonical ledger only, so a frontend-only compose cannot reach the staging FAILs without a new served surface regardless; and both B-902's named "UI-recompute" failure mode and the blueprint's compute-once-serve-verbatim discipline point to backend composition. This narrows the prior "staging internal-only" invariant, documented in the blueprint iter-31 clarification.
-**Reversible:** yes
-
-## iter-31 — goal-evaluator
-
-**Ambiguity:** J-19's goal.md acceptance (steps 1-3 + the 4 bullets) is fully browser-verified PASS; the disputed UT-07 is the lineage link's *auto-scroll-to-exact-row* assist, which the ui-test-designer elevated to a P1 and the DoD's TESTING REQUIREMENTS phrase as "a row's lineage link resolves to its registry row." The click DOES resolve to the correct registry URL + fragment and the target row exists in the DOM — only the scroll-into-position didn't fire on SPA navigation (fixed post-lane, but the canonical lane wasn't re-run). So it is open whether J-19 is "passing" (its own goal.md acceptance is met and the failure is an out-of-acceptance refinement now fixed) or "partial" (a DoD-named P1 browser case reads FAIL and the fix is not canonically re-verified).
-**We chose:** Held J-19 at `partial`, not `passing` — treating the lineage-link scroll as a real (if minor) part of the "links to its registry row" acceptance AND, decisively, applying the session's "correct-but-not-cleanly-canonical-verified = partial" discipline (the auditor's own browser re-check is not the DoD-named canonical lane). The asymmetry drove it: the overall verdict is CONTINUE regardless (7 journeys unbuilt), and iter-32 runs a full browser-qa lane anyway, so re-recording one clean UT-07 frame is nearly free — whereas marking `passing` on a canonical-FAIL-not-re-run would erode exactly the guard that caught iter-18/24. A human who judges the graveyard's core sufficient could reasonably flip this to `passing`.
-**Reversible:** yes
-
-## iter-32 — goal-evaluator
-
-**Ambiguity:** J-11 ("Every displayed 'Proven' edge is re-certified... no stale edge survives") is in
-iter-32's required-still-passing set but got NO dedicated golden replay or browser case this iteration
-(J-11.json exists but was not run; audit T1 + ux-regression both flagged the gap). Whether J-11 must
-be re-verified via its OWN dedicated case each iteration, or whether "0-PASS ledger + byte-identical
-certification economy + corroborating /evidence and /stocks frames both showing 0 'Proven'" suffices,
-is left open.
-**We chose:** Scored J-11 `passing` on byte-identity + corroboration rather than holding it `unknown`.
-Grounds: the invariant is trivially satisfied on a 0-PASS ledger (no 'Proven' edge exists to go
-stale), the entire economy is git-diff EMPTY (no stale-edge mechanism), and I directly observed 0
-'Proven' on both surfaces J-11 depends on (UT-13 /evidence 7 FAIL/0 PASS; UT-14 /stocks 3 'Not yet
-proven'/row). Matches the audit/ux-regression/closure consensus that the risk is nil. Recorded here
-(not silent) because it accepts corroboration in lieu of a dedicated re-verification; a human who
-wants the required set fully closed should add the J-11 replay to iter-33 (recommended in the eval).
-**Reversible:** yes
-
-## iter-33 — goal-decomposer
-**Ambiguity:** B-301's preflight "data freshness (latest bar age vs expectation), market-calendar aware" is underspecified for an offline/DETERMINISTIC app that runs against a FROZEN committed seed (goal.md Constraints): "now"/"expectation" is undefined, and a wall-clock `date.today()` anchor would both make the healthy `GO` state impossible (the seed's latest bar is always "stale" vs the real current date) and break determinism (anti-goal #5) / demo reproducibility.
-**We chose:** Anchor freshness to a DETERMINISTIC config/seed-derived reference (default = the seed's own latest available date, so a fully-loaded seed reads `GO`), count the age in trading days via the existing SPY market calendar, and induce the stale (DEGRADED/NO-GO) test state via a controlled config/env override (`readiness.freshness_max_age_days` / a pinned reference) — never wall-clock time and never by mutating committed seed data.
-**Reversible:** yes
-
-## iter-33 — goal-evaluator
-
-**Ambiguity:** The iteration ended CLOSURE-FAIL, and this session's strong precedent (iter-20/22/24/31)
-is that a TARGET journey does not flip to `passing` in a CLOSURE-FAIL iteration. But in every prior
-case the CLOSURE-FAIL was about the TARGET's OWN canonical browser evidence (skipped / stale / a
-post-lane fix not re-verified). Here J-20's own evidence is complete and clean on the FINAL build (no
-post-lane fix — audit made zero repo changes; closure explicitly EXEMPTS J-20 — "tested to an unusually
-high standard ... not the source of the blocking finding"); the CLOSURE-FAIL is entirely about a
-DIFFERENT DoD line (6 OTHER required journeys — J-01/02/04/05/13/18 — not deterministically replayed
-because full iters route through run-phase.sh, which lacks the replay lane). So it was open whether
-J-20 is `passing` or `partial`.
-**We chose:** Scored J-20 `passing`. The session's `partial` discipline exists to avoid claiming a
-journey done when ITS OWN canonical lane didn't verify it — a guard fully satisfied for J-20 (browser-qa
-PASS 20/20 on the final build; all 3 states md5-distinct; exact NO-GO phrase pixel-confirmed;
-single-source UT-19; correctness matrix auditor-verified against the real compute_preflight). Marking
-`partial` would misattribute a replay gap in OTHER journeys to J-20's own evidence, which is false and
-contradicts the closure auditor's own read. The guard is instead honored at the OVERALL level: verdict
-is CONTINUE (not GOAL_ACHIEVED), the required-still-passing replay gap is recorded explicitly on
-J-01/02/04/05/13/18, and the mandated next step is the cheap lean replay closeout that re-clears closure.
-**Reversible:** yes
-
-## iter-34 — goal-evaluator
-
-**Ambiguity:** J-20 was this iteration's named Target to "re-confirm passing via browser-qa on the final tree," but only its GO state was re-induced live this pass (all 5 surfaces, single-source, DOM===API); the loud DEGRADED/NO-GO states — including the mandated "do not rely on today's board" phrase — were NOT re-induced live (a tool-permission boundary). J-20's acceptance names all three states. It was open whether a GO-only live re-confirmation counts as "re-confirmed passing."
-**We chose:** Scored J-20 `passing` (re-confirmed). Grounds: J-20 was ALREADY fully verified passing at iter-33 (all three states, exact NO-GO phrase, browser-qa 20/20 on the final build — the iter-33 CLOSURE-FAIL was about OTHER journeys' replay gap, not J-20's own evidence), and readiness.py + config.yaml + all apps/frontend are git-identical to that verified iter-33 commit (4561da1) — zero product diff this iter — so there is no regression mechanism for the loud states. The live GO re-confirmation + byte-identity carry of the loud states is sufficient; requiring a fresh live NO-GO induction on an already-verified, byte-identical journey would be verification for its own sake. The pipeline artifact (merged ui-test-results) discloses the GO-only live scope openly; this entry records that the SCORING acceptance of it is my call.
-**Reversible:** yes
-
-## iter-35 — goal-decomposer
-**Ambiguity:** B-304's card lists THREE post-fetch checks (overlap byte-compare, distribution-envelope, and a B-113-detector junction seam scan) and its own DoD says "all three checks run on every FETCH," but J-21's binding journey acceptance exercises only the OVERLAP check (step 1 = a re-adjusted overlap region classified as an adjustment seam) + the readiness degrade/recover effect; the B-113 sentinel detectors the seam scan depends on are unbuilt (no sentinel/drift/quality module exists in app/engine/).
-**We chose:** Scope iter-35 to the overlap comparator + the single persisted drift-report artifact + the compute_preflight drift component + the /data report section (the journey's binding acceptance), DEFERRING the distribution-envelope check and the B-113-dependent junction seam scan (neither required by J-21's acceptance; the seam scan's B-113 dependency does not exist). "J-21 passing" = overlap-seam detection (symbol + mismatching dates + adjustment-seam classification) + readiness degrade/recover + single-source artifact, per the journey text — NOT the full B-304 card DoD ("all three checks"). The overlap byte-mismatch itself yields the "adjustment seam" label, so the deferred seam scan is an additional detector, not the source of that classification.
-**Reversible:** yes
-
-## iter-35 — goal-evaluator
-
-**Ambiguity:** J-21 step 1 ("Run a live fetch in a controlled environment where one symbol's overlap region was re-adjusted; assert the drift report names the symbol...") and J-16's "re-verify via a live fetch-job run" both read as a single end-to-end observation of an operator running a Fetch that returns re-adjusted bars and seeing the card/report update. In fact browser-qa induced the drift/clean/unreadable UI states by WRITING the drift-report artifact directly (not by driving the `/data` Fetch control), and J-16's fetch-path re-verification was pytest integration tests, not a browser-driven live fetch. So no single browser observation captured the full "click Fetch -> live provider returns re-adjusted bars -> job completes -> card updates" click-path.
-**We chose:** Scored J-21 and J-16 `passing` on a two-halves decomposition: the fetch->artifact half proven by the real-`_run_job` integration test `test_drift_stage_writes_report_on_completed_fetch_end_to_end` (asserts exact symbol + dates on a genuinely-completed fetch), and the artifact->UI half proven by browser-qa's direct-injection DOM assertions (UT-03/04/05/06) + the banner tests (UT-07/08/09). Grounds: the artifact IS the single-source Data Contract seam both readers consume, so verifying "correct artifact from a real fetch" + "correct UI from an artifact" covers the whole path; the auditor and ux-regression reviewer both judged the decomposition acceptable (T1, non-blocking) and recommended a live-Fetch-UI spot-check as a future, not a gate. Recorded because the SCORING accepts the decomposition in lieu of a single end-to-end browser-driven live-fetch observation.
-**Reversible:** yes
-
-## iter-36 — goal-decomposer
-**Ambiguity:** J-22 step 1 ("Run the referee-audit job ... against an isolated throwaway ledger") and the Correctness clause ("re-running with the same seed reproduces it exactly") read as a single live end-to-end run, but the Consistency clause says the panel "re-reads the persisted audit artifact verbatim; nothing is recomputed in the UI" and B-102 sizes the null battery at 200 offline / 20 CI trials — leaving open whether J-22's browser/QA acceptance requires a live 200-trial run in the QA lane or a bounded/offline seeded run whose persisted artifact the panel (and browser-qa) read.
-**We chose:** Satisfy J-22 via a two-halves decomposition (mirroring the iter-35 J-21 fetch→artifact→UI split): the job→artifact half is proven by a fast SEEDED CI/integration test (same seed reproduces the false-pass rate exactly + the tripwire is caught + the real ledgers/budget stay byte-identical + it never imports the full seed), and the artifact→UI half is proven by browser-qa reading the PERSISTED artifact on /research/referee-audit. The 200-trial battery runs OFFLINE and persists the artifact; the browser-qa/demo lane reads the persisted artifact rather than re-running 200 heavy certify_edge trials live (anti-goal #8 / iter-24-26 OOM discipline — the panel "re-reads, never recomputes").
-**Reversible:** yes
-
-## iter-36 — goal-evaluator
-
-**Ambiguity:** The iteration ended CLOSURE-FAIL, and this session's `partial` discipline (iter-13/20/22/31) withholds `passing` from a target whose canonical evidence is incomplete. But — exactly as at iter-33 (J-20) — J-22's OWN canonical browser-qa evidence is complete and clean on the FINAL build (13/13 UT PASS; the auditor applied ZERO fixes to a rendered surface, so there is no post-lane partial-trap), and the CLOSURE-FAIL is entirely about a DIFFERENT DoD line (the required-still-passing replay/live-verification of OTHER journeys — J-05/J-11). So it was open whether J-22 is `passing` or `partial`.
-**We chose:** Scored J-22 `passing`. The `partial` guard exists to avoid claiming a journey done when ITS OWN canonical lane didn't verify it — fully satisfied here (browser-qa PASS 13/13 on the final build, all displayed numbers byte-match the artifact, isolation byte-identical confirmed 4+ ways incl. my own git diff, no post-lane fix). The closure auditor itself EXEMPTS J-22 ("not a verdict on the J-22 feature itself; J-22's own deliverable is thoroughly and rigorously verified"). Marking `partial` would misattribute an OTHER-journeys replay gap to J-22's own evidence, which is false and contradicts the closure auditor's read. The guard is honored at the OVERALL level instead: verdict is CONTINUE (not GOAL_ACHIEVED), the required-set gap is recorded explicitly, and the mandated next step is the lean replay closeout that re-clears closure.
-**Reversible:** yes
-
-## iter-36 — goal-evaluator
-
-**Ambiguity:** The DoD requires J-01/J-03/J-05/J-11/J-17/J-18/J-19/J-20 to be "LIVE-re-verified via the browser-qa lane ... OR the closure one-liner replay run inline." Neither happened cleanly: the canonical browser-qa lane's dispatched plan (UT-01–13) EXCLUDED the required set by design, the QA lane's TC-19 (J-05) / TC-20 (J-11) rows are unevidenced conclusions with no screenshot, and no golden-script replay ran (a FULL iter has no replay lane). Closure named J-05 and J-11 as the two unverified rows. So it was open whether to carry J-05/J-11 at last-good `passing` (iter-35/iter-34, honoring the closure gap) or mark them re-verified iter-36.
-**We chose:** Marked J-05 and J-11 (and J-01/J-03) re-verified `passing` at iter-36, on the strength of frames the evaluator PERSONALLY opened: UT-13 (/evidence) shows J-05's fully-auditable ledger (7 rows with hypothesis/out-of-sample-verdict/control/registration-date/forward-walk, numbers byte-matching certified-claims.jsonl) and J-11's no-stale-edge invariant (0 PASS; trivially upheld on a 0-PASS ledger — iter-32 precedent), and TC-17 (/stocks) shows J-01's "Not yet proven" badges. I credited my own independent evidence walk over the QA report's sloppy rows and the strict DoD-named-lane requirement — the diff never touches the scoring/regime/evidence code paths these journeys depend on, so there is no regression mechanism. The DoD's DEDICATED per-journey golden replay is still formally open and is the mandated next lean-closeout step; this call bumps last_verified to iter-36 but does not skip that closeout.
-**Reversible:** yes
-
-## iter-38 — goal-decomposer
-**Ambiguity:** J-23's acceptance says "the ENB helper is the same module used by the evidence correlation audit," implying that audit already exists — but the evidence correlation audit (backlog B-104) is UNBUILT and no ENB / correlation-matrix helper exists anywhere in the codebase, leaving open whether iter-38 should defer J-23 until B-104 supplies the helper, or build the helper itself.
-**We chose:** Build the ONE canonical ENB/correlation helper (`app.engine.concentration`, `ENB=(Σλ)²/Σλ²` over the correlation-matrix eigenvalues) in this iteration as the single source, per the B-204 trap ("share B-104's helper — build whichever card lands first, reuse in the second"); the future B-104 evidence correlation audit imports the SAME helper. No second ENB implementation is created, so the journey's single-source constraint is honored even though B-204 lands before B-104.
-**Reversible:** yes
----
-
-Write the iteration summary to: /home/dennis-chan/Git/trendora/reports/phase-goal-mcp-loop-iter-37-iteration-summary.md
-
-This is a GOAL-MODE iteration. After writing the iteration summary, also
-maintain /home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/state/project-story.md per the 'Cumulative project story' section of your
-agent instructions. Read the existing file if present, then rewrite it as one
-flowing plain-language narrative that ends with this iteration.
+Write the iteration summary to: /home/dennis-chan/Git/trendora/reports/phase-goal-mcp-loop-iter-38-iteration-summary.md
 
 Follow the section structure in templates/iteration-summary.md EXACTLY -- the
 HTML renderer keys off the section headings. The verdict line must match the
@@ -477,4 +326,4 @@ ESCALATE, REGRESSION, STALLED, PASS, FAIL, IN-PROGRESS.
 
 When finished, STOP.
 
-Environment note: this pipeline run isolates temp files. Before running tests or any command that writes temporary files, run: export TMPDIR="/tmp/iad.goal-mcp-loop-iter-37.2778307" TMP="/tmp/iad.goal-mcp-loop-iter-37.2778307" TEMP="/tmp/iad.goal-mcp-loop-iter-37.2778307"
+Environment note: this pipeline run isolates temp files. Before running tests or any command that writes temporary files, run: export TMPDIR="/tmp/iad.goal-mcp-loop-iter-38.2778307" TMP="/tmp/iad.goal-mcp-loop-iter-38.2778307" TEMP="/tmp/iad.goal-mcp-loop-iter-38.2778307"

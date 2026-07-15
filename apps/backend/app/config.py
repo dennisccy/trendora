@@ -2319,6 +2319,63 @@ def _default_evidence() -> "EvidenceCfg":
     return EvidenceCfg()
 
 
+class WatchlistXrayCfg(BaseModel):
+    """goal-mcp-loop iter-38 (J-23 / backlog B-204) — the watchlist concentration X-ray tunables. EVERY
+    number the canonical `app.engine.watchlist_xray:build_xray_payload` composer (and the ONE shared
+    ENB/correlation helper it calls, `app.engine.concentration`) reads lives here (anti-goal: No magic
+    numbers):
+
+      - `corr_window_days` — the trailing `bars_asof_window` lookback (bars <= as-of) each watchlist
+        member's return series is computed over (default ~126, about 6 trading months).
+      - `cluster_threshold` — the Pearson correlation at/above which two members join the same
+        deterministic connected-component cluster (no ML).
+      - `min_overlap_days` — the honesty floor: a member whose own trailing return series has fewer
+        than this many observations renders NA throughout the matrix/clusters/ENB rather than a
+        fabricated correlation.
+
+    Default-populated (a config predating this key still loads unchanged, mirroring `ChartBarsCfg` /
+    `ServerOpsCfg`). Every value MUST be positive; `min_overlap_days` MUST be <= `corr_window_days` (an
+    unreachable floor is a config error); `cluster_threshold` MUST be a valid Pearson bound in [-1, 1]
+    — validated at boot, never a silent default."""
+
+    model_config = ConfigDict(extra="allow")
+    corr_window_days: int = 126
+    cluster_threshold: float = 0.7
+    min_overlap_days: int = 60
+
+    @model_validator(mode="after")
+    def _validate(self) -> "WatchlistXrayCfg":
+        if self.corr_window_days <= 0:
+            raise ValueError("watchlist.xray.corr_window_days must be positive")
+        if self.min_overlap_days <= 0:
+            raise ValueError("watchlist.xray.min_overlap_days must be positive")
+        if self.min_overlap_days > self.corr_window_days:
+            raise ValueError(
+                f"watchlist.xray.min_overlap_days ({self.min_overlap_days}) must be <= "
+                f"corr_window_days ({self.corr_window_days})"
+            )
+        if not (-1.0 <= self.cluster_threshold <= 1.0):
+            raise ValueError(
+                f"watchlist.xray.cluster_threshold must be in [-1, 1], got {self.cluster_threshold}"
+            )
+        return self
+
+
+class WatchlistCfg(BaseModel):
+    """goal-mcp-loop iter-38 top-level `watchlist:` config block. Currently holds only `xray` (B-204);
+    default-populated so a config / inline test fixture predating this block still loads unchanged."""
+
+    model_config = ConfigDict(extra="allow")
+    xray: WatchlistXrayCfg = Field(default_factory=WatchlistXrayCfg)
+
+
+def _default_watchlist() -> "WatchlistCfg":
+    """The built-in default watchlist config — used when a config predating this block (or an inline
+    test fixture) omits `watchlist`. The real `config.yaml` restates it explicitly as the single
+    documented source."""
+    return WatchlistCfg()
+
+
 class Config(BaseModel):
     """Validated view of config.yaml. Only the iter-1-consumed sections are typed/validated;
     scaffolded sections ride along via extra="allow" so they can be tuned without code edits."""
@@ -2378,6 +2435,11 @@ class Config(BaseModel):
     # check only). Default-populated so a config / inline test fixture predating it still loads
     # unchanged; the real `config.yaml` restates it explicitly as the single documented source.
     data_quality: DataQualityCfg = Field(default_factory=_default_data_quality)
+    # goal-mcp-loop iter-38 (J-23 / backlog B-204) — the watchlist concentration X-ray tunables (the
+    # correlation window, cluster threshold, and overlap-history honesty floor). Default-populated so a
+    # config / inline test fixture predating this block still loads unchanged; the real `config.yaml`
+    # restates it explicitly as the single documented source.
+    watchlist: WatchlistCfg = Field(default_factory=_default_watchlist)
 
     @field_validator("themes")
     @classmethod

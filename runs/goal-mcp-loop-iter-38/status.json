@@ -1,0 +1,34 @@
+{
+  "phase": "goal-mcp-loop-iter-38",
+  "status": "blocked",
+  "current_step": "closure_failed",
+  "updated_at": "2026-07-15T13:20:36.851770Z",
+  "started_at": "2026-07-15T07:55:14.509339Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/concentration.py",
+    "apps/backend/app/engine/watchlist_xray.py",
+    "apps/backend/tests/test_concentration.py",
+    "apps/backend/tests/test_watchlist_xray.py",
+    "apps/backend/app/config.py",
+    "config.yaml",
+    "apps/backend/app/api/watchlist.py",
+    "apps/backend/tests/test_api_watchlist.py",
+    "apps/frontend/lib/api.ts",
+    "apps/frontend/components/correlation-heatmap.tsx",
+    "apps/frontend/app/watchlist/page.tsx",
+    "docs/handoffs/goal-mcp-loop-iter-38-dev.md",
+    "docs/handoffs/goal-mcp-loop-iter-38-frontend.md",
+    "reports/phase-goal-mcp-loop-iter-38-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "review",
+  "dev_notes": {
+    "isolated_suites_passed": "test_concentration.py 14/14, test_watchlist_xray.py 10/10, test_no_magic_numbers.py + test_config.py 70/70 -- 94 passed, 0 failed",
+    "test_api_watchlist_py_full_file": "interrupted mid-fixture-setup (loaded_engine 30y warm-up, ~28min) when the session turn paused; background process reaped, no pass/fail captured -- NOT re-run (coordinator direction, avoids re-paying the slow fixture cost); the reviewer's own test_api_watchlist.py run is the next confirmation of the 4 new additive tests",
+    "live_e2e_verification": "scripts/dev.sh against the real production seed (backend :8255 / frontend :3255): GET /api/watchlist additive xray field confirmed status ok with real MSFT/ABBV entries, ENB=1.9743 matching the exact closed-form 2-asset formula to 10+ digits, correct NA/cluster/concentration behavior, no proven/advice language, determinism across repeated calls; browser screenshot + InfoTooltip interaction + console-clean confirmed; clean stop/restart cycle verified; regression spot-check on /, /stocks, /evidence, /sectors, /research/factor-lab, /data all 200",
+    "typecheck": "npx tsc --noEmit exit 0, zero errors"
+  }
+}

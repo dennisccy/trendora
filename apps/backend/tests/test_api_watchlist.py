@@ -12,6 +12,8 @@ independent without touching any snapshot table.
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -21,6 +23,7 @@ from sqlmodel import Session, select
 import main
 from app.db import create_db_and_tables, make_engine
 from app.engine.prices import latest_data_date
+from app.engine.setups import ALL_STATUSES
 from app.models import (
     ForwardReturn,
     ScannerResult,
@@ -35,6 +38,10 @@ REASON = "ANET — strong leader, watching pullback"
 _SCORE_BLOCKS = ("leadership", "entry_quality", "risk")
 _CANONICAL_KEYS = ("leadership", "entry_quality", "risk", "setup", "invalidation")
 _SNAPSHOT_MODELS = (ScannerRun, ScannerResult, SectorScoreRow, ThemeScoreRow, ForwardReturn)
+_ENTRY_KEYS = {
+    "id", "ticker", "date_added", "asof_date_added", "reason", "price_since_added",
+    "sector", "leadership", "entry_quality", "risk", "setup", "invalidation",
+}
 
 
 @pytest.fixture
@@ -172,3 +179,67 @@ def test_watchlist_raises_503_when_no_price_data(tmp_path):
         with pytest.raises(HTTPException) as post_exc:
             add_watchlist(WatchlistCreate(ticker=TICKER, reason=REASON), session)
         assert post_exc.value.status_code == 503
+
+
+# --------------------------------------------------------------------------------------------------
+# iter-38 (J-23 / backlog B-204) — the additive `xray` concentration field.
+# --------------------------------------------------------------------------------------------------
+def test_xray_field_is_additive_existing_shape_unchanged(clean_watchlist):
+    """The additive `xray` field never disturbs the EXISTING `asof_date`/`entries[]` shape (iter-7
+    contract) — a single-entry watchlist is `status: "insufficient"` (a correlation view needs a pair)."""
+    with TestClient(main.app) as client:
+        client.post("/api/watchlist", json={"ticker": TICKER, "reason": REASON})
+        body = client.get("/api/watchlist").json()
+    assert set(body.keys()) == {"asof_date", "entries", "xray"}
+    assert set(body["entries"][0].keys()) == _ENTRY_KEYS  # unchanged per-entry shape
+    assert body["xray"]["status"] == "insufficient"
+    assert body["xray"]["tickers"] == [TICKER]
+
+
+def test_xray_status_ok_with_two_watchlist_entries(clean_watchlist):
+    """Two real, long-tenured watchlist entries produce a full `status: "ok"` X-ray: a symmetric
+    matrix, all-six setup-status concentration, and an ENB within the exact [1, 2] bound that holds for
+    ANY two-asset correlation matrix regardless of the real historical correlation value."""
+    with TestClient(main.app) as client:
+        client.post("/api/watchlist", json={"ticker": TICKER, "reason": REASON})
+        client.post("/api/watchlist", json={"ticker": "AAPL", "reason": "benchmark leader"})
+        body = client.get("/api/watchlist").json()
+    xray = body["xray"]
+    assert xray["status"] == "ok"
+    assert set(xray["tickers"]) == {TICKER, "AAPL"}
+    # self-correlation is ~1.0 for any real, non-degenerate stock series (never fabricated NA)
+    assert xray["correlation_matrix"][TICKER][TICKER] == pytest.approx(1.0, abs=1e-6)
+    assert xray["correlation_matrix"]["AAPL"]["AAPL"] == pytest.approx(1.0, abs=1e-6)
+    cross = xray["correlation_matrix"][TICKER]["AAPL"]
+    assert cross == xray["correlation_matrix"]["AAPL"][TICKER]  # symmetric
+    assert -1.0 <= cross <= 1.0
+    assert xray["effective_number_of_bets"] is not None
+    assert 1.0 <= xray["effective_number_of_bets"] <= 2.0  # exact math bound for exactly 2 assets
+    assert sum(len(c) for c in xray["clusters"]) == 2
+    assert sum(e["count"] for e in xray["setup_concentration"]) == 2
+    assert {e["status"] for e in xray["setup_concentration"]} == set(ALL_STATUSES)
+
+
+def test_xray_no_proven_or_advice_language(clean_watchlist):
+    """Anti-goals: the X-ray is descriptive only — no proven-language, no position-advice language."""
+    with TestClient(main.app) as client:
+        client.post("/api/watchlist", json={"ticker": TICKER, "reason": REASON})
+        client.post("/api/watchlist", json={"ticker": "AAPL", "reason": "benchmark leader"})
+        raw = json.dumps(client.get("/api/watchlist").json()).lower()
+    for banned in ("proven", "trim", "rebalance"):
+        assert banned not in raw
+    import re
+
+    for word in ("add", "reduce", "buy", "sell"):
+        assert re.search(rf"\b{word}\b", raw) is None
+
+
+def test_xray_determinism_same_asof_repeated_calls(clean_watchlist):
+    """Determinism (anti-goal #5): repeated reads against the same frozen seed reproduce the X-ray
+    byte-identically — never a wall-clock- or ordering-dependent value."""
+    with TestClient(main.app) as client:
+        client.post("/api/watchlist", json={"ticker": TICKER, "reason": REASON})
+        client.post("/api/watchlist", json={"ticker": "AAPL", "reason": "benchmark leader"})
+        first = client.get("/api/watchlist").json()["xray"]
+        second = client.get("/api/watchlist").json()["xray"]
+    assert first == second

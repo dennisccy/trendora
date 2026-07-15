@@ -1065,9 +1065,63 @@ export interface WatchlistEntry {
   price_since_added: number | null; // fraction; null = NA, never fabricated
 }
 
+// --- watchlist concentration X-ray (iter-38, J-23 / backlog B-204) --------------------------
+/** One sector's share of the watchlist. `sector` is nullable (a stock with no mapped GICS sector) —
+ *  render its label via the EXISTING `sectorLabel()` helper (`lib/sector-label.ts`, the ONE place
+ *  that maps null -> "Unassigned"), never a second null-handling rule. Single-valued: `pct` sums to
+ *  1.0 across every returned entry. */
+export interface WatchlistXraySectorConcentration {
+  sector: string | null;
+  count: number;
+  pct: number;
+}
+
+/** One theme's share of the watchlist. Multi-valued (a stock may carry several themes, or none) —
+ *  `pct` is share-of-watchlist, NOT a partition (entries need not sum to 1.0). Only themes with >= 1
+ *  watchlist member are listed. */
+export interface WatchlistXrayThemeConcentration {
+  slug: string;
+  name: string;
+  count: number;
+  pct: number;
+}
+
+/** One setup status's share of the watchlist — always all six canonical statuses (0 where absent),
+ *  mirroring the dashboard's own `summarize_candidates` "a number always renders" contract. */
+export interface WatchlistXraySetupConcentration {
+  status: string;
+  count: number;
+  pct: number;
+}
+
+/** GET /api/watchlist's additive `xray` field (B-204): the watchlist concentration X-ray, computed
+ *  ONCE engine-side by `app.engine.watchlist_xray.build_xray_payload` and re-read VERBATIM here — NO
+ *  browser-side correlation/ENB recompute (B-204's named dominant failure mode). `status ===
+ *  "insufficient"` (fewer than 2 watchlist names) means every list/matrix field below is empty; the
+ *  page renders a distinct "not enough names yet" state rather than an empty matrix. A `null`
+ *  `correlation_matrix[a][b]` cell is an HONEST NA (undefined pairwise correlation — insufficient own
+ *  history, missing bars, or zero-variance series), never a fabricated 0. `effective_number_of_bets`
+ *  is `null` only when NO member has enough usable history to compute it at all. */
+export interface WatchlistXray {
+  status: "ok" | "insufficient";
+  window_days: number; // the trailing correlation window (config watchlist.xray.corr_window_days)
+  min_overlap_days: number; // the honesty floor below which a member's row/column is NA throughout
+  cluster_threshold: number; // the Pearson correlation at/above which two members join a cluster
+  tickers: string[]; // every watchlist ticker, sorted — the matrix's row/column vocabulary
+  history_days: Record<string, number>; // observed own-history length per ticker, capped at window_days
+  correlation_matrix: Record<string, Record<string, number | null>>;
+  clusters: string[][]; // deterministic connected components; a lone name is its own singleton cluster
+  effective_number_of_bets: number | null;
+  enb_member_count: number; // how many members contributed to the ENB computation
+  sector_concentration: WatchlistXraySectorConcentration[];
+  theme_concentration: WatchlistXrayThemeConcentration[];
+  setup_concentration: WatchlistXraySetupConcentration[];
+}
+
 export interface WatchlistResponse {
   asof_date: string;
   entries: WatchlistEntry[];
+  xray: WatchlistXray;
 }
 
 /** GET /api/watchlist — every saved entry (newest first), enriched live. Throws on non-200 so the
