@@ -150,6 +150,8 @@ _SYNTH_CFG = {
         "history_years": 2, "asof_cadence": "quarterly", "horizons": [1, 5, 10, 20, 60],
         "min_sample": 30, "default_horizon": 20,
         "control_group": {"seed": 20240601, "top_n": 20, "peers_per_sector": 5},
+        # iter-41 (J-25): required drawdown-expectations tunables (the /evidence panel).
+        "underwater_horizons": [1, 5, 10, 20, 60], "streak_min_n": 10,
         "attribution": {  # J-19: attribution is a required walk_forward sub-section
             "top_contributors_k": 5,
             "rank_bands": [

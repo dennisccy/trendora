@@ -360,7 +360,21 @@ class ForwardReturn(SQLModel, table=True):
     default `None` (backward-compatible; a fresh frozen-seed DB carries it from the start; an existing
     live DB gains it via the `db._ADDITIVE_COLUMNS` ALTER). Read VERBATIM by the read path
     (`/api/stocks`, `/api/stocks/{ticker}`, `/api/themes`, `/api/sectors`) and aggregated read-only by
-    Backtest + the Research event study — never recomputed when served."""
+    Backtest + the Research event study — never recomputed when served.
+
+    `underwater_days` / `time_to_recover_days` (iter-41, J-25) are the NEW append-only "dry spell" columns —
+    the count of the FIRST `horizon` post-snapshot bars (date > D, via `bars_after`) whose close sits below
+    the RUNNING high-water mark (seeded at the as-of-D `entry_close`, the SAME running-peak convention
+    `max_drawdown` uses), and the number of bars from the max-drawdown trough until the close first returns
+    to the entry level within the horizon (NA — never a fabricated horizon-sentinel — if it never recovers
+    in-window). Both are computed ONCE in the SAME `_insert_run_forward_returns` INSERT path via the pure
+    `underwater_days` / `time_to_recover_days` helpers, sharing the EXACT no-lookahead NA gate as
+    `forward_return`/`max_drawdown` (`underwater_days` is non-None iff `realized_return` exists;
+    `time_to_recover_days` is additionally None within an existing row when no recovery occurs in-window —
+    never a fabricated value). Forward-side only — no snapshot row is ever UPDATEd. `Optional[int]`, default
+    `None` (backward-compatible; a fresh frozen-seed DB carries them from the start; an existing live DB
+    gains them via the `db._ADDITIVE_COLUMNS` ALTER). Read VERBATIM by
+    `app.engine.forward_testing.compute_drawdown_expectations` — never recomputed when served."""
 
     __tablename__ = "forward_returns"
     # iter-24 fast-platform item C: the explicit `ix_forward_returns_run_symbol` index that used to live
@@ -391,6 +405,12 @@ class ForwardReturn(SQLModel, table=True):
     # Computed once with realized_return, same no-lookahead NA gate; None on short history. Read verbatim
     # by the stocks/themes/sectors/detail read path and aggregated read-only by Backtest + Research.
     max_drawdown: Optional[float] = Field(default=None)  # true peak-to-trough drawdown over first h post-bars (<= 0)
+    # iter-41 (J-25) append-only "dry spell" columns — days below the running high-water mark, and days from
+    # the max-drawdown trough back to the entry level (None if never recovered in-window). Computed once with
+    # realized_return, same no-lookahead NA gate; None on short history. Read verbatim by
+    # compute_drawdown_expectations (the /evidence expectations panel) — never recomputed elsewhere.
+    underwater_days: Optional[int] = Field(default=None)  # bars below the running high-water mark, first h post-bars
+    time_to_recover_days: Optional[int] = Field(default=None)  # bars from the MDD trough to entry-level recovery (NA if none)
 
 
 # --- iter-20 event-study derived-aggregate cache (J-72 — a PERFORMANCE cache, not a snapshot) -----

@@ -24,10 +24,57 @@ export interface Verdict {
   [key: string]: unknown;
 }
 
+/** One `{median, p90, n, insufficient}` distribution cell (iter-41, J-25) — max-drawdown depth /
+ *  underwater duration / time-to-recover, per phase. `insufficient` true means `n` sits below the
+ *  server's honesty floor (`DrawdownExpectations.min_sample`) — `median`/`p90` are then null (never a
+ *  fabricated distribution); the panel renders "insufficient (n=…)" instead. */
+export interface DistributionCell {
+  median: number | null;
+  p90: number | null;
+  n: number;
+  insufficient: boolean;
+}
+
+/** One longest-losing-streak cell (iter-41, J-25), counted at the WALK-FORWARD CADENCE (one point per
+ *  snapshot date, never per name per day). `n` is the number of distinct cadence dates examined — its
+ *  own honesty floor is `DrawdownExpectations.streak_min_n` (deliberately smaller than the per-
+ *  observation `min_sample` the other three measures use). `insufficient` true means `value` is null. */
+export interface LossStreakCell {
+  value: number | null;
+  n: number;
+  insufficient: boolean;
+}
+
+/** One market-phase row of the expectations panel — every configured `market_phase.labels` value is
+ *  always present (padded, even at n=0), in config order. */
+export interface PhaseExpectations {
+  phase: string;
+  n: number;
+  max_drawdown: DistributionCell;
+  underwater_days: DistributionCell;
+  time_to_recover_days: DistributionCell;
+  loss_streak: LossStreakCell;
+}
+
+/** The phase-conditional drawdown & dry-spell expectations payload for ONE certified claim (iter-41,
+ *  J-25) — additive on `GET /api/evidence`, read VERBATIM from `app.engine.forward_testing.
+ *  compute_drawdown_expectations` (never recomputed client-side). Descriptive history only — renders for
+ *  ANY claim regardless of its PASS/FAIL verdict (outcome-neutral; see goal.md J-25). */
+export interface DrawdownExpectations {
+  horizon: number;
+  min_sample: number;
+  streak_min_n: number;
+  survivorship_bias: string;
+  method_note: string;
+  by_phase: PhaseExpectations[];
+}
+
 /** One certified-claims ledger row, read VERBATIM from `GET /api/evidence`. `claim` is the hypothesis
  *  (the cohort selectors); `proven` is true ONLY for a PASS verdict; `signal` is the UI signal key the
  *  PASS backs (null for a real signal-less writer entry — fail-safe). `forward_walk` is the forward-walk
- *  score-to-date (null until a certified claim is monitored). */
+ *  score-to-date (null until a certified claim is monitored). `expectations` (iter-41, J-25) is ADDITIVE
+ *  and OPTIONAL — the backend omits the key entirely (never a fabricated panel) when the cohort could not
+ *  be resolved; a `null`/`undefined` value must render nothing for the panel section (never an error). */
 export interface CertifiedClaim {
   signal: string | null;
   claim: Record<string, unknown>;
@@ -38,6 +85,7 @@ export interface CertifiedClaim {
   verdict: Verdict;
   proven: boolean;
   forward_walk: unknown | null;
+  expectations?: DrawdownExpectations | null;
 }
 
 /** A proven claim row, as stored in the served `proven_signals` map (keyed by signal). Same shape as a
@@ -198,6 +246,35 @@ export function formatPValue(value: number | null | undefined): string {
     return "< 0.0001";
   }
   return Number(value.toPrecision(4)).toString();
+}
+
+// --- drawdown & dry-spell expectations formatters (goal-mcp-loop iter-41, J-25) -------------------------
+// PURE, read-only display formatters for the additive `expectations` panel. They re-format a served
+// number only — they never compute a median/p90/streak client-side (that stays 100% server-side in
+// `compute_drawdown_expectations`).
+
+/** The exact honest-floor copy every below-floor cell renders — "insufficient (n=…)". */
+export function insufficientLabel(n: number): string {
+  return `insufficient (n=${n})`;
+}
+
+/** Format a day-count DISTRIBUTION value (underwater-duration / time-to-recover median/p90) — one
+ *  decimal place + "d" (a median/p90 of day-counts is legitimately fractional, e.g. "7.4d"); a
+ *  null/non-finite value renders an em dash (never a fabricated 0). */
+export function formatDays(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "—";
+  }
+  return `${value.toFixed(1)}d`;
+}
+
+/** Format a loss-streak length — always a true integer count (no interpolation, unlike the distribution
+ *  cells); a null/non-finite value renders an em dash. */
+export function formatStreak(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) {
+    return "—";
+  }
+  return `${Math.round(value)}`;
 }
 
 // --- claim-row presentation (goal-mcp-loop iter-4) — regime label + honest title/linkback --------------

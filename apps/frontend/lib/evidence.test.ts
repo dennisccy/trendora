@@ -34,8 +34,11 @@ import {
   combinationEvidenceAnchor,
   evidenceAnchor,
   factorCohortFromClaim,
+  formatDays,
   formatEvidencePct,
   formatPValue,
+  formatStreak,
+  insufficientLabel,
   proofFieldsFor,
   regimeLabel,
   resolveCohortEvidence,
@@ -953,6 +956,29 @@ check("claimSurface + claimAnchorId render the rs_spy_3m h60 /evidence row hones
   // signal-less: it adds NO inline /stocks score badge (proven_signals stays unaffected — J-01/J-02/J-03)
   assert.strictEqual(row.signal, null);
   assert.strictEqual(resolveEvidenceStatus("leadership_score", {}).proven, false);
+});
+
+// --- drawdown & dry-spell expectations formatters (goal-mcp-loop iter-41, J-25) -------------------------
+check("insufficientLabel renders the exact honest-floor copy", () => {
+  assert.strictEqual(insufficientLabel(0), "insufficient (n=0)");
+  assert.strictEqual(insufficientLabel(7), "insufficient (n=7)");
+});
+
+check("formatDays renders one decimal + 'd', and an em dash for null/undefined/non-finite", () => {
+  assert.strictEqual(formatDays(5), "5.0d");
+  assert.strictEqual(formatDays(7.4), "7.4d");
+  assert.strictEqual(formatDays(0), "0.0d");
+  assert.strictEqual(formatDays(null), "—");
+  assert.strictEqual(formatDays(undefined), "—");
+  assert.strictEqual(formatDays(Number.NaN), "—");
+});
+
+check("formatStreak renders a rounded integer, and an em dash for null/undefined/non-finite", () => {
+  assert.strictEqual(formatStreak(2), "2");
+  assert.strictEqual(formatStreak(0), "0");
+  assert.strictEqual(formatStreak(3.0), "3");
+  assert.strictEqual(formatStreak(null), "—");
+  assert.strictEqual(formatStreak(undefined), "—");
 });
 
 console.log(`\n${passed} evidence-badge resolver checks passed.`);

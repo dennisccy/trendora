@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "journey": "J-25",
+  "name": "Drawdown and dry-spell expectations are visible, phase-conditional, and honest",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-25", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Evidence"}},
+    {"n": 2, "journey": "J-25", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Historical drawdown & dry-spell expectations (20-day hold)"}},
+    {"n": 3, "journey": "J-25", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "-7.70% (p90 -3.72%) n=1264"}},
+    {"n": 4, "journey": "J-25", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "20.0d (p90 20.0d) n=1264"}},
+    {"n": 5, "journey": "J-25", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "insufficient (n=5)"}},
+    {"n": 6, "journey": "J-25", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Read the edge as an upper bound, not a guarantee."}}
+  ]
+}

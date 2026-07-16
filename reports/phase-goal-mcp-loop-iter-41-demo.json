@@ -1,0 +1,117 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-mcp-loop-iter-41",
+  "base_url": "http://localhost:3255",
+  "iteration": 41,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "A new look at what a dry spell really costs",
+      "narration": "Every certified claim on the Evidence page now includes a plain-language breakdown of what following it has historically felt like to hold, split out by the market phase you'd have entered in.",
+      "point_out": "Below each card's existing details, a new panel appears headed 'Historical drawdown & dry-spell expectations,' with one row per market phase — Expansion, Pullback, Correction, Bear, and Recovery. The green 'GO' banner at the top still confirms today's board is current.",
+      "journey": "J-25",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/evidence" },
+      "expect": { "text": "Historical drawdown & dry-spell expectations" }
+    },
+    {
+      "n": 2,
+      "title": "Real figures, not vague warnings",
+      "narration": "Where there's plenty of history to draw on, the panel shows real numbers: how deep the typical drawdown ran, how long positions stayed underwater, and how long recovery usually took — each labeled with its own sample size.",
+      "point_out": "The first card's Expansion row shows a median max-drawdown of -7.70% (90th-percentile -3.72%) across 1,264 observations.",
+      "journey": "J-25",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/evidence" },
+      "expect": { "text": "-7.70% (p90 -3.72%) n=1264" }
+    },
+    {
+      "n": 3,
+      "title": "Honest when one measure runs thin",
+      "narration": "When a single measure doesn't have enough history behind it, the panel says so plainly instead of guessing — while its neighboring measures still show real figures.",
+      "point_out": "On the same card, the Correction row's 'Longest losing streak' cell reads 'insufficient (n=5)' in muted gray, even though the row's other three measures are real, well-populated numbers.",
+      "journey": "J-25",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/evidence" },
+      "expect": { "text": "insufficient (n=5)" }
+    },
+    {
+      "n": 4,
+      "title": "Even a whole empty phase is shown honestly",
+      "narration": "For a claim whose history has zero examples in a given phase, every measure in that row admits it — never a fabricated number or a broken card.",
+      "point_out": "The second claim card's Correction and Bear rows both read 'insufficient (n=0)' across all four measures, while the rest of that same card renders normally around them.",
+      "journey": "J-25",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/evidence" },
+      "expect": { "text": "insufficient (n=0)" }
+    },
+    {
+      "n": 5,
+      "title": "The method is explained, not hidden",
+      "narration": "Two short sentences under every table spell out exactly how the numbers are counted and remind readers this is history, not a promise.",
+      "point_out": "The same two sentences appear word-for-word under every one of the seven cards, ending with 'Read the edge as an upper bound, not a guarantee.'",
+      "journey": "J-25",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/evidence" },
+      "expect": { "text": "Walk-forward evidence now spans up to ~30 years of history" }
+    },
+    {
+      "n": 6,
+      "title": "The leaderboard looks exactly as before",
+      "narration": "Away from the Evidence page, nothing else changed — the stock leaderboard still marks every score honestly.",
+      "point_out": "Every Leadership, Entry Quality, and Risk score still carries a small 'Not yet proven' badge, since no claim has passed certification yet.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "Not yet proven" }
+    },
+    {
+      "n": 7,
+      "title": "A single stock's page is untouched too",
+      "narration": "A stock's own page still shows the same three honestly-labeled scores, with no drill-down control appearing where none is warranted.",
+      "point_out": "All three score cards on AAPL's page read 'Not yet proven,' and there's still no 'Why proven?' button, since nothing here is certified yet.",
+      "journey": "J-02",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks/AAPL" },
+      "expect": { "text": "Not yet proven" }
+    },
+    {
+      "n": 8,
+      "title": "Deep price history still expands on demand",
+      "narration": "The button that loads a stock's full multi-decade trading history still works exactly as before.",
+      "point_out": "Clicking 'Full history' grows the chart from about five years of bars to nearly thirty, adding a note that the older bars are weekly-sampled.",
+      "journey": "J-10",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Full history" } },
+      "expect": { "text": "older bars weekly-sampled" }
+    },
+    {
+      "n": 9,
+      "title": "The Data Manager page is unaffected",
+      "narration": "The page for growing and checking the dataset still loads cleanly, with its coverage details intact.",
+      "point_out": "The 'Dataset coverage' panel still lists price history, universe size, and backfill gaps — nothing about it changed.",
+      "journey": "J-13",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Dataset coverage" }
+    }
+  ]
+}

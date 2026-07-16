@@ -33,10 +33,11 @@ benchmark symbols) comes from config — no walk-forward literal lives here (ant
 """
 from __future__ import annotations
 
+import json
 import random
 from calendar import monthrange
 from collections import defaultdict
-from datetime import date as date_cls, timedelta
+from datetime import date as date_cls, datetime, timedelta, timezone
 from statistics import mean, median, stdev
 from typing import Optional, Union
 
@@ -48,7 +49,7 @@ from app.config import Config, get_config
 from app.engine.prices import bars_after, bars_asof, close_on, latest_data_date
 from app.engine.scanner import run_scan
 from app.engine.setups import ALL_STATUSES
-from app.models import ForwardReturn, ScannerResult, ScannerRun
+from app.models import EventStudyCache, ForwardReturn, ScannerResult, ScannerRun
 
 # The honest caveat carried on every payload (anti-goal: Honest limitations surfaced). iter-18: the
 # basis now spans ~30 years (1996 -> present, per-name real listing depth) over the broadened
@@ -216,6 +217,68 @@ def max_drawdown(bars_after_list: list, entry_close: Optional[float], horizon: i
     return min(drawdowns)
 
 
+def underwater_days(bars_after_list: list, entry_close: Optional[float], horizon: int) -> Optional[int]:
+    """iter-41 (J-25): the count of the FIRST `horizon` post-snapshot bars (date > D, from `bars_after`)
+    whose CLOSE sits below the RUNNING high-water mark — the SAME running-peak convention `max_drawdown`
+    uses (seeded at the as-of-D `entry_close`; a bar that prints a new HIGH raises the peak for THAT
+    bar's own close-check too, mirroring `max_drawdown`'s bar-by-bar order of operations exactly: the
+    peak is updated with `bar.high` BEFORE the bar's own close is compared to it). A bar that closes
+    exactly AT its own freshly-raised peak (`close == running_peak`) is NOT counted underwater.
+
+    Shares the EXACT no-lookahead NA gate as `forward_return`/`max_drawdown`: returns None (NA) — NEVER
+    a fabricated 0 — when `entry_close` is missing or zero, or when fewer than `horizon` post-snapshot
+    bars exist. Only the first `horizon` post-bars matter, so the result is unchanged when later bars
+    are removed (the keystone no-lookahead-of-the-future-tail property)."""
+    if entry_close is None or entry_close == 0:
+        return None
+    if len(bars_after_list) < horizon:
+        return None
+    window = bars_after_list[:horizon]
+    running_peak = entry_close
+    count = 0
+    for bar in window:
+        if bar.high > running_peak:
+            running_peak = bar.high
+        if bar.close < running_peak:
+            count += 1
+    return count
+
+
+def time_to_recover_days(bars_after_list: list, entry_close: Optional[float], horizon: int) -> Optional[int]:
+    """iter-41 (J-25): the number of bars from the max-drawdown TROUGH (the SAME running-peak trough
+    `max_drawdown` identifies as the worst peak-to-trough drop, over the FIRST `horizon` post-snapshot
+    bars) until the close FIRST returns to/above the entry level (`close >= entry_close`), counted
+    within the SAME `horizon`-bar window. 0 when the trough bar's own close already sits at/above the
+    entry level. None (NA — never a fabricated horizon-sentinel) when the close never recovers to the
+    entry level within the window, or when the shared NA gate applies.
+
+    Internally re-derives the SAME running-peak per-bar drawdown series `max_drawdown` computes, ONLY to
+    locate the trough's bar INDEX (which `max_drawdown` does not expose) — it does not re-implement or
+    alter the canonical `max_drawdown` function itself (never forked; `test_time_to_recover_days_
+    counts_bars_from_trough_to_entry_reclaim` pins the located trough's value against `max_drawdown`'s
+    own return value for the SAME inputs).
+
+    Shares the EXACT no-lookahead NA gate as `forward_return`/`max_drawdown`. Only the first `horizon`
+    post-bars matter, so the result is unchanged when later bars are removed (the keystone no-lookahead-
+    of-the-future-tail property)."""
+    if entry_close is None or entry_close == 0:
+        return None
+    if len(bars_after_list) < horizon:
+        return None
+    window = bars_after_list[:horizon]
+    running_peak = entry_close
+    drawdowns: list[float] = []
+    for bar in window:
+        if bar.high > running_peak:
+            running_peak = bar.high
+        drawdowns.append(bar.low / running_peak - 1)
+    trough_index = min(range(len(drawdowns)), key=lambda i: drawdowns[i])  # first index at the worst drop
+    for offset, bar in enumerate(window[trough_index:]):
+        if bar.close >= entry_close:
+            return offset
+    return None  # never recovered within the horizon window
+
+
 # --------------------------------------------------------------------------------------------------
 # Walk-forward as-of date set (cadence intersected with real seed trading days)
 # --------------------------------------------------------------------------------------------------
@@ -327,6 +390,12 @@ def _insert_run_forward_returns(
             # once here beside mae/mfe via the pure helper that shares the EXACT NA gate — so a row's
             # max_drawdown is non-None iff realized_return is (never a fabricated 0 for a short window).
             mdd = max_drawdown(post_bars, entry_close, horizon)
+            # iter-41 (J-25): the two "dry spell" columns over the SAME post_bars/entry_close/horizon
+            # already in hand — zero extra bar reads. underwater_days shares the EXACT NA gate as
+            # max_drawdown (non-None iff realized is); time_to_recover_days is additionally None when the
+            # close never reclaims the entry level within the window (never a fabricated sentinel).
+            uw_days = underwater_days(post_bars, entry_close, horizon)
+            ttr_days = time_to_recover_days(post_bars, entry_close, horizon)
             session.add(
                 ForwardReturn(
                     run_id=run.id,
@@ -339,6 +408,8 @@ def _insert_run_forward_returns(
                     mae=excursions["mae"] if excursions else None,
                     mfe=excursions["mfe"] if excursions else None,
                     max_drawdown=mdd,
+                    underwater_days=uw_days,
+                    time_to_recover_days=ttr_days,
                 )
             )
             existing.add((run.id, symbol, horizon))
@@ -987,3 +1058,325 @@ def compute_run_scorecard(session: Session, run: ScannerRun, config: Optional[Co
         "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
         "scorecard": {"by_horizon": by_horizon},
     }
+
+
+# --------------------------------------------------------------------------------------------------
+# Drawdown & dry-spell expectations (iter-41, J-25) — phase-conditional historical distributions over
+# ONE certified claim's cohort, additively served on GET /api/evidence. Pure read-compose: resolves the
+# cohort via the SAME `app.engine.samples.compute_samples` selectors the Research labs publish (no
+# second cohort resolver), reads each observation's STORED `max_drawdown` / `underwater_days` /
+# `time_to_recover_days` VERBATIM off `ForwardReturn` (recomputes no existing canonical value), and joins
+# to the CAUSAL phase-at-entry via `app.engine.market_phase.phase_context_by_date` (the SAME causal
+# timeline `compute_market_phase` reads — never a smoothed/retrospective one).
+#
+# `app.engine.samples` imports `SURVIVORSHIP_BIAS_LABEL` FROM this module, and `app.engine.market_phase`
+# imports `app.engine.research` which ALSO imports FROM this module — so a MODULE-LEVEL import of either
+# back into this file would be circular. Both are LAZY-imported inside `compute_drawdown_expectations`,
+# mirroring `app.engine.research`'s own established "lazy import (avoids a market_phase<->research
+# cycle)" pattern for the identical reason.
+# --------------------------------------------------------------------------------------------------
+
+# The ledger claim's own selector-field name -> the `compute_samples` kwarg name (identity when
+# unlisted). Mirrors `app.mcp.tools._CLAIM_SELECTOR_KEYS` / `drill_samples`'s translation — the SAME
+# vocabulary `/api/research/samples` accepts and `app.mcp.tools.assemble_claim_observations` (the
+# referee's own cohort assembly) already applies. A pure key rename/repackage: the cohort MEMBERSHIP
+# RULE stays 100% inside `compute_samples` — this decides nothing about who is IN a cohort, only which
+# keyword each already-stored selector value arrives under. Kept as a small local mirror (rather than an
+# import from `app.mcp.tools`) because `app.mcp.tools` sits ABOVE this module in the dependency graph
+# (it imports FROM `app.engine.samples`/`research`, which import FROM this module) — importing it here
+# would invert that layering.
+_CLAIM_SELECTOR_KEYS = (
+    "factor", "slice_kind", "decile", "regime", "sector", "condition", "cohort", "single_index",
+    "subject", "view", "setup", "pattern", "phase", "dimension", "family", "velocity_sign",
+    "regime_decile", "severity_decile", "factor_decile",
+)
+_CLAIM_KWARG_RENAMES = {"factor": "factor_key", "cohort": "cohort_kind", "subject": "subject_key"}
+
+# The walk-forward-cadence method note (B-205 trap): a loss streak counted per-observation (per ticker
+# per date) would double-count multiple names sharing one snapshot date, or overlapping-horizon returns,
+# as if they were independent consecutive "days". Collapsing to one mean-return-per-date point first
+# avoids both.
+LOSS_STREAK_METHOD_NOTE = (
+    "Longest losing streak is counted at the walk-forward cadence (one point per snapshot date — the "
+    "cohort's mean forward return that date), not per name per day, so multiple names sharing a "
+    "snapshot date are never double-counted as separate consecutive losses."
+)
+
+
+def _claim_samples_kwargs(claim: dict) -> Optional[dict]:
+    """Translate a ledger claim's cohort selectors into `compute_samples` kwargs (module note above).
+    Returns None for a malformed `condition` leg (never raises — an honest unresolvable cohort)."""
+    kwargs: dict = {}
+    for key in _CLAIM_SELECTOR_KEYS:
+        if key not in claim:
+            continue
+        if key == "condition":
+            parsed = []
+            for spec in claim["condition"]:
+                parts = spec.split(":")
+                if len(parts) != 3:
+                    return None
+                parsed.append({"factor": parts[0], "side": parts[1], "quantile": parts[2]})
+            kwargs["conditions"] = parsed
+            continue
+        kwargs[_CLAIM_KWARG_RENAMES.get(key, key)] = claim[key]
+    return kwargs
+
+
+def _median_p90(values: list[float]) -> dict:
+    """{median, p90} of `values` via linear-interpolation percentiles — the SAME 'standard definition'
+    `app.engine.indicators._percentile` uses for the risk-budget gap profile (J-24), mirrored locally
+    (a two-line formula) rather than imported cross-domain."""
+    ordered = sorted(values)
+    n = len(ordered)
+
+    def _pct(p: float) -> float:
+        if n == 1:
+            return ordered[0]
+        rank = p * (n - 1)
+        lower = int(rank)
+        upper = min(lower + 1, n - 1)
+        frac = rank - lower
+        return ordered[lower] + (ordered[upper] - ordered[lower]) * frac
+
+    return {"median": _pct(0.5), "p90": _pct(0.9)}
+
+
+def _distribution_cell(values: list[float], floor: int) -> dict:
+    """One `{median, p90, n, insufficient}` cell — an honest 'insufficient' (no median/p90, never a
+    fabricated distribution) below `floor`."""
+    n = len(values)
+    if n < floor:
+        return {"median": None, "p90": None, "n": n, "insufficient": True}
+    stats = _median_p90(values)
+    return {"median": stats["median"], "p90": stats["p90"], "n": n, "insufficient": False}
+
+
+def _longest_negative_streak(ordered_dated_returns: list[tuple]) -> int:
+    """The longest run of consecutive entries in `ordered_dated_returns` (ALREADY sorted ascending by
+    date) whose return is < 0. Pure sequence scan; 0 when no entry is negative or the list is empty."""
+    best = 0
+    current = 0
+    for _date, ret in ordered_dated_returns:
+        if ret < 0:
+            current += 1
+            best = max(best, current)
+        else:
+            current = 0
+    return best
+
+
+def _loss_streak_cell(dated_returns: list[tuple], floor: int) -> dict:
+    """One `{value, n, insufficient}` loss-streak cell at the WALK-FORWARD CADENCE (the B-205 trap):
+    `dated_returns` (`[(snapshot_date_iso, forward_return), ...]`, any order) is first collapsed to ONE
+    MEAN cohort return per distinct date (so multiple tickers sharing a snapshot date contribute a SINGLE
+    data point, never inflating the streak), sorted chronologically, then the longest run of consecutive
+    NEGATIVE dates is counted (`_longest_negative_streak`). `n` is the number of distinct cadence dates
+    examined — the honesty floor for THIS measure is `streak_min_n`, deliberately smaller than the
+    per-observation `min_sample` floor the other three measures use."""
+    by_date: dict[str, list[float]] = defaultdict(list)
+    for d, ret in dated_returns:
+        by_date[d].append(ret)
+    ordered = sorted((d, mean(rets)) for d, rets in by_date.items())
+    n = len(ordered)
+    if n < floor:
+        return {"value": None, "n": n, "insufficient": True}
+    return {"value": _longest_negative_streak(ordered), "n": n, "insufficient": False}
+
+
+def compute_drawdown_expectations(
+    session: Session, claim: dict, config: Optional[Config] = None
+) -> Optional[dict]:
+    """iter-41 (J-25) — the SINGLE canonical phase-conditional drawdown & dry-spell expectations payload
+    for ONE certified-claims ledger `claim` (Data Contract value, additive on `GET /api/evidence`). For
+    the claim's own cohort (resolved via the SAME `compute_samples` selectors the Research labs publish)
+    at the claim's own `horizon`, groups the STORED `max_drawdown` / `underwater_days` /
+    `time_to_recover_days` (read VERBATIM — recomputes nothing) by the CAUSAL phase-at-entry
+    (`phase_context_by_date`, keyed by the observation's own snapshot date), and emits per configured
+    phase label a `{median, p90, n}` cell for each of the three distribution measures plus a
+    walk-forward-cadence longest-losing-streak cell. EVERY configured `market_phase.labels` value is
+    emitted (padded, even at n=0) so a cohort that never saw a phase still discloses that honestly.
+
+    Returns None — the caller (`build_evidence_payload`) then omits the `expectations` key entirely, the
+    honest 'no panel' signal — when: the claim's `horizon` is missing or outside the configured
+    `walk_forward.underwater_horizons` scope, the cohort selectors are malformed/unresolvable (an unknown
+    kind, an out-of-range decile, a malformed combination `condition`, …), or the cohort resolves to zero
+    observations with BOTH a snapshot date and a realized forward return. Never raises into the caller —
+    `GET /api/evidence` always stays 200."""
+    cfg = config or get_config()
+    wf = cfg.walk_forward
+    horizon = claim.get("horizon")
+    if horizon not in wf.underwater_horizons:
+        return None
+    kwargs = _claim_samples_kwargs(claim)
+    if kwargs is None:
+        return None
+
+    # lazy imports — both `samples` and `market_phase` import FROM this module at load time (see the
+    # module note above), so a module-level import of either back into this file would be circular.
+    from app.engine.market_phase import phase_context_by_date
+    from app.engine.samples import compute_samples
+
+    try:
+        samples = compute_samples(
+            session, kind=claim.get("kind"), horizon=horizon, config=cfg, as_of=None, **kwargs
+        )
+    except ValueError:
+        return None  # an unknown kind / unresolvable / malformed cohort selector -> honest empty
+
+    rows = [r for r in samples["rows"] if r.get("snapshot_date") and r.get("forward_return") is not None]
+    if not rows:
+        return None
+
+    # ONE additive read of the SAME (ticker, horizon, snapshot-date) rows `compute_samples` already
+    # resolved — the cohort MEMBERSHIP is unchanged; this only fetches the three stored columns
+    # `compute_samples`'s own row shape does not carry. `ForwardReturn.asof_date` is stored verbatim on
+    # each row (no ScannerRun join needed) and is the SAME date `_run_date_map` derives `snapshot_date`
+    # from, so the (symbol, asof_date-ISO) key matches every `compute_samples` row exactly.
+    tickers = sorted({r["ticker"] for r in rows})
+    fr_stmt = select(
+        ForwardReturn.symbol, ForwardReturn.asof_date, ForwardReturn.max_drawdown,
+        ForwardReturn.underwater_days, ForwardReturn.time_to_recover_days,
+    ).where(ForwardReturn.horizon == horizon, ForwardReturn.symbol.in_(tickers))
+    stored_by_key = {
+        (symbol, asof_date.isoformat()): (mdd, uw, ttr)
+        for symbol, asof_date, mdd, uw, ttr in session.exec(fr_stmt).all()
+    }
+
+    # the SAME causal timeline `compute_market_phase` reads (all-history — the expectations panel is
+    # descriptive over the claim's WHOLE tested cohort, not scoped to a single "today" as-of).
+    phases = phase_context_by_date(session, as_of=None, config=cfg)
+
+    by_phase_mdd: dict[str, list[float]] = defaultdict(list)
+    by_phase_uw: dict[str, list[float]] = defaultdict(list)
+    by_phase_ttr: dict[str, list[float]] = defaultdict(list)
+    by_phase_returns: dict[str, list[tuple]] = defaultdict(list)
+
+    for row in rows:
+        date_iso = row["snapshot_date"]
+        ctx = phases.get(date_iso)
+        if ctx is None:
+            continue  # no causal phase classification for this date (short benchmark window) -> excluded
+        phase = ctx["phase"]
+        by_phase_returns[phase].append((date_iso, row["forward_return"]))
+        stored = stored_by_key.get((row["ticker"], date_iso))
+        if stored is None:
+            continue
+        mdd, uw, ttr = stored
+        if mdd is not None:
+            by_phase_mdd[phase].append(mdd)
+        if uw is not None:
+            by_phase_uw[phase].append(uw)
+        if ttr is not None:
+            by_phase_ttr[phase].append(ttr)
+
+    by_phase = [
+        {
+            "phase": phase,
+            "n": len(by_phase_returns.get(phase, [])),
+            "max_drawdown": _distribution_cell(by_phase_mdd.get(phase, []), wf.min_sample),
+            "underwater_days": _distribution_cell(by_phase_uw.get(phase, []), wf.min_sample),
+            "time_to_recover_days": _distribution_cell(by_phase_ttr.get(phase, []), wf.min_sample),
+            "loss_streak": _loss_streak_cell(by_phase_returns.get(phase, []), wf.streak_min_n),
+        }
+        for phase in cfg.market_phase.labels
+    ]
+
+    return {
+        "horizon": horizon,
+        "min_sample": wf.min_sample,
+        "streak_min_n": wf.streak_min_n,
+        "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
+        "method_note": LOSS_STREAK_METHOD_NOTE,
+        "by_phase": by_phase,
+    }
+
+
+# --- cached serving (J-72 performance layer) — REQUIRED because /api/evidence calls this ONCE PER CLAIM ---
+# `compute_drawdown_expectations` resolves a full research cohort (`compute_samples`, the SAME cost a
+# Factor/Combination/Event-study lab request pays), which costs several hundred ms to ~1s+ on the deep
+# 30-year/590-symbol basis. `/api/evidence` renders EVERY claim's panel on ONE page load (7 claims today),
+# so an uncached call multiplies that cost by the claim count — measured ~9.4s total for 7 claims,
+# regressing the J-15 latency budget by ~3x. Every OTHER research-derived aggregate in this codebase (the
+# Factor/Combination/Event-study/Regime/Phase-Severity/Regime-Phase-Factor labs) already solves this
+# EXACT problem the SAME way: serve from the shared `EventStudyCache` table (J-72), keyed by
+# `(subject, view, asof_key, dataset_version, horizon)`, computed once and refreshed automatically when
+# the dataset changes. This reuses that SAME table (a namespaced `subject` prevents any cross-feature
+# collision) rather than adding a parallel cache mechanism.
+_DD_EXPECTATIONS_VIEW = "drawdown_expectations"  # the EventStudyCache `view` slot reserved for this feature
+_DD_EXPECTATIONS_ASOF_KEY = "all"  # this aggregation is always all-history (mirrors research._ASOF_ALL)
+
+
+def _drawdown_expectations_cache_subject(claim: dict) -> str:
+    """A STABLE, BOUNDED `EventStudyCache.subject` for ONE claim: a namespaced SHA-256 of its canonical
+    (sorted-key) JSON, so distinct claims never collide, identical claims always hit the SAME row, and an
+    arbitrarily long combination `condition` list never risks a column-length surprise. The `dd_exp:`
+    namespace prefix guarantees no collision with another feature's subject on this SHARED cache table."""
+    import hashlib
+
+    canonical = json.dumps(claim, sort_keys=True, default=str)
+    return f"dd_exp:{hashlib.sha256(canonical.encode()).hexdigest()}"
+
+
+def compute_drawdown_expectations_cached(
+    session: Session, claim: dict, config: Optional[Config] = None
+) -> Optional[dict]:
+    """Serve `compute_drawdown_expectations` from the shared J-72 `EventStudyCache` (a pure performance
+    layer — No recompute in the read path): a HIT for the current `(subject, view, asof_key,
+    dataset_version, horizon)` key deserializes and returns the stored payload; a MISS computes it ONCE via
+    `compute_drawdown_expectations`, persists it (a `None` result is cached too — an honestly-unresolvable
+    cohort is still a stable answer for this dataset version, and caching it avoids re-paying the SAME
+    expensive miss every request), prunes stale rows for this claim, and returns it. The returned payload
+    is BYTE-IDENTICAL to a fresh `compute_drawdown_expectations(...)` call. `GET /api/evidence` calls THIS
+    function, never the uncached one directly."""
+    cfg = config or get_config()
+    horizon = claim.get("horizon")
+    if horizon not in cfg.walk_forward.underwater_horizons:
+        return None  # the same scope gate compute_drawdown_expectations applies — skip the DB round-trip
+
+    # lazy import — app.engine.research imports FROM this module, so a module-level import back would be
+    # circular (mirrors this file's other lazy imports of market_phase/samples, immediately above).
+    from app.engine.research import _dataset_version
+
+    subject = _drawdown_expectations_cache_subject(claim)
+    version = _dataset_version(session)
+
+    hit = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == subject,
+            EventStudyCache.view == _DD_EXPECTATIONS_VIEW,
+            EventStudyCache.asof_key == _DD_EXPECTATIONS_ASOF_KEY,
+            EventStudyCache.dataset_version == version,
+            EventStudyCache.horizon == horizon,
+        )
+    ).first()
+    if hit is not None:
+        return json.loads(hit.payload_json)
+
+    # MISS — compute once and persist under the current dataset-version stamp.
+    payload = compute_drawdown_expectations(session, claim, cfg)
+
+    # prune stale rows for THIS claim (any older dataset_version) so the cache table does not grow
+    # unbounded as the dataset matures; the current-version row is then inserted.
+    stale = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == subject,
+            EventStudyCache.view == _DD_EXPECTATIONS_VIEW,
+            EventStudyCache.asof_key == _DD_EXPECTATIONS_ASOF_KEY,
+            EventStudyCache.horizon == horizon,
+            EventStudyCache.dataset_version != version,
+        )
+    ).all()
+    for row in stale:
+        session.delete(row)
+
+    session.add(EventStudyCache(
+        subject=subject, view=_DD_EXPECTATIONS_VIEW, asof_key=_DD_EXPECTATIONS_ASOF_KEY,
+        dataset_version=version, horizon=horizon, payload_json=json.dumps(payload),
+        created_at=datetime.now(timezone.utc),
+    ))
+    try:
+        session.commit()
+    except Exception:  # a concurrent writer raced us to the same key — best-effort cache, not a source of
+        session.rollback()  # truth; the freshly computed payload is still byte-identical, so return it
+    return payload

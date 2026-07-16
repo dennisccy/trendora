@@ -722,7 +722,18 @@ class WalkForwardCfg(BaseModel):
     `horizons` (trading days), the `min_sample` honesty threshold, the default served `horizon`, the
     `control_group` block, and the `attribution` block (J-19) — so no walk-forward literal lives in calc
     code (anti-goal: No magic numbers). Promoted from the iter-1 scaffolded passthrough to a typed
-    section."""
+    section.
+
+    iter-41 (J-25) ADDITIVE keys, consumed by `app.engine.forward_testing.compute_drawdown_expectations`
+    (the `/evidence` phase-conditional drawdown/dry-spell expectations panel):
+      - `underwater_horizons` — the forward horizon(s) the expectations panel is willing to report the
+        underwater-duration / time-to-recover measures for (a claim whose own horizon is outside this list
+        yields no expectations — an honest scope gate, mirroring how `horizons` gates which horizons the
+        engine serves at all). Every element must be positive.
+      - `streak_min_n` — the loss-streak honesty floor: a phase's longest-losing-streak cell needs at least
+        this many WALK-FORWARD-CADENCE dates (not raw per-observation n, which `min_sample` already floors)
+        before it is shown as a real value rather than "insufficient (n=…)". Distinct from `min_sample`
+        because cadence dates are far fewer than per-observation rows."""
 
     model_config = ConfigDict(extra="allow")
     history_years: int
@@ -732,6 +743,8 @@ class WalkForwardCfg(BaseModel):
     default_horizon: int
     control_group: ControlGroupCfg
     attribution: AttributionCfg
+    underwater_horizons: list[int] = Field(min_length=1)
+    streak_min_n: int
 
     @model_validator(mode="after")
     def _validate(self) -> "WalkForwardCfg":
@@ -746,6 +759,10 @@ class WalkForwardCfg(BaseModel):
                 f"walk_forward.default_horizon ({self.default_horizon}) must be one of "
                 f"walk_forward.horizons ({self.horizons})"
             )
+        if any(h <= 0 for h in self.underwater_horizons):
+            raise ValueError("walk_forward.underwater_horizons must all be positive")
+        if self.streak_min_n <= 0:
+            raise ValueError("walk_forward.streak_min_n must be positive")
         return self
 
 

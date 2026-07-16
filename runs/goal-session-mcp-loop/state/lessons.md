@@ -357,3 +357,9 @@ same degraded-evidence condition.
 **Applies to:** any iter whose canonical browser-qa lane returns SKIPPED (Chrome MCP / frontend infra);
 any evaluator facing "target's own canonical lane didn't run" — check demo + functional-QA frames + audit
 byte-match before treating a journey as unverified.
+
+## iter-41 — 2026-07-16T01:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** On the LAST-journey FULL iter, "all 25 journeys passing" does NOT automatically mean GOAL_ACHIEVED — the deterministic achievement gate (goal-gates.sh) would mechanically accept it (it never checks that goldens were replayed), so the first-key evaluator must not lean on the gate to catch a premature call. Here three grounded reasons forced CONTINUE: (a) iter-41's own spec DoD explicitly DEFERS the required-set deterministic golden-replay to iter-42; (b) J-23.json/J-24.json/J-25.json have never run through demo_runner --mode verify (a FULL iter routes through run-phase.sh, which has no replay lane — recurred iter-33/36/38/40/41); (c) the prior evaluator + this iter's audit both sequenced GOAL_ACHIEVED to come AFTER the iter-42 lean closeout. The cleanest GOAL_ACHIEVED is one where the whole set carries fresh reproducible replay evidence, which the lean closeout produces.
+**Applies to:** any goal-mode session that reaches "last Must-have delivered via a FULL iter" — treat GOAL_ACHIEVED as reachable only AFTER a lean deterministic-replay closeout that folds in every never-replayed golden; and the iter-42 evaluator specifically must confirm the replay ARTIFACT actually exists (do not accept a "replay ran next step" hand-wave — the iter-33/36 CLOSURE-FAIL trap).

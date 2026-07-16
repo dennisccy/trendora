@@ -23,20 +23,28 @@ import pytest
 from sqlalchemy import func
 from sqlmodel import Session, select
 
+import app.engine.market_phase as market_phase
 from app.config import load_config
 from app.db import create_db_and_tables, make_engine
 from app.engine.forward_testing import (
+    _claim_samples_kwargs,
+    _drawdown_expectations_cache_subject,
     backfill_forward_returns,
+    compute_drawdown_expectations,
+    compute_drawdown_expectations_cached,
     compute_forward_aggregates,
     forward_excursions,
     forward_return,
     max_drawdown,
+    time_to_recover_days,
+    underwater_days,
     walk_forward_asof_dates,
 )
 from app.engine.prices import bar_cache, bars_after, bars_asof, close_on, latest_data_date
 from app.engine.scanner import run_scan
 from app.models import (
     DailyPrice,
+    EventStudyCache,
     ForwardReturn,
     ScannerResult,
     ScannerRun,
@@ -324,6 +332,86 @@ def test_max_drawdown_within_mae_relationship():
     mdd = max_drawdown(post, 100.0, 2)
     ex = forward_excursions(post, 100.0, 2)
     assert mdd <= ex["mae"] <= 0
+
+
+# ==================================================================================================
+# underwater_days / time_to_recover_days — pure no-lookahead "dry spell" math (iter-41, J-25)
+# ==================================================================================================
+def test_underwater_days_counts_closes_below_running_peak():
+    """The running peak is seeded at entry (mirrors max_drawdown) and raised by each bar's HIGH before
+    that SAME bar's close is checked against it — a bar that closes exactly AT its own fresh peak is not
+    counted underwater; every other bar whose close sits below the running peak is."""
+    # entry 100; bar0 high102/low98/close99 (peak->102, 99<102 underwater);
+    # bar1 high101/low85/close90 (peak stays 102, 90<102 underwater);
+    # bar2 high105/low92/close105 (peak->105, close==peak -> NOT underwater);
+    # bar3 high112/low108/close110 (peak stays 105... wait 112>105 -> peak->112, 110<112 underwater)
+    post = _ex_bars([(102, 98, 99), (101, 85, 90), (105, 92, 105), (112, 108, 110)])
+    assert underwater_days(post, 100.0, 4) == 3  # bar0, bar1, bar3 underwater; bar2 closes at its own peak
+
+
+def test_underwater_days_seeded_at_entry_first_bar_below_entry():
+    """The peak is seeded at entry_close, so a FIRST bar entirely below entry is measured against the
+    entry itself (not fabricated as 'above peak')."""
+    post = _ex_bars([(98, 90, 92)])  # high/low/close all below entry 100 -> peak stays 100, 92<100
+    assert underwater_days(post, 100.0, 1) == 1
+
+
+def test_underwater_days_na_when_fewer_than_h_post_bars_or_no_entry():
+    """Shares the EXACT no-lookahead NA gate as forward_return/max_drawdown: None — never a fabricated
+    0 — when fewer than `horizon` post-bars exist or the entry is missing/zero."""
+    post = _ex_bars([(110, 95, 105), (120, 90, 115)])
+    assert underwater_days(post, 100.0, 3) is None
+    assert underwater_days([], 100.0, 1) is None
+    assert underwater_days(post, None, 1) is None
+    assert underwater_days(post, 0.0, 1) is None
+
+
+def test_underwater_days_unchanged_when_later_bars_removed():
+    """No-lookahead: removing bars dated > d+h does not change the h-day underwater count."""
+    full = _ex_bars([(110, 95, 105), (120, 90, 115), (300, 5, 200), (90, 80, 85)])
+    truncated = _ex_bars([(110, 95, 105), (120, 90, 115)])
+    assert underwater_days(full, 100.0, 2) == underwater_days(truncated, 100.0, 2)
+
+
+def test_time_to_recover_days_counts_bars_from_trough_to_entry_reclaim():
+    """time_to_recover = bars from the max_drawdown TROUGH (the SAME running-peak trough max_drawdown
+    identifies) until close first reaches >= entry_close, within the horizon window."""
+    # entry 100; trough is bar1 (worst peak-to-trough drop) as established by max_drawdown's own math.
+    post = _ex_bars([(102, 98, 99), (101, 85, 90), (95, 88, 93), (105, 92, 104)])
+    mdd = max_drawdown(post, 100.0, 4)
+    assert mdd == pytest.approx(85 / 102 - 1)  # confirms the trough is bar1 (peak 102 by then)
+    # bar1 close=90 (no), bar2 close=93 (no), bar3 close=104 (recovers) -> 2 bars after the trough
+    assert time_to_recover_days(post, 100.0, 4) == 2
+
+
+def test_time_to_recover_days_zero_when_trough_bar_itself_recovers():
+    """0 when the trough bar's OWN close already sits at/above the entry level (never a fabricated
+    positive count for an immediate same-bar reclaim)."""
+    post = _ex_bars([(130, 95, 129)])  # single bar: low 95 is the trough, but close 129 >= entry 100
+    assert time_to_recover_days(post, 100.0, 1) == 0
+
+
+def test_time_to_recover_days_na_when_never_recovers_in_window():
+    """None (NA — never a fabricated horizon-sentinel) when the close never reclaims the entry level
+    within the horizon window."""
+    post = _ex_bars([(102, 98, 99), (101, 85, 90), (95, 88, 93), (99, 92, 96)])  # never closes >= 100 again
+    assert time_to_recover_days(post, 100.0, 4) is None
+
+
+def test_time_to_recover_days_na_when_fewer_than_h_post_bars_or_no_entry():
+    """Shares the EXACT no-lookahead NA gate as forward_return/max_drawdown."""
+    post = _ex_bars([(110, 95, 105), (120, 90, 115)])
+    assert time_to_recover_days(post, 100.0, 3) is None
+    assert time_to_recover_days([], 100.0, 1) is None
+    assert time_to_recover_days(post, None, 1) is None
+    assert time_to_recover_days(post, 0.0, 1) is None
+
+
+def test_time_to_recover_days_unchanged_when_later_bars_removed():
+    """No-lookahead: removing bars dated > d+h does not change the h-day time-to-recover."""
+    full = _ex_bars([(102, 98, 99), (101, 85, 90), (95, 88, 93), (105, 92, 104), (300, 5, 250)])
+    truncated = _ex_bars([(102, 98, 99), (101, 85, 90), (95, 88, 93), (105, 92, 104)])
+    assert time_to_recover_days(full, 100.0, 4) == time_to_recover_days(truncated, 100.0, 4) == 2
 
 
 # ==================================================================================================
@@ -1045,3 +1133,460 @@ def test_stored_scores_identical_with_and_without_forward_returns(backfilled_eng
     assert stored == live_now  # the snapshot's scores never changed when forward returns landed
     # and the pre-backfill fingerprint's scores match too (the definitive before/after equality)
     assert stored == before["fingerprint"]["lead_by_ticker"]
+
+
+# ==================================================================================================
+# _claim_samples_kwargs — pure claim-selector -> compute_samples kwarg translation (iter-41, J-25)
+# ==================================================================================================
+def test_claim_samples_kwargs_factor_claim():
+    claim = {
+        "decile": 10, "direction": "positive", "factor": "vcp_contraction", "horizon": 20,
+        "kind": "factor", "slice_kind": "decile",
+    }
+    assert _claim_samples_kwargs(claim) == {"factor_key": "vcp_contraction", "slice_kind": "decile", "decile": 10}
+
+
+def test_claim_samples_kwargs_combination_claim_parses_condition_and_renames_cohort():
+    # the EXACT shape of the real promoted composite claim in certified-claims.jsonl.
+    claim = {
+        "cohort": "composite",
+        "condition": ["rs_spy_3m:top:quintile", "high_proximity:top:tertile"],
+        "direction": "positive", "horizon": 20, "kind": "combination", "ledger": "canonical",
+    }
+    assert _claim_samples_kwargs(claim) == {
+        "cohort_kind": "composite",
+        "conditions": [
+            {"factor": "rs_spy_3m", "side": "top", "quantile": "quintile"},
+            {"factor": "high_proximity", "side": "top", "quantile": "tertile"},
+        ],
+    }
+
+
+def test_claim_samples_kwargs_event_study_claim():
+    # the EXACT shape of the real Breakout-watch x Risk-on promoted claim in certified-claims.jsonl.
+    claim = {
+        "direction": "positive", "horizon": 20, "kind": "event-study", "regime": "Risk-on",
+        "slice_kind": "regime", "subject": "Breakout-watch", "view": "pooled",
+    }
+    assert _claim_samples_kwargs(claim) == {
+        "subject_key": "Breakout-watch", "slice_kind": "regime", "regime": "Risk-on", "view": "pooled",
+    }
+
+
+def test_claim_samples_kwargs_malformed_condition_returns_none():
+    claim = {"kind": "combination", "cohort": "composite", "condition": ["not-three-parts"], "horizon": 20}
+    assert _claim_samples_kwargs(claim) is None
+
+
+def test_claim_samples_kwargs_ignores_non_selector_claim_fields():
+    """`direction` / `signal` / `ledger` / `horizon` / `kind` are NOT selector keys (they are handled
+    separately by the caller) — they must never leak into the compute_samples kwargs dict."""
+    claim = {
+        "kind": "factor", "factor": "leadership_score", "signal": "leadership_score",
+        "slice_kind": "total", "horizon": 20, "direction": "positive",
+    }
+    assert _claim_samples_kwargs(claim) == {"factor_key": "leadership_score", "slice_kind": "total"}
+
+
+# ==================================================================================================
+# compute_drawdown_expectations — phase-conditional drawdown & dry-spell expectations (iter-41, J-25)
+# ==================================================================================================
+DD_H = 20  # forward horizon used throughout this fixture (in config.walk_forward.horizons)
+
+
+def _dd_cfg(min_sample: int = 3, streak_min_n: int = 2):
+    """The real config with REDUCED min_sample / streak_min_n floors so a small hand-built fixture can
+    exercise both the 'sufficient' and 'insufficient' cells cheaply (mirrors test_research.py's own
+    `min_sample`-reduction technique for the identical reason)."""
+    cfg = load_config()
+    wf = cfg.walk_forward.model_copy(update={"min_sample": min_sample, "streak_min_n": streak_min_n})
+    return cfg.model_copy(update={"walk_forward": wf})
+
+
+def _add_dd_fr(session, run, symbol, horizon, ret, mdd=None, uw=None, ttr=None):
+    """A ForwardReturn row carrying its OWN run's REAL asof_date (unlike the generic `_add_fr` helper
+    above, which hardcodes a fixed date for tests that never read `ForwardReturn.asof_date` directly).
+    `compute_drawdown_expectations` reads `ForwardReturn.asof_date` verbatim (no ScannerRun join) to key
+    its lookup, exactly as the real `_insert_run_forward_returns` INSERT path keeps it in sync with
+    `run.asof_date` — this fixture must do the same or the join would silently miss every row."""
+    session.add(ForwardReturn(
+        run_id=run.id, symbol=symbol, horizon=horizon,
+        asof_date=run.asof_date, entry_close=100.0,
+        measured_date=run.asof_date + timedelta(days=horizon * 2),
+        realized_return=ret, max_drawdown=mdd, underwater_days=uw, time_to_recover_days=ttr,
+    ))
+
+
+# Expansion phase: 4 dates, ticker AAA — fully populated except the 3rd date's time_to_recover_days
+# (honest NA, never recovered in-window). Values chosen so median/p90 are exact by construction.
+_EXP_DATES = [date(2025, 1, 10), date(2025, 2, 10), date(2025, 3, 10), date(2025, 4, 10)]
+_EXP_MDD = [-0.05, -0.10, -0.15, -0.20]
+_EXP_UW = [2, 4, 6, 8]
+_EXP_TTR = [3, 5, None, 10]
+_EXP_RET = [0.01, -0.01, -0.02, 0.03]  # date order pos/neg/neg/pos -> longest negative streak == 2
+
+# Correction phase: 2 dates, tickers BBB/DDD — BBB fully populated, DDD's THREE dry-spell/MDD columns are
+# NULL (a live DB not yet rebuilt) so the phase's return-count (both count) and its distribution n (BBB
+# only) diverge on purpose — proving the null columns are excluded from those measures, never crashed.
+_CORR_DATES = [date(2025, 5, 10), date(2025, 6, 10)]
+_CORR_TICKERS = ["BBB", "DDD"]
+_CORR_MDD = [-0.30, None]
+_CORR_UW = [15, None]
+_CORR_TTR = [1, None]
+_CORR_RET = [-0.05, -0.08]  # both negative -> a 2-long streak (n=2 dates clears the reduced streak floor)
+
+_UNCLASSIFIED_DATE = date(2025, 7, 10)  # ticker CCC — deliberately ABSENT from the mocked phase map
+
+
+def _fake_phase_ctx(session=None, as_of=None, config=None):
+    """The served `market_phase` timeline, monkeypatched (mirrors test_regime_phase_factor.py /
+    test_phase_severity_lab.py's established pattern) so the by-phase join is exact by construction — the
+    UNCLASSIFIED date is deliberately absent, mirroring a warm-up-head date with insufficient benchmark
+    history (an honest gap, never a fabricated phase)."""
+    ctx = {
+        _EXP_DATES[0].isoformat(): {"phase": "Expansion", "severity": 10.0, "p_bear": 0.05},
+        _EXP_DATES[1].isoformat(): {"phase": "Expansion", "severity": 12.0, "p_bear": 0.05},
+        _EXP_DATES[2].isoformat(): {"phase": "Expansion", "severity": 15.0, "p_bear": 0.06},
+        _EXP_DATES[3].isoformat(): {"phase": "Expansion", "severity": 11.0, "p_bear": 0.05},
+        _CORR_DATES[0].isoformat(): {"phase": "Correction", "severity": 55.0, "p_bear": 0.40},
+        _CORR_DATES[1].isoformat(): {"phase": "Correction", "severity": 58.0, "p_bear": 0.42},
+    }
+    if as_of is None:
+        return dict(ctx)
+    return {d: v for d, v in ctx.items() if date.fromisoformat(d) <= as_of}
+
+
+@pytest.fixture()
+def dd_expectations_engine(tmp_path, monkeypatch):
+    engine = make_engine(f"sqlite:///{tmp_path / 'dd_expectations.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        for d, mdd, uw, ttr, ret in zip(_EXP_DATES, _EXP_MDD, _EXP_UW, _EXP_TTR, _EXP_RET):
+            run = _add_run(session, d, "Risk-on")
+            _add_result(session, run.id, "AAA", "A", "Actionable", "Technology", 1)
+            _add_dd_fr(session, run, "AAA", DD_H, ret, mdd=mdd, uw=uw, ttr=ttr)
+        for d, ticker, mdd, uw, ttr, ret in zip(
+            _CORR_DATES, _CORR_TICKERS, _CORR_MDD, _CORR_UW, _CORR_TTR, _CORR_RET
+        ):
+            run = _add_run(session, d, "Risk-off")
+            _add_result(session, run.id, ticker, "C", "Avoid", "Technology", 1)
+            _add_dd_fr(session, run, ticker, DD_H, ret, mdd=mdd, uw=uw, ttr=ttr)
+        # a valid observation with NO causal phase entry (excluded, never fabricated into a bucket).
+        run = _add_run(session, _UNCLASSIFIED_DATE, "Risk-on")
+        _add_result(session, run.id, "CCC", "B", "Breakout-watch", "Technology", 1)
+        _add_dd_fr(session, run, "CCC", DD_H, 0.10, mdd=-0.02, uw=1, ttr=2)
+        session.commit()
+    monkeypatch.setattr(market_phase, "phase_context_by_date", _fake_phase_ctx)
+    return engine
+
+
+_FACTOR_CLAIM = {
+    "kind": "factor", "factor": "leadership_score", "slice_kind": "total", "horizon": DD_H,
+    "direction": "positive",
+}
+
+
+def _by_phase(payload, phase):
+    return next(row for row in payload["by_phase"] if row["phase"] == phase)
+
+
+def test_compute_drawdown_expectations_exact_per_phase_median_p90_n(dd_expectations_engine):
+    """Expansion (n=4, >= the reduced floor): exact median/p90 for max_drawdown / underwater_days (both
+    fully populated) and time_to_recover_days (3 of 4 populated — the 3rd date's None is excluded from
+    ITS OWN n, honest NA) — hand-computed via the SAME linear-interpolation percentile the risk-budget
+    gap profile uses (J-24). The loss streak is counted at the walk-forward cadence."""
+    with Session(dd_expectations_engine) as session:
+        payload = compute_drawdown_expectations(session, _FACTOR_CLAIM, _dd_cfg())
+    assert payload is not None
+    assert payload["horizon"] == DD_H
+    assert payload["min_sample"] == 3
+    assert payload["streak_min_n"] == 2
+    assert payload["survivorship_bias"]  # non-empty, the shared module-level caveat constant
+    assert payload["method_note"]
+
+    exp = _by_phase(payload, "Expansion")
+    assert exp["n"] == 4
+    mdd = exp["max_drawdown"]
+    assert mdd["insufficient"] is False and mdd["n"] == 4
+    assert mdd["median"] == pytest.approx(-0.125)
+    assert mdd["p90"] == pytest.approx(-0.065)
+    uw = exp["underwater_days"]
+    assert uw["insufficient"] is False and uw["n"] == 4
+    assert uw["median"] == pytest.approx(5)
+    assert uw["p90"] == pytest.approx(7.4)
+    ttr = exp["time_to_recover_days"]
+    assert ttr["insufficient"] is False and ttr["n"] == 3  # the None (3rd date) excluded from ITS OWN n
+    assert ttr["median"] == pytest.approx(5)
+    assert ttr["p90"] == pytest.approx(9)
+    streak = exp["loss_streak"]
+    assert streak["insufficient"] is False and streak["n"] == 4
+    assert streak["value"] == 2  # d2,d3 (both negative) are the longest consecutive run
+
+
+def test_compute_drawdown_expectations_insufficient_phase_and_null_columns_excluded(dd_expectations_engine):
+    """Correction (n=2 returns, >= the streak floor but < the distribution floor): the phase-level `n`
+    counts BOTH dates (every observation with a realized return), but max_drawdown/underwater_days/
+    time_to_recover_days each carry n=1 (only BBB — DDD's stored dry-spell/MDD columns are NULL,
+    simulating a live DB not yet rebuilt) and read 'insufficient' — never crash, never a fabricated
+    distribution over the missing values. The loss-streak floor is satisfied independently of the
+    distribution floor (the two floors are genuinely separate honesty gates)."""
+    with Session(dd_expectations_engine) as session:
+        payload = compute_drawdown_expectations(session, _FACTOR_CLAIM, _dd_cfg())
+    corr = _by_phase(payload, "Correction")
+    assert corr["n"] == 2  # both BBB and DDD counted (each had a realized return)
+    for measure in ("max_drawdown", "underwater_days", "time_to_recover_days"):
+        cell = corr[measure]
+        assert cell["n"] == 1 and cell["insufficient"] is True
+        assert cell["median"] is None and cell["p90"] is None
+    streak = corr["loss_streak"]
+    assert streak["n"] == 2 and streak["insufficient"] is False
+    assert streak["value"] == 2  # both dates negative -> a 2-long streak
+
+
+def test_compute_drawdown_expectations_every_configured_phase_padded(dd_expectations_engine):
+    """Every configured `market_phase.labels` value is emitted, in config order, even at n=0 (a cohort
+    that never saw Pullback/Bear/Recovery still discloses that honestly rather than omitting the row)."""
+    with Session(dd_expectations_engine) as session:
+        payload = compute_drawdown_expectations(session, _FACTOR_CLAIM, _dd_cfg())
+    assert [row["phase"] for row in payload["by_phase"]] == [
+        "Expansion", "Pullback", "Correction", "Bear", "Recovery",
+    ]
+    for phase in ("Pullback", "Bear", "Recovery"):
+        row = _by_phase(payload, phase)
+        assert row["n"] == 0
+        for measure in ("max_drawdown", "underwater_days", "time_to_recover_days"):
+            assert row[measure] == {"median": None, "p90": None, "n": 0, "insufficient": True}
+        assert row["loss_streak"] == {"value": None, "n": 0, "insufficient": True}
+
+
+def test_compute_drawdown_expectations_unclassified_date_excluded_never_fabricated(dd_expectations_engine):
+    """A valid observation whose snapshot date carries NO causal phase entry (mirrors a warm-up-head date
+    with insufficient benchmark history) is EXCLUDED from every phase bucket — never fabricated into one,
+    and never silently inflates a phase's n."""
+    with Session(dd_expectations_engine) as session:
+        payload = compute_drawdown_expectations(session, _FACTOR_CLAIM, _dd_cfg())
+    total_classified = sum(row["n"] for row in payload["by_phase"])
+    assert total_classified == 6  # 4 Expansion + 2 Correction; the unclassified CCC date is excluded
+
+
+def test_compute_drawdown_expectations_max_drawdown_reused_verbatim_not_recomputed(dd_expectations_engine):
+    """The served max_drawdown values are the STORED figures read VERBATIM — proven structurally: this
+    fixture carries NO `DailyPrice` bar at all, so recomputing a drawdown from bars would be impossible
+    (no price series exists to read). The served Expansion median exactly matches the hand-set stored
+    values, confirming a pure read, never a recompute."""
+    with Session(dd_expectations_engine) as session:
+        assert session.scalar(select(func.count()).select_from(DailyPrice)) == 0
+        payload = compute_drawdown_expectations(session, _FACTOR_CLAIM, _dd_cfg())
+    assert _by_phase(payload, "Expansion")["max_drawdown"]["median"] == pytest.approx(-0.125)
+
+
+def test_compute_drawdown_expectations_none_when_horizon_outside_underwater_horizons(dd_expectations_engine):
+    """A claim's horizon outside the configured `underwater_horizons` scope yields no panel — an honest
+    scope gate, never a crash or a cross-horizon-mismatched figure."""
+    cfg = load_config()
+    wf = cfg.walk_forward.model_copy(update={"underwater_horizons": [1, 5]})  # 20 excluded
+    cfg = cfg.model_copy(update={"walk_forward": wf})
+    with Session(dd_expectations_engine) as session:
+        assert compute_drawdown_expectations(session, _FACTOR_CLAIM, cfg) is None
+
+
+def test_compute_drawdown_expectations_none_when_cohort_unresolvable(dd_expectations_engine):
+    """An unknown factor key (`compute_samples` raises ValueError) resolves to None — never a 500, never
+    a crash into the caller."""
+    claim = {**_FACTOR_CLAIM, "factor": "does_not_exist_factor"}
+    with Session(dd_expectations_engine) as session:
+        assert compute_drawdown_expectations(session, claim, _dd_cfg()) is None
+
+
+def test_compute_drawdown_expectations_none_when_zero_observations(tmp_path):
+    """A validly-resolvable cohort with zero matching observations (no stored ForwardReturn at this
+    claim's horizon) is an honest empty panel (None), never a fabricated one."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'empty_cohort.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        run = _add_run(session, date(2025, 1, 10), "Risk-on")
+        _add_result(session, run.id, "AAA", "A", "Actionable", "Technology", 1)
+        _add_dd_fr(session, run, "AAA", 5, 0.02)  # only horizon 5 stored; the claim below asks for h=20
+        session.commit()
+    with Session(engine) as session:
+        assert compute_drawdown_expectations(session, _FACTOR_CLAIM, _dd_cfg()) is None
+
+
+def test_compute_drawdown_expectations_loss_streak_cadence_not_daily_double_count(tmp_path, monkeypatch):
+    """B-205 trap: multiple tickers sharing ONE snapshot date must collapse to a SINGLE cadence point (the
+    cohort's MEAN return that date) before the streak is counted — never one point per ticker, which would
+    fabricate a longer 'streak' than the cohort actually experienced as a single period."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'streak.db'}")
+    create_db_and_tables(engine)
+    dates = [date(2025, 1, 10), date(2025, 2, 10), date(2025, 3, 10)]
+    # date1: all 3 negative (mean<0); date2: mostly positive (mean>0); date3: all 3 negative (mean<0).
+    signs = [[-0.01, -0.02, -0.03], [-0.05, 0.10, 0.10], [-0.01, -0.02, -0.03]]
+    with Session(engine) as session:
+        for d, rets in zip(dates, signs):
+            run = _add_run(session, d, "Risk-on")
+            for i, ret in enumerate(rets):
+                ticker = f"T{i}"
+                _add_result(session, run.id, ticker, "C", "Avoid", "Technology", i + 1)
+                _add_dd_fr(session, run, ticker, DD_H, ret, mdd=-0.01, uw=1, ttr=1)
+        session.commit()
+
+    def _ctx(session=None, as_of=None, config=None):
+        return {d.isoformat(): {"phase": "Expansion", "severity": 10.0, "p_bear": 0.05} for d in dates}
+
+    monkeypatch.setattr(market_phase, "phase_context_by_date", _ctx)
+    with Session(engine) as session:
+        payload = compute_drawdown_expectations(session, _FACTOR_CLAIM, _dd_cfg())
+    streak = _by_phase(payload, "Expansion")["loss_streak"]
+    # A per-observation (WRONG) scan over the 9 raw rows would see several consecutive negatives (>= 3).
+    # At the walk-forward cadence there are only 3 dates: mean<0, mean>0, mean<0 -> longest run == 1.
+    assert streak["n"] == 3  # 3 distinct cadence dates, never the 9 raw observations
+    assert streak["value"] == 1
+
+
+def test_compute_drawdown_expectations_combination_claim_kind_resolves(tmp_path, monkeypatch):
+    """A real combination-shaped ledger claim (mirrors the actual promoted `rs_spy_3m x high_proximity`
+    composite claim's JSON shape) resolves through `compute_drawdown_expectations` end-to-end — proving
+    the `cohort`->`cohort_kind` rename + `condition`-string parsing integrate correctly with
+    `compute_samples`'s combination path (not just in isolation, per the `_claim_samples_kwargs` unit
+    tests above)."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'combo.db'}")
+    create_db_and_tables(engine)
+    combo_dates = [date(2025, 1, 10), date(2025, 2, 10), date(2025, 3, 10), date(2025, 4, 10)]
+    with Session(engine) as session:
+        for i, d in enumerate(combo_dates):
+            run = _add_run(session, d, "Risk-on")
+            session.add(ScannerResult(
+                run_id=run.id, ticker="AAA", name="AAA", sector="Technology",
+                leadership_score=90.0, leadership_bucket="A",
+                entry_quality_score=90.0, entry_quality_bucket="A",
+                risk_score=50.0, risk_bucket="C",
+                setup_status="Actionable", rank=1, record_json="{}",
+            ))
+            _add_dd_fr(session, run, "AAA", DD_H, 0.02 if i % 2 == 0 else -0.01, mdd=-0.03, uw=2, ttr=1)
+        session.commit()
+
+    def _ctx(session=None, as_of=None, config=None):
+        return {d.isoformat(): {"phase": "Expansion", "severity": 10.0, "p_bear": 0.05} for d in combo_dates}
+
+    monkeypatch.setattr(market_phase, "phase_context_by_date", _ctx)
+    claim = {
+        "kind": "combination", "cohort": "composite",
+        "condition": ["leadership_score:top:half", "entry_quality_score:top:half"],
+        "direction": "positive", "horizon": DD_H,
+    }
+    with Session(engine) as session:
+        payload = compute_drawdown_expectations(session, claim, _dd_cfg())
+    assert payload is not None
+    assert _by_phase(payload, "Expansion")["n"] == 4  # AAA scores top-half on both legs every date
+
+
+def test_compute_drawdown_expectations_event_study_claim_kind_resolves(tmp_path, monkeypatch):
+    """A real event-study-shaped ledger claim (mirrors the actual `Breakout-watch x Risk-on` promoted
+    claim's JSON shape) resolves through `compute_drawdown_expectations` end-to-end."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'event_study.db'}")
+    create_db_and_tables(engine)
+    es_dates = [date(2025, 1, 10), date(2025, 2, 10), date(2025, 3, 10)]
+    with Session(engine) as session:
+        for d in es_dates:
+            run = _add_run(session, d, "Risk-on")
+            _add_result(session, run.id, "AAA", "A", "Breakout-watch", "Technology", 1)
+            _add_dd_fr(session, run, "AAA", DD_H, 0.02, mdd=-0.04, uw=3, ttr=2)
+        session.commit()
+
+    def _ctx(session=None, as_of=None, config=None):
+        return {d.isoformat(): {"phase": "Expansion", "severity": 10.0, "p_bear": 0.05} for d in es_dates}
+
+    monkeypatch.setattr(market_phase, "phase_context_by_date", _ctx)
+    claim = {
+        "kind": "event-study", "subject": "Breakout-watch", "slice_kind": "regime", "regime": "Risk-on",
+        "view": "pooled", "direction": "positive", "horizon": DD_H,
+    }
+    with Session(engine) as session:
+        payload = compute_drawdown_expectations(session, claim, _dd_cfg())
+    assert payload is not None
+    assert _by_phase(payload, "Expansion")["n"] == 3
+
+
+# ==================================================================================================
+# compute_drawdown_expectations_cached — the J-72 EventStudyCache performance layer (iter-41, J-25)
+# ==================================================================================================
+def test_compute_drawdown_expectations_cached_byte_identical_and_single_row(dd_expectations_engine):
+    """A cache MISS then HIT both return a payload BYTE-IDENTICAL to a fresh uncached
+    `compute_drawdown_expectations` call, and exactly ONE `EventStudyCache` row is written for this claim
+    (no duplicate insert on the second call)."""
+    cfg = _dd_cfg()
+    with Session(dd_expectations_engine) as session:
+        fresh = compute_drawdown_expectations(session, _FACTOR_CLAIM, cfg)
+        miss = compute_drawdown_expectations_cached(session, _FACTOR_CLAIM, cfg)
+        hit = compute_drawdown_expectations_cached(session, _FACTOR_CLAIM, cfg)
+        subject = _drawdown_expectations_cache_subject(_FACTOR_CLAIM)
+        rows = session.exec(select(EventStudyCache).where(EventStudyCache.subject == subject)).all()
+    assert json.dumps(fresh, sort_keys=True) == json.dumps(miss, sort_keys=True) == json.dumps(hit, sort_keys=True)
+    assert len(rows) == 1
+
+
+def test_compute_drawdown_expectations_cached_avoids_recompute_on_hit(dd_expectations_engine, monkeypatch):
+    """The SECOND call for the SAME claim never re-invokes the uncached `compute_drawdown_expectations` —
+    proven by monkeypatching it to raise if called a second time (a call-count proof, not just a
+    byte-match, so a bug that silently recomputed-but-still-matched would still fail this test)."""
+    import app.engine.forward_testing as forward_testing_module
+
+    cfg = _dd_cfg()
+    call_count = {"n": 0}
+    real = forward_testing_module.compute_drawdown_expectations
+
+    def _counting(*args, **kwargs):
+        call_count["n"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(forward_testing_module, "compute_drawdown_expectations", _counting)
+    with Session(dd_expectations_engine) as session:
+        compute_drawdown_expectations_cached(session, _FACTOR_CLAIM, cfg)  # MISS -> 1 call
+        compute_drawdown_expectations_cached(session, _FACTOR_CLAIM, cfg)  # HIT -> 0 more calls
+        compute_drawdown_expectations_cached(session, _FACTOR_CLAIM, cfg)  # HIT -> 0 more calls
+    assert call_count["n"] == 1
+
+
+def test_compute_drawdown_expectations_cached_refreshes_on_dataset_version_change(dd_expectations_engine):
+    """The cache refreshes when the dataset changes (no stale figure): adding one more forward_returns row
+    bumps `_dataset_version`, so the next call recomputes (a genuinely different cohort — one more
+    Expansion-phase observation, on the SAME already-classified date) rather than serving the pre-change
+    payload, and the stale row is pruned."""
+    cfg = _dd_cfg()
+    with Session(dd_expectations_engine) as session:
+        before = compute_drawdown_expectations_cached(session, _FACTOR_CLAIM, cfg)
+        subject = _drawdown_expectations_cache_subject(_FACTOR_CLAIM)
+        from app.engine.research import _dataset_version
+        v_before = _dataset_version(session)
+        rows_before = session.exec(select(EventStudyCache).where(EventStudyCache.subject == subject)).all()
+        assert len(rows_before) == 1 and rows_before[0].dataset_version == v_before
+
+        # change the dataset: one more leadership_score observation on the FIRST Expansion date (a new
+        # ticker on the ALREADY-classified _EXP_DATES[0] run — genuinely grows the classified cohort by 1,
+        # unlike a brand-new date the fixture's mocked phase map does not cover).
+        existing_run = session.exec(
+            select(ScannerRun).where(ScannerRun.asof_date == _EXP_DATES[0])
+        ).one()
+        _add_result(session, existing_run.id, "ZZZ", "A", "Actionable", "Technology", 2)
+        _add_dd_fr(session, existing_run, "ZZZ", DD_H, 0.05, mdd=-0.01, uw=1, ttr=1)
+        session.commit()
+        v_after = _dataset_version(session)
+        assert v_after != v_before
+
+        after = compute_drawdown_expectations_cached(session, _FACTOR_CLAIM, cfg)
+        rows_after = session.exec(select(EventStudyCache).where(EventStudyCache.subject == subject)).all()
+    # the stale (v_before) row was pruned; exactly one row remains, keyed to the new stamp.
+    assert len(rows_after) == 1 and rows_after[0].dataset_version == v_after
+    assert _by_phase(before, "Expansion")["n"] == 4
+    assert _by_phase(after, "Expansion")["n"] == 5  # the recompute picked up the new observation
+
+
+def test_compute_drawdown_expectations_cached_none_when_horizon_outside_scope_skips_db(dd_expectations_engine):
+    """The scope gate short-circuits BEFORE any cache lookup (never writes a row for a claim that can
+    never resolve, regardless of dataset state)."""
+    cfg = load_config()
+    wf = cfg.walk_forward.model_copy(update={"underwater_horizons": [1, 5]})
+    cfg = cfg.model_copy(update={"walk_forward": wf})
+    with Session(dd_expectations_engine) as session:
+        assert compute_drawdown_expectations_cached(session, _FACTOR_CLAIM, cfg) is None
+        assert session.scalar(select(func.count()).select_from(EventStudyCache)) == 0

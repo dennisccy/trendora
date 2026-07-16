@@ -34,8 +34,11 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Optional
 
-from app.config import REPO_ROOT, get_config
+from sqlmodel import Session
+
+from app.config import REPO_ROOT, Config, get_config
 from app.engine.ledger import FORWARD_WALK_TYPE, read_entries
 from app.engine.referee import STATUS_PASS
 
@@ -107,7 +110,12 @@ def _claim_row(entry: dict) -> dict:
     }
 
 
-def build_evidence_payload(ledger_path: str) -> dict:
+def build_evidence_payload(
+    ledger_path: str,
+    *,
+    session: Optional[Session] = None,
+    config: Optional[Config] = None,
+) -> dict:
     """Project the certified-claims ledger at `ledger_path` into the read-only `/api/evidence` payload.
 
       - `claims`: every ORIGINAL claim row, read verbatim. Forward-walk MONITORING records
@@ -116,13 +124,35 @@ def build_evidence_payload(ledger_path: str) -> dict:
         AND that NAME a `signal`. A signal absent from this map is, by definition, "Not yet proven".
 
     A missing/empty ledger ⇒ `{"claims": [], "proven_signals": {}}`. RECOMPUTES NOTHING — every verdict
-    field is re-displayed exactly as the referee wrote it."""
+    field is re-displayed exactly as the referee wrote it.
+
+    `session` / `config` (iter-41, J-25) are OPTIONAL keyword-only params, default `None` — EVERY existing
+    call site (~13, incl. the frozen-golden `test_canonical_ledger_frozen_golden`) calls this with ONE
+    positional `ledger_path` arg and MUST stay green unedited. When `session` is `None` (the default), NO
+    `expectations` key is attached to any row — the row dict is BYTE-IDENTICAL to before this iteration.
+    Only when `session` is provided (the real `/evidence` route) does each claim additionally carry the
+    phase-conditional drawdown/dry-spell `expectations` payload from
+    `app.engine.forward_testing.compute_drawdown_expectations` (an honestly-absent key when that returns
+    `None` — an unresolvable cohort or a zero-observation cohort — never a crash, never a fabricated
+    panel)."""
     claims: list[dict] = []
     proven_signals: dict[str, dict] = {}
     for entry in read_entries(ledger_path):
         if not isinstance(entry, dict) or entry.get("type") == FORWARD_WALK_TYPE:
             continue
         row = _claim_row(entry)
+        if session is not None:
+            # lazy import — app.engine.forward_testing sits BELOW this module in the dependency graph
+            # (this module never imported it before), so a module-level import is safe here; kept lazy
+            # anyway so the session-less (majority of existing) call sites pay no import cost. The CACHED
+            # entry point (not the pure `compute_drawdown_expectations`) — /api/evidence renders EVERY
+            # claim's panel on one page load, so an uncached per-claim cohort resolution multiplies the
+            # J-15 latency budget by the claim count (see the cache's own docstring for the measurement).
+            from app.engine.forward_testing import compute_drawdown_expectations_cached
+
+            expectations = compute_drawdown_expectations_cached(session, row["claim"], config)
+            if expectations is not None:
+                row["expectations"] = expectations
         claims.append(row)
         signal = row["signal"]
         if row["proven"] and signal:

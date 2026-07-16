@@ -5,10 +5,21 @@ import Link from "next/link";
 import { AlertTriangle, ShieldCheck } from "lucide-react";
 
 import { PageHeading } from "@/components/page-heading";
+import { fmtMdd } from "@/components/forward-return";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { claimAnchorId, claimSurface, regimeLabel } from "@/lib/evidence";
+import {
+  claimAnchorId,
+  claimSurface,
+  formatDays,
+  formatStreak,
+  insufficientLabel,
+  regimeLabel,
+  type DistributionCell,
+  type DrawdownExpectations,
+  type LossStreakCell,
+} from "@/lib/evidence";
 import { fetchEvidence, type CertifiedClaim, type EvidenceLedgerResponse } from "@/lib/api";
 
 type State =
@@ -221,8 +232,114 @@ function ClaimRow({ claim }: { claim: CertifiedClaim }) {
             )}
           </Field>
         </dl>
+
+        <DrawdownExpectationsPanel expectations={claim.expectations} />
       </CardContent>
     </Card>
+  );
+}
+
+/** J-25 — the phase-conditional drawdown & dry-spell expectations panel: an additive section inside the
+ *  SAME claim card, below the existing field grid. Renders NOTHING when `expectations` is absent/null
+ *  (mirrors the Stock-detail RiskBudgetCard's "return null when absent" precedent, iter-40) — never an
+ *  error boundary, never a blank placeholder. Reads `claim.expectations` VERBATIM — no client-side
+ *  recompute; every figure is the served median/p90/streak, re-formatted only. Renders for ANY claim
+ *  regardless of its PASS/FAIL verdict (outcome-neutral, J-25) — descriptive history, never a forecast. */
+function DrawdownExpectationsPanel({
+  expectations,
+}: {
+  expectations: DrawdownExpectations | null | undefined;
+}) {
+  if (!expectations) {
+    return null;
+  }
+  return (
+    <div className="space-y-2 border-t border-border pt-3" data-testid="evidence-expectations-panel">
+      <div>
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-text-faint">
+          Historical drawdown &amp; dry-spell expectations ({expectations.horizon}-day hold)
+        </h3>
+        <p className="mt-0.5 text-xs text-text-faint">
+          What following this cohort&rsquo;s methodology has historically felt like, by market phase at
+          entry — descriptive history only, never a forecast or a promise.
+        </p>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[560px] border-collapse text-sm" data-testid="evidence-expectations-table">
+          <thead>
+            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-text-faint">
+              <th className="py-1.5 pr-3 font-medium">Phase</th>
+              <th className="py-1.5 pr-3 text-right font-medium">Max-DD depth</th>
+              <th className="py-1.5 pr-3 text-right font-medium">Underwater</th>
+              <th className="py-1.5 pr-3 text-right font-medium">Time to recover</th>
+              <th className="py-1.5 text-right font-medium">Longest losing streak</th>
+            </tr>
+          </thead>
+          <tbody>
+            {expectations.by_phase.map((row) => (
+              <tr key={row.phase} className="border-b border-border last:border-b-0" data-testid="evidence-expectations-phase-row">
+                <td className="py-1.5 pr-3">
+                  <Badge variant="default">{row.phase}</Badge>
+                </td>
+                <td className="py-1.5 pr-3 text-right">
+                  <DistributionCellView cell={row.max_drawdown} format={fmtMdd} />
+                </td>
+                <td className="py-1.5 pr-3 text-right">
+                  <DistributionCellView cell={row.underwater_days} format={formatDays} />
+                </td>
+                <td className="py-1.5 pr-3 text-right">
+                  <DistributionCellView cell={row.time_to_recover_days} format={formatDays} />
+                </td>
+                <td className="py-1.5 text-right">
+                  <LossStreakCellView cell={row.loss_streak} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-text-faint" data-testid="evidence-expectations-method-note">
+        {expectations.method_note}
+      </p>
+      <p className="text-xs text-text-faint" data-testid="evidence-expectations-survivorship">
+        {expectations.survivorship_bias}
+      </p>
+    </div>
+  );
+}
+
+/** One median/p90/n distribution cell — "insufficient (n=…)" below the server's honesty floor (never a
+ *  fabricated distribution), otherwise the median with the p90 + n alongside. `format` re-displays a
+ *  served number only (never computes one) — the SAME `fmtMdd`/`formatDays` helpers other evidence
+ *  surfaces already use. */
+function DistributionCellView({
+  cell,
+  format,
+}: {
+  cell: DistributionCell;
+  format: (value: number | null | undefined) => string;
+}) {
+  if (cell.insufficient) {
+    return <span className="num text-text-faint">{insufficientLabel(cell.n)}</span>;
+  }
+  return (
+    <span className="num text-text">
+      {format(cell.median)} <span className="text-text-faint">(p90 {format(cell.p90)})</span>{" "}
+      <span className="text-text-faint">n={cell.n}</span>
+    </span>
+  );
+}
+
+/** The longest-losing-streak cell — "insufficient (n=…)" below the (independent, smaller) streak floor,
+ *  otherwise the streak length + the cadence-date count it was counted over. */
+function LossStreakCellView({ cell }: { cell: LossStreakCell }) {
+  if (cell.insufficient) {
+    return <span className="num text-text-faint">{insufficientLabel(cell.n)}</span>;
+  }
+  return (
+    <span className="num text-text">
+      {formatStreak(cell.value)} <span className="text-text-faint">(n={cell.n})</span>
+    </span>
   );
 }
 

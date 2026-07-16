@@ -121,6 +121,14 @@ _ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # or rewrites data; existing forward_returns rows read NULL until the next confirm-gated rebuild
     # repopulates them (the J-85 rebuild is the create-once path that recomputes forward returns).
     ("forward_returns", "max_drawdown", "ALTER TABLE forward_returns ADD COLUMN max_drawdown FLOAT"),
+    # iter-41 (J-25): the two append-only "dry spell" columns on forward_returns — days below the running
+    # high-water mark, and days from the max-drawdown trough back to the entry level (<= 0 case handled by
+    # NULL, never a fabricated sentinel). NULLABLE INTEGER (matches `Optional[int] = Field(default=None)` —
+    # a fresh DB carries them from the model; an existing live DB gains them in place so a non-fresh read of
+    # /api/evidence does not 500). Existing forward_returns rows read NULL until the next confirm-gated
+    # rebuild repopulates them (mirrors the max_drawdown / J-86 precedent directly above).
+    ("forward_returns", "underwater_days", "ALTER TABLE forward_returns ADD COLUMN underwater_days INTEGER"),
+    ("forward_returns", "time_to_recover_days", "ALTER TABLE forward_returns ADD COLUMN time_to_recover_days INTEGER"),
 )
 
 

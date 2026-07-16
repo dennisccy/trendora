@@ -15,9 +15,15 @@ fail-safe contract:
 """
 from __future__ import annotations
 
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
-from app.config import REPO_ROOT
+import pytest
+from sqlmodel import Session
+
+import app.engine.market_phase as market_phase
+from app.config import REPO_ROOT, load_config
+from app.db import create_db_and_tables, make_engine
 from app.engine.evidence import (
     LEDGER_PATH_ENV,
     _resolve_signal,
@@ -25,6 +31,7 @@ from app.engine.evidence import (
     resolve_ledger_path,
 )
 from app.engine.ledger import append_entry
+from app.models import ForwardReturn, ScannerResult, ScannerRun
 
 
 def _pass_entry(signal: str | None, factor: str = "leadership_score") -> dict:
@@ -531,6 +538,83 @@ def test_build_payload_excludes_forward_walk_monitoring_records(tmp_path):
     assert payload["claims"][0]["register_date"] == "2024-06-01"
     # the original certified claim still proves its signal
     assert list(payload["proven_signals"].keys()) == ["leadership_score"]
+
+
+# ==================================================================================================
+# additive `expectations` field (iter-41, J-25) — session-provided vs. session-omitted paths
+# ==================================================================================================
+@pytest.fixture()
+def evidence_dd_engine(tmp_path, monkeypatch):
+    """A minimal hand-built engine with ONE resolvable leadership_score observation at horizon 20, dated
+    into a monkeypatched 'Expansion' phase — just enough for `compute_drawdown_expectations` (fully unit-
+    tested on its own in test_forward_testing.py) to return a non-None payload for the SAME
+    decile-10/horizon-20 claim shape `_pass_entry` builds above."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'evidence_dd.db'}")
+    create_db_and_tables(engine)
+    d = date(2025, 1, 10)
+    with Session(engine) as session:
+        run = ScannerRun(
+            asof_date=d, created_at=datetime.now(timezone.utc), provider="seed", benchmark="SPY",
+            regime_score=50.0, regime_label="Risk-on", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        )
+        session.add(run)
+        session.flush()
+        session.add(ScannerResult(
+            run_id=run.id, ticker="AAA", name="AAA", sector="Technology",
+            leadership_score=90.0, leadership_bucket="A",
+            entry_quality_score=50.0, entry_quality_bucket="C",
+            risk_score=50.0, risk_bucket="C",
+            setup_status="Actionable", rank=1, record_json="{}",
+        ))
+        session.add(ForwardReturn(
+            run_id=run.id, symbol="AAA", horizon=20, asof_date=d, entry_close=100.0,
+            measured_date=d + timedelta(days=40), realized_return=0.02,
+            max_drawdown=-0.05, underwater_days=3, time_to_recover_days=5,
+        ))
+        session.commit()
+
+    def _fake_ctx(session=None, as_of=None, config=None):
+        return {d.isoformat(): {"phase": "Expansion", "severity": 10.0, "p_bear": 0.05}}
+
+    monkeypatch.setattr(market_phase, "phase_context_by_date", _fake_ctx)
+    return engine
+
+
+def test_build_payload_session_omitted_no_expectations_key(tmp_path):
+    """DEFAULT (session=None, EVERY existing call site's shape): a claim row carries NO `expectations`
+    key at all — not even `None` — the literal 'absent' the DoD requires, proving the ~13 existing
+    positional-only call sites (incl. the frozen-golden test) see a byte-identical row."""
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), _pass_entry("leadership_score"))
+    payload = build_evidence_payload(str(ledger))
+    assert "expectations" not in payload["claims"][0]
+
+
+def test_build_payload_session_provided_attaches_expectations(tmp_path, evidence_dd_engine):
+    """When a session IS provided (the real `/evidence` route), a resolvable claim's row additively
+    carries `expectations` — read straight from `compute_drawdown_expectations`, never a second
+    computation, never a client-visible recompute."""
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), _pass_entry("leadership_score"))  # factor=leadership_score, decile=10, h=20
+    with Session(evidence_dd_engine) as session:
+        payload = build_evidence_payload(str(ledger), session=session, config=load_config())
+    row = payload["claims"][0]
+    assert "expectations" in row
+    assert row["expectations"]["horizon"] == 20
+    exp_phase = next(p for p in row["expectations"]["by_phase"] if p["phase"] == "Expansion")
+    assert exp_phase["n"] == 1
+
+
+def test_build_payload_session_provided_unresolvable_claim_no_expectations_key(tmp_path, evidence_dd_engine):
+    """A session IS provided but the claim's cohort is unresolvable (an unknown factor) — the row still
+    carries NO `expectations` key (graceful, matches the session-omitted case; never a crash, never a
+    fabricated panel)."""
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), _pass_entry("leadership_score", factor="does_not_exist_factor"))
+    with Session(evidence_dd_engine) as session:
+        payload = build_evidence_payload(str(ledger), session=session, config=load_config())
+    assert "expectations" not in payload["claims"][0]
 
 
 def test_resolve_ledger_path_env_override(tmp_path, monkeypatch):

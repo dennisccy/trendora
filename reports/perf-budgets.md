@@ -453,3 +453,80 @@ under 6144 MB `VmPeak`/`VmSize` AND `VmRSS` with >= 1,000 MB margin, with run 2'
 and `/api/health`/`/api/data`/`/api/stocks` 200 throughout.** anti-goal #8 resolved on the driven J-16 path
 (final confirmation is the canonical browser-qa J-16 lane, per the iter-24 lesson).
 
+## Item I — full-universe backfill of the two new `forward_returns` "dry-spell" columns + `/api/evidence` latency (iter-41, J-25)
+
+**What changed:** two new append-only nullable columns on `forward_returns` (`underwater_days`,
+`time_to_recover_days`, the J-25 drawdown-expectations panel's stored inputs), computed in the SAME
+`_insert_run_forward_returns` INSERT pass as the existing `max_drawdown` (zero extra bar reads). Populating
+them on the deep 30-year history requires the sanctioned full-DB rebuild path (delete `trendora.db` +
+`-shm`/`-wal`, fresh boot + background warm-up) — the anti-goal #8 memory-risk surface this item measures.
+
+### Full-universe rebuild — two consecutive cold rebuilds (2026-07-15, this host, `scripts/start-backend.sh`
+under `CHAIN_BACKEND_PORT=8255`, literal `ulimit -v 6291456` KB = 6144 MB applied by the start script,
+`MALLOC_ARENA_MAX=2` confirmed via `/proc/<pid>/environ`, the REAL committed 590-symbol/30-year seed — not a
+throwaway/scaled fixture; VmPeak/VmSize/VmRSS/VmHWM sampled from `/proc/<pid>/status` after each run's
+background warm-up reported `"status":"ok"` via `GET /api/health`)
+
+| Run | VmPeak (peak VSZ) | margin under 6144 MB ceiling | VmHWM (peak RSS) | Warm-up result |
+|---|---|---|---|---|
+| Run 1 (cold DB, fresh boot) | 2,769,216 KB (2,704 MB) | **3,522,240 KB (3,440 MB, 56%)** | 1,833,768 KB (1,791 MB) | ok, 89/89 history dates |
+| Run 2 (DB deleted again, fresh boot, no restart of the harness) | 2,768,188 KB (2,703 MB) | **3,523,268 KB (3,441 MB, 56%)** | 1,833,228 KB (1,790 MB) | ok, 89/89 history dates |
+
+Run 2's peak did not exceed Run 1's (in fact 1,028 KB lower — noise). Both runs cleared the cap with wide
+(>3.4 GB) margin — well inside the committed Item H budget shape. After each rebuild:
+`SELECT COUNT(*) FROM forward_returns` = 170,229; `underwater_days` populated on 170,229/170,229 (100% —
+matches `max_drawdown`'s existing NA gate exactly, as designed); `time_to_recover_days` populated on
+103,589/170,229 (the remainder are honest NA — never recovered within the horizon window, never a
+fabricated 0). `GET /api/evidence`'s served figures were byte-identical between the two independent
+rebuilds (determinism preserved; spot-checked below).
+
+**Correctness spot-check (anti-goal #3, served value vs. an independent offline re-derivation):** claim 0
+(`leadership_score`, decile 10, horizon 20), Expansion-phase `max_drawdown` and `underwater_days` cells —
+re-derived from the SAME stored `forward_returns` rows + the SAME causal `phase_context_by_date` timeline,
+independently re-sorted/re-decile'd/re-percentiled in a standalone script (not calling
+`compute_samples`/`compute_drawdown_expectations`):
+
+| Field | Served (`GET /api/evidence`) | Independent re-derivation |
+|---|---|---|
+| Expansion `max_drawdown.median` | -0.07699885066349621 | -0.07699885066349621 |
+| Expansion `max_drawdown.p90` | -0.03715211793181653 | -0.03715211793181653 |
+| Expansion `max_drawdown.n` | 1264 | 1264 |
+| Expansion `underwater_days.median` | 20.0 | 20.0 |
+| Expansion `underwater_days.p90` | 20.0 | 20.0 |
+
+Byte-identical on every field.
+
+### `/api/evidence` latency — a regression was found and fixed this iteration
+
+The additive per-claim `expectations` field resolves a full research cohort
+(`app.engine.samples.compute_samples` — the SAME cost a Factor/Combination/Event-study lab request pays)
+for EVERY claim on the page. Measured UNCACHED against the real 7-claim ledger: **9.3–9.6 s per request**
+(every claim's cohort resolved fresh, every time) — a ~3x regression against the J-15 "pages interactive
+<= 3 s warm" budget. Fix: serve `compute_drawdown_expectations` from the SAME shared `EventStudyCache`
+table (J-72) every OTHER research-derived aggregate in this codebase already uses for exactly this
+"expensive derived aggregate, safe to cache until the dataset changes" shape — computed once per
+`(claim, dataset_version)`, refreshed automatically on any backfill/removal.
+
+**Measured (2026-07-15, warm DB from the Run 2 rebuild above, `GET /api/evidence` via `curl -w
+'%{time_total}'`, ×1 cold + ×5 warm):**
+
+| Call | Latency |
+|---|---|
+| 1st call (cache MISS — computes + persists all 7 claims) | 9.471 s |
+| 2nd call (cache HIT) | 0.017 s |
+| 3rd call (cache HIT) | 0.006 s |
+| 4th call (cache HIT) | 0.006 s |
+| 5th call (cache HIT) | 0.007 s |
+| 6th call (cache HIT) | 0.006 s |
+
+`GET /api/health` (unaffected by this change): 0.099 / 0.111 / 0.099 s — inside the ≤ 0.1 s budget (item G)
+with normal measurement noise. `GET /api/stocks` (unaffected, re-checked for regression): 0.085 / 0.133 s.
+
+**Committed never-regress budget:** `GET /api/evidence` WARM (the steady-state experience — the cache
+persists until the dataset changes) stays well under the generic J-15 "pages interactive <= 3 s warm" bar
+(measured 6–17 ms). The ONE-TIME COLD miss (paid once per dataset change, e.g. once per rebuild — the SAME
+"first view computes once" contract every other research lab in this product already carries) is bounded
+by the sum of the 7 claims' individual `compute_samples` costs on the deep basis (measured ~9.5 s today);
+if the ledger's claim count grows materially, re-measure this cold-miss bound. The full-universe two-run
+rebuild budget from Item H (VSZ/RSS margin, run 2 <= run 1) is reconfirmed unchanged by the new columns.
+

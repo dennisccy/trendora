@@ -222,6 +222,53 @@ def test_additive_migration_backfills_max_drawdown_on_existing_forward_returns(t
     create_db_and_tables(make_engine(f"sqlite:///{db}"))  # idempotent — a second run must not error
 
 
+def test_additive_migration_backfills_dry_spell_columns_on_existing_forward_returns(tmp_path):
+    """iter-41 (J-25) REGRESSION: the new `forward_returns.underwater_days` / `.time_to_recover_days`
+    columns added to the ALREADY-CREATED forward_returns table must be registered in `_ADDITIVE_COLUMNS`,
+    else an existing offline-first DB never gains them and `GET /api/evidence` 500s with `no such column`.
+    Build a LEGACY forward_returns table (with max_drawdown but WITHOUT the two new columns), then assert
+    create_db_and_tables backfills both in place (nullable, idempotent), and an existing row reads NULL
+    (honest NA — never a fabricated 0)."""
+    from sqlalchemy import inspect, text
+
+    from app.db import _ADDITIVE_COLUMNS, create_db_and_tables, make_engine
+
+    registered = {(t, c) for t, c, _ddl in _ADDITIVE_COLUMNS}
+    assert ("forward_returns", "underwater_days") in registered
+    assert ("forward_returns", "time_to_recover_days") in registered
+
+    db = tmp_path / "legacy_iter41.db"
+    engine = make_engine(f"sqlite:///{db}")
+    with engine.begin() as conn:
+        # LEGACY forward_returns WITH max_drawdown (iter-27) but WITHOUT the iter-41 dry-spell columns.
+        conn.execute(text(
+            "CREATE TABLE forward_returns ("
+            "id INTEGER PRIMARY KEY, run_id INTEGER, symbol TEXT, horizon INTEGER, asof_date DATE, "
+            "entry_close FLOAT, measured_date DATE, realized_return FLOAT, mae FLOAT, mfe FLOAT, "
+            "max_drawdown FLOAT)"
+        ))
+        conn.execute(text(
+            "INSERT INTO forward_returns (run_id, symbol, horizon, asof_date, entry_close, measured_date, "
+            "realized_return, mae, mfe, max_drawdown) VALUES "
+            "(1, 'AAA', 5, '2024-01-05', 100.0, '2024-01-12', 0.05, -0.02, 0.07, -0.03)"
+        ))
+    before = {c["name"] for c in inspect(engine).get_columns("forward_returns")}
+    assert "underwater_days" not in before
+    assert "time_to_recover_days" not in before
+
+    create_db_and_tables(engine)  # applies the additive backfill
+
+    after = {c["name"] for c in inspect(make_engine(f"sqlite:///{db}")).get_columns("forward_returns")}
+    assert "underwater_days" in after
+    assert "time_to_recover_days" in after
+    with engine.begin() as conn:
+        row = conn.execute(text(
+            "SELECT underwater_days, time_to_recover_days FROM forward_returns"
+        )).one()
+        assert row[0] is None and row[1] is None  # honest NA on the pre-existing row
+    create_db_and_tables(make_engine(f"sqlite:///{db}"))  # idempotent — a second run must not error
+
+
 def test_every_model_column_on_existing_table_is_covered_by_additive_registry(tmp_path):
     """GUARD against the iter-29 class of bug: for each table that already exists in an OLDER DB, every
     column the current SQLModel defines must EITHER be creatable on a pre-existing table via an

@@ -789,6 +789,14 @@ walk_forward:
       - { label: "1–10",  min: 1,  max: 10 }
       - { label: "11–50", min: 11, max: 50 }
       - { label: "51+",   min: 51, max: null }   # open top band (all remaining ranks)
+  # iter-41 (J-25) CONSUMED — the /evidence phase-conditional drawdown/dry-spell expectations panel
+  # (forward_testing.compute_drawdown_expectations). underwater_horizons scopes which forward horizons the
+  # panel reports underwater-duration / time-to-recover for (defaults to the full horizons set so every
+  # certified claim's own horizon is covered); streak_min_n is the loss-streak honesty floor, counted in
+  # walk-forward-cadence dates (far fewer than min_sample's per-observation count, so it needs its own,
+  # smaller floor).
+  underwater_horizons: [1, 5, 10, 20, 60]
+  streak_min_n: 10
 
 # ----------------------------------------------------------------------------------------
 # iter-18 (J-10 performance) — GET /api/stocks/{ticker}/bars presentation bounding on the deep

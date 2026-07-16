@@ -9,7 +9,11 @@ import { resolveApiBase } from "@/lib/api-base";
 import type { BudgetResponse, BudgetSpendPoint, CanonicalBudget, StagingBudget } from "@/lib/budget";
 import type {
   CertifiedClaim,
+  DistributionCell,
+  DrawdownExpectations,
   EvidenceLedgerResponse,
+  LossStreakCell,
+  PhaseExpectations,
   ProvenSignal,
 } from "@/lib/evidence";
 import type { GraveyardEntry, GraveyardResponse, RevisitProtocol } from "@/lib/graveyard";
@@ -24,6 +28,11 @@ import type {
 // alongside `fetchEvidence`. These are DISTINCT from `EvidenceAggregate` below (the Backtest forward-tested
 // aggregate) — do not confuse the two.
 export type { CertifiedClaim, EvidenceLedgerResponse, ProvenSignal };
+
+// Re-export the additive drawdown & dry-spell expectations types (goal-mcp-loop iter-41, J-25) — the
+// nullable `median`/`p90`/`value` numeric fields route every consumer through the guarded
+// `formatDays`/`formatStreak`/`fmtMdd` formatters (never an unguarded `.toFixed` on a possibly-null value).
+export type { DistributionCell, DrawdownExpectations, LossStreakCell, PhaseExpectations };
 
 // Re-export the pre-registration registry types (goal-mcp-loop iter-30, J-18) alongside `fetchRegistry`.
 export type { PreRegistrationRow, RegistryResponse };
