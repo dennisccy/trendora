@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "journey": "J-24",
+  "name": "Every stock shows an honest how-much-can-this-hurt risk-budget card",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-24", "action": {"type": "goto", "url": "/stocks/AAPL"}, "expect": {"text": "Risk budget"}},
+    {"n": 2, "journey": "J-24", "action": {"type": "goto", "url": "/stocks/AAPL"}, "expect": {"text": "Descriptive only; not a recommendation."}},
+    {"n": 3, "journey": "J-24", "action": {"type": "goto", "url": "/stocks/AAPL"}, "expect": {"text": "p40 of universe"}},
+    {"n": 4, "journey": "J-24", "action": {"type": "goto", "url": "/stocks/AAPL"}, "expect": {"text": "median 0.44% · worst 1.94%"}},
+    {"n": 5, "journey": "J-24", "action": {"type": "goto", "url": "/stocks/Q"}, "expect": {"text": "is not in the scanned universe"}},
+    {"n": 6, "journey": "J-24", "action": {"type": "goto", "url": "/methodology"}, "expect": {"text": "overnight-gap profile"}},
+    {"n": 7, "journey": "J-24", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "Dist. to invalidation"}}
+  ]
+}

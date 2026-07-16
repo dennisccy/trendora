@@ -530,3 +530,92 @@ by the sum of the 7 claims' individual `compute_samples` costs on the deep basis
 if the ledger's claim count grows materially, re-measure this cold-miss bound. The full-universe two-run
 rebuild budget from Item H (VSZ/RSS margin, run 2 <= run 1) is reconfirmed unchanged by the new columns.
 
+## J-15/J-16 re-verification — iter-42 lean closeout (verify-only, zero product-code changes)
+
+**Context:** iter-42 is a deterministic-replay/verify-only closeout (goal.md's periodic full-regression
+pass) — `git diff` is empty on `apps/backend/app/**`, `apps/frontend/**`, `config.yaml`, and the seed for
+this iteration, so nothing below can be a code-driven regression; this section exists to re-confirm the
+already-committed J-15/J-16 budgets still hold on the CURRENT build (unchanged since iter-41) before the
+goal-evaluator's GOAL_ACHIEVED assessment, per the iter-42 spec's DoD. This is also the FIRST
+`scripts/measure-perf.sh`-style measurement recorded since iter-41's committed full-DB rebuild (Item I
+above), so the DB capacity table below is expected to differ from the iter-24/25 pre-rebuild rows (see
+note under that table) — that is iter-41's already-committed change becoming visible here, not a new
+regression.
+
+**Measured 2026-07-16T00:43:56Z on this host (Linux 7.0.0-27-generic x86_64) via `scripts/measure-perf.sh`
+against PROD MODE** (`start-backend.sh`/`start-frontend.sh`, backend :8255 / frontend :3255, both cold-started
+fresh for this measurement).
+
+**Warm endpoint latencies:**
+
+| Endpoint | Wall time | Budget | Holds? |
+|---|---|---|---|
+| `GET /api/health` | 0.098615s | ≤ 0.1 s | yes (tight — consistently ~98% of budget across every prior measurement in this file; not a new finding) |
+| `GET /api/stocks` | 0.069333s | ≤ 1.5 s | yes |
+| `GET /api/stocks/AAPL` | 0.003644s | ≤ 0.3 s | yes |
+| `GET /api/data` | 0.013224s | ≤ 1.5 s | yes |
+
+**Warm page latencies (HTTP response time; the browser-qa lane verifies true interactivity):**
+
+| Page | Wall time | Budget | Holds? |
+|---|---|---|---|
+| `/stocks` | 0.008281s | ≤ 3 s | yes |
+| `/stocks/AAPL` | 0.007351s | ≤ 3 s | yes |
+| `/data` | 0.010773s | ≤ 3 s | yes |
+| `/evidence` | 0.007841s | ≤ 3 s | yes |
+
+**DB capacity snapshot** (from `GET /api/data`'s additive `capacity` field):
+
+| Metric | Value |
+|---|---|
+| DB file size | 561803264 bytes |
+| `daily_prices` rows | 3293088 |
+| `scanner_results` rows | 33528 |
+| `forward_returns` rows | 170229 |
+
+**Why this differs from the iter-24/25 table (`db_file_bytes 1307414528`, `scanner_results_rows 165755`):**
+iter-41 ran the sanctioned full-DB rebuild (delete `trendora.db` + fresh boot + background warm-up) to
+backfill the two new `forward_returns` columns (`underwater_days`/`time_to_recover_days`) — a clean rebuild
+that also reset accumulated dev-cycle snapshot/scan cruft from the many intervening iterations, hence the
+smaller file and lower `scanner_results` count. `forward_returns` rows (170229) byte-match the count
+iter-41's own dev handoff recorded immediately after that rebuild (`reports/perf-budgets.md` Item I above:
+"`SELECT COUNT(*) FROM forward_returns` = 170,229") — confirming the DB is exactly where iter-41 left it;
+this (code-free) iteration wrote nothing to the schema or the seed. `daily_prices` rows (3293088 vs the
+pre-rebuild 3293160, a 0.002% difference) is likewise inherited from iter-41's rebuild, not introduced here.
+
+**Bounded backfill timing** (`--backfill-days 5`): 2005-02-25 → 2005-03-03 (a real backfill gap): status=ok,
+2 date(s) covered, 2 snapshot(s) created, 8.90s wall time. (This is a genuine, non-idempotent backfill — unlike
+several prior measurements in this file that landed on an already-fully-warmed 0-date no-op — so the DB now
+has 2 additional snapshot dates it did not have before this measurement; an expected, sanctioned side effect
+of running the committed perf harness, identical in kind to every earlier `measure-perf.sh` invocation in
+this file. The live SQLite DB is gitignored, so this is not a tracked/product diff.)
+
+**Backend memory during this measurement** (`/proc/<pid>/status`, sampled at 0.25 s intervals across the
+whole warm-endpoint + bounded-backfill window, literal `ulimit -v 6291456` KB = 6144 MB cap applied by
+`start-backend.sh`):
+
+| | VmPeak / VmSize (VSZ — the `ulimit -v` dimension) | VmRSS / VmHWM (resident) |
+|---|---|---|
+| Baseline (post-boot, before this measurement) | 2,458,160 / 1,579,548 KB | 1,524,212 / 649,776 KB |
+| Peak during measurement | 2,946,268 / 2,936,360 KB (~2,875 MB) | 1,964,348 / 1,964,348 KB (~1,919 MB) |
+| Margin under the 6144 MB (6,291,456 KB) cap | **3,355,096 KB (~3,277 MB, 53%)** | **4,327,108 KB (~4,226 MB, 69%)** |
+
+**Service restart check (pre-handoff verification):** with both services already stopped (this session's
+starting state), backend + frontend were cold-started, health/readiness polled to `"ready"`
+(`warmup: 89/89`, `preflight.verdict: "GO"`) and frontend to HTTP 200 — then both were stopped again, ports
+`8255`/`3255` confirmed fully released (no lingering child process), and both were cold-started a second
+time with no port conflicts and the same clean readiness outcome. No errors in either boot's log.
+
+**Reading the numbers:** every committed J-15 budget (4 endpoints + 4 pages) holds on this measurement, with
+`/api/health` at its usual tight-but-passing ~98.6% of budget (a pre-existing, non-regressing characteristic
+of this endpoint across every measurement in this file, not a new finding) and every other budget holding
+with wide margin. Both memory dimensions — the binding `VmSize`/`VmPeak` (VSZ, what `ulimit -v` actually
+bounds) and `VmRSS` — stayed comfortably under the 6144 MB cap with >50% margin throughout the warm-request +
+bounded-backfill window. This measurement intentionally does NOT re-run a full-universe rebuild: the DB is
+current (iter-41's rebuild already populated it; re-rebuilding is an unneeded anti-goal #8 memory-risk
+operation this iteration's spec explicitly excludes), and Items G/H/I's full-universe-rebuild memory budgets
+are untouched by construction (zero source diff this iteration on `prices.py`/`regime.py`/`scoring.py`/
+`warmup.py`/`data_manager.py`) — so those committed rebuild-specific budgets cannot have regressed and were
+not re-measured here. No J-16 never-regress budget (Items F/G/H, all isolated-harness scoring-compute
+measurements) could have changed either, for the same zero-diff reason.
+
