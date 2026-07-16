@@ -129,8 +129,8 @@ Written by `run-goal.sh` after each iteration when `--push-per-iter` is enabled.
 
 To enable: pass `--push-per-iter` (and optionally `--push-branch <name>`) to `run-goal.sh`. See [goal-mode-quickstart.md](goal-mode-quickstart.md) for the full flow.
 
-### `claude_usage` (default-on, headless)
-Written by `claude_with_quota_retry` after a successful Claude invocation when `CHAIN_TELEMETRY_TOKENS=true` — which is the **default** for the headless backend (`lib/quota-retry.sh`). Captures Claude API usage from the stream-json `result` event via `lib/claude_stream_renderer.py`. Set `CHAIN_TELEMETRY_TOKENS=false` to opt out. **Interactive-pump limitation:** the pump protocol carries no usage field, so sessions run through the interactive backend record no `claude_usage` events (durations and all other events are unaffected).
+### `claude_usage` (default-on headless; best-effort interactive)
+Written by `claude_with_quota_retry` after a successful Claude invocation when `CHAIN_TELEMETRY_TOKENS=true` — which is the **default** for the headless backend (`lib/quota-retry.sh`). Captures Claude API usage from the stream-json `result` event via `lib/claude_stream_renderer.py`. Set `CHAIN_TELEMETRY_TOKENS=false` to opt out. **Interactive-pump path (protocol v2, TOKEN-5):** the pump extracts each dispatch's token totals from its own Claude Code session transcript (`~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl`, per-message usage summed — the recipe lives in `skills/goal-interactive-dispatch.md`) and writes them to the request's `usage_path` sidecar; `lib/interactive-dispatch.sh` validates it and emits the same event through the same telemetry helper. Best-effort: a pre-v2 pump, a failed extraction, or a malformed sidecar (skipped with one warning) records no event for that dispatch — absence means "unknown", never estimated. Interactive events omit `total_cost_usd` (no per-call USD price on the interactive plan; the analyzer's cost column reads 0 for them).
 
 | Field | Type | Description |
 |---|---|---|
@@ -163,6 +163,14 @@ python3 scripts/automation/lib/analyze_telemetry.py runs/goal-session-<sid>/tele
 | `iter_config` | `run-goal.sh` | `{key, value}` — an opt-in experiment knob (e.g. `CHAIN_AGENT_EFFORT`) was active this iteration |
 | `golden_coverage` | `goal-iter-lean.sh` | `{passing, missing_goldens, iter_name}` — PASSing journeys still lacking a replay golden |
 | `experiment_reverted` | `run-goal.sh` | `{key, value}` — the tripwire auto-reverted an experiment knob |
+
+### `missing_evidence` (REL-11 tripwire)
+Written when a dispatch returns — any exit code, including 0 — without its expected report artifact on disk: full-mode QA (`qa-phase.sh`), the lean browser-qa LLM lane (`goal-iter-lean.sh`; quota pauses excluded), and the retro-analyst (`run-goal.sh`). The telemetry counterpart of the loud `[missing-evidence]` stderr banner (`lib/common.sh` `warn_missing_evidence`). Non-blocking — a tripwire, never a gate.
+
+| Field | Type | Description |
+|---|---|---|
+| `agent` | string | Dispatching agent whose report is missing (`qa` \| `browser-qa-agent` \| `retro-analyst`) |
+| `path` | string | The expected report path that was absent |
 
 ### Wall-time report and tripwire
 

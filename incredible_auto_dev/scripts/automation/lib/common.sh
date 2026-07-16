@@ -393,6 +393,128 @@ review_diff_hint() {
   printf '  (stat of ONLY the excluded paths: if it lists dependency lockfiles, note WHICH changed and review the matching package.json/pyproject edit in the main diff; runs/ and reports/ churn is harness bookkeeping, outside review scope)\n'
 }
 
+# Build the pre-baked review packet (TOKEN-7): a bounded file that pre-executes
+# BOTH review_diff_hint commands so reviewer-class agents stop paying tool-call
+# round trips for git diffs. Section 1 is the hint's first command (the
+# REVIEW_DIFF_EXCLUDE_PATTERNS-excluded diff) piped through diff_bound.py —
+# hunks capped, truncations NAMED in its header; the same patterns are ALSO
+# passed as --exclude so a rename/path form the git pathspec misses is still
+# named, never silently rendered. Section 2 is the hint's second command: a
+# --stat of ONLY the excluded paths (dependency-lockfile visibility). The
+# packet replaces running diff COMMANDS, never code-reading (anti-pattern #12)
+# and never the spec/handoff inputs (roadmap D7). Deliberately independent of
+# goal_gate_build_diff_artifacts (different consumer + timing; gate artifacts
+# stay untouched). Runs against the CURRENT working directory's git repo —
+# callers cd first (engine → $REPO_ROOT; judgment runner → its case sandbox).
+# Contract: atomic write (tmp+mv, never a half-written packet); non-zero on
+# build failure WITHOUT leaving a stale packet behind — callers log and let
+# the dispatch degrade to hint-only (the TOKEN-7 DoD's absent-packet path).
+#   $1 — output file    $2 — git ref to diff against (default HEAD)
+build_review_packet() {
+  local out="${1:?build_review_packet: output path required}" ref="${2:-HEAD}"
+  local p tmp bounded stat_out
+  local ex=() only=() bound_ex=()
+  for p in "${REVIEW_DIFF_EXCLUDE_PATTERNS[@]}"; do
+    ex+=(":(exclude)$p"); only+=("$p"); bound_ex+=(--exclude "$p")
+  done
+  # Every step is individually rc-checked: callers invoke this under
+  # `if ! ...` (set -e suspended there), and a failed git diff must NEVER
+  # yield a packet that reads as "(no changes)" — fail, leave no file.
+  bounded="$(set -o pipefail
+             git diff "$ref" -- . "${ex[@]}" 2>/dev/null \
+               | python3 "$REPO_ROOT/scripts/automation/lib/diff_bound.py" "${bound_ex[@]}" 2>/dev/null)" || return 1
+  [[ -n "$bounded" ]] || return 1   # diff_bound always emits a header; empty = something upstream lied
+  stat_out="$(git diff "$ref" --stat -- "${only[@]}" 2>/dev/null)" || return 1
+  mkdir -p "$(dirname "$out")" 2>/dev/null || return 1
+  tmp="$(mktemp "$out.tmp.XXXXXX" 2>/dev/null)" || return 1
+  {
+    printf '# Review packet — bounded diff vs %s\n' "$ref"
+    printf 'Pre-built by build_review_packet (lib/common.sh): the dispatch prompt'\''s git diff\n'
+    printf 'commands, already run for you. Truncations and exclusions are NAMED below — run\n'
+    printf 'the git commands ONLY for files marked truncated or excluded, if they matter.\n\n'
+    printf '%s\n' "$bounded"
+    printf '\n## Excluded-path stat (dependency/lockfile visibility)\n\n'
+    if [[ -n "$stat_out" ]]; then
+      printf '%s\n' "$stat_out"
+      printf '\n(if a dependency lockfile appears above, review the matching package.json/pyproject\nedit in the main diff — never lockfile hunks; runs/ reports/ docs/handoffs/ churn is\nharness bookkeeping, outside review scope)\n'
+    else
+      printf '(no changes in excluded paths)\n'
+    fi
+  } > "$tmp" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; return 1; }
+  mv -f "$tmp" "$out" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; return 1; }
+  return 0
+}
+
+# ── Per-agent project-template slicing (TOKEN-1) ──────────────────────────────
+# Dispatch wrappers inline ONLY the template sections an agent's duties use,
+# instead of instructing a full-file Read (release-manager needs ~5 lines of a
+# ~200-line file). The map lives HERE, next to the helper: `## ` heading names
+# exactly as they appear in .claude/project-template.md. Keep it in sync with
+# each agent's body.md duties — an agent whose duties cite an unmapped section
+# is a map bug. developer and auditor are deliberately NOT mapped (they need
+# most of the file — the unknown-agent fallback serves them the whole thing).
+#   release-manager — GIT WORKFLOW: branch naming, PR title format, main
+#     branch, and the never-commit list are all of its template-sourced duties.
+#   reviewer — ARCHITECTURE PRINCIPLES (project-standards checklist),
+#     DESIGN SYSTEM (its UI-quality checklist verifies components/tokens/effects
+#     against it), TEST COMMANDS (verifying test quality claims).
+#   qa — STACK (service URLs/ports + frontend-enabled flag), TEST COMMANDS
+#     (backend/frontend test runs), SERVICE START COMMANDS (qa-phase boot).
+_project_template_sections_for() {
+  case "$1" in
+    release-manager) printf '%s\n' "GIT WORKFLOW" ;;
+    reviewer)        printf '%s\n' "ARCHITECTURE PRINCIPLES" "DESIGN SYSTEM" "TEST COMMANDS" ;;
+    qa)              printf '%s\n' "STACK" "TEST COMMANDS" "SERVICE START COMMANDS" ;;
+    *) return 1 ;;
+  esac
+}
+
+# Emit the mapped sections of the project template for an agent, VERBATIM
+# (heading line through the line before the next `## ` heading, the template's
+# own `---` separators included), in map order. Contract (eval-fixture-tested
+# in tests/automation/test-project-template-slice.sh):
+#   • a mapped section missing from the template → a loud inline
+#     "[slice: section 'X' not found in <path>]" marker — never a silent
+#     omission (the agent and any human reading the prompt see the gap);
+#   • unknown agent → the FULL template on stdout (safe fallback) plus one
+#     diagnostic line on stderr (stdout stays clean prompt content);
+#   • template file missing → a loud not-found marker on stdout;
+#   • ALWAYS returns 0 — dispatch prompts embed this via $(...) under set -e.
+# Section headings match case-insensitively with trailing whitespace ignored.
+# Usage: project_template_slice <agent> [template_path]
+project_template_slice() {
+  local agent="${1:-}"
+  local template="${2:-$REPO_ROOT/.claude/project-template.md}"
+  if [[ ! -f "$template" ]]; then
+    echo "[slice: template file not found: $template]"
+    return 0
+  fi
+  local sections
+  if ! sections="$(_project_template_sections_for "$agent")"; then
+    echo "[project-template-slice] no section map for agent '${agent:-?}' — emitting the full template" >&2
+    cat "$template"
+    return 0
+  fi
+  awk -v want="${sections//$'\n'/|}" -v path="$template" -v q="'" '
+    /^## / {
+      key = $0; sub(/^## /, "", key); sub(/[ \t]+$/, "", key); key = toupper(key)
+      if (key in body) body[key] = body[key] "\n" $0
+      else body[key] = $0
+      cur = key; next
+    }
+    cur != "" { body[cur] = body[cur] "\n" $0; next }
+    END {
+      n = split(want, W, /\|/)
+      for (i = 1; i <= n; i++) {
+        k = W[i]; sub(/[ \t]+$/, "", k); k = toupper(k)
+        if (k in body) print body[k]
+        else print "[slice: section " q W[i] q " not found in " path "]"
+      }
+    }
+  ' "$template"
+  return 0
+}
+
 # Dispatch the coherence-auditor agent (goal mode). ONE shared implementation
 # for both call sites so the prompt cannot drift: the parallel fork inside
 # goal-iter-lean.sh (runs concurrently with browser-qa — the audit needs only
@@ -1265,6 +1387,36 @@ write_failed_artifact_stub() {
   } > "$out_file"
 
   echo "[write_failed_artifact_stub] Wrote SKIPPED stub: $out_file"
+}
+
+# ── Missing-evidence tripwire (REL-11) ────────────────────────────────────────
+# A dispatch that returns rc=0 but leaves no report artifact voids downstream
+# judgment SILENTLY — the first real benchmark (bench-20260710-2117) lost its QA
+# report and retro report to exactly this (untrusted-workspace Write denial) and
+# every friction counter stayed zero. Loud stderr banner + a `missing_evidence`
+# telemetry event ({agent, path}); NEVER a gate — callers stay non-blocking.
+# The telemetry emit is guarded: in processes that don't source telemetry.sh
+# (or with GOAL_SESSION_DIR unset) only the banner fires.
+#
+# Usage: warn_missing_evidence <agent> <expected-report-path>
+warn_missing_evidence() {
+  local _agent="$1"
+  local _path="$2"
+  {
+    echo ""
+    echo "============================= [missing-evidence] ============================="
+    echo "[missing-evidence] agent '${_agent}' returned WITHOUT its expected report:"
+    echo "[missing-evidence]   ${_path}"
+    echo "[missing-evidence] The dispatch consumed tokens but left no evidence artifact;"
+    echo "[missing-evidence] downstream judges will read it as unknown/SKIPPED. Check the"
+    echo "[missing-evidence] agent trace for permission denials (untrusted workspace?)."
+    echo "==============================================================================="
+  } >&2
+  if declare -F record_telemetry_event >/dev/null 2>&1; then
+    record_telemetry_event "missing_evidence" \
+      "$(jq -cn --arg agent "$_agent" --arg path "$_path" '{agent:$agent, path:$path}' 2>/dev/null \
+         || printf '{"agent":"%s","path":"%s"}' "$_agent" "$_path")" || true
+  fi
 }
 
 # ── Self-test (only when invoked directly: `bash common.sh self-test`) ───────

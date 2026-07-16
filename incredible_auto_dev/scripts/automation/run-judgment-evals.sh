@@ -329,6 +329,25 @@ _prepare_reviewer() {
   # from the same function the engine's prompt substitutes in.
   DIFF_HINT="$(bash -c "source '$LIB/common.sh' && review_diff_hint HEAD")"
 
+  # TOKEN-7: production pre-builds a bounded review packet before dispatch —
+  # mirror that here with the SAME build_review_packet helper, run over the
+  # sandbox's own scratch-git state (the uncommitted case diff above) at the
+  # engine's path layout, so the fixture prompt stays byte-faithful to
+  # production, packet file included. Fixtures stay frozen: the packet is
+  # DERIVED in the throwaway sandbox at run time, never stored in tree/.
+  # A build failure mirrors production's degradation (hint-only, no packet).
+  REVIEW_PACKET="$SANDBOX/runs/goal-session-${SESSION_ID}/iter-${CURRENT_ITER}/review-packet.md"
+  if ! (cd "$SANDBOX" && bash -c "source '$LIB/common.sh' && build_review_packet '$REVIEW_PACKET' HEAD"); then
+    echo "[judgment-evals] review packet build failed in the sandbox — dispatching hint-only (production's degraded path)." >&2
+    rm -f "$REVIEW_PACKET" 2>/dev/null || true
+  fi
+
+  # The pre-sliced project template (TOKEN-1), exactly as production inlines it:
+  # the SAME project_template_slice helper, run over the sandbox's own
+  # .claude/project-template.md (the framework template, symlinked into the
+  # sandbox with the other read-only assets) — never a duplicated slicer.
+  TEMPLATE_SLICE="$(bash -c "source '$LIB/common.sh' && project_template_slice reviewer '$SANDBOX/.claude/project-template.md'")"
+
   # The engine's reviewer dispatch prompt (goal-iter-lean.sh run_reviewer),
   # verbatim.
   PROMPT=$(cat <<PROMPT_EOF
@@ -337,10 +356,15 @@ You are the reviewer agent for goal-mode lean iteration.
 Iteration: $ITER_NAME
 Iter spec: $ITER_SPEC_PATH
 Dev handoff: $DEV_HANDOFF
-Project template: .claude/project-template.md
+Project template (relevant sections, pre-sliced):
+\`\`\`\`
+$TEMPLATE_SLICE
+\`\`\`\`
 Agent instructions: .claude/agents/reviewer.md  <-- read this first
 (CLAUDE.md is already in your system prompt — do not Read it again.)
 
+Bounded diff packet (read FIRST if present): $REVIEW_PACKET — hunks capped, noise excluded, truncations NAMED. The iter spec + dev handoff remain required reading — never verdict from the diff alone (D7).
+Run these only for files the packet marks truncated or excluded (or if the packet file is absent):
 $DIFF_HINT
 
 Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
@@ -453,7 +477,10 @@ for entry in "${CASES[@]}"; do
   ITER_NAME="goal-${SESSION_ID}-iter-${CURRENT_ITER}"   # run-goal.sh convention
   EXPECTED="$(head -n1 "$case_dir/expected.txt" | tr -d '[:space:]')"
 
-  SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/judgment-${judge}-${cname}-XXXXXX")"
+  JTMP_ROOT="${CHAIN_TMP_ROOT:-${TMPDIR:-$HOME/.cache/iad}}"
+  mkdir -p "$JTMP_ROOT"
+  SANDBOX="$(mktemp -d "$JTMP_ROOT/judgment-${judge}-${cname}-XXXXXX")"
+  echo "$$" > "$SANDBOX/.owner-pid"
   cp -a "$case_dir/tree/." "$SANDBOX/"
   for asset in CLAUDE.md .claude scripts config agents; do
     [[ -e "$REPO_ROOT/$asset" ]] && ln -s "$REPO_ROOT/$asset" "$SANDBOX/$asset"

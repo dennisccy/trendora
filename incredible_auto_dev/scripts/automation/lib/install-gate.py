@@ -29,8 +29,30 @@ from pathlib import Path
 
 DECISIONS = ("allow", "warn", "block", "require_approval")
 
+# Decisions a policy knob may soften a violation to (never "allow": a knob can
+# downgrade an interruption to a logged warning, not erase the check).
+SOFT_DECISIONS = ("warn", "require_approval", "block")
+
 # Default policy path relative to repo root
 DEFAULT_POLICY_PATH = "config/install-security-policy.json"
+
+
+def rule_decision(rules, key):
+    """Policy-tunable decision for a soft violation. Fail-closed on bad values."""
+    v = rules.get(key, "require_approval")
+    return v if v in SOFT_DECISIONS else "require_approval"
+
+
+def stricter(a, b):
+    order = {"warn": 0, "require_approval": 1, "block": 2}
+    return a if order[a] >= order[b] else b
+
+
+def _soften_reason(decision, reason):
+    if decision == "warn":
+        return reason + (" Proceeding with warning (policy on_unpinned/on_unknown = "
+                         "warn); logged to the install-decisions log.")
+    return reason
 
 # ── Decision builder ──────────────────────────────────────────────────────────
 
@@ -295,10 +317,13 @@ def evaluate_pip(cmd, policy, repo_root):
         unpinned = [p for p in packages if not p["pinned"]]
         if unpinned and rules.get("require_pinned_version", True):
             names = ", ".join(p["name"] for p in unpinned)
+            decision = rule_decision(rules, "on_unpinned_decision")
             return make_result(
-                "require_approval",
-                f"Allowlisted package(s) require a pinned version (==): {names}. "
-                "Pin the version explicitly or override the policy.",
+                decision,
+                _soften_reason(
+                    decision,
+                    f"Allowlisted package(s) require a pinned version (==): {names}. "
+                    "Pin the version explicitly or override the policy."),
                 source_type="pypi",
                 packages=packages,
                 checks=checks,
@@ -318,11 +343,15 @@ def evaluate_pip(cmd, policy, repo_root):
 
     if unpinned and rules.get("require_pinned_version", True):
         names = ", ".join(p["name"] for p in unpinned)
+        decision = stricter(rule_decision(rules, "on_unpinned_decision"),
+                            rule_decision(rules, "on_unknown_decision"))
         return make_result(
-            "require_approval",
-            f"Unknown package(s) with unpinned version: {names}. "
-            "Pin the version (==X.Y.Z) or add the package to the allowlist in "
-            "config/install-security-policy.json.",
+            decision,
+            _soften_reason(
+                decision,
+                f"Unknown package(s) with unpinned version: {names}. "
+                "Pin the version (==X.Y.Z) or add the package to the allowlist in "
+                "config/install-security-policy.json."),
             source_type="pypi",
             packages=packages,
             checks=checks,
@@ -330,11 +359,14 @@ def evaluate_pip(cmd, policy, repo_root):
         )
 
     unknown_names = ", ".join(p["name"] for p in unknown)
+    decision = rule_decision(rules, "on_unknown_decision")
     return make_result(
-        "require_approval",
-        f"Package(s) not in the allowlist: {unknown_names}. "
-        "Add to config/install-security-policy.json allowlist to permit, or use "
-        "CHAIN_INSTALL_GATE_BYPASS=true to override.",
+        decision,
+        _soften_reason(
+            decision,
+            f"Package(s) not in the allowlist: {unknown_names}. "
+            "Add to config/install-security-policy.json allowlist to permit, or use "
+            "CHAIN_INSTALL_GATE_BYPASS=true to override."),
         source_type="pypi",
         packages=packages,
         checks=checks,
@@ -403,9 +435,12 @@ def evaluate_npm(cmd, policy, repo_root):
         unpinned = [p for p in packages if not p["pinned"]]
         if unpinned and rules.get("require_pinned_version", True):
             names = ", ".join(p["name"] for p in unpinned)
+            decision = rule_decision(rules, "on_unpinned_decision")
             return make_result(
-                "require_approval",
-                f"Allowlisted npm package(s) require a pinned version (@X.Y.Z): {names}.",
+                decision,
+                _soften_reason(
+                    decision,
+                    f"Allowlisted npm package(s) require a pinned version (@X.Y.Z): {names}."),
                 source_type="npm",
                 packages=packages,
                 checks=checks,
@@ -416,11 +451,19 @@ def evaluate_npm(cmd, policy, repo_root):
 
     checks.append("version_pinning")
     unknown = [p for p in packages if not in_allowlist(p["name"], allowlist)]
+    unknown_unpinned = [p for p in unknown if not p["pinned"]]
+    if unknown_unpinned and rules.get("require_pinned_version", True):
+        decision = stricter(rule_decision(rules, "on_unpinned_decision"),
+                            rule_decision(rules, "on_unknown_decision"))
+    else:
+        decision = rule_decision(rules, "on_unknown_decision")
     unknown_names = ", ".join(p["name"] for p in unknown)
     return make_result(
-        "require_approval",
-        f"npm package(s) not in the allowlist: {unknown_names}. "
-        "Add to config/install-security-policy.json npm.allowlist to permit.",
+        decision,
+        _soften_reason(
+            decision,
+            f"npm package(s) not in the allowlist: {unknown_names}. "
+            "Add to config/install-security-policy.json npm.allowlist to permit."),
         source_type="npm",
         packages=packages,
         checks=checks,
@@ -519,7 +562,15 @@ def classify_and_evaluate(cmd, policy, repo_root):
 
     cmd_stripped = cmd.strip()
 
-    if re.search(r"(curl|wget)\s+.*\|\s*(bash|sh)\b", cmd_stripped, re.IGNORECASE):
+    # Quote-stripped view for the curl|shell test: a command that merely QUOTES
+    # a "curl … | bash" string (test fixtures, echo, commit messages) is not a
+    # remote-code-execution attempt — only an unquoted, executable pipe is.
+    # The pip/npm/git dispatch tests below don't need this: their evaluators
+    # re-anchor at the command start and skip quoted mentions on their own.
+    cmd_unquoted = re.sub(r"'[^']*'", "", cmd_stripped)
+    cmd_unquoted = re.sub(r'"[^"]*"', "", cmd_unquoted)
+
+    if re.search(r"(curl|wget)\s+.*\|\s*(bash|sh)\b", cmd_unquoted, re.IGNORECASE):
         return evaluate_curl_pipe(cmd_stripped, policy, repo_root)
 
     if re.search(

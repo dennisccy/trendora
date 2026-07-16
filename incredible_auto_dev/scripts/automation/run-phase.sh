@@ -28,6 +28,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/parallel.sh"
+# Telemetry (no-op unless GOAL_SESSION_DIR is set, i.e. goal-mode full depth):
+# lets claude_with_quota_retry forward each dispatch's usage sidecar into the
+# session's per-agent economics (TOKEN-8).
+source "$SCRIPT_DIR/lib/telemetry.sh"
 
 # Pull --cli (and --force-cli) out of the args BEFORE the existing parse loop,
 # so the loop below sees only its known flags. CHAIN_CLI defaults to claude.
@@ -94,6 +98,27 @@ MAX_RETRIES=3
 MAX_AUDIT_RETRIES=3
 
 log()  { echo "[run-phase] $*"; }
+
+# TOKEN-3: deterministic "spec already lists tests" heuristic for Step 2.
+# Matches a `## Test`-titled section (word-bounded: `## Tests`, `## Test Plan`,
+# `## Test Scenarios` — deliberately NOT the boilerplate `## TESTING REQUIREMENTS`
+# heading that templates/phase-spec.md ships in every spec while still expecting
+# the generator to run) OR >=3 `TC-` test-case lines (the goal-decomposer's TC-
+# scenario contract). Prints the matched reason; rc 0 = spec has its own tests.
+_spec_lists_tests_reason() {
+  local spec="$1" heading tc_count
+  heading="$(grep -m1 -iE '^#{2,}[[:space:]]*tests?\b' "$spec" 2>/dev/null || true)"
+  if [[ -n "$heading" ]]; then
+    echo "spec has a '## Test' section ('${heading}')"
+    return 0
+  fi
+  tc_count="$(grep -cE '(^|[^A-Za-z0-9_])TC-[0-9]' "$spec" 2>/dev/null || true)"
+  if [[ "${tc_count:-0}" -ge 3 ]]; then
+    echo "spec lists ${tc_count} 'TC-' test-case lines (>=3)"
+    return 0
+  fi
+  return 1
+}
 
 # Invoke the iteration-summarizer agent. The agent reads existing artifacts
 # and writes reports/phase-<phase>-iteration-summary.md. Non-blocking — if
@@ -356,6 +381,10 @@ chain_tmp_init "$PHASE"
 # Sweep strays from crashed/legacy runs — only when this run owns its dir
 # (top-level invocation; the goal engine already ran the janitor).
 [[ "${CHAIN_TMPDIR_OWNER_PID:-}" == "$$" ]] && chain_tmp_janitor
+# Disk guard (REL-13), soft mode: sweep aggressively under pressure and warn.
+# run-phase has no session.json authority, so it never pauses here — the goal
+# engine's --enforce checks own the AWAITING_DISK pause.
+chain_tmp_disk_guard || true
 
 # EXIT trap: on any exit (success, fail(), quota 75, transport 70, signal-trap
 # exits 130/143), archive bounded service-log tails for post-mortem when the
@@ -590,11 +619,20 @@ echo ""
 
 # ── Step 2/11: Generate functional test plan ────────────────────────────────
 if [[ "$SKIP_TEST_PLAN" == "false" ]]; then
-  log "Step 2/11 -- Generating functional test plan..."
-  bash "$SCRIPT_DIR/generate-test-plan.sh" "$PHASE" \
-    && log "  Test plan: $TEST_PLAN" \
-    || log "  Warning: test plan generation failed -- QA will run standard checks only"
-  update_status "$PHASE" "in_progress" "test_plan_generated"
+  _tp_skip_reason=""
+  if [[ "${CHAIN_SKIP_TESTPLAN_IF_PRESENT:-false}" == "true" ]] \
+     && _tp_skip_reason="$(_spec_lists_tests_reason "$SPEC")"; then
+    # TOKEN-3: the spec carries its own test list — save the generator dispatch.
+    # NEVER silent: one loud line naming the matched heuristic.
+    log "Step 2/11 -- Test plan: SKIPPED (CHAIN_SKIP_TESTPLAN_IF_PRESENT=true; ${_tp_skip_reason}) -- no generator dispatch; QA runs the spec's own tests."
+    update_status "$PHASE" "in_progress" "test_plan_generated"
+  else
+    log "Step 2/11 -- Generating functional test plan..."
+    bash "$SCRIPT_DIR/generate-test-plan.sh" "$PHASE" \
+      && log "  Test plan: $TEST_PLAN" \
+      || log "  Warning: test plan generation failed -- QA will run standard checks only"
+    update_status "$PHASE" "in_progress" "test_plan_generated"
+  fi
 else
   log "Step 2/11 -- Test plan: skipped (checkpoint: $CURRENT_STEP)"
 fi
@@ -888,6 +926,16 @@ kill_phase_servers
 if [[ "$SKIP_AUDIT" == "false" ]]; then
   log "Step 9/11 -- Post-phase audit (max $MAX_AUDIT_RETRIES attempts)..."
   AUDIT_ATTEMPT=0
+  # TOKEN-4: cap on COMPLETED full (QA-inclusive) hardening reruns per run.
+  # After the cap is spent, later audit FAILs harden in fix-only mode
+  # (dev + review + audit re-check, NO full QA rerun). cap=0 = uncapped
+  # (pre-TOKEN-4 behavior: full rerun on every failed attempt — the rollback).
+  AUDIT_RERUN_CAP="${CHAIN_AUDIT_RERUN_CAP:-1}"
+  if ! [[ "$AUDIT_RERUN_CAP" =~ ^[0-9]+$ ]]; then
+    log "  Warning: CHAIN_AUDIT_RERUN_CAP='$AUDIT_RERUN_CAP' is not a non-negative integer -- using default 1"
+    AUDIT_RERUN_CAP=1
+  fi
+  AUDIT_FULL_RERUNS=0
 
   while true; do
     AUDIT_ATTEMPT=$((AUDIT_ATTEMPT + 1))
@@ -913,7 +961,17 @@ if [[ "$SKIP_AUDIT" == "false" ]]; then
       fail "Audit failed after $MAX_AUDIT_RETRIES attempts. See: $AUDIT_REPORT" "audit_failed"
     fi
 
-    log "  Audit: FAIL (attempt $AUDIT_ATTEMPT) -- applying hardening fixes..."
+    # TOKEN-4: pick the hardening mode for this failed attempt, loudly.
+    if [[ "$AUDIT_RERUN_CAP" -eq 0 ]]; then
+      AUDIT_FIX_MODE="full"
+      log "  Audit: FAIL (attempt $AUDIT_ATTEMPT) -- hardening in FULL-RERUN mode (dev + review + full QA; CHAIN_AUDIT_RERUN_CAP=0: uncapped)..."
+    elif [[ "$AUDIT_FULL_RERUNS" -lt "$AUDIT_RERUN_CAP" ]]; then
+      AUDIT_FIX_MODE="full"
+      log "  Audit: FAIL (attempt $AUDIT_ATTEMPT) -- hardening in FULL-RERUN mode (dev + review + full QA; full rerun $((AUDIT_FULL_RERUNS + 1))/$AUDIT_RERUN_CAP)..."
+    else
+      AUDIT_FIX_MODE="fix-only"
+      log "  Audit: FAIL (attempt $AUDIT_ATTEMPT) -- hardening in FIX-ONLY mode (dev + review + audit re-check, NO full QA rerun; CHAIN_AUDIT_RERUN_CAP=$AUDIT_RERUN_CAP full rerun(s) already spent)..."
+    fi
     ad_rc=0
     escalate_model_on
     _run_step "$SCRIPT_DIR/dev-phase.sh" "$PHASE" || ad_rc=$?
@@ -927,15 +985,22 @@ if [[ "$SKIP_AUDIT" == "false" ]]; then
     _guard_step_rc "$ar_rc" "Step 9 hardening (review)"
     [[ $ar_rc -ne 0 ]] && log "  Warning: review-phase.sh exited with error -- continuing"
 
-    log "  Re-running QA after hardening..."
-    aq_rc=0
-    _run_step "$SCRIPT_DIR/qa-phase.sh" "$PHASE" || aq_rc=$?
-    [[ $aq_rc -eq 75 ]] && { AUDIT_ATTEMPT=$((AUDIT_ATTEMPT - 1)); continue; }
-    _guard_step_rc "$aq_rc" "Step 9 hardening (qa)"
-    if ! verdict_passes "$QA_REPORT"; then
-      fail "QA failed during audit hardening. See: $QA_REPORT" "audit_qa_failed"
+    if [[ "$AUDIT_FIX_MODE" == "full" ]]; then
+      log "  Re-running QA after hardening..."
+      aq_rc=0
+      _run_step "$SCRIPT_DIR/qa-phase.sh" "$PHASE" || aq_rc=$?
+      [[ $aq_rc -eq 75 ]] && { AUDIT_ATTEMPT=$((AUDIT_ATTEMPT - 1)); continue; }
+      _guard_step_rc "$aq_rc" "Step 9 hardening (qa)"
+      if ! verdict_passes "$QA_REPORT"; then
+        fail "QA failed during audit hardening. See: $QA_REPORT" "audit_qa_failed"
+      fi
+      log "  QA: PASS (post-hardening)"
+      # Count only COMPLETED full passes (a quota-interrupted QA above does not
+      # reach here, so it does not spend the cap).
+      AUDIT_FULL_RERUNS=$((AUDIT_FULL_RERUNS + 1))
+    else
+      log "  Skipping full QA rerun (fix-only mode) -- auditor re-checks next."
     fi
-    log "  QA: PASS (post-hardening)"
   done
 
   update_status "$PHASE" "complete" "audit_passed"

@@ -120,11 +120,14 @@ signal that says "do this now").
    but works without), **NEED-8**.
 4. **EVO-2** (retro), **EVO-3** (benchmark; required before any SPEED/TOKEN experiment),
    **EVO-4** (playbook), **EVO-5**. (EVO-1 ships with this file.)
-5. **SPEED-1 → SPEED-2 → SPEED-3** (strict order), **TOKEN-1…7** (TOKEN-2 requires
-   EVO-3 + REL-1 to exist; TOKEN-7 is independent of the SPEED chain).
-6. **REL-2…9, SEC-1…4, QUAL-1, REP-1…3, DOC-3…7** — as capacity allows; SEC-4 pairs
+5. **SPEED-1 → SPEED-2 → SPEED-3** (strict order), **TOKEN-1…8** (TOKEN-2 requires
+   EVO-3 + REL-1 to exist; TOKEN-7 is independent of the SPEED chain; TOKEN-8 staged
+   2026-07-14 — small, unblocks full-depth per-agent economics).
+6. **REL-2…12, SEC-1…4, QUAL-1, REP-1…3, DOC-3…7** — as capacity allows; SEC-4 pairs
    with SAFE-1; REL-8 must land before any real `CHAIN_AGENT_EFFORT` use; REL-9 is
-   cheap — do it early.
+   cheap — do it early; REL-10/REL-11 were user-promoted 2026-07-11 (one bundled
+   session) and verify together via the §9 benchmark rerun; REL-12 staged 2026-07-14
+   (prereq for a resolvable SPEED flip re-measurement at lean depth).
 7. **EXP-** items only with explicit human sign-off and a written design doc first.
 
 ---
@@ -497,7 +500,31 @@ the system measures itself, and how it survives the next model change.
 - **Rollback:** docs-only.
 
 ### EVO-5 · Cross-project lesson harvesting
-- **Priority:** P0 · **Effort:** M · **Risk:** LOW · **Status:** TODO
+- **Priority:** P0 · **Effort:** M · **Risk:** LOW · **Status:** DONE —
+  implemented 2026-07-12; certified DONE 2026-07-12 by a fresh non-implementer
+  session per G8: skeptical read + mechanical redirect audit confirmed read-only
+  (stdout/stderr only, zero write-capable commands) and judgment-free; contracted
+  degraded paths re-exercised on a synthetic fixture (malformed / non-dict /
+  missing session.json, nonexistent repo arg → labeled `unknown (<why>)` / empty
+  sections, rc 0); dry run on this repo → clean labeled-empty digest, rc 0;
+  adopter re-run over ~/Git/tapeology + ~/Git/trendora → rc 0 and the digest
+  reproduces the §16 CAND evidence (verbatim audit-dispatch and BQA-preflight
+  quotes in the lessons tails); procedure documented in-entry and all three
+  harvest-sourced CANDs cite dated provenance; run-evals 97/97 green.
+  *(Implementation note 2026-07-12: `scripts/automation/harvest-lessons.sh` ships the
+  spec's digest — per-repo grouped sections for (1) session.json halt lines
+  (status · last_verdict · current_iter, literal values; missing/unreadable → the
+  house `unknown (<why>)`), (2) lessons.md tails (last 20 lines each), and (3) one
+  post-spec, in-spirit EVO-2-era extension: a `reports/goal-session-*-retro.md`
+  paths section, so retro proposals surface in the digest alongside the lessons
+  they grew from. Read-only (stdout only), judgment-free, exit 0 on every content
+  condition (usage error = exit 2); covered by run-evals.sh §1's
+  scripts/automation/*.sh syntax glob (96 → 97 checks). DoD dry run on this repo:
+  clean labeled-empty digest. Degraded paths (absent runs/, missing + unreadable
+  session.json, nonexistent repo arg, multi-repo invocation) hand-verified against
+  a synthetic fixture the same day. First real harvest run the same day over
+  ~/Git/tapeology + ~/Git/trendora; recurring symptoms drafted as §16
+  CAND-AUDIT-DISPATCH / CAND-BQA-PREFLIGHT / CAND-VENDORED-SCAN-SCOPE.)*
 - **Problem:** each adopting repo accumulates `lessons.md` / `evaluator-log.md` pain the
   framework repo never learns from; anti-patterns.md only grows when someone remembers.
 - **Current state:** maintenance protocol §2 defines the lesson formats and where
@@ -511,6 +538,17 @@ the system measures itself, and how it survives the next model change.
   2. Procedure (documented in this file, here): quarterly or after each delivered
      project, run the harvester over known adopting repos; for each recurring symptom,
      draft either an anti-patterns entry (protocol §2 format) or a §16 staging item.
+- **Procedure (operational — EVO-1 source 5):** quarterly, or after each delivered
+  project, run `./scripts/automation/harvest-lessons.sh <repo>...` over the known
+  adopter repos and review the digest with the user. Known adopters (2026-07-12):
+  `~/Git/tapeology`, `~/Git/trendora` — extend this list as projects deliver. For
+  each symptom recurring across sessions or repos, the reviewing session DRAFTS
+  either a numbered `.claude/anti-patterns.md` entry (protocol §2: symptom → root
+  cause → checkable rule) or a §16 staging item carrying the digest's evidence
+  quotes; the human promotes (EVO-1). Adopters run VENDORED framework snapshots —
+  before promoting any harvested symptom, verify it still exists at framework HEAD.
+  The harvester stays judgment-free: interpretation happens in the review, never in
+  the script.
 - **DoD:** script handles missing dirs gracefully; procedure documented; one dry run on
   this repo (no sessions → clean empty output).
 - **Verify:** `bash -n scripts/automation/harvest-lessons.sh &&
@@ -558,12 +596,29 @@ benchmark (or a real session's telemetry) before AND after (G8).
   a fresh PRE entry.
 
 ### SPEED-1 · Refactor browser-qa into a function (no behavior change)
-- **Priority:** P1 · **Effort:** S · **Risk:** LOW · **Status:** TODO
-- **Problem:** the browser-qa section of the lean executor is a ~290-line inline block;
-  SPEED-2 needs to run it in a forked subshell.
-- **Current state:** `scripts/automation/goal-iter-lean.sh:292-578` (two-lane logic:
-  deterministic golden replay lane `~:379-460`, LLM lane + merge `~:460-576`);
-  resume-skip guard `~:309-321`.
+- **Priority:** P1 · **Effort:** S · **Risk:** LOW · **Status:** DONE 2026-07-12 —
+  extracted `run_browser_qa_section()` with the resume-skip guard AND
+  `step_invalidate_from browser-qa` kept at the caller; the function runs in the
+  caller's shell (plain call, no subshell) and the body moved verbatim
+  (un-indented pure move — zero body lines appear in the diff, which is two
+  boundary edits plus one comment word). Zero `local`s added: inventory of 44
+  body-assigned globals (QA_* exports, QA_STARTED_PIDS, FRONTEND_*/service
+  vars, lane vars, `_j`) — none is read after the call site in-file, and
+  same-shell lib consumers (ensure_services_running, the quota-retry hook) see
+  identical state. Proof: instrumented test-goal-checkpoints.sh with kept
+  sandbox, normalized artifact tree+content snapshot (noise classes
+  pre-validated by two identical-code HEAD runs) diffs EMPTY pre vs post with
+  stdout 11/11 identical; test-goal-async-tail 14/14 identical (PIDs
+  normalized); test-goal-retro 41/41 identical; bash -n + run-evals 97/97.
+- **Problem:** the browser-qa section of the lean executor was a ~270-line inline
+  block; SPEED-2 needs to run it in a forked subshell.
+- **Current state (anchors refreshed after SPEED-2's 2026-07-12 renumbering):**
+  `run_browser_qa_section()` definition `scripts/automation/goal-iter-lean.sh:716-881`
+  (SPEED-2 carved service boot + golden partition + replay lane into
+  `run_browser_qa_boot_and_replay()` `:174-289`, run inline by the section's join
+  fallback `:735-738` when the knob is off; LLM lane + merge `:809-857`, REL-11
+  tripwire `:827-839`, golden coverage + checkpoint mark `:859-880`);
+  resume-skip check `:694-707`; caller guard + invalidation + call `:883-889`.
 - **Change spec:** extract into `run_browser_qa_section()` in the same file; keep the
   resume-skip guard and `step_invalidate_from browser-qa` at the caller; byte-identical
   sequential behavior.
@@ -575,28 +630,122 @@ benchmark (or a real session's telemetry) before AND after (G8).
 - **Rollback:** revert the commit (pure refactor).
 
 ### SPEED-2 · Parallel review ∥ browser-qa — stage "replay"
-- **Priority:** P1 · **Effort:** M · **Risk:** MED · **Status:** TODO
+- **Priority:** P1 · **Effort:** M · **Risk:** MED · **Status:** DONE 2026-07-12 —
+  certified 2026-07-12 by a fresh non-implementer session per G8: parallel-bqa 36/36 +
+  checkpoints 11/11 + run-evals 98/98; off-mode byte-identity REPRODUCED (fresh stub
+  sandbox on pre-SPEED-2 `bb09160` vs HEAD, normalized tree+content+stdout+prompt
+  snapshot diff = exactly the one spec-mandated `iter_config` telemetry line, normalizer
+  pre-validated by a HEAD-vs-HEAD empty diff); FAIL-path kill-before-invalidate proof
+  repeated 5× with zero flakes (slow-stub TERM stamp); fork isolation, tripwire
+  persistence across invocations, and the cleanup reap re-verified by skeptical read.
+  DONE ≠ default flip (G4): any default flip still requires the pre-registered benchmark
+  measurement per §9 (before = `benchmarks/results/20260712-171324-5e87813077ae.json`);
+  default remains `off`.
+  *Measurement note (2026-07-14, §9 runs A′+B — ledger `bench-20260714-0634` /
+  `bench-20260714-0830`):* SPEED-2's relocation of the journey-set parse exposed a
+  PRE-EXISTING silent lean-lane death on journey-less spec lines (introduced 633059a;
+  at its old mid-section position it had killed BOTH prior benchmarks' iter-0
+  browser+coherence lanes; the relocation enlarged the kill to the whole lane,
+  pre-developer) — root-caused, fixed and eval-pinned in c8bb8c0 (`|| true` guards +
+  parallel-bqa scenario I, proven red-on-prefix/green-on-fix, 74/74). Live stage-full
+  run (B, one variable vs A′): the shared fork machinery is ALL green in a real
+  session — spawn after developer, fork telemetry attribution, join settled 1s before
+  the evaluator, 0 attempt-1-review-FAIL waste, tripwire untripped, 0 orphans. Wall
+  −11.6% NOT attributable (pre-registered null: iter-0 overlap potential was ≤73s —
+  review 73s, fork LLM lane started after review ended — vs far larger agent-duration
+  variance). Stage replay itself still has no live-session run (no goldens existed at
+  iter-0). Journeys held 3/3 in both runs.
+  *Flip decision (2026-07-14, user):* default stays **off** per the pre-registered
+  null-result rule — the flip decision needs one real-session telemetry comparison
+  (sections long enough to overlap; see also REL-12, which unlocks lean browser
+  evidence on single-service projects). Tripwire stays armed. Evidence:
+  `benchmarks/experiments.md` POSTs bench-20260714-0634 / bench-20260714-0830.
+  *Control update (2026-07-14, §9 run C `bench-20260714-1539` @ 39e2a79de68a,
+  knob off):* REL-12 is DONE — run C's iter-0 lean browser lane EXECUTES journeys
+  on the single-service fixture (SKIP-for-boot gone), so run C is the new
+  lean-capable control and the flip re-measurement at lean depth is now
+  RESOLVABLE: one future knob-on run vs C settles it. Fresh G9 approval required;
+  one variable (the knob) only. Compare against C, not A′/B — run C is also the
+  TOKEN-8 comparability baseline for cost reads.
+  *Flip decision FINAL (2026-07-15, user — §9 run D `bench-20260715-0924` @
+  fd378ca276a9, knob=full, lean-depth control C):* default stays **off**; the
+  flip question is CLOSED as DONE-knob-off — the default is a recorded product
+  decision, not pending work. Run D's fork mechanics were 100% green (knob
+  honored ×2 iterations with no demotion, spawn + clean joins, tripwire 0,
+  wasted dispatches 0, orphans 0) and it delivered the first LIVE
+  realized-overlap witness on a lean-capable lane: ~392s of a ~399s cap —
+  review fully covered by the forked browser lane in BOTH iterations. But its
+  journeys predicate REFUTED 0/3 for an environmental reason orthogonal to the
+  knob: Chrome MCP DevTools-port contention from ~50 foreign Chrome processes
+  on the shared host (diagnosed independently in both iterations, corroborated
+  live post-run; the browser lane SKIPPED honestly and the evaluator STALLED
+  correctly at the 2nd no-evidence iteration), so wall (−34.2%) and cost
+  (−23.5%) vs C are composition-broken and ungraded. Per the pre-committed
+  decision matrix: quality strike → stay off, no further fixture runs — the
+  fixture has failed to price the flip three times (A′/B pre-registered null,
+  D confounded); any future flip ask requires REAL-SESSION telemetry with
+  meaningful overlap windows and its own G9/G4 approval. Tripwire stays armed.
+  Evidence: ledger PRE/POST bench-20260715-0924,
+  benchmarks/results/20260715-101135-fd378ca276a9.json.
+  *Implementation note (2026-07-12):* knob `CHAIN_LEAN_PARALLEL_BROWSER_QA=off|replay|full`,
+  default `off` (`full` warns "full is SPEED-3" and behaves as `replay`; documented in the
+  `.claude/model-orchestration.md` knob table). Fork unit =
+  `run_browser_qa_boot_and_replay()` (`goal-iter-lean.sh:174-289`: service boot + golden
+  partition + replay lane, body lines moved verbatim) — knob=off calls it inline at its
+  original position via the section's join fallback (`:735-738`, byte-identity proven:
+  normalized artifact-tree+content+stdout snapshots of a stub sandbox run, HEAD vs
+  post-change, diff to EXACTLY the one spec-mandated `iter_config` telemetry line, with
+  noise classes pre-validated by two identical-code HEAD runs); knob=replay forks it right
+  after the developer step settles (`:538-575`) with coherence-style isolation
+  (subshell-contained `CHAIN_CURRENT_AGENT=browser-qa-replay`, own rc/state/pid files under
+  the iter dir; the pid file doubles as a cross-process orphan guard). The join
+  (`_bqa_fork_consume` `:324-347`) consumes an atomic sentinel-terminated state file
+  (frontend availability, QA_* env for the retry hook, partition + `REPLAY_FAILED`), so the
+  LLM lane's target set is computed EXACTLY as sequentially (test-asserted equal). FAIL-path
+  ordering (`_bqa_fork_reap` `:357-375`, called at `:604` before any invalidation):
+  `_kill_pid_tree` → `wait` until dead → port sweep (a finished fork's servers are orphaned
+  to init and would serve pre-fix code) → rm lane files explicitly (`step_invalidate_from`
+  deletes only marker-registered artifacts; the fork's outputs aren't registered until
+  `step_mark_done browser-qa`) → THEN `step_invalidate_from developer-fix` (`:608`).
+  Tripwire: attempt-1 review FAILs in ≥2 of the last 3 iterations (jq over
+  `telemetry.jsonl`, last-verdict-per-iteration) → persists
+  `runs/goal-session-<sid>/state/parallel-bqa-disabled` for the rest of the session
+  (`_bqa_tripwire_active` `:398-426`); no-jq → fork stays off (a tripwire that cannot fire
+  must not arm the experiment); an `iter_config` event (`{key,value,requested,reason}`,
+  `:455`) names the knob state every iteration — the one intentional off-mode delta.
+  Test: `tests/automation/test-goal-parallel-bqa.sh` (36 asserts — off-identity incl. exact
+  pre-change artifact tree; fork+join with LLM-target-set + merged-rows equality vs the
+  sequential run; kill-before-invalidate proven via a TERM stamp from inside a 30s-slow
+  stub demo_runner + no lane file post-invalidation after a settle window; tripwire
+  trip+persist across two iterations; full→replay warning), registered in run-evals §2c
+  (98/98; suite ~66s — the quick-start "<30s" claim was already stale at ~51s before this
+  change). NOTE: this change renumbered `goal-iter-lean.sh` below `:104` — other items
+  citing that file should re-verify anchors (standing rule).
 - **Problem:** reviewer (~21m) and browser-qa (~20m) both need only the post-dev tree
   yet run sequentially — the single biggest safe parallelism left in the lean path.
-- **Current state:** sequence is developer → review-1 → (fix → review-2) → browser-qa
-  (`goal-iter-lean.sh:142-250` review loop; `step_invalidate_from developer-fix` on
-  FAIL at `~:217`). The coherence fork is the copyable pattern: fork `~:252-290`, join
-  `~:580-602`, reap in `cleanup_iter_servers` `~:90-107`. Feasibility verified: the
+- **Current state (post-implementation anchors):** sequence is developer →
+  fork (`goal-iter-lean.sh:538-575`) → review loop (`:577-641`; reap `:604`;
+  `step_invalidate_from developer-fix` `:608`) → join at the top of
+  `run_browser_qa_section` (`:735-738`) → LLM lane + merge (`:809-857`).
+  Coherence fork `:643-683`, its join `:891-913`; both forks reaped in
+  `cleanup_iter_servers` `:113-134`. Feasibility re-verified 2026-07-12: the
   checkpoint canonical order (`lib/checkpoint.sh:40`) is an INVALIDATION order, not an
   execution order — `step_invalidate_from developer-fix` already cascades deletion of
   browser-qa/coherence/evaluator markers AND their registered artifacts
-  (`checkpoint.sh:188-225`), so an early-forked browser-qa result is auto-invalidated
-  on the FAIL path with zero checkpoint changes. Browser-qa writes land under `runs/`
+  (`checkpoint.sh:193-225`), so an early-forked browser-qa result is auto-invalidated
+  on the FAIL path with zero checkpoint changes (raw lane files are additionally
+  discarded by the reap — they are not marker-registered until the section's
+  `step_mark_done browser-qa`). Browser-qa writes land under `runs/`
   + `reports/`, which are excluded from the tree hash (`checkpoint.sh:35`). Reviewer
-  only reads/diffs (`review_diff_hint`, `lib/common.sh:377-388`).
+  only reads/diffs (`review_diff_hint`).
 - **Change spec:**
   1. Knob `CHAIN_LEAN_PARALLEL_BROWSER_QA=off|replay|full`, default `off`.
-  2. In `replay` mode: after `step_mark_done developer` (`~:187`), fork service boot +
+  2. In `replay` mode: after `step_mark_done developer` (`:193`), fork service boot +
      lane-1 deterministic replay ONLY (`demo_runner.py --mode verify` — pure python,
      cleanly killable in both backends, no pump involvement) in a subshell copying the
      coherence-fork pattern (isolate `CHAIN_CURRENT_AGENT`, rc-file, PID). Join after
      review settles; feed `REPLAY_FAILED` into the LLM lane's target set exactly as the
-     sequential path does (`~:524`).
+     sequential path does (`:534`).
   3. **On review-1 FAIL — ordering is CRITICAL:** kill the fork, `wait` for it to die,
      THEN `step_invalidate_from developer-fix`, then re-run browser-qa sequentially
      post-fix. Never let a forked write land after invalidation.
@@ -608,11 +757,13 @@ benchmark (or a real session's telemetry) before AND after (G8).
      `test-goal-checkpoints.sh`): asserts fork/join on the PASS path and
      kill-then-invalidate on the FAIL path.
 - **DoD:** default-off; replay mode green in the sandbox test on both paths; telemetry
-  attributes the fork correctly; evals green.
+  attributes the fork correctly; evals green. (All met 2026-07-12 — DONE additionally
+  requires the G8 fresh-session certification, see Status.)
 - **Verify:** `bash tests/automation/test-goal-parallel-bqa.sh &&
   bash tests/automation/test-goal-checkpoints.sh && ./scripts/automation/run-evals.sh`
 - **Files:** `scripts/automation/goal-iter-lean.sh`,
-  `tests/automation/test-goal-parallel-bqa.sh` (new), docs knob table.
+  `tests/automation/test-goal-parallel-bqa.sh`, `scripts/automation/run-evals.sh`
+  (§2c registration), `.claude/model-orchestration.md` (knob table).
 - **Rollback:** knob default `off` — no rollback needed; delete the fork block if it
   misbehaves.
 - **Stop-and-ask:** any evidence of a result file appearing AFTER its invalidation
@@ -621,7 +772,103 @@ benchmark (or a real session's telemetry) before AND after (G8).
 - **Depends on:** SPEED-1.
 
 ### SPEED-3 · Parallel review ∥ browser-qa — stage "full" (headless only)
-- **Priority:** P1 · **Effort:** M · **Risk:** MED · **Status:** TODO
+- **Priority:** P1 · **Effort:** M · **Risk:** MED · **Status:** DONE 2026-07-13 —
+  certified 2026-07-13 by a fresh non-implementer session per G8: parallel-bqa 68/68
+  green across 6 consecutive full-suite runs — the race/orphan/rc-70 scenarios (C
+  kill-ordering, G kill-mid-dispatch + zero-orphan pgrep + wasted-dispatch event, H
+  rc-70 pause parity, 28 asserts) re-run 5× with zero flakes; the join-pause tree-diff
+  claim reproduced (H: forked rc-70 pause tree file-list + step markers + developer
+  marker tree_hash IDENTICAL to the sequential pause tree; H3 resume: developer skips,
+  browser-qa re-forks, real PASS); interactive→replay backend gate re-verified (E:
+  headless-only warning, `iter_config` reason=interactive-backend, zero dispatches on
+  a checkpointed rerun); checkpoints 11/11; run-evals 98/98. Skeptical structural read
+  of the fork machinery (rc file skipped on in-fork exit-70 so `wait` carries the
+  pause to the join; marker deferred to the join behind `_BQA_IN_FULL_FORK`;
+  reap-before-invalidate ordering; recycled-PID-safe orphan guard;
+  `cleanup_iter_servers` full-fork reap) matched every implementation-note claim.
+  DONE ≠ default flip (G4): any default flip still requires the §9 pre-registered
+  benchmark measurement (before = `benchmarks/results/20260712-171324-5e87813077ae.json`);
+  default remains `off`.
+  *Measurement note (2026-07-14, §9 run B `bench-20260714-0830` vs control A′
+  `bench-20260714-0634`, one variable = `CHAIN_LEAN_PARALLEL_BROWSER_QA=full`):* FIRST
+  LIVE RUN of the full-section fork — every mechanical observable green:
+  `iter_config {value:full, requested:full}` (headless honored, no demotion), fork
+  spawned after the developer settled, review ran concurrently with the fork's boot
+  phase, the fork's browser-qa-agent dispatch attributed correctly in session
+  telemetry, join settled the fork 1s before the goal-evaluator started (input set
+  complete), 0 attempt-1 review FAILs (no wasted-dispatch path), tripwire never
+  tripped, 0 orphan processes post-run. Journeys 3/3 HOLD; benchmark_compare verdict
+  OK (wall −11.6%, cost −4.5%). The WALL delta is NOT attributable to the knob
+  (pre-registered null): the fixture's iter-0 sections are too short to overlap
+  meaningfully (review 73s; the fork's LLM lane began 61s after review ended; only
+  the ~2-min service boot overlapped) and per-agent duration variance dwarfed the
+  ≤73s overlap potential. Verdict-shape deltas across the pair (A′ GOAL_ACHIEVED vs
+  B BUDGET_EXHAUSTED/CONTINUE at 3/3; iter-0 CONTINUE vs ESCALATE on identically
+  SKIPPED browser lanes) are evaluator judgment variance, not knob effects — full
+  detail in the ledger POSTs.
+  *Flip decision (2026-07-14, user):* default stays **off** per the pre-registered
+  null-result rule — a real-session telemetry comparison (meaningful overlap windows)
+  is the prerequisite for any flip ask; `full` remains headless-gated when it comes.
+  Tripwire stays armed. Evidence: ledger POSTs bench-20260714-0634 /
+  bench-20260714-0830.
+  *Control update (2026-07-14, §9 run C `bench-20260714-1539` @ 39e2a79de68a,
+  knob off):* run C is the new lean-capable control (REL-12 DONE: iter-0 lean
+  browser lane executes journeys on the single-service fixture) — a stage-full
+  flip re-measurement at lean depth is now RESOLVABLE as one future knob-on run
+  vs C (fresh G9 approval; one variable only; compare against C, not A′/B — run
+  C is also the TOKEN-8 comparability baseline).
+  *Flip decision FINAL (2026-07-15, user — §9 run D `bench-20260715-0924` @
+  fd378ca276a9):* default stays **off**; CLOSED as DONE-knob-off (recorded
+  product decision). Run D was stage-full's second live run and its first on a
+  lean-capable control: every mechanical observable green (iter_config
+  value=full ×2, fork spawn + clean join ×2, tripwire 0, wasted dispatches 0,
+  orphans 0) and the review ∥ browser-qa overlap REALIZED at ~98% of its
+  theoretical cap (iter-0: 207s of a 211s review; iter-1: 185s of 188s) —
+  first live proof the full-section fork actually buys its min(review,
+  browser-qa) saving. Journeys REFUTED 0/3 on host Chrome-MCP DevTools-port
+  contention (~50 foreign Chrome processes; orthogonal to the knob; the
+  SKIP → STALLED honesty path worked as designed), leaving wall/cost vs C
+  ungraded. Matrix: quality strike → stay off; the flip is parked on
+  real-session telemetry (the fixture failed to price it 3×). Expected saving
+  on real sessions remains ≈ min(review, browser-qa) — the mechanism is
+  live-proven; only its price on real workloads is unknown. Evidence: ledger
+  PRE/POST bench-20260715-0924,
+  benchmarks/results/20260715-101135-fd378ca276a9.json + SPEED-2's note.
+  *Implementation note (2026-07-13):* backend gate at knob parse: `full` is honored only
+  when `CHAIN_AGENT_BACKEND != interactive`; interactive demotes to `replay` with one
+  logged warning and `iter_config` reason `interactive-backend` (`goal-iter-lean.sh:540`,
+  replacing SPEED-2's placeholder warning). Fork unit = the WHOLE
+  `run_browser_qa_section` (service boot + replay lane + LLM lane + merge) — its
+  definition moved verbatim above the developer step so the fork subshell can see it
+  (`:575`; off-mode byte-identity re-proven post-move: pre-SPEED-2 `bb09160` vs HEAD
+  normalized sandbox snapshot still diffs to exactly the one `iter_config` line). Spawn
+  right after developer settles with replay-fork isolation (subshell-contained agent
+  name, own `.bqa-full-rc`/`.bqa-full-pid`, recycled-PID-safe orphan guard, `:865`).
+  Checkpointing stays in the PARENT: the fork writes NO step markers (the review loop's
+  invalidation cascades pass through browser-qa, so a fork-written marker would race
+  them); browser-qa is invalidated BEFORE forking and the join writes the marker after
+  validating the merged results (`_BQA_IN_FULL_FORK` guard `:739`). JOIN-PAUSE
+  TRANSLATION (the hardest semantic): `_pause_if_transport` EXITS the fork subshell from
+  inside `run_browser_qa_llm` before the rc file can be written, so the join
+  (`_bqa_full_fork_consume` `:415`) reads `wait`'s status and re-raises rc 70 in the
+  parent — engine pauses resumably exactly as inline; any other fork failure falls back
+  to the inline section (the sequential path IS the fallback). Test-proven: the
+  pause-at-join sandbox tree (file list + step markers + marker tree_hash) is IDENTICAL
+  to the sequential rc-70 pause tree, and a follow-up run resumes (developer skips,
+  browser-qa re-forks, real PASS). Review-1 FAIL: `_bqa_full_fork_reap` (`:453`, called
+  `:931` beside the replay reap) kills the whole fork tree (in-flight stub dispatch
+  included), waits, sweeps ports, discards replay+LLM+merged lane files, THEN
+  `step_invalidate_from developer-fix` — post-fix browser-qa runs sequentially; pgrep
+  in the test asserts ZERO surviving fork processes (the stop-and-ask trigger). Cost
+  dimension: the reap emits `parallel_bqa_wasted_dispatch` (mode=full, wasted full
+  browser-qa dispatch fact, plus the note that the 2-of-3 tripwire spares exactly this
+  cost); the tripwire itself now gates both `replay` and `full`.
+  `cleanup_iter_servers` reaps the full-fork PID tree on every exit path (`:142`).
+  Test: `tests/automation/test-goal-parallel-bqa.sh` extended 36→68 asserts (scenarios
+  E interactive-gate/dispatch-free, F full+PASS with overlap witness + tree/rows/target
+  identity vs sequential, G kill-mid-dispatch + zero-orphan pgrep + wasted-dispatch
+  event, H rc-70 pause-tree parity + resume); suite ~24s, still in run-evals §2c
+  (98/98). Race/orphan scenarios re-run 5× — zero flakes.
 - **Problem:** replay mode only parallelizes the deterministic lane; the LLM browser-qa
   dispatch (~most of the 20m) still waits for review.
 - **Current state:** as SPEED-2. The interactive backend is EXCLUDED: killing the
@@ -630,7 +877,7 @@ benchmark (or a real session's telemetry) before AND after (G8).
   that cancellation gap is EXP-4's problem, not this item's.
 - **Change spec:** in `full` mode AND `CHAIN_AGENT_BACKEND != interactive`: fork the
   whole `run_browser_qa_section` (LLM lane included); join handles rc 70 exactly like
-  the coherence join (`goal-iter-lean.sh:588-591`); same kill-then-invalidate FAIL
+  the coherence join (`goal-iter-lean.sh:899-902`); same kill-then-invalidate FAIL
   ordering; tripwire gains a cost dimension (a wasted full browser-qa dispatch per
   review-FAIL iteration — log it).
 - **DoD:** headless sandbox test green both paths; interactive mode ignores `full`
@@ -644,8 +891,64 @@ benchmark (or a real session's telemetry) before AND after (G8).
   clean iterations.
 
 ### TOKEN-1 · Per-agent project-template slicing
-- **Priority:** P1 · **Effort:** M · **Risk:** LOW · **Status:** TODO  *(absorbed:
-  README Token-Opt Tier-1 polish)*
+- **Priority:** P1 · **Effort:** M · **Risk:** LOW · **Status:** DONE 2026-07-14 —
+  release-manager/reviewer/qa converted; developer conversion deliberately LAST per this
+  entry; auditor untouched. G8 fresh-session certification 2026-07-14 (non-implementer):
+  offline half green — slice contract test 18/18 incl. the production↔builder mirror
+  gate, full run-evals 99/99, sync --check clean, slice-sufficiency re-read of all
+  three bodies vs the map confirmed with one recorded borderline (reviewer map omits
+  DATA MODEL RULES — defensible: its checklist never cites that section; the developer,
+  who writes the data code, still gets the full file); M1 reviewer fixtures RE-RUN
+  fresh-eyes: 4/4 classes hold (PASS / PASS_WITH_NOTES / FAIL / FAIL, 99/178/131/219s,
+  sonnet-tier, `run-judgment-evals.sh --yes-spend --judge reviewer`). DoD telemetry
+  delivered by §9 run A′ (`bench-20260714-0634` vs the 20260712 baseline, like-for-like
+  lean iter-0 rows): CONVERTED reviewer DOWN every axis — cache_creation 45,095→43,182
+  (−4.2%, −1,913 tok ≈ the ~180-line Read replaced by the 56-line slice), cache_read
+  −15.4%, turns 22→19, cost $0.889→$0.759 (−14.6%) — while the UNCONVERTED developer
+  (falsification control) moved OPPOSITE (+26.8% cache_creation, +27.7% cost), so the
+  reviewer drop is not ambient drift. RECORDED GAP: qa telemetry INCONCLUSIVE (its
+  cache_creation reads 129.7k/96.3k/133.0k across three runs — ±25% workflow noise
+  around a ~2k mechanism; direction claim from run A did NOT replicate); release-manager
+  + full-depth reviewer/qa rows unmeasurable until the *-phase.sh telemetry blind spot
+  is closed (those scripts record no usage rows) or a real session covers them. The
+  static mechanism (slice inlined, full-file Read instruction removed) is
+  eval-pinned regardless.
+  Reviewer judgment fixtures RE-RUN post-slice (G9-approved 2026-07-13): 4/4 verdict
+  classes hold under the new pre-sliced prompt (case-01 PASS, case-02 PASS_WITH_NOTES,
+  case-03 FAIL, case-04 FAIL — 141/170/199/226s, sonnet-tier,
+  `run-judgment-evals.sh --yes-spend --judge reviewer`).
+  *Implementation note (2026-07-13):* helper `project_template_slice <agent> [template]`
+  + the AGENT→sections map beside it in `scripts/automation/lib/common.sh`. Map
+  (adjusted from this entry's initial guess after reading the bodies): release-manager →
+  GIT WORKFLOW (branch naming + PR title format + never-commit are ALL its
+  template-sourced duties); reviewer → ARCHITECTURE PRINCIPLES + DESIGN SYSTEM (its
+  UI-quality checklist verifies components/tokens/effects against it) + TEST COMMANDS;
+  qa → STACK (service URLs + frontend flag) + TEST COMMANDS + SERVICE START COMMANDS.
+  Semantics: verbatim `##`-section chunks in map order; a mapped section missing from
+  the template → loud inline `[slice: section 'X' not found …]` marker (never silent);
+  unknown agent → full file + one stderr diagnostic (safe fallback for
+  developer/auditor); missing template file → loud marker; always rc 0 (prompts embed
+  it via `$(...)` under `set -e`). Sites converted (the "read this" line → inlined
+  four-backtick-fenced slice labeled "Project template (relevant sections,
+  pre-sliced):"): `finalize-phase.sh` (release-manager; step-2 never-commit wording now
+  points at the inlined GIT WORKFLOW), `qa-phase.sh` (qa), `review-phase.sh` and
+  `goal-iter-lean.sh` `run_reviewer` (reviewer). The three `body.md`s now say the
+  pre-sliced sections in the dispatch prompt are authoritative — do not Read the full
+  file (`agent.yaml` bumps: reviewer 1.2.0, qa 1.2.0, release-manager 1.1.0; mirrors
+  re-rendered). THE MIRROR: `run-judgment-evals.sh` `_prepare_reviewer` inlines the
+  slice via the SAME helper over the sandbox's `.claude/project-template.md` — factual
+  correction to this entry: the fixture trees carry NO `.claude/`; the sandbox reaches
+  the framework's own template through the runner's read-only-asset symlink, so
+  mirroring works with fixtures untouched. NEW GATE:
+  `tests/automation/test-project-template-slice.sh` (run-evals §2c → 99/99; 18 asserts)
+  pins the slice contract (exact-match fixture slices, map order, fallback, both loud
+  markers, real-template map sufficiency incl. the never-commit canary) AND
+  extracts+normalizes the production `run_reviewer` prompt vs the judgment builder's
+  heredoc — the verbatim-mirror invariant is now a failing eval, not a convention
+  (the gate was validated green on the PRE-change prompt pair first). Benchmark
+  fixture's filled template slices clean for all three agents (release-manager 14 /
+  qa 51 / reviewer 56 lines vs the ~180-line full file), so the §9 measurement run
+  needs no fixture edits.  *(absorbed: README Token-Opt Tier-1 polish)*
 - **Problem:** every agent that reads `.claude/project-template.md` reads all of it;
   release-manager needs ~5 lines (never-commit list), developer needs most.
 - **Current state:** agents told to read the whole file; helper-slicing deferred in old
@@ -664,14 +967,52 @@ benchmark (or a real session's telemetry) before AND after (G8).
 - **Trigger:** telemetry shows template reads are a measurable share of input tokens.
 
 ### TOKEN-2 · Tier experiment: goal-decomposer strong→standard
-- **Priority:** P1 · **Effort:** S · **Risk:** MED · **Status:** BLOCKED (needs EVO-3 +
-  REL-1) *(absorbed: README Token-Opt Tier-2; the orchestrator half is already DONE —
+- **Priority:** P1 · **Effort:** S · **Risk:** MED · **Status:** DONE
+  (**ADOPTED 2026-07-16, user-confirmed** — experiment ran 2026-07-15→16 on branch
+  `experiment/token-2-decomposer-standard` under the user-approved G1 spend session
+  and merged on the explicit ADOPT confirm; the decomposer now runs the standard
+  tier with effort max; judges unchanged on strong; single-line rollback stands)
+  *(absorbed: README Token-Opt Tier-2; the orchestrator half is already DONE —
   see §17 ledger)*
 - **Problem:** the decomposer runs on the strong tier every iteration; spec-writing may
   be within standard-tier reach now that it receives the goal slice + journey digest.
-- **Current state:** `agents/goal-decomposer/agent.yaml` `model_tier: strong`;
-  goal-evaluator MUST stay strong (adversarial judgment — old README said the same);
-  judge-effort guard (D4) stays regardless of tier.
+- **Current state (post-adopt):** `agents/goal-decomposer/agent.yaml`
+  `model_tier: standard` (v2.0.0, adopted 2026-07-16); goal-evaluator stays strong
+  (adversarial judgment — old README said the same); judge-effort guard (D4)
+  unchanged and still covers the decomposer.
+- **Blast-radius proof (2026-07-15, on the experiment branch):**
+  `agent_permissions.py model/effort` across all 20 agents, before vs after the flip
+  + resync — exactly one row changed: goal-decomposer `claude-opus-4-8 → claude-sonnet-5`
+  (effort stays `max`). goal-evaluator/auditor/goal-proposer/reviewer unchanged at their
+  tiers; D4 intact (goal-decomposer remains in `JUDGE_AGENTS`, so `CHAIN_AGENT_EFFORT`
+  still refuses it; `agent_permissions.py` untouched by the flip). Evals 111/111 post-flip.
+- **REL-1 fixtures on the flipped branch (2026-07-15): 5/5 PASS** — goal-evaluator
+  judge resolved unchanged (claude-opus-4-8 @ max) and every verdict class landed
+  exact (GOAL_ACHIEVED/CONTINUE/REGRESSION/CONTINUE/REGRESSION, 244–316s/case, in
+  line with the 2026-07-09 baseline timings). Config-surface regression insurance
+  green; no revert trigger. (Runner does not instrument case cost by design;
+  pre-estimate $11.90 ±3x, durations match the in-band 07-09 run.)
+- **EVO-3 benchmark on the flipped branch (2026-07-16, `bench-20260716-0626` @
+  d41a38bcfb4f vs control run C `bench-20260714-1539`): all pre-committed adopt
+  criteria measured.** GOAL_ACHIEVED, journeys 3/3 (predicate CONFIRMED), zero
+  attempt-1 review fails, COHERENCE-PASS, two-key confirm passed. Decomposer
+  per-agent: $3.591 → **$2.184 (−39.2%)**, out-tok −19.5%, duration −30%;
+  routing proven (engine.log "model=claude-sonnet-5" on Step 1; by_model: opus
+  billed exactly the evaluator's 3 calls). Session total $20.84 → $21.15
+  (+1.5% ≈ flat, with E's telemetry coverage MORE complete than C's); wall
+  −15.1%. Spec-quality comparative reading: outcome-equal, artifact-thinner
+  (no DOM-contract table; goal.md's J-02→J-03 state contradiction left to
+  executor pragmatics where C defused it in-spec; the /api-routes IA reading
+  shipped unledgered — though the unchanged opus evaluator + coherence audit
+  examined and passed that architecture explicitly). Developer row +64% inside
+  the flat total — part noise (±25% band), part plausible spec-thinness cost
+  shift; fixture cannot decompose further. Full graded assessment: the POST in
+  `benchmarks/experiments.md`. **Decision: ADOPT — user-confirmed 2026-07-16;
+  branch merged to main.** Watch item for real sessions: if decomposer spec
+  quality shows pain live (unledgered interpretation calls, downstream developer
+  cost inflation, review fails traceable to spec gaps), the rollback is the
+  single `model_tier` line + resync (this entry's Rollback), and the evidence
+  here is the before/after baseline.
 - **Change spec:** flip `model_tier` to `standard` on a branch; run EVO-3 benchmark +
   REL-1 judgment fixtures before/after; adopt only if spec quality (fixture pass +
   benchmark journeys/iteration) holds. Model-spend class → user approval first (G1).
@@ -684,71 +1025,170 @@ benchmark (or a real session's telemetry) before AND after (G8).
 - **Trigger:** decomposer cost is a top-3 line in per-agent telemetry.
 
 ### TOKEN-3 · Skip test-plan generation when the spec already lists tests
-- **Priority:** P1 · **Effort:** S · **Risk:** LOW · **Status:** TODO *(absorbed:
-  README Token-Opt Tier-2)*
+- **Priority:** P1 · **Effort:** S · **Risk:** LOW · **Status:** IN-PROGRESS
+  (mechanics landed + sandbox-proven 2026-07-16; ships **default `false`** per G4 —
+  the default flip to `true` is the real finish line and awaits **one observed clean
+  full-mode phase with the skip active**, riding the same wait as TOKEN-8's live DoD:
+  the next natural full-depth iteration/phase) *(absorbed: README Token-Opt Tier-2)*
 - **Problem:** full-mode Step 2 generates a functional test plan even when the phase
   spec already contains explicit test scenarios — a wasted dispatch.
-- **Current state:** `run-phase.sh` Step 2 always runs the qa test-plan generator.
+- **Current state (post-mechanics):** `run-phase.sh` Step 2 gates the generator
+  dispatch behind `CHAIN_SKIP_TESTPLAN_IF_PRESENT` (default `false` = today's
+  always-generate behavior; `true` + heuristic match → dispatch skipped with ONE loud
+  log line naming the matched heuristic, checkpoint still advances to
+  `test_plan_generated`). Heuristic `_spec_lists_tests_reason()`: word-bounded
+  `## Test`-titled section (`## Tests`, `## Test Scenarios`, `## Test Plan` —
+  deliberately NOT the boilerplate `## TESTING REQUIREMENTS` heading, which
+  `templates/phase-spec.md` ships in every spec while its comment says the generator
+  is still expected to run) OR ≥3 `TC-` test-case lines (the decomposer TC- scenario
+  contract, REL-9 — a spec meeting that contract auto-earns the skip once the knob
+  flips).
 - **Change spec:** deterministic heuristic (spec contains a `## Test` section or ≥3
   `TC-` lines) → skip generation and note the skip in the run log; NEVER skip silently.
   Knob `CHAIN_SKIP_TESTPLAN_IF_PRESENT` default `true` after one observed clean phase.
 - **DoD:** sandbox phase with tests-in-spec skips with a logged reason; phase without
-  them generates as today; evals green.
+  them generates as today; evals green. ✅ *Sandbox half met 2026-07-16:*
+  `tests/automation/test-testplan-skip.sh` (17 assertions; full stubbed run-phase.sh
+  pipeline runs: heading-skip + TC-skip with logged reasons and zero generator
+  dispatches on the canary, plain spec generates as today, knob-off default generates,
+  `## TESTING REQUIREMENTS` boilerplate does NOT suppress). *Default flip: pending the
+  observed clean phase above.*
+  *Coupling note (2026-07-16):* REL-9 landed — the decomposer template now
+  CONTRACTS ≥1 TC- scenario line per DoD checkbox (≥3 in any real spec), so
+  specs meeting the TC- heuristic become the norm rather than the exception;
+  the observed-clean-phase precondition is reachable at the next full-depth
+  phase run with `CHAIN_SKIP_TESTPLAN_IF_PRESENT=true`.
 - **Verify:** `bash -n scripts/automation/run-phase.sh && ./scripts/automation/run-evals.sh`
-- **Files:** `scripts/automation/run-phase.sh`.
+- **Files:** `scripts/automation/run-phase.sh`, `tests/automation/test-testplan-skip.sh`.
 - **Rollback:** knob.
 
 ### TOKEN-4 · Cap the audit-failure full-rerun
-- **Priority:** P1 · **Effort:** S · **Risk:** MED · **Status:** TODO *(absorbed:
-  README Token-Opt Tier-2)*
-- **Problem:** on audit FAIL, the hardening loop (`run-phase.sh:855-908`,
-  `MAX_AUDIT_RETRIES=3`) re-runs developer + reviewer + full QA on EVERY failed
-  attempt — the most expensive retry in the pipeline. (The old README cited
-  `:649-679`; the loop has moved — verified 2026-07-06.)
-- **Current state:** full rerun per attempt as above; the dev pass inside it already
-  escalates to the strong tier (`escalate_model_on`, `run-phase.sh:887`; the
-  dev/review-loop equivalent is `:583`); a QA FAIL inside hardening hard-fails the
-  phase (`audit_qa_failed`).
+- **Priority:** P1 · **Effort:** S · **Risk:** MED · **Status:** DONE
+  (landed + sandbox-proven 2026-07-16; the DoD is fully sandbox-satisfiable and met.
+  **Ships default cap=1 by design — deliberately NOT G4 default-off:** the entry
+  itself specifies `CHAIN_AUDIT_RERUN_CAP=1`; this is a cost guard with a tested
+  one-knob rollback (`cap=0` = exact pre-cap behavior) rather than a behavior
+  experiment, and the Stop-and-ask below carries the explicit revert trigger. Do
+  not relitigate the default.) *(absorbed: README Token-Opt Tier-2)*
+- **Problem:** on audit FAIL, the hardening loop (`run-phase.sh`, Step 9 —
+  the loop moves; grep "Post-phase audit loop", `MAX_AUDIT_RETRIES=3`) re-ran
+  developer + reviewer + full QA on EVERY failed attempt — the most expensive retry
+  in the pipeline. (The old README cited `:649-679`; verified moved 2026-07-06 and
+  again 2026-07-16.)
+- **Current state (post-change):** the loop picks a hardening mode per failed
+  attempt, loudly logged: FULL-RERUN (dev + review + full QA) until
+  `CHAIN_AUDIT_RERUN_CAP` COMPLETED full passes are spent (default `1`;
+  quota-interrupted QA does not spend the cap), then FIX-ONLY (dev + review +
+  audit re-check, NO full QA rerun). Identical in both modes: strong-tier dev
+  escalation (`escalate_model_on`) and the `audit_qa_failed` hard-fail whenever
+  full-mode QA runs and fails. The counter is per-run (in-memory): a human resume
+  from `audit_failed` re-earns one full rerun; `MAX_AUDIT_RETRIES=3` still bounds
+  total attempts.
 - **Change spec:** after the FIRST full rerun, subsequent audit FAILs in the same phase
   switch to fix-only mode (developer fix + reviewer + audit re-check, no full QA rerun),
   logged. Knob `CHAIN_AUDIT_RERUN_CAP=1`.
-- **DoD:** sandbox test of the audit-fail path shows the cap; evals green.
-- **Verify:** targeted test + `./scripts/automation/run-evals.sh`
-- **Files:** `scripts/automation/run-phase.sh`.
-- **Rollback:** knob (cap=0 → old behavior).
-- **Stop-and-ask:** if telemetry shows audits legitimately need full reruns (fix-only
-  passes audit but phase ships bugs), revert and mark STALE with evidence.
+- **DoD:** sandbox test of the audit-fail path shows the cap; evals green. ✅
+  2026-07-16: `tests/automation/test-audit-rerun-cap.sh` (17 assertions driving the
+  real run-phase.sh Step-9 loop from an `audit_failed` checkpoint with stubbed step
+  scripts + dispatch canary: attempt 1 hardens FULL, attempt 2+ hardens FIX-ONLY
+  with zero QA dispatches; `cap=0` restores full reruns every attempt; escalation
+  env visible to dev in both modes; `audit_qa_failed` and `audit_failed` exhaustion
+  paths unchanged). Evals green (113).
+- **Verify:** `bash tests/automation/test-audit-rerun-cap.sh && ./scripts/automation/run-evals.sh`
+- **Files:** `scripts/automation/run-phase.sh`, `tests/automation/test-audit-rerun-cap.sh`.
+- **Rollback:** knob (`CHAIN_AUDIT_RERUN_CAP=0` → old behavior; covered by test case B).
+- **Stop-and-ask (STILL LIVE — the revert trigger):** if telemetry shows audits
+  legitimately need full reruns (fix-only passes audit but phases ship bugs), revert
+  to `cap=0` and mark this STALE with evidence.
 - **Trigger:** telemetry shows the audit-fail full-rerun firing more than rarely.
 
 ### TOKEN-5 · Interactive pump token-usage telemetry
-- **Priority:** P1 · **Effort:** M · **Risk:** MED · **Status:** TODO
+- **Priority:** P1 · **Effort:** M · **Risk:** MED · **Status:** IN-PROGRESS *(2026-07-16:
+  contract + engine parse + extraction recipe shipped, evals green. Same day, G8: offline
+  half CERTIFIED by a fresh non-implementer session — dispatch self-tests 9–12 green
+  (valid/absent/malformed×2/analyzer-mix), claude sync --check + 113/113 evals green, and
+  the extraction recipe reproduced live on the certifying session's own transcript: the
+  recipe's jq and an independent python sum agree on all four token fields (13 msgs;
+  dedupe by `message.id` is load-bearing — the naive sum over the same 47 raw rows
+  inflates output ~4×), and re-running the recipe fresh on the original probe artifact
+  `agent-af4c552` reproduces the recorded totals exactly (16 msgs → 4,915 / 44,823 /
+  563,877 / 67,486). Restart rule confirmed documented in the skill's protocol-v2 header.
+  Remaining for DONE: first REAL pump session showing `claude_usage` rows — requires a
+  pump started after this change, per the restart rule)*
+- **Feasibility finding (2026-07-16 — Outcome A, a real path EXISTS):** a pump session
+  CAN obtain per-dispatch token counts zero-spend from its own Claude Code transcript
+  (verified live on CLI 2.1.205/2.1.206): `CLAUDE_CODE_SESSION_ID` is exported to Bash
+  tool calls, and `~/.claude/projects/*/<sid>.jsonl` exists for the running session.
+  Each Task dispatch leaves a parent-transcript `toolUseResult` row (`{agentId,
+  agentType, resolvedModel, totalDurationMs, ...}`) plus a subagent transcript
+  `<sid>/subagents/agent-<agentId>.jsonl`; summing its per-message `usage` rows
+  deduped by `message.id` (streaming snapshots repeat ids) yields the dispatch totals
+  — recipe output cross-checked by an independent Python sum (agent af4c552: 16 msgs →
+  input 4,915 / output 44,823 / cache-read 563,877 / cache-create 67,486) and accepted
+  by the engine validator. CAUTION (encoded in the skill): `toolUseResult.usage` /
+  `totalTokens` is a final-API-call snapshot — verified equal to the subagent
+  transcript's LAST row — NOT the dispatch total; headless sidecar semantics are
+  run-cumulative (real rows: 46 turns → 90,865 output; 556 turns → 149,017 output), so
+  the transcript SUM is the matching semantics. Other surfaces: OTEL env unset, no
+  `~/.claude` cost files, Task tool_result text carries no counts — the transcript is
+  the ONLY pump-accessible surface. Interactive dispatches expose no USD cost → events
+  omit `total_cost_usd` (absence = unknown; never estimated).
 - **Problem:** interactive (pump) sessions record NO token usage — documented gap
   (`docs/goal-mode-telemetry.md:133`) — so all cost work is blind in interactive mode.
-- **Current state:** headless gets `claude_usage` events from the stream renderer
-  sidecar (`lib/quota-retry.sh:583-593`, `lib/telemetry.sh:139-159`); the pump protocol
-  result files carry no usage field (`skills/goal-interactive-dispatch.md`).
-- **Change spec:** extend the pump result contract with an optional usage object
-  (input/output/cache tokens if the pump session can obtain them); engine side parses
-  and emits `claude_usage` telemetry when present; absent field = today's behavior.
-  Bump the skill's `version:`. Document: a RUNNING pump predates the protocol — restart
-  the pump session after this change (letter's rule).
+- **Current state (shipped by this item):** pump protocol v2 — request JSON carries
+  `usage_path` (idiom of `out`); pump writes a sidecar-shaped usage JSON before `.res`;
+  `_interactive_invoke` validates it (all four token fields non-negative numbers;
+  malformed → ONE warn + skip, never fatal) and reuses `record_claude_usage_from_sidecar`
+  → byte-identical `claude_usage` event shape, `analyze_telemetry.py` UNCHANGED (proved
+  by dispatch self-test 12's mixed pump+headless fixture); the validated sidecar also
+  enriches `trace.jsonl` via the existing recorder sidecar arg. Absent sidecar =
+  byte-identical v1 flow. Skill `version: 2.0.0` + recipe + running-pump-restart rule
+  (letter). Additive protocol composes with REL-3 (pid/host live in heartbeat/claim
+  files, not the usage sidecar).
 - **DoD:** with a stub pump writing the field, telemetry shows usage events; without
-  it, no errors; evals green.
-- **Verify:** stub-pump test + `./scripts/automation/run-evals.sh`
+  it, no errors; evals green — met (dispatch self-tests 9–12). NOT yet stub-free: a
+  real `/goal` pump session must show usage rows before DONE (G8).
+- **Verify:** `bash scripts/automation/lib/interactive-dispatch.sh --self-test` +
+  `./scripts/automation/run-evals.sh`; then live: any post-restart `/goal` session →
+  `python3 scripts/automation/lib/analyze_telemetry.py runs/goal-session-<sid>/telemetry.jsonl`
+  shows per-agent token rows.
 - **Files:** `skills/goal-interactive-dispatch.md` (+ mirror + version),
   `scripts/automation/lib/interactive-dispatch.sh`,
-  `scripts/automation/goal-await-dispatch.sh`, telemetry docs.
+  `scripts/automation/goal-await-dispatch.sh`, `docs/goal-mode-telemetry.md`,
+  `docs/goal-mode-interactive.md`, `.claude/architecture/goal-mode.md`.
 - **Rollback:** engine tolerates the field's absence by design; revert engine parse.
 - **Stop-and-ask:** if the pump genuinely cannot access its own usage numbers, record
-  that finding here and mark STALE — do not fake estimates.
+  that finding here and mark STALE — do not fake estimates. *(Probed 2026-07-16: it
+  can — see Feasibility finding. The no-fabrication rule is now enforced in the skill's
+  HONESTY RULE and the engine's skip-on-invalid.)*
 
 ### TOKEN-6 · Condensation helper for append-only state files
-- **Priority:** P1 · **Effort:** M · **Risk:** LOW · **Status:** TODO
+- **Priority:** P1 · **Effort:** M · **Risk:** LOW · **Status:** IN-PROGRESS *(2026-07-16:
+  helper + warn-only session-start wiring + protocol §4 cross-ref shipped, 9-case
+  self-test written RED first, wired into run-evals; remaining: G8 fresh-session
+  certification, and the first real session start with a >200-line lessons.md /
+  assumptions.md is the live proof of the wiring. `.claude/anti-patterns.md` (321 lines,
+  over budget) is deliberately NOT condensed by the engine — protocol §4.4 documents the
+  human-triggered `--human` command and dedicated-commit rule for it)*
 - **Problem:** maintenance protocol §4 mandates condensing knowledge files at ~200
   lines, but no mechanism exists (verified) — they grow until someone notices prompt
   bloat.
-- **Current state:** manual-only. Files affected: `runs/.../state/lessons.md`,
-  `assumptions.md` (NEED-5), `.claude/anti-patterns.md` (~287 lines — already over).
+- **Current state (shipped by this item):** `scripts/automation/lib/condense.sh` —
+  deterministic-only (no model calls ever): entries = unfenced `## ` blocks keyed by
+  `iter-<N>` / `Iteration <N>` / `<N>.` (the shipped §2 formats); blocks outside the
+  newest K distinct keys (default 5; `--keep` / `CHAIN_CONDENSE_KEEP_ITERS`) move
+  VERBATIM to `<file>.archive.md` (append-only, header on creation); §2 rule-class
+  lines (`**Rule:**`/`**Prevention:**`/`**Applies to:**`/`**AGENT RULE …:**` +
+  continuations) stay live under a `[condensed:]` heading stub; keyless headings and
+  malformed lines are kept in place with one warning; fenced `## `/rule text is
+  content, not boundaries. Threshold `--min-lines` default 200 (§4). Guards
+  (structural): paths under `.claude/` refused without `--human`;
+  `evaluator-log.md`/`journey-history.json` always refused (§4.3). Idempotent —
+  second run moves nothing. Engine wiring: `run-goal.sh` session start, one warn-only
+  call per session state file (`lessons.md`, `assumptions.md`) over 200 lines behind
+  `CHAIN_AUTO_CONDENSE` (default true), logging one line per condensed file. Files
+  before this item: manual-only; affected: `runs/.../state/lessons.md`,
+  `assumptions.md` (NEED-5), `.claude/anti-patterns.md` (already over budget).
 - **Change spec:** deterministic-first: `scripts/automation/lib/condense.sh <file>` —
   moves entries older than the newest K iterations to `<file>.archive.md` beside it,
   preserving any line matching the "rule" format; prints a summary. Engine calls it
@@ -765,10 +1205,35 @@ benchmark (or a real session's telemetry) before AND after (G8).
 - **Rollback:** knob; archives are additive.
 
 ### TOKEN-7 · Pre-baked review packet (reviewer stops running git)
-- **Priority:** P1 · **Effort:** M · **Risk:** MED · **Status:** TODO
+- **Priority:** P1 · **Effort:** M · **Risk:** MED · **Status:** DONE
+  (implemented + fixtures 4/4 + measured 2026-07-16 @ 13668f305963; **G8-certified
+  DONE 2026-07-16 by a fresh session @ 3331f97** — reproduced, not re-trusted:
+  test-review-packet 20/20 + parallel-bqa 80/80 + checkpoints 11/11 + sync --check
+  clean + run-evals 116/116; build_review_packet, both dispatch prompts, the
+  reviewer body and the judgment-runner mirror read against the change spec
+  (`$REVIEW_PACKET` spelled identically both sides; the byte-gate's four sanctioned
+  renames unchanged); both stop-and-ask orderings re-confirmed in code with the
+  measurement note's line anchors corrected — build 1 at `goal-iter-lean.sh:900`
+  BEFORE both fork spawns (`:928`/`:967`), fix-path rebuild `:1029` after the reaps
+  (`:1006-1007`) + `escalate_model_off` (`:1020`); economics re-derived from the
+  results JSONs + both kept scratches' per-invocation telemetry — every raw figure
+  exact, one derived-percentage slip corrected in the verdict below (real-review
+  wall 220.6→186.9s = −15.3%, not the ledger's −15.5%); packet files verified in
+  the kept scratch (iter-0 412B lean, iter-1 11,424B phase-mode; exactly 2
+  runtime "review packet built" lines, 0 "build failed"))
 - **Source:** Superpowers 6 release notes (primeradiant.com/blog/2026/superpowers-6.html):
   pre-generated diff packages cut review tokens + wall ≈10% on THEIR benchmark — treat
   as hypothesis here, measure per G8. Anchors verified 2026-07-07 @ `eb5c8f9`.
+  *Replication verdict (2026-07-16, `bench-20260716-1436` vs run E, full POST in
+  benchmarks/experiments.md):* their number REPLICATED in direction with the metric
+  RELOCATED — the packet does not cut reviewer OUTPUT tokens (≈ flat; null vs their
+  ~10% at this fixture's noise band) but collapses TURNS (37→24 session, −35%) and
+  therefore BILLED INPUT (cache-read −67% on the real review round) and COST
+  (reviewer −24.3% session, −27.1% real review); real-review wall −15.3% (in line
+  with their ~10%; the ledger POST's −15.5% was a derived-percentage slip — raw
+  220.6→186.9s, corrected here at G8 certification), session reviewer wall ≈ flat.
+  Their claim, our data: direction right; size understated on billed input,
+  overstated on output tokens.
 - **Problem:** the reviewer (~21 min, 2nd-longest lean step) receives only a two-command
   HINT and shells out to git itself — every review pays tool-call round trips for a
   diff the engine could pre-build deterministically.
@@ -837,6 +1302,119 @@ benchmark (or a real session's telemetry) before AND after (G8).
   landed, confirm the packet build sits BEFORE the fork point and the fix-path
   rebuild happens after kill-then-invalidate (same ordering rule as SPEED-2's
   stop-and-ask).
+  *Implementation + measurement note (2026-07-16 @ 13668f305963, commit
+  `feat(token): TOKEN-7`):* both stop-and-asks CONFIRMED before code — (1) every
+  committer on both backends runs outside the developer→review window
+  (push-per-iter + WIP-park are post-evaluation `run-goal.sh:2117/:2159`; the
+  showcase commit joins pre-dispatch `:1754`; finalize is phase Step 11 and goal
+  mode passes `--no-finalize`; `stash create` `:1547` moves no HEAD) ⇒ packet base
+  = HEAD; (2) anchors: build 1 after the developer block `goal-iter-lean.sh:873`,
+  BEFORE the fork spawns (`:901`/`:940`); fix-path rebuild after the developer-fix
+  block (`:997`), i.e. after `_bqa_fork_reap`/`_bqa_full_fork_reap` (`:979-980`) +
+  `escalate_model_off`, before the round-2 dispatch. All 7 change-spec points
+  shipped in one commit (helper is atomic + fail-closed; absent packet degrades to
+  hint-only; reviewer 1.2.0→1.2.1 — the 1.1.2 anchor in this entry predated
+  TOKEN-1-era bumps); judgment-runner mirror builds the packet per-sandbox with
+  the SAME helper ($REVIEW_PACKET spelled identically both sides — the TOKEN-1
+  byte-gate stayed green with no new sanctioned rename); G3 fixture
+  `tests/automation/test-review-packet.sh` registered (run-evals 116/116);
+  parallel-bqa expected tree gains the packet in both modes (80/80). G9 gate 1:
+  reviewer judgment fixtures 4/4, every class exact, packet observed per sandbox.
+  G9 gate 2: benchmark `bench-20260716-1436` (GOAL_ACHIEVED, journeys 3/3
+  CONFIRMED, zero review FAILs) — reviewer economics vs run E in the Source
+  replication verdict above; packet present + consumed in BOTH depths (lean
+  iter-0 + phase-mode full iter-1 — the run also resolved TOKEN-8's live DoD);
+  fix-path rebuild not exercised live (zero FAILs) — covered by the offline
+  scenario tests. First launch was harness-killed at ~4 min (annotated in the
+  ledger; detached relaunch measured). DoD met on every clause; remaining for
+  DONE: G8 fresh-session certification.
+
+### TOKEN-8 · Usage telemetry for phase-script dispatches (full-depth economics blind spot)
+- **Priority:** P1 · **Effort:** S · **Risk:** LOW · **Status:** DONE (code + tests
+  landed 2026-07-14 @ 39e2a79de68a; live full-depth DoD resolved 2026-07-16 by the
+  TOKEN-7 benchmark's natural full iter-1 — see the final measurement note)
+- **Problem:** the full-depth pipeline's dispatch scripts record NO `claude_usage`
+  telemetry rows — a goal-mode full iteration's developer, reviewer, orchestrator,
+  test-plan qa, UI chain, and auditor are invisible in the session's per-agent
+  economics. Proven cost: TOKEN-1's DoD could not measure the full-depth reviewer/qa
+  deltas across three benchmark runs (ledger POSTs bench-20260713-2334 / -0634 /
+  -0830), and benchmark `by_agent` totals systematically under-count full iterations.
+- **Current state:** `lib/telemetry.sh` is a guarded no-op without `GOAL_SESSION_DIR`
+  (its header: "Phase mode does not source this file"); `quota-retry.sh:706` records
+  usage only when `record_claude_usage_from_sidecar` is a defined function — i.e. only
+  in scripts that source telemetry.sh. Today that is `run-goal.sh`,
+  `goal-iter-lean.sh`, `qa-phase.sh` (which is why qa-validation rows appear) and
+  `run-evals.sh`; NOT `dev-phase.sh`, `review-phase.sh`, `generate-test-plan.sh`,
+  `phase-audit.sh`, nor the UI-chain wrappers.
+- **Change spec:** add `source "$SCRIPT_DIR/lib/telemetry.sh"` (mirroring
+  qa-phase.sh's source block) to every phase script that calls
+  `claude_with_quota_retry` — enumerate call sites with
+  `grep -l claude_with_quota_retry scripts/automation/*.sh` and skip the ones already
+  sourcing it. No other change: each script already exports `CHAIN_CURRENT_AGENT`,
+  and the `GOAL_SESSION_DIR` guard keeps standalone phase mode telemetry-free (the
+  file's documented contract — do not alter it).
+- **DoD:** a full-depth goal iteration's session telemetry carries usage rows for
+  developer + reviewer + auditor (+ orchestrator/UI chain); phase mode standalone
+  still writes nothing; run-evals green.
+- **Verify:** extend `tests/automation/test-benchmark-runner.sh`'s stub engine or a
+  small unit test: run one converted script with `GOAL_SESSION_DIR` set + stub
+  sidecar → row appears with the right agent; with it unset → no file. Then
+  `./scripts/automation/run-evals.sh`.
+- **Files:** `scripts/automation/dev-phase.sh`, `review-phase.sh`,
+  `generate-test-plan.sh`, `phase-audit.sh`, UI-chain dispatch scripts (enumerate by
+  grep), matching test.
+- **Rollback:** remove the source lines (each is one line).
+- **Trigger:** hit live 2026-07-14 — the §9 measurement runs could not read
+  full-depth per-agent tokens.
+  *Measurement note (2026-07-14, §9 run C `bench-20260714-1539` @ 39e2a79de68a):*
+  code shipped to 15 scripts (grep enumeration; run-judgment-evals.sh EXCLUDED —
+  its grep hit is a comment, no real dispatch; update-docs.sh exports no
+  CHAIN_CURRENT_AGENT so its rows land agent-less). Offline DoD half GREEN:
+  `tests/automation/test-phase-telemetry.sh` (converted script + GOAL_SESSION_DIR
+  + stub sidecar → claude_usage row attributed to `qa`; unset → no file written)
+  + run-evals 100/100. Live full-depth half UNRESOLVED BY RUN C — a composition
+  effect, not a code failure: REL-12 fixed lean-lane evidence, the evaluator
+  therefore kept iter-1 lean ("the lean pipeline still runs browser QA over all
+  three journeys") and NO full-depth iteration ran, so
+  dev-phase/review-phase/phase-audit never executed and the named
+  developer/reviewer/auditor rows could not exist (engine's own close-out said
+  "next depth: full" for the iteration that never ran). Mechanism live-proven
+  where a converted script DID run: demo-phase.sh's demo-narrator row appears in
+  run C iter-0 ($0.247) — A′'s same-class demo dispatch left NO row. REMAINING TO
+  DONE: one full-depth iteration in any approved run/session (e.g. --max-iter 3,
+  or the SPEED-2/3 flip control) → name the developer/reviewer/auditor rows.
+  *Run D check (2026-07-15, §9 `bench-20260715-0924` @ fd378ca276a9):* no
+  full-depth iteration occurred (both iterations dispatched lean; iter-1 was a
+  one-journey lean build that STALLED on host browser contention) — TOKEN-8
+  live DoD still pending; status unchanged. The standing resolution path (any
+  approved full-depth iteration) remains.
+  *Run E check (2026-07-16, TOKEN-2 benchmark `bench-20260716-0626` @
+  d41a38bcfb4f):* both iterations dispatched lean again (REL-12 keeps the lean
+  lane evidence-sufficient; the evaluator recommended lean and the session
+  achieved goal at the 2-iteration cap) — no full-depth iteration, live DoD
+  still pending, status unchanged. Third consecutive composition miss; if a
+  natural full-depth iteration keeps not occurring, the standing alternative is
+  an explicitly approved `--max-iter 3`-style run or a real session's full
+  iteration.
+  *LIVE DoD RESOLVED (2026-07-16, TOKEN-7 benchmark `bench-20260716-1436` @
+  18d639c17ac2):* the decomposer sent iter-1 FULL on its own (fourth run's
+  composition finally landed), the converted phase scripts dispatched, and the
+  session telemetry carries named per-agent usage rows for orchestrator
+  ($0.854), qa ×2 (test-plan $0.085 + validation $0.583), ui-impact-analyst,
+  ui-test-designer, ux-regression-reviewer, phase-closure-auditor, reviewer
+  (via review-phase.sh) and auditor ($1.578), all attributed `iter=1` — the
+  exact rows this entry's three prior run-checks could not produce. Offline
+  half was already green (test-phase-telemetry.sh; standalone phase mode
+  writes nothing). DoD met in full → DONE.
+  *Certified 2026-07-16 (fresh session; telemetry re-read row-by-row from the
+  kept scratch `bench-bench-20260716-1436.dNHg0w`):* claim VERIFIED — and
+  under-enumerated: full iter-1 also carries the **developer** row ($3.144,
+  79 turns, iter=1, via dev-phase.sh) that the resolution note above omitted,
+  completing the DoD's named developer + reviewer ($0.780) + auditor ($1.578)
+  trio; every row correctly agent-attributed at iter=1, and run E's all-lean
+  telemetry correctly carries none of the phase-script rows. Offline half
+  re-ran green same day (test-phase-telemetry.sh cases 1+2 inside run-evals
+  116/116). Measurement chapter closed.
 
 ---
 
@@ -898,6 +1476,10 @@ benchmark (or a real session's telemetry) before AND after (G8).
   `timeout`, `jq`, stale pump heartbeat, stale engine lock (REL-4). Standalone command +
   called at engine start warn-only (`CHAIN_DOCTOR=true` default; `--strict-doctor` to
   fail on FAIL rows).
+  *Partial delivery (2026-07-14, REL-13):* the disk-space row exists now as
+  `chain_tmp_disk_guard` (engine preflight + per-iteration, `AWAITING_DISK`
+  pause) plus `scripts/automation/tmp-doctor.sh --status`. The remaining rows
+  (playwright/Chrome-MCP/gh/timeout/jq/pump/lock) are still TODO.
 - **DoD:** runs clean on a healthy machine; each check individually testable
   (`--only <check>`); engine wiring warn-only; evals green.
 - **Verify:** `bash scripts/automation/doctor.sh && bash -n
@@ -1067,7 +1649,28 @@ benchmark (or a real session's telemetry) before AND after (G8).
   adding a field (G3).
 
 ### REL-9 · Test-first spec weighting in the decomposer
-- **Priority:** P1 · **Effort:** S · **Risk:** LOW · **Status:** TODO
+- **Priority:** P1 · **Effort:** S · **Risk:** LOW · **Status:** DONE
+  (implemented + verified in-session 2026-07-16 — S items self-close: all four
+  change-spec points landed additively; agent.yaml 2.0.0→2.0.1 (the 1.2.1 anchor
+  below predated TOKEN-2's 2.0.0 bump), mirror resynced + `--check` clean,
+  run-evals 116/116, `grep TC- .claude/agents/goal-decomposer.md` green, template
+  self-consistency read done (banned words appear only inside the quoted ban
+  list; no template text violates its own contract). Two deliberate guards worth
+  not "fixing" later: (1) the contract is PROSE inside the existing
+  `## TESTING REQUIREMENTS` section, NO new heading — TOKEN-3's skip regex
+  (`run-phase.sh` `_spec_lists_tests_reason`, case-insensitive
+  `^#{2,}\s*tests?\b`) would match a `### Test scenarios` heading ALONE and
+  grant the skip with zero TC- lines; (2) the template shows exactly TWO example
+  TC- lines, so a verbatim-copied unfilled template can never reach the ≥3 skip
+  threshold by itself. Stop-and-ask cleared: qa/browser-qa bodies list spec
+  sections as an extraction guide, not a closed set — no companion edit. No
+  lean/baseline carve-out added — the change spec names none, and baseline's
+  own DoD wording maps to a TC- line trivially. Live proof rides the next real
+  goal session's specs (per the DoD's observed-not-gated clause): the decomposer
+  has been STANDARD-tier since TOKEN-2, so a MORE demanding template on the
+  cheaper model is the thesis under live test — if the next session's specs
+  degrade, TOKEN-2's watch item (single-line tier rollback) is the first
+  suspect, not REL-9's rollback.)
 - **Source:** Superpowers 6 measured finding: test specifications + interface
   definitions carry implementation quality; implementation bodies in plans are
   marginal contributors. Anchors verified 2026-07-07 @ `eb5c8f9`.
@@ -1075,13 +1678,21 @@ benchmark (or a real session's telemetry) before AND after (G8).
   `## TESTING REQUIREMENTS` is three skeletal lines while `## IN SCOPE` invites
   implementation bullets — the spec's detail budget is weighted toward the part that
   matters least for downstream quality.
-- **Current state:** the template lives inside `agents/goal-decomposer/body.md:37-110`;
-  `## TESTING REQUIREMENTS` at `:101-105` ("Browser: <journeys>", "Unit/integration:
-  <code paths>", "Error cases: <invalid inputs>"); `### Data-contract additions` at
-  `:86-87` (canonical module + serving endpoint); pre-write self-check at `:184`. Spec
-  consumers are prompt-readers only (`goal-iter-lean.sh:121/:152/:284/:414`) plus the
-  J-ID regex `_spec_journeys()` (`goal-iter-lean.sh:299`) — additive spec content
-  breaks no parser. `agent.yaml`: v1.2.1, `model_tier: strong`.
+- **Current state (post-change 2026-07-16; the pre-REL-9 anchors, verified
+  2026-07-07, had rotted — tier and version were pre-TOKEN-2):** template at
+  `agents/goal-decomposer/body.md:37-130`; `## TESTING REQUIREMENTS` `:101-129`
+  carries the TC- contract (`:107-119`: shape line + two example TC- lines;
+  vague-term ban aligned with the canonical goal-lint list,
+  `lib/goal_lint.py:62-63` — "works well", "user-friendly", "fast", "properly",
+  "intuitive", "correctly" — plus the bare forms "works"/"as expected"; one
+  vocabulary, not two); `### Data-contract additions` `:86-88` requires exact
+  field name(s) + type/shape alongside canonical module + endpoint; pre-write
+  self-check `:194-203` is six items, item 6 (`:201`) = the D6 test-first check
+  (spec validated against the contract before writing; IN SCOPE bullets stay
+  coarse; shrink by cutting narrative, never TC-/Data-contract content). Spec
+  consumers remain prompt-readers plus the J-ID regex `_spec_journeys()`
+  (`goal-iter-lean.sh:200`) — both consume the additive content unchanged.
+  `agent.yaml`: v2.0.1, `model_tier: standard` (since TOKEN-2).
 - **Change spec:**
   1. `## TESTING REQUIREMENTS` contract: every DEFINITION OF DONE checkbox and every
      Data-contract addition must map to ≥1 concrete scenario line of the form
@@ -1106,6 +1717,341 @@ benchmark (or a real session's telemetry) before AND after (G8).
 - **Stop-and-ask:** if browser-qa or qa bodies enumerate the spec's section list as a
   CLOSED set (grep before editing), update them in the same change (G3); otherwise
   none beyond the ground rules.
+
+### REL-10 · Benchmark scratch service-boot localization (fixture env manifest)
+- **Priority:** P1 · **Effort:** S · **Risk:** LOW · **Status:** DONE 2026-07-12
+  *(implemented + verified in the promoting session @ 5e87813077ae — S items may
+  self-close. Offline: test-benchmark-runner.sh 54/54 (fixture.env exported correct /
+  absent-manifest green), run-evals.sh 96/96. Live: benchmark rerun
+  bench-20260712-1536 — journeys 0/3 → 3/3, predicate journeys_passing_after>=3
+  CONFIRMED; the backend served 127.0.0.1:5177 via CHAIN_START_BACKEND_CMD and the
+  browser lane produced PASS evidence both iterations. Run record:
+  benchmarks/results/20260712-171324-5e87813077ae.json + POST bench-20260712-1536
+  in benchmarks/experiments.md — cost REGRESS +43.1% vs baseline was PRE-REGISTERED:
+  the previously-voided lane now executes and bills.)*
+- **Source:** promoted 2026-07-11 from CAND-SVC-BOOT **variant (a) ONLY** by explicit
+  user decision (EVO-1 promotion; bundling with REL-11 in one session user-authorized —
+  G6 satisfied by that recorded authorization). The general boot-resolution fix
+  (variant (b)) stays STAGED in §16. Root evidence: EVO-3 first real baseline
+  (bench-20260710-2117 @ c48f25047126).
+- **Problem:** the deterministic service-boot lane never consults the project's
+  documented start command. Resolution order (`goal-iter-lean.sh:335-342`;
+  `qa-phase.sh:73-81` same pattern): `CHAIN_START_BACKEND_CMD` env → else
+  `bash scripts/start-backend.sh` if present → else nothing. The generic framework
+  template (`scripts/start-backend.sh`: `cd apps/backend` + uvicorn, port 8000 +
+  hash offset) ships in the subrepo set the benchmark assembly copies wholesale
+  (`run-benchmark.sh:208-222`); the fixture has no `scripts/` dir of its own, so the
+  FastAPI-flavored template lands uncontested and shadows the fixture
+  project-template's documented command (`.venv/bin/python app.py` serving
+  127.0.0.1:5177 — `benchmarks/fixtures/todo-app/.claude/project-template.md:102-106`;
+  `/health` endpoint at `app.py:36-37`, port pinned at `app.py:42`). The health probe
+  is blind the same way: default `http://localhost:8000/health`
+  (`goal-iter-lean.sh:344-346`; hash-offset resolved it to :8763 in the baseline run) —
+  the fixture's 5177 appears nowhere.
+- **Evidence (carried from CAND-SVC-BOOT):**
+  `benchmarks/results/20260710-224206-c48f25047126.json` — journeys 0/3 while the chain
+  built all three to reviewer-PASS / COHERENCE-PASS / 15-of-15-pytest quality; ledger
+  POST assessment under `## POST bench-20260710-2117` (`benchmarks/experiments.md`).
+  Kept scratch: the iter-1 backend service log is the single line
+  `cd: .../scratch/apps/backend: No such file or directory`
+  (`runs/goal-bench-20260710-2117-iter-1/service-logs/qa-backend-8763.log`).
+- **Current state:** all three boot knobs are ALREADY env-overridable —
+  `CHAIN_START_BACKEND_CMD` (`goal-iter-lean.sh:335`, `qa-phase.sh:73`),
+  `CHAIN_BACKEND_PORT` (`goal-iter-lean.sh:344`, `qa-phase.sh:84`; `common.sh:354`
+  auto-assigns ONLY when unset), `CHAIN_BACKEND_HEALTH_URL` (`goal-iter-lean.sh:346`,
+  `qa-phase.sh:86`). No engine change needed — the fix is purely runner-side.
+- **Change spec (benchmark-local; NO engine edits):**
+  1. New `benchmarks/fixtures/todo-app/fixture.env` — KEY=VALUE manifest:
+     `START_CMD='.venv/bin/python app.py'`, `PORT=5177`,
+     `HEALTH_URL='http://127.0.0.1:5177/health'` (kept consistent with the fixture
+     project-template's SERVICE START COMMANDS — the chain creates `.venv` per that
+     template).
+  2. `run-benchmark.sh` sources it (when present) after assembly and exports
+     `CHAIN_START_BACKEND_CMD` / `CHAIN_BACKEND_PORT` / `CHAIN_BACKEND_HEALTH_URL`
+     into the engine's environment — the existing env-honesty capture records all
+     three in the results JSON `chain_env` block for free.
+  3. No fixture `scripts/start-backend.sh` (verified: no engine path ignores the env
+     route — prefer minimal).
+- **DoD:** runner test proves the three vars present + correct in the stub engine's
+  environment when `fixture.env` exists AND assembly stays green when it is absent
+  (other fixtures someday); post-fix benchmark rerun moves journeys 0→3.
+- **Verify:** `bash tests/automation/test-benchmark-runner.sh &&
+  ./scripts/automation/run-evals.sh`; rerun per §9 "When to benchmark" with
+  `--predict 'journeys_passing_after>=3'` + `benchmark_compare.py` vs the recorded
+  baseline.
+- **Files:** `benchmarks/fixtures/todo-app/fixture.env` (new),
+  `scripts/automation/run-benchmark.sh`, `tests/automation/test-benchmark-runner.sh`.
+- **Rollback:** delete `fixture.env` + revert the runner hunk (engine untouched by
+  construction).
+- **Stop-and-ask:** any engine edit (`goal-iter-lean.sh` / `qa-phase.sh` /
+  `common.sh`) starts looking necessary — that is variant (b) territory, which stayed
+  staged.
+
+### REL-11 · Headless scratch trust + missing-evidence tripwire
+- **Priority:** P1 · **Effort:** M (honest re-grade: CAND proposed S for the guard-only
+  shape; the promoted scope — controlled probe + user-global trust write with
+  backup/revert safety + fake-HOME test harness + a three-site tripwire — is a full
+  session for the canonical weaker-model executor. Per G8 this item does NOT
+  self-certify DONE in the implementing session.) · **Risk:** MED (writes user-global
+  `~/.claude.json`) · **Status:** DONE — implemented + live-verified
+  2026-07-12 @ 5e87813077ae; certified 2026-07-12 by a fresh non-implementer
+  session per G8. *(Evidence for the certifier: offline —
+  test-benchmark-runner.sh 54/54 under fake HOME (trust present during engine run,
+  reverted on success AND engine-failure paths, siblings preserved, backup kept,
+  corrupt-json refusal pre-engine), test-goal-retro.sh 41/41 (tripwire fire/no-fire
+  incl. the silent rc=0 void shape), run-evals.sh 96/96. Live — rerun
+  bench-20260712-1536: 0 of 25 traces carry the trust banner (baseline: all),
+  reports/qa/ populated, retro report persisted (EVO-2's first live artifact),
+  trust key verified absent from ~/.claude.json post-run, missing-evidence tripwire
+  fired 0 times consistent with zero voids. Run record: POST bench-20260712-1536.)*
+  *(G8 certification 2026-07-12, fresh non-implementer session: trust write
+  re-verified atomic (mkstemp + os.replace) and single-key (setdefault chain touches
+  only projects[<scratch>]); timestamped backup precedes the first write; revert
+  re-reads the LIVE file, pops exactly the scratch entry, and self-verifies absence.
+  Exit paths enumerated from the code: clean success and engine-nonzero both hit the
+  inline revert (ENGINE_RC captured, set -e survives); trust-write failure aborts
+  pre-engine with no key written; runner crash and Ctrl-C/SIGTERM hit the EXIT trap
+  (installed before the write, flag set before the write); a failed revert leaves
+  the flag set so the final gate refuses exit 0 and prints manual-removal
+  instructions + backup path; SIGKILL is uncoverable by construction — backup is the
+  documented recovery. Test isolation confirmed: every runner invocation goes
+  through run_runner with HOME + TMPDIR forced to per-case fixtures — the suite
+  cannot address the real ~/.claude.json. All suites reproduced green (54/54, 41/41,
+  96/96). Live evidence re-verified against the kept scratch: 25 trace logs
+  (+ trace.jsonl index), 0 banner hits across all files; QA report/test-plan/
+  evidence dirs present; retro report present; no projects entry for the 1536
+  scratch in ~/.claude.json today. Observation, not residue: the 2026-07-10
+  BASELINE scratch's entry (hasTrustDialogAccepted:false + default siblings,
+  claude's own auto-creation, predates REL-11) is still present — remove it
+  whenever the kept baseline scratch is cleaned. One small defect fixed in
+  certification: `missing_evidence` was absent from docs/goal-mode-telemetry.md's
+  event catalog — section added (name/shape were already eval-pinned by
+  test-goal-retro.sh per G3).)*
+- **Source:** promoted 2026-07-11 from CAND-HEADLESS-PERMS (fully promoted — CAND
+  deleted) by explicit user decision, including explicit authorization of the
+  trust-flag variant (the ask-first `~/.claude.json` write) and of bundling with
+  REL-10 in one session. Root evidence: EVO-3 first real baseline
+  (bench-20260710-2117).
+- **Problem:** headless dispatches carry no permission flags beyond the per-agent deny
+  overlay (`--disallowedTools` + budget, `lib/quota-retry.sh:603-645`) — write access
+  relies entirely on the allow list in `.claude/settings.json`. Claude Code honors
+  that list only in a TRUSTED workspace: trust is keyed by absolute path in
+  `~/.claude.json` (`projects[<path>].hasTrustDialogAccepted`; verified live: the
+  baseline scratch path sits in this machine's `~/.claude.json` with
+  `hasTrustDialogAccepted: false`), a benchmark scratch is a fresh mktemp path every
+  run — never trusted — and no headless run can answer the trust/permission prompt.
+  NOT a missing-file problem: the scratch carried BOTH `settings.json` and the
+  gitignored `settings.local.json`, byte-identical to the repo's
+  (`run-benchmark.sh:218` `cp -a` copies gitignored files too), and every agent trace
+  opens with "Ignoring 122 permissions.allow entries … this workspace has not been
+  trusted". Friction counters were all zero — nothing surfaced the missing evidence;
+  the damage mode is SILENT.
+- **Evidence (carried from CAND-HEADLESS-PERMS):** kept-scratch traces
+  (`runs/goal-session-bench-20260710-2117/trace/` in
+  `~/.cache/chain-bench-tmp/bench-bench-20260710-2117.EMAuTK/scratch`): `0014-qa.log` —
+  trust banner at line 1, tail: "I can't write the QA report due to permission
+  restrictions" — the QA verdict exists ONLY in stdout, no artifact
+  (`reports/qa/` empty); `0028-retro-analyst.log` — ends "am writing the report to the
+  output path now", yet no `reports/goal-session-*-retro.md` exists while the
+  engine-shell-written `state/retro-input.md` does (shell writes unaffected; agent
+  Write blocked). Non-uniformity note: iteration-summarizer/reviewer wrote `reports/`
+  files in the SAME untrusted workspace (trace `0026` wrote two) while both blocked
+  dispatches were light-tier (qa, retro-analyst). Per-agent deny overlays are ruled
+  out: `agent_permissions.py disallowed` returns IDENTICAL lists for
+  qa/retro-analyst/reviewer/iteration-summarizer (no Write denial anywhere).
+- **Probe protocol + findings (2026-07-11, user-authorized, 5 one-tool dispatches ≈
+  cents):** fresh mktemp scratch under `~/.cache/chain-bench-tmp` (same parent as
+  bench scratches), repo `.claude/settings*.json` copied in, git init + commit;
+  `claude -p` dispatches with cwd=scratch, no permission flags (the engine's dispatch
+  shape); prompts forced a single tool route ("Using ONLY the Write tool …" /
+  "Using ONLY the Bash tool … `mkdir -p reports && echo BASH-OK > reports/...`"),
+  with denials echoed verbatim. Sequence: P1 Write @ haiku untrusted → P2 Bash @
+  haiku untrusted → pre-trust the path (the fix mechanism, by hand) → P3 Write @
+  haiku trusted → P4 Bash @ haiku trusted → revert → P5 Write @ sonnet untrusted.
+  Findings:
+  - **(i) banner ↔ denial:** the "Ignoring 122 permissions.allow entries" banner
+    appears on EVERY untrusted dispatch and none of the trusted ones, but it marks
+    allow-list suspension, not denial per se — the Write DENIAL is model-tier
+    dependent (see ii). P1 (haiku, untrusted): banner + `WRITE-TOOL-DENIED: Claude
+    requested permissions to write to <path>, but you haven't granted it yet`,
+    no artifact. P3 (haiku, trusted): no banner, artifact written.
+  - **(ii) baseline non-uniformity EXPLAINED (and the CAND's per-agent-flag
+    hypotheses ruled out):** deny overlays are identical across
+    qa/retro-analyst/reviewer/iteration-summarizer; wrappers never capture stdout to
+    files; agent-file `tools:` frontmatter is not applied to `-p` dispatches;
+    directory pre-existence is ruled out (retro's target `reports/` existed —
+    `run-goal.sh` mkdirs it — and was still denied). The discriminator is the
+    dispatched MODEL: P5 (sonnet-5, same untrusted scratch, same
+    nonexistent-parent target as P1) WROTE the file with the banner present.
+    Untrusted headless Write: haiku-4-5 → permission request → auto-deny;
+    sonnet-5 → proceeds. This exactly reproduces the baseline: qa and
+    retro-analyst are the flow's only light-tier report writers → theirs were the
+    only voided artifacts.
+  - **(iii) pre-trust fully clears it:** P3 (haiku + trusted) wrote via the Write
+    tool with no banner. The single per-run `projects[<scratch>]` key is necessary
+    AND sufficient — no global state beyond it (stop-and-ask trigger NOT hit).
+  - Extras pinned for the design: `claude` itself creates
+    `projects[<path>]` (with `hasTrustDialogAccepted: false` + sibling default
+    keys) on the first dispatch in an unknown dir, and concurrent claude processes
+    rewrite `~/.claude.json` continuously (observed cache-key churn) — therefore
+    the runner's revert must RE-READ the current file and pop the single
+    `projects[<scratch>]` entry, NEVER restore the whole backup (that would clobber
+    concurrent state); the backup is disaster recovery only. Bash-redirect writes
+    are a separate lane: untrusted → per-command approval denied; trusted → the
+    Bash sandbox still blocked a redirect into a not-yet-existing directory
+    (P4: "Output redirection … was blocked … may only write to files in the
+    allowed working directories"). Not REL-11's problem (trusted agents use the
+    allow-listed Write tool), recorded for future triage. Probe logs:
+    session scratchpad `probe-out/` (P1-P5).
+- **Change spec:**
+  1. **Scratch trust (user-authorized):** `run-benchmark.sh`, after mktemp and BEFORE
+     engine launch, sets `projects["<abs scratch path>"].hasTrustDialogAccepted =
+     true` in `~/.claude.json` via an atomic python3 edit (read → modify → write
+     temp → `os.replace`), taking a timestamped backup of the file first. The entry
+     is REMOVED (the whole `projects["<abs scratch path>"]` subtree — the path is
+     mktemp-fresh, so the runner created it; the engine may add sibling keys under it
+     during the run, all dangling once the scratch is deleted) immediately after the
+     engine exits, with an EXIT-trap safety net covering every exit path (runner
+     failure, Ctrl-C). No other key is ever touched. Tests run the runner under an
+     overridden `HOME` with a fixture `claude.json` — the suite must NEVER write the
+     real one.
+  2. **Missing-evidence tripwire (wanted regardless of 1):** at the dispatch sites
+     whose absent artifacts voided the baseline — full-mode QA
+     (`qa-phase.sh`, expected `reports/qa/<phase>-qa.md`), lean browser-qa lane
+     (`goal-iter-lean.sh`, expected LLM-lane results file), retro-analyst
+     (`run-goal.sh` `_run_retro_analyst`, expected
+     `reports/goal-session-<sid>-retro.md`) — when the dispatch returns without its
+     expected report file on disk: a LOUD `[missing-evidence]` stderr banner naming
+     agent + expected path, plus a `missing_evidence` telemetry event
+     (`{agent, path}`). Non-blocking (banner, not gate). Shared helper in
+     `lib/common.sh`; telemetry emission guarded like `common.sh:742` (no-op where
+     telemetry.sh is not sourced / GOAL_SESSION_DIR unset).
+- **DoD:** offline tests prove (trust) the key is present in the fixture
+  `claude.json` during the stub engine run, ABSENT after both success and
+  engine-failure exits, sibling keys byte-preserved, timestamped backup written; and
+  (tripwire) the `missing_evidence` event + banner fire on a stub dispatch that
+  writes nothing and do NOT fire when the report exists. Post-fix rerun: trust banner
+  absent from every trace; QA report + retro report EXIST in scratch.
+- **Verify:** `bash tests/automation/test-benchmark-runner.sh &&
+  bash tests/automation/test-goal-retro.sh && ./scripts/automation/run-evals.sh`;
+  rerun per §9.
+- **Files:** `scripts/automation/run-benchmark.sh`, `scripts/automation/lib/common.sh`
+  (tripwire helper), `scripts/automation/qa-phase.sh`,
+  `scripts/automation/goal-iter-lean.sh`, `scripts/automation/run-goal.sh`,
+  `tests/automation/test-benchmark-runner.sh`, `tests/automation/test-goal-retro.sh`.
+- **Rollback:** revert the commit; any leftover `projects[<scratch>]` key is
+  recoverable from the timestamped `~/.claude.json` backup the runner takes before
+  its first write.
+- **Stop-and-ask:** the probe shows the trust mechanism needs global state beyond the
+  single per-run `projects[<scratch>]` key; the revert trap cannot be made to cover an
+  exit path; the trust banner appears in ANY post-fix rerun trace (that is a RESULT to
+  report, not to patch mid-run); anything that would weaken the spend gate or the
+  revert trap (G5 — both are safety mechanisms; tests must prove the revert).
+
+### REL-12 · Single-service frontend resolution for the lean browser lane
+- **Priority:** P1 · **Effort:** S · **Risk:** LOW-MED · **Status:** DONE
+  2026-07-14 (live evidence: §9 run C `bench-20260714-1539` — see the measurement
+  note; staged 2026-07-14, user-approved; REL-10 family)
+- **Problem:** on a single-service project (frontend server-rendered by the backend —
+  the todo-app fixture, any Flask/Django app), the lean browser-qa lane boots the
+  generic Next.js frontend template, fails twice, and tells browser-qa
+  "Frontend available: no" → every journey SKIPPED, zero lean browser evidence.
+  Proven live 2026-07-14: BOTH §9 runs' iter-0 lanes skipped all three journeys for
+  exactly this (A′ probed :3822, B :3247 — derived defaults; ledger POSTs
+  bench-20260714-0634 / -0830). Until fixed, lean iter-0 evidence is structurally
+  impossible on such projects, and any future SPEED-2/3 flip re-measurement stays
+  unresolvable at lean depth.
+- **Current state:** REL-10's `fixture.env` localizes the BACKEND
+  (`CHAIN_START_BACKEND_CMD`, port 5177) but nothing points the frontend at the same
+  service; `run_browser_qa_boot_and_replay` (goal-iter-lean.sh) defaults
+  `FRONTEND_URL=http://localhost:${CHAIN_FRONTEND_PORT:-3000}` and requires a
+  frontend boot + health check before setting `FRONTEND_AVAILABLE=yes`.
+- **Change spec:** two halves, both small. (a) ENGINE: in
+  `run_browser_qa_boot_and_replay`, before attempting a frontend boot, probe
+  `$FRONTEND_URL` directly; if it already answers (single service, server-rendered —
+  e.g. `CHAIN_FRONTEND_URL` set to the backend URL), set `FRONTEND_AVAILABLE=yes`
+  and skip the boot entirely. (b) FIXTURE: `benchmarks/fixtures/todo-app` env
+  manifest adds `CHAIN_FRONTEND_URL=http://127.0.0.1:5177` (and the fixture's
+  project-template STACK already names that URL — keep them consistent). Never
+  silently skip: when the direct probe is what enabled the lane, log one line
+  naming the URL.
+- **DoD:** benchmark iter-0 browser-qa EXECUTES journeys on the todo-app fixture
+  (SKIP-for-boot gone; failing-journey evidence recorded instead of `unknown`);
+  parallel-bqa evals green (scenario with FRONTEND_URL pointing at the dummy backend
+  port asserts "Frontend available: yes" reaches the prompt); run-evals green.
+- **Verify:** `bash tests/automation/test-goal-parallel-bqa.sh` (new scenario) +
+  `./scripts/automation/run-evals.sh`; live proof rides the next approved benchmark.
+- **Files:** `scripts/automation/goal-iter-lean.sh` (boot short-circuit),
+  `benchmarks/fixtures/todo-app` env manifest (REL-10's mechanism),
+  `tests/automation/test-goal-parallel-bqa.sh`.
+- **Rollback:** remove the probe short-circuit (boot path unchanged otherwise).
+- **Stop-and-ask:** if the short-circuit would also fire on genuinely two-service
+  projects whose frontend happens to answer on the backend URL (misconfig), prefer
+  a loud log + proceed — but ask before adding any template-parsing heuristics.
+- **Trigger:** hit live 2026-07-14; also the prerequisite for a resolvable
+  SPEED-2/3 flip re-measurement at lean depth.
+  *Measurement note (2026-07-14, §9 run C `bench-20260714-1539` @ 39e2a79de68a,
+  knobs off):* DoD landed in full. Engine: the short-circuit fired in BOTH
+  iterations, one loud line each naming the URL ("Frontend already answering at
+  http://127.0.0.1:5177 (HTTP 200) — direct probe enabled the browser lane;
+  skipping the frontend boot"). Iter-0 browser-qa EXECUTED all three journeys —
+  verdict "FAIL (0/3 passed, 0 skipped)" with per-journey DOM diagnostics and
+  three PNG evidence files (A′/B iter-0: SKIP ×3, empty evidence dir, unknown ×3)
+  — failing evidence recorded instead of unknown, exactly the DoD. Composition
+  bonus: with real iter-0 evidence the chain stayed lean and reached
+  GOAL_ACHIEVED at −36.6% wall vs A′. Fixture: run-benchmark.sh needed one extra
+  manifest mapping (CHAIN_FRONTEND_URL export — REL-10's mechanism extended);
+  fixture project-template STACK's "Frontend URL" row now names
+  http://127.0.0.1:5177 explicitly (was "N/A — same Flask server..."). Offline:
+  parallel-bqa scenario J (80/80) + run-evals green. Evidence: ledger PRE/POST
+  bench-20260714-1539; scratch kept at /tmp/bench-bench-20260714-1539.5Ro0t7.
+
+### REL-13 · Chain temp off the quota'd tmpfs + disk-pressure automation (never interrupt on ENOSPC)
+- **Priority:** P0 · **Effort:** M · **Risk:** LOW · **Status:** DONE
+  *(implemented 2026-07-14: goal-mode chains kept halting mid-run on
+  `Disk quota exceeded` — `/tmp` on the reference machine is a 13.3G tmpfs
+  mounted `usrquota`, so EDQUOT fires long before the fs looks full, and one
+  product pytest run wrote a 744MB basetemp under a live `iad.` dir while
+  concurrent projects (tapeology, trendora) stacked theirs on top; leaked
+  `bench-*` scratch (kept-on-failure, never in any janitor pattern) and
+  `judgment-*` sandboxes accumulated for days, and interactive-mode subagents
+  ignored the engine TMPDIR entirely (advisory prompt relay only). Fix, four
+  layers. (1) Relocation: `chain_tmp_init` root default `/tmp` →
+  `~/.cache/iad` (206G un-quota'd ext4), TMPDIR capped at 62 chars for
+  Chromium's 108-char unix-socket limit (long ids → `<prefix>-<sha256[:8]>`,
+  raw id in `.chain-run-id`), adoption now liveness-checked (a dead engine's
+  inherited dir mints fresh instead), `bench-*`/`judgment-*` scratch moved
+  under the root with `.owner-pid` liveness files; the user-global
+  `~/.claude/settings.json` gained `env.TMPDIR=~/.cache/iad/shared` so
+  interactive/dispatched agents in ALL projects write to disk too (probe
+  verified: settings-env OVERRIDES a parent-exported TMPDIR for `claude -p`
+  children, so agent-side writes age out via the 72h `shared/` sweep rather
+  than per-iteration rotation — both lanes land on the big disk). (2)
+  Multi-root janitor: sweeps `CHAIN_TMP_ROOT` + `CHAIN_TMP_LEGACY_ROOTS`
+  (default `/tmp`; tests MUST pass `""`), new patterns `bench-*`
+  (keep-newest-`CHAIN_BENCH_KEEP=2`), `judgment-*`, `shared/`
+  (`CHAIN_TMP_SHARED_MAX_AGE_HOURS=72`); `--aggressive` reaps dead-pid run
+  dirs at ANY age. (3) `chain_tmp_disk_guard`: statvfs on the root + a WRITE
+  PROBE on /tmp (statvfs cannot see tmpfs user quotas; EDQUOT/ENOSPC on a
+  32MB probe is the honest signal) → aggressive sweep under pressure; wired
+  at engine preflight (`preflight_disk_space`, beside the GitHub preflight),
+  the top of every iteration (halt-check block, never mid-iteration), and
+  soft-mode in run-phase.sh/goal-iter-lean.sh; only a still-critical ROOT fs
+  after sweeping pauses as resumable `AWAITING_DISK` (resume tuple, showcase
+  tail kill, header, skill runbook all updated; `AWAITING_GITHUB_AUTH` also
+  added to the resume tuple — pre-existing gap). (4) Agent self-service:
+  `scripts/automation/tmp-doctor.sh` (`--status`/`--clean`/`--aggressive`,
+  sources only chain-tmp.sh, zero permission prompts via the `scripts/*`
+  allow) + the standing rule in core.md "Environment Errors" and
+  anti-pattern #21: on ENOSPC/EDQUOT run tmp-doctor --aggressive, retry once,
+  never rm arbitrary /tmp files, never ask the user. `~/.cache/iad` added to
+  `additionalDirectories` (rm containment parity with /tmp). Regression:
+  chain-tmp self-test 20→31 assertions (stale-adopt, socket budget,
+  legacy-root sweep, bench retention, judgment reap, shared sweep, guard rc
+  semantics), test-tmp-cleanup.sh 7→9 (default-root derivation, engine guard
+  pathway), test-benchmark-runner.sh 54/54 (TMPDIR kept in the bench root
+  fallback chain for harness compat). Delivers REL-2's disk-space row;
+  rest of the doctor remains TODO.)*
 
 ---
 
@@ -1224,6 +2170,106 @@ territory).
   full-tree pass on GOAL_ACHIEVED is the designated cover; until then that text is
   agent-generated prose, the same class as the traces that caused the recursion.
   Anti-pattern #22.)*
+
+### SEC-6 · Near-zero permission prompts without gutting the gates (interactive goal mode)
+- **Priority:** P0 · **Effort:** M · **Risk:** MED (accepted, bounded) · **Status:** DONE
+  *(implemented 2026-07-14: interactive goal mode was interrupted constantly by
+  two distinct approval sources. (a) Claude Code's permission evaluator — any
+  Bash segment not prefix-matching `permissions.allow` prompts; gaps were shell
+  control flow (`for`/`do`/`done`/`if`…), ~50 common dev binaries (make,
+  timeout, sqlite3, rg, tar, du, df…), path-qualified venv commands
+  (`apps/backend/.venv/bin/python -m pytest` — the canonical project-template
+  test command; `.venv/bin/*` does not match it), and scoped `rm -rf` of
+  common dev artifacts (.venv, .mypy_cache, htmlcov, playwright-report…).
+  (b) the install gate hard-blocking (exit 1 → "APPROVAL REQUIRED", confirmed
+  in transcripts) every unpinned or non-allowlisted `pip/npm install` — the
+  python allowlist was `["anthropic"]`, so agents building products halted on
+  nearly every new dependency (tapeology needed yfinance/alpaca-py/mcp
+  hand-added). Fix: (1) `policy/permissions.yaml` +~100 allow entries in five
+  commented blocks (control flow, curated binaries, venv/pytest variants,
+  scoped rm -rf artifacts, ss/netstat/wait/jobs; duplicate `pstree` removed)
+  — re-rendered to 223 allow entries; deny hardened with the missing system
+  dirs (/mnt /media /dev /bin /sbin) plus EMBEDDED-pattern guards
+  (`Bash(* rm -rf /etc*)`, `* sudo rm*`, `*~/.ssh/id_*`, …) because
+  keyword-prefixed segments (`do rm -rf /etc`) dodge prefix denies — deny
+  beats allow and leading-glob matches anywhere; NEVER a bare `* rm -rf /*`
+  (the /tmp-cleanup-swallowing bug). `guard-dangerous-commands.sh` mirrors
+  both (patterns + a keyword-wrapped rm regex keeping the `(?!tmp)`
+  carve-out; run-evals 2d gained the loop-wrapped block/allow smoke pair).
+  (2) install gate: new policy knobs `on_unpinned_decision` /
+  `on_unknown_decision` (install-gate.py `rule_decision`/`stricter` helpers,
+  five `require_approval` sites now policy-tunable; absent knobs ⇒
+  `require_approval`, so sibling copies that re-sync code but keep their JSON
+  see zero change; invalid values fail closed; denylist always wins). Policy
+  set to `warn` (proceed + banner + JSONL log) with ~30 python + ~35 npm
+  common packages seeded into the allowlists; direct-URL/tarball/custom-index
+  installs, curl|bash, denylist hits, unknown requirements files, and
+  unpinned git clones ALL still hard-block. What is genuinely given up: human
+  pre-approval of first-use registry names (typosquat exposure) — compensated
+  by the seeded lists, the audit trail, and (3) the evidence loop:
+  `scripts/automation/suggest-allowlist.sh` mines
+  `reports/security/install-decisions.jsonl` (+ `--transcripts` banner scan)
+  into ready-to-paste allowlist additions; wired into run-evals as a
+  self-test. (4) User-global `~/.claude/settings.json` (machine-wide, covers
+  tapeology/trendora immediately without a framework re-sync): generic allow
+  additions + embedded-deny backstops + `env.TMPDIR` (REL-13) +
+  `additionalDirectories` for the tmp root; backup kept at
+  `settings.json.bak-sec6-rel13`. test-install-gate.sh rewritten: 16
+  assertions incl. fixture-policy proofs (defaults stay require_approval;
+  denylist beats warn; invalid knob fails closed). Sibling propagation
+  deliberately deferred — their engines keep the strict gate until re-synced.
+  CORRECTION (2026-07-15, SEC-7 forensics): the "confirmed in transcripts"
+  install-gate hard-blocks were a misattribution — on the Claude backend the
+  hook had been inert end-to-end (settings passed the nonexistent
+  `$CLAUDE_TOOL_INPUT_COMMAND`, so `$1` was always empty; and its exit 1 is a
+  NON-blocking PreToolUse error anyway). Zero live fires exist in any
+  transcript; the matched strings were source-quoting. The live interrupters
+  were the permission evaluator plus the user-level curl guard. SEC-6's policy
+  work stands (it defines what the gate enforces); SEC-7 made the enforcement
+  real.)*
+
+### SEC-7 · Hook protocol fix: the Bash guards never received commands on Claude (+ curl-guard v2)
+- **Priority:** P0 · **Effort:** S · **Risk:** LOW · **Status:** DONE
+  *(implemented 2026-07-15, triggered by the user seeing a curl-guard "ask"
+  interrupt mid-session. Forensics: (a) the ONLY "piped into a shell" fire in
+  the corpus was a QUOTED fixture string inside a SEC-6 smoke-test for-loop —
+  the user-level `~/.claude/hooks/guard-curl-exfil.sh` grepped the whole
+  command line, needed no actual curl for its pipe branch (`cat x | bash`
+  matched) and asked on any `-d`-ish flag with an unrecognized target
+  (`docker run -d`, `curl -d "$API_URL"` → 9 asks in the tapeology/trendora
+  goal sessions on 2026-07-14 alone); the settings `if: Bash(curl *)` gate
+  fails open on unparseable commands (documented), so curl-less commands
+  reached it too. (b) Docs-verified: hook input is JSON on stdin
+  (`.tool_input.command`); `$CLAUDE_TOOL_INPUT_COMMAND` does not exist; exit 1
+  is NON-blocking; the decision channel is stdout
+  `hookSpecificOutput.permissionDecision` (deny = blocked, reason shown to the
+  MODEL — no user prompt) — so BOTH repo Bash guards were inert on Claude
+  (empty `$1` → instant exit 0; zero live fires in any transcript). Fixes:
+  (1) user-level curl-guard v2 (machine-local, backup at
+  `guard-curl-exfil.sh.bak-sec7`): quote-strips before matching, self-gates on
+  a command-position curl invocation (anchored ERE with VAR=/sudo/env/timeout/
+  do|then|else wrappers), scopes pipe/data patterns to the curl pipeline
+  segment, passes variable-URL and RFC1918/localhost upload targets, and
+  DENIES (never asks — user decision) real pipe-to-shell + literal-external
+  uploads with an agent-readable reason; deliberate override
+  `CURL_GUARD_ALLOW=1` prefix (logged); 12-case stdin matrix green incl. the
+  verbatim offending fixture command. (2) Repo hooks two-mode protocol: argv
+  (`$1`, byte-identical legacy contract for run-evals/Codex: banners + exit 1)
+  vs stdin (Claude: block/require_approval → deny JSON exit 0 with remediation
+  as the reason; warn → stderr banner, stdout reserved for JSON; fail-open on
+  parse failure — secondary layer, availability beats strictness). Renderer
+  templates drop the fake env var (`… install-security-gate.sh" || true`,
+  guard keeps `2>/dev/null || true`; stdout JSON survives `|| true`);
+  PostToolUse hooks share the argv bug via `$CLAUDE_TOOL_INPUT_FILE_PATH` —
+  advisory-only, follow-up FIXME in `_hooks_block_for_claude`. (3) Same
+  quoted-substring hardening in the gate itself: `install-gate.py` dispatcher
+  tests curl|shell against a quote-stripped view (a quoted "curl … | bash"
+  mention — fixture, echo, commit message — passes; live-proven when the
+  freshly-rendered hook denied THIS session's own quoted-fixture verification
+  command), and the hook fast-path mirrors it. Regression: run-evals 105→111
+  (6 stdin-protocol smokes: guard deny/silent, gate deny/warn-no-JSON/silent/
+  quoted-mention-pass); test-install-gate.sh 16→17 (quoted-mention case).
+  Enforcement is now real on Claude: first-ever live deny observed in-session.)*
 
 ---
 
@@ -1507,93 +2553,164 @@ but appreciated.
 - **Why staged:** caps appear respected today; this is hygiene, not a win. Best
   absorbed into SAFE-2's session rather than run standalone.
 
-### CAND-SVC-BOOT · start-backend template shadows the project's real start command (staged — do not start)
-- **Proposed:** P1 · Effort S (benchmark-local fix) or M (general boot-path fallback) ·
-  Risk LOW (fixture/runner side) to MED (touching the engine's service boot).
+### CAND-SVC-BOOT-GENERAL · engine boot resolution never reads the project-template (staged — do not start)
+- *(Renamed from CAND-SVC-BOOT: variant (a) — the benchmark-local fix — was promoted to
+  REL-10 on 2026-07-11 by explicit user decision; only the general variant (b) remains
+  staged here. CAND-HEADLESS-PERMS from the same baseline was fully promoted to REL-11
+  the same day.)*
+- **Proposed:** P1 · Effort M (general boot-path fallback) · Risk MED (touches the
+  engine's service boot).
 - **Source:** EVO-3 first real baseline (bench-20260710-2117 @ c48f25047126) — README
   Known Limitation 1 ("QA expects `CHAIN_START_BACKEND_CMD` or `scripts/start-backend.sh`",
   `README.md:464`) made concrete. Staged 2026-07-11.
 - **Problem:** the deterministic service-boot lane never consults the project's documented
-  start command. Resolution order today (`goal-iter-lean.sh:333-340`; `qa-phase.sh:73-78`
+  start command. Resolution order today (`goal-iter-lean.sh:335-342`; `qa-phase.sh:73-81`
   same pattern): `CHAIN_START_BACKEND_CMD` env → else `bash scripts/start-backend.sh` if
-  the file exists → else nothing. The generic framework template
-  (`scripts/start-backend.sh:26-34`: `cd apps/backend` + uvicorn, port 8000+hash-offset at
-  `:12-16`) ships in the subrepo set the benchmark assembly copies wholesale
-  (`run-benchmark.sh:208-222`); the fixture has no `scripts/` dir of its own, so the
-  FastAPI-flavored template lands uncontested and shadows the fixture project-template's
-  documented command (`.venv/bin/python app.py` serving 127.0.0.1:5177 —
-  `benchmarks/fixtures/todo-app/.claude/project-template.md:102-106`). The health probe is
-  blind the same way: default `http://localhost:8000/health` (`goal-iter-lean.sh:342-344`;
-  hash-offset resolved it to :8763 in the run) — the fixture's 5177 appears nowhere.
-- **Evidence:** `benchmarks/results/20260710-224206-c48f25047126.json` — journeys 0/3
-  while the chain built all three to reviewer-PASS / COHERENCE-PASS / 15-of-15-pytest
-  quality; ledger POST assessment under `## POST bench-20260710-2117`
-  (`benchmarks/experiments.md`). Kept scratch: the iter-1 backend service log is the single
-  line `cd: .../scratch/apps/backend: No such file or directory`
-  (`runs/goal-bench-20260710-2117-iter-1/service-logs/qa-backend-8763.log`);
-  `trace/0014-qa.log` shows the QA agent correctly diagnosing the mismatch and attempting
-  to rewrite start-backend.sh itself — blocked by CAND-HEADLESS-PERMS, so the two gaps
-  compound.
-- **Sketch (root-cause hypotheses, not a design):** (a) benchmark-local: the fixture ships
-  its own `scripts/start-backend.sh` (the overlay already lets fixture files win
-  collisions, and maintenance-protocol §3.4 blesses localizing exactly this file
-  per-deployment), and/or `run-benchmark.sh` exports `CHAIN_START_BACKEND_CMD` /
-  `CHAIN_BACKEND_PORT` / `CHAIN_BACKEND_HEALTH_URL` derived from the fixture's template;
-  (b) general (retires Known Limitation 1 for every adopter): a middle resolution tier that
-  reads the project-template's `SERVICE START COMMANDS` section before falling back to the
-  generic script — needs a parse contract + eval fixture (G3) and care around
+  the file exists → else nothing. Any adopter whose project-template documents a start
+  command that differs from the generic framework template gets the wrong boot unless
+  they hand-set the env vars (REL-10 fixed exactly this for the benchmark fixture, via
+  the env route; every other deployment still relies on Known Limitation 1).
+- **Sketch (root-cause hypothesis, not a design):** a middle resolution tier that
+  reads the project-template's `SERVICE START COMMANDS` section before falling back to
+  the generic script — needs a parse contract + eval fixture (G3) and care around
   `ensure_services_running` (`lib/common.sh:770`, `_start_service_with_retries` `:582`).
-- **Why staged / verify idea:** engine boot-path changes are MED risk and the human should
-  pick (a), (b), or both (EVO-1 promotion). Verify per §9 "When to benchmark": rerun the
-  benchmark with `--predict 'journeys_passing_after>=3'` — the fix should move journeys
-  0→3 and `benchmark_compare.py` renders the delta against the recorded baseline (exactly
-  the compare the baseline + tool exist for).
+- **Why staged / verify idea:** engine boot-path changes are MED risk — human promotion
+  required (EVO-1). Verify: a consumer-repo-shaped test fixture whose project-template
+  documents a non-default start command boots it without any env override; the REL-10
+  benchmark keeps passing with `fixture.env` deleted (the middle tier would subsume it).
 
-### CAND-HEADLESS-PERMS · headless write-permission prompt silently voids QA + retro reports (staged — do not start)
-- **Proposed:** P1 · Effort S (runner-side guard + loud tripwire) · Risk LOW-MED (the
-  trust-flag variant writes user-global `~/.claude.json` — ask-first class).
-- **Source:** same EVO-3 baseline (bench-20260710-2117). Staged 2026-07-11.
-- **Problem:** headless dispatches carry no permission flags beyond the per-agent deny
-  overlay (`--disallowedTools` + budget, `lib/quota-retry.sh:603-643`) — write access
-  relies entirely on the allow list in `.claude/settings.json`. Claude Code honors that
-  list only in a TRUSTED workspace: trust is keyed by absolute path in `~/.claude.json`
-  (`projects[<path>].hasTrustDialogAccepted`), a benchmark scratch is a fresh mktemp path
-  every run — never trusted — and no headless run can answer the trust/permission prompt.
-  NOT a missing-file problem: the scratch carried BOTH `settings.json` and the gitignored
-  `settings.local.json`, byte-identical to the repo's (`run-benchmark.sh:218` `cp -a`
-  copies gitignored files too), and every agent trace opens with "Ignoring 122
-  permissions.allow entries … this workspace has not been trusted".
-- **Evidence:** kept-scratch traces (`runs/goal-session-bench-20260710-2117/trace/` in
-  `~/.cache/chain-bench-tmp/bench-bench-20260710-2117.EMAuTK/scratch`): `0014-qa.log` —
-  trust banner at line 1, tail: "I can't write the QA report due to permission
-  restrictions" — the QA verdict exists ONLY in stdout, no artifact (`reports/qa/` empty);
-  `0028-retro-analyst.log` — ends "am writing the report to the output path now", yet no
-  `reports/goal-session-*-retro.md` exists while the engine-shell-written
-  `state/retro-input.md` does (shell writes unaffected; agent Write blocked).
-  `~/.claude.json`: `hasTrustDialogAccepted` is `false` for the scratch path and `true`
-  for this repo → PRODUCTION headless runs in an already-trusted checkout are NOT
-  affected on this machine; every benchmark scratch is, and so is the first headless run
-  on any never-trusted adopter path. Friction counters were all zero — nothing surfaced
-  the missing evidence; the damage mode is SILENT. Open point for promotion: denials were
-  not uniform — iteration-summarizer/reviewer wrote `reports/` files in the SAME untrusted
-  workspace (trace `0026` wrote two) while both blocked dispatches were light-tier (qa,
-  retro-analyst); pin the mechanism with a controlled probe (stub dispatch in an untrusted
-  scratch, observe which tool calls deny) before designing the fix.
-- **Sketch (root-cause hypotheses, not a design):** (a) runner-side guard — cheapest,
-  no global state: after the first dispatch, grep its trace for the "Ignoring N
-  permissions.allow entries" banner and ABORT the run loudly (a voided run still costs
-  ~$11); (b) runner pre-trusts the scratch path (write
-  `projects[<scratch>].hasTrustDialogAccepted: true` into `~/.claude.json` before launch,
-  remove after) — touches user-global config, needs explicit human sign-off; (c) the
-  tripwire wanted REGARDLESS of (a)/(b): any qa/browser-qa/retro dispatch that returns
-  without its expected report file on disk → LOUD `[missing-evidence]` banner + telemetry
-  event, never a silent `unknown` (the silent-missing-evidence failure mode is the damage
-  here).
-- **Why staged / verify idea:** which layer to fix (runner vs engine vs both) and any
-  `~/.claude.json` write are human decisions (G1/EVO-1). Verify: post-fix benchmark rerun
-  shows the QA report + retro report present in scratch and the trust banner absent from
-  every trace; the tripwire is unit-testable offline with a stub dispatch that writes no
-  report.
+### CAND-GLUE-TIME · Instrument goal-loop "glue" wall time (staged — do not start)
+- *(First retro-loop harvest: drafted by the EVO-2 retro-analyst as RETRO-1 at the
+  bench-20260712-1536 terminal halt; staged verbatim 2026-07-12, user-authorized per
+  EVO-2's contract — promotion stays human, EVO-1.)*
+- **Proposed (by the retro):** P2 · Effort M · Risk LOW.
+- **Source:** retro report preserved at
+  `benchmarks/results/20260712-171324-5e87813077ae.retro.md` (sibling of the run's
+  results JSON); kept scratch `~/.cache/chain-bench-tmp/bench-bench-20260712-1536.ozxtwM`
+  (traces + telemetry).
+- **Problem (retro's words):** Iteration 1 showed 57.0m of unattributed wall time out
+  of 74.3m total (77% of iteration), labeled as "glue" in the wall-time breakdown. No
+  visibility into what synchronization, external waits, or queue delays this represents.
+- **Evidence (retro's citation):** Agent economics — "goal-bench-20260712-1536-iter-1
+  depth=full  verdict=CONTINUE  wall=74.3m ... unattributed (glue)       57.0m"
+- **Sketch (retro's):** Add instrumentation to the goal-loop pump
+  (scripts/automation/run-goal.sh and lib/goal_pump.sh) to emit telemetry events for
+  queue depth, wait-for-agent latency, and post-verdict pause durations. Surface these
+  in analyze_telemetry.py --wall output as separate line items instead of lumping them
+  as "unattributed."
+- **Verify idea (retro's):** Re-run a goal-mode session with the same budget and
+  confirm that "glue" time is now broken into named, measurable components that sum to
+  the original 57m.
+- **Triage note (staging session, 2026-07-12):** the sketch's `lib/goal_pump.sh` does
+  not exist (the digest-only retro-analyst guessed the path) and the benchmark run was
+  headless — no interactive pump — so promotion needs a fresh look at where the 57m
+  actually lives (dispatch startup, service boots, retries, sleeps) before adopting the
+  sketch's event list.
+
+### CAND-QA-ISOLATION · Isolate concurrent QA-lane state mutations (staged — do not start)
+- *(First retro-loop harvest: drafted by the EVO-2 retro-analyst as RETRO-2 at the
+  bench-20260712-1536 terminal halt; staged verbatim 2026-07-12, user-authorized per
+  EVO-2's contract — promotion stays human, EVO-1.)*
+- **Proposed (by the retro):** P1 · Effort M · Risk MED.
+- **Source:** retro report preserved at
+  `benchmarks/results/20260712-171324-5e87813077ae.retro.md`; kept scratch
+  `~/.cache/chain-bench-tmp/bench-bench-20260712-1536.ozxtwM` (the cited lessons.md
+  lives under its `scratch/runs/goal-session-bench-20260712-1536/state/`).
+- **Problem (retro's words):** Concurrent qa and browser-qa-agent lanes drive Chrome
+  against shared stateful server resources (Flask instance + todos.json). When both
+  lanes run in parallel on mutation-heavy journeys, one lane's state changes pollute
+  the other's evidence (screenshots show false negatives). The lessons tail documents
+  a case where browser evidence contradicted itself due to concurrent state mutation
+  mid-screenshot.
+- **Evidence (retro's citation):** Lessons tail — "Two lanes of the same pipeline
+  (`qa` and `browser-qa-agent`) drove Chrome against one Flask instance and one
+  `todos.json` concurrently, and the resulting screenshots make a CORRECT app look
+  BROKEN... because the other agent toggled state mid-run."
+- **Sketch (retro's):** For goal-mode sessions on stateful apps (detected: journeys
+  with mutations, or DATA_FILE persisted across runs), either (a) serialize the QA and
+  browser-qa-agent lanes (add a depends-on gate), or (b) give each lane a private
+  isolated copy of DATA_FILE (e.g., `todos-qa-lane-<uuid>.json`,
+  `todos-browser-qa-lane-<uuid>.json`) and reconcile state deterministically before
+  re-drive.
+- **Verify idea (retro's):** Re-run a goal-mode session on a stateful app with
+  mutation journeys; confirm that no screenshot contradicts its own results row, and
+  that two lanes do not produce conflicting evidence for the same journey step.
+- **Triage note (staging session, 2026-07-12):** the premise is structurally real —
+  `run-phase.sh` runs Branch A (ui-impact → ui-test-design → browser-qa → demo)
+  concurrently with Branch-QA (`qa-phase.sh`) under `CHAIN_SHARED_SERVICES=true` — but
+  option (a) serialization pushes against the SPEED-2/SPEED-3 parallelization chain,
+  so triage should weigh (a) vs (b) against §9 before promoting.
+
+### CAND-AUDIT-DISPATCH · Full-depth audit step can be silently skipped (staged — do not start)
+- *(EVO-5 first real harvest, 2026-07-12, over ~/Git/tapeology + ~/Git/trendora —
+  cross-repo recurring symptom drafted from the digest; promotion human, EVO-1.)*
+- **Proposed:** P1 · Effort M · Risk MED (engine orchestration).
+- **Symptom (harvest evidence, cross-repo):** trendora
+  `goal-session-i_can_see_the_wealthy_future_forever_with_my_loved_ones` iter-55
+  lesson: "The audit step has silently NOT run for three consecutive iterations
+  (53/54/55) — status.json keeps stopping at current_step: qa_complete /
+  next_action: audit with no audit handoff written… This is an engine ORCHESTRATION
+  gap (the auditor agent is never dispatched between QA and coherence/evaluator)."
+  tapeology `goal-session-i_will_be_super_rich` lesson: "no `-audit.md` handoff was
+  produced (status stopped at qa_complete) — full-depth iterations can finish
+  without the audit step."
+- **Sketch:** determine whether the goal-mode full-depth path at framework HEAD can
+  still complete an iteration without dispatching the auditor (phase mode's
+  `run-phase.sh:889-941` Step 9 is fail-loud with retries; both adopters ran
+  vendored snapshots); if it can, make the dispatch mandatory-or-loud — at minimum
+  give a missing audit handoff the REL-11 missing-evidence treatment
+  (`warn_missing_evidence` banner + `missing_evidence` telemetry event).
+- **Triage note (staging session, 2026-07-12):** highest-signal harvest finding —
+  the same silent-void class REL-11 just closed for qa/browser-qa/retro-analyst,
+  observed for the auditor in BOTH adopters; trendora's evaluator had to perform
+  the audit's skeptical checks itself before declaring GOAL_ACHIEVED.
+
+### CAND-BQA-PREFLIGHT · Browser-qa dispatch lacks a services/fixture preflight gate (staged — do not start)
+- *(EVO-5 first real harvest, 2026-07-12 — cross-repo recurring symptom drafted
+  from the digest; promotion human, EVO-1.)*
+- **Proposed:** P1 · Effort M · Risk MED.
+- **Symptom (harvest evidence, cross-repo, chronic):** trendora
+  `goal-session-i_can_see_the_wealthy_future` iter-12: "the browser-qa (probes
+  `/health` not `/api/health`; tears services down pre-test) … gaps were flagged
+  every iter 3–12 via spec text and never fixed — durable fixes belong in
+  `scripts/automation/*.sh`, not spec prose." trendora
+  `goal-session-i_can_see_the_wealthy_future_forever` iter-27 (STALLED): "The
+  browser-QA runner ran against the LIVE host with the seed env unset for FIVE
+  straight iterations (23/24/25/26/27) despite an increasingly verbatim recipe."
+  tapeology `goal-session-structure_ui` iter-4: "curl-confirming `:3301`/`:8301`
+  before QA dispatch turned iter-3's SKIPPED 0/26 into iter-4's 18/18 populated
+  PASS — the precondition is now a proven, not speculative, gate."
+- **Sketch:** a deterministic services-up preflight (and, when the spec names one,
+  a fixture/env-state check) in the browser-qa dispatch path — in
+  `scripts/automation`, not spec prose — that refuses or loudly SKIPs the dispatch
+  when the preflight fails, instead of burning a full browser pass against a dead
+  or wrong-state host.
+- **Triage note (staging session, 2026-07-12):** tapeology iter-4 already proved
+  the gate live; orthogonal to CAND-QA-ISOLATION (service readiness vs concurrent
+  state mutation) — check overlap with `ensure_services_running`
+  (`lib/common.sh:770`) before promoting: the engine may have partial cover the
+  vendored snapshots lacked.
+
+### CAND-VENDORED-SCAN-SCOPE · Vendored framework subtree trips adopter secret scans (staged — do not start)
+- *(EVO-5 first real harvest, 2026-07-12 — cross-repo recurring symptom drafted
+  from the digest; SEC-5-adjacent, staged at the sanctioned drafting ceiling;
+  promotion human, EVO-1.)*
+- **Proposed:** P2 · Effort S · Risk LOW.
+- **Symptom (harvest evidence, cross-repo):** trendora `goal-session-mcp-loop`
+  iter-27: vendored `incredible_auto_dev/` judgment fixtures
+  (`tests/judgment/{auditor,reviewer,goal-evaluator}/case-*`, planted fake keys)
+  "reliably light up as CRITICAL secret-assignment/aws-access-key findings but are
+  NOT product anti-goal-#7 violations." tapeology `goal-session-yahoo_fetch`
+  iter-6: "iter-5's scan CRITICAL came from vendored `incredible_auto_dev/**`
+  judgment fixtures; the iter-6 pre-flight correctly moved those out."
+- **Sketch:** SEC-5's `CHAIN_SCAN_BOOKKEEPING_EXCLUDES` default
+  (`runs reports docs/handoffs docs/phases`) does not cover a vendored framework
+  subtree; consider adding the vendored subtree dir to the default excludes for
+  vendored deployments (or to the vendoring guidance in maintenance protocol §3.4),
+  preserving SEC-5's path-based, never-value-allowlisting principle.
+- **Triage note (staging session, 2026-07-12):** both adopters independently
+  hand-worked around it (fixture relocation; path-prefix splitting by convention) —
+  cheap to close structurally, and the scan stays CRITICAL-capable on product paths.
 
 ---
 
