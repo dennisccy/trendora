@@ -6,10 +6,10 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 
 ## Outcome
 
-- **Terminal status:** STALLED
-- **Final verdict:** STALLED
-- **Iterations used:** 29
-- **Halted at (UTC):** 2026-07-12T21:33:30.701816Z
+- **Terminal status:** GOAL_ACHIEVED
+- **Final verdict:** GOAL_ACHIEVED
+- **Iterations used:** 43
+- **Halted at (UTC):** 2026-07-16T04:15:39.941429Z
 
 ## Verdict sequence
 
@@ -45,6 +45,20 @@ iter 25: CONTINUE
 iter 26: REGRESSION
 iter 27: CONTINUE
 iter 28: STALLED
+iter 29: CONTINUE
+iter 30: CONTINUE
+iter 31: CONTINUE
+iter 32: CONTINUE
+iter 33: CONTINUE
+iter 34: CONTINUE
+iter 35: CONTINUE
+iter 36: CONTINUE
+iter 37: CONTINUE
+iter 38: CONTINUE
+iter 39: CONTINUE
+iter 40: CONTINUE
+iter 41: CONTINUE
+iter 42: GOAL_ACHIEVED
 ```
 
 ## Agent economics
@@ -281,15 +295,145 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       (resume-skipped: coherence-auditor)
       pump-wait                 25.0m
       overlap saved             19.5m  (parallel steps)
-  session: 29 completed iteration(s), mean wall 150.2m
-      total goal-decomposer            513.2m
-      total goal-evaluator             258.6m
-      total coherence-auditor          117.8m
-      total iteration-summarizer       100.1m
-      total browser-qa-agent            72.8m
-      total readme-maintainer           48.7m
-      total developer                   33.9m
-      total reviewer                    13.2m
+  goal-mcp-loop-iter-29  depth=lean  verdict=CONTINUE  wall=454.5m
+      developer                  397.9m  calls=1
+      browser-qa-agent            26.0m  calls=1
+      goal-evaluator              15.5m  calls=1
+      goal-decomposer             10.7m  calls=1
+      coherence-auditor            3.5m  calls=1
+      reviewer                     3.3m  calls=1
+      (resume-skipped: coherence-auditor)
+      pump-wait                 13.4m
+      overlap saved              2.3m  (parallel steps)
+  goal-mcp-loop-iter-30  depth=?  verdict=?  wall=?  (incomplete/interrupted attempt)
+  goal-mcp-loop-iter-30  depth=full  verdict=CONTINUE  wall=160.2m
+      goal-evaluator              15.0m  calls=1
+      goal-decomposer             11.9m  calls=1
+      coherence-auditor            4.5m  calls=1
+      pump-wait                 12.1m
+      unattributed (glue)      128.8m
+  goal-mcp-loop-iter-31  depth=?  verdict=?  wall=?  (incomplete/interrupted attempt)
+      iteration-summarizer        10.7m  calls=1
+      readme-maintainer            6.1m  calls=1
+      pump-wait                  6.1m
+  goal-mcp-loop-iter-31  depth=full  verdict=CONTINUE  wall=175.5m
+      goal-evaluator              14.7m  calls=1
+      goal-decomposer             11.9m  calls=1
+      coherence-auditor            4.7m  calls=1
+      pump-wait                  0.9m
+      unattributed (glue)      144.3m
+  goal-mcp-loop-iter-32  depth=?  verdict=?  wall=?  (incomplete/interrupted attempt)
+      iteration-summarizer        10.4m  calls=1
+      readme-maintainer            3.4m  calls=1
+      pump-wait                  0.2m
+  goal-mcp-loop-iter-32  depth=full  verdict=CONTINUE  wall=142.4m
+      goal-evaluator              12.2m  calls=1
+      goal-decomposer             12.0m  calls=1
+      coherence-auditor            6.5m  calls=1
+      pump-wait                  0.4m
+      unattributed (glue)      111.7m
+  goal-mcp-loop-iter-33  depth=full  verdict=CONTINUE  wall=598.5m
+      iteration-summarizer       312.9m  calls=1
+      goal-decomposer            312.9m  calls=1
+      goal-evaluator              18.5m  calls=1
+      coherence-auditor            5.0m  calls=1
+      readme-maintainer            2.8m  calls=1
+      pump-wait                  0.4m
+      overlap saved             53.6m  (parallel steps)
+  goal-mcp-loop-iter-34  depth=lean  verdict=CONTINUE  wall=62.5m
+      goal-evaluator              15.4m  calls=1
+      iteration-summarizer        14.3m  calls=1
+      goal-decomposer             14.2m  calls=1
+      browser-qa-agent            14.2m  calls=1
+      developer                   10.3m  calls=1
+      reviewer                     3.9m  calls=1
+      coherence-auditor            3.6m  calls=1
+      readme-maintainer            2.5m  calls=1
+      (resume-skipped: coherence-auditor)
+      pump-wait                  2.8m
+      overlap saved             15.8m  (parallel steps)
+  goal-mcp-loop-iter-35  depth=full  verdict=CONTINUE  wall=546.7m
+      goal-evaluator              71.6m  calls=1
+      goal-decomposer             15.7m  calls=1
+      iteration-summarizer         8.4m  calls=1
+      coherence-auditor            4.6m  calls=1
+      readme-maintainer            3.2m  calls=1
+      pump-wait                  0.5m
+      unattributed (glue)      443.1m
+  goal-mcp-loop-iter-36  depth=full  verdict=CONTINUE  wall=555.9m
+      goal-evaluator              18.1m  calls=1
+      iteration-summarizer        16.9m  calls=1
+      goal-decomposer             16.9m  calls=1
+      coherence-auditor            4.5m  calls=1
+      readme-maintainer            3.3m  calls=1
+      pump-wait                  0.1m
+      unattributed (glue)      496.1m
+  goal-mcp-loop-iter-37  depth=lean  verdict=CONTINUE  wall=53.5m
+      browser-qa-agent            15.5m  calls=1
+      goal-evaluator              11.5m  calls=1
+      iteration-summarizer         9.4m  calls=1
+      goal-decomposer              9.4m  calls=1
+      developer                    6.5m  calls=1
+      reviewer                     4.4m  calls=1
+      readme-maintainer            4.0m  calls=1
+      coherence-auditor            2.8m  calls=1
+      (resume-skipped: coherence-auditor)
+      pump-wait                  1.0m
+      overlap saved             10.2m  (parallel steps)
+  goal-mcp-loop-iter-38  depth=full  verdict=CONTINUE  wall=378.7m
+      goal-evaluator              14.9m  calls=1
+      goal-decomposer             11.8m  calls=1
+      coherence-auditor            4.4m  calls=1
+      unattributed (glue)      347.6m
+  goal-mcp-loop-iter-39  depth=lean  verdict=CONTINUE  wall=107.5m
+      goal-evaluator              54.6m  calls=1
+      browser-qa-agent            27.4m  calls=1
+      goal-decomposer              9.5m  calls=1
+      iteration-summarizer         8.7m  calls=1
+      developer                    8.2m  calls=1
+      coherence-auditor            5.2m  calls=1
+      reviewer                     3.4m  calls=1
+      readme-maintainer            3.4m  calls=1
+      (resume-skipped: coherence-auditor)
+      pump-wait                  4.3m
+      overlap saved             12.8m  (parallel steps)
+  goal-mcp-loop-iter-40  depth=full  verdict=CONTINUE  wall=278.4m
+      goal-decomposer             19.2m  calls=1
+      goal-evaluator              18.7m  calls=1
+      iteration-summarizer        16.3m  calls=1
+      coherence-auditor            6.7m  calls=1
+      readme-maintainer            3.6m  calls=1
+      pump-wait                  7.2m
+      unattributed (glue)      213.8m
+  goal-mcp-loop-iter-41  depth=full  verdict=CONTINUE  wall=249.3m
+      goal-decomposer             18.5m  calls=1
+      iteration-summarizer        18.5m  calls=1
+      goal-evaluator              17.1m  calls=1
+      coherence-auditor            6.1m  calls=1
+      readme-maintainer            2.4m  calls=1
+      pump-wait                  0.1m
+      unattributed (glue)      186.6m
+  goal-mcp-loop-iter-42  depth=lean  verdict=GOAL_ACHIEVED  wall=217.6m
+      browser-qa-agent           122.6m  calls=1
+      iteration-summarizer        23.1m  calls=2
+      goal-evaluator              19.4m  calls=1
+      goal-decomposer             13.4m  calls=1
+      developer                   13.1m  calls=1
+      readme-maintainer            7.0m  calls=2
+      coherence-auditor            4.6m  calls=1
+      reviewer                     4.1m  calls=1
+      (resume-skipped: coherence-auditor)
+      pump-wait                  2.0m
+      unattributed (glue)       10.3m
+  session: 43 completed iteration(s), mean wall 193.9m
+      total goal-decomposer           1001.5m
+      total goal-evaluator             575.9m
+      total iteration-summarizer       549.7m
+      total developer                  469.8m
+      total browser-qa-agent           278.6m
+      total coherence-auditor          184.4m
+      total readme-maintainer           90.3m
+      total reviewer                    32.3m
       total AWAITING_PUMP paused gaps: 1308.7m
       halts: DECOMPOSER_FAILED, GATE_BLOCKED_POST_DECOMPOSE, STALLED, DECOMPOSER_FAILED, AWAITING_PUMP, DECOMPOSER_FAILED, DECOMPOSER_FAILED, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, AWAITING_PUMP, REGRESSION_HALT, AWAITING_PUMP, AWAITING_PUMP, STALLED
 ```
@@ -305,26 +449,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-**Lesson:** When a target journey's pre-registered path is a no-op on the seed (the J-16 Backfill pre-fill range 2005-02-28->03-07 was a genuine 0/0 no-op), the QA fallback ("Rebuild snapshots for current universe") is a MUCH heavier full-universe job that can surface latent memory bombs the narrow path never would. A verified crash on the fallback path still counts as a journey failure AND a critical anti-goal #8 violation — the causation may be pre-existing, but the verdict (halt for human review) does not depend on causation. Decompose J-16-style perf/backfill iterations with a real, non-empty deep-history cadence date/subset so the target path itself (not just a fallback) exercises the crashing shape.
-**Applies to:** any perf/backfill/warmup iteration where the journey's own job path may be a seed no-op; any iter whose fallback test path is heavier than the pre-registered one.
+rule: when the canonical browser-qa lane SKIPs on infra, do NOT default the target to `unknown` — first
+open the functional-QA evidence dir AND `reports/demo/<iter>/` for real acceptance-state frames, and
+weigh the auditor's byte-match (stronger than a click-through) before scoring. Also flag the Chrome-MCP
+port issue to the coordinator so the next browser-dependent iter (J-25) does not silently inherit the
+same degraded-evidence condition.
+**Applies to:** any iter whose canonical browser-qa lane returns SKIPPED (Chrome MCP / frontend infra);
+any evaluator facing "target's own canonical lane didn't run" — check demo + functional-QA frames + audit
+byte-match before treating a journey as unverified.
 
-## iter-27 — 2026-07-12T10:30:00Z
+## iter-41 — 2026-07-16T01:05:00Z
 
 **Verdict:** CONTINUE
-**Lesson:** The deterministic `scan-report.md` runs over the FULL iteration diff, which now includes the vendored `incredible_auto_dev/` framework subtree pulled in via squash-merge. That subtree ships judgment-eval test fixtures whose whole PURPOSE is to contain planted fake credentials (`tests/judgment/{auditor,reviewer,goal-evaluator}/case-*` — e.g. `case-05-secret-committed`, `case-04-paid-service-live-key`, using the AWS-doc example key `AKIAIOSFODNN7EXAMPLE` + fictional `lv_live_`/`qs_live_` keys). These reliably light up as CRITICAL `secret-assignment`/`aws-access-key` findings but are NOT product anti-goal-#7 violations — they are disjoint framework tooling, not Trendora source, and not authored by the iteration's dev work. Always split the scan-report by path prefix: only findings under the product namespace (`apps/`, `config.yaml`, `data/`, `scripts/` product paths) can constitute a product secret; findings under `incredible_auto_dev/` are framework-fixture false positives (reviewer + auditor + coherence all treat that subtree as out-of-scope).
-**Applies to:** any iter whose commit range includes a framework-subtree pull / squash-merge, or any evaluator reading a CRITICAL scan-report — check the finding PATHS before treating a secret hit as an anti-goal violation.
+**Lesson:** On the LAST-journey FULL iter, "all 25 journeys passing" does NOT automatically mean GOAL_ACHIEVED — the deterministic achievement gate (goal-gates.sh) would mechanically accept it (it never checks that goldens were replayed), so the first-key evaluator must not lean on the gate to catch a premature call. Here three grounded reasons forced CONTINUE: (a) iter-41's own spec DoD explicitly DEFERS the required-set deterministic golden-replay to iter-42; (b) J-23.json/J-24.json/J-25.json have never run through demo_runner --mode verify (a FULL iter routes through run-phase.sh, which has no replay lane — recurred iter-33/36/38/40/41); (c) the prior evaluator + this iter's audit both sequenced GOAL_ACHIEVED to come AFTER the iter-42 lean closeout. The cleanest GOAL_ACHIEVED is one where the whole set carries fresh reproducible replay evidence, which the lean closeout produces.
+**Applies to:** any goal-mode session that reaches "last Must-have delivered via a FULL iter" — treat GOAL_ACHIEVED as reachable only AFTER a lean deterministic-replay closeout that folds in every never-replayed golden; and the iter-42 evaluator specifically must confirm the replay ARTIFACT actually exists (do not accept a "replay ran next step" hand-wave — the iter-33/36 CLOSURE-FAIL trap).
 
-## iter-27b — 2026-07-12T10:30:00Z
+## iter-42 — 2026-07-16T03:15:00Z
 
-**Verdict:** CONTINUE
-**Lesson:** The actual resolving fix for the iter-26 full-universe VSZ crash was glibc allocator hygiene (`MALLOC_ARENA_MAX=2` exported before `exec uvicorn` + `gc.collect()`/`malloc_trim(0)` in the backfill `finally`), NOT the read-side windowing alone — the isolated harness (~3.4 GB peak) structurally could not reproduce the live 6 GB ceiling hit, so windowing byte-identity tests passed but could not PROVE the crash resolved. The proof had to come from the live canonical browser-qa lane driving 2+ consecutive full-universe rebuilds in one long-lived process (cross-run arena accumulation was the driver). When a memory fix's own harness admits it can't reproduce the failing shape, the fix is unproven until the live lane drives the exact crashing scenario.
-**Applies to:** any iter touching `data_manager` backfill / `_BarCache` prefill / long-running job memory; do not accept an isolated-harness "under cap" as resolution of a live OOM — require the live full-shape repro.
-
-## iter-28 — 2026-07-12T22:45:00Z
-
-**Verdict:** STALLED
-**Lesson:** The browser-qa lane graded the five all-FAIL evidence journeys (J-02/J-06/J-07/J-08/J-09) as "PASS" by scoring only the honest-status half ("Not yet proven" badge is correct + numbers byte-match the FAIL verdict) — but each journey's acceptance requires a *Proven* certified edge to surface/drill, which the all-FAIL ledger cannot provide. A journey whose title is "certified edge surfaced" is NOT passed by an honest "no edge here" state, however correct; that is anti-goal #1 upheld, not journey acceptance. When a journey's success criterion is the PRESENCE of a proven artifact, an honest-absence screenshot is `partial`, never `passing`.
-**Applies to:** any future evaluator scoring J-02/J-06/J-07/J-08/J-09 (or any "surface a certified/proven X" journey) against an all-FAIL ledger — do not let a browser-qa PASS on the honest-status half flip the journey to passing; the achievement gate needs a real PASS certified-claim, which is human-unblock-gated here.
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** The deterministic-replay lane (`demo_runner --mode verify`) is a golden-brittleness detector as much as a regression detector: its first run of J-23.json/J-25.json surfaced 3 FAILs that were ALL test-fixture artifacts, not product bugs — a timing/selector flake (J-11), a cleared server-side watchlist fixture (J-23), and a stale golden value off-by-1 from gitignored live-DB cohort drift (J-25, n=1264→1263). Two reconciliation rules proved essential: (1) a replay FAIL's OWN `-verify.png` screenshot is the arbiter — it showed the correct product state in all 3 cases; (2) the achievement gate reads the MERGED `ui-test-results.md` (via merge_ui_test_results.py), NOT the raw `regression-replay-results.md`, so a stale raw-replay FAIL does not block GOAL_ACHIEVED once reconciled. Do NOT loop to force a byte-clean raw-replay artifact — J-23.json depends on non-self-seeding watchlist state, so a re-run could FAIL again on an empty watchlist; gating the goal on that framework-owned fixture fragility is the #1 (unachievable-criteria) anti-pattern.
+**Applies to:** any lean deterministic-replay closeout; any iter reconciling a `demo_runner` FAIL against the LLM lane; any future continuous-improvement loop that re-runs goldens (esp. J-23 watchlist / any golden pinning live-DB-derived exact values).
 ```
 
 ## Halt context
@@ -333,8 +477,8 @@ session.json halt-relevant fields:
 
 ```json
 {
-  "status": "STALLED",
-  "last_verdict": "STALLED",
+  "status": "GOAL_ACHIEVED",
+  "last_verdict": "GOAL_ACHIEVED",
   "parked_wip_sha": "3913fd6"
 }
 ```

@@ -1,43 +1,29 @@
-# Delivered — Decision-Quality Improvement Loop
+# Delivered — Trendora: Honest Evidence Behind Every Trading Signal
 
 **Session:** mcp-loop
-**Date:** 2026-07-01
+**Date:** 2026-07-16
 **Final verdict:** GOAL_ACHIEVED
-**Iterations:** 16
+**Iterations:** 42
 
 ## What you can do today
 
-Browse a ranked list of 120 stocks and see a "Proven" or "Not yet proven" badge beside every Leadership, Entry Quality, and Risk score on every row — no score is ever shown without a clear evidence status.
+You can browse a leaderboard of hundreds of companies where every performance score carries an honest "proven" or "not yet proven" label — never a confident-looking number without a track record behind it. Click through to any tested idea to see its full audit trail: the out-of-sample test it went through, what it was compared against, and the date it was checked. Evidence is always shown for the market mood it applies to, rather than treated as one-size-fits-all, and every "proven" badge has been freshly re-checked against a full thirty-year history, so nothing stale is ever shown as proven.
 
-Tap "Why proven?" on any stock's Leadership card to read the full out-of-sample proof that earned that label: the statistical test result, a +6.36% edge measured across 12,297 real observations, a comparison against the S&P 500 as a control, and the date the claim was certified and sealed.
+You can look back through up to thirty years of price history for any stock, alongside matching market-index and economic context, each clearly labeled by where it came from. The underlying company list is broad — hundreds of names that honestly join and leave the rankings as their real trading histories begin and end, never faked. On the Data page you can see exactly what information is available and how current it is, and pages stay fast even with all that extra history — background data-refresh jobs show honest, real-time progress instead of silently reporting "done" early.
 
-Confirm for yourself that Entry Quality and Risk are honestly marked "Not yet proven" on every stock — no fabricated confidence numbers, no invented proof.
+You can also see the honesty system's own bookkeeping: how much statistical testing budget remains before the bar for calling something "proven" has to tighten, and a browsable record of every idea the system has tried and rejected, so nobody wastes time repeating a dead end. One shared status banner, visible on every page, tells you plainly whether today's data can be trusted — and if live data ever starts quietly drifting from what was validated, you're warned rather than left to find out the hard way. There is even a self-check panel proving that the proof system itself isn't fooling itself.
 
-Open the Evidence page from the sidebar to audit all seven certified claims in one place. Each entry shows the hypothesis, the out-of-sample verdict, the benchmark comparison, and the registration date, with round-trip links back to the surfaces they power and forward to the research labs.
-
-On the Dashboard, follow the Market Regime card's link to see the Breakout-watch setup's certified +6.12% out-of-sample edge over the S&P 500, clearly labeled as applying specifically in the current Risk-on market environment.
-
-Open the Research factor lab to see each factor's evidence status at every tested holding period — 1-day, 5-day, 10-day, 20-day, and 60-day windows. The volatility-contraction pattern is "Proven" at both the 20-day (+3.33% edge) and the 60-day (+8.91% edge) windows. The 3-month relative-strength factor is "Proven" at the 60-day window (+21.34% edge). Click any "Proven" chip to jump straight to the auditable Evidence entry behind it.
-
-Open the Multi-factor Combination Lab, compose any pair of factors, and see "Proven" only for the one statistically certified pair: stocks that lead the market on 3-month relative strength and are also near their 52-week high showed a +4.69% certified edge. Every other combination, including those that were tested and honestly rejected, reads "Not yet proven."
+On your Watchlist, you can see how concentrated your saved picks really are — which ones tend to move together, how they cluster, and how many genuinely independent bets you're actually making, not just how many tickers you saved. On any individual stock's page, a "how much can this hurt" card shows its volatility, its overnight-gap risk, the worst rough patch it has ever been through, and how much room is left before its bullish case would break down — with the same figures rolled up into the leaderboard, too. And for any tested idea, you can open its record and see what holding it has actually felt like historically: typical and worst-case losing depth, how long it stayed underwater, how long recovery took, and its longest losing streak, broken down by market mood, always with an honest sample size attached.
 
 ## How it came together
 
-The project opened with Trendora already ranking 120 stocks with Leadership, Entry Quality, and Risk scores, but no evidence surface — no badges, no proof, and no way to tell a certified signal from an untested one. Every score looked equally confident even though none had been through a rigorous test.
+The project began by building Trendora's trust layer: honest "proven" / "not yet proven" labels on every score, a fully auditable record behind each one, thirty years of price history, and a much wider set of companies to track. Along the way, two rounds of widening the underlying data accidentally overloaded the system's memory — both times the problem was caught, fixed, and independently re-verified before work continued.
 
-The first round built that foundation. "Not yet proven" chips appeared beside every score on the leaderboard and every stock detail page. A new Evidence page went live in the sidebar. Then the Leadership score was put through a sealed statistical referee — 12,297 observations, +6.36% edge over the S&P 500 — and passed. Its badge flipped to "Proven" and a "Why proven?" panel let any user read the exact numbers behind that label.
+A turning point came partway through, when the honesty system reported that several of the platform's oldest trading ideas had genuinely failed re-testing against the deeper history — proof the system was holding itself to a real bar rather than rubber-stamping its own work. The next stretch of rounds then built out a governance layer around that honesty: a registry requiring every new idea to be written down and dated before it's tested (no after-the-fact cherry-picking), a browsable graveyard of ideas that didn't pan out, a live testing-budget panel, and a shared daily trust banner that watches for stale or drifting data and even audits the proof system's own calibration.
 
-After a brief browser-test connectivity fix, the automated walkthrough confirmed four capabilities in one pass: every score had a badge, the proof panel showed correct numbers, Entry Quality and Risk were honestly labeled, and the Evidence page had working round-trip links.
+Later rounds turned to the trader's day-to-day tools: a Watchlist view showing how concentrated a saved list of stocks really is, and a "how much can this hurt" risk card added to every stock's page. The final planned feature then landed — a panel on each tested idea's record showing what holding it has actually felt like historically, broken down by market mood — which completed everything originally on the roadmap.
 
-Next, the Breakout-watch event-study was tested and certified: +6.12% in the current Risk-on market regime, surviving 107 independent holdout dates. The Evidence page gained a "Regime: Risk-on" row and the Dashboard gained a direct link to it. Two rounds of pipeline repair followed before the full automated walkthrough could run end-to-end; once fixed, the audit signed off and the regime-conditioned capability was formally confirmed. All five original goals were met.
-
-The continuous-improvement loop then kicked in. The volatility-contraction pattern was tested: its top-decile stocks beat the market by +3.33% out-of-sample. An adjacent test of a momentum-average pattern was honestly rejected and permanently recorded. The Research factor lab gained an Evidence column, and a fourth certified claim appeared on the Evidence page with working round-trip links.
-
-To support a wider search without permanently tightening the public evidence bar, the platform built a separate private staging ledger. The first sweep found that volatility contraction also held at the 60-day horizon (+8.91% edge). The Research factor lab was upgraded from one chip per factor to a strip of five per-horizon chips — both the 20-day and 60-day windows now read "Proven" for volatility contraction.
-
-Three pre-registered two-factor combinations were then nominated through the referee. Two failed and their "Not yet proven" labels were set permanently on the record. The third — momentum leaders that are also near their 52-week high — passed (+4.69% edge). The Multi-factor Combination Lab gained a "Proven" badge for that certified pair, and a sixth claim appeared on the Evidence page.
-
-Finally, the 3-month relative-strength factor at the 60-day hold was promoted to the public ledger as the seventh certified claim — +21.34% edge, the strongest out-of-sample result yet. The existing display machinery lit the new "Proven" badge automatically, with no code changes needed, confirming the platform's ability to grow its evidence ledger without structural rework. All nine planned user capabilities are now live and independently verified.
+The project closed with a dedicated final check: every one of the product's capabilities was re-run end to end through an automated tester, page speed and memory use were re-measured to confirm nothing had slowed down, and a handful of flagged mismatches were traced back to outdated test recordings rather than real problems, and corrected. With a clean result across the board, the product was confirmed to do everything it originally set out to do.
 
 ## Watch it work
 
