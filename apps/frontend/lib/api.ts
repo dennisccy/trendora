@@ -2358,6 +2358,14 @@ export interface DataRun {
   snapshots_created: number | null;
   dates_done: number | null;
   dates_total: number | null;
+  // ops-hardening iter-1 (J-01) — the backfill/both/rebuild run-summary exclusion breakdown; null for a
+  // fetch/expand run (matching the existing dates_total nullability pattern). Invariants (enforced
+  // server-side, never re-derived here): non_trading_days + dates_total == calendar_days;
+  // snapshots_created + already_snapshotted + error_other == dates_total.
+  calendar_days: number | null;
+  non_trading_days: number | null;
+  already_snapshotted: number | null;
+  error_other: number | null;
   bars_fetched: number | null;
   passers: number | null; // J-35 expand screen outcome (null for non-expand runs)
   omitted_total: number | null; // J-35 expand screen outcome (null otherwise)
@@ -2567,6 +2575,12 @@ export interface DataJob {
   dates_done: number;
   snapshots_created: number;
   forward_returns_inserted: number;
+  // ops-hardening iter-1 (J-01/J-03): the live exclusion breakdown — 0 for a fetch/expand-only job (no
+  // backfill stage ran). Mirrors the persisted `DataRun` fields (see api layer / data_manager.py).
+  calendar_days?: number;
+  non_trading_days?: number;
+  already_snapshotted?: number;
+  error_other?: number;
   chunk_index?: number; // J-34: completed chunks (== checkpoint resume point)
   chunk_total?: number; // J-34: total planned chunks (chunk x/N); 0/absent for a non-chunked job
   passers?: number; // J-35 expand: candidates that passed the screen (became universe members)

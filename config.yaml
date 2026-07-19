@@ -54,7 +54,9 @@ data_manager:
       supports_market_cap: false
   default_source: yahoo     # the import source used when a job omits `source` (no-key ⇒ J-17 fetch never
                             # fails the key gate). MUST be a real catalog id (validated at boot).
-  max_range_days: 370       # max span (inclusive calendar days) a single fetch/backfill job may cover
+  # ops-hardening iter-1 (J-03): no job date-range span cap (removed — was max_range_days: 370). An
+  # explicit request of any span is accepted; import_chunking.date_window_days below (chunked execution)
+  # is the safety mechanism for an unbounded span.
   gap_preview: 60           # how many backfill-gap dates the coverage payload previews (display cap)
   run_history_limit: 50     # how many recent fetch/backfill runs GET /api/data returns (display cap)
   # J-34 chunked-import tunables: every chunk/backoff/sleep number the resilient FETCH loop reads lives

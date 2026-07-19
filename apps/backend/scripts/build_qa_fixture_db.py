@@ -145,19 +145,15 @@ def build_fixture(
     if thin_bars <= 0 or thin_bars >= threshold:
         raise ValueError(f"--thin-bars must be in (0, {threshold}); got {thin_bars}")
 
-    # The benchmark window = the LAST `window` SPY trading days from the committed seed (a recent slice
-    # so a no-history pull's full-calendar span stays within data_manager.max_range_days).
+    # The benchmark window = the LAST `window` SPY trading days from the committed seed (a recent slice).
+    # ops-hardening iter-1 (J-03): no job date-range span cap exists anywhere in config any more (removed
+    # — was data_manager.max_range_days), so this fixture-builder no longer bounds the window's calendar
+    # span against it either; `--window` (a TRADING-day count) is its own reasonable sizing knob.
     spy = _read_seed_bars(BENCHMARK, seed_dir)
     if len(spy) < window:
         raise ValueError(f"committed SPY seed has only {len(spy)} bars; --window {window} too large")
     spy_window = spy[-window:]
     window_dates = [b["date"] for b in spy_window]
-    span_days = (window_dates[-1] - window_dates[0]).days + 1
-    if span_days > cfg.data_manager.max_range_days:
-        raise ValueError(
-            f"window spans {span_days} calendar days > data_manager.max_range_days "
-            f"{cfg.data_manager.max_range_days}; reduce --window"
-        )
     if gap_len <= 0 or gap_len >= window - 2:
         raise ValueError(f"--gap-len must be in (0, {window - 2}); got {gap_len}")
 

@@ -236,8 +236,13 @@ def test_rerun_after_isolated_failure_is_create_once(tmp_path, monkeypatch):
     s2 = run_data_job(job2.job_id, config=_with_backfill_workers(cfg, 4), engine=engine)
 
     assert s2["status"] == "ok", s2
-    assert s2["dates_total"] == 1  # only the previously-failed date remains to backfill
-    assert s2["snapshots_created"] == 1
+    # ops-hardening iter-1: `dates_total` is REDEFINED to mean trading days in the requested range, so it
+    # is UNCHANGED from the first run (was: 1, the old post-filter "only what's left" semantics); the
+    # re-run's near-zero-work outcome is now explained by `already_snapshotted` instead.
+    assert s2["dates_total"] == len(in_range)
+    assert s2["already_snapshotted"] == len(in_range) - 1  # the 5 dates run 1 already completed
+    assert s2["snapshots_created"] == 1  # only the previously-failed date remains to backfill
+    assert s2["error_other"] == 0
     assert s2["date_failures"] == []
     with Session(engine) as session:
         runs_after_second = session.scalar(select(func.count()).select_from(ScannerRun))

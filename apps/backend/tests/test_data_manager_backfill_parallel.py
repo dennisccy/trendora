@@ -209,9 +209,12 @@ def test_backfill_per_date_sum_at_least_wall_clock_floor(equality_run):
 # create-once / idempotent — a re-run of a covered range changes nothing (no UNIQUE crash)
 # ==================================================================================================
 def test_parallel_rerun_is_idempotent(equality_run):
-    """Re-running the SAME range on the already-backfilled parallel DB creates NOTHING (dates_total == 0,
-    no new ScannerRun / ForwardReturn rows, no UNIQUE crash) and never overwrites a snapshot (created_at
-    unchanged) — the J-41 create-once guard holds under the parallel build."""
+    """Re-running the SAME range on the already-backfilled parallel DB creates NOTHING NEW (all snapshots
+    already present, so `snapshots_created == 0` and `already_snapshotted == len(in_range)`), no new
+    ScannerRun / ForwardReturn rows, no UNIQUE crash, and never overwrites a snapshot (created_at
+    unchanged) — the J-41 create-once guard holds under the parallel build. ops-hardening iter-1:
+    `dates_total` is REDEFINED to mean trading days in the requested range, so it stays `len(in_range)`
+    on this re-run too (was: 0, the old post-filter semantics)."""
     f = equality_run
     engine, cfg = f["par_engine"], f["cfg"]
     r_start, r_end = f["in_range"][0], f["in_range"][-1]
@@ -224,8 +227,10 @@ def test_parallel_rerun_is_idempotent(equality_run):
     summary = run_data_job(job.job_id, config=_with_backfill_workers(cfg, 4), engine=engine)
 
     assert summary["status"] == "ok"
-    assert summary["dates_total"] == 0  # nothing left to backfill — all snapshots already present
+    assert summary["dates_total"] == len(f["in_range"])
+    assert summary["already_snapshotted"] == len(f["in_range"])
     assert summary["snapshots_created"] == 0
+    assert summary["error_other"] == 0
     with Session(engine) as session:
         assert session.scalar(select(func.count()).select_from(ScannerRun)) == runs_before
         assert session.scalar(select(func.count()).select_from(ForwardReturn)) == fr_before

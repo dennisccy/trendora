@@ -1943,7 +1943,9 @@ class ProviderCatalogEntry(BaseModel):
 class ImportChunkingCfg(BaseModel):
     """Chunked-import tunables (iter-22 CONSUMED, J-34). EVERY chunk/backoff/sleep number the resilient
     live-FETCH loop reads lives here (anti-goal: No magic numbers — NO chunk/backoff/sleep literal in
-    `app.engine.data_manager` or the providers; mirrors how `max_range_days` etc. live in config).
+    `app.engine.data_manager` or the providers; mirrors how `gap_preview`/`run_history_limit` etc. live
+    in config). `date_window_days` (below) is ALSO the ops-hardening iter-1 (J-03) safety mechanism for
+    an unbounded backfill/fetch span, now that no request-time range cap exists.
 
       - `symbol_batch_size` — symbols fetched per chunk (the symbol-batch dimension of the chunk plan).
       - `date_window_days`  — max calendar days per date-window chunk (the other plan dimension); the
@@ -2056,8 +2058,10 @@ class DataManagerCfg(BaseModel):
       - `default_source` — the catalog `id` used when a job omits `source` (preserves J-17 fetch
         behavior); MUST be a real catalog id (validated below), and is a no-key source in `config.yaml`
         so an omitted-source fetch never fails the key gate.
-      - `max_range_days` bounds a single job's inclusive calendar span; `gap_preview` /
-        `run_history_limit` are payload display caps.
+      - `gap_preview` / `run_history_limit` are payload display caps. ops-hardening iter-1 (J-03):
+        there is deliberately NO job date-range span cap — an explicit request of any span is accepted;
+        `import_chunking.date_window_days` (chunked execution) is the safety mechanism for an unbounded
+        span, not a request-time rejection.
 
     Validated like the other typed sections — every limit positive, catalog ids unique, and
     `default_source` ∈ the catalog — an invalid block raises `ConfigError`, never a silent default."""
@@ -2065,7 +2069,6 @@ class DataManagerCfg(BaseModel):
     model_config = ConfigDict(extra="allow")
     providers: list[ProviderCatalogEntry] = Field(min_length=1)
     default_source: str = Field(min_length=1)
-    max_range_days: int
     gap_preview: int
     run_history_limit: int
     import_chunking: ImportChunkingCfg  # J-34 chunked-import tunables (boot-validated above)
@@ -2082,7 +2085,6 @@ class DataManagerCfg(BaseModel):
     @model_validator(mode="after")
     def _validate(self) -> "DataManagerCfg":
         limits = {
-            "max_range_days": self.max_range_days,
             "gap_preview": self.gap_preview,
             "run_history_limit": self.run_history_limit,
         }

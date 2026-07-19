@@ -23,7 +23,6 @@ VALID = {
             {"id": "tiingo", "label": "Tiingo", "needs_key": True, "env_var": "TIINGO_API_KEY"},
         ],
         "default_source": "yahoo",
-        "max_range_days": 370,
         "gap_preview": 60,
         "run_history_limit": 50,
         "import_chunking": {  # iter-22 (J-34) required block

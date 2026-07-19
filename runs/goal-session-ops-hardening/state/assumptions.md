@@ -56,3 +56,28 @@ date-window chunking to `_do_backfill` (splitting `[start,end]` into
 `chunk_index`/`chunk_total` fields the frontend already renders for fetch jobs) — not just the cap
 removal.
 **Reversible:** yes
+
+## iter-1 — goal-evaluator
+
+**Ambiguity:** browser-qa scored the whole J-04 journey row `UT-J-04` as PASS, but J-04's full
+Acceptance also requires a `scripts/start-backend.sh`-written persistent logfile and enforced
+`memory_cap_mb`/`malloc_arena_max` — both explicitly OUT OF SCOPE this iteration and confirmed
+unbuilt (dev handoff). The UT-J-04 step-5 log check passed against the harness's own
+`fanout-backend-8255.log` (written by run-phase's fanout), not a start-backend.sh persistent log.
+**We chose:** kept J-04 at `partial` (not promoted to `passing`) — treating the Required-still-
+passing mandate as a non-regression check of J-04's 5 already-working sub-behaviors, not a
+completion claim. The logfile + memory-cap acceptance bullets remain the open gap.
+**Reversible:** yes
+
+## iter-1 — goal-evaluator
+
+**Ambiguity:** J-01's DoD pins the productive May run's exact breakdown (19/19/0/9/28), but the
+prescribed 2026-05-02→05-29 range had already been backfilled by a prior functional-QA pass before
+the browser session began, so no fresh same-session productive submission was captured live — the
+live submission hit the zero-work path instead.
+**We chose:** scored J-01 `passing` on the productive path via three corroborating sources rather
+than a fresh live run: the still-on-screen historical Run-History row (DOM-read exact match
+"28 calendar days · 0 already snapshotted · 9 non-trading", 19 snapshots), the re-run's
+`already_snapshotted=19` (UT-04), and the unit test `test_backfill_breakdown_invariants_hold_on_
+fresh_and_rerun` which proves the fresh-run 19/19/0 by construction.
+**Reversible:** yes

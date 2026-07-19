@@ -1,0 +1,30 @@
+{
+  "phase": "goal-ops-hardening-iter-1",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-07-19T19:07:00.503348Z",
+  "started_at": "2026-07-19T15:51:19.530449Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/app/config.py",
+    "apps/backend/app/api/data.py",
+    "config.yaml",
+    "apps/backend/scripts/build_qa_fixture_db.py",
+    "apps/backend/tests/test_data_manager.py",
+    "apps/backend/tests/test_api_data.py",
+    "apps/backend/tests/test_config.py",
+    "apps/backend/tests/test_config_engine.py",
+    "apps/backend/tests/test_themes.py",
+    "apps/backend/tests/test_sectors.py",
+    "apps/backend/tests/test_indexes.py",
+    "apps/backend/tests/test_data_manager_backfill_committed_session.py",
+    "apps/backend/tests/test_data_manager_backfill_parallel.py",
+    "apps/frontend/app/data/page.tsx",
+    "apps/frontend/lib/api.ts"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "review"
+}

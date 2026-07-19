@@ -77,7 +77,7 @@ _SYNTH_CFG = {
     "database": {"url": "sqlite:///:memory:"},
     "data_manager": {
         "providers": [{"id": "yahoo", "label": "Yahoo", "needs_key": False}],
-        "default_source": "yahoo", "max_range_days": 370, "gap_preview": 60, "run_history_limit": 50,
+        "default_source": "yahoo", "gap_preview": 60, "run_history_limit": 50,
         "import_chunking": {  # iter-22 (J-34) required block
             "symbol_batch_size": 25, "date_window_days": 90, "max_retries": 4,
             "backoff_base_seconds": 1.0, "backoff_cap_seconds": 30.0, "inter_request_sleep_seconds": 0.0,

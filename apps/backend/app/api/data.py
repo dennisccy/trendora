@@ -7,7 +7,9 @@ canonical create-once paths — it computes no score/return of its own):
                                      as-of dates, backfill gaps) + the recent fetch/backfill run history.
   - `POST /api/data/jobs`          → validate the date range + kind, START the async job, return
                                      `{job_id}` IMMEDIATELY. Malformed dates / unknown kind → 422 (typed
-                                     model); inverted or over-long range → 400; no price data → 503.
+                                     model); an inverted range → 400; no price data → 503. There is NO
+                                     range-span cap (ops-hardening iter-1, J-03) — chunked execution is
+                                     the safety mechanism for an unbounded span, never a rejection.
   - `GET  /api/data/jobs/{job_id}` → live status/progress for polling, ending in the final summary; an
                                      unknown id → 404 (never a fabricated job).
 
@@ -160,10 +162,11 @@ def data_availability(session: Session = Depends(get_session)) -> dict:
 @router.post("/data/jobs")
 def start_job(payload: JobCreate, session: Session = Depends(get_session)) -> dict:
     """Validate the request, START the async fetch/backfill job, and return its `job_id` immediately
-    (the job runs in a background thread). `503` when no price data exists; `400` for an inverted or
-    over-long range, an unknown import source, or a fetch against a needs-key source with no env/pasted
-    key (an explicit rejection — never a silent no-op). The response echoes the resolved `source` (not
-    secret) and NEVER the pasted key."""
+    (the job runs in a background thread). `503` when no price data exists; `400` for an inverted range,
+    an unknown import source, or a fetch against a needs-key source with no env/pasted key (an explicit
+    rejection — never a silent no-op). There is NO range-span cap (ops-hardening iter-1, J-03): a request
+    of any span is accepted; the job's date-window chunking is the safety mechanism. The response echoes
+    the resolved `source` (not secret) and NEVER the pasted key."""
     cfg = get_config()
     if latest_data_date(session) is None:
         raise HTTPException(status_code=503, detail="no price data available")

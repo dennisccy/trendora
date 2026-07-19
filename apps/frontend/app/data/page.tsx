@@ -114,6 +114,43 @@ function statusLabel(status: string): string {
   return status;
 }
 
+/** ops-hardening iter-1 (J-01) — a "zero-work" outcome: a backfill/both/rebuild run that finished `ok`
+ *  but created NO NEW snapshots (every in-range trading day was already snapshotted, or the range held
+ *  no trading days at all). Per goal.md's explicit anti-goal language ("never the same unexplained green
+ *  success badge"), this must read as visually DISTINCT from a productive success. */
+function isZeroWorkRun(
+  kind: string | null | undefined,
+  status: string,
+  snapshotsCreated: number | null | undefined,
+): boolean {
+  const isBackfillLike = kind === "backfill" || kind === "both" || kind === "rebuild";
+  return status === "ok" && isBackfillLike && snapshotsCreated === 0;
+}
+
+/** Job/run status -> badge variant, aware of the J-01 zero-work distinction above; falls back to the
+ *  existing `statusVariant` for every other case (never re-implements the ok/warn/danger/accent mapping).
+ *  Mirrors the existing `interrupted` precedent: a neutral (not green) badge for a clean-but-uneventful
+ *  outcome, never the same unexplained green success look. */
+function runStatusVariant(
+  kind: string | null | undefined,
+  status: string,
+  snapshotsCreated: number | null | undefined,
+): "ok" | "warn" | "danger" | "accent" | "default" {
+  if (isZeroWorkRun(kind, status, snapshotsCreated)) return "default";
+  return statusVariant(status);
+}
+
+/** Job/run status -> badge label, aware of the J-01 zero-work distinction — factual wording, no
+ *  reassurance language (goal.md's anti-goal: "zero-work is never rendered as unexplained success"). */
+function runStatusLabel(
+  kind: string | null | undefined,
+  status: string,
+  snapshotsCreated: number | null | undefined,
+): string {
+  if (isZeroWorkRun(kind, status, snapshotsCreated)) return "no new snapshots";
+  return statusLabel(status);
+}
+
 // One date authority for the whole frontend: route through the shared `formatIsoDate` (lib/dates.ts)
 // so this module holds no per-component date-format literal (J-42). Kept as a thin local alias so the
 // existing coverage/range/run-table call sites read clearly.
@@ -519,6 +556,7 @@ export default function DataManagerPage() {
             />
             <JobProgressPanel
               job={job}
+              runs={state.data.runs}
               sources={sources}
               onResumed={onResumed}
               heartbeatStaleSeconds={heartbeatStaleSeconds}
@@ -2467,27 +2505,106 @@ function JobLiveActivity({
   );
 }
 
+/** ops-hardening iter-1 (J-01) — the four-way exclusion breakdown inline text for a backfill/both/
+ *  rebuild run: calendar days, already-snapshotted, non-trading, and error counts. Renders nothing when
+ *  every field is absent/null (a fetch/expand run never populates them) — never a fabricated "0". Pure
+ *  re-formatting of backend-computed counts; no arithmetic happens here beyond string joining. Shared
+ *  between the Job progress panel and the Run history table so both read the SAME breakdown shape. */
+function BackfillBreakdown({
+  calendarDays,
+  alreadySnapshotted,
+  nonTradingDays,
+  errorOther,
+}: {
+  calendarDays: number | null | undefined;
+  alreadySnapshotted: number | null | undefined;
+  nonTradingDays: number | null | undefined;
+  errorOther: number | null | undefined;
+}) {
+  if (calendarDays == null && alreadySnapshotted == null && nonTradingDays == null && errorOther == null) {
+    return null;
+  }
+  const parts: string[] = [];
+  if (calendarDays != null) parts.push(`${calendarDays} calendar day${calendarDays === 1 ? "" : "s"}`);
+  if (alreadySnapshotted != null) parts.push(`${alreadySnapshotted} already snapshotted`);
+  if (nonTradingDays != null) parts.push(`${nonTradingDays} non-trading`);
+  if (errorOther) parts.push(`${errorOther} error${errorOther === 1 ? "" : "s"}`);
+  return (
+    <p className="num text-xs text-text-faint" data-testid="backfill-breakdown">
+      {parts.join(" · ")}
+    </p>
+  );
+}
+
+/** TC-6 (ops-hardening iter-1) — the reduced persisted-run view the Job progress panel falls back to
+ *  when persisted run history exists but no job has started THIS browser session. Built from `DataRun`
+ *  fields only (status, message, the breakdown counts) — a persisted row carries no
+ *  `symbols_total`/`chunk_index`/`chunk_total`, so this is its OWN small view, never a forced fit into
+ *  the live `DataJob` rendering above. */
+function LastRunSummary({ run }: { run: DataRun }) {
+  return (
+    <Card className="p-0">
+      <PanelTitle
+        hint={`${run.kind ?? "seed load"} job · ${
+          run.start && run.end ? `${fmtDate(run.start)} → ${fmtDate(run.end)}` : "—"
+        } · from a previous session`}
+      >
+        Job progress
+      </PanelTitle>
+      <div className="space-y-3 p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <Badge
+            variant={runStatusVariant(run.kind, run.status, run.snapshots_created)}
+            className="num gap-1.5"
+            data-testid="last-run-status"
+          >
+            {runStatusLabel(run.kind, run.status, run.snapshots_created)}
+          </Badge>
+          <span className="num text-xs text-text-muted">{run.message}</span>
+        </div>
+        <p className="num text-xs text-text-faint">
+          {run.snapshots_created ?? "—"} snapshots · {run.dates_total ?? "—"} trading days in range
+        </p>
+        <BackfillBreakdown
+          calendarDays={run.calendar_days}
+          alreadySnapshotted={run.already_snapshotted}
+          nonTradingDays={run.non_trading_days}
+          errorOther={run.error_other}
+        />
+      </div>
+    </Card>
+  );
+}
+
 function JobProgressPanel({
   job,
+  runs,
   sources,
   onResumed,
   heartbeatStaleSeconds,
 }: {
   job: DataJob | null;
+  runs: DataRun[];
   sources: ProviderSource[];
   onResumed: (importId: string) => void;
   heartbeatStaleSeconds: number;
 }) {
   if (!job) {
-    return (
-      <Card className="p-0">
-        <PanelTitle>Job progress</PanelTitle>
-        <p className="px-4 py-6 text-sm text-text-muted">
-          No job has been started this session. Start a fetch or backfill job to watch its live progress
-          and final summary here.
-        </p>
-      </Card>
-    );
+    if (runs.length === 0) {
+      return (
+        <Card className="p-0">
+          <PanelTitle>Job progress</PanelTitle>
+          <p className="px-4 py-6 text-sm text-text-muted">
+            No job has been started this session. Start a fetch or backfill job to watch its live progress
+            and final summary here.
+          </p>
+        </Card>
+      );
+    }
+    // TC-6 (ops-hardening iter-1): persisted run history exists even though no job has started THIS
+    // browser session — render the most recent persisted run's outcome instead of the empty copy above.
+    // `runs` is already newest-first (GET /api/data's `recent_runs`), so `runs[0]` is the latest.
+    return <LastRunSummary run={runs[0]} />;
   }
 
   // A fetch/both shows the fetch bar; a backfill shows the snapshot bar.
@@ -2498,6 +2615,7 @@ function JobProgressPanel({
   const chunkTotal = job.chunk_total ?? 0;
   const symbolsRemaining = Math.max(job.symbols_total - job.symbols_ok - job.symbols_failed, 0);
   const jobSource = sources.find((s) => s.id === job.source);
+  const zeroWork = isZeroWorkRun(job.kind, job.status, job.snapshots_created);
 
   return (
     <Card className="p-0">
@@ -2508,9 +2626,9 @@ function JobProgressPanel({
       </PanelTitle>
       <div className="space-y-4 p-4">
         <div className="flex flex-wrap items-center gap-3">
-          <Badge variant={statusVariant(job.status)} className="num gap-1.5">
+          <Badge variant={runStatusVariant(job.kind, job.status, job.snapshots_created)} className="num gap-1.5" data-testid="job-status">
             {job.status === "running" ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
-            {paused ? "rate-limited — resumable" : job.status}
+            {paused ? "rate-limited — resumable" : runStatusLabel(job.kind, job.status, job.snapshots_created)}
           </Badge>
           {chunkTotal > 0 ? (
             <Badge variant="default" className="num gap-1" data-testid="chunk-progress">
@@ -2602,6 +2720,21 @@ function JobProgressPanel({
             <p className="num text-xs text-text-faint">
               {job.snapshots_created} snapshots · {job.forward_returns_inserted} forward returns inserted
             </p>
+            <BackfillBreakdown
+              calendarDays={job.calendar_days}
+              alreadySnapshotted={job.already_snapshotted}
+              nonTradingDays={job.non_trading_days}
+              errorOther={job.error_other}
+            />
+            {zeroWork ? (
+              <p
+                className="rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-text-muted"
+                data-testid="zero-work-note"
+              >
+                Zero-work outcome — every requested trading day already had a snapshot (or the range
+                contains no trading days). No new computation was needed; this is not a failure.
+              </p>
+            ) : null}
           </div>
         ) : null}
 
@@ -3316,13 +3449,19 @@ function RunHistoryPanel({ runs }: { runs: DataRun[] }) {
                 {run.start && run.end ? `${fmtDate(run.start)} → ${fmtDate(run.end)}` : "—"}
               </td>
               <td className="px-3 py-2">
-                <Badge variant={statusVariant(run.status)} className="num" data-testid="run-status">
+                <Badge
+                  variant={runStatusVariant(run.kind, run.status, run.snapshots_created)}
+                  className="num"
+                  data-testid="run-status"
+                >
                   {/* J-60: running (in-flight from job start) / interrupted (orphan swept on boot) read
-                      alongside the terminal ok/partial/failed states. */}
+                      alongside the terminal ok/partial/failed states. ops-hardening iter-1: a zero-work
+                      backfill/both/rebuild `ok` run reads distinctly ("no new snapshots"), never the same
+                      unexplained green success badge as a productive run. */}
                   {run.status === "running" ? (
                     <Loader2 className="mr-1 h-3 w-3 animate-spin" aria-hidden />
                   ) : null}
-                  {statusLabel(run.status)}
+                  {runStatusLabel(run.kind, run.status, run.snapshots_created)}
                 </Badge>
               </td>
               <td className="num px-3 py-2 text-right">
@@ -3332,6 +3471,12 @@ function RunHistoryPanel({ runs }: { runs: DataRun[] }) {
               </td>
               <td className="num px-3 py-2 text-right text-text-muted">
                 {run.snapshots_created ?? "—"}
+                <BackfillBreakdown
+                  calendarDays={run.calendar_days}
+                  alreadySnapshotted={run.already_snapshotted}
+                  nonTradingDays={run.non_trading_days}
+                  errorOther={run.error_other}
+                />
               </td>
               <td className="max-w-xs px-3 py-2 text-xs text-text-muted">
                 <span className="line-clamp-2" title={run.message ?? ""}>

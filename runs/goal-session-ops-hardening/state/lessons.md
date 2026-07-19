@@ -23,3 +23,20 @@ memory-cap enforcement must not assume that doc reflects reality.
 **Applies to:** any iter touching `data_manager.py` `_do_backfill` / `_cadence_allowed_dates`
 (build J-01's explicit-request override before J-05); any iter building J-04's logfile/memory-cap
 layer in `scripts/start-backend.sh`.
+
+## iter-1 — 2026-07-19T19:21:22Z
+
+**Verdict:** CONTINUE
+**Lesson:** A new persisted numeric-display field's honesty risk lives in its NOT-YET-COMPUTED and
+mass-failure edges, not its happy path. The breakdown fields (`calendar_days` etc.) were exact on
+completed backfills but (a) served a fabricated literal `0` on interrupted/job-start rows — because
+`_create_run_record` serializes `_run_detail(prog)` while `prog` is still at dataclass defaults and
+the orphan-sweep freezes that row without recomputing — and (b) `error_other = len(date_failures)`
+silently under-counted past the 20-sample cap. Both are direct AG-3 hits; the browser-qa's exact
+DOM reads found (a) and the audit found both, yet the reviewer rated (b) MINOR/out-of-scope and QA
+did not act — so DO NOT rely on reviewer/QA alone to catch honesty edges on a new field. Fix
+pattern: gate each field's serialization on "actually computed" (a sentinel like `calendar_days>0`)
+and mirror the existing bounded-sample/`_total` split (`omitted`/`omitted_total`) for any count.
+**Applies to:** any iter adding persisted/served numeric fields to `data_provider_runs` /
+`JobProgress` / a run-summary or aggregate payload (J-05's `coverage_snapshot` finalize hooks next
+cycle) — cover the interrupted/orphan-sweep and >sample-cap paths, not just the happy path.

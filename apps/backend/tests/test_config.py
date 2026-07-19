@@ -20,7 +20,6 @@ MINIMAL_VALID = {
             {"id": "tiingo", "label": "Tiingo", "needs_key": True, "env_var": "TIINGO_API_KEY"},
         ],
         "default_source": "yahoo",
-        "max_range_days": 370,
         "gap_preview": 60,
         "run_history_limit": 50,
         # iter-22 (J-34) made `import_chunking` required (the chunk/backoff/sleep tunables come from
@@ -470,19 +469,23 @@ def test_methodology_threshold_requires_ref_xor_text(tmp_path):
 def test_data_manager_minimal_valid_loads(tmp_path):
     """MINIMAL_VALID (incl. the now-required data_manager section + the iter-21 import catalog) still
     loads, and the real config exposes the typed limits (the established pattern for every newly-required
-    section)."""
+    section). ops-hardening iter-1 (J-03): `max_range_days` no longer exists anywhere — there is no job
+    date-range span cap; `gap_preview`/`run_history_limit` remain the only display-cap limits."""
     cfg = load_config(_write(tmp_path, MINIMAL_VALID))
     assert cfg.data_manager.default_source == "yahoo"
     assert cfg.data_manager.provider_ids() == ["yahoo", "tiingo"]
-    assert cfg.data_manager.max_range_days == 370
+    assert not hasattr(cfg.data_manager, "max_range_days")
     real = load_config()
-    assert real.data_manager.max_range_days > 0 and real.data_manager.gap_preview > 0
+    assert not hasattr(real.data_manager, "max_range_days")
+    assert real.data_manager.gap_preview > 0 and real.data_manager.run_history_limit > 0
 
 
 def test_data_manager_nonpositive_limit_raises(tmp_path):
-    """A non-positive job limit fails the boot loudly — never a silent default (anti-goal: explicit)."""
+    """A non-positive job limit fails the boot loudly — never a silent default (anti-goal: explicit).
+    ops-hardening iter-1: `max_range_days` is gone, so this now pins `gap_preview` (the remaining
+    positive-limit contract) instead."""
     data = copy.deepcopy(MINIMAL_VALID)
-    data["data_manager"]["max_range_days"] = 0
+    data["data_manager"]["gap_preview"] = 0
     with pytest.raises(ConfigError):
         load_config(_write(tmp_path, data))
 

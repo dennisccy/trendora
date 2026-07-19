@@ -1621,6 +1621,22 @@ class JobProgress:
     dates_done: int = 0
     snapshots_created: int = 0
     forward_returns_inserted: int = 0
+    # ops-hardening iter-1 (J-01/J-03) — the backfill/both/rebuild run-summary exclusion breakdown,
+    # computed ONCE by `_do_backfill` and carried on both the live progress (`to_dict()`) and the
+    # persisted run detail (`_run_detail()`): a single computation, two servings, never a second
+    # derivation. `dates_total` above is REDEFINED this iteration to mean "trading days in the
+    # REQUESTED range" (was: the post-cadence/already-snapshotted-filtered target count).
+    # `calendar_days` is the inclusive calendar span of [start, end]; `non_trading_days` is calendar
+    # days in range that are not trading days; `already_snapshotted` is trading days in range that
+    # already had a snapshot before this run started; `error_other` mirrors `len(date_failures)`. All
+    # 0 for a fetch/expand-only job (no backfill stage ran). Invariants (enforced by construction for
+    # backfill/both, whose cadence gate is bypassed — see `_do_backfill`):
+    # `non_trading_days + dates_total == calendar_days`;
+    # `snapshots_created + already_snapshotted + error_other == dates_total`.
+    calendar_days: int = 0
+    non_trading_days: int = 0
+    already_snapshotted: int = 0
+    error_other: int = 0
     # J-34: chunked-fetch progress. `chunk_index` = number of fully-completed chunks (== the durable
     # checkpoint's resume point); `chunk_total` = the deterministic plan size (symbol-batches × date-
     # windows). Both 0 for a non-chunked job (e.g. backfill-only) so the UI hides the chunk indicator.
@@ -1658,6 +1674,13 @@ class JobProgress:
     # completed, so a multi-date backfill ends `partial` with the per-date detail instead of aborting the
     # whole stage. Each entry is {date, error}. Empty for a clean run. Never a fabricated snapshot.
     date_failures: list[dict] = field(default_factory=list)
+    # ops-hardening iter-1 (J-01) — the UNCAPPED count of per-date backfill failures. `date_failures`
+    # above is a BOUNDED sample list (capped at `_MAX_ERROR_SAMPLES`), so `len()` of it undercounts once
+    # more than 20 dates fail. `error_other` is derived from THIS total (never from the sample `len()`),
+    # so the exclusion-breakdown invariant `snapshots_created + already_snapshotted + error_other ==
+    # dates_total` stays EXACT even on a large backfill with many failures — mirroring the existing
+    # `omitted` (bounded sample) / `omitted_total` (unconditional total) precedent. 0 for a clean run.
+    date_failures_total: int = 0
     started_at: datetime = field(default_factory=_utcnow)
     finished_at: Optional[datetime] = None
     # J-53 backfill-stage scratch (NOT serialized — internal accumulators the orchestrator fills during
@@ -1757,6 +1780,12 @@ class JobProgress:
             "dates_done": self.dates_done,
             "snapshots_created": self.snapshots_created,
             "forward_returns_inserted": self.forward_returns_inserted,
+            # ops-hardening iter-1: the live exclusion breakdown (0 for a fetch/expand-only job — see
+            # the JobProgress field docstring above).
+            "calendar_days": self.calendar_days,
+            "non_trading_days": self.non_trading_days,
+            "already_snapshotted": self.already_snapshotted,
+            "error_other": self.error_other,
             "chunk_index": self.chunk_index,  # J-34: completed chunks (== checkpoint resume point)
             "chunk_total": self.chunk_total,  # J-34: total planned chunks
             "passers": self.passers,  # J-35: candidates that passed the screen (became members)
@@ -1814,29 +1843,26 @@ def validate_job_request(
     api_key: Optional[str] = None,
 ) -> None:
     """Reject an invalid job request explicitly (the API maps the raised `ValueError` to a 4xx — never a
-    silent no-op): an unknown kind, an inverted range (start > end), a span over the configured
-    `data_manager.max_range_days`, an unknown import `source`, or a fetch against a `needs_key` source
-    with neither an env key nor a pasted session key. Malformed dates are rejected earlier by the typed
-    API model. `source`/`api_key` are validated only when a `source` is supplied; the key is read
-    request-only for the gate and is never persisted (anti-goal: keys are env-or-session, never
-    persisted)."""
+    silent no-op): an unknown kind, an inverted range (start > end), an unknown import `source`, or a
+    fetch against a `needs_key` source with neither an env key nor a pasted session key. Malformed dates
+    are rejected earlier by the typed API model. `source`/`api_key` are validated only when a `source` is
+    supplied; the key is read request-only for the gate and is never persisted (anti-goal: keys are
+    env-or-session, never persisted).
+
+    ops-hardening iter-1 (J-03): there is NO range-span cap here (or anywhere) — an explicit request of
+    any span is accepted; `_do_backfill`'s date-window chunking (`import_chunking.date_window_days`) is
+    the safety mechanism for an unbounded span, never a request-time rejection."""
     cfg = config or get_config()
     if kind not in JOB_KINDS:
         raise ValueError(f"unknown job kind {kind!r}; expected one of {list(JOB_KINDS)}")
     # J-85: a rebuild ignores the supplied date range entirely — it CLEARS then create-once recomputes the
     # snapshot set over EVERY covered trading day (the full calendar by design), reading the committed seed
-    # offline (no source/key, no span cap). So it bypasses the range-span + source/key gates below; only the
+    # offline (no source/key). So it bypasses the range-span + source/key gates below; only the
     # unknown-kind guard above applies. The endpoint still passes the latest data date as start==end.
     if kind in _REBUILD_KINDS:
         return
     if start > end:
         raise ValueError(f"start date {start.isoformat()} must be on or before end date {end.isoformat()}")
-    span_days = (end - start).days + 1
-    if span_days > cfg.data_manager.max_range_days:
-        raise ValueError(
-            f"date range too large: {span_days} days exceeds the configured maximum "
-            f"{cfg.data_manager.max_range_days}"
-        )
     # A job that FETCHES over the network = a generic fetch OR an expand (which fetches OHLCV + a cap).
     fetches = kind in _FETCH_KINDS or kind in _EXPAND_KINDS
     if source is not None:
@@ -2373,7 +2399,10 @@ def _compute_one_backfill_date(
 def _record_date_failure(prog: JobProgress, d: date_cls, error: str) -> None:
     """J-67 — record ONE per-date backfill failure (honest error + which date) so the stage ends `partial`
     with the per-date detail instead of aborting the whole stage. The other dates still complete; no
-    snapshot is fabricated for the failed date. Bounded like the per-symbol error list."""
+    snapshot is fabricated for the failed date. The sample list is bounded like the per-symbol error list;
+    ops-hardening iter-1: the UNCAPPED `date_failures_total` is ALWAYS bumped so `error_other` stays exact
+    past `_MAX_ERROR_SAMPLES` failures (the sample `len()` would undercount)."""
+    prog.date_failures_total += 1
     if len(prog.date_failures) < _MAX_ERROR_SAMPLES:
         prog.date_failures.append({"date": d.isoformat(), "error": error})
 
@@ -2382,8 +2411,12 @@ def _cadence_allowed_dates(
     session: Session, trading_days: list[date_cls], cfg: Config
 ) -> Optional[set]:
     """iter-18 — the BOUNDED deep-history snapshot cadence (`scanner.snapshot_cadence`): the set of
-    trading days the backfill/rebuild may target, or None for "no filter" (daily density everywhere —
-    the pre-iter-18 behavior, byte-identical, which is also the config default).
+    trading days a job may target, or None for "no filter" (daily density everywhere — the pre-iter-18
+    behavior, byte-identical, which is also the config default).
+
+    ops-hardening iter-1 (J-01): `_do_backfill` now calls this ONLY for a `rebuild` job — an explicit
+    `backfill`/`both` request's date range always wins over this cadence (see `_do_backfill`'s docstring).
+    This function's own logic is unchanged; only its caller's usage narrowed.
 
     Days ON/AFTER `daily_start` keep FULL daily density (the referee's recent-window power is
     preserved). Days BEFORE it keep only the FIRST trading day of each calendar month (`monthly`) or
@@ -2490,23 +2523,62 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
     run is cleaned up whole-row (`_cleanup_orphan_run`) — a failed date leaves NO inconsistent snapshot and
     the create-once re-run is clean. The stage ends `partial` (graded by the caller from
     `prog.date_failures`); no snapshot is fabricated for a failed date. The worker sessions are independent
-    read-only connections (never shared mid-transaction); only THIS thread writes."""
+    read-only connections (never shared mid-transaction); only THIS thread writes.
+
+    ops-hardening iter-1 (J-01/J-03) — an explicit `backfill`/`both` request's `[prog.start, prog.end]`
+    ALWAYS WINS over the deep-history snapshot cadence: every trading day in range is a candidate,
+    regardless of `_cadence_allowed_dates` (automatic warm-up cadence still governs only elsewhere). A
+    `rebuild` job (whose range the caller already widened to the full covered calendar) keeps the
+    EXISTING cadence-filtered target selection, unchanged — out of scope this iteration. The honest
+    run-summary breakdown (`calendar_days`/`non_trading_days`/`already_snapshotted`/`error_other`) is
+    computed from the SAME in-range set this function already derives — one computation, no second
+    derivation anywhere else. Execution is chunked into `import_chunking.date_window_days`-sized date
+    windows (reusing `_date_windows`, the same helper the fetch stage's chunk plan already uses),
+    advancing the existing `chunk_index`/`chunk_total` fields window-by-window — the safety mechanism for
+    an unbounded span now that `max_range_days` no longer rejects one (AG-8: memory stays bounded per
+    window; the shared bar cache is still loaded ONCE for the whole job, unaffected by this — its size is
+    a function of universe breadth, not date-range length)."""
     trading_days = _trading_days(session, cfg)
     snapshot_dates = set(session.exec(select(ScannerRun.asof_date)).all())
-    # iter-18: the bounded deep-history cadence — None means "no filter" (daily everywhere, the default).
-    allowed = _cadence_allowed_dates(session, trading_days, cfg)
+    in_range = [d for d in trading_days if prog.start <= d <= prog.end]
+
+    # J-01: `dates_total` is REDEFINED to mean "trading days in the REQUESTED range" — independent of
+    # cadence/already-snapshotted status (was: the post-filter target count). The calendar/non-trading
+    # split is exact by construction: every calendar day in [start, end] is either a trading day (counted
+    # in dates_total) or not (non_trading_days) — never approximated.
+    prog.calendar_days = (prog.end - prog.start).days + 1
+    prog.dates_total = len(in_range)
+    prog.non_trading_days = prog.calendar_days - prog.dates_total
+
+    # iter-18 cadence gate: still applies to `rebuild` (unchanged behavior, out of scope this iteration);
+    # bypassed entirely for an explicit `backfill`/`both` request (J-01 — "requested range always wins").
+    allowed = _cadence_allowed_dates(session, trading_days, cfg) if prog.kind in _REBUILD_KINDS else None
+    already = [d for d in in_range if d in snapshot_dates]
+    prog.already_snapshotted = len(already)
     targets = [
-        d for d in trading_days
-        if prog.start <= d <= prog.end
-        and d not in snapshot_dates
+        d for d in in_range
+        if d not in snapshot_dates
         and (allowed is None or d in allowed)
     ]
-    prog.dates_total = len(targets)
+    # `dates_done` starts PRE-SEEDED with the already-accounted-for count, so a zero-work run's progress
+    # reads N/N (fully accounted for, nothing new needed) rather than a misleading 0/N on a completed job;
+    # it advances only as NEW dates are actually persisted below — unchanged accounting for a fresh range
+    # (already_snapshotted == 0 there, so this is a no-op byte-identical to the pre-iter-1 starting point).
+    prog.dates_done = prog.already_snapshotted
     prog.message = f"snapshots {prog.dates_done}/{prog.dates_total} dates"
     workers = cfg.data_manager.import_chunking.backfill_workers  # config pool size (No magic numbers)
     prog._backfill_concurrency = min(workers, len(targets)) if targets else workers
     prog._backfill_per_date_seconds_sum = 0.0
+
+    # J-03: the date-window chunk plan derives from the REQUESTED range (config `import_chunking.
+    # date_window_days`) — the SAME plan shape + progress fields the frontend's existing chunk-progress
+    # badge already renders for a chunked fetch, so a large backfill looks identical.
+    windows = _date_windows(prog.start, prog.end, cfg.data_manager.import_chunking.date_window_days)
+    prog.chunk_total = len(windows)
+    prog.chunk_index = 0
     if not targets:
+        prog.chunk_index = prog.chunk_total  # nothing to do — the (empty) plan is trivially complete
+        prog.error_other = prog.date_failures_total  # 0 — no per-date attempt was made
         return
 
     def _persist(d: date_cls, payload: Optional[dict], per_date_seconds: float) -> None:
@@ -2598,47 +2670,67 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
     # on exit, but glibc retains that freed address space by default — so a SECOND consecutive full-universe
     # rebuild in the same long-lived process stacks on run 1's inflated VSZ and hits the `ulimit -v` ceiling.
     # `_release_process_memory()` (gc.collect + malloc_trim) in the `finally` returns it to the OS on EVERY
-    # exit path (serial `return`, parallel fall-through, or an exception), so each rebuild starts lean.
+    # exit path (window loop done or an exception), so each rebuild starts lean. Loaded ONCE for the whole
+    # job (every window shares it) — its size is bounded by universe breadth, not by how many date-window
+    # chunks the requested range is split into (J-03 chunking is an execution/progress concept only).
     try:
         with prefilled_bar_cache(session, expected_symbols=pool_symbols) as shared_cache:
-            if workers <= 1 or len(targets) <= 1:
-                # serial baseline (workers=1) — compute + persist inline, one date at a time, in order. A
-                # per-date compute failure is caught here (isolated), not raised — the rest still run.
-                for d in targets:
-                    compute_error: Optional[str] = None
-                    payload: Optional[dict] = None
-                    secs = 0.0
-                    try:
-                        _, payload, secs = _compute_one_backfill_date(eng, cfg, d, shared_cache)
-                    except Exception as exc:  # noqa: BLE001 — isolate this date's compute failure
-                        compute_error = str(exc)
-                    _persist_isolated(d, payload, secs, compute_error)
-                return
-            # PARALLEL: fan out the per-date compute; persist results IN DATE ORDER on this thread as they
-            # arrive. A worker compute exception is captured PER DATE (never raised out of the drain loop, so
-            # it never aborts the whole stage or deadlocks); the `with ThreadPoolExecutor` joins every worker
-            # before returning, so no thread outlives the job (the iter-28 determinism lesson).
-            pending: dict[date_cls, tuple[Optional[dict], float, Optional[str]]] = {}
-            next_idx = 0
-            with ThreadPoolExecutor(max_workers=min(workers, len(targets))) as pool:
-                future_to_date = {
-                    pool.submit(_compute_one_backfill_date, eng, cfg, d, shared_cache): d for d in targets
-                }
-                for future in as_completed(future_to_date):
-                    d = future_to_date[future]
-                    try:
-                        _, payload, secs = future.result()
-                        pending[d] = (payload, secs, None)
-                    except Exception as exc:  # noqa: BLE001 — capture this date's compute failure, keep draining
-                        pending[d] = (None, 0.0, str(exc))
-                    # drain any now-contiguous prefix in target (date) order, so writes are strictly ordered.
-                    while next_idx < len(targets) and targets[next_idx] in pending:
-                        cur = targets[next_idx]
-                        cur_payload, cur_secs, cur_err = pending.pop(cur)
-                        _persist_isolated(cur, cur_payload, cur_secs, cur_err)
-                        next_idx += 1
+
+            def _run_targets(window_targets: list[date_cls]) -> None:
+                """Compute + persist exactly this window's target dates — serial (workers<=1 or a single
+                date) or fanned-out parallel, byte-identical to the pre-chunking body (only the INPUT
+                LIST now scopes to one date-window instead of the whole requested range)."""
+                if workers <= 1 or len(window_targets) <= 1:
+                    # serial baseline — compute + persist inline, one date at a time, in order. A per-date
+                    # compute failure is caught here (isolated), not raised — the rest still run.
+                    for d in window_targets:
+                        compute_error: Optional[str] = None
+                        payload: Optional[dict] = None
+                        secs = 0.0
+                        try:
+                            _, payload, secs = _compute_one_backfill_date(eng, cfg, d, shared_cache)
+                        except Exception as exc:  # noqa: BLE001 — isolate this date's compute failure
+                            compute_error = str(exc)
+                        _persist_isolated(d, payload, secs, compute_error)
+                    return
+                # PARALLEL: fan out the per-date compute; persist results IN DATE ORDER on this thread as
+                # they arrive. A worker compute exception is captured PER DATE (never raised out of the
+                # drain loop, so it never aborts the whole stage or deadlocks); the `with ThreadPoolExecutor`
+                # joins every worker before returning, so no thread outlives the job (iter-28 determinism).
+                pending: dict[date_cls, tuple[Optional[dict], float, Optional[str]]] = {}
+                next_idx = 0
+                with ThreadPoolExecutor(max_workers=min(workers, len(window_targets))) as pool:
+                    future_to_date = {
+                        pool.submit(_compute_one_backfill_date, eng, cfg, d, shared_cache): d
+                        for d in window_targets
+                    }
+                    for future in as_completed(future_to_date):
+                        d = future_to_date[future]
+                        try:
+                            _, payload, secs = future.result()
+                            pending[d] = (payload, secs, None)
+                        except Exception as exc:  # noqa: BLE001 — capture this date's failure, keep draining
+                            pending[d] = (None, 0.0, str(exc))
+                        # drain any now-contiguous prefix in target (date) order — writes stay strictly
+                        # ordered within the window.
+                        while next_idx < len(window_targets) and window_targets[next_idx] in pending:
+                            cur = window_targets[next_idx]
+                            cur_payload, cur_secs, cur_err = pending.pop(cur)
+                            _persist_isolated(cur, cur_payload, cur_secs, cur_err)
+                            next_idx += 1
+
+            # J-03: walk the date-window plan IN ORDER, advancing chunk_index once each window's targets
+            # (possibly none — an all-non-trading or all-already-snapshotted window) are accounted for.
+            for ws, we in windows:
+                window_targets = [d for d in targets if ws <= d <= we]
+                if window_targets:
+                    _run_targets(window_targets)
+                prog.chunk_index += 1
     finally:
         _release_process_memory()
+    # UNCAPPED total (not `len(date_failures)`, a bounded sample) so `error_other` — and the invariant
+    # `snapshots_created + already_snapshotted + error_other == dates_total` — stays exact past 20 failures.
+    prog.error_other = prog.date_failures_total
 
 
 # --------------------------------------------------------------------------------------------------
@@ -2912,6 +3004,17 @@ def _provider_label(prog: JobProgress, cfg: Config) -> str:
 def _run_detail(prog: JobProgress) -> dict:
     """The structured detail JSON encoded into a `DataProviderRun.message` — descriptive job-control
     values, NEVER a key (anti-goal: keys are env-or-session, never persisted)."""
+    _is_backfill_like = prog.kind in _BACKFILL_KINDS or prog.kind in _REBUILD_KINDS
+    # ops-hardening iter-1: serve the breakdown ONLY once `_do_backfill` has actually computed it. Two
+    # rows are persisted BEFORE the backfill stage runs its computation and carry the JobProgress defaults
+    # (calendar_days == 0): the `running` row `_create_run_record` writes at job start, and the
+    # `interrupted` row the boot sweep freezes from it when a job's process dies mid-run. Since
+    # `calendar_days == (end - start).days + 1 >= 1` for EVERY real requested range, calendar_days == 0
+    # uniquely marks "breakdown not computed yet" → serve null there (the frontend `BackfillBreakdown`
+    # suppresses an all-null breakdown) rather than a fabricated "0 calendar days · 0 already snapshotted ·
+    # 0 non-trading" for an interrupted run whose range was really hundreds of days (AG-3: never surface a
+    # number that is not the engine's real computation; matches the fetch/seed-load null convention).
+    _breakdown_computed = _is_backfill_like and prog.calendar_days > 0
     return {
         "kind": prog.kind,
         "start": prog.start.isoformat(),
@@ -2921,6 +3024,15 @@ def _run_detail(prog: JobProgress) -> dict:
         "dates_total": prog.dates_total,
         "forward_returns_inserted": prog.forward_returns_inserted,
         "bars_fetched": prog.bars_fetched,
+        # ops-hardening iter-1 (J-01) — the run-summary exclusion breakdown on the permanent audit row:
+        # present for backfill/both/rebuild kinds only once actually computed (None for fetch/expand and
+        # for a not-yet-computed running/interrupted row — see `_breakdown_computed` above), mirroring the
+        # passers/omitted_total nullability. Read directly off `prog` — the SAME single computation
+        # `_do_backfill` already performed; never re-derived here.
+        "calendar_days": prog.calendar_days if _breakdown_computed else None,
+        "non_trading_days": prog.non_trading_days if _breakdown_computed else None,
+        "already_snapshotted": prog.already_snapshotted if _breakdown_computed else None,
+        "error_other": prog.error_other if _breakdown_computed else None,
         # J-35 expand: the screen outcome on the audit row (descriptive job-control values — NOT a recompute
         # of any canonical score/return/bucket). Present only for an expand kind.
         "passers": prog.passers if prog.kind in _EXPAND_KINDS else None,
@@ -3507,6 +3619,13 @@ def summarize_provider_run(run: DataProviderRun) -> dict:
         "snapshots_created": detail.get("snapshots_created"),
         "dates_done": detail.get("dates_done"),
         "dates_total": detail.get("dates_total"),
+        # ops-hardening iter-1 (J-01): the run-summary exclusion breakdown — None for a fetch/expand run
+        # or a plain non-JSON seed-load row (mirrors the passers/omitted_total nullability immediately
+        # below). Surfaced verbatim from the persisted detail JSON — no second computation path.
+        "calendar_days": detail.get("calendar_days"),
+        "non_trading_days": detail.get("non_trading_days"),
+        "already_snapshotted": detail.get("already_snapshotted"),
+        "error_other": detail.get("error_other"),
         "bars_fetched": detail.get("bars_fetched"),
         "passers": detail.get("passers"),  # J-35 expand screen outcome (None for non-expand runs)
         "omitted_total": detail.get("omitted_total"),  # J-35 expand screen outcome (None otherwise)

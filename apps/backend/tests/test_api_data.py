@@ -299,13 +299,24 @@ def test_post_job_inverted_range_is_400(data_api_engine):
     assert exc.value.status_code == 400
 
 
-def test_post_job_over_long_range_is_400(data_api_engine):
-    """A range exceeding config.data_manager.max_range_days is rejected with 400."""
+def test_post_job_long_range_is_accepted_and_chunked(data_api_engine):
+    """ops-hardening iter-1 (J-03, TC-7/TC-8-equivalent unit coverage): a >370-calendar-day backfill
+    request is ACCEPTED (no 4xx "date range too large" rejection — that check no longer exists anywhere)
+    and its chunk plan derives from config `import_chunking.date_window_days` (`chunk_total > 1`,
+    `chunk_index` advancing to completion). This fixture's tiny seed has no trading day in the chosen
+    span, so the job completes near-instantly with zero real compute (`dates_total == 0`) — proving
+    ACCEPTANCE + chunk-plan arithmetic only; the true long-range, real-compute run is exercised live by
+    the J-03 browser-QA journey (goal.md TC-7/TC-8), never a unit test (a real multi-hundred-day backfill
+    is a documented hang risk on this codebase's multi-decade basis)."""
     with Session(data_api_engine) as session:
-        with pytest.raises(HTTPException) as exc:
-            # default max_range_days is 370; a ~3-year span exceeds it
-            start_job(JobCreate(kind="backfill", start=date(2020, 1, 1), end=date(2024, 1, 1)), session=session)
-    assert exc.value.status_code == 400
+        # a ~3-year span (2020-01-01 -> 2024-01-01) -- comfortably past the old 370-day cap -- accepted.
+        resp = start_job(JobCreate(kind="backfill", start=date(2020, 1, 1), end=date(2024, 1, 1)), session=session)
+    assert resp["status"] == "running"
+    final = _await_job(resp["job_id"])
+    assert final is not None and final["status"] == "ok"
+    assert final["chunk_total"] > 1
+    assert final["chunk_index"] == final["chunk_total"]
+    assert final["dates_total"] == 0  # no trading day of this tiny fixture's calendar falls in range
 
 
 def test_job_payload_rejects_malformed_date_and_unknown_kind():

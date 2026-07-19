@@ -27,3 +27,37 @@ J-05's un-ingestable single-day date, so it must land first. Pair with the data_
 exclusion-reason schema + run-summary contract, the visually-distinct zero-work UI + reload-surviving
 job surface, and J-03's max_range_days removal (config + validation + 4 pinning tests). Full depth:
 first user-visible UI + a data-model change.
+
+## Iteration 1 — goal-ops-hardening-iter-1
+
+**Date:** 2026-07-19T19:21:22Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: J-01, J-03
+- Newly failing: none
+- Regressed: none
+- Unchanged: J-04 partial (re-verified non-regressed), J-05 failing + J-06 failing (out of scope)
+- Anti-goal violations: AG-3 (interrupted-row fabricated `0`-breakdown) found by browser-qa,
+  FIXED intra-iteration by the audit (B1) + regression-tested — recorded resolved. No unresolved
+  violation; scan-report CLEAN.
+
+**Reasoning:** J-01 and J-03 are genuinely delivered, not just claimed. I verified the cadence
+bypass / `dates_total` redefinition / breakdown arithmetic / cap removal / chunking through three
+independent lanes: browser-qa's exact DOM reads (17/17; screenshots corroborate structure — several
+were transparently blank-by-scroll so DOM reads are authoritative), the audit's code re-trace with
+re-run tests, and the dev unit tests I confirmed present. The one real honesty defect — a fabricated
+`0`-breakdown on interrupted rows (a direct AG-3 hit, reproduced twice by browser-qa) — was caught
+and fixed within the pipeline by the audit (B1: `_run_detail` gates the four fields on
+`calendar_days>0`; B2 also fixed `error_other`'s >20-failure undercount), which I confirmed in the
+working tree (data_manager.py:3017/3032-3035, :1683/2405/2733) with two passing regression tests.
+No journey regressed and no critical anti-goal remains unresolved → REGRESSION off. Productive next
+work is obvious (J-05/J-06) → STALLED off. J-05/J-06 still failing → not GOAL_ACHIEVED. Coherence
+PASS → no consolidation mandate. Progress made → CONTINUE.
+
+**Next-step recommendation:** J-05 — ingest-time aggregate maintenance (retire the "four offenders":
+whole-table coverage prefill, boot `ensure_latest_snapshot` scan, boot warm-up loop, lazy-only
+caches). Build the ingest finalize hooks + new `coverage_snapshot` table so boot + request paths
+serve persisted rows; this also completes J-04's memory-cap/boot-no-prefill remainder and unblocks
+J-06's budgets. Depth = full (new persisted table + new serving path = data-model/data-contract
+change, cross-cutting across boot + request paths). J-06 measurement capstone after J-05 lands.

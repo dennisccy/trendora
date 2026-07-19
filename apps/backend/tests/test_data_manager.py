@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -488,21 +488,19 @@ def test_coverage_per_symbol_empty_dataset_is_members_only(persymbol_engine, tmp
 # ==================================================================================================
 # validate_job_request — config-driven limits + explicit rejection (the API maps these to 4xx)
 # ==================================================================================================
-def test_validate_job_request_reads_config_max_range():
-    """The max-range guard reads `config.data_manager.max_range_days` — shrinking it rejects a span that
-    was previously allowed (no magic range literal in control code)."""
+def test_validate_job_request_accepts_any_span():
+    """ops-hardening iter-1 (J-03): the max-range rejection is REMOVED ENTIRELY — an explicit request of
+    ANY span is accepted (no `ValueError`), including a span far exceeding the old 370-day cap. Chunked
+    execution (`_do_backfill`'s date-window loop), not a request-time cap, is the safety mechanism for an
+    unbounded span."""
     cfg = load_config()
-    # job-mechanics tests are cadence-independent: neutralize the iter-18 deep-history snapshot
-    # cadence so every trading day in the chosen range is a valid target (the mechanics under test
-    # are create-once/isolation/parallelism, not the bounded-density policy).
-    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
-    cfg = cfg.model_copy(update={"scanner": _sc})
-    small = cfg.model_copy(
-        update={"data_manager": cfg.data_manager.model_copy(update={"max_range_days": 3})}
-    )
-    validate_job_request("backfill", date(2024, 1, 1), date(2024, 1, 3), small)  # exactly 3 days — ok
-    with pytest.raises(ValueError):
-        validate_job_request("backfill", date(2024, 1, 1), date(2024, 1, 10), small)  # 10 > 3
+    assert not hasattr(cfg.data_manager, "max_range_days")
+    # a 412-day span (2025-06-01 -> 2026-07-17, TC-7's own example) -- comfortably past the old 370-day
+    # cap -- raises nothing.
+    validate_job_request("backfill", date(2025, 6, 1), date(2026, 7, 17))
+    # an even larger, multi-year span is likewise accepted.
+    validate_job_request("backfill", date(2020, 1, 1), date(2024, 1, 1))
+    validate_job_request("fetch", date(2020, 1, 1), date(2024, 1, 1))
 
 
 def test_validate_job_request_rejects_inverted_and_unknown():
@@ -718,6 +716,10 @@ def backfilled_job(tmp_path_factory):
         "runs_pre2": runs_pre2, "runs_post2": runs_post2,
         "fr_pre2": fr_pre2, "fr_post2": fr_post2,
         "created_at_recheck": created_at_recheck,
+        # ops-hardening iter-1: the underlying (seed-loaded, cadence-neutralized) engine + cfg, so OTHER
+        # tests in this module can reuse the already-loaded seed DB (avoiding a second expensive load)
+        # for proofs that need a DIFFERENT cfg (e.g. real/active cadence) over the SAME committed data.
+        "engine": engine, "cfg": cfg,
     }
 
 
@@ -747,14 +749,42 @@ def test_backfill_is_lookahead_free_and_reuses_canonical(backfilled_job):
 
 def test_backfill_create_once_immutable(backfilled_job):
     """Re-running the SAME range is a no-op: 0 new snapshots, unchanged run/forward-return counts, and
-    every created_at is byte-identical (a snapshot is never overwritten — anti-goal: Snapshots immutable)."""
+    every created_at is byte-identical (a snapshot is never overwritten — anti-goal: Snapshots immutable).
+    ops-hardening iter-1: `dates_total` is REDEFINED to mean trading days in the requested range, so it is
+    UNCHANGED between the fresh run and the re-run (was: 0 on a re-run, the old post-filter semantics) —
+    the re-run's zero-work outcome is now explained by `already_snapshotted`, not by `dates_total` itself."""
     f = backfilled_job
     assert f["summary2"]["snapshots_created"] == 0
-    assert f["summary2"]["dates_total"] == 0  # nothing left to backfill in the range
+    assert f["summary2"]["dates_total"] == len(f["in_range"])  # same trading-day count as the fresh run
+    assert f["summary2"]["already_snapshotted"] == len(f["in_range"])  # every one pre-existing this time
+    assert f["summary2"]["error_other"] == 0
     assert f["runs_post2"] == f["runs_pre2"]  # no new runs created by the second job
     assert f["fr_post2"] == f["fr_pre2"]  # no new forward returns inserted by the second job
     for d, info in f["created"].items():
         assert f["created_at_recheck"][d] == info["created_at"]  # created_at never mutated
+
+
+def test_backfill_breakdown_invariants_hold_on_fresh_and_rerun(backfilled_job):
+    """ops-hardening iter-1 (J-01) — the run-summary exclusion-breakdown invariants hold EXACTLY on both
+    the fresh run (nothing pre-existing) and the identical re-run (everything pre-existing):
+    `non_trading_days + dates_total == calendar_days`;
+    `snapshots_created + already_snapshotted + error_other == dates_total`."""
+    f = backfilled_job
+    in_range = f["in_range"]
+    expected_calendar_days = (in_range[-1] - in_range[0]).days + 1
+    for summary in (f["summary1"], f["summary2"]):
+        assert summary["calendar_days"] == expected_calendar_days
+        assert summary["non_trading_days"] + summary["dates_total"] == summary["calendar_days"]
+        assert (
+            summary["snapshots_created"] + summary["already_snapshotted"] + summary["error_other"]
+            == summary["dates_total"]
+        )
+    # fresh run: nothing pre-existing, everything newly created.
+    assert f["summary1"]["already_snapshotted"] == 0
+    assert f["summary1"]["snapshots_created"] == len(in_range)
+    # re-run: nothing new, everything pre-existing (the create-once / zero-work contract).
+    assert f["summary2"]["snapshots_created"] == 0
+    assert f["summary2"]["already_snapshotted"] == len(in_range)
 
 
 def test_dataprovider_run_is_append_only_per_job(backfilled_job):
@@ -764,6 +794,210 @@ def test_dataprovider_run_is_append_only_per_job(backfilled_job):
     assert f["dpr_post2"] == f["dpr_after"] + 1  # second job appended one more
     runs = recent_runs  # the history reader exists and is importable
     assert callable(runs)
+
+
+# ==================================================================================================
+# ops-hardening iter-1 (J-01/J-03): cadence bypass for backfill/both (not rebuild), the run-summary
+# exclusion breakdown, and date-window chunking — reuses `backfilled_job`'s already-loaded seed engine
+# (a SECOND full seed load would be wasteful; the ACTIVE, non-neutralized cadence config is built fresh
+# here since the fixture's own `cfg` deliberately neutralizes it for its own unrelated proofs).
+# ==================================================================================================
+def _cadence_excluded_window(trading, allowed, daily_start, n, start_at=0):
+    """The first `n` consecutive trading days (searching from index `start_at`), entirely inside the
+    deep (pre-`daily_start`) region, that `_cadence_allowed_dates` excludes IN FULL — so a bypass-vs-
+    filtered contrast on this window is unambiguous (never a vacuous window cadence would have allowed
+    anyway). Real seed dates only; raises if no such window exists (a hard test-setup failure, not a
+    fabricated window)."""
+    for i in range(start_at, len(trading) - n):
+        window = trading[i:i + n]
+        if window[-1] >= daily_start:
+            break  # only the deep region is searched
+        if all(d not in allowed for d in window):
+            return window
+    raise AssertionError(f"no {n}-day fully cadence-excluded window found from index {start_at}")
+
+
+def test_do_backfill_cadence_bypass_for_backfill_not_rebuild(backfilled_job):
+    """J-01 — an explicit `backfill`/`both` request's date range ALWAYS WINS over the deep-history
+    snapshot cadence: every trading day in a cadence-excluded window still becomes a real, snapshotted
+    target. `rebuild` keeps the EXISTING cadence-filtered target selection UNCHANGED (out of scope this
+    iteration) — proven by calling `_do_backfill` directly with `kind="rebuild"` over a SEPARATE
+    cadence-excluded window (never through `run_data_job`, which would widen a real rebuild to the FULL
+    historical calendar — far too expensive for a test; the documented hang risk on this codebase's
+    multi-decade basis)."""
+    engine = backfilled_job["engine"]
+    cfg = load_config()  # the REAL, ACTIVE cadence (daily_start set, deep_cadence != "daily") — not the
+    # fixture's own neutralized copy, so the bypass-vs-filtered contrast below is real, not vacuous.
+    daily_start = cfg.scanner.snapshot_cadence.daily_start
+    assert daily_start is not None, "this proof needs an ACTIVE cadence gate to bypass/enforce"
+    with Session(engine) as session:
+        trading = _trading_days(session, cfg)
+        allowed = data_manager._cadence_allowed_dates(session, trading, cfg)
+
+    # window A: a real BACKFILL job bypasses the cadence entirely.
+    window_a = _cadence_excluded_window(trading, allowed, daily_start, 3)
+    with Session(engine) as session:
+        runs_before = session.scalar(select(func.count()).select_from(ScannerRun))
+    job = create_job("backfill", window_a[0], window_a[-1])
+    summary = run_data_job(job.job_id, config=cfg, engine=engine)
+    assert summary["dates_total"] == 3  # J-01 redefinition: trading days in range, cadence notwithstanding
+    assert summary["snapshots_created"] == 3  # every one backfilled — the cadence gate did NOT filter them
+    assert summary["already_snapshotted"] == 0
+    with Session(engine) as session:
+        runs_after = session.scalar(select(func.count()).select_from(ScannerRun))
+        for d in window_a:
+            assert scanner.get_run_for_date(session, d) is not None
+    assert runs_after == runs_before + 3
+
+    # window B: a DIFFERENT (disjoint) cadence-excluded window, searched onward from window A's END so
+    # the two never overlap — no cleanup of window A's fresh snapshots is needed.
+    start_at = trading.index(window_a[-1]) + 1
+    window_b = _cadence_excluded_window(trading, allowed, daily_start, 3, start_at=start_at)
+    prog = JobProgress(job_id="ops-hardening-rebuild-cadence-probe", kind="rebuild",
+                        start=window_b[0], end=window_b[-1])
+    with Session(engine) as session:
+        data_manager._do_backfill(session, cfg, prog, eng=engine)
+    assert prog.dates_total == 3  # the redefinition still reports the honest trading-day-in-range count
+    assert prog.snapshots_created == 0  # cadence excluded every date in this window — UNCHANGED behavior
+    assert prog.already_snapshotted == 0
+    with Session(engine) as session:
+        for d in window_b:
+            assert scanner.get_run_for_date(session, d) is None  # rebuild's cadence filter still applies
+
+
+def test_backfill_weekend_span_mixed_and_all_non_trading_breakdown(backfilled_job):
+    """ops-hardening iter-1 (J-01, TC-11-equivalent unit coverage) — a range covering exactly two
+    consecutive REAL trading days that straddle a calendar gap (a weekend) proves the MIXED
+    trading/non-trading breakdown; the gap's OWN calendar days (strictly between them — zero trading
+    days by construction) prove the ALL-non-trading breakdown, honestly (no fabricated per-date failure,
+    `error_other == 0`) — mirroring the real J-01 weekend-only journey (TC-3) at unit-test speed."""
+    engine = backfilled_job["engine"]
+    cfg = backfilled_job["cfg"]  # cadence-neutralized is fine here — this proof is cadence-agnostic
+    with Session(engine) as session:
+        trading = _trading_days(session, cfg)
+    gap_pair = next(((a, b) for a, b in zip(trading, trading[1:]) if (b - a).days > 1), None)
+    assert gap_pair is not None, "expected at least one real calendar gap in the seed trading calendar"
+    a, b = gap_pair
+    gap_days = (b - a).days - 1  # calendar days strictly between two consecutive trading days
+
+    # mixed: the two trading days themselves plus every non-trading day between them.
+    job = create_job("backfill", a, b)
+    summary = run_data_job(job.job_id, config=cfg, engine=engine)
+    assert summary["dates_total"] == 2
+    assert summary["calendar_days"] == (b - a).days + 1
+    assert summary["non_trading_days"] == gap_days
+    assert summary["non_trading_days"] + summary["dates_total"] == summary["calendar_days"]
+    assert summary["snapshots_created"] + summary["already_snapshotted"] + summary["error_other"] == 2
+    assert summary["error_other"] == 0
+
+    # all-non-trading: the gap's own span (strictly between a and b) — zero trading days by construction.
+    gap_start, gap_end = a + timedelta(days=1), b - timedelta(days=1)
+    job2 = create_job("backfill", gap_start, gap_end)
+    summary2 = run_data_job(job2.job_id, config=cfg, engine=engine)
+    assert summary2["dates_total"] == 0
+    assert summary2["calendar_days"] == gap_days
+    assert summary2["non_trading_days"] == gap_days
+    assert summary2["snapshots_created"] == 0
+    assert summary2["already_snapshotted"] == 0
+    assert summary2["error_other"] == 0
+    assert summary2["status"] == "ok"  # honest zero-work — never a fabricated failure
+
+
+def test_backfill_chunk_plan_derives_from_date_window_days_config(backfilled_job):
+    """J-03 — the backfill date-window chunk plan (`chunk_total`) derives from config
+    `import_chunking.date_window_days`, exactly like the existing fetch-side chunk plan: varying the
+    config value changes `chunk_total` for the SAME range. Uses the LARGEST all-non-trading gap in the
+    seed's own calendar (zero real compute — no scanner work is needed to prove the ARITHMETIC) so this
+    stays fast, never executing a real multi-hundred-day backfill to completion. Takes whatever gap size
+    the real seed calendar actually has (a plain weekend is >= 2 calendar days) rather than assuming a
+    specific holiday-cluster size exists."""
+    engine = backfilled_job["engine"]
+    cfg = backfilled_job["cfg"]
+    with Session(engine) as session:
+        trading = _trading_days(session, cfg)
+    a, b = max(zip(trading, trading[1:]), key=lambda pair: (pair[1] - pair[0]).days)
+    gap_start, gap_end = a + timedelta(days=1), b - timedelta(days=1)
+    calendar_days = (gap_end - gap_start).days + 1
+    assert calendar_days >= 2, "expected at least an ordinary weekend gap in the seed trading calendar"
+
+    # window_days == calendar_days -> exactly 1 chunk; window_days == 1 -> one chunk per calendar day
+    # (always calendar_days chunks, regardless of how large the found gap happens to be).
+    for window_days, expected_chunks in ((calendar_days, 1), (1, calendar_days)):
+        ic = cfg.data_manager.import_chunking.model_copy(update={"date_window_days": window_days})
+        dm = cfg.data_manager.model_copy(update={"import_chunking": ic})
+        narrow_cfg = cfg.model_copy(update={"data_manager": dm})
+        prog = JobProgress(job_id=f"chunk-plan-probe-{window_days}", kind="backfill",
+                            start=gap_start, end=gap_end)
+        with Session(engine) as session:
+            data_manager._do_backfill(session, narrow_cfg, prog, eng=engine)
+        assert prog.chunk_total == len(data_manager._date_windows(gap_start, gap_end, window_days))
+        assert prog.chunk_total == expected_chunks
+        assert prog.chunk_index == prog.chunk_total  # the (empty, all-non-trading) plan completed in full
+        assert prog.dates_total == 0  # still honestly zero trading days — no fabricated target
+
+
+def test_run_detail_omits_breakdown_until_computed():
+    """ops-hardening iter-1 audit (Finding B) — the persisted run-summary breakdown is served ONLY once
+    `_do_backfill` has computed it. The `running` row `_create_run_record` writes at job start (and the
+    `interrupted` row the boot sweep freezes from it) carries the JobProgress defaults (calendar_days ==
+    0); `_run_detail` must serve those four fields as null there — NOT a fabricated "0 calendar days · 0
+    already snapshotted · 0 non-trading" for a backfill whose range was really hundreds of days (AG-3).
+    A genuinely-computed backfill still serves the real values (calendar_days >= 1)."""
+    # not-yet-computed backfill row (exactly what `_create_run_record` serializes at job start): a real
+    # multi-hundred-day requested range, but the breakdown fields still at their JobProgress defaults.
+    fresh = JobProgress(job_id="never-ran", kind="backfill", start=date(2024, 1, 1), end=date(2025, 6, 1))
+    detail = data_manager._run_detail(fresh)
+    assert detail["calendar_days"] is None  # never a fabricated 0 for a 517-day range
+    assert detail["non_trading_days"] is None
+    assert detail["already_snapshotted"] is None
+    assert detail["error_other"] is None
+    # a genuinely-computed backfill (the finalized row) still serves the real numbers unchanged.
+    done = JobProgress(job_id="ran", kind="backfill", start=date(2026, 5, 2), end=date(2026, 5, 29))
+    done.calendar_days, done.dates_total, done.non_trading_days = 28, 19, 9
+    done.already_snapshotted, done.snapshots_created, done.error_other = 0, 19, 0
+    detail_done = data_manager._run_detail(done)
+    assert detail_done["calendar_days"] == 28
+    assert detail_done["non_trading_days"] == 9
+    assert detail_done["already_snapshotted"] == 0
+    assert detail_done["error_other"] == 0
+
+
+def test_backfill_error_other_uncapped_past_sample_limit(backfilled_job, monkeypatch):
+    """ops-hardening iter-1 audit (Finding A) — `error_other`, and the breakdown invariant it feeds, stay
+    EXACT when more than `_MAX_ERROR_SAMPLES` (20) in-range dates fail: it is derived from the UNCAPPED
+    `date_failures_total`, never from the bounded `date_failures` sample list. Forces every target in a
+    25-trading-day deep (un-snapshotted) window to fail its compute — the failures are recorded but never
+    persisted, so this stays fast (no real scanner/DB work), then asserts the sample list capped at 20
+    while `error_other` reports the true 25 and invariant 2 holds exactly."""
+    engine = backfilled_job["engine"]
+    cfg = backfilled_job["cfg"]  # cadence-neutralized: every in-range trading day is a target
+    with Session(engine) as session:
+        trading = _trading_days(session, cfg)
+        snapshotted = set(session.exec(select(ScannerRun.asof_date)).all())
+    # the first run of 25 CONSECUTIVE un-snapshotted trading days (so every one becomes a real target and
+    # the [start,end] span contains exactly them) — robust to whichever ranges the fixture pre-snapshotted.
+    window = next(
+        (trading[i:i + 25] for i in range(len(trading) - 25)
+         if not any(d in snapshotted for d in trading[i:i + 25])),
+        None,
+    )
+    assert window is not None and len(window) == 25, "expected a 25-day un-snapshotted trading window"
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("forced compute failure")
+    monkeypatch.setattr(data_manager, "_compute_one_backfill_date", _boom)
+
+    prog = JobProgress(job_id="err-uncapped-probe", kind="backfill", start=window[0], end=window[-1])
+    with Session(engine) as session:
+        data_manager._do_backfill(session, cfg, prog, eng=engine)
+
+    n_targets = prog.dates_total - prog.already_snapshotted
+    assert n_targets == 25 and prog.snapshots_created == 0  # every target failed, none persisted
+    assert len(prog.date_failures) == data_manager._MAX_ERROR_SAMPLES  # the SAMPLE list is capped at 20
+    assert prog.error_other == 25  # ...but error_other is the UNCAPPED true failure count
+    assert prog.error_other > data_manager._MAX_ERROR_SAMPLES
+    # invariant 2 holds EXACTLY even past the sample cap (the whole point of the fix)
+    assert prog.snapshots_created + prog.already_snapshotted + prog.error_other == prog.dates_total
 
 
 # ==================================================================================================
