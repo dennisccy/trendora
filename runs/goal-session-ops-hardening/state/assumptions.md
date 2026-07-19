@@ -81,3 +81,35 @@ than a fresh live run: the still-on-screen historical Run-History row (DOM-read 
 `already_snapshotted=19` (UT-04), and the unit test `test_backfill_breakdown_invariants_hold_on_
 fresh_and_rerun` which proves the fresh-run 19/19/0 by construction.
 **Reversible:** yes
+
+## iter-2 — goal-decomposer
+
+**Ambiguity:** goal.md's "four offenders to retire" and the Aggregation-candidates table read as a
+mandate to fully retire boot's `ensure_latest_snapshot` synchronous-compute-if-missing branch and
+the boot warm-up loop's cadence-snapshot bootstrap, but neither is exercisable in this session:
+`fetch` is offline zero-work (AG-9), so `latest_data_date` never advances outside an explicit
+backfill/rebuild, and the currently-running DB already has a snapshot for its latest date
+(fast-boot already verified <2s in iter-1) — so both branches are dormant either way this iteration.
+**We chose:** scoped J-05 to what its own 4 numbered acceptance steps literally exercise — a single
+historical day's backfill, a cold restart-and-visit of `/data`, and health responsiveness during a
+heavy job — building the new `coverage_snapshot` table + ingest finalize hooks + the boot thread's
+safety-net warm step, while leaving `ensure_latest_snapshot` and the warm-up loop's cadence
+bootstrap unchanged (their retirement is unverifiable against the offline seed and risks regressing
+mcp-loop-era readiness/warm-up guarantees no Must-have journey this cycle re-tests).
+**Reversible:** yes
+
+## iter-2 — goal-decomposer
+
+**Ambiguity:** `config.yaml`'s `server:` section comment block claims `scripts/start-backend.sh`
+already wires all five fields (`memory_cap_mb`, `malloc_arena_max`, `limit_concurrency`,
+`timeout_keep_alive_seconds`, `graceful_timeout_seconds`) — "reads every value from here via the
+venv python" — but a direct read of the script (confirming iter-0's identical finding about the
+first two) shows NONE of the five are wired; goal.md's own binding note, however, names only
+`memory_cap_mb`/`malloc_arena_max` + the logfile as required this cycle.
+**We chose:** scoped `scripts/start-backend.sh`'s fix to exactly the three goal.md names (`ulimit -v`
+from `memory_cap_mb`, `MALLOC_ARENA_MAX` from `malloc_arena_max`, persistent logfile) and left
+`limit_concurrency`/`timeout_keep_alive_seconds`/`graceful_timeout_seconds` unwired this iteration,
+flagging the same drift in NOTES rather than silently expanding scope beyond what goal.md asks — a
+future iteration should wire them if J-05 step 4's health-responsiveness check ever reveals it's
+actually needed.
+**Reversible:** yes
