@@ -1,0 +1,24 @@
+{
+  "phase": "goal-ops-hardening-iter-0",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-07-19T14:27:07Z",
+  "started_at": "2026-07-19T14:27:07Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "docs/handoffs/goal-ops-hardening-iter-0-dev.md",
+    "runs/goal-ops-hardening-iter-0/status.json"
+  ],
+  "tests_run": false,
+  "browser_checks_run": false,
+  "next_action": "browser-qa (per iter spec: the developer step is a deliberate no-op; live pass/fail/partial per journey is determined by the browser-QA agent's empirical run, not by this step)",
+  "verify_only_pass": {
+    "evidence_claim_registered": false,
+    "product_source_diff_empty": true,
+    "config_diff_empty": true,
+    "targeted_tests": "none run (no code paths changed); confirmed via grep, not execution: test_data_manager.py::test_validate_job_request_reads_config_max_range, test_api_data.py::test_post_job_over_long_range_is_400, test_config.py (max_range_days==370 assertion) still present",
+    "targeted_tests_result": "not executed — none required per spec TESTING REQUIREMENTS",
+    "finding": "code-level read of all five target journeys (J-01, J-03, J-04, J-05, J-06) against current codebase; preliminary verdicts: J-01 FAIL (cadence gate applies to explicit backfill requests with no override -- May-2026 range would not yield dates_total=19; no structured exclusion-reason schema), J-03 FAIL (max_range_days=370 still enforced in config + data_manager.py + 3 pinning tests), J-04 PARTIAL (readiness/badge/interrupted-job UI infra already exists from mcp-loop iter-28/33 and looks likely to pass; persistent logfile + ulimit/MALLOC_ARENA_MAX enforcement confirmed absent from scripts/), J-05 FAIL (no coverage_snapshot table; _do_backfill finalize does not warm coverage/market-phase/research caches; compute_coverage still per-request with in-process-only cache), J-06 PARTIAL (existing warm endpoint/page budgets committed and passing per perf-budgets.md; new boot-time and current-basis cold /api/data budget rows not yet added). See docs/handoffs/goal-ops-hardening-iter-0-dev.md for full file:line evidence. These are code-level hypotheses only -- no servers were started, no browser interaction performed (by design, per spec); the browser-QA agent's live run is authoritative and the goal-evaluator seeds journey-history.json."
+  }
+}
