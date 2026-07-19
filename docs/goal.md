@@ -106,10 +106,16 @@ no-ops or arbitrary limits.
   them and never recompute eligibility client-side.
 - **Coverage payload** (universe counts, per-symbol coverage, gaps, capacity) — persisted at
   ingest, served only by `GET /api/data`.
+- **Backfill run-summary contract** — one persisted record per run: `dates_total` counts
+  trading days in the requested range; the per-date exclusion breakdown partitions every
+  calendar day in the range (non-trading / already-snapshotted / error-other), so
+  non-trading + `dates_total` = calendar days and `snapshots_created` + already-snapshotted
+  + error-other = `dates_total`. J-01's runs (19 trading of 28 calendar days; 0 of 2 on the
+  weekend span) all read this one record.
 
 ## Must-have user journeys
 
-- **J-01: Backfill honors the requested range**
+- **J-01: Backfill honors the requested range and explains zero-work**
   - Steps:
     1. With backend and frontend running, visit `/data`; in the job form select kind
        `backfill`, start `2026-05-02`, end `2026-05-29`; start the job
@@ -121,40 +127,36 @@ no-ops or arbitrary limits.
     4. Visit `/scanner-runs` and assert runs now exist for in-range May dates (e.g.
        2026-05-04, 2026-05-15, 2026-05-29); open one and assert its leaderboard renders
        stored values
+    5. Start a second backfill over the weekend-only span 2026-05-02 → 2026-05-03; assert
+       the summary reports `dates_total` = 0 with a per-reason breakdown (2 non-trading
+       days) partitioning the 2 calendar days per the run-summary contract
+    6. Re-run the identical May range (2026-05-02 → 2026-05-29); assert a zero-work
+       outcome: 0 snapshots created, breakdown 19 already-snapshotted + 9 non-trading,
+       partitioning the 28 calendar days
+    7. Reload the page; assert the persisted job history panel still lists all three runs
+       with the same outcomes and reasons — never "no job started this session"
+    8. Assert both zero-work outcomes render as an explanatory state, visually distinct
+       from the productive run's success presentation — never the same unexplained green
+       success badge
   - Acceptance:
-    - **Consistency (single source):** backfill eligibility and targets are computed once in
-      the data-manager job engine; the UI renders the persisted run record — no client-side
-      eligibility logic.
+    - **Consistency (single source):** backfill eligibility, targets, and exclusion reasons
+      are computed once in the data-manager job engine and persisted; the UI renders the
+      persisted run record served by the data-jobs endpoints — no client-side eligibility
+      or exclusion logic.
     - **Correctness:** after completion, `scanner_runs` holds a run for every trading day in
       2026-05-04 … 2026-05-29 (19 dates), and a spot-checked date's UI leaderboard matches
       the stored snapshot for that as-of.
     - **Honest status & anti-goals:** the explicit request densifies exactly the requested
       range (automatic warm-up cadence unchanged elsewhere); execution is chunked and
-      memory-bounded (anti-goal #8); determinism and no-lookahead preserved (snapshots use
+      memory-bounded (AG-8); determinism and no-lookahead preserved (snapshots use
       bars ≤ as-of only).
-    - **Walkthrough:** a `[NEW]`-flagged walkthrough of the May backfill and the resulting
-      daily snapshots, viewable via `demo.sh ops-hardening --session-live`.
-
-- **J-02: No silent zero-work jobs**
-  - Steps:
-    1. Visit `/data`; start a backfill over a range where no work is possible (e.g. the
-       weekend-only span 2026-05-02 → 2026-05-03, or a fully-snapshotted range)
-    2. Assert the completed job's summary states the outcome plainly: 0 snapshots created,
-       with a per-reason breakdown (non-trading days, already snapshotted, other exclusions)
-       whose counts sum to the days in the range
-    3. Reload the page; assert the job history panel (persisted server-side) still lists
-       this run with the same outcome and reasons — never "no job started this session"
-    4. Assert the zero-work outcome is visually distinguished as an explanatory state, not
-       the same unexplained green success badge as a productive run
-  - Acceptance:
-    - **Consistency (single source):** exclusion reasons and counts come from the persisted
-      job record served by the data-jobs endpoints; the panel never recomputes them.
-    - **Correctness:** the weekend-only range shows 2 non-trading days / 0 eligible; a
-      fully-snapshotted range shows every date as already-snapshotted.
-    - **Honest status & anti-goals:** no fabricated progress; zero-work is never rendered as
-      unexplained success; wording is factual, no reassurance language.
-    - **Walkthrough:** a `[NEW]`-flagged walkthrough of a zero-work job explaining itself,
-      viewable via `demo.sh ops-hardening --session-live`.
+    - **Zero-work honesty:** the weekend-only run shows 0 trading-day targets / 2
+      non-trading; the re-run shows 0 created / 19 already-snapshotted + 9 non-trading;
+      both persist across reload; no fabricated progress; zero-work is never rendered as
+      unexplained success and wording stays factual, no reassurance language.
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of the May backfill, the resulting
+      daily snapshots, and a zero-work job explaining itself, viewable via
+      `demo.sh ops-hardening --session-live`.
 
 - **J-03: No per-run range cap**
   - Steps:
@@ -164,29 +166,40 @@ no-ops or arbitrary limits.
        begins executing in visible chunks with live progress
     3. Assert at least the first chunk completes and progress continues without any
        cap-related failure (full completion may extend beyond the QA window; persisted
-       progress per J-02 keeps it observable)
+       job history per J-01's acceptance keeps it observable)
   - Acceptance:
     - **Consistency (single source):** the chunk plan derives from the config
       `import_chunking` values; the UI progress reflects the same plan the engine executes.
     - **Correctness:** the `max_range_days` rejection no longer exists in config, validation,
       or API behavior, and the tests that pinned 370 are updated to the new contract.
-    - **Honest status & anti-goals:** memory stays bounded for the whole run (anti-goal #8);
+    - **Honest status & anti-goals:** memory stays bounded for the whole run (AG-8);
       progress is honest and never reports done early.
     - **Walkthrough:** a `[NEW]`-flagged walkthrough of a >370-day request being accepted
       and chunk-executing, viewable via `demo.sh ops-hardening --session-live`.
 
 - **J-04: Non-blocking boot with visible status**
   - Steps:
-    1. Restart the backend via the documented start script; immediately poll `GET /api/health`
+    1. Restart the backend via `scripts/start-backend.sh` (prod mode — never `dev.sh`,
+       matching J-06's measurement conditions); immediately poll `GET /api/health`
     2. Assert the first HTTP 200 arrives within 5 seconds of process start on the warm DB,
        even when background loading remains
-    3. While any background loading runs, assert the top-bar badge shows an explicit
-       initializing state with phase detail (what is loading, progress n/m) — never a bare
-       "Backend unavailable"
+    3. With the frontend already open, restart the backend again; poll `GET /api/health` at
+       ≤ 250 ms intervals from process start and assert at least one pre-ready response
+       carries the boot phase and progress n/m; assert the top-bar badge polled in that same
+       window shows the same phase detail as an explicit initializing state — never a bare
+       "Backend unavailable" (evidence: the captured pre-ready health payload plus a badge
+       screenshot/DOM assertion from the same window)
     4. Kill the backend process (simulated crash); assert the UI transitions to an explicit
        unreachable/crashed presentation (preflight-banner language), visibly distinct from
        the initializing state
-    5. Assert a persistent backend logfile exists and contains the boot and the crash events
+    5. Assert the persistent backend logfile (path documented in the dev handoff) contains
+       the boot events; after the simulated crash, assert the log ends abruptly — boot
+       entries present, no clean-shutdown entry — so the crash is evidenced by the
+       truncated log plus the UI's unreachable presentation (a killed process writes no
+       crash line)
+    6. Restart the backend; on `/data` assert any job that was mid-flight at the kill now
+       shows an explicit interrupted/error state with its last persisted progress — never a
+       still-"running" row with no living process
   - Acceptance:
     - **Consistency (single source):** readiness/boot phase is computed only in
       `app.engine.readiness` and served only via `GET /api/health`; badge and banner re-read
@@ -201,12 +214,16 @@ no-ops or arbitrary limits.
 
 - **J-05: Aggregates are precomputed at ingest, never on the fly**
   - Steps:
-    1. Run an ingest job (fetch or backfill) that adds at least one new trading date
-    2. Immediately after the job completes, assert each inventory aggregate is fresh for the
-       new state via its serving endpoint: latest-date snapshot (dashboard payload),
-       coverage payload (`GET /api/data`), membership timeline, market phase for the latest
-       as-of, and the research hot-key caches — each responding from storage for the new
-       as-of
+    1. On `/data`, run a backfill covering exactly one unsnapshotted historical trading day
+       (e.g. 2026-05-15, or any day `/scanner-runs` lacks; offline, `fetch` finds no new
+       bars and is expected zero-work, so `backfill` is the ingest kind under test)
+    2. Immediately after completion, assert (a) the aggregates keyed by the ingested as-of
+       serve the new state from storage — `/scanner-runs` lists the date and its
+       leaderboard renders the stored snapshot; market phase for that as-of responds from
+       storage without compute-on-read — and (b) the persisted run record lists which
+       inventory aggregates its finalize hooks refreshed (latest-date snapshot, coverage
+       payload, membership timeline, market phase, research hot-key caches), each still
+       serving stored values with no recompute on any request path
     3. Restart the backend and visit `/data` cold; assert coverage renders from the
        persisted payload within its committed budget and the process performs no
        3.3M-row bar prefill
@@ -218,7 +235,7 @@ no-ops or arbitrary limits.
     - **Correctness:** aggregate values are byte-identical to the canonical computation for
       the same as-of — storage is re-served, never re-derived.
     - **Honest status & anti-goals:** no code path streams the full `daily_prices` table
-      into RAM (anti-goal #8's unbounded-load ban enforced on serving paths); launch scripts
+      into RAM (AG-8's unbounded-load ban enforced on serving paths); launch scripts
       enforce the declared `memory_cap_mb` / `malloc_arena_max`.
     - **Walkthrough:** a `[NEW]`-flagged walkthrough of ingest → fresh aggregates → cold
       `/data` within budget, viewable via `demo.sh ops-hardening --session-live`.
@@ -254,31 +271,34 @@ no-ops or arbitrary limits.
 
 ## Anti-goals
 
-- A score, ranking, or "edge" MUST NOT be presented as proven/confident unless it is backed by a
+- **AG-1:** A score, ranking, or "edge" MUST NOT be presented as proven/confident unless it is backed by a
   **passing certified-claim entry** in the evidence ledger (out-of-sample, control-beating). Unbacked
   values MUST render a "not yet proven" state. *(critical)*
-- **Decision-quality only:** never present return promises, price targets, "buy/sell" signals, or alpha
+- **AG-2 — Decision-quality only:** never present return promises, price targets, "buy/sell" signals, or alpha
   claims; never place or simulate orders. *(critical)*
-- A journey passes ONLY if the **displayed numbers are correct** — they match the engine's computation
+- **AG-3:** A journey passes ONLY if the **displayed numbers are correct** — they match the engine's computation
   for the same as-of date — not merely that the page renders. *(critical)*
-- **No overfit edges:** any pattern surfaced as "proven" must have survived the referee (sealed
+- **AG-4 — No overfit edges:** any pattern surfaced as "proven" must have survived the referee (sealed
   out-of-sample holdout + controls + multiple-testing correction), never in-sample fit alone. *(critical)*
-- **Preserve determinism and no-lookahead:** scoring uses bars ≤ as-of; forward returns use bars > as-of;
+- **AG-5 — Preserve determinism and no-lookahead:** scoring uses bars ≤ as-of; forward returns use bars > as-of;
   never introduce lookahead anywhere. *(critical)*
-- No iteration ships if its evidence-derived claims (if any) lack a passing referee verdict from the
+- **AG-6:** No iteration ships if its evidence-derived claims (if any) lack a passing referee verdict from the
   post-decompose gate. *(critical)*
-- No hard-coded credentials, API keys, or tokens in source files. *(critical)*
-- **Resilience to data-shape and data-scale change:** widening the data basis (new nulls, broader pools, deeper history) must never crash an existing page or exhaust a service's memory — every
+- **AG-7:** No hard-coded credentials, API keys, or tokens in source files. *(critical)*
+- **AG-8 — Resilience to data-shape and data-scale change:** widening the data basis (new nulls, broader pools, deeper history) must never crash an existing page or exhaust a service's memory — every
   existing consumer of a widened field is re-validated, the UI degrades gracefully (contained error
   boundary, honest "—"/NA placeholder, never a blank application-error page), and unbounded
   whole-table ORM loads are forbidden on the deep basis. *(critical)*
+- **AG-9 — Offline-deterministic ingest:** ingest jobs (fetch/backfill/rebuild) run only
+  against the committed seed / local provider fixtures — no live external network calls or
+  paid data services may be introduced without an explicit goal.md amendment. *(critical)*
 
 ## Loop mechanics (for the iteration planner)
 
 - Journeys J-01 … J-06 are pure ops/performance/correctness work and carry **no Evidence
   Claims** — the post-decompose referee gate passes automatically. No iteration in this
-  cycle may introduce proven-language (anti-goals #1/#4/#6 still veto).
-- Suggested build order: the data-jobs cluster first (J-01, J-02, J-03 — unblocks the
+  cycle may introduce proven-language (AG-1/AG-4/AG-6 still veto).
+- Suggested build order: the data-jobs cluster first (J-01, J-03 — unblocks the
   owner's immediate backfill need), then the aggregate/boot cluster (J-05 enabling J-04),
   then the measurement capstone (J-06). The decomposer may re-order with reasons.
 - `docs/improvement-backlog.md` remains the owner-governed idea registry; the goal-proposer
