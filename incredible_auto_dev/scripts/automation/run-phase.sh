@@ -12,6 +12,9 @@
 #                    --auto-release if it was passed alongside. Used by run-goal.sh
 #                    to dispatch a full-mode iteration without committing/creating a PR
 #                    for each iteration; release-manager runs once at goal-session end.
+#                    On goal-<sid>-iter-<N> phases this also defers the Step 10.5
+#                    iteration summary to the goal engine's post-evaluator showcase
+#                    tail (SPEED-5; CHAIN_FULL_ITER_SUMMARY=true restores it here).
 #
 # Post-dev parallel fanout: after Step 3, when the phase has a frontend, Branch A
 # (ui-impact → ui-test-design → browser-qa → demo) runs concurrently with
@@ -32,6 +35,7 @@ source "$SCRIPT_DIR/lib/parallel.sh"
 # lets claude_with_quota_retry forward each dispatch's usage sidecar into the
 # session's per-agent economics (TOKEN-8).
 source "$SCRIPT_DIR/lib/telemetry.sh"
+source "$SCRIPT_DIR/lib/engine-lock.sh"
 
 # Pull --cli (and --force-cli) out of the args BEFORE the existing parse loop,
 # so the loop below sees only its known flags. CHAIN_CLI defaults to claude.
@@ -118,6 +122,19 @@ _spec_lists_tests_reason() {
     return 0
   fi
   return 1
+}
+
+# SPEED-5: in goal-mode full iterations the engine re-runs the summarizer
+# post-evaluator (run-goal.sh showcase tail) and overwrites the same
+# reports/phase-<iter>-iteration-summary.md; the pre-evaluator run here has no
+# consumers in that window (reader map in the roadmap entry). Skip it unless
+# CHAIN_FULL_ITER_SUMMARY=true. Both signals are required: --no-finalize alone
+# also serves standalone phase runs (which keep their only summary), and the
+# goal-iter name alone also serves manual reruns via render-summary.sh.
+_summary_deferred_to_goal_showcase() {
+  [[ "${CHAIN_FULL_ITER_SUMMARY:-false}" != "true" \
+     && "${NO_FINALIZE:-false}" == "true" \
+     && "${PHASE:-}" =~ ^goal-.+-iter-[0-9]+$ ]]
 }
 
 # Invoke the iteration-summarizer agent. The agent reads existing artifacts
@@ -257,8 +274,12 @@ fail() {
   local step="${2:-failed}"
   log "FAILED: $msg" >&2
   update_status "$PHASE" "blocked" "$step"
-  _run_iteration_summarizer
-  _render_summary_html
+  # Goal-mode full iterations: run-goal.sh proceeds to the evaluator + showcase
+  # tail on executor failure too, so the summary still gets written there.
+  if ! _summary_deferred_to_goal_showcase; then
+    _run_iteration_summarizer
+    _render_summary_html
+  fi
   exit 1
 }
 
@@ -402,8 +423,20 @@ _run_phase_on_exit() {
     done
   fi
   chain_tmp_cleanup
+  # REL-4: release LAST so the lock covers the whole cleanup window. Owner-
+  # checked no-op when this process never acquired (e.g. a refused start).
+  release_engine_lock
 }
 trap '_run_phase_on_exit $?' EXIT
+
+# ── Cross-session phase lock (REL-4) ──────────────────────────────────────
+# Repo-level: ONE phase pipeline per repo at a time, whatever the phase name —
+# concurrent pipelines race on the shared worktree, not just on runs/<phase>/.
+# Taken right after the EXIT trap above is armed (signal traps at their
+# registration site exit through it), so every exit path — fail(), quota 75,
+# transport 70, Ctrl-C — releases. A live holder refuses fast with exit
+# $ENGINE_LOCK_REFUSED_EXIT; a dead one is replaced loudly.
+acquire_engine_lock "$REPO_ROOT/runs/.phase.lock" "phase runner (this one: $PHASE)" || exit $?
 
 # ── Resume detection ────────────────────────────────────────────────────────
 if [[ "$FORCE_RESET" == "true" ]]; then
@@ -1037,9 +1070,13 @@ fi
 echo ""
 
 # ── Step 10.5/11: Build iteration summary + render HTML ─────────────────────
-log "Step 10.5/11 -- Building iteration summary + rendering HTML..."
-_run_iteration_summarizer
-_render_summary_html
+if _summary_deferred_to_goal_showcase; then
+  log "Step 10.5/11 -- Iteration summary deferred to the goal-mode showcase tail (post-evaluator run writes the same file; set CHAIN_FULL_ITER_SUMMARY=true to restore it here)."
+else
+  log "Step 10.5/11 -- Building iteration summary + rendering HTML..."
+  _run_iteration_summarizer
+  _render_summary_html
+fi
 SUMMARY_MD="$REPO_ROOT/reports/phase-${PHASE}-iteration-summary.md"
 HTML_PATH="$REPO_ROOT/reports/phase-${PHASE}-summary.html"
 [[ -f "$SUMMARY_MD" ]] && log "  Summary MD:   $SUMMARY_MD"

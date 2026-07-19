@@ -70,10 +70,17 @@
 # until the quota resets and resumes.
 set -euo pipefail
 
+# REL-2: snapshot the ambient CHAIN_* names NOW — before this script (or the
+# libs it sources) exports its own — so the preflight doctor can report the
+# session-START environment truth (stray knobs silently alter engine behavior;
+# measurement runs demand a clean env).
+_CHAIN_AMBIENT_AT_START="$(compgen -A export CHAIN_ 2>/dev/null | sort | tr '\n' ' ' || true)"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/telemetry.sh"
 source "$SCRIPT_DIR/lib/goal-gates.sh"
+source "$SCRIPT_DIR/lib/engine-lock.sh"
 
 # Pull --cli (and --force-cli) out of the args BEFORE the existing parse loop,
 # so the loop below sees only its known flags.
@@ -229,6 +236,9 @@ require_cli
 ensure_cli_assets_synced "$CHAIN_CLI"
 JOURNEY_HISTORY="$GOAL_SESSION_DIR_LOCAL/state/journey-history.json"
 EVALUATOR_LOG="$GOAL_SESSION_DIR_LOCAL/state/evaluator-log.md"
+# REL-6: the evaluator-written, decomposer-read iteration digest (single
+# writer: only the goal-evaluator's step 7 creates/overwrites this file).
+ITER_STATE_FILE="$GOAL_SESSION_DIR_LOCAL/state/iteration-state.md"
 LESSONS_FILE="$GOAL_SESSION_DIR_LOCAL/state/lessons.md"
 # Assumption ledger (NEED-5): append-only record of interpretation calls the
 # decomposer/evaluator made where the goal was ambiguous. Created lazily by the
@@ -785,6 +795,40 @@ PY
   echo "  ./scripts/automation/run-goal.sh --resume --session-id $SESSION_ID"
   echo "════════════════════════════════════════════════════════════════════"
   exit 0
+}
+
+# ── Preflight doctor (REL-2) ──────────────────────────────────────────────
+# Advisory BY CONSTRUCTION: the doctor observes and reports; it must never be
+# able to stop a session (a broken doctor gating the engine would invert its
+# purpose). Every failure path here — missing script, crash, nonzero exit, a
+# hang (bounded by timeout when available) — degrades to a log line and
+# return 0. Strict gating exists only as the doctor CLI's own --strict-doctor
+# flag, never as engine behavior. Knob: CHAIN_DOCTOR (default true).
+# CHAIN_DOCTOR_BIN overrides the script path (test seam).
+run_doctor_preflight() {
+  if [[ "${CHAIN_DOCTOR:-true}" != "true" ]]; then
+    echo "[run-goal] CHAIN_DOCTOR=${CHAIN_DOCTOR:-false} — preflight doctor skipped."
+    return 0
+  fi
+  local _doctor="${CHAIN_DOCTOR_BIN:-$SCRIPT_DIR/doctor.sh}"
+  if [[ ! -f "$_doctor" ]]; then
+    echo "[run-goal] Preflight doctor not found ($_doctor) — skipping (advisory)."
+    return 0
+  fi
+  echo "[run-goal] Preflight doctor (advisory — WARN/FAIL rows never gate; CHAIN_DOCTOR=false to skip):"
+  local _out="" _rc=0 _runner=""
+  command -v timeout >/dev/null 2>&1 && _runner="timeout 90"
+  # shellcheck disable=SC2086  # intentional word-split for the optional runner
+  _out="$(CHAIN_DOCTOR_AMBIENT="${_CHAIN_AMBIENT_AT_START-}" $_runner bash "$_doctor" 2>&1)" || _rc=$?
+  [[ -n "$_out" ]] && printf '%s\n' "$_out"
+  if [[ "$_rc" -ne 0 ]]; then
+    echo "[run-goal] doctor exited rc=$_rc — continuing anyway (the doctor is advisory by construction)."
+    return 0
+  fi
+  local _counts
+  _counts="$(printf '%s\n' "$_out" | grep -m1 -o 'pass=[0-9]* warn=[0-9]* fail=[0-9]* skip=[0-9]*' || true)"
+  echo "[run-goal] doctor: ${_counts:-counts unavailable} — advisory only, see table above."
+  return 0
 }
 
 # ── Intent checkpoint review packet (NEED-7) ──────────────────────────────
@@ -1371,6 +1415,9 @@ _goal_engine_on_exit() {
   _join_showcase_tail --kill 2>/dev/null || true
   rm -f "$ENGINE_PID_FILE" 2>/dev/null || true
   chain_tmp_cleanup
+  # REL-4: release LAST so the lock covers the whole cleanup window. Owner-
+  # checked no-op when this process never acquired (e.g. a refused start).
+  release_engine_lock
 }
 trap _goal_engine_on_exit EXIT
 
@@ -1383,6 +1430,20 @@ on_abort() {
   exit 130
 }
 trap on_abort INT TERM
+
+# ── Cross-session engine lock (REL-4) ─────────────────────────────────────
+# One live engine per session id. Taken AFTER the traps above are armed (so
+# every exit from here on releases it — including the AWAITING_* pause exits,
+# which end this process; resume re-acquires) and BEFORE anything that costs
+# time (doctor, tmp janitor, disk/GitHub preflights, the loop). A live holder
+# refuses fast with exit $ENGINE_LOCK_REFUSED_EXIT; a dead one is replaced
+# loudly (lib/engine-lock.sh; docs/TROUBLESHOOTING.md "lock held").
+acquire_engine_lock "$GOAL_SESSION_DIR_LOCAL/.engine.lock" "engine for goal session '$SESSION_ID'" || exit $?
+
+# Advisory preflight doctor (REL-2): one PASS/WARN/FAIL table of environment
+# truth into the engine log BEFORE anything mutates state (tmp init/janitor
+# sweeps, disk guard) — warn-only by construction, see run_doctor_preflight.
+run_doctor_preflight
 
 # Per-run tmp isolation (lib/chain-tmp.sh): one session-scoped dir now (covers
 # the baseline + the first decomposer); the loop rotates to a per-iteration dir
@@ -1607,6 +1668,43 @@ PY
     DECOMPOSER_MODE="next"
   fi
 
+  # SPEED-4: hardening-cadence input. The decomposer prompt only inlines the
+  # last 3 evaluator entries, so a K-long lean streak is invisible to the agent
+  # unless the engine supplies the count; the post-parse backstop below
+  # enforces the cadence even if the agent ignores it.
+  LEAN_STREAK=$(goal_lean_streak "$GOAL_SESSION_DIR_LOCAL" "$CURRENT_ITER")
+
+  # REL-14 make-up scheduling: journeys the previous evaluation left
+  # pending_infra (browser evidence missing due to INFRA, not defects) get a
+  # verify-only make-up ride this iteration — a BINDING decomposer prompt line
+  # plus an engine-side union into the executor's browser set
+  # (CHAIN_BQA_MAKEUP_JOURNEYS; the union also covers the resume path, where a
+  # reused spec never saw the line). CHAIN_BQA_PREV_ATTEMPTS carries the token's
+  # consecutive-block counter so the evaluator can apply the two-strike rule.
+  BQA_MAKEUP_JOURNEYS=""
+  if [[ $CURRENT_ITER -gt 0 && -f "$JOURNEY_HISTORY" ]]; then
+    BQA_MAKEUP_JOURNEYS="$(python3 -c "
+import json
+try:
+    h = json.load(open('$JOURNEY_HISTORY'))
+    js = h.get('journeys', {}) if isinstance(h, dict) else {}
+    print(' '.join(sorted(j for j, v in js.items() if isinstance(v, dict) and v.get('pending_infra'))))
+except Exception:
+    pass" 2>/dev/null || true)"
+  fi
+  if [[ -n "$BQA_MAKEUP_JOURNEYS" ]]; then
+    export CHAIN_BQA_MAKEUP_JOURNEYS="$BQA_MAKEUP_JOURNEYS"
+    _prev_infra_token="$GOAL_SESSION_DIR_LOCAL/iter-$((CURRENT_ITER-1))/browser-infra.json"
+    CHAIN_BQA_PREV_ATTEMPTS="$(python3 -c "
+import json
+try: print(int(json.load(open('$_prev_infra_token')).get('attempts', 0)))
+except Exception: print(0)" 2>/dev/null || echo 0)"
+    export CHAIN_BQA_PREV_ATTEMPTS
+    echo "[run-goal] REL-14: pending-infra make-up scheduled for: $BQA_MAKEUP_JOURNEYS (prior attempts: $CHAIN_BQA_PREV_ATTEMPTS)"
+  else
+    unset CHAIN_BQA_MAKEUP_JOURNEYS CHAIN_BQA_PREV_ATTEMPTS 2>/dev/null || true
+  fi
+
   echo "[run-goal] Step 1: goal-decomposer (mode: $DECOMPOSER_MODE)"
   # Pre-trim historical state — pass only the tail to the decomposer so token
   # usage stays flat as the session grows. Spec asks for "last 3 entries";
@@ -1614,6 +1712,10 @@ PY
   EVALUATOR_LOG_TAIL=$(_tail_or_placeholder "$EVALUATOR_LOG" 200 "(no entries yet — first iteration)")
   LESSONS_TAIL=$(_tail_or_placeholder "$LESSONS_FILE" 200 "(no lessons recorded yet)")
   ASSUMPTIONS_TAIL=$(_tail_or_placeholder "$ASSUMPTIONS_FILE" 200 "(no assumptions recorded yet)")
+  # REL-6: the evaluator-written iteration-state digest, inlined VERBATIM (the
+  # schema caps the file at 40 lines, so the 40-line budget below inlines the
+  # whole file; _tail_or_placeholder's byte cap guards a rogue oversized write).
+  ITER_STATE_INLINE=$(_tail_or_placeholder "$ITER_STATE_FILE" 40 "(first iteration — no prior state)")
   # Token-lean goal view (T1/T8): stable passing journeys digested to one line,
   # vision/anti-goals/failing journeys verbatim; plus an inline journey digest.
   # Both fail safe (full file / placeholder) — see lib/goal_gate.py.
@@ -1645,6 +1747,7 @@ Iteration index: $CURRENT_ITER
 Iter name: $ITER_NAME
 Prior verdict: $PRIOR_VERDICT
 Prior depth: $PRIOR_DEPTH
+Consecutive lean iterations dispatched: $LEAN_STREAK (hardening cadence: ${CHAIN_HARDENING_CADENCE:-4}; 0 = disabled)
 
 Project template: .claude/project-template.md
 Project goal (SLICED — vision + anti-goals + failing/target journeys verbatim; stable passing journeys digested to one line): $GOAL_SLICE_PATH
@@ -1669,6 +1772,13 @@ Journey state (inline digest; Read $JOURNEY_HISTORY only for fields the digest o
 \`\`\`
 $JOURNEY_DIGEST
 \`\`\`
+
+Iteration state (single-file digest the goal-evaluator overwrote after the last iteration; inlined verbatim):
+\`\`\`
+$ITER_STATE_INLINE
+\`\`\`
+\"Do not redo\" entries above are BINDING — do not re-plan or re-test them — unless docs/goal.md changed for that item.
+$( [[ -n "${CHAIN_BQA_MAKEUP_JOURNEYS:-}" ]] && echo "Pending-infra make-up targets: $CHAIN_BQA_MAKEUP_JOURNEYS. BINDING — include them as verify-only targets this iteration; do NOT re-plan their implementation — the code is present, only browser evidence is missing (prior browser-infra failure)." )
 
 $( [[ $CURRENT_ITER -gt 0 && -f "$GOAL_SESSION_DIR_LOCAL/iter-$((CURRENT_ITER-1))/eval.md" ]] && echo "Last iteration eval: $GOAL_SESSION_DIR_LOCAL/iter-$((CURRENT_ITER-1))/eval.md")
 
@@ -1761,6 +1871,15 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
     DEPTH="lean"
   fi
 
+  # SPEED-4 hardening-cadence backstop: a K-long lean streak forces a full
+  # hardening pass even when the spec says lean. The spec text stays as
+  # written; dispatch + telemetry carry the effective depth.
+  if [[ "$DEPTH" == "lean" ]] && goal_cadence_forces_full "$LEAN_STREAK" "$CURRENT_ITER"; then
+    echo "[run-goal] Hardening cadence: $LEAN_STREAK consecutive lean iterations — overriding spec depth lean → full (CHAIN_HARDENING_CADENCE=${CHAIN_HARDENING_CADENCE:-4}; 0 disables)."
+    DEPTH="full"
+    record_telemetry_event "depth_cadence_override" "$(jq -cn --arg s "$LEAN_STREAK" --arg k "${CHAIN_HARDENING_CADENCE:-4}" '{lean_streak:$s, cadence:$k}' 2>/dev/null || printf '{"lean_streak":"%s"}' "$LEAN_STREAK")"
+  fi
+
   TARGET_JOURNEYS=$(grep -m1 -E '^[[:space:]]*-?[[:space:]]*\*\*Target journeys:\*\*' "$ITER_SPEC_PATH" \
                       | sed -E 's/.*\*\*Target journeys:\*\*[[:space:]]*//' || echo "")
 
@@ -1794,13 +1913,16 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
     _full_extra_args=(--no-finalize)
     echo "[run-goal] Dispatching FULL pipeline via run-phase.sh ${_full_extra_args[*]} ..."
     if grep -q '\-\-no-finalize' "$SCRIPT_DIR/run-phase.sh"; then
+      printf 'full' > "$ITER_DIR/depth-dispatched"   # SPEED-4: cadence streak input (depth that actually runs)
       bash "$SCRIPT_DIR/run-phase.sh" "$ITER_NAME" "${_full_extra_args[@]}" || _exec_rc=$?
     else
       echo "[run-goal] run-phase.sh does not yet support --no-finalize. Falling back to lean for safety." >&2
+      printf 'lean' > "$ITER_DIR/depth-dispatched"
       bash "$SCRIPT_DIR/goal-iter-lean.sh" "$ITER_NAME" || _exec_rc=$?
     fi
   else
     echo "[run-goal] Dispatching LEAN pipeline via goal-iter-lean.sh ..."
+    printf 'lean' > "$ITER_DIR/depth-dispatched"
     bash "$SCRIPT_DIR/goal-iter-lean.sh" "$ITER_NAME" || _exec_rc=$?
   fi
 
@@ -1941,6 +2063,7 @@ Iteration artifacts (read what exists):
   Audit handoff: docs/handoffs/${ITER_NAME}-audit.md (full mode only)
   Browser QA results: reports/phase-${ITER_NAME}-ui-test-results.md
   Evidence: reports/qa/${ITER_NAME}-evidence/
+  Browser-infra token: $ITER_DIR/browser-infra.json  <-- if present: its listed journeys hit a browser INFRA failure (services/Chrome), not a product defect. With no fresh screenshot, score them partial with gap 'pending-infra' and set pending_infra: true in journey-history (methodology A.3); attempts >= 2 in the token = treat the browser infrastructure as a human-owned blocker (STALLED-class)
   Coherence audit: $COHERENCE_OUTPUT  <-- COHERENCE-FAIL vetoes GOAL_ACHIEVED and drives a consolidation CONTINUE
   Goal-edit drift note: $ITER_DIR/journeys-changed.md  <-- if present, each listed journey's prior pass is VOID until re-verified against the CURRENT goal text (your step 3)
 
@@ -1951,6 +2074,7 @@ $JOURNEY_DIGEST
 
 Prior session state:
   Journey history: $JOURNEY_HISTORY  <-- update this with new state (full atomic write)
+  Iteration state: $ITER_STATE_FILE  <-- OVERWRITE with a fresh ≤40-line digest per templates/iteration-state.md (your step 7); the next decomposer dispatch inlines it verbatim
   Evaluator log: $EVALUATOR_LOG  <-- append a new entry; do not overwrite or read the full file (last 5 entries pre-trimmed below)
   Lessons file: $LESSONS_FILE  <-- append a brief lesson entry capturing a non-obvious takeaway (1-3 sentences). Skip if nothing surprising happened.
   Assumption ledger: $ASSUMPTIONS_FILE  <-- append an entry when a scoring decision required interpreting an ambiguous goal (step 5b of your instructions). Skip when none — zero entries is normal.
@@ -1978,7 +2102,7 @@ The verdict line MUST appear at the top of $EVAL_OUTPUT and start exactly with:
 
 Also include a 'Depth Recommendation For Next Iteration:' line: lean or full.
 
-Then update $JOURNEY_HISTORY (full atomic write) and append an entry to $EVALUATOR_LOG.
+Then update $JOURNEY_HISTORY (full atomic write), OVERWRITE $ITER_STATE_FILE (templates/iteration-state.md shape, ≤40 lines), and append an entry to $EVALUATOR_LOG.
 STOP." || _eval_rc=$?
 
   record_agent_invocation_end "goal-evaluator" "$_eval_start" "$_eval_rc"

@@ -200,6 +200,14 @@ trap 'cleanup_iter_servers; chain_tmp_cleanup' EXIT
 # benchmark iter-0s died on exactly that parse before the guard existed).
 TARGET_JOURNEYS="$(replay_lane_spec_journeys 'Target journeys:' "$SPEC")"
 REQUIRED_JOURNEYS="$(replay_lane_spec_journeys 'Required-still-passing' "$SPEC")"
+# REL-14 make-up: journeys whose browser evidence was infra-blocked last
+# iteration ride the Required set as verify-only work (run-goal.sh exports the
+# set; empty/unset = today's behavior). Unioned BEFORE _bq_sig so checkpoint
+# reuse sees the real coverage signature — this engine-side union also covers
+# the resume path, where a reused spec never saw the decomposer's make-up line.
+if [[ -n "${CHAIN_BQA_MAKEUP_JOURNEYS:-}" ]]; then
+  REQUIRED_JOURNEYS="$(echo "$REQUIRED_JOURNEYS $CHAIN_BQA_MAKEUP_JOURNEYS" | tr ' ' '\n' | grep -E '^J-[0-9]+$' | sort -u | tr '\n' ' ' || true)"
+fi
 _bq_sig="${TARGET_JOURNEYS}|${REQUIRED_JOURNEYS}"
 
 # Lane path derivations (EVIDENCE_DIR, JOURNEY_SCRIPTS_DIR, REGRESSION_RESULTS,
@@ -307,11 +315,12 @@ replay_lane_paths "$ITER_NAME"
 
 # Golden partition + lane 1 (deterministic replay) — shared implementation in
 # lib/replay-lane.sh: stale-artifact hygiene, lint-quarantine of invalid
-# goldens, rc=5 → REPLAY_FAILED re-confirm via the LLM lane, any other failure
-# → ALL regression journeys fall back to the LLM lane, and the
+# goldens, rc=5 → REPLAY_FAILED re-confirm via the LLM lane, rc=6 → service
+# re-check + ONE retry then SKIPPED-INFRA on a second rc-6 (REL-5), any other
+# failure → ALL regression journeys fall back to the LLM lane, and the
 # CHAIN_REGRESSION_REPLAY=false hatch. Sets R_REPLAY, R_LLM, _use_replay,
-# REPLAY_FAILED — the exact globals _bqa_state_save ships across the SPEED-2
-# fork boundary.
+# REPLAY_FAILED, REPLAY_SKIPPED_INFRA — the exact globals _bqa_state_save
+# ships across the SPEED-2 fork boundary.
 replay_lane_partition_and_verify "$ITER_NAME"
 
 }
@@ -330,6 +339,7 @@ _bqa_state_save() {
     printf 'R_REPLAY=%q\n'             "${R_REPLAY:-}"
     printf 'R_LLM=%q\n'                "${R_LLM:-}"
     printf 'REPLAY_FAILED=%q\n'        "${REPLAY_FAILED:-}"
+    printf 'REPLAY_SKIPPED_INFRA=%q\n' "${REPLAY_SKIPPED_INFRA:-}"
     printf 'export QA_BACKEND_HEALTH_URL=%q\n'       "${QA_BACKEND_HEALTH_URL:-}"
     printf 'export QA_BACKEND_START_CMD=%q\n'        "${QA_BACKEND_START_CMD:-}"
     printf 'export QA_BACKEND_LOG=%q\n'              "${QA_BACKEND_LOG:-}"
@@ -370,7 +380,7 @@ _bqa_fork_consume() {
   fi
   replay_lane_paths "$ITER_NAME"
   cd "$REPO_ROOT"
-  echo "[goal-iter-lean] Consumed forked replay-lane results (frontend: ${FRONTEND_AVAILABLE:-?}, replay: ${_use_replay:-no}${REPLAY_FAILED:+, re-confirming via LLM: ${REPLAY_FAILED% }})."
+  echo "[goal-iter-lean] Consumed forked replay-lane results (frontend: ${FRONTEND_AVAILABLE:-?}, replay: ${_use_replay:-no}${REPLAY_FAILED:+, re-confirming via LLM: ${REPLAY_FAILED% }}${REPLAY_SKIPPED_INFRA:+, replay lane SKIPPED-INFRA — browser infra failed twice})."
   return 0
 }
 
@@ -689,7 +699,23 @@ _llm_csv="$(echo "$LLM_JOURNEYS" | tr ' ' ',' | sed 's/^,*//;s/,*$//')"
 
 _bqa_rc=0
 _bqa_dispatched="no"
-if [[ -n "$_llm_csv" || "$_use_replay" != "yes" ]]; then
+_bqa_infra_blocked="no"
+# REL-14 preflight (CHAIN_BQA_PREFLIGHT, default off): when the lane is about
+# to dispatch against a browser-visible frontend, probe services first (+ one
+# ensure_services_running retry) instead of burning a ~20m LLM dispatch on dead
+# infra. Persistent failure: skip the dispatch, write the out-of-band token —
+# the SKIPPED-stub block below keeps the evaluator fed and the merged verdict
+# enum untouched. FRONTEND_AVAILABLE=no paths (single-service projects, REL-12)
+# keep today's honest agent-side SKIP and are never tokenized here.
+if [[ "${CHAIN_BQA_PREFLIGHT:-false}" == "true" && "$FRONTEND_AVAILABLE" == "yes" \
+      && ( -n "$_llm_csv" || "$_use_replay" != "yes" ) ]]; then
+  if ! bqa_preflight; then
+    _bqa_infra_blocked="yes"
+    echo "[goal-iter-lean] REL-14 preflight: services still unreachable after re-check + retry — skipping the LLM browser-qa dispatch for: ${LLM_JOURNEYS:-(none)}" >&2
+    bqa_write_infra_token "$ITER_DIR" "$LLM_JOURNEYS" "services preflight failed after ensure_services_running retry" "preflight"
+  fi
+fi
+if [[ "$_bqa_infra_blocked" != "yes" && ( -n "$_llm_csv" || "$_use_replay" != "yes" ) ]]; then
   _bqa_dispatched="yes"
   run_browser_qa_llm "$_llm_csv" "$_llm_out" "$R_REPLAY" || _bqa_rc=$?
 fi
@@ -715,6 +741,18 @@ fi
 # so no stale FAIL survives the iteration on disk.
 if [[ "$_use_replay" == "yes" ]]; then
   replay_lane_merge_results "$UI_TEST_RESULTS" "$_llm_out"
+fi
+
+# REL-14 post-scan (same knob): a dispatch that returned but left no results
+# file (mid-run browser death; quota pauses excluded) or an all-SKIP results
+# file carrying an explicit browser-infra reason also earns the token — no
+# preflight can catch a Chrome that dies mid-run.
+if [[ "${CHAIN_BQA_PREFLIGHT:-false}" == "true" && "$_bqa_infra_blocked" != "yes" && "$_bqa_dispatched" == "yes" ]]; then
+  if [[ ! -f "$_llm_out" && "$_bqa_rc" -ne "${QUOTA_EXHAUSTED_EXIT_CODE:-75}" ]]; then
+    bqa_write_infra_token "$ITER_DIR" "$LLM_JOURNEYS" "browser-qa dispatch returned rc=$_bqa_rc with no results file" "postscan-missing"
+  elif _bqa_infra_reason="$(bqa_results_infra_reason "$UI_TEST_RESULTS")"; then
+    bqa_write_infra_token "$ITER_DIR" "$LLM_JOURNEYS" "$_bqa_infra_reason" "postscan"
+  fi
 fi
 
 # If no results artifact exists at all (and it was not a quota pause), leave a

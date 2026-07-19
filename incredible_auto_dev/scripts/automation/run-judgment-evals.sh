@@ -203,6 +203,9 @@ _prepare_goal_evaluator() {
   GOAL_SESSION_DIR="$SANDBOX/runs/goal-session-${SESSION_ID}"
   ITER_DIR="$GOAL_SESSION_DIR/iter-${CURRENT_ITER}"
   JOURNEY_HISTORY="$GOAL_SESSION_DIR/state/journey-history.json"
+  # REL-6: the fixtures' frozen trees carry no iteration-state file, so every
+  # case exercises the evaluator's write-it-fresh path inside the sandbox.
+  ITER_STATE_FILE="$GOAL_SESSION_DIR/state/iteration-state.md"
   EVALUATOR_LOG="$GOAL_SESSION_DIR/state/evaluator-log.md"
   LESSONS_FILE="$GOAL_SESSION_DIR/state/lessons.md"
   ASSUMPTIONS_FILE="$GOAL_SESSION_DIR/state/assumptions.md"
@@ -261,6 +264,7 @@ Iteration artifacts (read what exists):
   Audit handoff: docs/handoffs/${ITER_NAME}-audit.md (full mode only)
   Browser QA results: reports/phase-${ITER_NAME}-ui-test-results.md
   Evidence: reports/qa/${ITER_NAME}-evidence/
+  Browser-infra token: $ITER_DIR/browser-infra.json  <-- if present: its listed journeys hit a browser INFRA failure (services/Chrome), not a product defect. With no fresh screenshot, score them partial with gap 'pending-infra' and set pending_infra: true in journey-history (methodology A.3); attempts >= 2 in the token = treat the browser infrastructure as a human-owned blocker (STALLED-class)
   Coherence audit: $COHERENCE_OUTPUT  <-- COHERENCE-FAIL vetoes GOAL_ACHIEVED and drives a consolidation CONTINUE
   Goal-edit drift note: $ITER_DIR/journeys-changed.md  <-- if present, each listed journey's prior pass is VOID until re-verified against the CURRENT goal text (your step 3)
 
@@ -271,6 +275,7 @@ $JOURNEY_DIGEST
 
 Prior session state:
   Journey history: $JOURNEY_HISTORY  <-- update this with new state (full atomic write)
+  Iteration state: $ITER_STATE_FILE  <-- OVERWRITE with a fresh ≤40-line digest per templates/iteration-state.md (your step 7); the next decomposer dispatch inlines it verbatim
   Evaluator log: $EVALUATOR_LOG  <-- append a new entry; do not overwrite or read the full file (last 5 entries pre-trimmed below)
   Lessons file: $LESSONS_FILE  <-- append a brief lesson entry capturing a non-obvious takeaway (1-3 sentences). Skip if nothing surprising happened.
   Assumption ledger: $ASSUMPTIONS_FILE  <-- append an entry when a scoring decision required interpreting an ambiguous goal (step 5b of your instructions). Skip when none — zero entries is normal.
@@ -298,7 +303,7 @@ The verdict line MUST appear at the top of $VERDICT_FILE and start exactly with:
 
 Also include a 'Depth Recommendation For Next Iteration:' line: lean or full.
 
-Then update $JOURNEY_HISTORY (full atomic write) and append an entry to $EVALUATOR_LOG.
+Then update $JOURNEY_HISTORY (full atomic write), OVERWRITE $ITER_STATE_FILE (templates/iteration-state.md shape, ≤40 lines), and append an entry to $EVALUATOR_LOG.
 STOP.
 PROMPT_EOF
 )

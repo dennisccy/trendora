@@ -21,10 +21,11 @@ CLAUDE.md is auto-loaded into your system prompt — do not Read it again.
 2. `.claude/core.md` and `.claude/workflow.md` — universal rules and pipeline semantics
 3. The goal — your dispatch prompt inlines a **goal slice** (vision + anti-goals verbatim + full text of failing/target journeys + a one-line digest of stable passing ones). Use it as your primary goal source. Read the full `docs/goal.md` only when no slice was inlined, or when a journey outside the slice becomes relevant to your plan.
 4. Journey state — a per-journey digest is inlined in your prompt (in `--next` mode). Read `runs/goal-session-<sid>/state/journey-history.json` directly only when no digest was inlined or you need a field the digest omits.
-5. `runs/goal-session-<sid>/state/blueprint.md` — the coherence contract: **Information Architecture** (nav skeleton + the canonical home for each feature) and **Data Contract** (each displayed value → its single computing module → its single serving endpoint). In `--next` mode this is REQUIRED reading — you plan new work *into* this structure and register any new value in it. In `baseline` mode it does not exist yet; you CREATE it (see Baseline mode specifics).
-6. `runs/goal-session-<sid>/iter-<N-1>/eval.md` — most recent evaluator verdict and recommendation (in `--next` mode)
-7. `runs/goal-session-<sid>/iter-<N-1>/coherence.md` — last coherence verdict (in `--next` mode). If it was `COHERENCE-FAIL`, this iteration MUST be a consolidation pass that fixes the listed violations before adding any new scope.
-8. Codebase state via Glob/Grep/Read — verify what already exists before proposing work
+5. Iteration state — `runs/goal-session-<sid>/state/iteration-state.md` is inlined VERBATIM in your dispatch prompt (its "Iteration state" block): one-line journey table, active blockers, last 2 verdicts + why, and a **Do not redo** list. Treat "Do not redo" entries as **BINDING** — do not re-plan, re-implement, or re-test them — unless `docs/goal.md` changed for that item. An absent file (iteration 0) inlines as "(first iteration — no prior state)". Trust this digest before re-deriving state from history files, and do not Read the file separately — the inline IS the whole file. Its single writer is the goal-evaluator; never create or edit it yourself.
+6. `runs/goal-session-<sid>/state/blueprint.md` — the coherence contract: **Information Architecture** (nav skeleton + the canonical home for each feature) and **Data Contract** (each displayed value → its single computing module → its single serving endpoint). In `--next` mode this is REQUIRED reading — you plan new work *into* this structure and register any new value in it. In `baseline` mode it does not exist yet; you CREATE it (see Baseline mode specifics).
+7. `runs/goal-session-<sid>/iter-<N-1>/eval.md` — most recent evaluator verdict and recommendation (in `--next` mode)
+8. `runs/goal-session-<sid>/iter-<N-1>/coherence.md` — last coherence verdict (in `--next` mode). If it was `COHERENCE-FAIL`, this iteration MUST be a consolidation pass that fixes the listed violations before adding any new scope.
+9. Codebase state via Glob/Grep/Read — verify what already exists before proposing work
 
 **Do NOT Read** `runs/goal-session-<sid>/state/evaluator-log.md` or `runs/goal-session-<sid>/state/lessons.md`. The orchestrator script (`run-goal.sh`) pre-trims those files and inlines the recent tail into your prompt — use the inlined content. These files grow unboundedly across a long session, so reading them directly costs more tokens every iteration.
 
@@ -141,8 +142,31 @@ Mini example — good vs bad target selection with the same state (J-03 regresse
 
 ## Picking depth
 
-- **lean** — small change, low risk, narrow scope. Use when the iteration adds or modifies one component, one endpoint, or one journey-relevant flow. Lean cycle = developer → reviewer → browser-qa.
-- **full** — risky, large, structural, or a hardening pass after several lean iterations. Use when the iteration crosses backend+frontend boundaries, touches data model, requires new tests beyond browser smoke, or the prior evaluator returned `ESCALATE`. Full cycle runs the entire 11-step phase pipeline.
+- **lean** — the default. Use for everything that does not hit a full trigger below,
+  explicitly including: single-module backend work, a new endpoint plus its UI use,
+  bug fixes, and any change whose blast radius you can name in one sentence. Lean
+  iterations still write and run unit/integration tests — the developer executes the
+  spec's TESTING REQUIREMENTS (TC- scenarios) at every depth. What lean skips is the
+  full pipeline's extra agents (planner, functional test plan, QA loop, UI-impact /
+  UI-test-design / UX-regression, audit, closure), not testing. Lean cycle =
+  developer → reviewer → browser-qa.
+- **full** — the exception, for work whose failure modes cross agent boundaries
+  (full cycle = the entire 11-step phase pipeline). Use when ANY of these triggers
+  holds:
+  1. **Structural / cross-cutting** — the change refactors shared architecture or
+     touches ≥3 modules whose interactions are not covered by one journey's tests.
+  2. **Data model** — it adds/changes persisted schema or a blueprint Data-Contract
+     value's computing module or serving endpoint.
+  3. **Prior ESCALATE** — the last evaluator verdict was `ESCALATE` (mandatory, no
+     exceptions).
+  4. **Hardening cadence** — the last `CHAIN_HARDENING_CADENCE` (default 4)
+     consecutive dispatched iterations were all lean (the engine inlines
+     "Consecutive lean iterations" in your prompt; the count resets on any full).
+     This periodic full pass audits the ACCUMULATED tree, not just this iteration's
+     diff — keep its new scope small.
+
+"The work needs unit tests" is NOT a full trigger — every iteration needs tests.
+When no trigger holds, lean is not a risk you are taking; it is the design.
 
 If the prior evaluator log emitted `ESCALATE`, you MUST set depth to `full` for this iteration.
 
@@ -199,7 +223,7 @@ Always restate the anti-goals from `docs/goal.md` verbatim under Goal Mode Metad
 1. **Anti-goals restated verbatim** under Goal Mode Metadata (copy-paste, not paraphrase — paraphrase drifts).
 2. **Every new displayed value is registered**: each Data-contract addition names ONE computing module + ONE serving endpoint, and you edited `blueprint.md` to match. "None" is written explicitly when true.
 3. **DEFINITION OF DONE is binary**: every checkbox is machine-checkable or browser-verifiable ("J-07 passes via browser-qa" ✚; "search works well" ✖). If you can't phrase a criterion binarily, the scope is too vague — narrow it.
-4. **Depth is justified** by the triggers in "Picking depth" (cite which trigger in BACKGROUND). ESCALATE from last eval ⇒ full, no exceptions.
+4. **Depth is justified**: full cites which numbered trigger (1-4) in BACKGROUND; lean states "no full trigger holds" — needing unit tests is never the cited reason. ESCALATE from last eval ⇒ full, and a met hardening cadence ⇒ full, no exceptions.
 5. **Target selection followed the priority rubric** — if you deviated (e.g., skipped a regressed journey), the reason is stated in BACKGROUND.
 6. **Test-first weighting holds (D6)**: every DEFINITION OF DONE checkbox and every Data-contract addition maps to ≥1 `TC-` scenario line in TESTING REQUIREMENTS (given / when / then with an observable result; no banned vague terms), and each Data-contract addition carries exact field name(s) + type/shape. IN SCOPE implementation bullets stay coarse — name the surface or file, not the code inside it. If the spec must shrink, cut implementation narrative — NEVER TC- scenarios or Data-contract definitions.
 
