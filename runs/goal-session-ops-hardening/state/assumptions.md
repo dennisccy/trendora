@@ -28,3 +28,31 @@ logfile/memory-cap layer remains, while keeping J-06 `failing` (its 8/11 fast pa
 pre-existing baseline behavior, not progress toward J-06's own new deliverables, all of which are
 absent). Either way neither counts toward GOAL_ACHIEVED, so the CONTINUE verdict is unaffected.
 **Reversible:** yes
+
+## iter-1 — goal-decomposer
+
+**Ambiguity:** goal.md's lessons/binding notes establish "requested range always wins" for
+explicit backfill requests, but the cadence gate `_cadence_allowed_dates` today filters both the
+plain `backfill`/`both` kinds AND the `rebuild` kind (which internally widens the range to the
+full historical calendar before calling the same `_do_backfill`); it is not stated whether the
+cadence bypass should extend to `rebuild` too.
+**We chose:** scoped the "requested range always wins" bypass to explicit `backfill`/`both`
+requests only. `rebuild` keeps applying `_cadence_allowed_dates` unchanged — no Must-have journey
+this cycle exercises `rebuild`, the user does not supply its date range (`validate_job_request`
+already exempts it from range validation), and changing its snapshot density is outside this
+iteration's tested scope.
+**Reversible:** yes
+
+## iter-1 — goal-decomposer
+
+**Ambiguity:** J-03's acceptance states "the chunk plan derives from the config `import_chunking`
+values; the UI progress reflects the same plan the engine executes," but `_do_backfill` today has
+no date-window chunking at all — `chunk_index`/`chunk_total` are populated only by the fetch/expand
+stage. It is not stated whether removing the `max_range_days` rejection alone satisfies J-03, or
+whether real date-window chunking must be added to the backfill stage.
+**We chose:** read the acceptance language literally and scoped J-03 to include adding real
+date-window chunking to `_do_backfill` (splitting `[start,end]` into
+`import_chunking.date_window_days`-sized windows, populating the existing dormant
+`chunk_index`/`chunk_total` fields the frontend already renders for fetch jobs) — not just the cap
+removal.
+**Reversible:** yes

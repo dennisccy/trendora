@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-0",
+  "base_url": "http://localhost:3255",
+  "iteration": 0,
+  "not_yet": true,
+  "steps": []
+}
