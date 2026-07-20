@@ -246,3 +246,28 @@ for mandatory re-verification next iter. Did NOT treat the coverage gap as a reg
 ≠ evidence of failure), and noted the audit's read that the ingest-time warm actually reinforces J-05's
 "precomputed at ingest" claim.
 **Reversible:** yes
+
+## iter-6 — goal-decomposer
+
+**Ambiguity:** iter-5's evaluator offered three alternative directions to close J-06's Dashboard
+browser-latency violation without mandating one: an HTTP/2 uvicorn launcher change, coalescing the
+Dashboard's 10-13 on-load calls into fewer requests, or a documented browser-realistic budget re-commit.
+**We chose:** a frontend-only fetch-scheduling/staggering fix (no new backend endpoint, no TLS/HTTP2
+launcher change, no budget loosening) — because (a) any combined/coalescing endpoint would create a
+second serving path for values already registered in the Data Contract (explicitly barred), (b) HTTP/2
+without TLS is not viable in browsers and adding TLS/cert machinery is disproportionate to a local-first,
+offline-deterministic tool, and (c) curl's own baseline (0.79-1.0s) already sits comfortably under the
+1.5s budget, so removing browser connection-queuing alone should close the gap without loosening any
+committed number.
+**Reversible:** yes
+
+## iter-6 — goal-decomposer
+
+**Ambiguity:** `GET /api/data/availability` has no committed budget in `reports/perf-budgets.md`; iter-5's
+QA explicitly said its over-budget-class real-browser reading (2.9-3.0s) was "not a test failure per
+TC-07's criteria" (unbudgeted) but "flagged for future budget commitment." goal.md's J-06 step 2 only
+names the boot budget and the cold `/api/data` budget as required additions, not this sibling endpoint.
+**We chose:** to commit an explicit budget for it this iteration (generic ≤1.5s endpoint class, same file)
+rather than leave it permanently unbudgeted, because it shares J-06's exact Dashboard-class root cause and
+the iter-5 evaluator explicitly recommended folding it into the same fix decision.
+**Reversible:** yes
