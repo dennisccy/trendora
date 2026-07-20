@@ -1,0 +1,78 @@
+{
+  "journeys": {
+    "J-01": {
+      "id": "J-01",
+      "name": "Backfill honors the requested range and explains zero-work",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-4",
+      "last_passing_iter": "goal-ops-hardening-iter-4",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-4-evidence/J-01-verify.png",
+      "spec_hash": "06b26eaaf82dcdb532465e5c287f1177681a6c8697e4f96cfadddb4fc60b29ad"
+    },
+    "J-03": {
+      "id": "J-03",
+      "name": "No per-run range cap",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-4",
+      "last_passing_iter": "goal-ops-hardening-iter-4",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-4-evidence/J-03-verify.png",
+      "spec_hash": "5457740bbb0cea982e9b1241f19ca50836ff584bbb960a5a088f7168d820c271"
+    },
+    "J-04": {
+      "id": "J-04",
+      "name": "Non-blocking boot with visible status",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-4",
+      "last_passing_iter": "goal-ops-hardening-iter-4",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-4-evidence/UT-J-04-step6-interrupted-job.png",
+      "spec_hash": "4074a9c952a9a143dc543efef3c8d3e0a1e33a848ab250ec90c7c2f568dbcff8"
+    },
+    "J-05": {
+      "id": "J-05",
+      "name": "Aggregates are precomputed at ingest, never on the fly",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-4",
+      "last_passing_iter": "goal-ops-hardening-iter-4",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-4-evidence/UT-03-awaiting-snapshot-badge.png",
+      "spec_hash": "63dd5bf0983454e48338557d0f2b1e5ce9726d7aa247c20174ac9323f637564b"
+    },
+    "J-06": {
+      "id": "J-06",
+      "name": "Pages load only what they need",
+      "status": "failing",
+      "last_verified_iter": "goal-ops-hardening-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-0-evidence/J-06-backtest-still-loading.png",
+      "spec_hash": "a9654dc139add9c161b5d7e59a431f78bd94fdf0f26b15c4fe2c83a1007db045"
+    }
+  },
+  "anti_goal_violations": [
+    {
+      "iter": "goal-ops-hardening-iter-1",
+      "anti_goal": "AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders.",
+      "severity": "critical",
+      "evidence": "Interrupted backfill rows served a fabricated '0 calendar days · 0 already snapshotted · 0 non-trading' breakdown for ranges that were really hundreds of days (browser-qa UT-14 Additional observation, reproduced twice on 517-day jobs). Found and FIXED intra-iteration by the audit (Finding B1): _run_detail gates the four breakdown fields to null on _breakdown_computed (calendar_days>0), regression-tested. Confirmed in working tree: apps/backend/app/engine/data_manager.py:3017,3032-3035.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-2",
+      "anti_goal": "AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders.",
+      "severity": "critical",
+      "evidence": "REVIEW pass-1 CRITICAL: coverage_from_storage regressed the app-wide as-of switcher — selecting an already-ingested historical date served a FALSE all-zero 'not yet computed' sentinel instead of real coverage (only the single current-latest as-of ever had a persisted row). FIXED intra-iteration by dev (two layers: _persist_per_date_coverage_snapshots at ingest for new dates + coverage_from_storage read-path self-heal for legacy explicit as_of, both via the canonical _compute_coverage_uncached). Re-verified: browser-qa UT-05 cross-checked 2015-04-01->360 and 2015-01-16->354 byte-exact vs direct API; 2 regression tests assert symbol_count==1 (REAL) vs 0 sentinel. Review pass-2 = PASS_WITH_NOTES.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-2",
+      "anti_goal": "AG-3 (dimension): displayed numbers must be correct — a fetch that lands new bars silently blanks the DEFAULT /data coverage panel to false all-zeros.",
+      "severity": "minor",
+      "evidence": "Audit Finding B1 + browser-qa 'Additional Finding' (both live-reproduced iter-2): a fetch that lands >=1 bar changed the dataset_version fingerprint, so no current-stamp coverage_snapshot row matched and the default as_of=None visit fell to the honest-empty all-zero sentinel for a fully-ingested DB until restart/backfill. RESOLVED iter-3: the B1 fix widens _run_job's finalize gate with a new elif firing for successful fetch/expand, calling the canonical refresh_coverage_snapshot (no second derivation) gated by _coverage_snapshot_is_current so a zero-work fetch pays nothing. Independently verified by the audit code-trace + 6 new unit tests + live J-03-verify.png showing /data serving real non-zero coverage (540/591/5380/762).",
+      "resolved": true
+    }
+  ],
+  "updated_at": "2026-07-20T15:02:47Z"
+}

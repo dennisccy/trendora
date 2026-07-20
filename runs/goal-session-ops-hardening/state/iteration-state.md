@@ -1,38 +1,33 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 4 · **Date:** 2026-07-20 · **Verdict:** CONTINUE
+**After iteration:** 5 · **Date:** 2026-07-20 · **Verdict:** CONTINUE
 
 ## Journeys
 
-4 passing (J-01 J-03 J-04 J-05) · 1 failing (J-06) — 5 total
+2 passing (J-01 J-03) · 2 unknown (J-04 J-05 — not replayed this cycle) · 1 failing (J-06) — 5 total
 
 ## Active blockers
 
-- none blocking. Next target: **J-06** ("Pages load only what they need" — measurement
-  capstone, last failing journey), dev-owned, no human blocker.
-- Closure-gate item (not blocking now): J-05 + J-06 `[NEW]` `demo.sh --session-live`
-  walkthrough bullets are deferred showcase artifacts — produce both (or human accepts
-  deferral) before the final GOAL_ACHIEVED gate. See assumptions.md.
-- Reporting defect (not product): `merge_ui_test_results.py` drops the browser-qa `## Notes`
-  section + mis-sums the header — read the `.llm.md` raw file, not the merged one.
+- **J-06 (dev-owned):** Dashboard `/api/indexes?full=true` = 1.68–2.19s in a real browser (3/3) vs ≤1.5s
+  budget — browser HTTP/1.1 6-conn/origin queuing (curl 0.79–0.95s in-budget). Fix via HTTP/2 on the
+  uvicorn launcher, coalesce the Dashboard's 10-13 on-load calls, OR re-commit a browser-realistic budget
+  in `reports/perf-budgets.md` (fold in `/api/data/availability`, same class ~2.9–3.0s).
+- **Regression evidence (dev-owned):** J-01 golden-script step-6 proxy ("2026-05-15" on `/scanner-runs`)
+  is stale vs the now-750-row unpaginated run list — fix `runs/goal-session-ops-hardening/journey-scripts/J-01.json`;
+  J-04/J-05 golden scripts were skipped this cycle — run them to move J-04/J-05 out of `unknown`.
 
 ## Last 2 verdicts
 
-- iter 4: CONTINUE — J-05 partial→passing; B3 (false "Backend unavailable" on ordinary fetch)
-  + F1 (frozen finalize heartbeat) fixed and live-verified across all lanes; J-06 last failing.
-- iter 3: CONTINUE — J-05 stayed partial; B1/B2 backend correct but browser story blocked by
-  B3/F1 + a skipped cold-boot check (all closed this iter).
+- iter 5: CONTINUE — J-06 backend fix correct but still fails TC-02 (Dashboard browser-budget); J-01 replay
+  miss is a proven-stale proxy, not a regression; J-04/J-05 unreplayed.
+- iter 4: CONTINUE — J-05 partial→passing (B3+F1 fixed & live-verified); J-06 deferred.
 
 ## Do not redo
 
-- B3 fix: readiness servability is benchmark-scoped (`_latest_benchmark_bar_date`, one indexed
-  per-symbol query) + 4th `awaiting_snapshot` state + `readiness_detail` field — readiness.py /
-  health.py / api.ts / health-badge.tsx. Do NOT revert to whole-table `latest_data_date`.
-- F1 fix: bare `prog.tick()` in BOTH finalize per-date loops (coverage + market-phase) in
-  data_manager.py `_refresh_ingest_aggregates` / `_persist_per_date_coverage_snapshots`.
-- J-05 backend (iter-2/3): `coverage_snapshot` table + ingest finalize hooks + fetch/expand
-  finalize gate + `aggregates_refreshed` nullability — settled, do not touch.
-- Cold-boot check (UT-08) now executed; literal "all-zero DB" precondition is architecturally
-  unreachable (main.py lifespan seeds before serving) — don't re-chase that framing.
-- start-backend.sh memory-cap / malloc-arena / logfile enforcement (iter-2) — done.
-- `ensure_latest_snapshot` + boot warm-up loop — left unchanged by design; dormant vs offline seed.
+- `ForwardAggregateCache` fix for `GET /api/backtest` (34.77s→0.138s, ~252×, byte-identical, honest
+  cold-miss, correct dataset_version invalidation) — verified by review/QA/audit. Lives in
+  `forward_testing.py forward_aggregates_cached` + `models.py ForwardAggregateCache` + `_refresh_ingest_aggregates` warm block. Shippable as-is.
+- J-06 backend audit (TC-13): all 11 endpoints traced; `/api/runs` N+1 measured in-budget, left unfixed by design.
+- B3/F1 readiness + heartbeat fixes (iter-4) — settled; `readiness.py`/`health-badge.tsx` out of scope.
+- Before merge run `pytest tests/test_api_backtest.py tests/test_mcp_window.py -v` (loaded_engine suite unrun this cycle).
+- Closure-gate: J-05 + J-06 `demo.sh --session-live` walkthroughs still owed before GOAL_ACHIEVED.

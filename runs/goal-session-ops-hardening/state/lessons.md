@@ -92,3 +92,29 @@ reached the same finding.
 **Applies to:** any future goal-evaluator reading browser-qa results for this repo while the merge
 script stays unfixed — whenever the merged `ui-test-results.md` references a `## Notes` section it
 does not contain, open the `.llm.md` sibling before scoring any target journey.
+
+## iter-5 — 2026-07-20T22:45:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** curl-based perf measurement systematically UNDER-reports real page latency: the developer's
+harness measured /api/indexes?full=true at 0.79–0.95s (in-budget) while a real browser hit 1.68–2.19s
+(over-budget, 3/3) because Chrome caps at 6 connections/origin against HTTP/1.1 uvicorn and the Dashboard
+fires 10-13 same-origin calls in one ~10ms window. Any "pages load within budget" journey must be scored
+on browser-measured latency, not curl — and a page's TOTAL on-load call fan-out is itself the risk, not
+just each endpoint's isolated cost. Two endpoints (/api/indexes, /api/data/availability) are in this class.
+**Applies to:** any iter measuring or asserting page-load performance budgets; any iter adding on-load API
+calls to an already call-heavy page (Dashboard, Data Manager).
+
+## iter-5 — 2026-07-20T22:45:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** deterministic golden-script replay assertions that check for a hard-coded historical value on a
+GROWING unpaginated list go stale silently: J-01's step-6 expected "2026-05-15" on /scanner-runs, but the
+run history grew from ~180 (when the script was authored, iter-1) to 750 rows, pushing that date below the
+fold / past the runner's step timeout — producing a FAIL that looks like a regression but is a test-harness
+artifact (the run row still exists; the display path was untouched). A required-still-passing replay FAIL
+must be adjudicated (DB query + is-the-code-path-in-the-diff check + screenshot), not auto-treated as
+REGRESSION — and golden scripts should assert on data the journey's own action produces, not on a fixed
+proxy row on a page the journey doesn't change.
+**Applies to:** any iter whose measurement/backfill runs add rows to /scanner-runs or /api/runs; any
+goal-evaluator triaging a required-still-passing deterministic-replay FAIL with no LLM-fallback adjudication.

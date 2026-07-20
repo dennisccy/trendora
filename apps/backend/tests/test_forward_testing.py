@@ -33,6 +33,7 @@ from app.engine.forward_testing import (
     compute_drawdown_expectations,
     compute_drawdown_expectations_cached,
     compute_forward_aggregates,
+    forward_aggregates_cached,
     forward_excursions,
     forward_return,
     max_drawdown,
@@ -45,6 +46,7 @@ from app.engine.scanner import run_scan
 from app.models import (
     DailyPrice,
     EventStudyCache,
+    ForwardAggregateCache,
     ForwardReturn,
     ScannerResult,
     ScannerRun,
@@ -808,6 +810,99 @@ def test_aggregates_as_of_scoped_consistency_invariant_relocated(aggregates_engi
     assert attr["distribution"]["n"] == overall["n"]
     assert sum(r["n"] for r in attr["by_sector"]) == overall["n"]
     assert sum(r["n"] for r in attr["by_rank_band"]) == overall["n"]
+
+
+# ==================================================================================================
+# forward_aggregates_cached (ops-hardening iter-5, J-06) — the ForwardAggregateCache performance layer.
+# GET /api/backtest called compute_forward_aggregates once per configured horizon (5) on EVERY request;
+# measured live at 34.77s for one request (reports/perf-budgets.md). This cache mirrors
+# research.event_study_cached / market_phase.market_phase_cached / this module's own
+# compute_drawdown_expectations_cached exactly.
+# ==================================================================================================
+def test_forward_aggregates_cached_byte_identical_and_single_row(aggregates_engine):
+    """A cache MISS then HIT both return a payload BYTE-IDENTICAL to a fresh uncached
+    `compute_forward_aggregates` call, and exactly ONE `ForwardAggregateCache` row is written for this
+    (horizon, as_of) (no duplicate insert on the second call)."""
+    engine, H = aggregates_engine
+    cfg = load_config()
+    as_of = date(2025, 1, 10)
+    with Session(engine) as session:
+        fresh = compute_forward_aggregates(session, H, cfg, as_of=as_of)
+        miss = forward_aggregates_cached(session, H, cfg, as_of=as_of)
+        hit = forward_aggregates_cached(session, H, cfg, as_of=as_of)
+        rows = session.exec(
+            select(ForwardAggregateCache).where(
+                ForwardAggregateCache.horizon == H,
+                ForwardAggregateCache.asof_key == as_of.isoformat(),
+            )
+        ).all()
+    assert json.dumps(fresh, sort_keys=True) == json.dumps(miss, sort_keys=True) == json.dumps(hit, sort_keys=True)
+    assert len(rows) == 1
+
+
+def test_forward_aggregates_cached_avoids_recompute_on_hit(aggregates_engine, monkeypatch):
+    """The SECOND call for the SAME (horizon, as_of) never re-invokes the uncached
+    `compute_forward_aggregates` — proven by monkeypatching it to count calls (a call-count proof, not
+    just a byte-match, so a bug that silently recomputed-but-still-matched would still fail this test)."""
+    import app.engine.forward_testing as forward_testing_module
+
+    engine, H = aggregates_engine
+    cfg = load_config()
+    as_of = date(2025, 1, 10)
+    call_count = {"n": 0}
+    real = forward_testing_module.compute_forward_aggregates
+
+    def _counting(*args, **kwargs):
+        call_count["n"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(forward_testing_module, "compute_forward_aggregates", _counting)
+    with Session(engine) as session:
+        forward_testing_module.forward_aggregates_cached(session, H, cfg, as_of=as_of)  # MISS -> 1 call
+        forward_testing_module.forward_aggregates_cached(session, H, cfg, as_of=as_of)  # HIT -> 0 more
+        forward_testing_module.forward_aggregates_cached(session, H, cfg, as_of=as_of)  # HIT -> 0 more
+    assert call_count["n"] == 1
+
+
+def test_forward_aggregates_cached_refreshes_on_dataset_version_change(aggregates_engine):
+    """The cache refreshes when the dataset changes (no stale figure): adding one more forward-return
+    observation on the SAME already-included run bumps `_dataset_version`, so the next call for the SAME
+    (horizon, as_of) recomputes (a genuinely larger cohort) rather than serving the pre-change payload,
+    and the stale row is pruned (iter-2 B1 lesson: a fingerprint-only invalidation must not serve a
+    false/stale figure — this reuses the SAME already-hardened `research._dataset_version` stamp, never
+    a new invalidation mechanism)."""
+    engine, H = aggregates_engine
+    cfg = load_config()
+    as_of = date(2025, 1, 10)
+    with Session(engine) as session:
+        before = forward_aggregates_cached(session, H, cfg, as_of=as_of)
+        from app.engine.research import _dataset_version
+        v_before = _dataset_version(session)
+        rows_before = session.exec(
+            select(ForwardAggregateCache).where(
+                ForwardAggregateCache.horizon == H, ForwardAggregateCache.asof_key == as_of.isoformat(),
+            )
+        ).all()
+        assert len(rows_before) == 1 and rows_before[0].dataset_version == v_before
+
+        # change the dataset: one more forward-return observation on run1 (the already-included latest
+        # run) -- a genuinely different cohort at the SAME (horizon, as_of) key.
+        run1 = session.exec(select(ScannerRun).where(ScannerRun.asof_date == as_of)).one()
+        _add_result(session, run1.id, "ZZZ", "A", "Actionable", "Technology", 5)
+        _add_fr(session, run1.id, "ZZZ", H, 1.00)
+        session.commit()
+        v_after = _dataset_version(session)
+        assert v_after != v_before
+
+        after = forward_aggregates_cached(session, H, cfg, as_of=as_of)
+        rows_after = session.exec(
+            select(ForwardAggregateCache).where(
+                ForwardAggregateCache.horizon == H, ForwardAggregateCache.asof_key == as_of.isoformat(),
+            )
+        ).all()
+    assert len(rows_after) == 1 and rows_after[0].dataset_version == v_after
+    assert before["overall"]["n"] == 6
+    assert after["overall"]["n"] == 7  # the recompute picked up the new ZZZ observation
 
 
 # ==================================================================================================

@@ -4,51 +4,55 @@
       "id": "J-01",
       "name": "Backfill honors the requested range and explains zero-work",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-4",
-      "last_passing_iter": "goal-ops-hardening-iter-4",
+      "last_verified_iter": "goal-ops-hardening-iter-5",
+      "last_passing_iter": "goal-ops-hardening-iter-5",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-4-evidence/J-01-verify.png",
-      "spec_hash": "06b26eaaf82dcdb532465e5c287f1177681a6c8697e4f96cfadddb4fc60b29ad"
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-5-evidence/J-01-verify.png",
+      "spec_hash": "06b26eaaf82dcdb532465e5c287f1177681a6c8697e4f96cfadddb4fc60b29ad",
+      "note": "Replay steps 1-5 PASS (incl. '2 non-trading' zero-work explanation = actual acceptance). Step-6 proxy assertion ('2026-05-15' on /scanner-runs) missed — adjudicated a STALE golden-script assertion, NOT a product regression: audit T1 direct DB query confirms the 2026-05-15 run exists, runs-display code path (runs.py/scanner-runs) is untouched in the diff, and J-01-verify.png shows a healthy 750-row run table (2026-05-15 now below the fold). Golden script needs its step-6 proxy fixed next iter."
     },
     "J-03": {
       "id": "J-03",
       "name": "No per-run range cap",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-4",
-      "last_passing_iter": "goal-ops-hardening-iter-4",
+      "last_verified_iter": "goal-ops-hardening-iter-5",
+      "last_passing_iter": "goal-ops-hardening-iter-5",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-4-evidence/J-03-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-5-evidence/J-03-verify.png",
       "spec_hash": "5457740bbb0cea982e9b1241f19ca50836ff584bbb960a5a088f7168d820c271"
     },
     "J-04": {
       "id": "J-04",
       "name": "Non-blocking boot with visible status",
-      "status": "passing",
+      "status": "unknown",
       "last_verified_iter": "goal-ops-hardening-iter-4",
       "last_passing_iter": "goal-ops-hardening-iter-4",
       "first_seen_iter": "goal-ops-hardening-iter-0",
       "last_evidence_path": "reports/qa/goal-ops-hardening-iter-4-evidence/UT-J-04-step6-interrupted-job.png",
-      "spec_hash": "4074a9c952a9a143dc543efef3c8d3e0a1e33a848ab250ec90c7c2f568dbcff8"
+      "spec_hash": "4074a9c952a9a143dc543efef3c8d3e0a1e33a848ab250ec90c7c2f568dbcff8",
+      "note": "Coverage gap: NOT replayed this cycle (only J-01/J-03 ran). Shared _refresh_ingest_aggregates was modified additively (F1 tick() idiom reused per horizon). No failing evidence; carry prior passing. Re-run J-04 golden script next iter."
     },
     "J-05": {
       "id": "J-05",
       "name": "Aggregates are precomputed at ingest, never on the fly",
-      "status": "passing",
+      "status": "unknown",
       "last_verified_iter": "goal-ops-hardening-iter-4",
       "last_passing_iter": "goal-ops-hardening-iter-4",
       "first_seen_iter": "goal-ops-hardening-iter-0",
       "last_evidence_path": "reports/qa/goal-ops-hardening-iter-4-evidence/UT-03-awaiting-snapshot-badge.png",
-      "spec_hash": "63dd5bf0983454e48338557d0f2b1e5ce9726d7aa247c20174ac9323f637564b"
+      "spec_hash": "63dd5bf0983454e48338557d0f2b1e5ce9726d7aa247c20174ac9323f637564b",
+      "note": "Coverage gap: NOT replayed this cycle. Audit notes this iteration's ingest-time forward-aggregate warm REINFORCES J-05's 'precomputed at ingest' claim, but no fresh replay ran. Carry prior passing. Re-run J-05 golden script next iter."
     },
     "J-06": {
       "id": "J-06",
       "name": "Pages load only what they need",
       "status": "failing",
-      "last_verified_iter": "goal-ops-hardening-iter-0",
+      "last_verified_iter": "goal-ops-hardening-iter-5",
       "last_passing_iter": null,
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-0-evidence/J-06-backtest-still-loading.png",
-      "spec_hash": "a9654dc139add9c161b5d7e59a431f78bd94fdf0f26b15c4fe2c83a1007db045"
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-5-evidence/TC-02-dashboard.png",
+      "spec_hash": "a9654dc139add9c161b5d7e59a431f78bd94fdf0f26b15c4fe2c83a1007db045",
+      "note": "10/11 pages within budget; the GET /api/backtest violation (34.77s->0.138s, ~252x) was genuinely fixed via ForwardAggregateCache (byte-identical, verified). Still FAILING on TC-02: /api/indexes?full=true measures 1678/2185/2054ms > 1.5s in a real browser (3/3), a browser HTTP/1.1 6-conn/origin queuing gap invisible to curl (0.79-0.95s). Blocked on the audit's B1 (fix latency via HTTP/2 or Dashboard call-coalescing, or re-commit a browser-realistic budget)."
     }
   },
   "anti_goal_violations": [
@@ -74,5 +78,5 @@
       "resolved": true
     }
   ],
-  "updated_at": "2026-07-20T15:02:47Z"
+  "updated_at": "2026-07-20T22:45:00Z"
 }

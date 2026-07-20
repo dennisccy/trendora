@@ -68,6 +68,7 @@ from app.models import (
     CoverageSnapshot,
     DailyPrice,
     DataProviderRun,
+    ForwardAggregateCache,
     ForwardReturn,
     ImportCheckpoint,
     ScannerResult,
@@ -1042,7 +1043,8 @@ def test_finalize_hook_persists_coverage_snapshot_and_warms_aggregates(finalize_
     """TC-1/TC-5 — a finalize hook call for a job that newly created a snapshot on `d` persists exactly one
     `coverage_snapshot` row for the current stamp and reports every category this fixture's data supports
     as refreshed: `latest_snapshot` (this run created a snapshot), `coverage` + `membership_timeline` (one
-    compute warms both), `market_phase` (the new date), `research_hot_keys` (the default hot key)."""
+    compute warms both), `market_phase` (the new date), `forward_aggregates` (ops-hardening iter-5: the
+    current latest run's per-horizon forward-aggregate cache), `research_hot_keys` (the default hot key)."""
     engine, d = finalize_hook_engine
     cfg = load_config()
     with Session(engine) as session:
@@ -1050,7 +1052,8 @@ def test_finalize_hook_persists_coverage_snapshot_and_warms_aggregates(finalize_
         prog.new_snapshot_dates = [d]
         refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
     assert set(refreshed) == {
-        "latest_snapshot", "coverage", "membership_timeline", "market_phase", "research_hot_keys",
+        "latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates",
+        "research_hot_keys",
     }
     with Session(engine) as session:
         rows = session.exec(select(CoverageSnapshot)).all()
@@ -1058,6 +1061,52 @@ def test_finalize_hook_persists_coverage_snapshot_and_warms_aggregates(finalize_
         resolved_asof = data_manager._resolve_coverage_asof(session, None, cfg)
         assert rows[0].asof_key == resolved_asof.isoformat()
         assert rows[0].dataset_version == data_manager._membership_dataset_version(session, cfg)
+
+
+def test_finalize_hook_warms_forward_aggregates_for_every_configured_horizon(finalize_hook_engine):
+    """ops-hardening iter-5 (J-06) — the finalize hook warms `ForwardAggregateCache` for the CURRENT
+    latest stored run's as-of, once per configured `walk_forward.horizons` — proven directly: after the
+    hook runs, exactly one cached row exists per configured horizon at that as-of."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        prog = JobProgress(job_id="forward-agg-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+    assert "forward_aggregates" in refreshed
+    with Session(engine) as session:
+        rows = session.exec(
+            select(ForwardAggregateCache).where(ForwardAggregateCache.asof_key == d.isoformat())
+        ).all()
+    assert {row.horizon for row in rows} == set(cfg.walk_forward.horizons)
+
+
+def test_finalize_hook_forward_aggregate_warm_avoids_recompute_on_subsequent_read(
+    finalize_hook_engine, monkeypatch
+):
+    """A `GET /api/backtest`-shaped read for the SAME (horizon, as-of) the finalize hook just warmed
+    hits the cache — zero further `compute_forward_aggregates` calls. This is the actual perf fix this
+    iteration makes: a live request no longer pays the 5-horizon full-table scan the finalize hook
+    already paid at ingest (measured 34.77s pre-fix for one request, `reports/perf-budgets.md`)."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        prog = JobProgress(job_id="forward-agg-hit-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+
+    call_count = {"n": 0}
+    real = forward_testing.compute_forward_aggregates
+
+    def _counting(*args, **kwargs):
+        call_count["n"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(forward_testing, "compute_forward_aggregates", _counting)
+    with Session(engine) as session:
+        for h in cfg.walk_forward.horizons:
+            forward_testing.forward_aggregates_cached(session, h, cfg, as_of=d)
+    assert call_count["n"] == 0, "the finalize hook's warm should have already cached every horizon"
 
 
 def test_finalize_hook_coverage_snapshot_byte_identical_to_fresh_compute(finalize_hook_engine):
@@ -1152,6 +1201,7 @@ def test_finalize_hook_never_raises_even_when_everything_fails(finalize_hook_eng
 
     monkeypatch.setattr(data_manager, "refresh_coverage_snapshot", _boom)
     monkeypatch.setattr(market_phase, "market_phase_cached", _boom)
+    monkeypatch.setattr(forward_testing, "forward_aggregates_cached", _boom)
     monkeypatch.setattr(data_manager, "event_study_cached", _boom)
     with Session(engine) as session:
         prog = JobProgress(job_id="all-fail-probe", kind="backfill", start=d, end=d)

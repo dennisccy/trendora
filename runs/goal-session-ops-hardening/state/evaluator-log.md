@@ -151,3 +151,42 @@ recomputes an aggregate. Decomposer may downgrade to lean if J-06 is pure measur
 change. CLOSURE REMINDER: J-05's (and J-06's) `[NEW]` demo.sh `--session-live` walkthrough bullet was
 deferred as a showcase artifact — produce both, or have the human accept the deferral, before the
 final GOAL_ACHIEVED gate (logged in assumptions.md).
+
+## Iteration 5 — goal-ops-hardening-iter-5
+
+**Date:** 2026-07-20T22:45:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: none
+- Newly failing: none
+- Regressed: none (J-01 replay miss adjudicated a stale proxy, NOT a regression)
+- Newly unknown: J-04, J-05 (not replayed this cycle — coverage gap; shared _refresh_ingest_aggregates was modified)
+- Unchanged: J-01/J-03 re-verified passing; J-06 still failing (target not met)
+- Anti-goal violations: none new. scan-report CLEAN; coherence COHERENCE-PASS; all 3 prior AG-3 violations remain resolved.
+
+**Reasoning:** The backend deliverable is genuinely correct — ForwardAggregateCache fixes the confirmed
+GET /api/backtest violation (34.77s→0.138s, ~252×), byte-identical to the live compute, verified across
+review (PASS_WITH_NOTES), QA, and a skeptical audit (byte-identity test + monkeypatch call-count proof +
+live spot-check on the 176,447-obs DB + 5 real cache rows keyed at 2026-07-17). BUT J-06 does NOT pass:
+TC-02 shows Dashboard /api/indexes?full=true at 1678/2185/2054ms > 1.5s in a real browser (3/3), a browser
+HTTP/1.1 6-conn/origin queuing gap curl (0.79–0.95s) never surfaces. QA=FAIL, closure=CLOSURE-FAIL,
+ux-regression=UX-REGRESSION-FAIL, audit=PASS_WITH_GAPS all converge; audit explicitly says do not close J-06.
+J-01's deterministic replay FAILED step-6 ("2026-05-15" on /scanner-runs) but I rejected REGRESSION: the
+audit's direct DB query confirms the run exists, the runs-display code path (runs.py/scanner-runs) is
+untouched in the diff (git-confirmed), TC-09 loaded /scanner-runs in-budget, and J-01-verify.png shows a
+healthy 750-row table (recent July dates on top; 2026-05-15 now below the fold) — plus J-01's ACTUAL
+acceptance (steps 1-5, "2 non-trading" zero-work) passed. So the step-6 miss is a stale golden-script proxy,
+not a product regression. J-04/J-05 got zero replay this cycle → unknown (honest; shared function modified,
+no failing evidence). No journey moved passing→failing and no anti-goal violated → REGRESSION off. All
+blockers dev-owned/tractable → STALLED off. Full pipeline correctly did NOT fail-open (closure-fail);
+review passed → ESCALATE off. J-06 failing + J-04/J-05 unknown → not GOAL_ACHIEVED. Coherence PASS → no
+consolidation mandate. → CONTINUE.
+
+**Next-step recommendation:** Full-depth fresh iteration (audit §5): (1) resolve Dashboard
+/api/indexes browser-concurrency budget — real latency fix (HTTP/2 uvicorn launcher OR coalesce the 10-13
+on-load calls) or a documented browser-realistic budget re-commit incl. /api/data/availability; (2) restore
+clean regression evidence — fix J-01's step-6 proxy for the 750-row run history, re-run J-01, and run the
+skipped J-04/J-05 golden scripts (→ out of unknown). Before merging this iter's code run
+`pytest tests/test_api_backtest.py tests/test_mcp_window.py -v` (T3). Closure-gate: J-05 + J-06 demo.sh
+--session-live walkthroughs still owed before the GOAL_ACHIEVED gate.

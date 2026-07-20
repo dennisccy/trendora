@@ -806,3 +806,313 @@ immediately after this measurement; neither process nor file was left running/be
 appended their own boot lines to the shared `logs/backend.log` (the logfile path is not config-driven), a
 harmless append-only side effect consistent with the file's own documented convention.
 
+
+## Mechanical backend + page pass — items B/C/D/G/H/K methodology, re-measured 2026-07-20T15:49:51Z
+
+(iter-5 note: this section's title used to hardcode "(iter-24)" regardless of when the script actually
+ran — `scripts/measure-perf.sh` is fixed this iteration to title-stamp the real measurement timestamp
+instead; see that script's own comments. This section's numbers are a routine warm re-confirmation of
+the existing J-15 budgets, captured as a side effect of this iteration's `--boot` run below — no source
+code changed between this measurement and the last one on file.)
+
+Measured 2026-07-20T15:49:51Z on this host (Linux 7.0.0-27-generic x86_64) via `scripts/measure-perf.sh` against PROD MODE
+(`start-backend.sh`/`start-frontend.sh`, backend :8255 / frontend :3255).
+
+**Warm endpoint latencies:**
+
+| Endpoint | Wall time | Budget |
+|---|---|---|
+| `GET /api/health` | 0.226994s | ≤ 0.1 s |
+| `GET /api/stocks` | 0.083225s | ≤ 1.5 s |
+| `GET /api/stocks/AAPL` | 0.007085s | ≤ 0.3 s |
+| `GET /api/data` | 0.105447s | ≤ 1.5 s |
+
+**Warm page latencies (HTTP response time; the browser-qa lane verifies true interactivity):**
+
+| Page | Wall time | Budget |
+|---|---|---|
+| `/stocks` | 0.027238s | ≤ 3 s |
+| `/stocks/AAPL` | 0.047731s | ≤ 3 s |
+| `/data` | 0.031595s | ≤ 3 s |
+| `/evidence` | 0.014506s | ≤ 3 s |
+
+**DB capacity snapshot** (item K; from `GET /api/data`'s additive `capacity` field):
+
+| Metric | Value |
+|---|---|
+| DB file size | 2554781696 bytes |
+| `daily_prices` rows | 3299922 |
+| `scanner_results` rows | 175521 |
+| `forward_returns` rows | 867848 |
+
+**Bounded backfill timing** (item K harness; `--backfill-days 5`): 2005-02-28 → 2005-03-07 (a real backfill gap): status=ok, 6 date(s) covered, 5 snapshot(s) created, 45.00s wall time
+
+
+## J-06 capstone — boot-to-health + the 7 previously-unmeasured pages (iter-5)
+
+Measured 2026-07-20T15:49:51Z on this host (Linux 7.0.0-27-generic x86_64) via `scripts/measure-perf.sh` (extended this
+iteration) against PROD MODE (`start-backend.sh`/`start-frontend.sh`, backend
+:8255 / frontend :3255).
+
+**TC-1 — backend cold-boot wall time (process start -> first `GET /api/health` HTTP 200):**
+
+**1.459s** (process start -> first HTTP 200), launcher pid 2769335 — holds <= 5s budget: yes
+
+**Warm endpoint latencies (TC-2, TC-5, TC-6, TC-9, TC-10, TC-11, TC-12 — generic <= 1.5s
+API budget, matching this file's existing `/api/stocks`/`/api/data` budgets):**
+
+| Endpoint | Wall time | Budget | Holds? |
+|---|---|---|---|
+| `GET /api/dashboard` | 0.008850s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/market-phase` | 0.020927s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/sectors` | 0.015175s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/themes` | 0.004406s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/indexes?full=true` | 0.772870s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/regime-history?full=true` | 0.006313s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/market-phase?full=true` | 0.013246s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/runs` | 0.086819s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/backtest` | 34.766280s | <= 1.5 s | NO (HTTP 200) |
+| `GET /api/watchlist` | 0.018338s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/research/event-study` | 0.003640s | <= 1.5 s | yes (HTTP 200) |
+
+**Warm page latencies (HTTP response time; the browser-qa lane verifies true interactivity —
+TC-2's Dashboard TTI budget is <= 3 s; the rest share the generic <= 3s page budget):**
+
+| Page | Wall time | Budget | Holds? |
+|---|---|---|---|
+| `/ (Dashboard)` | 0.040022s | <= 3 s | yes (HTTP 200) |
+| `/sectors` | 0.023150s | <= 3 s | yes (HTTP 200) |
+| `/themes` | 0.021336s | <= 3 s | yes (HTTP 200) |
+| `/scanner-runs` | 0.019734s | <= 3 s | yes (HTTP 200) |
+| `/backtest` | 0.021471s | <= 3 s | yes (HTTP 200) |
+| `/watchlist` | 0.021055s | <= 3 s | yes (HTTP 200) |
+| `/research/event-study` | 0.014375s | <= 3 s | yes (HTTP 200) |
+
+
+## Mechanical backend + page pass — items B/C/D/G/H/K methodology, re-measured 2026-07-20T16:10:41Z
+
+Measured 2026-07-20T16:10:41Z on this host (Linux 7.0.0-27-generic x86_64) via `scripts/measure-perf.sh` against PROD MODE
+(`start-backend.sh`/`start-frontend.sh`, backend :8255 / frontend :3255).
+
+**Warm endpoint latencies:**
+
+| Endpoint | Wall time | Budget |
+|---|---|---|
+| `GET /api/health` | 0.089872s | ≤ 0.1 s |
+| `GET /api/stocks` | 0.095984s | ≤ 1.5 s |
+| `GET /api/stocks/AAPL` | 0.003221s | ≤ 0.3 s |
+| `GET /api/data` | 0.030574s | ≤ 1.5 s |
+
+**Warm page latencies (HTTP response time; the browser-qa lane verifies true interactivity):**
+
+| Page | Wall time | Budget |
+|---|---|---|
+| `/stocks` | 0.015758s | ≤ 3 s |
+| `/stocks/AAPL` | 0.041758s | ≤ 3 s |
+| `/data` | 0.014914s | ≤ 3 s |
+| `/evidence` | 0.015852s | ≤ 3 s |
+
+**DB capacity snapshot** (item K; from `GET /api/data`'s additive `capacity` field):
+
+| Metric | Value |
+|---|---|
+| DB file size | 2554781696 bytes |
+| `daily_prices` rows | 3299922 |
+| `scanner_results` rows | 176255 |
+| `forward_returns` rows | 871793 |
+
+**Bounded backfill timing** (item K harness; `--backfill-days 5`): 2005-03-08 → 2005-03-14 (a real backfill gap): status=ok, 5 date(s) covered, 5 snapshot(s) created, 82.63s wall time
+
+
+## J-06 capstone — boot-to-health + the 7 previously-unmeasured pages (iter-5)
+
+Measured 2026-07-20T16:10:41Z on this host (Linux 7.0.0-27-generic x86_64) via `scripts/measure-perf.sh` (extended this
+iteration) against PROD MODE (`start-backend.sh`/`start-frontend.sh`, backend
+:8255 / frontend :3255).
+
+**TC-1 — backend cold-boot wall time (process start -> first `GET /api/health` HTTP 200):**
+
+skipped (pass --boot to measure cold-boot-to-health)
+
+**Warm endpoint latencies (TC-2, TC-5, TC-6, TC-9, TC-10, TC-11, TC-12 — generic <= 1.5s
+API budget, matching this file's existing `/api/stocks`/`/api/data` budgets):**
+
+| Endpoint | Wall time | Budget | Holds? |
+|---|---|---|---|
+| `GET /api/dashboard` | 0.002245s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/market-phase` | 0.008910s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/sectors` | 0.004413s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/themes` | 0.003240s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/indexes?full=true` | 0.732274s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/regime-history?full=true` | 0.007141s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/market-phase?full=true` | 0.009123s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/runs` | 0.051337s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/backtest` | 0.141566s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/watchlist` | 0.011903s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/research/event-study` | 0.003350s | <= 1.5 s | yes (HTTP 200) |
+
+**Warm page latencies (HTTP response time; the browser-qa lane verifies true interactivity —
+TC-2's Dashboard TTI budget is <= 3 s; the rest share the generic <= 3s page budget):**
+
+| Page | Wall time | Budget | Holds? |
+|---|---|---|---|
+| `/ (Dashboard)` | 0.014829s | <= 3 s | yes (HTTP 200) |
+| `/sectors` | 0.013925s | <= 3 s | yes (HTTP 200) |
+| `/themes` | 0.012533s | <= 3 s | yes (HTTP 200) |
+| `/scanner-runs` | 0.013268s | <= 3 s | yes (HTTP 200) |
+| `/backtest` | 0.015701s | <= 3 s | yes (HTTP 200) |
+| `/watchlist` | 0.013862s | <= 3 s | yes (HTTP 200) |
+| `/research/event-study` | 0.013658s | <= 3 s | yes (HTTP 200) |
+
+
+## Mechanical backend + page pass — items B/C/D/G/H/K methodology, re-measured 2026-07-20T16:16:19Z
+
+Measured 2026-07-20T16:16:19Z on this host (Linux 7.0.0-27-generic x86_64) via `scripts/measure-perf.sh` against PROD MODE
+(`start-backend.sh`/`start-frontend.sh`, backend :8255 / frontend :3255).
+
+**Warm endpoint latencies:**
+
+| Endpoint | Wall time | Budget |
+|---|---|---|
+| `GET /api/health` | 0.106417s | ≤ 0.1 s |
+| `GET /api/stocks` | 0.154275s | ≤ 1.5 s |
+| `GET /api/stocks/AAPL` | 0.003257s | ≤ 0.3 s |
+| `GET /api/data` | 0.016185s | ≤ 1.5 s |
+
+**Warm page latencies (HTTP response time; the browser-qa lane verifies true interactivity):**
+
+| Page | Wall time | Budget |
+|---|---|---|
+| `/stocks` | 0.016793s | ≤ 3 s |
+| `/stocks/AAPL` | 0.039754s | ≤ 3 s |
+| `/data` | 0.015831s | ≤ 3 s |
+| `/evidence` | 0.012489s | ≤ 3 s |
+
+**DB capacity snapshot** (item K; from `GET /api/data`'s additive `capacity` field):
+
+| Metric | Value |
+|---|---|
+| DB file size | 2554781696 bytes |
+| `daily_prices` rows | 3299922 |
+| `scanner_results` rows | 176987 |
+| `forward_returns` rows | 875728 |
+
+**Bounded backfill timing** (item K harness; `--backfill-days 5`): 2005-03-15 → 2005-03-21 (a real backfill gap): status=ok, 5 date(s) covered, 5 snapshot(s) created, 103.75s wall time
+
+
+## J-06 capstone — boot-to-health + the 7 previously-unmeasured pages (iter-5)
+
+Measured 2026-07-20T16:16:19Z on this host (Linux 7.0.0-27-generic x86_64) via `scripts/measure-perf.sh` (extended this
+iteration) against PROD MODE (`start-backend.sh`/`start-frontend.sh`, backend
+:8255 / frontend :3255).
+
+**TC-1 — backend cold-boot wall time (process start -> first `GET /api/health` HTTP 200):**
+
+**1.387s** (process start -> first HTTP 200), launcher pid 2822679 — holds <= 5s budget: yes
+
+**Warm endpoint latencies (TC-2, TC-5, TC-6, TC-9, TC-10, TC-11, TC-12 — generic <= 1.5s
+API budget, matching this file's existing `/api/stocks`/`/api/data` budgets):**
+
+| Endpoint | Wall time | Budget | Holds? |
+|---|---|---|---|
+| `GET /api/dashboard` | 0.002454s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/market-phase` | 0.005759s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/sectors` | 0.004550s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/themes` | 0.003982s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/indexes?full=true` | 1.875877s | <= 1.5 s | NO (HTTP 200) |
+| `GET /api/regime-history?full=true` | 0.111869s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/market-phase?full=true` | 0.004737s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/runs` | 0.195593s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/backtest` | 0.363073s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/watchlist` | 0.124286s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/research/event-study` | 0.005114s | <= 1.5 s | yes (HTTP 200) |
+
+**Warm page latencies (HTTP response time; the browser-qa lane verifies true interactivity —
+TC-2's Dashboard TTI budget is <= 3 s; the rest share the generic <= 3s page budget):**
+
+| Page | Wall time | Budget | Holds? |
+|---|---|---|---|
+| `/ (Dashboard)` | 0.013417s | <= 3 s | yes (HTTP 200) |
+| `/sectors` | 0.014828s | <= 3 s | yes (HTTP 200) |
+| `/themes` | 0.015987s | <= 3 s | yes (HTTP 200) |
+| `/scanner-runs` | 0.014939s | <= 3 s | yes (HTTP 200) |
+| `/backtest` | 0.017375s | <= 3 s | yes (HTTP 200) |
+| `/watchlist` | 0.027692s | <= 3 s | yes (HTTP 200) |
+| `/research/event-study` | 0.013004s | <= 3 s | yes (HTTP 200) |
+
+
+## Mechanical backend + page pass — items B/C/D/G/H/K methodology, re-measured 2026-07-20T16:18:54Z
+
+Measured 2026-07-20T16:18:54Z on this host (Linux 7.0.0-27-generic x86_64) via `scripts/measure-perf.sh` against PROD MODE
+(`start-backend.sh`/`start-frontend.sh`, backend :8255 / frontend :3255).
+
+**Warm endpoint latencies:**
+
+| Endpoint | Wall time | Budget |
+|---|---|---|
+| `GET /api/health` | 0.095287s | ≤ 0.1 s |
+| `GET /api/stocks` | 0.094018s | ≤ 1.5 s |
+| `GET /api/stocks/AAPL` | 0.003729s | ≤ 0.3 s |
+| `GET /api/data` | 0.051201s | ≤ 1.5 s |
+
+**Warm page latencies (HTTP response time; the browser-qa lane verifies true interactivity):**
+
+| Page | Wall time | Budget |
+|---|---|---|
+| `/stocks` | 0.014054s | ≤ 3 s |
+| `/stocks/AAPL` | 0.038063s | ≤ 3 s |
+| `/data` | 0.015558s | ≤ 3 s |
+| `/evidence` | 0.013626s | ≤ 3 s |
+
+**DB capacity snapshot** (item K; from `GET /api/data`'s additive `capacity` field):
+
+| Metric | Value |
+|---|---|
+| DB file size | 2554781696 bytes |
+| `daily_prices` rows | 3299922 |
+| `scanner_results` rows | 177725 |
+| `forward_returns` rows | 879693 |
+
+**Bounded backfill timing** (item K harness; `--backfill-days 5`): 2005-03-22 → 2005-03-29 (a real backfill gap): status=ok, 5 date(s) covered, 5 snapshot(s) created, 81.82s wall time
+
+
+## J-06 capstone — boot-to-health + the 7 previously-unmeasured pages (iter-5)
+
+Measured 2026-07-20T16:18:54Z on this host (Linux 7.0.0-27-generic x86_64) via `scripts/measure-perf.sh` (extended this
+iteration) against PROD MODE (`start-backend.sh`/`start-frontend.sh`, backend
+:8255 / frontend :3255).
+
+**TC-1 — backend cold-boot wall time (process start -> first `GET /api/health` HTTP 200):**
+
+skipped (pass --boot to measure cold-boot-to-health)
+
+**Warm endpoint latencies (TC-2, TC-5, TC-6, TC-9, TC-10, TC-11, TC-12 — generic <= 1.5s
+API budget, matching this file's existing `/api/stocks`/`/api/data` budgets):**
+
+| Endpoint | Wall time | Budget | Holds? |
+|---|---|---|---|
+| `GET /api/dashboard` | 0.002416s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/market-phase` | 0.008690s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/sectors` | 0.003710s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/themes` | 0.003128s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/indexes?full=true` | 0.945244s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/regime-history?full=true` | 0.006909s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/market-phase?full=true` | 0.004446s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/runs` | 0.049934s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/backtest` | 0.137891s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/watchlist` | 0.011771s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/research/event-study` | 0.003544s | <= 1.5 s | yes (HTTP 200) |
+
+**Warm page latencies (HTTP response time; the browser-qa lane verifies true interactivity —
+TC-2's Dashboard TTI budget is <= 3 s; the rest share the generic <= 3s page budget):**
+
+| Page | Wall time | Budget | Holds? |
+|---|---|---|---|
+| `/ (Dashboard)` | 0.013078s | <= 3 s | yes (HTTP 200) |
+| `/sectors` | 0.012007s | <= 3 s | yes (HTTP 200) |
+| `/themes` | 0.011837s | <= 3 s | yes (HTTP 200) |
+| `/scanner-runs` | 0.011514s | <= 3 s | yes (HTTP 200) |
+| `/backtest` | 0.012943s | <= 3 s | yes (HTTP 200) |
+| `/watchlist` | 0.011474s | <= 3 s | yes (HTTP 200) |
+| `/research/event-study` | 0.012855s | <= 3 s | yes (HTTP 200) |
+

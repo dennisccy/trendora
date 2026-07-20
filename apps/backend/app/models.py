@@ -504,6 +504,61 @@ class MarketPhaseCache(SQLModel, table=True):
     created_at: datetime
 
 
+# --- ops-hardening iter-5 (J-06) forward-aggregate derived-cache ---------------------------------
+class ForwardAggregateCache(SQLModel, table=True):
+    """A STANDALONE, create_all-managed cache of the derived per-horizon forward-return aggregate
+    (`app.engine.forward_testing.compute_forward_aggregates`), served on `GET /api/backtest`'s
+    `evidence_by_horizon` (ops-hardening iter-5, J-06).
+
+    Like `EventStudyCache` / `MarketPhaseCache` / `CoverageSnapshot`, this is EXPLICITLY NOT a scanner
+    snapshot — the *Snapshots are immutable* critical anti-goal binds ONLY `scanner_runs` /
+    `scanner_results` / `*_scores` / `forward_returns`. This is legitimately mutable derived/cache
+    state: it stores the SERIALIZED `compute_forward_aggregates(...)` payload (forward return by
+    bucket/setup/regime, excess vs SPY/QQQ, VCP/new-pattern breakdowns, control-group cohorts — each
+    with `n`) keyed by the horizon + the resolved as-of cutoff + a dataset-version stamp, so a read
+    serves the stored aggregate instead of re-deriving it per request (No recompute in the read path).
+    The cached figures are BYTE-IDENTICAL to a fresh compute — a cache of the deterministic read-only
+    aggregation, never a second computation.
+
+    WHY: `compute_forward_aggregates` scans the WHOLE horizon-partition of `forward_returns`
+    (`select(ForwardReturn).where(horizon == h)`, then groups it in Python) — `GET /api/backtest`
+    called it once per configured horizon (5) on EVERY request. Measured live at the current DB depth
+    (`reports/perf-budgets.md`, iter-5): 34.77s for one request — the confirmed J-06 violation.
+
+    A STANDALONE table (its own `create_all`-managed table) is used deliberately so the iter-12
+    `_ADDITIVE_COLUMNS` trap does NOT apply — a fresh DB carries it from `create_db_and_tables`, and no
+    existing table gains a column.
+
+    CACHE KEY: `(horizon, asof_key, dataset_version)`:
+      - `horizon` is the requested horizon (one of `config.walk_forward.horizons`).
+      - `asof_key` is the resolved as-of cutoff ISO date — `compute_forward_aggregates`'s `as_of` is
+        always a concrete date at its one call site (`GET /api/backtest` always resolves `?as_of=` to a
+        real `ScannerRun.asof_date` before calling it — never the bare `as_of=None` all-history case),
+        so unlike `EventStudyCache`/`MarketPhaseCache` this key carries no separate "all" sentinel.
+      - `dataset_version` is the SAME stamp `app.engine.research._dataset_version` produces
+        (single-sourced with J-72/J-87/J-96/J-100) — a read computes the current stamp and looks up
+        THIS exact key; a stale row keyed to an older stamp is never hit (and is pruned on write), so
+        the cache can NEVER serve a stale figure (it refreshes after any dataset change — a backfill
+        that adds runs/returns anywhere changes the global stamp, correctly invalidating even an
+        unrelated as-of's cached row, since an expanding as-of window can gain new in-range runs from a
+        backfill dated earlier than it).
+
+    `payload_json` is the full serialized aggregate. Unique on the composite key so a write is an
+    idempotent upsert."""
+
+    __tablename__ = "forward_aggregate_cache"
+    __table_args__ = (
+        UniqueConstraint("horizon", "asof_key", "dataset_version", name="uq_forward_aggregate_cache_key"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    horizon: int = Field(index=True)
+    asof_key: str  # resolved as-of ISO cutoff date (compute_forward_aggregates's concrete `as_of`)
+    dataset_version: str  # the SAME stamp research._dataset_version produces; changes on any dataset change
+    payload_json: str  # the serialized compute_forward_aggregates(...) aggregate (byte-identical to a fresh compute)
+    created_at: datetime
+
+
 class MacroSeries(SQLModel, table=True):
     """A STANDALONE, create_all-managed table of optional FRED macro-feed observations (iter-32, J-92).
 

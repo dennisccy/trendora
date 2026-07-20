@@ -36,8 +36,8 @@ from app.config import Config, get_config
 from app.db import get_session
 from app.engine.forward_testing import (
     backfill_run_forward_returns,
-    compute_forward_aggregates,
     compute_run_scorecard,
+    forward_aggregates_cached,
 )
 from app.engine.scanner import _latest_stored_run_date
 from app.engine.snapshot_serving import resolved_run
@@ -65,8 +65,11 @@ def backtest(
     # is scoped to the EXPANDING WINDOW of snapshots dated <= the resolved run's asof_date (the SAME global
     # as-of already resolved — no second date control, J-18). Read-only grouping over the stored
     # forward_returns — recomputes no return/score/bucket (the same model the retired System Health used).
+    # ops-hardening iter-5 (J-06): served from the ingest-warmed cache (byte-identical to a fresh compute;
+    # `compute_forward_aggregates` itself is unchanged and stays the sole producer) — a live 5-horizon
+    # request here measured 34.77s pre-fix (reports/perf-budgets.md).
     evidence_by_horizon = {
-        h: compute_forward_aggregates(session, h, cfg, as_of=run.asof_date)
+        h: forward_aggregates_cached(session, h, cfg, as_of=run.asof_date)
         for h in cfg.walk_forward.horizons
     }
     # `is_latest` reuses the canonical "latest stored run date" (no second query/source for it).

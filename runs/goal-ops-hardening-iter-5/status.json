@@ -1,0 +1,28 @@
+{
+  "phase": "goal-ops-hardening-iter-5",
+  "status": "blocked",
+  "current_step": "closure_failed",
+  "updated_at": "2026-07-20T21:22:05.277304Z",
+  "started_at": "2026-07-20T15:26:44.906591Z",
+  "cli": "claude",
+  "blockers": [
+    "TC-02 Dashboard: GET /api/indexes?full=true over budget in real browser (1,678\u20132,185ms vs \u22641,500ms budget). Root cause: browser connection queuing (Chrome 6-conn-per-origin limit). Requires mitigation or budget revision."
+  ],
+  "changed_files": [
+    "scripts/measure-perf.sh",
+    "apps/backend/app/models.py",
+    "apps/backend/app/engine/forward_testing.py",
+    "apps/backend/app/api/backtest.py",
+    "apps/backend/app/mcp/tools.py",
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/tests/test_forward_testing.py",
+    "apps/backend/tests/test_data_manager.py",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-5-dev.md",
+    "reports/phase-goal-ops-hardening-iter-5-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "qa_verdict": "FAIL",
+  "next_action": "fix_qa_blocker"
+}

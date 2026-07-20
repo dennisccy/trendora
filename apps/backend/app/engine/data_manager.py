@@ -1884,9 +1884,9 @@ class JobProgress:
     # already branches on `existed_before`), so the finalize hook knows which as-ofs to warm in
     # `MarketPhaseCache` ("for each newly-created snapshot date" — never every stored date).
     # `aggregates_refreshed` is the finalize hook's honest output — the subset of `["latest_snapshot",
-    # "coverage", "membership_timeline", "market_phase", "research_hot_keys"]` it actually refreshed —
-    # empty/default until the hook has actually run (never fabricated on an interrupted/failed row; gated
-    # in `_run_detail()` the SAME way `calendar_days` etc. already are).
+    # "coverage", "membership_timeline", "market_phase", "forward_aggregates", "research_hot_keys"]` it
+    # actually refreshed — empty/default until the hook has actually run (never fabricated on an
+    # interrupted/failed row; gated in `_run_detail()` the SAME way `calendar_days` etc. already are).
     new_snapshot_dates: list[date_cls] = field(default_factory=list)
     aggregates_refreshed: list[str] = field(default_factory=list)
     # J-34: chunked-fetch progress. `chunk_index` = number of fully-completed chunks (== the durable
@@ -3047,9 +3047,9 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     never raises (the caller in `_run_job` wraps the whole call in its own try/except too, mirroring
     `_warm_membership_timeline`'s non-fatal contract in warmup.py — an aggregate-refresh failure must never
     flip an otherwise-successful ingest job to failed). Returns the subset of `["latest_snapshot",
-    "coverage", "membership_timeline", "market_phase", "research_hot_keys"]` ACTUALLY refreshed — never a
-    fabricated category (mirrors the `omitted`/`passers` honesty convention already used elsewhere in this
-    module).
+    "coverage", "membership_timeline", "market_phase", "forward_aggregates", "research_hot_keys"]`
+    ACTUALLY refreshed — never a fabricated category (mirrors the `omitted`/`passers` honesty convention
+    already used elsewhere in this module).
 
     ops-hardening iter-4 (F1 fix): calls the bare `prog.tick()` (no `activity` argument — it stamps ONLY
     the `last_progress_at` heartbeat, never overwriting `current_activity`, so an already-pinned "scanning
@@ -3102,6 +3102,32 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             logger.exception("ingest market-phase warm failed for %s (non-fatal): %s", d, exc)
     if market_phase_warmed:
         refreshed.append("market_phase")
+
+    # ops-hardening iter-5 (J-06): warm the CURRENT latest stored run's per-horizon forward-aggregate
+    # cache (GET /api/backtest's `evidence_by_horizon`, ~34.77s pre-fix over all 5 configured horizons —
+    # reports/perf-budgets.md). Unconditional (not gated on `prog.new_snapshot_dates`, unlike the
+    # per-date coverage/market-phase loops above): the dataset-version stamp is GLOBAL, so ANY ingest
+    # anywhere (even a historical-gap backfill far from the latest date) can invalidate the latest run's
+    # already-cached aggregate — e.g. a backfilled EARLIER date's forward returns newly enter the
+    # latest as-of's expanding "<= D" window. Warming only the ONE current-latest key (not every
+    # historical as-of) mirrors the "research_hot_keys" default-key philosophy just below, not the
+    # per-date coverage/market-phase sweep — each per-horizon compute can itself be as expensive as the
+    # measured 34.77s violation, so sweeping every `new_snapshot_dates` entry here (as coverage/
+    # market_phase do) would risk turning a full-universe rebuild's finalize tail into a multi-hour
+    # operation instead of the intended fix. A user-navigated HISTORICAL as-of on `/backtest` still
+    # computes-once-and-caches on first view (the same cold-miss contract EventStudyCache/
+    # MarketPhaseCache already carry) — never pre-warmed here.
+    try:
+        latest_run_date = scanner._latest_stored_run_date(session)
+        if latest_run_date is not None:
+            for h in cfg.walk_forward.horizons:
+                prog.tick()  # F1-style heartbeat stamp before each horizon's compute (a cold-cache
+                             # compute here can take up to ~35s pre-warm; 5 sequential horizons could
+                             # otherwise freeze the heartbeat for minutes without a per-horizon tick).
+                forward_testing.forward_aggregates_cached(session, h, cfg, as_of=latest_run_date)
+            refreshed.append("forward_aggregates")
+    except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
+        logger.exception("ingest forward-aggregate warm failed (non-fatal): %s", exc)
 
     try:
         subjects = subject_catalog(cfg)

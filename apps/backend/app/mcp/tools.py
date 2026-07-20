@@ -31,8 +31,8 @@ from app.engine import online_fdr
 from app.engine.forward_testing import (
     backfill_run_forward_returns,
     benchmark_symbols,
-    compute_forward_aggregates,
     compute_run_scorecard,
+    forward_aggregates_cached,
 )
 from app.engine.referee import (
     DEFAULT_ALPHA_BUDGET,
@@ -198,8 +198,11 @@ def query_backtest(session: Session, asof: Optional[str] = None) -> dict:
     run = resolved_run(session, asof, cfg)
     backfill_run_forward_returns(session, run, cfg)  # create-once realized forward returns (as the endpoint does)
     card = compute_run_scorecard(session, run, cfg)
+    # ops-hardening iter-5 (J-06): served from the SAME ingest-warmed cache GET /api/backtest now uses
+    # (this function's own docstring says it "mirrors the endpoint exactly" — kept true for the cache
+    # swap too; byte-identical output, `compute_forward_aggregates` itself is unchanged).
     evidence_by_horizon = {
-        h: compute_forward_aggregates(session, h, cfg, as_of=run.asof_date)
+        h: forward_aggregates_cached(session, h, cfg, as_of=run.asof_date)
         for h in cfg.walk_forward.horizons
     }
     return {

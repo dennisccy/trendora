@@ -49,7 +49,7 @@ from app.config import Config, get_config
 from app.engine.prices import bars_after, bars_asof, close_on, latest_data_date
 from app.engine.scanner import run_scan
 from app.engine.setups import ALL_STATUSES
-from app.models import EventStudyCache, ForwardReturn, ScannerResult, ScannerRun
+from app.models import EventStudyCache, ForwardAggregateCache, ForwardReturn, ScannerResult, ScannerRun
 
 # The honest caveat carried on every payload (anti-goal: Honest limitations surfaced). iter-18: the
 # basis now spans ~30 years (1996 -> present, per-name real listing depth) over the broadened
@@ -934,6 +934,79 @@ def compute_forward_aggregates(
         # (no recomputed return). distribution.mean_return == overall.mean_return (asserted in tests).
         "attribution": _attribution_slices(stock_obs, cfg),
     }
+
+
+def forward_aggregates_cached(
+    session: Session, horizon: int, config: Optional[Config] = None, *, as_of: Optional[date_cls] = None,
+) -> dict:
+    """Serve `compute_forward_aggregates` from an ingest-time warm cache (ops-hardening iter-5, J-06),
+    mirroring `research.event_study_cached` / `market_phase.market_phase_cached`: on a cache HIT for the
+    current `(horizon, asof_key, dataset_version)` key, deserialize and return the stored aggregate (NO
+    recompute); on a MISS, compute it ONCE via `compute_forward_aggregates` (the SOLE producer — this
+    function is a pure serving/persistence wrapper, never a second derivation), persist it under the
+    current dataset-version stamp, prune any stale rows for this `(horizon, asof_key)` identity, and
+    return it. The returned payload is BYTE-IDENTICAL to `compute_forward_aggregates(...)` (No recompute
+    in the read path).
+
+    WHY: `GET /api/backtest` called `compute_forward_aggregates` once per configured horizon (5) on
+    EVERY request — each call scans the WHOLE horizon-partition of `forward_returns` (~1.5-1.7M rows /
+    5 horizons at the current DB depth) and groups it in Python. Measured live
+    (`reports/perf-budgets.md`, iter-5): 34.77s for one `GET /api/backtest` request — the confirmed J-06
+    violation this cache fixes.
+
+    Because the key carries the `dataset_version` stamp (the SAME stamp `research._dataset_version`
+    produces — single-sourced with J-72/J-87/J-96/J-100), the cache REFRESHES automatically after any
+    dataset change (a backfill add or a removal, anywhere in the dataset — not just at this `as_of`,
+    since a backfilled EARLIER date can newly enter an already-cached LATER as-of's expanding window) —
+    a stale row is never hit. Unlike `EventStudyCache`/`MarketPhaseCache`, this cache carries no separate
+    "all-history" sentinel: `compute_forward_aggregates`'s one call site always resolves `as_of` to a
+    concrete `ScannerRun.asof_date` first (never the bare `as_of=None` case), so `asof_key` is always a
+    real ISO date.
+
+    Deferred import below (not at module level): `research.py` already imports names FROM this module,
+    so this module cannot import `research.py` at load time without a circular import; importing
+    `_dataset_version` lazily, inside this function, breaks the cycle (the same fix has no effect on
+    behavior — both modules are fully loaded by the time this function actually runs)."""
+    from app.engine.research import _dataset_version  # deferred: avoids a forward_testing<->research cycle
+
+    cfg = config or get_config()
+    version = _dataset_version(session)
+    asof_key = as_of.isoformat() if as_of is not None else "all"
+
+    hit = session.exec(
+        select(ForwardAggregateCache).where(
+            ForwardAggregateCache.horizon == horizon,
+            ForwardAggregateCache.asof_key == asof_key,
+            ForwardAggregateCache.dataset_version == version,
+        )
+    ).first()
+    if hit is not None:
+        return json.loads(hit.payload_json)
+
+    # MISS — compute once (the SOLE producer, unchanged) and persist.
+    payload = compute_forward_aggregates(session, horizon, cfg, as_of=as_of)
+
+    # prune stale rows for THIS (horizon, asof_key) identity (any older dataset_version) so the cache
+    # table does not grow unbounded as the dataset matures; the current-version row is then upserted.
+    stale = session.exec(
+        select(ForwardAggregateCache).where(
+            ForwardAggregateCache.horizon == horizon,
+            ForwardAggregateCache.asof_key == asof_key,
+            ForwardAggregateCache.dataset_version != version,
+        )
+    ).all()
+    for row in stale:
+        session.delete(row)
+
+    session.add(ForwardAggregateCache(
+        horizon=horizon, asof_key=asof_key, dataset_version=version,
+        payload_json=json.dumps(payload), created_at=datetime.now(timezone.utc),
+    ))
+    try:
+        session.commit()
+    except Exception:  # a concurrent writer raced us to the same key — the cache is best-effort, not a
+        session.rollback()  # source of truth; the freshly computed payload is still byte-identical, so return it
+    return payload
 
 
 # --------------------------------------------------------------------------------------------------
