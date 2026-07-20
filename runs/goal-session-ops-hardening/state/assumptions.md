@@ -218,3 +218,30 @@ the persisted payload within its committed budget and the process performs no 3.
 stricter all-zero framing the test-designer added. (The all-zero precondition was a test-plan
 over-specification, not a goal.md requirement.)
 **Reversible:** yes
+
+## iter-5 — goal-decomposer
+
+**Ambiguity:** J-06's DoD step 3 requires a "code-level audit that no on-load endpoint performs an
+unbounded `daily_prices` scan or recomputes an inventory aggregate," but goal.md does not say what to do
+if the audit (or a live measurement) finds a genuine violation on an endpoint outside the "four offenders"
+list goal.md itself names (already retired iter-2 through iter-4) — e.g. one of the two candidates this
+iteration's spec flags (`/api/backtest`'s 5x per-horizon `compute_forward_aggregates` read, `/api/runs`'s
+per-run N+1 count query).
+**We chose:** scoped this iteration to INCLUDE a bounded, minimal fix if the audit/measurement finds a
+genuine violation, but ONLY if it fits the existing ingest-time-cache convention (mirroring
+`coverage_snapshot`/`EventStudyCache`/`MarketPhaseCache`) through the value's EXISTING computing module and
+endpoint (no second producer); a violation whose fix would need a new architectural decision is out of
+scope this iteration and hands back to a fresh decomposer pass instead of growing this iteration's scope
+open-endedly.
+**Reversible:** yes
+
+## iter-5 — goal-decomposer
+
+**Ambiguity:** J-06 carries the same `[NEW]`-flagged `demo.sh ops-hardening --session-live` walkthrough
+acceptance bullet that iter-4 already deferred for J-05 (assumptions.md, iter-4 — goal-evaluator) as a
+session-closure showcase artifact rather than a per-journey passing gate.
+**We chose:** applied the SAME reading to J-06 for consistency — the walkthrough stays a session-closeout
+showcase artifact, not part of this iteration's DEFINITION OF DONE; the closure-gate reminder (produce BOTH
+J-05's and J-06's walkthroughs, or have the human accept the deferral, before GOAL_ACHIEVED) is restated in
+the iteration spec's NOTES so it is not lost now that J-06 may be the session's final journey.
+**Reversible:** yes
