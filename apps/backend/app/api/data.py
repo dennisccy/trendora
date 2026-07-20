@@ -119,7 +119,12 @@ def data_overview(
         except scanner.AsOfError:
             resolved_asof = None  # graceful: descriptive coverage falls back to the latest stored date
     return {
-        "coverage": data_manager.compute_coverage(session, cfg, as_of=resolved_asof),
+        # ops-hardening iter-2 (J-05): served ONLY from the persisted `coverage_snapshot` row — never a
+        # live `compute_coverage` call on this request path (the whole-table bar-prefill OOM/hang source,
+        # iter-24 evidence). A genuinely missing row serves an honest "not yet computed" partial payload —
+        # never a 500/blank response. The row is written by the ingest finalize hook and the boot warm-up
+        # safety net (`app.engine.data_manager._refresh_ingest_aggregates` / `app.engine.warmup._run_warmup`).
+        "coverage": data_manager.coverage_from_storage(session, cfg, as_of=resolved_asof),
         "runs": data_manager.recent_runs(session, cfg),
         "sources": data_manager.compute_provider_availability(cfg),
         # J-92: the OPTIONAL FRED macro feed catalog + availability (env-detected; committed-seed coverage;

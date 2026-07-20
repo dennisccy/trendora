@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "journey": "J-03",
+  "name": "No per-run range cap",
+  "default_timeout_ms": 20000,
+  "steps": [
+    {"n": 1, "journey": "J-03", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "Data Manager"}},
+    {"n": 2, "journey": "J-03", "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2025-06-01"}},
+    {"n": 3, "journey": "J-03", "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2026-07-17"}},
+    {"n": 4, "journey": "J-03", "action": {"type": "click", "target": {"role": "button", "name": "Start"}}},
+    {"n": 5, "journey": "J-03", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "412 calendar days"}}
+  ]
+}

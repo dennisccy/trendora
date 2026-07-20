@@ -590,6 +590,57 @@ class MembershipTimelineCache(SQLModel, table=True):
     created_at: datetime
 
 
+# --- ops-hardening iter-2 (J-05) coverage derived-aggregate snapshot (a PERFORMANCE cache, not a
+# snapshot) -----------------------------------------------------------------------------------
+class CoverageSnapshot(SQLModel, table=True):
+    """A STANDALONE, create_all-managed persisted snapshot of `GET /api/data`'s coverage block
+    (`app.engine.data_manager._compute_coverage_uncached`).
+
+    Like `EventStudyCache` / `MarketPhaseCache` / `MembershipTimelineCache`, this is EXPLICITLY NOT a
+    scanner snapshot — the *Snapshots are immutable* critical anti-goal binds ONLY `scanner_runs` /
+    `scanner_results` / `*_scores` / `forward_returns`. This is legitimately mutable derived/cache state:
+    it stores the SERIALIZED `_compute_coverage_uncached(...)` payload (byte-identical to a fresh compute
+    — a cache of the deterministic read-only derivation, never a second computation or a hand-authored
+    value) keyed by the resolved as-of + a dataset-version stamp, so `GET /api/data` serves the stored
+    aggregate instead of recomputing it on the request path (No recompute in the read path).
+
+    WHY: `_compute_coverage_uncached` wraps the whole derivation in one shared `prefilled_bar_cache`
+    (a one-time whole-universe bar load) so a cold `/api/data` request paid this cost synchronously on
+    the request path — the documented OOM/hang source (iter-24 evidence). This table moves that compute
+    to the ingest finalize hook (`app.engine.data_manager._run_job`, on a successful backfill/both/rebuild)
+    and a boot-time warm-up safety net (`app.engine.warmup._run_warmup`), so the request path only ever
+    reads a stored row (or serves an honest "not yet computed" sentinel — never a live whole-table
+    compute on that path).
+
+    A STANDALONE table (its own `create_all`-managed table) is used deliberately so the iter-12
+    `_ADDITIVE_COLUMNS` trap does NOT apply — a fresh DB carries it from `create_db_and_tables`, and no
+    existing table gains a column.
+
+    CACHE KEY: `(asof_key, dataset_version)`:
+      - `asof_key` is the resolved as-of cutoff ISO date — the SAME value `_coverage_cache_key` already
+        computes for the in-process single-flight cache (`_resolve_coverage_asof`).
+      - `dataset_version` is the SAME narrow `_membership_dataset_version` stamp (J-100) the in-process
+        coverage cache and `MembershipTimelineCache` already key on (snapshot set + bars manifest +
+        `min_history_bars` — NOT the forward-return count), so this row refreshes exactly when a real
+        membership/bars change could change the served coverage, and is reused across the warm-up's
+        forward-return churn.
+
+    `payload_json` is the full serialized `_compute_coverage_uncached(...)` derivation (byte-identical to
+    a fresh compute); `computed_at` is bookkeeping/audit only (no freshness indicator is rendered this
+    iteration). Unique on the composite key so a write is an idempotent upsert."""
+
+    __tablename__ = "coverage_snapshot"
+    __table_args__ = (
+        UniqueConstraint("asof_key", "dataset_version", name="uq_coverage_snapshot_key"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    asof_key: str = Field(index=True)  # resolved as-of ISO cutoff date (matches _coverage_cache_key)
+    dataset_version: str  # the SAME narrow stamp _membership_dataset_version produces
+    payload_json: str  # the serialized _compute_coverage_uncached(...) derivation (byte-identical)
+    computed_at: datetime  # UTC bookkeeping/audit timestamp — not rendered as a freshness indicator
+
+
 # --- iter-7 watchlist (USER-MUTABLE — the product's FIRST user-write surface; J-11) ----------
 class Watchlist(SQLModel, table=True):
     """One user-saved stock on the persistent research watchlist (iter-7). The product's FIRST

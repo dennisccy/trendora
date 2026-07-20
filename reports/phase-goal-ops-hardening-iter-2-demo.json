@@ -1,0 +1,140 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-2",
+  "base_url": "http://localhost:3255",
+  "iteration": 2,
+  "default_timeout_ms": 12000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Tour the dashboard",
+      "narration": "Let's start where every visit begins — the dashboard, which sums up today's market regime and phase at a glance.",
+      "point_out": "The Market Regime and Market Phase & Severity cards show real, up-to-date figures pulled from stored data.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/"},
+      "expect": {"text": "/ 100 severity"}
+    },
+    {
+      "n": 2,
+      "title": "Open the Data Manager",
+      "narration": "Now let's visit the Data Manager, the page an operator uses to grow the dataset. This iteration made its coverage numbers load from storage instead of being recalculated on every visit.",
+      "point_out": "The Dataset coverage tiles — Universe, Symbols, Trading days, Snapshot dates, Backfill gaps — populate immediately with real figures, not a multi-second wait.",
+      "journey": "J-05",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/data"},
+      "expect": {"target": {"testid": "universe-count"}}
+    },
+    {
+      "n": 3,
+      "title": "Enter a backfill start date",
+      "narration": "Let's run a quick backfill so we can see this iteration's new capability for ourselves.",
+      "point_out": "The Start date field now holds the date we're backfilling.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2026-05-15"}
+    },
+    {
+      "n": 4,
+      "title": "Enter the matching end date",
+      "narration": "A single-day backfill just needs the same date in both fields.",
+      "point_out": "The End date field now matches the start date.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2026-05-15"}
+    },
+    {
+      "n": 5,
+      "title": "Run the backfill job",
+      "narration": "With \"Backfill snapshots\" already selected, clicking Start submits the job and we watch it finish.",
+      "point_out": "A short status message appears, then a new \"Refreshed\" line names — in plain, comma-separated words — exactly which background data this run kept up to date.",
+      "journey": "J-05",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "click", "target": {"role": "button", "name": "Start"}},
+      "expect": {"text": "Refreshed:"},
+      "timeout_ms": 20000
+    },
+    {
+      "n": 6,
+      "title": "Reload to confirm it was saved",
+      "narration": "Let's fully reload the page, to make sure that note wasn't just a one-time, in-session display.",
+      "point_out": "The same \"Refreshed\" note is still there after the reload — proof it was genuinely saved, not just shown once.",
+      "journey": "J-05",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": {"type": "goto", "url": "/data"},
+      "expect": {"text": "Refreshed:"}
+    },
+    {
+      "n": 7,
+      "title": "Check the Run History table",
+      "narration": "Scrolling down to the permanent Run History table shows every job this dataset has ever run.",
+      "point_out": "That same run's row carries the identical \"Refreshed\" note in its Snapshots column — a durable record, not a live-only message.",
+      "journey": "J-05",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "click", "target": {"role": "heading", "name": "Run history"}},
+      "expect": {"text": "Refreshed:"}
+    },
+    {
+      "n": 8,
+      "title": "Step back to an older date",
+      "narration": "Using the date switcher's back arrow, let's step to an older, already-ingested date.",
+      "point_out": "The badge now reads \"Viewing as-of … (historical)\", and the coverage tiles show that older date's real, non-zero figures — never a false-empty panel.",
+      "journey": "J-05",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "click", "target": {"role": "button", "name": "Previous available date"}},
+      "expect": {"text": "(historical)"}
+    },
+    {
+      "n": 9,
+      "title": "Return to the latest date",
+      "narration": "Stepping forward again brings us right back to today's latest view.",
+      "point_out": "The badge reads \"Latest\" again, and the numbers instantly match what we started with.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {"type": "click", "target": {"role": "button", "name": "Next available date"}},
+      "expect": {"text": "Latest"}
+    },
+    {
+      "n": 10,
+      "title": "Check the Scanner Runs list",
+      "narration": "Let's also visit the Scanner Runs page, which reads from the same underlying stored data.",
+      "point_out": "The list of dated scans still loads correctly, including the date we just backfilled.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/scanner-runs"},
+      "expect": {"text": "2026-05-15"}
+    },
+    {
+      "n": 11,
+      "title": "Open a stored scan",
+      "narration": "Opening that date's entry shows the scan exactly as it looked on that day.",
+      "point_out": "The full leaderboard, regime score, and stock-by-stock rows all render normally, proving this update didn't disturb anything else in the product.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "click", "target": {"role": "link", "name": "2026-05-15"}},
+      "expect": {"text": "as of 2026-05-15"}
+    }
+  ]
+}

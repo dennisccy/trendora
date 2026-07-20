@@ -2509,19 +2509,29 @@ function JobLiveActivity({
  *  rebuild run: calendar days, already-snapshotted, non-trading, and error counts. Renders nothing when
  *  every field is absent/null (a fetch/expand run never populates them) — never a fabricated "0". Pure
  *  re-formatting of backend-computed counts; no arithmetic happens here beyond string joining. Shared
- *  between the Job progress panel and the Run history table so both read the SAME breakdown shape. */
+ *  between the Job progress panel and the Run history table so both read the SAME breakdown shape.
+ *
+ *  ops-hardening iter-2 (J-05) — one additive optional line naming which downstream aggregates (coverage,
+ *  latest snapshot, membership timeline, market phase, research hot-keys) this run's ingest finalize hook
+ *  refreshed. Omitted entirely when null/empty (a fetch/expand run, or a not-yet-computed row) — matching
+ *  this component's existing all-null-renders-nothing convention exactly; no new color/badge/emphasis. */
 function BackfillBreakdown({
   calendarDays,
   alreadySnapshotted,
   nonTradingDays,
   errorOther,
+  aggregatesRefreshed,
 }: {
   calendarDays: number | null | undefined;
   alreadySnapshotted: number | null | undefined;
   nonTradingDays: number | null | undefined;
   errorOther: number | null | undefined;
+  aggregatesRefreshed?: string[] | null;
 }) {
-  if (calendarDays == null && alreadySnapshotted == null && nonTradingDays == null && errorOther == null) {
+  const hasBreakdown =
+    calendarDays != null || alreadySnapshotted != null || nonTradingDays != null || errorOther != null;
+  const hasAggregates = !!aggregatesRefreshed && aggregatesRefreshed.length > 0;
+  if (!hasBreakdown && !hasAggregates) {
     return null;
   }
   const parts: string[] = [];
@@ -2530,9 +2540,18 @@ function BackfillBreakdown({
   if (nonTradingDays != null) parts.push(`${nonTradingDays} non-trading`);
   if (errorOther) parts.push(`${errorOther} error${errorOther === 1 ? "" : "s"}`);
   return (
-    <p className="num text-xs text-text-faint" data-testid="backfill-breakdown">
-      {parts.join(" · ")}
-    </p>
+    <>
+      {parts.length > 0 ? (
+        <p className="num text-xs text-text-faint" data-testid="backfill-breakdown">
+          {parts.join(" · ")}
+        </p>
+      ) : null}
+      {hasAggregates ? (
+        <p className="text-xs text-text-faint" data-testid="aggregates-refreshed">
+          Refreshed: {aggregatesRefreshed!.map((a) => a.replace(/_/g, " ")).join(", ")}
+        </p>
+      ) : null}
+    </>
   );
 }
 
@@ -2570,6 +2589,7 @@ function LastRunSummary({ run }: { run: DataRun }) {
           alreadySnapshotted={run.already_snapshotted}
           nonTradingDays={run.non_trading_days}
           errorOther={run.error_other}
+          aggregatesRefreshed={run.aggregates_refreshed}
         />
       </div>
     </Card>
@@ -2725,6 +2745,7 @@ function JobProgressPanel({
               alreadySnapshotted={job.already_snapshotted}
               nonTradingDays={job.non_trading_days}
               errorOther={job.error_other}
+              aggregatesRefreshed={job.aggregates_refreshed}
             />
             {zeroWork ? (
               <p
@@ -3476,6 +3497,7 @@ function RunHistoryPanel({ runs }: { runs: DataRun[] }) {
                   alreadySnapshotted={run.already_snapshotted}
                   nonTradingDays={run.non_trading_days}
                   errorOther={run.error_other}
+                  aggregatesRefreshed={run.aggregates_refreshed}
                 />
               </td>
               <td className="max-w-xs px-3 py-2 text-xs text-text-muted">

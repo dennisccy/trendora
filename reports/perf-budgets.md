@@ -619,3 +619,98 @@ are untouched by construction (zero source diff this iteration on `prices.py`/`r
 not re-measured here. No J-16 never-regress budget (Items F/G/H, all isolated-harness scoring-compute
 measurements) could have changed either, for the same zero-diff reason.
 
+## Item J — coverage served from storage, never live-computed on the request path (iter-2, ops-hardening, J-05)
+
+**Problem (this file's own Item A / iter-24/25 history):** `GET /api/data`'s coverage block called
+`compute_coverage` → `_compute_coverage_uncached` live, on the request path, wrapping the whole derivation
+in a one-time whole-universe `prefilled_bar_cache` load — the documented OOM/hang source. Items A and the
+iter-25 live cold-boot repro (above) measured this at **9.522 s / 9.387 s wall time, ~1.8-1.9 GB peak RSS**
+on the real committed DB, even after the mmap/index-hygiene fixes — slow and memory-heavy by construction,
+not by a bug, because the work was genuinely happening on every cold request.
+
+**Fix (this iteration):** the request path (`api/data.py::data_overview`) now reads a `coverage_snapshot`
+row persisted by (a) the ingest finalize hook, reached at the end of every successful
+`backfill`/`both`/`rebuild` job, and (b) a boot-time warm-up safety net for a not-yet-ingested-once DB
+(`app.engine.warmup._warm_coverage_snapshot`, idempotent, runs strictly in the background warm-up thread
+after `yield`). `compute_coverage`/`_compute_coverage_uncached` themselves are UNCHANGED — the same
+derivation is reused verbatim by whichever of the two writers computes it; only WHERE it runs moved.
+
+**Measured 2026-07-19T21:50-21:53Z on this host (Linux 7.0.0-27-generic x86_64), backend :8255, real
+committed seed DB (`daily_prices` 3,299,789 rows / 590 symbols, `db_file_bytes` 2,091,933,696 —
+`scanner_results` 298,975 rows / `forward_returns` 1,486,791 rows — grown since the iter-18 "Ground truth"
+snapshot from the intervening iterations' own backfills, not from this iteration's code), via
+`scripts/start-backend.sh` (real `ulimit -v`/`MALLOC_ARENA_MAX` applied — see Item K below), two independent
+cold restarts (`kill` + fresh `bash scripts/start-backend.sh`, never `dev.sh`):**
+
+| Restart | `GET /api/data` (first request after `readiness: ready`) | Wall time | Coverage byte-check |
+|---|---|---|---|
+| 1 (first boot this pass) | HTTP 200 | **0.029 s** | `symbol_count 590`, `snapshot_count 758`, price range `1996-01-02 → 2026-07-17` — matches the live DB's real shape |
+| 2 (`kill` + restart, same DB) | HTTP 200 | **0.054 s** | `symbol_count 590`, `snapshot_count 758` — byte-identical to restart 1 |
+
+Both restarts: **≤ 2.0 s TC-7 budget met with roughly 35-70x margin** (0.029-0.054 s vs the 2.0 s budget),
+and both are a ~170-330x improvement over the pre-fix 9.4-9.5 s measurement above — the same order-of-
+magnitude win Item A's OOM fix delivered for memory, now delivered for latency on this specific endpoint,
+because the expensive derivation no longer runs on this request path AT ALL (zero calls to
+`_compute_coverage_uncached`/`prefilled_bar_cache` on either restart's first `/api/data` request — confirmed
+both by this live measurement's timing, which is inconsistent with a whole-table prefill even having
+started, and by this iteration's own `test_get_data_overview_serves_coverage_from_storage_zero_prefill_calls`
+unit test, which asserts the zero-call invariant directly via `monkeypatch`).
+
+**The honest "not yet computed" sentinel, observed live:** querying `/api/data` immediately (within ~1-2 s)
+after the FIRST restart, before the background warm-up thread's coverage-safety-net step had finished,
+returned HTTP 200 with the honest all-zero sentinel (`symbol_count: 0`, `snapshot_count: 0`,
+`price_start/end: null`) — never a 500, never a hang. Polling `/api/health` confirmed `warmup.status`
+transitioned `running → ok` a few seconds later, at which point the SAME `/api/data` call above (restart
+1's row) returned the real numbers. This is TC-9/TC-10's contract observed end-to-end on the real product
+DB, not just in the unit-test fixtures.
+
+**Memory (VmHWM, sampled from `/proc/<pid>/status` after each restart's warm-up settled to `ready`):**
+
+| Restart | VmPeak | VmHWM (peak resident) | VmRSS (current resident) | Margin under 6144 MB cap |
+|---|---|---|---|---|
+| 1 | 2,741,920 KB (~2,678 MB) | 1,823,488 KB (~1,781 MB) | 752,196 KB (~735 MB) | **~4,363 MB (71%)**, by VmHWM |
+| 2 | 2,693,952 KB (~2,631 MB) | 1,760,032 KB (~1,719 MB) | 820,860 KB (~802 MB) | **~4,425 MB (72%)**, by VmHWM |
+
+Both peaks are consistent with each other and with the pre-fix ~1.8-1.9 GB figures above — expected, since
+the SAME `_compute_coverage_uncached` derivation still runs (once per boot, via the warm-up safety net,
+instead of once per cold request); moving it off the request path did not change its own cost, only its
+frequency and timing. Both restarts stay comfortably under the 6144 MB cap with >70% margin.
+
+## Item K — `scripts/start-backend.sh` actually enforces `memory_cap_mb`/`malloc_arena_max` and writes a persistent logfile (iter-2, ops-hardening, J-04 remainder)
+
+**Problem:** `config.yaml`'s `server.memory_cap_mb: 6144` / `server.malloc_arena_max: 2` comments (and this
+file's own prior entries, which measured under a MANUALLY pre-set shell `ulimit`) implied
+`scripts/start-backend.sh` applied them — a direct read of the 34-line pre-iteration script confirmed it
+set no `ulimit`, exported no env var, and wrote no logfile at all. Confirmed false again at the start of
+this iteration before any fix was applied.
+
+**Fix (this iteration):** the script now reads both values from `config.yaml` via the venv Python
+(`app.config.get_config()`), applies `ulimit -v` (KiB) on the launcher shell before `exec` (inherited by the
+exec'd uvicorn process — same PID, new program image), exports `MALLOC_ARENA_MAX`, and redirects uvicorn's
+stdout/stderr to a persistent, append-mode logfile at `logs/backend.log` (repo-relative; already
+gitignored).
+
+**Measured live (2026-07-19T21:50Z, this host, real `scripts/start-backend.sh` launch, backend :8255):**
+
+- `/proc/<pid>/limits` "Max address space": soft = hard = `6442450944` bytes = exactly `6144 * 1024 * 1024`
+  — `RLIMIT_AS` correctly reflects `config.server.memory_cap_mb`.
+- `/proc/<pid>/environ`: `MALLOC_ARENA_MAX=2` present, matching `config.server.malloc_arena_max`.
+- `logs/backend.log`: contains `=== start-backend.sh: launching at <ISO timestamp> ===` plus
+  `port=8255 memory_cap_mb=6144 malloc_arena_max=2`, followed by uvicorn's own `Started server process` /
+  `Waiting for application startup` / `Application startup complete` / `Uvicorn running on http://...`
+  lines. A second restart appended its OWN launch block to the SAME file (both boots' timestamps present),
+  confirming append-mode (never a wiped-per-restart snapshot).
+- Stop/restart cycle: `kill` (SIGTERM) → uvicorn exited cleanly → port confirmed released (`ss -tln` showed
+  no listener) → fresh `scripts/start-backend.sh` restart on the same port succeeded with no conflict →
+  `readiness` correctly read `initializing` immediately after the second boot, then `ready` a few seconds
+  later once the warm-up (including the new coverage safety-net step) settled.
+- A stray `lsof -ti :8255` hit during this pass resolved to an UNRELATED Chrome browser utility subprocess
+  holding a stale `CLOSE_WAIT` client-side socket reference to the port (not a listener) — the exact same
+  false-positive class iter-1's own dev handoff documented on this identical port. Unlike iter-1, this pass
+  identified it via `ss -tlnp` (listener-only check) before taking any action and did **not** kill it.
+
+TC-15/TC-16 confirmed live, in addition to the automated `test_start_backend_script.py` (see the dev
+handoff for that suite's own execution status). TC-17 (SIGKILL leaves the logfile ending abruptly) was
+exercised by the automated script-level test on an isolated port, not repeated manually here to avoid a
+second unnecessary kill of the shared verification instance.
+

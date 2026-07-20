@@ -119,6 +119,36 @@ def _warm_membership_timeline(engine: Engine, cfg: Config) -> None:
         logger.exception("membership-timeline cache warm failed (non-fatal): %s", exc)
 
 
+def _warm_coverage_snapshot(engine: Engine, cfg: Config) -> None:
+    """ops-hardening iter-2 (J-05): the boot-time safety net for a not-yet-ingested-once database — persist
+    a `CoverageSnapshot` row for the CURRENT `(asof_key, dataset_version)` stamp ONLY IF no row exists yet
+    for it. Mirrors `_warm_membership_timeline`'s exact contract: opens its OWN session on `engine` (never a
+    request session), is idempotent (a no-op when a row already exists — this is a bootstrap safety net,
+    not a per-boot refresh; the ingest finalize hook is what keeps it fresh thereafter), and is NON-FATAL
+    (any exception is caught + logged here so a coverage-warm failure never aborts the otherwise-successful
+    warm-up). Reads the committed bars/runs only; computes no canonical value — it reuses
+    `data_manager.refresh_coverage_snapshot`, which itself reuses `_compute_coverage_uncached` verbatim."""
+    try:
+        with Session(engine) as session:
+            resolved_asof = data_manager._resolve_coverage_asof(session, None, cfg)
+            if resolved_asof is None:
+                return  # wholly empty DB (no bars at all) — nothing to snapshot yet
+            asof_key = resolved_asof.isoformat()
+            dataset_version = data_manager._membership_dataset_version(session, cfg)
+            existing = session.exec(
+                select(data_manager.CoverageSnapshot).where(
+                    data_manager.CoverageSnapshot.asof_key == asof_key,
+                    data_manager.CoverageSnapshot.dataset_version == dataset_version,
+                )
+            ).first()
+            if existing is not None:
+                return  # already computed under the current stamp — idempotent no-op
+            data_manager.refresh_coverage_snapshot(session, cfg)
+            logger.info("coverage snapshot warmed (asof=%s)", asof_key)
+    except Exception as exc:  # NON-FATAL: a coverage-snapshot warm failure must not fail the whole warm-up
+        logger.exception("coverage snapshot warm failed (non-fatal): %s", exc)
+
+
 def _run_warmup(engine: Engine, cfg: Config, prog: "data_manager.JobProgress") -> None:
     """The warm-up worker body (runs in the daemon thread). Persists each remaining cadence snapshot via
     the canonical `run_scan` (batched by `config.startup.warmup_batch_size` for progress ticks), then runs
@@ -174,6 +204,12 @@ def _run_warmup(engine: Engine, cfg: Config, prog: "data_manager.JobProgress") -
         # is logged but does NOT flip an otherwise-successful warm-up to `failed` (the cadence snapshots +
         # forward returns already succeeded; a cold `GET /api/data` still serves the bounded miss).
         _warm_membership_timeline(engine, cfg)
+        # ops-hardening iter-2 (J-05): the coverage_snapshot boot-time safety net — own guard, own session,
+        # non-fatal, idempotent (no-op once a row exists) — so a not-yet-ingested-once DB still has a
+        # coverage_snapshot row before the first `GET /api/data` request, without the boot path itself
+        # gaining any new synchronous compute (this step runs strictly in this background warm-up thread,
+        # after `yield`).
+        _warm_coverage_snapshot(engine, cfg)
         prog.status = "ok"
         prog.message = f"history {prog.dates_total}/{prog.dates_total}"
     except Exception as exc:  # NON-FATAL: caught + logged, never re-raised out of the thread

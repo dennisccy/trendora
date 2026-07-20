@@ -42,7 +42,14 @@ from app.models import DailyPrice, DataProviderRun, ImportCheckpoint
 def data_api_engine(tmp_path):
     """A tiny isolated DB (a few SPY bars so a trading calendar + latest date exist), set as the process
     engine for the duration of the test and restored afterward — so a job's appended DataProviderRun
-    row writes here, never to the shared `loaded_engine`."""
+    row writes here, never to the shared `loaded_engine`.
+
+    ops-hardening iter-2 (J-05): `GET /api/data`'s coverage block is now served ONLY from the persisted
+    `coverage_snapshot` row (never a live compute on the request path) — this fixture represents a DB that
+    has already been through an ingest, so it seeds that row here (via the SAME `refresh_coverage_snapshot`
+    the real ingest finalize hook / boot warm-up safety net use — never a second derivation), keeping
+    every existing coverage-shape assertion in this file reading the SAME live-equivalent numbers as
+    before this iteration."""
     prev = db_module._engine
     engine = make_engine(f"sqlite:///{tmp_path / 'data_api.db'}")
     create_db_and_tables(engine)
@@ -50,6 +57,8 @@ def data_api_engine(tmp_path):
         for d in (date(2024, 1, 2), date(2024, 1, 3)):
             session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
         session.commit()
+    with Session(engine) as session:
+        data_manager.refresh_coverage_snapshot(session, get_config())
     db_module.set_engine(engine)
     yield engine
     db_module.set_engine(prev)
@@ -93,6 +102,68 @@ def test_get_data_overview_shape(data_api_engine):
     # availability metadata carries only the env-var NAME + a boolean + a reason — never a key value
     for s in sources:
         assert set(s) == {"id", "label", "needs_key", "env_var", "supports_market_cap", "available", "reason"}
+
+
+def test_get_data_overview_serves_coverage_from_storage_zero_prefill_calls(data_api_engine, monkeypatch):
+    """ops-hardening iter-2 (J-05 / TC-6 pytest-level proxy) — GET /api/data's coverage block is served
+    BYTE-IDENTICAL from the persisted `coverage_snapshot` row (seeded by the fixture, representing "already
+    ingested") with ZERO calls to `_compute_coverage_uncached`/`prefilled_bar_cache` on the request —
+    simulating "restart, then first request": a fresh session reading an already-ingested DB never pays a
+    live whole-table compute on this path (AG-8)."""
+    with Session(data_api_engine) as session:
+        cfg = get_config()
+        expected = data_manager._compute_coverage_uncached(session, cfg, as_of=None)  # ground truth
+
+    def _boom(*_a, **_k):
+        raise AssertionError("data_overview must never call this on the request path")
+
+    monkeypatch.setattr(data_manager, "_compute_coverage_uncached", _boom)
+    monkeypatch.setattr(data_manager, "prefilled_bar_cache", _boom)
+    with Session(data_api_engine) as session:
+        payload = data_overview(session=session)
+    assert payload["coverage"] == expected
+
+
+def test_get_data_overview_zero_coverage_rows_serves_honest_sentinel_never_500(tmp_path, monkeypatch):
+    """TC-9 — a database with zero `coverage_snapshot` rows (a simulated pre-ingest state; real bars ARE
+    present) still serves an honest all-zero/empty coverage block (never an exception, never a live
+    whole-table compute) — the API layer's 200-vs-500 status is FastAPI's own concern; what this proves is
+    that `data_overview` itself does not raise and does not call the whole-table-prefill path."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'no_snapshot_yet.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        for d in (date(2024, 1, 2), date(2024, 1, 3)):
+            session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    def _boom(*_a, **_k):
+        raise AssertionError("must never call _compute_coverage_uncached when no coverage_snapshot row exists")
+
+    monkeypatch.setattr(data_manager, "_compute_coverage_uncached", _boom)
+    monkeypatch.setattr(data_manager, "prefilled_bar_cache", _boom)
+    with Session(engine) as session:
+        payload = data_overview(session=session)  # must not raise — never a 500/blank page
+    cov = payload["coverage"]
+    assert cov["symbol_count"] == 0  # honest sentinel — never a live-derived 1, despite real SPY bars
+    assert cov["snapshot_count"] == 0
+    assert cov["per_symbol"] == []
+    assert cov["universe_diagnostic"]["excluded"] == {
+        "below_history": 0, "stale_series": 0, "below_price": 0, "below_adv": 0,
+    }
+    assert cov["membership_timeline"]["points"] == []
+    assert cov["absent_from_latest_snapshot"]["absent_count"] == 0
+
+
+def test_get_data_overview_coverage_from_storage_empty_db_still_graceful(tmp_path):
+    """A wholly empty DB (no bars at all) also serves the honest sentinel gracefully — no crash on the
+    genuinely-empty-DB edge (`_resolve_coverage_asof` returns None; `coverage_from_storage` short-circuits
+    straight to the static sentinel)."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'wholly_empty.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        payload = data_overview(session=session)
+    assert payload["coverage"]["symbol_count"] == 0
+    assert payload["coverage"]["price_start"] is None
 
 
 def test_get_data_overview_carries_capacity_snapshot(data_api_engine):

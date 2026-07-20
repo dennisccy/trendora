@@ -1,0 +1,11 @@
+{
+  "model": "claude-opus-4-8[1m]",
+  "num_turns": 23,
+  "duration_ms": 1073780,
+  "usage": {
+    "input_tokens": 41,
+    "output_tokens": 49060,
+    "cache_read_input_tokens": 2448967,
+    "cache_creation_input_tokens": 350210
+  }
+}

@@ -17,6 +17,7 @@ backfill proof loads the committed seed and runs the real engines ONCE (module-s
 from __future__ import annotations
 
 import json
+import socket
 import time
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -30,7 +31,7 @@ from app.config import load_config
 from app.db import create_db_and_tables, make_engine
 from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError, RateLimitError
 from app.engine import data_manager
-from app.engine import forward_testing, scanner
+from app.engine import forward_testing, market_phase, scanner
 from app.engine.data_manager import (
     JobProgress,
     _chunk_plan,
@@ -64,6 +65,7 @@ from app.engine.data_manager import (
 from app.engine.forward_testing import compute_forward_aggregates
 from app.engine.scoring import score_stocks
 from app.models import (
+    CoverageSnapshot,
     DailyPrice,
     DataProviderRun,
     ForwardReturn,
@@ -998,6 +1000,395 @@ def test_backfill_error_other_uncapped_past_sample_limit(backfilled_job, monkeyp
     assert prog.error_other > data_manager._MAX_ERROR_SAMPLES
     # invariant 2 holds EXACTLY even past the sample cap (the whole point of the fix)
     assert prog.snapshots_created + prog.already_snapshotted + prog.error_other == prog.dates_total
+
+
+# ==================================================================================================
+# ops-hardening iter-2 (J-05): the ingest finalize hook — coverage_snapshot persistence, market-phase/
+# membership-timeline/research hot-key warming, and the aggregates_refreshed honesty gate.
+#
+# `finalize_hook_engine` is a TINY hand-built DB (mirrors `coverage_engine`'s own style) — fast, no full
+# seed load needed: the finalize hook's sub-steps (`_compute_coverage_uncached`, `market_phase_cached`,
+# `event_study_cached`) all degrade gracefully on sparse data (the SAME graceful-empty-DB behavior
+# `coverage_engine`'s own tests already exercise, since `read_pool()` always reads the REAL committed
+# candidate-pool file regardless of this tiny DB's contents).
+# ==================================================================================================
+@pytest.fixture()
+def finalize_hook_engine(tmp_path):
+    """A tiny hand-built DB with one stored ScannerRun + ScannerResult on a single as-of date — enough for
+    every finalize-hook sub-step to run for real."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'finalize.db'}")
+    create_db_and_tables(engine)
+    d = date(2024, 3, 4)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        run = ScannerRun(
+            asof_date=d, created_at=datetime(2024, 3, 4), provider="seed", benchmark="SPY",
+            regime_score=50.0, regime_label="Choppy", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        )
+        session.add(run)
+        session.commit()
+        session.refresh(run)
+        session.add(ScannerResult(
+            run_id=run.id, ticker="AAA", name="AAA Corp", leadership_score=1.0, leadership_bucket="Leader",
+            entry_quality_score=1.0, entry_quality_bucket="Good", risk_score=1.0, risk_bucket="Low",
+            setup_status="Actionable", rank=1, record_json="{}",
+        ))
+        session.commit()
+    return engine, d
+
+
+def test_finalize_hook_persists_coverage_snapshot_and_warms_aggregates(finalize_hook_engine):
+    """TC-1/TC-5 — a finalize hook call for a job that newly created a snapshot on `d` persists exactly one
+    `coverage_snapshot` row for the current stamp and reports every category this fixture's data supports
+    as refreshed: `latest_snapshot` (this run created a snapshot), `coverage` + `membership_timeline` (one
+    compute warms both), `market_phase` (the new date), `research_hot_keys` (the default hot key)."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        prog = JobProgress(job_id="finalize-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+    assert set(refreshed) == {
+        "latest_snapshot", "coverage", "membership_timeline", "market_phase", "research_hot_keys",
+    }
+    with Session(engine) as session:
+        rows = session.exec(select(CoverageSnapshot)).all()
+        assert len(rows) == 1
+        resolved_asof = data_manager._resolve_coverage_asof(session, None, cfg)
+        assert rows[0].asof_key == resolved_asof.isoformat()
+        assert rows[0].dataset_version == data_manager._membership_dataset_version(session, cfg)
+
+
+def test_finalize_hook_coverage_snapshot_byte_identical_to_fresh_compute(finalize_hook_engine):
+    """TC-8 — the persisted payload_json is byte-identical (field-by-field) to a direct fresh
+    `_compute_coverage_uncached` call for the same session state (AG-3: storage is re-served, never
+    re-derived)."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        prog = JobProgress(job_id="byte-identity-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+    with Session(engine) as session:
+        row = session.exec(select(CoverageSnapshot)).one()
+        stored = json.loads(row.payload_json)
+        fresh = data_manager._compute_coverage_uncached(session, cfg, as_of=None)
+    assert stored == fresh
+
+
+def test_finalize_hook_market_phase_computed_exactly_once_not_on_subsequent_read(
+    finalize_hook_engine, monkeypatch
+):
+    """TC-4 — `compute_market_phase` executes exactly once per newly-created date, during the finalize
+    hook; a subsequent read of the SAME as-of serves from `MarketPhaseCache` (zero further compute calls)."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    calls: list[int] = []
+    orig = market_phase.compute_market_phase
+
+    def _counting(*args, **kwargs):
+        calls.append(1)
+        return orig(*args, **kwargs)
+
+    monkeypatch.setattr(market_phase, "compute_market_phase", _counting)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="market-phase-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+    assert len(calls) == 1, "compute_market_phase should run exactly once, during the finalize hook"
+
+    # a subsequent read of the SAME as-of must serve from the cache — zero additional compute calls.
+    with Session(engine) as session:
+        market_phase.market_phase_cached(session, d, cfg)
+    assert len(calls) == 1, "a subsequent read must serve from MarketPhaseCache, not recompute"
+
+
+def test_finalize_hook_only_warms_market_phase_for_newly_created_dates(finalize_hook_engine):
+    """A finalize hook call with an EMPTY `new_snapshot_dates` (e.g. a zero-work re-run) warms neither
+    `market_phase` nor `latest_snapshot` — never a fabricated category for work that did not happen —
+    while `coverage`/`membership_timeline`/`research_hot_keys` still refresh unconditionally."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        prog = JobProgress(job_id="zero-work-probe", kind="backfill", start=d, end=d)
+        # prog.new_snapshot_dates deliberately left empty — simulates a zero-work re-run.
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+    assert "market_phase" not in refreshed
+    assert "latest_snapshot" not in refreshed
+    assert {"coverage", "membership_timeline", "research_hot_keys"} <= set(refreshed)
+
+
+def test_finalize_hook_partial_failure_isolated_other_aggregates_still_refresh(
+    finalize_hook_engine, monkeypatch
+):
+    """A single aggregate's failure (research hot-key warm, forced) does not prevent the OTHERS
+    (`latest_snapshot`/`coverage`/`membership_timeline`/`market_phase`) from refreshing — log + continue,
+    never raise (mirrors `_warm_membership_timeline`'s non-fatal contract)."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("forced research hot-key failure")
+
+    monkeypatch.setattr(data_manager, "event_study_cached", _boom)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="partial-failure-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+    assert "research_hot_keys" not in refreshed
+    assert {"latest_snapshot", "coverage", "membership_timeline", "market_phase"} <= set(refreshed)
+
+
+def test_finalize_hook_never_raises_even_when_everything_fails(finalize_hook_engine, monkeypatch):
+    """The finalize hook never raises even when EVERY compute-based sub-step fails (only the
+    zero-compute `latest_snapshot` acknowledgment survives) — `_run_job`'s own call site additionally
+    wraps this call, but the function itself is designed to never propagate."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("forced failure")
+
+    monkeypatch.setattr(data_manager, "refresh_coverage_snapshot", _boom)
+    monkeypatch.setattr(market_phase, "market_phase_cached", _boom)
+    monkeypatch.setattr(data_manager, "event_study_cached", _boom)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="all-fail-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+    assert refreshed == ["latest_snapshot"]
+
+
+def test_finalize_hook_makes_no_network_call(finalize_hook_engine, monkeypatch):
+    """AG-9 / TC-19 — the finalize hook's aggregate-refresh calls issue ZERO outbound network calls (every
+    reused compute function is a pure DB-backed derivation, never a live provider)."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+
+    def _no_network(*_a, **_k):
+        raise AssertionError("unexpected network call during the ingest finalize hook")
+
+    monkeypatch.setattr(socket.socket, "connect", _no_network)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="no-network-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+    assert refreshed  # completed successfully with zero socket.connect calls
+
+
+def test_run_detail_omits_aggregates_refreshed_until_computed():
+    """TC-13/TC-14 — mirrors `test_run_detail_omits_breakdown_until_computed`: a not-yet-computed (fresh,
+    `_create_run_record`-time) backfill row serves `aggregates_refreshed` null; an INTERRUPTED row whose
+    finalize hook never ran also serves null (the breakdown fields ARE computed — the date-loop ran — but
+    `aggregates_refreshed` stays at its empty JobProgress default, never a fabricated list — TC-13); a
+    fetch/expand row serves null unconditionally (`_breakdown_computed` is always False for those kinds —
+    TC-14); a genuinely computed row serves its real list."""
+    fresh = JobProgress(job_id="never-ran", kind="backfill", start=date(2024, 1, 1), end=date(2025, 6, 1))
+    assert data_manager._run_detail(fresh)["aggregates_refreshed"] is None
+
+    # TC-13: interrupted between the date-loop and the finalize hook — calendar_days IS computed (the
+    # date-loop ran and set it), but aggregates_refreshed stays empty (the hook never ran).
+    interrupted = JobProgress(
+        job_id="interrupted", kind="backfill", start=date(2026, 5, 2), end=date(2026, 5, 29)
+    )
+    interrupted.calendar_days, interrupted.dates_total, interrupted.non_trading_days = 28, 19, 9
+    interrupted.already_snapshotted, interrupted.snapshots_created, interrupted.error_other = 0, 19, 0
+    assert data_manager._run_detail(interrupted)["aggregates_refreshed"] is None
+
+    # TC-14: a fetch kind never routes through the finalize hook — null regardless of any (hypothetical,
+    # impossible-in-practice) populated field, since `_breakdown_computed` is always False for this kind.
+    fetch_kind = JobProgress(job_id="fetch-kind", kind="fetch", start=date(2024, 1, 1), end=date(2024, 1, 1))
+    fetch_kind.aggregates_refreshed = ["coverage"]
+    assert data_manager._run_detail(fetch_kind)["aggregates_refreshed"] is None
+
+    done = JobProgress(job_id="ran", kind="backfill", start=date(2026, 5, 2), end=date(2026, 5, 29))
+    done.calendar_days, done.dates_total, done.non_trading_days = 28, 19, 9
+    done.already_snapshotted, done.snapshots_created, done.error_other = 0, 19, 0
+    done.aggregates_refreshed = ["coverage", "market_phase"]
+    assert data_manager._run_detail(done)["aggregates_refreshed"] == ["coverage", "market_phase"]
+
+
+def test_do_backfill_new_snapshot_dates_tracks_genuinely_new_dates_only(backfilled_job):
+    """ops-hardening iter-2 (J-05) — `_persist` populates `prog.new_snapshot_dates` with exactly the dates
+    THIS call genuinely created a NEW snapshot for (never a date that already existed) — the finalize
+    hook's input for which as-ofs to warm in `MarketPhaseCache`. A fresh single-date window (re-queried
+    live, so this is safe regardless of what other tests in this module already touched) proves the
+    fresh-create case; re-running the SAME date proves the already-exists case records nothing new."""
+    engine = backfilled_job["engine"]
+    cfg = backfilled_job["cfg"]
+    with Session(engine) as session:
+        trading = _trading_days(session, cfg)
+        snapshotted = set(session.exec(select(ScannerRun.asof_date)).all())
+    fresh_date = next(d for d in trading if d not in snapshotted)
+
+    prog = JobProgress(job_id="new-snapshot-dates-probe", kind="backfill", start=fresh_date, end=fresh_date)
+    with Session(engine) as session:
+        data_manager._do_backfill(session, cfg, prog, eng=engine)
+    assert prog.new_snapshot_dates == [fresh_date]
+    assert prog.snapshots_created == 1
+
+    # re-run the SAME date: it already exists now -> nothing new is recorded.
+    prog2 = JobProgress(job_id="new-snapshot-dates-probe-2", kind="backfill", start=fresh_date, end=fresh_date)
+    with Session(engine) as session:
+        data_manager._do_backfill(session, cfg, prog2, eng=engine)
+    assert prog2.new_snapshot_dates == []
+    assert prog2.snapshots_created == 0
+    assert prog2.already_snapshotted == 1
+
+
+def test_run_data_job_backfill_wires_finalize_hook_end_to_end(backfilled_job):
+    """ops-hardening iter-2 (J-05) end-to-end: a real backfill job dispatched through `run_data_job` (the
+    SAME path the API uses) reaches the finalize hook, persists a `coverage_snapshot` row, and the job's
+    final summary (the SAME dict `GET /api/data/jobs/{id}` serves) carries a non-empty
+    `aggregates_refreshed`. Searches from the LATEST end of the trading calendar (the other new-date test
+    above searches from the earliest) so the two never contend for the same fresh date."""
+    engine = backfilled_job["engine"]
+    cfg = backfilled_job["cfg"]
+    with Session(engine) as session:
+        trading = _trading_days(session, cfg)
+        snapshotted = set(session.exec(select(ScannerRun.asof_date)).all())
+    fresh_date = next(d for d in reversed(trading) if d not in snapshotted)
+
+    job = create_job("backfill", fresh_date, fresh_date)
+    summary = run_data_job(job.job_id, config=cfg, engine=engine)
+    assert summary["status"] == "ok"
+    assert set(summary["aggregates_refreshed"]) >= {"latest_snapshot", "coverage", "membership_timeline"}
+
+    with Session(engine) as session:
+        resolved_asof = data_manager._resolve_coverage_asof(session, None, cfg)
+        version = data_manager._membership_dataset_version(session, cfg)
+        row = session.exec(
+            select(CoverageSnapshot).where(
+                CoverageSnapshot.asof_key == resolved_asof.isoformat(),
+                CoverageSnapshot.dataset_version == version,
+            )
+        ).first()
+        assert row is not None
+
+    # the SAME dict shape GET /api/data's `runs` list serves (`recent_runs` -> `_run_detail` for the
+    # persisted row) also carries the finalize hook's output — one computation, two servings.
+    with Session(engine) as session:
+        persisted = recent_runs(session, cfg)
+    this_run = next(r for r in persisted if r["kind"] == "backfill" and r["start"] == fresh_date.isoformat())
+    assert set(this_run["aggregates_refreshed"]) >= {"latest_snapshot", "coverage", "membership_timeline"}
+
+
+def test_fetch_kind_run_never_carries_aggregates_refreshed(tmp_path):
+    """TC-14 — a completed `fetch` run's persisted detail always carries `aggregates_refreshed: null` (the
+    finalize hook is gated to backfill/both/rebuild-like kinds only in `_run_job`; a fetch never reaches
+    it)."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'fetch_only.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(
+            symbol="SPY", date=date(2024, 1, 2), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0,
+        ))
+        session.commit()
+    cfg = load_config()
+
+    class _EmptyProvider(PriceProvider):
+        def get_daily(self, symbol, start=None, end=None):
+            return []  # a successful fetch that finds no new bars — never a fabricated one
+
+    job = create_job("fetch", date(2024, 1, 2), date(2024, 1, 2), source="yahoo")
+    summary = run_data_job(
+        job.job_id, config=cfg, engine=engine, provider=_EmptyProvider(), sleep_fn=_noop_sleep,
+        seed_dir=tmp_path,
+    )
+    assert summary["aggregates_refreshed"] == []  # the live in-memory default (never populated for fetch)
+    with Session(engine) as session:
+        persisted = recent_runs(session, cfg)
+    this_run = next(r for r in persisted if r["kind"] == "fetch")
+    assert this_run["aggregates_refreshed"] is None  # the persisted/served view: null for a fetch kind
+
+
+# ==================================================================================================
+# iter-2 review (CRITICAL regression): the app-wide as-of switcher (J-93/J-94) must serve REAL coverage
+# for EVERY already-ingested date — not just the DB's single current stamp. Before the fix, only the
+# current stamp got a coverage_snapshot row, so any OTHER selectable historical date read as an all-zero
+# empty-DB sentinel (an AG-3 violation on the shipped switcher). Two layers close it: (1) the ingest
+# finalize hook persists a per-date row for every NEWLY-created date; (2) coverage_from_storage self-heals
+# an explicit historical selection that has a real ScannerRun but no row (a legacy pre-table date).
+# ==================================================================================================
+@pytest.fixture()
+def two_snapshot_dates_engine(tmp_path):
+    """A tiny DB with TWO stored ScannerRun/ScannerResult dates (an older historical date + a newer/latest
+    date), each with one priced bar — enough to prove per-date coverage differs from the current stamp."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'two_dates.db'}")
+    create_db_and_tables(engine)
+    d_old, d_new = date(2024, 3, 1), date(2024, 3, 4)
+    with Session(engine) as session:
+        for d in (d_old, d_new):
+            session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+        for d in (d_old, d_new):
+            run = ScannerRun(
+                asof_date=d, created_at=datetime(2024, 3, 4), provider="seed", benchmark="SPY",
+                regime_score=50.0, regime_label="Choppy", regime_components_json="[]",
+                new_high_low_json="{}", candidate_counts_json="{}",
+            )
+            session.add(run)
+            session.commit()
+            session.refresh(run)
+            session.add(ScannerResult(
+                run_id=run.id, ticker="AAA", name="AAA Corp", leadership_score=1.0, leadership_bucket="Leader",
+                entry_quality_score=1.0, entry_quality_bucket="Good", risk_score=1.0, risk_bucket="Low",
+                setup_status="Actionable", rank=1, record_json="{}",
+            ))
+            session.commit()
+    return engine, d_old, d_new
+
+
+def test_finalize_hook_persists_per_date_coverage_for_historical_switcher_date(two_snapshot_dates_engine):
+    """iter-2 review fix, layer 1 — a backfill that newly created a NON-latest (historical) snapshot date
+    persists a per-date coverage_snapshot for it, so coverage_from_storage serves REAL coverage for that
+    date (byte-identical to a fresh compute-at-that-date; AG-3) — never the all-zero sentinel. The CURRENT
+    stamp row is unaffected, and there are now exactly two rows (old + latest), not one."""
+    engine, d_old, d_new = two_snapshot_dates_engine
+    cfg = load_config()
+    # a backfill whose date-loop newly created the OLDER (historical, non-latest) date
+    with Session(engine) as session:
+        prog = JobProgress(job_id="hist-per-date-probe", kind="backfill", start=d_old, end=d_old)
+        prog.new_snapshot_dates = [d_old]
+        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+
+    with Session(engine) as session:
+        # the historical date is served from storage, byte-identical to a fresh compute-at-d_old...
+        cov_old = data_manager.coverage_from_storage(session, cfg, as_of=d_old)
+        fresh_old = data_manager._compute_coverage_uncached(session, cfg, as_of=d_old)
+        assert cov_old == fresh_old
+        assert cov_old["symbol_count"] == 1  # REAL coverage (the sentinel would be 0) — the regression
+        assert cov_old["universe_asof"] == d_old.isoformat()
+        # ...and the current/latest stamp is still served correctly too (two distinct rows now exist)
+        cov_new = data_manager.coverage_from_storage(session, cfg, as_of=d_new)
+        assert cov_new["universe_asof"] == d_new.isoformat()
+        assert len(session.exec(select(CoverageSnapshot)).all()) == 2
+
+
+def test_coverage_from_storage_self_heals_explicit_legacy_historical_asof(two_snapshot_dates_engine):
+    """iter-2 review fix, layer 2 — an EXPLICIT historical as-of backed by a real ScannerRun but with NO
+    persisted coverage_snapshot row (a legacy date ingested before this table existed) is served REAL
+    coverage by coverage_from_storage (computed once + persisted, self-healing) — never the all-zero
+    sentinel. A dataless as-of (no ScannerRun) and the default as_of=None path still get the honest
+    sentinel; the current stamp's default row is what the fixture leaves — here we seed NONE to model the
+    pure legacy state."""
+    engine, d_old, d_new = two_snapshot_dates_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        assert session.exec(select(CoverageSnapshot)).all() == []  # legacy DB: zero coverage rows
+        # (1) explicit historical as-of WITH a real ScannerRun, no row -> REAL coverage + self-heal to storage
+        cov = data_manager.coverage_from_storage(session, cfg, as_of=d_old)
+        fresh = data_manager._compute_coverage_uncached(session, cfg, as_of=d_old)
+        assert cov == fresh
+        assert cov["symbol_count"] == 1 and cov["universe_asof"] == d_old.isoformat()  # not the 0 sentinel
+        healed = session.exec(
+            select(CoverageSnapshot).where(CoverageSnapshot.asof_key == d_old.isoformat())
+        ).first()
+        assert healed is not None  # self-healed: the next visit reads straight from storage
+        # (2) an explicit as-of to a DATALESS date (no ScannerRun) still serves the honest sentinel
+        sentinel = data_manager.coverage_from_storage(session, cfg, as_of=date(2024, 6, 1))
+        assert sentinel["symbol_count"] == 0 and sentinel["universe_asof"] is None
 
 
 # ==================================================================================================

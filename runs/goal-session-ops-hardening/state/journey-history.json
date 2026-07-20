@@ -4,40 +4,40 @@
       "id": "J-01",
       "name": "Backfill honors the requested range and explains zero-work",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-1",
-      "last_passing_iter": "goal-ops-hardening-iter-1",
+      "last_verified_iter": "goal-ops-hardening-iter-2",
+      "last_passing_iter": "goal-ops-hardening-iter-2",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-1-evidence/UT-04-result-fullpage.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-2-evidence/J-01-zero-work-vs-success.png",
       "spec_hash": "06b26eaaf82dcdb532465e5c287f1177681a6c8697e4f96cfadddb4fc60b29ad"
     },
     "J-03": {
       "id": "J-03",
       "name": "No per-run range cap",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-1",
-      "last_passing_iter": "goal-ops-hardening-iter-1",
+      "last_verified_iter": "goal-ops-hardening-iter-2",
+      "last_passing_iter": "goal-ops-hardening-iter-2",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-1-evidence/UT-12-result.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-2-evidence/J-03-large-range-accepted.png",
       "spec_hash": "5457740bbb0cea982e9b1241f19ca50836ff584bbb960a5a088f7168d820c271"
     },
     "J-04": {
       "id": "J-04",
       "name": "Non-blocking boot with visible status",
-      "status": "partial",
-      "last_verified_iter": "goal-ops-hardening-iter-1",
-      "last_passing_iter": null,
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-2",
+      "last_passing_iter": "goal-ops-hardening-iter-2",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-1-evidence/UT-14-result.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-2-evidence/UT-06-empty-state.png",
       "spec_hash": "4074a9c952a9a143dc543efef3c8d3e0a1e33a848ab250ec90c7c2f568dbcff8"
     },
     "J-05": {
       "id": "J-05",
       "name": "Aggregates are precomputed at ingest, never on the fly",
-      "status": "failing",
-      "last_verified_iter": "goal-ops-hardening-iter-0",
+      "status": "partial",
+      "last_verified_iter": "goal-ops-hardening-iter-2",
       "last_passing_iter": null,
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-0-evidence/J-05-single-day-backfill-zero.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-2-evidence/UT-02-live.png",
       "spec_hash": "63dd5bf0983454e48338557d0f2b1e5ce9726d7aa247c20174ac9323f637564b"
     },
     "J-06": {
@@ -56,9 +56,23 @@
       "iter": "goal-ops-hardening-iter-1",
       "anti_goal": "AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders.",
       "severity": "critical",
-      "evidence": "Interrupted backfill rows served a fabricated '0 calendar days · 0 already snapshotted · 0 non-trading' breakdown for ranges that were really hundreds of days (browser-qa UT-14 Additional observation + Additional Observations #1, reproduced twice on 517-day jobs). Found and FIXED intra-iteration by the audit (Finding B1): _run_detail now gates the four breakdown fields to null on _breakdown_computed (calendar_days>0), with regression test test_run_detail_omits_breakdown_until_computed. Confirmed present in working tree: apps/backend/app/engine/data_manager.py:3017,3032-3035.",
+      "evidence": "Interrupted backfill rows served a fabricated '0 calendar days · 0 already snapshotted · 0 non-trading' breakdown for ranges that were really hundreds of days (browser-qa UT-14 Additional observation, reproduced twice on 517-day jobs). Found and FIXED intra-iteration by the audit (Finding B1): _run_detail gates the four breakdown fields to null on _breakdown_computed (calendar_days>0), regression-tested. Confirmed in working tree: apps/backend/app/engine/data_manager.py:3017,3032-3035.",
       "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-2",
+      "anti_goal": "AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders.",
+      "severity": "critical",
+      "evidence": "REVIEW pass-1 CRITICAL: coverage_from_storage regressed the app-wide as-of switcher — selecting an already-ingested historical date served a FALSE all-zero 'not yet computed' sentinel instead of real coverage (only the single current-latest as-of ever had a persisted row). FIXED intra-iteration by dev (two layers: _persist_per_date_coverage_snapshots at ingest for new dates + coverage_from_storage read-path self-heal for legacy explicit as_of, both via the canonical _compute_coverage_uncached). Re-verified: browser-qa UT-05 cross-checked 2015-04-01->360 and 2015-01-16->354 byte-exact vs direct API; 2 regression tests assert symbol_count==1 (REAL) vs 0 sentinel. Review pass-2 = PASS_WITH_NOTES.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-2",
+      "anti_goal": "AG-3 (dimension): displayed numbers must be correct — a fetch that lands new bars silently blanks the DEFAULT /data coverage panel to false all-zeros.",
+      "severity": "minor",
+      "evidence": "Audit Finding B1 + browser-qa 'Additional Finding' (both live-reproduced): CoverageSnapshot rows are keyed on (asof_key, dataset_version); a fetch that lands >=1 bar changes the dataset_version fingerprint, so no current-stamp row matches and the default as_of=None visit (self-heal gated to explicit as_of only, to preserve the TC-6/TC-9 cold-boot no-whole-table guarantee) falls to the honest-empty sentinel — Universe/Symbols/Trading-days all render 0 for a fully-ingested DB until the next restart or backfill/rebuild. Root-caused at data_manager.py:3759 (fetch/expand excluded from finalize hook, correct per scope) + :1101 (self-heal as_of gate) + :900 (sentinel). SCOPED-OUT this iteration ('Any change to fetch/expand kinds finalize behavior' is OUT OF SCOPE; no Must-have journey exercises fetch-then-coverage). NOT loop-halting: breaks no Must-have journey (J-01/J-03/J-04/J-05 all pass their own paths; AG-3 is journey-scoped), self-heals with no data loss, no byte-identity/AG-8/AG-9 violation, disclosed with a clear fix. Audit was genuinely unsure IMPORTANT-vs-CRITICAL and named the higher on the product's AG-3 dimension; audit+QA+ux-regression all classified it a non-blocking follow-up and the audit explicitly recommended 'Proceed'. BLOCKS a future GOAL_ACHIEVED and is the #1 next-step: refresh coverage_snapshot at the end of ANY count-changing ingest kind (ingest-time, AG-8-safe), gated to skip when dataset_version is unchanged; do NOT extend the as_of=None self-heal (would re-introduce the worse cold-boot whole-table compute).",
+      "resolved": false
     }
   ],
-  "updated_at": "2026-07-19T19:21:22Z"
+  "updated_at": "2026-07-20T06:06:21Z"
 }

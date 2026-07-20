@@ -2366,6 +2366,11 @@ export interface DataRun {
   non_trading_days: number | null;
   already_snapshotted: number | null;
   error_other: number | null;
+  // ops-hardening iter-2 (J-05) — which downstream aggregates (coverage, latest snapshot, membership
+  // timeline, market phase, research hot-keys) this run's ingest finalize hook refreshed. null for a
+  // fetch/expand run and for a not-yet-computed/interrupted row (matches the calendar_days-style
+  // nullability convention above — never a fabricated list).
+  aggregates_refreshed: string[] | null;
   bars_fetched: number | null;
   passers: number | null; // J-35 expand screen outcome (null for non-expand runs)
   omitted_total: number | null; // J-35 expand screen outcome (null otherwise)
@@ -2581,6 +2586,9 @@ export interface DataJob {
   non_trading_days?: number;
   already_snapshotted?: number;
   error_other?: number;
+  // ops-hardening iter-2 (J-05): the live job's finalize-hook output so far — empty/absent while running
+  // or before the hook has run (honest; never fabricated), populated once the finalize hook completes.
+  aggregates_refreshed?: string[] | null;
   chunk_index?: number; // J-34: completed chunks (== checkpoint resume point)
   chunk_total?: number; // J-34: total planned chunks (chunk x/N); 0/absent for a non-chunked job
   passers?: number; // J-35 expand: candidates that passed the screen (became universe members)

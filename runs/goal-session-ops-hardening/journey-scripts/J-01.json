@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "journey": "J-01",
+  "name": "Backfill honors the requested range and explains zero-work",
+  "default_timeout_ms": 15000,
+  "steps": [
+    {"n": 1, "journey": "J-01", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "Data Manager"}},
+    {"n": 2, "journey": "J-01", "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2026-05-02"}},
+    {"n": 3, "journey": "J-01", "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2026-05-03"}},
+    {"n": 4, "journey": "J-01", "action": {"type": "click", "target": {"role": "button", "name": "Start"}}},
+    {"n": 5, "journey": "J-01", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "2 non-trading"}},
+    {"n": 6, "journey": "J-01", "action": {"type": "goto", "url": "/scanner-runs"}, "expect": {"text": "2026-05-15"}}
+  ]
+}

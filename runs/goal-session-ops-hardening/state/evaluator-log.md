@@ -61,3 +61,19 @@ caches). Build the ingest finalize hooks + new `coverage_snapshot` table so boot
 serve persisted rows; this also completes J-04's memory-cap/boot-no-prefill remainder and unblocks
 J-06's budgets. Depth = full (new persisted table + new serving path = data-model/data-contract
 change, cross-cutting across boot + request paths). J-06 measurement capstone after J-05 lands.
+
+## Iteration 2 — goal-ops-hardening-iter-2
+
+**Date:** 2026-07-20T06:06:21Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: J-04 (partial→passing — remaining acceptance: enforced ulimit/malloc-arena + persistent logfile now built & verified)
+- Newly partial: J-05 (failing→partial — 3.5/4 acceptance steps verified; step 4 heavy-job health/memory unmeasured)
+- Newly failing: none
+- Regressed: none (J-01, J-03 re-verified passing via UT-J-01/UT-J-03)
+- Anti-goal violations: as-of-switcher AG-3 CRITICAL (review pass-1) FIXED intra-iteration + re-verified byte-exact → resolved. B1 (fetch-lands-bars blanks default /data coverage to false-zeros) — AG-3 dimension, out-of-scope path, breaks no Must-have journey, self-heals, disclosed → recorded UNRESOLVED, minor for loop-mechanics, blocks future GOAL_ACHIEVED, top next-step. scan-report CLEAN; coherence COHERENCE-WARN (advisory).
+
+**Reasoning:** J-05/J-04 verified across four independent lanes — browser (UT-02 Refreshed line live+persisted, UT-04 cold /data 0.086 s from storage, UT-06 phase-aware initializing badge, UT-09 scanner-runs+leaderboard), a real-process `test_start_backend_script.py` suite (SIGKILL log abrupt-end, /proc limits), QA's live /proc reads, and an independent audit code-trace + 4-test re-run. J-05 is `partial` not `passing` because DoD acceptance step 4 (`/api/health` responsive + VmPeak under the now-enforced 6144 MB cap DURING a heavy job — TC-11/TC-12) was never measured live (audit T1, review MINOR) — honest per "only some assertion steps passed." Considered and rejected REGRESSION on B1: it breaks no Must-have journey (AG-3 is journey-scoped; J-01/J-03/J-04/J-05 all pass their own paths), self-heals, no byte-identity/AG-8/AG-9 violation, is a disclosed scoping tradeoff (the naive fix re-introduces the worse cold-boot whole-table CRITICAL J-05 removes), and audit (PASS_WITH_GAPS) + QA + ux-regression unanimously said proceed. J-01/J-03 non-regressed → REGRESSION off. Clear next work, no human blocker → STALLED off. J-05 partial + J-06 failing → not GOAL_ACHIEVED. Coherence WARN (not FAIL) → no consolidation mandate. Progress made (J-04 passing, J-05 up from failing) → CONTINUE.
+
+**Next-step recommendation:** Full-depth, priority order: (1) close audit B1 — refresh `coverage_snapshot` at the end of ANY count-changing ingest kind (ingest-time, AG-8-safe), gated to skip when `_membership_dataset_version` is unchanged, plus the B2 stale-stamp prune; do NOT extend the `as_of=None` self-heal (re-introduces the cold-boot whole-table compute). (2) J-05 step 4 — run one real heavy rebuild/multi-day backfill, record TC-11 (`/api/health` ≤1 s) + TC-12 (VmPeak < 6144 MB) into perf-budgets Item J (watch the ~757 per-date coverage computes on a full rebuild); promotes J-05→passing. (3) J-06 measurement capstone — cross-page TTI + on-load-latency budgets, folding in the preliminary cold-`/api/data` number. J-06 is the last failing Must-have journey.

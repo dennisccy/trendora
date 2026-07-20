@@ -32,6 +32,7 @@ import ctypes.util
 import gc
 import hashlib
 import json
+import logging
 import os
 import threading
 import time
@@ -53,6 +54,7 @@ from app.data_providers.seed_provider import SeedProvider, symbol_to_filename
 from app.db import get_engine
 from app.engine import drift as drift_module
 from app.engine import forward_testing, scanner
+from app.engine import market_phase  # ops-hardening iter-2 (J-05): the ingest finalize hook warms this
 from app.engine.prices import attach_shared_cache, bar_cache, bars_asof, latest_data_date, prefilled_bar_cache
 from app.engine import universe_resolver
 from app.engine.universe_screen import (
@@ -62,6 +64,7 @@ from app.engine.universe_screen import (
     screen_reasons,
 )
 from app.models import (
+    CoverageSnapshot,
     DailyPrice,
     DataProviderRun,
     ForwardReturn,
@@ -76,8 +79,12 @@ from app.models import (
 from app.engine.research import (
     _dataset_version,  # single-sourced cache stamp (J-72/J-87) — never duplicated
     _membership_dataset_version,  # J-100: the NARROW membership-cache stamp (no forward-return term)
+    event_study_cached,  # ops-hardening iter-2 (J-05): the ingest finalize hook warms one default hot key
+    subject_catalog,
 )
 from app.seed_loader import price_load_symbols
+
+logger = logging.getLogger("trendora.data_manager")
 
 # Injectable sleep (J-34): the chunked fetch's inter-request delay + 429 backoff call this. Tests pass
 # their own recorder so backoff/sleep add NO wall-clock (MEMORY: backend-test-suite-runtime).
@@ -888,6 +895,214 @@ def _compute_coverage_body(
     }
 
 
+# --------------------------------------------------------------------------------------------------
+# ops-hardening iter-2 (J-05) — the coverage_snapshot persisted table. `GET /api/data` is served ONLY
+# from this table (never a live `compute_coverage`/`_compute_coverage_uncached` call on the request path
+# — that whole-table bar-prefill is the documented OOM/hang source, iter-24 evidence). The row is written
+# by the ingest finalize hook (`_refresh_ingest_aggregates`, below) and the boot warm-up safety net
+# (`app.engine.warmup._run_warmup`) — both reuse `_compute_coverage_uncached` verbatim, never a second
+# derivation of the coverage figure.
+# --------------------------------------------------------------------------------------------------
+def _coverage_not_yet_computed_payload(cfg: Config) -> dict:
+    """The honest 'not yet computed' coverage sentinel `coverage_from_storage` serves when no
+    `CoverageSnapshot` row exists yet for the resolved key (before the first ingest finalize hook or the
+    boot warm-up safety net has run). Issues ZERO database queries — only the committed-pool FILE read
+    (`read_pool`, the same file `pool_survivorship`/`_resolved_universe` already read) plus config reads —
+    so this fallback can never pay the whole-table bar-prefill cost the persisted snapshot exists to avoid
+    (AG-8). Every DB-derived figure is honestly zero/null/empty — the SAME shape
+    `_compute_coverage_uncached` already serves for a genuinely empty DB (never a fabricated value)."""
+    pool_count = len({row["symbol"] for row in read_pool()})
+    threshold = cfg.indicators.min_history_bars
+    filters = cfg.universe.filters
+    return {
+        "price_start": None,
+        "price_end": None,
+        "symbol_count": 0,
+        "universe_count": 0,
+        "universe_asof": None,
+        "candidate_pool_count": pool_count,
+        "candidate_universe_count": len(cfg.universe.symbols),
+        "snapshot_count": 0,
+        "snapshot_dates": [],
+        "trading_day_count": 0,
+        "gap_count": 0,
+        "gap_first": None,
+        "gap_last": None,
+        "gaps_preview": [],
+        "per_symbol": [],
+        "diagnostic": {
+            "threshold": threshold,
+            "no_history": [],
+            "thin": [],
+            "intra_series_gaps": [],
+            "affected_count": 0,
+        },
+        "universe_diagnostic": {
+            "asof": None,
+            "candidate_pool_count": pool_count,
+            "admitted_count": 0,
+            "excluded_total": 0,
+            "excluded": {reason: 0 for reason in universe_resolver.EXCLUSION_REASONS},
+            "thresholds": {
+                "min_history_bars": threshold,
+                "min_price": filters.min_price,
+                "min_dollar_vol": filters.min_dollar_vol,
+                "adv_window_days": filters.adv_window_days,
+                "max_staleness_days": filters.max_staleness_days,
+            },
+        },
+        "membership_timeline": {
+            "candidate_pool_count": pool_count,
+            "points": [],
+            "labels": {
+                "survivorship": pool_survivorship(),
+                "warmup": {
+                    "min_history_bars": threshold,
+                    "boundary_date": None,
+                    "label": (
+                        "Coverage has not been computed yet for this database — an ingest job or the "
+                        "background warm-up will populate it shortly."
+                    ),
+                },
+                "universe_relative": (
+                    "Breadth and walk-forward evidence are universe-relative. The dynamic point-in-time "
+                    "universe REDUCES survivorship versus the static current-membership universe (a "
+                    "30-bar name is never ranked against a 1000-bar peer), while residual pool-survivorship "
+                    "remains until a true point-in-time index-constituent feed is added."
+                ),
+            },
+        },
+        "absent_from_latest_snapshot": {
+            "absent_count": 0,
+            "absent_preview": [],
+            "latest_snapshot_date": None,
+            "universe_count": 0,
+            "candidate_pool_count": pool_count,
+        },
+    }
+
+
+def _upsert_coverage_snapshot(
+    session: Session, asof_key: str, dataset_version: str, payload: dict
+) -> None:
+    """Idempotent upsert for ONE `CoverageSnapshot` row keyed by `(asof_key, dataset_version)`: prunes any
+    STALE row for this `asof_key` (an older `dataset_version`), then updates the current-stamp row in
+    place if one already exists or inserts a fresh one. Mirrors `market_phase_cached`'s prune-stale-then-
+    write upsert, generalized to also cover a repeat call under the SAME stamp — this is called
+    unconditionally at the end of every successful ingest (not gated behind a cache-miss check, unlike the
+    `*_cached` read-through caches)."""
+    stale = session.exec(
+        select(CoverageSnapshot).where(
+            CoverageSnapshot.asof_key == asof_key,
+            CoverageSnapshot.dataset_version != dataset_version,
+        )
+    ).all()
+    for row in stale:
+        session.delete(row)
+
+    existing = session.exec(
+        select(CoverageSnapshot).where(
+            CoverageSnapshot.asof_key == asof_key,
+            CoverageSnapshot.dataset_version == dataset_version,
+        )
+    ).first()
+    now = datetime.now(timezone.utc)
+    if existing is not None:
+        existing.payload_json = json.dumps(payload)
+        existing.computed_at = now
+        session.add(existing)
+    else:
+        session.add(CoverageSnapshot(
+            asof_key=asof_key, dataset_version=dataset_version,
+            payload_json=json.dumps(payload), computed_at=now,
+        ))
+    try:
+        session.commit()
+    except Exception:  # a concurrent writer raced us to the same key — best-effort, not a source of truth
+        session.rollback()
+
+
+def refresh_coverage_snapshot_for(session: Session, cfg: Config, resolved_asof: date_cls) -> dict:
+    """Compute + persist the `CoverageSnapshot` row for ONE SPECIFIC already-resolved as-of date (reusing
+    the canonical `_compute_coverage_uncached` verbatim — byte-identical to a fresh compute FOR THAT as-of,
+    never a second derivation). Shared by `refresh_coverage_snapshot` (the current stamp), the ingest
+    finalize hook's per-date warm loop (`_persist_per_date_coverage_snapshots`), and `coverage_from_storage`'s
+    read-path safety net for an already-ingested HISTORICAL as-of that predates this table. Returns the
+    freshly persisted payload."""
+    asof_key = resolved_asof.isoformat()
+    dataset_version = _membership_dataset_version(session, cfg)
+    # `_compute_coverage_uncached` (via `_compute_coverage_body`) already calls `membership_timeline_cached`
+    # internally as part of computing this SAME payload — warming that cache is a free side effect of this
+    # one call, never a second derivation.
+    payload = _compute_coverage_uncached(session, cfg, as_of=resolved_asof)
+    _upsert_coverage_snapshot(session, asof_key, dataset_version, payload)
+    return payload
+
+
+def refresh_coverage_snapshot(session: Session, cfg: Config) -> Optional[dict]:
+    """Compute the CURRENT coverage payload (reusing the canonical `_compute_coverage_uncached` verbatim —
+    never a second derivation) and persist it as the `CoverageSnapshot` row for the CURRENT `(asof_key,
+    dataset_version)` key, upserting idempotently. Called by the ingest finalize hook (unconditionally, on
+    every successful backfill/both/rebuild — including a zero-work re-run) and the boot warm-up safety net
+    (only when no row exists yet for the current stamp). Returns the freshly persisted payload, or `None`
+    on a wholly-empty DB (no bars at all — `_resolve_coverage_asof` returns None only then; nothing to
+    snapshot yet). The current stamp resolves `None`→latest, so this is `refresh_coverage_snapshot_for` at
+    that resolved date (byte-identical: `_compute_coverage_uncached(as_of=None)` and `(as_of=latest)` both
+    resolve through `_resolve_coverage_asof` to the SAME latest date)."""
+    resolved_asof = _resolve_coverage_asof(session, None, cfg)
+    if resolved_asof is None:
+        return None
+    return refresh_coverage_snapshot_for(session, cfg, resolved_asof)
+
+
+def _scanner_run_exists(session: Session, asof: date_cls) -> bool:
+    """Whether a real `ScannerRun` snapshot exists for exactly this as-of date — the signal that `asof` is
+    genuinely-ingested historical data (the app-wide as-of switcher, `GET /api/runs`, only ever offers such
+    dates), not a dataless/pre-ingest as-of that must honestly serve the 'not yet computed' sentinel."""
+    return session.exec(
+        select(ScannerRun.asof_date).where(ScannerRun.asof_date == asof).limit(1)
+    ).first() is not None
+
+
+def coverage_from_storage(session: Session, cfg: Config, *, as_of: Optional[date_cls] = None) -> dict:
+    """`GET /api/data`'s coverage block, served from the persisted `CoverageSnapshot` row for the resolved
+    `(asof_key, dataset_version)` key — REPLACES the former request-path call to `compute_coverage`/
+    `_compute_coverage_uncached` (the whole-table bar-prefill OOM/hang source, iter-24 evidence —
+    `compute_coverage` itself is UNCHANGED and still used directly by the ingest finalize hook / boot
+    warm-up safety net / tests that want a genuine live compute).
+
+    Explicit-historical-as-of safety net (iter-2 review, CRITICAL): the ingest finalize hook persists a row
+    for EVERY newly-created snapshot date, so the app-wide as-of switcher normally reads every selectable
+    date straight from storage. If a row is nonetheless missing for an EXPLICIT `as_of` (the switcher
+    selected a date — `data_overview` passes `None` for the default latest-date visit, a concrete date only
+    for an explicit `?as_of=`) that is backed by a REAL `ScannerRun` (an already-ingested historical date,
+    e.g. one ingested BEFORE this table existed), serve the CORRECT coverage for that date — computed once
+    and persisted so the next visit is instant (self-healing) — rather than the false all-zero sentinel.
+    This is an AG-3 correctness guarantee (displayed numbers MUST match the engine's computation) that
+    overrides the AG-8 no-request-compute preference for this rare, deliberate, one-time-per-date path.
+
+    The common default (`as_of=None`) visit and a genuinely dataless as-of (no `ScannerRun`, e.g. pre-first-
+    ingest) still take the honest zero-query 'not yet computed' sentinel — NEVER a live whole-table compute,
+    never a blank/500 response (AG-8)."""
+    resolved_asof = _resolve_coverage_asof(session, as_of, cfg)
+    if resolved_asof is not None:
+        asof_key = resolved_asof.isoformat()
+        dataset_version = _membership_dataset_version(session, cfg)
+        row = session.exec(
+            select(CoverageSnapshot).where(
+                CoverageSnapshot.asof_key == asof_key,
+                CoverageSnapshot.dataset_version == dataset_version,
+            )
+        ).first()
+        if row is not None:
+            return json.loads(row.payload_json)
+        # no persisted row: heal an explicit switcher selection of a real already-ingested historical date
+        # (see docstring) — real coverage, self-healed to storage — rather than a false empty-DB sentinel.
+        if as_of is not None and _scanner_run_exists(session, resolved_asof):
+            return refresh_coverage_snapshot_for(session, cfg, resolved_asof)
+    return _coverage_not_yet_computed_payload(cfg)
+
+
 def compute_availability(session: Session, config: Optional[Config] = None) -> dict:
     """J-61 — the per-trading-date availability derivation. READ-ONLY descriptive metadata over the
     SAME stored bars + stored runs `compute_coverage` reads (never a second derivation of a coverage
@@ -1637,6 +1852,17 @@ class JobProgress:
     non_trading_days: int = 0
     already_snapshotted: int = 0
     error_other: int = 0
+    # ops-hardening iter-2 (J-05) — the ingest finalize hook's inputs/output. `new_snapshot_dates` is
+    # INTERNAL scratch (not serialized, like `_backfill_per_date_seconds_sum` below): the dates THIS run's
+    # `_do_backfill` genuinely persisted a NEW `ScannerRun` for (populated in `_persist()` exactly where it
+    # already branches on `existed_before`), so the finalize hook knows which as-ofs to warm in
+    # `MarketPhaseCache` ("for each newly-created snapshot date" — never every stored date).
+    # `aggregates_refreshed` is the finalize hook's honest output — the subset of `["latest_snapshot",
+    # "coverage", "membership_timeline", "market_phase", "research_hot_keys"]` it actually refreshed —
+    # empty/default until the hook has actually run (never fabricated on an interrupted/failed row; gated
+    # in `_run_detail()` the SAME way `calendar_days` etc. already are).
+    new_snapshot_dates: list[date_cls] = field(default_factory=list)
+    aggregates_refreshed: list[str] = field(default_factory=list)
     # J-34: chunked-fetch progress. `chunk_index` = number of fully-completed chunks (== the durable
     # checkpoint's resume point); `chunk_total` = the deterministic plan size (symbol-batches × date-
     # windows). Both 0 for a non-chunked job (e.g. backfill-only) so the UI hides the chunk indicator.
@@ -1786,6 +2012,10 @@ class JobProgress:
             "non_trading_days": self.non_trading_days,
             "already_snapshotted": self.already_snapshotted,
             "error_other": self.error_other,
+            # ops-hardening iter-2 (J-05): the live job's finalize-hook output so far — empty while running/
+            # before the hook has run (honest; never fabricated), populated once the finalize hook completes
+            # (mirrors how the OTHER live fields above simply read the current in-memory value).
+            "aggregates_refreshed": list(self.aggregates_refreshed),
             "chunk_index": self.chunk_index,  # J-34: completed chunks (== checkpoint resume point)
             "chunk_total": self.chunk_total,  # J-34: total planned chunks
             "passers": self.passers,  # J-35: candidates that passed the screen (became members)
@@ -2632,6 +2862,11 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
         prog.forward_returns_inserted += result["rows_inserted"]
         prog.dates_done += 1
         prog.message = f"snapshots {prog.dates_done}/{prog.dates_total} dates"
+        # ops-hardening iter-2 (J-05): record every date THIS call genuinely created a NEW snapshot for
+        # (never one that already existed — a rare inter-job race, see `existed_before` above) so the
+        # ingest finalize hook knows exactly which as-ofs to warm in `MarketPhaseCache`.
+        if not existed_before:
+            prog.new_snapshot_dates.append(d)
 
     def _persist_isolated(d: date_cls, payload: Optional[dict], secs: float, compute_error: Optional[str]) -> None:
         """J-67 + J-68 — write ONE date with failure isolation: if the worker COMPUTE already failed
@@ -2731,6 +2966,105 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
     # UNCAPPED total (not `len(date_failures)`, a bounded sample) so `error_other` — and the invariant
     # `snapshots_created + already_snapshotted + error_other == dates_total` — stays exact past 20 failures.
     prog.error_other = prog.date_failures_total
+
+
+# --------------------------------------------------------------------------------------------------
+# ops-hardening iter-2 (J-05) — the ingest finalize hook: reached at the end of a successful
+# backfill/both/rebuild job (`_run_job`, below). Persists a fresh coverage_snapshot, warms
+# MarketPhaseCache for each snapshot date this run newly created, and warms one default EventStudyCache
+# hot key — reusing each cache's existing compute function, never a second derivation of any of them.
+# --------------------------------------------------------------------------------------------------
+def _persist_per_date_coverage_snapshots(
+    session: Session, cfg: Config, dates: list[date_cls]
+) -> None:
+    """Persist a byte-identical `CoverageSnapshot` row for each as-of in `dates` (the snapshot dates a
+    backfill NEWLY created), so the app-wide as-of switcher serves REAL coverage for each from storage —
+    never the all-zero 'not yet computed' sentinel (the iter-2 review's CRITICAL AG-3 regression: only the
+    single current stamp was persisted, so every OTHER already-ingested date read as an empty DB).
+
+    The CURRENT resolved as-of is skipped (already persisted by `refresh_coverage_snapshot`), so the common
+    single-latest-date backfill filters to nothing and pays NO bar-cache load at all. When there IS extra
+    work, ONE shared, re-entrant `prefilled_bar_cache` covers the whole loop — the whole-table bar scan runs
+    at most once regardless of date count (each per-date `_compute_coverage_uncached` reuses it), so warming
+    N dates costs one load, not N. Each row equals a fresh `_compute_coverage_uncached(as_of=d)`. Per-date
+    isolation (log + continue) so one date's failure never drops the rest; the caller wraps this whole call
+    non-fatally too. Reads only committed bars (backfill adds none), writes only `CoverageSnapshot` rows —
+    so the shared cache never serves a stale series (AG-8: no unbounded request-path load; this is ingest)."""
+    if not dates:
+        return
+    current = _resolve_coverage_asof(session, None, cfg)
+    todo = [d for d in dates if d != current]
+    if not todo:
+        return  # the only newly-created date IS the current stamp (already persisted) — no extra load
+    pool_symbols = {row["symbol"] for row in read_pool()}
+    with prefilled_bar_cache(session, expected_symbols=pool_symbols):
+        for d in todo:
+            try:
+                refresh_coverage_snapshot_for(session, cfg, d)
+            except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next date
+                logger.exception("ingest per-date coverage warm failed for %s (non-fatal): %s", d, exc)
+
+
+def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress) -> list[str]:
+    """The ingest finalize hook (J-05). Each aggregate is refreshed independently (its own try/except: log
+    + continue) so one aggregate's failure never prevents another from refreshing, and this function itself
+    never raises (the caller in `_run_job` wraps the whole call in its own try/except too, mirroring
+    `_warm_membership_timeline`'s non-fatal contract in warmup.py — an aggregate-refresh failure must never
+    flip an otherwise-successful ingest job to failed). Returns the subset of `["latest_snapshot",
+    "coverage", "membership_timeline", "market_phase", "research_hot_keys"]` ACTUALLY refreshed — never a
+    fabricated category (mirrors the `omitted`/`passers` honesty convention already used elsewhere in this
+    module)."""
+    refreshed: list[str] = []
+
+    if prog.new_snapshot_dates:
+        # this run's own date-loop already created + committed these snapshots (scanner.persist_run_payload
+        # / run_scan, inside `_do_backfill._persist`) before this hook runs — nothing further to compute
+        # here; just acknowledge honestly that a fresh snapshot now exists.
+        refreshed.append("latest_snapshot")
+
+    try:
+        payload = refresh_coverage_snapshot(session, cfg)
+        if payload is not None:
+            refreshed.append("coverage")
+            # `_compute_coverage_uncached` (via `_compute_coverage_body`) already calls
+            # `membership_timeline_cached` internally as part of computing the payload just persisted above
+            # — warmed for free by that SAME call, never a second/separate derivation.
+            refreshed.append("membership_timeline")
+    except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
+        logger.exception("ingest coverage/membership-timeline refresh failed (non-fatal): %s", exc)
+
+    # iter-2 review (CRITICAL): also persist a per-date coverage_snapshot for every date THIS run newly
+    # created, so the app-wide as-of switcher serves REAL coverage for each historical date from storage —
+    # not the all-zero "not yet computed" sentinel. Still the "coverage" category (no new one); own
+    # try/except (log + continue) so it never flips the job. Skips the current stamp (persisted above) and
+    # is a no-op — no bar-cache load — for the common single-latest-date backfill.
+    try:
+        _persist_per_date_coverage_snapshots(session, cfg, prog.new_snapshot_dates)
+    except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
+        logger.exception("ingest per-date coverage warm failed (non-fatal): %s", exc)
+
+    market_phase_warmed = False
+    for d in prog.new_snapshot_dates:
+        try:
+            market_phase.market_phase_cached(session, d, cfg)
+            market_phase_warmed = True
+        except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next date/aggregate
+            logger.exception("ingest market-phase warm failed for %s (non-fatal): %s", d, exc)
+    if market_phase_warmed:
+        refreshed.append("market_phase")
+
+    try:
+        subjects = subject_catalog(cfg)
+        if subjects:
+            # the SAME default (first catalog subject, config default_horizon, episodes view, all-history)
+            # a fresh `/research/event-study` page load with no query params would request — the one hot
+            # key worth warming at ingest (goal.md: "warm default (subject,horizon,all-history) keys").
+            event_study_cached(session, subjects[0]["key"], cfg.walk_forward.default_horizon, cfg)
+            refreshed.append("research_hot_keys")
+    except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue
+        logger.exception("ingest research hot-key warm failed (non-fatal): %s", exc)
+
+    return refreshed
 
 
 # --------------------------------------------------------------------------------------------------
@@ -3033,6 +3367,14 @@ def _run_detail(prog: JobProgress) -> dict:
         "non_trading_days": prog.non_trading_days if _breakdown_computed else None,
         "already_snapshotted": prog.already_snapshotted if _breakdown_computed else None,
         "error_other": prog.error_other if _breakdown_computed else None,
+        # ops-hardening iter-2 (J-05): the finalize-hook output on the permanent audit row — present for
+        # backfill/both/rebuild kinds ONLY once the finalize hook has actually run (matching the SAME
+        # `_breakdown_computed` gate the breakdown fields above use, PLUS an explicit non-empty check, so a
+        # not-yet-computed/interrupted row, and a fetch/expand row — for which `_breakdown_computed` is
+        # already False — all serve `null`, never a fabricated list; AG-3).
+        "aggregates_refreshed": (
+            prog.aggregates_refreshed if (_breakdown_computed and prog.aggregates_refreshed) else None
+        ),
         # J-35 expand: the screen outcome on the audit row (descriptive job-control values — NOT a recompute
         # of any canonical score/return/bucket). Present only for an expand kind.
         "passers": prog.passers if prog.kind in _EXPAND_KINDS else None,
@@ -3401,7 +3743,28 @@ def _run_job(
                         per_date_seconds_sum=prog._backfill_per_date_seconds_sum,
                     )
         if not paused:
-            prog.status = _final_status(prog)
+            final_status = _final_status(prog)
+            # ops-hardening iter-2 (J-05): run the ingest finalize hook BEFORE the status flip below
+            # becomes observable — never after. `prog.status`/`aggregates_refreshed` are polled LIVE by
+            # `GET /api/data/jobs/{id}` (via `to_dict()`); flipping `status` to its terminal value first
+            # would let a poller observe "ok"/"partial" while `aggregates_refreshed` is still empty and
+            # `finished_at` is still None — a misleading inconsistent window this project's honesty
+            # conventions do not allow (and one this hook's own real work would make newly observable,
+            # unlike the negligible few-line gap that existed here before). Reached ONLY on a successful
+            # backfill/both/rebuild (never fetch/expand, never a failed/resumable outcome). The request/
+            # job session (`session`, above) has already closed by this point, so this opens its OWN fresh
+            # session. Wrapped in its own try/except (log + continue, never raise) mirroring
+            # `_warm_membership_timeline`'s non-fatal contract in warmup.py — an aggregate-refresh failure
+            # must never flip an otherwise-successful ingest job to failed.
+            if final_status in ("ok", "partial") and (
+                prog.kind in _BACKFILL_KINDS or prog.kind in _REBUILD_KINDS
+            ):
+                try:
+                    with Session(eng) as agg_session:
+                        prog.aggregates_refreshed = _refresh_ingest_aggregates(agg_session, cfg, prog)
+                except Exception as exc:  # noqa: BLE001 — non-fatal: never flips a successful job to failed
+                    logger.exception("ingest aggregate refresh failed (non-fatal): %s", exc)
+            prog.status = final_status
     except Exception as exc:  # noqa: BLE001 — any failure must surface as an explicit failed job (scrubbed)
         prog.status = "failed"
         _record_error(prog, scrub(str(exc)))
@@ -3626,6 +3989,10 @@ def summarize_provider_run(run: DataProviderRun) -> dict:
         "non_trading_days": detail.get("non_trading_days"),
         "already_snapshotted": detail.get("already_snapshotted"),
         "error_other": detail.get("error_other"),
+        # ops-hardening iter-2 (J-05): the finalize hook's output on this persisted run — None for a
+        # fetch/expand run or a not-yet-computed/interrupted row (mirrors the breakdown fields' nullability
+        # immediately above). Surfaced verbatim from the persisted detail JSON — no second computation path.
+        "aggregates_refreshed": detail.get("aggregates_refreshed"),
         "bars_fetched": detail.get("bars_fetched"),
         "passers": detail.get("passers"),  # J-35 expand screen outcome (None for non-expand runs)
         "omitted_total": detail.get("omitted_total"),  # J-35 expand screen outcome (None otherwise)

@@ -32,6 +32,7 @@ early as-of date (less history → faster) and never the latest.
 """
 from __future__ import annotations
 
+import json
 import threading
 from datetime import date
 
@@ -56,6 +57,7 @@ from app.engine.warmup import (
 from app.engine.data_manager import _membership_timeline, membership_timeline_cached
 from app.engine.research import _membership_dataset_version
 from app.models import (
+    CoverageSnapshot,
     ForwardReturn,
     MembershipTimelineCache,
     ScannerResult,
@@ -325,6 +327,80 @@ def test_membership_timeline_cache_warm_failure_is_nonfatal(early_engine, monkey
         snapshot_dates = sorted(session.exec(select(ScannerRun.asof_date)).all())
         served = membership_timeline_cached(session, cfg, snapshot_dates)
         assert served == _membership_timeline(session, cfg, snapshot_dates)
+    _clear_warmup_registry()
+    warmup_mod._WARMUP_THREAD = None
+
+
+# ==================================================================================================
+# ops-hardening iter-2 (J-05) — the coverage_snapshot boot-time safety net: a not-yet-ingested-once DB
+# gets exactly one persisted coverage_snapshot row after the background warm-up finishes, computed
+# strictly in this background thread (never on the boot/request path), idempotent, and non-fatal.
+# ==================================================================================================
+def test_warmup_precomputes_coverage_snapshot_if_missing(warmed_engine):
+    """After the background warm-up finishes, a `CoverageSnapshot` row exists for the CURRENT (asof_key,
+    dataset_version) stamp — the boot-time safety net for a not-yet-ingested-once DB, run strictly in this
+    background warm-up thread (never blocking `yield`/serving). Byte-identical to a fresh
+    `_compute_coverage_uncached` compute (a cache of the deterministic derivation, not a second
+    computation)."""
+    engine, cfg = warmed_engine["engine"], warmed_engine["cfg"]
+    with Session(engine) as session:
+        resolved_asof = data_manager._resolve_coverage_asof(session, None, cfg)
+        version = data_manager._membership_dataset_version(session, cfg)
+        rows = session.exec(select(CoverageSnapshot)).all()
+        assert len(rows) == 1, f"expected exactly one warmed coverage_snapshot row, got {len(rows)}"
+        assert rows[0].asof_key == resolved_asof.isoformat()
+        assert rows[0].dataset_version == version
+        fresh = data_manager._compute_coverage_uncached(session, cfg, as_of=None)
+        stored = json.loads(rows[0].payload_json)
+    assert stored == fresh
+
+
+def test_warmup_coverage_snapshot_is_noop_when_already_present(early_engine):
+    """The boot safety net is a no-op when a `coverage_snapshot` row already exists for the current stamp
+    — it does not recompute/overwrite on every boot; only the ingest finalize hook refreshes it
+    thereafter."""
+    engine, cfg = early_engine
+    ensure_latest_snapshot(engine, cfg)  # latest servable
+    with Session(engine) as session:
+        data_manager.refresh_coverage_snapshot(session, cfg)  # seed one row directly (a prior ingest)
+        rows_before = session.exec(select(CoverageSnapshot)).all()
+        assert len(rows_before) == 1
+        computed_at_before = rows_before[0].computed_at
+
+    warmup_mod._warm_coverage_snapshot(engine, cfg)  # the safety net — must see the row and no-op
+
+    with Session(engine) as session:
+        rows_after = session.exec(select(CoverageSnapshot)).all()
+    assert len(rows_after) == 1
+    assert rows_after[0].computed_at == computed_at_before  # untouched — no recompute
+
+
+def test_warmup_coverage_snapshot_warm_failure_is_nonfatal(early_engine, monkeypatch, caplog):
+    """A failure precomputing the coverage snapshot during warm-up is CAUGHT + logged and does NOT flip an
+    otherwise-successful warm-up to `failed` (mirrors
+    `test_membership_timeline_cache_warm_failure_is_nonfatal`)."""
+    engine, cfg = early_engine
+    ensure_latest_snapshot(engine, cfg)  # latest servable before the warm-up
+    _clear_warmup_registry()
+    warmup_mod._WARMUP_THREAD = None
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("forced coverage snapshot warm failure")
+
+    monkeypatch.setattr(warmup_mod.data_manager, "refresh_coverage_snapshot", _boom)
+    with caplog.at_level("ERROR"):
+        job_id = start_warmup(engine, cfg)
+        _join_warmup(job_id)
+
+    rec = data_manager.get_job(job_id)
+    # the warm-up still settled OK (the coverage-warm failure is non-fatal — it did not fail the job).
+    assert rec is not None and rec["status"] == "ok"
+    assert any("coverage snapshot warm failed" in r.message.lower() for r in caplog.records)
+    # no stale/garbage row was written by the failed warm (the inner compute raised before persist).
+    with Session(engine) as session:
+        assert session.exec(select(CoverageSnapshot)).all() == []
+
+    monkeypatch.undo()
     _clear_warmup_registry()
     warmup_mod._WARMUP_THREAD = None
 

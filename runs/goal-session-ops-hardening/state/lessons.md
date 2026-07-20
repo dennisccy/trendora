@@ -40,3 +40,19 @@ and mirror the existing bounded-sample/`_total` split (`omitted`/`omitted_total`
 **Applies to:** any iter adding persisted/served numeric fields to `data_provider_runs` /
 `JobProgress` / a run-summary or aggregate payload (J-05's `coverage_snapshot` finalize hooks next
 cycle) — cover the interrupted/orphan-sweep and >sample-cap paths, not just the happy path.
+
+## iter-2 — 2026-07-20T06:06:21Z
+
+**Verdict:** CONTINUE
+**Lesson:** Keying a served ingest-time cache on a LIVE dataset fingerprint (`coverage_snapshot`'s
+`dataset_version` = `_membership_dataset_version`, embedding bar/symbol/run counts) means ANY
+count-changing ingest silently invalidates EVERY cached row for every as-of — and if some ingest
+kinds are (correctly, per scope) excluded from the refresh hook, the read path serves the
+honest-empty all-zero sentinel for a fully-populated DB until a restart or backfill re-persists. Two
+individually-correct decisions (exclude `fetch`/`expand` from the finalize hook; key on a fingerprint
+for byte-identity) compose into an emergent AG-3-class false-zero on the DEFAULT `/data` view (audit
+B1, live-reproduced in UT-07 when a fetch landed 1 bar). The offline "fetch is always zero-work"
+assumption also proved false — the committed fixture had a landable 2026-07-17 bar.
+**Applies to:** any iter warming/serving an ingest-time cache keyed on a dataset-version fingerprint —
+EVERY count-changing ingest path (fetch/expand/remove-data too) must refresh it or the sentinel must
+do a cheap real existence check; verify the fetch-then-view path, not just backfill-then-view.

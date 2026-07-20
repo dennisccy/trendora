@@ -1,24 +1,26 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 1 · **Date:** 2026-07-19 · **Verdict:** CONTINUE
+**After iteration:** 2 · **Date:** 2026-07-20 · **Verdict:** CONTINUE
 
 ## Journeys
 
-2 passing (J-01 J-03) · 1 partial (J-04) · 2 failing (J-05 J-06) — 5 total. J-01/J-03 newly passing this iter (browser-qa 17/17 + audit trace + unit tests). J-04 re-verified non-regressed.
+3 passing (J-01 J-03 J-04) · 1 partial (J-05) · 1 failing (J-06) — 5 total. J-04 newly passing (logfile + memory-cap built); J-05 up from failing (coverage_snapshot + finalize hook shipped, heavy-job measurement pending).
 
 ## Active blockers
 
-- None human-owned. Dev work remains: J-05's ingest-time aggregate hooks + `coverage_snapshot` table (retire the whole-table coverage prefill in `apps/backend/app/engine/data_manager.py` `compute_coverage`); J-06 per-page budgets; J-04's `scripts/start-backend.sh` persistent logfile + `ulimit`/`MALLOC_ARENA_MAX` enforcement.
+- **B1 (dev-owned, TOP next-step, blocks future GOAL_ACHIEVED):** a `fetch` that lands new bars blanks the DEFAULT `/data` coverage to false all-zeros until restart/backfill — `coverage_snapshot` keyed on the live `dataset_version` fingerprint; `fetch`/`expand` skip the finalize hook. `apps/backend/app/engine/data_manager.py` :3759 (kind gate) / :1101 (self-heal as_of gate) / :900 (sentinel). Fix at ingest-time (AG-8-safe), gated to skip when stamp unchanged — NOT via the `as_of=None` self-heal.
+- **J-05 step 4 (dev/QA-owned):** TC-11/TC-12 (health responsiveness + VmPeak DURING a heavy job) never measured live — the one gap keeping J-05 partial.
 
 ## Last 2 verdicts
 
-- iter 1: CONTINUE — J-01 + J-03 delivered and verified; AG-3 interrupted-row fabricated-zero found by browser-qa and FIXED by audit (B1) + tested; J-05/J-06 still failing so not achieved.
-- iter 0: CONTINUE — baseline verify-only; all 5 fail as an honest measurement, no code changed.
+- iter 2: CONTINUE — J-04→passing (ulimit/malloc-arena + persistent logfile verified live), J-05→partial (coverage_snapshot + finalize hook shipped; heavy-job measurement pending); as-of AG-3 fixed; B1 out-of-scope gap queued; J-06 unbuilt.
+- iter 1: CONTINUE — J-01, J-03 delivered (cadence bypass, cap removal, breakdown/chunking); interrupted-row AG-3 fabricated-breakdown fixed intra-iteration.
 
 ## Do not redo
 
-- J-01 DONE: cadence bypass for `backfill`/`both` (not `rebuild`), `dates_total` redefinition, run-summary breakdown (`calendar_days`/`non_trading_days`/`already_snapshotted`/`error_other`, invariants exact), persisted-history + zero-work-distinct UI — all live-verified. Do not rebuild.
-- J-03 DONE: `max_range_days` removed everywhere (config.py/config.yaml/validate_job_request + 6 test files); `_do_backfill` date-window chunking via `import_chunking.date_window_days`. Do not re-add a cap.
-- Audit B1/B2 fixes are IN TREE (data_manager.py `_run_detail` `_breakdown_computed` guard; `date_failures_total`). Do not re-report the interrupted-row fabricated-zero as new — but B3 (live `to_dict` `both`-during-fetch) + F1 (`dates_total` on interrupted rows) remain as one-line follow-ups if a future iter revisits interrupted-row rendering.
-- J-04's boot speed / phase-aware badge / crash presentation / interrupted-after-restart already WORK — build ONLY the `start-backend.sh` logfile + memory-cap enforcement.
-- `docs/goal.md` is lint-final (commit 9c98cb3) — do not edit it. The 25 mcp-loop journeys are archived — do not re-verify.
+- `coverage_snapshot` table + ingest finalize hook + `aggregates_refreshed` (gated on `_breakdown_computed`; null for fetch/expand/interrupted) — data_manager.py, models.py — J-05 core, verified.
+- `scripts/start-backend.sh` enforces `ulimit -v` 6144 MB + `MALLOC_ARENA_MAX=2` + persistent `logs/backend.log` (append; abrupt-end on crash) — verified live via /proc + real-process test.
+- As-of-switcher AG-3 fix (per-date persist + explicit-`as_of` read-path self-heal) — verified byte-exact (UT-05); do NOT revert.
+- Default `/data` served from storage via `coverage_from_storage` (api/data.py:127), zero request-path whole-table load — do NOT re-introduce `compute_coverage` on the default `as_of=None` path.
+- J-01/J-03 shipped fields (`dates_total`/breakdown/`chunk_index`, `max_range_days` removal) — do not touch.
+- `docs/goal.md` is lint-final (commit 9c98cb3) — do not edit; the 25 mcp-loop journeys are archived — do not re-verify.

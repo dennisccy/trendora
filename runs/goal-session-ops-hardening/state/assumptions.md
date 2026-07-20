@@ -113,3 +113,34 @@ flagging the same drift in NOTES rather than silently expanding scope beyond wha
 future iteration should wire them if J-05 step 4's health-responsiveness check ever reveals it's
 actually needed.
 **Reversible:** yes
+
+## iter-2 — goal-evaluator
+
+**Ambiguity:** J-04's 6-step acceptance includes step 4 (kill backend → UI transitions to an explicit
+unreachable/crashed presentation, visibly distinct from initializing). This iteration built and
+freshly verified J-04's *remaining* gap (persistent logfile + memory-cap + boot-no-prefill) and
+freshly re-verified four other steps (fast boot UT-04, phase-aware initializing badge UT-06,
+interrupted-job-after-restart UT-07, crash→logfile-abrupt-end via the TC-17 real-process SIGKILL
+test), but the crash→UI-unreachable *visual* presentation (step 4) was NOT freshly screenshotted this
+iteration.
+**We chose:** scored J-04 `passing` (partial→passing) rather than holding it partial for the one
+un-rescreenshotted sub-step — its badge/preflight/readiness/health code is UNCHANGED this iteration
+(coherence confirms no nav/badge diff), step 4 was verified passing in mcp-loop iter-28/33 and re-noted
+working at baseline, and its crash-side counterpart (logfile abrupt-end) IS freshly verified. Future
+required-still-passing replay/QA re-exercises the crash-UI path.
+**Reversible:** yes
+
+## iter-2 — goal-evaluator
+
+**Ambiguity:** AG-3 ("A journey passes ONLY if the displayed numbers are correct") can be read
+journey-scoped (only Must-have journeys' numbers must be correct) or product-wide (no surface may ever
+show wrong numbers). Audit B1 (fetch-lands-bars → false-zero default `/data` coverage) is a genuine
+wrong-number display, but on a path no Must-have journey (J-01/J-03/J-04/J-05/J-06) exercises, and the
+audit was "genuinely unsure IMPORTANT-vs-CRITICAL."
+**We chose:** applied the journey-scoped reading for the VERDICT — B1 breaks no Must-have journey, so
+it is not a journey-failing AG-3 violation and does not force REGRESSION; recorded it unresolved
+(minor for loop-mechanics, AG-3-dimension-serious) that blocks a future GOAL_ACHIEVED and is the #1
+next-step. The product-wide reading would halt the loop now; rejected because the issue self-heals, is
+disclosed with a queued fix, and the loop continues regardless (J-06 unbuilt). A human can override to
+REGRESSION.
+**Reversible:** yes
