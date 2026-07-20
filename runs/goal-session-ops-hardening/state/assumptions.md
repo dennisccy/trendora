@@ -172,3 +172,18 @@ and treated B3/F1 as newly-surfaced PRE-EXISTING defects / hard blockers to a fu
 violation). A human who reads B3 as a vision "the UI tells the truth about the backend's own state"
 / AG-3 violation may override to REGRESSION — flagged explicitly in eval.md.
 **Reversible:** yes
+
+## iter-4 — goal-decomposer
+
+**Ambiguity:** J-05's acceptance and the iter-3 evaluator's B3 fix direction ("give 'new data
+landed, snapshot pending' its own calm label + an in-app recovery pointer, compare vs the
+benchmark's own latest bar") are qualitative — `docs/goal.md` never anticipated this pre-existing
+defect (B3/F1 were discovered by iter-3's browser exercise, not named in the goal text), so no
+canonical name or field shape exists yet for the new readiness condition.
+**We chose:** a fourth `ReadinessState` literal `awaiting_snapshot` (sibling to `ready`/
+`initializing`/`unavailable`) plus one new nullable `readiness.detail: string|null` field on the
+SAME `GET /api/health` payload (computed by the SAME `compute_readiness`), and narrowed the
+servability comparison to the benchmark symbol (`cfg.etfs.index[0]`, the same symbol
+`_warmup_dates`/`walk_forward_asof_dates` already use to define the trading calendar) rather than
+the whole-table `latest_data_date` max.
+**Reversible:** yes
