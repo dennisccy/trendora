@@ -1,15 +1,26 @@
-"""Readiness state producer (Data Contract: app.engine.readiness) — iter-28, J-40.
+"""Readiness state producer (Data Contract: app.engine.readiness) — iter-28, J-40; widened iter-4 (B3 fix).
 
-The SINGLE honest readiness computer. It returns ONE state ∈ {`ready`, `initializing`, `unavailable`}
-plus the background warm-up progress `{done, total}` (cadence snapshots produced / expected — "history
-n/m"), computed ONCE here and served by the SINGLE canonical readiness endpoint (the extended
-`GET /api/health`). It is descriptive operational/job-control state — NOT a canonical score/return/bucket
-and NOT a duplicate of any existing value; it recomputes nothing (anti-goal: No recompute in the read path
-does not apply — readiness is not a snapshot value, it is liveness about whether the snapshots are servable).
+The SINGLE honest readiness computer. It returns ONE state ∈ {`ready`, `initializing`, `unavailable`,
+`awaiting_snapshot`} plus the background warm-up progress `{done, total}` (cadence snapshots produced /
+expected — "history n/m") and an optional `detail` string, computed ONCE here and served by the SINGLE
+canonical readiness endpoint (the extended `GET /api/health`). It is descriptive operational/job-control
+state — NOT a canonical score/return/bucket and NOT a duplicate of any existing value; it recomputes
+nothing (anti-goal: No recompute in the read path does not apply — readiness is not a snapshot value, it
+is liveness about whether the snapshots are servable).
 
 The state is reported HONESTLY (anti-goal: Readiness is reported honestly):
-  - `unavailable` — the DB is unreachable, OR there is no latest snapshot servable yet (no price data /
-    the synchronous latest-snapshot step has not produced the latest run). NEVER a fabricated `ready`.
+  - `unavailable` — the DB is unreachable, OR no run has EVER been persisted (no price data / the
+    synchronous latest-snapshot step has not produced a first run). NEVER a fabricated `ready`. This is
+    the ONLY unconditional case — even `awaiting_snapshot` below never masks it.
+  - `awaiting_snapshot` (iter-4, B3 fix) — a run IS servable (some snapshot exists), but the BENCHMARK
+    symbol's (`cfg.etfs.index[0]` — SPY, the same symbol `_warmup_dates`/`walk_forward_asof_dates` use to
+    define the trading calendar) own latest bar has advanced past that run, with no run yet for that later
+    date — "new data landed for the calendar-defining symbol, snapshot pending." Compared via a per-symbol
+    indexed query (`_latest_benchmark_bar_date`, never a whole-table scan — AG-8), so an UNRELATED symbol's
+    ordinary fetch never produces this state (the B3 bug this fixes: the check used to compare against the
+    whole-table `latest_data_date` max, so any symbol's new bar could falsely flip the badge all the way to
+    `unavailable`). `detail` carries a non-null human-readable string naming the condition + recovery
+    action; `null` for every other state.
   - `initializing` — the latest snapshot IS servable (so the core read pages work) but the background
     historical warm-up is still in flight (or has not started / has failed): `done < total`, or the
     warm-up record reports `running`/`failed`. A still-warming backend is NEVER mislabeled `unavailable`.
@@ -44,6 +55,11 @@ from app.models import DailyPrice, ScannerRun
 READY = "ready"
 INITIALIZING = "initializing"
 UNAVAILABLE = "unavailable"
+# ops-hardening iter-4 (B3 fix): a run IS servable, but the benchmark symbol's (`cfg.etfs.index[0]`) own
+# latest bar has advanced past it with no run yet for that date -- distinct from `unavailable` (nothing
+# servable at all) and `initializing` (cadence warm-up in flight). See `_latest_benchmark_bar_date` below
+# and the module docstring above.
+AWAITING_SNAPSHOT = "awaiting_snapshot"
 
 # The three composite preflight verdicts (iter-33, J-20 / backlog B-301). String values are the exact
 # DoD-mandated spelling ("NO-GO", hyphenated) — never re-derived elsewhere.
@@ -57,6 +73,16 @@ _SEVERITY_TO_VERDICT = {"degraded": DEGRADED, "no-go": NO_GO}
 def _latest_run_date(session: Session):
     """The most recent persisted run's as-of date, or None when no snapshot is stored yet."""
     return session.scalar(select(func.max(ScannerRun.asof_date)))
+
+
+def _latest_benchmark_bar_date(session: Session, cfg: Config):
+    """ops-hardening iter-4 (B3 fix) — the BENCHMARK symbol's (`cfg.etfs.index[0]`, SPY — the exact same
+    symbol `forward_testing.walk_forward_asof_dates` / `warmup._warmup_dates` already use to define the
+    trading calendar) own latest bar date. ONE indexed max query filtered to a single symbol (mirrors
+    `latest_data_date`'s shape, AG-8) — never a whole-table scan across all symbols. None when the
+    benchmark itself has no stored bars."""
+    benchmark = cfg.etfs.index[0]
+    return session.scalar(select(func.max(DailyPrice.date)).where(DailyPrice.symbol == benchmark))
 
 
 # --------------------------------------------------------------------------------------------------
@@ -118,15 +144,30 @@ def compute_readiness(
     try:
         latest_data = latest_data_date(session)
         latest_run = _latest_run_date(session)
+        # ops-hardening iter-4 (B3 fix): the benchmark's OWN latest bar (one indexed per-symbol query,
+        # AG-8) is the ONLY input compared against `latest_run` below -- never `latest_data`'s whole-table
+        # max. `latest_data` is still read (unchanged) for the cadence/warm-up total further down; an
+        # unrelated symbol's fetch can move IT but no longer touches servability at all.
+        latest_benchmark_bar = _latest_benchmark_bar_date(session, cfg)
         db_ok = True
     except Exception:  # pragma: no cover - DB unreachable is surfaced, never faked
         latest_data = None
         latest_run = None
+        latest_benchmark_bar = None
         db_ok = False
 
-    # The latest snapshot is "servable" when the latest data date has a persisted run (the synchronous
-    # boot's `ensure_latest_snapshot` produced it). No data / no latest run -> not yet servable.
-    latest_servable = bool(latest_data is not None and latest_run is not None and latest_run >= latest_data)
+    # A servable run exists iff ANY run has ever been persisted -- the ONLY unconditional case: a true
+    # never-scanned DB (`latest_run is None`) is ALWAYS unavailable, regardless of benchmark bar data
+    # (regression guard for the pre-existing `unscanned_engine` fixture / J-04 crash detection).
+    has_servable_run = latest_run is not None
+
+    # B3 fix: the benchmark's own latest bar has advanced past the last persisted run, with no run yet
+    # for that later date -- "new data landed for the symbol that defines the trading calendar, but the
+    # snapshot hasn't caught up." Compared via the per-symbol query above, never the whole-table
+    # `latest_data` -- so an unrelated symbol's ordinary fetch can NEVER produce this state.
+    awaiting_snapshot = bool(
+        has_servable_run and latest_benchmark_bar is not None and latest_benchmark_bar > latest_run
+    )
 
     # The honest cadence-warm-up progress. The expected `total` is the full historical cadence set (the
     # background warm-up's denominator); `done` is how many of those snapshots are ACTUALLY persisted in
@@ -167,22 +208,39 @@ def compute_readiness(
 
     message = f"history {done}/{total}"
 
-    # The honest state. unavailable dominates (no servable latest). Otherwise ready iff the historical
-    # warm-up is COMPLETE (every cadence snapshot persisted) AND the warm-up is not still actively running
-    # and did not fail — so the badge truthfully shows the flip to Ready only once warm-up settles. A
-    # `running` record stays `initializing` even when its snapshots are all present (its forward-returns
-    # backfill may still be in flight); a `failed` record never reports `ready` (honest, not a silent
-    # green); `pending` (no in-process warm-up / DB-derived-complete on a warm DB) with all snapshots
-    # present is ready. A still-warming / failed backend is NEVER mislabeled unavailable.
-    if not db_ok or not latest_servable:
+    # The honest state. unavailable dominates (no servable run at all -- the ONLY unconditional case).
+    # Otherwise awaiting_snapshot when the benchmark's own bar has outrun the last run (B3 fix, iter-4).
+    # Otherwise ready iff the historical warm-up is COMPLETE (every cadence snapshot persisted) AND the
+    # warm-up is not still actively running and did not fail — so the badge truthfully shows the flip to
+    # Ready only once warm-up settles. A `running` record stays `initializing` even when its snapshots are
+    # all present (its forward-returns backfill may still be in flight); a `failed` record never reports
+    # `ready` (honest, not a silent green); `pending` (no in-process warm-up / DB-derived-complete on a
+    # warm DB) with all snapshots present is ready. A still-warming / failed / awaiting-snapshot backend is
+    # NEVER mislabeled unavailable.
+    if not db_ok or not has_servable_run:
         state = UNAVAILABLE
+    elif awaiting_snapshot:
+        state = AWAITING_SNAPSHOT
     elif done >= total and status in ("ok", "pending"):
         state = READY
     else:
         state = INITIALIZING
 
+    # ops-hardening iter-4 (B3 fix): the honest, human-readable detail -- non-null ONLY for the new
+    # state (mirrors the `PreflightComponent.detail` naming precedent), naming the condition + the
+    # recovery action (an operator-run backfill/rebuild on Data Manager produces the missing snapshot).
+    detail: Optional[str] = None
+    if state == AWAITING_SNAPSHOT:
+        benchmark = cfg.etfs.index[0]
+        detail = (
+            f"New data has landed for the benchmark ({benchmark}) through "
+            f"{latest_benchmark_bar.isoformat()}, but no snapshot has been produced for that date yet. "
+            "Run a backfill or rebuild on Data Manager to produce it."
+        )
+
     return {
         "state": state,
+        "detail": detail,
         "warmup": {
             "done": done,
             "total": total,

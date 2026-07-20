@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-4",
+  "base_url": "http://localhost:3255",
+  "iteration": 4,
+  "default_timeout_ms": 10000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the dashboard",
+      "narration": "Trendora opens straight to its daily dashboard, with a live status badge and a health banner right at the top of every page.",
+      "point_out": "The badge reads \"Ready\" and the green banner underneath confirms today's board is current — both check in with the backend before showing anything.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "GO — today's board is current." }
+    },
+    {
+      "n": 2,
+      "title": "Open Data Manager",
+      "narration": "A single click from the sidebar takes you to Data Manager, where the app tracks exactly how much price history and how many daily snapshots it has on hand.",
+      "point_out": "The Dataset coverage panel shows real counts — symbols, trading days, snapshot dates, and any backfill gaps — never placeholder numbers.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Data Manager" } },
+      "expect": { "text": "Dataset coverage" }
+    },
+    {
+      "n": 3,
+      "title": "Choose a backfill job",
+      "narration": "In the \"Start a fetch / backfill job\" panel, switch the job kind to Backfill snapshots — the date range is already pre-filled to the data's current gap.",
+      "point_out": "No guesswork needed: the form already knows which dates need attention.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "label": "Job kind" }, "text": "Backfill snapshots" },
+      "expect": { "text": "Backfill snapshots" }
+    },
+    {
+      "n": 4,
+      "title": "Run the backfill",
+      "narration": "Clicking Start kicks off the backfill immediately — no scripts or terminal needed.",
+      "point_out": "The Job progress panel appears right away with a real breakdown — calendar days, days already snapshotted, and non-trading days — plus a live \"updated Ns ago\" heartbeat that keeps ticking for as long as the job runs.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Start" } },
+      "expect": { "text": "already snapshotted" }
+    },
+    {
+      "n": 5,
+      "title": "Confirm the status badge never breaks",
+      "narration": "Reloading the page proves everything survives the round trip — and, importantly, that an everyday backfill job never falsely flips the top status badge to \"Backend unavailable\" anymore.",
+      "point_out": "The badge still reads \"Ready,\" exactly as before the job started — that stability is what this iteration fixed.",
+      "journey": "J-05",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Ready" }
+    }
+  ]
+}

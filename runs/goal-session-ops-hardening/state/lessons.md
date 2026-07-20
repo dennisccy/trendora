@@ -76,3 +76,19 @@ alone.
 browser; any iter touching `app/engine/readiness.py`, `_refresh_ingest_aggregates`, or the shared
 `HealthBadge`/`PreflightBanner`/`JobProgressPanel` status surfaces; any eval where the QA PASS and
 the raw browser-qa verdict diverge.
+
+## iter-4 — 2026-07-20T15:02:47Z
+
+**Verdict:** CONTINUE
+**Lesson:** `merge_ui_test_results.py` silently corrupts the merged
+`reports/phase-<iter>-ui-test-results.md`: it DROPS the raw browser-qa `## Notes` section (even
+though the merged table cells still say "see Notes for the one caveat" 3×) and mis-sums the header
+("12/13 journeys passed" over a 13-row all-PASS table). Those Notes hold the load-bearing caveats
+(UT-03's DEGRADED-banner-is-unrelated-drift explanation, UT-04's blank-tiny-screenshot disclosure,
+UT-08's architecturally-unreachable-precondition scope adjustment). The fix: read the raw
+`reports/phase-<iter>-ui-test-results.llm.md` directly — which is exactly this session's own iter-3
+lesson, now shown to be un-followable from the merged file alone. The closure auditor independently
+reached the same finding.
+**Applies to:** any future goal-evaluator reading browser-qa results for this repo while the merge
+script stays unfixed — whenever the merged `ui-test-results.md` references a `## Notes` section it
+does not contain, open the `.llm.md` sibling before scoring any target journey.

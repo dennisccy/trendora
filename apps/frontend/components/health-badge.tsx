@@ -12,16 +12,24 @@ type Detail =
   | { kind: "error" };
 
 /** Live backend readiness badge (iter-28, J-40): the visible truth about backend state — Ready,
- *  Initializing… (with live "history n/m" warm-up progress), or Unavailable. It reads the SINGLE shared
- *  readiness value from `useReadiness` (one client-side readiness read; the frontend never computes
- *  readiness itself). The provider/seed/symbol detail badges fetch the rest of the health payload once
- *  for context. Re-checks happen via the readiness provider's config-derived poll. */
+ *  Initializing…, Snapshot pending (ops-hardening iter-4, B3 fix), or Unavailable. It reads the SINGLE
+ *  shared readiness value from `useReadiness` (one client-side readiness read; the frontend never
+ *  computes readiness itself). The provider/seed/symbol/recovery-detail badges fetch the rest of the
+ *  health payload for context, re-fetching whenever the shared `state` transitions (see the effect below)
+ *  so the `awaiting_snapshot` recovery-pointer text stays in sync with the SAME transition the pill
+ *  re-renders for, without a second polling loop. Re-checks of `state`/`warmup` themselves happen via the
+ *  readiness provider's own config-derived poll. */
 export function HealthBadge() {
   const { state, warmup, loading } = useReadiness();
   const [detail, setDetail] = useState<Detail>({ kind: "loading" });
 
-  // The static-ish context detail (provider / seed date / symbol count). Fetched once; it does not
-  // need the fast readiness cadence. If it fails, the readiness badge still renders honestly.
+  // The context detail (provider / seed date / symbol count / the `awaiting_snapshot` recovery-pointer
+  // string). Re-fetched whenever the shared readiness `state` transitions -- state changes are
+  // infrequent, so this stays cheap, and it keeps the recovery-pointer text synced to the exact moment
+  // the pill below flips to `awaiting_snapshot` (rather than only refreshing once on mount, which could
+  // show the new pill with a stale/missing detail until some unrelated future reload). If it fails, the
+  // readiness pill still renders honestly — it reads `state`/`warmup` from `useReadiness()` directly,
+  // never from this fetch.
   useEffect(() => {
     let active = true;
     fetchHealth()
@@ -34,9 +42,9 @@ export function HealthBadge() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [state]);
 
-  // --- the readiness pill (the load-bearing three-state badge) ---
+  // --- the readiness pill (the load-bearing four-state badge) ---
   let pill;
   if (loading || state === null) {
     pill = (
@@ -61,6 +69,19 @@ export function HealthBadge() {
           Initializing…{" "}
           {progress ? <span className="num">history {progress}</span> : null}
         </span>
+      </Badge>
+    );
+  } else if (state === "awaiting_snapshot") {
+    // ops-hardening iter-4 (B3 fix): a servable last run exists, but new data has landed for the
+    // benchmark symbol that defines the trading calendar and no snapshot covers it yet -- a calm,
+    // honest, non-danger state (never "Backend unavailable"). The dot is static (not animate-pulse):
+    // unlike `initializing`'s self-resolving warm-up, this condition persists until an operator runs a
+    // backfill/rebuild on Data Manager, so it reads as "needs action," not "in progress automatically."
+    const recoveryDetail = detail.kind === "ok" ? detail.data.readiness_detail : null;
+    pill = (
+      <Badge variant="accent" data-testid="readiness-badge" data-state="awaiting_snapshot">
+        <span className="h-2 w-2 rounded-full bg-accent" aria-hidden />
+        <span>Snapshot pending{recoveryDetail ? ` — ${recoveryDetail}` : ""}</span>
       </Badge>
     );
   } else {

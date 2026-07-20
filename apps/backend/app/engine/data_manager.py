@@ -3001,7 +3001,7 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
 # hot key — reusing each cache's existing compute function, never a second derivation of any of them.
 # --------------------------------------------------------------------------------------------------
 def _persist_per_date_coverage_snapshots(
-    session: Session, cfg: Config, dates: list[date_cls]
+    session: Session, cfg: Config, dates: list[date_cls], prog: JobProgress
 ) -> None:
     """Persist a byte-identical `CoverageSnapshot` row for each as-of in `dates` (the snapshot dates a
     backfill NEWLY created), so the app-wide as-of switcher serves REAL coverage for each from storage —
@@ -3015,7 +3015,16 @@ def _persist_per_date_coverage_snapshots(
     N dates costs one load, not N. Each row equals a fresh `_compute_coverage_uncached(as_of=d)`. Per-date
     isolation (log + continue) so one date's failure never drops the rest; the caller wraps this whole call
     non-fatally too. Reads only committed bars (backfill adds none), writes only `CoverageSnapshot` rows —
-    so the shared cache never serves a stale series (AG-8: no unbounded request-path load; this is ingest)."""
+    so the shared cache never serves a stale series (AG-8: no unbounded request-path load; this is ingest).
+
+    ops-hardening iter-4 (F1 fix, re-review CRITICAL): calls the bare `prog.tick()` (heartbeat-only — no
+    `activity` argument, so it stamps ONLY `last_progress_at` and never overwrites the "scanning ..." line;
+    see `_refresh_ingest_aggregates`'s docstring) once per date at the TOP of the `todo` loop, BEFORE that
+    date's heavy `refresh_coverage_snapshot_for` (`_compute_coverage_uncached`) compute. This per-date
+    coverage warm is the FIRST half of the finalize tail (the market-phase loop is the second, measured
+    together at ~729s for a full 378-date rebuild, `reports/perf-budgets.md` Item L); without a tick here
+    `last_progress_at` froze across the whole coverage half — the exact false-'possibly stalled' defect the
+    market-phase tick alone did not close."""
     if not dates:
         return
     current = _resolve_coverage_asof(session, None, cfg)
@@ -3025,6 +3034,7 @@ def _persist_per_date_coverage_snapshots(
     pool_symbols = {row["symbol"] for row in read_pool()}
     with prefilled_bar_cache(session, expected_symbols=pool_symbols):
         for d in todo:
+            prog.tick()  # F1 fix (iter-4): per-date heartbeat stamp before this date's heavy coverage compute
             try:
                 refresh_coverage_snapshot_for(session, cfg, d)
             except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next date
@@ -3039,8 +3049,21 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     flip an otherwise-successful ingest job to failed). Returns the subset of `["latest_snapshot",
     "coverage", "membership_timeline", "market_phase", "research_hot_keys"]` ACTUALLY refreshed — never a
     fabricated category (mirrors the `omitted`/`passers` honesty convention already used elsewhere in this
-    module)."""
+    module).
+
+    ops-hardening iter-4 (F1 fix): calls the bare `prog.tick()` (no `activity` argument — it stamps ONLY
+    the `last_progress_at` heartbeat, never overwriting `current_activity`, so an already-pinned "scanning
+    ..." line from the main scan loop is left honest/unchanged) at this function's own start, at each
+    per-date step of the per-date COVERAGE warm loop (`_persist_per_date_coverage_snapshots`, threaded `prog`
+    — iter-4 re-review CRITICAL: this loop's per-date `_compute_coverage_uncached` is the OTHER heavy half of
+    the finalize tail, ~half of the ~729s), AND at each per-date step of the market-phase warm loop below —
+    mirroring the main scan loop's own per-date heartbeat convention (`data_manager.py:2863`). Without ticks
+    across BOTH per-date loops, `last_progress_at` freezes for the WHOLE finalize tail once the main scan
+    completes (measured ~729s for a full rebuild, `reports/perf-budgets.md` Item L), and the frontend's
+    stale-heartbeat flag (`job_progress.heartbeat_stale_seconds`) falsely renders "· possibly stalled" on a
+    perfectly healthy job."""
     refreshed: list[str] = []
+    prog.tick()  # F1 fix: heartbeat-only stamp at the start of the finalize tail — see docstring above.
 
     if prog.new_snapshot_dates:
         # this run's own date-loop already created + committed these snapshots (scanner.persist_run_payload
@@ -3065,12 +3088,13 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     # try/except (log + continue) so it never flips the job. Skips the current stamp (persisted above) and
     # is a no-op — no bar-cache load — for the common single-latest-date backfill.
     try:
-        _persist_per_date_coverage_snapshots(session, cfg, prog.new_snapshot_dates)
+        _persist_per_date_coverage_snapshots(session, cfg, prog.new_snapshot_dates, prog)
     except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
         logger.exception("ingest per-date coverage warm failed (non-fatal): %s", exc)
 
     market_phase_warmed = False
     for d in prog.new_snapshot_dates:
+        prog.tick()  # F1 fix: per-date heartbeat stamp -- see function docstring above.
         try:
             market_phase.market_phase_cached(session, d, cfg)
             market_phase_warmed = True

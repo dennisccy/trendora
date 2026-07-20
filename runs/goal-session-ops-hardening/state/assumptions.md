@@ -187,3 +187,34 @@ servability comparison to the benchmark symbol (`cfg.etfs.index[0]`, the same sy
 `_warmup_dates`/`walk_forward_asof_dates` already use to define the trading calendar) rather than
 the whole-table `latest_data_date` max.
 **Reversible:** yes
+
+## iter-4 — goal-evaluator
+
+**Ambiguity:** J-05's Acceptance has four bullets; the fourth is a `[NEW]`-flagged `demo.sh
+ops-hardening --session-live` walkthrough. That walkthrough was deliberately deferred this iteration
+(iter spec OUT OF SCOPE — "a showcase/demo-chain concern, not a browser-qa-verifiable behavior").
+So J-05's product-behavior acceptance (all 4 steps + the consistency/correctness/anti-goals bullets)
+is fully verified, but one named Acceptance bullet is not yet produced.
+**We chose:** scored J-05 `passing` on its product-behavior acceptance, treating the `[NEW]` demo.sh
+walkthrough as a session-closure showcase artifact rather than a per-journey passing gate — the same
+way J-01/J-03/J-04 were each scored passing without a fresh demo.sh walkthrough, and the same way the
+archived mcp-loop session produced terminal showcase renders only at close-out. Flagged in eval.md
++ evaluator-log as a closure-gate item: BOTH J-05 and J-06 walkthroughs must be produced (or the
+human must accept their deferral) before the final GOAL_ACHIEVED gate.
+**Reversible:** yes
+
+## iter-4 — goal-evaluator
+
+**Ambiguity:** J-05 step 3 / TC-8 (the cold-boot check, SKIPPED in iter-3, whose re-execution was a
+named iter-4 DoD item) was written by the ui-test-designer with a literal "every coverage figure
+reads 0 or —" precondition on a byte-empty DB. browser-qa found this precondition architecturally
+unreachable via any real boot (`main.py`'s lifespan runs `load_seed()` + `ensure_latest_snapshot()`
+to completion before the port accepts a connection), and scored UT-08 "PASS on the underlying safety
+property" instead of on the literal wording.
+**We chose:** accepted that adjusted-scope PASS and counted J-05 step-3's cold-boot check as
+executed-and-satisfied, because goal.md's OWN wording of step 3 asks only for "coverage renders from
+the persisted payload within its committed budget and the process performs no 3.3M-row bar prefill"
+— which was directly verified (41ms `/api/data`, clean render, no prefill), independent of the
+stricter all-zero framing the test-designer added. (The all-zero precondition was a test-plan
+over-specification, not a goal.md requirement.)
+**Reversible:** yes

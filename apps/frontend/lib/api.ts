@@ -111,8 +111,11 @@ async function sendJSON<T>(method: "POST" | "DELETE", path: string, body?: unkno
 /** The honest backend readiness state computed ONCE by the backend (app.engine.readiness) and served
  *  on the single canonical /api/health endpoint. The frontend NEVER computes readiness itself — it
  *  renders this value. `ready` = serving + history warmed; `initializing` = latest servable but the
- *  background historical warm-up is still loading; `unavailable` = no servable snapshot / DB down. */
-export type ReadinessState = "ready" | "initializing" | "unavailable";
+ *  background historical warm-up is still loading; `unavailable` = no servable snapshot / DB down;
+ *  `awaiting_snapshot` (ops-hardening iter-4, B3 fix) = a run IS servable, but the benchmark symbol's own
+ *  latest bar has advanced past it with no run yet for that date -- distinct from `unavailable` (nothing
+ *  servable at all). */
+export type ReadinessState = "ready" | "initializing" | "unavailable" | "awaiting_snapshot";
 
 /** Background warm-up progress (cadence snapshots produced / expected — "history n/m"). `done`/`total`
  *  drive the badge progress + the Backtest/Research "warming up (n/m)" states. */
@@ -156,6 +159,10 @@ export interface HealthStatus {
   symbol_count: number;
   // iter-28 (J-40): the single canonical readiness value (state + warm-up progress).
   readiness: ReadinessState;
+  /** ops-hardening iter-4 (B3 fix): honest human-readable detail, non-null ONLY when
+   *  `readiness === "awaiting_snapshot"` (naming the condition + recovery action) -- null for the other
+   *  three states. Same computing module/endpoint as `readiness` (`compute_readiness` / `GET /api/health`). */
+  readiness_detail: string | null;
   warmup: WarmupProgress;
   // the config-derived poll cadences the badge derives its interval from (no client-side poll literal).
   poll_interval_seconds: number;

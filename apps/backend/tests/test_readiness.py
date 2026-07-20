@@ -16,9 +16,10 @@ and that `record_verdict_transition` appends ONLY on a verdict change (bounded g
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 
 import pytest
+from sqlalchemy import event
 from sqlmodel import Session
 
 from app.config import load_config
@@ -34,7 +35,7 @@ from app.engine.readiness import (
     record_verdict_transition,
     resolve_verdict_history_path,
 )
-from app.models import DailyPrice
+from app.models import DailyPrice, ScannerRun
 
 
 def _readiness_cfg(cfg, **overrides):
@@ -265,14 +266,164 @@ def test_preflight_servability_reuses_compute_readiness_verbatim(loaded_engine, 
 
 
 def test_compute_readiness_shape_unchanged_by_preflight_addition(loaded_engine):
-    """`compute_preflight` is ADDITIVE — `compute_readiness`'s own return shape is untouched (J-40 not
-    regressed): exactly `{"state", "warmup"}`, `warmup` exactly `{"done","total","status","message"}`."""
+    """`compute_preflight` is ADDITIVE — `compute_readiness`'s own return shape is untouched BY IT (J-40
+    not regressed): exactly `{"state", "detail", "warmup"}` (ops-hardening iter-4's B3 fix adds the
+    `detail` sibling alongside `state`/`warmup`), `warmup` exactly
+    `{"done","total","status","message"}`. This warmed, fully-caught-up fixture never produces the new
+    `awaiting_snapshot` state, so `detail` is null here (see the dedicated B3 fixture-matrix below for the
+    non-null case)."""
     cfg = load_config()
     with Session(loaded_engine) as session:
         result = compute_readiness(session, config=cfg)
-    assert set(result) == {"state", "warmup"}
-    assert result["state"] in {"ready", "initializing", "unavailable"}
+    assert set(result) == {"state", "detail", "warmup"}
+    assert result["state"] in {"ready", "initializing", "unavailable", "awaiting_snapshot"}
+    assert result["detail"] is None
     assert set(result["warmup"]) == {"done", "total", "status", "message"}
+
+
+# ==================================================================================================
+# ops-hardening iter-4 (B3 fix): compute_readiness's servability check is benchmark-scoped, never a
+# whole-table `daily_prices` scan -- an unrelated symbol's ordinary fetch must never flip the badge to
+# `unavailable`; the BENCHMARK's own latest bar outrunning the last run gets its own honest new state.
+# ==================================================================================================
+@pytest.fixture(scope="module")
+def non_benchmark_ahead_engine(tmp_path_factory, config):
+    """A `ScannerRun` persisted for date D, alongside the BENCHMARK's own single bar also dated D — the
+    ordinary "caught up" baseline (TC-1). Mutated in-test by landing a NON-benchmark symbol's bar at D+1
+    (an ordinary fetch) to reproduce B3's exact trigger shape (TC-2): the benchmark's own latest bar stays
+    put, so this must change NOTHING about `state`."""
+    db_path = tmp_path_factory.mktemp("non_benchmark_ahead_db") / "non_benchmark_ahead.db"
+    engine = make_engine(f"sqlite:///{db_path}")
+    create_db_and_tables(engine)
+    benchmark = config.etfs.index[0]
+    d0 = date(2024, 3, 4)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol=benchmark, date=d0, open=1, high=1, low=1, close=1, volume=1))
+        session.add(ScannerRun(
+            asof_date=d0, created_at=datetime(2024, 3, 4), provider="seed", benchmark=benchmark,
+            regime_score=50.0, regime_label="Choppy", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        ))
+        session.commit()
+    return engine, benchmark, d0
+
+
+def test_non_benchmark_symbol_fetch_never_affects_servability(non_benchmark_ahead_engine):
+    """TC-1 + TC-2: the baseline "benchmark caught up" case reads ready/initializing (never unavailable,
+    never awaiting_snapshot) — and landing an ORDINARY fetch for an unrelated symbol dated AFTER the last
+    run (the actual B3 reproduction: an ordinary "Fetch EOD prices" job for some other ticker) changes
+    `state`/`warmup` NOT AT ALL, because the new per-symbol query never reads that unrelated symbol."""
+    engine, benchmark, d0 = non_benchmark_ahead_engine
+    cfg = load_config()
+    readiness.reset_readiness_cache()
+    with Session(engine) as session:
+        before = compute_readiness(session, config=cfg)
+    assert before["state"] in {"ready", "initializing"}
+    assert before["detail"] is None
+
+    d1 = d0 + timedelta(days=1)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="ZZZ", date=d1, open=1, high=1, low=1, close=1, volume=1))
+        session.commit()
+    readiness.reset_readiness_cache()  # force a fresh derive -- a stale memo hit could mask a real bug
+    with Session(engine) as session:
+        after = compute_readiness(session, config=cfg)
+
+    assert after["state"] == before["state"] != "unavailable"
+    assert after["detail"] is None
+    assert after["warmup"] == before["warmup"]
+
+
+@pytest.fixture(scope="module")
+def benchmark_ahead_engine(tmp_path_factory, config):
+    """A `ScannerRun` persisted for date D, then the BENCHMARK symbol's OWN latest bar advances to D+1
+    with no run yet for D+1 — the exact `awaiting_snapshot` condition (TC-3, B3 fix): a servable last run
+    exists, but new data has landed for the symbol that defines the trading calendar."""
+    db_path = tmp_path_factory.mktemp("awaiting_snapshot_db") / "benchmark_ahead.db"
+    engine = make_engine(f"sqlite:///{db_path}")
+    create_db_and_tables(engine)
+    benchmark = config.etfs.index[0]
+    d0 = date(2024, 3, 4)
+    d1 = date(2024, 3, 5)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol=benchmark, date=d0, open=1, high=1, low=1, close=1, volume=1))
+        session.add(DailyPrice(symbol=benchmark, date=d1, open=1, high=1, low=1, close=1, volume=1))
+        session.add(ScannerRun(
+            asof_date=d0, created_at=datetime(2024, 3, 4), provider="seed", benchmark=benchmark,
+            regime_score=50.0, regime_label="Choppy", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        ))
+        session.commit()
+    return engine, benchmark, d0, d1
+
+
+def test_awaiting_snapshot_when_benchmark_own_bar_outruns_last_run(benchmark_ahead_engine):
+    """TC-3: the BENCHMARK's own latest bar advancing past the last persisted run (no run yet for that
+    date) is the new honest `awaiting_snapshot` state — distinct from unavailable/ready/initializing —
+    with a non-null detail naming the condition and the recovery action."""
+    engine, benchmark, d0, d1 = benchmark_ahead_engine
+    cfg = load_config()
+    readiness.reset_readiness_cache()
+    with Session(engine) as session:
+        result = compute_readiness(session, config=cfg)
+    assert result["state"] == "awaiting_snapshot"
+    assert result["detail"] is not None
+    assert benchmark in result["detail"]
+    assert d1.isoformat() in result["detail"]
+
+
+def test_awaiting_snapshot_never_masks_true_unavailability(unscanned_engine):
+    """TC-6 regression guard: `latest_run is None` (no ScannerRun ever persisted) MUST still resolve
+    unconditionally to `unavailable`, even on a DB with real price data — the one case where "nothing is
+    servable" must never be softened by the new state."""
+    cfg = load_config()
+    readiness.reset_readiness_cache()
+    with Session(unscanned_engine) as session:
+        result = compute_readiness(session, config=cfg)
+    assert result["state"] == "unavailable"
+    assert result["detail"] is None
+
+
+def test_preflight_servability_ok_for_awaiting_snapshot_state(benchmark_ahead_engine, tmp_path_factory, monkeypatch):
+    """TC-5: `compute_preflight`'s servability component stays `ok` (verdict GO, not forced to
+    NO-GO/DEGRADED) when readiness is `awaiting_snapshot` alone — `compute_preflight`'s existing
+    `!= UNAVAILABLE` check already treats the new state as non-breaching; this pins that it stays true
+    without re-deriving it."""
+    engine, benchmark, d0, d1 = benchmark_ahead_engine
+    cfg = load_config()
+    _point_ledgers_at(monkeypatch, tmp_path_factory.mktemp("awaiting_snapshot_preflight"), ok=True)
+    readiness.reset_readiness_cache()
+    with Session(engine) as session:
+        readiness_result = compute_readiness(session, config=cfg)
+        assert readiness_result["state"] == "awaiting_snapshot"  # sanity: this IS the target condition
+        preflight_result = compute_preflight(session, config=cfg)
+    assert preflight_result["components"]["servability"]["ok"] is True
+    assert preflight_result["verdict"] == GO
+
+
+def test_latest_benchmark_bar_query_is_symbol_scoped_not_whole_table_scan(loaded_engine):
+    """TC-10 (AG-8): the new benchmark-scoped latest-bar query filters to ONE symbol via a WHERE clause
+    on `daily_prices.symbol` — never an unfiltered whole-table scan. Captured at the SQL-statement level
+    (mirrors test_health.py's query-shape instrumentation) so this is a structural guarantee, not merely
+    an accidental byte-identical result."""
+    cfg = load_config()
+    captured: list[str] = []
+
+    def _capture(conn, cursor, statement, parameters, context, executemany):
+        lowered = statement.lower()
+        if "daily_prices" in lowered and lowered.strip().startswith("select"):
+            captured.append(statement)
+
+    event.listen(loaded_engine, "before_cursor_execute", _capture)
+    try:
+        with Session(loaded_engine) as session:
+            readiness._latest_benchmark_bar_date(session, cfg)
+    finally:
+        event.remove(loaded_engine, "before_cursor_execute", _capture)
+
+    assert len(captured) == 1, f"expected exactly one query, got: {captured}"
+    statement = captured[0].lower()
+    assert "where" in statement and "symbol" in statement, f"expected a symbol-filtered WHERE clause, got: {statement}"
 
 
 # ==================================================================================================

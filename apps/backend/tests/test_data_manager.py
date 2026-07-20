@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import socket
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -1175,6 +1175,137 @@ def test_finalize_hook_makes_no_network_call(finalize_hook_engine, monkeypatch):
         prog.new_snapshot_dates = [d]
         refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
     assert refreshed  # completed successfully with zero socket.connect calls
+
+
+# ==================================================================================================
+# ops-hardening iter-4 (F1 fix): the finalize hook's own heartbeat -- `last_progress_at` must advance
+# through the WHOLE finalize tail (not just the main scan loop), or the frontend's stale-heartbeat flag
+# falsely renders "· possibly stalled" on a perfectly healthy job.
+# ==================================================================================================
+@pytest.fixture()
+def finalize_hook_multi_date_engine(tmp_path):
+    """Like `finalize_hook_engine` but with TWO stored dates — enough to prove the F1 fix ticks the
+    heartbeat AT LEAST ONCE PER DATE in the market-phase warm loop, not just once for the whole call."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'finalize_multi.db'}")
+    create_db_and_tables(engine)
+    dates = [date(2024, 3, 4), date(2024, 3, 5)]
+    with Session(engine) as session:
+        for i, d in enumerate(dates):
+            session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+            run = ScannerRun(
+                asof_date=d, created_at=datetime(2024, 3, 4 + i), provider="seed", benchmark="SPY",
+                regime_score=50.0, regime_label="Choppy", regime_components_json="[]",
+                new_high_low_json="{}", candidate_counts_json="{}",
+            )
+            session.add(run)
+            session.commit()
+            session.refresh(run)
+            session.add(ScannerResult(
+                run_id=run.id, ticker="AAA", name="AAA Corp", leadership_score=1.0, leadership_bucket="Leader",
+                entry_quality_score=1.0, entry_quality_bucket="Good", risk_score=1.0, risk_bucket="Low",
+                setup_status="Actionable", rank=1, record_json="{}",
+            ))
+            session.commit()
+    return engine, dates
+
+
+def test_finalize_hook_ticks_heartbeat_at_least_once_per_date_in_market_phase_loop(
+    finalize_hook_multi_date_engine, monkeypatch
+):
+    """F1 fix: `_refresh_ingest_aggregates` calls the bare `prog.tick()` (heartbeat-only, never
+    overwriting `current_activity` — see its docstring) at its own start AND inside the per-date
+    market-phase warm loop (`data_manager.py:3072-3078`), so `last_progress_at` advances through the
+    WHOLE finalize tail — not just the main scan loop (`:2863`). Instrumented by spying on
+    `market_phase.market_phase_cached` to capture `prog.last_progress_at` at the moment EACH date's
+    compute is about to run, proving the heartbeat had already advanced past a deliberately stale
+    sentinel before EVERY date — not merely once, somewhere, for the whole function."""
+    engine, dates = finalize_hook_multi_date_engine
+    cfg = load_config()
+    stale_sentinel = datetime(2000, 1, 1, tzinfo=timezone.utc)
+    seen_at_call: list[datetime] = []
+    real_market_phase_cached = market_phase.market_phase_cached
+
+    def _spy(session, as_of, config=None):
+        seen_at_call.append(prog.last_progress_at)
+        return real_market_phase_cached(session, as_of, config)
+
+    monkeypatch.setattr(market_phase, "market_phase_cached", _spy)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="heartbeat-probe", kind="backfill", start=dates[0], end=dates[-1])
+        prog.new_snapshot_dates = list(dates)
+        prog.last_progress_at = stale_sentinel
+        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+
+    assert len(seen_at_call) == len(dates), "expected one market-phase compute per new snapshot date"
+    for i, seen in enumerate(seen_at_call):
+        assert seen != stale_sentinel, f"date index {i}: heartbeat had not advanced before this date's compute"
+    assert prog.last_progress_at != stale_sentinel  # the whole call leaves the heartbeat fresh, not frozen
+
+
+@pytest.fixture()
+def finalize_hook_triple_date_engine(tmp_path):
+    """Like `finalize_hook_multi_date_engine` but with THREE stored dates. The per-date COVERAGE warm loop
+    inside `_persist_per_date_coverage_snapshots` skips the CURRENT resolved as-of (the latest stored date),
+    so three dates leaves TWO in its `todo` — enough to prove the F1 re-review fix ticks the heartbeat at
+    least once PER DATE in THAT loop (not just the later market-phase loop, and not merely once for the whole
+    call)."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'finalize_triple.db'}")
+    create_db_and_tables(engine)
+    dates = [date(2024, 3, 4), date(2024, 3, 5), date(2024, 3, 6)]
+    with Session(engine) as session:
+        for i, d in enumerate(dates):
+            session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+            run = ScannerRun(
+                asof_date=d, created_at=datetime(2024, 3, 4 + i), provider="seed", benchmark="SPY",
+                regime_score=50.0, regime_label="Choppy", regime_components_json="[]",
+                new_high_low_json="{}", candidate_counts_json="{}",
+            )
+            session.add(run)
+            session.commit()
+            session.refresh(run)
+            session.add(ScannerResult(
+                run_id=run.id, ticker="AAA", name="AAA Corp", leadership_score=1.0, leadership_bucket="Leader",
+                entry_quality_score=1.0, entry_quality_bucket="Good", risk_score=1.0, risk_bucket="Low",
+                setup_status="Actionable", rank=1, record_json="{}",
+            ))
+            session.commit()
+    return engine, dates
+
+
+def test_persist_per_date_coverage_snapshots_ticks_heartbeat_per_date(
+    finalize_hook_triple_date_engine, monkeypatch
+):
+    """F1 fix (iter-4 re-review CRITICAL): the per-date COVERAGE warm loop inside
+    `_persist_per_date_coverage_snapshots` — the FIRST heavy half of the finalize tail, one
+    `_compute_coverage_uncached` per date (378 calls on a full rebuild) — must stamp the heartbeat before
+    EACH date's compute, or `last_progress_at` freezes across all of it (the market-phase tick alone runs
+    only AFTER this loop, so it cannot cover it). Calls the function directly to isolate ITS loop, and spies
+    on `refresh_coverage_snapshot_for` (the way `..._in_market_phase_loop` spies on `market_phase_cached`) to
+    capture `prog.last_progress_at` at the moment EACH date's compute is about to run — proving it had
+    already advanced past a deliberately stale sentinel before EVERY date, not merely once for the call."""
+    engine, dates = finalize_hook_triple_date_engine
+    cfg = load_config()
+    stale_sentinel = datetime(2000, 1, 1, tzinfo=timezone.utc)
+    seen_at_call: list[datetime] = []
+    real_refresh_for = data_manager.refresh_coverage_snapshot_for
+
+    def _spy(session, config, resolved_asof):
+        seen_at_call.append(prog.last_progress_at)
+        return real_refresh_for(session, config, resolved_asof)
+
+    monkeypatch.setattr(data_manager, "refresh_coverage_snapshot_for", _spy)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="cov-heartbeat-probe", kind="backfill", start=dates[0], end=dates[-1])
+        prog.last_progress_at = stale_sentinel
+        # the latest date (dates[-1]) is the current stamp the loop SKIPS -> todo = the two earlier dates.
+        data_manager._persist_per_date_coverage_snapshots(session, cfg, list(dates), prog)
+
+    assert len(seen_at_call) == len(dates) - 1, "expected one coverage compute per non-current new date"
+    for i, seen in enumerate(seen_at_call):
+        assert seen != stale_sentinel, (
+            f"date index {i}: heartbeat had not advanced before this date's coverage compute"
+        )
+    assert prog.last_progress_at != stale_sentinel  # the loop leaves the heartbeat fresh, not frozen
 
 
 def test_run_detail_omits_aggregates_refreshed_until_computed():

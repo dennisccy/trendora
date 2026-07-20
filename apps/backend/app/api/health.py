@@ -15,6 +15,12 @@ GO/DEGRADED/NO-GO verdict from `app.engine.readiness.compute_preflight` (which i
 module's own `readiness`/`warmup` computation — no second computation). The layout-level
 `PreflightBanner` is the ONLY reader; existing `readiness`/`warmup`/`status`/etc. keys are unchanged
 (byte-identical — J-40 not regressed).
+
+ops-hardening iter-4 (B3 fix) additively extends this SAME endpoint with the `readiness_detail` field —
+the sibling `detail` string from `compute_readiness`'s own return (`null` except for the new
+`awaiting_snapshot` state). Previously `compute_readiness`'s dict was discarded down to just
+`readiness["state"]`, so this value was computed correctly but never reached the frontend; this is the
+wiring fix. `readiness` itself stays the SAME bare string it always was (byte-identical contract).
 """
 from __future__ import annotations
 
@@ -51,6 +57,7 @@ def health(session: Session = Depends(get_session)) -> dict:
     except Exception:  # pragma: no cover - never let a readiness error blank the health probe
         readiness = {
             "state": "unavailable",
+            "detail": None,
             "warmup": {"done": 0, "total": 0, "status": "pending", "message": "history 0/0"},
         }
 
@@ -82,6 +89,10 @@ def health(session: Session = Depends(get_session)) -> dict:
         "symbol_count": symbol_count,
         # iter-28 (J-40): the single canonical readiness value (state + warm-up progress).
         "readiness": readiness["state"],
+        # ops-hardening iter-4 (B3 fix): the sibling detail string -- null except for the new
+        # `awaiting_snapshot` state (naming the condition + recovery action). Same computing module,
+        # same endpoint -- `compute_readiness` already produced this; it was just never served before.
+        "readiness_detail": readiness.get("detail"),
         "warmup": readiness["warmup"],
         # the config-derived poll cadences the frontend badge derives its interval from (no client-side
         # poll literal — anti-goal: No magic numbers). `poll_interval_seconds` is the fast cadence used

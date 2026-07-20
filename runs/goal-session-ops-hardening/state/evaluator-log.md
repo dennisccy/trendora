@@ -116,3 +116,38 @@ state; give "new data landed, snapshot pending" its own calm label + in-app reco
 (2) fix F1 — add tick() in _refresh_ingest_aggregates's per-date finalize loop. (3) re-run UT-04
 live on a fresh DB to close J-05 step-3's skipped cold-boot check; optional /data copy note on the
 Price-History proof point. Once J-05 browser-passes cleanly -> J-06 capstone (last failing journey).
+
+## Iteration 4 — goal-ops-hardening-iter-4
+
+**Date:** 2026-07-20T15:02:47Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: J-05 (partial→passing — B3 + F1 fixed and live-verified; formerly-skipped cold-boot check now executed)
+- Newly failing: none
+- Regressed: none (J-01, J-03 deterministic-replay PASS; J-04 LLM 6/6 PASS)
+- Unchanged: J-06 failing (out of scope — deferred to next iter per plan)
+- Anti-goal violations: none new. scan-report CLEAN; the 3 prior AG-3 violations (iter-1/iter-2) all remain resolved.
+
+**Reasoning:** The two iter-3 blockers on J-05 are genuinely fixed, verified across every lane
+(opposite of iter-3, where browser-qa/ux-regression/closure all FAILED). B3: readiness servability
+rewritten from a whole-table `latest_data_date` max to a single-symbol benchmark-scoped indexed
+query, adding a 4th calm `awaiting_snapshot` "Snapshot pending" state — UT-03 shows it naming
+SPY+2026-07-21+recovery; UT-04 shows an ordinary non-benchmark fetch no longer flips the badge;
+UT-05 proves the rewrite still shows TRUE `unavailable` for a never-scanned DB (the AG-3/J-04 guard).
+F1: bare `prog.tick()` threaded through BOTH finalize per-date loops (coverage + market-phase; the
+per-date coverage loop was a re-review CRITICAL caught and fixed intra-iteration with a TDD red/green
+proof) — UT-07's real ~953s rebuild kept `last_progress_at` advancing through the finalize tail with
+no "possibly stalled". Cold-boot executed (UT-08, 41ms /api/data, no prefill). Per iter-3's lesson I
+read the RAW `.llm.md` browser-qa directly (genuine 11/11 PASS, not a QA summary masking a FAIL) and
+opened the changed-journey screenshots. AG-8 strengthened (whole-table scan removed). Coherence PASS
+→ no consolidation mandate. J-06 still failing → not GOAL_ACHIEVED; dev-owned next work → not STALLED;
+clean full-pipeline success, no fail-open → not ESCALATE; progress made → CONTINUE.
+
+**Next-step recommendation:** J-06 (measurement capstone — last failing Must-have journey), depth
+full: record per-page TTI + on-load API latencies into `reports/perf-budgets.md`, assert within
+budget, dev-handoff code audit that no on-load endpoint does an unbounded `daily_prices` scan or
+recomputes an aggregate. Decomposer may downgrade to lean if J-06 is pure measurement with zero code
+change. CLOSURE REMINDER: J-05's (and J-06's) `[NEW]` demo.sh `--session-live` walkthrough bullet was
+deferred as a showcase artifact — produce both, or have the human accept the deferral, before the
+final GOAL_ACHIEVED gate (logged in assumptions.md).
