@@ -77,3 +77,42 @@ change, cross-cutting across boot + request paths). J-06 measurement capstone af
 **Reasoning:** J-05/J-04 verified across four independent lanes — browser (UT-02 Refreshed line live+persisted, UT-04 cold /data 0.086 s from storage, UT-06 phase-aware initializing badge, UT-09 scanner-runs+leaderboard), a real-process `test_start_backend_script.py` suite (SIGKILL log abrupt-end, /proc limits), QA's live /proc reads, and an independent audit code-trace + 4-test re-run. J-05 is `partial` not `passing` because DoD acceptance step 4 (`/api/health` responsive + VmPeak under the now-enforced 6144 MB cap DURING a heavy job — TC-11/TC-12) was never measured live (audit T1, review MINOR) — honest per "only some assertion steps passed." Considered and rejected REGRESSION on B1: it breaks no Must-have journey (AG-3 is journey-scoped; J-01/J-03/J-04/J-05 all pass their own paths), self-heals, no byte-identity/AG-8/AG-9 violation, is a disclosed scoping tradeoff (the naive fix re-introduces the worse cold-boot whole-table CRITICAL J-05 removes), and audit (PASS_WITH_GAPS) + QA + ux-regression unanimously said proceed. J-01/J-03 non-regressed → REGRESSION off. Clear next work, no human blocker → STALLED off. J-05 partial + J-06 failing → not GOAL_ACHIEVED. Coherence WARN (not FAIL) → no consolidation mandate. Progress made (J-04 passing, J-05 up from failing) → CONTINUE.
 
 **Next-step recommendation:** Full-depth, priority order: (1) close audit B1 — refresh `coverage_snapshot` at the end of ANY count-changing ingest kind (ingest-time, AG-8-safe), gated to skip when `_membership_dataset_version` is unchanged, plus the B2 stale-stamp prune; do NOT extend the `as_of=None` self-heal (re-introduces the cold-boot whole-table compute). (2) J-05 step 4 — run one real heavy rebuild/multi-day backfill, record TC-11 (`/api/health` ≤1 s) + TC-12 (VmPeak < 6144 MB) into perf-budgets Item J (watch the ~757 per-date coverage computes on a full rebuild); promotes J-05→passing. (3) J-06 measurement capstone — cross-page TTI + on-load-latency budgets, folding in the preliminary cold-`/api/data` number. J-06 is the last failing Must-have journey.
+
+## Iteration 3 — goal-ops-hardening-iter-3
+
+**Date:** 2026-07-20T11:20:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: none (J-01, J-03, J-04 re-verified passing — deterministic replay UT-J-01/UT-J-03 PASS + LLM UT-J-04 6/6)
+- Newly failing: none
+- Regressed: none
+- Unchanged: J-05 stays partial (backend B1/B2 verified + step-4 measured & passing, but no clean browser pass); J-06 failing (out of scope)
+- Anti-goal violations: iter-2 B1 AG-3-dimension (fetch blanks default /data to false-zeros) → RESOLVED this iter (verified). No new violation. scan CLEAN; coherence COHERENCE-PASS.
+
+**Reasoning:** The B1/B2 backend fix is genuinely correct — verified across the audit's independent
+code re-trace + 6 new unit tests (109 pass), coherence PASS (single-producer/single-endpoint kept),
+and a clean J-03-verify.png showing /data serving real coverage (540/591/5380/762), so the iter-2
+false-all-zero AG-3 gap (session's declared #1 blocker) is closed. J-05 step-4 was measured
+(perf-budgets Item L: VmPeak 40.9% under the enforced 6144 MB cap; /api/health 200 on all 1,725
+polls, badge "Ready" throughout — the qualitative "stays responsive" acceptance holds). BUT J-05 is
+NOT a clean browser pass: browser-QA FAIL (UT-02 named-tile mismatch — a by-design legibility gap,
+mechanism proven via the Price-History tile advancing+persisting; UT-06 frozen heartbeat; UT-04
+skipped), ux-regression FAIL, and closure FAIL converge. Two SERIOUS pre-existing, out-of-scope
+defects surfaced: B3 (readiness.py:129 — an ordinary fetch flips the app-wide badge to a
+crash-identical false "Backend unavailable"/NO-GO) and F1 (the iter-2 _refresh_ingest_aggregates
+loop emits no tick() -> false "possibly stalled"). I personally confirmed readiness.py is NOT in the
+3-file iter-3 diff, so B3 is not diff-caused. Rejected REGRESSION: no VERIFIED journey moved
+passing->failing (J-04's scripted 6-step replay PASSED; B3/F1 live on unscripted paths), and neither
+is a clean named-AG violation. Rejected trusting the QA PASS: audit T1 + closure caught it claiming
+12/12 on a static page load that buried the browser FAIL. J-05 partial + J-06 failing -> not
+GOAL_ACHIEVED; concrete dev-owned next work, no human blocker -> not STALLED; coherence PASS -> no
+consolidation mandate; progress made -> CONTINUE.
+
+**Next-step recommendation:** Full-depth, do NOT jump to J-06 yet (audit + ux-regression both name
+these the mandatory next priority): (1, highest) fix B3 — readiness.py latest_servable so a
+forward-dated single-symbol bar stops flipping the global badge into the crash-identical NO-GO
+state; give "new data landed, snapshot pending" its own calm label + in-app recovery pointer.
+(2) fix F1 — add tick() in _refresh_ingest_aggregates's per-date finalize loop. (3) re-run UT-04
+live on a fresh DB to close J-05 step-3's skipped cold-boot check; optional /data copy note on the
+Price-History proof point. Once J-05 browser-passes cleanly -> J-06 capstone (last failing journey).

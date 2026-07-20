@@ -56,3 +56,23 @@ assumption also proved false — the committed fixture had a landable 2026-07-17
 **Applies to:** any iter warming/serving an ingest-time cache keyed on a dataset-version fingerprint —
 EVERY count-changing ingest path (fetch/expand/remove-data too) must refresh it or the sentinel must
 do a cheap real existence check; verify the fetch-then-view path, not just backfill-then-view.
+
+## iter-3 — 2026-07-20T11:20:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A tightly-scoped, correct backend fix (B1/B2, independently audit-verified) can still
+fail to advance its target journey to `passing`, because the FIRST iteration to drive a realistic
+load pattern (a heavy rebuild + a real fetch) through the browser exposes latent trust-surface
+defects on SHARED components that no prior iteration exercised: B3 (`app/engine/readiness.py:129`
+`latest_servable` flips the app-wide badge to a crash-identical false "Backend unavailable"/NO-GO
+when a fetched bar out-dates the latest snapshot) and F1 (`_refresh_ingest_aggregates`'s per-date
+loop emits no `tick()`, so the job heartbeat freezes → false "possibly stalled"). Both are
+pre-existing and out-of-scope, but they gate a clean journey pass. Second lesson: the QA report
+claimed a clean 12/12 and marked TC-11 PASS on a STATIC page load, burying the raw browser-qa FAIL
+— only the audit (T1) and closure caught it. Always cross-check the QA verdict against the raw
+`ui-test-results.md` browser verdict; never score a target journey clean on backend-correctness
+alone.
+**Applies to:** any iter that first drives a new load pattern (heavy job / real fetch) through the
+browser; any iter touching `app/engine/readiness.py`, `_refresh_ingest_aggregates`, or the shared
+`HealthBadge`/`PreflightBanner`/`JobProgressPanel` status surfaces; any eval where the QA PASS and
+the raw browser-qa verdict diverge.

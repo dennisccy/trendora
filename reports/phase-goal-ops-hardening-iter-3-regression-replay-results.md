@@ -1,0 +1,26 @@
+# Regression Replay — goal-ops-hardening-iter-3
+
+**Phase:** goal-ops-hardening-iter-3
+**Date:** 2026-07-20
+**Written by:** demo_runner.py (deterministic replay)
+
+---
+
+**Browser QA Verdict:** PASS
+
+**Overall:** 2/2 journeys passed (0 skipped)
+
+---
+
+## Results Table
+
+| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |
+|---------|------|------|----------|----------|--------|---------|----------|
+| UT-J-01 | Backfill honors the requested range and explains zero-work | regression | P1 | journey replays end-to-end; all expects hold | journey replayed end-to-end; all expects held | PASS | reports/qa/goal-ops-hardening-iter-3-evidence/J-01-verify.png |
+| UT-J-03 | No per-run range cap | regression | P1 | journey replays end-to-end; all expects hold | journey replayed end-to-end; all expects held | PASS | reports/qa/goal-ops-hardening-iter-3-evidence/J-03-verify.png |
+
+## Environment
+
+- **Frontend URL:** http://localhost:3255
+- **Browser:** Chromium via Playwright (deterministic replay, verify)
+- **Test Date:** 2026-07-20

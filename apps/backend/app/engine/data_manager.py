@@ -985,20 +985,20 @@ def _coverage_not_yet_computed_payload(cfg: Config) -> dict:
 def _upsert_coverage_snapshot(
     session: Session, asof_key: str, dataset_version: str, payload: dict
 ) -> None:
-    """Idempotent upsert for ONE `CoverageSnapshot` row keyed by `(asof_key, dataset_version)`: prunes any
-    STALE row for this `asof_key` (an older `dataset_version`), then updates the current-stamp row in
-    place if one already exists or inserts a fresh one. Mirrors `market_phase_cached`'s prune-stale-then-
-    write upsert, generalized to also cover a repeat call under the SAME stamp — this is called
-    unconditionally at the end of every successful ingest (not gated behind a cache-miss check, unlike the
-    `*_cached` read-through caches)."""
-    stale = session.exec(
-        select(CoverageSnapshot).where(
-            CoverageSnapshot.asof_key == asof_key,
-            CoverageSnapshot.dataset_version != dataset_version,
-        )
-    ).all()
-    for row in stale:
-        session.delete(row)
+    """Idempotent upsert for ONE `CoverageSnapshot` row keyed by `(asof_key, dataset_version)`: reclaims
+    EVERY row in the table left under a superseded `dataset_version` — ops-hardening iter-3 (B2), widened
+    from the iter-2 original, which pruned only a stale row for THIS SAME `asof_key` and left every OTHER
+    `asof_key`'s row under an old stamp orphaned forever once the dataset version moved on — then updates
+    the current-stamp row in place if one already exists or inserts a fresh one. The reclaim is ONE bounded
+    SQL `DELETE ... WHERE dataset_version != :current` (never a per-row Python scan), so it stays cheap
+    regardless of how many stale `asof_key` rows have accumulated (this table is small — bounded by the
+    handful of distinct as-of dates ever selected — never the multi-million-row `daily_prices` scale AG-8
+    guards against). Mirrors `market_phase_cached`'s prune-stale-then-write upsert, generalized to also
+    cover a repeat call under the SAME stamp — this is called unconditionally at the end of every
+    successful ingest (not gated behind a cache-miss check, unlike the `*_cached` read-through caches).
+    Shared by every caller — the ingest finalize hook's rich backfill/rebuild path AND its fetch/expand
+    path (B1), plus `warmup.py`'s boot safety net — so all benefit automatically from one shared fix."""
+    session.execute(delete(CoverageSnapshot).where(CoverageSnapshot.dataset_version != dataset_version))
 
     existing = session.exec(
         select(CoverageSnapshot).where(
@@ -1043,16 +1043,42 @@ def refresh_coverage_snapshot(session: Session, cfg: Config) -> Optional[dict]:
     """Compute the CURRENT coverage payload (reusing the canonical `_compute_coverage_uncached` verbatim —
     never a second derivation) and persist it as the `CoverageSnapshot` row for the CURRENT `(asof_key,
     dataset_version)` key, upserting idempotently. Called by the ingest finalize hook (unconditionally, on
-    every successful backfill/both/rebuild — including a zero-work re-run) and the boot warm-up safety net
-    (only when no row exists yet for the current stamp). Returns the freshly persisted payload, or `None`
-    on a wholly-empty DB (no bars at all — `_resolve_coverage_asof` returns None only then; nothing to
-    snapshot yet). The current stamp resolves `None`→latest, so this is `refresh_coverage_snapshot_for` at
-    that resolved date (byte-identical: `_compute_coverage_uncached(as_of=None)` and `(as_of=latest)` both
-    resolve through `_resolve_coverage_asof` to the SAME latest date)."""
+    every successful backfill/both/rebuild — including a zero-work re-run — AND, ops-hardening iter-3 B1,
+    on a successful fetch/expand that the cheap `_coverage_snapshot_is_current` gate below found stale) and
+    the boot warm-up safety net (only when no row exists yet for the current stamp). Returns the freshly
+    persisted payload, or `None` on a wholly-empty DB (no bars at all — `_resolve_coverage_asof` returns
+    None only then; nothing to snapshot yet). The current stamp resolves `None`→latest, so this is
+    `refresh_coverage_snapshot_for` at that resolved date (byte-identical: `_compute_coverage_uncached
+    (as_of=None)` and `(as_of=latest)` both resolve through `_resolve_coverage_asof` to the SAME latest
+    date)."""
     resolved_asof = _resolve_coverage_asof(session, None, cfg)
     if resolved_asof is None:
         return None
     return refresh_coverage_snapshot_for(session, cfg, resolved_asof)
+
+
+def _coverage_snapshot_is_current(session: Session, cfg: Config) -> bool:
+    """ops-hardening iter-3 (B1) — the cheap "already fresh" gate the fetch/expand finalize branch checks
+    BEFORE ever calling `refresh_coverage_snapshot` (which would invoke the heavy `_compute_coverage_uncached`
+    whole-bar-cache derivation): true iff a `CoverageSnapshot` row already exists for the CURRENT `(asof_key,
+    dataset_version)` key, i.e. the persisted snapshot already reflects this exact dataset version, so a
+    refresh would be redundant. Issues only the SAME cheap resolve `refresh_coverage_snapshot` itself needs
+    (`_resolve_coverage_asof` — a couple of bounded scalar reads, never a table scan) plus one indexed row
+    lookup — it NEVER invokes `_compute_coverage_uncached` (the zero-work fetch call-count contract, TC-2).
+    A wholly-empty DB (`resolved_asof is None`) has nothing to snapshot yet — treated as "already current"
+    (a no-op), mirroring `refresh_coverage_snapshot`'s own no-op contract for that case."""
+    resolved_asof = _resolve_coverage_asof(session, None, cfg)
+    if resolved_asof is None:
+        return True
+    asof_key = resolved_asof.isoformat()
+    dataset_version = _membership_dataset_version(session, cfg)
+    row = session.exec(
+        select(CoverageSnapshot).where(
+            CoverageSnapshot.asof_key == asof_key,
+            CoverageSnapshot.dataset_version == dataset_version,
+        )
+    ).first()
+    return row is not None
 
 
 def _scanner_run_exists(session: Session, asof: date_cls) -> bool:
@@ -3764,6 +3790,27 @@ def _run_job(
                         prog.aggregates_refreshed = _refresh_ingest_aggregates(agg_session, cfg, prog)
                 except Exception as exc:  # noqa: BLE001 — non-fatal: never flips a successful job to failed
                     logger.exception("ingest aggregate refresh failed (non-fatal): %s", exc)
+            elif final_status in ("ok", "partial") and (
+                prog.kind in _FETCH_KINDS or prog.kind in _EXPAND_KINDS
+            ):
+                # ops-hardening iter-3 (B1): a pure fetch/expand does not run the rich backfill-style hook
+                # above (no per-date snapshot loop, no market-phase/research-hot-key warm — not asked for
+                # here — `elif` naturally excludes "both", which is ALSO in `_BACKFILL_KINDS` and already
+                # ran through the branch above), but it CAN change the bars/membership manifest
+                # (`_membership_dataset_version`), which silently staled the persisted `coverage_snapshot`
+                # row `GET /api/data`'s default view reads — until this fix, only an unrelated restart or
+                # backfill/rebuild ever refreshed it (audit finding B1). Calls `refresh_coverage_snapshot`
+                # directly (the SAME canonical compute the rich path uses) — never a second derivation —
+                # gated by `_coverage_snapshot_is_current` so a zero-work fetch (the common offline case)
+                # pays no extra compute/write (TC-2). Deliberately does NOT set `prog.aggregates_refreshed`
+                # — that field's existing backfill/both/rebuild-only nullability contract is unchanged
+                # (already gated to null for fetch/expand via `_breakdown_computed`, `_run_detail` above).
+                try:
+                    with Session(eng) as agg_session:
+                        if not _coverage_snapshot_is_current(agg_session, cfg):
+                            refresh_coverage_snapshot(agg_session, cfg)
+                except Exception as exc:  # noqa: BLE001 — non-fatal: never flips a successful job to failed
+                    logger.exception("ingest coverage refresh failed for fetch/expand (non-fatal): %s", exc)
             prog.status = final_status
     except Exception as exc:  # noqa: BLE001 — any failure must surface as an explicit failed job (scrubbed)
         prog.status = "failed"

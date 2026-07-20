@@ -144,3 +144,31 @@ next-step. The product-wide reading would halt the loop now; rejected because th
 disclosed with a queued fix, and the loop continues regardless (J-06 unbuilt). A human can override to
 REGRESSION.
 **Reversible:** yes
+
+## iter-3 — goal-evaluator
+
+**Ambiguity:** J-05 step-4's acceptance is the qualitative "while a heavy ingest job runs, poll
+`GET /api/health`; assert it stays responsive throughout" — the ui-test-plan sharpened this to a
+stricter "every poll within 1 s", and the reviewer explicitly asked the evaluator to rule which
+applies. Item L measured zero non-200 / zero timeout / zero hang across 1,725 polls (badge "Ready"
+throughout), but 50 (2.9%) ranged 1.00–3.29 s during the parallel-backfill contention window.
+**We chose:** applied goal.md's qualitative reading — "stays responsive throughout" is satisfied by
+the always-200, no-hang, badge-Ready result; the 2.9% sub-3.3 s slow window is a bounded,
+self-resolving latency blip, not an unresponsive/frozen state. (Does not change the verdict: J-05
+stays `partial` for the browser-story gaps below, not for step-4.)
+**Reversible:** yes
+
+## iter-3 — goal-evaluator
+
+**Ambiguity:** ux-regression scored UX-REGRESSION-FAIL and framed B3 (fetch → false app-wide
+"Backend unavailable"/NO-GO) and F1 (frozen job heartbeat) as directly undermining required-passing
+J-04's "visible status stays accurate" trust promise — which could be read as J-04 having regressed.
+But both root-cause to modules NOT in this iteration's diff (I confirmed `readiness.py` absent from
+the 3-file diff), and J-04's scripted 6-step replay (UT-J-04) PASSED; the defects live on paths
+J-04's acceptance never scripts (fetch-time badge, heavy-job heartbeat).
+**We chose:** scored J-04 `passing` (scripted acceptance holds, replay confirmed, code unchanged)
+and treated B3/F1 as newly-surfaced PRE-EXISTING defects / hard blockers to a future GOAL_ACHIEVED
+— NOT a REGRESSION halt (no verified journey moved passing→failing; neither is a clean named-AG
+violation). A human who reads B3 as a vision "the UI tells the truth about the backend's own state"
+/ AG-3 violation may override to REGRESSION — flagged explicitly in eval.md.
+**Reversible:** yes

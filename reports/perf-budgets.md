@@ -714,3 +714,95 @@ handoff for that suite's own execution status). TC-17 (SIGKILL leaves the logfil
 exercised by the automated script-level test on an isolated port, not repeated manually here to avoid a
 second unnecessary kill of the shared verification instance.
 
+## Item L — `/api/health` responsiveness + memory ceiling DURING a real heavy ingest job (iter-3, ops-hardening, J-05 TC-8/TC-9)
+
+**Problem (the iter-2 audit's T1 gap):** J-05's DoD names four acceptance steps; the fourth ("while a heavy
+ingest job runs, poll `GET /api/health`; assert it stays responsive throughout") was never measured live —
+only the *boot-time* peak (Item J, ~1.8 GB VmHWM) and *idle* health latency were on file. The iter-2 audit
+flagged this as GAP T1, specifically worried about the finalize hook's per-date `coverage`/`market_phase`
+loop (`_persist_per_date_coverage_snapshots` + `market_phase_cached`, one call per newly-created date) —
+unmeasured at the ~750-date scale a full rebuild reaches, and newly relevant because Item K's iteration made
+the `ulimit -v` cap **actually enforced** (pre-iteration there was no cap, so a transient spike could not
+OOM-kill the process; post-iteration it can).
+
+**Method — two runs, escalating from "real but light" to "real and heavy":**
+
+1. **First attempt — a large multi-day `backfill`** (J-03's own >370-day example range, `2025-06-01` →
+   `2026-07-17`), dispatched against the REAL committed dev DB via `scripts/start-backend.sh` (:8255).
+   Result: **not actually heavy** — every one of the 283 trading days in that range was already
+   snapshotted (`already_snapshotted: 283`, `snapshots_created: 0`) from this session's own earlier
+   iterations, so the job completed in 10.81 s with only a cheap existence-check loop. Still a genuine,
+   useful data point (27/27 health polls HTTP 200, all ≤ 0.24 s; peak VmPeak 3,080,296 KB / 3,008 MB, 51.0%
+   margin) but not the stress case T1 is actually worried about.
+2. **Second run — a real full-universe `rebuild`**, chosen because it is the ONE ingest kind guaranteed to
+   exercise the finalize hook's per-date loop at its largest live scale (every cadence-eligible date, not
+   just a range that might already be dense). Run against an **isolated throwaway copy** of the real dev DB
+   (`cp`'d to a scratch path, `TRENDORA_CONFIG` pointed a second `scripts/start-backend.sh` instance at the
+   copy on its own port, :8256, the same real `ulimit -v`/`MALLOC_ARENA_MAX` applied) — never the shared
+   committed file, mirroring Item H's own "throwaway copy of the real DB" method so this measurement cannot
+   consume the fresh unsnapshotted state a later QA pass needs. `GET /api/health` was polled at a fixed
+   0.25 s interval and `/proc/<pid>/status` sampled on the same cadence for the job's ENTIRE duration; both
+   processes were killed and the throwaway copy deleted immediately after.
+
+**Measured 2026-07-20T07:11-07:27Z, this host, backend on the throwaway-DB instance (:8256), real `ulimit -v
+6291456` KB / `MALLOC_ARENA_MAX=2` live:**
+
+A rebuild ignores the supplied date range (by design) and recomputes every **cadence-eligible** date across
+the full covered calendar (`2005-02-25` → `2026-07-17`, `calendar_days: 7813`, `dates_total: 5380` trading
+days) — `dates_done`/`snapshots_created: 378` (the monthly-historical + recent-daily cadence density, not
+literally all 5,380 trading days; matches `_cadence_allowed_dates`'s existing, unchanged gating). Job
+outcome: `status: "ok"`, **378 snapshots, 709,068 forward returns, 0 date failures**, `speedup_factor: 1.98`
+(parallel backfill stage vs. its own sequential per-date sum), **total wall time 965.25 s (~16.1 min)**.
+
+| Stage | Wall time | What it covers |
+|---|---|---|
+| `_do_backfill` (parallel, concurrency 4) | 236.6 s | the 378 snapshots + 709,068 forward returns themselves |
+| Finalize hook (`_refresh_ingest_aggregates`, sequential) | ~728.6 s (965.25 − 236.6) | per-date `coverage_snapshot` (378 calls) + `market_phase_cached` (378 calls) + 1 research hot-key warm — the EXACT per-date loop the iter-2 audit's T1 finding named as real-but-unmeasured cost, now measured: **≈ 1.9 s/date** at this scale |
+
+**TC-9 (memory) — clean pass, wide margin:**
+
+| Metric | Peak value | Cap | Margin |
+|---|---|---|---|
+| VmPeak | 3,720,948 KB (3,633.7 MB) | 6,291,456 KB (6,144 MB) | **2,570,508 KB (2,510.3 MB, 40.9%)** |
+| VmSize (same peak instant) | 3,610,236 KB (3,525.6 MB) | — | — |
+| VmHWM / VmRSS (peak resident) | 2,471,836 KB (2,413.9 MB) | — | — |
+
+The 40.9% VmPeak margin under the now-enforced cap is the headline TC-9 result: even the heaviest
+measured ingest kind (a full rebuild touching 378 dates + their per-date finalize-hook cost) stays
+comfortably inside the 6144 MB `ulimit -v`, closing T1's memory-side concern.
+
+**TC-8 (health responsiveness) — zero failures; a bounded, honestly-reported early latency window:**
+
+1,725 health polls issued across the job's full duration. **Zero non-200 responses, zero timeouts, zero
+hangs** — every single poll returned HTTP 200. Of the 1,725: **1,675 (97.1%)** returned within 1.0 s
+(matching the DoD's literal "within 1 second" phrasing exactly); the remaining **50 (2.9%)** ranged
+1.001–3.290 s. Reported precisely rather than rounded up to a clean pass, per this project's honesty
+convention:
+
+- All 50 slow polls fall inside `t=33.8s` → `t=252.3s` — i.e., entirely within (and just past) the
+  **parallel backfill stage's own 236.6 s window** (concurrency 4, the stage actively writing 378
+  snapshots + 709,068 forward returns). Read as contention between the health endpoint's own quick
+  scalar reads and four concurrently-writing backfill workers for the shared SQLite connection
+  pool/GIL — not a hang, not a memory event (VmPeak at those timestamps was ~3.0–3.2 GB, nowhere near the
+  cap), and self-resolving.
+- For the remaining **713 s (74% of the job's total duration)** — the ENTIRE sequential finalize-hook
+  per-date loop (the exact ~729 s cost table above) — **every single health poll was HTTP 200 in well under
+  1 s** (observed samples throughout this window: 0.125–0.716 s). The newly-measured heavy per-date
+  coverage/market-phase loop, run strictly on the job's own worker thread, imposed ZERO observed health-path
+  degradation.
+- This finding is **not attributable to this iteration's B1/B2 diff**: a `rebuild` routes through the
+  pre-existing (iter-2-shipped, untouched by this iteration) `_refresh_ingest_aggregates` branch, never the
+  new fetch/expand `elif` this iteration adds. It is the first live measurement of an existing, previously
+  unmeasured code path (T1's own gap), not a regression.
+
+**Verdict:** TC-9 is a clean pass with wide margin. TC-8's hard safety floor (no timeout, no non-200, no
+hang) holds without exception; its softer "within 1 s" target holds for 97.1% of polls, with the remaining
+2.9% bounded to a brief, explained, self-resolving window during the parallel backfill stage — reported as
+a GAP/OBSERVATION for the reviewer to weigh, not force-rounded to a clean pass.
+
+**Cleanup:** both measurement backend instances (:8255 real-DB, :8256 throwaway-copy) were killed
+(`SIGTERM`, clean exit, ports confirmed released) and the throwaway DB copy + its WAL/SHM siblings deleted
+immediately after this measurement; neither process nor file was left running/behind. Both instances
+appended their own boot lines to the shared `logs/backend.log` (the logfile path is not config-driven), a
+harmless append-only side effect consistent with the file's own documented convention.
+

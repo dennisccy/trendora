@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-3",
+  "base_url": "http://localhost:3255",
+  "iteration": 3,
+  "default_timeout_ms": 12000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Data Manager",
+      "narration": "Let's start on the Data Manager page, where the app shows exactly how much market data it has and lets you grow it on demand.",
+      "point_out": "The Dataset coverage panel is already filled in with real figures — Universe, Symbols, Trading days, Snapshot dates, and Backfill gaps — nothing blank and nothing stuck loading.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/data"},
+      "expect": {"target": {"testid": "universe-count"}}
+    },
+    {
+      "n": 2,
+      "title": "Pick a job type",
+      "narration": "The \"Job kind\" dropdown offers three plain-language choices for growing the dataset. Let's pick \"Fetch EOD prices\" first.",
+      "point_out": "As soon as a fetch-style job is chosen, an \"Import source\" dropdown appears, since a fetch needs to know where to pull prices from.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "fill", "target": {"label": "Job kind"}, "text": "Fetch EOD prices"},
+      "expect": {"target": {"label": "Import source"}}
+    },
+    {
+      "n": 3,
+      "title": "Switch to a backfill job",
+      "narration": "Now let's switch to \"Backfill snapshots\" instead, since that's the job we'll actually run next.",
+      "point_out": "The Import source dropdown disappears again — the form only ever asks for what the chosen job actually needs.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "fill", "target": {"label": "Job kind"}, "text": "Backfill snapshots"},
+      "expect": {"text": "Backfill snapshots"}
+    },
+    {
+      "n": 4,
+      "title": "Run a backfill job",
+      "narration": "With a real multi-day range already filled in from the app's own list of gaps, clicking Start kicks off the job.",
+      "point_out": "A plain-language breakdown appears — how many calendar days, how many were already covered, how many weren't trading days — and a \"Refreshed\" note lists exactly which stored figures this run kept current, with the Snapshot dates and Backfill gaps tiles above updating to match, no reload needed.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "click", "target": {"role": "button", "name": "Start"}},
+      "expect": {"text": "Refreshed:"},
+      "timeout_ms": 20000
+    },
+    {
+      "n": 5,
+      "title": "Check the run history",
+      "narration": "Scrolling down to the Run history table shows a permanent log of every job that's ever run.",
+      "point_out": "This run's row carries the exact same \"Refreshed\" note — proof it's a durable record, not just a one-time message that vanishes on reload.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "click", "target": {"role": "heading", "name": "Run history"}},
+      "expect": {"text": "Refreshed:"}
+    },
+    {
+      "n": 6,
+      "title": "See input validation in action",
+      "narration": "Finally, let's see what happens if a date is mistyped. Typing an impossible date should be caught right away, before it can ever be submitted.",
+      "point_out": "A clear red message and warning icon appear immediately below the field explaining exactly what's wrong, and the Start button greys out until it's fixed.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "fill", "target": {"label": "Start date"}, "text": "2026-13-40"},
+      "expect": {"text": "Enter a valid date as yyyy-MM-dd"}
+    }
+  ]
+}

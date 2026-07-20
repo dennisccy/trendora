@@ -1,26 +1,27 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 2 · **Date:** 2026-07-20 · **Verdict:** CONTINUE
+**After iteration:** 3 · **Date:** 2026-07-20 · **Verdict:** CONTINUE
 
 ## Journeys
 
-3 passing (J-01 J-03 J-04) · 1 partial (J-05) · 1 failing (J-06) — 5 total. J-04 newly passing (logfile + memory-cap built); J-05 up from failing (coverage_snapshot + finalize hook shipped, heavy-job measurement pending).
+3 passing (J-01 J-03 J-04) · 1 partial (J-05) · 1 failing (J-06) — 5 total. No status change this iter: J-05's backend B1/B2 fix + step-4 measurement are done & verified, but it has no clean browser pass (B3/F1 below). J-06 out of scope this iter.
 
 ## Active blockers
 
-- **B1 (dev-owned, TOP next-step, blocks future GOAL_ACHIEVED):** a `fetch` that lands new bars blanks the DEFAULT `/data` coverage to false all-zeros until restart/backfill — `coverage_snapshot` keyed on the live `dataset_version` fingerprint; `fetch`/`expand` skip the finalize hook. `apps/backend/app/engine/data_manager.py` :3759 (kind gate) / :1101 (self-heal as_of gate) / :900 (sentinel). Fix at ingest-time (AG-8-safe), gated to skip when stamp unchanged — NOT via the `as_of=None` self-heal.
-- **J-05 step 4 (dev/QA-owned):** TC-11/TC-12 (health responsiveness + VmPeak DURING a heavy job) never measured live — the one gap keeping J-05 partial.
+- **B3 (dev-owned, TOP next-step, blocks clean J-05 + future GOAL_ACHIEVED):** an ordinary "Fetch EOD prices" landing a bar past SPY's latest snapshot flips the app-wide HealthBadge/PreflightBanner into a crash-identical false "Backend unavailable"/"NO-GO", no in-app recovery. Root `app/engine/readiness.py:129` (`latest_servable = latest_run >= latest_data`) — PRE-EXISTING, NOT in the iter-3 diff. Fix: give "new data landed, snapshot pending" its own calm label + recovery pointer (compare vs the benchmark's own latest bar).
+- **F1 (dev-owned):** job-progress heartbeat freezes ~83% of a heavy job → false "· possibly stalled" while healthy. Root: `_refresh_ingest_aggregates` per-date loop emits no `tick()` (`data_manager.py:3034+`, iter-2-shipped, untouched). Fix: add `tick()` in the finalize loop.
+- **UT-04 (QA-owned, minor):** cold-boot honest-all-zero live check SKIPPED (no pristine DB); rests on unit tests this round — re-run live next iteration.
 
 ## Last 2 verdicts
 
-- iter 2: CONTINUE — J-04→passing (ulimit/malloc-arena + persistent logfile verified live), J-05→partial (coverage_snapshot + finalize hook shipped; heavy-job measurement pending); as-of AG-3 fixed; B1 out-of-scope gap queued; J-06 unbuilt.
-- iter 1: CONTINUE — J-01, J-03 delivered (cadence bypass, cap removal, breakdown/chunking); interrupted-row AG-3 fabricated-breakdown fixed intra-iteration.
+- iter 3: CONTINUE — B1 (session's #1 blocker) closed & audit-verified + J-05 step-4 measured (VmPeak 40.9% margin, /api/health all-200, badge Ready); but browser/ux/closure FAIL surfaced PRE-EXISTING B3+F1 → J-05 stays partial, no regression (no verified journey moved passing→failing; QA PASS was overstated — audit T1/closure caught it).
+- iter 2: CONTINUE — J-04→passing (ulimit/malloc-arena + logfile verified); J-05→partial (coverage_snapshot + finalize hook shipped; heavy-job measurement pending); as-of AG-3 fixed; B1 queued.
 
 ## Do not redo
 
-- `coverage_snapshot` table + ingest finalize hook + `aggregates_refreshed` (gated on `_breakdown_computed`; null for fetch/expand/interrupted) — data_manager.py, models.py — J-05 core, verified.
-- `scripts/start-backend.sh` enforces `ulimit -v` 6144 MB + `MALLOC_ARENA_MAX=2` + persistent `logs/backend.log` (append; abrupt-end on crash) — verified live via /proc + real-process test.
-- As-of-switcher AG-3 fix (per-date persist + explicit-`as_of` read-path self-heal) — verified byte-exact (UT-05); do NOT revert.
-- Default `/data` served from storage via `coverage_from_storage` (api/data.py:127), zero request-path whole-table load — do NOT re-introduce `compute_coverage` on the default `as_of=None` path.
-- J-01/J-03 shipped fields (`dates_total`/breakdown/`chunk_index`, `max_range_days` removal) — do not touch.
-- `docs/goal.md` is lint-final (commit 9c98cb3) — do not edit; the 25 mcp-loop journeys are archived — do not re-verify.
+- B1 fetch/expand coverage-freshness: `_run_job` new elif → canonical `refresh_coverage_snapshot`, gated by `_coverage_snapshot_is_current` (zero-work fetch pays nothing) — `data_manager.py:3793-3813`/`:1060-1081`; audit + 6 unit tests verified. Do NOT re-open the fetch/expand finalize gate.
+- B2 stale-row reclaim: one bulk `DELETE ... WHERE dataset_version != current` in `_upsert_coverage_snapshot` — verified (one-DELETE test).
+- J-05 step-4 measured: perf-budgets Item L (VmPeak 3,633.7 MB / 40.9% under 6144 MB cap; 1,725 health polls all 200) — do NOT re-measure.
+- coverage_snapshot table + ingest finalize hook + `aggregates_refreshed` (null for fetch/expand); default `/data` served from storage (`coverage_from_storage`), no request-path whole-table load — do NOT re-introduce compute on the `as_of=None` path.
+- `scripts/start-backend.sh` enforces `ulimit -v` 6144 MB + `MALLOC_ARENA_MAX=2` + persistent `logs/backend.log`; J-01/J-03 shipped fields (`dates_total`/breakdown/`chunk_index`, `max_range_days` removal) — do not touch.
+- `docs/goal.md` lint-final (commit 9c98cb3) — do not edit; the 25 mcp-loop journeys are archived — do not re-verify.
