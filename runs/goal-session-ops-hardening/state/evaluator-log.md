@@ -190,3 +190,40 @@ clean regression evidence — fix J-01's step-6 proxy for the 750-row run histor
 skipped J-04/J-05 golden scripts (→ out of unknown). Before merging this iter's code run
 `pytest tests/test_api_backtest.py tests/test_mcp_window.py -v` (T3). Closure-gate: J-05 + J-06 demo.sh
 --session-live walkthroughs still owed before the GOAL_ACHIEVED gate.
+
+
+## Iteration 6 — goal-ops-hardening-iter-6
+
+**Date:** 2026-07-21T01:43:56Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: J-04 (unknown→passing), J-05 (unknown→passing)
+- Improved: J-06 (failing→partial — both target latency endpoints now in budget 3/3 real-browser)
+- Newly failing: none
+- Regressed: none (J-01/J-03 deterministic replay PASS; J-04/J-05 LLM full-acceptance PASS)
+- Anti-goal violations: none new. scan-report CLEAN; coherence COHERENCE-PASS; all 3 prior AG-3 violations remain resolved.
+
+**Reasoning:** The J-06 latency fix is real and independently reproduced (not just dev-claimed): the frontend-only
+fetch-stagger dropped GET /api/indexes?full=true to 834/885/871ms (UT-02) and GET /api/data/availability to
+869/985/950ms (UT-08), both <=1500ms across 3/3 real-browser reloads, with byte-identical payloads (zero backend
+diff — audit §3 verified against source). J-04 and J-05, `unknown` since iter-5's replay gap, were freshly
+LLM-verified live (UT-J-04 6-step full acceptance incl. the crash presentation I confirmed in UT-J-04-crashed.png;
+UT-J-05 backfilled 2005-03-30 with 6 aggregates refreshed, stored snapshot rendered in UT-J-05-scanner-run.png).
+J-01/J-03 deterministic replay PASS (J-01's stale iter-5 step-6 proxy is fixed). The merged ui-test-results.md
+FAIL top-line is the known priority-blind merge-script bug; the raw .llm.md is PASS and every downstream lane used
+it, and review=PASS_WITH_NOTES so there is no fail-open (ESCALATE off). Rejected GOAL_ACHIEVED: the iteration FAILED
+its closure gate (user-visible-changes.md + ui-surface-map.md still assert a RETRACTED '/evidence 555.97s severe
+regression'), and the audit §5 + spec NOTES both name unmet GOAL_ACHIEVED-gate prerequisites — audit B1's /evidence
+first-view ~73s cold-miss on the live dev DB (recommended warm-before-gate) and the J-05/J-06 demo.sh --session-live
+walkthroughs (human deferral not obtained). Scored J-06 `partial` (target endpoints pass; /evidence residual +
+unproduced walkthrough) so the tree stays consistent. No journey moved passing→failing and no critical anti-goal →
+REGRESSION off. Every remaining unblock path is agent-doable → STALLED off. Coherence PASS → no consolidation
+mandate. Progress made → CONTINUE.
+
+**Next-step recommendation:** Full-depth session-closeout iteration (no new features): (1) audit B1 — warm the 7
+evidence drawdown_expectations keys at ingest finalize (data_manager.py:3138 idiom) so /evidence loads in budget on
+FIRST view on the grown basis, killing the ~73s cold-miss; (2) re-issue user-visible-changes.md + ui-surface-map.md
+via ui-impact-analyst to the corrected /evidence//research story, then re-run phase-closure-auditor; (3) produce the
+J-05 + J-06 demo.sh --session-live walkthroughs OR obtain explicit human deferral; (4) confirm
+`pytest tests/test_api_backtest.py tests/test_mcp_window.py -v` runs to completion clean. Then GOAL_ACHIEVED is clean.

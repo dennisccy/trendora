@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-6",
+  "base_url": "http://localhost:3255",
+  "iteration": 6,
+  "default_timeout_ms": 12000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the dashboard",
+      "narration": "Trendora opens straight to today's market read — no sign-in required, and every card fills in with real numbers right away.",
+      "point_out": "The Market Regime card reads \"Risk-on 65.98/100\" and the Market Phase & Severity card shows \"Expansion\" — both settle in well under a second.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Risk-on 65.98/100" }
+    },
+    {
+      "n": 2,
+      "title": "Tuck away the regime x phase chart",
+      "narration": "Further down the page, a \"Regime x phase cross-view\" chart lines up index performance against the market's phase history — you can hide it any time you don't need it.",
+      "point_out": "Clicking Hide collapses the whole chart down to a single small toggle button.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Hide" } },
+      "expect": { "text": "Show regime × phase cross-view" }
+    },
+    {
+      "n": 3,
+      "title": "Bring the chart back — now noticeably snappier",
+      "narration": "Clicking it again reloads the chart on demand. This iteration's fix shaved its real-browser load time from over two seconds down to under one, so the wait barely registers.",
+      "point_out": "The full two-pane chart reappears, already labeled with its as-of date.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Show regime × phase cross-view" } },
+      "expect": { "text": "as of 2026-07-17" }
+    },
+    {
+      "n": 4,
+      "title": "Open Data Manager",
+      "narration": "Data Manager tracks exactly how much price history and how many daily snapshots are on hand, including a calendar heatmap of coverage over time.",
+      "point_out": "The coverage heatmap and its color-coded legend now finish loading well inside their speed budget too.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "75–<100%" }
+    },
+    {
+      "n": 5,
+      "title": "Fill in a backfill start date",
+      "narration": "In the \"Start a fetch / backfill job\" panel, you can queue a backfill for any date range directly from the browser.",
+      "point_out": "",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "label": "Start date" }, "text": "2026-05-02" },
+      "expect": { "text": "2026-05-02" }
+    },
+    {
+      "n": 6,
+      "title": "Fill in the end date",
+      "narration": "Rounding out the range with an end date is all it takes to define the job.",
+      "point_out": "",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "label": "End date" }, "text": "2026-05-03" },
+      "expect": { "text": "2026-05-03" }
+    },
+    {
+      "n": 7,
+      "title": "Run the backfill",
+      "narration": "Clicking Start kicks the job off immediately — this particular range covers two weekend days, so there's no real data to fetch.",
+      "point_out": "The job finishes right away and honestly reports \"2 non-trading\" days rather than pretending it did work.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Start" } },
+      "expect": { "text": "2 non-trading" }
+    },
+    {
+      "n": 8,
+      "title": "Check the run history stays honest",
+      "narration": "Reloading the page and scrolling to Run history shows exactly what happened — a zero-work run is never dressed up as a normal success.",
+      "point_out": "The newest row carries a distinct grey \"no new snapshots\" badge instead of the green \"ok\" badge a real data-producing run gets.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "no new snapshots" }
+    }
+  ]
+}

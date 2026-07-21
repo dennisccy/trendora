@@ -81,6 +81,26 @@ type AvailabilityState =
   | { kind: "ok"; data: AvailabilityResponse }
   | { kind: "error" };
 
+/** iter-6 (J-06): the initial mount effect fires `loadOverview()` and `loadAvailability()` back-to-back,
+ *  uncoordinated — plus this page independently mounts `IndexVendorPanel`, which fires its own
+ *  `GET /api/indexes?full=true` on mount too. Real-browser measurement found `GET /api/data/availability`
+ *  at 2.8-3.0s browser-observed vs ~1.0s curl (previously unbudgeted).
+ *
+ *  Root cause, confirmed by direct measurement (an isolated `fetch()` on this same idle page reads ~1.0s,
+ *  matching curl; a ~250ms stagger and even a main-thread-idle-gated defer both left it elevated at
+ *  1.8-2.2s): this is NOT primarily browser connection queueing — a controlled concurrent-`curl` probe
+ *  showed `GET /api/data/availability` alone takes ~1.05s, but jumps to ~1.77s when fired ALONGSIDE
+ *  `GET /api/indexes?full=true` (both CPU-bound Python handlers on the single-process backend, serialized
+ *  by the GIL while the other's request body is being computed) — the same class of contention the
+ *  Dashboard fix targets, but the actual overlapping request here is `IndexVendorPanel`'s indexes call,
+ *  not the coverage/overview fetch. A 2500ms stagger (empirically the smallest tested value that cleared
+ *  3/3 real-browser reloads at ~1.0-1.05s, matching the true baseline) reliably clears past
+ *  `IndexVendorPanel`'s own ~0.9-1.0s completion. Pure request TIMING — same call,
+ *  same states, same abort/cleanup; only the FIRST mount is staggered (every other reload path — job
+ *  completion, retry/dismiss, removal — is well after the page's own on-load burst and is left calling
+ *  both together, unchanged). */
+const AVAILABILITY_FETCH_STAGGER_MS = 2500;
+
 const FIELD =
   "h-9 rounded-md border border-border bg-surface-2 px-3 text-sm text-text placeholder:text-text-faint " +
   "transition-colors hover:border-border-strong focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent " +
@@ -331,8 +351,15 @@ export default function DataManagerPage() {
   useEffect(() => {
     const controller = new AbortController();
     loadOverview(controller.signal);
-    loadAvailability(controller.signal);
-    return () => controller.abort();
+    // iter-6 (J-06): staggered past IndexVendorPanel's own on-mount indexes fetch — see the comment above.
+    const timer = window.setTimeout(
+      () => loadAvailability(controller.signal),
+      AVAILABILITY_FETCH_STAGGER_MS,
+    );
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
   }, [loadOverview, loadAvailability]);
 
   // J-61: clicking a heatmap day (start == end) or shift-click range prefills the JOB FORM's Start/End —

@@ -1,33 +1,33 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 5 · **Date:** 2026-07-20 · **Verdict:** CONTINUE
+**After iteration:** 6 · **Date:** 2026-07-21 · **Verdict:** CONTINUE
 
 ## Journeys
 
-2 passing (J-01 J-03) · 2 unknown (J-04 J-05 — not replayed this cycle) · 1 failing (J-06) — 5 total
+4 passing (J-01 J-03 J-04 J-05) · 1 partial (J-06) — 5 total. All product acceptance verified;
+GOAL_ACHIEVED is blocked only by the closeout items below, not by any failing journey.
 
 ## Active blockers
 
-- **J-06 (dev-owned):** Dashboard `/api/indexes?full=true` = 1.68–2.19s in a real browser (3/3) vs ≤1.5s
-  budget — browser HTTP/1.1 6-conn/origin queuing (curl 0.79–0.95s in-budget). Fix via HTTP/2 on the
-  uvicorn launcher, coalesce the Dashboard's 10-13 on-load calls, OR re-commit a browser-realistic budget
-  in `reports/perf-budgets.md` (fold in `/api/data/availability`, same class ~2.9–3.0s).
-- **Regression evidence (dev-owned):** J-01 golden-script step-6 proxy ("2026-05-15" on `/scanner-runs`)
-  is stale vs the now-750-row unpaginated run list — fix `runs/goal-session-ops-hardening/journey-scripts/J-01.json`;
-  J-04/J-05 golden scripts were skipped this cycle — run them to move J-04/J-05 out of `unknown`.
+- **Closure gate FAILED** (docs): `user-visible-changes.md` + `ui-surface-map.md` still assert a RETRACTED
+  "/evidence 555.97s severe regression" — re-issue via ui-impact-analyst, then re-run phase-closure-auditor.
+- **J-06 residual** (dev): `/evidence` first-view ~73s cold-miss on the live dev DB (audit B1) — warm the 7
+  evidence `drawdown_expectations` keys at ingest finalize (`data_manager.py:3138` idiom); ~9.5s on seed.
+- **Session gate** (dev | human): J-05 + J-06 `demo.sh ops-hardening --session-live` walkthroughs unproduced
+  — produce them, or the human explicitly accepts the deferral.
+- **Confirm** (dev): `pytest tests/test_api_backtest.py tests/test_mcp_window.py -v` to completion (25/0 on
+  the initial build; QA's re-run was still in-progress on file).
 
 ## Last 2 verdicts
 
-- iter 5: CONTINUE — J-06 backend fix correct but still fails TC-02 (Dashboard browser-budget); J-01 replay
-  miss is a proven-stale proxy, not a regression; J-04/J-05 unreplayed.
-- iter 4: CONTINUE — J-05 partial→passing (B3+F1 fixed & live-verified); J-06 deferred.
+- iter 6: CONTINUE — J-06 latency genuinely fixed (both endpoints in budget 3/3 real-browser) + J-04/J-05 out
+  of unknown, but closure FAILED and named GOAL_ACHIEVED-gate prerequisites remain.
+- iter 5: CONTINUE — ForwardAggregateCache fixed /api/backtest, but J-06 Dashboard still >1.5s real-browser.
 
 ## Do not redo
 
-- `ForwardAggregateCache` fix for `GET /api/backtest` (34.77s→0.138s, ~252×, byte-identical, honest
-  cold-miss, correct dataset_version invalidation) — verified by review/QA/audit. Lives in
-  `forward_testing.py forward_aggregates_cached` + `models.py ForwardAggregateCache` + `_refresh_ingest_aggregates` warm block. Shippable as-is.
-- J-06 backend audit (TC-13): all 11 endpoints traced; `/api/runs` N+1 measured in-budget, left unfixed by design.
-- B3/F1 readiness + heartbeat fixes (iter-4) — settled; `readiness.py`/`health-badge.tsx` out of scope.
-- Before merge run `pytest tests/test_api_backtest.py tests/test_mcp_window.py -v` (loaded_engine suite unrun this cycle).
-- Closure-gate: J-05 + J-06 `demo.sh --session-live` walkthroughs still owed before GOAL_ACHIEVED.
+- Dashboard/Data-Manager fetch-stagger fix (phase-cross-view-card.tsx 250ms; data/page.tsx 2500ms) — DONE,
+  verified 3/3 real-browser, frontend-only, byte-identical payloads. Do NOT add a combined/second endpoint.
+- J-01 golden-script step-6 rewrite ("no new snapshots" on /data) — DONE, deterministic replay PASS.
+- J-04/J-05 freshly verified passing this iter — do not re-litigate their product acceptance.
+- ForwardAggregateCache (/api/backtest ~252×), readiness.py B3/F1, max_range_days/snapshot_cadence — settled prior iters.

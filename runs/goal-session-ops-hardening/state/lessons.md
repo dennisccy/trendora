@@ -118,3 +118,20 @@ REGRESSION — and golden scripts should assert on data the journey's own action
 proxy row on a page the journey doesn't change.
 **Applies to:** any iter whose measurement/backfill runs add rows to /scanner-runs or /api/runs; any
 goal-evaluator triaging a required-still-passing deterministic-replay FAIL with no LLM-fallback adjudication.
+
+
+## iter-6 — 2026-07-21T01:43:56Z
+
+**Verdict:** CONTINUE
+**Lesson:** A page can be "within its committed budget" on the shipped seed yet violate the journey's
+intent on the basis the session actually runs: `/evidence`'s one-time cold recompute is ~9.5s on the
+170k-row seed but ~73s on the accumulated ~1.5M-row live dev DB (UT-13 real-browser 73.5s vs 0.02s warm
+curl), because `event_study_cache`/`drawdown_expectations` are lazy-warmed and any dataset change (e.g.
+this cycle's own verification backfill) invalidates them. Item I's "warm ≤3s + bounded cold miss" clause
+technically covers it, but for the LAST Must-have journey ("pages load only what they need") the honest bar
+is first-view-in-budget on the grown basis — warm the hot keys at ingest finalize, don't lean on the
+cold-miss clause. Also: iter-5's own curl-under-reports lesson recurred in reverse — the same page's first
+handoff numbers (555s/92s) were contamination artifacts (concurrent 84-min pytest + stale cache), so
+re-measure on an IDLE host before filing OR retracting a "severe regression."
+**Applies to:** any iter closing J-06 / touching a lazy-warmed derived cache (event_study_cache,
+market_phase_cache, drawdown_expectations); any perf claim measured while a heavy pytest/ingest runs concurrently.

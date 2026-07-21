@@ -271,3 +271,19 @@ names the boot budget and the cold `/api/data` budget as required additions, not
 rather than leave it permanently unbudgeted, because it shares J-06's exact Dashboard-class root cause and
 the iter-5 evaluator explicitly recommended folding it into the same fix decision.
 **Reversible:** yes
+
+
+## iter-6 — goal-evaluator
+
+**Ambiguity:** J-06's acceptance is "every one of the 11 named pages within its committed budget," and
+`/evidence`'s committed budget (Item I, from the archived mcp-loop session) is "warm ≤3s + a bounded
+one-time cold miss." On the live dev DB the first-view cold miss is ~73s (audit B1). This can be read as
+IN-budget (the cold-miss clause is explicitly unbounded-scaling with data) or as NOT satisfying the
+journey's "pages load only what they need / available in seconds" intent on the basis the session runs.
+**We chose:** scored J-06 `partial` rather than `passing` — the two TARGET endpoints are genuinely fixed
+and in budget (3/3 real-browser), but I did NOT let the letter of Item I's cold-miss clause bless a ~73s
+first-view on the last Must-have journey's page as a clean pass, because the audit itself recommends warming
+it before the GOAL_ACHIEVED gate. Combined with the unproduced [NEW] demo.sh --session-live walkthrough and
+the CLOSURE-FAIL, this keeps the decision tree consistent (not-all-passing → CONTINUE) without inventing an
+ad-hoc veto. A human who reads Item I's clause as fully dispositive may override J-06 to `passing`.
+**Reversible:** yes
