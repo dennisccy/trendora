@@ -227,3 +227,41 @@ FIRST view on the grown basis, killing the ~73s cold-miss; (2) re-issue user-vis
 via ui-impact-analyst to the corrected /evidence//research story, then re-run phase-closure-auditor; (3) produce the
 J-05 + J-06 demo.sh --session-live walkthroughs OR obtain explicit human deferral; (4) confirm
 `pytest tests/test_api_backtest.py tests/test_mcp_window.py -v` runs to completion clean. Then GOAL_ACHIEVED is clean.
+
+## Iteration 7 — goal-ops-hardening-iter-7
+
+**Date:** 2026-07-21T08:10:00Z
+**Verdict:** REGRESSION
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: none (J-01/J-03 deterministic replay PASS; J-04 LLM 6-step PASS — all re-verified)
+- Regressed: **J-05** (passing→failing — 7+ min GET /api/health hang + worker-thread MemoryError at the enforced 6144MB ulimit during a heavy ingest; manual restart required)
+- Unchanged: J-06 stays partial (its /evidence cold-miss TARGET is genuinely fixed & verified, but overall browser-qa FAIL + on-load /api/backtest MemoryError keep it non-passing)
+- Anti-goal violations: **AG-8 (critical, UNRESOLVED)** — memory exhaustion + ungraceful health hang on the grown live DB (frozen "Checking backend…" not the honest "Backend unavailable"); attribution to iter-7's diff contested (pre-existing /api/backtest OOMs predate the test) but recorded fail-closed. Prior 3 AG-3 violations remain resolved. scan-report CLEAN; coherence COHERENCE-PASS.
+
+**Reasoning:** The J-06 target fix is real (ingest-time drawdown_expectations warm; first /evidence view
+22.4ms real-browser vs the prior ~73s cold-miss; byte-identical per TC-3/audit; coherence PASS). BUT the
+AUTHORITATIVE raw browser-qa verdict is FAIL, driven by J-05 breaking on its LITERAL step-4 acceptance
+("while a heavy ingest job runs, poll GET /api/health; assert it stays responsive throughout"): live-observed
+connection-timeout for 7+ continuous minutes during a second back-to-back heavy ingest, backend at its own
+enforced memory_cap_mb=6144 ulimit -v with a worker-thread MemoryError, /proc showing all 22 threads idle in
+futex_do_wait (a hang, not slow compute), needing a manual restart; screenshot J-05-backend-hung-checking.png
+corroborates. iter-6 had explicitly verified "health 200 on 20/20 polls during the job", so this is an
+unambiguous passing→failing move. The merged ui-test-results.md "PASS" top-line is the known priority-blind
+merge-script rollup bug (iter-6 lesson) — the merged TABLE and the raw .llm.md both correctly show UT-J-05
+FAIL. NOT adjudicable as a false positive (unlike iter-5's stale golden proxy): literal acceptance step,
+rich live evidence, and it lives on the exact code path (_refresh_ingest_aggregates ingest finalize) this
+iteration modified. Review/QA/audit PASSes are not counter-evidence — none exercised J-05's heavy-ingest
+step, and the audit (T3) explicitly deferred journey pass/fail to me while asserting (empirically refuted
+here) the diff "cannot have regressed those journeys." Decision-tree item 1 (journey passing→failing) is
+first-match → REGRESSION; the AG-8 memory-exhaustion dimension reinforces it. Loop halts for human review.
+
+**Next-step recommendation:** Human review, then resume with --acknowledge-regression into a full-depth
+recovery iter: (1) root-cause the heavy-ingest health hang; determine whether iter-7's new SYNCHRONOUS
+per-claim drawdown_expectations warm (7 compute_drawdown_expectations calls appended to every heavy ingest's
+finalize) materially raised peak RAM — if so bound/defer/stream it; (2) AG-8 graceful degradation: on
+MemoryError, health must fail-fast to the honest "Backend unavailable" state and the worker pool must recover
+without a manual restart; (3) audit the separate live /api/backtest→forward_aggregates_cached→large
+ScannerResult MemoryError (on-load-endpoint OOM, a J-06/AG-8 concern); (4) re-run J-05's heavy-ingest health
+step live before re-attempting closeout. Do NOT redo the drawdown warm itself — J-06's /evidence cold-miss is
+genuinely closed; the residual is the availability/capacity failure it surfaced.

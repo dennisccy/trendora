@@ -1280,3 +1280,117 @@ Not re-measured this iteration (this iteration's diff touches zero boot-path fil
 `main.py`'s boot sequence, `warmup.py`, `scripts/start-backend.sh` are all untouched) — the existing <= 5s
 committed budget (most recently 1.387-1.459s, iter-5) remains valid by construction; a fresh cold-boot
 timing was not re-run since nothing that executes during boot changed.
+
+## J-06 closeout — `/evidence` first-view-after-ingest warm (iter-7, audit B1 fix)
+
+**Fix:** `_refresh_ingest_aggregates` (`app.engine.data_manager`) gained one more non-fatal warm step,
+mirroring the existing `research_hot_keys` block: it resolves the evidence ledger and, for every
+non-`forward_walk` claim, calls the EXISTING `forward_testing.compute_drawdown_expectations_cached` —
+the SAME function `GET /api/evidence` already calls lazily via `build_evidence_payload`. No new table, no
+new endpoint, no new computing module; only the warm TIMING moves from "first live `/evidence` request
+after an ingest" to "the ingest job's own finalize tail." `"drawdown_expectations"` is appended to the
+job's `aggregates_refreshed` list only when at least one claim's warm call returned a real (non-None)
+payload — an empty ledger or an all-unresolvable-cohort ledger honestly omits the category (unit-tested,
+see dev handoff).
+
+**Method disclosed:** real live backend (`scripts/start-backend.sh`, prod mode, backend :8255) driven via
+`curl` against the running dev instance — NOT a real-Chrome measurement. Per this iteration's own NOTES
+(and the plan's explicit fallback clause), a same-process `curl` taken immediately after triggering a
+real ingest job is an accepted, disclosed substitute for confirming a one-time warm actually happened
+before first view; it is not being used to under-report a STEADY-STATE reading (the iter-5 lesson this
+guards against). Real-browser confirmation of all 11 pages (TC-6) remains browser-qa-agent's own pass.
+
+**Live proof the warm mechanism actually fires (2026-07-21T02:21-02:25Z, this host):** a real backfill of
+ONE genuinely unsnapshotted historical trading day (`2015-06-15` — chosen because May/June/July 2026 and
+essentially all of 2015's monthly-cadence dates were already snapshotted by prior iterations' dev/QA
+work, so this date guarantees a real, non-zero-work dataset change) was submitted via
+`POST /api/data/jobs {"kind":"backfill","start":"2015-06-15","end":"2015-06-15"}`. Result: 1 snapshot
+created, 1840 forward returns inserted (a genuine `_dataset_version` change, so any pre-existing cache
+rows were genuinely stale going in — this is not a cache-hit no-op), and the job's own persisted
+`aggregates_refreshed` list came back as:
+
+```
+["latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates",
+ "research_hot_keys", "drawdown_expectations"]
+```
+
+`"drawdown_expectations"` is present — the finalize hook genuinely re-warmed the ledger's 7 real
+certified-claim `EventStudyCache` rows as part of THIS ingest job, live, end-to-end.
+
+**`/evidence` first-view timing immediately after that same job completed** (no other request to
+`/api/evidence` was made in between the job finishing and this measurement):
+
+| Reading | `GET /api/evidence` wall time | Committed budget (Item I, warm) | Holds? |
+|---|---|---|---|
+| 1st curl post-ingest | 17.6 ms | <= 3 s page / <= 1.5 s endpoint | yes |
+| 2nd curl | 44.3 ms | <= 1.5 s | yes |
+| 3rd curl | 15.4 ms | <= 1.5 s | yes |
+
+All 7 ledger claims carry a populated `expectations` panel (verified via the response body: `claims: 7`,
+`with expectations: 7`), and the payload is the same 23,293-byte shape iter-6 already confirmed correct.
+This replaces the prior **73.3s one-time cold-miss** (iter-6 CORRECTION, measured on this same grown live
+DB) with a **sub-50ms first view** — the residual audit-B1 gap is closed. AG-3 byte-identity between the
+ingest-warmed payload and a fresh uncached `compute_drawdown_expectations` call is unit-tested (TC-3,
+`test_finalize_hook_drawdown_expectations_byte_identical_to_fresh_compute`, PASSED) rather than re-diffed
+live against the full 30-year DB (a live fresh recompute would itself pay the ~73s cost this fix exists
+to avoid paying on a request path).
+
+### Full 11-page reconfirmation (curl, this iteration — real-browser TC-6 remains browser-qa-agent's pass)
+
+No frontend file changed this iteration (zero-diff by construction — see dev handoff "Files Changed"), so
+every page's rendered payload is unaffected; this is a fresh CURL-based reconfirmation that nothing
+regressed, not a claim of real-browser interactivity. Measured 2026-07-21T02:25-02:26Z, prod mode
+(`scripts/start-backend.sh` / `scripts/start-frontend.sh`, backend :8255 / frontend :3255), host otherwise
+idle apart from this iteration's own long-running unit-test suite (TC-7, a separate OS process — not the
+same GIL-sharing mechanism iter-6's contamination episode documented for concurrent requests WITHIN one
+backend process).
+
+**Pages** (2nd-pass / warm HTTP response time, `curl`):
+
+| Page | Wall time | Budget | Holds? |
+|---|---|---|---|
+| `/` (Dashboard) | 30.6 ms | <= 3 s | yes |
+| `/stocks` | 25.2 ms | <= 3 s | yes |
+| `/stocks/AAPL` | 47.0 ms | <= 3 s | yes |
+| `/sectors` | 21.4 ms | <= 3 s | yes |
+| `/themes` | 22.8 ms | <= 3 s | yes |
+| `/data` | 36.4 ms | <= 3 s | yes |
+| `/evidence` | 19.3 ms | <= 3 s | yes |
+| `/scanner-runs` | 21.4 ms | <= 3 s | yes |
+| `/backtest` | 19.4 ms | <= 3 s | yes |
+| `/watchlist` | 18.3 ms | <= 3 s | yes |
+| `/research/event-study` | 14.2 ms | <= 3 s | yes |
+
+**On-load API endpoints** (`curl`, warm):
+
+| Endpoint | Wall time | Budget | Holds? |
+|---|---|---|---|
+| `GET /api/health` | 92.0 ms | <= 0.1 s | yes |
+| `GET /api/stocks` | 132.1 ms | <= 1.5 s | yes |
+| `GET /api/stocks/AAPL` | 4.4 ms | <= 0.3 s | yes |
+| `GET /api/data` | 71.4 ms | <= 1.5 s | yes |
+| `GET /api/data/availability` | 1102.5 ms | <= 1.5 s | yes |
+| `GET /api/dashboard` | 2.9 ms | <= 1.5 s | yes |
+| `GET /api/market-phase` | 479.3 ms | <= 1.5 s | yes |
+| `GET /api/sectors` | 19.7 ms | <= 1.5 s | yes |
+| `GET /api/themes` | 7.2 ms | <= 1.5 s | yes |
+| `GET /api/indexes?full=true` | 952.6 ms | <= 1.5 s | yes |
+| `GET /api/regime-history?full=true` | 7.7 ms | <= 1.5 s | yes |
+| `GET /api/market-phase?full=true` | 14.6 ms | <= 1.5 s | yes |
+| `GET /api/runs` | 80.9 ms | <= 1.5 s | yes |
+| `GET /api/backtest` | 143.4 ms | <= 1.5 s | yes |
+| `GET /api/watchlist` | 14.1 ms | <= 1.5 s | yes |
+| `GET /api/research/event-study` | 11.4 ms | <= 1.5 s | yes |
+| `GET /api/evidence` | 8.7 ms | <= 1.5 s | yes |
+
+**DB capacity snapshot** (from `GET /api/data`'s `capacity` field, post the 2015-06-15 backfill above):
+
+| Metric | Value |
+|---|---|
+| DB file size | 2554781696 bytes |
+| `daily_prices` rows | 3299922 |
+| `scanner_results` rows | 305875 |
+| `forward_returns` rows | 1521641 |
+
+No committed budget number was loosened — every row above is additive/reconfirming, matching every
+existing number already on file.

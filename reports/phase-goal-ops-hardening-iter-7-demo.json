@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-7",
+  "base_url": "http://localhost:3255",
+  "iteration": 7,
+  "default_timeout_ms": 10000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Data Manager",
+      "narration": "We start on the Data Manager, the page that tracks every backfill and refresh job that keeps the site's market data up to date.",
+      "point_out": "The 'Start a fetch / backfill job' panel, and a summary of the most recent job the site has run.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Job progress" }
+    },
+    {
+      "n": 2,
+      "title": "Choose a date to refresh",
+      "narration": "We ask it to refresh a single day, 2015-06-18, so we can watch a job run from start to finish.",
+      "point_out": "The Start date field now shows the chosen date.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "label": "Job start date" }, "text": "2015-06-18" }
+    },
+    {
+      "n": 3,
+      "title": "Set the end of the range",
+      "narration": "The end date is the same day, so this is a small, quick job.",
+      "point_out": "The End date field now shows the chosen date.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "label": "Job end date" }, "text": "2015-06-18" }
+    },
+    {
+      "n": 4,
+      "title": "Start the job — and watch the ingest-time warm-up",
+      "narration": "Clicking Start kicks off the backfill. When it finishes, the summary line now also lists 'drawdown expectations' — a background calculation that used to wait until someone opened the Evidence page, but now runs automatically as part of the job itself.",
+      "point_out": "The 'Refreshed:' line growing to include 'drawdown expectations' once the job completes.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Start" } },
+      "timeout_ms": 20000,
+      "expect": { "text": "drawdown expectations" }
+    },
+    {
+      "n": 5,
+      "title": "Open Evidence right after the job — instantly",
+      "narration": "We open the Evidence ledger, the page that lists every certified trading claim and its historical drawdown expectations. Because the warm-up already ran during the job, this very first view loads just as fast as any later one.",
+      "point_out": "The claim cards and their 'Historical drawdown & dry-spell expectations' tables appearing right away, with no long spinner.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/evidence" },
+      "expect": { "text": "Historical drawdown & dry-spell expectations" }
+    },
+    {
+      "n": 6,
+      "title": "Refresh Evidence — same numbers, still fast",
+      "narration": "Reloading the page shows the exact same figures. The only thing that changed this iteration is how quickly the first view loads — never the numbers themselves.",
+      "point_out": "Every claim's verdict, hypothesis, and expectations table look identical to before the reload.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/evidence" },
+      "expect": { "text": "Historical drawdown & dry-spell expectations" }
+    },
+    {
+      "n": 7,
+      "title": "Confirm it in Run History too",
+      "narration": "Back on the Data Manager, the job we just ran shows up in Run History with the same 'drawdown expectations' note — the same background pre-computation, visible from every place this page reports on a job.",
+      "point_out": "The Run history row for 2015-06-18 → 2015-06-18, with 'drawdown expectations' in its small gray Refreshed note.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "drawdown expectations" }
+    }
+  ]
+}

@@ -135,3 +135,20 @@ handoff numbers (555s/92s) were contamination artifacts (concurrent 84-min pytes
 re-measure on an IDLE host before filing OR retracting a "severe regression."
 **Applies to:** any iter closing J-06 / touching a lazy-warmed derived cache (event_study_cache,
 market_phase_cache, drawdown_expectations); any perf claim measured while a heavy pytest/ingest runs concurrently.
+
+## iter-7 — 2026-07-21T08:10:00Z
+
+**Verdict:** REGRESSION
+**Lesson:** An upstream audit that reasons about "orthogonality" (frontend/boot/readiness untouched →
+"cannot have regressed those journeys") can be empirically WRONG when the diff touches a shared
+hot-path function: iter-7's `_refresh_ingest_aggregates` warm looked orthogonal to J-05, but it runs
+7 synchronous `compute_drawdown_expectations` calls on the ingest FINALIZE path — exactly J-05's
+"health responsive during heavy ingest" window — and browser-qa caught a 7-min health hang + MemoryError
+at the enforced 6144MB ulimit that the audit (which ran before browser-qa and never exercised that step)
+declared impossible. Adding ANY synchronous per-item compute to the ingest finalize hook is a memory/
+availability risk on the grown live DB, not a free timing move — its peak-RAM cost must be measured
+during a real back-to-back heavy ingest, not just unit-tested.
+**Applies to:** any iter that adds work to `_refresh_ingest_aggregates` / the ingest finalize hook, or
+any "warm-a-cache-earlier" change; any iter where the audit runs before browser-qa and asserts a required
+journey is orthogonal to the diff — the evaluator must still weight the live browser evidence over the
+orthogonality argument.

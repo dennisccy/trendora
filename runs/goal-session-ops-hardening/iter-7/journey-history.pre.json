@@ -1,0 +1,83 @@
+{
+  "journeys": {
+    "J-01": {
+      "id": "J-01",
+      "name": "Backfill honors the requested range and explains zero-work",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-6",
+      "last_passing_iter": "goal-ops-hardening-iter-6",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-6-evidence/J-01-verify.png",
+      "spec_hash": "06b26eaaf82dcdb532465e5c287f1177681a6c8697e4f96cfadddb4fc60b29ad",
+      "note": "UT-J-01 deterministic replay PASS end-to-end (all 6 expects held). The iter-5 stale step-6 proxy ('2026-05-15' on /scanner-runs) was rewritten to assert 'no new snapshots' on /data's own run-history entry for the run the script submits — clean replay, zero manual adjudication (TC-6; audit T1 confirmed both assertion strings are real run-produced labels)."
+    },
+    "J-03": {
+      "id": "J-03",
+      "name": "No per-run range cap",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-6",
+      "last_passing_iter": "goal-ops-hardening-iter-6",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-6-evidence/J-03-verify.png",
+      "spec_hash": "5457740bbb0cea982e9b1241f19ca50836ff584bbb960a5a088f7168d820c271",
+      "note": "UT-J-03 deterministic replay PASS (golden script unchanged). No J-03 surface touched this iteration."
+    },
+    "J-04": {
+      "id": "J-04",
+      "name": "Non-blocking boot with visible status",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-6",
+      "last_passing_iter": "goal-ops-hardening-iter-6",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-6-evidence/UT-J-04-crashed.png",
+      "spec_hash": "4074a9c952a9a143dc543efef3c8d3e0a1e33a848ab250ec90c7c2f568dbcff8",
+      "note": "Out of iter-5 'unknown' -> passing. UT-J-04 LLM 6-step full-acceptance PASS: restart->first-200 ~1.1s; mid-boot health readiness=initializing warmup 89/89 with badge 'Initializing... history 89/89' matching in the same window; kill -9 -> distinct 'Backend unavailable / NO-GO' presentation (screenshot corroborates); logs/backend.log abrupt-end after crash (no clean-shutdown lines); interrupted-job recovery with zero orphaned 'running' rows."
+    },
+    "J-05": {
+      "id": "J-05",
+      "name": "Aggregates are precomputed at ingest, never on the fly",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-6",
+      "last_passing_iter": "goal-ops-hardening-iter-6",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-6-evidence/UT-J-05-scanner-run.png",
+      "spec_hash": "63dd5bf0983454e48338557d0f2b1e5ce9726d7aa247c20174ac9323f637564b",
+      "note": "Out of iter-5 'unknown' -> passing. UT-J-05 LLM full-acceptance PASS: backfilled unsnapshotted 2005-03-30; run record aggregates_refreshed = [latest_snapshot, coverage, membership_timeline, market_phase, forward_aggregates, research_hot_keys] matches acceptance; /scanner-runs listed the date and its stored snapshot rendered (screenshot corroborates: Defensive regime 36.79/100); /api/market-phase?as_of=2005-03-30 served in 10ms; health 200 on 20/20 polls during the job; cold-restart /data read coverage in 244ms (no 3.3M-row prefill)."
+    },
+    "J-06": {
+      "id": "J-06",
+      "name": "Pages load only what they need",
+      "status": "partial",
+      "last_verified_iter": "goal-ops-hardening-iter-6",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-6-evidence/UT-08-result.png",
+      "spec_hash": "a9654dc139add9c161b5d7e59a431f78bd94fdf0f26b15c4fe2c83a1007db045",
+      "note": "failing -> partial. The iter-5 latency violation is genuinely fixed & independently reproduced: UT-02 GET /api/indexes?full=true 834/885/871ms and UT-08 GET /api/data/availability 869/985/950ms, both <=1500ms 3/3 real-browser reloads (frontend-only fetch-stagger, byte-identical payloads). Held PARTIAL not passing for two residuals the audit/closure name as due before the GOAL_ACHIEVED gate: (a) audit B1 - /evidence first-view cold-miss is ~73s on the accumulated live dev DB (~9.5s on the shipped seed; UT-13 real-browser 73.5s vs 0.02s warm curl) - technically within Item I's 'warm <=3s + bounded one-time cold miss' clause but not 'snappy on first view' on the basis the session runs; remediation named (warm 7 evidence drawdown_expectations keys at ingest, data_manager.py:3138 idiom). (b) the [NEW] demo.sh --session-live walkthrough Acceptance bullet is unproduced. Iteration also failed the closure gate (stale user-visible-changes.md / ui-surface-map.md still assert the retracted 555s regression)."
+    }
+  },
+  "anti_goal_violations": [
+    {
+      "iter": "goal-ops-hardening-iter-1",
+      "anti_goal": "AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders.",
+      "severity": "critical",
+      "evidence": "Interrupted backfill rows served a fabricated '0 calendar days · 0 already snapshotted · 0 non-trading' breakdown for ranges that were really hundreds of days (browser-qa UT-14 Additional observation, reproduced twice on 517-day jobs). Found and FIXED intra-iteration by the audit (Finding B1): _run_detail gates the four breakdown fields to null on _breakdown_computed (calendar_days>0), regression-tested. Confirmed in working tree: apps/backend/app/engine/data_manager.py:3017,3032-3035.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-2",
+      "anti_goal": "AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders.",
+      "severity": "critical",
+      "evidence": "REVIEW pass-1 CRITICAL: coverage_from_storage regressed the app-wide as-of switcher — selecting an already-ingested historical date served a FALSE all-zero 'not yet computed' sentinel instead of real coverage (only the single current-latest as-of ever had a persisted row). FIXED intra-iteration by dev (two layers: _persist_per_date_coverage_snapshots at ingest for new dates + coverage_from_storage read-path self-heal for legacy explicit as_of, both via the canonical _compute_coverage_uncached). Re-verified: browser-qa UT-05 cross-checked 2015-04-01->360 and 2015-01-16->354 byte-exact vs direct API; 2 regression tests assert symbol_count==1 (REAL) vs 0 sentinel. Review pass-2 = PASS_WITH_NOTES.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-2",
+      "anti_goal": "AG-3 (dimension): displayed numbers must be correct — a fetch that lands new bars silently blanks the DEFAULT /data coverage panel to false all-zeros.",
+      "severity": "minor",
+      "evidence": "Audit Finding B1 + browser-qa 'Additional Finding' (both live-reproduced iter-2): a fetch that lands >=1 bar changed the dataset_version fingerprint, so no current-stamp coverage_snapshot row matched and the default as_of=None visit fell to the honest-empty all-zero sentinel for a fully-ingested DB until restart/backfill. RESOLVED iter-3: the B1 fix widens _run_job's finalize gate with a new elif firing for successful fetch/expand, calling the canonical refresh_coverage_snapshot (no second derivation) gated by _coverage_snapshot_is_current so a zero-work fetch pays nothing. Independently verified by the audit code-trace + 6 new unit tests + live J-03-verify.png showing /data serving real non-zero coverage (540/591/5380/762).",
+      "resolved": true
+    }
+  ],
+  "updated_at": "2026-07-21T01:43:56Z"
+}

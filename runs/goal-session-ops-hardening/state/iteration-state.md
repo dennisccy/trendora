@@ -1,33 +1,24 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 6 · **Date:** 2026-07-21 · **Verdict:** CONTINUE
+**After iteration:** 7 · **Date:** 2026-07-21 · **Verdict:** REGRESSION
 
 ## Journeys
 
-4 passing (J-01 J-03 J-04 J-05) · 1 partial (J-06) — 5 total. All product acceptance verified;
-GOAL_ACHIEVED is blocked only by the closeout items below, not by any failing journey.
+3 passing (J-01 J-03 J-04) · 1 regressed (J-05) · 1 partial (J-06) — 5 total. J-05 broke; J-06 target fixed but not a clean pass.
 
 ## Active blockers
 
-- **Closure gate FAILED** (docs): `user-visible-changes.md` + `ui-surface-map.md` still assert a RETRACTED
-  "/evidence 555.97s severe regression" — re-issue via ui-impact-analyst, then re-run phase-closure-auditor.
-- **J-06 residual** (dev): `/evidence` first-view ~73s cold-miss on the live dev DB (audit B1) — warm the 7
-  evidence `drawdown_expectations` keys at ingest finalize (`data_manager.py:3138` idiom); ~9.5s on seed.
-- **Session gate** (dev | human): J-05 + J-06 `demo.sh ops-hardening --session-live` walkthroughs unproduced
-  — produce them, or the human explicitly accepts the deferral.
-- **Confirm** (dev): `pytest tests/test_api_backtest.py tests/test_mcp_window.py -v` to completion (25/0 on
-  the initial build; QA's re-run was still in-progress on file).
+- **REGRESSION HALT — human review required.** J-05 (`passing`→`failing`): `GET /api/health` hung 7+ min during a heavy ingest; backend hit its enforced `memory_cap_mb=6144` `ulimit -v`, worker-thread `MemoryError`, all 22 threads `futex_do_wait`, manual restart needed. Lives on the ingest finalize hot path (`app.engine.data_manager._refresh_ingest_aggregates`) this iter modified. Owner: human (capacity/architecture call) → then dev. Evidence: `reports/phase-goal-ops-hardening-iter-7-ui-test-results.llm.md` UT-J-05 + `reports/qa/goal-ops-hardening-iter-7-evidence/J-05-backend-hung-checking.png`.
+- AG-8 (critical, unresolved): memory exhaustion + ungraceful hang (frozen "Checking backend…" instead of honest "Backend unavailable"); also a live `/api/backtest`→`forward_aggregates_cached`→large `ScannerResult` MemoryError on an on-load path. Attribution to iter-7's diff contested (pre-existing `/api/backtest` OOMs predate the test).
 
 ## Last 2 verdicts
 
-- iter 6: CONTINUE — J-06 latency genuinely fixed (both endpoints in budget 3/3 real-browser) + J-04/J-05 out
-  of unknown, but closure FAILED and named GOAL_ACHIEVED-gate prerequisites remain.
-- iter 5: CONTINUE — ForwardAggregateCache fixed /api/backtest, but J-06 Dashboard still >1.5s real-browser.
+- iter 7: REGRESSION — J-05 verified passing→failing (7-min health hang + MemoryError during heavy ingest, manual restart); AG-8 concern. Merged "PASS" top-line is the priority-blind merge bug; RAW browser-qa = FAIL.
+- iter 6: CONTINUE — J-04/J-05 unknown→passing, J-06 failing→partial (Dashboard/Data latency fixed); closure gate + /evidence cold-miss outstanding.
 
 ## Do not redo
 
-- Dashboard/Data-Manager fetch-stagger fix (phase-cross-view-card.tsx 250ms; data/page.tsx 2500ms) — DONE,
-  verified 3/3 real-browser, frontend-only, byte-identical payloads. Do NOT add a combined/second endpoint.
-- J-01 golden-script step-6 rewrite ("no new snapshots" on /data) — DONE, deterministic replay PASS.
-- J-04/J-05 freshly verified passing this iter — do not re-litigate their product acceptance.
-- ForwardAggregateCache (/api/backtest ~252×), readiness.py B3/F1, max_range_days/snapshot_cadence — settled prior iters.
+- J-06 `/evidence` cold-miss fix: DONE & verified — ingest-time `drawdown_expectations` warm (`_refresh_ingest_aggregates`), first-view 22.4ms real-browser, byte-identical (UT-02/UT-06/audit). Residual is the availability/capacity failure it surfaced, NOT the warm's correctness.
+- J-01/J-03/J-04 settled: replay/LLM PASS this iter — do not re-plan their surfaces.
+- max_range_days removal, snapshot_cadence, readiness.py/main.py boot: settled (prior iters).
+- Recovery iter (after fix + `--acknowledge-regression`), full depth: root-cause the heavy-ingest MemoryError, bound/defer the ingest-time warm if it raises peak RAM, make health fail-fast + auto-recover on MemoryError (no manual restart), then re-run J-05's heavy-ingest step live.

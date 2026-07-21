@@ -1,0 +1,17 @@
+{
+  "phase": "goal-ops-hardening-iter-7",
+  "status": "blocked",
+  "current_step": "closure_failed",
+  "updated_at": "2026-07-21T06:32:15.313189Z",
+  "started_at": "2026-07-21T02:00:27.380296Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/tests/test_data_manager.py",
+    "reports/perf-budgets.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "next_action": "reviewer"
+}

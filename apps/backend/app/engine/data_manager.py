@@ -53,8 +53,10 @@ from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError
 from app.data_providers.seed_provider import SeedProvider, symbol_to_filename
 from app.db import get_engine
 from app.engine import drift as drift_module
+from app.engine import evidence  # ops-hardening iter-7 (J-06): the finalize hook warms drawdown_expectations
 from app.engine import forward_testing, scanner
 from app.engine import market_phase  # ops-hardening iter-2 (J-05): the ingest finalize hook warms this
+from app.engine.ledger import FORWARD_WALK_TYPE, read_entries
 from app.engine.prices import attach_shared_cache, bar_cache, bars_asof, latest_data_date, prefilled_bar_cache
 from app.engine import universe_resolver
 from app.engine.universe_screen import (
@@ -3047,9 +3049,9 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     never raises (the caller in `_run_job` wraps the whole call in its own try/except too, mirroring
     `_warm_membership_timeline`'s non-fatal contract in warmup.py — an aggregate-refresh failure must never
     flip an otherwise-successful ingest job to failed). Returns the subset of `["latest_snapshot",
-    "coverage", "membership_timeline", "market_phase", "forward_aggregates", "research_hot_keys"]`
-    ACTUALLY refreshed — never a fabricated category (mirrors the `omitted`/`passers` honesty convention
-    already used elsewhere in this module).
+    "coverage", "membership_timeline", "market_phase", "forward_aggregates", "research_hot_keys",
+    "drawdown_expectations"]` ACTUALLY refreshed — never a fabricated category (mirrors the
+    `omitted`/`passers` honesty convention already used elsewhere in this module).
 
     ops-hardening iter-4 (F1 fix): calls the bare `prog.tick()` (no `activity` argument — it stamps ONLY
     the `last_progress_at` heartbeat, never overwriting `current_activity`, so an already-pinned "scanning
@@ -3139,6 +3141,43 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             refreshed.append("research_hot_keys")
     except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue
         logger.exception("ingest research hot-key warm failed (non-fatal): %s", exc)
+
+    # ops-hardening iter-7 (J-06 closeout, audit B1): warm the per-claim `drawdown_expectations`
+    # EventStudyCache view slot — the SAME cache slot `build_evidence_payload` looks up lazily via
+    # `forward_testing.compute_drawdown_expectations_cached` on a live `/api/evidence` request. Without
+    # this warm, the FIRST `/evidence` view after any ingest pays a per-claim cold-miss compute (measured
+    # ~73s on the grown live dev DB, reports/perf-budgets.md iter-6 CORRECTION). Mirrors the
+    # `research_hot_keys` block just above: its own top-level try/except (a missing/corrupt ledger file
+    # degrades to zero warm calls — an honest omission, never an exception that aborts the rest of this
+    # finalize hook), the SAME `type == FORWARD_WALK_TYPE` filter `build_evidence_payload` already applies
+    # (a forward-walk record re-scores an existing claim — it is not itself a claim to warm a panel for),
+    # and the SAME `entry.get("claim")` extraction `evidence._claim_row` uses (so the cache subject hash
+    # matches exactly what `/api/evidence` looks up). A `prog.tick()` heartbeat stamps before each claim's
+    # warm call (mirrors the `forward_aggregates` per-horizon tick above), and each claim's own try/except
+    # (log + continue) means one unresolvable/erroring claim never blocks another or fails the ingest job.
+    try:
+        ledger_entries = read_entries(evidence.resolve_ledger_path())
+    except Exception as exc:  # noqa: BLE001 — non-fatal: a missing/corrupt ledger degrades to zero warm calls
+        logger.exception("ingest drawdown-expectations ledger read failed (non-fatal): %s", exc)
+        ledger_entries = []
+
+    drawdown_warmed = False
+    for entry in ledger_entries:
+        if not isinstance(entry, dict) or entry.get("type") == FORWARD_WALK_TYPE:
+            continue
+        claim = entry.get("claim") if isinstance(entry.get("claim"), dict) else {}
+        prog.tick()  # heartbeat stamp before each claim's warm call — see docstring above.
+        try:
+            result = forward_testing.compute_drawdown_expectations_cached(session, claim, cfg)
+            # gate on an ACTUAL non-None payload (never just "the call didn't raise") — an out-of-scope
+            # horizon or an unresolvable cohort returns None honestly and must NOT be reported as refreshed
+            # (mirrors the `market_phase`/`research_hot_keys` "actually did something" convention above).
+            if result is not None:
+                drawdown_warmed = True
+        except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next claim
+            logger.exception("ingest drawdown-expectations warm failed for one claim (non-fatal): %s", exc)
+    if drawdown_warmed:
+        refreshed.append("drawdown_expectations")
 
     return refreshed
 

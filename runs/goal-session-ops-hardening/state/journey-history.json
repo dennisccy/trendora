@@ -4,56 +4,56 @@
       "id": "J-01",
       "name": "Backfill honors the requested range and explains zero-work",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-6",
-      "last_passing_iter": "goal-ops-hardening-iter-6",
+      "last_verified_iter": "goal-ops-hardening-iter-7",
+      "last_passing_iter": "goal-ops-hardening-iter-7",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-6-evidence/J-01-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-7-evidence/J-01-verify.png",
       "spec_hash": "06b26eaaf82dcdb532465e5c287f1177681a6c8697e4f96cfadddb4fc60b29ad",
-      "note": "UT-J-01 deterministic replay PASS end-to-end (all 6 expects held). The iter-5 stale step-6 proxy ('2026-05-15' on /scanner-runs) was rewritten to assert 'no new snapshots' on /data's own run-history entry for the run the script submits — clean replay, zero manual adjudication (TC-6; audit T1 confirmed both assertion strings are real run-produced labels)."
+      "note": "UT-J-01 deterministic golden-script replay PASS end-to-end (regression-replay-results.md). Spot-checked J-01-verify.png: healthy 'Ready' Data Manager, 591 symbols, coverage panel populated (PRICE HISTORY 1996-01-02->2026-07-17, UNIVERSE 540, CANDIDATE 122). No J-01 surface touched this iteration (diff = data_manager._refresh_ingest_aggregates + its test only)."
     },
     "J-03": {
       "id": "J-03",
       "name": "No per-run range cap",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-6",
-      "last_passing_iter": "goal-ops-hardening-iter-6",
+      "last_verified_iter": "goal-ops-hardening-iter-7",
+      "last_passing_iter": "goal-ops-hardening-iter-7",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-6-evidence/J-03-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-7-evidence/J-03-verify.png",
       "spec_hash": "5457740bbb0cea982e9b1241f19ca50836ff584bbb960a5a088f7168d820c271",
-      "note": "UT-J-03 deterministic replay PASS (golden script unchanged). No J-03 surface touched this iteration."
+      "note": "UT-J-03 deterministic golden-script replay PASS (regression-replay-results.md). No J-03 surface touched this iteration."
     },
     "J-04": {
       "id": "J-04",
       "name": "Non-blocking boot with visible status",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-6",
-      "last_passing_iter": "goal-ops-hardening-iter-6",
+      "last_verified_iter": "goal-ops-hardening-iter-7",
+      "last_passing_iter": "goal-ops-hardening-iter-7",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-6-evidence/UT-J-04-crashed.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-7-evidence/J-04-initializing-badge.png",
       "spec_hash": "4074a9c952a9a143dc543efef3c8d3e0a1e33a848ab250ec90c7c2f568dbcff8",
-      "note": "Out of iter-5 'unknown' -> passing. UT-J-04 LLM 6-step full-acceptance PASS: restart->first-200 ~1.1s; mid-boot health readiness=initializing warmup 89/89 with badge 'Initializing... history 89/89' matching in the same window; kill -9 -> distinct 'Backend unavailable / NO-GO' presentation (screenshot corroborates); logs/backend.log abrupt-end after crash (no clean-shutdown lines); interrupted-job recovery with zero orphaned 'running' rows."
+      "note": "UT-J-04 LLM 6-step full-acceptance PASS (raw .llm.md): restart->first-200 ~0.005s; mid-boot readiness=initializing warmup 89/89 with badge 'Initializing... history 89/89' matching in the same window (spot-checked J-04-initializing-badge.png); kill -9 -> distinct 'Backend unavailable / NO-GO' presentation; logs/backend.log abrupt-end after crash; interrupted-job recovery with zero orphaned 'running' rows. CAVEAT: J-04's honest-state promise is adjacent to J-05's failure -- during the J-05 hang the UI showed an ambiguous frozen 'Checking backend...' instead of the honest 'Backend unavailable', because health HUNG rather than failed-fast; J-04's own scripted acceptance still passed, but the fail-fast/graceful-degrade gap is part of the J-05/AG-8 recovery work."
     },
     "J-05": {
       "id": "J-05",
       "name": "Aggregates are precomputed at ingest, never on the fly",
-      "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-6",
+      "status": "regressed",
+      "last_verified_iter": "goal-ops-hardening-iter-7",
       "last_passing_iter": "goal-ops-hardening-iter-6",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-6-evidence/UT-J-05-scanner-run.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-7-evidence/J-05-backend-hung-checking.png",
       "spec_hash": "63dd5bf0983454e48338557d0f2b1e5ce9726d7aa247c20174ac9323f637564b",
-      "note": "Out of iter-5 'unknown' -> passing. UT-J-05 LLM full-acceptance PASS: backfilled unsnapshotted 2005-03-30; run record aggregates_refreshed = [latest_snapshot, coverage, membership_timeline, market_phase, forward_aggregates, research_hot_keys] matches acceptance; /scanner-runs listed the date and its stored snapshot rendered (screenshot corroborates: Defensive regime 36.79/100); /api/market-phase?as_of=2005-03-30 served in 10ms; health 200 on 20/20 polls during the job; cold-restart /data read coverage in 244ms (no 3.3M-row prefill)."
+      "note": "REGRESSED passing->failing. RAW browser-qa UT-J-05 FAIL (.llm.md): the backfill+storage-serving assertions held (2010-07-15 backfill completed ok, drawdown_expectations warmed), but the step-4 acceptance ('while a heavy ingest job runs, poll GET /api/health; assert it stays responsive throughout') FAILED hard -- GET /api/health connection-timeout (curl exit 28/000) for 7+ continuous minutes during a SECOND back-to-back heavy ingest; backend hit its own enforced memory_cap_mb=6144 ulimit -v ceiling with a worker-thread MemoryError; /proc showed the process alive but fully idle (all 22 threads futex_do_wait) -- a hang, not slow compute; required a manual restart to recover. Screenshot J-05-backend-hung-checking.png corroborates (frozen 'Checking backend...' skeleton). iter-6 had explicitly verified 'health 200 on 20/20 polls during the job', so this is a genuine passing->failing move on the literal acceptance. Attribution to iter-7's diff is contested (earlier unrelated /api/backtest MemoryErrors predate the test -> pre-existing capacity fragility on the grown live DB), but the new synchronous per-claim drawdown_expectations warm runs on the ingest finalize hot path and browser-qa declined to wave it away as unrelated. NOT adjudicable as a false positive (unlike iter-5's stale golden proxy): literal acceptance step, live-observed, modified code path."
     },
     "J-06": {
       "id": "J-06",
       "name": "Pages load only what they need",
       "status": "partial",
-      "last_verified_iter": "goal-ops-hardening-iter-6",
+      "last_verified_iter": "goal-ops-hardening-iter-7",
       "last_passing_iter": null,
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-6-evidence/UT-08-result.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-7-evidence/UT-02-evidence-fast-first-view.png",
       "spec_hash": "a9654dc139add9c161b5d7e59a431f78bd94fdf0f26b15c4fe2c83a1007db045",
-      "note": "failing -> partial. The iter-5 latency violation is genuinely fixed & independently reproduced: UT-02 GET /api/indexes?full=true 834/885/871ms and UT-08 GET /api/data/availability 869/985/950ms, both <=1500ms 3/3 real-browser reloads (frontend-only fetch-stagger, byte-identical payloads). Held PARTIAL not passing for two residuals the audit/closure name as due before the GOAL_ACHIEVED gate: (a) audit B1 - /evidence first-view cold-miss is ~73s on the accumulated live dev DB (~9.5s on the shipped seed; UT-13 real-browser 73.5s vs 0.02s warm curl) - technically within Item I's 'warm <=3s + bounded one-time cold miss' clause but not 'snappy on first view' on the basis the session runs; remediation named (warm 7 evidence drawdown_expectations keys at ingest, data_manager.py:3138 idiom). (b) the [NEW] demo.sh --session-live walkthrough Acceptance bullet is unproduced. Iteration also failed the closure gate (stale user-visible-changes.md / ui-surface-map.md still assert the retracted 555s regression)."
+      "note": "Stays partial. The TARGET fix is genuinely delivered & verified: UT-02 real-browser first /evidence view after a real ingest measured 22.4ms (was ~73s cold-miss), drawdown_expectations warmed, byte-identical values (UT-06); audit re-traced identical warm/read cache keying. BUT J-06 is NOT a clean pass: overall browser-qa verdict = FAIL, and browser-qa found a live /api/backtest -> forward_aggregates_cached -> large ScannerResult MemoryError on an on-load path (directly contrary to J-06's 'no on-load endpoint memory-exhaustion' audit clause), plus the 7-min hang produced a frozen frame rather than the honest progress state J-06's Acceptance requires. Perf-budgets' 11-page reconfirmation is curl-warm (method disclosed), not a clean real-browser 11-page sweep. Do NOT redo the drawdown warm itself -- the residual is the availability/capacity failure it surfaced (see J-05)."
     }
   },
   "anti_goal_violations": [
@@ -61,23 +61,30 @@
       "iter": "goal-ops-hardening-iter-1",
       "anti_goal": "AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders.",
       "severity": "critical",
-      "evidence": "Interrupted backfill rows served a fabricated '0 calendar days · 0 already snapshotted · 0 non-trading' breakdown for ranges that were really hundreds of days (browser-qa UT-14 Additional observation, reproduced twice on 517-day jobs). Found and FIXED intra-iteration by the audit (Finding B1): _run_detail gates the four breakdown fields to null on _breakdown_computed (calendar_days>0), regression-tested. Confirmed in working tree: apps/backend/app/engine/data_manager.py:3017,3032-3035.",
+      "evidence": "Interrupted backfill rows served a fabricated '0 calendar days · 0 already snapshotted · 0 non-trading' breakdown for ranges that were really hundreds of days (browser-qa UT-14, reproduced twice on 517-day jobs). FIXED intra-iteration by the audit (B1): _run_detail gates the four breakdown fields to null on _breakdown_computed (calendar_days>0). Confirmed in working tree: apps/backend/app/engine/data_manager.py:3017,3032-3035.",
       "resolved": true
     },
     {
       "iter": "goal-ops-hardening-iter-2",
       "anti_goal": "AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders.",
       "severity": "critical",
-      "evidence": "REVIEW pass-1 CRITICAL: coverage_from_storage regressed the app-wide as-of switcher — selecting an already-ingested historical date served a FALSE all-zero 'not yet computed' sentinel instead of real coverage (only the single current-latest as-of ever had a persisted row). FIXED intra-iteration by dev (two layers: _persist_per_date_coverage_snapshots at ingest for new dates + coverage_from_storage read-path self-heal for legacy explicit as_of, both via the canonical _compute_coverage_uncached). Re-verified: browser-qa UT-05 cross-checked 2015-04-01->360 and 2015-01-16->354 byte-exact vs direct API; 2 regression tests assert symbol_count==1 (REAL) vs 0 sentinel. Review pass-2 = PASS_WITH_NOTES.",
+      "evidence": "REVIEW pass-1 CRITICAL: coverage_from_storage regressed the app-wide as-of switcher — an already-ingested historical date served a FALSE all-zero 'not yet computed' sentinel. FIXED intra-iteration (persist per-date coverage snapshots at ingest + read-path self-heal, both via canonical _compute_coverage_uncached). Re-verified byte-exact (UT-05 2015-04-01->360, 2015-01-16->354) + 2 regression tests. Review pass-2 PASS_WITH_NOTES.",
       "resolved": true
     },
     {
       "iter": "goal-ops-hardening-iter-2",
       "anti_goal": "AG-3 (dimension): displayed numbers must be correct — a fetch that lands new bars silently blanks the DEFAULT /data coverage panel to false all-zeros.",
       "severity": "minor",
-      "evidence": "Audit Finding B1 + browser-qa 'Additional Finding' (both live-reproduced iter-2): a fetch that lands >=1 bar changed the dataset_version fingerprint, so no current-stamp coverage_snapshot row matched and the default as_of=None visit fell to the honest-empty all-zero sentinel for a fully-ingested DB until restart/backfill. RESOLVED iter-3: the B1 fix widens _run_job's finalize gate with a new elif firing for successful fetch/expand, calling the canonical refresh_coverage_snapshot (no second derivation) gated by _coverage_snapshot_is_current so a zero-work fetch pays nothing. Independently verified by the audit code-trace + 6 new unit tests + live J-03-verify.png showing /data serving real non-zero coverage (540/591/5380/762).",
+      "evidence": "Audit B1 + browser-qa live-reproduced iter-2: a fetch landing >=1 bar changed the dataset_version fingerprint so no current-stamp coverage_snapshot matched and default as_of=None fell to the all-zero sentinel until restart/backfill. RESOLVED iter-3: finalize gate widened with an elif for successful fetch/expand calling canonical refresh_coverage_snapshot gated by _coverage_snapshot_is_current. Verified by audit code-trace + 6 unit tests + live J-03-verify.png (540/591/5380/762).",
       "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-7",
+      "anti_goal": "AG-8 — Resilience to data-shape and data-scale change: widening the data basis (deeper history) must never crash an existing page or exhaust a service's memory; the UI degrades gracefully (contained error boundary, honest '—'/NA placeholder, never a blank/frozen frame); unbounded whole-table ORM loads forbidden on the deep basis.",
+      "severity": "critical",
+      "evidence": "browser-qa UT-J-05 (raw .llm.md) + reports/qa/goal-ops-hardening-iter-7-evidence/J-05-backend-hung-checking.png + logs/backend.log MemoryError signature: during a heavy ingest on the grown live dev DB the backend exhausted its enforced memory_cap_mb=6144 ulimit -v ceiling (worker-thread MemoryError, no traceback -- too exhausted to format one), GET /api/health hung 7+ minutes (all 22 threads futex_do_wait), the UI showed an ambiguous frozen 'Checking backend...' rather than the honest 'Backend unavailable' state, and recovery required a MANUAL restart -- the exact failure mode AG-8 forbids. A separate live /api/backtest -> forward_aggregates_cached -> large ScannerResult MemoryError on an on-load path was also observed. ATTRIBUTION CONTESTED: earlier unrelated /api/backtest MemoryErrors predate the test (pre-existing capacity fragility) so this may not be caused solely by iter-7's diff, but the new synchronous per-claim drawdown_expectations warm runs on the ingest finalize hot path and browser-qa declined to attribute it away. Recorded fail-closed (critical) for human adjudication; drives the REGRESSION halt alongside J-05's passing->failing move.",
+      "resolved": false
     }
   ],
-  "updated_at": "2026-07-21T01:43:56Z"
+  "updated_at": "2026-07-21T08:10:00Z"
 }

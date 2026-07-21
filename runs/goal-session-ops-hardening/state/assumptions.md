@@ -320,3 +320,22 @@ iter-7's OWN fresh ui-impact-analyst/closure artifacts (produced because depth=f
 current, fixed state on their own terms — the stale iter-6 files remain as historical record, superseded
 by iter-7's, not hand-edited.
 **Reversible:** yes
+
+## iter-7 — goal-evaluator
+
+**Ambiguity:** J-05's step-4 acceptance ("health stays responsive throughout a heavy ingest") was hit
+by a 7+ min hang, but the browser-qa itself flagged the deep cause as CONTESTED — earlier unrelated
+`/api/backtest` MemoryErrors predate the test, suggesting pre-existing capacity fragility on the grown
+live DB rather than a defect newly introduced by iter-7's diff. goal.md's decision tree triggers
+REGRESSION on "a journey moved passing→failing" without requiring the current diff to be the proven
+cause.
+**We chose:** scored J-05 `regressed` and returned REGRESSION on the observed passing→failing move
+(strong live evidence: screenshot + /proc + log signature; literal acceptance step; iter-6 had verified
+health-200-on-20/20-polls). I did NOT downgrade to CONTINUE on the contested-attribution argument — a
+regression is a regression regardless of proximate cause, and the whole point of the halt is for a human
+to adjudicate cause and choose the fix (bound the ingest-time warm vs. tune the 6144MB cap vs. make heavy
+paths fit). I recorded the AG-8 memory-exhaustion violation fail-closed (critical) with the attribution
+caveat stated explicitly. A human who reads this as purely pre-existing capacity drift (not caused or
+materially worsened by the diff) may `--acknowledge-regression` and re-scope, but the halt for review is
+the correct default when a required Must-have journey breaks on its literal acceptance.
+**Reversible:** yes
