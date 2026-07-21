@@ -287,3 +287,36 @@ it before the GOAL_ACHIEVED gate. Combined with the unproduced [NEW] demo.sh --s
 the CLOSURE-FAIL, this keeps the decision tree consistent (not-all-passing → CONTINUE) without inventing an
 ad-hoc veto. A human who reads Item I's clause as fully dispositive may override J-06 to `passing`.
 **Reversible:** yes
+
+## iter-7 — goal-decomposer
+
+**Ambiguity:** iter-6's evaluator recommended `full` depth for the closeout iteration, but the core
+product fix (extending `_refresh_ingest_aggregates` to warm `drawdown_expectations`) touches only one
+existing function in one file, mirroring an already-built precedent (`research_hot_keys`,
+`forward_aggregates`) — none of the four numbered depth triggers fire in the narrow, literal sense
+(no ≥3-module structural change, no new computing module/endpoint, prior verdict was CONTINUE not
+ESCALATE, hardening-cadence counter is 0).
+**We chose:** `full` depth anyway, citing trigger 1 (structural/cross-cutting) on a broader reading:
+J-06's own acceptance requires a real-browser re-measurement across all 11 named pages plus a written
+`reports/perf-budgets.md` update — an interaction between the ingest warm change, the `/evidence`
+consumption path, and the committed-budgets artifact that only a real-browser QA pass (not unit tests)
+can confirm — and this is the session's last failing/partial journey, where an accurate closure
+narrative (ui-impact-analyst + phase-closure-auditor, only produced at full depth) matters most after
+two prior iterations' documented closure-narrative drift (iter-4's merge-script lesson, iter-6's
+retracted-regression framing). The evaluator's non-binding recommendation corroborates but is not the
+sole reason.
+**Reversible:** yes
+
+## iter-7 — goal-decomposer
+
+**Ambiguity:** iter-6's eval named "re-issue `user-visible-changes.md` + `ui-surface-map.md` (via
+ui-impact-analyst) to replace the retracted framing" as a next-step item. Those are iter-6's own
+point-in-time artifacts (`reports/phase-goal-ops-hardening-iter-6-*.md`); goal mode's artifact model is
+append-only per iteration, and retroactively editing a past iteration's report would break that
+pattern.
+**We chose:** NOT to retroactively edit iter-6's artifacts. Instead, this iteration's own fix (warming
+`drawdown_expectations` at ingest) removes the underlying cold-miss the retracted framing was about, so
+iter-7's OWN fresh ui-impact-analyst/closure artifacts (produced because depth=full) will describe the
+current, fixed state on their own terms — the stale iter-6 files remain as historical record, superseded
+by iter-7's, not hand-edited.
+**Reversible:** yes
