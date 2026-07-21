@@ -1476,6 +1476,353 @@ def test_finalize_hook_drawdown_expectations_corrupt_ledger_degrades_gracefully(
 
 
 # ==================================================================================================
+# ops-hardening iter-8 (J-05 REGRESSION fix): a `MemoryError` inside any of the four finalize-hook warm
+# loops (per-date coverage, per-date market-phase, per-horizon forward-aggregates, per-claim drawdown-
+# expectations) must be caught DISTINCTLY from the existing generic `except Exception: log + continue` —
+# stop that ONE loop immediately (never hammer the next item's allocation under real pressure) while every
+# OTHER loop's own generic-exception isolate-and-continue behavior (proven above/below, e.g.
+# `test_finalize_hook_drawdown_expectations_isolates_claim_that_raises`) stays byte-unchanged. TC-3 = first
+# item raises (zero items warmed, honest omission); TC-5 = a LATER item raises after >=1 succeeded (honest
+# partial report, no further items attempted); TC-4 = a same-process DB read afterward still succeeds (no
+# leaked lock/transaction).
+# ==================================================================================================
+def test_persist_per_date_coverage_memory_error_on_first_date_aborts_loop(
+    finalize_hook_multi_date_engine, monkeypatch
+):
+    """TC-3 — a MemoryError on the FIRST date passed to the per-date coverage-persist loop stops it
+    immediately: the SECOND date is never attempted, and the function itself does not raise (its caller,
+    `_refresh_ingest_aggregates`, treats this whole call as non-fatal)."""
+    engine, dates = finalize_hook_multi_date_engine
+    cfg = load_config()
+    calls = {"n": 0}
+
+    def _boom(*_a, **_k):
+        calls["n"] += 1
+        raise MemoryError("simulated memory pressure")
+
+    monkeypatch.setattr(data_manager, "refresh_coverage_snapshot_for", _boom)
+    # force BOTH fixture dates into `todo` — neither is the resolved "current" stamp this iteration.
+    monkeypatch.setattr(data_manager, "_resolve_coverage_asof", lambda *a, **k: date(2099, 1, 1))
+    with Session(engine) as session:
+        prog = JobProgress(job_id="cov-mem-first-probe", kind="backfill", start=dates[0], end=dates[-1])
+        data_manager._persist_per_date_coverage_snapshots(session, cfg, dates, prog)  # must not raise
+    assert calls["n"] == 1, "the loop must stop after the FIRST MemoryError — second date never attempted"
+
+
+def test_persist_per_date_coverage_memory_error_after_partial_success_stops_remaining(
+    finalize_hook_multi_date_engine, monkeypatch
+):
+    """TC-5 — a MemoryError on the SECOND of two dates: the first date's real persist still happens (a
+    genuine `CoverageSnapshot` row exists for it afterward), and the loop stops there — no further dates
+    attempted."""
+    engine, dates = finalize_hook_multi_date_engine
+    cfg = load_config()
+    real = data_manager.refresh_coverage_snapshot_for
+    calls = {"n": 0}
+
+    def _succeed_then_boom(session, cfg, d):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return real(session, cfg, d)
+        raise MemoryError("simulated memory pressure")
+
+    monkeypatch.setattr(data_manager, "refresh_coverage_snapshot_for", _succeed_then_boom)
+    monkeypatch.setattr(data_manager, "_resolve_coverage_asof", lambda *a, **k: date(2099, 1, 1))
+    with Session(engine) as session:
+        prog = JobProgress(job_id="cov-mem-partial-probe", kind="backfill", start=dates[0], end=dates[-1])
+        data_manager._persist_per_date_coverage_snapshots(session, cfg, dates, prog)  # must not raise
+    assert calls["n"] == 2, "both dates must be attempted — the second raises, stopping the loop there"
+    with Session(engine) as session:
+        rows = session.exec(
+            select(CoverageSnapshot).where(CoverageSnapshot.asof_key == dates[0].isoformat())
+        ).all()
+    assert len(rows) == 1  # the FIRST date's real persist succeeded before the abort
+
+
+def test_persist_per_date_coverage_memory_error_releases_memory_after_bar_cache_drops(
+    finalize_hook_multi_date_engine, monkeypatch
+):
+    """iter-8 AUDIT (B1 regression guard) — on a `MemoryError` abort the per-date coverage loop must
+    release process memory AFTER its own prefilled `_BarCache` context has exited, not only from inside
+    the loop while that ~1.5 GB cache is still referenced. Trimming while the cache is live cannot return
+    the single largest freeable block to the OS, so the caller's NEXT independent warm block would start
+    on the same un-trimmed arena — i.e. without the headroom the whole iter-8 fix exists to restore."""
+    from app.engine.prices import active_bar_cache
+
+    engine, dates = finalize_hook_multi_date_engine
+    cfg = load_config()
+    cache_bound_at_each_release: list[bool] = []
+
+    def _boom(*_a, **_k):
+        raise MemoryError("simulated memory pressure")
+
+    monkeypatch.setattr(data_manager, "refresh_coverage_snapshot_for", _boom)
+    monkeypatch.setattr(data_manager, "_resolve_coverage_asof", lambda *a, **k: date(2099, 1, 1))
+    with Session(engine) as session:
+        monkeypatch.setattr(
+            data_manager,
+            "_release_process_memory",
+            lambda: cache_bound_at_each_release.append(active_bar_cache(session) is not None),
+        )
+        prog = JobProgress(job_id="cov-mem-release-probe", kind="backfill", start=dates[0], end=dates[-1])
+        data_manager._persist_per_date_coverage_snapshots(session, cfg, dates, prog)  # must not raise
+
+    assert cache_bound_at_each_release, (
+        "_release_process_memory() must be called on the MemoryError abort path"
+    )
+    assert False in cache_bound_at_each_release, (
+        "expected at least one release AFTER the prefilled bar-cache context exited (cache unbound); "
+        f"observed cache-still-bound flags = {cache_bound_at_each_release}"
+    )
+
+
+def test_finalize_hook_market_phase_memory_error_on_first_date_aborts_loop(
+    finalize_hook_multi_date_engine, monkeypatch
+):
+    """TC-3 — a MemoryError on the FIRST date of the market-phase warm loop stops the loop immediately
+    (zero dates warmed): 'market_phase' is honestly omitted from `refreshed` (never a fabricated
+    category), and the finalize hook itself does not raise."""
+    engine, dates = finalize_hook_multi_date_engine
+    cfg = load_config()
+    calls = {"n": 0}
+
+    def _boom(*_a, **_k):
+        calls["n"] += 1
+        raise MemoryError("simulated memory pressure")
+
+    monkeypatch.setattr(market_phase, "market_phase_cached", _boom)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="mp-mem-first-probe", kind="backfill", start=dates[0], end=dates[-1])
+        prog.new_snapshot_dates = dates
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+    assert calls["n"] == 1, "the loop must stop after the FIRST MemoryError — second date never attempted"
+    assert "market_phase" not in refreshed
+
+
+def test_finalize_hook_market_phase_memory_error_after_partial_success_reports_honestly(
+    finalize_hook_multi_date_engine, monkeypatch
+):
+    """TC-5 — a MemoryError on the SECOND of two dates: the first date's real warm still counts (honest
+    partial report — 'market_phase' IS in `refreshed`), and the loop stops there."""
+    engine, dates = finalize_hook_multi_date_engine
+    cfg = load_config()
+    real = market_phase.market_phase_cached
+    calls = {"n": 0}
+
+    def _succeed_then_boom(session, as_of, config=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return real(session, as_of, config)
+        raise MemoryError("simulated memory pressure")
+
+    monkeypatch.setattr(market_phase, "market_phase_cached", _succeed_then_boom)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="mp-mem-partial-probe", kind="backfill", start=dates[0], end=dates[-1])
+        prog.new_snapshot_dates = dates
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+    assert calls["n"] == 2, "both dates must be attempted — the second raises, stopping the loop there"
+    assert "market_phase" in refreshed  # the FIRST date's real warm still counts honestly
+
+
+def test_finalize_hook_memory_error_leaves_no_leaked_lock_subsequent_read_succeeds(
+    finalize_hook_multi_date_engine, monkeypatch
+):
+    """TC-4 — after an injected MemoryError aborts the market-phase warm loop mid-finalize-hook, a
+    SUBSEQUENT DB read in the SAME process (a fresh `refresh_coverage_snapshot` call, mirroring what a
+    live `GET /api/data` request would do next) still succeeds — proving no leaked lock/open transaction
+    blocks recovery without a process restart."""
+    engine, dates = finalize_hook_multi_date_engine
+    cfg = load_config()
+
+    def _boom(*_a, **_k):
+        raise MemoryError("simulated memory pressure")
+
+    monkeypatch.setattr(market_phase, "market_phase_cached", _boom)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="mp-mem-recovery-probe", kind="backfill", start=dates[0], end=dates[-1])
+        prog.new_snapshot_dates = dates
+        data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise, must not leak a lock
+
+    # a genuine subsequent DB read, in the SAME process, on a FRESH session against the SAME engine —
+    # `refresh_coverage_snapshot` is unrelated to the patched `market_phase_cached`, so this proves the DB
+    # itself (not just an unrelated code path) is still fully readable/writable after the abort.
+    with Session(engine) as session:
+        payload = data_manager.refresh_coverage_snapshot(session, cfg)
+    assert payload is not None
+
+
+def test_finalize_hook_forward_aggregates_memory_error_on_first_horizon_aborts_loop(
+    finalize_hook_engine, monkeypatch
+):
+    """TC-3 — a MemoryError on the FIRST configured horizon stops the forward-aggregates warm loop
+    immediately: 'forward_aggregates' is honestly omitted (zero horizons warmed), and the hook itself does
+    not raise. Unlike the coverage/market-phase/drawdown loops, this loop had NO per-item isolation before
+    this iteration (a single exception aborted the whole block) — a MemoryError now gets its OWN early-
+    abort handling while every OTHER exception type keeps that exact pre-existing whole-block-abort
+    behavior (proven by `test_finalize_hook_never_raises_even_when_everything_fails`, unchanged)."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    calls = {"n": 0}
+
+    def _boom(*_a, **_k):
+        calls["n"] += 1
+        raise MemoryError("simulated memory pressure")
+
+    monkeypatch.setattr(forward_testing, "forward_aggregates_cached", _boom)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="fa-mem-first-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+    assert calls["n"] == 1, "the loop must stop after the FIRST MemoryError — no further horizons attempted"
+    assert "forward_aggregates" not in refreshed
+
+
+def test_finalize_hook_forward_aggregates_memory_error_after_partial_success_reports_honestly(
+    finalize_hook_engine, monkeypatch
+):
+    """TC-5 — a MemoryError on the SECOND of N configured horizons: the first horizon's real warm still
+    counts (honest partial report — 'forward_aggregates' IS in `refreshed`), and no horizon after the
+    second is attempted."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    n_horizons = len(cfg.walk_forward.horizons)
+    assert n_horizons >= 3, "fixture config must configure >= 3 horizons for this test to be meaningful"
+    real = forward_testing.forward_aggregates_cached
+    calls = {"n": 0}
+
+    def _succeed_then_boom(session, horizon, config=None, *, as_of=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return real(session, horizon, config, as_of=as_of)
+        raise MemoryError("simulated memory pressure")
+
+    monkeypatch.setattr(forward_testing, "forward_aggregates_cached", _succeed_then_boom)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="fa-mem-partial-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+    assert calls["n"] == 2, "the loop must stop right after the SECOND (raising) horizon"
+    assert "forward_aggregates" in refreshed  # the FIRST horizon's real warm still counts honestly
+
+
+def test_finalize_hook_drawdown_expectations_memory_error_on_first_claim_aborts_loop(
+    finalize_hook_drawdown_engine, tmp_path, monkeypatch
+):
+    """TC-3 — a MemoryError on the FIRST of two ledger claims stops the drawdown-expectations warm loop
+    immediately: the SECOND claim is never attempted, and 'drawdown_expectations' is honestly omitted
+    (zero claims warmed)."""
+    engine, d = finalize_hook_drawdown_engine
+    cfg = load_config()
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), {
+        "claim": _DD_LEDGER_CLAIM, "register_date": "2024-06-01",
+        "verdict": {"status": "FAIL", "reason": "test fixture — not a real certification"},
+    })
+    append_entry(str(ledger), {
+        "claim": _DD_LEDGER_CLAIM, "register_date": "2024-06-02",
+        "verdict": {"status": "FAIL", "reason": "test fixture — not a real certification"},
+    })
+    monkeypatch.setenv(LEDGER_PATH_ENV, str(ledger))
+    calls = {"n": 0}
+
+    def _boom(*_a, **_k):
+        calls["n"] += 1
+        raise MemoryError("simulated memory pressure")
+
+    monkeypatch.setattr(forward_testing, "compute_drawdown_expectations_cached", _boom)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="dd-mem-first-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+    assert calls["n"] == 1, "the loop must stop after the FIRST MemoryError — second claim never attempted"
+    assert "drawdown_expectations" not in refreshed
+
+
+def test_finalize_hook_drawdown_expectations_memory_error_after_partial_success_reports_honestly(
+    finalize_hook_drawdown_engine, tmp_path, monkeypatch
+):
+    """TC-5 / TC-7 — a MemoryError on the SECOND of two claims: the FIRST claim's real warm still counts
+    (honest partial report — 'drawdown_expectations' IS in `refreshed`), the second claim is never
+    attempted, and the FIRST claim's persisted payload is byte-identical to a fresh, uncached compute for
+    the same claim (AG-3 — the error-handling change never touches correctness)."""
+    engine, d = finalize_hook_drawdown_engine
+    cfg = load_config()
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), {
+        "claim": _DD_LEDGER_CLAIM, "register_date": "2024-06-01",
+        "verdict": {"status": "FAIL", "reason": "test fixture — not a real certification"},
+    })
+    append_entry(str(ledger), {
+        "claim": _DD_LEDGER_CLAIM, "register_date": "2024-06-02",
+        "verdict": {"status": "FAIL", "reason": "test fixture — not a real certification"},
+    })
+    monkeypatch.setenv(LEDGER_PATH_ENV, str(ledger))
+    real = forward_testing.compute_drawdown_expectations_cached
+    calls = {"n": 0}
+
+    def _succeed_then_boom(session, claim, config=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return real(session, claim, config)
+        raise MemoryError("simulated memory pressure")
+
+    monkeypatch.setattr(forward_testing, "compute_drawdown_expectations_cached", _succeed_then_boom)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="dd-mem-partial-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+    assert calls["n"] == 2, "both claims must be attempted — the second raises, stopping the loop there"
+    assert "drawdown_expectations" in refreshed  # the FIRST claim's real warm still counts honestly
+
+    with Session(engine) as session:
+        row = session.exec(
+            select(EventStudyCache).where(EventStudyCache.view == "drawdown_expectations")
+        ).one()
+        stored = json.loads(row.payload_json)
+        fresh = forward_testing.compute_drawdown_expectations(session, _DD_LEDGER_CLAIM, cfg)
+    assert fresh is not None
+    assert stored == fresh
+
+
+def test_finalize_hook_drawdown_expectations_isolates_claim_that_raises_non_memory_unchanged(
+    finalize_hook_drawdown_engine, tmp_path, monkeypatch
+):
+    """Regression guard — a NON-`MemoryError` exception on the first claim keeps the pre-existing generic
+    isolate-and-continue behavior byte-unchanged by this iteration's diff: the second claim IS still
+    attempted and still counts. (`test_finalize_hook_drawdown_expectations_isolates_claim_that_raises`
+    above proves the same invariant; this is a second, explicit confirmation scoped to this iteration's
+    new MemoryError-specific branch not altering the generic branch.)"""
+    engine, d = finalize_hook_drawdown_engine
+    cfg = load_config()
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), {
+        "claim": _DD_LEDGER_CLAIM, "register_date": "2024-06-01",
+        "verdict": {"status": "FAIL", "reason": "forced-raise fixture claim"},
+    })
+    append_entry(str(ledger), {
+        "claim": _DD_LEDGER_CLAIM, "register_date": "2024-06-02",
+        "verdict": {"status": "FAIL", "reason": "resolvable fixture claim"},
+    })
+    monkeypatch.setenv(LEDGER_PATH_ENV, str(ledger))
+    real = forward_testing.compute_drawdown_expectations_cached
+    calls = {"n": 0}
+
+    def _raise_first_then_real(session, claim, config=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ValueError("forced non-memory claim-warm failure")
+        return real(session, claim, config)
+
+    monkeypatch.setattr(forward_testing, "compute_drawdown_expectations_cached", _raise_first_then_real)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="dd-nonmem-isolation-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+    assert calls["n"] == 2, "a non-memory exception must NOT abort the loop — both claims still attempted"
+    assert "drawdown_expectations" in refreshed
+
+
+# ==================================================================================================
 # ops-hardening iter-4 (F1 fix): the finalize hook's own heartbeat -- `last_progress_at` must advance
 # through the WHOLE finalize tail (not just the main scan loop), or the frontend's stale-heartbeat flag
 # falsely renders "· possibly stalled" on a perfectly healthy job.

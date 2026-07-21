@@ -65,6 +65,10 @@
 #   AWAITING_GITHUB_AUTH - preflight found no GitHub push access; fix auth, then --resume
 #   AWAITING_DISK    - free disk under the hard floor even after automatic aggressive cleanup;
 #                      free space or run scripts/automation/tmp-doctor.sh --aggressive, then --resume
+#   AWAITING_HOST_GUARD - host-guard preflight failed (hwmon sampler dead and unstartable,
+#                      CPU-affinity wrap absent, or a launcher lost its HOST-GUARD cap block);
+#                      fix per the printed reason (project-extensions/host-guard/README.md),
+#                      then --resume
 #
 # Quota exhaustion is NOT a halt: claude_with_quota_retry transparently sleeps
 # until the quota resets and resumes.
@@ -81,6 +85,37 @@ source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/telemetry.sh"
 source "$SCRIPT_DIR/lib/goal-gates.sh"
 source "$SCRIPT_DIR/lib/engine-lock.sh"
+
+# ── Host-guard self-wrap (hardware protection — goal.md AG-10) ─────────────
+# Two instant hardware resets (2026-07-20 19:17, 2026-07-21 10:33) under
+# all-core vectorized ingest bursts: when the project declares host caps
+# (project-extensions/host-guard/host-guard.env), re-exec the ENTIRE engine
+# tree under an SMT-aware CPU-affinity mask (taskset — hard, inherited,
+# instantaneous) plus, when a user manager is reachable, a systemd user scope
+# adding CPUQuota/MemoryHigh/TasksMax as averaging/aggregate backstops. Sits
+# BEFORE extract_cli_arg so "$@" is still the original argv. HOST_GUARD_WRAPPED
+# guards recursion — deliberately NOT CHAIN_-prefixed so the REL-2 ambient
+# snapshot above stays clean. Absent/disabled env file ⇒ no-op (the framework
+# stays project-neutral). Details: project-extensions/host-guard/README.md.
+_HOST_GUARD_ENV_FILE="$REPO_ROOT/project-extensions/host-guard/host-guard.env"
+if [[ -z "${HOST_GUARD_WRAPPED:-}" && -f "$_HOST_GUARD_ENV_FILE" ]] \
+   && command -v taskset >/dev/null 2>&1; then
+  # shellcheck disable=SC1090
+  source "$_HOST_GUARD_ENV_FILE"
+  if [[ "${HOST_GUARD_ENABLED:-0}" == "1" && -n "${HOST_GUARD_CPU_LIST:-}" ]]; then
+    export HOST_GUARD_WRAPPED=1
+    if systemd-run --user --scope --quiet -p CPUQuota=10% true 2>/dev/null; then
+      exec systemd-run --user --scope --quiet --collect \
+        --unit "chain-goal-hostguard-$$" \
+        -p "CPUQuota=${HOST_GUARD_CPUQUOTA:-800%}" \
+        -p "MemoryHigh=${HOST_GUARD_MEMORY_HIGH:-18G}" \
+        -p "TasksMax=${HOST_GUARD_TASKS_MAX:-2048}" \
+        taskset -c "$HOST_GUARD_CPU_LIST" "$SCRIPT_DIR/run-goal.sh" "$@"
+    else
+      exec taskset -c "$HOST_GUARD_CPU_LIST" "$SCRIPT_DIR/run-goal.sh" "$@"
+    fi
+  fi
+fi
 
 # Pull --cli (and --force-cli) out of the args BEFORE the existing parse loop,
 # so the loop below sees only its known flags.
@@ -797,6 +832,99 @@ PY
   exit 0
 }
 
+# ── Host-guard preflight (hardware protection — goal.md AG-10) ─────────────
+# This host hard-reset twice (2026-07-20/21) under all-core vectorized ingest
+# bursts — see project-extensions/host-guard/README.md. When the project
+# declares host caps, the engine must not run unprotected: verify the affinity
+# wrap (top of this script) took effect and the 1 Hz hwmon forensics sampler is
+# alive — auto-starting the sampler first (self-heal, like the disk guard's
+# sweep), pausing (AWAITING_HOST_GUARD, resumable) only when self-heal fails.
+# Absent or disabled host-guard.env ⇒ no-op (framework stays project-neutral).
+_host_guard_mask_width() { # "0-3,8-11" → 8; 0 when unparseable
+  local list="${1:-}" n=0 part a b
+  [[ -n "$list" ]] || { echo 0; return 0; }
+  local -a parts=()
+  IFS=',' read -ra parts <<< "$list"
+  for part in "${parts[@]}"; do
+    if [[ "$part" =~ ^[0-9]+-[0-9]+$ ]]; then
+      a="${part%-*}"; b="${part#*-}"
+      if (( b >= a )); then n=$(( n + b - a + 1 )); fi
+    elif [[ "$part" =~ ^[0-9]+$ ]]; then
+      n=$(( n + 1 ))
+    fi
+  done
+  echo "$n"
+}
+preflight_host_guard() {
+  local hg_env="$REPO_ROOT/project-extensions/host-guard/host-guard.env"
+  [[ -f "$hg_env" ]] || return 0
+  # shellcheck disable=SC1090
+  source "$hg_env"
+  [[ "${HOST_GUARD_ENABLED:-0}" == "1" ]] || return 0
+  local sampler="$REPO_ROOT/project-extensions/host-guard/hwmon-log.sh"
+  local fail_reason=""
+
+  # 1. Forensics sampler alive + csv fresh (self-heal: try to start it first).
+  if [[ -f "$sampler" ]]; then
+    if ! bash "$sampler" status >/dev/null 2>&1; then
+      echo "[run-goal] host-guard: hwmon sampler not running — auto-starting."
+      bash "$sampler" start || true
+      sleep 2
+      bash "$sampler" status >/dev/null 2>&1 \
+        || fail_reason="hwmon sampler failed to start (try: bash project-extensions/host-guard/hwmon-log.sh start)"
+    fi
+  else
+    fail_reason="sampler script missing: $sampler"
+  fi
+
+  # 2. Affinity wrap took effect: REAL allowed CPUs ≤ declared mask width.
+  # Read Cpus_allowed_list, not `nproc` — nproc honors OMP_NUM_THREADS, so a
+  # BLAS thread-cap env var would fake a confined engine (false PASS).
+  if [[ -z "$fail_reason" ]]; then
+    local width allowed_list allowed_n
+    width=$(_host_guard_mask_width "${HOST_GUARD_CPU_LIST:-}")
+    allowed_list=$(awk -F'\t' '/^Cpus_allowed_list/{print $2}' /proc/self/status 2>/dev/null)
+    allowed_n=$(_host_guard_mask_width "$allowed_list")
+    if (( width > 0 && allowed_n > width )); then
+      fail_reason="engine not confined to HOST_GUARD_CPU_LIST=${HOST_GUARD_CPU_LIST:-} (Cpus_allowed_list=$allowed_list = $allowed_n CPUs > mask width $width — the taskset wrap did not take effect)"
+    fi
+  fi
+
+  # 3. Launcher cap blocks (AG-10) — enforced only once the launcher caps have
+  # landed (goal.md binding note); until then HOST_GUARD_REQUIRE_MARKERS=0.
+  if [[ -z "$fail_reason" && "${HOST_GUARD_REQUIRE_MARKERS:-0}" == "1" ]]; then
+    local lsc
+    for lsc in "$REPO_ROOT/scripts/dev.sh" "$REPO_ROOT/scripts/start-backend.sh"; do
+      if [[ -f "$lsc" ]] && ! grep -q "HOST-GUARD" "$lsc"; then
+        fail_reason="launcher $(basename "$lsc") lost its HOST-GUARD cap block (AG-10 regression)"
+        break
+      fi
+    done
+  fi
+
+  [[ -n "$fail_reason" ]] || return 0
+  echo "[run-goal] Host-guard preflight failed — pausing (AWAITING_HOST_GUARD)."
+  echo "[run-goal]   reason: $fail_reason"
+  python3 - <<PY
+import json, datetime
+d = json.load(open("$SESSION_JSON"))
+d["status"] = "AWAITING_HOST_GUARD"
+d["updated_at"] = datetime.datetime.now(datetime.UTC).isoformat().replace('+00:00','Z')
+import os as _os, tempfile as _tf
+_fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
+with _os.fdopen(_fd, "w") as _f:
+    json.dump(d, _f, indent=2)
+    _f.write("\n")
+_os.replace(_tmp, "$SESSION_JSON")
+PY
+  record_telemetry_event "halt" '{"reason":"AWAITING_HOST_GUARD","detected_at_step":"preflight"}'
+  echo ""
+  echo "Fix the host-guard issue (project-extensions/host-guard/README.md), then resume:"
+  echo "  ./scripts/automation/run-goal.sh --resume --session-id $SESSION_ID"
+  echo "════════════════════════════════════════════════════════════════════"
+  exit 0
+}
+
 # ── Preflight doctor (REL-2) ──────────────────────────────────────────────
 # Advisory BY CONSTRUCTION: the doctor observes and reports; it must never be
 # able to stop a session (a broken doctor gating the engine would invert its
@@ -1084,7 +1212,7 @@ if $( [[ "$AUTO_RELEASE" == "true" ]] && echo "True" || echo "False" ):
 d["push_per_iter"] = $( [[ "$PUSH_PER_ITER" == "true" ]] && echo "True" || echo "False" )
 d["push_branch"] = "$PUSH_BRANCH"
 d["agent_backend"] = "$AGENT_BACKEND"
-if "$RUN_MODE" == "resume" and d.get("status") in ("REGRESSION_HALT", "AWAITING_BLUEPRINT_APPROVAL", "AWAITING_PUMP", "AWAITING_INTENT_REVIEW", "AWAITING_GITHUB_AUTH", "AWAITING_DISK"):
+if "$RUN_MODE" == "resume" and d.get("status") in ("REGRESSION_HALT", "AWAITING_BLUEPRINT_APPROVAL", "AWAITING_PUMP", "AWAITING_INTENT_REVIEW", "AWAITING_GITHUB_AUTH", "AWAITING_DISK", "AWAITING_HOST_GUARD"):
   d["status"] = "in_progress"
 import os as _os, tempfile as _tf
 _fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
@@ -1454,6 +1582,10 @@ chain_tmp_janitor
 # Disk-space preflight (REL-13): sweep aggressively under pressure; pause
 # (AWAITING_DISK) only when the tmp root's filesystem is still critically low.
 preflight_disk_space
+
+# Host-guard preflight (AG-10): forensics sampler + affinity confinement. The
+# 2026-07-20/21 hard-reset incidents make unprotected engine runs unacceptable.
+preflight_host_guard
 
 # Verify we can push to GitHub before the loop starts (once; fresh + resume).
 # Fails fast / pauses here rather than stalling on a credential prompt mid-run.

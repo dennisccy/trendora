@@ -265,3 +265,57 @@ without a manual restart; (3) audit the separate live /api/backtest→forward_ag
 ScannerResult MemoryError (on-load-endpoint OOM, a J-06/AG-8 concern); (4) re-run J-05's heavy-ingest health
 step live before re-attempting closeout. Do NOT redo the drawdown warm itself — J-06's /evidence cold-miss is
 genuinely closed; the residual is the availability/capacity failure it surfaced.
+
+## Iteration 8 — goal-ops-hardening-iter-8
+
+**Date:** 2026-07-21T23:53:18Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: none
+- Newly unknown: J-01, J-03, J-04 (passing -> unknown — the Required-still-passing replay/LLM lanes never ran; evidence gap, not a failure)
+- Unchanged: J-05 stays `regressed` (iter-7's human-acknowledged regression carried forward, NOT re-verified); J-06 stays partial (out of scope)
+- Newly failing: none. Regressed: none (no journey moved passing -> failing this iteration)
+- Anti-goal violations: AG-8 (iter-7, critical) still UNRESOLVED — materially mitigated but not closed;
+  NEW record AG-10 (minor, observed not introduced) — launch scripts do not apply host-guard.env's
+  CPU-affinity/BLAS-OMP caps. scan-report CLEAN; coherence COHERENCE-PASS; 3 prior AG-3 violations remain resolved.
+
+**Reasoning:** The backend fix is real and well-audited — four distinct `except MemoryError` early-abort
+branches confirmed in the working tree (data_manager.py:3049/3143/3186/3245) plus the audit's B1
+post-bar-cache release (:3067-3068), 10 injected-MemoryError tests with a negative control, and the literal
+DoD command now at 134 passed / 1 skipped / 0 failures after the audit fixed a shipped test-integrity
+defect (T1: a 220-line block spliced into TC-17 deleted its assertions while still reporting PASSED, and
+left the headline heavy test a guaranteed NameError — missed by dev, review AND QA). BUT THIS ITERATION
+VERIFIED NOTHING: browser-qa was skipped outright on a "Frontend Present: no" rule
+(ui-test-results.md = "SKIPPED", status.json browser_checks_run:false, NO evidence directory, no raw
+.llm.md), so J-05's spec-mandated 4-step re-verification never happened and the J-01/J-03/J-04 lanes never
+ran — audit V1/V2 and closure (CLOSURE-FAIL) converge, and the audit states "The evaluator must not flip
+J-05 regressed -> passing on this handoff alone." I went further than the audit: perf-budgets.md's own
+iter-8 text admits the clean live run "never hit enough memory pressure to trigger the new
+MemoryError-specific branch at all", and it ran under host-guard CPU-affinity + 4-thread BLAS caps absent
+from iter-7's failing run — so the 43.6% VmPeak margin does not isolate the diff as the cause. Rejected
+REGRESSION: tree C.1 fires on a journey that MOVED passing->failing this iteration and none did; J-05's
+`regressed` and AG-8 are iter-7's already-acknowledged finding that iter-8 was dispatched to fix, and
+re-halting on them with zero new damage would re-present a decision the human already made (logged in
+assumptions.md). Rejected STALLED: every unblock path is agent-owned and the host-crash gate is green
+(owner ran the host-guard ladder Stages 0/A/B 2026-07-21 ~21:35; a supervised live heavy ingest has since
+completed with no trip). Rejected ESCALATE: already full depth, no fail-open (closure correctly blocked),
+and J-05 did not fail twice — it failed in iter-7 and went unverified in iter-8. Coherence PASS -> no
+consolidation mandate. -> CONTINUE.
+
+**Next-step recommendation:** Iteration 9 (the last budgeted iteration — session.json max_iterations: 9),
+full depth, a PURE VERIFICATION-AND-COMPLIANCE closeout, no new features: (1) run browser-qa over J-05's
+four acceptance steps on the audit-repaired build with host-guard active, driving step 4 via the now-opt-in
+`TRENDORA_RUN_HEAVY_INGEST_TEST=1 pytest ...::test_start_backend_survives_back_to_back_heavy_ingest_under_memory_cap`
+(never executable before the audit's fixes — run it at least once), read the RAW .llm.md, retain the
+sampler CSV in runs/ (audit V3), and replace the "SKIPPED" stub with the real outcome; (2) run J-01/J-03
+golden replay + J-04 LLM acceptance and emit a regression-replay-results artifact (iter-7 precedent) — this
+is what moves three journeys out of `unknown`; (3) close the AG-10 launcher gap goal.md itself schedules —
+HOST-GUARD blocks applying host-guard.env's taskset mask + BLAS/OMP caps to scripts/start-backend.sh and
+to dev.sh's BACKEND subshell only (never the frontend subshell); (4) fix the harness misrouting so
+`Frontend Present: no` cannot suppress browser-qa when the spec's TESTING REQUIREMENTS name browser
+journeys; (5) if capacity allows, audit B2 (memoize the libc handle so _release_process_memory() stops
+fork/exec-ing ldconfig on the memory-pressure path) and T4 (heavy test must reject "partial" and assert no
+MemoryError). Still deferred: the on-load /api/backtest MemoryError (J-06/AG-8) and the J-05/J-06
+demo.sh --session-live walkthroughs — both need scope or explicit human deferral before the
+GOAL_ACHIEVED gate.

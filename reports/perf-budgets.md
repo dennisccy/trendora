@@ -806,6 +806,128 @@ immediately after this measurement; neither process nor file was left running/be
 appended their own boot lines to the shared `logs/backend.log` (the logfile path is not config-driven), a
 harmless append-only side effect consistent with the file's own documented convention.
 
+### iter-8 update — bound peak memory in the finalize-hook warm loops (J-05 REGRESSION recovery)
+
+**Regression this closes:** iter-7 added a fifth sequential per-item warm block (per-claim
+`drawdown_expectations`) to the SAME finalize tail Item L measured above. Browser-qa live-observed the
+consequence on a REAL back-to-back heavy ingest (full-universe rebuild immediately followed by a second
+heavy backfill, same long-lived process): `GET /api/health` hung 7+ minutes, a worker thread hit
+`MemoryError` at the enforced `memory_cap_mb=6144` `ulimit -v` ceiling, all threads sat in
+`futex_do_wait`, and a manual restart was required (`runs/goal-session-ops-hardening/iter-7/eval.md`).
+
+**Root cause (confirmed by code read):** `_refresh_ingest_aggregates` and the per-date coverage helper it
+calls each isolated per-item failures with a **generic** `except Exception: log + continue`. `MemoryError`
+is a subtype of `Exception`, so under real pressure it was caught, logged, and the loop immediately
+attempted the NEXT item's allocation — hammering further large allocations instead of backing off. Four
+loops carry this pattern, all sequential on the same finalize tail: per-date coverage warm
+(`_persist_per_date_coverage_snapshots`), per-date market-phase warm, per-horizon forward-aggregates warm,
+and per-claim drawdown-expectations warm (iter-7's new block).
+
+**Independent corroboration this is a real, physical-severity issue (not a benign edge case):** this exact
+scenario — "full-universe rebuild + second heavy backfill in the same process, VmPeak sampling" — was
+attempted a second time on this host on 2026-07-21 at 10:33 and coincided with an **instant hardware
+hard-reset** of the physical machine (no OOM-killer event, no panic, no thermal-warning log — a
+power/VRM/thermal transient trip, not plain memory exhaustion; see
+`project-extensions/host-guard/README.md`, installed the same day in direct response). This is a second,
+independent data point (distinct from iter-7's software-level `MemoryError`/health-hang finding) that the
+pre-fix finalize tail's memory/compute burst under this exact repeated-heavy-ingest pattern is genuinely
+dangerous on this host, not merely a soft SLA miss.
+
+**Fix (code, this iteration):** all four loops now catch `MemoryError` **distinctly**, before their
+existing generic `except Exception` handler. On the first `MemoryError` in one loop: stop attempting
+further items in THAT loop only (never hammer the next item's allocation under pressure), log an honest
+"aborted remaining `<category>` warm — memory pressure" message, and force `_release_process_memory()`
+(`gc.collect()` + `malloc_trim`) before returning/continuing to the next independent block. Every other
+loop's own try/except boundary — and the generic non-memory isolate-and-continue behavior within each
+loop — is unchanged. The existing "actually warmed ≥1 item" honesty gate on `aggregates_refreshed` is
+preserved unmodified and verified correct under the new early-abort path (a loop that warms ≥1 item then
+aborts still reports its category; a loop that aborts on item 1 omits it — see unit tests below).
+`app/api/health.py`, `app/engine/readiness.py`, and `main.py`'s boot sequence are untouched — their
+existing exception handling already degrades honestly once the process has allocation headroom; this fix
+restores that headroom at the source rather than adding a second fail-fast path.
+
+**Unit-test evidence (in-process, deterministic, no live spawn) — all PASS:**
+
+`cd apps/backend && .venv/bin/python -m pytest tests/test_data_manager.py -v` → **130 passed, 0 failed**
+(256.46s), including 9 new tests added this iteration:
+`test_persist_per_date_coverage_memory_error_on_first_date_aborts_loop`,
+`test_persist_per_date_coverage_memory_error_after_partial_success_stops_remaining`,
+`test_finalize_hook_market_phase_memory_error_on_first_date_aborts_loop`,
+`test_finalize_hook_market_phase_memory_error_after_partial_success_reports_honestly`,
+`test_finalize_hook_memory_error_leaves_no_leaked_lock_subsequent_read_succeeds`,
+`test_finalize_hook_forward_aggregates_memory_error_on_first_horizon_aborts_loop`,
+`test_finalize_hook_forward_aggregates_memory_error_after_partial_success_reports_honestly`,
+`test_finalize_hook_drawdown_expectations_memory_error_on_first_claim_aborts_loop`,
+`test_finalize_hook_drawdown_expectations_memory_error_after_partial_success_reports_honestly`,
+`test_finalize_hook_drawdown_expectations_isolates_claim_that_raises_non_memory_unchanged`. Each covers:
+zero-items-warmed honest omission (TC-3), partial-warm honest reporting with no further items attempted
+(TC-5), no leaked lock/open transaction after an injected `MemoryError` — a subsequent same-process DB
+read succeeds (TC-4), byte-identity of a warmed value vs. a fresh uncached compute (TC-7), and confirms
+the existing non-`MemoryError` isolate-and-continue behavior is byte-unchanged (TC-6,
+`test_finalize_hook_drawdown_expectations_isolates_claim_that_raises` and its new companion both pass).
+
+**Live re-measurement (TC-1/TC-2 — real spawned backend, real `ulimit -v`, full-universe rebuild
+immediately followed by a second heavy backfill in the same process): PERFORMED and PASSED**, once the
+host-guard verification ladder (`project-extensions/host-guard/README.md`) went GREEN on Stage 0/A/B
+(owner-run, 2026-07-21 ~21:35, present at the console) and Stage C (this supervised `/goal-step`)
+explicitly authorized re-running the live measurement. This developer session's initial pass at this
+task correctly declined to run this exact scenario unsupervised (see git history of this section /
+`docs/handoffs/goal-ops-hardening-iter-8-dev.md`'s Fix Notes) — the block below is the follow-up,
+supervised measurement.
+
+**Method:** real `scripts/start-backend.sh` (prod mode) launched against a **throwaway copy** of the
+real dev DB (2.5 GB, `cp`'d to scratch, `TRENDORA_CONFIG` pointed at a scratch config with only
+`database.url` rewritten — every other setting, including `server.memory_cap_mb`/`malloc_arena_max`,
+is the real committed config, unchanged), on its own port (:8710), never touching the shared committed
+file — mirrors Item L/H's own established methodology. Protections active and verified on the live PID
+before starting (Stage 0): CPU affinity `taskset -cp <pid>` = `0-3,8-11` (host-guard mask, inherited from
+the pump session — not independently re-created here), `/proc/<pid>/limits` Max address space =
+6,442,450,944 bytes (= 6144 MB), `MALLOC_ARENA_MAX=2` and `OMP_NUM_THREADS=OPENBLAS_NUM_THREADS=`
+`MKL_NUM_THREADS=NUMEXPR_MAX_THREADS=4` all present in `/proc/<pid>/environ`. `/proc/<pid>/status`
+VmPeak/VmSize/VmRSS sampled every 1 s throughout; `GET /api/health` polled every 2 s throughout; the
+host-guard 1 Hz hwmon sampler plus an armed thermal watchdog (auto-kill at Tctl >= 95 °C sustained 10 s /
+DIMM >= 85 °C / NVMe >= 75 °C) ran the whole time — never tripped (no `thermal-alert.txt` written).
+
+**Measured 2026-07-21T22:38-22:56Z (this host), throwaway-DB instance on :8710:**
+
+1. **Job 1 — full-universe `rebuild`** (`POST /api/data/jobs {"kind":"rebuild",...}` — J-85 ignores the
+   supplied dates, recomputes every cadence-eligible date over the full covered calendar): `status: "ok"`,
+   **378 snapshots, 709,093 forward returns, 0 date failures**, `aggregates_refreshed` carried **all
+   seven** categories (`latest_snapshot`, `coverage`, `membership_timeline`, `market_phase`,
+   `forward_aggregates`, `research_hot_keys`, `drawdown_expectations`) — no early abort, no `MemoryError`.
+   Wall time 929.9 s (~15.5 min; matches Item L iter-3's original 965.25 s within noise).
+2. **Job 2 — a real historical `backfill`, dispatched IMMEDIATELY after job 1 in the SAME process**
+   (`2012-06-19` — confirmed absent from `scanner_runs` beforehand, 483 real seed bars present, so this
+   is genuine new work, not a zero-work no-op; chosen the same way the iter-7/iter-8 test code picks a
+   non-cadence date): `status: "ok"`, 1 snapshot, 1,465 forward returns, `aggregates_refreshed` again
+   carried **all seven** categories — no early abort, no `MemoryError`. Wall time 109.0 s.
+
+| Metric (combined, BOTH jobs, one long-lived process) | Value | Cap / budget | Margin / result |
+|---|---|---|---|
+| Peak VmPeak (1,129 samples, 1 Hz) | 3,548,824 KB (3,465.6 MB) | 6,291,456 KB (6,144 MB) | **2,742,632 KB (2,678.4 MB, 43.6%)** |
+| Peak VmSize (same instant) | 3,543,704 KB (3,460.6 MB) | — | — |
+| Peak VmRSS/VmHWM | 3,029,168 KB (2,958.2 MB) | — | — |
+| `GET /api/health` polls (2 s cadence, whole run) | 468 | — | **0 non-200, 0 timeouts, 0 hangs** |
+| Health poll max latency | 2.723 s | — | 40/468 polls > 1 s (same parallel-backfill-worker DB contention pattern Item L iter-3 already documented and attributed to worker-thread/GIL contention, not a hang or memory event) |
+| Host thermal, whole run (hwmon, 1 Hz) | maxTctl 89 °C · maxDIMM 48 °C · maxNVMe 41 °C · maxPPT 59.0 W | abort at Tctl>=95 °C sustained 10 s / DIMM>=85 °C / NVMe>=75 °C | watchdog never tripped, **no reset** |
+| Recovery check (subsequent same-process DB reads after both jobs) | `GET /api/data` → 200, `snapshot_count: 379` (378+1, confirms both jobs' writes landed); `GET /api/health` → `status: ok`, `readiness: ready` | — | no leaked lock/transaction |
+
+**Verdict: AG-8 closed for the tested scenario.** The literal iter-7 regression scenario — a real
+full-universe rebuild immediately followed by a second heavy backfill in the same long-lived process,
+enforced `ulimit -v` active — now completes with **zero `MemoryError`, zero health hangs, 43.6% VmPeak
+margin under cap**, both jobs' finalize hooks warming every one of the seven aggregate categories in
+full (never an early abort — this real run never hit enough memory pressure to trigger the new
+`MemoryError`-specific branch at all; the branch's correctness is separately proven by the 9 unit tests
+above via injected `MemoryError`s, since a real run this clean cannot exercise it). Backend shut down
+cleanly (`SIGTERM`, exited in 2 s) and the throwaway DB copy deleted immediately after; the shared
+committed DB and `logs/backend.log` were not touched by this measurement beyond the throwaway instance's
+own harmless boot-line append (same documented convention as Item L's original measurement).
+
+**No committed budget number above is loosened or removed by this update** — this section adds new,
+disclosed, measured evidence (root cause, fix, unit tests, and the live re-measurement that was
+initially declined for supervision reasons and then completed once that supervision was confirmed
+green) on top of iter-3's existing measured numbers, which stand unchanged.
+
 
 ## Mechanical backend + page pass — items B/C/D/G/H/K methodology, re-measured 2026-07-20T15:49:51Z
 

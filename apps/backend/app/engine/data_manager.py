@@ -3034,13 +3034,38 @@ def _persist_per_date_coverage_snapshots(
     if not todo:
         return  # the only newly-created date IS the current stamp (already persisted) — no extra load
     pool_symbols = {row["symbol"] for row in read_pool()}
+    aborted_for_memory = False
     with prefilled_bar_cache(session, expected_symbols=pool_symbols):
         for d in todo:
             prog.tick()  # F1 fix (iter-4): per-date heartbeat stamp before this date's heavy coverage compute
             try:
                 refresh_coverage_snapshot_for(session, cfg, d)
+            # ops-hardening iter-8 (J-05 REGRESSION fix): a `MemoryError` under real pressure must NOT be
+            # treated like any other per-date failure (the generic `except Exception` below would log it and
+            # immediately retry the NEXT date's allocation, hammering further large allocations instead of
+            # backing off — the confirmed root cause of iter-7's 7+ minute health hang). Caught distinctly,
+            # BEFORE the generic handler: stop this loop immediately (no further dates attempted) and force
+            # freed memory back to the OS before returning to the caller's next independent block.
+            except MemoryError as exc:
+                logger.exception(
+                    "ingest per-date coverage warm aborted at %s — memory pressure, stopping remaining "
+                    "dates in this loop: %s", d, exc,
+                )
+                _release_process_memory()
+                aborted_for_memory = True
+                break
             except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next date
                 logger.exception("ingest per-date coverage warm failed for %s (non-fatal): %s", d, exc)
+    # iter-8 AUDIT (B1 fix): the `_release_process_memory()` inside the loop above necessarily runs while
+    # this function's OWN prefilled `_BarCache` (~1.5 GB — see `_release_process_memory`'s docstring) is
+    # still referenced by the enclosing `with`, so the single largest freeable block cannot be trimmed
+    # there and the caller's NEXT independent warm block (market-phase, forward-aggregates, drawdown)
+    # would start on the same un-trimmed arena — i.e. without the headroom this fix exists to restore.
+    # Trim again AFTER the context manager drops the cache, mirroring `_do_backfill`'s own post-
+    # `prefilled_bar_cache` `_release_process_memory()`. Memory-abort path only: the normal completion
+    # path keeps its pre-existing behavior byte-unchanged.
+    if aborted_for_memory:
+        _release_process_memory()
 
 
 def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress) -> list[str]:
@@ -3063,7 +3088,18 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     across BOTH per-date loops, `last_progress_at` freezes for the WHOLE finalize tail once the main scan
     completes (measured ~729s for a full rebuild, `reports/perf-budgets.md` Item L), and the frontend's
     stale-heartbeat flag (`job_progress.heartbeat_stale_seconds`) falsely renders "· possibly stalled" on a
-    perfectly healthy job."""
+    perfectly healthy job.
+
+    ops-hardening iter-8 (J-05 REGRESSION fix): the four per-item warm loops this function drives directly
+    or calls into (per-date coverage in `_persist_per_date_coverage_snapshots`, per-date market-phase, per-
+    horizon forward-aggregates, per-claim drawdown-expectations) each catch `MemoryError` DISTINCTLY from
+    their existing generic `except Exception: log + continue` — on the first `MemoryError`, that ONE loop
+    stops attempting further items (never hammering the next item's allocation under real pressure),
+    `_release_process_memory()` (`gc.collect()` + `malloc_trim`) runs before moving on, and the "actually
+    warmed" honesty gate still reports the category when >= 1 item warmed before the abort. Every other
+    loop's own try/except boundary — and the generic non-memory isolate-and-continue behavior within each
+    loop — is unchanged. Root cause + live before/after measurement: `reports/perf-budgets.md` (Item L
+    iter-8 update)."""
     refreshed: list[str] = []
     prog.tick()  # F1 fix: heartbeat-only stamp at the start of the finalize tail — see docstring above.
 
@@ -3100,6 +3136,17 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
         try:
             market_phase.market_phase_cached(session, d, cfg)
             market_phase_warmed = True
+        # ops-hardening iter-8 (J-05 REGRESSION fix): distinct from the generic per-date isolate-and-
+        # continue below — a `MemoryError` stops THIS loop immediately (no further dates attempted) and
+        # forces memory back to the OS, instead of hammering the next date's allocation under pressure.
+        # `market_phase_warmed` already honestly reflects any dates that succeeded before the abort.
+        except MemoryError as exc:
+            logger.exception(
+                "ingest market-phase warm aborted at %s — memory pressure, stopping remaining dates in "
+                "this loop: %s", d, exc,
+            )
+            _release_process_memory()
+            break
         except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next date/aggregate
             logger.exception("ingest market-phase warm failed for %s (non-fatal): %s", d, exc)
     if market_phase_warmed:
@@ -3122,12 +3169,29 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     try:
         latest_run_date = scanner._latest_stored_run_date(session)
         if latest_run_date is not None:
+            forward_aggregates_warmed = False
             for h in cfg.walk_forward.horizons:
                 prog.tick()  # F1-style heartbeat stamp before each horizon's compute (a cold-cache
                              # compute here can take up to ~35s pre-warm; 5 sequential horizons could
                              # otherwise freeze the heartbeat for minutes without a per-horizon tick).
-                forward_testing.forward_aggregates_cached(session, h, cfg, as_of=latest_run_date)
-            refreshed.append("forward_aggregates")
+                # ops-hardening iter-8 (J-05 REGRESSION fix): a `MemoryError` on one horizon is caught
+                # HERE, distinctly, so a horizon that already succeeded before it is still honestly
+                # reported — the outer `except Exception` below (unchanged for every OTHER exception
+                # type) has no per-horizon granularity, so a non-memory failure still aborts the whole
+                # block exactly as before (no regression to that existing behavior). On MemoryError this
+                # loop stops immediately (no further horizons attempted) and forces memory back to the OS.
+                try:
+                    forward_testing.forward_aggregates_cached(session, h, cfg, as_of=latest_run_date)
+                    forward_aggregates_warmed = True
+                except MemoryError as exc:
+                    logger.exception(
+                        "ingest forward-aggregate warm aborted at horizon %s — memory pressure, "
+                        "stopping remaining horizons in this loop: %s", h, exc,
+                    )
+                    _release_process_memory()
+                    break
+            if forward_aggregates_warmed:
+                refreshed.append("forward_aggregates")
     except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
         logger.exception("ingest forward-aggregate warm failed (non-fatal): %s", exc)
 
@@ -3174,6 +3238,17 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             # (mirrors the `market_phase`/`research_hot_keys` "actually did something" convention above).
             if result is not None:
                 drawdown_warmed = True
+        # ops-hardening iter-8 (J-05 REGRESSION fix): distinct from the generic per-claim isolate-and-
+        # continue below — a `MemoryError` stops THIS loop immediately (no further claims attempted) and
+        # forces memory back to the OS, instead of hammering the next claim's allocation under pressure.
+        # `drawdown_warmed` already honestly reflects any claim that succeeded before the abort.
+        except MemoryError as exc:
+            logger.exception(
+                "ingest drawdown-expectations warm aborted — memory pressure, stopping remaining claims "
+                "in this loop: %s", exc,
+            )
+            _release_process_memory()
+            break
         except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next claim
             logger.exception("ingest drawdown-expectations warm failed for one claim (non-fatal): %s", exc)
     if drawdown_warmed:

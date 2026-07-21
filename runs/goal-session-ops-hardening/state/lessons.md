@@ -152,3 +152,43 @@ during a real back-to-back heavy ingest, not just unit-tested.
 any "warm-a-cache-earlier" change; any iter where the audit runs before browser-qa and asserts a required
 journey is orthogonal to the diff — the evaluator must still weight the live browser evidence over the
 orthogonality argument.
+
+## iter-8 — 2026-07-21T23:53:18Z
+
+**Verdict:** CONTINUE
+**Lesson:** `Frontend Present: no` in the iteration spec's Goal Mode Metadata caused the whole browser-qa
+lane to be skipped (`ui-test-results.md` = "SKIPPED — Backend-only phase", `status.json`
+`browser_checks_run: false`, no evidence directory at all) — even though the SAME spec's DEFINITION OF DONE
+item 1 and TESTING REQUIREMENTS made a browser-qa pass over J-05's four acceptance steps the entire reason
+the iteration existed. "No frontend CODE changed" is not "no journey needs browser verification": J-05's
+regression was itself caught by a browser screenshot of a frozen readiness badge. The iteration shipped a
+good fix and verified nothing.
+**Applies to:** any backend-only iteration whose spec names browser journeys in TESTING REQUIREMENTS or
+targets a regressed journey — check `browser_checks_run` and the existence of the evidence directory before
+believing any completion claim.
+
+## iter-8 — 2026-07-21T23:53:18Z
+
+**Verdict:** CONTINUE
+**Lesson:** A clean live capacity measurement does not prove the fix caused it. `reports/perf-budgets.md`'s
+iter-8 section reports 43.6% VmPeak margin and 468/468 healthy polls, then states in the same paragraph
+that the run "never hit enough memory pressure to trigger the new `MemoryError`-specific branch at all" —
+and it executed under host-guard CPU-affinity (`0-3,8-11`) + 4-thread BLAS/OMP caps that did not exist
+during iter-7's failing run. The confound (fewer threads → smaller arenas/VSZ) is at least as plausible an
+explanation for the improvement as the diff. Capacity/availability fixes must be measured against
+like-for-like host conditions, or the "closed" claim is unattributable.
+**Applies to:** any iteration claiming an AG-8 memory/availability regression is closed, and any perf
+measurement taken after host-guard settings changed.
+
+## iter-8 — 2026-07-21T23:53:18Z
+
+**Verdict:** CONTINUE
+**Lesson:** A ~220-line block was pasted into the MIDDLE of an existing test
+(`test_start_backend_logfile_ends_abruptly_after_simulated_crash`), silently deleting that test's four real
+assertions — it still reported PASSED — and leaving the new headline test with a guaranteed `NameError` on
+an undefined `spawned_backend`, so the iteration's own TC-1/TC-2 regression guard had never once executed.
+Developer self-check, reviewer ("test_quality: pass") and QA ("2 PASSED") all reported green over it; only
+the audit gate caught it.
+**Applies to:** any iteration inserting a large block into an existing test file — re-read the function
+boundaries on BOTH sides of the insertion point, and treat "a long-standing test still passes" as
+suspicious when the diff touched its file.
