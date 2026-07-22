@@ -366,3 +366,27 @@ that reasoning erase the gap: the un-re-measured ≤5 s budget is recorded as a 
 1 of the next-step recommendation (`measure-perf.sh --boot`, a few minutes of work). A human who requires every
 step of a Must-have journey to be re-driven in the iteration that scores it may hold J-04 at `partial`.
 **Reversible:** yes
+
+## iter-11 — goal-decomposer
+
+**Ambiguity:** The dispatch prompt relayed an operator (pump) note, new to this session's decomposer
+context, stating that "agents in this pipeline CANNOT start or stop services (the permission classifier
+blocks them)" and that the subagent-resume channel is broken this session — meaning a developer/browser-qa
+agent that hits a step needing a fresh backend process start (not a kill, just a start — nothing is
+currently listening on the backend port per iter-10's eval) may be unable to execute it directly.
+`bash scripts/measure-perf.sh --boot` (needed to re-measure J-06/J-04's ≤5s boot budget, unmeasured since
+iter-9 added the host-guard block to `scripts/start-backend.sh`) is exactly this kind of step. goal.md
+does not address who may launch backend processes, and I could not independently verify the permission
+classifier's exact scope from any agent-facing artifact.
+**We chose:** wrote the boot-budget measurement as the standard path (the developer/browser-qa agent runs
+`bash scripts/measure-perf.sh --boot` itself) with an explicit NOTES fallback: if the executing agent's
+environment blocks it, the operator runs the exact command and reports the console output/timestamps
+verbatim, and the developer records that operator-provided output (with attribution) in
+`reports/perf-budgets.md` rather than fabricating or silently omitting the number. This mirrors iter-10's
+own accepted fallback pattern for J-04's kill/restart cycle (assumptions.md iter-10 entry) applied to a new
+action (a boot-timing script) in a new context (an explicit pump note, not an inferred constraint). The
+11-page real-browser TTI/on-load sweep itself is NOT written as operator-assisted — it needs no fresh
+process start, only already-running services, which browser-qa-phase.sh's own service management (outside
+the agent's tool-permission sandbox) is expected to provide, consistent with how J-01/J-03/J-04/J-05's
+browser lanes have run all session.
+**Reversible:** yes
