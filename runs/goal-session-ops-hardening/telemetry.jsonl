@@ -460,3 +460,11 @@
 {"agent":"goal-evaluator","status":"ok","wait_seconds":14,"run_seconds":651,"rc":"0","ts":"2026-07-21T23:59:04Z","session_id":"ops-hardening","iter":8,"event":"dispatch_wait","cli":"claude"}
 {"agent":"goal-evaluator","exit_status":0,"duration_seconds":665,"retries":0,"ts":"2026-07-21T23:59:04Z","session_id":"ops-hardening","iter":8,"event":"agent_invocation_end","cli":"claude"}
 {"iter_name":"goal-ops-hardening-iter-8","verdict":"CONTINUE","next_depth":"full","journey_deltas":{"newly_passing":0,"newly_failing":0,"regressed":1,"anti_goal_violations":5},"ts":"2026-07-21T23:59:04Z","session_id":"ops-hardening","iter":8,"event":"iter_end","cli":"claude"}
+{"branch":"goal/ops-hardening","commit_sha":"9a02b6cb7de3a7666425865c5dba5f575e99db49","success":true,"error":"","verdict":"CONTINUE","ts":"2026-07-21T23:59:09Z","session_id":"ops-hardening","iter":8,"event":"iter_push","cli":"claude"}
+{"reason":"BUDGET_EXHAUSTED","detected_at_step":"pre_decomposer","ts":"2026-07-21T23:59:09Z","session_id":"ops-hardening","iter":8,"event":"halt","cli":"claude"}
+{"agent":"iteration-summarizer","ts":"2026-07-21T23:59:09Z","session_id":"ops-hardening","iter":8,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"iteration-summarizer","status":"ok","wait_seconds":0,"run_seconds":251,"rc":"0","ts":"2026-07-22T00:03:20Z","session_id":"ops-hardening","iter":8,"event":"dispatch_wait","cli":"claude"}
+{"agent":"iteration-summarizer","exit_status":0,"duration_seconds":251,"retries":0,"ts":"2026-07-22T00:03:20Z","session_id":"ops-hardening","iter":8,"event":"agent_invocation_end","cli":"claude"}
+{"agent":"readme-maintainer","ts":"2026-07-22T00:03:20Z","session_id":"ops-hardening","iter":8,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"readme-maintainer","status":"ok","wait_seconds":15,"run_seconds":89,"rc":"0","ts":"2026-07-22T00:05:04Z","session_id":"ops-hardening","iter":8,"event":"dispatch_wait","cli":"claude"}
+{"agent":"readme-maintainer","exit_status":0,"duration_seconds":104,"retries":0,"ts":"2026-07-22T00:05:04Z","session_id":"ops-hardening","iter":8,"event":"agent_invocation_end","cli":"claude"}
