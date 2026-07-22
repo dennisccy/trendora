@@ -6,10 +6,10 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 
 ## Outcome
 
-- **Terminal status:** REGRESSION_HALT
-- **Final verdict:** REGRESSION
-- **Iterations used:** 8
-- **Halted at (UTC):** 2026-07-21T06:53:15.703595Z
+- **Terminal status:** BUDGET_EXHAUSTED
+- **Final verdict:** CONTINUE
+- **Iterations used:** 9
+- **Halted at (UTC):** 2026-07-22T00:05:10.052109Z
 
 ## Verdict sequence
 
@@ -24,6 +24,7 @@ iter 4: CONTINUE
 iter 5: CONTINUE
 iter 6: CONTINUE
 iter 7: REGRESSION
+iter 8: CONTINUE
 ```
 
 ## Agent economics
@@ -37,18 +38,19 @@ Source: analyze_telemetry.py --json telemetry.jsonl (claude_usage events)
 | coherence-auditor | 7 | 1405 | 256 | 83755 | 0.0000 |
 | demo-narrator | 7 | 2954 | 160 | 233908 | 0.0000 |
 | developer | 11 | 22907 | 4055 | 1069492 | 0.0000 |
-| goal-decomposer | 8 | 5946 | 4548 | 430831 | 0.0000 |
+| goal-decomposer | 9 | 6557 | 4598 | 443901 | 0.0000 |
 | goal-evaluator | 8 | 5295 | 1043 | 333519 | 0.0000 |
 | iteration-summarizer | 8 | 2650 | 142 | 265741 | 0.0000 |
-| orchestrator | 7 | 2230 | 9173 | 182538 | 0.0000 |
+| orchestrator | 8 | 2336 | 9195 | 191846 | 0.0000 |
 | phase-closure-auditor | 7 | 1438 | 116 | 116611 | 0.0000 |
-| qa | 17 | 4058 | 2319 | 143867 | 0.0000 |
+| qa | 18 | 4104 | 2341 | 148148 | 0.0000 |
 | readme-maintainer | 7 | 1229 | 128 | 110940 | 0.0000 |
+| retro-analyst | 1 | 28 | 26 | 2302 | 0.0000 |
 | reviewer | 11 | 7252 | 780 | 339648 | 0.0000 |
 | ui-impact-analyst | 7 | 2068 | 250 | 139406 | 0.0000 |
 | ui-test-designer | 7 | 3675 | 344 | 265673 | 0.0000 |
 | ux-regression-reviewer | 7 | 2272 | 2970 | 156899 | 0.0000 |
-| TOTAL | 133 | 90281 | 30787 | 4716528 | 0.0000 |
+| TOTAL | 137 | 91074 | 30907 | 4745489 | 0.0000 |
 
 Per-step wall breakdown (analyze_telemetry.py --wall):
 
@@ -127,17 +129,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       coherence-auditor            2.8m  calls=1
       pump-wait                  1.6m
       unattributed (glue)      261.7m
-  session: 8 completed iteration(s), mean wall 253.0m
-      total goal-decomposer            110.3m
-      total goal-evaluator              98.0m
+  goal-ops-hardening-iter-8  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      goal-decomposer             11.5m  calls=1
+      pump-wait                  0.6m
+  goal-ops-hardening-iter-8  depth=full  verdict=CONTINUE  wall=130.4m
+      goal-evaluator              11.1m  calls=1
+      coherence-auditor            3.2m  calls=1
+      (resume-skipped: goal-decomposer)
+      pump-wait                  1.7m
+      unattributed (glue)      116.1m
+  session: 9 completed iteration(s), mean wall 239.4m
+      total goal-decomposer            121.8m
+      total goal-evaluator             109.1m
       total iteration-summarizer        94.7m
       total browser-qa-agent            37.5m
-      total coherence-auditor           30.6m
+      total coherence-auditor           33.7m
       total readme-maintainer           26.8m
       total developer                    9.1m
       total reviewer                     4.2m
       total AWAITING_PUMP paused gaps: 9.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT
+      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED
 ```
 
 ## Friction counters
@@ -151,26 +162,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-re-measure on an IDLE host before filing OR retracting a "severe regression."
-**Applies to:** any iter closing J-06 / touching a lazy-warmed derived cache (event_study_cache,
-market_phase_cache, drawdown_expectations); any perf claim measured while a heavy pytest/ingest runs concurrently.
+that the run "never hit enough memory pressure to trigger the new `MemoryError`-specific branch at all" —
+and it executed under host-guard CPU-affinity (`0-3,8-11`) + 4-thread BLAS/OMP caps that did not exist
+during iter-7's failing run. The confound (fewer threads → smaller arenas/VSZ) is at least as plausible an
+explanation for the improvement as the diff. Capacity/availability fixes must be measured against
+like-for-like host conditions, or the "closed" claim is unattributable.
+**Applies to:** any iteration claiming an AG-8 memory/availability regression is closed, and any perf
+measurement taken after host-guard settings changed.
 
-## iter-7 — 2026-07-21T08:10:00Z
+## iter-8 — 2026-07-21T23:53:18Z
 
-**Verdict:** REGRESSION
-**Lesson:** An upstream audit that reasons about "orthogonality" (frontend/boot/readiness untouched →
-"cannot have regressed those journeys") can be empirically WRONG when the diff touches a shared
-hot-path function: iter-7's `_refresh_ingest_aggregates` warm looked orthogonal to J-05, but it runs
-7 synchronous `compute_drawdown_expectations` calls on the ingest FINALIZE path — exactly J-05's
-"health responsive during heavy ingest" window — and browser-qa caught a 7-min health hang + MemoryError
-at the enforced 6144MB ulimit that the audit (which ran before browser-qa and never exercised that step)
-declared impossible. Adding ANY synchronous per-item compute to the ingest finalize hook is a memory/
-availability risk on the grown live DB, not a free timing move — its peak-RAM cost must be measured
-during a real back-to-back heavy ingest, not just unit-tested.
-**Applies to:** any iter that adds work to `_refresh_ingest_aggregates` / the ingest finalize hook, or
-any "warm-a-cache-earlier" change; any iter where the audit runs before browser-qa and asserts a required
-journey is orthogonal to the diff — the evaluator must still weight the live browser evidence over the
-orthogonality argument.
+**Verdict:** CONTINUE
+**Lesson:** A ~220-line block was pasted into the MIDDLE of an existing test
+(`test_start_backend_logfile_ends_abruptly_after_simulated_crash`), silently deleting that test's four real
+assertions — it still reported PASSED — and leaving the new headline test with a guaranteed `NameError` on
+an undefined `spawned_backend`, so the iteration's own TC-1/TC-2 regression guard had never once executed.
+Developer self-check, reviewer ("test_quality: pass") and QA ("2 PASSED") all reported green over it; only
+the audit gate caught it.
+**Applies to:** any iteration inserting a large block into an existing test file — re-read the function
+boundaries on BOTH sides of the insertion point, and treat "a long-standing test still passes" as
+suspicious when the diff touched its file.
 ```
 
 ## Halt context
@@ -179,8 +190,8 @@ session.json halt-relevant fields:
 
 ```json
 {
-  "status": "REGRESSION_HALT",
-  "last_verdict": "REGRESSION",
+  "status": "BUDGET_EXHAUSTED",
+  "last_verdict": "CONTINUE",
   "parked_wip_sha": "da3c4055"
 }
 ```

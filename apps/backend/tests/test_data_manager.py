@@ -1823,6 +1823,76 @@ def test_finalize_hook_drawdown_expectations_isolates_claim_that_raises_non_memo
 
 
 # ==================================================================================================
+# ops-hardening iter-9 (B2): the resolved libc `CDLL` handle inside `_release_process_memory()` is
+# memoized module-level (first-call-cached) instead of re-resolved via `ctypes.util.find_library` +
+# `ctypes.CDLL` on EVERY call — the exact memory-pressure `MemoryError`-abort path this session hardened
+# can call `_release_process_memory()` several times in one heavy ingest.
+# ==================================================================================================
+def test_release_process_memory_memoizes_libc_handle_across_calls(monkeypatch):
+    """TC-13 — `ctypes.util.find_library` / `ctypes.CDLL` resolve at most ONCE across repeated
+    `_release_process_memory()` calls in the same process; every call still performs `gc.collect()` +
+    `malloc_trim()` with unchanged effect (no change to timing/effect, fewer redundant resolutions only)."""
+    import ctypes
+
+    # A fresh cache dict for this test only — monkeypatch restores the ORIGINAL dict object at teardown,
+    # so this never leaks state into (or out of) any other test's view of the real module cache.
+    monkeypatch.setattr(data_manager, "_libc_malloc_trim_cache", {})
+
+    find_calls = {"n": 0}
+    cdll_calls = {"n": 0}
+    trim_calls = {"n": 0}
+    gc_calls = {"n": 0}
+
+    class _FakeLibc:
+        def malloc_trim(self, _pad):
+            trim_calls["n"] += 1
+
+    def _fake_find_library(_name):
+        find_calls["n"] += 1
+        return "libfake-c.so.6"
+
+    def _fake_cdll(_name):
+        cdll_calls["n"] += 1
+        return _FakeLibc()
+
+    monkeypatch.setattr(ctypes.util, "find_library", _fake_find_library)
+    monkeypatch.setattr(ctypes, "CDLL", _fake_cdll)
+    monkeypatch.setattr(data_manager.gc, "collect", lambda: gc_calls.update(n=gc_calls["n"] + 1))
+
+    for _ in range(5):
+        data_manager._release_process_memory()
+
+    assert find_calls["n"] == 1, "find_library must resolve at most once across repeated calls"
+    assert cdll_calls["n"] == 1, "CDLL must be constructed at most once across repeated calls"
+    assert trim_calls["n"] == 5, "malloc_trim must still run on EVERY call — unchanged effect"
+    assert gc_calls["n"] == 5, "gc.collect() must still run on EVERY call — unchanged effect"
+
+
+def test_release_process_memory_caches_permanent_resolution_failure(monkeypatch):
+    """TC-13 companion — a non-glibc / symbol-absent failure on the FIRST call is cached too (never
+    retried): `find_library`/`CDLL` are still invoked only once across repeated calls, and every call's
+    `gc.collect()` still runs unchanged even though no `malloc_trim` is ever available."""
+    import ctypes
+
+    monkeypatch.setattr(data_manager, "_libc_malloc_trim_cache", {})
+    find_calls = {"n": 0}
+    gc_calls = {"n": 0}
+
+    def _fake_find_library(_name):
+        find_calls["n"] += 1
+        raise OSError("simulated: no libc resolvable on this platform")
+
+    monkeypatch.setattr(ctypes.util, "find_library", _fake_find_library)
+    monkeypatch.setattr(data_manager.gc, "collect", lambda: gc_calls.update(n=gc_calls["n"] + 1))
+
+    for _ in range(3):
+        data_manager._release_process_memory()  # must not raise
+
+    assert find_calls["n"] == 1, "a resolution failure must be cached — never retried on later calls"
+    assert gc_calls["n"] == 3, "gc.collect() must still run on every call despite the cached failure"
+
+
+# ==================================================================================================
 # ops-hardening iter-4 (F1 fix): the finalize hook's own heartbeat -- `last_progress_at` must advance
 # through the WHOLE finalize tail (not just the main scan loop), or the frontend's stale-heartbeat flag
 # falsely renders "· possibly stalled" on a perfectly healthy job.

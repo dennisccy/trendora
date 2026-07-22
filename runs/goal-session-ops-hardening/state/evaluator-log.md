@@ -319,3 +319,59 @@ fork/exec-ing ldconfig on the memory-pressure path) and T4 (heavy test must reje
 MemoryError). Still deferred: the on-load /api/backtest MemoryError (J-06/AG-8) and the J-05/J-06
 demo.sh --session-live walkthroughs — both need scope or explicit human deferral before the
 GOAL_ACHIEVED gate.
+
+## Iteration 9 — goal-ops-hardening-iter-9
+
+**Date:** 2026-07-22T19:05:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: **J-05** (regressed→passing — the session's target, recovered and finally proven by a
+  qualified lane), **J-01** (unknown→passing), **J-03** (unknown→passing)
+- Improved-but-not-passing: J-04 (unknown→partial — steps 1-5 pass; step 6 FAILED in the browser, defect
+  fixed intra-iteration (F1) and confirmed post-fix at API level by the operator, but no browser re-drive)
+- Newly failing: none. Regressed: none (no journey moved passing→failing)
+- Unchanged: J-06 partial (out of scope, not re-tested; last_verified_iter left at iter-7)
+- Anti-goal violations: **AG-8 (iter-7, critical) RESOLVED** — the heavy-ingest measurement iter-8 owed
+  was run and passed under launcher-applied caps. **AG-10 (iter-8, minor) RESOLVED** — both launch
+  scripts now apply host-guard.env caps, live-verified on /proc by three independent readers. NEW record:
+  AG-8 (distinct dimension, critical, UNRESOLVED) — the deferred on-load /api/backtest MemoryError,
+  carried not re-tested, awaiting an owner decision; blocks GOAL_ACHIEVED, does not fire REGRESSION.
+  scan-report CLEAN; coherence COHERENCE-PASS; all 3 prior AG-3 violations remain resolved.
+
+**Reasoning:** J-05's recovery is real and, for the first time in this session, proven rather than
+asserted. I opened UT-04 (badge `ok`, all 7 aggregates refreshed), UT-06 (stored 2026-05-15 snapshot,
+counts matching the leaderboard row), UT-07 (market phase for the new as-of, no spinner) and UT-08 (cold
+/data from the persisted payload, 436.9ms) myself, and re-derived step 4 from the RAW retained files
+rather than any handoff: 439/439 health polls HTTP 200, peak VmPeak 4,738,948 KB vs the 6,291,456 KB cap,
+`1 passed in 1092.93s` — a rebuild plus a second heavy backfill back-to-back in ONE process, the literal
+iter-7 scenario, under caps applied by THIS iteration's shipped launcher block (boot line evidence), which
+closes iter-8's own attribution objection. J-01/J-03 are live LLM re-verifications; their replay-lane
+FAILs pre-date the 09:41 frontend rebuild and carry a dated reconciliation footer. I did NOT flip J-04 to
+passing: the raw lane's UT-10/UT-J-04 step-6 FAIL is genuine (I opened UT-10-result.png — `interrupted`
+badge with "0 snapshots · 0 trading days in range"), and while the F1 checkpoint fix plus the operator's
+post-fix run-114-vs-113 contrast is credible apples-to-apples proof the persisted data is now real, it is
+API-level only — nobody re-drove /data's UI. `partial` is the honest schema fit and matches both the
+round-3 auditor's and the closure auditor's explicit instruction. Rejected REGRESSION: no journey moved
+passing→failing (J-04 entered `unknown`, and its step-6 defect is documented pre-existing, untouched by
+this diff, and fixed here), and the one open critical AG-8 dimension is a carried, human-known,
+spec-declared out-of-scope deferral, not a new or worsened violation. Rejected STALLED: closing J-04 step
+6 is concrete agent-owned work and the operator has already demonstrated the kill/restart cooperation it
+needs. Rejected GOAL_ACHIEVED: J-04 and J-06 are `partial`, closure is CLOSURE-FAIL, the QA artifact is
+stale, and two owner-decision items are open. Coherence PASS → no consolidation mandate. → CONTINUE.
+
+**Next-step recommendation:** Full depth, verification-and-currency only, no new features: (1) close J-04
+step 6 with ONE browser-lane kill/restart cycle reading the RENDERED Run History / Job progress panel on
+the current F1+B1 tree, then supersede the AUDITOR ADDENDUM in the regression-replay-results artifact —
+this is the single item between the session and all-five-passing; (2) emit an explicit `UT-J-05` verdict
+row (audit P3) so J-05's pass stops needing manual citation assembly; (3) regenerate or date-addendum the
+stale `reports/qa/goal-ops-hardening-iter-9-qa.md` (written 09:30, before both the browser lane at 12:34
+and the heavy run at 15:18-15:36, and still calling the run "DEFERRED"), then re-run the closure gate;
+(4) OWNER DECISIONS, do not let an agent invent either: the deferred on-load /api/backtest MemoryError
+(J-06/AG-8), the unproduced J-05/J-06 `demo.sh --session-live` walkthroughs, whether to flip
+HOST_GUARD_REQUIRE_MARKERS to 1, and — since `session.json max_iterations: 9` — an iteration-budget
+extension; (5) framework maintainer, still unfixed: `merge_ui_test_results.py:57` drops emphasised
+`**FAIL**` cells (the merged headline needed hand-correction again) and the `Frontend Present: no`
+browser-qa skip misrouting. Also carried: pre-existing `tests/test_db.py::test_create_all_produces_
+expected_tables` failure and audit B3 (`command -v taskset` guard). WATCH: VmPeak margin narrowed
+43.6%→24.7% and the audit proved that narrowing is real demand growth, not a sampling artifact.

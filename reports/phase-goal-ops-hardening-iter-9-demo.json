@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-9",
+  "base_url": "http://localhost:3255",
+  "iteration": 9,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the home page",
+      "narration": "Let's start on Trendora's home page, where the Market Phase & Severity card gives an at-a-glance read on today's market regime.",
+      "point_out": "The Market Phase & Severity card renders a live severity score and regime label the moment the page loads — never a blank or 'unavailable' state.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "/ 100 severity" }
+    },
+    {
+      "n": 2,
+      "title": "Open the Data Manager",
+      "narration": "Next, the Data Manager page — this is where the dataset's coverage is tracked and where new historical days get backfilled into the scanner.",
+      "point_out": "The Dataset coverage panel shows real numbers for price history, universe size, trading days, and any backfill gaps — all computed and cached ahead of time, not recomputed on the spot.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Dataset coverage" }
+    },
+    {
+      "n": 3,
+      "title": "Enter a backfill start date",
+      "narration": "Typing a start date into the backfill form is the first step in growing the dataset for a specific day.",
+      "point_out": "",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "label": "Start date" }, "text": "2026-05-15" }
+    },
+    {
+      "n": 4,
+      "title": "Enter a backfill end date",
+      "narration": "The end date completes the range — here it's the very same single day.",
+      "point_out": "",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "label": "End date" }, "text": "2026-05-15" }
+    },
+    {
+      "n": 5,
+      "title": "Start the backfill job",
+      "narration": "Clicking Start submits the job. Because this particular day was already covered by an earlier run, Trendora immediately and honestly reports there was no new work to do — a distinct, clearly-labeled outcome rather than a misleading 'success'.",
+      "point_out": "The job status badge reads 'no new snapshots' in a neutral grey — visually different from the green badge used for a truly new backfill.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Start" } },
+      "expect": { "text": "no new snapshots" }
+    },
+    {
+      "n": 6,
+      "title": "Browse the Scanner Runs history",
+      "narration": "Every day the scanner has run lives here as an immutable, dated snapshot — including the day we just looked up.",
+      "point_out": "The row for May 15, 2026 shows its regime, actionable count, and stock count immediately — no loading skeleton, no refresh needed.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/scanner-runs" },
+      "expect": { "text": "May 15, 2026" }
+    },
+    {
+      "n": 7,
+      "title": "Open a single day's scan",
+      "narration": "Clicking into a date opens the exact, unchanging view the scanner produced that day.",
+      "point_out": "The Scanner Run page reproduces the same regime and counts seen in the table, with a full leaderboard of stocks below it — pulled straight from the stored snapshot, not recomputed live.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "May 15, 2026" } },
+      "expect": { "text": "Scanner Run" }
+    },
+    {
+      "n": 8,
+      "title": "Return to the run list",
+      "narration": "The 'All runs' link takes you straight back to the full history.",
+      "point_out": "",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "click", "target": { "role": "link", "name": "All runs" } },
+      "expect": { "text": "Scanner Runs" }
+    },
+    {
+      "n": 9,
+      "title": "Back to the Data Manager",
+      "narration": "Back on the Data Manager page to see the form's validation and how it handles a much larger date range.",
+      "point_out": "",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Dataset coverage" }
+    },
+    {
+      "n": 10,
+      "title": "Try an invalid date",
+      "narration": "Typing an impossible calendar date shows how the form catches mistakes before they ever reach the server.",
+      "point_out": "",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "label": "Start date" }, "text": "2026-13-40" }
+    },
+    {
+      "n": 11,
+      "title": "See the inline validation",
+      "narration": "Moving focus away from the field reveals a clear, specific error — and the Start button stays disabled until the date is fixed.",
+      "point_out": "A red inline message reads 'Enter a valid date as yyyy-MM-dd', and no job is ever submitted for an invalid date.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "Data Manager" } },
+      "expect": { "text": "Enter a valid date as yyyy-MM-dd" }
+    },
+    {
+      "n": 12,
+      "title": "Enter a much wider date range",
+      "narration": "Fixing the start date to a real, far earlier day sets up a much bigger backfill — over a year of history in one request.",
+      "point_out": "",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "label": "Start date" }, "text": "2025-06-01" }
+    },
+    {
+      "n": 13,
+      "title": "Enter the range's end date",
+      "narration": "The end date extends the span past 370 days — well beyond what older, capped systems would allow.",
+      "point_out": "",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "label": "End date" }, "text": "2026-07-17" }
+    },
+    {
+      "n": 14,
+      "title": "Start the large backfill",
+      "narration": "Trendora accepts the whole range at once — no 'range too large' rejection — and processes it in visible chunks, so you can watch real progress on even a very large job.",
+      "point_out": "The Job progress panel shows a chunk counter and an advancing progress bar, proving the big request was accepted and is actively executing.",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Start" } },
+      "expect": { "text": "chunk" },
+      "timeout_ms": 20000
+    }
+  ]
+}

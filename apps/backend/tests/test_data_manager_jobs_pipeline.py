@@ -668,3 +668,127 @@ def test_drift_stage_does_not_rerun_on_skip_fetch_backfill_only_resume(tmp_path,
         )
     assert telltale.calls == 0, "resume-at-backfill must perform ZERO provider calls (fetch stage skipped)"
     assert read_drift_report() == first_report, "a skip-fetch resume must leave the drift artifact untouched"
+
+
+# ==================================================================================================
+# ops-hardening iter-9 (F1 — J-04 step 6): an INTERRUPTED job keeps its LAST PERSISTED PROGRESS.
+# Before this iteration the numeric detail fields were written into the persisted row exactly ONCE, by
+# `_finalize_run_record` — which a `kill -9` never reaches — so the boot sweep's `interrupted` row always
+# carried the creation-time defaults and rendered as "0 snapshots · 0 trading days in range" no matter how
+# far the job actually got (browser-verified live: J-04 step 6 / UT-10). A throttled checkpoint now freezes
+# the CURRENT progress onto the still-OPEN `running` row as the backfill advances.
+# ==================================================================================================
+def _run_detail_json(engine, job_id: str) -> dict:
+    with Session(engine) as session:
+        row = session.exec(select(DataProviderRun).where(DataProviderRun.job_id == job_id)).one()
+    return json.loads(row.message)
+
+
+def test_interrupted_job_keeps_its_last_checkpointed_progress(tmp_path, monkeypatch):
+    """J-04 step 6 — a job whose process dies mid-run leaves an `interrupted` row carrying the progress it
+    had actually reached, NOT zeros. The death is simulated the only honest way an in-process test can: the
+    terminal transition (`_finalize_run_record`) never runs, exactly as it never runs under `kill -9`."""
+    cfg, engine = _fresh_seed_engine(tmp_path, "checkpoint_progress")
+    with Session(engine) as session:
+        trading = data_manager._trading_days(session, cfg)
+    _base = _daily_region_start(trading, cfg)
+    r_start, r_end = trading[_base + 305], trading[_base + 307]  # 3 trading days
+    # The production checkpoint is time-throttled; a sub-second test would otherwise only ever record the
+    # FIRST date. Zero interval => checkpoint after every date (the same code path, just unthrottled).
+    monkeypatch.setattr(data_manager, "_RUN_RECORD_CHECKPOINT_INTERVAL_S", 0.0)
+    monkeypatch.setattr(data_manager, "_finalize_run_record", lambda *a, **k: None)
+
+    job = create_job("backfill", r_start, r_end)
+    run_data_job(job.job_id, config=_with_backfill_workers(cfg, 1), engine=engine)
+
+    assert sweep_orphaned_runs(engine) == 1  # the boot sweep claims the orphaned `running` row
+    with Session(engine) as session:
+        row = session.exec(select(DataProviderRun).where(DataProviderRun.job_id == job.job_id)).one()
+    assert row.status == "interrupted"
+    assert row.finished_at is not None
+
+    detail = json.loads(row.message)
+    assert detail["dates_total"] == 3           # trading days in the requested range — was 0
+    assert detail["dates_done"] == 3            # progress actually reached — was 0
+    assert detail["snapshots_created"] == 3     # snapshots genuinely persisted — was 0
+    assert detail["calendar_days"] == (r_end - r_start).days + 1
+    assert detail["already_snapshotted"] == 0
+    assert detail["error_other"] == 0
+    # the finalize hook never ran on this dead job — its output stays honestly absent, never fabricated
+    assert detail["aggregates_refreshed"] is None
+
+
+def test_run_record_checkpoint_is_throttled_open_ended_and_never_fatal(tmp_path, monkeypatch):
+    """The checkpoint writer's own contract: bounded write amplification (at most one UPDATE per interval),
+    the row stays OPEN (`running`, no `finished_at`) so the boot sweep can still claim it, a job with no
+    open row is a silent no-op (never a second row), and a write failure is never fatal to the job."""
+    cfg, engine = _fresh_seed_engine(tmp_path, "checkpoint_unit")
+    prog = JobProgress(job_id="job-cp", kind="backfill", start=date(2024, 1, 1), end=date(2024, 1, 3))
+    data_manager._create_run_record(engine, cfg, prog)
+    assert _run_detail_json(engine, "job-cp")["snapshots_created"] == 0  # creation-time defaults
+
+    prog.calendar_days, prog.dates_total, prog.dates_done, prog.snapshots_created = 3, 3, 1, 1
+    data_manager._checkpoint_run_record(engine, prog)  # nothing checkpointed yet -> always writes
+    assert _run_detail_json(engine, "job-cp")["snapshots_created"] == 1
+    assert _run_detail_json(engine, "job-cp")["dates_done"] == 1
+
+    prog.dates_done, prog.snapshots_created = 2, 2
+    data_manager._checkpoint_run_record(engine, prog)  # INSIDE the throttle window -> not written
+    assert _run_detail_json(engine, "job-cp")["snapshots_created"] == 1
+
+    monkeypatch.setattr(data_manager, "_RUN_RECORD_CHECKPOINT_INTERVAL_S", 0.0)  # interval elapsed
+    data_manager._checkpoint_run_record(engine, prog)
+    assert _run_detail_json(engine, "job-cp")["snapshots_created"] == 2
+
+    with Session(engine) as session:
+        row = session.exec(select(DataProviderRun).where(DataProviderRun.job_id == "job-cp")).one()
+    assert row.status == "running" and row.finished_at is None  # still OPEN for the boot sweep
+
+    # a write failure is telemetry, not job control: a broken engine must not raise into the backfill loop
+    data_manager._checkpoint_run_record(
+        make_engine("sqlite:////nonexistent-dir-for-checkpoint-test/x.db"), prog
+    )
+
+    # once the row is terminal there is no open row to checkpoint -> silent no-op, never a second record
+    prog.status, prog.finished_at = "ok", data_manager._utcnow()
+    data_manager._finalize_run_record(engine, cfg, prog)
+    prog.snapshots_created = 99
+    data_manager._checkpoint_run_record(engine, prog)
+    with Session(engine) as session:
+        rows = session.exec(select(DataProviderRun).where(DataProviderRun.job_id == "job-cp")).all()
+    assert len(rows) == 1
+    assert rows[0].status == "ok"
+    assert json.loads(rows[0].message)["snapshots_created"] == 2  # the terminal value, not the post-hoc 99
+
+
+def test_interrupted_before_first_date_still_keeps_the_computed_range(tmp_path, monkeypatch):
+    """ops-hardening iter-9 AUDIT (F1 completion) — a job killed BEFORE its first date is persisted (the
+    shared bar-cache prefill window, minutes long on the deep basis) must still show the range it had
+    already computed, not "0 trading days in range". The per-date checkpoint alone cannot cover this
+    window: it only writes once a date has been persisted."""
+    cfg, engine = _fresh_seed_engine(tmp_path, "checkpoint_preloop")
+    with Session(engine) as session:
+        trading = data_manager._trading_days(session, cfg)
+    _base = _daily_region_start(trading, cfg)
+    r_start, r_end = trading[_base + 305], trading[_base + 307]  # 3 trading days
+
+    # Death during the prefill: the bar-cache load never returns, and the terminal transition
+    # (`_finalize_run_record`) never runs — exactly what `kill -9` does at that instant.
+    def _die_in_prefill(*_a, **_k):
+        raise RuntimeError("simulated process death during the shared bar-cache prefill")
+
+    monkeypatch.setattr(data_manager, "prefilled_bar_cache", _die_in_prefill)
+    monkeypatch.setattr(data_manager, "_finalize_run_record", lambda *a, **k: None)
+
+    job = create_job("backfill", r_start, r_end)
+    run_data_job(job.job_id, config=_with_backfill_workers(cfg, 1), engine=engine)
+
+    assert sweep_orphaned_runs(engine) == 1
+    with Session(engine) as session:
+        row = session.exec(select(DataProviderRun).where(DataProviderRun.job_id == job.job_id)).one()
+    assert row.status == "interrupted"
+    detail = json.loads(row.message)
+    assert detail["dates_total"] == 3                                   # the real range — was 0
+    assert detail["calendar_days"] == (r_end - r_start).days + 1        # the real span — was null
+    assert detail["snapshots_created"] == 0                             # honest: none were created yet
+    assert detail["aggregates_refreshed"] is None                       # the finalize hook never ran

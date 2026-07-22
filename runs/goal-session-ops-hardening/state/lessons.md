@@ -192,3 +192,32 @@ the audit gate caught it.
 **Applies to:** any iteration inserting a large block into an existing test file — re-read the function
 boundaries on BOTH sides of the insertion point, and treat "a long-standing test still passes" as
 suspicious when the diff touched its file.
+
+## iter-9 — 2026-07-22T19:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A journey can fail its browser lane and have the defect FIXED inside the same iteration, which
+leaves every downstream artifact (raw `.llm.md`, merged results, regression-replay-results) frozen at the
+pre-fix verdict while the newest evidence sits in an operator note nobody's lane owns. J-04 step 6 hit
+exactly this: `UT-10-result.png` shows the real pre-fix "0 snapshots · 0 trading days", the F1
+`_checkpoint_run_record` fix landed hours later, and the post-fix proof (run 114 frozen at 59 snapshots /
+64-of-84 dates vs. the all-zero control run 113 in the same `GET /api/data` response) exists only in
+`runs/goal-ops-hardening-iter-9/pump-j04-crash-recovery-evidence.md`. Neither `failing` (cites a build
+that no longer exists) nor `passing` (no rendered-surface evidence) is honest — `partial` is. When a fix
+lands after its own verification lane has run, the fix does not close the journey; it schedules a
+re-verification.
+**Applies to:** any iteration where an audit/fix round lands product code AFTER the browser-qa step, and
+any evaluation weighing operator/API evidence against a stale lane verdict.
+
+## iter-9 — 2026-07-22T19:05:00Z (second entry)
+
+**Verdict:** CONTINUE
+**Lesson:** iter-8's "the margin is comfortable" reading was doubly unsafe, and only iter-9's audit (P1)
+caught why: `VmPeak` in `/proc/<pid>/status` is a kernel-maintained monotone high-water mark, so a finer
+sampling cadence CANNOT raise it — re-subsampling the 4,347-row trace at 1 Hz and at 10 s yields the
+identical 4,738,948 KB. The 43.6% → 24.7% margin narrowing is therefore real growth in peak demand, not a
+measurement artifact, and the benign-sounding cadence explanation had to be struck from
+`reports/perf-budgets.md`. Never let a plausible measurement-artifact story stand unverified next to a
+number that is trending the wrong way.
+**Applies to:** any iteration recording VmPeak/VmSize/RSS headroom against `server.memory_cap_mb`, and any
+future J-05/AG-8 re-measurement as the price basis deepens.

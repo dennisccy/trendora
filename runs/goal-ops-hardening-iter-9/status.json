@@ -1,0 +1,70 @@
+{
+  "phase": "goal-ops-hardening-iter-9",
+  "status": "blocked",
+  "current_step": "closure_failed",
+  "updated_at": "2026-07-22T17:45:28.485048Z",
+  "started_at": "2026-07-22T07:20:28.874841Z",
+  "cli": "claude",
+  "qa_verdict": "PASS",
+  "blockers": [],
+  "deferred_items": [
+    {
+      "item": "Browser re-verification of J-04 step 6 / UT-10 (interrupted-job progress) after the F1 checkpoint fix",
+      "reason": "The F1 fix (`_checkpoint_run_record`) makes an interrupted job's persisted progress real and is covered by 2 new unit tests, but J-04 step 6 is a browser journey \u2014 only the browser-qa lane's kill/restart cycle can score it.",
+      "next_step": "Re-run the browser-qa lane's UT-10 / UT-J-04 kill+restart cycle against the current build",
+      "reference": "docs/handoffs/goal-ops-hardening-iter-9-dev.md Fix Notes round 2, F1 section"
+    },
+    {
+      "item": "Deferred /api/backtest on-load MemoryError (J-06/AG-8) and the unproduced demo.sh --session-live walkthroughs for J-05/J-06",
+      "reason": "Explicit plan carry-forwards; need their own scoped iteration or an explicit human deferral before any GOAL_ACHIEVED gate.",
+      "next_step": "Owner decision",
+      "reference": "docs/handoffs/goal-ops-hardening-iter-9-dev.md Known Issues #3/#4"
+    }
+  ],
+  "changed_files": [
+    "scripts/start-backend.sh",
+    "scripts/dev.sh",
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/tests/test_data_manager.py",
+    "apps/backend/tests/test_data_manager_jobs_pipeline.py",
+    "apps/backend/tests/test_start_backend_script.py",
+    "reports/perf-budgets.md",
+    "runs/goal-ops-hardening-iter-9/heavy-ingest-vm-samples.csv",
+    "runs/goal-ops-hardening-iter-9/heavy-ingest-vm-samples-health.csv",
+    "runs/goal-ops-hardening-iter-9/heavy-ingest-hwmon.csv",
+    "runs/goal-ops-hardening-iter-9/heavy-ingest-pytest.log",
+    "docs/handoffs/goal-ops-hardening-iter-9-dev.md",
+    "reports/phase-goal-ops-hardening-iter-9-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "tests_passed_count": "audit-fix round 2: heavy-ingest live run 1 PASSED (1092.93s, TRENDORA_RUN_HEAVY_INGEST_TEST=1, operator-authorized); test_data_manager_jobs_pipeline.py 20 passed (incl. 2 new F1 checkpoint tests, observed RED first); test_data_manager.py 133 passed; test_data_manager_backfill_parallel.py 10 passed; test_start_backend_script.py 8 passed/1 deselected (non-heavy); test_api_data.py 48 passed. One PRE-EXISTING unrelated failure found and NOT fixed (fix-mode scope): tests/test_db.py::test_create_all_produces_expected_tables, stale expected-table set since iter-2 (commit 1e5a311e).",
+  "browser_checks_run": true,
+  "browser_checks_notes": "No new browser checks this round (dev session, no browser tool). The prior lane's RAW verdict stands at FAIL for UT-10 / UT-J-04 step 6; this round FIXED the product defect behind both (F1 \u2014 interrupted-job progress is now checkpointed, 2 new unit tests). The browser lane MUST re-run the kill+restart cycle to re-score J-04. Long-lived services verified alive and healthy at session end: :8255 /api/health 200, :3255 200 \u2014 this session neither started nor stopped them.",
+  "qa_report": "reports/qa/goal-ops-hardening-iter-9-qa.md",
+  "next_action": "proceed_to_next_stage",
+  "dev_fix_round": {
+    "round": 2,
+    "audit_report": "docs/handoffs/goal-ops-hardening-iter-9-audit.md",
+    "fixed": [
+      "T4 (by execution) \u2014 the live heavy-ingest measurement was PERFORMED and PASSED under the launcher-applied host-guard caps (owner-authorized; host verified at 41 C idle, watchdog armed and never fired). Both jobs status 'ok' with all 7 aggregate categories; peak VmPeak 4,738,948 KB vs the 6,291,456 KB cap (24.7% margin); 439/439 health polls HTTP 200; max Tctl 81 C. DoD items 1, 4-by-execution, 5 and AG-8 closed.",
+      "DoD item 5 \u2014 sampler CSVs retained under runs/goal-ops-hardening-iter-9/ (VmPeak/VmSize 4,347 rows, health 439 rows, hwmon slice 1,049 rows, pytest log); required a small test-side change (_MemSampler timestamps each sample; _write_run_evidence writes the CSVs from the finally block so a FAILING run also leaves evidence). No assertion altered.",
+      "perf-budgets.md \u2014 new dated section 'iter-9 update \u2014 heavy-ingest re-measurement under the LAUNCHER-APPLIED host-guard caps' recording the applied taskset/thread-cap values alongside the VmPeak numbers, plus an explicit honest note that the margin narrowed from 43.6% (iter-8) to 24.7% and that this run cannot attribute the narrowing.",
+      "F1 \u2014 interrupted-job progress is now checkpointed: new _checkpoint_run_record() writes the current _run_detail onto the OPEN run-history row from the per-date backfill loop, throttled to one small UPDATE per 10s, never touching status/finished_at, never INSERTing, never fatal. 2 new TDD tests (RED observed first). Frontend needs no change (page.tsx:2612 already renders these fields)."
+    ],
+    "not_fixed": [
+      "T1 merge_ui_test_results.py emphasis-parsing bug \u2014 scripts/automation/* is OUT OF SCOPE; still flagged for the framework maintainer",
+      "B1/B2/T5 launcher + test-quality observations \u2014 audit-classified below the fix bar / out of scope",
+      "tests/test_db.py::test_create_all_produces_expected_tables \u2014 NEWLY DISCOVERED pre-existing failure (stale expected-table set since iter-2), recorded not fixed per fix-mode rules"
+    ],
+    "files_changed": [
+      "apps/backend/app/engine/data_manager.py",
+      "apps/backend/tests/test_data_manager_jobs_pipeline.py",
+      "apps/backend/tests/test_start_backend_script.py",
+      "reports/perf-budgets.md",
+      "runs/goal-ops-hardening-iter-9/heavy-ingest-vm-samples.csv",
+      "runs/goal-ops-hardening-iter-9/heavy-ingest-vm-samples-health.csv",
+      "runs/goal-ops-hardening-iter-9/heavy-ingest-hwmon.csv",
+      "runs/goal-ops-hardening-iter-9/heavy-ingest-pytest.log"
+    ]
+  }
+}

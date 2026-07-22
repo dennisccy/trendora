@@ -1,27 +1,27 @@
 # Goal Session Summary — ops-hardening
 
-**Final verdict:** REGRESSION_HALT
-**Total iterations:** 8
-**Wall time (seconds):** 35432
+**Final verdict:** BUDGET_EXHAUSTED
+**Total iterations:** 9
+**Wall time (seconds):** 8191
 **Quota pauses:** 0
 **Started:** 2026-07-19T13:57:02.848410Z
-**Finished:** 2026-07-21T06:53:15.703595Z
+**Finished:** 2026-07-22T00:05:10.052109Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/ops-hardening`. Open a PR with:
 
     gh pr create --base main --head goal/ops-hardening \
-      --title "feat: ops-hardening — REGRESSION_HALT" \
+      --title "feat: ops-hardening — BUDGET_EXHAUSTED" \
       --body-file runs/goal-session-ops-hardening/summary.md
 
 ## Final journey state
 
 | Journey | Status | Last passing iter |
 |---|---|---|
-| J-01 | passing | goal-ops-hardening-iter-7 |
-| J-03 | passing | goal-ops-hardening-iter-7 |
-| J-04 | passing | goal-ops-hardening-iter-7 |
+| J-01 | unknown | goal-ops-hardening-iter-7 |
+| J-03 | unknown | goal-ops-hardening-iter-7 |
+| J-04 | unknown | goal-ops-hardening-iter-7 |
 | J-05 | regressed | goal-ops-hardening-iter-6 |
 | J-06 | partial | - |
 
@@ -31,6 +31,7 @@ This session pushed iteration commits to `goal/ops-hardening`. Open a PR with:
 - [critical] AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders. (iter goal-ops-hardening-iter-2)
 - [minor] AG-3 (dimension): displayed numbers must be correct — a fetch that lands new bars silently blanks the DEFAULT /data coverage panel to false all-zeros. (iter goal-ops-hardening-iter-2)
 - [critical] AG-8 — Resilience to data-shape and data-scale change: widening the data basis (deeper history) must never crash an existing page or exhaust a service's memory; the UI degrades gracefully (contained error boundary, honest '—'/NA placeholder, never a blank/frozen frame); unbounded whole-table ORM loads forbidden on the deep basis. (iter goal-ops-hardening-iter-7)
+- [minor] AG-10 — Host resource ceiling (hardware protection): heavy compute MUST be launched only via the project launch scripts (scripts/dev.sh / scripts/start-backend.sh), and those scripts MUST apply the host caps declared in project-extensions/host-guard/host-guard.env whenever that file is present (CPU-affinity mask, BLAS/OMP thread caps, memory_cap_mb, malloc_arena_max). (iter goal-ops-hardening-iter-8)
 
 ## Telemetry
 
@@ -113,15 +114,24 @@ See `runs/goal-session-ops-hardening/telemetry.jsonl` for the structured event l
       coherence-auditor            2.8m  calls=1
       pump-wait                  1.6m
       unattributed (glue)      261.7m
-  session: 8 completed iteration(s), mean wall 253.0m
-      total goal-decomposer            110.3m
-      total goal-evaluator              98.0m
+  goal-ops-hardening-iter-8  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      goal-decomposer             11.5m  calls=1
+      pump-wait                  0.6m
+  goal-ops-hardening-iter-8  depth=full  verdict=CONTINUE  wall=130.4m
+      goal-evaluator              11.1m  calls=1
+      coherence-auditor            3.2m  calls=1
+      (resume-skipped: goal-decomposer)
+      pump-wait                  1.7m
+      unattributed (glue)      116.1m
+  session: 9 completed iteration(s), mean wall 239.4m
+      total goal-decomposer            121.8m
+      total goal-evaluator             109.1m
       total iteration-summarizer        94.7m
       total browser-qa-agent            37.5m
-      total coherence-auditor           30.6m
+      total coherence-auditor           33.7m
       total readme-maintainer           26.8m
       total developer                    9.1m
       total reviewer                     4.2m
       total AWAITING_PUMP paused gaps: 9.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT
+      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED
 ```

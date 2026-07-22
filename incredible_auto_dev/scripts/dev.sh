@@ -41,7 +41,41 @@ echo "Starting backend on :$BACKEND_PORT ..."
   cd "$ROOT_DIR/apps/backend"
   source .venv/bin/activate
   export CORS_ORIGINS="${CORS_ORIGINS:-http://localhost:${FRONTEND_PORT},http://localhost:3000,http://localhost:3001}"
-  uvicorn main:app --reload --host 0.0.0.0 --port $BACKEND_PORT
+
+  # ops-hardening iter-9 (AG-10): mirror scripts/start-backend.sh's config-derived ulimit -v /
+  # MALLOC_ARENA_MAX enforcement (same app.config.get_config() values — computed once here, not a
+  # second derivation) in this backend subshell ONLY. The frontend (`next dev`) subshell below is
+  # untouched — it needs the address space.
+  read -r MEMORY_CAP_MB MALLOC_ARENA_MAX_VALUE <<< "$(
+    .venv/bin/python -c '
+from app.config import get_config
+cfg = get_config()
+print(cfg.server.memory_cap_mb, cfg.server.malloc_arena_max)
+'
+  )"
+  ulimit -v $((MEMORY_CAP_MB * 1024))
+  export MALLOC_ARENA_MAX="$MALLOC_ARENA_MAX_VALUE"
+
+  # ==== HOST-GUARD (goal.md AG-10) — backend subshell ONLY, DO NOT REMOVE OR WEAKEN ================
+  # Same SMT-aware taskset CPU-affinity mask + BLAS/OMP/numexpr thread caps `scripts/start-backend.sh`
+  # applies, from the SAME host-guard.env (no second computation of the values). Absent file or
+  # HOST_GUARD_ENABLED=0 -> zero behavior change. Never applied to the frontend subshell below.
+  HOST_GUARD_ENV="${HOST_GUARD_ENV_FILE:-$ROOT_DIR/project-extensions/host-guard/host-guard.env}"
+  HOST_GUARD_CMD_PREFIX=()
+  if [[ -f "$HOST_GUARD_ENV" ]]; then
+    # shellcheck disable=SC1090
+    source "$HOST_GUARD_ENV"
+    if [[ "${HOST_GUARD_ENABLED:-0}" == "1" ]]; then
+      export OMP_NUM_THREADS="$HOST_GUARD_BLAS_THREADS"
+      export OPENBLAS_NUM_THREADS="$HOST_GUARD_BLAS_THREADS"
+      export MKL_NUM_THREADS="$HOST_GUARD_BLAS_THREADS"
+      export NUMEXPR_NUM_THREADS="$HOST_GUARD_BLAS_THREADS"
+      HOST_GUARD_CMD_PREFIX=(taskset -c "$HOST_GUARD_CPU_LIST")
+    fi
+  fi
+  # ==== end HOST-GUARD ==============================================================================
+
+  exec "${HOST_GUARD_CMD_PREFIX[@]}" uvicorn main:app --reload --host 0.0.0.0 --port $BACKEND_PORT
 ) &
 BACKEND_PID=$!
 

@@ -1,40 +1,40 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 8 · **Date:** 2026-07-22 · **Verdict:** CONTINUE
+**After iteration:** 9 · **Date:** 2026-07-22 · **Verdict:** CONTINUE
 
 ## Journeys
 
-0 passing · 1 regressed (J-05) · 3 unknown (J-01 J-03 J-04 — lanes never ran) · 1 partial (J-06) — 5 total
+3 passing (J-01 J-03 J-05) · 2 partial (J-04 — step 6 only; J-06 — out of scope since iter-7) — 5 total
 
 ## Active blockers
 
-- **iter-8 verified NOTHING (dev).** browser-qa skipped on `Frontend Present: no`
-  (`...-iter-8-ui-test-results.md` = "SKIPPED"; `status.json browser_checks_run: false`; no evidence dir,
-  no raw `.llm.md`). J-01/J-03 replay + J-04 LLM never ran — hence three `unknown`. Closure =
-  CLOSURE-FAIL; audit V1/V2 concur.
-- **J-05 unproven (dev).** Fix is real (`data_manager.py:3049/3143/3186/3245` + audit B1 `:3067-3068`,
-  10 injected-MemoryError tests, live 468/468 health polls, 43.6% VmPeak margin) but never
-  browser-verified; steps 1-3 have no evidence. Audit V1: do not flip J-05 on this handoff alone.
-- **AG-8 unresolved (critical, dev).** perf-budgets.md admits the clean run "never hit enough memory
-  pressure to trigger the new branch at all", under host-guard CPU/thread caps absent in iter-7 — gain
-  not attributable to the diff.
-- **AG-10 gap (minor, dev).** `start-backend.sh` applies only `ulimit -v` + `MALLOC_ARENA_MAX`;
-  `dev.sh` applies none — no `taskset`/BLAS-OMP caps from `host-guard.env`. goal.md schedules it next.
-- Budget: `max_iterations: 9` — iteration 9 is the LAST; make it a pure verification/compliance closeout.
+- **J-04 step 6 — needs ONE browser-lane kill/restart cycle (dev).** Defect FIXED intra-iteration
+  (`_checkpoint_run_record`, `data_manager.py:3668-3708`), proven at API level by the operator
+  (`runs/goal-ops-hardening-iter-9/pump-j04-crash-recovery-evidence.md`: run 114 = 59 snapshots, 64/84
+  dates vs. all-zero pre-fix run 113). Missing: the RENDERED `/data` panel post-fix; then supersede the
+  AUDITOR ADDENDUM in `...-iter-9-regression-replay-results.md`.
+- **Closure = CLOSURE-FAIL (dev).** The J-04 DoD gap above, plus `reports/qa/goal-ops-hardening-iter-9-qa.md`
+  is stale — written 09:30, before the browser lane (12:34) and the heavy run (15:18-15:36); still calls
+  that run "DEFERRED" and concludes "ready to move forward".
+- **Owner decisions (human).** Deferred on-load `/api/backtest` MemoryError (J-06/AG-8 — recorded
+  unresolved critical, hard-blocks GOAL_ACHIEVED); unproduced J-05/J-06 `demo.sh --session-live`
+  walkthroughs; `HOST_GUARD_REQUIRE_MARKERS` 0→1; budget (`session.json max_iterations: 9`).
+- Watch: VmPeak margin narrowed 43.6%→24.7% — the audit PROVED that is real demand growth, not a sampling artifact (`perf-budgets.md` iter-9).
 
 ## Last 2 verdicts
 
-- iter 8: CONTINUE — real, audited backend fix but zero journey verification ran; nothing moved
-  passing->failing and every unblock path is agent-owned, so neither REGRESSION nor STALLED.
-- iter 7: REGRESSION — J-05 passing->failing (7+ min `/api/health` hang + worker `MemoryError` at the
-  6144 MB cap during back-to-back heavy ingest); acknowledged, iter-8 dispatched to recover.
+- iter 9: CONTINUE — J-05 recovered and proven live (439/439 health polls 200, VmPeak 24.7% under cap,
+  launcher-applied caps); J-01/J-03 out of `unknown`; AG-10 + iter-7 AG-8 resolved; J-04 one step short.
+- iter 8: CONTINUE — real audited MemoryError fix, but the browser lane was skipped so it verified nothing.
 
 ## Do not redo
 
-- Four-loop `MemoryError` early-abort + `aggregates_refreshed` honesty gating
-  (`apps/backend/app/engine/data_manager.py:3049, 3143, 3186, 3245`) — done, unit-proven.
-- Audit B1/T1/T2/T3 repairs (post-bar-cache release; TC-17 assertions restored; byte-offset logfile
-  slice; heavy test opt-in via `TRENDORA_RUN_HEAVY_INGEST_TEST=1`) — verified.
-- iter-7's `/evidence` `drawdown_expectations` warm — genuinely fixed (22.4 ms), byte-identical.
-- `readiness.py`/`main.py` boot/`warmup.py`, `max_range_days`/`snapshot_cadence`/range-cap — settled.
-- Raising `server.memory_cap_mb` as a workaround — considered and rejected (assumptions.md, iter-8).
+- **AG-10 launcher caps — DONE.** HOST-GUARD blocks in `start-backend.sh` + `dev.sh` BACKEND SUBSHELL
+  ONLY (never the frontend); values from `host-guard.env`; live-verified on `/proc`.
+- **Heavy-ingest measurement — DONE; do NOT re-run** (1092.93s, owner-authorized). CSVs under
+  `runs/goal-ops-hardening-iter-9/` + `perf-budgets.md` iter-9 section are the record.
+- **Four-loop `MemoryError` early-abort, B2 libc memoization, T3/T4 test hardening — settled/verified.**
+- **J-01/J-03/J-05 verified passing on this build**; golden `J-01.json`/`J-03.json` left unchanged (their
+  replay FAILs were pre-`.next`-rebuild false positives).
+- **Do NOT touch** `health.py`, `readiness.py`, `main.py` boot, `warmup.py`, `max_range_days`/
+  `snapshot_cadence`, the `/evidence` drawdown warm, or `server.memory_cap_mb` — all settled.

@@ -1943,6 +1943,10 @@ class JobProgress:
     # concurrency the pool used (min(config workers, target dates)).
     _backfill_per_date_seconds_sum: float = 0.0
     _backfill_concurrency: int = 0
+    # ops-hardening iter-9 (F1 / J-04 step 6) — `time.monotonic()` of the last durable progress checkpoint
+    # written onto this job's OPEN run-history row (NOT serialized — internal throttle scratch, like the
+    # two accumulators above). 0.0 means "never checkpointed", so the first advance always writes.
+    _last_checkpoint_monotonic: float = 0.0
 
     def tick(self, activity: Optional[str] = None) -> None:
         """J-66 — stamp the last-progress HEARTBEAT (and optionally the current-activity line) on a
@@ -2725,6 +2729,28 @@ def _cleanup_orphan_run(session: Session, d: date_cls) -> None:
         session.rollback()
 
 
+_libc_malloc_trim_cache: dict = {}
+
+
+def _resolve_libc_malloc_trim():
+    """ops-hardening iter-9 (B2) — resolve the libc `malloc_trim` handle AT MOST ONCE per process
+    (module-level, first-call-cached), instead of re-running `ctypes.util.find_library` +
+    `ctypes.CDLL` — each its own library-resolution fork/exec on some platforms — on EVERY
+    `_release_process_memory()` call. This matters most on the exact memory-pressure path this session
+    hardened: a warm loop's `MemoryError`-abort calls `_release_process_memory()` once per aborted loop,
+    so a single heavy ingest can invoke it several times. Caches a permanent resolution FAILURE too
+    (non-glibc / symbol absent) so it is never retried either. Returns the cached `libc.malloc_trim`
+    callable, or `None` when unavailable."""
+    if "fn" not in _libc_malloc_trim_cache:
+        try:
+            libc_name = ctypes.util.find_library("c") or "libc.so.6"
+            libc = ctypes.CDLL(libc_name)
+            _libc_malloc_trim_cache["fn"] = libc.malloc_trim
+        except (OSError, AttributeError):  # non-glibc / symbol absent
+            _libc_malloc_trim_cache["fn"] = None
+    return _libc_malloc_trim_cache["fn"]
+
+
 def _release_process_memory() -> None:
     """iter-27 (J-16, anti-goal #8) — after a heavy full-universe backfill/rebuild stage finishes, return
     the just-freed memory to the OS so a SECOND consecutive full-universe rebuild in the SAME long-lived
@@ -2745,14 +2771,18 @@ def _release_process_memory() -> None:
     the start script exports (which bounds how many independently-fragmenting arenas glibc creates across the
     server's worker threads on a many-core host — the dominant VSZ lever), consecutive rebuilds stay under
     the cap with margin. `malloc_trim` is glibc-only; on any other libc the `gc.collect()` still runs and the
-    trim is silently skipped."""
+    trim is silently skipped.
+
+    ops-hardening iter-9 (B2): the libc handle resolution itself is memoized by `_resolve_libc_malloc_trim`
+    (module-level, first-call-cached) — this function's own `gc.collect()` + `malloc_trim(0)` timing and
+    effect are unchanged; only the redundant repeated resolution is removed."""
     gc.collect()
-    try:
-        libc_name = ctypes.util.find_library("c") or "libc.so.6"
-        libc = ctypes.CDLL(libc_name)
-        libc.malloc_trim(0)  # glibc: return free heap/arena pages to the OS (no-op elsewhere)
-    except (OSError, AttributeError):  # non-glibc / symbol absent — gc.collect() above already ran
-        pass
+    malloc_trim = _resolve_libc_malloc_trim()
+    if malloc_trim is not None:
+        try:
+            malloc_trim(0)  # glibc: return free heap/arena pages to the OS (no-op elsewhere)
+        except OSError:  # defensive — a resolved-but-failing call still must never mask the caller
+            pass
 
 
 def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engine) -> None:
@@ -2839,6 +2869,16 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
         prog.error_other = prog.date_failures_total  # 0 — no per-date attempt was made
         return
 
+    # ops-hardening iter-9 AUDIT (F1 completion / J-04 step 6): checkpoint the PLAN the moment it is
+    # known — BEFORE the shared bar-cache prefill below, which on the deep basis runs for minutes. The
+    # per-date checkpoint in `_persist_isolated` only starts writing once the FIRST date has been
+    # persisted, so a process killed during the prefill window would otherwise still leave the very
+    # "0 snapshots · 0 trading days in range" row this fix exists to remove. This one write makes the
+    # honest range/plan (`calendar_days`/`dates_total`/`non_trading_days`/`already_snapshotted`) durable
+    # from the start; the counts it carries are the ones this function just computed — no second
+    # derivation, same throttled writer, same open row.
+    _checkpoint_run_record(eng, prog)
+
     def _persist(d: date_cls, payload: Optional[dict], per_date_seconds: float) -> None:
         """Apply ONE date's result on the orchestrating thread (serial, in date order): persist the
         snapshot (or read the existing one — create-once) then INSERT its forward returns. The ONLY
@@ -2911,13 +2951,18 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
         if compute_error is not None:
             prog._backfill_per_date_seconds_sum += secs
             _record_date_failure(prog, d, compute_error)
-            return
-        try:
-            _persist(d, payload, secs)
-        except Exception as exc:  # noqa: BLE001 — isolate this date; the stage continues
-            # the per-date write session (owned inside `_persist`) is already rolled back + closed by its
-            # `with` block; the shared orchestrating session is left untouched (never rolled back post-commit).
-            _record_date_failure(prog, d, str(exc))
+        else:
+            try:
+                _persist(d, payload, secs)
+            except Exception as exc:  # noqa: BLE001 — isolate this date; the stage continues
+                # the per-date write session (owned inside `_persist`) is already rolled back + closed by
+                # its `with` block; the shared orchestrating session is left untouched (never rolled back
+                # post-commit).
+                _record_date_failure(prog, d, str(exc))
+        # ops-hardening iter-9 (F1 / J-04 step 6): freeze this date's progress onto the job's OPEN
+        # run-history row (throttled — see `_checkpoint_run_record`), so a process killed mid-backfill
+        # leaves an `interrupted` row carrying the progress it really reached instead of zeros.
+        _checkpoint_run_record(eng, prog)
 
     # J-46/J-53: pre-fill ONE shared bar cache on the orchestrating session (every symbol's full series
     # loaded ONCE in one query). Workers ATTACH this same cache (read-only) so the whole K-date job does
@@ -3621,6 +3666,50 @@ def _has_open_run_record(engine: Engine, job_id: Optional[str]) -> bool:
     instead of writing a second record."""
     with Session(engine) as session:
         return _open_run_record(session, job_id) is not None
+
+
+# ops-hardening iter-9 (F1) — how often a long-running backfill re-writes its CURRENT progress onto its
+# OPEN run-history row. One small UPDATE per interval bounds the write amplification regardless of how
+# fast dates complete, while keeping a killed job's persisted progress at most one interval stale.
+_RUN_RECORD_CHECKPOINT_INTERVAL_S = 10.0
+
+
+def _checkpoint_run_record(engine: Engine, prog: JobProgress) -> None:
+    """ops-hardening iter-9 (F1 — J-04 step 6): freeze the job's CURRENT progress onto its OPEN
+    (`running`/`resumable`) run-history row, so a process that dies mid-run leaves an `interrupted` row
+    carrying its LAST PERSISTED PROGRESS.
+
+    Why this exists: the numeric detail fields were previously written into the persisted row exactly
+    ONCE, by `_finalize_run_record` — which a `kill -9`/host reset never reaches. The boot sweep
+    (`sweep_orphaned_runs`) only flips `status`/`finished_at` and never touches `message`, so an
+    interrupted row's detail stayed at its creation-time defaults and rendered as "0 snapshots · 0 trading
+    days in range" no matter how far the job actually got (live-verified: J-04 step 6 / UT-10).
+
+    Contract: this writes ONLY `message` (the detail JSON `_finalize_run_record` and `_create_run_record`
+    already serialize — one representation, no second derivation). It never sets `status`/`finished_at`,
+    so the row stays OPEN and the boot sweep can still claim it, and it never INSERTs — a job with no open
+    row (already terminal) is a silent no-op. Throttled to one write per
+    `_RUN_RECORD_CHECKPOINT_INTERVAL_S`. Best-effort telemetry: a write failure is logged and swallowed,
+    never propagated into the backfill loop (the job's own outcome must not depend on its progress
+    bookkeeping)."""
+    now = time.monotonic()
+    if (now - prog._last_checkpoint_monotonic) < _RUN_RECORD_CHECKPOINT_INTERVAL_S:
+        return
+    prog._last_checkpoint_monotonic = now
+    # Keep the breakdown internally consistent at the checkpoint instant: `error_other` is derived from
+    # the SAME uncapped `date_failures_total` the end of `_do_backfill` uses (one derivation, applied
+    # earlier), so a checkpointed row never shows failures in its summary and 0 in its breakdown.
+    prog.error_other = prog.date_failures_total
+    try:
+        with Session(engine) as session:
+            row = _open_run_record(session, prog.job_id)
+            if row is None:
+                return
+            row.message = json.dumps(_run_detail(prog))
+            session.add(row)
+            session.commit()
+    except Exception as exc:  # noqa: BLE001 — progress bookkeeping must never fail the job
+        logger.warning("run-record progress checkpoint failed for job %s (non-fatal): %s", prog.job_id, exc)
 
 
 def _finalize_run_record(engine: Engine, cfg: Config, prog: JobProgress) -> None:

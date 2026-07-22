@@ -65,7 +65,34 @@ LOG_FILE="$LOG_DIR/backend.log"
   echo "    port=$PORT memory_cap_mb=$MEMORY_CAP_MB malloc_arena_max=$MALLOC_ARENA_MAX_VALUE"
 } >> "$LOG_FILE"
 
-exec "$REPO_ROOT/apps/backend/.venv/bin/uvicorn" main:app \
+# ==== HOST-GUARD (goal.md AG-10) — DO NOT REMOVE OR WEAKEN ==========================================
+# ops-hardening iter-9: apply this host's declared CPU-affinity mask + BLAS/OMP/numexpr thread caps to
+# the launched uvicorn process, additive to the ulimit/MALLOC_ARENA_MAX enforcement above (never a
+# replacement for it). Absent file or HOST_GUARD_ENABLED=0 -> zero behavior change — host-guard stays
+# fully project-neutral per its own header contract (project-extensions/host-guard/host-guard.env).
+# Every value below comes from that file; no magic numbers here. Stripping this block is a REGRESSION
+# regardless of test outcome (goal.md AG-10) — the caps are a physical hardware constraint (two instant
+# hard resets under all-core vectorized ingest bursts, 2026-07-20/21), not a perf knob.
+# HOST_GUARD_ENV_FILE lets tests point at a scratch copy (to exercise the absent/disabled branches
+# without ever touching the real, safety-critical committed file) — unset in every real launch, so
+# production always resolves to the committed path below.
+HOST_GUARD_ENV="${HOST_GUARD_ENV_FILE:-$REPO_ROOT/project-extensions/host-guard/host-guard.env}"
+HOST_GUARD_CMD_PREFIX=()
+if [[ -f "$HOST_GUARD_ENV" ]]; then
+  # shellcheck disable=SC1090
+  source "$HOST_GUARD_ENV"
+  if [[ "${HOST_GUARD_ENABLED:-0}" == "1" ]]; then
+    export OMP_NUM_THREADS="$HOST_GUARD_BLAS_THREADS"
+    export OPENBLAS_NUM_THREADS="$HOST_GUARD_BLAS_THREADS"
+    export MKL_NUM_THREADS="$HOST_GUARD_BLAS_THREADS"
+    export NUMEXPR_NUM_THREADS="$HOST_GUARD_BLAS_THREADS"
+    HOST_GUARD_CMD_PREFIX=(taskset -c "$HOST_GUARD_CPU_LIST")
+    echo "    host-guard: cpu_list=$HOST_GUARD_CPU_LIST blas_threads=$HOST_GUARD_BLAS_THREADS" >> "$LOG_FILE"
+  fi
+fi
+# ==== end HOST-GUARD =================================================================================
+
+exec "${HOST_GUARD_CMD_PREFIX[@]}" "$REPO_ROOT/apps/backend/.venv/bin/uvicorn" main:app \
   --host 0.0.0.0 \
   --port "$PORT" \
   --app-dir "$REPO_ROOT/apps/backend" \

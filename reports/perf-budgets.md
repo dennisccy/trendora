@@ -1516,3 +1516,120 @@ backend process).
 
 No committed budget number was loosened — every row above is additive/reconfirming, matching every
 existing number already on file.
+
+### iter-9 update — heavy-ingest re-measurement under the LAUNCHER-APPLIED host-guard caps (AG-10 closure, J-05 step 4 / TC-5/TC-6), measured 2026-07-22T15:18:35Z–15:36:43Z
+
+**Why re-measure at all.** iter-8's measurement (section above) is real, but its host-guard caps were
+*inherited from the launching pump session* — `scripts/start-backend.sh` itself applied none of them
+(that gap is exactly what goal.md AG-10 scheduled for iter-9). iter-9 closed the gap: the launch script
+now sources `project-extensions/host-guard/host-guard.env` and applies the `taskset` mask + BLAS/OMP/
+numexpr thread caps itself. A measurement taken under different host-guard settings than the failing run
+proves nothing (the iter-8 lesson), so this section re-measures the SAME scenario under the caps as the
+shipped launcher now applies them, with the iter-9-tightened assertions active.
+
+**Run authorization.** The two prior developer/audit rounds deferred this run on host-safety grounds
+(AG-10: two instant hard resets on 2026-07-20/21 under this exact workload). The repo owner authorized
+this run through the pump operator on 2026-07-22 with the documented preconditions satisfied and verified
+before launch: host cooled to **Tctl 41 °C** (inside the documented 43–50 °C idle band), load1 0.51, the
+1 Hz host-guard hwmon sampler live, and an auto-kill thermal watchdog armed on the README abort criteria
+(Tctl ≥ 95 °C sustained 10 s / any DIMM ≥ 85 °C / NVMe ≥ 75 °C). The watchdog never fired.
+
+**Command (exactly the DoD's):**
+
+```
+TRENDORA_RUN_HEAVY_INGEST_TEST=1 \
+TRENDORA_HEAVY_INGEST_SAMPLER_CSV=runs/goal-ops-hardening-iter-9/heavy-ingest-vm-samples.csv \
+apps/backend/.venv/bin/python -m pytest \
+  tests/test_start_backend_script.py::test_start_backend_survives_back_to_back_heavy_ingest_under_memory_cap -v -s
+```
+
+→ **1 passed in 1092.93s (0:18:12)** (full stdout retained: `runs/goal-ops-hardening-iter-9/heavy-ingest-pytest.log`).
+
+**Method.** Unchanged from iter-8's: real `scripts/start-backend.sh` (prod mode) launched against a
+**throwaway copy** of the real dev DB (3.11 GB + 10.9 MB WAL, copied to a scratch `TMPDIR`;
+`TRENDORA_CONFIG` points at a scratch config with only `database.url` rewritten — `server.memory_cap_mb`,
+`malloc_arena_max`, `walk_forward.horizons`, `snapshot_cadence` are the real committed values), on its own
+port (:18755), never touching the shared committed DB. `/proc/<pid>/status` sampled every **0.25 s**
+(4,347 samples — a 4× finer cadence than iter-8's 1 Hz, so this figure catches transients iter-8's could
+miss); `GET /api/health` polled every 2 s (439 polls). The applied caps are evidenced by the launcher's
+own boot line in `logs/backend.log`:
+`port=18755 memory_cap_mb=6144 malloc_arena_max=2` / `host-guard: cpu_list=0-3,8-11 blas_threads=4`.
+
+**Applied cap values recorded alongside the numbers (host-guard.env, unmodified):**
+`HOST_GUARD_CPU_LIST=0-3,8-11` (4 physical cores + their SMT siblings) ·
+`HOST_GUARD_BLAS_THREADS=4` (→ `OMP`/`OPENBLAS`/`MKL`/`NUMEXPR_NUM_THREADS=4`) ·
+`ulimit -v` 6,291,456 KB (= `server.memory_cap_mb` 6144) · `MALLOC_ARENA_MAX=2`.
+
+**Jobs (both real, in ONE long-lived process — the literal iter-7 regression scenario):**
+
+1. **Job 1 — full-universe `rebuild`** (run record id 114): `status: "ok"`, **378 snapshots, 709,093
+   forward returns, 0 date failures**, `dates_total` 5,380 trading days over a 7,813-day calendar,
+   `aggregates_refreshed` carried **all seven** categories (`latest_snapshot`, `coverage`,
+   `membership_timeline`, `market_phase`, `forward_aggregates`, `research_hot_keys`,
+   `drawdown_expectations`). Wall 979.3 s; backfill stage 304.7 s at concurrency 4
+   (`per_date_seconds_sum` 568.5 s → speedup 1.87×).
+2. **Job 2 — a real historical `backfill` dispatched immediately after job 1 in the SAME process**
+   (run record id 115): target date **2026-04-21**, selected AT RUN TIME from the spawned instance's own
+   `GET /api/data/availability` (the iter-9 audit T3 fix — a hardcoded date silently decays into a
+   zero-work no-op): `status: "ok"`, **1 snapshot, 2,773 forward returns**, again **all seven**
+   `aggregates_refreshed` categories. Wall 103.2 s.
+
+| Metric (combined, BOTH jobs, one long-lived process) | Value | Cap / budget | Margin / result |
+|---|---|---|---|
+| Peak VmPeak (4,347 samples @ 0.25 s) | 4,738,948 KB (4,627.9 MB) | 6,291,456 KB (6,144 MB) | **1,552,508 KB (1,516.1 MB, 24.7%)** |
+| Peak VmSize | 4,608,900 KB (4,500.9 MB) | — | — |
+| Peak VmRSS / VmHWM | 3,946,472 / 3,948,188 KB (3,855 MB) | — | — |
+| `GET /api/health` polls (2 s cadence, whole run) | 439 | — | **0 non-200, 0 timeouts, 0 hangs** |
+| Health poll latency | median 0.398 s · max 3.646 s | — | 46/439 polls > 1 s (same parallel-backfill-worker DB/GIL contention pattern Item L iter-3 documented — not a hang, not a memory event) |
+| Host thermal, whole run (hwmon 1 Hz, 1,049 rows) | max Tctl **81 °C** · max DIMM 44/43 °C · max NVMe 41 °C · max PPT 44 W · max load1 1.60 · min mem_avail 16,866 MB | abort at Tctl ≥ 95 °C sustained 10 s / DIMM ≥ 85 °C / NVMe ≥ 75 °C | watchdog never tripped, **no reset** |
+| Assertion set (iter-9 T4/T3 tightening) | both jobs `status == "ok"` (a `"partial"` is now rejected), `aggregates_refreshed` complete for each job's outcome, job 2 `snapshots_created >= 1` | — | all passed |
+
+**Retained raw evidence (this iteration's DoD item 5):**
+`runs/goal-ops-hardening-iter-9/heavy-ingest-vm-samples.csv` (4,347 rows: epoch, VmPeak, VmSize, VmRSS,
+VmHWM) · `…/heavy-ingest-vm-samples-health.csv` (439 rows: poll index, HTTP status, elapsed) ·
+`…/heavy-ingest-hwmon.csv` (the 1 Hz host-guard sampler sliced to this run's window) ·
+`…/heavy-ingest-pytest.log`.
+
+**Comparison with iter-8's measurement — read the deltas honestly:**
+
+| | iter-8 (2026-07-21, caps inherited from the pump session) | iter-9 (this run, caps applied by `start-backend.sh` itself) |
+|---|---|---|
+| Peak VmPeak | 3,548,824 KB (43.6% margin) | 4,738,948 KB (**24.7% margin**) |
+| Sampling cadence | 1 Hz | 4 Hz |
+| Throwaway DB size | ~2.5 GB | 3.11 GB |
+| Rebuild snapshots / forward returns | 378 / 709,093 | 378 / 709,093 |
+| Max Tctl | 89 °C | **81 °C** |
+| Health polls non-200 | 0/468 | 0/439 |
+
+The **VmPeak margin narrowed from 43.6% to 24.7%**.
+
+> **AUDIT CORRECTION (iter-9 audit, 2026-07-22 — finding P1).** This paragraph originally offered two
+> candidate explanations — "a finer sampling cadence (4× more chances to catch a transient peak)" and the
+> 24% larger DB copy — and declined to separate them. **The sampling-cadence half is refuted by this run's
+> own retained trace and must not be used to discount the narrowing.** `VmPeak` in `/proc/<pid>/status` is
+> a kernel-maintained *high-water mark*: it is monotonically non-decreasing for the life of the process, so
+> a coarser sampler cannot miss it as long as it reads the file at all before the process exits. Verified
+> directly on `runs/goal-ops-hardening-iter-9/heavy-ingest-vm-samples.csv` (4,347 rows): the series is
+> monotone non-decreasing across every consecutive pair, and re-subsampling it at iter-8's 1 Hz cadence —
+> or even at one sample per 10 s — reports the **identical** peak of 4,738,948 KB. Sampling cadence
+> therefore contributes **zero** KB of the 1,190,124 KB increase. The narrowing is a real change in this
+> scenario's peak address-space demand (larger DB copy, and/or the launcher-applied caps' different thread
+> /arena layout — this run does not separate *those* two), not a measurement artifact.
+
+The honest statement is therefore: *under the shipped launcher caps, on the current DB, this scenario peaks
+at 4,627.9 MB against a 6,144 MB ceiling — a real, measured, no-longer-comfortable margin that grew by
+1,190,124 KB against iter-8 for reasons this run does not fully attribute.* That is a number to
+watch as the DB grows, not a passed budget to forget. **No committed budget number above is loosened or
+removed**; this section adds measured evidence alongside iter-3's and iter-8's, which stand unchanged.
+Thermally the launcher-applied caps are a clear improvement (peak 81 °C vs 89 °C for the same workload).
+
+**Disclosure — what the measured tree contained.** This run measured the tree as of the iteration's
+audit-fix state: AG-10 launcher caps, the T4/T3-tightened heavy-ingest test, and the B2 libc memoization.
+The F1 run-record progress checkpoint (`_checkpoint_run_record`, landed later in the same fix round) was
+**not** in the measured tree. It adds one throttled (≥10 s) small `UPDATE` of a single `message` column on
+the orchestrating thread — no bulk allocation and no change to the bar cache, the finalize hook, or the
+per-date compute path — so it is not expected to move these numbers; but it was not measured here, and
+that is stated rather than implied.
+
+**Verdict: AG-8 re-confirmed under the launcher-applied caps.** Zero `MemoryError`, zero health hangs,
+both jobs `ok` with complete aggregate sets, 24.7% VmPeak margin, no thermal event.
