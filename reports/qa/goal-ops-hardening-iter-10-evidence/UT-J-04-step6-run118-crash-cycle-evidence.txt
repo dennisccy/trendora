@@ -1,0 +1,101 @@
+J-04 step 6 — continuation-agent observation of the pump-staged fresh crash cycle (job 118)
+===========================================================================================
+Turn context: previous browser-qa-agent instance already scored J-04 PASS via run 114 (a
+prior crash) and separately staged a brand-new crash target, backend run id 118, left
+RUNNING at 60 snapshots / 65 of 84 dates as of 19:17:58Z. This turn's job was to observe
+what run 118 looks like on the live /data page AFTER the pump operator performed a real
+`kill -9` + restart cycle on the backend.
+
+Pump operator's reported timeline (their words, verified independently below):
+  - Backend pid 1942885 alive, serving job 118.
+  - kill -9 1942885 at 2026-07-22T20:20:45+01:00  (= 2026-07-22T19:20:45Z)
+  - Confirmed 4s later: nothing listening on port 8255.
+  - Restart launched 20:20:49+01:00 (= 19:20:49Z) via
+    `CHAIN_BACKEND_PORT=8255 CHAIN_FRONTEND_PORT=3255 bash scripts/start-backend.sh`
+  - New backend pid 2080333; GET /api/health first 200 at 20:21:24+01:00 (= 19:21:24Z).
+  - Frontend on :3255 never touched.
+
+Independent corroboration from /home/dennis-chan/Git/trendora/logs/backend.log
+(read live this turn, lines ~25791-26739):
+
+  25791: === start-backend.sh: launching at 2026-07-22T18:13:45Z ===
+  25794: INFO:     Started server process [1942885]
+  25796: INFO:     Application startup complete.
+   ... (server serves job 118's POST /api/data/jobs, health polls, etc.) ...
+  26728: === start-backend.sh: launching at 2026-07-22T19:20:49Z ===
+  26731: INFO:     Started server process [2080333]
+  26733: INFO:     Application startup complete.
+
+  Matches the operator's restart timestamp (19:20:49Z) and both pids (1942885 -> 2080333)
+  exactly. No "Shutting down" / "Finished server process [1942885]" line appears anywhere
+  between the last request served by pid 1942885 and the pid-2080333 restart banner --
+  consistent with an unclean kill -9 (same abrupt-truncation signature as run 114's pid
+  1870770 in the prior evidence file).
+
+  A MemoryError traceback appears at line 26704-26716, inside
+  `_refresh_ingest_aggregates` -> `forward_aggregates_cached` -> `_attribution_slices`,
+  logged as a *handled* abort ("ingest forward-aggregate warm aborted at horizon 5 --
+  memory pressure, stopping remaining horizons in this loop") -- the server continued
+  serving /api/health 200s immediately after it. This is a caught, non-fatal background
+  cache-warm abort, unrelated to the kill -9 cycle; noted for completeness, not scored.
+
+THE ACTUAL FINDING -- run 118's live-rendered state after the restart:
+
+  Live DOM read of http://localhost:3255/data, Run History table, the row for started
+  "2026-07-22 19:13:13" / range "2016-02-01 -> 2016-05-31":
+
+    Status (data-testid="run-status"): ok          <-- NOT "interrupted"
+    Symbols ok/failed: 0 / 0
+    Snapshots: 79   (breakdown, data-testid="backfill-breakdown":
+      "121 calendar days · 5 already snapshotted · 37 non-trading")
+    Summary: "backfill: 79 snapshots over 84 dates, 152825 forward returns"
+    aggregates_refreshed (7): latest_snapshot, coverage, membership_timeline,
+      market_phase, forward_aggregates, research_hot_keys, drawdown_expectations
+
+  Confirmed identically via GET /api/data (same backend, same field values):
+    {
+      "id": 118, "kind": "backfill", "start": "2016-02-01", "end": "2016-05-31",
+      "status": "ok", "snapshots_created": 79, "dates_done": 84, "dates_total": 84,
+      "calendar_days": 121, "non_trading_days": 37, "already_snapshotted": 5,
+      "error_other": 0,
+      "started_at": "2026-07-22T19:13:13.565141",
+      "finished_at": "2026-07-22T19:20:07.496207"
+    }
+
+  finished_at = 19:20:07.496207Z. The kill (converted to UTC) landed at 19:20:45Z --
+  **38 seconds AFTER job 118 had already finished and self-reported status "ok".**
+
+  Cross-check against the ENTIRE run history (all 1272+ records via GET /api/data,
+  filtered to status running/interrupted or started this session): no run anywhere in
+  the table is in status "running" with no finished_at. The only runs in "interrupted"
+  status are the pre-existing ones already catalogued (114 with real progress; 113, 110,
+  94, 88, 82, 79, 73, 72 -- all pre-fix zero rows). Job 118 is not among them; it
+  completed cleanly on its own before this crash cycle's kill signal arrived.
+
+CONCLUSION FOR THIS TURN'S SPECIFIC TASK:
+  This particular crash cycle (kill of pid 1942885 at 19:20:45Z) did NOT catch job 118,
+  or any other job, "mid-flight." Job 118 finished naturally (all 84/84 dates, status
+  "ok") about 38 seconds before the kill fired -- most likely because the last live
+  observation (60/65 dates at 19:20:05Z per the staging agent) undercounted how close the
+  job was to completion; the remaining ~19 dates evidently cleared in well under 40
+  seconds (many were "already_snapshotted"/non-trading, which resolve near-instantly).
+
+  This is neither the "interrupted, non-zero" outcome nor the "zeros" failure outcome the
+  task's binary framing anticipated -- it is a third outcome: the crash landed on an idle
+  backend with nothing in flight, so it produced no interrupted-job sample at all. This
+  does NOT demonstrate a defect in the interrupted-job-rendering behavior (there was no
+  interrupted job for the UI to fail to render); it also does NOT add a fresh
+  confirmation of that behavior beyond what run 114 (a genuinely-caught prior crash,
+  already scored) already established.
+
+  J-04 step 6's PASS verdict continues to rest on run 114's evidence (unchanged, already
+  live-DOM-verified against 9 pre-fix zero rows on the same page, previous section of
+  this report) -- that finding is untouched by this turn's crash cycle and stands on its
+  own. This turn adds no new positive or negative evidence about the fix itself; it only
+  documents that the specific fresh-crash rehearsal requested for this turn missed its
+  target due to timing, and recommends a tighter-timed retry if a fully-in-this-session
+  confirmation via job 118 (or a successor job) is still wanted.
+
+Backend/frontend health at the end of this observation: both http://localhost:3255/data
+and GET /api/health (pid 2080333) returned 200. No service was started, killed, or
+restarted by this continuation agent.

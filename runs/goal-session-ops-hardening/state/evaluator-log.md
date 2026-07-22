@@ -375,3 +375,55 @@ extension; (5) framework maintainer, still unfixed: `merge_ui_test_results.py:57
 browser-qa skip misrouting. Also carried: pre-existing `tests/test_db.py::test_create_all_produces_
 expected_tables` failure and audit B3 (`command -v taskset` guard). WATCH: VmPeak margin narrowed
 43.6%→24.7% and the audit proved that narrowing is real demand growth, not a sampling artifact.
+
+## Iteration 10 — goal-ops-hardening-iter-10
+
+**Date:** 2026-07-22T20:55:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** lean
+**Journey deltas:**
+- Newly passing: **J-04** (partial→passing — step 6 closed on a live rendered-surface observation of a
+  genuinely mid-flight `kill -9`, corroborated by the evaluator directly against sqlite + `logs/backend.log`)
+- Re-verified passing: J-01, J-03 (deterministic golden replay), J-05 (LLM light non-heavy re-confirmation)
+- Newly failing: none. Regressed: none (no journey moved passing→failing)
+- Unchanged: J-06 stays `partial` (out of scope; now the ONLY non-passing Must-have)
+- Anti-goal violations: scan-report CLEAN (product diff = `README.md` only); coherence COHERENCE-PASS.
+  Carried unresolved CRITICAL AG-8 dimension (iter-9 — on-load `/api/backtest` MemoryError, owner-decision
+  deferral, not re-tested). NEW minor AG-10 record: the developer session ran targeted pytest directly rather
+  than under host-guard confinement (its own disclosure; hwmon 84-89 °C, evaluator-checked peak 91 °C vs the
+  95 °C watchdog, no trip, no reset). Launcher-side AG-10 compliance verified live in the boot banner.
+
+**Reasoning:** J-04's step 6 is closed on evidence I re-derived myself rather than accepted. Reading
+`apps/backend/data/trendora.db` directly: run 119 (2014-01-02→2015-12-31, 504 target dates) is persisted
+`interrupted` with `snapshots_created 117 / dates_done 158 / dates_total 504` — the run stopped 346 dates short,
+which alone proves the kill landed mid-flight without relying on the operator's pre-kill poll; its `finished_at`
+19:32:19.621 sits 1.3 s AFTER the successor's boot banner in `logs/backend.log`, so the row was finalized by the
+NEW process's orphan sweep, and a whole-file grep shows no clean-shutdown line for pid 2080333 while an earlier
+pid (1803579) does have one — a genuine `kill -9` signature, which also re-confirms step 5 on a second cycle. The
+lane's DOM capture matches the DB exactly and reproduces a string the API never emits (`page.tsx:2564-2573` builds
+"729 calendar days · 41 already snapshotted · 225 non-trading" via `parts.join(" · ")` under
+`data-testid="backfill-breakdown"`), so this is a rendered-surface read, not the API-level evidence the round-3
+auditor barred. Pre-fix controls 110/113 read from the DB are `interrupted` with 0/null — the contrast is real.
+Steps 1-4 are carried from iter-9 across an iteration whose product diff is literally `README.md` only. Rejected
+GOAL_ACHIEVED: J-06 is still `partial` and the critical AG-8 `/api/backtest` dimension is unresolved. Rejected
+REGRESSION: no journey moved passing→failing, and that AG-8 entry is the carried, human-known, spec-declared
+deferral (iter-8/iter-9 precedent), not something introduced or worsened here. Rejected STALLED: J-06's remaining
+work is agent-owned (perf re-sweep, `measure-perf.sh --boot`, the `[NEW]` `--session-live` walkthrough its own
+Acceptance names) — only the *scope* call on the deferred MemoryError is the owner's. Rejected ESCALATE: review
+PASS, browser-qa PASS, no fail-open, no journey failing twice. Coherence PASS → no consolidation mandate.
+Progress made → CONTINUE.
+
+**Next-step recommendation:** FULL depth, session-closeout targeting J-06 (last non-passing Must-have):
+(1) re-run the 11-page real-browser perf sweep AND `bash scripts/measure-perf.sh --boot` on the current tree —
+this also closes J-04's carried WARN (the ≤5 s boot budget was last measured 2026-07-20, before iter-9 put the
+host-guard block into `scripts/start-backend.sh`); (2) produce the `[NEW]` `demo.sh ops-hardening --session-live`
+walkthroughs for J-05 and J-06 (J-06's Acceptance requires one) or obtain explicit human deferral;
+(3) OWNER DECISION, do not let an agent invent it: scope or formally defer the on-load `/api/backtest` →
+`forward_aggregates_cached` MemoryError — it is the unresolved critical AG-8 entry and hard-blocks
+GOAL_ACHIEVED; also `HOST_GUARD_REQUIRE_MARKERS`; (4) AG-10 hygiene: confine agent-run pytest with the
+host-guard `taskset`/BLAS env, or amend AG-10 to say how test bursts are confined; (5) bookkeeping before the
+gate — `runs/goal-ops-hardening-iter-10/status.json` never advanced past `dev_complete`
+(`browser_checks_run: false`) even though the browser lane ran and passed, and the closure/QA lanes have not run
+since iter-9 (lean depth). Carried framework items unchanged: `merge_ui_test_results.py` FAIL-cell drop (benign
+this iteration — everything PASSed), the `Frontend Present: no` browser-qa-skip misrouting, and the pre-existing
+`tests/test_db.py::test_create_all_produces_expected_tables` failure.

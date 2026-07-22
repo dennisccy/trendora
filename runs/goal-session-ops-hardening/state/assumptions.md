@@ -333,3 +333,36 @@ browser-qa-agent for it to read and score from the RENDERED page, not from API J
 treat the operator note's claims as settled fact anywhere in the DEFINITION OF DONE or Data-contract
 sections; the browser-lane observation requirement stands regardless of who triggers the restart.
 **Reversible:** yes
+
+## iter-10 — goal-evaluator
+
+**Ambiguity:** My methodology says to open the screenshot for every journey whose status changes and let the
+image outrank prose. J-04's decisive step-6 artifact is a DOM/HTML capture, not an image: every screenshot taken
+after scrolling `/data` to the Run History row renders blank/near-black (I opened
+`UT-J-04-step6-run119-scrolled.png` — it is genuinely a flat dark frame), a reproducible Chrome-MCP capture
+artifact on this ~1,800-row page. The goal text asks for what the page *shows*, and nothing says the proof must
+be a raster image.
+**We chose:** accepted the verbatim `<tr>` DOM capture as rendered-surface evidence and scored J-04 `passing`,
+but only after checking it is not disguised API evidence: the captured string "729 calendar days · 41 already
+snapshotted · 225 non-trading" is composed client-side by `apps/frontend/app/data/page.tsx:2564-2573`
+(`parts.join(" · ")` inside `data-testid="backfill-breakdown"`) and appears nowhere in the API payload, and its
+numbers match the sqlite row I queried myself. A scroll-0 screenshot (`...-run119-data-page-top.png`) independently
+shows `/data` live and healthy. A human who requires a raster image of the row itself may hold J-04 at `partial`
+until the capture artifact is worked around (e.g. a narrower viewport or a filtered Run History view).
+**Reversible:** yes
+
+## iter-10 — goal-evaluator
+
+**Ambiguity:** J-04 is a six-step journey, but only steps 5-6 were re-driven this iteration; steps 1-2 rest on a
+2026-07-20 `perf-budgets.md` measurement and steps 3-4 on iter-9's controlled fetch-override simulations. iter-9
+already flagged steps 1-2 as a WARN because that measurement predates iter-9 adding the host-guard
+`taskset`/BLAS block to `scripts/start-backend.sh`, and this iteration's only timing datapoints (~35 s and ~37 s
+from restart banner to first *observed* 200) are coarse operator polls, not measurements.
+**We chose:** scored the journey `passing` on the strength of a literally empty product diff (`README.md` only —
+scan-report, coherence audit and my own `iter-diff.md` read all agree), so no code path steps 1-4 cover could
+have changed since iter-9 verified them; and treated the ~35 s figures as polling artifacts because run 119's
+orphan finalize landed 1.3 s after the boot banner, which is incompatible with a 35 s boot stall. I did NOT let
+that reasoning erase the gap: the un-re-measured ≤5 s budget is recorded as a carried caveat on J-04 and is item
+1 of the next-step recommendation (`measure-perf.sh --boot`, a few minutes of work). A human who requires every
+step of a Must-have journey to be re-driven in the iteration that scores it may hold J-04 at `partial`.
+**Reversible:** yes

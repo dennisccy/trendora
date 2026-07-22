@@ -1,0 +1,125 @@
+J-04 step 6 — live browser DOM observation of the /data Run History panel
+==========================================================================
+
+Captured: 2026-07-22 (session date), live navigation to http://localhost:3255/data
+Browser session dir: /home/dennis-chan/.cache/superpowers/browser/2026-07-22/session-1784703827876
+Source files: 262-navigate.html / 262-navigate.md (initial page load), 265-eval.html (DOM query confirming row identity)
+
+NOTE ON SCREENSHOTS: a full-viewport PNG screenshot at scroll position 0 rendered correctly
+(saved as UT-J-04-data-page-loaded.png). However, EVERY screenshot attempt taken after
+scrolling the page down (tested at multiple scroll depths: eval-scrollIntoView, 200px wheel
+scroll, 3000px programmatic scroll, and a resized 2400px-tall viewport) produced a blank/near-
+black image, even though document.readyState was "complete" and the DOM content was verified
+present and correct via eval() queries run at the exact same moment. This looks like a
+screenshot-capture artifact of the Chrome MCP tool on this specific very-tall page (the /data
+page has a ~591-row per-symbol table, a 1192-row membership timeline, and a 50-row run-history
+table, making it one of the tallest pages in the app) — not a rendering defate of the product
+itself, since the DOM/HTML capture at that same scroll position is fully populated and correct
+(see raw HTML below). This limitation is recorded here in the interest of full honesty; the
+DOM/HTML text evidence below is used as the evidentiary artifact for this finding in its place.
+
+--------------------------------------------------------------------------------------------
+RAW DOM CONTENT — Run History table row for the killed backfill job (backend id 114)
+--------------------------------------------------------------------------------------------
+
+Table header (thead), confirming column identities:
+  Started | Kind | Range | Status | Symbols ok/failed | Snapshots | Summary
+
+Row <tr> innerHTML, extracted verbatim from the live-rendered page (262-navigate.html, byte
+offset ~569761), reformatted here only for line-wrapping (no text altered):
+
+  <tr class="border-b border-border align-top last:border-b-0 hover:bg-surface-2">
+    <td class="num px-3 py-2 text-xs text-text-muted">2026-07-22 17:37:09</td>
+    <td class="px-3 py-2">
+      <div class="inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs
+                  font-medium transition-colors border-border bg-surface-2 text-text-muted">
+        backfill
+      </div>
+    </td>
+    <td class="num px-3 py-2 text-xs text-text-muted">2019-03-01 &rarr; 2019-06-28</td>
+    <td class="px-3 py-2">
+      <div class="inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs
+                  font-medium transition-colors border-border bg-surface-2 text-text-muted num"
+           data-testid="run-status">
+        interrupted
+      </div>
+    </td>
+    <td class="num px-3 py-2 text-right">
+      <span class="text-pos">0</span><span class="text-text-faint"> / </span>
+      <span class="text-text-muted">0</span>
+    </td>
+    <td class="num px-3 py-2 text-right text-text-muted">
+      59
+      <p class="num text-xs text-text-faint" data-testid="backfill-breakdown">
+        120 calendar days &middot; 5 already snapshotted &middot; 36 non-trading
+      </p>
+    </td>
+    <td class="max-w-xs px-3 py-2 text-xs text-text-muted">
+      <span class="line-clamp-2" title="backfill: 59 snapshots over 84 dates, 136380 forward returns">
+        backfill: 59 snapshots over 84 dates, 136380 forward returns
+      </span>
+    </td>
+  </tr>
+
+Rendered plain-text equivalent (via eval() querySelectorAll('[data-testid="run-status"]')[2]):
+  "2026-07-22 17:37:09 backfill 2019-03-01 -> 2019-06-28 interrupted 0 / 0 59
+   120 calendar days . 5 already snapshotted . 36 non-trading
+   backfill: 59 snapshots over 84 dates, 136380 forward returns"
+
+--------------------------------------------------------------------------------------------
+WHAT THIS SHOWS
+--------------------------------------------------------------------------------------------
+
+- Status badge (data-testid="run-status"): "interrupted" — NOT a stuck "running" row.
+- Snapshots column: 59 (non-zero) — this is the exact field that was "0" for every
+  pre-fix interrupted row (see contrast below).
+- Breakdown (data-testid="backfill-breakdown"): "120 calendar days . 5 already
+  snapshotted . 36 non-trading" — non-null, real values (not "—"/blank).
+- Summary message: "backfill: 59 snapshots over 84 dates, 136380 forward returns" — a real,
+  specific persisted message, not a generic placeholder.
+- Arithmetic check (TC-2): non_trading_days(36) + dates_total(84) = 120 = calendar_days. OK.
+  snapshots_created(59) + already_snapshotted(5) + error_other(0) = 64. This does NOT equal
+  dates_total (84) — but it DOES equal dates_done (64, per the API's GET /api/data record for
+  this same run id 114), because this run was INTERRUPTED partway through (64 of the planned
+  84 target dates had actually been processed at the moment of the kill; the remaining 20 were
+  never reached). TC-2's formula as literally written assumes a completed run; for an
+  interrupted run the correct invariant is against dates_done, not dates_total, and that
+  invariant holds. This is the expected, honest behavior of a partial-progress checkpoint, not
+  a defect — it is the SAME distinction the current backend already draws between dates_done
+  and dates_total, just not separately re-labeled as its own number in this historical-row
+  view (dates_done is shown live only in the still-running Job Progress panel, per
+  apps/frontend/app/data/page.tsx:2763; the completed/interrupted Run History row instead shows
+  the derived breakdown fields, which are correct and non-null here).
+
+--------------------------------------------------------------------------------------------
+CONTRAST — other "interrupted" rows on this SAME live page, from BEFORE the fix
+--------------------------------------------------------------------------------------------
+
+The same live DOM query (querySelectorAll('[data-testid="run-status"]')) found NINE other rows
+with status "interrupted" elsewhere in the Run History table (2025-06-01..2026-07-17 at
+11:42:42; 2017-01-01..2018-12-31; 2005-01-03..2005-06-30; 2026-05-02..2026-05-03 x2;
+2020-03-16..2020-03-16; 2025-06-01..2026-07-17 at 17:27:23; 2005-02-28..2005-03-07;
+2010-01-01..2010-06-30) — every one of them shows Snapshots = 0, "0 / 0" symbols, and a
+Summary of "backfill: 0 snapshots over 0 dates, 0 forward returns" (the breakdown paragraph is
+entirely absent for these rows, since the API record's calendar_days/non_trading_days/
+already_snapshotted fields are null for them). These are pre-fix control rows (killed before
+`_checkpoint_run_record` existed, or killed too soon after start for a checkpoint to land) and
+match the ORIGINAL defect described in iter-9's UT-10 finding exactly. Row 114 (2019-03-01 to
+2019-06-28, timestamped 17:37:09) is the ONLY interrupted row in the entire live table with
+real, non-zero, non-null persisted progress — the live-rendered contrast between it and its
+nine zero/null siblings, all in the same table on the same page load, is direct visual/DOM
+proof that the fix (and only the fix) changes what gets checkpointed and rendered.
+
+--------------------------------------------------------------------------------------------
+PROVENANCE OF ROW 114
+--------------------------------------------------------------------------------------------
+
+Row 114's crash cycle itself was performed by the operator (pump) shortly before this iteration
+was dispatched (started_at 2026-07-22T17:37:09 backend-clock / ~18:37 BST), and is the exact
+cycle documented narratively in `runs/goal-ops-hardening-iter-9/pump-j04-crash-recovery-evidence.md`
+(which describes killing pid 1870770 mid-backfill and reading back run id 114 via `GET /api/data`
+JSON). That prior evidence was explicitly API-level only — "nobody re-drove the /data page UI
+after this cycle" (per that file's own "Scope and honesty notes"). THIS observation is that
+missing piece: a live navigation to the actual rendered `/data` page, in a real browser, reading
+the same row 114 back out of the DOM rather than the API — confirming the fix is not just
+persisted correctly, but RENDERED correctly, for the first time.

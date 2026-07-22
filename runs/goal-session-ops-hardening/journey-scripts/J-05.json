@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "journey": "J-05",
+  "name": "Aggregates are precomputed at ingest, never on the fly",
+  "default_timeout_ms": 20000,
+  "steps": [
+    {"n": 1, "journey": "J-05", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "Data Manager"}},
+    {"n": 2, "journey": "J-05", "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2021-09-15"}},
+    {"n": 3, "journey": "J-05", "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2021-09-15"}},
+    {"n": 4, "journey": "J-05", "action": {"type": "click", "target": {"role": "button", "name": "Start"}}},
+    {"n": 5, "journey": "J-05", "action": {"type": "goto", "url": "/scanner-runs/1193"}, "expect": {"text": "as of 2021-09-15"}}
+  ]
+}

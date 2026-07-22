@@ -1,0 +1,168 @@
+UT-J-04 step 6 — third crash cycle, this time caught genuinely mid-flight
+(continuation agent, dispatch runs/goal-session-ops-hardening/dispatch/prompt-req.owTdA7.md)
+==========================================================================================
+
+SCOPE: this cycle was pre-staged and executed entirely by the pump operator (job launch, poll,
+kill -9, restart) BEFORE this agent turn began. This agent's job was purely the live, in-browser
+observation of the resulting state plus independent corroboration via API and logfile — no
+service was started, stopped, or restarted by this agent.
+
+1. JOB IDENTITY
+---------------
+Job id (operator-supplied): bad4f8e94be8448fbb0ac5812f1005c4
+Kind: backfill
+Range: 2014-01-02 -> 2015-12-31  (504 target trading dates -- deliberately long so the
+  self-completion buffer far exceeds any realistic poll-to-kill latency)
+Resolved backend run id (via GET /api/data "runs" array, matched on start/end date): 119
+
+2. OPERATOR-REPORTED TIMELINE (pre-kill poll + kill + restart)
+---------------------------------------------------------------
+- Poll immediately before the kill (operator report): status=running, snapshots_created=162,
+  dates_done=203, dates_total=504 -- unambiguously in flight, nowhere near completion.
+- kill -9 of backend pid 2080333 at 2026-07-22T20:32:15+01:00 (=19:32:15Z). Confirmed 3s later:
+  nothing listening on port 8255.
+- Restart launched 2026-07-22T20:32:18+01:00 (=19:32:18Z); new backend pid 2100030.
+- GET /api/health first answered 200 at 2026-07-22T20:32:55+01:00 (=19:32:55Z).
+- Frontend on :3255 was never touched throughout.
+
+3. THIS AGENT'S INDEPENDENT CORROBORATION (this turn)
+-------------------------------------------------------
+a) Process/port check (live, this turn):
+   $ ps aux | grep 2100030
+   dennis-+ 2100030 ... uvicorn main:app --host 0.0.0.0 --port 8255 ... (started ~20:32, i.e. 19:32Z)
+   $ ss -ltnp | grep 8255
+   LISTEN 0 2048 0.0.0.0:8255 users:(("uvicorn",pid=2100030,fd=19))
+   -> pid 2100030 is the CURRENT live backend process listening on 8255, matching the operator's
+      reported restart pid exactly.
+
+b) GET /api/health (this turn): {"status":"ok", "readiness":"ready", ...} -- backend fully healthy.
+
+c) logs/backend.log (read live this turn, lines ~26728-26783):
+   === start-backend.sh: launching at 2026-07-22T19:20:49Z ===   <- prior restart, pid 2080333
+   INFO:     Started server process [2080333]
+   ...
+   INFO:     127.0.0.1:34296 - "POST /api/data/jobs HTTP/1.1" 200 OK        <- job bad4f8e9... created
+   INFO:     127.0.0.1:54432 - "GET /api/data/jobs/bad4f8e94be8448fbb0ac5812f1005c4 HTTP/1.1" 200 OK
+   INFO:     127.0.0.1:33652 - "GET /api/data/jobs/bad4f8e94be8448fbb0ac5812f1005c4 HTTP/1.1" 200 OK
+   <blank line -- process died here, no further log output from pid 2080333>
+   === start-backend.sh: launching at 2026-07-22T19:32:18Z ===   <- matches operator's 20:32:18+01:00
+   INFO:     Started server process [2100030]                    <- matches operator's reported pid
+
+   -> The restart timestamp (19:32:18Z UTC = 20:32:18+01:00 BST) and the new pid (2100030) match
+      the operator's report exactly, independently, from the logfile alone.
+   -> No "Shutting down" / "Application shutdown complete" / "Finished server process [2080333]"
+      line appears anywhere before the next restart banner -- confirmed by a full-file grep for
+      those three strings (last clean-shutdown sequence in the ENTIRE log belongs to a much
+      earlier pid, 1803579, at 16:59:28Z-adjacent lines). The log format demonstrably DOES record
+      clean shutdowns when they occur; pid 2080333's total absence of one is the abrupt-truncation
+      signature of an unclean kill (kill -9), not a logging gap.
+
+4. LIVE BROWSER DOM OBSERVATION (this turn, Chrome MCP, http://localhost:3255/data)
+--------------------------------------------------------------------------------------
+Navigated live to /data. Queried every `[data-testid="run-status"]` element and its containing
+`<tr>` via `eval`. The newest row (top of Run History, matching "Started: 2026-07-22 19:30:48",
+i.e. run id 119) renders:
+
+  <tr>
+    <td>2026-07-22 19:30:48</td>
+    <td>backfill</td>
+    <td>2014-01-02 &#8594; 2015-12-31</td>
+    <td data-testid="run-status">interrupted</td>
+    <td>0 / 0</td>
+    <td>117<p data-testid="backfill-breakdown">729 calendar days &middot; 41 already snapshotted &middot; 225 non-trading</p></td>
+    <td title="backfill: 117 snapshots over 504 dates, 204460 forward returns">
+      backfill: 117 snapshots over 504 dates, 204460 forward returns
+    </td>
+  </tr>
+
+Rendered summary:
+  Status:            interrupted
+  Snapshots:         117              (non-zero)
+  Breakdown:         729 calendar days · 41 already snapshotted · 225 non-trading   (non-null)
+  Symbols ok/failed: 0 / 0
+  Summary line:      "backfill: 117 snapshots over 504 dates, 204460 forward returns"
+
+This is a direct, this-turn, live-DOM read of a job THIS SAME LANE staged, polled mid-flight, and
+had killed at a precisely known instant -- the tightest possible timing evidence available for
+J-04 step 6 in this entire session.
+
+5. CROSS-CHECK AGAINST THE RAW API RECORD (GET /api/data, "runs" array, id=119)
+-----------------------------------------------------------------------------------
+{
+  "id": 119, "kind": "backfill", "start": "2014-01-02", "end": "2015-12-31",
+  "status": "interrupted", "symbols_ok": 0, "symbols_failed": 0,
+  "snapshots_created": 117, "dates_done": 158, "dates_total": 504,
+  "calendar_days": 729, "non_trading_days": 225, "already_snapshotted": 41, "error_other": 0,
+  "aggregates_refreshed": null,
+  "started_at": "2026-07-22T19:30:48.536633",
+  "finished_at": "2026-07-22T19:32:19.621145",
+  "message": "backfill: 117 snapshots over 504 dates, 204460 forward returns"
+}
+DOM and API agree exactly (117 / 504 / 729 / 41 / 225 / "interrupted").
+
+Note the `finished_at` (19:32:19.621145Z) sits ~1.3s after the restart launch (19:32:18Z) and
+~24s before the new backend's first healthy /api/health (19:32:55Z per the operator's report) --
+consistent with the restarted process detecting and finalizing the orphaned/incomplete run as
+part of its own startup reconciliation, not with the job itself having a live shutdown hook (none
+could have run -- the old process was already dead by kill -9).
+
+6. ARITHMETIC HONESTY CHECK (same TC-2 identity as run 114's evidence)
+--------------------------------------------------------------------------
+  non_trading_days(225) + dates_total(504) = 729 = calendar_days                      -> exact match
+  snapshots_created(117) + already_snapshotted(41) + error_other(0) = 158 = dates_done -> exact match
+  dates_done(158) != dates_total(504) -- expected for an INTERRUPTED run (only 158 of 504 target
+  dates were ever reached before the kill); the correct identity for a partial run is against
+  dates_done, which holds exactly, same as run 114's precedent.
+
+7. CHECKPOINT-THROTTLE SANITY CHECK (expected direction, not a defect)
+---------------------------------------------------------------------------
+  Last live poll before the kill (operator report): snapshots_created=162, dates_done=203
+  Persisted/rendered value (this observation):      snapshots_created=117, dates_done=158
+  Both frozen numbers sit BELOW the last live values, as expected: the checkpoint writer is
+  throttled to roughly one write per 10s, so the final persisted row reflects the last checkpoint
+  BEFORE the kill, not the in-memory state at the instant of the kill. This gap (162->117,
+  203->158) is the correct, designed behavior of a throttled checkpoint -- not data loss beyond
+  what the throttle interval implies, and not a rendering defect.
+
+8. CONTRAST, SAME PAGE LOAD, SAME TURN
+-------------------------------------------
+Queried all 10 rows on the live page with status "interrupted":
+  id 119  2014-01-02->2015-12-31  snapshots=117 dates_done=158/504  <- THIS cycle (mid-flight kill)
+  id 114  2019-03-01->2019-06-28  snapshots=59  dates_done=64/84    <- prior post-fix interrupted row
+  id 113  2025-06-01->2026-07-17  snapshots=0   dates_done=0/0      <- pre-fix zero row
+  id 110  2017-01-01->2018-12-31  snapshots=0   dates_done=0/0      <- pre-fix zero row
+  id 94   2005-01-03->2005-06-30  snapshots=0   dates_done=0/0      <- pre-fix zero row
+  id 88   2026-05-02->2026-05-03  snapshots=0   dates_done=0/0      <- pre-fix zero row
+  id 82   2020-03-16->2020-03-16  snapshots=0   dates_done=0/0      <- pre-fix zero row
+  id 79   2025-06-01->2026-07-17  snapshots=0   dates_done=0/0      <- pre-fix zero row
+  id 73   2005-02-28->2005-03-07  snapshots=0   dates_done=0/0      <- pre-fix zero row
+  id 72   2010-01-01->2010-06-30  snapshots=0   dates_done=0/0      <- pre-fix zero row
+
+Full row HTML for id 119, id 114, and id 110 (pre-fix zero example) captured verbatim via eval --
+see the "Live browser DOM observation" section above and the report markdown for id 114/id 110's
+row HTML. The fix-vs-no-fix contrast (117/59 non-zero vs 0 across 8 sibling rows) is directly
+visible on ONE page load, without trusting any narrative -- and now has TWO independent non-zero
+confirmations (119, freshly caught mid-flight this cycle; 114, from the prior cycle).
+
+9. SCREENSHOT NOTE (same known limitation as run 114/118's evidence)
+---------------------------------------------------------------------------
+Top-of-page screenshot (scroll position 0) captured correctly:
+  reports/qa/goal-ops-hardening-iter-10-evidence/UT-J-04-step6-run119-data-page-top.png
+Screenshot after `scrollIntoView({block:"center"})` on the run-119 row reproduced the SAME
+blank/near-black capture artifact already documented for runs 114 and 118 on this same tall page
+(saved anyway as UT-J-04-step6-run119-scrolled.png for completeness) -- DOM eval at the identical
+scroll position returned fully correct, populated content in the same instant, confirming this is
+a Chrome-MCP screenshot-capture quirk specific to this page's height, not a rendering defect. The
+DOM/HTML capture above is the evidentiary artifact for the scrolled Run History row, consistent
+with the existing methodology already used for runs 114 and 118 in this same report.
+
+CONCLUSION
+----------
+This cycle succeeds where the run-118 cycle (documented earlier in the same report) missed: the
+job was verified `running` via API poll seconds before the kill, the kill landed while genuinely
+in flight (162/504 dates done, nowhere near complete), and the resulting live-rendered `/data` row
+shows exactly the required behavior -- status "interrupted", non-zero persisted snapshots (117),
+non-null breakdown (729 calendar days / 41 already snapshotted / 225 non-trading) -- with the
+persisted numbers sitting below the last live poll values by an amount consistent with the 10s
+checkpoint throttle, as expected. This is now the primary, tightest-timing direct evidence for
+J-04 step 6, corroborating (not replacing) run 114's earlier finding.

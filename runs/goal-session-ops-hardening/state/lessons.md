@@ -221,3 +221,19 @@ measurement artifact, and the benign-sounding cadence explanation had to be stru
 number that is trending the wrong way.
 **Applies to:** any iteration recording VmPeak/VmSize/RSS headroom against `server.memory_cap_mb`, and any
 future J-05/AG-8 re-measurement as the price basis deepens.
+
+## iter-10 — 2026-07-22T20:55:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A crash journey can be scored without trusting anyone's narration of the crash: the persisted run
+row proves it by itself. `data_provider_runs` id 119 stopped at `dates_done 158 / dates_total 504` (mid-flight by
+construction) and its `finished_at` lands 1.3 s AFTER the successor's `=== start-backend.sh: launching ... ===`
+banner in `logs/backend.log`, which means the dead process wrote nothing on the way out and the new one's orphan
+sweep finalized the row — with no `Shutting down`/`Finished server process [pid]` line anywhere before that
+banner (the same log demonstrably records clean shutdowns for other pids). Two related traps this iteration hit:
+the first crash rehearsal (run 118) missed because the job self-completed 38 s before the kill — use a range long
+enough that the completion buffer exceeds poll-to-kill latency — and the run-summary identity for an INTERRUPTED
+run is `snapshots_created + already_snapshotted + error_other = dates_done`, not `= dates_total` (TC-2 as written
+assumes a completed run).
+**Applies to:** any iteration verifying crash/restart, orphan-sweep or checkpoint behaviour; any spec writing a
+run-summary arithmetic assertion that must also hold for partial runs.
