@@ -439,3 +439,30 @@ and 5-6 (log grep + live DOM read, both of which I re-ran myself) ARE fresh this
 closes iter-10's carried ≤5 s-boot caveat. A human who requires every step re-driven in the scoring
 iteration may hold J-04 at `partial` until an operator-performed restart/kill cycle is observed live.
 **Reversible:** yes
+
+## iter-12 — goal-decomposer
+
+**Ambiguity:** Every decomposer since iter-4 (iter-4/5/6/7/9/11) has scoped the `[NEW]`-flagged
+`demo.sh ops-hardening --session-live` walkthrough (J-05/J-06's Acceptance names it) OUT of developer
+scope on the stated reasoning that it "self-resolves automatically" via a session-mode demo-narrator
+pass once J-06 reaches `passing`. I could not find that automatic pass anywhere in
+`scripts/automation/run-goal.sh` — I grepped every `demo-phase.sh` invocation in that file and the only
+one that exists is `bash "$SCRIPT_DIR/demo-phase.sh" "$iter_name"` inside `_run_showcase_steps` (per-iteration
+record mode, no `--session` flag), run only for lean-depth CONTINUE/ESCALATE verdicts; there is no call
+anywhere (including the GOAL_ACHIEVED path) that passes `--session` to `demo-phase.sh` or `--session-live`
+to `demo.sh`. Separately, `demo-phase.sh`'s own header comment states `--live`/`--session` modes drive a
+**visible, human-watched** Chrome window that narrates "waiting for Enter between steps" and explicitly
+"writes no artifacts" — so even a manual invocation produces nothing an autonomous evaluator could later
+cite as evidence. goal.md's J-06 acceptance says the walkthrough must be "viewable via
+`demo.sh ops-hardening --session-live`," which is literally true right now (the command exists and would
+run against every currently-passing journey) but is not a thing that can be "produced" as a stored,
+gradable deliverable under this framework's evidence model.
+**We chose:** kept this item OUT of iter-12's developer scope (same outcome as prior iterations) but
+stopped repeating the "will self-resolve automatically" framing, since I have now falsified it by reading
+the actual script. Recorded it as a second, parallel open owner-decision item alongside AG-8: either (a) a
+human runs the command once and confirms it renders (satisfying the literal "viewable via" wording without
+a stored artifact), (b) goal.md's acceptance wording is amended to name a recordable artifact instead, or
+(c) a future framework enhancement adds a session-level record mode — none of which is this iteration's
+(or any product-facing decomposer's) scope to invent. Did not touch `scripts/automation/*` per the
+maintenance protocol.
+**Reversible:** yes

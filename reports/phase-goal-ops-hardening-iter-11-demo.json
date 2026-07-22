@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-11",
+  "base_url": "http://localhost:3255",
+  "iteration": 11,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the home page",
+      "narration": "Let's start on Trendora's home page — a small status pill up top tells you at a glance whether today's board of rankings can be trusted.",
+      "point_out": "The status pill reads 'Ready' with a thin green banner underneath saying 'GO — today's board is current,' even right after the app restarts.",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "GO — today's board is current." }
+    },
+    {
+      "n": 2,
+      "title": "Open the Data Manager",
+      "narration": "The Data Manager page is where the dataset's day-by-day coverage lives, and where new historical days get pulled in.",
+      "point_out": "The Dataset coverage panel shows real numbers for price history, universe size, and trading days — all computed and stored ahead of time, never recalculated while you wait.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Dataset coverage" }
+    },
+    {
+      "n": 3,
+      "title": "Enter a backfill start date",
+      "narration": "Typing a start date into the backfill form begins a request to fill in a specific day's data.",
+      "point_out": "",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "testid": "job-start-date" }, "text": "2026-05-02" }
+    },
+    {
+      "n": 4,
+      "title": "Enter a backfill end date",
+      "narration": "The end date completes the range — here it's just the next calendar day.",
+      "point_out": "",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "testid": "job-end-date" }, "text": "2026-05-03" }
+    },
+    {
+      "n": 5,
+      "title": "Start the backfill job",
+      "narration": "Clicking Start submits the request. Because this short span falls on a weekend and was already covered by an earlier run, Trendora is upfront about it instead of pretending something new happened.",
+      "point_out": "The job status reads 'no new snapshots' — a distinct, honest outcome, never dressed up as a fresh success.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Start" } },
+      "expect": { "text": "no new snapshots" },
+      "timeout_ms": 15000
+    },
+    {
+      "n": 6,
+      "title": "Back to the Data Manager",
+      "narration": "Back on the Data Manager page to try a much larger date range.",
+      "point_out": "",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Dataset coverage" }
+    },
+    {
+      "n": 7,
+      "title": "Enter a much wider date range",
+      "narration": "Setting the start date over a year back sets up a much bigger backfill request.",
+      "point_out": "",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "testid": "job-start-date" }, "text": "2025-06-01" }
+    },
+    {
+      "n": 8,
+      "title": "Enter the range's end date",
+      "narration": "The end date extends the span past 400 days — well beyond what a size-capped system would allow.",
+      "point_out": "",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "testid": "job-end-date" }, "text": "2026-07-17" }
+    },
+    {
+      "n": 9,
+      "title": "Start the large backfill",
+      "narration": "Trendora accepts the whole range at once — no 'range too large' rejection — and works through it so even a very large request finishes cleanly.",
+      "point_out": "The Data Manager reports the full 412-calendar-day span was accepted and processed, proving there's no hidden per-run size cap.",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Start" } },
+      "expect": { "text": "412 calendar days" },
+      "timeout_ms": 20000
+    },
+    {
+      "n": 10,
+      "title": "Browse the Scanner Runs history",
+      "narration": "Every day the scanner has run lives here as a dated, unchanging snapshot.",
+      "point_out": "The most recent run appears immediately with its stored results — no loading skeleton, no recomputation needed.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/scanner-runs" },
+      "expect": { "text": "2026-07-17" }
+    },
+    {
+      "n": 11,
+      "title": "Open a scan from years ago",
+      "narration": "Clicking into a much older date opens the exact view the scanner produced back then — instantly, because it was already computed and stored at the time.",
+      "point_out": "The page reads 'as of 2021-09-15' and renders its full leaderboard immediately, proving these results are never recalculated on the spot.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/scanner-runs/1193" },
+      "expect": { "text": "as of 2021-09-15" }
+    }
+  ]
+}
