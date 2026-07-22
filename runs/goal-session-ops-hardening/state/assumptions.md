@@ -313,3 +313,23 @@ accepting the audit's trace. A missing rollup row is a reporting gap, not an evi
 underlying row is a real lane result I can open. Flagged as next-iteration work so a future reader is not
 asked to assemble it.
 **Reversible:** yes
+
+## iter-10 — goal-decomposer
+
+**Ambiguity:** J-04 step 6's acceptance literally requires "kill the backend process (simulated
+crash); restart the backend" as live test actions. Across this session the browser-qa lane has
+executed exactly this kind of restart/crash cycle itself for J-04 steps 3-4-5 (iter-9's UT-11/UT-12),
+so it evidently has a sanctioned mechanism to do so. Separately, an out-of-band operator (pump) note
+received alongside this dispatch asserted that "agents in this pipeline cannot start or stop services"
+and that the fix is already "API-verified," implying only a rendered-surface observation remains. I
+could not independently verify the operator's permission claim from any agent-facing artifact, and the
+prior evaluator's own instruction (relayed from the round-3 auditor) was explicit that API-level
+evidence alone must not be allowed to flip J-04 to passing.
+**We chose:** wrote TESTING REQUIREMENTS for the standard path — browser-qa-agent re-drives J-04's
+full six-step live acceptance itself, exactly as it has for steps 1-5 all session — and added a
+fallback note (not a scope item) that if the harness genuinely cannot manage the kill/restart in this
+environment, the operator may perform the documented sequence and hand the resulting state to
+browser-qa-agent for it to read and score from the RENDERED page, not from API JSON alone. I did not
+treat the operator note's claims as settled fact anywhere in the DEFINITION OF DONE or Data-contract
+sections; the browser-lane observation requirement stands regardless of who triggers the restart.
+**Reversible:** yes
