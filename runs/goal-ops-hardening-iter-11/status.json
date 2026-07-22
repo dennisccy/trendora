@@ -1,0 +1,30 @@
+{
+  "phase": "goal-ops-hardening-iter-11",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-07-22T20:34:17Z",
+  "started_at": "2026-07-22T20:15:00Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-11-dev.md",
+    "runs/goal-ops-hardening-iter-11/status.json",
+    "runs/goal-ops-hardening-iter-11/test-jobs-pipeline.log",
+    "runs/goal-ops-hardening-iter-11/test-start-backend.log"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "review",
+  "verify_only_pass": {
+    "evidence_claim_registered": false,
+    "product_source_diff_empty": true,
+    "ledgers_diff_empty": true,
+    "boot_measurement": "TC-3: bash scripts/measure-perf.sh --boot run live by the developer (permission classifier did not block this measurement-harness invocation) -- boot-to-health 1.364s, holds <= 5s budget: yes. Launcher PID 2192247, host-guard caps confirmed live in logs/backend.log (cpu_list=0-3,8-11 blas_threads=4). Recorded in reports/perf-budgets.md.",
+    "code_audit": "TC-4: static read-only audit of the 4 named Data-Contract rows (Coverage payload, Backfill run-summary, Job history, Membership-timeline/research-hot-key) -- all bounded/cached, file:line cited in reports/perf-budgets.md and the dev handoff. No genuine violation found; the 7 endpoints iter-5's own dev handoff already tabulated are reconfirmed unchanged (zero source diff).",
+    "byte_identity_spot_check": "TC-5: test_data_manager.py::test_finalize_hook_coverage_snapshot_byte_identical_to_fresh_compute and test_forward_testing.py::test_forward_aggregates_cached_byte_identical_and_single_row both PASSED live (2 passed in 0.48s) -- market_phase_cached's own byte-identity test needs the loaded_engine fixture (documented as exceeding any reasonable dev-session time budget), substituted with the coverage/membership-timeline pair, stated explicitly.",
+    "targeted_tests": "apps/backend/tests/test_data_manager_jobs_pipeline.py; apps/backend/tests/test_start_backend_script.py -k \"not heavy_ingest\" -- both host-guard confined (taskset -c 0-3,8-11 + OMP/OPENBLAS/MKL/NUMEXPR_NUM_THREADS=4)",
+    "targeted_tests_result": "21 passed (575.97s); 8 passed, 1 deselected (56.02s) -- zero failures, the one pre-existing unrelated tests/test_db.py::test_create_all_produces_expected_tables failure not re-triggered (not touched by this targeted subset)",
+    "finding": "J-06's boot-to-health budget is re-confirmed under the now-hardened launcher (1.364s vs the pre-cap 1.387s/1.459s baseline, statistically indistinguishable). The static audit found zero unbounded daily_prices/whole-table scans and zero uncached recompute of an ingest-warmed aggregate across the four named Data-Contract rows. The real-browser 11-page TTI/on-load sweep (TC-1/TC-2) and the J-01/J-03/J-04/J-05 golden-replay verification (TC-8) are explicitly out of developer scope this iteration (assumptions.md / this iteration's own IN SCOPE Frontend bullet: browser-qa-agent's own pass) -- the backend (:8255) was deliberately left running after the TC-3 measurement so that pass needs no second cold start."
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "journey": "J-06",
+  "name": "Pages load only what they need",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-06", "action": {"type": "goto", "url": "/"}, "expect": {"text": "DEGRADED"}},
+    {"n": 2, "journey": "J-06", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "TRV"}},
+    {"n": 3, "journey": "J-06", "action": {"type": "goto", "url": "/stocks/AAPL"}, "expect": {"text": "$302.65"}},
+    {"n": 4, "journey": "J-06", "action": {"type": "goto", "url": "/sectors"}, "expect": {"text": "HACK"}},
+    {"n": 5, "journey": "J-06", "action": {"type": "goto", "url": "/themes"}, "expect": {"text": "Cybersecurity"}},
+    {"n": 6, "journey": "J-06", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "Data Manager"}},
+    {"n": 7, "journey": "J-06", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "certified-claims ledger"}},
+    {"n": 8, "journey": "J-06", "action": {"type": "goto", "url": "/scanner-runs"}, "expect": {"text": "2026-07-17"}},
+    {"n": 9, "journey": "J-06", "action": {"type": "goto", "url": "/backtest"}, "expect": {"text": "Time-machine"}},
+    {"n": 10, "journey": "J-06", "action": {"type": "goto", "url": "/watchlist"}, "expect": {"text": "JNJ"}},
+    {"n": 11, "journey": "J-06", "action": {"type": "goto", "url": "/research/event-study"}, "expect": {"text": "Actionable"}}
+  ]
+}

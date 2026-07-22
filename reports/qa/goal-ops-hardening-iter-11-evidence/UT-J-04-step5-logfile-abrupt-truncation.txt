@@ -1,0 +1,37 @@
+J-04 step 5 — persistent backend logfile: boot events present + abrupt end after a real kill -9
+Read live this turn (2026-07-22, ~21:44Z) from /home/dennis-chan/Git/trendora/logs/backend.log
+(27265 lines total at read time; log is durable/append-only across restarts, not rotated this session).
+
+1) Boot events ARE present in the logfile (satisfies "contains the boot events"), e.g. this iteration's
+   own TC-3 boot:
+     line 27066: === start-backend.sh: launching at 2026-07-22T20:15:29Z ===
+     line 27067:     port=8255 memory_cap_mb=6144 malloc_arena_max=2
+     line 27068:     host-guard: cpu_list=0-3,8-11 blas_threads=4
+     line 27069: INFO:     Started server process [2192247]
+
+2) A real prior kill -9 cycle (iter-10, this same session, same durable logfile) still shows the abrupt
+   truncation signature live, right now:
+     line 26728: === start-backend.sh: launching at 2026-07-22T19:20:49Z ===
+     line 26731: INFO:     Started server process [2080333]
+     ... (normal request logging: /api/health, /api/data, /api/runs, /api/data/jobs/bad4f8e9... polls ...)
+     ... last logged line for pid 2080333: "GET /api/data/jobs/bad4f8e94be8448fbb0ac5812f1005c4 HTTP/1.1"
+         200 OK ...
+     line 26780: === start-backend.sh: launching at 2026-07-22T19:32:18Z ===   <- NEXT boot banner,
+         immediately following pid 2080333's last request line, no gap.
+
+   Verified this turn: `grep -n "Finished server process \[2080333\]" logs/backend.log` returns ZERO
+   matches anywhere in the file (exit code 1) — pid 2080333 has NO clean-shutdown line anywhere in the
+   log. This is the abrupt-truncation signature (a killed process writes no shutdown line).
+
+   Contrast (same file, proving the format DOES capture clean shutdowns when they happen): pid 2100030
+   (the very next boot, started 19:32:18Z) DOES have a clean line later in the file:
+     line 26838: INFO:     Finished server process [2100030]
+   confirming the log format is capable of recording a clean stop — 2080333's total absence of one is a
+   genuine signal, not a logging gap.
+
+Read against goal.md J-04 step 5's acceptance ("the log ends abruptly — boot entries present, no
+clean-shutdown entry"): both parts hold, confirmed by a live grep against the current, unmodified
+logfile this turn. This is carried-forward-but-independently-reverified evidence — the kill itself
+happened during iter-10 (this agent did not perform a service action this turn, per the pump's explicit
+instruction), but the logfile's abrupt-truncation signature was read and confirmed live, this turn,
+against the current file on disk.

@@ -1633,3 +1633,94 @@ that is stated rather than implied.
 
 **Verdict: AG-8 re-confirmed under the launcher-applied caps.** Zero `MemoryError`, zero health hangs,
 both jobs `ok` with complete aggregate sets, 24.7% VmPeak margin, no thermal event.
+
+## J-06 re-sweep — TC-3 boot-to-health re-measurement under the host-guard-hardened launcher + TC-4 code audit (iter-11, developer pass)
+
+**Why re-measure boot.** The last recorded boot-to-health number (1.387s, iter-5, `## J-06 closeout —
+real-browser fetch-scheduling fix…` section above) predates iter-9's launcher-cap change to
+`scripts/start-backend.sh` (the `taskset`/BLAS-thread-cap HOST-GUARD block). No boot measurement had been
+taken against that hardened launcher until this pass — this section closes that gap (TC-3, TC-11 lineage).
+
+### TC-3 — fresh cold-boot, this host, developer-run `scripts/measure-perf.sh --boot`
+
+Measured 2026-07-22T20:15:29Z–20:15:31Z (this host, `Linux 7.0.0-27-generic x86_64`). Nothing was
+listening on the backend port beforehand (verified: `GET http://localhost:8255/api/health` → no
+connection, `000`), so this is a genuine process-start-to-first-200 timing, not a warm re-hit. Run
+directly by the developer (`bash scripts/measure-perf.sh --boot`, `CHAIN_BACKEND_PORT=8255
+CHAIN_FRONTEND_PORT=3255`) — the operator-run fallback in NOTES was not needed this iteration; the
+permission classifier did not block this specific measurement-harness invocation.
+
+```
+== measure-perf.sh — backend :8255, frontend :3255 ==
+-- TC-1: backend cold-boot timing (process start -> first GET /api/health HTTP 200) --
+  boot-to-health: 1.364s (holds <= 5s: yes)
+```
+
+| Metric | Value | Budget | Holds? |
+|---|---|---|---|
+| Boot-to-health (process start → first `GET /api/health` HTTP 200) | **1.364s** | ≤ 5 s | **yes** |
+
+**Evidence.** Launcher PID **2192247**, `logs/backend.log` banner: `=== start-backend.sh: launching at
+2026-07-22T20:15:29Z ===` / `port=8255 memory_cap_mb=6144 malloc_arena_max=2` / **`host-guard:
+cpu_list=0-3,8-11 blas_threads=4`** — the exact host-guard mask/thread-cap values `host-guard.env` commits,
+confirming the iter-9 launcher-cap block is live on this exact boot (re-confirmed, never weakened or
+stripped, per goal.md AG-10). `ps` confirms the process: `uvicorn main:app --host 0.0.0.0 --port 8255
+--app-dir .../apps/backend`, PID 2192247, started 21:15 local (= 20:15:29Z).
+
+**Read against the pre-launcher-cap baseline:** 1.364s (this pass, caps applied) vs 1.387s (iter-5,
+pre-cap) / 1.459s (iter-5, a different pass) — statistically indistinguishable, both comfortably inside
+the 5s budget. The host-guard `taskset`/BLAS-thread wrapping adds no material boot-time cost. **No budget
+number is loosened; this is a fresh, honest, currently-passing measurement under the now-hardened
+launcher.**
+
+**Scope note (frontend/11-page sweep, TC-1/TC-2 in the phase spec's own numbering — not this section's
+TC-3 boot metric):** this developer pass does not attempt the real-browser 11-page TTI/on-load sweep. Per
+this iteration's own IN SCOPE/NOTES ("the real-browser TTI/on-load-latency sweep... is browser-qa-agent's
+own Chrome-MCP measurement pass, not a code change") and the standing iter-5 lesson (curl under-reports
+call-heavy pages vs. a real Chrome connection-queuing profile), that sweep is browser-qa-agent's own pass,
+not reproduced here. The backend was left running after this boot measurement (`scripts/measure-perf.sh
+--boot`'s documented behavior) so that pass can proceed without a second cold start.
+
+### TC-4 — static, read-only code audit: every on-load endpoint feeding the 11 J-06 pages
+
+Re-verified by reading the current source (this iteration changed no backend file — see dev handoff
+"Files Changed"). The 7 endpoints iter-5's own dev handoff (`docs/handoffs/goal-ops-hardening-iter-5-dev.md`,
+"TC-13 — code-level audit of all 11 pages' backing endpoints") already tabulated are reconfirmed
+byte-for-byte unchanged (Dashboard cluster, `/sectors`, `/themes`, `/scanner-runs` incl. its measured-safe
+`/api/runs` N+1, `/backtest`'s `forward_aggregates_cached`, `/watchlist`, `/research/event-study`'s
+`event_study_cached`) — not re-derived here to avoid duplicating that citation. This pass adds file:line
+evidence for the four items this iteration's spec calls out by name, none of which iter-5's table covered
+explicitly (they live under the `/data`, `/evidence`, and `/research` pages' own endpoints):
+
+| Data-Contract row | Endpoint | Data path (file:line) | Unbounded scan? | Recomputes an ingest-warmed aggregate? |
+|---|---|---|---|---|
+| **Coverage payload** | `GET /api/data` | `apps/backend/app/api/data.py:127` calls `data_manager.coverage_from_storage` (`apps/backend/app/engine/data_manager.py:1095-1131`) — serves the **persisted** `CoverageSnapshot` row for the resolved `(asof_key, dataset_version)` key (`data_manager.py:1119-1126`, an indexed `select(...).where(asof_key==, dataset_version==).first()`); the default (`as_of=None`) and genuinely-dataless paths take a zero-query "not yet computed" sentinel (`_coverage_not_yet_computed_payload`) | **No** — no `daily_prices` query at all on this path | **No** — never calls `_compute_coverage_uncached` on this path (the iter-2/iter-24 fix this pass re-confirms); the only exception is the rare explicit-historical-as-of self-heal (`data_manager.py:1129-1130`), a one-time-per-date, deliberately-designed path (AG-3 correctness override), not a per-request recompute |
+| **Backfill run-summary** | `GET /api/data` | `apps/backend/app/api/data.py:128` calls `data_manager.recent_runs` (`apps/backend/app/engine/data_manager.py:4305-4314`) | **No** — `select(DataProviderRun).order_by(...).limit(cfg.data_manager.run_history_limit)` (`data_manager.py:4309-4313`); a bounded, capped read, never a whole-table load | N/A — no cache to bypass; a small bounded table read is the canonical path itself |
+| **Job history** | `GET /api/data/jobs/{job_id}` | `apps/backend/app/api/data.py:207-214` calls `data_manager.get_job` (`apps/backend/app/engine/data_manager.py:2091-2095`) | **No** — an **in-memory dict lookup** (`_JOBS.get(job_id)`, `data_manager.py:2094`), zero DB query of any kind | N/A — no DB-backed aggregate involved |
+| **Membership-timeline** | embedded in the Coverage payload | `membership_timeline_cached` (`apps/backend/app/engine/data_manager.py:571-608`): cache HIT (`data_manager.py:594-600`) returns the persisted `MembershipTimelineCache` row verbatim, **skipping** the O(dates × pool) `_membership_timeline` resolver loop entirely; on the default request path it is never even reached uncached — it is embedded inside the already-persisted `CoverageSnapshot.payload_json` the Coverage-payload row above serves, so a normal `/data`-page view triggers zero membership-timeline compute | **No** | **No** — warmed at ingest time (`data_manager.py:891`, inside the finalize hook's coverage-snapshot write), read-only on the request path |
+| **Research-hot-key** | `GET /api/research/event-study` (default subject/horizon/`episodes` view — the `/research` page's own first-load call) | `apps/backend/app/api/research.py:291-293` calls `event_study_cached` (`apps/backend/app/engine/research.py:1606-1662`): cache HIT (`research.py:1624-1634`, cache module — line numbers in `app/engine/research.py`) returns the persisted `EventStudyCache` row verbatim, no recompute | **No** | **No** for the default hot key — the ingest finalize hook warms exactly this `(first catalog subject, config default_horizon, all-history)` key on every successful ingest (`apps/backend/app/engine/data_manager.py:3243-3250`, specifically the `event_study_cached(...)` call at line 3249); a user-navigated non-default subject/horizon/as-of still computes-once-then-caches on first view (same disclosed cold-miss contract every other J-72-style cache carries — never a per-request recompute on repeat views) |
+
+**No genuine violation found.** All four named Data-Contract rows, plus the 7 already-tabulated (iter-5)
+endpoints, are bounded reads (indexed point lookups, `.limit()`-capped small-table reads, or an in-memory
+dict) or cache-first reads that skip recompute on a hit. Nothing in this pass changed any source file — a
+100%-read audit, exactly as the spec requires.
+
+### TC-5 — AG-3 byte-identity spot-check (≥2 already-registered ingest-time-warmed values)
+
+Live-run this iteration under host-guard confinement (see dev handoff "Tests Run" for the exact command):
+
+- `test_data_manager.py::test_finalize_hook_coverage_snapshot_byte_identical_to_fresh_compute` — the
+  persisted Coverage-payload row (which embeds the Membership-timeline derivation) is asserted
+  `stored == fresh` against a direct, uncached `_compute_coverage_uncached` call on the same session state.
+- `test_forward_testing.py::test_forward_aggregates_cached_byte_identical_and_single_row` —
+  `forward_aggregates_cached`'s MISS and HIT payloads are both asserted byte-identical
+  (`json.dumps(fresh) == json.dumps(miss) == json.dumps(hit)`) to a direct, uncached
+  `compute_forward_aggregates` call.
+
+Both PASSED this run (see dev handoff). `market_phase_cached`'s own byte-identity test
+(`test_market_phase.py::test_cache_byte_identical_and_single_row`) exists but requires the session-scoped
+`loaded_engine` fixture (full 30-year/587-symbol seed bootstrap) — documented across iter-4's/iter-9's own
+handoffs as exceeding any reasonable dev-session time budget, so it was not re-run live here; the Coverage/
+Membership-timeline pair above substitutes as this iteration's second already-warmed value, both from a
+fast hand-built fixture. This substitution is stated explicitly, not silently — `market_phase_cached`'s
+byte-identity contract itself is unchanged by this (zero-source-change) iteration.

@@ -1,0 +1,43 @@
+J-04 step 6 — live DOM read of /data Run History table
+Captured this turn: 2026-07-22 (session 1784703827876, capture 329-eval)
+Backend PID at capture time: 2192247 (booted 2026-07-22T20:15:29Z, iter-11 TC-3 boot measurement)
+URL: http://localhost:3255/data
+
+Query: document.querySelectorAll('[data-testid="run-status"]') -> closest <tr> -> innerText, filtered to rows
+whose status text includes "interrupted".
+
+Result: 50 total run-status cells rendered; 9 rows show status "interrupted". First two (most recent,
+both from this session's earlier J-04 crash-cycle verification in iter-10) — the ones that matter for
+step 6's "non-zero persisted progress" acceptance:
+
+1. Started 2026-07-22 19:30:48 | backfill 2014-01-02 -> 2015-12-31 | status: interrupted | 0/0 symbols
+   ok/failed | Snapshots: 117 | breakdown: "729 calendar days . 41 already snapshotted . 225 non-trading"
+   | Summary: "backfill: 117 snapshots over 504 dates, 204460 forward returns"
+   -> This is backend run id 119 / job bad4f8e94be8448fbb0ac5812f1005c4, the job iter-10's browser-qa
+      caught genuinely mid-flight (pre-kill poll: running, snapshots_created:162, dates_done:203/504) and
+      confirmed rendered as "interrupted, Snapshots: 117" immediately after the kill. Reading it again,
+      live, THIS turn, confirms the SAME non-zero interrupted state has survived every backend restart
+      since (iter-10's own subsequent restarts + this iteration's fresh cold TC-3 boot at 20:15:29Z, plus
+      the developer's ~8 short-lived pytest-spawned start-backend.sh instances between 20:32:58Z-20:33:30Z
+      on scratch ports) — never reverted to "running" with no living process, never lost its persisted
+      progress.
+
+2. Started 2026-07-22 17:37:09 | backfill 2019-03-01 -> 2019-06-28 | status: interrupted | 0/0 | Snapshots:
+   59 | breakdown: "120 calendar days . 5 already snapshotted . 36 non-trading" | Summary: "backfill: 59
+   snapshots over 84 dates, 136380 forward returns"
+   -> backend run id 114, the FIRST crash cycle iter-10 read back through the live DOM. Same survival
+      confirmation as above.
+
+Contrast (pre-fix defect rows, older, dated before this session's J-04 fix landed — left as historical,
+gitignored-DB artifacts, NOT this iteration's evidence, shown only for contrast):
+3. 2026-07-22 11:42:42 backfill 2025-06-01->2026-07-17 interrupted 0/0 Snapshots:0 "backfill: 0 snapshots
+   over 0 dates, 0 forward returns"
+4. 2026-07-22 10:52:27 backfill 2017-01-01->2018-12-31 interrupted 0/0 Snapshots:0 (same all-zero shape)
+5. 2026-07-21 05:38:55 backfill 2005-01-03->2005-06-30 interrupted 0/0 Snapshots:0 (same all-zero shape)
+6. 2026-07-21 00:35:12 backfill 2026-05-02->2026-05-03 interrupted 0/0 Snapshots:0 (same all-zero shape)
+
+Reading: rows 1-2 (the fixed behavior) show real, non-zero, non-null persisted progress under an
+"interrupted" status; rows 3-6 (pre-fix, historical) show the original all-zero defect this session's
+J-04 work fixed. The fixed rows have now demonstrably survived an ADDITIONAL restart cycle beyond what
+iter-10 verified (this iteration's own TC-3 cold boot), which is fresh evidence this iteration did not
+previously have.

@@ -427,3 +427,68 @@ gate — `runs/goal-ops-hardening-iter-10/status.json` never advanced past `dev_
 since iter-9 (lean depth). Carried framework items unchanged: `merge_ui_test_results.py` FAIL-cell drop (benign
 this iteration — everything PASSed), the `Frontend Present: no` browser-qa-skip misrouting, and the pre-existing
 `tests/test_db.py::test_create_all_produces_expected_tables` failure.
+
+## Iteration 11 — goal-ops-hardening-iter-11
+
+**Date:** 2026-07-22T21:10:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** lean
+**Journey deltas:**
+- Newly passing: none (J-01/J-03/J-05 re-verified passing by deterministic golden replay; J-04
+  re-verified passing by the LLM lane + my own re-derivation)
+- Improved but not closed: **J-06 stays `partial`** — the target. Real work landed (11-page real-browser
+  sweep, fresh 1.364s boot under the hardened launcher, TC-4 code audit, TC-5 byte-identity) but three
+  gaps remain.
+- Newly failing: none. Regressed: none (no journey moved passing → failing)
+- Anti-goal violations: **AG-8 (iter-9 entry, critical) still UNRESOLVED and upgraded from "carried, not
+  re-tested" to LIVE-OBSERVED FIRING** — ingest-warm MemoryError ×2 plus two on-load HTTP 500s.
+  **AG-10 (iter-10, minor) RESOLVED** — pytest was host-guard-confined this iteration (verified on
+  hwmon). scan-report CLEAN; iter-diff "(no changes)"; coherence COHERENCE-PASS.
+
+**Reasoning:** The iteration is honest work on an empty product diff, and its lanes agree — but they
+agree on a conclusion the machine evidence contradicts, and that is why it escalates rather than
+closes. J-06 fails three checks I made myself: (G1) `reports/perf-budgets.md` has mtime 20:24Z while
+the sweep ran 20:38–20:52Z, and its own new section says the sweep "is not attempted here" — so the
+measurements J-06 step 2 and its "single source" acceptance require are NOT in the canonical artifact,
+only in a QA evidence `.txt`; (G2) `/api/indexes?full=true` on `/data` read 2066.3ms and 2671.8ms
+against a committed ≤1.5s budget, and the lone in-budget re-read (4.7ms) is by the lane's own words
+"a single call, not the earlier two-call pattern" — a cache-shaped reading, not a control; (G3) the
+`[NEW] --session-live` walkthrough its Acceptance names is still unproduced. Bigger: the lane
+attributed G2, a 2948.8ms `/api/health` outlier and a false "Backend unavailable" render to ambient
+host load. `logs/backend.log` refutes it — `:27185`/`:27233` show the ingest forward-aggregate warm
+aborting on MemoryError raised at `forward_testing.py:826`
+(`select(ScannerResult).where(run_id.in_(...)).all()`, unbounded), immediately after the replay lane's
+own two backfill POSTs at `:27140`/`:27168`; `:27601` and `:27660` show `/api/methodology` and
+`/api/research/event-study` returning **500** via `RuntimeError: can't start new thread`. The lane read
+a 15ms `resource` timing entry as "the call succeeded" — a 500 returns fast too. And it cannot be
+ambient: `logs/hwmon/hwmon.csv` shows 12.2–20.6GB MemAvailable and load1 0.4–3.1 across the window;
+other processes cannot consume this process's own `ulimit -v` 6144MB. TC-4's "no genuine violation
+found" is therefore incomplete — it audited cache-HIT paths and never the MISS/compute path that is
+OOMing. Rejected REGRESSION: no journey moved passing→failing, and the product diff is *literally
+empty*, so nothing was introduced or worsened; the critical AG-8 entry is the same human-known,
+thrice-deferred code path (iter-8/9/10 precedent, re-logged in assumptions.md). Rejected STALLED:
+transcribing the sweep into perf-budgets.md and re-measuring `/api/indexes` are concrete agent work.
+Rejected GOAL_ACHIEVED: J-06 partial + unresolved critical AG-8. Coherence PASS → no consolidation
+mandate. ESCALATE fires on tree rule 4: this lean iteration surfaced cross-cutting complexity its own
+two verification lanes mis-adjudicated (a live per-process memory exhaustion with two user-facing 500s
+read as weather), which needs the full pipeline's independent auditor and closure gates.
+
+**Next-step recommendation:** FULL depth, no new features. (1) **OWNER DECISION, item 1:** scope,
+amend, or formally defer the AG-8 dimension — `forward_aggregates_cached → compute_forward_aggregates`
+(`forward_testing.py:826`) materializes an unbounded `ScannerResult` set and OOMs under the declared
+6144MB cap; it produced two HTTP 500s on ordinary page loads this iteration and hard-blocks
+GOAL_ACHIEVED. Also still open: `HOST_GUARD_REQUIRE_MARKERS`, and the J-05/J-06 `--session-live`
+walkthroughs (produce or defer). (2) Close G1 by transcribing the existing sweep numbers — including
+both over-budget `/api/indexes` readings and the `/api/health` outlier, as WARNs — into
+`reports/perf-budgets.md`; the data already exists, this is not a re-measurement. (3) Close G2 by
+re-measuring `/api/indexes?full=true` on `/data` with three cache-disabled loads on a quiet host with
+no ingest running, and record it either way; do not accept a 4.7ms cached read as the control.
+(4) Auditor must re-open TC-4's "no genuine violation found" and apply the spec's own rule ("name it
+precisely, do not fix it inline"). (5) Auditor should confirm runs 120/121/122's 4-of-7
+`aggregates_refreshed` on zero-new-date runs is by design and that `forward_aggregates`' absence is
+solely the MemoryError abort — J-05's contract leans on it. (6) **Operator:** the backend and frontend
+are NOT running now (nothing on :8255/:3255; `logs/backend.log` ends `INFO: Shutting down`) — the next
+browser lane needs them restarted. Carried framework items unchanged (`merge_ui_test_results.py`
+FAIL-cell drop, `Frontend Present: no` misrouting, iter-11 `status.json` stuck at `dev_complete`, the
+pre-existing `test_db.py::test_create_all_produces_expected_tables` failure). Nit: browser-qa artifacts
+stamp local times with a `Z` suffix.

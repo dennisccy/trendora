@@ -390,3 +390,52 @@ process start, only already-running services, which browser-qa-phase.sh's own se
 the agent's tool-permission sandbox) is expected to provide, consistent with how J-01/J-03/J-04/J-05's
 browser lanes have run all session.
 **Reversible:** yes
+
+## iter-11 — goal-evaluator
+
+**Ambiguity:** Decision-tree C.1 reads "a critical anti-goal violation is unresolved → REGRESSION".
+The AG-8 dimension (`forward_aggregates_cached` → `compute_forward_aggregates`, unbounded
+`ScannerResult` load) is unresolved AND, unlike iters 8-10 where it was merely carried, it fired live
+this iteration: two ingest-warm MemoryErrors and two on-load HTTP 500s. So "newly discovered damage"
+is arguably true even though the violation itself is old and the product diff is empty.
+**We chose:** did NOT fire the REGRESSION halt. This iteration's product diff is *literally* empty
+(scan-report CLEAN, `iter-diff.md` "(no changes)", coherence-verified `git diff --stat -- apps/`
+empty), so nothing could have been introduced or worsened here; the human deferred this exact code
+path three times (iter-8/9/10) and re-halting re-presents a decision already made. Instead I upgraded
+the ledger entry from "carried, not re-tested" to a fully evidenced live-firing record, kept it
+critical + unresolved (so it still hard-blocks GOAL_ACHIEVED), made the owner decision item 1 of the
+next step, and returned ESCALATE so a full-pipeline auditor adjudicates the blast radius. Nothing is
+softened; only the redundant halt is withheld. **A human who reads C.1 literally should halt here, and
+I say so in the eval's Halt Justification.**
+**Reversible:** yes
+
+## iter-11 — goal-evaluator
+
+**Ambiguity:** J-05's step 2(b) requires the persisted run record to "list which inventory aggregates
+its finalize hooks refreshed" and names five (latest-date snapshot, coverage payload, membership
+timeline, market phase, research hot-key caches). This iteration's replay-triggered runs 121/122
+recorded only four categories, and `forward_aggregates` is missing specifically because its warm
+aborted on MemoryError. goal.md does not say whether an aggregate outside the named five failing to
+warm breaks "aggregates are precomputed at ingest, never on the fly".
+**We chose:** kept J-05 `passing`. `forward_aggregates` is not among the five the step names; the run
+record is *honest* about what it did and did not refresh (which is what the step actually asserts);
+and the replay's own acceptance expects all held. The unbounded-load dimension is scored under AG-8,
+where it belongs, rather than double-counted as a journey failure. I flagged for the next full
+iteration that the auditor must confirm the other two absentees (`latest_snapshot`, `market_phase`)
+are legitimately skipped on a run that lands no new trading date, rather than silently failing too —
+if they are not, J-05 should be re-opened.
+**Reversible:** yes
+
+## iter-11 — goal-evaluator
+
+**Ambiguity:** J-04's steps 3-4 (pre-ready badge phase, crash-to-unreachable banner) were not re-driven
+this iteration — the browser agent is barred from service actions this session — and were carried from
+iter-9's controlled-fetch-override simulations. My own methodology says a status should rest on
+evidence from the iteration that scores it.
+**We chose:** kept J-04 `passing`. The product diff is literally empty, so `app/api/health.py`,
+`app.engine.readiness`, `main.py`'s boot sequence and `warmup.py` — the entire code surface steps 3-4
+exercise — provably cannot have changed since iter-9 verified them, and steps 1-2 (fresh 1.364 s boot)
+and 5-6 (log grep + live DOM read, both of which I re-ran myself) ARE fresh this iteration. This also
+closes iter-10's carried ≤5 s-boot caveat. A human who requires every step re-driven in the scoring
+iteration may hold J-04 at `partial` until an operator-performed restart/kill cycle is observed live.
+**Reversible:** yes

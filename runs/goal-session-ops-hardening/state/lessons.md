@@ -237,3 +237,28 @@ run is `snapshots_created + already_snapshotted + error_other = dates_done`, not
 assumes a completed run).
 **Applies to:** any iteration verifying crash/restart, orphan-sweep or checkpoint behaviour; any spec writing a
 run-summary arithmetic assertion that must also hold for partial runs.
+
+## iter-11 — 2026-07-22T21:10:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A browser lane that only reads `performance.getEntriesByType('resource')` cannot tell a
+15 ms success from a 15 ms **HTTP 500** — iter-11's lane called `/api/research/event-study` "already
+succeeded" and blamed the page's "Backend unavailable" render on ambient host load, while
+`logs/backend.log:27660` shows that exact call returning 500 (`RuntimeError: can't start new thread`
+after a MemoryError). Always cross-read `logs/backend.log` for the measurement window before accepting
+an "environmental, not code" explanation, and rule ambient load in/out with `logs/hwmon/hwmon.csv`
+(MemAvailable was 12–20 GB — nothing ambient can consume a process's own `ulimit -v` cap).
+**Applies to:** any iteration whose verdict rests on browser-measured latency or on an anomaly
+explained away as host contention; also any perf sweep, since the same log read reveals whether the
+product's own ingest was running during the measurement.
+
+## iter-11 — 2026-07-22T21:10:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** The developer pass writes `reports/perf-budgets.md` *before* the browser lane produces the
+numbers, so in a lean pipeline a "measurement iteration" can finish with its measurements living only
+in a QA evidence `.txt` and never reaching the artifact the journey's Acceptance names as the single
+source (verified by mtime: file 20:24Z, sweep 20:38–20:52Z). Check the artifact's timestamp against
+the lane's timestamps before scoring any "recorded in the budgets table" step.
+**Applies to:** any iteration whose DoD says "record X in `reports/perf-budgets.md`" while X is
+produced by browser-qa rather than by the developer.
