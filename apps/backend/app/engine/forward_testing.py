@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import random
+import threading
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date as date_cls, datetime, timedelta, timezone
@@ -984,6 +985,34 @@ def compute_forward_aggregates(
     }
 
 
+# ops-hardening iter-15 (UT-04 fix) — single-flight de-dup guarding `forward_aggregates_cached`'s MISS
+# path. Root-cause evidence (see the dev handoff for the full measurement): reading the pre-iter-15
+# function directly confirmed a cache MISS always fell straight through to `compute_forward_aggregates`
+# with NO de-duplication, lock, or in-flight marker — N concurrent same-key MISSes (e.g. the ingest
+# finalize warm's sequential 5-horizon loop landing on the SAME horizon/as-of the SAME moment
+# `GET /api/backtest`'s own 5-horizon comprehension requests it) each redundantly ran the full
+# aggregation. A throwaway measurement on a 60,000-row fixture (this iteration's dev pass) reproduced
+# this directly: 5 concurrent same-key MISSes invoked `compute_forward_aggregates` 5 times (not 1) and
+# took 9.9x a single call's wall-clock (near-linear blowup, consistent with GIL-serialized redundant
+# CPU-bound work) — confirming this mechanism, not a hypothesis. This mirrors
+# `data_manager.compute_coverage`'s established J-100 per-key-lock + in-flight-event single-flight idiom
+# (no new concurrency abstraction) — the difference: `ForwardAggregateCache` is already a PERSISTED
+# cross-request cache, so a waiter does not need its own in-process result cache; it simply re-reads the
+# now-committed row with its OWN session once the owner signals completion.
+_FORWARD_AGG_LOCK = threading.Lock()
+# per-key in-flight events: (horizon, asof_key, dataset_version) -> threading.Event, set when the owner
+# finishes (success or failure) so any waiter wakes. Always removed by the owner in a `finally` — this
+# dict never accumulates entries beyond what is genuinely being computed right now (unlike
+# `_COVERAGE_RESULTS`, this is not a persistent result cache, so it needs no size bound).
+_FORWARD_AGG_INFLIGHT: dict[tuple, threading.Event] = {}
+# Bounded wait for a waiter, mirroring `test_forward_testing_concurrency.py`'s existing
+# `BOUNDED_TIMEOUT_S` (45s — "generous vs. the real `database.pragmas.busy_timeout_ms` (30s) — a hang
+# would exceed this"). TC-8: if the owner never signals (an exception still runs the `finally` below
+# almost immediately; only a genuine wedge could exhaust this), the waiter falls through and computes
+# independently rather than blocking forever — never a second producer, just a rare redundant compute.
+_FORWARD_AGG_WAIT_TIMEOUT_S = 45.0
+
+
 def forward_aggregates_cached(
     session: Session, horizon: int, config: Optional[Config] = None, *, as_of: Optional[date_cls] = None,
 ) -> dict:
@@ -1011,6 +1040,14 @@ def forward_aggregates_cached(
     concrete `ScannerRun.asof_date` first (never the bare `as_of=None` case), so `asof_key` is always a
     real ISO date.
 
+    ops-hardening iter-15 (UT-04 fix, J-06/J-07): a MISS now goes through an in-process single-flight
+    guard keyed on the SAME `(horizon, asof_key, dataset_version)` tuple — the FIRST concurrent caller
+    for a key becomes its owner and computes below; every OTHER concurrent caller for that SAME key waits
+    (bounded) on the owner's completion, then re-reads the now-persisted row with its OWN session — never
+    a second producer/compute. This is scoped ENTIRELY to this serving/caching wrapper:
+    `compute_forward_aggregates` itself, its signature, its columns read, and its streamed pattern are
+    completely unchanged (all three call sites keep calling it exactly as before).
+
     Deferred import below (not at module level): `research.py` already imports names FROM this module,
     so this module cannot import `research.py` at load time without a circular import; importing
     `_dataset_version` lazily, inside this function, breaks the cycle (the same fix has no effect on
@@ -1021,40 +1058,71 @@ def forward_aggregates_cached(
     version = _dataset_version(session)
     asof_key = as_of.isoformat() if as_of is not None else "all"
 
-    hit = session.exec(
-        select(ForwardAggregateCache).where(
-            ForwardAggregateCache.horizon == horizon,
-            ForwardAggregateCache.asof_key == asof_key,
-            ForwardAggregateCache.dataset_version == version,
-        )
-    ).first()
+    def _cached_row() -> Optional[dict]:
+        row = session.exec(
+            select(ForwardAggregateCache).where(
+                ForwardAggregateCache.horizon == horizon,
+                ForwardAggregateCache.asof_key == asof_key,
+                ForwardAggregateCache.dataset_version == version,
+            )
+        ).first()
+        return json.loads(row.payload_json) if row is not None else None
+
+    hit = _cached_row()
     if hit is not None:
-        return json.loads(hit.payload_json)
+        return hit
 
-    # MISS — compute once (the SOLE producer, unchanged) and persist.
-    payload = compute_forward_aggregates(session, horizon, cfg, as_of=as_of)
+    # single-flight: only the FIRST caller for this key computes; concurrent same-key callers wait.
+    key = (horizon, asof_key, version)
+    with _FORWARD_AGG_LOCK:
+        event = _FORWARD_AGG_INFLIGHT.get(key)
+        is_owner = event is None
+        if is_owner:
+            event = threading.Event()
+            _FORWARD_AGG_INFLIGHT[key] = event
 
-    # prune stale rows for THIS (horizon, asof_key) identity (any older dataset_version) so the cache
-    # table does not grow unbounded as the dataset matures; the current-version row is then upserted.
-    stale = session.exec(
-        select(ForwardAggregateCache).where(
-            ForwardAggregateCache.horizon == horizon,
-            ForwardAggregateCache.asof_key == asof_key,
-            ForwardAggregateCache.dataset_version != version,
-        )
-    ).all()
-    for row in stale:
-        session.delete(row)
+    if not is_owner:
+        event.wait(timeout=_FORWARD_AGG_WAIT_TIMEOUT_S)
+        hit = _cached_row()
+        if hit is not None:
+            return hit
+        # TC-8: the owner failed (its `finally` already released the slot) or a genuine wedge exceeded
+        # the bounded wait without persisting — fall through and compute independently rather than
+        # blocking indefinitely. Still byte-identical (the SAME sole producer); at worst this is one
+        # redundant compute in a rare failure/timeout case, never a hang and never a second formula.
 
-    session.add(ForwardAggregateCache(
-        horizon=horizon, asof_key=asof_key, dataset_version=version,
-        payload_json=json.dumps(payload), created_at=datetime.now(timezone.utc),
-    ))
+    # MISS (owner path, or the rare TC-8 fallback above) — compute once and persist.
     try:
-        session.commit()
-    except Exception:  # a concurrent writer raced us to the same key — the cache is best-effort, not a
-        session.rollback()  # source of truth; the freshly computed payload is still byte-identical, so return it
-    return payload
+        payload = compute_forward_aggregates(session, horizon, cfg, as_of=as_of)
+
+        # prune stale rows for THIS (horizon, asof_key) identity (any older dataset_version) so the cache
+        # table does not grow unbounded as the dataset matures; the current-version row is then upserted.
+        stale = session.exec(
+            select(ForwardAggregateCache).where(
+                ForwardAggregateCache.horizon == horizon,
+                ForwardAggregateCache.asof_key == asof_key,
+                ForwardAggregateCache.dataset_version != version,
+            )
+        ).all()
+        for row in stale:
+            session.delete(row)
+
+        session.add(ForwardAggregateCache(
+            horizon=horizon, asof_key=asof_key, dataset_version=version,
+            payload_json=json.dumps(payload), created_at=datetime.now(timezone.utc),
+        ))
+        try:
+            session.commit()
+        except Exception:  # a concurrent writer raced us to the same key — the cache is best-effort, not a
+            session.rollback()  # source of truth; the freshly computed payload is still byte-identical, so return it
+        return payload
+    finally:
+        # release the in-flight slot + wake any waiter whether we succeeded or raised (TC-8: a waiter then
+        # either finds the persisted payload or falls through and computes independently — never a hang).
+        if is_owner:
+            with _FORWARD_AGG_LOCK:
+                _FORWARD_AGG_INFLIGHT.pop(key, None)
+            event.set()
 
 
 # --------------------------------------------------------------------------------------------------

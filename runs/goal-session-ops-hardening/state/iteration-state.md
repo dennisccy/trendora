@@ -1,29 +1,32 @@
-# Iteration State — ops-hardening (after iter-14)
+# Iteration State — ops-hardening
 
-**Last verdict:** CONTINUE (iter-14) · **Prior:** REGRESSION (iter-13) · **Date:** 2026-07-23
+**After iteration:** 15 · **Date:** 2026-07-23 · **Verdict:** STALLED
 
-## Journeys (6 Must-have)
-| J | Status | Note |
-|---|--------|------|
-| J-01 | passing | golden replay PASS iter-14 (+ evaluator spot-check) |
-| J-03 | passing | golden replay PASS iter-14 |
-| J-04 | passing | RE-VERIFIED LIVE iter-14 (real kill/restart UT-J-04; boot 1.80s TC-7) — carried gap closed |
-| J-05 | passing | golden replay PASS iter-14 (spot-checked) |
-| J-06 | partial | single-source gap CLOSED (TC-8 in perf-budgets.md); residual = walkthrough (owner) + UT-04 latency |
-| J-07 | partial | NEW; AG-8 fix — memory/crash guarantee PROVEN (61.8% margin, 250/250 health); gaps = TC-6-partial + UT-04 + walkthrough |
+## Journeys
+
+4 passing (J-01 J-03 J-04 J-05) · 2 partial (J-06 J-07) — 6 total
 
 ## Active blockers
-- **UT-04 (agent, cross-cutting — the item between J-07 & passing):** `/backtest` cache-MISS 211.8s under a CONCURRENT warm — honest/non-catastrophic, undiagnosed (audit F1: streamed-read longer lock-window). Lives in `app/engine/forward_testing.py` / shared DB contention; spot-check other data pages under a warm.
-- demo.sh --session-live walkthrough (J-05/J-06/J-07) — owner/framework, no autonomous mechanism (iter-12).
-- TC-6 live-process induction — owner: authorize a live pass, or accept TC-3 synthetic + TC-5 organic (evaluator ruled reasonable, not literal PASS).
 
-## Last 2 verdicts — why
-- iter-14 CONTINUE: AG-8 (the critical that drove the REGRESSION) RESOLVED — bounded/streamed rewrite, full-basis warm completes at 61.8% margin (evaluator-recomputed CSVs); J-06/J-07 partial (walkthrough + UT-04) → not GOAL_ACHIEVED.
-- iter-13 REGRESSION: critical AG-8 escalated to a ~12-min full outage (now fixed by iter-14).
+- **`/backtest` cold-MISS over budget — OWNER direction decision (halts the session).** Under a concurrent
+  ingest warm, the cold cache-MISS is **178.74s** (+ a distinct 5.37s spike) vs the committed ≤1.5s budget
+  (`reports/perf-budgets.md` TC-4). The agent-tractable single-flight fix is DONE and correct; the residual
+  is ONE cold full-basis `compute_forward_aggregates` pass a wrapper cannot reduce (stacking was only ~15.6%).
+  Owner picks: (1) `/backtest` progress affordance + read budget as warm-only; (2) precompute-before-serve
+  redesign; or (3) accept/amend the budget (a logged change, never silent) → then evaluator scores J-06/J-07
+  passing → GOAL_ACHIEVED. Non-blocking: 5.37s spike undiagnosed; 84°C-vs-64°C thermal report gap; 4 unguarded
+  sibling caches; VmPeak +66.6% vs iter-14 (36.3% margin, WATCH).
 
-## Do not redo (binding unless goal.md changes)
-- **AG-8 RESOLVED (iter-14): the `compute_forward_aggregates` bounded/streamed rewrite WORKS** — byte-identity 32/32, real ulimit-v induction, 61.8% margin. Do NOT re-open the streaming rewrite; it stays the SINGLE canonical producer (no 2nd path).
-- J-04 live-verified + boot 1.80s (TC-7); J-06 TC-8 transcription DONE — do not redo either.
-- Do NOT raise `server.memory_cap_mb` / `malloc_arena_max` (out of scope iter-13/14); do NOT touch health.py/readiness.py/main.py-boot/warmup.py; AG-10 launcher blocks DONE (iter-9/11).
-- Do NOT patch scripts/automation/* (fixed d0799803) or the dead major-indexes-card.tsx from a product iter.
-- Do NOT re-measure the 10 in-budget J-06 pages or re-run heavy-ingest pytest (settled iter-9/11).
+## Last 2 verdicts
+
+- iter 15: STALLED — single-flight de-dup fix correct but the cold-MISS residual is a hard one-compute cost; all unblock paths owner-owned.
+- iter 14: CONTINUE — AG-8 REGRESSION recovered (bounded/streamed rewrite); UT-04 concurrent latency named as the tractable follow-up (now done).
+
+## Do not redo
+
+- Single-flight de-dup in `forward_aggregates_cached` — DONE, tested (TC-1/2/8, `forward_testing.py`); do not re-root-cause the stacking pathology.
+- AG-8 unbounded ORM load — RESOLVED iter-14, holds; `compute_forward_aggregates` stays byte-identical (never touch its body/signature/columns).
+- `HOST_GUARD_REQUIRE_MARKERS` resolved iter-14 (e5624010); `demo.sh --session-live` walkthrough has operator evidence (iter-14 walkthrough file, exit 0).
+- Do NOT touch `main.py` / `app/api/health.py` / `app.engine.readiness` / `warmup.py` or `scripts/automation/*` (binding).
+- 10 idle-host J-06 page budgets + ≤5s boot — settled iter-9/11; not a re-measure target.
+- Carried unrelated: `test_db.py::test_create_all_produces_expected_tables` (pre-existing, no schema change).

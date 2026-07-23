@@ -1,0 +1,129 @@
+{
+  "journeys": {
+    "J-01": {
+      "id": "J-01",
+      "name": "Backfill honors the requested range and explains zero-work",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-14",
+      "last_passing_iter": "goal-ops-hardening-iter-14",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-14-evidence/J-01-verify.png",
+      "spec_hash": "06b26eaaf82dcdb532465e5c287f1177681a6c8697e4f96cfadddb4fc60b29ad",
+      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-01 PASS this iteration (ui-test-results.md), each replay drives a real backfill through the SAME rewritten warm path. EVALUATOR SPOT-CHECK: opened J-01-verify.png - /data coverage panel renders real numbers (price 1996-01-02->2026-07-22, universe 540, symbols 591, trading days 5383, snapshot dates 1508, backfill gaps 3875, Ready badge). spec_hash matches current goal.md (journeys-changed.md absent -> no goal-edit drift). J-01's range-honesty/zero-work contract unaffected by this iteration's memory-dimension fix."
+    },
+    "J-03": {
+      "id": "J-03",
+      "name": "No per-run range cap",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-14",
+      "last_passing_iter": "goal-ops-hardening-iter-14",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-14-evidence/J-03-verify.png",
+      "spec_hash": "5457740bbb0cea982e9b1241f19ca50836ff584bbb960a5a088f7168d820c271",
+      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-03 PASS this iteration. spec_hash matches current goal.md exactly. No per-run cap anywhere; no J-03 code touched (3-file backend diff = forward_testing.py + 2 test files, per iter-diff.md)."
+    },
+    "J-04": {
+      "id": "J-04",
+      "name": "Non-blocking boot with visible status",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-14",
+      "last_passing_iter": "goal-ops-hardening-iter-14",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-14-evidence/UT-J-04-05-boot-ready.png",
+      "spec_hash": "4074a9c952a9a143dc543efef3c8d3e0a1e33a848ab250ec90c7c2f568dbcff8",
+      "note": "passing -> passing, RE-VERIFIED LIVE END-TO-END this iteration (closes the iter-10..13 carried-not-re-verified gap; last_verified advances iter-12 -> iter-14). UT-J-04 PASS: real operator-scheduled kill 12:57:13 BST + restart 13:01:13 BST. EVALUATOR OPENED 3 screenshots: UT-J-04-02-crash-home.png (crash -> honest 'Backend unavailable' badge + NO-GO preflight banner + explicit unavailable card 'Nothing is fabricated', NO spinner/blank/frozen frame - the iter-7 failure signature did NOT reoccur), UT-J-04-04-initializing.png (badge 'Initializing... history 89/89', board rendered, ~3m14s warm-up), UT-J-04-05-boot-ready.png (badge flips to 'Ready' in the SAME open tab, no reload). Interrupted run-history row shows real frozen progress (343 snapshots / 375-of-381) vs 349 live 1.6s pre-kill - checkpoint-batch gap, not the zeros bug. Boot <=5s closed via TC-7 (1.80s, perf-budgets.md:2110, evaluator-recomputed from tc5 CSVs). spec_hash matches current goal.md. Still owed before GOAL_ACHIEVED: the [NEW] demo.sh --session-live walkthrough (owner/framework)."
+    },
+    "J-05": {
+      "id": "J-05",
+      "name": "Aggregates are precomputed at ingest, never on the fly",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-14",
+      "last_passing_iter": "goal-ops-hardening-iter-14",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-14-evidence/J-05-verify.png",
+      "spec_hash": "63dd5bf0983454e48338557d0f2b1e5ce9726d7aa247c20174ac9323f637564b",
+      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-05 PASS. EVALUATOR SPOT-CHECK: opened J-05-verify.png - immutable snapshot as-of 2025-05-15, Market Regime 70.76/100 Risk-on, breadth 87.70% above-50DMA / 54.10% above-200DMA, net new highs 4.10%, served from stored snapshot (matches recorded state exactly). This iteration's browser lane also showed UT-05/06/07: the live/persisted 'Refreshed:' line now includes 'forward aggregates' (the warm this iteration fixed now COMPLETES all 7 categories - a net improvement to J-05's aggregate-listing contract). spec_hash matches current goal.md."
+    },
+    "J-06": {
+      "id": "J-06",
+      "name": "Pages load only what they need",
+      "status": "partial",
+      "last_verified_iter": "goal-ops-hardening-iter-14",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-14-evidence/UT-01-result.png",
+      "spec_hash": "a9654dc139add9c161b5d7e59a431f78bd94fdf0f26b15c4fe2c83a1007db045",
+      "note": "TARGET (ride-along). One residual gap CLOSED this iteration: TC-8 transcribed iter-13's evaluator-confirmed readings into the canonical single-source artifact reports/perf-budgets.md (218.7/218.7/219.2 ms /data, 70.5 ms / - all PASS vs <=1500ms budget) - EVALUATOR CONFIRMED present at perf-budgets.md ~:2263. The iter-13 honest-status concern (AG-8 wedge produced a frozen frame) is also GONE - no wedge this iteration (health 200 throughout the warm; UT-01 /data Ready). Still partial: (a) [NEW] demo.sh --session-live walkthrough unproduced (owner/framework, iter-12 finding); (b) NEW residual - UT-04 (P1 FAIL): /backtest cache-MISS resolved in 211.8s under a CONCURRENT warm, a ~580-1500x breach of the page's committed budget. NOT catastrophic (evaluator opened UT-04-resolved-slow.png: page rendered fully, Ready badge, honest NA scorecard, no unavailable card) and NOT an AG-8 crash (VmPeak flat) - a honest-but-slow degradation. The 11-page J-06 sweep itself was spot-check-only per spec (unchanged since iter-11); its measured budgets still hold. spec_hash matches current goal.md."
+    },
+    "J-07": {
+      "id": "J-07",
+      "name": "Heavy aggregates never take the service down",
+      "status": "partial",
+      "last_verified_iter": "goal-ops-hardening-iter-14",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-ops-hardening-iter-14",
+      "last_evidence_path": "runs/goal-ops-hardening-iter-14/tc5-health.csv",
+      "spec_hash": "44ca7041d1b06ee5e4a4209d69d25a77ce83a0dc5142674daec01af4a47531f6",
+      "note": "NEW this iteration (goal.md commit e5624010) - the owner-authorized fix for the iter-13 AG-8 REGRESSION. CORE GUARANTEE PROVEN (the memory/crash/wedge dimension): the two unbounded .all() reads in compute_forward_aggregates rewritten in-place to column-projected yield_per(cfg.research.read_batch_size) streaming (iter-diff.md; coherence COHERENCE-PASS - same signature/module, no 2nd producer). EVALUATOR INDEPENDENTLY RECOMPUTED the TC-5 CSVs: tc5-health.csv 250/250 HTTP 200 (max 1.444s), tc5-vm-samples.csv VmPeak a flat 2,404,408 KB across all 250 rows = 61.8% margin under the 6,291,456 KB cap. First successful full-deep-basis 5-horizon warm at this basis size (iters 11-13 aborted 3-for-3 with MemoryError). Byte-identity 32/32 (TC-1/2, reviewer reran 35/35). TC-3 REAL ulimit -v induction: old .all() pattern MemoryError-aborts honestly + same-process recovery, new streamed pattern succeeds under the identical 420MB cap. TC-4 concurrency (4+1 callers) all complete <45s byte-identical. NOT scored passing - three gaps: (1) TC-6 literal live-process induction NOT executed (operator AG-10 judgment on this crash-history host); TC-3 synthetic + TC-5 organic-absence stand in - evaluator ruled this REASONABLE but not the literal GWT (assumptions.md). (2) UT-04 (P1 FAIL): /backtest cache-MISS 211.8s under concurrent warm - J-07 step 1 serves this path; honest/non-catastrophic but far outside any responsiveness bound; audit F1 undiagnosed (streamed-read longer lock-window hypothesis). (3) [NEW] demo.sh --session-live walkthrough unproduced (owner/framework). Gates: review PASS_WITH_NOTES, QA PASS, audit PASS_WITH_GAPS, closure CLOSURE-PASS, coherence COHERENCE-PASS, ux-regression WARN."
+    }
+  },
+  "anti_goal_violations": [
+    {
+      "iter": "goal-ops-hardening-iter-1",
+      "anti_goal": "AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders.",
+      "severity": "critical",
+      "evidence": "Interrupted backfill rows served a fabricated '0 calendar days · 0 already snapshotted · 0 non-trading' breakdown for ranges that were really hundreds of days (browser-qa UT-14, reproduced twice on 517-day jobs). FIXED intra-iteration by the audit (B1): _run_detail gates the four breakdown fields to null on _breakdown_computed (calendar_days>0). Confirmed in working tree: apps/backend/app/engine/data_manager.py:3017,3032-3035.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-2",
+      "anti_goal": "AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders.",
+      "severity": "critical",
+      "evidence": "REVIEW pass-1 CRITICAL: coverage_from_storage regressed the app-wide as-of switcher — an already-ingested historical date served a FALSE all-zero 'not yet computed' sentinel. FIXED intra-iteration (persist per-date coverage snapshots at ingest + read-path self-heal, both via canonical _compute_coverage_uncached). Re-verified byte-exact (UT-05 2015-04-01->360, 2015-01-16->354) + 2 regression tests. Review pass-2 PASS_WITH_NOTES.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-2",
+      "anti_goal": "AG-3 (dimension): displayed numbers must be correct — a fetch that lands new bars silently blanks the DEFAULT /data coverage panel to false all-zeros.",
+      "severity": "minor",
+      "evidence": "Audit B1 + browser-qa live-reproduced iter-2: a fetch landing >=1 bar changed the dataset_version fingerprint so no current-stamp coverage_snapshot matched and default as_of=None fell to the all-zero sentinel until restart/backfill. RESOLVED iter-3: finalize gate widened with an elif for successful fetch/expand calling canonical refresh_coverage_snapshot gated by _coverage_snapshot_is_current. Verified by audit code-trace + 6 unit tests + live J-03-verify.png (540/591/5380/762).",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-7",
+      "anti_goal": "AG-8 — Resilience to data-shape and data-scale change: widening the data basis (deeper history) must never crash an existing page or exhaust a service's memory; the UI degrades gracefully (contained error boundary, honest '—'/NA placeholder, never a blank/frozen frame); unbounded whole-table ORM loads forbidden on the deep basis.",
+      "severity": "critical",
+      "evidence": "ORIGIN (iter-7): during a heavy ingest on the grown live dev DB the backend exhausted its enforced memory_cap_mb=6144 ulimit -v ceiling (worker-thread MemoryError), GET /api/health hung 7+ minutes (all 22 threads futex_do_wait), the UI froze on 'Checking backend...' instead of the honest 'Backend unavailable', and recovery required a MANUAL restart. Human-acknowledged; iter-8 was the sanctioned recovery. RESOLVED ITER-9 on qualified evidence: four `except MemoryError` early-abort branches (data_manager.py:3049/3143/3186/3245) + post-bar-cache release, 10 injected-MemoryError tests with a negative control; a 1092.93s full-universe rebuild + second heavy backfill in ONE process with 439/439 health polls HTTP 200 and peak VmPeak 4,738,948 KB. This iter-7 ingest-finalize-warm dimension stays resolved; the DISTINCT iter-9 forward_aggregates_cached dimension (below) is the one iter-13 escalated and iter-14 resolves.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-8",
+      "anti_goal": "AG-10 — Host resource ceiling (hardware protection): heavy compute MUST be launched only via the project launch scripts (scripts/dev.sh / scripts/start-backend.sh), and those scripts MUST apply the host caps declared in project-extensions/host-guard/host-guard.env whenever that file is present.",
+      "severity": "minor",
+      "evidence": "OBSERVED (not introduced) at iter-8; RESOLVED ITER-9 — both launch scripts carry a marked HOST-GUARD block sourcing host-guard.env (taskset -c $HOST_GUARD_CPU_LIST + OMP/OPENBLAS/MKL/NUMEXPR_NUM_THREADS caps; dev.sh's BACKEND SUBSHELL ONLY mirrors ulimit -v + MALLOC_ARENA_MAX). Live-verified by three readers. ITER-11/12/13/14 RE-CONFIRMATION: boot banner reads `host-guard: cpu_list=0-3,8-11 blas_threads=4`; iter-14 TC-5 launched via scripts/start-backend.sh with /proc-verified caps on pid 3669411 (taskset 0-3,8-11; ulimit -v 6144MB); never weakened or stripped.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-9",
+      "anti_goal": "AG-8 (distinct dimension) — Resilience to data-shape and data-scale change: unbounded whole-table ORM loads are forbidden on the deep basis and an existing page must never exhaust the service's memory. The forward_aggregates_cached -> compute_forward_aggregates -> large ScannerResult path raises MemoryError on the grown live dev DB.",
+      "severity": "critical",
+      "evidence": "RESOLVED ITER-14 (this iteration was the owner-authorized fix, new Must-have J-07, goal.md commit e5624010). The unbounded ORM materialization at forward_testing.py (fr_stmt .all() + `select(ScannerResult).where(run_id.in_(...)).all()` at old :826) is rewritten IN PLACE to column-projected select(...) + yield_per(cfg.research.read_batch_size) streaming - the literal 'unbounded whole-table ORM load' AG-8 forbids is removed (iter-diff.md; coherence COHERENCE-PASS confirms in-place, no 2nd producer, no schema change). VERIFICATION independently reproduced by the evaluator from the retained CSVs (runs/goal-ops-hardening-iter-14/tc5-*.csv): the first successful full-deep-basis 5-horizon warm at this basis size completed with 250/250 GET /api/health HTTP 200 (max 1.444s) and a flat VmPeak 2,404,408 KB = 61.8% margin under the 6,291,456 KB cap (iters 11-13 aborted this exact warm 3-for-3 with MemoryError). Byte-identity 32/32 (reviewer reran 35/35). TC-3: a REAL (non-monkeypatched) ulimit -v induction proves honest MemoryError-abort + same-process ForwardAggregateCache recovery, and that the rewritten path succeeds under the identical cap. Reviewer PASS_WITH_NOTES + audit PASS_WITH_GAPS both independently reran tests + recomputed CSVs. RESIDUAL (NON-critical, carried as a follow-up, NOT an unresolved AG-8): UT-04's 211.8s /backtest cache-MISS under concurrent warm (a latency anomaly - VmPeak flat, page rendered, no crash/wedge) and audit B1 (accumulators still O(rows), 61.8% headroom shrinks with further growth). Neither is a crash, memory exhaustion, or unbounded ORM load.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-10",
+      "anti_goal": "AG-10 - Host resource ceiling: heavy compute - backfills, full-universe rebuilds, measurement passes, load drills, TEST-SUITE BURSTS - MUST be launched only via the project launch scripts and those scripts MUST apply the host-guard caps.",
+      "severity": "minor",
+      "evidence": "OBSERVED iter-10: developer ran targeted pytest directly, unconfined across all cores (hwmon peak 91.0C vs 95C watchdog; no trip). RESOLVED ITER-11, HELD ITER-12/13/14: developers wrapped every pytest invocation in host-guard confinement (taskset -c 0-3,8-11 + OMP/OPENBLAS/MKL/NUMEXPR_NUM_THREADS=4). iter-14 QA/review confirm confinement honored for every test run; TC-5 operator pass ran with sampler+watchdog armed (Tctl 43-44C, watchdog never fired), no hard-reset.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-13",
+      "anti_goal": "AG-8 (iter-9 forward_aggregates_cached dimension) — observed-severity ESCALATION: the unbounded forward_testing.py:826 ScannerResult load, under concurrent load, wedged the ENTIRE backend into a full ~12-minute availability outage requiring an operator hard-restart — no longer merely a silent internal abort.",
+      "severity": "critical",
+      "evidence": "RESOLVED ITER-14 by the bounded/streamed rewrite of exactly this code path (see the iter-9 AG-8 entry for the full verification). The ~12-minute full-outage failure mode did NOT reoccur this iteration: the full-deep-basis warm that iters 11-13 could not complete now runs to terminal 'ok' with health 200 throughout (evaluator-recomputed 250/250) and no restart, AND the live browser lane confirmed the readiness badge stayed 'ready' across the whole ~6.8-min warm (UT-03) and narrated crash->unavailable->initializing->ready correctly through a real kill/restart (UT-J-04, 3 screenshots opened by the evaluator). The specific 'blast radius / mitigation holds' premise this entry falsified is now re-established on measured evidence, not asserted. NOTE: under the SAME concurrent-load trigger shape, UT-04 shows a residual 211.8s /backtest cache-MISS latency - honest/non-catastrophic (health green, badge ready, page rendered, no wedge/restart), so NOT a continuation of this outage-class violation; carried as a non-critical latency follow-up (J-06/J-07 partial + next-step item 1), not an unresolved critical AG-8.",
+      "resolved": true
+    }
+  ],
+  "updated_at": "2026-07-23T14:25:00Z"
+}

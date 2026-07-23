@@ -642,3 +642,55 @@ live-process induction is still owed (AG-10 hazard on this crash-history host). 
 (P3) per-horizon heartbeat cadence (`data_manager.py:3220`, outpaced ~9×); reconcile the stale "not done
 yet" line in `implementation-summary.md` (audit B2 / closure Non-Blocking #1). Carried: pre-existing
 `test_db.py::test_create_all_produces_expected_tables` failure (unrelated, no schema change).
+
+## Iteration 15 — goal-ops-hardening-iter-15
+
+**Date:** 2026-07-23T18:00:00Z
+**Verdict:** STALLED
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: none (J-01/J-03/J-05 re-verified passing by deterministic golden replay; J-04
+  re-verified passing by the LLM lane + carry-forward of iter-14's live kill/restart pass + this
+  session's fresh steady-state sanity re-check, `UT-J-04-carryforward-sanity.png` opened)
+- Advanced but NOT closed: **J-06 & J-07 stay `partial`** — the ONE agent-tractable item iter-14 named
+  (root-cause + fix UT-04's 211.8s concurrent cache-MISS) is DONE and correct, but the live pass proves
+  it does not close the budget.
+- Newly failing: none. Regressed (passing→failing): none.
+- Anti-goal violations: **NONE this iteration.** scan-report CLEAN; iter-diff = `forward_testing.py`
+  (single-flight wrapper only) + `test_forward_testing_concurrency.py` + a README showcase leftover;
+  coherence COHERENCE-PASS. AG-8 (iter-9/13 dimension) STAYS RESOLVED — `compute_forward_aggregates`
+  byte-unchanged, no unbounded ORM/OOM/crash; the 178.74s is latency, not exhaustion. AG-10 honored
+  (operator pass via `start-backend.sh`, taskset confirmed live on pid 4166118, 84°C < 95°C trip).
+
+**Reasoning:** The single-flight de-dup is a correct, byte-identity-preserving fix (root cause measured
+not guessed: 9.91x→1.04x on a 60k fixture; TC-1 call-count==1; I confirmed the diff touches only the
+wrapper + `import threading` + 3 module globals, `compute_forward_aggregates` body untouched). But the
+one operator-supervised deep-basis pass (`reports/perf-budgets.md` TC-4, which I cross-read line by line)
+shows the live cold MISS is still **178.74s WARN (~119x over the ≤1.5s budget)** plus an unflagged
+**5.37s** second breach — because the dominant residual is ONE cold full-basis compute a wrapper-scoped
+fix cannot reduce (audit B1/B2 reconciled the dev's "stacking fully accounts for 211.8s" overclaim to
+~15.6%). I opened `UT-01-result.png`: `/backtest` renders fully and honestly (Ready, all 5 horizons
+"— n=0", "No numbers are fabricated") — so the honest-status clause holds and this is a latency/budget
+shortfall, NOT an AG-8 crash. Rejected REGRESSION: no journey passing→failing; AG-8 resolved and the fix
+introduces no new violation. Rejected GOAL_ACHIEVED: J-06/J-07 partial (budget clause fails). Rejected
+CONTINUE: the tractable "fix the bug" work is exhausted — the residual is definitively a hard cost, and
+every remaining path (affordance / precompute-before-serve redesign / accept-and-amend-budget) is a
+human-owned product-direction decision the spec's own escalation flag, the pump note, audit §5, and QA #3
+all route to the owner. Decision tree C.2 matches: all unblock paths for the current blocker are
+human-owned → STALLED. I declined to unilaterally adopt the "warm-fast + honest-skeleton = passing"
+reading (interpretation c): the goal Success Criteria commit to "page loads stay within committed
+never-regress budgets", and iter-12's human-ratified precedent kept J-06 partial rather than launder a
+budget breach into a green check — that acceptance is the owner's to grant.
+
+**Next-step recommendation:** HALT. Owner picks one direction for the `/backtest` cold-MISS residual —
+(1) add a `/backtest` elapsed-time/progress affordance (deferred iter-16 candidate) and read the budget
+as governing warm loads only; (2) authorize a precompute-before-serve / incremental-aggregate redesign so
+a request never eats a cold full-basis compute; or (3) accept the deep-basis cold-MISS as a disclosed
+constraint (a conscious logged `reports/perf-budgets.md` budget amendment, never a silent loosening) — under
+(3) the evaluator can score J-06/J-07 passing next iteration → GOAL_ACHIEVED. Then `--resume` at FULL depth
+(shared-infrastructure change). Non-blocking owner/operator items to weigh (none closes J-06/J-07 alone):
+the undiagnosed 5.37s spike (needs another AG-10 heavy pass); the 84°C-vs-64°C thermal reporting
+discrepancy (host crash history); the 4 unguarded sibling caches (reuse this iteration's single-flight
+idiom if ever patched); VmPeak grew +66.6% vs iter-14 (36.3% margin — under cap, WATCH). The
+`demo.sh --session-live` walkthrough now has operator evidence (iter-14 walkthrough file, exit 0, 7 steps)
+— no longer a distinct blocker. Carried unrelated: `test_db.py::test_create_all_produces_expected_tables`.

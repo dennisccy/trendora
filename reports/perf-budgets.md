@@ -2229,3 +2229,406 @@ This closes TC-5 and TC-7 as measured PASS on this operator-supervised pass, rec
 (non-live-induced) TC-6 evidence honestly, and resolves the PENDING placeholder above. Per the dev
 handoff's Known Issue #5, this section does not itself claim J-06 or J-07 "passes" as whole journeys —
 that scoring remains the evaluator's call once TC-9/TC-10 (browser-qa's regression replay) also close.
+
+## UT-04 — `/backtest` concurrent cache-miss latency: root cause + fix (iter-15, developer pass)
+
+### The original finding (transcribed — not yet in this file until now)
+
+**Source:** `reports/phase-goal-ops-hardening-iter-14-ux-regression.md:61,118-122` (browser-qa's UT-04, P1,
+measured via the browser's own Resource Timing API against the full deep basis). Verbatim: the
+`/backtest` evidence panel tab was opened at a cache-miss, still on the `BacktestSkeleton` loading state
+at 135.5 s (already past its ≤1.5 s budget), resolved at 257.4 s; the resolving `GET /api/backtest` call
+itself measured **211,829 ms (211.8 s)**, a ~140x violation of the committed ≤1.5 s budget, when it landed
+concurrently with the ingest finalize hook's forward-aggregate warm (all 5 configured horizons). Honest:
+no crash, no frozen frame, `/api/health` stayed green throughout — but a real, large budget overrun. Both
+iter-14's evaluator and its auditor (F1) named this THE next item, scoring J-06/J-07 `partial` specifically
+because of this finding.
+
+### Root-cause investigation (this iteration, measured — not adopted as the first plausible story)
+
+Three candidates were named for investigation (none prescribed): (a) no de-duplication in
+`forward_aggregates_cached` on a cache MISS; (b) GIL/CPU contention between concurrent heavy Python
+aggregation loops (single-process `uvicorn`, no `--workers`); (c) WAL/session contention from the
+iter-14 streamed read holding its transaction open longer than the old `.all()` fetch-and-release did.
+
+**Direct code read (candidate a):** confirmed — `forward_aggregates_cached` (`forward_testing.py:987`
+pre-fix) had NO lock, in-flight marker, or memoization on its MISS path; a cache MISS always fell straight
+through to `compute_forward_aggregates`, so N concurrent same-key MISSes each redundantly recomputed the
+full aggregation.
+
+**Measured reproduction of candidate (a)'s magnitude** (this host, `.venv` Python 3.12, `taskset -c
+0-3,8-11`, BLAS/OMP/numexpr threads=4, throwaway 60,000-row `ScannerResult`+`ForwardReturn` fixture at one
+horizon — the SAME shape `test_forward_testing_concurrency.py`'s existing `memory_pressure_db` fixture
+uses):
+
+| Scenario (PRE-fix code) | `compute_forward_aggregates` invocations | Wall-clock | Ratio vs. single-caller baseline |
+|---|---|---|---|
+| 1 caller (baseline) | 1 | 1.054 s | 1.0x |
+| 5 concurrent callers, SAME never-yet-cached key | **5** (no de-dup) | 10.449 s | **9.91x** |
+
+**Isolated measurement of candidate (c)** (WAL/session contention ALONE — a single `compute_forward_
+aggregates` call, never routed through the cache/single-flight wrapper, so no redundant recomputation is
+involved — timed alone vs. timed while a background thread commits 3,220 writes to an unrelated symbol
+throughout the call, on the same 60,000-row fixture):
+
+| Scenario | Wall-clock | Ratio vs. baseline |
+|---|---|---|
+| Baseline (no concurrent writer) | 1.031 s | 1.0x |
+| Concurrent writer (3,220 commits during the read) | 1.639 s | **1.59x** — well inside the 5.0x smoke-guard bound |
+
+**Conclusion:** candidate (a) is the confirmed DOMINANT mechanism — at just 5 concurrent redundant
+computations on a modest 60,000-row fixture, wall-clock already blows up ~10x with zero de-duplication;
+scaled to the real deep-basis tables (`forward_returns` 3,935,930+ rows — ~65x this fixture's size) and the
+"up to 10 redundant concurrent passes" shape the plan's own call-site analysis names (the finalize warm's
+5-horizon loop and `/api/backtest`'s own 5-horizon comprehension can both target the SAME keys at once),
+this fully accounts for a 211.8 s finding.
+
+> **[iter-15 AUDIT RECONCILIATION — added by the audit pass.]** The live TC-4 pass below does NOT bear
+> out this extrapolation, and this conclusion sentence overstates candidate (a)'s share of the
+> *deep-basis* finding. Post-fix the cold MISS is **178.74 s** — only a **15.6% reduction** from 211.8 s
+> — so candidate (a)'s redundant *stacking* accounts for only ~15.6% of the deep-basis finding, not its
+> bulk. At deep-basis scale the pre-fix 211.8 s was only ~1.19x a single cold `compute_forward_aggregates`
+> pass (178.74 s), NOT the ~10x the 60,000-row fixture predicted; the **dominant residual cost is one
+> cold full-basis compute**, which this wrapper-scoped single-flight fix does not and cannot reduce. The
+> de-dup itself is still correct and does eliminate the stacking pathology (proven by TC-1 and by the live
+> pass's 64 independently-resolving, none-hung calls) — but whether a wrapper-only fix is *sufficient* for
+> the ≤1.5 s `/backtest` budget is an open evaluator/owner call, NOT something this iteration closed. See
+> the "TC-4 … RESULTS" section below and the dev handoff's Known Issue #3.
+
+Candidate (b) GIL contention is real (each of the 5 concurrent
+copies above ran ~2x slower than the uncontended baseline, not just N-fold slower) but is a SYMPTOM of (a)'s
+redundancy — removing the redundant copies removes the GIL contention BETWEEN them. Candidate (c) is real
+but small in isolation (1.59x, comfortably inside the 5.0x bound) and does not independently explain a
+140x-scale overrun. **Decision: `app.db`'s session/WAL configuration is NOT touched this iteration** — the
+isolated measurement did not show an effect large enough to justify it, and the plan's own scope keeps an
+`app.db` change conditional on the evidence, not prescribed.
+
+### The fix
+
+An in-process single-flight de-dup added to `forward_aggregates_cached`'s MISS path only
+(`apps/backend/app/engine/forward_testing.py`), mirroring `data_manager.compute_coverage`'s established
+J-100 per-key-lock + in-flight-event idiom (no new concurrency abstraction): the FIRST concurrent caller
+for a `(horizon, asof_key, dataset_version)` key computes (the sole producer, `compute_forward_aggregates`,
+completely unchanged); every OTHER concurrent caller for that SAME key waits (bounded, 45 s) then re-reads
+the now-persisted `ForwardAggregateCache` row with its OWN session — never a second producer. A failed or
+genuinely-wedged owner still releases the slot (or the bounded wait expires) and the waiter falls through
+to an independent compute rather than hanging. `compute_forward_aggregates`'s signature, columns read, and
+streamed pattern are byte-identical to iter-14's proven implementation (re-confirmed: the existing 32-test
+suite in `test_forward_testing_aggregates_streaming.py` passes unmodified).
+
+**Re-measured on the identical 60,000-row fixture, POST-fix:**
+
+| Scenario (POST-fix code) | `compute_forward_aggregates` invocations | Wall-clock | Ratio vs. single-caller baseline |
+|---|---|---|---|
+| 1 caller (baseline) | 1 | 1.053 s | 1.0x |
+| 5 concurrent callers, SAME never-yet-cached key | **1** (de-duplicated) | 1.098 s | **1.04x** |
+
+### Targeted test additions (host-guard-confined; all green)
+
+| Test (file: `test_forward_testing_concurrency.py` unless noted) | Proves |
+|---|---|
+| `test_forward_aggregates_cached_dedups_concurrent_same_key_miss_to_one_compute` (TC-1) | 5 concurrent same-key MISSes invoke `compute_forward_aggregates` exactly once; all 5 payloads byte-identical |
+| `test_compute_forward_aggregates_concurrent_write_during_read_ratio_bounded` (TC-2) | concurrent-write-during-read ratio ≤5.0x (measured 1.59x) on a dedicated 100,000-row fixture (≥1.0s baseline) |
+| `test_forward_aggregates_cached_waiter_does_not_deadlock_when_owner_raises` (TC-8) | a waiting caller never blocks past the bounded timeout when the owner raises — resolves in well under 1s in this test's deterministic interleaving, not the full 45s bound |
+| `test_forward_testing_aggregates_streaming.py`'s existing 32-test suite (TC-3) | unmodified, all pass — `compute_forward_aggregates` remains byte-identical |
+| `test_forward_testing.py`'s existing 3 `forward_aggregates_cached` tests | unmodified, all pass — sequential MISS→HIT behavior unaffected |
+| `test_data_manager.py`'s 29 `test_finalize_hook_*` tests | unmodified, all pass — the finalize-hook call site is unaffected |
+
+**TC-8 test-validity check (this developer pass):** the fix's `event.set()` cleanup was temporarily
+disabled and the TC-8 test re-run — it correctly FAILED (waiter thread did not finish within the bounded
+timeout), confirming the test genuinely exercises the deadlock-prevention path rather than passing
+vacuously. The fix was restored immediately after and all tests re-confirmed green.
+
+### TC-4 / TC-5 / TC-6 — full-deep-basis live reproduction: PENDING, operator-supervised
+
+**RESOLVED 2026-07-23 — see "TC-4 / TC-5 / TC-6 — full-deep-basis live reproduction: RESULTS
+(operator-supervised pass, 2026-07-23)" at the end of this file for the operator-supervised measurement
+pass results, transcribed verbatim with attribution, plus this developer pass's independent recomputation
+against the three retained raw CSVs (`runs/goal-ops-hardening-iter-15/tc4-backtest-timings.csv`,
+`tc456-health.csv`, `tc456-vm-samples.csv`) and a cross-read of `logs/backend.log` /
+`logs/hwmon/hwmon.csv`. That recomputation confirms most of the operator's figures exactly but surfaces
+two discrepancies the evaluator/operator should reconcile (a second, unflagged latency spike; a thermal
+reading materially below what the sampler recorded) — see the RESULTS section for the honest breakdown.
+The placeholder below is left unedited as the historical record of the protocol that pass followed.**
+
+**Not performed this iteration's developer pass.** Per this iteration's own PUMP NOTE, services are DOWN
+as of this dispatch (nothing on :8255/:3255) and this pipeline's agents cannot start/stop them this
+session (permission classifier; subagent-resume broken). The full-deep-basis warm is additionally
+AG-10-class (exactly ONE owner-authorized, host-guard-confined, cooled-host, sampler+watchdog-armed pass).
+The targeted fix and its test suite above (TC-1/TC-2/TC-3/TC-8, all green) are the PRECONDITION this pass
+is sequenced after. **No number is fabricated or estimated here** — this section is an honest placeholder
+recording exactly what the next operator-supervised pass must do, mirroring the iter-14 PENDING→RESULTS
+pattern used earlier in this file.
+
+**Protocol for the operator's pass (mirrors the iter-3/8/9/14 protocol already used above):**
+1. Confirm a cooled host (`Tctl` inside the documented idle band), the 1 Hz host-guard hwmon sampler
+   running, and the thermal watchdog armed.
+2. Start the backend via `scripts/start-backend.sh` ONLY (never ad hoc, never reusing the currently-running
+   pre-fix process — a FRESH restart is required to correctly attribute timing to this iteration's build),
+   under host-guard confinement (`HOST_GUARD_CPU_LIST=0-3,8-11`, `HOST_GUARD_BLAS_THREADS=4`,
+   `HOST_GUARD_REQUIRE_MARKERS=1`). Record the process-start timestamp and PID.
+3. Let the finalize warm trigger all 5 configured horizons; concurrently issue a live `GET /api/backtest`
+   request for a not-yet-warmed horizon (the exact UT-04 trigger shape) — measure the resolving request's
+   wall-clock via server-side timing (closes TC-4: PASS if ≤1.5 s, WARN with the measured number if not).
+4. During that SAME pass, spot-check `/stocks`, `/sectors`, `/scanner-runs`, `/evidence` page loads (or
+   their on-load endpoints) while the warm runs — record each PASS (in its own committed budget) or a named
+   WARN; confirm none renders blank or frozen (closes TC-5).
+5. Poll `GET /api/health` at 1 Hz throughout; confirm every poll returns HTTP 200 within budget, no wedge
+   (closes TC-6).
+6. Cross-read `logs/backend.log` and `logs/hwmon/hwmon.csv` for the measurement window before attributing
+   any remaining slowness to ambient load (iter-11's carried lesson).
+7. Report console output, PIDs, and timestamps verbatim; the developer/reviewer records that
+   operator-provided output with attribution in a follow-up dated section here — never fabricating or
+   silently omitting a number, and never rationalizing a still-elevated number as "expected overhead"
+   (iter-9's carried lesson) — if still above budget, record WARN with the measured value.
+
+**Fallback note (pre-registered):** if the executing agent's environment blocks the process start even
+under this protocol, the operator starts/monitors it directly and reports the same evidence for the
+developer/reviewer to transcribe with attribution — the requirement is an honest, attributed number,
+never a fabricated or silently-omitted one, regardless of who runs the pass.
+
+## TC-4 / TC-5 / TC-6 — full-deep-basis live reproduction: RESULTS (operator-supervised pass, 2026-07-23)
+
+**This section RESOLVES the "PENDING, operator-supervised" placeholder above.** The operator ran the
+protocol that section specified and reported console output, PIDs, and timestamps verbatim, per its own
+step 7 fallback instruction. Everything below is transcribed from that report with attribution, plus this
+developer pass's own independent recomputation against the three retained raw CSVs
+(`runs/goal-ops-hardening-iter-15/tc4-backtest-timings.csv`, `tc456-health.csv`, `tc456-vm-samples.csv`,
+500/500/64 data rows respectively) and a cross-read of `logs/backend.log` and `logs/hwmon/hwmon.csv` for
+the exact measurement window (epoch 1784817682-1784818365, matching the start/end of all three CSVs).
+Recomputed values are marked explicitly so a reader can tell operator-reported figures from this pass's
+verification of them — **and, per this iteration's own instruction not to round anything up, this
+recomputation surfaces two discrepancies the operator's summary did not capture: a second latency spike
+that also breaches the committed budget, and a peak Tctl materially higher than the reported figure.**
+Neither discrepancy is self-resolved here — both are handed to the evaluator/operator as open items. No
+service was started or stopped to produce this section; the backend (pid 4166118) was already up from the
+operator's pass and stays up (independently re-confirmed alive at recomputation time: `ps -p 4166118` shows
+it running, `taskset -cp 4166118` still reports `0-3,8-11`, and its live `/proc/4166118/status` VmPeak reads
+4,005,376 kB — an exact match to this section's own recomputed CSV peak below).
+
+### Boot (context; not itself a numbered TC this iteration)
+
+Operator, verbatim: `start-backend.sh` launched **15:41:03 BST**, first `GET /api/health` HTTP 200 at
+**2.00 s**; backend pid **4166118**, taskset `0-3,8-11`.
+
+**Recomputed/cross-checked:** `logs/backend.log` carries the boot banner `=== start-backend.sh: launching
+at 2026-07-23T14:41:03Z ===` (line 38178 of that file) — 14:41:03 UTC = **15:41:03 BST exactly**, matching
+the operator's launch timestamp with no discrepancy (same cross-check pattern as the iter-14 RESULTS
+section above). `Application startup complete` / `Uvicorn running` follow two lines later. This is the
+LAST boot banner in the file, consistent with pid 4166118 being the current, still-running process.
+
+**The "2.00 s" time-to-first-200 figure is NOT independently verifiable from the raw evidence provided to
+this pass.** The earliest sampled row in `tc456-health.csv` (the file that should carry this measurement)
+is epoch 1784817682 = **15:41:22 BST — 19 s after the corroborated launch instant**, not 2 s. This does not
+prove the operator's figure wrong (a separate, tighter boot-poll loop measuring strictly time-to-first-200
+could reasonably finish and hand off to the steady-state 1 Hz CSV-logging poller ~17-19 s later, for
+reasons unrelated to backend readiness), but this pass has no raw data point that reproduces "2.00 s"
+specifically — recording this as unverified rather than silently confirming it.
+
+### Warm-trigger job (context for TC-4/TC-5 — the full-deep-basis forward-aggregates warm)
+
+Operator, verbatim: single-date backfill `2025-05-21`, job `c933eb2be04f4515b9d49e273a4d5dad`, launched
+**15:41:30 BST**, terminal `ok` at **15:52:25 BST** (~11 min), `aggregates_refreshed` = all seven including
+`forward_aggregates`.
+
+**Recomputed/cross-checked:** the exact job ID appears in `logs/backend.log`'s current-boot window — one
+`POST /api/data/jobs` followed by **119** `GET /api/data/jobs/c933eb2be04f4515b9d49e273a4d5dad` polls, all
+HTTP 200 — confirming the job was real and was actively tracked to completion (access-log lines carry no
+per-line wall-clock timestamp and no response body, so the literal launch/terminal clock times and the
+`aggregates_refreshed` list are not independently re-derivable from this file alone). One precise
+cross-check DOES corroborate the operator's stated launch instant: the operator's own TC-4 narrative places
+the cold MISS "24 s into the job"; the cold-MISS row's epoch (1784817714, see below) minus 24 s =
+**1784817690, which converts to exactly 15:41:30 BST** — the operator's stated job-launch time, to the
+second. This is independent corroboration, not merely repetition of the operator's own arithmetic.
+
+### TC-4 — `/backtest` concurrent cache-miss latency (committed budget: `GET /api/backtest` ≤ 1.5 s, per
+this file's own generic warm-endpoint budget used throughout — see e.g. line ~996 above)
+
+**Recomputed directly from `tc4-backtest-timings.csv` (64 data rows, 0 non-200 — confirmed exactly against
+the operator's "64 calls total, ALL HTTP 200"):**
+
+| Segment | Recomputed | Operator's figure |
+|---|---|---|
+| Calls before the cold MISS | **4** calls, all fast: 0.421783 s, 0.301865 s, 0.495333 s, 0.243018 s (epochs 1784817682/83/98/98) | "Two pre-job calls: 0.42 s / 0.30 s" |
+| The cold MISS | epoch **1784817714**, **178.743092 s** (≈178.74 s) — the only row > 10 s in the file | "resolved in 178.74 s" — **matches exactly** |
+| Calls after the cold MISS | **59** calls, range **0.130308 s – 5.373490 s**, median 0.500777 s, mean 0.591121 s | "58 during-job calls: 0.24-0.67 s, median 0.52 s" |
+
+The cold-MISS figure and its epoch offset from job-launch (above) match the operator's report exactly — no
+discrepancy there. The pre-MISS count is a minor undercount (4 real fast calls, not 2; the extra two, at
+epoch 1784817698, land 8 s into the job but still before the dataset-version bump, so they are still
+correctly-characterized cache HITs on the prior version — this doesn't change the substantive point).
+
+**The post-MISS range does NOT match the operator's stated "0.24-0.67 s" band.** Of the 59 calls after the
+cold MISS, **12 exceed 0.67 s**, up to **5.373490 s**:
+
+| Epoch | Endpoint | `time_total_s` |
+|---|---|---|
+| 1784817972 | `/api/backtest` | 1.179418 |
+| 1784818098 | `/api/backtest` | 1.273492 |
+| 1784818100 | `/api/backtest?horizon=20` | 1.017623 |
+| 1784818116 | `/api/backtest?horizon=20` | 0.716970 |
+| 1784818133 | `/api/backtest?horizon=20` | 0.819413 |
+| 1784818149 | `/api/backtest` | 0.700710 |
+| 1784818165 | `/api/backtest` | 0.733753 |
+| 1784818166 | `/api/backtest?horizon=20` | 0.727235 |
+| 1784818182 | `/api/backtest` | 1.029807 |
+| **1784818231** | **`/api/backtest`** | **5.373490** |
+| 1784818284 | `/api/backtest?horizon=20` | 0.691677 |
+| 1784818331 | `/api/backtest` | 0.917357 |
+
+**The epoch-1784818231 call (5.373490 s) is a SECOND breach of this file's committed ≤1.5 s `/api/backtest`
+budget that the operator's summary did not mention or flag.** It is not the same event as the 178.74 s cold
+MISS (it is a distinct row, ~8.6 minutes later, well inside the "during-job" period) and it is not
+explained by the operator's "single cold MISS, then all fast" narrative. This developer pass does not
+diagnose its cause (candidates could include a second dataset-version bump from a later commit inside the
+same per-date job, or transient GIL/scheduling contention — undetermined from the evidence available here);
+it is recorded as a second, smaller WARN point per this file's own "never rationalizing a still-elevated
+number as expected overhead" rule (iter-9's carried lesson), for the evaluator to weigh alongside the
+178.74 s finding.
+
+**Verdict: WARN — two calls exceed the ≤1.5 s budget: 178.74 s (the flagged cold MISS, ~119x over) and
+5.37 s (unflagged by the operator, ~3.6x over, newly surfaced by this recomputation).** The single-flight
+dedup fix demonstrably prevents the *stacking* pathology iter-14 measured (no evidence here of concurrent
+callers piling additional redundant computes on top of one another — every one of the 64 rows resolved
+independently and none hung), but a genuinely cold full-basis MISS still costs one full in-process compute,
+and this pass shows that cost is not perfectly confined to a single occurrence during an ~11-minute ingest
+window on the current basis size.
+
+### TC-5 — page spot-checks during the warm
+
+Operator, verbatim: `/api/stocks?limit=50` 0.09-0.10 s, `/api/sectors` 0.004-0.006 s, `/api/evidence`
+0.009 s post-warm (one early 30 s-timeout read during the heaviest window), `/api/scanner-runs` returned
+404 (operator's own caveat: probe path was a guess, not a confirmed route).
+
+**Not independently recomputable** — no raw CSV or log capture was provided for these ad hoc spot-checks
+(unlike TC-4/TC-6, which have dedicated CSVs), so these figures are transcribed with attribution only, not
+re-verified against a data file. The 30 s-timeout `/api/evidence` read is recorded honestly here per the
+operator's own instruction, not smoothed into the otherwise-fast 0.009 s figure.
+
+**The `/api/scanner-runs` 404 is independently confirmed EXPECTED, not a page failure** — this developer
+pass checked the actual route: `apps/backend/app/api/` has no scanner-runs module at all (`backtest.py,
+budget.py, dashboard.py, data.py, evidence.py, graveyard.py, health.py, indexes.py, market_phase.py,
+methodology.py, referee_audit.py, regime_history.py, registry.py, research.py, runs.py, sectors.py,
+stocks.py, themes.py, watchlist.py` — no `scanner*.py`). The frontend's `/scanner-runs` page
+(`apps/frontend/app/scanner-runs/page.tsx` and `.../[runId]/page.tsx`) calls `fetchRuns()` / `fetchRun()`,
+which resolve to the backend's `GET /api/runs` and `GET /api/runs/{run_id}` (`apps/backend/app/api/runs.py`
+lines 25, 50) — NOT `/api/scanner-runs`. The operator's own caveat was correct: this was a guessed probe
+path, not a real endpoint, and not evidence of a page failure. The browser-qa lane (not this pass) is the
+correct place to verify the actual `/scanner-runs` page against its real backend calls.
+
+**Verdict: consistent with PASS on the substance reported, with the honest exceptions above** — one ad hoc
+30 s timeout recorded (not re-verified), and the scanner-runs 404 explained as a wrong probe path rather
+than a page defect.
+
+### TC-6 — health-poll liveness, no wedge
+
+Operator, verbatim: 498/500 polls HTTP 200 (median 0.168 s, max 3.573 s); 2 non-200s, isolated single-second
+`000` timeouts at the poller's 4 s cutoff (epochs 1784817865, 1784818241), self-recovered on the next poll.
+
+**Recomputed directly from `tc456-health.csv` (500 data rows, epochs 1784817682-1784818365):**
+
+| Metric | Recomputed value |
+|---|---|
+| Total polls | 500 |
+| HTTP 200 | **498 / 500** — matches exactly |
+| Non-200 rows | epoch **1784817865**: `000`, 4.002216 s; epoch **1784818241**: `000`, 4.003008 s — **both epochs match the operator's figures exactly** |
+| `time_total_s` median (200-only) | 0.167745 s (≈ 0.168 s — matches) |
+| `time_total_s` max (200-only) | 3.573470 s (≈ 3.573 s — matches) |
+| `time_total_s` min (200-only) | 0.086916 s |
+
+Both non-200 rows are isolated (no adjacent-epoch failures either side), consistent with "self-recovered on
+the next poll, no wedge." Every figure the operator reported for this check is confirmed exactly.
+
+**Verdict: materially PASS — 498/500 (99.6%) HTTP 200, two isolated non-fatal client-side timeouts, no
+sustained wedge.** Recorded as "materially" rather than a bare PASS because the GWT's literal wording
+("every poll returns HTTP 200") has two exceptions — stating this plainly rather than rounding 498/500 up
+to a clean 500/500, per this file's established honesty convention.
+
+### Memory budget (corroborating; not separately TC-numbered in this iteration's protocol)
+
+Operator, verbatim: VmPeak peaked 4,005,376 KB (3.82 GB) = 36.3% margin under the 6,291,456 KB cap; grew
+vs iter-14's 2.29 GB with the ~27% larger basis + concurrent load; zero MemoryError/memory-pressure lines.
+
+**Recomputed directly from `tc456-vm-samples.csv` (500 data rows, same epoch window):**
+
+| Metric | Recomputed value |
+|---|---|
+| Peak `VmPeak` | **4,005,376 KB** — matches the operator's figure exactly |
+| Peak `VmPeak` in MB / GiB | 4,005,376 / 1024 ≈ 3,911.5 MB ≈ **3.82 GiB** (matches "3.82 GB") |
+| Cap (`server.memory_cap_mb`, confirmed current in `apps/backend/app/config.py:638`) | 6,291,456 KB (6144 MB) |
+| Margin | (6,291,456 − 4,005,376) / 6,291,456 = **36.336%** ≈ **36.3%** — matches exactly |
+| Peak `VmRSS` (informational, not budget-binding) | 3,524,604 KB |
+| Rows at the peak value | 102 / 500 — i.e. `VmPeak` was still climbing through most of the window and plateaued only in its final ~20%, unlike iter-14's TC-5 pass where the peak was already flat across all 250/250 samples |
+| Growth vs iter-14's peak (2,404,408 KB) | **+66.6%** (not stated numerically by the operator) — notably more than the ~27% basis growth alone (`scanner_results`/`forward_returns` row-count growth cited in the dev handoff), consistent with the operator's own attribution to concurrent load: this pass ran the TC-4 backtest poller AND the warm simultaneously, whereas iter-14's TC-5 pass measured the warm in isolation |
+
+Independently re-confirmed live (not from the CSV): pid 4166118's `/proc/4166118/status` VmPeak reads
+**4,005,376 kB right now**, at recomputation time — an exact match to the CSV's peak, and consistent with
+`VmPeak` being monotonically non-decreasing for a live process that has not restarted.
+
+**Backend-log MemoryError check:** the operator's cited path, `/tmp/trendora-be15-tc4.log`, is **empty (0
+bytes)** and cannot itself support the "zero MemoryError" claim — flagging this citation issue plainly. The
+underlying claim IS independently confirmed via the correct file this session has used throughout,
+`logs/backend.log`: the current boot's window (line 38178 to end-of-file, 800 lines) contains **zero**
+`MemoryError` / "memory pressure" hits (grep against that window returns no match). The whole file does
+contain 53 `MemoryError` hits, but all of them fall in the line 27233-32432 range — entirely before this
+boot's banner at line 38178, i.e. from prior sessions/iterations, not this pass.
+
+**Verdict: PASS — 36.3% margin confirmed exactly, comfortably under the cap; the memory-error citation
+pointed at an empty file but the claim holds under the file this session actually logs to.**
+
+### Thermal preconditions — recomputed discrepancy (flagged, not self-resolved)
+
+Operator, verbatim: "Tctl 42 °C idle band, 1 Hz hwmon sampler live, thermal watchdog armed (no trip;
+Tctl peaked 64 °C during the run)."
+
+**Recomputed directly from `logs/hwmon/hwmon.csv`, filtered to the exact epoch window all three CSVs share
+(1784817682-1784818365, 655 samples at ~1 Hz):**
+
+| Metric | Recomputed value |
+|---|---|
+| Tctl min / max | **48 °C / 84 °C** |
+| Tctl at window start (epoch 1784817682) | **75 °C** |
+| Tctl at window end (epoch 1784818365) | 51 °C |
+| Samples above 64 °C | **620 / 655 (94.7%)** |
+| Samples at or below 64 °C | 35 / 655 (5.3%) — clustered in the final ~15-20 s of the window as the host cools after the job's terminal state |
+| NVMe max | 41 °C (abort threshold 75 °C) |
+| DIMM0 / DIMM1 max | 46 °C / 45 °C (abort threshold 85 °C) |
+| Watchdog trips this window | none (`logs/hwmon/watchdog.log` shows only "armed" events, no trip) |
+
+**This does not match the operator's reported figures.** The sampler shows the host running at 68-84 °C
+for roughly the middle 90%+ of this ~11-minute window, not idling near 42 °C with a 64 °C peak — the
+64 °C figure sits closer to this window's *minimum* (48 °C) than its actual maximum (84 °C), and the
+42 °C "idle band" figure does not appear anywhere in this exact window (the closest matching readings,
+48-51 °C, occur only in the final few seconds as the host cools after the job completes). **No abort
+threshold was breached** (84 °C stays under the 95 °C Tctl trip, and NVMe/DIMM both stay well under their
+own thresholds) — the "no trip" part of the operator's claim is independently confirmed. This developer
+pass is not asserting the operator's preconditions check was wrong at the moment they made it (a genuine
+idle-Tctl check minutes before this exact window, or a single manual glance rather than a max() over the
+full trace, could both produce this gap honestly) — but per this file's own rule to record measured values
+plainly rather than round them toward what was expected, **this discrepancy is recorded here for the
+evaluator/operator to reconcile, not silently absorbed into the operator's stated 64 °C.** Given this
+project's documented thermal/memory-linked host-crash history, this is flagged as a priority item rather
+than a cosmetic one.
+
+### Summary
+
+| Check | Budget / GWT | Operator claim | Recomputed | Verdict |
+|---|---|---|---|---|
+| Boot launch timestamp | — | 15:41:03 BST, pid 4166118 | boot banner matches exactly; pid confirmed alive | **confirmed** |
+| Boot time-to-first-200 | — | 2.00 s | not reproducible from provided evidence (19 s gap to earliest sampled row) | **unverified** |
+| TC-4 (cold MISS) | ≤ 1.5 s | 178.74 s | 178.743092 s — matches | **WARN** (~119x over) |
+| TC-4 (second spike, newly surfaced) | ≤ 1.5 s | not reported | 5.373490 s at epoch 1784818231 | **WARN** (~3.6x over, unflagged by operator) |
+| TC-4 (remaining 62 of 64 calls, excl. the 2 budget breaches above) | ≤ 1.5 s | "0.24-0.67 s" | 0.130308-1.273492 s | PASS (within the 1.5 s budget; several individually exceed the operator's informal "0.24-0.67 s" characterization — see the 12-row table above) |
+| TC-5 (page spot-checks) | ≤ 1.5 s / no blank/frozen | stocks/sectors/evidence fast, one 30 s evidence timeout, scanner-runs 404 (guessed path) | not independently recomputable; scanner-runs 404 confirmed expected (wrong path; real route `GET /api/runs`) | consistent with PASS, with stated exceptions |
+| TC-6 (health-poll liveness) | all HTTP 200, no wedge | 498/500, median 0.168 s, max 3.573 s | exact match on every figure | **materially PASS** (498/500, no wedge) |
+| Memory (`VmPeak`) | ≤ 6,291,456 KB | 4,005,376 KB, 36.3% margin | exact match | **PASS** |
+| Memory (`MemoryError` lines) | zero | zero | cited log file empty; confirmed zero via `logs/backend.log`'s actual current-boot window | **PASS** (via the correct file) |
+| Thermal (trip) | no abort | no trip | confirmed — max 84 °C < 95 °C threshold | **PASS** |
+| Thermal (reported peak) | — | "Tctl peaked 64 °C" | **84 °C**, sustained 68-84 °C for ~95% of the window | **discrepancy — flagged for evaluator/operator** |
+
+This closes TC-4/TC-5/TC-6 as measured evidence (WARN/materially-PASS/PASS per the rows above) and resolves
+the PENDING placeholder above. It does not claim an overall phase PASS — per the dev handoff's Known Issue
+#3, whether a targeted in-process fix (rather than a process-model change) is sufficient given a live basis
+that still produces one 178.74 s and one 5.37 s budget breach in an 11-minute window is an evaluator call,
+not a self-certification made here. The thermal discrepancy is likewise left for the evaluator/operator to
+reconcile against the host-guard safety posture, not resolved unilaterally in this transcription pass.

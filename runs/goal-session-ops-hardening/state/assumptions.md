@@ -370,3 +370,25 @@ concurrent-load latency requirement in either journey's own step text) could ins
 `passing` today with UT-04 disclosed as a footnote, in which case this iteration is still legitimate
 hardening but not literally required for GOAL_ACHIEVED.
 **Reversible:** yes
+
+## iter-15 — goal-evaluator
+
+**Ambiguity:** With the stacking pathology fixed, the residual `/backtest` cold-MISS is 178.74s (~119x
+over the ≤1.5s budget) but the page renders honestly (Ready, honest NA, never frozen) and the WARM load
+is fast (116-554ms). The pump note explicitly asks whether J-06/J-07's serve-responsiveness clause is
+"satisfied by stacking-fixed + honest-skeleton + warm-path-fast (the cold-MISS being an inherent one-compute
+cost the ingest warm exists to pre-empt)" — which would flip both to passing → GOAL_ACHIEVED — or whether
+it stays partial pending an owner decision. J-06 step 2 ("assert every measurement is within budget") and
+the acceptance's honest-status bullet ("anything slower than its budget shows honest progress, never a
+frozen frame") pull opposite directions, and J-07's own step text arguably requires only health/no-wedge,
+not `/backtest`'s own response time.
+**We chose:** did NOT flip J-06/J-07 to passing on the evaluator's own authority; kept both `partial` and
+returned STALLED to route the acceptance decision to the owner. The goal's Success Criteria commit to
+"page loads stay within committed never-regress budgets", a 119x breach (plus a distinct 5.37s breach) is
+a real recorded budget violation, and iter-12's human-ratified precedent kept J-06 partial rather than
+launder a budget breach into a green check. The pump note, audit §5, and QA #3 all independently frame the
+acceptance as an owner call. A human who reads J-06/J-07 literally (no concurrent-cold-MISS response-time
+requirement in either journey's own step text; honest-status clause governs the slow path) could instead
+accept option (3), score both passing, and reach GOAL_ACHIEVED — which is exactly why this halts for the
+owner rather than the evaluator deciding it silently.
+**Reversible:** yes

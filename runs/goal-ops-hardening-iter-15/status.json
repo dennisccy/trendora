@@ -1,0 +1,46 @@
+{
+  "phase": "goal-ops-hardening-iter-15",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-07-23T16:30:49.682618Z",
+  "started_at": "2026-07-23T13:53:54.041164Z",
+  "cli": "claude",
+  "blockers": [
+    "RESOLVED (2026-07-23): TC-4/TC-5/TC-6 operator-supervised live reproduction has now been run and transcribed+independently recomputed into reports/perf-budgets.md (the prior blocker on this line is superseded).",
+    "New, unresolved: TC-4 recomputation surfaced a SECOND /api/backtest call (5.373490s at epoch 1784818231) that also breaches the committed <=1.5s budget, which the operator's own report did not mention (it only flagged the 178.74s cold MISS). Root cause undetermined -- not diagnosed this pass. Needs evaluator/reviewer attention alongside the flagged 178.74s WARN.",
+    "New, unresolved: recomputation from logs/hwmon/hwmon.csv for the exact evidence window shows peak Tctl 84C (94.7% of samples above 64C for most of the ~11-minute run), materially higher than the operator-reported 'peaked 64C' / '42C idle band'. No abort threshold was breached (84C stays under the 95C trip), so 'no trip' is confirmed, but the reported peak does not match the sampler. Given this project's documented thermal/memory host-crash history, flagged as a priority reconciliation item for the evaluator/operator, not resolved here."
+  ],
+  "changed_files": [
+    "apps/backend/app/engine/forward_testing.py",
+    "apps/backend/tests/test_forward_testing_concurrency.py",
+    "reports/perf-budgets.md",
+    "runs/goal-session-ops-hardening/state/blueprint.md",
+    "docs/handoffs/goal-ops-hardening-iter-15-dev.md",
+    "reports/phase-goal-ops-hardening-iter-15-implementation-summary.md",
+    "runs/goal-ops-hardening-iter-15/status.json"
+  ],
+  "tests_run": true,
+  "tests_passed": true,
+  "tests_summary": "70/70 targeted backend tests passed, host-guard-confined, no full suite run: test_forward_testing_concurrency.py 6/6 (3 existing iter-14 unmodified + 3 new iter-15 TC-1/TC-2/TC-8); test_forward_testing_aggregates_streaming.py 32/32 (TC-3 byte-identity, unmodified); test_forward_testing.py -k forward_aggregates_cached 3/3; test_data_manager.py -k test_finalize_hook 29/29. loaded_engine-fixture files (test_api_backtest.py, test_backtest_scorecard.py, test_mcp_window.py) cited, not run per this session's standing constraint -- unaffected, since the change is scoped to forward_aggregates_cached's internal concurrency handling, already exercised by the tests above. No tests were run in this transcription/verification pass (CSV recomputation only, no code touched, no services started/stopped, no pytest invoked).",
+  "browser_checks_run": false,
+  "browser_checks_note": "Frontend Present: no for this iteration's own scope, but TESTING REQUIREMENTS names J-01/J-03/J-04/J-05 regression replay plus J-06/J-07 verification via the operator-supervised pass -- browser-qa lane still required downstream (framework fix commit d0799803). TC-07 deferred to browser-qa lane (separate, downstream execution). QA pass: 7/8 test cases completed; TC-07 browser regression handled by separate browser-qa agent per framework policy. Backend: PASS_WITH_NOTES on two outstanding WARN findings (TC-4 latency still over budget but fix effective; unflagged 5.37s spike; thermal discrepancy flagged for reconciliation).",
+  "notes": [
+    "Root cause confirmed by measurement (not adopted as first plausible story): candidate (a), zero de-duplication in forward_aggregates_cached, is dominant -- 5 concurrent same-key MISSes on a 60,000-row fixture measured 5 real compute_forward_aggregates calls and 9.9x wall-clock vs. a single baseline call, pre-fix.",
+    "Candidate (c) WAL/session contention isolated and measured at only 1.59x under an aggressive concurrent-write load -- well under the 5.0x smoke-guard bound -- so app.db is NOT touched this iteration (documented decision).",
+    "Fix: in-process single-flight de-dup added to forward_aggregates_cached's MISS path only, mirroring data_manager.compute_coverage's J-100 per-key-lock + in-flight-event idiom. compute_forward_aggregates is completely unchanged (signature, columns, streamed pattern, all 3 call sites).",
+    "Re-measured post-fix on the identical fixture: 1 invocation (not 5), ~1.04x (not 9.91x).",
+    "TC-8 (failure-path/no-deadlock) test validity independently confirmed: temporarily disabling the fix's own cleanup made the test correctly FAIL (waiter hung past the bounded timeout); fix restored, all tests re-confirmed green.",
+    "Pre-existing, unrelated: tests/test_db.py::test_create_all_produces_expected_tables failure carried forward, untouched by this iteration (no schema change).",
+    "OPERATOR-SUPERVISED PASS TRANSCRIBED AND VERIFIED (2026-07-23): reports/perf-budgets.md's PENDING placeholder is now resolved by a new dated RESULTS section. This developer-continuation turn independently recomputed every derived statistic against the three raw CSVs (tc4-backtest-timings.csv, tc456-health.csv, tc456-vm-samples.csv) plus a cross-read of logs/backend.log and logs/hwmon/hwmon.csv, rather than transcribing the operator's numbers on trust.",
+    "TC-4 (cache-miss latency, budget <=1.5s): WARN, confirmed exactly -- cold MISS 178.743092s (~119x over), epoch offset from job-launch cross-validated independently (24s into the job = 15:41:30 BST exactly).",
+    "TC-4 recomputation ALSO surfaced a second, previously-unflagged budget breach: 5.373490s at epoch 1784818231 (~3.6x over budget). The operator's summary characterized all non-MISS calls as 0.24-0.67s; the raw CSV shows 12 of 59 post-MISS calls exceed 0.67s, up to this 5.37s point. Recorded as a second WARN, not diagnosed.",
+    "TC-5 (page spot-checks): operator's figures transcribed with attribution only (no raw CSV provided for these ad hoc checks, so not independently recomputable). The /api/scanner-runs 404 is confirmed to be a genuinely wrong probe path (no such backend route exists) -- the frontend's /scanner-runs page actually calls GET /api/runs and GET /api/runs/{run_id}.",
+    "TC-6 (health-poll liveness): materially PASS -- every figure recomputed from tc456-health.csv exactly matches the operator's report (498/500 HTTP 200, median 0.168s, max 3.573s, both non-200 epochs identical: 1784817865 and 1784818241).",
+    "Memory: PASS -- VmPeak peak (4,005,376 KB) and 36.3% margin recomputed exactly matching from tc456-vm-samples.csv; independently re-confirmed live against pid 4166118's current /proc status at recomputation time (unchanged, process has not restarted). Growth vs iter-14's 2,404,408 KB peak is +66.6% (recomputed; not stated numerically by the operator), more than the ~27% basis growth alone -- consistent with the operator's own attribution to added concurrent load (this pass ran the backtest poller concurrently with the warm; iter-14's TC-5 measured the warm alone).",
+    "Backend-log MemoryError check: the operator's cited path (/tmp/trendora-be15-tc4.log) is empty (0 bytes) and does not itself support the 'zero MemoryError' claim -- flagged as a citation issue. The underlying claim IS independently confirmed true via logs/backend.log's actual current-boot window (line 38178 to EOF): zero MemoryError/memory-pressure hits. The file's other 53 MemoryError hits are all from prior sessions, before this boot's banner.",
+    "Thermal: peak Tctl recomputed from logs/hwmon/hwmon.csv for the exact evidence window is 84C, not the operator-reported 64C peak / 42C idle band -- 94.7% of the ~655 samples in this window exceed 64C. No abort threshold was breached (84C < 95C trip; NVMe/DIMM both well under their limits), so 'no trip' is confirmed, but the reported peak does not match the sampler. Flagged as a priority open item given this project's thermal/memory host-crash history -- not resolved unilaterally in this pass.",
+    "The '2.00s' boot-to-first-health-200 figure and the job's exact wall-clock launch/terminal timestamps are not independently reproducible from the raw evidence provided (earliest sampled health-CSV row is 19s after the corroborated boot-banner timestamp) -- transcribed with attribution, not upgraded to 'confirmed'.",
+    "No service was started or stopped to produce this update; backend pid 4166118 remains up for the downstream browser-qa lane. No code was changed and no pytest was run in this transcription/verification pass."
+  ],
+  "next_action": "review"
+}

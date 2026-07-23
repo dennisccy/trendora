@@ -179,3 +179,17 @@ exposed it — neither TC-4 (concurrent-on-fixture, no cap) nor TC-5 (sequential
 **Applies to:** any iter that replaces a `.all()` fetch-and-release with a streamed/`yield_per` read on a
 hot path shared by concurrent ingest writers — measure latency under concurrent load on the deep basis, not
 just peak memory.
+
+## iter-15 — 2026-07-23T18:00:00Z
+
+**Verdict:** STALLED
+**Lesson:** A small-fixture concurrency ratio does not extrapolate to a deep-basis cost. The 60k-row
+fixture's 9.91x same-key stacking ratio predicted the single-flight de-dup would "fully account for" the
+211.8s finding; the live deep-basis pass showed stacking was only ~15.6% and the dominant ~84% is ONE
+cold full-basis `compute_forward_aggregates` pass (178.74s) a wrapper-scoped fix cannot touch. When a
+targeted fix's own live evidence contradicts its root-cause extrapolation, the root-cause conclusion is
+the thing to trust the LIVE number over — and the investigation *reaching* "this is a hard architectural
+cost" is itself the terminal deliverable that hands the decision to the owner, not a bug to re-attempt.
+**Applies to:** any iteration proposing a wrapper/cache/concurrency fix validated on a synthetic fixture
+before a deep-basis pass; any "the fix fully accounts for X" claim not yet reconciled against a live
+full-scale measurement; future decomposers tempted to loop CONTINUE on an owner-owned direction decision.
