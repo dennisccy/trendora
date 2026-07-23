@@ -3,27 +3,15 @@
 > **PROPOSALS ONLY** — a human promotes candidates into docs/improvement-roadmap.md §16
 > per EVO-1; nothing here is scheduled work.
 
-**Session:** ops-hardening · **Terminal status:** BUDGET_EXHAUSTED · **Iterations:** 9
+**Session:** ops-hardening · **Terminal status:** REGRESSION_HALT · **Iterations:** 14
 
 ## Candidate items
 
-### RETRO-1 · Instrument unattributed wall-time in full-depth iterations
+### RETRO-1 · Instrument unattributed (glue) time in wall-time breakdown
 - **Proposed:** P1 · Effort M · Risk LOW
-- **Problem:** Full-depth iterations show 200–584m "unattributed (glue)" wall time, often 50–90% of total iteration time. Pipeline visibility into service startup, loop overhead, and async waits is missing.
-- **Evidence:** Agent economics — "unattributed (glue): 200.4m" (iter 1), "unattributed (glue): 584.5m" (iter 2), "unattributed (glue): 261.7m" (iter 7) in the per-step wall breakdown.
-- **Sketch:** Split "unattributed (glue)" into named intervals: service-ready delay (bootstrap time before first agent call), loop-overhead (inter-agent dispatch and artifact I/O), and async-waits (explicit poll/sleep periods). Tag each with its source (service restart, deterministic gate, resume handoff, etc.).
-- **Verify idea:** A future full-depth iteration wall-time report shows named categories totaling the previous "unattributed" time, with zero residual "glue"; operator can diagnose which category dominates.
+- **Problem:** Wall-time breakdown shows recurring large "unattributed (glue)" periods (200–625m per full-depth iteration), consuming ~40–70% of total iteration wall time. This prevents the framework from identifying actual bottlenecks, attributing cost accurately, or optimizing handoff latency in the goal loop.
+- **Evidence:** Agent economics — "unattributed (glue): 200.4m" (iter 1), "unattributed (glue): 584.5m" (iter 2), "unattributed (glue): 625.0m" (iter 9), "unattributed (glue): 261.7m" (iter 7), "unattributed (glue): 228.4m" (iter 13).
+- **Sketch:** Audit the pump/engine coordinator to identify where wall-clock time elapses between agent completion and the next agent dispatch. Add explicit timing instrumentation for: (1) pump-wait periods that span outside named agents, (2) inter-agent queue/handoff delays, (3) any background service startup/teardown. Emit a new telemetry event type for each gap.
+- **Verify idea:** Run a test session and confirm that (unattributed glue time) + (sum of named agent times) ≈ total iteration wall time, with <5% unexplained residue.
 
-### RETRO-2 · Track partial-attempt halt/resume root cause
-- **Proposed:** P2 · Effort M · Risk LOW
-- **Problem:** Iterations 0, 5, and 8 show "incomplete/interrupted attempt" entries with no reason logged. Absence of a cause field makes it impossible to distinguish transient failures, timeouts, and hard halts, blocking diagnosis of resumption reliability.
-- **Evidence:** Agent economics — "goal-ops-hardening-iter-0  depth=?  verdict=?  wall=?  (incomplete/interrupted attempt)" and "goal-ops-hardening-iter-8  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)" in per-step wall breakdown.
-- **Sketch:** When an iteration attempt terminates partway (before evaluator calls verdict), record the halt reason in telemetry: timeout, quota_limit, signal, service_error, or framework_gate. Pass this to the wall-time summarizer so each incomplete attempt line includes "(reason: <cause>)".
-- **Verify idea:** Next incomplete attempt in any session will include a cause line; operator no longer guesses whether a resume is fixing transience or a real blocker.
-
-### RETRO-3 · Decompose pump-wait variance into dispatch overhead and subagent-hold time
-- **Proposed:** P2 · Effort M · Risk MED
-- **Problem:** pump-wait ranges from 0.1m to 226.9m across iterations with no visibility into components: how much is dispatch+service-ready vs. subagent running but not counted to the subagent wall. This conflates infrastructure latency with long-running agent time, blocking optimization.
-- **Evidence:** Agent economics — pump-wait variance: "pump-wait 0.1m" (iter 0 resume), "pump-wait 226.9m" (iter 2), "pump-wait 1.6m" (iter 7) in per-step wall breakdown.
-- **Sketch:** Split pump-wait into: dispatch-latency (elapsed from pump dispatch to subagent start), subagent-hold (time agent runs but frame-skip isn't complete), and service-ready-delay (time waiting for services to be available). Emit each as a separate telemetry counter per iteration.
-- **Verify idea:** A future iteration shows pump-wait broken into three named sub-counters that sum to the previous "pump-wait" time; operator identifies whether high pump-wait is dispatch overhead or subagent lag.
+nothing recurred worth proposing as additional items because all friction counters are zero, lessons tail is product-specific (AG-8 anti-goal regression under load), and verdict churn reflects correct evaluator behavior catching regressions.

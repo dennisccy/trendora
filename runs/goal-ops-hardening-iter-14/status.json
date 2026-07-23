@@ -1,0 +1,37 @@
+{
+  "phase": "goal-ops-hardening-iter-14",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-07-23T12:59:08.595023Z",
+  "started_at": "2026-07-23T09:36:30.548664Z",
+  "cli": "claude",
+  "qa_verdict": "PASS",
+  "blockers": [
+    "TC-6 (induced memory-pressure resilience) has partial evidence only, not a QA-stage blocker. Evidence: TC-3 synthetic-subprocess induction PASS (prior dev turn, real ulimit-v cap, 60K-row fixture) + TC-5 organic absence of MemoryError during 278s full-deep-basis warm. Not a literal induced-pressure repro on the live TC-5 process itself (operator judgment on crash-history host). Evaluator decides sufficiency."
+  ],
+  "changed_files": [
+    "apps/backend/app/engine/forward_testing.py",
+    "apps/backend/tests/test_forward_testing_aggregates_streaming.py",
+    "apps/backend/tests/test_forward_testing_concurrency.py",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-14-dev.md",
+    "reports/phase-goal-ops-hardening-iter-14-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "tests_passed": true,
+  "tests_summary": "TC-01/TC-02: 32/32 byte-identity PASS; TC-03/TC-04: 3/3 memory/concurrency PASS; TC-05/TC-07: operator-supervised full-deep-basis PASS; TC-08: J-06 transcription PASS; 229 regression suite PASS (zero new failures)",
+  "browser_checks_run": false,
+  "browser_checks_note": "TC-09/TC-10 outstanding (browser-qa-agent); TC-11 coherence audit outstanding (coherence-auditor). Backend-only phase with partial browser coverage (TESTING REQUIREMENTS names 4 journeys despite Frontend Present: no).",
+  "notes": [
+    "TC-01/TC-02 byte-identity: 32/32 passing across 5 horizons \u00d7 2 as_of variants \u00d7 3 streaming batch sizes + sanity checks",
+    "TC-03 real tightened-ulimit-v induction: old pattern fails honestly (MemoryError, sub-2s); new pattern succeeds under identical 420MB cap; same-process recovery tested",
+    "TC-04 concurrent-caller: 4 forward_aggregates_cached + 1 diagnostic read complete in ~7-10s; all byte-identical payloads; zero hangs",
+    "TC-05/TC-07 full-deep-basis pass (operator-supervised 2026-07-23 11:24:53\u201311:30:17 BST): boot 1.80s (vs \u22645s); health 250/250 HTTP 200 (median 0.157s, max 1.444s); VmPeak 2,404,408 KB vs 6,291,456 KB cap (61.8% margin); 278s forward_aggregates warm (first success at this basis size; iters 11-13 failed 3-for-3 with MemoryError)",
+    "TC-06 evidence partial: TC-3 synthetic-subprocess induction + TC-5 organic absence; no live pressure induced on actual TC-5 process; evaluator decides sufficiency",
+    "TC-08 J-06 transcription: 218.7/218.7/219.2ms (/data), 70.5ms (/) all PASS vs \u22641500ms budget",
+    "Regression floor: 229 backend + 4 forward_aggregate tests = 233/233 new; zero failures beyond pre-existing test_db.py unrelated to this iteration",
+    "Backend pid 3669411 UP throughout; services not restarted; no source/test/config files touched by QA",
+    "Outstanding: TC-09 (readiness badge stability) and TC-10 (journey regression J-01/J-03/J-04/J-05) pending browser-qa-agent; TC-11 (data contract, sole producer) pending coherence-auditor"
+  ],
+  "next_action": "browser_qa"
+}

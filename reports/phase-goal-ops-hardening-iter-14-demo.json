@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-14",
+  "base_url": "http://localhost:3255",
+  "iteration": 14,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open Trendora's home page",
+      "narration": "Let's start on Trendora's home page, where the current market regime is summarized at a glance.",
+      "point_out": "The regime chart appears right away, with no error banner or blank space.",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "as of" }
+    },
+    {
+      "n": 2,
+      "title": "Check the Data Manager's status",
+      "narration": "Now let's visit the Data Manager, where new market data arrives. The status badge in the top bar is visible on every page and always reflects the backend's real, current health.",
+      "point_out": "The badge reads \"Ready\" with a green dot — an honest signal, not a guess, even while other work may be happening behind the scenes.",
+      "journey": "J-07",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Ready" }
+    },
+    {
+      "n": 3,
+      "title": "See the latest completed data run",
+      "narration": "The Job progress panel keeps a summary of the most recent data run, even if you weren't the one who started it.",
+      "point_out": "The summary line lists everything that was refreshed, including the forward-looking aggregates used elsewhere in the app — computed once when the data arrived, not recalculated every time someone looks.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "Job progress" } },
+      "expect": { "text": "forward aggregates" }
+    },
+    {
+      "n": 4,
+      "title": "Confirm it in Run history too",
+      "narration": "Scrolling down, the Run history table keeps a permanent record of every data run that's ever completed.",
+      "point_out": "That same run shows a clean \"ok\" status here too, with the forward-looking aggregates confirmed refreshed a second, independent way.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "Run history" } },
+      "expect": { "text": "forward aggregates" }
+    },
+    {
+      "n": 5,
+      "title": "Try a wide date range",
+      "narration": "Back at the top of the Data Manager, the backfill form still accepts any historical range you like, with no artificial limit on how much history you can request in one go.",
+      "point_out": "",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "label": "Start date" }, "text": "2015-01-01" }
+    },
+    {
+      "n": 6,
+      "title": "No range cap enforced",
+      "narration": "Even an eleven-year span is accepted without any warning or truncation — there's no cap on how much data a single request can cover.",
+      "point_out": "Notice there's no error message or size warning — just a normal, ready-to-submit form.",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "label": "End date" }, "text": "2026-07-20" }
+    },
+    {
+      "n": 7,
+      "title": "Open the Backtest page",
+      "narration": "The Backtest page shows how a strategy would have performed historically, broken down by holding period.",
+      "point_out": "The full scorecard and return-attribution lists load with real numbers right away — no error card, no stuck loading skeleton.",
+      "journey": "J-07",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/backtest" },
+      "expect": { "text": "Viewing as-of" }
+    },
+    {
+      "n": 8,
+      "title": "Spot-check the Evidence page",
+      "narration": "One last quick look at the Evidence page confirms this round's behind-the-scenes work didn't disturb anything else.",
+      "point_out": "It loads normally, just as it always has.",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/evidence" }
+    }
+  ]
+}

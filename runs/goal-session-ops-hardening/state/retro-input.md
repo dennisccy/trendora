@@ -6,10 +6,10 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 
 ## Outcome
 
-- **Terminal status:** BUDGET_EXHAUSTED
-- **Final verdict:** CONTINUE
-- **Iterations used:** 9
-- **Halted at (UTC):** 2026-07-22T00:05:10.052109Z
+- **Terminal status:** REGRESSION_HALT
+- **Final verdict:** REGRESSION
+- **Iterations used:** 14
+- **Halted at (UTC):** 2026-07-23T04:52:25.357468Z
 
 ## Verdict sequence
 
@@ -25,6 +25,11 @@ iter 5: CONTINUE
 iter 6: CONTINUE
 iter 7: REGRESSION
 iter 8: CONTINUE
+iter 9: CONTINUE
+iter 10: CONTINUE
+iter 11: ESCALATE
+iter 12: CONTINUE
+iter 13: REGRESSION
 ```
 
 ## Agent economics
@@ -33,24 +38,24 @@ Source: analyze_telemetry.py --json telemetry.jsonl (claude_usage events)
 
 | Agent | Invocations | Wall (s) | In tokens | Out tokens | Est. cost (USD) |
 |---|---|---|---|---|---|
-| auditor | 7 | 5088 | 273 | 295138 | 0.0000 |
-| browser-qa-agent | 7 | 19815 | 4230 | 548562 | 0.0000 |
-| coherence-auditor | 7 | 1405 | 256 | 83755 | 0.0000 |
-| demo-narrator | 7 | 2954 | 160 | 233908 | 0.0000 |
-| developer | 11 | 22907 | 4055 | 1069492 | 0.0000 |
-| goal-decomposer | 9 | 6557 | 4598 | 443901 | 0.0000 |
-| goal-evaluator | 8 | 5295 | 1043 | 333519 | 0.0000 |
-| iteration-summarizer | 8 | 2650 | 142 | 265741 | 0.0000 |
-| orchestrator | 8 | 2336 | 9195 | 191846 | 0.0000 |
-| phase-closure-auditor | 7 | 1438 | 116 | 116611 | 0.0000 |
-| qa | 18 | 4104 | 2341 | 148148 | 0.0000 |
-| readme-maintainer | 7 | 1229 | 128 | 110940 | 0.0000 |
+| auditor | 12 | 8767 | 650 | 472072 | 0.0000 |
+| browser-qa-agent | 12 | 30604 | 8946 | 920699 | 0.0000 |
+| coherence-auditor | 12 | 2048 | 400 | 126659 | 0.0000 |
+| demo-narrator | 12 | 4347 | 400 | 352596 | 0.0000 |
+| developer | 18 | 37452 | 5546 | 1442573 | 0.0000 |
+| goal-decomposer | 14 | 9421 | 18284 | 679223 | 0.0000 |
+| goal-evaluator | 13 | 8858 | 1403 | 556374 | 0.0000 |
+| iteration-summarizer | 13 | 3943 | 1355 | 398209 | 0.0000 |
+| orchestrator | 11 | 2938 | 9301 | 238351 | 0.0000 |
+| phase-closure-auditor | 10 | 2069 | 192 | 173707 | 0.0000 |
+| qa | 25 | 5637 | 3342 | 206944 | 0.0000 |
+| readme-maintainer | 10 | 1445 | 186 | 128183 | 0.0000 |
 | retro-analyst | 1 | 28 | 26 | 2302 | 0.0000 |
-| reviewer | 11 | 7252 | 780 | 339648 | 0.0000 |
-| ui-impact-analyst | 7 | 2068 | 250 | 139406 | 0.0000 |
-| ui-test-designer | 7 | 3675 | 344 | 265673 | 0.0000 |
-| ux-regression-reviewer | 7 | 2272 | 2970 | 156899 | 0.0000 |
-| TOTAL | 137 | 91074 | 30907 | 4745489 | 0.0000 |
+| reviewer | 18 | 8525 | 9388 | 415487 | 0.0000 |
+| ui-impact-analyst | 10 | 2667 | 332 | 181381 | 0.0000 |
+| ui-test-designer | 10 | 4518 | 510 | 331770 | 0.0000 |
+| ux-regression-reviewer | 10 | 2835 | 3050 | 197609 | 0.0000 |
+| TOTAL | 211 | 136103 | 63311 | 6824139 | 0.0000 |
 
 Per-step wall breakdown (analyze_telemetry.py --wall):
 
@@ -138,17 +143,62 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       (resume-skipped: goal-decomposer)
       pump-wait                  1.7m
       unattributed (glue)      116.1m
-  session: 9 completed iteration(s), mean wall 239.4m
-      total goal-decomposer            121.8m
-      total goal-evaluator             109.1m
-      total iteration-summarizer        94.7m
-      total browser-qa-agent            37.5m
-      total coherence-auditor           33.7m
-      total readme-maintainer           26.8m
-      total developer                    9.1m
-      total reviewer                     4.2m
+  goal-ops-hardening-iter-9  depth=full  verdict=CONTINUE  wall=648.7m
+      goal-evaluator              11.6m  calls=1
+      goal-decomposer              7.8m  calls=1
+      coherence-auditor            4.3m  calls=1
+      pump-wait                  8.4m
+      unattributed (glue)      625.0m
+  goal-ops-hardening-iter-10  depth=lean  verdict=CONTINUE  wall=110.6m
+      browser-qa-agent            62.3m  calls=1
+      developer                   20.1m  calls=1
+      goal-evaluator              13.1m  calls=1
+      goal-decomposer              9.8m  calls=1
+      iteration-summarizer         9.8m  calls=1
+      reviewer                     2.3m  calls=1
+      readme-maintainer            2.0m  calls=1
+      coherence-auditor            2.0m  calls=1
+      (resume-skipped: coherence-auditor)
+      pump-wait                  1.7m
+      overlap saved             10.9m  (parallel steps)
+  goal-ops-hardening-iter-11  depth=lean  verdict=ESCALATE  wall=81.3m
+      developer                   25.5m  calls=1
+      browser-qa-agent            17.5m  calls=1
+      goal-evaluator              17.2m  calls=1
+      goal-decomposer             10.4m  calls=1
+      iteration-summarizer         4.7m  calls=1
+      coherence-auditor            2.4m  calls=1
+      reviewer                     1.9m  calls=1
+      readme-maintainer            1.4m  calls=1
+      (resume-skipped: coherence-auditor)
+      pump-wait                  3.1m
+      unattributed (glue)        0.3m
+  goal-ops-hardening-iter-12  depth=full  verdict=CONTINUE  wall=179.2m
+      goal-decomposer             11.5m  calls=1
+      goal-evaluator              11.0m  calls=1
+      iteration-summarizer         4.8m  calls=1
+      coherence-auditor            2.6m  calls=1
+      pump-wait                  1.9m
+      unattributed (glue)      149.3m
+  goal-ops-hardening-iter-13  depth=full  verdict=REGRESSION  wall=279.7m
+      iteration-summarizer        19.4m  calls=2
+      goal-decomposer             14.2m  calls=1
+      goal-evaluator              12.2m  calls=1
+      coherence-auditor            3.3m  calls=1
+      readme-maintainer            2.0m  calls=1
+      pump-wait                  1.6m
+      unattributed (glue)      228.4m
+  session: 14 completed iteration(s), mean wall 246.7m
+      total goal-decomposer            175.6m
+      total goal-evaluator             174.2m
+      total iteration-summarizer       133.4m
+      total browser-qa-agent           117.3m
+      total developer                   54.7m
+      total coherence-auditor           48.3m
+      total readme-maintainer           32.3m
+      total reviewer                     8.5m
       total AWAITING_PUMP paused gaps: 9.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED
+      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT
 ```
 
 ## Friction counters
@@ -162,26 +212,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-that the run "never hit enough memory pressure to trigger the new `MemoryError`-specific branch at all" —
-and it executed under host-guard CPU-affinity (`0-3,8-11`) + 4-thread BLAS/OMP caps that did not exist
-during iter-7's failing run. The confound (fewer threads → smaller arenas/VSZ) is at least as plausible an
-explanation for the improvement as the diff. Capacity/availability fixes must be measured against
-like-for-like host conditions, or the "closed" claim is unattributable.
-**Applies to:** any iteration claiming an AG-8 memory/availability regression is closed, and any perf
-measurement taken after host-guard settings changed.
+contradicts a "may pass" prose recommendation, the number wins.
+**Applies to:** any iteration whose target is "measure-and-record" work against committed budgets
+(`reports/perf-budgets.md`), and any evaluator tempted to accept a downstream agent's "may be scored passing"
+when the recorded measurement breaches the acceptance metric.
 
-## iter-8 — 2026-07-21T23:53:18Z
+## iter-13 — 2026-07-23T04:39:47Z
 
-**Verdict:** CONTINUE
-**Lesson:** A ~220-line block was pasted into the MIDDLE of an existing test
-(`test_start_backend_logfile_ends_abruptly_after_simulated_crash`), silently deleting that test's four real
-assertions — it still reported PASSED — and leaving the new headline test with a guaranteed `NameError` on
-an undefined `spawned_backend`, so the iteration's own TC-1/TC-2 regression guard had never once executed.
-Developer self-check, reviewer ("test_quality: pass") and QA ("2 PASSED") all reported green over it; only
-the audit gate caught it.
-**Applies to:** any iteration inserting a large block into an existing test file — re-read the function
-boundaries on BOTH sides of the insertion point, and treat "a long-standing test still passes" as
-suspicious when the diff touched its file.
+**Verdict:** REGRESSION
+**Lesson:** A carried, byte-unchanged critical anti-goal can REGRESS in observed severity without any
+code change: AG-8 (`forward_testing.py:826` unbounded ScannerResult load) was "degraded-but-alive,
+mitigation holds, smaller than iter-7" for iters 9/11/12 — then at iter-13, under heavier concurrent
+load (4 replay backfills + a diagnostic read on one browser-qa turn), it wedged the entire backend into
+a ~12-min futex deadlock needing an operator hard-restart, i.e. back to the original iter-7 full-outage
+severity. The "blast-radius-smaller-than-the-acknowledged-incident" argument that justifies deferring a
+critical anti-goal is only valid until a heavier load profile falsifies it; an evaluator must re-test
+that premise every iteration against fresh load evidence, not carry it forward. When it flips, C.1's
+literal "unresolved critical anti-goal → REGRESSION" is the right call even though prior iters deferred.
+**Applies to:** any iter carrying an UNRESOLVED critical anti-goal on a "smaller blast radius than the
+acknowledged incident" rationale — especially memory/availability bugs whose severity is load-dependent;
+re-read logs/backend.log + the audit + closure for a worse-than-before manifestation before re-deferring.
 ```
 
 ## Halt context
@@ -190,8 +240,8 @@ session.json halt-relevant fields:
 
 ```json
 {
-  "status": "BUDGET_EXHAUSTED",
-  "last_verdict": "CONTINUE",
-  "parked_wip_sha": "da3c4055"
+  "status": "REGRESSION_HALT",
+  "last_verdict": "REGRESSION",
+  "parked_wip_sha": "ab92f94c"
 }
 ```

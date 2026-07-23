@@ -595,3 +595,50 @@ J-06's single-source clause), add a live J-04 boot spot-check (DoD-#7), retire/r
 major-indexes-card.tsx so UT-07 stops failing OVERALL against unreachable code. Framework-maintainer
 items carried: merge_ui_test_results.py dropped the raw .llm.md's **FAIL** cell (merged top-line read
 PASS, raw read FAIL — always score from the raw); Frontend-Present misroute.
+
+## Iteration 14 — goal-ops-hardening-iter-14
+
+**Date:** 2026-07-23T14:25:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: none (J-01/J-03/J-05 re-verified passing by deterministic golden replay; **J-04
+  RE-VERIFIED LIVE end-to-end** — advances from carried-not-re-verified-since-iter-12 to a fresh live
+  kill/restart pass, UT-J-04, 3 screenshots opened)
+- New journey: **J-07 (partial)** — the owner-authorized AG-8 fix; core availability/memory guarantee
+  proven, held partial by TC-6-partial + UT-04 + the unproduced walkthrough
+- Advanced but not passing: **J-06 stays partial** — TC-8 single-source gap CLOSED; residual is the
+  owner-owned walkthrough + the new UT-04 latency finding
+- Newly failing: none. Regressed (passing→failing): none.
+- Anti-goal violations: **AG-8 (iter-9 dimension + iter-13 escalation, critical) RESOLVED** — the
+  bounded/streamed `compute_forward_aggregates` rewrite removes the unbounded ORM load; the full-basis warm
+  iters 11-13 aborted 3-for-3 now completes at 61.8% memory margin with 250/250 health 200
+  (evaluator-recomputed CSVs), no wedge/outage. **FIRST iteration this session with NO unresolved critical
+  anti-goal.** scan-report CLEAN; coherence COHERENCE-PASS; AG-10 launcher confinement held (TC-5 via
+  start-backend.sh, /proc-verified on pid 3669411).
+
+**Reasoning:** The REGRESSION-recovery succeeded and I proved it rather than accepted it — I recomputed
+`tc5-health.csv` (250/250 HTTP 200, max 1.444s) and `tc5-vm-samples.csv` (flat VmPeak 2,404,408 KB = 61.8%
+margin) myself, and confirmed the two unbounded `.all()` reads are gone in-place (iter-diff.md; coherence
+COHERENCE-PASS, no 2nd producer) with byte-identity 32/32 and a real `ulimit -v` induction (TC-3). So AG-8 —
+the critical anti-goal that drove iter-13's REGRESSION — is resolved, and C.1 does not fire (no
+passing→failing either; J-04 improved to a live re-verify). Rejected GOAL_ACHIEVED: J-06/J-07 partial — the
+`demo.sh --session-live` walkthrough (owner) is unproduced and UT-04 (P1 FAIL, opened by me: `/backtest`
+cache-MISS 211.8s under a concurrent warm; honest/non-catastrophic, page rendered, NOT an AG-8 crash) leaves
+J-07's serve-responsiveness edge open. Rejected STALLED: UT-04 root-cause is concrete, cross-cutting,
+agent-tractable work. Rejected ESCALATE: full depth already, all gates PASS/PASS_WITH_NOTES/PASS_WITH_GAPS,
+no fail-open, no journey failing twice. Coherence PASS → CONTINUE.
+
+**Next-step recommendation:** FULL depth, focused follow-up, no new features. (1) AGENT (the item between
+J-07 and passing): root-cause UT-04's 211.8s concurrent-warm `/backtest` contention (audit F1 hypothesis: a
+streamed cursor holds a longer read-lock window under concurrent writes than the old fetch-and-release
+`.all()`) — the exact iter-13 trigger shape neither TC-4 (concurrent-on-fixture) nor TC-5
+(sequential-on-deep-basis) reproduces; spot-check `/stocks`/`/sectors`/`/scanner-runs`/`/evidence` under a
+concurrent warm; consider an elapsed-time affordance on the `/backtest` skeleton. (2) OWNER DECISIONS (each
+independently blocks GOAL_ACHIEVED, do not let an agent invent them): the `[NEW] demo.sh --session-live`
+walkthrough J-05/J-06/J-07 name (no autonomous mechanism, iter-12 finding); whether TC-3's real
+synthetic-subprocess induction + TC-5's organic absence suffice for TC-6 or an operator-authorized
+live-process induction is still owed (AG-10 hazard on this crash-history host). (3) AGENT non-blocking: UT-10
+(P3) per-horizon heartbeat cadence (`data_manager.py:3220`, outpaced ~9×); reconcile the stale "not done
+yet" line in `implementation-summary.md` (audit B2 / closure Non-Blocking #1). Carried: pre-existing
+`test_db.py::test_create_all_produces_expected_tables` failure (unrelated, no schema change).

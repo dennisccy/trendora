@@ -1,0 +1,90 @@
+{
+  "schema_version": 1,
+  "phase_id": "ops-hardening",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open Trendora's home page",
+      "narration": "Let's take a tour of Trendora, starting on the home page where the current market regime is summarized at a glance.",
+      "point_out": "The regime chart appears right away, with no error banner or blank space.",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "as of" }
+    },
+    {
+      "n": 2,
+      "title": "Check the Data Manager's honest status",
+      "narration": "Now let's visit the Data Manager, where new market data arrives. The status badge in the top bar is visible on every page and always reflects the backend's real, current health — never a guess, and never stuck mid-boot without saying so.",
+      "point_out": "The badge reads \"Ready\" with a green dot.",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Ready" }
+    },
+    {
+      "n": 3,
+      "title": "See every backfill job that's ever run",
+      "narration": "Scrolling down, the Run history table keeps a permanent record of every data job that's completed — including ones that found nothing new to do.",
+      "point_out": "A zero-work run is explained plainly, not just silently marked \"done\" like a real one.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "Run history" } },
+      "expect": { "text": "Run history" }
+    },
+    {
+      "n": 4,
+      "title": "Confirm the backfilled dates in Scanner Runs",
+      "narration": "Every date a backfill touched shows up here, each one an exact, immutable snapshot of what the scanner saw that day.",
+      "point_out": "Real dates in the \"As of\" column, each opening its own stored leaderboard.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/scanner-runs" },
+      "expect": { "text": "As of" }
+    },
+    {
+      "n": 5,
+      "title": "Try a wide date range",
+      "narration": "Back on the Data Manager, the backfill form accepts any historical range you like, with no artificial limit on how much history you can request in one go.",
+      "point_out": "",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/data" }
+    },
+    {
+      "n": 6,
+      "title": "No range cap enforced",
+      "narration": "Filling in an eleven-year span, from 2015 to today, is accepted without any warning or truncation — there's no cap on how much data a single request can cover.",
+      "point_out": "Notice there's no error message or size warning — just a normal, ready-to-submit form.",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "label": "Start date" }, "text": "2015-01-01" }
+    },
+    {
+      "n": 7,
+      "title": "Aggregates computed once, at ingest",
+      "narration": "One more look at the Job progress panel: everything it lists — including the forward-looking aggregates used elsewhere in the app — was computed once when the data arrived, not recalculated every time someone looks.",
+      "point_out": "The summary line lists \"forward aggregates\" among the things refreshed by that run.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "Job progress" } },
+      "expect": { "text": "forward aggregates" }
+    }
+  ]
+}

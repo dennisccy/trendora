@@ -2000,3 +2000,232 @@ isolation contract (unchanged, untouched by this iteration) held: `"forward_aggr
 absent from this job's `aggregates_refreshed`, and the job still completed `status: "ok"`. `git diff --stat
 -- apps/backend/app/engine/forward_testing.py` is empty (TC-12: byte-unchanged). This is simply a fresh
 live occurrence of the same standing, owner-scoped issue — not a new finding, not touched by this diff.
+
+## J-06 transcription — iter-13's already-evaluator-confirmed `/data`/`/` control readings (iter-14, TC-8, developer pass, 2026-07-23)
+
+This section is a **transcription of already-captured, already-scored evidence, not a re-measurement** —
+mirrors the iter-12 audit pass's own "G1"/"G2 (closure)" transcription convention above. Iter-13's
+real-Chrome J-06 control readings (the `GET /api/indexes?full=true` hot-key latency the iter-13
+`IndexSeriesCache` ingest-time-warm fix targeted) were captured by browser-qa-agent's Chrome-MCP pass and
+already scored PASS by the iter-13 evaluator/audit/closure-verdict chain
+(`reports/phase-goal-ops-hardening-iter-13-ui-test-results.llm.md` UT-03/UT-04;
+`docs/handoffs/goal-ops-hardening-iter-13-audit.md`;
+`reports/phase-goal-ops-hardening-iter-13-closure-verdict.md`). This closes J-06's own single-source
+Consistency clause ("budgets live only in `reports/perf-budgets.md`; every later iteration touching the
+data path re-asserts them") by putting the canonical numbers in this canonical artifact. No new host
+load, no service action, no new measurement performed this iteration.
+
+**Source evidence (verbatim, iter-13 browser-qa-agent Chrome-MCP pass, 2026-07-23 ~04:04-04:07 BST /
+03:04-03:07 UTC):** real Chrome tabs via Chrome MCP, each reading a genuinely fresh navigation (`new_tab`
+→ `close_tab`, never a reload of an existing tab). `GET /api/indexes?full=true` carries no
+`Cache-Control`/`ETag`/`Last-Modified` header (confirmed via `curl -sD -` in the source pass), so
+Chrome's HTTP cache is verifiably out of the picture regardless of any "disable cache" setting. On
+`/data`, two Resource Timing entries appear per load — a pre-existing, disclosed `next dev`/React-18
+Strict-Mode double-fetch artifact on `IndexVendorPanel`'s unguarded mount effect (unrelated to this
+iteration; the `/` page's `PhaseCrossViewCard` has an abort-on-cleanup guard and does not double-fire).
+The source report's own methodology reports the LARGER of the two `/data` entries as the conservative
+reading — transcribed unchanged below.
+
+| # | Page (endpoint measured) | Reading | Budget | Verdict | Wall-clock (UTC) | `hwmon` `load1` |
+|---|---|---|---|---|---|---|
+| 1 | `/data` (`GET /api/indexes?full=true`) | **218.7 ms** | ≤ 1,500 ms | **PASS** (~6.9x margin) | 03:04:33 | 0.69 |
+| 2 | `/data` (`GET /api/indexes?full=true`) | **218.7 ms** | ≤ 1,500 ms | **PASS** (~6.9x margin) | 03:06:06 | 0.36–0.41 |
+| 3 | `/data` (`GET /api/indexes?full=true`) | **219.2 ms** | ≤ 1,500 ms | **PASS** (~6.8x margin) | 03:06:21 | 0.50–0.54 |
+| 4 | `/` (`PhaseCrossViewCard`, UT-04 spot-check) | **70.5 ms** | ≤ 1,500 ms | **PASS** (~21.3x margin) | 03:06:48 | 0.36–0.54 |
+
+**Context these readings replace:** the pre-fix baseline (iter-12 "G2 (closure)" section above) measured
+2,138.7-2,257.7 ms on the identical endpoint — OVER the 1,500 ms budget by 43-51%. The iter-13
+`IndexSeriesCache` ingest-time-warm fix (the "J-06 closeout attempt" developer section above) brought
+this down to the 218.7-219.2 ms range transcribed here — roughly a 10x improvement, all four readings now
+comfortably inside budget with 6.8-21.3x margin. This closes the outstanding J-06 transcription gap this
+iteration's DEFINITION OF DONE (TC-8) named; no further action is pending specifically on this endpoint.
+
+## TC-5 / TC-6 / TC-7 — full-deep-basis measurement pass (J-07): PENDING, operator-supervised
+
+**RESOLVED 2026-07-23 — see "TC-5 / TC-6 / TC-7 — full-deep-basis measurement pass (J-07): RESULTS
+(operator-supervised pass, 2026-07-23)" at the end of this file for the operator-supervised measurement
+pass results, transcribed verbatim with attribution, plus this developer pass's independent recomputation
+against the two retained raw CSVs. The placeholder below is left unedited as the historical record of the
+protocol that pass followed.**
+
+**Not performed this iteration's developer pass.** Per this iteration's own PUMP NOTE constraints, services
+are DOWN as of this dispatch (nothing on :8255/:3255) and this pipeline's agents cannot start/stop them
+(permission classifier; the subagent-resume channel is broken this session); the full-deep-basis warm is
+additionally AG-10-class (exactly ONE owner-authorized, host-guard-confined, cooled-host, sampler+watchdog
+-armed pass — not a drill to run casually or repeat). The bounded/streamed rewrite and its targeted test
+suite (TC-1/TC-2/TC-3/TC-4, all green — see the dev handoff) are the PRECONDITION this pass is sequenced
+after, per the operator's own instruction. **No number is fabricated or estimated here** — this section is
+an honest placeholder recording exactly what the next operator-supervised pass must do, not a result.
+
+**Protocol for the operator's next pass (mirrors the iter-3/8/9 protocol already used for every prior
+VmPeak measurement this session — see those sections above):**
+1. Confirm a cooled host (`Tctl` inside the documented 43-50 °C idle band), the 1 Hz host-guard hwmon
+   sampler running, and the thermal watchdog armed at the README abort criteria (Tctl ≥ 95 °C sustained
+   10 s / any DIMM ≥ 85 °C / NVMe ≥ 75 °C).
+2. Start the backend via `scripts/start-backend.sh` ONLY (never ad hoc) against the real deep-basis DB,
+   under host-guard confinement (`HOST_GUARD_CPU_LIST=0-3,8-11`, `HOST_GUARD_BLAS_THREADS=4`,
+   `HOST_GUARD_REQUIRE_MARKERS=1` — all verified current in `project-extensions/host-guard/host-guard.env`
+   as of commit `e5624010`). Record the process-start timestamp.
+3. Poll `GET /api/health` at 1 Hz throughout; record the elapsed time to the first HTTP 200 (closes TC-7
+   against the committed ≤5 s boot budget).
+4. Let the finalize warm trigger all 5 configured horizons (`[1, 5, 10, 20, 60]`) sequentially, then call
+   `GET /api/backtest` once per horizon in the SAME long-lived process.
+5. Sample `/proc/<pid>/status` `VmPeak` at 1 Hz throughout; record the peak against the
+   `server.memory_cap_mb` cap (6,291,456 KB / 6,144 MB), with the margin stated (closes TC-5).
+6. Induce a memory-pressure condition (test hook or a tightened cap in a nested throwaway process, per J-07
+   step 4) during one horizon's warm; confirm that warm step aborts honestly (logged, isolated) while the
+   SAME long-lived process keeps answering `GET /api/health` and keeps serving a previously-cached
+   `GET /api/backtest` horizon — no restart (closes TC-6).
+7. Report console output, PIDs, and timestamps verbatim; the developer records that operator-provided
+   output with attribution in a follow-up dated section here — never fabricating or silently omitting a
+   number (mirrors the accepted fallback pattern in `runs/goal-session-ops-hardening/state/assumptions.md`
+   iter-10/iter-11).
+
+**Fallback note (pre-registered per the plan):** if the executing agent's environment blocks the process
+start even under this protocol, the operator starts/monitors it directly and reports the same evidence for
+the developer/reviewer to transcribe with attribution — the requirement is an honest, attributed number,
+never a fabricated or silently-omitted one, regardless of who runs the pass.
+
+## TC-5 / TC-6 / TC-7 — full-deep-basis measurement pass (J-07): RESULTS (operator-supervised pass, 2026-07-23)
+
+**This section RESOLVES the "PENDING, operator-supervised" placeholder above.** The operator ran the
+protocol that section specified and reported console output, PIDs, and timestamps verbatim, per its own
+step 7 fallback instruction. Everything below is transcribed from that report with attribution, plus this
+developer pass's own independent recomputation against the two retained raw CSVs
+(`runs/goal-ops-hardening-iter-14/tc5-vm-samples.csv`, `tc5-health.csv`, 250 data rows each) — recomputed
+values are marked explicitly so a reader can tell operator-reported figures from this pass's verification
+of them. No service was started or stopped to produce this section; the backend (pid 3669411) was already
+up from the operator's pass and stays up.
+
+**Host preconditions (operator, verbatim):** Tctl 44 °C (idle band) at pass start, 1 Hz hwmon sampler live
+throughout, thermal watchdog armed at the README abort criteria (never fired; Tctl 43 °C at end).
+
+### TC-7 — boot budget (process-start → first `GET /api/health` 200, committed ≤ 5 s budget)
+
+`CHAIN_BACKEND_PORT=8255 CHAIN_FRONTEND_PORT=3255 bash scripts/start-backend.sh` launched **2026-07-23
+11:24:53 BST / 10:24:53 UTC** (operator, verbatim); first `GET /api/health` HTTP 200 at **1.80 s** after
+launch. Backend pid **3669411**; host-guard caps confirmed live on that pid (`taskset -cp` → `0-3,8-11`;
+`/proc/3669411/limits` Max address space = 6,442,450,944 bytes = 6144 MB, matching `server.memory_cap_mb`).
+
+**Verdict: PASS — 1.80 s vs the ≤5 s budget (~2.8x margin, 3.20 s to spare).**
+
+The backend's own boot-banner log line independently corroborates the launch timestamp:
+`=== start-backend.sh: launching at 2026-07-23T10:24:53Z ===` (UTC) = 11:24:53 BST exactly — no
+discrepancy between the operator's clock-time report and the process's own log (recomputed/cross-checked
+this pass, not merely accepted).
+
+### Warm trigger (context for TC-5/TC-6 — the full-deep-basis forward-aggregates warm)
+
+Single-date bounded backfill `POST /api/data/jobs {"kind":"backfill","start":"2025-05-28","end":"2025-05-28"}`
+(operator, verbatim) → job `1e4c9725a99449b986441c985fd63812`, launched **11:25:39 BST**, terminal
+`status: "ok"` at **~11:30:17 BST** — **278 s wall time** (recomputed by direct timestamp arithmetic:
+11:30:17 − 11:25:39 = 278 s, confirming the operator's "~278 s" figure exactly). `aggregates_refreshed`
+listed all seven categories **including `forward_aggregates`** — per the operator, the first successful
+full-deep-basis forward-aggregate warm since the basis grew to its current size (`scanner_results` ~612k
+rows, `forward_returns` ~3.1M rows); iters 11-13 aborted 3-for-3 with `MemoryError` at this exact step.
+
+### TC-5 — full-deep-basis warm: health-poll liveness + memory budget
+
+**GWT (spec, `docs/phases/goal-ops-hardening-iter-14.md`):** every `GET /api/health` poll (1 Hz throughout)
+returns HTTP 200 within its committed budget, AND peak `VmPeak` stays below 6,291,456 KB (6144 MB) with the
+margin stated.
+
+**Health-poll liveness (recomputed directly from `tc5-health.csv`, 250 data rows, epochs 1784802323-
+1784802643 = 11:25:23-11:30:43 BST, a window starting ~30 s after the TC-7 launch and extending ~26 s past
+the warm job's terminal `ok`, so it covers boot tail + the full 278 s warm + early serving):**
+
+| Metric | Recomputed value |
+|---|---|
+| Total polls | 250 |
+| HTTP 200 | 250 / 250 (0 failures, 0 non-200) |
+| `time_total_s` median | 0.156847 s (≈ 0.157 s — matches the operator's figure) |
+| `time_total_s` max | 1.443611 s (≈ 1.444 s — matches the operator's figure) |
+| `time_total_s` min | 0.086766 s |
+
+No poll failed and no gap in the ~1 Hz cadence appears in the epoch column — the health endpoint never
+froze or went unresponsive across boot-tail + the full 278 s warm, confirming the operator's "250/250
+polls HTTP 200, zero failures ... no frozen or unresponsive window" claim exactly.
+
+**Memory budget (recomputed directly from `tc5-vm-samples.csv`, same 250-row/epoch window):**
+
+| Metric | Recomputed value |
+|---|---|
+| Samples | 250 |
+| Peak `VmPeak` | **2,404,408 KB** — identical on all 250/250 rows (the column never varies across the file) |
+| Peak `VmPeak` in MB / GiB | 2,404,408 / 1024 ≈ **2,348.1 MB** ≈ **2.293 GiB** (≈ 2.29 GB, matching the operator's figure; this doc's own MiB-as-"MB" convention, consistent with `6144 MB` = `6,291,456 KB` / 1024 elsewhere in this file) |
+| Cap (`server.memory_cap_mb`) | 6,291,456 KB (6144 MB) |
+| Margin | 6,291,456 − 2,404,408 = 3,887,048 KB ≈ 3,796.0 MB = **61.8%** (recomputed: 3,887,048 / 6,291,456 = 0.61784 — matches the operator's "61.8% margin" exactly) |
+| Peak `VmRSS` (not budget-binding — `ulimit -v` bounds VSZ/`VmPeak`, not RSS) | 1,871,084 KB (informational) |
+
+Per the operator's note, `VmPeak` had already plateaued at 2,404,408 KB during early boot/warm — the
+streamed warm added no measurable peak growth over the whole 250-sample window (confirmed independently:
+the column is a single constant value across every row, not merely "close" across samples).
+
+**Verdict: PASS — both halves of TC-5's GWT hold** (health-poll liveness: 250/250 HTTP 200, no frozen
+window; memory: 2,404,408 KB peak vs the 6,291,456 KB cap, 61.8% margin).
+
+### Additional corroborating evidence — serving, post-warm (J-07 step 1; not itself a numbered TC)
+
+Same long-lived process (pid 3669411, no restart) — operator, verbatim: `GET /api/backtest?horizon=h` for
+h in `{1, 5, 10, 20, 60}`: all HTTP 200 at **0.138-0.158 s** (post-warm cache HIT path — the SAME
+`ForwardAggregateCache` the 278 s warm just populated for `forward_aggregates`). This corroborates the
+process kept correctly serving cached reads after the warm completed — the same behavior TC-6's GWT also
+requires ("continues serving a previously-cached `GET /api/backtest` horizon") — see the TC-6 honesty note
+below for why this alone does not close TC-6.
+
+### Logs
+
+Operator, verbatim: zero `MemoryError` / "memory pressure" lines in `logs/backend.log` for this boot's
+window (boot banner `=== start-backend.sh: launching at 2026-07-23T10:24:53Z ===`, log line ~34967); the
+nearest prior `MemoryError` lines are iter-13-era, predating this boot.
+
+### TC-6 — induced memory-pressure resilience: evidence recorded, NOT self-scored as PASS
+
+**GWT (spec):** during TC-5's SAME run, a memory-pressure condition is induced (test hook or a tightened
+cap in a nested throwaway process) during one horizon's warm; that warm step aborts honestly while the SAME
+long-lived process keeps answering `GET /api/health` 200 and keeps serving a previously-cached
+`GET /api/backtest` horizon — no restart.
+
+**Stated plainly, per the operator's explicit instruction — this GWT was NOT literally executed this
+pass.** The operator did not induce artificial memory pressure on the LIVE full-deep-basis process
+(pid 3669411): ballooning a 6 GB-capped production process on this crash-history host (PC hard-reset
+2026-07-20/21 under ingest bursts — the reason the host-guard caps/sampler/watchdog exist at all) was
+judged not a justified operator action on this pass, and this developer turn does not second-guess that
+call.
+
+TC-6's available evidence for this iteration rests on two legs, **neither of which is a live induced-
+pressure repro on the exact TC-5 process**:
+
+1. **The prior developer turn's TC-3** (`apps/backend/tests/test_forward_testing_concurrency.py`, see the
+   dev handoff) — a REAL (non-monkeypatched) tightened-`ulimit -v` subprocess induction test: the
+   pre-rewrite pattern honestly raises `MemoryError` (no hang, sub-2s) under a calibrated cap, and a fresh
+   same-process session re-reading an existing `ForwardAggregateCache` row succeeds immediately after; the
+   REWRITTEN pattern succeeds under the identical cap against the same fixture. Real induced-pressure
+   evidence — but on a synthetic 60,000-row fixture in a throwaway subprocess, not the live full-basis
+   server this pass measured.
+2. **This live pass's absence of any organic memory-pressure event** — zero `MemoryError`/"memory
+   pressure" log lines across the full boot-tail-through-warm-through-serving window, and `VmPeak` holding
+   flat at 2,404,408 KB (61.8% margin) throughout, including through the 278 s forward-aggregates warm that
+   iters 11-13 could not complete at all (3-for-3 `MemoryError`). This shows the fix removed the organic
+   failure mode, not that the process degrades gracefully under an INDUCED one.
+
+**Neither leg satisfies TC-6's literal GWT** (induce pressure on TC-5's own run, confirm isolated abort +
+continued serving in that SAME process). This developer pass does not upgrade TC-6 to a self-certified PASS
+on that missing basis, per the operator's instruction to state this plainly rather than round it up —
+**the evaluator decides whether legs 1+2 together are sufficient** for J-07's TC-6 requirement, or whether
+a follow-up induced-pressure pass against the live process is still needed.
+
+### Summary
+
+| Check | Budget / GWT | Measured | Verdict |
+|---|---|---|---|
+| TC-7 (boot) | ≤ 5 s | 1.80 s | **PASS** (~2.8x margin) |
+| TC-5 (health-poll liveness during warm) | 1 Hz throughout, all 200, no frozen window | 250/250 HTTP 200, median 0.157 s, max 1.444 s | **PASS** |
+| TC-5 (memory, full-deep-basis warm) | ≤ 6,291,456 KB (6144 MB) `VmPeak` | 2,404,408 KB peak | **PASS** (61.8% margin) |
+| J-07 step 1 (serving, post-warm, corroborating) | — | 5/5 horizons 200, 0.138-0.158 s | consistent with continued correct serving |
+| TC-6 (induced-pressure resilience on TC-5's own run) | isolate-and-continue under a LIVE induced condition | not literally executed this pass; TC-3 (synthetic, real induction, prior turn) + this pass's organic-absence evidence only | **evidence recorded, NOT self-scored — evaluator decides** |
+
+This closes TC-5 and TC-7 as measured PASS on this operator-supervised pass, records the available
+(non-live-induced) TC-6 evidence honestly, and resolves the PENDING placeholder above. Per the dev
+handoff's Known Issue #5, this section does not itself claim J-06 or J-07 "passes" as whole journeys —
+that scoring remains the evaluator's call once TC-9/TC-10 (browser-qa's regression replay) also close.
