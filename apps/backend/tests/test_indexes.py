@@ -12,18 +12,24 @@ Covers the anti-goal-bearing behaviors of `app.engine.indexes.compute_index_seri
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
 import yaml
 from sqlalchemy import insert
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from app.config import load_config
 from app.db import create_db_and_tables, make_engine
-from app.engine.indexes import UnknownRangeError, compute_index_series
-from app.models import DailyPrice
+from app.engine import indexes as indexes_module
+from app.engine.indexes import (
+    UnknownRangeError,
+    compute_index_series,
+    index_series_cached_with_status,
+    index_series_dataset_version,
+)
+from app.models import DailyPrice, IndexSeriesCache, ScannerRun
 
 # A synthetic config whose index_chart lists SPY, QQQ, and DIA (DIA intentionally bar-less in the DB so
 # the omission path is exercised) with three range presets including an all-history preset.
@@ -614,3 +620,147 @@ def test_missing_seed_meta_yields_null_vendor_and_first(tmp_path):
     spy = result["series"][0]
     assert spy["vendor"] is None
     assert spy["first"] is None
+
+
+# --- ops-hardening iter-13 (J-06): ingest-time hot-key serving cache ---------------------------------
+# `index_series_cached_with_status` serves the SINGLE unparameterized default hot key
+# (range_key=cfg.index_chart.default_range, full=True) from `IndexSeriesCache`: MISS computes via the
+# UNCHANGED `compute_index_series` and persists; HIT deserializes with zero recompute; the echoed
+# `asof_date` is re-derived at read time (never baked stale into the stored payload, per goal.md's own
+# technical note); `index_series_dataset_version` is scoped ONLY to `index_chart.symbols`' stored bars.
+
+
+def test_index_series_cached_miss_computes_persists_and_matches_engine_output(tmp_path):
+    cfg = _cfg(tmp_path)
+    engine = _engine_with_bars()
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", [100.0, 101.0, 102.0])
+        _insert_bars(session, "QQQ", [50.0, 51.0, 52.0])
+        session.commit()
+        payload, persisted = index_series_cached_with_status(session, cfg)
+        expected = compute_index_series(
+            session, as_of=None, range_key=cfg.index_chart.default_range, config=cfg, full=True
+        )
+    assert persisted is True  # a genuine MISS -> computed and persisted this call
+    assert payload == expected  # byte-identical to the uncached call on the same DB state (TC-3)
+
+    with Session(engine) as session:
+        rows = session.exec(select(IndexSeriesCache)).all()
+    assert len(rows) == 1
+    assert rows[0].range_key == cfg.index_chart.default_range
+    assert rows[0].full is True
+
+
+def test_index_series_cached_hit_serves_without_recompute(tmp_path, monkeypatch):
+    cfg = _cfg(tmp_path)
+    engine = _engine_with_bars()
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", [100.0, 101.0])
+        session.commit()
+        index_series_cached_with_status(session, cfg)  # warm (MISS)
+
+    calls = {"n": 0}
+    real = indexes_module.compute_index_series
+
+    def _counting(*args, **kwargs):
+        calls["n"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(indexes_module, "compute_index_series", _counting)
+    with Session(engine) as session:
+        payload, persisted = index_series_cached_with_status(session, cfg)
+        expected = compute_index_series(
+            session, as_of=None, range_key=cfg.index_chart.default_range, config=cfg, full=True
+        )
+    assert persisted is False  # a genuine HIT -> nothing new persisted
+    assert calls["n"] == 0, "a cache HIT must never call compute_index_series"
+    assert payload["series"] == expected["series"]
+    assert payload["range"] == expected["range"]
+    assert payload["ranges"] == expected["ranges"]
+
+
+def test_index_series_cached_invalidates_after_new_bar_for_configured_symbol(tmp_path):
+    """TC-4-shaped unit proof: a new bar for a configured `index_chart` symbol changes the narrow
+    dataset-version stamp, so the next hot-key request is a genuine MISS whose series includes the new
+    bar's date (never a stale pre-ingest snapshot)."""
+    cfg = _cfg(tmp_path)
+    engine = _engine_with_bars()
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", [100.0, 101.0])
+        session.commit()
+        first, first_persisted = index_series_cached_with_status(session, cfg)
+    assert first_persisted is True
+
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", [103.0], start=_BASE + timedelta(days=5))
+        session.commit()
+        second, second_persisted = index_series_cached_with_status(session, cfg)
+    assert second_persisted is True  # the new bar bumped the stamp -> a genuine second MISS
+
+    spy_first = next(s for s in first["series"] if s["symbol"] == "SPY")
+    spy_second = next(s for s in second["series"] if s["symbol"] == "SPY")
+    assert len(spy_second["points"]) > len(spy_first["points"])
+    assert spy_second["points"][-1]["date"] == (_BASE + timedelta(days=5)).isoformat()
+
+    with Session(engine) as session:
+        # the stale (older-dataset_version) row is pruned on write -- exactly one row survives.
+        rows = session.exec(select(IndexSeriesCache)).all()
+    assert len(rows) == 1
+
+
+def test_index_series_cached_hit_re_derives_current_asof_not_stale(tmp_path):
+    """Technical note (goal.md iter-13): on a HIT, the echoed `asof_date` is RE-DERIVED at read time,
+    never baked into the stored payload -- a later change that shifts the resolved as-of (a NEW
+    `ScannerRun` landing, with no change to any `index_chart` symbol's bars) is reflected honestly even
+    though the narrow dataset-version stamp (bar-scoped only) is unchanged, so this is still a HIT."""
+    cfg = _cfg(tmp_path)
+    engine = _engine_with_bars()
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", [100.0, 101.0])
+        session.commit()
+        first, first_persisted = index_series_cached_with_status(session, cfg)
+    assert first_persisted is True
+
+    with Session(engine) as session:
+        session.add(ScannerRun(
+            asof_date=_BASE + timedelta(days=10), created_at=datetime(2026, 1, 11), provider="seed",
+            benchmark="SPY", regime_score=50.0, regime_label="Choppy", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        ))
+        session.commit()
+        second, second_persisted = index_series_cached_with_status(session, cfg)
+    assert second_persisted is False  # the index-scoped stamp is untouched by a new ScannerRun -> HIT
+    assert second["asof_date"] == (_BASE + timedelta(days=10)).isoformat()
+    assert second["asof_date"] != first["asof_date"]
+    # everything else is served verbatim from the SAME stored row (unchanged)
+    assert second["series"] == first["series"]
+    assert second["range"] == first["range"]
+
+
+def test_index_series_dataset_version_changes_on_new_bar_for_configured_symbol(tmp_path):
+    cfg = _cfg(tmp_path)
+    engine = _engine_with_bars()
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", [100.0, 101.0])
+        session.commit()
+        before = index_series_dataset_version(session, cfg)
+        _insert_bars(session, "SPY", [103.0], start=_BASE + timedelta(days=5))
+        session.commit()
+        after = index_series_dataset_version(session, cfg)
+    assert before != after
+
+
+def test_index_series_dataset_version_unaffected_by_unrelated_symbol(tmp_path):
+    """Narrow scoping (mirrors `research._membership_dataset_version`'s own narrow-stamp precedent): a
+    bar for a symbol NOT in `index_chart.symbols` (e.g. a scored universe stock) never bumps this
+    cache's stamp -- an ingest that never touches an index symbol must not invalidate it."""
+    cfg = _cfg(tmp_path)
+    engine = _engine_with_bars()
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", [100.0, 101.0])
+        session.commit()
+        before = index_series_dataset_version(session, cfg)
+        _insert_bars(session, "AAA", [10.0, 11.0])  # AAA is not in index_chart.symbols
+        session.commit()
+        after = index_series_dataset_version(session, cfg)
+    assert before == after

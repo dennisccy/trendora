@@ -1929,3 +1929,74 @@ this iteration is measurement/documentation-only.
 > have carried as an open OWNER decision since iter-8, and this correction does not change that scope
 > decision; it corrects the record so iter-11's audit is not mistakenly read as having cleared this fifth
 > aggregate too.
+
+## J-06 closeout attempt — ingest-time cache for `GET /api/indexes?full=true` (iter-13, developer pass)
+
+Per this iteration's own plan (`runs/goal-ops-hardening-iter-13/plan.md`): "the canonical browser-measured
+control readings are QA's." **This section is NOT the DoD's canonical three-load + spot-check control
+measurement (TC-1/TC-2) — that remains browser-qa-agent's own real-Chrome pass**, per iter-5's own lesson
+(curl under-reports a call-heavy endpoint vs. a real Chrome connection-queuing profile) and iter-12's own
+precedent (its G2 developer-pass section explicitly deferred the canonical reading the same way). This
+section records only: (1) a backend-side, curl-based pre-check that the new `IndexSeriesCache` warm path
+functions end-to-end on the LIVE server, and (2) the idle-window cross-read browser-qa-agent's own pass
+needs as a starting precondition.
+
+**Environment:** backend PID 2916728 (operator-restarted onto this iteration's code before this pass began;
+host-guard caps live per the launch banner), frontend on :3255 — neither started nor stopped by this
+developer session. `index_series_cache` table confirmed present (via `create_all` at boot) and EMPTY at the
+start of this pass.
+
+**Live warm-path pre-check (curl, this developer session, 2026-07-23T02:1{5-9}-02:2{2-6}Z):**
+
+1. Three back-to-back `GET /api/indexes?full=true` calls against the still-empty cache: call 1 (a genuine
+   MISS — computes via the unchanged `compute_index_series` and self-heals a row) measured **0.847s**;
+   calls 2 and 3 (now cache HITs) measured **0.065s** and **0.070s**. (Curl is not the DoD's measurement
+   instrument — see above — but the HIT/MISS delta on the identical endpoint, identical DB state, is
+   itself informative: roughly a 12x drop.)
+2. A single small, bounded `backfill` job was submitted over HTTP (`POST /api/data/jobs`,
+   `{"kind":"backfill","start":"2025-05-30","end":"2025-05-30"}` — one unsnapshotted trading day, picked
+   because it already has stored bars but no `ScannerRun`; AG-9-safe because `_do_backfill` never calls an
+   external fetch provider, it only reads already-loaded bars and creates a snapshot). It completed
+   `status: "ok"` in ~4 minutes (`started_at` 02:20:20Z → `finished_at` 02:24:13Z), 1 snapshot created, 2725
+   forward returns inserted.
+3. Post-job cache state: still **exactly one** `index_series_cache` row, dataset_version unchanged
+   (`d2026-07-17-c60522`, matching the current `max(date)+count(*)` over the 10 configured `index_chart`
+   symbols), `created_at` unchanged — i.e. the finalize hook's new warm step correctly found a HIT (the
+   backfill added no new bar to any configured index symbol) and did NOT re-persist. `aggregates_refreshed`
+   for this job honestly OMITTED `"index_series"` (TC-5's own contract: reported only when the step actually
+   persisted a row that run) — a live, positive confirmation of the honesty gate, not a defect.
+4. Byte-identity (AG-3): a fresh, direct, uncached `compute_index_series(session, as_of=None,
+   range_key="all", full=True)` call against the same live DB file, run out-of-process, was compared to the
+   live `GET /api/indexes?full=true` response — **identical** (`direct == api` → `True`), including
+   `asof_date: "2026-07-17"`, all 10 series entries, and the `range`/`ranges` blocks.
+5. Post-warm cached hot-key timing, 5 further curl calls: **0.088s, 0.084s, 0.088s, 0.088s, 0.088s** — flat,
+   consistent, all cache HITs.
+6. Non-hot-key comparison (`range=3M`, still bypasses the cache, unchanged lazy path): **0.575s, 0.582s** —
+   confirms the non-hot-key path is unaffected in behavior and stays on its own (slower, smaller-window)
+   uncached path, never touching `IndexSeriesCache` (row count unchanged at 1 before/after these two calls).
+
+**These curl numbers are NOT the DoD verdict.** Per iter-5's own lesson they systematically under-report
+what a real Chrome page load's Resource-Timing API will show for the same call embedded in `/data`'s full
+page (other concurrent requests, connection-queuing). The pre-fix browser baseline this cache targets
+(iter-12 G2) was 2138.7-2257.7ms measured by real Chrome; the curl HIT numbers above (~0.065-0.09s) suggest
+a large margin, but only browser-qa-agent's own three-load fresh-navigation `/data` pass plus the `/`
+spot-check (TC-1/TC-2, mirroring G2's exact methodology) can close DEFINITION OF DONE item 1 and this
+file's own G2 entry. **That pass has not run as of this section.**
+
+**Idle-window cross-read for browser-qa-agent's own pass (performed 2026-07-23T02:26:35Z, immediately after
+the pre-check above):** `logs/backend.log` tail shows only health-check traffic (no ingest job in flight).
+`logs/hwmon/hwmon.csv` (epoch 1784773590-595): `load1` **0.55-0.60** (<2.0), `tctl_c` 47-65°C (still cooling
+from this pass's own single backfill job's finalize-hook compute a few minutes earlier — not yet at this
+file's documented 43-50°C clean-idle band, disclosed as-is per iter-11's/iter-12's own precedent rather than
+rounded to "idle"). Recommend browser-qa-agent re-check both files at the exact timestamp of each of its own
+three readings rather than relying on this cross-read, which will be stale by the time that pass starts.
+
+**Collateral observation (pre-existing, NOT introduced or worsened by this iteration — disclosed for
+completeness):** the single bounded backfill job's finalize hook reproduced the already-documented critical
+AG-8 `forward_aggregates_cached` → `compute_forward_aggregates` `MemoryError` at
+`apps/backend/app/engine/forward_testing.py:826` (`logs/backend.log`, this job's own window) — the exact
+line this file's iter-12 TC-4 audit correction addendum above already names. The job's own per-item
+isolation contract (unchanged, untouched by this iteration) held: `"forward_aggregates"` was honestly
+absent from this job's `aggregates_refreshed`, and the job still completed `status: "ok"`. `git diff --stat
+-- apps/backend/app/engine/forward_testing.py` is empty (TC-12: byte-unchanged). This is simply a fresh
+live occurrence of the same standing, owner-scoped issue — not a new finding, not touched by this diff.

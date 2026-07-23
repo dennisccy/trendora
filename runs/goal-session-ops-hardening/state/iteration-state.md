@@ -1,39 +1,33 @@
-# Iteration State — ops-hardening
+# Iteration State — ops-hardening (after iter-13)
 
-**After iteration:** 12 · **Date:** 2026-07-23 · **Verdict:** CONTINUE
+**Last verdict:** REGRESSION (iter-13) · **Prior:** CONTINUE (iter-12) · **Date:** 2026-07-23
 
-## Journeys
+## Journeys (5 Must-have)
+| J | Status | Note |
+|---|--------|------|
+| J-01 | passing | replay PASS iter-13 |
+| J-03 | passing | replay PASS iter-13 |
+| J-04 | passing | CARRIED, not re-verified (boot-path files byte-unchanged); owes a live boot spot-check |
+| J-05 | passing | replay PASS iter-13 (screenshot spot-checked) |
+| J-06 | partial | over-budget blocker CLOSED (218/218/219ms /data, 70.5ms / — was 2138-2258ms); residual = perf-budgets.md transcription + walkthrough + AG-8 froze a frame |
 
-4 passing (J-01 J-03 J-04 J-05) · 1 partial (J-06 — target; G1/G2 CLOSED, but its own budget is breached) · 0 failing — 5 total.
+## Active blockers (all owner-owned — session out of autonomous runway)
+- **AG-8 CRITICAL (drove the REGRESSION):** forward_testing.py:826 unbounded ScannerResult load — byte-unchanged (TC-12) but this iter wedged the whole backend ~12min (health hung, operator hard-restart; UT-01-blocked-backend-hang.png + audit + closure all concur). Full outage, not a silent abort — the "mitigation holds / smaller than iter-7" premise is FALSIFIED. Owner: bounded rewrite / goal.md amend (+fail-fast +auto worker-recover) / raise cap.
+- HOST_GUARD_REQUIRE_MARKERS — owner decision.
+- demo.sh --session-live walkthrough (J-05/J-06) — no autonomous mechanism (iter-12 finding); owner/framework.
 
-## Active blockers
+## Last 2 verdicts — why
+- iter-13 REGRESSION: J-06 target fix landed & verified in budget, but critical AG-8 escalated to a full ~12-min availability outage (C.1 first-match). Resume with --acknowledge-regression into a FULL recovery iter.
+- iter-12 CONTINUE: J-06 held partial — /api/indexes genuinely 43-51% over budget on an idle host (now fixed by iter-13).
 
-- **J-06 over-budget endpoint (AGENT-tractable — the one thing keeping this from STALLED).**
-  `GET /api/indexes?full=true` on `/data` reads 2257.7/2148.2/2138.7 ms vs its ≤1.5 s budget on a VERIFIABLY
-  idle host (`perf-budgets.md` "### G2 (closure)") — real 43–51% overage, not ambient; was ~0.87 s in iter-6.
-  Fix = goal.md aggregation candidate #7 (normalized index series → keyed cache warmed at ingest), OR an owner
-  budget-raise. J-06 step 2 "assert every measurement is within budget" fails → stays partial.
-- **AG-8 critical, UNRESOLVED — OWNER call, hard-blocks GOAL_ACHIEVED.** `forward_aggregates_cached` →
-  `compute_forward_aggregates` unbounded `ScannerResult` load (`forward_testing.py:826`) OOMs under the 6144 MB
-  cap. Reconfirmed live 3-for-3 iter-12 (runs 120/121/122; `logs/backend.log:26920/27185/27233`) but caught
-  internally — ZERO client 500s this time (smaller than iter-11's two). Owner: rewrite, amend, or defer.
-- **Owner/framework, also blocking GOAL_ACHIEVED:** `[NEW] demo.sh --session-live` walkthrough (decomposer
-  PROVED no autonomous mechanism — human run-once / wording amendment / framework record-mode) ·
-  `HOST_GUARD_REQUIRE_MARKERS` · the `/api/indexes` budget-raise-vs-fix choice.
-- **Services:** operator note + dev handoff say backend :8255 / frontend :3255 UP, host-guard caps live.
+## Do not redo (binding unless goal.md changes)
+- iter-13 IndexSeriesCache / candidate #7 WORKS — do not re-implement; hot key is in budget.
+- Do NOT touch forward_testing.py:826 as a product iter (owner-scoped rewrite); do NOT bundle it with other work.
+- Do NOT re-measure the 10 in-budget J-06 pages, boot budget (1.364s iter-11), or re-run heavy-ingest pytest (settled iter-9).
+- Do NOT touch health.py/readiness.py/main.py-boot/warmup.py/max_range_days/server.memory_cap_mb.
+- Do NOT patch scripts/automation/* (merge FAIL-cell drop, Frontend-Present misroute) from a product iter.
+- AG-10 launcher confinement + host-guard blocks DONE (iter-9/11) — do not re-open.
 
-## Last 2 verdicts
-
-- iter 12: CONTINUE — J-06 G1/G2 gaps closed, but G2 confirms `/api/indexes?full=true` genuinely 43–51% over
-  its ≤1.5 s budget on an idle host → J-06 stays partial (scored on the contract, not measurement-happened).
-- iter 11: ESCALATE — J-06 stayed partial; lean lanes mis-read a live per-process memory exhaustion as ambient.
-
-## Do not redo
-- **iter-12 diff EMPTY** (`iter-diff.md` "(no changes)", scan CLEAN); only `perf-budgets.md`. **G1 CLOSED**
-  (sweep ~1734-1826) · **G2 CLOSED in canonical artifact** (3 idle readings ~1866-1905) · **TC-4 correction DONE**.
-- **J-05 4-of-7 on zero-new-date runs = design-consistent; J-05 contract INTACT — do not re-open.**
-  **Heavy-ingest test settled, do NOT re-run** (iter-9). **Boot budget DONE** (iter-11: 1.364 s).
-- **Do NOT touch** `health.py`, `readiness.py`, `main.py` boot, `warmup.py`, `max_range_days`, `/evidence`
-  drawdown warm, `server.memory_cap_mb`. **AG-8 fix is OWNER-scoped — do not invent it. AG-10 held both sides.**
-- **Process:** never hand-edit past artifacts; never patch `scripts/automation/*`; score J-01/J-03/J-05 from the
-  LLM lane (golden-replay step-02 fill flake is a framework item).
+## Recovery-iter cleanup (agent-tractable, non-blocking)
+- Transcribe iter-13 passing readings into reports/perf-budgets.md (closes J-06 single-source clause).
+- Add a live J-04 boot spot-check (DoD-#7 literal); retire/rewire dead major-indexes-card.tsx (UT-07).

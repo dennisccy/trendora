@@ -1886,9 +1886,10 @@ class JobProgress:
     # already branches on `existed_before`), so the finalize hook knows which as-ofs to warm in
     # `MarketPhaseCache` ("for each newly-created snapshot date" — never every stored date).
     # `aggregates_refreshed` is the finalize hook's honest output — the subset of `["latest_snapshot",
-    # "coverage", "membership_timeline", "market_phase", "forward_aggregates", "research_hot_keys"]` it
-    # actually refreshed — empty/default until the hook has actually run (never fabricated on an
-    # interrupted/failed row; gated in `_run_detail()` the SAME way `calendar_days` etc. already are).
+    # "coverage", "membership_timeline", "market_phase", "forward_aggregates", "research_hot_keys",
+    # "index_series"]` it actually refreshed — empty/default until the hook has actually run (never
+    # fabricated on an interrupted/failed row; gated in `_run_detail()` the SAME way `calendar_days` etc.
+    # already are).
     new_snapshot_dates: list[date_cls] = field(default_factory=list)
     aggregates_refreshed: list[str] = field(default_factory=list)
     # J-34: chunked-fetch progress. `chunk_index` = number of fully-completed chunks (== the durable
@@ -3120,8 +3121,8 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     `_warm_membership_timeline`'s non-fatal contract in warmup.py — an aggregate-refresh failure must never
     flip an otherwise-successful ingest job to failed). Returns the subset of `["latest_snapshot",
     "coverage", "membership_timeline", "market_phase", "forward_aggregates", "research_hot_keys",
-    "drawdown_expectations"]` ACTUALLY refreshed — never a fabricated category (mirrors the
-    `omitted`/`passers` honesty convention already used elsewhere in this module).
+    "drawdown_expectations", "index_series"]` ACTUALLY refreshed — never a fabricated category (mirrors
+    the `omitted`/`passers` honesty convention already used elsewhere in this module).
 
     ops-hardening iter-4 (F1 fix): calls the bare `prog.tick()` (no `activity` argument — it stamps ONLY
     the `last_progress_at` heartbeat, never overwriting `current_activity`, so an already-pinned "scanning
@@ -3250,6 +3251,39 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             refreshed.append("research_hot_keys")
     except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue
         logger.exception("ingest research hot-key warm failed (non-fatal): %s", exc)
+
+    # ops-hardening iter-13 (J-06, aggregation candidate #7): warm the SINGLE unparameterized default
+    # hot key for `GET /api/indexes` (`range_key=cfg.index_chart.default_range`, `full=True` —
+    # `PhaseCrossViewCard` on `/` and `IndexVendorPanel` on `/data` both request exactly this,
+    # unparameterized, on mount). Mirrors the `research_hot_keys` block just above: a single-key warm,
+    # unconditional (NOT gated on `prog.new_snapshot_dates`) because `IndexSeriesCache`'s
+    # dataset-version stamp is scoped to the configured `index_chart.symbols`' bar freshness (not to
+    # "this run's new snapshot dates") — ANY ingest that lands a bar for a configured index symbol,
+    # anywhere, must invalidate it, mirroring `forward_aggregates`'s "the stamp is global" reasoning
+    # above. Deferred import (not at module level): `indexes.py` already imports `load_seed_meta` FROM
+    # this module at ITS OWN module level, so importing `indexes` back here at data_manager's module
+    # scope would cycle; the deferred, function-scoped import breaks the cycle exactly like
+    # `forward_aggregates_cached`'s own deferred `_dataset_version` import from `research.py`.
+    #
+    # iter-8 MemoryError-isolation convention: caught distinctly from the generic exception below, stops
+    # immediately (a single key, not a loop — nothing further to attempt) and calls
+    # `_release_process_memory()` before moving on to the next aggregate category. "index_series" is
+    # appended ONLY when this call actually persisted a new row this run (`persisted` is False on a
+    # cache HIT — an honest "was skipped" omission, never a fabricated refresh, mirroring every other
+    # category's honesty gate above).
+    from app.engine import indexes  # deferred: see comment above (breaks a module-load cycle)
+
+    try:
+        _, index_series_persisted = indexes.index_series_cached_with_status(session, cfg)
+        if index_series_persisted:
+            refreshed.append("index_series")
+    except MemoryError as exc:
+        logger.exception(
+            "ingest index-series warm aborted — memory pressure: %s", exc,
+        )
+        _release_process_memory()
+    except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
+        logger.exception("ingest index-series warm failed (non-fatal): %s", exc)
 
     # ops-hardening iter-7 (J-06 closeout, audit B1): warm the per-claim `drawdown_expectations`
     # EventStudyCache view slot — the SAME cache slot `build_evidence_payload` looks up lazily via

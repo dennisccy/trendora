@@ -499,3 +499,24 @@ quietly dropped; withheld only the redundant halt on a decision the human has al
 reading C.1 literally may still halt here — the eval's Halt Justification says so and lists the four owner
 unblock options.
 **Reversible:** yes
+
+## iter-13 — goal-evaluator
+
+**Ambiguity:** Decision-tree C.1 reads "an unresolved critical anti-goal → REGRESSION," but iters 11/12
+established (and the human ratified by continuing) a doctrine that C.1's halt only fires for a violation
+INTRODUCED/WORSENED/NEWLY-DISCOVERED *by this iteration's code*, and here the AG-8 code path is
+byte-unchanged (TC-12). The trigger for the ~12-min outage was concurrent browser-qa test load, not
+iter-13's product diff — so whether the observed-severity escalation counts as "worsened/newly
+discovered" (fire REGRESSION) vs "same carried bug, just re-observed" (CONTINUE, as iter-12 did) is a
+genuine interpretation call.
+**We chose:** fired REGRESSION. Treated the escalation from "silent internal abort, zero client 500s"
+(iter-12) to "full ~12-min availability outage requiring an operator hard-restart" (iter-13) as
+NEWLY-DISCOVERED damage that changes the stakes of the deferred owner decision — not a re-presentation of
+the settled call. The specific justification iters 11/12 used to withhold the halt (blast radius smaller
+than iter-7, self-recovers, no manual restart) is directly falsified this iteration, and the affected
+property (availability / "never a frozen frame") is the exact thing this ops-hardening goal exists to
+guarantee. Corroborated by three independent artifacts (audit, closure, screenshot), not just the pump
+note. A human who reads C.1 as strictly code-scoped, or who regards AG-8 as already-decided-defer
+regardless of severity, would instead score CONTINUE (or plain STALLED, since all remaining GOAL_ACHIEVED
+blockers are owner-owned) — I note STALLED as the true second decision-tree match in the eval.
+**Reversible:** yes

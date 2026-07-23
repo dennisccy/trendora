@@ -10,14 +10,16 @@ Served-from-storage read paths over the real committed seed:
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 import main
 from app.config import load_config
+from app.engine import indexes as indexes_module
 from app.engine.indexes import compute_index_series
 from app.engine.prices import latest_data_date
 from app.engine.regime_history import get_regime_history
 from app.engine.scanner import resolve_as_of_date
+from app.models import IndexSeriesCache
 
 
 def _earliest_and_latest_run_dates(session):
@@ -223,3 +225,75 @@ def test_api_regime_history_full_param_serves_through_latest(loaded_engine):
     # value identity on the overlapping <= D range (verbatim stored values, no recompute)
     overlap = [p for p in full["points"] if p["date"] <= clamped["asof_date"]]
     assert overlap == clamped["points"]
+
+
+# --- ops-hardening iter-13 (J-06): GET /api/indexes' SINGLE unparameterized default hot key
+# (no/default range, full=True, no as_of) is served from IndexSeriesCache; every other combination
+# stays on the pre-existing, unchanged, uncached compute_index_series path. -------------------------
+
+
+def test_api_indexes_hot_key_full_true_served_from_cache_and_matches_engine(loaded_engine):
+    """The hot key is byte-identical to a fresh, direct `compute_index_series` call on the same DB
+    state (AG-3), and persists exactly one `IndexSeriesCache` row for the current dataset-version key."""
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        expected = compute_index_series(
+            session, as_of=None, range_key=cfg.index_chart.default_range, config=cfg, full=True
+        )
+    with TestClient(main.app) as client:
+        resp = client.get("/api/indexes", params={"full": "true"})
+    assert resp.status_code == 200
+    assert resp.json() == expected
+
+    with Session(loaded_engine) as session:
+        rows = session.exec(
+            select(IndexSeriesCache).where(
+                IndexSeriesCache.range_key == cfg.index_chart.default_range,
+                IndexSeriesCache.full == True,  # noqa: E712
+            )
+        ).all()
+    assert len(rows) == 1
+
+
+def test_api_indexes_hot_key_second_request_hits_cache_without_recompute(loaded_engine, monkeypatch):
+    with TestClient(main.app) as client:
+        first = client.get("/api/indexes", params={"full": "true"}).json()
+
+    calls = {"n": 0}
+    real = indexes_module.compute_index_series
+
+    def _counting(*args, **kwargs):
+        calls["n"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(indexes_module, "compute_index_series", _counting)
+    with TestClient(main.app) as client:
+        second = client.get("/api/indexes", params={"full": "true"}).json()
+    assert calls["n"] == 0, "the second hot-key request must serve from IndexSeriesCache, not recompute"
+    assert second["series"] == first["series"]
+    assert second["range"] == first["range"]
+    assert second["ranges"] == first["ranges"]
+
+
+def test_api_indexes_non_hot_key_bypasses_cache_and_stays_byte_identical(loaded_engine):
+    """An explicit non-default range OR an explicit historical as_of never touches `IndexSeriesCache` --
+    byte-identical to the unchanged, uncached `compute_index_series` output for the same inputs (TC-6),
+    and neither request writes a new cache row."""
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        earliest, _latest = _earliest_and_latest_run_dates(session)
+        d = earliest.isoformat()
+        expected_range = compute_index_series(session, as_of=None, range_key="3M", config=cfg, full=True)
+        expected_asof = compute_index_series(
+            session, as_of=d, range_key=cfg.index_chart.default_range, config=cfg, full=True
+        )
+        rows_before = session.exec(select(IndexSeriesCache)).all()
+    with TestClient(main.app) as client:
+        by_range = client.get("/api/indexes", params={"range": "3M", "full": "true"}).json()
+        by_asof = client.get("/api/indexes", params={"as_of": d, "full": "true"}).json()
+    assert by_range == expected_range
+    assert by_asof == expected_asof
+
+    with Session(loaded_engine) as session:
+        rows_after = session.exec(select(IndexSeriesCache)).all()
+    assert len(rows_after) == len(rows_before)  # neither non-hot-key request wrote a cache row

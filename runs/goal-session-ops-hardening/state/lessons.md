@@ -276,3 +276,19 @@ contradicts a "may pass" prose recommendation, the number wins.
 **Applies to:** any iteration whose target is "measure-and-record" work against committed budgets
 (`reports/perf-budgets.md`), and any evaluator tempted to accept a downstream agent's "may be scored passing"
 when the recorded measurement breaches the acceptance metric.
+
+## iter-13 — 2026-07-23T04:39:47Z
+
+**Verdict:** REGRESSION
+**Lesson:** A carried, byte-unchanged critical anti-goal can REGRESS in observed severity without any
+code change: AG-8 (`forward_testing.py:826` unbounded ScannerResult load) was "degraded-but-alive,
+mitigation holds, smaller than iter-7" for iters 9/11/12 — then at iter-13, under heavier concurrent
+load (4 replay backfills + a diagnostic read on one browser-qa turn), it wedged the entire backend into
+a ~12-min futex deadlock needing an operator hard-restart, i.e. back to the original iter-7 full-outage
+severity. The "blast-radius-smaller-than-the-acknowledged-incident" argument that justifies deferring a
+critical anti-goal is only valid until a heavier load profile falsifies it; an evaluator must re-test
+that premise every iteration against fresh load evidence, not carry it forward. When it flips, C.1's
+literal "unresolved critical anti-goal → REGRESSION" is the right call even though prior iters deferred.
+**Applies to:** any iter carrying an UNRESOLVED critical anti-goal on a "smaller blast radius than the
+acknowledged incident" rationale — especially memory/availability bugs whose severity is load-dependent;
+re-read logs/backend.log + the audit + closure for a worse-than-before manifestation before re-deferring.

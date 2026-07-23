@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-13",
+  "base_url": "http://localhost:3255",
+  "iteration": 13,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the dashboard",
+      "narration": "Let's start on Trendora's dashboard, where you can see the market's regime and phase at a glance.",
+      "point_out": "The regime and phase chart appears right away now — this used to take over two seconds to show up, and it now loads in a fraction of a second.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "as of" }
+    },
+    {
+      "n": 2,
+      "title": "Open the Data Manager",
+      "narration": "Next, the Data Manager — where the data behind every chart is sourced and kept up to date.",
+      "point_out": "The list of index and benchmark data sources — each shown with its honest vendor, like Stooq, Yahoo, or a FRED-macro proxy — now resolves almost instantly instead of taking over two seconds.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Stooq" }
+    },
+    {
+      "n": 3,
+      "title": "Try a wide date range",
+      "narration": "The backfill form still accepts any historical range you like, with no artificial limit on how much history you can request in one go.",
+      "point_out": "",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "label": "Start date" }, "text": "2015-01-01" }
+    },
+    {
+      "n": 4,
+      "title": "No range cap enforced",
+      "narration": "Even an eleven-year span is accepted without any warning or truncation — there's no cap on how much data a single job can pull in.",
+      "point_out": "Notice there's no error message or size warning — just a normal, ready-to-submit job form.",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "label": "End date" }, "text": "2026-07-17" }
+    },
+    {
+      "n": 5,
+      "title": "Spot-check another page",
+      "narration": "Finally, a quick look at the Evidence page, to confirm this round's fix didn't slow anything else down.",
+      "point_out": "The Evidence page loads normally and just as quickly as before.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/evidence" }
+    }
+  ]
+}

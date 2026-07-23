@@ -31,7 +31,7 @@ from app.config import load_config
 from app.db import create_db_and_tables, make_engine
 from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError, RateLimitError
 from app.engine import data_manager
-from app.engine import forward_testing, market_phase, scanner
+from app.engine import forward_testing, indexes, market_phase, scanner
 from app.engine.data_manager import (
     JobProgress,
     _chunk_plan,
@@ -74,6 +74,7 @@ from app.models import (
     ForwardAggregateCache,
     ForwardReturn,
     ImportCheckpoint,
+    IndexSeriesCache,
     ScannerResult,
     ScannerRun,
     SectorScoreRow,
@@ -1047,7 +1048,9 @@ def test_finalize_hook_persists_coverage_snapshot_and_warms_aggregates(finalize_
     `coverage_snapshot` row for the current stamp and reports every category this fixture's data supports
     as refreshed: `latest_snapshot` (this run created a snapshot), `coverage` + `membership_timeline` (one
     compute warms both), `market_phase` (the new date), `forward_aggregates` (ops-hardening iter-5: the
-    current latest run's per-horizon forward-aggregate cache), `research_hot_keys` (the default hot key)."""
+    current latest run's per-horizon forward-aggregate cache), `research_hot_keys` (the default hot key),
+    `index_series` (ops-hardening iter-13: the fixture's own `SPY` bar is one of `index_chart.symbols`, so
+    the hot-key warm has real bars to compute from)."""
     engine, d = finalize_hook_engine
     cfg = load_config()
     with Session(engine) as session:
@@ -1056,7 +1059,7 @@ def test_finalize_hook_persists_coverage_snapshot_and_warms_aggregates(finalize_
         refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
     assert set(refreshed) == {
         "latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates",
-        "research_hot_keys",
+        "research_hot_keys", "index_series",
     }
     with Session(engine) as session:
         rows = session.exec(select(CoverageSnapshot)).all()
@@ -1127,6 +1130,76 @@ def test_finalize_hook_coverage_snapshot_byte_identical_to_fresh_compute(finaliz
         stored = json.loads(row.payload_json)
         fresh = data_manager._compute_coverage_uncached(session, cfg, as_of=None)
     assert stored == fresh
+
+
+# ==================================================================================================
+# ops-hardening iter-13 (J-06, aggregation candidate #7): the finalize hook's NEW index-series warm --
+# mirrors the `research_hot_keys`/`forward_aggregates` proofs above, for the SINGLE unparameterized
+# default hot key `GET /api/indexes` serves from `IndexSeriesCache`.
+# ==================================================================================================
+def test_finalize_hook_warms_index_series_hot_key(finalize_hook_engine):
+    """A finalize hook call persists exactly one `IndexSeriesCache` row for the current hot key and
+    reports "index_series" as refreshed — the fixture's own SPY bar is a configured `index_chart`
+    symbol, so the warm step has real bars to compute from."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        prog = JobProgress(job_id="index-series-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+    assert "index_series" in refreshed
+    with Session(engine) as session:
+        rows = session.exec(select(IndexSeriesCache)).all()
+    assert len(rows) == 1
+    assert rows[0].range_key == cfg.index_chart.default_range
+    assert rows[0].full is True
+
+
+def test_finalize_hook_index_series_second_run_hit_not_reported_as_refreshed(finalize_hook_engine):
+    """Honesty gate (TC-5) — a SECOND finalize hook call with no intervening ingest to any configured
+    index symbol is a genuine cache HIT (nothing new persisted this run): "index_series" is honestly
+    ABSENT the second time, mirroring the "was skipped" omission every other warm category follows."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        prog1 = JobProgress(job_id="index-series-first", kind="backfill", start=d, end=d)
+        prog1.new_snapshot_dates = [d]
+        first = data_manager._refresh_ingest_aggregates(session, cfg, prog1)
+    assert "index_series" in first
+
+    with Session(engine) as session:
+        prog2 = JobProgress(job_id="index-series-second", kind="backfill", start=d, end=d)
+        prog2.new_snapshot_dates = [d]
+        second = data_manager._refresh_ingest_aggregates(session, cfg, prog2)
+    assert "index_series" not in second  # a genuine HIT — nothing new persisted this run
+    with Session(engine) as session:
+        rows = session.exec(select(IndexSeriesCache)).all()
+    assert len(rows) == 1  # still exactly one row — the second run never wrote a duplicate
+
+
+def test_finalize_hook_index_series_memory_error_isolated_and_not_reported(
+    finalize_hook_engine, monkeypatch
+):
+    """TC-7 — a `MemoryError` raised while warming the index-series cache is isolated to that one warm
+    step: it never flips the ingest job's own status (this function never raises), the OTHER aggregates
+    (`coverage`/`membership_timeline`/`market_phase`/`forward_aggregates`/`research_hot_keys`) still
+    refresh normally, and "index_series" is honestly absent (never fabricated)."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+
+    def _boom(*_a, **_k):
+        raise MemoryError("forced index-series memory pressure")
+
+    monkeypatch.setattr(indexes, "index_series_cached_with_status", _boom)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="index-series-oom-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+    assert "index_series" not in refreshed
+    assert {
+        "latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates",
+        "research_hot_keys",
+    } <= set(refreshed)
 
 
 def test_finalize_hook_market_phase_computed_exactly_once_not_on_subsequent_read(
@@ -1206,6 +1279,7 @@ def test_finalize_hook_never_raises_even_when_everything_fails(finalize_hook_eng
     monkeypatch.setattr(market_phase, "market_phase_cached", _boom)
     monkeypatch.setattr(forward_testing, "forward_aggregates_cached", _boom)
     monkeypatch.setattr(data_manager, "event_study_cached", _boom)
+    monkeypatch.setattr(indexes, "index_series_cached_with_status", _boom)
     with Session(engine) as session:
         prog = JobProgress(job_id="all-fail-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]

@@ -15,8 +15,9 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session
 
+from app.config import get_config
 from app.db import get_session
-from app.engine.indexes import UnknownRangeError, compute_index_series
+from app.engine.indexes import UnknownRangeError, compute_index_series, index_series_cached
 from app.engine.scanner import AsOfError
 from app.engine.snapshot_serving import _http
 
@@ -38,7 +39,17 @@ def indexes(
     session: Session = Depends(get_session),
 ) -> dict:
     try:
-        return compute_index_series(session, as_of=as_of, range_key=range, full=full)
+        cfg = get_config()
+        # ops-hardening iter-13 (J-06): the SINGLE unparameterized default hot key
+        # (no/default range, full=True, no explicit historical as_of) is served from the ingest-warmed
+        # `IndexSeriesCache` (PhaseCrossViewCard `/` and IndexVendorPanel `/data` both request exactly
+        # this, unparameterized, on mount). Every other combination — an explicit non-default range, or
+        # an explicit historical as_of — keeps calling `compute_index_series` directly, unchanged, lazy
+        # (the existing "cannot be precomputed — user-parameterized" carve-out).
+        is_hot_key = full and as_of is None and (range is None or range == cfg.index_chart.default_range)
+        if is_hot_key:
+            return index_series_cached(session, config=cfg)
+        return compute_index_series(session, as_of=as_of, range_key=range, config=cfg, full=full)
     except UnknownRangeError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     except AsOfError as exc:

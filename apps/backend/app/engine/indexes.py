@@ -23,16 +23,19 @@ explicit 422 — never a silent fallback to a fabricated range).
 """
 from __future__ import annotations
 
-from datetime import date as date_cls, timedelta
+import json
+from datetime import date as date_cls, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-from sqlmodel import Session
+from sqlalchemy import func
+from sqlmodel import Session, select
 
 from app.config import Config, IndexRangePreset, get_config
 from app.engine.data_manager import load_seed_meta
 from app.engine.prices import bars_asof, bars_through_latest
 from app.engine.scanner import resolve_as_of_date
+from app.models import DailyPrice, IndexSeriesCache
 
 # iter-22 (J-14) — the honest display label for each committed-seed manifest vendor key (`data/seed/
 # meta.json` `symbols[].vendor`). A key with no mapping falls back to the raw key itself (never a crash,
@@ -174,3 +177,115 @@ def compute_index_series(
         "ranges": [{"key": p.key, "label": p.label} for p in cfg.index_chart.range_presets],
         "series": series,
     }
+
+
+# --------------------------------------------------------------------------------------------------
+# Ingest-time serving cache for the SINGLE unparameterized default hot key (ops-hardening iter-13,
+# J-06 — aggregation candidate #7): `range_key=cfg.index_chart.default_range`, `full=True`, no explicit
+# `as_of`. Every other request combination (a user-selected non-default range, an explicit historical
+# as-of) stays on the lazy, uncached `compute_index_series` call above — unchanged.
+# --------------------------------------------------------------------------------------------------
+
+
+def index_series_dataset_version(session: Session, config: Optional[Config] = None) -> str:
+    """A NARROW cache stamp for `IndexSeriesCache`, scoped ONLY to the inputs the hot-key series
+    actually reads: the configured `index_chart.symbols`' stored bars. Deliberately NOT the broad
+    `research._dataset_version` (which folds in the `forward_returns` row count and would invalidate on
+    unrelated ingest activity that never touches an index symbol's bars) — mirrors
+    `research._membership_dataset_version`'s own narrow-stamp precedent (scope the stamp to only what
+    the cache reads).
+
+    A single bounded, indexed read (`max(date)` + `count(*)` filtered to the configured index symbols,
+    served by the existing `uq_daily_prices_symbol_date` / `ix_daily_prices_date` indexes) — never a
+    whole-`daily_prices`-table scan. Changes whenever a configured index symbol gains, loses, or has a
+    bar altered anywhere in its history; unaffected by ingest activity for any OTHER symbol or by a pure
+    forward-return insert."""
+    cfg = config or get_config()
+    symbols = [entry.symbol for entry in cfg.index_chart.symbols]
+    if not symbols:
+        return "none"
+    max_date = session.exec(
+        select(func.max(DailyPrice.date)).where(DailyPrice.symbol.in_(symbols))
+    ).one()
+    if isinstance(max_date, tuple):
+        max_date = max_date[0]
+    count = session.exec(
+        select(func.count()).select_from(DailyPrice).where(DailyPrice.symbol.in_(symbols))
+    ).one()
+    if isinstance(count, tuple):
+        count = count[0]
+    date_stamp = max_date.isoformat() if max_date is not None else "none"
+    return f"d{date_stamp}-c{count or 0}"
+
+
+def index_series_cached_with_status(
+    session: Session, config: Optional[Config] = None, seed_dir: Optional[str | Path] = None,
+) -> tuple[dict, bool]:
+    """Serve the hot-key `compute_index_series(as_of=None, range_key=cfg.index_chart.default_range,
+    full=True)` payload from `IndexSeriesCache`, returning `(payload, persisted_this_call)`: on a cache
+    HIT for the current `(range_key, full, dataset_version)` key, deserialize the stored payload (NO
+    recompute), re-derive the CURRENT resolved `as_of` and overwrite the echoed `asof_date` with it (see
+    `IndexSeriesCache`'s own docstring — the only as-of-dependent part of this response), and return
+    `persisted_this_call=False`; on a MISS or a stale dataset-version stamp, compute ONCE via the
+    UNCHANGED `compute_index_series` (the SOLE producer — this function is a pure serving/persistence
+    wrapper, never a second derivation), persist it under the current stamp, prune any stale rows for
+    this `(range_key, full)` identity, and return `persisted_this_call=True`. The returned payload is
+    BYTE-IDENTICAL to `compute_index_series(...)` for the same inputs (No recompute in the read path).
+
+    `persisted_this_call` is the honesty gate the ingest finalize hook's `aggregates_refreshed` reads:
+    "index_series" is reported ONLY when this call actually wrote a new row — a cache HIT (nothing new
+    to persist) is an honest skip, mirroring the "was skipped" omission every other warm category
+    already follows, never a fabricated refresh."""
+    cfg = config or get_config()
+    range_key = cfg.index_chart.default_range
+    version = index_series_dataset_version(session, cfg)
+
+    hit = session.exec(
+        select(IndexSeriesCache).where(
+            IndexSeriesCache.range_key == range_key,
+            IndexSeriesCache.full == True,  # noqa: E712 — SQLAlchemy column comparison, not a bool identity check
+            IndexSeriesCache.dataset_version == version,
+        )
+    ).first()
+    if hit is not None:
+        resolved = resolve_as_of_date(session, None, cfg)  # re-derived fresh, never trusted from storage
+        payload = json.loads(hit.payload_json)
+        payload["asof_date"] = resolved.isoformat()
+        return payload, False
+
+    # MISS — compute once (the SOLE producer, unchanged) and persist.
+    payload = compute_index_series(
+        session, as_of=None, range_key=range_key, config=cfg, full=True, seed_dir=seed_dir
+    )
+
+    # prune stale rows for THIS (range_key, full) identity (any older dataset_version) so the cache
+    # table does not grow unbounded as the dataset matures; the current-version row is then upserted.
+    stale = session.exec(
+        select(IndexSeriesCache).where(
+            IndexSeriesCache.range_key == range_key,
+            IndexSeriesCache.full == True,  # noqa: E712
+            IndexSeriesCache.dataset_version != version,
+        )
+    ).all()
+    for row in stale:
+        session.delete(row)
+
+    session.add(IndexSeriesCache(
+        range_key=range_key, full=True, dataset_version=version,
+        payload_json=json.dumps(payload), created_at=datetime.now(timezone.utc),
+    ))
+    try:
+        session.commit()
+    except Exception:  # a concurrent writer raced us to the same key — the cache is best-effort, not a
+        session.rollback()  # source of truth; the freshly computed payload is still byte-identical, so return it
+    return payload, True
+
+
+def index_series_cached(
+    session: Session, config: Optional[Config] = None, seed_dir: Optional[str | Path] = None,
+) -> dict:
+    """The `GET /api/indexes` hot-key route's own entry point: the payload half of
+    `index_series_cached_with_status` (drops the `persisted_this_call` flag, which only the ingest
+    finalize hook's honesty gate needs)."""
+    payload, _persisted = index_series_cached_with_status(session, config, seed_dir)
+    return payload

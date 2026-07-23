@@ -559,6 +559,68 @@ class ForwardAggregateCache(SQLModel, table=True):
     created_at: datetime
 
 
+# --- ops-hardening iter-13 (J-06) index-series ingest-time serving cache -------------------------
+class IndexSeriesCache(SQLModel, table=True):
+    """A STANDALONE, create_all-managed cache of the derived J-44 major-indexes normalized-% display
+    series (`app.engine.indexes.compute_index_series`), served on `GET /api/indexes`'s SINGLE
+    unparameterized default hot key (ops-hardening iter-13, J-06) — the request `PhaseCrossViewCard`
+    (`/`) and `IndexVendorPanel` (`/data`) both issue unparameterized on mount.
+
+    Like `EventStudyCache` / `MarketPhaseCache` / `ForwardAggregateCache`, this is EXPLICITLY NOT a
+    scanner snapshot — the *Snapshots are immutable* critical anti-goal binds ONLY `scanner_runs` /
+    `scanner_results` / `*_scores` / `forward_returns`. This is legitimately mutable derived/cache
+    state: it stores the SERIALIZED `compute_index_series(...)` payload keyed by the request identity
+    plus a dataset-version stamp, so a read serves the stored payload instead of re-deriving it (No
+    recompute in the read path). The cached figures are BYTE-IDENTICAL to a fresh compute — a cache of
+    the deterministic read-only derivation, never a second computation.
+
+    WHY: `compute_index_series(..., full=True)` hydrates each `index_chart.symbols` ETF's FULL stored
+    price history via `bars_through_latest` on EVERY request — measured live (`reports/perf-budgets.md`,
+    iter-11/iter-12): 2138.7-2257.7ms for one request against its committed <=1.5s budget — the
+    confirmed J-06 violation this cache fixes.
+
+    A STANDALONE table (its own `create_all`-managed table) is used deliberately so the iter-12
+    `_ADDITIVE_COLUMNS` trap does NOT apply — a fresh DB carries it from `create_db_and_tables`, and no
+    existing table gains a column.
+
+    CACHE KEY: `(range_key, full, dataset_version)`:
+      - `range_key` + `full` are the request identity — this cache ONLY ever stores the SINGLE
+        unparameterized default hot key (`range_key=cfg.index_chart.default_range`, `full=True`); every
+        other range/as-of combination stays on the existing lazy, uncached `compute_index_series` path
+        (the "cannot be precomputed — user-parameterized" carve-out).
+      - `dataset_version` is a NARROW stamp scoped ONLY to the inputs this series actually reads — the
+        configured `index_chart.symbols`' stored bars (`max(date)` + `count(*)`, filtered to those few
+        symbols, a bounded indexed read) — deliberately NOT the broad `research._dataset_version` (which
+        folds in the `forward_returns` row count and would invalidate on unrelated ingest activity that
+        never touches an index symbol's bars), mirroring `_membership_dataset_version`'s own narrow-stamp
+        precedent. A read computes the CURRENT stamp and looks up THIS exact key; a stale row keyed to an
+        older stamp is never hit (and is pruned on write), so the cache can NEVER serve a stale figure —
+        it refreshes the moment any configured index symbol gains a new bar, anywhere.
+
+    The echoed `asof_date` field is RE-DERIVED at read time (never trusted from the stored payload): for
+    this specific hot key (`range_key="all"`, i.e. `days=None`), `compute_index_series`'s own series
+    computation does not depend on the resolved as-of at all (`bars_through_latest` ignores it, and
+    `start` is `None` for the all-history preset) — the ONLY as-of-dependent part of the response is the
+    echoed `asof_date`. Re-deriving it at read time (rather than baking a stale one into the stored
+    payload) avoids an unnecessary correctness trap on a cache HIT (goal.md iter-13's own technical note).
+
+    `payload_json` is the serialized `series`/`range`/`ranges` (the `asof_date` field it may also carry
+    is overwritten at read time, never trusted from storage). Unique on the composite key so a write is
+    an idempotent upsert."""
+
+    __tablename__ = "index_series_cache"
+    __table_args__ = (
+        UniqueConstraint("range_key", "full", "dataset_version", name="uq_index_series_cache_key"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    range_key: str = Field(index=True)
+    full: bool
+    dataset_version: str  # narrow stamp: max(date)+count(*) over index_chart.symbols' stored bars
+    payload_json: str  # the serialized compute_index_series(...) payload (asof_date re-derived at read)
+    created_at: datetime
+
+
 class MacroSeries(SQLModel, table=True):
     """A STANDALONE, create_all-managed table of optional FRED macro-feed observations (iter-32, J-92).
 

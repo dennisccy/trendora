@@ -544,3 +544,54 @@ the `/api/indexes` budget-raise-vs-fix choice (a conscious logged budget change,
 decomposer proved this by reading run-goal.sh). Framework-maintainer items carried: `merge_ui_test_results.py`
 dropped-`**FAIL**` cells, `Frontend Present: no` misrouting, the golden-replay step-02 flake, undisclosed
 `J-05.json` fixture edit (audit T2), pre-existing `test_db.py::test_create_all_produces_expected_tables`.
+
+## Iteration 13 — goal-ops-hardening-iter-13
+
+**Date:** 2026-07-23T04:39:47Z
+**Verdict:** REGRESSION
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: none
+- Advanced but not passing: **J-06 stays partial** — its SUBSTANTIVE over-budget blocker is genuinely
+  CLOSED (the iter-13 IndexSeriesCache fix: GET /api/indexes?full=true hot key now 218.7/218.7/219.2ms
+  on /data + 70.5ms on / vs iter-12's 2138.7-2257.7ms, all ≤1.5s ~7x margin, idle host). Residual gaps:
+  (a) perf-budgets.md doesn't yet carry the passing readings (single-source clause), (b) walkthrough
+  unproduced (owner), (c) the AG-8 outage produced the frozen frame its honest-status clause forbids.
+- Re-verified passing: J-01, J-03, J-05 (deterministic golden replay, 3/3 PASS; spot-checked J-05-verify.png).
+- Carried (NOT re-verified): J-04 passing on the byte-unchanged boot-path argument (UT-J-04 SKIP — live
+  kill/restart barred; main.py/health.py/readiness.py/warmup.py absent from diff).
+- Newly failing: none. Regressed (journey passing→failing): none.
+- Anti-goal violations: **AG-8 (iter-9 dimension, critical, UNRESOLVED) — observed-severity ESCALATED to
+  a full ~12-min availability outage** (forward_testing.py:826 byte-unchanged per TC-12, but under
+  concurrent load wedged the entire backend into a futex deadlock, health unresponsive, operator
+  hard-restart — audit §1/§3 + closure + UT-01-blocked-backend-hang.png). scan-report CLEAN;
+  coherence COHERENCE-PASS; AG-7/9/10 clean (host-guard confinement honored, no hard-reset).
+
+**Reasoning:** The target fix is real and decisively verified — I opened UT-03-load1-result.png (/data
+renders fully, Ready badge, coverage tiles) and cross-read the audit/closure/ux-regression, all
+concurring the hot key is ≤219ms on an idle host; the iter-12 over-budget finding I cited is directly
+closed. But decision-tree C.1 fires first: the critical AG-8 anti-goal is unresolved AND this iteration
+escalated it to newly-discovered full-outage damage. Three independent artifacts I opened corroborate a
+~12-minute total availability outage requiring an operator hard-restart — not the single-source pump
+note. That FALSIFIES the exact "blast-radius-smaller-than-iter-7 / mitigation holds" rationale iters
+11/12 logged (assumptions.md) to withhold the literal halt; they even wrote "a human reading C.1
+literally should halt here." The human deferred a degraded-but-alive bug five times; iter-13 proves it
+is a full-outage bug — materially new stakes, in an ops-hardening goal whose core promise is "available
+in seconds … never a blank or frozen frame." No journey moved passing→failing, so this is the anti-goal
+clause of REGRESSION, not a journey regression. Rejected CONTINUE: audit+closure both say the next pass
+is a "holding spec" with no agent-tractable substantive work, so continuing spends a loop while a proven
+full-outage bug stands. Rejected GOAL_ACHIEVED: J-06 partial + AG-8 unresolved. Plain STALLED is the
+true second match (all GOAL_ACHIEVED blockers are owner-owned) and I say so in the Halt Justification —
+but C.1 matches first and correctly foregrounds the outage. Coherence PASS → no consolidation mandate.
+
+**Next-step recommendation:** Halt; resume with --acknowledge-regression into a FULL-depth recovery
+iter. OWNER DECISIONS (each hard-blocks GOAL_ACHIEVED): (1) AG-8 — bounded/streamed rewrite of
+forward_testing.py:826, OR goal.md amendment that also requires fail-fast to honest "Backend
+unavailable" + automatic worker-pool recovery (never a 12-min "Checking backend…" wedge), OR raise the
+cap (does not fix the pattern) — a 6th silent deferral is no longer defensible; (2)
+HOST_GUARD_REQUIRE_MARKERS; (3) the demo.sh --session-live walkthrough. Agent-tractable cleanup for the
+recovery iter (non-blocking): transcribe the passing readings into reports/perf-budgets.md (closes
+J-06's single-source clause), add a live J-04 boot spot-check (DoD-#7), retire/rewire the dead
+major-indexes-card.tsx so UT-07 stops failing OVERALL against unreachable code. Framework-maintainer
+items carried: merge_ui_test_results.py dropped the raw .llm.md's **FAIL** cell (merged top-line read
+PASS, raw read FAIL — always score from the raw); Frontend-Present misroute.
