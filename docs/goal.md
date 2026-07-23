@@ -263,6 +263,35 @@ no-ops or arbitrary limits.
     - **Walkthrough:** a `[NEW]`-flagged walkthrough of the budgets table vs live page
       loads, viewable via `demo.sh ops-hardening --session-live`.
 
+- **J-07: Heavy aggregates never take the service down**
+  - Steps:
+    1. With the full deep basis loaded, trigger the forward-aggregate warm for every
+       configured horizon (the ingest finalize path) and serve `GET /api/backtest` for
+       each horizon (cache-MISS path) in one long-lived backend process.
+    2. While step 1 runs, poll `GET /api/health` once per second; assert every poll
+       answers HTTP 200 within its existing budget — no frozen or unresponsive window.
+    3. Record the process's peak memory (VmPeak) during step 1; assert it stays under the
+       declared `server.memory_cap_mb`, with the margin recorded in
+       `reports/perf-budgets.md`.
+    4. Induce memory pressure during a warm (test hook or a tightened cap in a throwaway
+       process); assert the warm aborts honestly per the existing isolation convention
+       while the SAME process keeps serving `/api/health` and previously cached reads —
+       never a deadlock, wedge, or restart requirement.
+  - Acceptance:
+    - **Consistency (single source):** `compute_forward_aggregates` remains the single
+      canonical producer; the bounded implementation replaces the unbounded one in place —
+      no second aggregation path.
+    - **Correctness:** the bounded/streamed implementation returns byte-identical payloads
+      to the previous computation for the same inputs (all horizons, with and without
+      `as_of`), proven by a fixture-backed equality test.
+    - **Honest status & anti-goals:** no unbounded whole-table ORM materialization remains
+      on the warm or serving path (`forward_returns` / `scanner_results` read
+      column-projected and/or chunked into bounded accumulators — AG-8); a memory-pressure
+      abort never leaves the process wedged (step 4); health/readiness stay truthful
+      throughout.
+    - **Walkthrough:** the crash-free warm + healthy `/api/health` sequence appended as
+      `[NEW]` steps viewable via `demo.sh ops-hardening --session-live`.
+
 <!-- Continuous-improvement auto-journeys: the goal-proposer appends NEW Must-have journeys ONLY
      between the two markers below (see the goal-self-extension skill). The human-authored journeys
      above and the Anti-goals below are never machine-edited. An empty block = nothing auto-proposed yet. -->
