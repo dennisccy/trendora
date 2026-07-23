@@ -1,0 +1,46 @@
+{
+  "phase": "goal-ops-hardening-iter-16",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-07-23T22:53:54.637038Z",
+  "started_at": "2026-07-23T20:02:41.023181Z",
+  "cli": "claude",
+  "blockers": [
+    "conftest.py's loaded_engine fixture change (pre-warming the latest run's ForwardAggregateCache, required by the compute-vs-serve split) was not exercised live this session -- the ~80min loaded_engine fixture build is out of scope; see dev handoff Known Issue #1 for the recommended single confirming test."
+  ],
+  "changed_files": [
+    "apps/backend/app/engine/forward_testing.py",
+    "apps/backend/app/api/backtest.py",
+    "apps/backend/app/mcp/tools.py",
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/tests/conftest.py",
+    "apps/backend/tests/test_forward_testing_concurrency.py",
+    "apps/backend/tests/test_forward_testing.py",
+    "apps/backend/tests/test_data_manager.py",
+    "apps/backend/tests/test_api_backtest.py",
+    "apps/backend/tests/test_forward_testing_serving_split.py",
+    "apps/frontend/lib/api.ts",
+    "apps/frontend/app/backtest/page.tsx",
+    "reports/perf-budgets.md",
+    "runs/goal-session-ops-hardening/state/blueprint.md",
+    "docs/handoffs/goal-ops-hardening-iter-16-dev.md",
+    "docs/handoffs/goal-ops-hardening-iter-16-frontend.md",
+    "reports/phase-goal-ops-hardening-iter-16-implementation-summary.md",
+    "runs/goal-ops-hardening-iter-16/status.json"
+  ],
+  "tests_run": true,
+  "tests_passed": true,
+  "tests_summary": "24/24 targeted backend tests passed, host-guard-confined (taskset -c 0-3,8-11, BLAS/OMP/numexpr threads=4), no full suite run: test_forward_testing_serving_split.py 10/10 (NEW -- completeness/cutover/never-computed/byte-identity for the read-only resolver, TC-18 asof_key-filtered query, both request-serving entry points' wiring); test_forward_testing_concurrency.py 6/6 (renamed, proves TC-17 single-flight guard survives the split); test_forward_testing.py -k forward_aggregates_ingest_cached 3/3 (one rewritten for the new cutover contract); test_data_manager.py 5/5 (renamed MemoryError-isolation + finalize-hook tests). Frontend: npx tsc --noEmit 0 errors. loaded_engine-fixture files (test_api_backtest.py, test_backtest_scorecard.py, test_mcp_window.py) cited, not run per this session's standing constraint -- one exact-key-set assertion in test_api_backtest.py was still fixed by reading, since it was certain to break otherwise.",
+  "browser_checks_run": true,
+  "browser_checks_note": "Frontend Present: yes. TC-12 (ready state) verified live: /backtest page loads, no refreshing banner, no empty-state present, EvidenceAggregateSection renders with horizon data (regression guard passes). TC-10/TC-11 documented in dev handoff for browser-qa-agent to execute.",
+  "notes": [
+    "forward_aggregates_cached split into forward_aggregates_ingest_cached (ingest-only compute-and-persist, keeps iter-15's single-flight guard unchanged) and resolved_forward_aggregate_evidence (new, read-only, structurally incapable of calling compute_forward_aggregates). compute_forward_aggregates itself untouched.",
+    "ForwardAggregateCache pruning changed from per-horizon-write deletion to a completeness-gated cutover -- closes the confirmed-live mixed-dataset_version bug the iteration spec cited (asof_key='2026-07-17' split across two dataset_version stamps under the old pruning).",
+    "backtest.py / mcp/tools.py: is_latest view calls ONLY the new read-only resolver (never compute_forward_aggregates, proven by structural monkeypatch-to-raise tests); historical (is_latest=false) carve-out keeps its pre-existing lazy create-once-and-cache behavior unchanged (TC-13), now via the renamed ingest function.",
+    "No schema change needed -- the completeness/cutover design derives entirely from ForwardAggregateCache's existing (horizon, asof_key, dataset_version, created_at) columns.",
+    "blueprint.md's pre-drafted J-08 paragraphs corrected (not upgraded to evaluator-confirmed): the ingest-only function has TWO callers (the ingest warm loop AND the historical carve-out), not the warm loop alone as originally drafted -- required for TC-13 to keep passing post-split.",
+    "Pre-existing, unrelated: tests/test_db.py::test_create_all_produces_expected_tables failure carried forward, untouched by this iteration (no schema change).",
+    "TC-16 RESOLVED 2026-07-23: operator ran the live /backtest serving-state pass (68-row raw CSV, runs/goal-ops-hardening-iter-16/tc16-backtest-poll.csv), transcribed with independent recomputation in reports/perf-budgets.md's new 'TC-16 -- ... RESULTS' section. Structural serving contract (never a skeleton, never a mixed generation, exactly 3 phases/2 transitions across 68/68 polls) fully PASSES live. Latency budget (<=1.5s) breached on 11/68 polls (7/16 refreshing, 4/49 post-warm ready), all inside the ~380s ingest window -- WARN, not PASS, on latency specifically; ~14x improvement over iter-15's 178.74s cold-recompute MISS. Recomputation also caught and flagged (not self-resolved) a discrepancy in the operator's reported median figures (overall and one segment used the single upper-middle sorted value instead of the true two-value average for even-count samples; true overall median is 0.304s, not the reported 0.307s). Whether the latency WARN is acceptable for J-08/J-06/J-07 is left to the evaluator."
+  ],
+  "next_action": "reviewer"
+}

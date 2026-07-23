@@ -3227,7 +3227,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                 # block exactly as before (no regression to that existing behavior). On MemoryError this
                 # loop stops immediately (no further horizons attempted) and forces memory back to the OS.
                 try:
-                    forward_testing.forward_aggregates_cached(session, h, cfg, as_of=latest_run_date)
+                    forward_testing.forward_aggregates_ingest_cached(session, h, cfg, as_of=latest_run_date)
                     forward_aggregates_warmed = True
                 except MemoryError as exc:
                     logger.exception(
@@ -3263,7 +3263,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     # above. Deferred import (not at module level): `indexes.py` already imports `load_seed_meta` FROM
     # this module at ITS OWN module level, so importing `indexes` back here at data_manager's module
     # scope would cycle; the deferred, function-scoped import breaks the cycle exactly like
-    # `forward_aggregates_cached`'s own deferred `_dataset_version` import from `research.py`.
+    # `forward_aggregates_ingest_cached`'s own deferred `_dataset_version` import from `research.py`.
     #
     # iter-8 MemoryError-isolation convention: caught distinctly from the generic exception below, stops
     # immediately (a single key, not a loop — nothing further to attempt) and calls

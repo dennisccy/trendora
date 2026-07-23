@@ -33,7 +33,7 @@ from app.engine.forward_testing import (
     compute_drawdown_expectations,
     compute_drawdown_expectations_cached,
     compute_forward_aggregates,
-    forward_aggregates_cached,
+    forward_aggregates_ingest_cached,
     forward_excursions,
     forward_return,
     max_drawdown,
@@ -813,13 +813,14 @@ def test_aggregates_as_of_scoped_consistency_invariant_relocated(aggregates_engi
 
 
 # ==================================================================================================
-# forward_aggregates_cached (ops-hardening iter-5, J-06) — the ForwardAggregateCache performance layer.
-# GET /api/backtest called compute_forward_aggregates once per configured horizon (5) on EVERY request;
-# measured live at 34.77s for one request (reports/perf-budgets.md). This cache mirrors
-# research.event_study_cached / market_phase.market_phase_cached / this module's own
-# compute_drawdown_expectations_cached exactly.
+# forward_aggregates_ingest_cached (ops-hardening iter-5, J-06; split from the former single
+# `forward_aggregates_cached` by iter-16, J-08 — see forward_testing.py's own module-level history) — the
+# ForwardAggregateCache performance layer's INGEST-ONLY compute-and-persist half. GET /api/backtest
+# called compute_forward_aggregates once per configured horizon (5) on EVERY request; measured live at
+# 34.77s for one request (reports/perf-budgets.md). This cache mirrors research.event_study_cached /
+# market_phase.market_phase_cached / this module's own compute_drawdown_expectations_cached exactly.
 # ==================================================================================================
-def test_forward_aggregates_cached_byte_identical_and_single_row(aggregates_engine):
+def test_forward_aggregates_ingest_cached_byte_identical_and_single_row(aggregates_engine):
     """A cache MISS then HIT both return a payload BYTE-IDENTICAL to a fresh uncached
     `compute_forward_aggregates` call, and exactly ONE `ForwardAggregateCache` row is written for this
     (horizon, as_of) (no duplicate insert on the second call)."""
@@ -828,8 +829,8 @@ def test_forward_aggregates_cached_byte_identical_and_single_row(aggregates_engi
     as_of = date(2025, 1, 10)
     with Session(engine) as session:
         fresh = compute_forward_aggregates(session, H, cfg, as_of=as_of)
-        miss = forward_aggregates_cached(session, H, cfg, as_of=as_of)
-        hit = forward_aggregates_cached(session, H, cfg, as_of=as_of)
+        miss = forward_aggregates_ingest_cached(session, H, cfg, as_of=as_of)
+        hit = forward_aggregates_ingest_cached(session, H, cfg, as_of=as_of)
         rows = session.exec(
             select(ForwardAggregateCache).where(
                 ForwardAggregateCache.horizon == H,
@@ -840,7 +841,7 @@ def test_forward_aggregates_cached_byte_identical_and_single_row(aggregates_engi
     assert len(rows) == 1
 
 
-def test_forward_aggregates_cached_avoids_recompute_on_hit(aggregates_engine, monkeypatch):
+def test_forward_aggregates_ingest_cached_avoids_recompute_on_hit(aggregates_engine, monkeypatch):
     """The SECOND call for the SAME (horizon, as_of) never re-invokes the uncached
     `compute_forward_aggregates` — proven by monkeypatching it to count calls (a call-count proof, not
     just a byte-match, so a bug that silently recomputed-but-still-matched would still fail this test)."""
@@ -858,32 +859,41 @@ def test_forward_aggregates_cached_avoids_recompute_on_hit(aggregates_engine, mo
 
     monkeypatch.setattr(forward_testing_module, "compute_forward_aggregates", _counting)
     with Session(engine) as session:
-        forward_testing_module.forward_aggregates_cached(session, H, cfg, as_of=as_of)  # MISS -> 1 call
-        forward_testing_module.forward_aggregates_cached(session, H, cfg, as_of=as_of)  # HIT -> 0 more
-        forward_testing_module.forward_aggregates_cached(session, H, cfg, as_of=as_of)  # HIT -> 0 more
+        forward_testing_module.forward_aggregates_ingest_cached(session, H, cfg, as_of=as_of)  # MISS -> 1 call
+        forward_testing_module.forward_aggregates_ingest_cached(session, H, cfg, as_of=as_of)  # HIT -> 0 more
+        forward_testing_module.forward_aggregates_ingest_cached(session, H, cfg, as_of=as_of)  # HIT -> 0 more
     assert call_count["n"] == 1
 
 
-def test_forward_aggregates_cached_refreshes_on_dataset_version_change(aggregates_engine):
+def test_forward_aggregates_ingest_cached_refreshes_on_dataset_version_change(aggregates_engine):
     """The cache refreshes when the dataset changes (no stale figure): adding one more forward-return
     observation on the SAME already-included run bumps `_dataset_version`, so the next call for the SAME
-    (horizon, as_of) recomputes (a genuinely larger cohort) rather than serving the pre-change payload,
-    and the stale row is pruned (iter-2 B1 lesson: a fingerprint-only invalidation must not serve a
-    false/stale figure — this reuses the SAME already-hardened `research._dataset_version` stamp, never
-    a new invalidation mechanism)."""
+    (horizon, as_of) recomputes (a genuinely larger cohort) rather than serving the pre-change payload
+    (iter-2 B1 lesson: a fingerprint-only invalidation must not serve a false/stale figure — this reuses
+    the SAME already-hardened `research._dataset_version` stamp, never a new invalidation mechanism).
+
+    iter-16 (J-08) updated this test for the cutover pruning contract: a superseded version's rows now
+    survive until the NEW version's FULL configured-horizon set is complete (never per-horizon), so this
+    warms EVERY configured horizon (not just `H`) both before and after the dataset change — mirroring
+    what the real ingest finalize warm loop does — and additionally proves the mid-refresh state: with
+    only `H` refreshed at the new version (every OTHER horizon still incomplete there), the OLD version's
+    row for `H` is NOT yet pruned (the cutover has not fired) — only once every configured horizon is
+    refreshed does the old version's entire row set for this `asof_key` disappear in one shot."""
     engine, H = aggregates_engine
     cfg = load_config()
     as_of = date(2025, 1, 10)
+    horizons = cfg.walk_forward.horizons
     with Session(engine) as session:
-        before = forward_aggregates_cached(session, H, cfg, as_of=as_of)
+        for h in horizons:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=as_of)
+        before = forward_aggregates_ingest_cached(session, H, cfg, as_of=as_of)  # HIT — already warmed above
         from app.engine.research import _dataset_version
         v_before = _dataset_version(session)
         rows_before = session.exec(
-            select(ForwardAggregateCache).where(
-                ForwardAggregateCache.horizon == H, ForwardAggregateCache.asof_key == as_of.isoformat(),
-            )
+            select(ForwardAggregateCache).where(ForwardAggregateCache.asof_key == as_of.isoformat())
         ).all()
-        assert len(rows_before) == 1 and rows_before[0].dataset_version == v_before
+        assert len(rows_before) == len(horizons)
+        assert {r.dataset_version for r in rows_before} == {v_before}
 
         # change the dataset: one more forward-return observation on run1 (the already-included latest
         # run) -- a genuinely different cohort at the SAME (horizon, as_of) key.
@@ -894,15 +904,32 @@ def test_forward_aggregates_cached_refreshes_on_dataset_version_change(aggregate
         v_after = _dataset_version(session)
         assert v_after != v_before
 
-        after = forward_aggregates_cached(session, H, cfg, as_of=as_of)
-        rows_after = session.exec(
-            select(ForwardAggregateCache).where(
-                ForwardAggregateCache.horizon == H, ForwardAggregateCache.asof_key == as_of.isoformat(),
-            )
+        # refresh ONLY H at the new version — the cutover must NOT fire yet: v_before's rows for every
+        # OTHER configured horizon are still incomplete at v_after, so nothing is pruned.
+        mid_refresh = forward_aggregates_ingest_cached(session, H, cfg, as_of=as_of)
+        rows_mid = session.exec(
+            select(ForwardAggregateCache).where(ForwardAggregateCache.asof_key == as_of.isoformat())
         ).all()
-    assert len(rows_after) == 1 and rows_after[0].dataset_version == v_after
+        by_version_mid: dict[str, set[int]] = {}
+        for row in rows_mid:
+            by_version_mid.setdefault(row.dataset_version, set()).add(row.horizon)
+        assert by_version_mid.get(v_before) == set(horizons), (
+            "the OLD version's full row set must survive an incomplete new-version refresh (cutover gate)"
+        )
+        assert by_version_mid.get(v_after) == {H}
+
+        # now refresh every OTHER configured horizon too -- the new version becomes complete, so the
+        # cutover fires and the old version's entire row set for this asof_key is pruned in one shot.
+        for h in horizons:
+            if h != H:
+                forward_aggregates_ingest_cached(session, h, cfg, as_of=as_of)
+        rows_after = session.exec(
+            select(ForwardAggregateCache).where(ForwardAggregateCache.asof_key == as_of.isoformat())
+        ).all()
+    assert {r.dataset_version for r in rows_after} == {v_after}
+    assert {r.horizon for r in rows_after} == set(horizons)
     assert before["overall"]["n"] == 6
-    assert after["overall"]["n"] == 7  # the recompute picked up the new ZZZ observation
+    assert mid_refresh["overall"]["n"] == 7  # the recompute picked up the new ZZZ observation
 
 
 # ==================================================================================================

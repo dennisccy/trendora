@@ -1,0 +1,448 @@
+"""ops-hardening iter-16 (J-08) — the forward-aggregate compute-vs-serve split.
+
+The former single `forward_aggregates_cached` (ops-hardening iter-5, J-06) split into two roles:
+
+  - `forward_aggregates_ingest_cached` — INGEST-ONLY compute-and-persist, the SOLE remaining caller of
+    `compute_forward_aggregates`. Its single-flight guard is UNCHANGED by the split and is exercised by
+    `test_forward_testing_concurrency.py`'s renamed tests (TC-17: the guard still holds post-split).
+  - `resolved_forward_aggregate_evidence` — READ-ONLY serving, structurally incapable of calling
+    `compute_forward_aggregates` under any circumstance. Exercised here.
+
+This file proves:
+
+  - completeness/cutover correctness (TC-3/4/5/18): a partial new-version warm never leaks a mixed row
+    set; the read always serves ONE complete version's rows, never mixed; pruning only fires once the
+    new version's configured-horizon set is complete; the completeness query is `asof_key`-filtered.
+  - zero-compute correctness (TC-1/2/6/7/8): the read-only resolver AND the two request-serving entry
+    points (`app.api.backtest.backtest`, `app.mcp.tools.query_backtest`, called directly as plain
+    functions — no TestClient/`loaded_engine` app boot, per this session's host-guard-confined/targeted-
+    tests-only constraint) never invoke `compute_forward_aggregates`, in every serving state.
+  - byte-identity (TC-9, AG-3): a `ready` response's payload equals a direct fresh
+    `compute_forward_aggregates` call for the same inputs.
+  - the historical (`is_latest == False`) carve-out is unaffected (TC-13).
+
+All fixtures here are small, hand-built SQLite engines (a handful of rows) — never the ~80-minute
+`loaded_engine` seed+warm fixture (out of scope for this session; see docs/handoffs/goal-ops-hardening-
+iter-16-dev.md).
+"""
+from __future__ import annotations
+
+import json
+from datetime import date, datetime, timezone
+
+import pytest
+from sqlalchemy import event
+from sqlmodel import Session, select
+
+from app.config import load_config
+from app.db import create_db_and_tables, make_engine
+from app.engine.forward_testing import (
+    compute_forward_aggregates,
+    forward_aggregates_ingest_cached,
+    resolved_forward_aggregate_evidence,
+)
+from app.models import DailyPrice, ForwardAggregateCache, ForwardReturn, ScannerResult, ScannerRun
+
+HORIZONS = load_config().walk_forward.horizons  # [1, 5, 10, 20, 60] today — read from config, never hard-coded
+
+
+def _utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _add_run(session: Session, asof: date, regime_label: str = "Risk-on") -> ScannerRun:
+    run = ScannerRun(
+        asof_date=asof, created_at=_utc(), provider="seed", benchmark="SPY", regime_score=50.0,
+        regime_label=regime_label, regime_components_json="[]", new_high_low_json="{}",
+        candidate_counts_json="{}",
+    )
+    session.add(run)
+    session.flush()
+    return run
+
+
+def _add_result(session: Session, run_id: int, ticker: str, rank: int = 1) -> None:
+    session.add(ScannerResult(
+        run_id=run_id, ticker=ticker, name=ticker, sector="Technology", leadership_score=50.0,
+        leadership_bucket="A", entry_quality_score=50.0, entry_quality_bucket="B", risk_score=50.0,
+        risk_bucket="C", setup_status="Actionable", rank=rank, record_json="{}", is_vcp=False,
+        is_pullback_to_rising_dma=False, is_flat_base_breakout=False,
+    ))
+
+
+def _add_fr_every_horizon(session: Session, run_id: int, asof: date, symbol: str, ret: float = 0.05) -> None:
+    for h in HORIZONS:
+        session.add(ForwardReturn(
+            run_id=run_id, symbol=symbol, horizon=h, asof_date=asof, entry_close=100.0,
+            measured_date=asof, realized_return=ret,
+        ))
+
+
+@pytest.fixture()
+def evidence_engine(tmp_path):
+    """ONE run (`asof`) with a stored forward return at EVERY configured horizon for ticker "AAA" — a
+    small, fast fixture (not `loaded_engine`) sufficient to warm/serve one `ForwardAggregateCache`
+    identity under test."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'evidence.db'}")
+    create_db_and_tables(engine)
+    asof = date(2025, 1, 10)
+    with Session(engine) as session:
+        run = _add_run(session, asof)
+        _add_result(session, run.id, "AAA")
+        _add_fr_every_horizon(session, run.id, asof, "AAA")
+        session.commit()
+    return engine, asof
+
+
+# ======================================================================================================
+# resolved_forward_aggregate_evidence — completeness / cutover / never-computed / byte-identity / TC-18
+# ======================================================================================================
+def test_evidence_not_yet_computed_before_any_warm(evidence_engine, monkeypatch):
+    """TC-6: a store where no forward-aggregate warm has EVER completed for any version at this
+    `asof_key` — the resolver returns the honest empty state (never a fabricated aggregate) with ZERO
+    `compute_forward_aggregates` invocations."""
+    import app.engine.forward_testing as ft_module
+
+    engine, asof = evidence_engine
+    cfg = load_config()
+    call_count = {"n": 0}
+    real = ft_module.compute_forward_aggregates
+
+    def _counting(*a, **kw):
+        call_count["n"] += 1
+        return real(*a, **kw)
+
+    monkeypatch.setattr(ft_module, "compute_forward_aggregates", _counting)
+    with Session(engine) as session:
+        evidence = resolved_forward_aggregate_evidence(session, asof, cfg)
+
+    assert evidence == {
+        "evidence_status": "not_yet_computed", "evidence_generated_at": None, "evidence_by_horizon": {},
+    }
+    assert call_count["n"] == 0
+
+
+def test_evidence_ready_after_full_warm_is_byte_identical_and_zero_compute(evidence_engine, monkeypatch):
+    """TC-1/TC-9: after the ingest warm covers every configured horizon, the resolver reports `ready`
+    with a payload byte-identical to a direct fresh `compute_forward_aggregates` call for every horizon,
+    and 10 repeated resolver calls invoke `compute_forward_aggregates` ZERO times."""
+    import app.engine.forward_testing as ft_module
+
+    engine, asof = evidence_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        for h in HORIZONS:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=asof)
+        session.commit()
+        direct = {h: compute_forward_aggregates(session, h, cfg, as_of=asof) for h in HORIZONS}
+
+    call_count = {"n": 0}
+    real = ft_module.compute_forward_aggregates
+
+    def _counting(*a, **kw):
+        call_count["n"] += 1
+        return real(*a, **kw)
+
+    monkeypatch.setattr(ft_module, "compute_forward_aggregates", _counting)
+    results = []
+    for _ in range(10):
+        with Session(engine) as session:
+            results.append(resolved_forward_aggregate_evidence(session, asof, cfg))
+
+    assert call_count["n"] == 0, f"expected 0 compute calls across 10 reads; got {call_count['n']}"
+    for evidence in results:
+        assert evidence["evidence_status"] == "ready"
+        assert evidence["evidence_generated_at"] is not None
+        assert evidence["evidence_by_horizon"] == direct
+
+
+def test_evidence_refreshing_serves_prior_complete_version_never_mixed(evidence_engine):
+    """TC-3/TC-4: with V1 complete and V2's warm only 2-of-5 horizons done (a test-injected partial-warm
+    state), the resolver serves V1's full row set byte-identically, labeled `refreshing` with V1's OWN
+    generation timestamp — never a response mixing V1 and V2 horizon payloads."""
+    engine, asof = evidence_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        for h in HORIZONS:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=asof)
+        session.commit()
+        v1_rows = {
+            row.horizon: (row.payload_json, row.created_at)
+            for row in session.exec(
+                select(ForwardAggregateCache).where(ForwardAggregateCache.asof_key == asof.isoformat())
+            ).all()
+        }
+        assert set(v1_rows) == set(HORIZONS)
+
+        # bump the GLOBAL dataset stamp via a genuinely new run+forward-returns dated AFTER `asof` (so it
+        # never enters this asof_key's own expanding-window pool — only the cache identity/version shifts).
+        run2 = _add_run(session, date(2025, 6, 1), "Risk-off")
+        _add_result(session, run2.id, "BBB")
+        _add_fr_every_horizon(session, run2.id, date(2025, 6, 1), "BBB", ret=0.10)
+        session.commit()
+
+        # warm only 2-of-5 horizons at the NEW version for the ORIGINAL asof_key (mirrors an ingest
+        # finalize warm loop caught mid-flight).
+        partial = HORIZONS[:2]
+        for h in partial:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=asof)
+        session.commit()
+
+        rows_now = session.exec(
+            select(ForwardAggregateCache).where(ForwardAggregateCache.asof_key == asof.isoformat())
+        ).all()
+        by_version: dict[str, set[int]] = {}
+        for row in rows_now:
+            by_version.setdefault(row.dataset_version, set()).add(row.horizon)
+        # V1's full row set must survive (the cutover has not fired — V2 is not yet complete).
+        assert set(HORIZONS) in by_version.values(), "V1's complete row set was pruned before V2 completed"
+
+        evidence = resolved_forward_aggregate_evidence(session, asof, cfg)
+
+    assert evidence["evidence_status"] == "refreshing"
+    assert set(evidence["evidence_by_horizon"]) == set(HORIZONS)
+    for h in HORIZONS:
+        assert evidence["evidence_by_horizon"][h] == json.loads(v1_rows[h][0]), (
+            f"horizon {h} did not come from V1 — a response mixed two dataset_versions"
+        )
+    expected_generated_at = max(created_at for _payload, created_at in v1_rows.values()).isoformat()
+    assert evidence["evidence_generated_at"] == expected_generated_at
+
+
+def test_evidence_cutover_prunes_old_version_once_new_version_completes(evidence_engine):
+    """TC-5: once V2's warm covers every configured horizon, the resolver flips to `ready` at V2 and
+    V1's now-superseded rows for this `asof_key` are ALL pruned (0 remain for the old `dataset_version`)."""
+    engine, asof = evidence_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        for h in HORIZONS:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=asof)
+        session.commit()
+        v1_version = session.exec(
+            select(ForwardAggregateCache.dataset_version)
+            .where(ForwardAggregateCache.asof_key == asof.isoformat())
+        ).first()
+
+        run2 = _add_run(session, date(2025, 6, 1), "Risk-off")
+        _add_result(session, run2.id, "BBB")
+        _add_fr_every_horizon(session, run2.id, date(2025, 6, 1), "BBB", ret=0.10)
+        session.commit()
+
+        for h in HORIZONS:  # warm EVERY configured horizon at the new version -> completes it
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=asof)
+        session.commit()
+
+        evidence = resolved_forward_aggregate_evidence(session, asof, cfg)
+        remaining_old = session.exec(
+            select(ForwardAggregateCache).where(
+                ForwardAggregateCache.asof_key == asof.isoformat(),
+                ForwardAggregateCache.dataset_version == v1_version,
+            )
+        ).all()
+
+    assert evidence["evidence_status"] == "ready"
+    assert remaining_old == [], "the superseded version's rows must be pruned once the new version completes"
+
+
+def test_completeness_query_is_filtered_by_asof_key(evidence_engine):
+    """TC-18: the completeness-lookup query `resolved_forward_aggregate_evidence` issues against
+    `forward_aggregate_cache` is filtered by the requested `asof_key` — captured via SQLAlchemy's own
+    `before_cursor_execute` event (the standard, non-invasive way to inspect the real SQL a call issues;
+    TC-18 itself sanctions a "query plan ... assertion"), never an unfiltered scan of the whole table.
+    Seeded with 50 OTHER historical identities' worth of rows so an unfiltered scan would be detectable."""
+    engine, asof = evidence_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        for h in HORIZONS:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=asof)
+        for i in range(50):
+            session.add(ForwardAggregateCache(
+                horizon=HORIZONS[0], asof_key=f"1999-01-{(i % 28) + 1:02d}",
+                dataset_version=f"other-{i}", payload_json="{}", created_at=_utc(),
+            ))
+        session.commit()
+
+        total_rows = session.exec(select(ForwardAggregateCache)).all()
+        assert len(total_rows) == len(HORIZONS) + 50  # sanity: the seeded "noise" is really there
+
+        captured: list[str] = []
+
+        def _capture(conn, cursor, statement, parameters, context, executemany):
+            captured.append(statement)
+
+        event.listen(engine, "before_cursor_execute", _capture)
+        try:
+            evidence = resolved_forward_aggregate_evidence(session, asof, cfg)
+        finally:
+            event.remove(engine, "before_cursor_execute", _capture)
+
+    assert evidence["evidence_status"] == "ready"
+    cache_selects = [
+        stmt for stmt in captured
+        if "forward_aggregate_cache" in stmt.lower() and stmt.strip().lower().startswith("select")
+    ]
+    assert cache_selects, "expected at least one SELECT against forward_aggregate_cache"
+    assert all("asof_key" in stmt.lower() for stmt in cache_selects), (
+        f"completeness query is not asof_key-filtered: {cache_selects}"
+    )
+
+
+# ======================================================================================================
+# Request-serving entry points (app.api.backtest.backtest, app.mcp.tools.query_backtest) — called
+# directly as plain functions (no TestClient/`loaded_engine` app boot) to prove the WIRING: the
+# `is_latest` branch reaches ONLY the read-only resolver, never `forward_aggregates_ingest_cached` (and
+# therefore never `compute_forward_aggregates`), in every serving state.
+# ======================================================================================================
+@pytest.fixture()
+def endpoint_engine(evidence_engine):
+    """`evidence_engine` plus ONE `DailyPrice` bar — `resolved_run`'s `latest_data_date` check needs at
+    least one bar to exist at all (`test_backtest_503_when_no_price_data` proves the 503 path with zero);
+    `run_scan`'s existing-row fast path means no OTHER price data is needed since the run already exists."""
+    engine, asof = evidence_engine
+    with Session(engine) as session:
+        session.add(DailyPrice(
+            symbol="AAA", date=asof, open=100.0, high=101.0, low=99.0, close=100.0, volume=1.0,
+        ))
+        session.commit()
+    return engine, asof
+
+
+def test_backtest_route_is_latest_never_reaches_ingest_or_compute(endpoint_engine, monkeypatch):
+    """TC-1/TC-8 (endpoint layer): for the LATEST view, `GET /api/backtest`'s route function calls ONLY
+    the read-only resolver — it never calls `forward_aggregates_ingest_cached` (and therefore never
+    `compute_forward_aggregates`), structurally, across 10 repeated `ready`-state requests."""
+    import app.api.backtest as backtest_module
+
+    engine, asof = endpoint_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        for h in HORIZONS:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=asof)
+        session.commit()
+
+    def _boom(*a, **kw):
+        raise AssertionError("the is_latest read path must never call the ingest/compute function")
+
+    monkeypatch.setattr(backtest_module, "forward_aggregates_ingest_cached", _boom)
+    responses = []
+    for _ in range(10):
+        with Session(engine) as session:
+            responses.append(backtest_module.backtest(as_of=None, session=session))
+
+    assert all(r["is_latest"] is True for r in responses)
+    assert all(r["evidence_status"] == "ready" for r in responses)
+    assert all(r["evidence_generated_at"] for r in responses)
+    first = responses[0]["evidence_by_horizon"]
+    assert all(r["evidence_by_horizon"] == first for r in responses[1:])
+    assert set(first) == set(HORIZONS)
+
+
+def test_backtest_route_is_latest_not_yet_computed_is_honest_200(endpoint_engine, monkeypatch):
+    """TC-6/TC-8 (endpoint layer): a never-warmed store still answers (no exception, no fabricated
+    evidence) with the honest empty state — and never calls the ingest/compute function."""
+    import app.api.backtest as backtest_module
+
+    engine, asof = endpoint_engine
+
+    def _boom(*a, **kw):
+        raise AssertionError("the is_latest read path must never call the ingest/compute function")
+
+    monkeypatch.setattr(backtest_module, "forward_aggregates_ingest_cached", _boom)
+    with Session(engine) as session:
+        result = backtest_module.backtest(as_of=None, session=session)
+
+    assert result["is_latest"] is True
+    assert result["evidence_status"] == "not_yet_computed"
+    assert result["evidence_by_horizon"] == {}
+    assert result["evidence_generated_at"] is None
+
+
+def test_query_backtest_mcp_tool_is_latest_never_reaches_ingest_or_compute(endpoint_engine, monkeypatch):
+    """TC-2/TC-7 (MCP layer): mirrors the endpoint-layer proof above for the MCP `query_backtest` tool —
+    the LATEST view never calls `forward_aggregates_ingest_cached`, across both the `ready` state (warmed
+    first) and repeated calls."""
+    import app.mcp.tools as tools_module
+
+    engine, asof = endpoint_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        for h in HORIZONS:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=asof)
+        session.commit()
+
+    def _boom(*a, **kw):
+        raise AssertionError("the is_latest read path must never call the ingest/compute function")
+
+    monkeypatch.setattr(tools_module, "forward_aggregates_ingest_cached", _boom)
+    responses = []
+    for _ in range(10):
+        with Session(engine) as session:
+            responses.append(tools_module.query_backtest(session, asof=None))
+
+    assert all(r["is_latest"] is True for r in responses)
+    assert all(r["evidence_status"] == "ready" for r in responses)
+    first = responses[0]["evidence_by_horizon"]
+    assert all(r["evidence_by_horizon"] == first for r in responses[1:])
+
+
+def test_query_backtest_mcp_tool_not_yet_computed_mirrors_endpoint(endpoint_engine, monkeypatch):
+    """TC-7: the MCP tool's never-warmed shape mirrors the endpoint's (same `evidence_status` /
+    `evidence_by_horizon` / `evidence_generated_at`), with zero `compute_forward_aggregates` calls."""
+    import app.mcp.tools as tools_module
+
+    engine, asof = endpoint_engine
+
+    def _boom(*a, **kw):
+        raise AssertionError("the is_latest read path must never call the ingest/compute function")
+
+    monkeypatch.setattr(tools_module, "forward_aggregates_ingest_cached", _boom)
+    with Session(engine) as session:
+        result = tools_module.query_backtest(session, asof=None)
+
+    assert result["is_latest"] is True
+    assert result["evidence_status"] == "not_yet_computed"
+    assert result["evidence_by_horizon"] == {}
+    assert result["evidence_generated_at"] is None
+
+
+def test_historical_asof_keeps_pre_iter16_create_once_and_cache_behavior(endpoint_engine, monkeypatch):
+    """TC-13: a historical (`is_latest == False`) `?as_of=` request still computes-once-and-caches on
+    first view (UNCHANGED, the explicit carve-out) — a SECOND, older run with no forward-aggregate warm
+    at all is requested (is_latest is False since a later run exists): a real compute happens once per
+    configured horizon on the FIRST call and NOT AT ALL on the second (cached) call."""
+    import app.api.backtest as backtest_module
+    import app.engine.forward_testing as ft_module
+
+    engine, latest_asof = endpoint_engine
+    older_asof = date(2024, 1, 10)
+    with Session(engine) as session:
+        older_run = _add_run(session, older_asof, "Risk-on")
+        _add_result(session, older_run.id, "AAA")
+        # No post-snapshot bar exists for "AAA" after `older_asof` in this minimal fixture, so
+        # `backfill_run_forward_returns` (called inside the route, unchanged) inserts nothing — this test
+        # asserts only the COMPUTE-CALL-COUNT behavior (TC-13's actual claim), not non-empty content.
+        session.add(DailyPrice(
+            symbol="AAA", date=older_asof, open=90.0, high=91.0, low=89.0, close=90.0, volume=1.0,
+        ))
+        session.commit()
+
+    call_count = {"n": 0}
+    real = ft_module.compute_forward_aggregates
+
+    def _counting(*a, **kw):
+        call_count["n"] += 1
+        return real(*a, **kw)
+
+    monkeypatch.setattr(ft_module, "compute_forward_aggregates", _counting)
+    with Session(engine) as session:
+        first = backtest_module.backtest(as_of=older_asof.isoformat(), session=session)
+    first_calls = call_count["n"]
+    with Session(engine) as session:
+        second = backtest_module.backtest(as_of=older_asof.isoformat(), session=session)
+
+    assert first["is_latest"] is False
+    assert second["is_latest"] is False
+    assert first_calls == len(HORIZONS), "expected one real compute per configured horizon on first view"
+    assert call_count["n"] == first_calls, "the second (cached) view must trigger zero MORE computes"
+    assert first["evidence_status"] == "ready"
+    assert second["evidence_by_horizon"] == first["evidence_by_horizon"]

@@ -2632,3 +2632,219 @@ the PENDING placeholder above. It does not claim an overall phase PASS — per t
 that still produces one 178.74 s and one 5.37 s budget breach in an 11-minute window is an evaluator call,
 not a self-certification made here. The thermal discrepancy is likewise left for the evaluator/operator to
 reconcile against the host-guard safety posture, not resolved unilaterally in this transcription pass.
+
+## TC-16 — `/backtest` evidence serving states (ready / refreshing / not_yet_computed), precompute-before-serve redesign (iter-16, J-08): PENDING, operator-supervised
+
+**Not performed this iteration's developer pass.** Per this iteration's own PUMP NOTE, services are DOWN
+as of this dispatch and this pipeline's agents cannot start/stop them this session (permission classifier;
+subagent-resume broken). This measurement is additionally AG-10-class (exactly ONE owner-authorized,
+host-guard-confined, cooled-host, sampler+watchdog-armed pass) and is sequenced strictly AFTER the targeted
+code + tests below, per the pump note's own protocol. **No number is fabricated or estimated here** — this
+section is an honest placeholder recording exactly what the next operator-supervised pass must do,
+mirroring the iter-14/iter-15 PENDING→RESULTS pattern used earlier in this file.
+
+**Precondition satisfied this iteration (developer pass):** `forward_aggregates_cached` split into an
+ingest-only compute-and-persist path (`forward_aggregates_ingest_cached`, keeps the iter-15 single-flight
+guard unchanged) and a new read-only serving path (`resolved_forward_aggregate_evidence`) that `GET
+/api/backtest` and MCP `query_backtest` now call exclusively for the latest (`is_latest==true`) view —
+structurally incapable of calling `compute_forward_aggregates`. `ForwardAggregateCache` pruning moved from
+per-horizon-write deletion to a completeness-gated cutover (closes the confirmed live mixed-version bug at
+`asof_key='2026-07-17'` cited in this iteration's spec). All targeted tests are green, host-guard-confined
+(`taskset -c 0-3,8-11`, BLAS/OMP/numexpr threads=4): 10/10 new tests in
+`tests/test_forward_testing_serving_split.py` (zero-compute in `ready`/`not_yet_computed`, byte-identity,
+completeness/cutover/refreshing-never-mixed, the `asof_key`-filtered completeness query, both request-
+serving entry points' wiring, and the historical create-once carve-out) plus the renamed/updated tests in
+`test_forward_testing_concurrency.py` (6/6, proving the iter-15 single-flight guard survives the split),
+`test_forward_testing.py` (3/3), and `test_data_manager.py` (5/5, the ingest finalize hook's own
+MemoryError-isolation tests). See the dev handoff for the full list.
+
+**Protocol for the operator's pass (mirrors the iter-3/8/9/14/15 protocol already used above):**
+1. Confirm a cooled host (`Tctl` inside the documented idle band), the 1 Hz host-guard hwmon sampler
+   running, and the thermal watchdog armed.
+2. Start the backend via `scripts/start-backend.sh` ONLY, under host-guard confinement
+   (`HOST_GUARD_CPU_LIST=0-3,8-11`, `HOST_GUARD_BLAS_THREADS=4`, `HOST_GUARD_REQUIRE_MARKERS=1`). Record
+   the process-start timestamp and PID.
+3. Note the served `evidence_status` / `evidence_generated_at` on `/backtest` (or `GET /api/backtest`)
+   before starting the next step — expected `ready`, labeled with the current warm's timestamp.
+4. On `/data`, run a small SINGLE-DAY backfill for a date not yet snapshotted (bumps `dataset_version` and
+   schedules the ingest finalize warm, which re-warms all 5 configured horizons for the new latest date).
+5. WHILE that warm is still running, poll/load `/backtest` (or `GET /api/backtest`) repeatedly and record:
+   (a) the response time of each poll against the committed ≤1.5 s `/backtest` budget; (b) that
+   `evidence_status` reads `refreshing`, `evidence_by_horizon` is still fully populated (the prior complete
+   version, never a skeleton), and `evidence_generated_at` matches the PRIOR warm's timestamp from step 3
+   (never the in-progress one) — this closes the `refreshing`-state half of TC-16.
+6. Once the run record's `aggregates_refreshed` list contains `"forward_aggregates"` (the new version's
+   warm completed), reload `/backtest` again and record: the response time against the SAME ≤1.5 s budget,
+   `evidence_status == "ready"`, and the NEW `evidence_generated_at` — this closes the `ready`-state half.
+7. Cross-read `logs/backend.log` and `logs/hwmon/hwmon.csv` for the measurement window before attributing
+   any remaining slowness to ambient load (iter-11's carried lesson).
+8. Report console output, PIDs, and timestamps verbatim; the developer/reviewer records that
+   operator-provided output with attribution in a follow-up dated section here — never fabricating or
+   silently omitting a number, marking each of the two states PASS (≤1.5 s) or WARN (with the measured
+   value) against the committed budget.
+
+**Fallback note (pre-registered):** if the executing agent's environment blocks the process start even
+under this protocol, the operator starts/monitors it directly and reports the same evidence for the
+developer/reviewer to transcribe with attribution — the requirement is an honest, attributed number,
+never a fabricated or silently-omitted one, regardless of who runs the pass. This is the ONE authorized
+pass this iteration (AG-10-class) — not a drill to repeat casually.
+
+## TC-16 — `/backtest` evidence serving states (ready / refreshing / not_yet_computed), precompute-before-serve redesign (iter-16, J-08): RESULTS (operator-supervised pass, 2026-07-23)
+
+**This section RESOLVES the "PENDING, operator-supervised" placeholder above.** The operator ran the
+protocol that section specified and reported console output, PIDs, and timestamps verbatim, per its own
+step-8 instruction. Everything below is transcribed from that report with attribution, plus this developer
+pass's own independent recomputation against the raw evidence: `runs/goal-ops-hardening-iter-16/tc16-backtest-poll.csv`
+(68 data rows — recomputed count matches the operator's claim exactly), plus a cross-read of
+`logs/backend.log` (PID / job-id / boot-banner confirmation) and `logs/hwmon/hwmon.csv` (thermal
+precondition confirmation) for the measurement window. Recomputed values are marked explicitly so a reader
+can tell operator-reported figures from this pass's independent verification of them — **and, per this
+iteration's own instruction not to round anything away, this recomputation surfaces one genuine
+discrepancy: the operator's "median" figures (the overall figure and one segment) do not match the
+standard statistical median of the raw data.** This is not self-resolved here — flagged for the
+evaluator/operator, the same way this file's earlier TC-4/5/6 recomputation handled its own two
+discrepancies. No service was started or stopped to produce this section; the backend (PID 506688) was
+already up from the operator's pass (confirmed via `logs/backend.log`'s `Started server process [506688]`
+line, the last boot banner in the file) and stays up.
+
+### Boot
+
+Operator, verbatim: `start-backend.sh` launched **21:54:22 BST**; first health check HTTP 200 at **1.54 s**;
+backend PID **506688**, taskset `0-3,8-11`.
+
+**Recomputed/cross-checked:** `logs/backend.log` carries the boot banner `=== start-backend.sh: launching
+at 2026-07-23T20:54:23Z ===` (UTC) = **21:54:23 BST** — 1 second off the operator's "21:54:22," immaterial
+(clock read at a slightly different point in the launch sequence, not a data discrepancy).
+`Started server process [506688]` on the next line confirms the PID exactly. The **"1.54 s"
+time-to-first-200 figure is not independently verifiable from the raw evidence provided to this pass** —
+the uvicorn access log carries no per-request timestamps, so this pass has no data point that reproduces
+or contradicts it; recorded as operator-reported.
+
+### Baseline (pre-bump) reading — operator-reported only, NOT rows in the raw CSV
+
+Operator, verbatim: 3 calls at **0.890 / 0.402 / 0.406 s**, `evidence_status: "ready"`,
+`evidence_generated_at: 2026-07-23T14:44:52.882242`.
+
+**Flag (recomputed):** these three values do not appear anywhere in `tc16-backtest-poll.csv`. The CSV's own
+first 3 rows carry the SAME `evidence_status`/`evidence_generated_at` (confirming they are the same
+pre-bump epoch) but entirely different timings — **0.167 / 0.300 / 0.473 s** (0.166640 / 0.300358 /
+0.472549 s exact). This confirms the "baseline 3 calls" were a separate, ad hoc pre-check the operator ran
+by hand before starting the 5-second-interval poller that produced the CSV — not the CSV's own opening
+rows. Both sets are consistent in kind (all comfortably under the 1.5 s budget, all `ready` at the pre-bump
+generation) but are two distinct measurements; no raw file was provided for the 0.890/0.402/0.406 s set
+specifically, so it is transcribed here as reported, not independently verified.
+
+### Warm-trigger job
+
+Operator, verbatim: single-date backfill for `2025-05-22`, job `79519a1db9334042b536763323bdcf3a`, started
+**21:54:57**, terminal `"ok"` at **22:01:17** (~380 s), `aggregates_refreshed` listing all seven categories
+including `forward_aggregates`.
+
+**Recomputed/cross-checked:** job `79519a1db9334042b536763323bdcf3a` is real — `logs/backend.log` shows it
+created via `POST /api/data/jobs` and polled repeatedly via
+`GET /api/data/jobs/79519a1db9334042b536763323bdcf3a`, all HTTP 200, in the same boot window as PID
+506688's banner. Wall time recomputed by direct arithmetic: 22:01:17 − 21:54:57 = **380 s exactly**,
+matching the operator's "~380 s" precisely. The **`aggregates_refreshed` field's content is not
+independently verifiable from `logs/backend.log`** — uvicorn's access-log format records method/path/status
+only, never response bodies — recorded as operator-reported.
+
+### State-machine behavior — independently recomputed from the raw CSV (68/68 rows)
+
+| Check | Operator claim | Recomputed from CSV | Match? |
+|---|---|---|---|
+| Total polls | 68 | 68 data rows (69 lines incl. header) | exact |
+| HTTP errors | 0 (all 200) | 0/68 non-200 | exact |
+| `ready` count | 52 | 52 | exact |
+| `refreshing` count | 16 | 16 | exact |
+| Phase structure | 3 phases, 2 transitions | `ready`×3 → `refreshing`×16 → `ready`×49 (exactly 2 transitions, confirmed by scanning the CSV in order) | exact |
+| Distinct `evidence_generated_at` values across all 68 rows | 2 (prior gen, new gen) | exactly 2 — `...14:44:52.882242` (rows 1-19) and `...20:57:22.711666` (rows 20-68) — never a third value, never a mix within a row | exact — confirms "never a mixed/newer generation" during `refreshing` |
+
+The 16 `refreshing` rows serve `evidence_generated_at = 2026-07-23T14:44:52.882242` (the PRIOR complete
+generation) on every single one of them — confirmed by direct scan, not sampled — and the flip to the new
+generation (`20:57:22.711666`) happens on the SAME row (epoch `1784840238`) that `evidence_status` flips to
+`ready`, never before, never partially. This structurally confirms the operator's "never a skeleton, never
+a mixed/newer generation" claim exactly.
+
+### Latency — recomputed, with one discrepancy flagged
+
+| Statistic | Operator claim | Recomputed from CSV | Match? |
+|---|---|---|---|
+| min | 0.121 s | 0.121416 s | exact |
+| max | 12.655 s | 12.654708 s | exact |
+| **overall median** | **0.307 s** | **0.304360 s → 0.304 s** | **DISCREPANCY (see below)** |
+| over-budget (>1.5 s) count | 11/68 | 11/68 | exact |
+| over-budget values, `refreshing` (7) | 11.408/12.655/3.686/3.446/4.230/4.344/4.363 s | 11.408275/12.654708/3.686274/3.446195/4.230452/4.343874/4.362999 s | exact, all 7 |
+| over-budget values, `ready` post-warm (4) | 4.401/1.615/3.303/4.273 s | 4.400791/1.614819/3.303079/4.272608 s | exact, all 4 |
+
+**The median discrepancy, explained (not self-resolved):** for this even-count (n=68) sample, the standard
+statistical median is the average of the two middle sorted values — `0.301466` and `0.307254` →
+**0.304360 s**, which rounds to **0.304 s**, not 0.307 s. The operator's reported 0.307 s equals
+`0.307254` alone — the single "upper-middle" sorted element — not the average of the two middle values. The
+same mechanism reappears in the AFTER-segment median below (also an even count), which is why this reads as
+a systematic convention difference (whatever computed the operator's figures appears to take the upper of
+the two middle values for an even-length series rather than averaging them) rather than a one-off
+arithmetic slip or a data problem. It does not change the ballpark ("~0.3 s") or any interpretation in this
+file, but the exact figure should read **0.304 s**, not 0.307 s. Left for the evaluator/operator to note,
+per this file's standing practice of not silently correcting a reported number.
+
+### Segmentation by the ingest job's wall-clock window (21:54:57-22:01:17 BST = epoch 1784840097-1784840477) — recomputed
+
+| Segment | Operator claim | Recomputed from CSV | Match? |
+|---|---|---|---|
+| BEFORE (n=1) | median 0.167 s, 0 over | n=1, value 0.166640 s → 0.167 s, 0 over | exact |
+| DURING (n=61) | median 0.312 s, max 12.655 s, all 11 over-budget reads here | n=61, median 0.311589 s → 0.312 s (odd count — unambiguous), max 12.654708 s, all 11 over-budget rows fall in this window (confirmed by epoch) | exact |
+| AFTER (n=6) | median 0.132 s, max 0.136 s, 0 over | n=6, **true median 0.130513 s → 0.131 s** (not 0.132 s — same upper-middle-element mechanism as the overall median above: `0.131741` alone, not the average of `0.129284`/`0.131741`), max 0.136062 s → 0.136 s, 0 over | max/count/0-over exact; **median off by the same systematic ~0.001-0.002 s as the overall figure** |
+
+The DURING segment's odd count (n=61) has an unambiguous single-middle-value median, which is exactly why
+it matches the operator's figure precisely — the discrepancy only ever appears on even-count groups
+(overall n=68, AFTER n=6), consistent with the mechanism described above.
+
+### Quiescent re-check — operator-reported only, NOT rows in the raw CSV
+
+Operator, verbatim: 5 calls after the job completed, returning **0.130 / 0.131 / 0.137 / 0.132 / 0.132 s**.
+
+**Flag (recomputed):** these do not digit-for-digit match the CSV's own last 5 rows (**0.131741 /
+0.136062 / 0.134202 / 0.129284 / 0.122686 s**), though both sets sit in the same ~0.12-0.14 s band. This
+confirms the "quiescent re-check" was a separate, later ad hoc check, not the CSV's own tail — consistent in
+spirit with (and corroborating) the CSV's own AFTER-segment finding of fast, stable reads once the warm
+completed, but not independently verifiable against a raw file (none was provided for these specific 5
+calls).
+
+### Thermal / host preconditions — independently cross-checked against `logs/hwmon/hwmon.csv` (this pass)
+
+Operator, verbatim: host idle at `Tctl` 44 °C, 1 Hz sampler live, thermal watchdog armed, never fired,
+window peak 83 °C < the 95 °C abort threshold.
+
+**Recomputed:** filtered `hwmon.csv` to the measurement window (epoch 1784839700-1784840700, ~5 min before
+the first CSV row through ~3 min after the last) — the idle band immediately before boot reads 43-46 °C
+(consistent with "44 °C"), and the in-window peak `tctl_c` is **exactly 83 °C**, matching the operator's
+figure precisely. No sample in the window reaches 95 °C. Unlike the TC-4/5/6 recomputation above, which
+found a real thermal-reporting discrepancy (84 °C actual vs. "64 °C" reported), **this pass's thermal
+reporting checks out exactly** — no discrepancy to flag here.
+
+### Per-state verdicts (per the PENDING section's own protocol step 8 — PASS/WARN per measured state against the ≤1.5 s budget; not an overall phase verdict)
+
+| Serving state | n | Median (recomputed) | Over-budget (>1.5 s) | Verdict |
+|---|---|---|---|---|
+| `ready`, pre-bump baseline (CSV rows 1-3) | 3 | 0.300 s | 0/3 | **PASS** (operator separately also reported 3 ad hoc pre-poll calls, 0.890/0.402/0.406 s, also 0/3 over — see "Baseline" above) |
+| `refreshing` (serving the last-good generation while the new warm is in flight) | 16 | 0.516 s | 7/16 (44%) — 11.408/12.655/3.686/3.446/4.230/4.344/4.363 s | **WARN** — the STRUCTURAL contract (fully populated evidence, same prior generation, never a skeleton, never mixed) holds 16/16; the LATENCY budget is breached on 7/16 polls |
+| `ready`, post-warm (new generation) | 49 | 0.288 s | 4/49 (8%) — 4.401/1.615/3.303/4.273 s | **WARN** — same split: structural contract holds 49/49; latency budget breached on 4/49 polls |
+| `not_yet_computed` | — | — | — | **NOT EXERCISED this pass** — this `asof_key` already had complete evidence before the bump, so the cold "never computed" state was never entered live; it remains covered only by the 10/10 unit tests in `test_forward_testing_serving_split.py` cited in the dev handoff, not by a live observation |
+
+**No overall J-08/TC-16 phase verdict is rendered here.** Whether 7/16 and 4/49 budget breaches under
+concurrent heavy-ingest load are acceptable given the committed ≤1.5 s `/backtest` budget is an evaluator
+call, consistent with this file's standing practice for judgment calls (e.g., the TC-4/5/6 section above)
+and with the operator's own explicit instruction not to self-score this.
+
+### Reading the numbers — the operator's own interpretation, attributed, not adopted uncritically by this pass
+
+Operator, verbatim (paraphrase-free): the cold-recompute pathology this redesign targeted is gone —
+iter-15's cold MISS was **178.74 s** (independently confirmed elsewhere in this file, TC-4 above); the
+worst read in this pass is **12.655 s**, **~14.1x better** (178.74/12.654708 ≈ 14.12, recomputed), and it is
+a stored-row read under contention, not a live compute. Steady-state reads (`AFTER` segment, quiescent
+re-check) sit around **~0.13 s**, roughly **11.5x under** the 1.5 s budget (recomputed: 1.5/0.130513 ≈
+11.49). What remains, per the operator, is read latency degrading under concurrent heavy-ingest load — the
+same contention class the standing audits already flagged, not a recompute regression. **This
+interpretation is the operator's own**, explicitly flagged by them as theirs to record honestly rather than
+for this pass to adopt uncritically — transcribed here for the evaluator's use, not endorsed or rejected by
+this developer pass.

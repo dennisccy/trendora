@@ -193,3 +193,32 @@ cost" is itself the terminal deliverable that hands the decision to the owner, n
 **Applies to:** any iteration proposing a wrapper/cache/concurrency fix validated on a synthetic fixture
 before a deep-basis pass; any "the fix fully accounts for X" claim not yet reconciled against a live
 full-scale measurement; future decomposers tempted to loop CONTINUE on an owner-owned direction decision.
+
+## iter-16 — 2026-07-23T23:20:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Removing a request-path compute silently changes what the page shows when the *identity*
+moves, not just when the version moves. `resolved_forward_aggregate_evidence` resolves all three serving
+states inside ONE `asof_key` (`forward_testing.py:1209`), while the default `/backtest` view resolves to
+`max(ScannerRun.asof_date)` (`backtest.py:70`) — so the common single-latest-date ingest advances the
+as-of into a key with no rows and the page shows an EMPTY evidence section, where the old code would have
+blocked and eventually served real numbers. Neither the operator's live pass nor browser QA could catch it
+because both backfilled *historical gap* dates (2025-05-22 / 2025-05-20), which leave the latest as-of
+fixed — the only shape either lane ever exercised.
+**Applies to:** any iteration adding a cache/precompute layer keyed on a derived identity (`asof_key`,
+`dataset_version`, tenant, run id) — enumerate the ways the *identity* can move, not just the ways the
+*value* can go stale, and make sure the live test exercises the identity-advancing shape, not only the
+convenient one.
+
+## iter-16 — 2026-07-23T23:22:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Four gates (review, QA, browser-QA UT-02/UT-09, ux-regression) all checked the new refreshing
+banner for tone, colour token, position and heading, and all passed it — while it asserted two things that
+were factually false ("a newer dataset version is still being warmed"; "this updates automatically"). No
+lane's checklist contained "is the sentence true?", and the second claim is false in *every* case (the
+page's only fetch effect depends on `[asOf, readiness]`, which never changes — browser QA's own UT-04
+needed a manual reload). Status-disclosure copy is a testable assertion about system state, not styling.
+**Applies to:** any iteration adding user-facing status/progress/explanatory copy — verify each sentence
+against the code that would have to be true for it, the same way a displayed number is verified against
+the engine (AG-3's discipline, applied to prose).

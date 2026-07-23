@@ -11,14 +11,23 @@ canonical per-date scorecard (cohort return + excess vs SPY/QQQ/sector + the fiv
 with sample size `n` and honest NA, plus the survivorship-bias label and `min_sample` threshold) — AND
 (iter-17) the as-of-scoped forward-tested evidence aggregate.
 
-`evidence_by_horizon` (iter-17, J-09/J-10): per configured horizon, `compute_forward_aggregates(...,
-as_of=run.asof_date)` — the SINGLE canonical forward-return aggregation (by bucket / setup / regime,
-excess vs SPY/QQQ, VCP-vs-non-VCP + the new-pattern breakdowns, and the control-group cohorts, each with
-`n`) scoped to the EXPANDING WINDOW of snapshots dated <= the resolved as-of date. All horizons ride the
-one payload so the client-side horizon selector needs no refetch (J-15/J-18). This RELOCATES the value
-off the retired System Health page (its single home is now Backtest) under the single global as-of
-control; it recomputes no return/score/bucket, reading the stored `forward_returns` exactly as System
-Health did — now filtered to <= D.
+`evidence_by_horizon` (iter-17, J-09/J-10): per configured horizon, the as-of-scoped forward-return
+aggregation (by bucket / setup / regime, excess vs SPY/QQQ, VCP-vs-non-VCP + the new-pattern breakdowns,
+and the control-group cohorts, each with `n`) scoped to the EXPANDING WINDOW of snapshots dated <= the
+resolved as-of date. All horizons ride the one payload so the client-side horizon selector needs no
+refetch (J-15/J-18). This RELOCATES the value off the retired System Health page (its single home is now
+Backtest) under the single global as-of control; it recomputes no return/score/bucket, reading the stored
+`forward_returns` exactly as System Health did — now filtered to <= D.
+
+ops-hardening iter-16 (J-08): for the LATEST view (`is_latest == True`) this endpoint NEVER triggers a
+forward-aggregate compute on the request — `evidence_by_horizon` (plus the new `evidence_status` /
+`evidence_generated_at`) comes ONLY from `resolved_forward_aggregate_evidence`, a pure reader that is
+structurally incapable of calling `compute_forward_aggregates`. A HISTORICAL (`is_latest == False`)
+`?as_of=` request keeps its pre-existing lazy create-once-and-cache behavior UNCHANGED (an explicit,
+logged interpretation call — see the iter-16 dev handoff): this endpoint first ensures every configured
+horizon is cached for that date (computing any still-missing one via `forward_aggregates_ingest_cached`,
+exactly as before iter-16), then reads the result back through the SAME resolver, so both branches share
+one code path for building the response's evidence fields.
 
 It serves the per-date SCORECARD + the as-of-scoped evidence aggregate. Regime / sector / theme / stock
 values stay single-sourced on their own endpoints (`/api/dashboard`, `/api/sectors`, `/api/themes`,
@@ -37,7 +46,8 @@ from app.db import get_session
 from app.engine.forward_testing import (
     backfill_run_forward_returns,
     compute_run_scorecard,
-    forward_aggregates_cached,
+    forward_aggregates_ingest_cached,
+    resolved_forward_aggregate_evidence,
 )
 from app.engine.scanner import _latest_stored_run_date
 from app.engine.snapshot_serving import resolved_run
@@ -60,21 +70,25 @@ def backtest(
     run = resolved_run(session, as_of, cfg)          # immutable snapshot (create-once) or explicit 4xx/503
     backfill_run_forward_returns(session, run, cfg)  # create-once: INSERT-only realized forward returns
     card = compute_run_scorecard(session, run, cfg)  # SINGLE canonical per-date scorecard (reads stored)
-    # iter-17 (J-09/J-10): the as-of-scoped forward-tested evidence aggregate, per configured horizon, all
-    # in the SINGLE payload so the client-side horizon selector needs no refetch (J-15/J-18). Each aggregate
-    # is scoped to the EXPANDING WINDOW of snapshots dated <= the resolved run's asof_date (the SAME global
-    # as-of already resolved — no second date control, J-18). Read-only grouping over the stored
-    # forward_returns — recomputes no return/score/bucket (the same model the retired System Health used).
-    # ops-hardening iter-5 (J-06): served from the ingest-warmed cache (byte-identical to a fresh compute;
-    # `compute_forward_aggregates` itself is unchanged and stays the sole producer) — a live 5-horizon
-    # request here measured 34.77s pre-fix (reports/perf-budgets.md).
-    evidence_by_horizon = {
-        h: forward_aggregates_cached(session, h, cfg, as_of=run.asof_date)
-        for h in cfg.walk_forward.horizons
-    }
     # `is_latest` reuses the canonical "latest stored run date" (no second query/source for it).
+    is_latest = run.asof_date == _latest_stored_run_date(session)
+    # ops-hardening iter-16 (J-08): the historical (is_latest == False) carve-out keeps its pre-existing
+    # lazy create-once-and-cache behavior UNCHANGED (TC-13) — ensure every configured horizon is cached
+    # for this date (a no-op for an already-warmed date). For the LATEST view this loop never runs, so
+    # this request path never reaches `forward_aggregates_ingest_cached` — let alone
+    # `compute_forward_aggregates` — under any circumstance (J-08's zero-compute-on-request guarantee).
+    if not is_latest:
+        for h in cfg.walk_forward.horizons:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=run.asof_date)
+    # iter-17 (J-09/J-10) + iter-16 (J-08): the as-of-scoped forward-tested evidence aggregate, ALL
+    # configured horizons resolved together in ONE call (never a per-horizon-independent read — the read
+    # path can otherwise observe a mixed-dataset_version row set, see the resolver's own docstring) plus
+    # the honest `evidence_status` / `evidence_generated_at` disclosure.
+    evidence = resolved_forward_aggregate_evidence(session, run.asof_date, cfg)
     return {
         **card,
-        "is_latest": run.asof_date == _latest_stored_run_date(session),
-        "evidence_by_horizon": evidence_by_horizon,
+        "is_latest": is_latest,
+        "evidence_by_horizon": evidence["evidence_by_horizon"],
+        "evidence_status": evidence["evidence_status"],
+        "evidence_generated_at": evidence["evidence_generated_at"],
     }

@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from sqlmodel import Session
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 SEED_DIR = BACKEND_DIR / "data" / "seed"
@@ -14,8 +15,8 @@ if str(BACKEND_DIR) not in sys.path:
 from app import db as db_module  # noqa: E402
 from app.config import load_config  # noqa: E402
 from app.db import create_db_and_tables, make_engine  # noqa: E402
-from app.engine.forward_testing import backfill_forward_returns  # noqa: E402
-from app.engine.scanner import bootstrap_runs  # noqa: E402
+from app.engine.forward_testing import backfill_forward_returns, forward_aggregates_ingest_cached  # noqa: E402
+from app.engine.scanner import _latest_stored_run_date, bootstrap_runs  # noqa: E402
 from app.seed_loader import load_seed  # noqa: E402
 
 
@@ -52,7 +53,18 @@ def loaded_engine(tmp_path_factory, config, seed_dir):
     (`bootstrap_runs` + `backfill_forward_returns`); `test_warmup.py::test_..._only_old_synchronous_path_is_a_noop`
     proves this is byte-identical to what the background warm-up produces (no second compute path). With
     the DB already warm, the `TestClient` lifespan's single-flight-guarded warm-up is an idempotent no-op,
-    so tests never assert against a mid-warm-up, concurrently-mutating DB."""
+    so tests never assert against a mid-warm-up, concurrently-mutating DB.
+
+    ops-hardening iter-16 (J-08): `GET /api/backtest` / MCP `query_backtest`'s LATEST (`is_latest==True`)
+    view now serves `evidence_by_horizon` ONLY from the read-only `resolved_forward_aggregate_evidence`
+    resolver, which NEVER computes on a request — so the latest run's `ForwardAggregateCache` rows must
+    already exist before any test reads them, exactly as the real ingest finalize hook
+    (`data_manager._refresh_ingest_aggregates`) would warm them at ingest time. This fixture mirrors that
+    ONE warm sub-step here (via the SAME `forward_aggregates_ingest_cached` the finalize hook calls — no
+    second compute path) so the many existing `loaded_engine`-based tests that read the latest date's
+    `evidence_by_horizon` content keep seeing the SAME byte-identical values they did before the J-08
+    split (previously warmed lazily on a test's first `/api/backtest` request; now warmed here up front,
+    since the request path itself no longer computes)."""
     db_path = tmp_path_factory.mktemp("db") / "trendora_test.db"
     engine = make_engine(f"sqlite:///{db_path}")
     create_db_and_tables(engine)
@@ -62,5 +74,10 @@ def loaded_engine(tmp_path_factory, config, seed_dir):
     # work the background warm-up does, only paid up-front + synchronously so the suite is deterministic.
     bootstrap_runs(engine, config)
     backfill_forward_returns(engine, config)
+    with Session(engine) as session:
+        latest_date = _latest_stored_run_date(session)
+        if latest_date is not None:
+            for h in config.walk_forward.horizons:
+                forward_aggregates_ingest_cached(session, h, config, as_of=latest_date)
     db_module.set_engine(engine)
     return engine

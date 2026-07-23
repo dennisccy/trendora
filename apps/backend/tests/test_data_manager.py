@@ -1090,10 +1090,16 @@ def test_finalize_hook_warms_forward_aggregates_for_every_configured_horizon(fin
 def test_finalize_hook_forward_aggregate_warm_avoids_recompute_on_subsequent_read(
     finalize_hook_engine, monkeypatch
 ):
-    """A `GET /api/backtest`-shaped read for the SAME (horizon, as-of) the finalize hook just warmed
-    hits the cache — zero further `compute_forward_aggregates` calls. This is the actual perf fix this
-    iteration makes: a live request no longer pays the 5-horizon full-table scan the finalize hook
-    already paid at ingest (measured 34.77s pre-fix for one request, `reports/perf-budgets.md`)."""
+    """A `GET /api/backtest`-shaped read for the SAME as-of the finalize hook just warmed hits the cache
+    — zero further `compute_forward_aggregates` calls. This is the actual perf fix this iteration makes:
+    a live request no longer pays the 5-horizon full-table scan the finalize hook already paid at ingest
+    (measured 34.77s pre-fix for one request, `reports/perf-budgets.md`).
+
+    ops-hardening iter-16 (J-08): updated to call `resolved_forward_aggregate_evidence` — the actual
+    read-only serving path `GET /api/backtest` / MCP `query_backtest` use for the latest view since the
+    compute-vs-serve split (the former `forward_aggregates_cached` this test used to call directly is now
+    `forward_aggregates_ingest_cached`, the INGEST-ONLY half — no longer what a request-shaped read
+    calls, so exercising it here would no longer prove this test's own claim)."""
     engine, d = finalize_hook_engine
     cfg = load_config()
     with Session(engine) as session:
@@ -1110,9 +1116,10 @@ def test_finalize_hook_forward_aggregate_warm_avoids_recompute_on_subsequent_rea
 
     monkeypatch.setattr(forward_testing, "compute_forward_aggregates", _counting)
     with Session(engine) as session:
-        for h in cfg.walk_forward.horizons:
-            forward_testing.forward_aggregates_cached(session, h, cfg, as_of=d)
+        evidence = forward_testing.resolved_forward_aggregate_evidence(session, d, cfg)
     assert call_count["n"] == 0, "the finalize hook's warm should have already cached every horizon"
+    assert evidence["evidence_status"] == "ready"
+    assert set(evidence["evidence_by_horizon"]) == set(cfg.walk_forward.horizons)
 
 
 def test_finalize_hook_coverage_snapshot_byte_identical_to_fresh_compute(finalize_hook_engine):
@@ -1277,7 +1284,7 @@ def test_finalize_hook_never_raises_even_when_everything_fails(finalize_hook_eng
 
     monkeypatch.setattr(data_manager, "refresh_coverage_snapshot", _boom)
     monkeypatch.setattr(market_phase, "market_phase_cached", _boom)
-    monkeypatch.setattr(forward_testing, "forward_aggregates_cached", _boom)
+    monkeypatch.setattr(forward_testing, "forward_aggregates_ingest_cached", _boom)
     monkeypatch.setattr(data_manager, "event_study_cached", _boom)
     monkeypatch.setattr(indexes, "index_series_cached_with_status", _boom)
     with Session(engine) as session:
@@ -1742,7 +1749,7 @@ def test_finalize_hook_forward_aggregates_memory_error_on_first_horizon_aborts_l
         calls["n"] += 1
         raise MemoryError("simulated memory pressure")
 
-    monkeypatch.setattr(forward_testing, "forward_aggregates_cached", _boom)
+    monkeypatch.setattr(forward_testing, "forward_aggregates_ingest_cached", _boom)
     with Session(engine) as session:
         prog = JobProgress(job_id="fa-mem-first-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
@@ -1761,7 +1768,7 @@ def test_finalize_hook_forward_aggregates_memory_error_after_partial_success_rep
     cfg = load_config()
     n_horizons = len(cfg.walk_forward.horizons)
     assert n_horizons >= 3, "fixture config must configure >= 3 horizons for this test to be meaningful"
-    real = forward_testing.forward_aggregates_cached
+    real = forward_testing.forward_aggregates_ingest_cached
     calls = {"n": 0}
 
     def _succeed_then_boom(session, horizon, config=None, *, as_of=None):
@@ -1770,7 +1777,7 @@ def test_finalize_hook_forward_aggregates_memory_error_after_partial_success_rep
             return real(session, horizon, config, as_of=as_of)
         raise MemoryError("simulated memory pressure")
 
-    monkeypatch.setattr(forward_testing, "forward_aggregates_cached", _succeed_then_boom)
+    monkeypatch.setattr(forward_testing, "forward_aggregates_ingest_cached", _succeed_then_boom)
     with Session(engine) as session:
         prog = JobProgress(job_id="fa-mem-partial-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]

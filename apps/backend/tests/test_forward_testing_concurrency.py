@@ -24,15 +24,22 @@ of margin — and is verified empirically by the tests below (not just asserted)
 TC-4 mirrors iter-13's actual trigger shape (4 concurrent backfills' finalize hooks + a diagnostic read,
 not a single sequential process) with a `ThreadPoolExecutor`: each thread opens its OWN `Session` against
 a SHARED file-based engine — the same way a real multi-threaded ASGI server's request-handling threads
-each independently call into `compute_forward_aggregates`/`forward_aggregates_cached`.
+each independently call into `compute_forward_aggregates`/`forward_aggregates_ingest_cached`.
 
 ops-hardening iter-15 (UT-04 fix) ADDS a second, clearly-separated test group at the bottom of this file
-(see the banner comment below) proving the single-flight de-dup this iteration adds to
-`forward_aggregates_cached`'s MISS path: TC-1 (same-key concurrent-MISS de-dup), TC-2 (concurrent-write-
-during-read wall-clock ratio — isolates candidate (c), WAL/session contention, from candidate (a)), and
-TC-8 (the fix's own failure path never deadlocks a waiter). These are a DIFFERENT iteration's TC numbering
-than iter-14's OWN TC-3/TC-4 above — named descriptively (never `test_tc1_`/`test_tc2_`) to avoid any
-ambiguity with iter-14's existing test names.
+(see the banner comment below) proving the single-flight de-dup this iteration adds to the ingest-time
+cache's MISS path: TC-1 (same-key concurrent-MISS de-dup), TC-2 (concurrent-write-during-read wall-clock
+ratio — isolates candidate (c), WAL/session contention, from candidate (a)), and TC-8 (the fix's own
+failure path never deadlocks a waiter). These are a DIFFERENT iteration's TC numbering than iter-14's OWN
+TC-3/TC-4 above — named descriptively (never `test_tc1_`/`test_tc2_`) to avoid any ambiguity with
+iter-14's existing test names.
+
+ops-hardening iter-16 (J-08) renamed the function under test here: the former single `forward_aggregates_
+cached` (no "_ingest_") split into an ingest-only compute-and-persist half (`forward_aggregates_ingest_
+cached`, exercised below — the single-flight guard's home, UNCHANGED by the split) and a new read-only
+serving half (`resolved_forward_aggregate_evidence`, covered by `test_forward_testing_serving_split.py`).
+Every test in this file now proves iter-16's TC-17 ("single-flight still holds on the ingest-only path
+post-split") by construction — same guard, same tests, new function name.
 """
 from __future__ import annotations
 
@@ -50,7 +57,7 @@ from sqlmodel import Session, select
 
 from app.config import load_config
 from app.db import create_db_and_tables, make_engine
-from app.engine.forward_testing import compute_forward_aggregates, forward_aggregates_cached
+from app.engine.forward_testing import compute_forward_aggregates, forward_aggregates_ingest_cached
 from app.models import DailyPrice, ForwardAggregateCache, ForwardReturn, ScannerResult, ScannerRun
 
 BACKEND_ROOT = str(Path(__file__).resolve().parent.parent)  # apps/backend — for the child subprocess's sys.path
@@ -104,7 +111,7 @@ def _build_memory_pressure_db(db_path: Path) -> None:
         ]
         session.execute(insert(ForwardReturn.__table__), fr_rows)
         session.commit()
-        forward_aggregates_cached(session, HORIZON, cfg, as_of=None)
+        forward_aggregates_ingest_cached(session, HORIZON, cfg, as_of=None)
 
 
 @pytest.fixture(scope="module")
@@ -247,7 +254,7 @@ def test_tc3_rewritten_pattern_succeeds_under_the_same_cap_that_broke_the_old_on
 def _cached_caller(engine, horizon: int) -> dict:
     cfg = load_config()
     with Session(engine) as session:
-        return forward_aggregates_cached(session, horizon, cfg, as_of=None)
+        return forward_aggregates_ingest_cached(session, horizon, cfg, as_of=None)
 
 
 def _direct_caller(engine, horizon: int) -> dict:
@@ -257,9 +264,9 @@ def _direct_caller(engine, horizon: int) -> dict:
 
 
 def test_tc4_concurrent_callers_all_complete_within_bounded_timeout(memory_pressure_db):
-    """TC-4: 4 concurrent `forward_aggregates_cached` callers (mirroring 4 concurrent backfills' finalize
+    """TC-4: 4 concurrent `forward_aggregates_ingest_cached` callers (mirroring 4 concurrent backfills' finalize
     hooks, all racing to warm/serve the SAME `(horizon, asof_key, dataset_version)` cache key — the
-    `ForwardAggregateCache` unique-constraint race `forward_aggregates_cached`'s own
+    `ForwardAggregateCache` unique-constraint race `forward_aggregates_ingest_cached`'s own
     `except Exception: session.rollback()` is designed to absorb) plus 1 direct/uncached
     `compute_forward_aggregates` caller (the 'diagnostic read' in iter-13's own trigger shape) — every
     caller returns within a bounded timeout, none left blocked, and every returned payload is byte-
@@ -290,12 +297,12 @@ def test_tc4_concurrent_callers_all_complete_within_bounded_timeout(memory_press
 
 
 # ======================================================================================================
-# ops-hardening iter-15 (UT-04 fix) tests below — concurrency-safety of `forward_aggregates_cached`'s
+# ops-hardening iter-15 (UT-04 fix) tests below — concurrency-safety of `forward_aggregates_ingest_cached`'s
 # MISS path (a DIFFERENT iteration's TC numbering than iter-14's OWN TC-3/TC-4 above; named
 # descriptively, never `test_tc1_`/`test_tc2_`, to avoid any ambiguity with iter-14's existing names).
 #
 # Root cause (measured during this iteration's development — see the dev handoff for the full write-up):
-# reading the pre-fix `forward_aggregates_cached` directly confirmed NO de-duplication existed — a MISS
+# reading the pre-fix `forward_aggregates_ingest_cached` directly confirmed NO de-duplication existed — a MISS
 # always fell straight through to `compute_forward_aggregates` with no lock/in-flight marker. On this
 # exact 60,000-row fixture shape, 5 concurrent same-key MISSes measured 5 real `compute_forward_
 # aggregates` invocations and a 9.9x wall-clock blowup vs. a single baseline call PRE-fix; POST-fix (the
@@ -355,8 +362,8 @@ def write_contention_engine(tmp_path_factory):
     return make_engine(f"sqlite:///{db_path}")
 
 
-def test_forward_aggregates_cached_dedups_concurrent_same_key_miss_to_one_compute(memory_pressure_db):
-    """TC-1 (iter-15, UT-04 fix): N=5 concurrent `forward_aggregates_cached` callers requesting the SAME
+def test_forward_aggregates_ingest_cached_dedups_concurrent_same_key_miss_to_one_compute(memory_pressure_db):
+    """TC-1 (iter-15, UT-04 fix): N=5 concurrent `forward_aggregates_ingest_cached` callers requesting the SAME
     never-yet-cached `(horizon, asof_key, dataset_version)` key invoke the underlying heavy aggregation
     body (`compute_forward_aggregates`) EXACTLY ONCE for that key (call-count instrumentation) — proving
     the single-flight de-dup holds, not just that concurrent callers happen to agree on an answer (TC-4
@@ -378,7 +385,7 @@ def test_forward_aggregates_cached_dedups_concurrent_same_key_miss_to_one_comput
 
     def _caller():
         with Session(engine) as session:
-            return forward_testing_module.forward_aggregates_cached(session, HORIZON, cfg, as_of=as_of)
+            return forward_testing_module.forward_aggregates_ingest_cached(session, HORIZON, cfg, as_of=as_of)
 
     forward_testing_module.compute_forward_aggregates = _counting
     try:
@@ -457,7 +464,7 @@ def test_compute_forward_aggregates_concurrent_write_during_read_ratio_bounded(w
     )
 
 
-def test_forward_aggregates_cached_waiter_does_not_deadlock_when_owner_raises(memory_pressure_db):
+def test_forward_aggregates_ingest_cached_waiter_does_not_deadlock_when_owner_raises(memory_pressure_db):
     """TC-8 (iter-15, UT-04 fix): when the OWNER of a same-key MISS's in-flight computation raises, a
     concurrent WAITING caller for that SAME key never blocks past the bounded timeout — it either raises
     its own clean, isolated error or independently recomputes and returns a byte-identical payload.
@@ -488,14 +495,14 @@ def test_forward_aggregates_cached_waiter_does_not_deadlock_when_owner_raises(me
     def _owner_call():
         with Session(engine) as session:
             try:
-                forward_testing_module.forward_aggregates_cached(session, HORIZON, cfg, as_of=as_of)
+                forward_testing_module.forward_aggregates_ingest_cached(session, HORIZON, cfg, as_of=as_of)
             except Exception as exc:  # noqa: BLE001 — captured for the assertion below, never swallowed silently
                 owner_result["error"] = exc
 
     def _waiter_call():
         with Session(engine) as session:
             try:
-                waiter_result["payload"] = forward_testing_module.forward_aggregates_cached(
+                waiter_result["payload"] = forward_testing_module.forward_aggregates_ingest_cached(
                     session, HORIZON, cfg, as_of=as_of
                 )
             except Exception as exc:  # noqa: BLE001

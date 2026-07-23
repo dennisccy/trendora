@@ -1086,6 +1086,16 @@ export interface BacktestResponse {
   // config horizon), all in this one payload so the client-side horizon selector needs no refetch. Each
   // entry is scoped to the EXPANDING WINDOW of snapshots dated <= `asof_date` (relocated off System Health).
   evidence_by_horizon: Record<number, EvidenceAggregate>;
+  // ops-hardening iter-16 (J-08): the evidence's own serving status — computed ONCE server-side by the
+  // read-only resolver, never derived here. "ready" = the served version is the current dataset stamp;
+  // "refreshing" = a newer version is still warming and this is the last COMPLETE prior version (labeled
+  // with its own `evidence_generated_at`); "not_yet_computed" = no complete version has ever existed for
+  // this date (`evidence_by_horizon` is then `{}`). The historical (`is_latest === false`) path still
+  // reports "ready" once its existing lazy compute finishes (unchanged behavior).
+  evidence_status: "ready" | "refreshing" | "not_yet_computed";
+  // The served version's generation timestamp (ISO 8601 UTC datetime); null only when
+  // evidence_status === "not_yet_computed".
+  evidence_generated_at: string | null;
 }
 
 /** Canonical per-date forward-test scorecard source: GET /api/backtest?as_of=. Throws on non-200 so

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Clock, FlaskConical, History, ShieldAlert } from "lucide-react";
+import { AlertTriangle, Clock, FlaskConical, History, Loader2, ShieldAlert } from "lucide-react";
 
 import { useAsOf } from "@/components/asof-provider";
 import { EmptyState } from "@/components/empty-state";
@@ -15,7 +15,7 @@ import { shouldShowWarming, WarmingState } from "@/components/warming-state";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TermInfo } from "@/components/ui/term-info";
-import { formatIsoDate } from "@/lib/dates";
+import { formatIsoDate, formatIsoDateTime } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import {
   fetchBacktest,
@@ -227,11 +227,57 @@ function BacktestResults({
       />
       {/* The expanding-window forward-tested evidence aggregate (J-09/J-10/J-16/J-28), relocated off the
           retired System Health. Placed at the VERY BOTTOM (after the leadership lists) so the J-21 order
-          — scorecard → Return Attribution → leadership lists — is preserved; it is the single home now. */}
-      {evidence ? (
-        <EvidenceAggregateSection evidence={evidence} asofDate={backtest.asof_date} />
+          — scorecard → Return Attribution → leadership lists — is preserved; it is the single home now.
+          ops-hardening iter-16 (J-08): the evidence panel never blocks on a cold recompute — the served
+          `evidence_status` (computed server-side, never derived here) honestly discloses whether this is
+          the current version (`ready`, unchanged from before), a labeled last-good prior version while a
+          newer one warms (`refreshing`), or a never-warmed store (`not_yet_computed`). */}
+      {backtest.evidence_status === "not_yet_computed" ? (
+        <EmptyState
+          icon={FlaskConical}
+          title="Backtest evidence not yet computed"
+          description="Backtest evidence not yet computed — run an ingest to populate the forward-tested evidence for this date. No numbers are fabricated in the meantime."
+        />
+      ) : evidence ? (
+        <>
+          {backtest.evidence_status === "refreshing" ? (
+            <RefreshingEvidenceBanner generatedAt={backtest.evidence_generated_at} />
+          ) : null}
+          <EvidenceAggregateSection evidence={evidence} asofDate={backtest.asof_date} />
+        </>
       ) : null}
     </div>
+  );
+}
+
+// --- Refreshing-evidence disclosure (ops-hardening iter-16, J-08): a small, calm, factual banner shown
+// ABOVE the still-fully-populated evidence section while the newer dataset version's evidence is not yet
+// complete. The copy states ONLY what the resolver actually knows (the stamp changed; the new version is
+// incomplete; this is the last complete version and when it was generated) — it must never assert that a
+// warm is currently in flight (a stamp bump from any new ScannerRun/ForwardReturn row leaves this state
+// standing with no warm running) nor promise an automatic update (this page refetches only on mount / an
+// as-of change / a readiness transition — there is no poll; see the effect deps in BacktestPage). Borrows the
+// Card + Loader2 warn-toned LOOK already established by WarmingState/SurvivorshipBanner on this same page
+// — but this is a DISTINCT, request-scoped disclosure (the served evidence's own status) and must NOT
+// wire to useReadiness() (that hook is the boot-time warm-up concept, unrelated to this per-request state).
+function RefreshingEvidenceBanner({ generatedAt }: { generatedAt: string | null }) {
+  return (
+    <Card
+      className="flex items-start gap-3 border-warn bg-surface p-4 text-sm"
+      data-testid="evidence-refreshing"
+    >
+      <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-warn" aria-hidden />
+      <div className="space-y-1">
+        <p className="font-medium text-warn">Refreshing — showing the last complete evidence</p>
+        <p className="text-text-muted">
+          The dataset has changed since this evidence was generated, and the newer version is not
+          complete yet. The forward-tested evidence below is the last complete version, generated{" "}
+          <span className="num">{formatIsoDateTime(generatedAt)}</span> — no partial or fabricated
+          figures are shown in the meantime. Reload this page after the next ingest finishes to pick up
+          the new version.
+        </p>
+      </div>
+    </Card>
   );
 }
 

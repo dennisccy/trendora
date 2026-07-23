@@ -694,3 +694,74 @@ discrepancy (host crash history); the 4 unguarded sibling caches (reuse this ite
 idiom if ever patched); VmPeak grew +66.6% vs iter-14 (36.3% margin — under cap, WATCH). The
 `demo.sh --session-live` walkthrough now has operator evidence (iter-14 walkthrough file, exit 0, 7 steps)
 — no longer a distinct blocker. Carried unrelated: `test_db.py::test_create_all_produces_expected_tables`.
+
+## Iteration 16 — goal-ops-hardening-iter-16
+
+**Date:** 2026-07-23T23:20:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: none
+- **New journey: J-08 (`partial`)** — the owner's precompute-before-serve journey. Core architecture
+  lands and is genuinely verified; three clauses stay open (below).
+- Advanced but not closed: **J-06 & J-07 stay `partial`** — the 178.74s cold-MISS residual that held
+  them since iter-11 is architecturally CLOSED (request path structurally cannot compute), but J-08 is
+  not `passing`, so neither is freed.
+- Re-verified passing: J-01, J-03, J-05 (deterministic golden replay, 3/3 PASS, raw file agrees with the
+  merged file, no reconciliation footer). **J-04 CARRIED, NOT re-verified** — UT-J-04 SKIPPED
+  (kill/restart is a blocked service action); `last_verified_iter` deliberately left at iter-15.
+- Newly failing: none. Regressed (passing→failing): none.
+- Anti-goal violations: **NONE this iteration.** scan-report CLEAN; all 10 categories answered explicitly
+  in eval.md; all 8 historical records stay `resolved: true` (0 unresolved). coherence COHERENCE-PASS.
+
+**Reasoning:** The redesign is real and I proved the load-bearing parts myself rather than inheriting
+them. I recomputed the whole 68-row `tc16-backtest-poll.csv`: 68/68 HTTP 200, exactly TWO generations ever
+(never a third, never mixed), all 16 `refreshing` polls serving the PRIOR complete generation, and the
+generation flip landing on the same row as the `ready` flip — the state machine holds end-to-end. I read
+`forward_testing.py:1163-1242` directly (no branch can reach `compute_forward_aggregates`; the
+completeness read is `asof_key`-filtered and column-projected — TC-18 confirmed in source), and opened
+UT-04 to confirm the cutover is a real value change (1800/743634 → 1801/744166), not just an absent
+banner. So iter-15's 178.74s blocking cold recompute is genuinely gone (worst read now 12.655s, a
+stored-row read). But J-08 is `partial` on three counts I checked myself. **(a) Audit B1, confirmed in
+source independent of the auditor's probe:** `backtest.py:70` resolves the default view to the latest
+stored run and `:1209` scopes the lookup to that ONE `asof_key`, so the *common single-latest-date*
+backfill (`data_manager.py:3172`'s own words) leaves the default `/backtest` serving `not_yet_computed`
+— an empty evidence section — for the whole warm window. I RULED this must not stand: J-08 step 2
+promises the last-good "labeled with that version's served as-of" (a label meaningless unless the served
+as-of can differ), and step 5 reserves `not_yet_computed` for the "fresh-install shape", which this is
+not. Both TC-16 and UT-02 backfilled historical gap dates, so the most common shape has zero coverage.
+**(b) Latency:** 11/68 polls breach the committed ≤1.5s budget (max 12.655s) on a thermally-verified
+host-guard-confined pass; the owner chose iter-15's option (2) redesign, NOT option (3) budget amendment,
+so ≤1.5s binds unamended and J-06 step 2's "assert every measurement is within budget" fails. A 14x
+improvement is not the same as a pass. **(c) Evidence gaps:** `not_yet_computed` has ZERO browser
+evidence (UT-03 SKIPPED), and I opened UT-02 and read the FALSE banner copy on screen ("is still being
+warmed", "updates automatically" — audit F1); the corrected wording IS in the tree
+(`page.tsx:270-276`, verified) but has never been rendered, so J-08's honest-disclosure clause is
+evidenced only in its dishonest form. Rejected REGRESSION: no journey passing→failing and no anti-goal
+implicated — B1 yields a contained honest-shaped `EmptyState`, not a crash, blank error page, or wrong
+number, and the pipeline's own auditor surfaced it. Rejected STALLED (iter-15's verdict): the auditor
+itself scopes B1's fix as a bounded follow-up iteration, and items 1-4 of my next-step are all
+agent-owned — this is emphatically not "every unblock path is human-owned". Rejected GOAL_ACHIEVED:
+three journeys `partial`, J-04 without fresh evidence. Rejected ESCALATE: already full depth, no
+fail-open, no journey failing twice. Coherence PASS → no consolidation mandate. Progress made → CONTINUE.
+
+**Next-step recommendation:** FULL depth, no new features — close J-08. (1) AGENT: fix B1 — when the
+requested `asof_key` has no complete version but an earlier one does, serve that earlier version as
+`refreshing` LABELED WITH ITS SERVED AS-OF, reserving `not_yet_computed` for the true fresh-install
+shape; add the as-of-advancing case to `test_forward_testing_serving_split.py` (currently zero coverage)
+and re-word the empty state so it never tells a mid-ingest user to "run an ingest" (audit F2).
+(2) AGENT: browser evidence for the two unrendered states — re-capture the CORRECTED refreshing banner
+(services are up), and render `not_yet_computed` on a DISPOSABLE copy of `trendora.db`, never the working
+one. (3) AGENT: root-cause the 11/68 breaches — all inside the ingest window on a stored-row read, so
+writer/reader contention, not compute; check SQLite journal mode + ingest transaction span; audit B5 (the
+historical branch deserializes every payload twice) is a cheap adjacent win. (4) AGENT non-blocking: B3
+(`evidence_generated_at` serialized naive despite an "ISO 8601 UTC" contract — fix while the field is
+young), B2 (sticky `refreshing`, no self-heal), F3 (duplicated empty-state sentence). (5) OPERATOR: a live
+J-04 kill/restart replay — J-04 is carried, not re-verified, and MUST be freshly verified before any
+GOAL_ACHIEVED; plus one `loaded_engine` test to close T1; plus a fresh `demo.sh --session-live` run (the
+iter-14 walkthrough predates J-08 and cannot cover its `[NEW]` steps). (6) OWNER, optional: if ≤1.5s is
+not meant to govern reads taken DURING a heavy ingest, that is a conscious logged `perf-budgets.md`
+amendment, never a silent loosening. Framework-maintainer note: `J-01-verify.png` and `J-03-verify.png`
+are BYTE-IDENTICAL (md5 `7d8f6681…`) and both show only the `/data` page-top landing frame — the replay
+lane's PASS rests on its scripted DOM expects, but two of three replay screenshots are not independently
+informative. Carried unrelated: `test_db.py::test_create_all_produces_expected_tables`.

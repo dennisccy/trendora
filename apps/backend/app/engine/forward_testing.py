@@ -985,20 +985,27 @@ def compute_forward_aggregates(
     }
 
 
-# ops-hardening iter-15 (UT-04 fix) — single-flight de-dup guarding `forward_aggregates_cached`'s MISS
-# path. Root-cause evidence (see the dev handoff for the full measurement): reading the pre-iter-15
-# function directly confirmed a cache MISS always fell straight through to `compute_forward_aggregates`
-# with NO de-duplication, lock, or in-flight marker — N concurrent same-key MISSes (e.g. the ingest
-# finalize warm's sequential 5-horizon loop landing on the SAME horizon/as-of the SAME moment
-# `GET /api/backtest`'s own 5-horizon comprehension requests it) each redundantly ran the full
-# aggregation. A throwaway measurement on a 60,000-row fixture (this iteration's dev pass) reproduced
-# this directly: 5 concurrent same-key MISSes invoked `compute_forward_aggregates` 5 times (not 1) and
-# took 9.9x a single call's wall-clock (near-linear blowup, consistent with GIL-serialized redundant
-# CPU-bound work) — confirming this mechanism, not a hypothesis. This mirrors
-# `data_manager.compute_coverage`'s established J-100 per-key-lock + in-flight-event single-flight idiom
-# (no new concurrency abstraction) — the difference: `ForwardAggregateCache` is already a PERSISTED
-# cross-request cache, so a waiter does not need its own in-process result cache; it simply re-reads the
-# now-committed row with its OWN session once the owner signals completion.
+# ops-hardening iter-15 (UT-04 fix) — single-flight de-dup guarding the ingest-only cache's MISS path
+# (`forward_aggregates_ingest_cached`, split from this iteration's own `forward_aggregates_cached` by
+# ops-hardening iter-16, J-08 — see that function's docstring for the split). Root-cause evidence (see
+# the dev handoff for the full measurement): reading the pre-iter-15 function directly confirmed a cache
+# MISS always fell straight through to `compute_forward_aggregates` with NO de-duplication, lock, or
+# in-flight marker — N concurrent same-key MISSes (e.g. the ingest finalize warm's sequential 5-horizon
+# loop landing on the SAME horizon/as-of the SAME moment `GET /api/backtest`'s own 5-horizon
+# comprehension requests it) each redundantly ran the full aggregation. A throwaway measurement on a
+# 60,000-row fixture (this iteration's dev pass) reproduced this directly: 5 concurrent same-key MISSes
+# invoked `compute_forward_aggregates` 5 times (not 1) and took 9.9x a single call's wall-clock (near-
+# linear blowup, consistent with GIL-serialized redundant CPU-bound work) — confirming this mechanism,
+# not a hypothesis. This mirrors `data_manager.compute_coverage`'s established J-100 per-key-lock +
+# in-flight-event single-flight idiom (no new concurrency abstraction) — the difference:
+# `ForwardAggregateCache` is already a PERSISTED cross-request cache, so a waiter does not need its own
+# in-process result cache; it simply re-reads the now-committed row with its OWN session once the owner
+# signals completion.
+#
+# iter-16 (J-08): this lock/event/timeout trio is UNCHANGED by the compute-vs-serve split below — it
+# still guards ONLY `forward_aggregates_ingest_cached`'s MISS path (now the SOLE remaining caller of
+# `compute_forward_aggregates`). The new read-only serving path added below has no MISS/compute branch
+# at all, so it needs no single-flight guard of its own.
 _FORWARD_AGG_LOCK = threading.Lock()
 # per-key in-flight events: (horizon, asof_key, dataset_version) -> threading.Event, set when the owner
 # finishes (success or failure) so any waiter wakes. Always removed by the owner in a `finally` — this
@@ -1013,17 +1020,23 @@ _FORWARD_AGG_INFLIGHT: dict[tuple, threading.Event] = {}
 _FORWARD_AGG_WAIT_TIMEOUT_S = 45.0
 
 
-def forward_aggregates_cached(
+def forward_aggregates_ingest_cached(
     session: Session, horizon: int, config: Optional[Config] = None, *, as_of: Optional[date_cls] = None,
 ) -> dict:
-    """Serve `compute_forward_aggregates` from an ingest-time warm cache (ops-hardening iter-5, J-06),
-    mirroring `research.event_study_cached` / `market_phase.market_phase_cached`: on a cache HIT for the
-    current `(horizon, asof_key, dataset_version)` key, deserialize and return the stored aggregate (NO
-    recompute); on a MISS, compute it ONCE via `compute_forward_aggregates` (the SOLE producer — this
-    function is a pure serving/persistence wrapper, never a second derivation), persist it under the
-    current dataset-version stamp, prune any stale rows for this `(horizon, asof_key)` identity, and
-    return it. The returned payload is BYTE-IDENTICAL to `compute_forward_aggregates(...)` (No recompute
-    in the read path).
+    """The INGEST-ONLY compute-and-persist half of the ops-hardening iter-5 `ForwardAggregateCache`
+    wrapper (split from the former single `forward_aggregates_cached` by iter-16, J-08). This is now the
+    SOLE remaining caller of `compute_forward_aggregates` (the other half is `resolved_forward_
+    aggregate_evidence` below — a pure reader that can never reach `compute_forward_aggregates`). Callers:
+    (a) the ingest finalize warm's per-horizon loop (`data_manager._refresh_ingest_aggregates`, the
+    `is_latest` producer), and (b) `GET /api/backtest` / MCP `query_backtest`'s existing, UNCHANGED
+    historical (`is_latest == False`) create-once-and-cache carve-out (TC-13) — never the `is_latest`
+    request-serving branch of either, which calls ONLY `resolved_forward_aggregate_evidence`.
+
+    On a cache HIT for the current `(horizon, asof_key, dataset_version)` key, deserialize and return the
+    stored aggregate (NO recompute); on a MISS, compute it ONCE via `compute_forward_aggregates` (the SOLE
+    producer — this function is a pure serving/persistence wrapper, never a second derivation), persist it
+    under the current dataset-version stamp, and return it. The returned payload is BYTE-IDENTICAL to
+    `compute_forward_aggregates(...)` (No recompute in the read path).
 
     WHY: `GET /api/backtest` called `compute_forward_aggregates` once per configured horizon (5) on
     EVERY request — each call scans the WHOLE horizon-partition of `forward_returns` (~1.5-1.7M rows /
@@ -1046,7 +1059,18 @@ def forward_aggregates_cached(
     (bounded) on the owner's completion, then re-reads the now-persisted row with its OWN session — never
     a second producer/compute. This is scoped ENTIRELY to this serving/caching wrapper:
     `compute_forward_aggregates` itself, its signature, its columns read, and its streamed pattern are
-    completely unchanged (all three call sites keep calling it exactly as before).
+    completely unchanged (all three call sites keep calling it exactly as before). iter-16 (J-08): this
+    guard is UNCHANGED by the split (TC-17) — it still protects only this ingest-only path.
+
+    ops-hardening iter-16 (J-08): pruning of superseded rows changed from PER-HORIZON-WRITE deletion to a
+    CUTOVER — a stale `dataset_version`'s rows for this `asof_key` are deleted in one shot ONLY once this
+    write brings the CURRENT version's configured-horizon set (`config.walk_forward.horizons`) to full
+    completeness, never before. This closes a confirmed live bug: the OLD per-horizon-write deletion fired
+    the moment ANY one horizon's new-version row landed, so a reader between horizon-writes could already
+    observe a MIXED row set (proof: a direct read-only inspection of the live DB found the non-latest
+    `asof_key='2026-07-17'` already split across two `dataset_version` stamps across its 5 rows). Retaining
+    the old version's full row set until the new one is complete is what lets `resolved_forward_aggregate_
+    evidence` below always serve either an all-old or all-new set for one `asof_key` — never mixed.
 
     Deferred import below (not at module level): `research.py` already imports names FROM this module,
     so this module cannot import `research.py` at load time without a circular import; importing
@@ -1095,17 +1119,28 @@ def forward_aggregates_cached(
     try:
         payload = compute_forward_aggregates(session, horizon, cfg, as_of=as_of)
 
-        # prune stale rows for THIS (horizon, asof_key) identity (any older dataset_version) so the cache
-        # table does not grow unbounded as the dataset matures; the current-version row is then upserted.
-        stale = session.exec(
-            select(ForwardAggregateCache).where(
-                ForwardAggregateCache.horizon == horizon,
-                ForwardAggregateCache.asof_key == asof_key,
-                ForwardAggregateCache.dataset_version != version,
-            )
-        ).all()
-        for row in stale:
-            session.delete(row)
+        # iter-16 (J-08) cutover: only prune OTHER-dataset_version rows for this asof_key once THIS
+        # write brings the CURRENT version's configured-horizon set to completeness — never per-horizon.
+        # An incomplete current version leaves every prior version's rows untouched, so a concurrent
+        # reader always has either a fully-old or a fully-new (never mixed) row set to serve.
+        existing_horizons_at_version = set(
+            session.exec(
+                select(ForwardAggregateCache.horizon).where(
+                    ForwardAggregateCache.asof_key == asof_key,
+                    ForwardAggregateCache.dataset_version == version,
+                )
+            ).all()
+        )
+        would_be_complete = {horizon, *existing_horizons_at_version} >= set(cfg.walk_forward.horizons)
+        if would_be_complete:
+            stale = session.exec(
+                select(ForwardAggregateCache).where(
+                    ForwardAggregateCache.asof_key == asof_key,
+                    ForwardAggregateCache.dataset_version != version,
+                )
+            ).all()
+            for row in stale:
+                session.delete(row)
 
         session.add(ForwardAggregateCache(
             horizon=horizon, asof_key=asof_key, dataset_version=version,
@@ -1123,6 +1158,88 @@ def forward_aggregates_cached(
             with _FORWARD_AGG_LOCK:
                 _FORWARD_AGG_INFLIGHT.pop(key, None)
             event.set()
+
+
+def resolved_forward_aggregate_evidence(
+    session: Session, as_of: date_cls, config: Optional[Config] = None,
+) -> dict:
+    """The READ-ONLY serving path (ops-hardening iter-16, J-08) — the ONLY code `GET /api/backtest` and
+    the MCP `query_backtest` tool call for their `is_latest == True` view. Structurally incapable of
+    calling `compute_forward_aggregates` under ANY circumstance, including a would-be lock-wait timeout:
+    there is no compute-fallback branch here at all (that fallback stays on `forward_aggregates_ingest_
+    cached` only, scoped to the producer-vs-producer ingest race, never reachable from a request).
+
+    Resolves, for `as_of`, the latest `dataset_version` whose stored rows cover EVERY horizon in
+    `config.walk_forward.horizons` ("complete") for this `asof_key` — never a per-horizon-independent
+    read (the bug this closes: a naive "latest row per horizon, ignoring version" read can already serve
+    a MIXED-version payload today — confirmed live, the non-latest `asof_key='2026-07-17'` is split
+    across two `dataset_version` stamps across its 5 rows). Returns
+    `{"evidence_status", "evidence_generated_at", "evidence_by_horizon"}`:
+
+      - `"ready"` — the complete version found IS the current global `_dataset_version` stamp; serves
+        it, keyed by horizon (int), byte-identical to a fresh `compute_forward_aggregates` call.
+      - `"refreshing"` — the current stamp's row set is not yet complete (an ingest warm is mid-flight),
+        but a PRIOR complete version's full row set survives (the iter-16 cutover-pruning contract keeps
+        it until the new version's own set lands) — serves that older version's rows, ALL from the SAME
+        version (never mixed with the incomplete new one), labeled with that version's OWN
+        `created_at` (the max across its horizon rows).
+      - `"not_yet_computed"` — no complete version has EVER existed for this `asof_key`:
+        `evidence_by_horizon = {}`, `evidence_generated_at = None`. Still HTTP 200 at the caller (an
+        honest empty state) — never a synchronous compute, never 500/503.
+
+    The completeness-lookup query is filtered by `asof_key` ALONE (never an unfiltered scan of the whole
+    `forward_aggregate_cache` table — AG-8 spirit, TC-18): it touches only the handful of rows already
+    belonging to this ONE identity, regardless of how many other historical `asof_key`s the table has
+    accumulated over the session. The result set is inherently small (at most ~2 `dataset_version`s'
+    worth of rows per identity under the cutover contract above), so a plain `.all()` needs no streaming.
+
+    Deferred import (not at module level): mirrors `forward_aggregates_ingest_cached`'s own established
+    reason (`research.py` imports FROM this module, so a module-level import back would be circular)."""
+    from app.engine.research import _dataset_version  # deferred: avoids a forward_testing<->research cycle
+
+    cfg = config or get_config()
+    configured_horizons = set(cfg.walk_forward.horizons)
+    asof_key = as_of.isoformat()
+
+    # asof_key-filtered read (TC-18) — bounded to this one identity's rows, never the whole table.
+    rows = session.exec(
+        select(
+            ForwardAggregateCache.horizon, ForwardAggregateCache.dataset_version,
+            ForwardAggregateCache.payload_json, ForwardAggregateCache.created_at,
+        ).where(ForwardAggregateCache.asof_key == asof_key)
+    ).all()
+
+    by_version: dict[str, dict[int, tuple[str, datetime]]] = defaultdict(dict)
+    for row_horizon, row_version, payload_json, created_at in rows:
+        by_version[row_version][row_horizon] = (payload_json, created_at)
+
+    complete = {
+        version: horizon_map
+        for version, horizon_map in by_version.items()
+        if set(horizon_map) >= configured_horizons
+    }
+
+    def _serve(version: str, status: str) -> dict:
+        horizon_map = complete[version]
+        evidence_by_horizon = {h: json.loads(horizon_map[h][0]) for h in sorted(horizon_map)}
+        generated_at = max(created_at for _payload_json, created_at in horizon_map.values())
+        return {
+            "evidence_status": status,
+            "evidence_generated_at": generated_at.isoformat(),
+            "evidence_by_horizon": evidence_by_horizon,
+        }
+
+    current_version = _dataset_version(session)
+    if current_version in complete:
+        return _serve(current_version, "ready")
+
+    if complete:
+        # a PRIOR complete version survives the cutover (never mixed with the incomplete current one) —
+        # the "latest" surviving prior version, tie-broken by its own newest row's created_at.
+        stale_version = max(complete, key=lambda v: max(ca for _p, ca in complete[v].values()))
+        return _serve(stale_version, "refreshing")
+
+    return {"evidence_status": "not_yet_computed", "evidence_generated_at": None, "evidence_by_horizon": {}}
 
 
 # --------------------------------------------------------------------------------------------------

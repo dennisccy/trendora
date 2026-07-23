@@ -1,29 +1,30 @@
 # Goal Session Summary — ops-hardening
 
-**Final verdict:** REGRESSION_HALT
-**Total iterations:** 14
-**Wall time (seconds):** 77987
+**Final verdict:** STALLED
+**Total iterations:** 16
+**Wall time (seconds):** 28154
 **Quota pauses:** 0
 **Started:** 2026-07-19T13:57:02.848410Z
-**Finished:** 2026-07-23T04:52:25.357468Z
+**Finished:** 2026-07-23T17:04:03.364465Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/ops-hardening`. Open a PR with:
 
     gh pr create --base main --head goal/ops-hardening \
-      --title "feat: ops-hardening — REGRESSION_HALT" \
+      --title "feat: ops-hardening — STALLED" \
       --body-file runs/goal-session-ops-hardening/summary.md
 
 ## Final journey state
 
 | Journey | Status | Last passing iter |
 |---|---|---|
-| J-01 | passing | goal-ops-hardening-iter-13 |
-| J-03 | passing | goal-ops-hardening-iter-13 |
-| J-04 | passing | goal-ops-hardening-iter-12 |
-| J-05 | passing | goal-ops-hardening-iter-13 |
+| J-01 | passing | goal-ops-hardening-iter-15 |
+| J-03 | passing | goal-ops-hardening-iter-15 |
+| J-04 | passing | goal-ops-hardening-iter-15 |
+| J-05 | passing | goal-ops-hardening-iter-15 |
 | J-06 | partial | - |
+| J-07 | partial | - |
 
 ## Anti-goal violations
 
@@ -171,15 +172,33 @@ See `runs/goal-session-ops-hardening/telemetry.jsonl` for the structured event l
       readme-maintainer            2.0m  calls=1
       pump-wait                  1.6m
       unattributed (glue)      228.4m
-  session: 14 completed iteration(s), mean wall 246.7m
-      total goal-decomposer            175.6m
-      total goal-evaluator             174.2m
-      total iteration-summarizer       133.4m
+  goal-ops-hardening-iter-14  depth=full  verdict=CONTINUE  wall=251.4m
+      goal-evaluator              22.7m  calls=1
+      goal-decomposer             21.6m  calls=1
+      coherence-auditor            4.4m  calls=1
+      engine:full-pipeline       202.6m
+      engine:showcase-join         0.0m
+      pump-wait                  4.8m
+      unattributed (glue)        0.0m
+  goal-ops-hardening-iter-15  depth=full  verdict=STALLED  wall=217.7m
+      iteration-summarizer        29.9m  calls=2
+      goal-decomposer             21.9m  calls=1
+      goal-evaluator              15.9m  calls=1
+      readme-maintainer            8.7m  calls=2
+      coherence-auditor            6.1m  calls=1
+      engine:full-pipeline       156.9m
+      engine:showcase-join         5.7m
+      pump-wait                  2.9m
+      overlap saved             27.4m  (parallel steps)
+  session: 16 completed iteration(s), mean wall 245.2m
+      total goal-decomposer            219.1m
+      total goal-evaluator             212.9m
+      total iteration-summarizer       163.3m
       total browser-qa-agent           117.3m
+      total coherence-auditor           58.8m
       total developer                   54.7m
-      total coherence-auditor           48.3m
-      total readme-maintainer           32.3m
+      total readme-maintainer           41.1m
       total reviewer                     8.5m
       total AWAITING_PUMP paused gaps: 9.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT
+      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED
 ```

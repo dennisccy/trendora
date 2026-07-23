@@ -6,10 +6,10 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 
 ## Outcome
 
-- **Terminal status:** REGRESSION_HALT
-- **Final verdict:** REGRESSION
-- **Iterations used:** 14
-- **Halted at (UTC):** 2026-07-23T04:52:25.357468Z
+- **Terminal status:** STALLED
+- **Final verdict:** STALLED
+- **Iterations used:** 16
+- **Halted at (UTC):** 2026-07-23T17:04:03.364465Z
 
 ## Verdict sequence
 
@@ -30,6 +30,8 @@ iter 10: CONTINUE
 iter 11: ESCALATE
 iter 12: CONTINUE
 iter 13: REGRESSION
+iter 14: CONTINUE
+iter 15: STALLED
 ```
 
 ## Agent economics
@@ -38,24 +40,24 @@ Source: analyze_telemetry.py --json telemetry.jsonl (claude_usage events)
 
 | Agent | Invocations | Wall (s) | In tokens | Out tokens | Est. cost (USD) |
 |---|---|---|---|---|---|
-| auditor | 12 | 8767 | 650 | 472072 | 0.0000 |
-| browser-qa-agent | 12 | 30604 | 8946 | 920699 | 0.0000 |
-| coherence-auditor | 12 | 2048 | 400 | 126659 | 0.0000 |
-| demo-narrator | 12 | 4347 | 400 | 352596 | 0.0000 |
-| developer | 18 | 37452 | 5546 | 1442573 | 0.0000 |
-| goal-decomposer | 14 | 9421 | 18284 | 679223 | 0.0000 |
-| goal-evaluator | 13 | 8858 | 1403 | 556374 | 0.0000 |
-| iteration-summarizer | 13 | 3943 | 1355 | 398209 | 0.0000 |
-| orchestrator | 11 | 2938 | 9301 | 238351 | 0.0000 |
-| phase-closure-auditor | 10 | 2069 | 192 | 173707 | 0.0000 |
-| qa | 25 | 5637 | 3342 | 206944 | 0.0000 |
-| readme-maintainer | 10 | 1445 | 186 | 128183 | 0.0000 |
-| retro-analyst | 1 | 28 | 26 | 2302 | 0.0000 |
-| reviewer | 18 | 8525 | 9388 | 415487 | 0.0000 |
-| ui-impact-analyst | 10 | 2667 | 332 | 181381 | 0.0000 |
-| ui-test-designer | 10 | 4518 | 510 | 331770 | 0.0000 |
-| ux-regression-reviewer | 10 | 2835 | 3050 | 197609 | 0.0000 |
-| TOTAL | 211 | 136103 | 63311 | 6824139 | 0.0000 |
+| auditor | 14 | 10398 | 2827 | 557981 | 0.0000 |
+| browser-qa-agent | 14 | 32280 | 9170 | 1017528 | 0.0000 |
+| coherence-auditor | 14 | 2561 | 474 | 161102 | 0.0000 |
+| demo-narrator | 14 | 5322 | 1654 | 434994 | 0.0000 |
+| developer | 20 | 39099 | 5660 | 1563089 | 0.0000 |
+| goal-decomposer | 16 | 11843 | 25967 | 818468 | 0.0000 |
+| goal-evaluator | 15 | 10519 | 1491 | 661636 | 0.0000 |
+| iteration-summarizer | 15 | 4848 | 2487 | 469995 | 0.0000 |
+| orchestrator | 13 | 3963 | 12296 | 293462 | 0.0000 |
+| phase-closure-auditor | 12 | 2872 | 250 | 220962 | 0.0000 |
+| qa | 29 | 6143 | 3692 | 237983 | 0.0000 |
+| readme-maintainer | 12 | 1868 | 224 | 163543 | 0.0000 |
+| retro-analyst | 2 | 67 | 71 | 4697 | 0.0000 |
+| reviewer | 20 | 9406 | 9452 | 468830 | 0.0000 |
+| ui-impact-analyst | 12 | 3580 | 418 | 242344 | 0.0000 |
+| ui-test-designer | 12 | 6174 | 638 | 444598 | 0.0000 |
+| ux-regression-reviewer | 12 | 3768 | 12168 | 257822 | 0.0000 |
+| TOTAL | 246 | 154709 | 88939 | 8019034 | 0.0000 |
 
 Per-step wall breakdown (analyze_telemetry.py --wall):
 
@@ -188,17 +190,35 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       readme-maintainer            2.0m  calls=1
       pump-wait                  1.6m
       unattributed (glue)      228.4m
-  session: 14 completed iteration(s), mean wall 246.7m
-      total goal-decomposer            175.6m
-      total goal-evaluator             174.2m
-      total iteration-summarizer       133.4m
+  goal-ops-hardening-iter-14  depth=full  verdict=CONTINUE  wall=251.4m
+      goal-evaluator              22.7m  calls=1
+      goal-decomposer             21.6m  calls=1
+      coherence-auditor            4.4m  calls=1
+      engine:full-pipeline       202.6m
+      engine:showcase-join         0.0m
+      pump-wait                  4.8m
+      unattributed (glue)        0.0m
+  goal-ops-hardening-iter-15  depth=full  verdict=STALLED  wall=217.7m
+      iteration-summarizer        29.9m  calls=2
+      goal-decomposer             21.9m  calls=1
+      goal-evaluator              15.9m  calls=1
+      readme-maintainer            8.7m  calls=2
+      coherence-auditor            6.1m  calls=1
+      engine:full-pipeline       156.9m
+      engine:showcase-join         5.7m
+      pump-wait                  2.9m
+      overlap saved             27.4m  (parallel steps)
+  session: 16 completed iteration(s), mean wall 245.2m
+      total goal-decomposer            219.1m
+      total goal-evaluator             212.9m
+      total iteration-summarizer       163.3m
       total browser-qa-agent           117.3m
+      total coherence-auditor           58.8m
       total developer                   54.7m
-      total coherence-auditor           48.3m
-      total readme-maintainer           32.3m
+      total readme-maintainer           41.1m
       total reviewer                     8.5m
       total AWAITING_PUMP paused gaps: 9.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT
+      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED
 ```
 
 ## Friction counters
@@ -212,26 +232,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-contradicts a "may pass" prose recommendation, the number wins.
-**Applies to:** any iteration whose target is "measure-and-record" work against committed budgets
-(`reports/perf-budgets.md`), and any evaluator tempted to accept a downstream agent's "may be scored passing"
-when the recorded measurement breaches the acceptance metric.
+`.all()` did). A memory fix and a lock-contention fix are different problems; proving the former (flat
+VmPeak, health 200) does not prove the latter, and only a browser pass under the EXACT concurrent trigger
+exposed it — neither TC-4 (concurrent-on-fixture, no cap) nor TC-5 (sequential-on-deep-basis) reproduces it.
+**Applies to:** any iter that replaces a `.all()` fetch-and-release with a streamed/`yield_per` read on a
+hot path shared by concurrent ingest writers — measure latency under concurrent load on the deep basis, not
+just peak memory.
 
-## iter-13 — 2026-07-23T04:39:47Z
+## iter-15 — 2026-07-23T18:00:00Z
 
-**Verdict:** REGRESSION
-**Lesson:** A carried, byte-unchanged critical anti-goal can REGRESS in observed severity without any
-code change: AG-8 (`forward_testing.py:826` unbounded ScannerResult load) was "degraded-but-alive,
-mitigation holds, smaller than iter-7" for iters 9/11/12 — then at iter-13, under heavier concurrent
-load (4 replay backfills + a diagnostic read on one browser-qa turn), it wedged the entire backend into
-a ~12-min futex deadlock needing an operator hard-restart, i.e. back to the original iter-7 full-outage
-severity. The "blast-radius-smaller-than-the-acknowledged-incident" argument that justifies deferring a
-critical anti-goal is only valid until a heavier load profile falsifies it; an evaluator must re-test
-that premise every iteration against fresh load evidence, not carry it forward. When it flips, C.1's
-literal "unresolved critical anti-goal → REGRESSION" is the right call even though prior iters deferred.
-**Applies to:** any iter carrying an UNRESOLVED critical anti-goal on a "smaller blast radius than the
-acknowledged incident" rationale — especially memory/availability bugs whose severity is load-dependent;
-re-read logs/backend.log + the audit + closure for a worse-than-before manifestation before re-deferring.
+**Verdict:** STALLED
+**Lesson:** A small-fixture concurrency ratio does not extrapolate to a deep-basis cost. The 60k-row
+fixture's 9.91x same-key stacking ratio predicted the single-flight de-dup would "fully account for" the
+211.8s finding; the live deep-basis pass showed stacking was only ~15.6% and the dominant ~84% is ONE
+cold full-basis `compute_forward_aggregates` pass (178.74s) a wrapper-scoped fix cannot touch. When a
+targeted fix's own live evidence contradicts its root-cause extrapolation, the root-cause conclusion is
+the thing to trust the LIVE number over — and the investigation *reaching* "this is a hard architectural
+cost" is itself the terminal deliverable that hands the decision to the owner, not a bug to re-attempt.
+**Applies to:** any iteration proposing a wrapper/cache/concurrency fix validated on a synthetic fixture
+before a deep-basis pass; any "the fix fully accounts for X" claim not yet reconciled against a live
+full-scale measurement; future decomposers tempted to loop CONTINUE on an owner-owned direction decision.
 ```
 
 ## Halt context
@@ -240,8 +260,8 @@ session.json halt-relevant fields:
 
 ```json
 {
-  "status": "REGRESSION_HALT",
-  "last_verdict": "REGRESSION",
-  "parked_wip_sha": "ab92f94c"
+  "status": "STALLED",
+  "last_verdict": "STALLED",
+  "parked_wip_sha": "2d8f9400"
 }
 ```

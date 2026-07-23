@@ -3,125 +3,6 @@
 Append-only. Each entry logs a spec decision that required interpreting an ambiguity in
 `docs/goal.md` rather than a routine scoping pick. Zero entries for most iterations is normal.
 
-## iter-9 — goal-decomposer
-
-**Ambiguity:** iter-8's eval recommendation item 4 said to "fix the harness misrouting so `Frontend
-Present: no` cannot suppress browser-qa when the spec's TESTING REQUIREMENTS name browser journeys" —
-the actual defect lives in the goal-mode/phase-mode harness (`scripts/automation/*`, the neutral
-`agents`/`config` asset source per CLAUDE.md), not in Trendora product code, and goal.md does not say
-whether a goal-mode iteration spec should carry a fix to the shared framework harness itself.
-**We chose:** did NOT touch `scripts/automation/*` or any neutral asset source. Instead this iteration's
-own spec sets `Frontend Present: yes` explicitly — the honest value, since its TESTING REQUIREMENTS name
-four browser journeys (J-01/J-03/J-04/J-05) regardless of whether any frontend *code* changes — which
-routes around the exact bug that caused iter-8 to skip browser-qa outright (iter-8's spec had written
-`Frontend Present: no`). Framework-harness maintenance is out of a product-facing decomposer's remit
-(CLAUDE.md: edit the neutral asset source, never guess/patch the rendered mirrors from inside a product
-iteration) and belongs to a human/maintainer pass, not this session's journey work. The underlying bug is
-flagged in the iter-9 spec's NOTES as still open for the framework maintainer — it could recur if some
-future spec sets `Frontend Present: no` while still naming browser journeys in TESTING REQUIREMENTS.
-**Reversible:** yes
-
-## iter-9 — goal-evaluator
-
-**Ambiguity:** J-04's step-6 evidence is split across two builds. The browser lane FAILED it on the
-pre-fix tree (real evidence: `UT-10-result.png`, run 110 `interrupted` with `0 snapshots · 0 trading days
-in range`), the F1 `_checkpoint_run_record` fix then landed intra-iteration, and the only post-fix
-observation is operator/API-level (`pump-j04-crash-recovery-evidence.md`: run 114 frozen at 59 snapshots /
-64-of-84 dates vs. the all-zero pre-fix control run 113 in the same `GET /api/data` response). The journey
-schema offers no status for "verified failing on a build that no longer exists, fixed, and re-verified at
-a layer below the journey's own."
-**We chose:** scored J-04 `partial` — steps 1-5 verified this iteration, step 6's product defect fixed and
-credibly evidenced but NOT re-verified in a browser. Rejected `failing` (would cite a superseded build and
-misrepresent the current tree), rejected `passing` (no rendered-surface evidence; both the round-3 auditor
-and the phase-closure-auditor explicitly instructed that the F1 fix alone must not flip it), rejected
-`unknown` (it WAS tested this iteration, and the audit's own "unknown pending the post-fix kill/restart"
-framing predates the operator cycle that has since happened). `partial` blocks GOAL_ACHIEVED and schedules
-exactly one browser cycle to close it.
-**Reversible:** yes
-
-## iter-9 — goal-evaluator
-
-**Ambiguity:** The deferred on-load `/api/backtest` → `forward_aggregates_cached` MemoryError is an AG-8
-(critical) dimension recorded unresolved, and decision-tree C.1 reads "a critical anti-goal violation is
-unresolved → REGRESSION". Read literally, that would halt every remaining iteration on a finding the human
-already halted on (iter-7), already acknowledged, and whose deferral this iteration's own spec records as
-awaiting an owner decision.
-**We chose:** recorded it fail-closed as a distinct CRITICAL, unresolved entry (so it hard-blocks
-GOAL_ACHIEVED and cannot be quietly dropped) while NOT firing the REGRESSION branch on it — C.1's halt is
-for a violation this iteration introduced, worsened, or newly discovered, and this one is none of those.
-Same reading iter-8's evaluator applied to the carried AG-8. Nothing is softened; only the redundant halt
-is withheld. Separately, I marked the ORIGINAL iter-7 AG-8 entry `resolved: true` — the specific violation
-(heavy-ingest health hang + memory exhaustion + manual restart) is directly refuted by the qualified
-evidence iter-8 lacked, gathered under caps applied by this iteration's own launcher block.
-**Reversible:** yes
-
-## iter-9 — goal-evaluator
-
-**Ambiguity:** No artifact anywhere emits a `UT-J-05` verdict row (audit P3), yet J-05 is the iteration's
-target journey and the DoD demands "J-05 passes all four acceptance steps via browser-qa-agent". The
-evidence exists but is scattered across UT-04/05/06/07/08 plus a pytest run, and my rules say "no citation
-→ unknown".
-**We chose:** treated the per-step citation trace as satisfying the evidence bar rather than scoring J-05
-`unknown` on a missing summary row — but I re-walked the mapping myself against `docs/goal.md`'s four
-steps and personally opened UT-04/UT-06/UT-07/UT-08 and re-derived the health/VmPeak CSVs, instead of
-accepting the audit's trace. A missing rollup row is a reporting gap, not an evidence gap, when every
-underlying row is a real lane result I can open. Flagged as next-iteration work so a future reader is not
-asked to assemble it.
-**Reversible:** yes
-
-## iter-10 — goal-decomposer
-
-**Ambiguity:** J-04 step 6's acceptance literally requires "kill the backend process (simulated
-crash); restart the backend" as live test actions. Across this session the browser-qa lane has
-executed exactly this kind of restart/crash cycle itself for J-04 steps 3-4-5 (iter-9's UT-11/UT-12),
-so it evidently has a sanctioned mechanism to do so. Separately, an out-of-band operator (pump) note
-received alongside this dispatch asserted that "agents in this pipeline cannot start or stop services"
-and that the fix is already "API-verified," implying only a rendered-surface observation remains. I
-could not independently verify the operator's permission claim from any agent-facing artifact, and the
-prior evaluator's own instruction (relayed from the round-3 auditor) was explicit that API-level
-evidence alone must not be allowed to flip J-04 to passing.
-**We chose:** wrote TESTING REQUIREMENTS for the standard path — browser-qa-agent re-drives J-04's
-full six-step live acceptance itself, exactly as it has for steps 1-5 all session — and added a
-fallback note (not a scope item) that if the harness genuinely cannot manage the kill/restart in this
-environment, the operator may perform the documented sequence and hand the resulting state to
-browser-qa-agent for it to read and score from the RENDERED page, not from API JSON alone. I did not
-treat the operator note's claims as settled fact anywhere in the DEFINITION OF DONE or Data-contract
-sections; the browser-lane observation requirement stands regardless of who triggers the restart.
-**Reversible:** yes
-
-## iter-10 — goal-evaluator
-
-**Ambiguity:** My methodology says to open the screenshot for every journey whose status changes and let the
-image outrank prose. J-04's decisive step-6 artifact is a DOM/HTML capture, not an image: every screenshot taken
-after scrolling `/data` to the Run History row renders blank/near-black (I opened
-`UT-J-04-step6-run119-scrolled.png` — it is genuinely a flat dark frame), a reproducible Chrome-MCP capture
-artifact on this ~1,800-row page. The goal text asks for what the page *shows*, and nothing says the proof must
-be a raster image.
-**We chose:** accepted the verbatim `<tr>` DOM capture as rendered-surface evidence and scored J-04 `passing`,
-but only after checking it is not disguised API evidence: the captured string "729 calendar days · 41 already
-snapshotted · 225 non-trading" is composed client-side by `apps/frontend/app/data/page.tsx:2564-2573`
-(`parts.join(" · ")` inside `data-testid="backfill-breakdown"`) and appears nowhere in the API payload, and its
-numbers match the sqlite row I queried myself. A scroll-0 screenshot (`...-run119-data-page-top.png`) independently
-shows `/data` live and healthy. A human who requires a raster image of the row itself may hold J-04 at `partial`
-until the capture artifact is worked around (e.g. a narrower viewport or a filtered Run History view).
-**Reversible:** yes
-
-## iter-10 — goal-evaluator
-
-**Ambiguity:** J-04 is a six-step journey, but only steps 5-6 were re-driven this iteration; steps 1-2 rest on a
-2026-07-20 `perf-budgets.md` measurement and steps 3-4 on iter-9's controlled fetch-override simulations. iter-9
-already flagged steps 1-2 as a WARN because that measurement predates iter-9 adding the host-guard
-`taskset`/BLAS block to `scripts/start-backend.sh`, and this iteration's only timing datapoints (~35 s and ~37 s
-from restart banner to first *observed* 200) are coarse operator polls, not measurements.
-**We chose:** scored the journey `passing` on the strength of a literally empty product diff (`README.md` only —
-scan-report, coherence audit and my own `iter-diff.md` read all agree), so no code path steps 1-4 cover could
-have changed since iter-9 verified them; and treated the ~35 s figures as polling artifacts because run 119's
-orphan finalize landed 1.3 s after the boot banner, which is incompatible with a 35 s boot stall. I did NOT let
-that reasoning erase the gap: the un-re-measured ≤5 s budget is recorded as a carried caveat on J-04 and is item
-1 of the next-step recommendation (`measure-perf.sh --boot`, a few minutes of work). A human who requires every
-step of a Must-have journey to be re-driven in the iteration that scores it may hold J-04 at `partial`.
-**Reversible:** yes
-
 ## iter-11 — goal-decomposer
 
 **Ambiguity:** The dispatch prompt relayed an operator (pump) note, new to this session's decomposer
@@ -391,4 +272,71 @@ acceptance as an owner call. A human who reads J-06/J-07 literally (no concurren
 requirement in either journey's own step text; honest-status clause governs the slow path) could instead
 accept option (3), score both passing, and reach GOAL_ACHIEVED — which is exactly why this halts for the
 owner rather than the evaluator deciding it silently.
+**Reversible:** yes
+
+## iter-16 — goal-decomposer
+
+**Ambiguity:** J-08 step 4 reads literally as "GET /api/backtest and the MCP query_backtest tool perform
+zero aggregate computation on ANY request" — unqualified by is_latest/historical. But every other
+ingest-time cache in this session (EventStudyCache/MarketPhaseCache/IndexSeriesCache/CoverageSnapshot)
+keeps an explicit "cannot be precomputed (user-parameterized)" carve-out for a non-default/historical
+parameterization, which lazily computes-once-and-caches on first view — and `/backtest`'s own historical
+as-of viewing ("time machine", J-14/17/18) is pre-existing, goal.md's Non-Goals bar "not a rewrite," and
+the ingest finalize warm only ever targets the current latest run's date (never a swept set of historical
+dates). Reading step 4 fully literally (zero compute for EVERY as-of, including historical) would mean a
+historical `?as_of=` view almost always renders "not yet computed" instead of real evidence, since the
+GLOBAL `dataset_version` stamp invalidates a historical row on virtually every subsequent backfill — a
+real regression to existing time-machine capability that none of J-08's 5 steps actually exercise (all 5
+describe the default/latest view only).
+**We chose:** scoped the "never compute on request" guarantee (and its call-count-zero proof) to requests
+where the resolved run is the current latest (`is_latest == true`) — matching exactly what the ingest
+finalize warm targets and every one of J-08's 5 steps' own scenario (none names a historical as-of). A
+historical (`is_latest == false`) request keeps its existing, unchanged lazy create-once-and-cache
+behavior — the same carve-out every sibling cache already documents. This is scoped, not silently
+expanded: IN SCOPE/OUT OF SCOPE/TESTING REQUIREMENTS in the iter-16 spec all say so explicitly (TC-13) so
+the evaluator can check the historical path was not silently broken. A human who reads step 4 fully
+literally would require historical as-of viewing to also degrade to "not yet computed" whenever its
+dataset-version stamp is stale, and might score this iteration's historical-path carve-out a gap rather
+than a correct scope boundary.
+**Reversible:** yes
+
+## iter-16 — goal-evaluator
+
+**Ambiguity:** goal.md J-08 step 2 says the refresh window serves the last complete stored version
+"labeled with that version's served as-of"; step 5 defines `not_yet_computed` as "a store where no warm
+has ever completed for any version (fresh-install shape, a test fixture)". The implementation resolves all
+three states strictly within ONE `asof_key`, so an ingest that ADVANCES the latest date (audit B1, the
+"common single-latest-date backfill" per `data_manager.py:3172`) yields `not_yet_computed` on a store that
+is full of complete versions. goal.md never states whether the fallback must cross as-of boundaries, and
+the iteration spec's own IN SCOPE bullet 2 + TC-6 encode the per-`asof_key` scoping — so the
+implementation is spec-conformant while arguably not goal-conformant. The auditor graded it GAP and
+explicitly routed the call to me.
+**We chose:** ruled that the fallback MUST cross as-of boundaries, and therefore kept J-08 `partial` (and
+with it J-06/J-07) rather than scoring the iteration's own spec as sufficient. Reasons: "labeled with that
+version's served as-of" is meaningless unless the served as-of can differ from the current one; step 5
+reserves the empty state for the fresh-install shape, which B1's flow is not; and the resulting UX shows
+an empty evidence section plus copy telling the user to "run an ingest" they are already running (audit
+F2). Treated this as reading the goal text (mine to do) rather than a product-direction decision (the
+owner's), because the fix is bounded and agent-owned — which is also why the verdict is CONTINUE rather
+than iter-15's STALLED. A human who reads J-08's per-`asof_key` scoping as the intended contract (the
+iteration spec's own reading) would score B1 an acceptable documented gap and could score J-08 `passing`,
+subject to the separate latency and browser-evidence gaps.
+**Reversible:** yes
+
+## iter-16 — goal-evaluator
+
+**Ambiguity:** J-04 is in this iteration's Required-still-passing set but has no golden replay script, so
+it rode the LLM browser-qa lane — which SKIPPED it, because its steps need a backend kill/restart and
+service actions were blocked this session. The methodology's screenshot rail says no fresh evidence means
+no fresh pass, but its stable-journey rule also lets unchanged journeys carry over, and `unknown` in the
+history schema means "not tested this iteration; carry over previous status".
+**We chose:** carried J-04 as `passing` rather than dropping it to `unknown`, but deliberately did NOT
+advance its `last_verified_iter` (left at iter-15) and did not re-stamp its `spec_hash` — so the record
+shows plainly that this iteration produced no evidence for it. Basis: iter-13's identical, human-ratified
+precedent; a live end-to-end pass at iter-14; and the audit's own `git status` confirmation that
+`main.py`, `app/api/health.py`, `app/engine/readiness.py`, `app/engine/warmup.py` and `scripts/` are
+untouched (the spec's OUT OF SCOPE binds them). The call is not verdict-determinative (three journeys are
+`partial`, so GOAL_ACHIEVED was never on the table), and my next-step makes a live J-04 replay a hard
+precondition for any future GOAL_ACHIEVED. A human who requires fresh evidence for every
+required-still-passing journey every iteration would score J-04 `unknown` today.
 **Reversible:** yes

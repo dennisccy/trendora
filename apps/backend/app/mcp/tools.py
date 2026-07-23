@@ -32,7 +32,8 @@ from app.engine.forward_testing import (
     backfill_run_forward_returns,
     benchmark_symbols,
     compute_run_scorecard,
-    forward_aggregates_cached,
+    forward_aggregates_ingest_cached,
+    resolved_forward_aggregate_evidence,
 )
 from app.engine.referee import (
     DEFAULT_ALPHA_BUDGET,
@@ -191,24 +192,33 @@ def get_market_phase(
 def query_backtest(session: Session, asof: Optional[str] = None) -> dict:
     """`GET /api/backtest` — the per-date forward-test scorecard (cohort return + excess vs SPY/QQQ/
     sector + the control cohorts, each with sample size `n`) plus the as-of-scoped `evidence_by_horizon`
-    aggregate and `is_latest`. Mirrors the endpoint exactly, including the read-path *create-once*
-    population of this run's realized forward returns (INSERT-only into the append-only table; a no-op
-    once warmed) — it recomputes no score / bucket / return."""
+    aggregate, `evidence_status`, `evidence_generated_at`, and `is_latest`. Mirrors the endpoint exactly,
+    including the read-path *create-once* population of this run's realized forward returns (INSERT-only
+    into the append-only table; a no-op once warmed) — it recomputes no score / bucket / return.
+
+    ops-hardening iter-16 (J-08): mirrors the endpoint's own compute-vs-serve split exactly — for the
+    LATEST view this tool never reaches `forward_aggregates_ingest_cached` (let alone
+    `compute_forward_aggregates`); a historical `asof` keeps the pre-existing lazy create-once-and-cache
+    carve-out (TC-13), unchanged."""
     cfg = get_config()
     run = resolved_run(session, asof, cfg)
     backfill_run_forward_returns(session, run, cfg)  # create-once realized forward returns (as the endpoint does)
     card = compute_run_scorecard(session, run, cfg)
-    # ops-hardening iter-5 (J-06): served from the SAME ingest-warmed cache GET /api/backtest now uses
-    # (this function's own docstring says it "mirrors the endpoint exactly" — kept true for the cache
-    # swap too; byte-identical output, `compute_forward_aggregates` itself is unchanged).
-    evidence_by_horizon = {
-        h: forward_aggregates_cached(session, h, cfg, as_of=run.asof_date)
-        for h in cfg.walk_forward.horizons
-    }
+    is_latest = run.asof_date == _latest_stored_run_date(session)
+    if not is_latest:
+        for h in cfg.walk_forward.horizons:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=run.asof_date)
+    # ops-hardening iter-5 (J-06) + iter-16 (J-08): served from the SAME read-only resolver
+    # `GET /api/backtest` now uses (this function's own docstring says it "mirrors the endpoint exactly"
+    # — kept true for the compute-vs-serve split too; byte-identical output, `compute_forward_aggregates`
+    # itself is unchanged).
+    evidence = resolved_forward_aggregate_evidence(session, run.asof_date, cfg)
     return {
         **card,
-        "is_latest": run.asof_date == _latest_stored_run_date(session),
-        "evidence_by_horizon": evidence_by_horizon,
+        "is_latest": is_latest,
+        "evidence_by_horizon": evidence["evidence_by_horizon"],
+        "evidence_status": evidence["evidence_status"],
+        "evidence_generated_at": evidence["evidence_generated_at"],
     }
 
 

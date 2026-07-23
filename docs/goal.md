@@ -267,7 +267,8 @@ no-ops or arbitrary limits.
   - Steps:
     1. With the full deep basis loaded, trigger the forward-aggregate warm for every
        configured horizon (the ingest finalize path) and serve `GET /api/backtest` for
-       each horizon (cache-MISS path) in one long-lived backend process.
+       each horizon throughout (served from storage per J-08) in one long-lived backend
+       process.
     2. While step 1 runs, poll `GET /api/health` once per second; assert every poll
        answers HTTP 200 within its existing budget — no frozen or unresponsive window.
     3. Record the process's peak memory (VmPeak) during step 1; assert it stays under the
@@ -291,6 +292,41 @@ no-ops or arbitrary limits.
       throughout.
     - **Walkthrough:** the crash-free warm + healthy `/api/health` sequence appended as
       `[NEW]` steps viewable via `demo.sh ops-hardening --session-live`.
+
+- **J-08: Backtest evidence serves from storage only — never a cold recompute on request**
+  - Steps:
+    1. With a warm backend and a fully warmed forward-aggregate store, note the served as-of
+       on `/backtest`; then on `/data` run a small single-day backfill (this bumps the
+       dataset version and schedules the finalize warm)
+    2. While the new version's warm is still running, load `/backtest`; assert it serves the
+       last COMPLETE stored version within its committed ≤ 1.5 s budget, labeled with that
+       version's served as-of plus a visible "refreshing" indicator — never a skeleton
+       waiting on a fresh compute, never a request-path recompute
+    3. After the run record lists `forward_aggregates` among the refreshed aggregates,
+       reload `/backtest`; assert it now serves the new version's stored values within the
+       same budget and the refreshing indicator is gone
+    4. Assert at the API/test layer that `GET /api/backtest` and the MCP `query_backtest`
+       tool perform zero aggregate computation on any request — the compute entry point is
+       invoked only by the ingest finalize warm (call-count instrumentation over the
+       request path)
+    5. On a store where no warm has ever completed for any version (fresh-install shape, a
+       test fixture), load `/backtest`; assert an explicit honest "not yet computed — run an
+       ingest" empty state within budget — never a synchronous compute, never a frozen or
+       blank frame
+  - Acceptance:
+    - **Consistency (single source):** `compute_forward_aggregates` remains the single
+      producer, now invoked ONLY from the ingest finalize warm; `GET /api/backtest` and the
+      MCP tool are pure readers of the same stored rows.
+    - **Correctness:** served payloads are byte-identical to the stored aggregate for the
+      served version, and all horizons in one response come from ONE complete version —
+      the last-good fallback never mixes versions.
+    - **Honest status & anti-goals:** the refresh window is visibly disclosed (served as-of
+      + refreshing indicator); the never-warmed store renders the explicit empty state; no
+      unbounded loads on any path (AG-8); the fallback serves a complete OLDER snapshot,
+      never partially newer data (AG-5 no-lookahead preserved).
+    - **Walkthrough:** version-bump → instantly served last-good with refreshing marker →
+      fresh serve after the warm, appended as `[NEW]` steps viewable via
+      `demo.sh ops-hardening --session-live`.
 
 <!-- Continuous-improvement auto-journeys: the goal-proposer appends NEW Must-have journeys ONLY
      between the two markers below (see the goal-self-extension skill). The human-authored journeys
