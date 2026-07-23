@@ -348,3 +348,25 @@ next-step item 1. A human who reads AG-8 as "the guarantee must hold under the e
 trigger before it is resolved" would keep AG-8 open and likely score STALLED (remaining blockers then
 owner-owned) or CONTINUE.
 **Reversible:** yes
+
+## iter-15 — goal-decomposer
+
+**Ambiguity:** J-06's acceptance ties latency to "page loads stay within committed never-regress
+budgets" via a step-1 sweep that reads as a single-page-at-a-time measurement; J-07's acceptance
+literally requires only "no unbounded whole-table ORM materialization," "a memory-pressure abort
+never leaves the process wedged," and "health/readiness stay truthful" — it does not explicitly
+require `/backtest`'s OWN response time to stay in budget during the very concurrent warm+serve
+scenario its own step 1 constructs. Whether UT-04's 211.8s concurrent-cache-miss finding is
+therefore a J-06 budget violation, a J-07 "honestly responsive... while serving" violation, both, or
+neither (health stayed green, no wedge, no crash) is not settled by goal.md's literal text — iter-14's
+own audit flagged exactly this: "the ≤1.5s budget belongs to a prior phase under a condition that
+phase never tested — it is not one of iter-14's DEFINITION-OF-DONE items."
+**We chose:** followed iter-14's evaluator, who already read UT-04 as blocking BOTH J-06 and J-07
+(scored `partial`, not `passing`, specifically because of this finding) rather than treating it as
+out-of-contract disclosure. This iteration's entire scope — root-causing and fixing the
+concurrent-load latency, gated PASS/WARN against the committed ≤1.5s budget — builds on that same
+reading, continuing rather than re-litigating it. A human who reads J-06/J-07 literally (no
+concurrent-load latency requirement in either journey's own step text) could instead score both
+`passing` today with UT-04 disclosed as a footnote, in which case this iteration is still legitimate
+hardening but not literally required for GOAL_ACHIEVED.
+**Reversible:** yes
