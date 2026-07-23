@@ -27,9 +27,19 @@ import re
 import sys
 from pathlib import Path
 
-_VERDICT_RE = re.compile(r"\*\*Browser QA Verdict:\*\*\s*([A-Z_]+)")
+# Tolerate markdown emphasis around the verdict word (`**FAIL**`) — agents write it
+# both ways, and a bold cell/headline must never parse as "no verdict" (that once
+# laundered a raw FAIL into a merged PASS at the achievement gate; ops-hardening
+# iters 9/12).
+_VERDICT_RE = re.compile(r"\*\*Browser QA Verdict:\*\*\s*[*_`~\s]*([A-Z_]+)")
 # A results-table data row: | UT-xx | name | type | prio | expected | actual | VERDICT | evidence |
 _ROW_RE = re.compile(r"^\|\s*(UT-[^|]+?)\s*\|(.*)\|\s*$")
+
+
+def _norm_verdict_cell(c: str) -> str:
+    """Strip markdown emphasis/backticks so `**FAIL**`, `_PASS_`, `` `SKIP` ``
+    normalize to the bare verdict word before matching."""
+    return c.strip().strip("*_`~").strip().upper()
 # Column order in the template (after the leading Test ID cell).
 _C_NAME, _C_ACTUAL, _C_EVIDENCE = 0, 4, 6
 
@@ -53,10 +63,21 @@ def parse_rows(text: str) -> "list[dict]":
             continue
         verdict = ""
         for c in cells:
-            cu = c.upper()
+            cu = _norm_verdict_cell(c)
             if cu in ("PASS", "FAIL", "SKIP", "SKIPPED"):
                 verdict = "SKIP" if cu == "SKIPPED" else cu
                 break
+        if not verdict:
+            # Fallback for ANNOTATED verdict cells ("PASS (with caveat)",
+            # "FAIL (see note)") — scan in REVERSE so the verdict column (right of
+            # the free-prose Actual column) wins over any prose that happens to
+            # start with a verdict word. \b keeps "FAILED ..." prose non-matching.
+            for c in reversed(cells):
+                mv = re.match(r"(PASS|FAIL|SKIPPED|SKIP)\b", _norm_verdict_cell(c))
+                if mv:
+                    cu = mv.group(1)
+                    verdict = "SKIP" if cu == "SKIPPED" else cu
+                    break
         rows.append({"test_id": test_id, "cells": cells, "verdict": verdict,
                      "raw": "| " + test_id + " |" + m.group(2) + "|"})
     return rows
@@ -221,14 +242,49 @@ def _self_test() -> int:
         assert file_top_verdict(md) == "SKIPPED", file_top_verdict(md)
         assert "## Skipped Tests" in md
 
-    check("parse_rows", t_parse)
-    check("later_wins_override", t_later_wins)
-    check("real_fail_survives", t_real_fail_survives)
-    check("skipped_only", t_skipped_only)
+    def t_bold_verdicts():
+        # Markdown-bold verdict cells/headlines must parse, not vanish (the vanish
+        # path let compute_overall() see only the PASS rows and return PASS over a
+        # real FAIL — observed live in ops-hardening iters 9/12).
+        bold = (
+            "**Browser QA Verdict:** **FAIL**\n\n## Results Table\n"
+            "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |\n"
+            "|---|---|---|---|---|---|---|---|\n"
+            "| UT-J-01 | Happy path | smoke | P1 | e | ok | **PASS** | a.png |\n"
+            "| UT-J-02 | Crash case | regression | P1 | e | zeros shown | **FAIL** | b.png |\n"
+            "| UT-J-03 | Needs op | regression | P2 | e | no operator | `SKIPPED` | none |\n")
+        rows = parse_rows(bold)
+        assert [r["verdict"] for r in rows] == ["PASS", "FAIL", "SKIP"], rows
+        assert file_top_verdict(bold) == "FAIL", file_top_verdict(bold)
+        md = merge([bold])
+        assert file_top_verdict(md) == "FAIL", file_top_verdict(md)
+
+    def t_annotated_verdicts():
+        # "PASS (with caveat)" / "FAIL (see note)" must parse as their verdict; prose
+        # in the Actual column that merely STARTS with a verdict word must lose to the
+        # real verdict column (reverse scan), and "failed ..." prose must never match.
+        ann = (
+            "**Browser QA Verdict:** FAIL\n\n## Results Table\n"
+            "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |\n"
+            "|---|---|---|---|---|---|---|---|\n"
+            "| UT-A-01 | Caveated ok | ux | P2 | e | banner amber | PASS (with noted caveat) | a.png |\n"
+            "| UT-A-02 | Caveated bad | reg | P1 | e | FAIL: zeros persisted after crash | FAIL (see note) | b.png |\n"
+            "| UT-A-03 | Prose only | reg | P1 | e | step 3 failed early | **PASS** | c.png |\n")
+        rows = parse_rows(ann)
+        assert [r["verdict"] for r in rows] == ["PASS", "FAIL", "PASS"], rows
+
+    checks = [("parse_rows", t_parse),
+              ("later_wins_override", t_later_wins),
+              ("real_fail_survives", t_real_fail_survives),
+              ("skipped_only", t_skipped_only),
+              ("bold_verdicts", t_bold_verdicts),
+              ("annotated_verdicts", t_annotated_verdicts)]
+    for name, fn in checks:
+        check(name, fn)
 
     for f in failures:
         print(f"  FAIL {f}", file=sys.stderr)
-    print(f"[merge_ui_test_results self-test] {4 - len(failures)} passed, {len(failures)} failed")
+    print(f"[merge_ui_test_results self-test] {len(checks) - len(failures)} passed, {len(failures)} failed")
     return 1 if failures else 0
 
 

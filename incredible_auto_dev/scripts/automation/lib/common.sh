@@ -1241,6 +1241,19 @@ verify_ui_artifacts() {
 # Handles both "Frontend Present: yes" (inline) and "## Frontend Present\nyes" (heading)
 detect_frontend_in_plan() {
   local plan_file="$1"
+  # Goal-mode override (ops-hardening iter-8 lesson): when the engine parsed a
+  # non-empty journey list for this iteration (CHAIN_GOAL_TARGET_JOURNEYS, exported
+  # by run-goal.sh), the browser lane MUST run even if the plan says
+  # "Frontend Present: no" — journeys are user-visible by contract, and a mis-written
+  # plan line once silently suppressed ALL browser evidence (iter-8 CLOSURE-FAIL,
+  # worked around since by hand-writing "yes" into every spec). Phase mode is
+  # unaffected: the variable is only ever set by run-goal.sh.
+  if [[ -n "${CHAIN_GOAL_TARGET_JOURNEYS:-}" ]]; then
+    if ! { [[ -f "$plan_file" ]] && grep -qi "frontend present: yes" "$plan_file"; }; then
+      echo "[detect_frontend_in_plan] goal-mode journeys present (${CHAIN_GOAL_TARGET_JOURNEYS}) — forcing browser lane despite plan" >&2
+    fi
+    return 0
+  fi
   [[ -f "$plan_file" ]] || return 1
   grep -qi "frontend present: yes" "$plan_file" && return 0
   grep -Pzoq '(?i)frontend present\s*\n\s*yes' "$plan_file" 2>/dev/null && return 0

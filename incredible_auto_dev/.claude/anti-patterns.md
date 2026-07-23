@@ -338,3 +338,31 @@ This is especially bad for AI-agent scripts: the wrapped `claude` keeps consumin
 **Example (good):** `printf '%s' "$prompt" > "$pf"; jq -cn --rawfile p "$pf" '{prompt:$p}' > req.json 2>/dev/null; [[ -s req.json ]] && jq -e . req.json >/dev/null 2>&1 || { echo "build failed" >&2; return 2; }`
 
 **Detection:** `bash: …: Argument list too long` in engine stderr; a 0-byte `req.*.ready` in the channel dir; the pump claiming a request whose JSON has no fields. 30-second repro: `p="$(head -c 200000 /dev/zero | tr '\0' x)"; jq -cn --arg p "$p" . > /tmp/r.json` fails and leaves `/tmp/r.json` at 0 bytes.
+
+---
+
+## 24. Markdown-styled verdict cells vanish from the machine parser and launder FAIL into PASS
+
+**Applies to:** any parser that extracts machine verdicts (PASS/FAIL/SKIP) from agent-written markdown, and any gate that consumes the parsed result.
+
+**Pattern:** `merge_ui_test_results.py` matched verdict cells with `cell.strip().upper() in ("PASS","FAIL",...)`. Agents legitimately write `**FAIL**`, `` `SKIPPED` ``, or `PASS (with caveat)` — none of which match, so the cell parsed as NO verdict and silently dropped out of `compute_overall()`. With the FAIL rows invisible, the surviving PASS rows made the merged headline PASS while the raw lane file said FAIL — observed live twice (ops-hardening iter-9: 2 bold FAILs → merged PASS handed to the achievement gate; iter-12: header undercount). Auditors caught it both times only by re-reading the raw files.
+
+**Why it fails:** The parser treated "doesn't match my exact format" as "carries no information" at exactly the layer where a dropped FAIL flips a gate outcome. Absence-of-verdict and PASS must never be conflated by a downstream `any(FAIL)` reduction; and agent output formats drift (bold, backticks, annotations) faster than parsers pin them.
+
+**Prevention:** Normalize markdown emphasis (`c.strip().strip("*_`~")`) before matching; accept annotated verdicts via a word-boundary prefix match (`^(PASS|FAIL|SKIPPED|SKIP)\b`) scanned in REVERSE cell order so the verdict column outranks free-prose columns; keep bare-word prose non-matching. Every such parser carries a self-test case with bold/backtick/annotated verdicts wired into `run-evals.sh` (`merge_ui_test_results.py self-test`, cases `bold_verdicts` / `annotated_verdicts`). Rule: a verdict parser change ships with a fixture of REAL agent output that previously mis-parsed.
+
+**Detection:** merged headline disagrees with a raw lane file's headline; `compute_overall` counter shows empty-string verdicts (`Counter({'PASS': n, '': k})`) for rows that visibly carry verdicts.
+
+---
+
+## 25. A plan metadata line can silently suppress an entire verification lane
+
+**Applies to:** goal mode; any pipeline step whose execution is gated on a model-written metadata line rather than on the work the spec demands.
+
+**Pattern:** The browser-QA lane ran only when the orchestrator's plan contained `Frontend Present: yes` (`detect_frontend_in_plan`). In ops-hardening iter-8 the spec itself mis-wrote `Frontend Present: no` while its own DoD named browser journeys to verify — so the ENTIRE browser lane (browser-qa, ui artifacts) was skipped, journeys J-01/J-03/J-04 fell to `unknown`, J-05 stayed `regressed` unverified, and the iteration closed CLOSURE-FAIL. Every later iteration worked around it by hand-writing `Frontend Present: yes` into specs whose diffs contained zero frontend files — a standing landmine had anyone written the honest-looking "no".
+
+**Why it fails:** The gate keyed on a MODEL-authored line (twice removed from ground truth) instead of the engine's own knowledge that this iteration names user journeys — which are user-visible by contract and therefore always need browser evidence. One wrong word in generated prose disabled a verification lane with no error, no log line, and downstream artifacts (`N/A stubs`) that look intentional.
+
+**Prevention:** The engine exports its parsed journey list (`CHAIN_GOAL_TARGET_JOURNEYS`, run-goal.sh) and `detect_frontend_in_plan` (lib/common.sh) force-returns frontend-present whenever it is non-empty, logging the override (`forcing browser lane despite plan`). Phase mode is untouched (the variable is only set by run-goal.sh). Rule: a lane that produces required evidence must be gated on engine-parsed facts (journey list, diff contents), never solely on model-written plan prose; when prose and facts disagree, run the lane and log the contradiction.
+
+**Detection:** a goal iteration whose spec/DoD names `J-` journeys but whose reports directory has `N/A` browser stubs; journeys dropping to `unknown` after an iteration that claimed completion.

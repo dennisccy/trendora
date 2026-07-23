@@ -602,6 +602,27 @@ def _action_phrase(action: dict) -> str:
     return str(t or "")
 
 
+def _act_with_retry(page, action: dict, timeout_ms: int, kind: str) -> None:
+    """click/fill with ONE retry on a TimeoutError, re-resolving the locator fresh.
+    Both actions are idempotent in replay scripts (fill overwrites; clicks are
+    navigational), and a single transient timeout on an otherwise-fine element
+    spuriously FAILed the deterministic replay lane twice (ops-hardening iters
+    12-13 — the LLM lane overturned it both times). Matched by exception NAME
+    because playwright is imported lazily (lint mode runs without it installed)."""
+    for attempt in (1, 2):
+        try:
+            loc = _find(page, action["target"], timeout_ms)
+            if kind == "click":
+                loc.click(timeout=timeout_ms)
+            else:
+                loc.fill(action.get("text", ""), timeout=timeout_ms)
+            return
+        except Exception as exc:  # noqa: BLE001
+            if attempt == 2 or type(exc).__name__ != "TimeoutError":
+                raise
+            page.wait_for_timeout(500)  # brief settle, then the single retry
+
+
 def _do_action(page, action: dict, base_url: str, timeout_ms: int) -> None:
     t = action.get("type")
     if t == "goto":
@@ -619,10 +640,10 @@ def _do_action(page, action: dict, base_url: str, timeout_ms: int) -> None:
         _find(page, action.get("target", {}), timeout_ms)
         return
     if t == "click":
-        _find(page, action["target"], timeout_ms).click(timeout=timeout_ms)
+        _act_with_retry(page, action, timeout_ms, "click")
         return
     if t == "fill":
-        _find(page, action["target"], timeout_ms).fill(action.get("text", ""), timeout=timeout_ms)
+        _act_with_retry(page, action, timeout_ms, "fill")
         return
     if t == "expect":
         if not _check_expect(page, action, timeout_ms):

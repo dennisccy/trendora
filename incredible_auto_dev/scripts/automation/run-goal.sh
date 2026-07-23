@@ -2017,6 +2017,12 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
 
   echo "[run-goal] Iter spec depth: $DEPTH"
   echo "[run-goal] Target journeys: ${TARGET_JOURNEYS:-(none parsed)}"
+  # Expose the parsed journey list to run-phase.sh / browser-qa-phase.sh so
+  # detect_frontend_in_plan (lib/common.sh) forces the browser lane whenever this
+  # iteration names journeys — even if the plan mis-states "Frontend Present: no"
+  # (the iter-8 CLOSURE-FAIL root cause). Exported unconditionally (empty = none)
+  # so a prior iteration's value never leaks forward.
+  export CHAIN_GOAL_TARGET_JOURNEYS="$TARGET_JOURNEYS"
   record_telemetry_event "iter_dispatch" "$(jq -cn --arg d "$DEPTH" --arg tj "$TARGET_JOURNEYS" '{depth:$d, target_journeys:$tj}' 2>/dev/null || printf '{"depth":"%s"}' "$DEPTH")"
 
   # 2c. Join the previous iteration's background showcase tail (if any) BEFORE
@@ -2024,7 +2030,9 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
   # reviewer of THIS iteration see exactly the tree the sequential ordering
   # would have produced. Overlapping it with the decomposer above is where the
   # ~6-13 min saving comes from.
+  _engine_step_begin "showcase-join"
   _join_showcase_tail
+  _engine_step_done
 
   # Tmp hygiene boundary — the per-iteration cleanup step. The previous
   # iteration's background showcase tail has just been joined (its demo
@@ -2046,16 +2054,22 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
     echo "[run-goal] Dispatching FULL pipeline via run-phase.sh ${_full_extra_args[*]} ..."
     if grep -q '\-\-no-finalize' "$SCRIPT_DIR/run-phase.sh"; then
       printf 'full' > "$ITER_DIR/depth-dispatched"   # SPEED-4: cadence streak input (depth that actually runs)
+      _engine_step_begin "full-pipeline"
       bash "$SCRIPT_DIR/run-phase.sh" "$ITER_NAME" "${_full_extra_args[@]}" || _exec_rc=$?
+      _engine_step_done
     else
       echo "[run-goal] run-phase.sh does not yet support --no-finalize. Falling back to lean for safety." >&2
       printf 'lean' > "$ITER_DIR/depth-dispatched"
+      _engine_step_begin "lean-pipeline"
       bash "$SCRIPT_DIR/goal-iter-lean.sh" "$ITER_NAME" || _exec_rc=$?
+      _engine_step_done
     fi
   else
     echo "[run-goal] Dispatching LEAN pipeline via goal-iter-lean.sh ..."
     printf 'lean' > "$ITER_DIR/depth-dispatched"
+    _engine_step_begin "lean-pipeline"
     bash "$SCRIPT_DIR/goal-iter-lean.sh" "$ITER_NAME" || _exec_rc=$?
+    _engine_step_done
   fi
 
   # Transport/dispatch-unavailable (exit 70) from the interactive backend: the
