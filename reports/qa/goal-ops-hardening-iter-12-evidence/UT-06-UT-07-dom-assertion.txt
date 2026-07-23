@@ -1,0 +1,40 @@
+UT-06 / UT-07 — >370-day backfill accepted, no range-cap rejection; live job progress
+NOTE: UT-06-result.png and UT-07-result.png are BLANK captures — same known Chrome-MCP blank-screenshot
+limitation on /data at this scroll depth (see pump note). Evidence below is the live DOM/JS assertion
+taken at the same instant, per the documented workaround.
+
+UT-06 steps: start=2025-06-01, end=2026-07-17 (412 calendar days, > 370), kind=backfill (default), clicked
+Start.
+
+DOM assertion immediately after submit (2s wait, per test-plan step 6):
+  {
+    "statusText": "running",
+    "alertEls": ["DEGRADED — treat today's board with caution. ..." (pre-existing seed/live drift banner,
+      unrelated to date validation)],
+    "startBtnText": "Job running…"
+  }
+  No "date range too large" or any range-cap rejection text anywhere in role="alert" elements or body text.
+
+UT-07 — watched job-status / chunk-progress over successive polls:
+  poll 1 (immediate):  statusText="running", chunkText="chunk 5/5"
+  poll 2 (+1.5s...+9s across 5 polls): statusText="running", chunkText="chunk 5/5" (stable, chunk plan
+    already fully dispatched at 5/5 — chunking derives from import_chunking config, matching the engine's
+    own plan)
+  terminal (after ~13s total): statusText="no new snapshots"
+    Full context: "backfill job · 2025-06-01 -> 2026-07-17 / no new snapshots / chunk 5/5 / backfill: 0
+    snapshots over 283 dates, 0 forward returns / Snapshots backfilled 283/283 dates / 0 snapshots · 0
+    forward returns inserted / 412 calendar days · 283 already snapshotted · 129 non-trading / Refreshed:
+    coverage, membership timeline, research hot keys, drawdown expectations / Zero-work outcome — every
+    requested trading day already had a snapshot ..."
+  Badge className: "...border-border bg-surface-2 text-text-muted..." — neutral/gray, NOT the green
+    border-pos/text-pos styling used for a genuine "ok" success badge (confirmed via a direct comparison
+    query against an "ok" badge elsewhere in Run history) — i.e. visually distinct from a productive
+    success presentation, never an unexplained green badge for zero created snapshots.
+
+Cross-check via logs/backend.log: this run's post-completion forward-aggregate warm step hit the
+already-known AG-8 MemoryError once ("ingest forward-aggregate warm aborted at horizon 1 — memory
+pressure, stopping remaining horizons in this loop") — caught internally, non-fatal, zero HTTP 500s in the
+surrounding 85+ request window (see UT-15 notes). This is the PRE-EXISTING, already-flagged AG-8 issue, not
+a new regression, and it did not affect this job's own honest "no new snapshots" completion.
+
+Verdict: UT-06 PASS, UT-07 PASS

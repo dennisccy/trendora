@@ -1,0 +1,28 @@
+UT-05 — Backfill form rejects a malformed date (validation)
+NOTE: UT-05-result.png is a BLANK capture — Chrome-MCP's screenshot action returned a blank frame at this
+scroll depth on /data (the known page-height/capture limitation flagged in the pump note: /data is
+~17,800px tall and screenshot reliably blanks out deep in the DOM). Per the pump note's documented
+workaround, this test's evidence is the live DOM/JS assertion taken at the same instant instead.
+
+Steps performed:
+  1. Navigated to http://localhost:3255/data
+  2. Clicked [data-testid="job-start-date"], selected all (Ctrl+A), typed "2026-13-40"
+
+DOM assertion result (eval'd immediately after typing):
+  {
+    "value": "2026-13-40",
+    "inputClasses": "... border-neg focus-visible:ring-neg" (red/negative border+ring styling applied),
+    "errorText": "Enter a valid date as yyyy-MM-dd",
+    "startBtnText": "Start",
+    "startBtnDisabled": true
+  }
+
+Expected vs actual:
+  - Red inline error below the Start date field reading exactly "Enter a valid date as yyyy-MM-dd" — MATCH
+    (data-testid="job-start-date-error" resolved to this exact text)
+  - Input border turns red (invalid state) — MATCH (className includes border-neg/ring-neg)
+  - Start submit button disabled — MATCH (startBtnDisabled: true)
+  - No job created / no POST to /api/data/jobs — confirmed no request fired (button was disabled, and no
+    corresponding "POST /api/data/jobs" line appears in logs/backend.log for this window)
+
+Verdict: PASS

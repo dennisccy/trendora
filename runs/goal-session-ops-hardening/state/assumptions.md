@@ -466,3 +466,36 @@ a stored artifact), (b) goal.md's acceptance wording is amended to name a record
 (or any product-facing decomposer's) scope to invent. Did not touch `scripts/automation/*` per the
 maintenance protocol.
 **Reversible:** yes
+
+## iter-12 — goal-evaluator
+
+**Ambiguity:** J-06 step 2 says "assert every measurement is within budget" (and the success criterion is
+"page loads stay within committed never-regress budgets"), but the Acceptance's "Honest status & anti-goals"
+bullet contemplates something "slower than its budget" as long as it degrades honestly (no frozen/blank
+frame). The G2 control confirmed `/api/indexes?full=true` is 43–51% over its ≤1.5 s budget on an idle host,
+yet `/data` renders fully (panel populated, Ready badge). The two clauses pull opposite directions on whether
+J-06 can be `passing`.
+**We chose:** read step 2 / the success criterion as the primary gate (loads must stay within budget) and the
+honest-status bullet as a defensive AG-8-tie-in fallback (IF over budget, still degrade honestly — not "over
+budget is fine"). So scored J-06 `partial`, not `passing`, rejecting the audit's PASS_WITH_GAPS "may be scored
+passing" recommendation. The graceful-degradation clause IS satisfied (opened `UT-04-result-top.png`), which
+keeps this a latency shortfall rather than an AG-8 crash — but a committed budget breached by half on an idle
+host is a real J-06 failure, not a pass. A human who reads the honest-status bullet as licensing "over budget
+but honest = pass" would score J-06 `passing` (all five Must-haves then passing, still GOAL_ACHIEVED-blocked
+by AG-8 + the walkthrough). Reversible.
+**Reversible:** yes
+
+## iter-12 — goal-evaluator
+
+**Ambiguity:** Decision-tree C.1 reads "a critical anti-goal violation is unresolved → REGRESSION." AG-8
+(`forward_testing.py:826` unbounded load) is unresolved and fired live again this iteration (3-for-3 on the
+sampled runs). Read literally, C.1 halts.
+**We chose:** did NOT fire REGRESSION — same reading iters 8/9/10/11 applied (and the human ratified by
+continuing the session each time). C.1's halt is for a violation this iteration INTRODUCED, WORSENED, or NEWLY
+DISCOVERED; this one is none: the product diff is literally empty (`iter-diff.md` "(no changes)", scan CLEAN,
+coherence-verified), and the blast radius was SMALLER than iter-11 (caught internally, zero client-facing 500s
+vs iter-11's two). Recorded it critical + unresolved so it still hard-blocks GOAL_ACHIEVED and cannot be
+quietly dropped; withheld only the redundant halt on a decision the human has already made four times. A human
+reading C.1 literally may still halt here — the eval's Halt Justification says so and lists the four owner
+unblock options.
+**Reversible:** yes

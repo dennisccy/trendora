@@ -492,3 +492,55 @@ browser lane needs them restarted. Carried framework items unchanged (`merge_ui_
 FAIL-cell drop, `Frontend Present: no` misrouting, iter-11 `status.json` stuck at `dev_complete`, the
 pre-existing `test_db.py::test_create_all_produces_expected_tables` failure). Nit: browser-qa artifacts
 stamp local times with a `Z` suffix.
+
+## Iteration 12 — goal-ops-hardening-iter-12
+
+**Date:** 2026-07-23T02:00:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: none
+- Advanced but not passing: **J-06 stays `partial`** — its two agent-owned EVIDENCE gaps (G1 sweep
+  transcription, G2 `/api/indexes` control measurement) are genuinely CLOSED in canonical
+  `reports/perf-budgets.md`, but the G2 evidence confirms the endpoint is genuinely over budget (below).
+- Re-verified passing: J-01, J-03, J-05 (LLM lane; deterministic replay FAILed on the recurring step-02
+  golden `fill` flake, reconciled+overturned per the results footer — merged file wins). J-04 (LLM lane).
+- Newly failing: none. Regressed: none (no journey moved passing→failing).
+- Anti-goal violations: **AG-8 (iter-9 entry, critical) still UNRESOLVED** — fired live 3-for-3 this
+  iteration (runs 120/121/122 forward-aggregate warm aborts; `logs/backend.log:26920/27185/27233`) but caught
+  internally with ZERO client-facing 500s (smaller blast radius than iter-11's two 500s). Product diff empty
+  → not introduced/worsened → recorded critical+unresolved, REGRESSION NOT re-fired. scan-report CLEAN;
+  iter-diff "(no changes)"; coherence COHERENCE-PASS; all AG-10 records resolved (pytest host-guard-confined).
+
+**Reasoning:** The iteration did honest, complete evidence work on an empty product diff (only
+`reports/perf-budgets.md` changed; review PASS, QA PASS, audit PASS_WITH_GAPS which itself transcribed the
+three G2 readings into the canonical file — B1 fix). G1 and G2 are now closed in the single-source artifact
+J-06's acceptance requires. But I scored J-06 `partial`, NOT `passing` (rejecting the audit's "may be scored
+passing" recommendation), because the G2 evidence IS the finding: three cache-disabled fresh-Chrome readings
+of `GET /api/indexes?full=true` on `/data` land at 2257.7/2148.2/2138.7 ms against a committed ≤1.5 s budget
+— 43–51% over — on a verifiably idle host (load1 1.48–1.83 <2.0, mem_avail ~18 GB, no concurrent ingest per
+`logs/backend.log`+`hwmon.csv`), ruling IN a real over-budget condition rather than iter-11's dismissed
+"ambient contention." J-06 step 2 literally requires "assert every measurement is within budget" and the
+success criterion is "page loads stay within committed never-regress budgets" — both fail for `/data`. The
+endpoint was ~0.87 s in iter-6, so this is a real product slowdown as the basis grew, disclosed but not
+fixed. Scoring it passing would launder that into a green check; the owner would rather see the honest
+blocker. I opened `UT-04-result-top.png` myself: `/data` renders fully (Ready badge, coverage tiles
+populated, no frozen/blank frame), so the honest-status/graceful-degradation acceptance clause holds — this
+is a latency shortfall, not an AG-8-class crash. Spot-checked J-04 and J-05 screenshots (both corroborate
+recorded passing). Rejected REGRESSION: no journey passing→failing; AG-8 is the carried, human-known,
+four-times-deferred entry (iter-8/9/10/11), product diff literally empty, blast radius smaller than iter-11
+— nothing introduced/worsened. Rejected STALLED: bringing `/api/indexes` into budget via goal.md aggregation
+candidate #7 (normalized index series keyed cache at ingest) is concrete agent-owned J-06 work. Rejected
+GOAL_ACHIEVED: J-06 partial + AG-8 unresolved. Coherence PASS → no consolidation mandate. Progress made →
+CONTINUE.
+
+**Next-step recommendation:** FULL depth, two separated tracks. (1) AGENT: bring `/api/indexes?full=true` on
+`/data` into its ≤1.5 s budget via aggregation candidate #7 (keyed normalized-index-series cache warmed at
+ingest; serve a stored row instead of a ~2.2 s per-request `full=true` compute) — the single item between
+J-06 and `passing` besides the walkthrough. (2) OWNER DECISIONS, do not let an agent invent any (each
+independently hard-blocks GOAL_ACHIEVED): AG-8 `forward_testing.py:826` unbounded load (rewrite/amend/defer);
+the `/api/indexes` budget-raise-vs-fix choice (a conscious logged budget change, never a silent loosening);
+`HOST_GUARD_REQUIRE_MARKERS`; the `[NEW] demo.sh --session-live` walkthrough (no autonomous mechanism —
+decomposer proved this by reading run-goal.sh). Framework-maintainer items carried: `merge_ui_test_results.py`
+dropped-`**FAIL**` cells, `Frontend Present: no` misrouting, the golden-replay step-02 flake, undisclosed
+`J-05.json` fixture edit (audit T2), pre-existing `test_db.py::test_create_all_produces_expected_tables`.

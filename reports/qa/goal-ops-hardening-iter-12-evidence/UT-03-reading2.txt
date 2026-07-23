@@ -1,0 +1,24 @@
+UT-03 — G2 control reading #2 (independent fresh navigation, second new tab, distinct from UT-02's tab)
+
+Tab: new_tab (fresh, never reused; distinct from UT-02's tab)
+Navigation target: http://localhost:3255/data
+
+Resource Timing API readings:
+  /api/indexes?full=true request start:  2026-07-22T22:43:49.607Z
+  /api/indexes?full=true request end:    2026-07-22T22:43:51.756Z
+  Duration:                              2148.2 ms
+
+Budget: <= 1500 ms
+Result: HOLDS: NO — WARN, over budget by 648.2 ms
+
+Idle-window cross-check:
+  logs/backend.log: "GET /api/indexes?full=true HTTP/1.1" 200 OK logged; surrounding traffic is only
+    /api/health, /api/data, /api/runs, /api/methodology, /api/data/availability — no backfill/fetch/rebuild
+    job-start line in this window.
+  logs/hwmon/hwmon.csv rows nearest 2026-07-22T22:43:49-52Z (epoch 1784760229-1784760232):
+    load1: 1.63-1.66 (< 2.0 idle baseline — holds)
+    mem_avail_mb: ~18,446-18,624 MB (comfortably positive, no near-OOM signal)
+
+DOM state after load:
+  [data-testid="index-vendor-loading"] absent (loadingGone: true)
+  [data-testid="index-vendor-panel"] populated with real provenance text (same panel copy as UT-02).

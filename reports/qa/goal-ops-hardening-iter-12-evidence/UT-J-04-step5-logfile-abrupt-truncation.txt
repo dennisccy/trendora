@@ -1,0 +1,27 @@
+J-04 step 5 — persistent backend logfile shows boot events + abrupt truncation after a kill
+(live re-confirmation this iteration, 2026-07-22)
+
+logs/backend.log grep results (this iteration's own live check):
+
+  "Started server process [2080333]"  — logs/backend.log:26731
+  NO matching "Finished server process [2080333]" line ANYWHERE in the file (confirmed via
+  `grep -n "2080333" logs/backend.log` returning only the one Started line) — the persistent record of a
+  process that was killed (not cleanly shut down) survives, unmodified, in this iteration's log file.
+
+Contrast — a clean shutdown DOES leave both lines, e.g. pid 2100030:
+  "Started server process [2100030]"  — logs/backend.log:26783
+  "Finished server process [2100030]" — logs/backend.log:26838
+
+This iteration's own log therefore still evidences: boot entries are present for every process (including
+the killed one), and the killed process's entry ends abruptly with no clean-shutdown line — exactly the
+acceptance J-04 step 5 requires ("the log ends abruptly — boot entries present, no clean-shutdown entry").
+
+Also visible in this same log file, from TODAY's own service-management restarts (not triggered by this
+QA agent — pre-existing operator/pump restarts before this dispatch began):
+  "=== start-backend.sh: launching at 2026-07-22T22:23:21Z ===" -> pid 2503641 -> clean "Finished server
+    process [2503641]" shutdown line present.
+  "=== start-backend.sh: launching at 2026-07-22T22:37:13Z ===" -> pid 2539173 (current live backend) ->
+    "Application startup complete" logged immediately, followed immediately by 200 OK health/data
+    responses with no delay — a genuine, fresh, real restart-then-immediately-serving observation from
+    earlier in this exact session (see J-05 step 3 note for how this same restart evidences cold-start
+    coverage-from-storage).

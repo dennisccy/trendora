@@ -1,0 +1,25 @@
+J-04 step 6 — a job mid-flight at a kill now shows an explicit interrupted/error state with its last
+persisted progress, never a still-"running" row with no living process
+(live re-confirmation this iteration, 2026-07-22, via GET /api/data and DOM query on /data)
+
+GET /api/data → runs[] entries with status="interrupted" (live, current backend pid 2539173, confirmed
+surviving multiple restarts today: 22:23:21Z and 22:37:13Z):
+
+  run 124: interrupted, started 2026-07-22T21:25:33.869496, backfill, 0 snapshots
+  run 119: interrupted, started 2026-07-22T19:30:48.536633, backfill, 117 snapshots  (real non-zero progress)
+  run 114: interrupted, started 2026-07-22T17:37:09.676380, backfill, 59 snapshots   (real non-zero progress)
+  run 113: interrupted, started 2026-07-22T11:42:42.898702, backfill, 0 snapshots
+  run 110: interrupted, started 2026-07-22T10:52:27.899458, backfill, 0 snapshots
+  (plus 94/88/82/79 from 2026-07-20/21, all still interrupted)
+
+DOM confirmation on /data's "Run history" table (this iteration's own live query):
+  Row for run 124 (2026-07-22 21:25:33, backfill, 2025-06-01 -> 2026-07-17):
+    [data-testid="run-status"] badge text: "interrupted"
+    badge className: "...border-border bg-surface-2 text-text-muted..." (neutral styling, NOT the green
+    border-pos/text-pos styling used for "ok" — see UT-J-01's step 8 styling comparison)
+  Never shows "running" with a spinner — no living process corresponds to this row (pid 2080333, the
+  process active when this run was interrupted, has no "Finished server process" line in the log — see
+  step 5 evidence file — and the backend has since restarted multiple times).
+
+This confirms J-04 step 6's acceptance is intact and durable across today's restarts, using rows that
+predate this QA agent's own dispatch (i.e., genuinely survived real restart/crash cycles, not fabricated).

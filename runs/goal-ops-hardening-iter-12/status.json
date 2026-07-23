@@ -1,0 +1,31 @@
+{
+  "phase": "goal-ops-hardening-iter-12",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-07-22T23:59:00.325679Z",
+  "started_at": "2026-07-22T21:30:40.118023Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-12-dev.md",
+    "reports/phase-goal-ops-hardening-iter-12-implementation-summary.md",
+    "runs/goal-ops-hardening-iter-12/status.json"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "review",
+  "verify_only_pass": {
+    "evidence_claim_registered": false,
+    "product_source_diff_empty": true,
+    "ledgers_diff_empty": true,
+    "g1_transcription": "CLOSED -- reports/perf-budgets.md lines ~1734-1826, verified verbatim against reports/qa/goal-ops-hardening-iter-11-evidence/UT-J-06-perf-sweep-summary.txt (all 11 pages' TTI, every endpoint-latency reading, both /api/indexes?full=true over-budget readings 2066.3ms/2671.8ms, the /api/health 2948.8ms outlier, console-capture caveat).",
+    "g2_preparation": "NOT CLOSED (by design) -- reports/perf-budgets.md lines ~1827-1865, developer-side idle-window logs/backend.log + logs/hwmon/hwmon.csv cross-read complete and verified; the three-load real-Chrome measurement itself remains browser-qa-agent's own pass per this iteration's plan.",
+    "tc4_audit_correction": "CLOSED -- reports/perf-budgets.md lines ~1866-1891, names apps/backend/app/engine/forward_testing.py:826 (compute_forward_aggregates MISS/compute path) as the site iter-11's cache-HIT-only audit never examined; zero code modification confirmed.",
+    "data_provider_runs_finding": "Rows 120/121/122 read read-only via sqlite3 against apps/backend/data/trendora.db. latest_snapshot/market_phase absence is design-consistent (prog.new_snapshot_dates empty on all 3, snapshots_created=0). forward_aggregates absence is a live MemoryError abort on all 3 rows (logs/backend.log:26920/27185/27233, all rooted at forward_testing.py:826/842) -- the already-flagged AG-8 defect, reconfirmed 3-for-3, not a new discovery. J-05's own 5-item contract (docs/goal.md) is confirmed INTACT -- forward_aggregates/drawdown_expectations were never part of J-05's contract (added under J-06 scope, iter-5/iter-7).",
+    "targeted_tests": "apps/backend/tests/test_data_manager_jobs_pipeline.py (inherited from prior turn's completed background run); apps/backend/tests/test_forward_testing.py --deselect test_walk_forward_asof_dates_are_real_trading_days_with_full_horizon (run this turn, foreground-monitored to completion) -- both host-guard confined (taskset -c 0-3,8-11 + OMP/OPENBLAS/MKL/NUMEXPR_NUM_THREADS=4)",
+    "targeted_tests_result": "test_data_manager_jobs_pipeline.py: 21 passed (626.58s); test_forward_testing.py: 82 passed, 1 deselected (736.32s) -- combined 103 passed, 1 deselected, 0 failed. Zero NEW failures; pre-existing tests/test_db.py::test_create_all_produces_expected_tables not in this subset, not re-triggered.",
+    "finding": "Zero source files changed this iteration (git diff --stat -- apps/backend apps/frontend empty). J-06's G1 gap fully closed; G2's developer-side prep done, three-load browser measurement remains browser-qa-agent's pass; TC-4 audit correction closed; data_provider_runs 120/121/122 read confirms J-05's contract intact while reconfirming (not newly discovering) the critical, explicitly out-of-scope AG-8 forward_aggregates MemoryError as a live 3-for-3 failure. J-01/J-03/J-04/J-05 required-still-passing replay and the G2 three-load browser measurement are browser-qa-agent/QA's own downstream stage, not developer scope, per this session's established precedent (iter-9/iter-11)."
+  },
+  "browser_checks_status": "deferred_to_browser_qa_agent"
+}

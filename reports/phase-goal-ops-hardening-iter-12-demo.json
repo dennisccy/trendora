@@ -1,0 +1,81 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-12",
+  "base_url": "http://localhost:3255",
+  "iteration": 12,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Today's market read, ready instantly",
+      "narration": "The Dashboard opens straight to today's Market Phase & Severity read. There's no waiting for a live recalculation — it's served from data that was already worked out ahead of time.",
+      "point_out": "The phase badge and the 'as of' date fill in almost immediately, and the top-bar status badge already reads Ready.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Pullback" }
+    },
+    {
+      "n": 2,
+      "title": "Open the Data Manager",
+      "narration": "One click from the dashboard reaches the Data Manager, where the team can see exactly what data is covered and where the gaps are.",
+      "point_out": "The provenance panel lists every index and benchmark with its real data vendor and first-bar date — never a guess or a placeholder.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Data Manager" } },
+      "expect": { "text": "S&P 500" }
+    },
+    {
+      "n": 3,
+      "title": "Friendly, immediate validation",
+      "narration": "Typing an impossible date is caught right away, with a clear message and the submit button disabled — no confusing errors after the fact.",
+      "point_out": "The red inline message appears the instant the date fails to parse.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "label": "Start date" }, "text": "2026-13-40" },
+      "expect": { "text": "Enter a valid date as yyyy-MM-dd" }
+    },
+    {
+      "n": 4,
+      "title": "Backfill history is real, and it sticks",
+      "narration": "The Run History table remembers every backfill exactly as it finished — even a request spanning more than a year — with an honest breakdown of what was already covered.",
+      "point_out": "A 2025-06-01 to 2026-07-17 request (412 days) is listed with its full breakdown: already-snapshotted and non-trading days accounted for, no artificial cap on the range, and nothing lost on a page reload.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "412 calendar days" }
+    },
+    {
+      "n": 5,
+      "title": "Every trading day's scan, ready the instant the page loads",
+      "narration": "The Scanner Runs list shows every day's market regime and candidate counts the moment the page finishes loading — pulled from work that was already done, never calculated on the spot.",
+      "point_out": "Rows are fully populated the instant the loading skeleton clears — no spinners, no dashes standing in for real numbers.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/scanner-runs" },
+      "expect": { "text": "Narrow leadership" }
+    },
+    {
+      "n": 6,
+      "title": "Drill into one day's leaderboard",
+      "narration": "Clicking any date opens that day's exact, unchanging scanner leaderboard — the same numbers stored from that day, never recomputed after the fact.",
+      "point_out": "The top-ranked tickers and candidate counts match the underlying stored data exactly.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "2026-07-17" } },
+      "expect": { "text": "TRV" }
+    }
+  ]
+}

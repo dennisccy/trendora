@@ -262,3 +262,17 @@ source (verified by mtime: file 20:24Z, sweep 20:38–20:52Z). Check the artifac
 the lane's timestamps before scoring any "recorded in the budgets table" step.
 **Applies to:** any iteration whose DoD says "record X in `reports/perf-budgets.md`" while X is
 produced by browser-qa rather than by the developer.
+
+## iter-12 — 2026-07-23T02:00:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Closing a journey's EVIDENCE gap is not the same as the journey passing — the evidence can be the
+adverse finding. J-06's G1/G2 measurement work was completed correctly and in full, yet the G2 control
+reading it produced (`/api/indexes?full=true` at 2.1–2.3 s vs a committed ≤1.5 s budget, on a verifiably idle
+host) is exactly the shortfall that keeps J-06 out of `passing`. The audit recommended `passing` because the
+work was done; the honest score is `partial` because J-06's own step-2 assertion ("every measurement within
+budget") fails. Score on the contract, not on the fact that a measurement happened — and when a real number
+contradicts a "may pass" prose recommendation, the number wins.
+**Applies to:** any iteration whose target is "measure-and-record" work against committed budgets
+(`reports/perf-budgets.md`), and any evaluator tempted to accept a downstream agent's "may be scored passing"
+when the recorded measurement breaches the acceptance metric.

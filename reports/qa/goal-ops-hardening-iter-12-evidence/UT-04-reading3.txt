@@ -1,0 +1,37 @@
+UT-04 — G2 control reading #3 (independent fresh navigation, third new tab, distinct from UT-02's and UT-03's)
+
+Tab: new_tab (fresh, never reused; distinct from UT-02's and UT-03's tabs)
+Navigation target: http://localhost:3255/data
+
+Resource Timing API readings:
+  /api/indexes?full=true request start:  2026-07-22T22:44:15.122Z
+  /api/indexes?full=true request end:    2026-07-22T22:44:17.261Z
+  Duration:                              2138.7 ms
+
+Budget: <= 1500 ms
+Result: HOLDS: NO — WARN, over budget by 638.7 ms
+
+Idle-window cross-check:
+  logs/backend.log: "GET /api/indexes?full=true HTTP/1.1" 200 OK logged; surrounding traffic is only
+    /api/health, /api/data/availability, /api/runs — no backfill/fetch/rebuild job-start line in this window.
+  logs/hwmon/hwmon.csv rows nearest 2026-07-22T22:44:15-18Z (epoch 1784760255-1784760258):
+    load1: 1.83 (< 2.0 idle baseline — holds, though trending upward across the three readings:
+      1.48 -> 1.66 -> 1.83, most plausibly attributable to this QA agent's own tool-call/browser-tab
+      overhead accumulating across three fresh-tab navigations plus the ambient Chrome MCP session, not a
+      backend job — no job-start log line corroborates any ingest activity)
+    mem_avail_mb: ~18,203-18,215 MB (comfortably positive, no near-OOM signal)
+
+DOM state after load:
+  [data-testid="index-vendor-loading"] absent (loadingGone: true)
+  [data-testid="index-vendor-panel"] populated with real provenance text (same panel copy as UT-02/UT-03).
+
+=== Combined G2 summary (UT-02/03/04) ===
+  Reading 1: 2257.7 ms — WARN, over by 757.7 ms
+  Reading 2: 2148.2 ms — WARN, over by 648.2 ms
+  Reading 3: 2138.7 ms — WARN, over by 638.7 ms
+All three readings independently confirm GET /api/indexes?full=true exceeds the <=1.5s budget under a
+genuinely idle, no-concurrent-ingest host (load1 1.48-1.83, mem_avail ~18.2-18.8 GB throughout) — this is
+the first genuine like-for-like control for the over-budget reading first disclosed in iter-11
+(2066.3ms/2671.8ms), confirming it was NOT an artifact of ambient host contention or a concurrent
+MemoryError-adjacent event: all three fresh, controlled readings this iteration land consistently in the
+~2.1-2.3s range, none silently omitted or averaged into a single favorable number.

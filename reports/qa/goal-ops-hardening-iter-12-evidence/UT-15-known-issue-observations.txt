@@ -1,0 +1,33 @@
+UT-15 — Known-issue watch: cache-miss MemoryError degrades honestly (AG-8 awareness, informational P2)
+
+Observed TWICE this iteration (both non-fatal, both zero client-facing impact):
+
+1) During UT-06/UT-07's >370-day backfill (2025-06-01 -> 2026-07-17) post-completion forward-aggregate
+   warm pass:
+   logs/backend.log: "ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping
+   remaining horizons in this loop" with traceback through
+   data_manager.py:3229 _refresh_ingest_aggregates -> forward_testing.py:987 forward_aggregates_cached ->
+   compute_forward_aggregates -> MemoryError.
+   Surrounding window (85+ requests immediately after): zero HTTP 500 responses — all /api/data,
+   /api/health, /api/indexes, /api/runs calls continued returning 200 OK.
+
+2) During J-01 step 5's weekend-only backfill (2026-05-02 -> 2026-05-03, 0 dates in range):
+   logs/backend.log: "ingest forward-aggregate warm failed (non-fatal)" with the same
+   compute_forward_aggregates -> MemoryError traceback.
+   Job still reached its correct terminal "no new snapshots" state with the correct breakdown; no 500 in
+   the surrounding window.
+
+Both occurrences confirm the ALREADY-FLAGGED critical AG-8 issue (compute_forward_aggregates' unbounded
+ScannerResult load on a cache miss) is real and reproducible even on small-scope jobs (it does not appear
+to be scoped to the incremental date range — it fired even on a 0-new-date job), but in every observation
+this iteration the backend's own internal exception handling caught it before it could reach any client
+request path: no HTTP 500, no blank page, no unstyled stack trace was ever served to the browser. The
+/data coverage section was confirmed populated and healthy immediately after each occurrence (see UT-08,
+UT-J-01 evidence).
+
+This is the PRE-EXISTING, already-flagged critical issue named in this iteration's TC-4 audit-correction
+addendum (reports/perf-budgets.md) — recorded here as the known defect per the test plan's explicit
+instruction, not as a new finding. Per the test plan, UT-15 is informational only and does not gate this
+iteration's PASS verdict; the AG-8 fix itself remains an explicit out-of-scope OWNER decision.
+
+Verdict: PASS (informational) — "triggered", degraded honestly, zero client-facing impact both times.
