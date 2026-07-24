@@ -1,30 +1,31 @@
 # Goal Session Summary — ops-hardening
 
-**Final verdict:** STALLED
-**Total iterations:** 16
-**Wall time (seconds):** 28154
+**Final verdict:** ABORTED
+**Total iterations:** 18
+**Wall time (seconds):** 44603
 **Quota pauses:** 0
 **Started:** 2026-07-19T13:57:02.848410Z
-**Finished:** 2026-07-23T17:04:03.364465Z
+**Finished:** 2026-07-24T08:04:15.099887Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/ops-hardening`. Open a PR with:
 
     gh pr create --base main --head goal/ops-hardening \
-      --title "feat: ops-hardening — STALLED" \
+      --title "feat: ops-hardening — ABORTED" \
       --body-file runs/goal-session-ops-hardening/summary.md
 
 ## Final journey state
 
 | Journey | Status | Last passing iter |
 |---|---|---|
-| J-01 | passing | goal-ops-hardening-iter-15 |
-| J-03 | passing | goal-ops-hardening-iter-15 |
+| J-01 | passing | goal-ops-hardening-iter-17 |
+| J-03 | passing | goal-ops-hardening-iter-17 |
 | J-04 | passing | goal-ops-hardening-iter-15 |
-| J-05 | passing | goal-ops-hardening-iter-15 |
+| J-05 | passing | goal-ops-hardening-iter-17 |
 | J-06 | partial | - |
 | J-07 | partial | - |
+| J-08 | partial | - |
 
 ## Anti-goal violations
 
@@ -36,6 +37,7 @@ This session pushed iteration commits to `goal/ops-hardening`. Open a PR with:
 - [critical] AG-8 (distinct dimension) — Resilience to data-shape and data-scale change: unbounded whole-table ORM loads are forbidden on the deep basis and an existing page must never exhaust the service's memory. The forward_aggregates_cached -> compute_forward_aggregates -> large ScannerResult path raises MemoryError on the grown live dev DB. (iter goal-ops-hardening-iter-9)
 - [minor] AG-10 - Host resource ceiling: heavy compute - backfills, full-universe rebuilds, measurement passes, load drills, TEST-SUITE BURSTS - MUST be launched only via the project launch scripts and those scripts MUST apply the host-guard caps. (iter goal-ops-hardening-iter-10)
 - [critical] AG-8 (iter-9 forward_aggregates_cached dimension) — observed-severity ESCALATION: the unbounded forward_testing.py:826 ScannerResult load, under concurrent load, wedged the ENTIRE backend into a full ~12-minute availability outage requiring an operator hard-restart — no longer merely a silent internal abort. (iter goal-ops-hardening-iter-13)
+- [minor] AG-10 — Host resource ceiling: heavy compute MUST be launched only via the project launch scripts, which apply the host-guard caps; never bypass them. (iter goal-ops-hardening-iter-17)
 
 ## Telemetry
 
@@ -190,15 +192,35 @@ See `runs/goal-session-ops-hardening/telemetry.jsonl` for the structured event l
       engine:showcase-join         5.7m
       pump-wait                  2.9m
       overlap saved             27.4m  (parallel steps)
-  session: 16 completed iteration(s), mean wall 245.2m
-      total goal-decomposer            219.1m
-      total goal-evaluator             212.9m
-      total iteration-summarizer       163.3m
+  goal-ops-hardening-iter-16  depth=full  verdict=CONTINUE  wall=212.6m
+      goal-decomposer             21.8m  calls=1
+      goal-evaluator              12.3m  calls=1
+      coherence-auditor            7.3m  calls=1
+      engine:full-pipeline       171.2m
+      engine:showcase-join         0.0m
+      pump-wait                  3.1m
+      unattributed (glue)        0.0m
+  goal-ops-hardening-iter-17  depth=full  verdict=CONTINUE  wall=517.3m
+      iteration-summarizer        18.8m  calls=1
+      goal-decomposer             18.8m  calls=1
+      goal-evaluator              15.9m  calls=1  failures=1
+      readme-maintainer            8.8m  calls=1
+      coherence-auditor            4.5m  calls=1  failures=1
+      engine:full-pipeline       469.2m
+      engine:showcase-join         8.9m
+      pump-wait                  1.5m
+      overlap saved             27.5m  (parallel steps)
+  goal-ops-hardening-iter-18  depth=?  verdict=?  wall=?  (incomplete/interrupted attempt)
+      goal-decomposer             13.2m  calls=1  failures=1
+  session: 18 completed iteration(s), mean wall 258.5m
+      total goal-decomposer            272.8m
+      total goal-evaluator             241.1m
+      total iteration-summarizer       182.1m
       total browser-qa-agent           117.3m
-      total coherence-auditor           58.8m
+      total coherence-auditor           70.6m
       total developer                   54.7m
-      total readme-maintainer           41.1m
+      total readme-maintainer           49.9m
       total reviewer                     8.5m
       total AWAITING_PUMP paused gaps: 9.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED, DECOMPOSER_FAILED
 ```

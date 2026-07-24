@@ -3152,3 +3152,71 @@ for; not a new finding against the claim.
 **Verdict: PASS, confirmed independently** — this is the one item in this pass this developer session could
 re-run itself (a plain, idempotent `GET /api/health`) without touching any service state, and it reproduces
 exactly.
+
+---
+
+## Iteration 18 — TC-9 deep-basis `/backtest` re-measurement WITH per-request instrumentation (2026-07-24, operator-supervised)
+
+**This is the measurement iter-15/16/17 could not make: with iter-18's per-request phase timing now emitting
+`backtest_timing` lines to `logs/backend.log`, the previously-undiagnosed `/backtest` latency mechanism is
+resolved — not "still indeterminate."**
+
+**Protocol (host-guard + full ritual, ONE pass):** main backend launched via `scripts/start-backend.sh` on
+the deep basis (`apps/backend/data/trendora.db`, 4,939 MB — forward_returns 3,946,835 / scanner_results
+777,223 / max price date 2026-07-22, the exact iter-16 basis), pid 2388404, `/proc`-verified caps: affinity
+`0-3,8-11`, `Max address space 6,442,450,944` (6144 MB), `MALLOC_ARENA_MAX=2`, `OMP=OPENBLAS_NUM_THREADS=4`.
+Canonical 1 Hz `hwmon` sampler live (`project-extensions/host-guard/hwmon-log.sh`, pid 29286); thermal
+watchdog armed (abort Tctl ≥95 °C/10 s, DIMM ≥85, NVMe ≥75). Host cooled to 47 °C tctl at start.
+Load: **6 concurrent `GET /api/backtest` pollers, sustained 180 s** (the "6 concurrent" incident shape this
+file's Item A already names) — read-only; the ingest-window overlay was deliberately NOT triggered this pass
+(see the TC-10 note below). Raw per-request client-side data: `runs/goal-ops-hardening-iter-18/tc9-backtest-poll.csv`.
+
+**Client-side latency (966 requests, all HTTP 200, all `evidence_status: ready`):**
+
+| metric | value | budget |
+|---|---|---|
+| breaches (> 1.5 s) | **0 / 966 (0.0 %)** | — |
+| min / mean / p50 | 1.003 / 1.083 / 1.080 s | — |
+| p90 / p99 / **max** | 1.123 / 1.167 / **1.271 s** | ≤ 1.5 s ✅ (holds under pure 6× concurrent reads) |
+
+**Server-side per-phase breakdown, same 966 requests (from `backtest_timing`), vs the single-threaded warm baseline:**
+
+| phase | single-threaded warm | under 6× concurrency (mean) | share of server total | interpretation |
+|---|---|---|---|---|
+| `backfill_forward_returns_ms` | ~175 ms | **881 ms (p99 964, max 999)** | **82.2 %** | the create-once forward_returns **SQLite INSERT** on the read path — balloons ~5× under load |
+| `scorecard_ms` | ~22 ms | 179 ms | 16.6 % | secondary contention on the shared write/connection |
+| `evidence_ms` (`resolved_forward_aggregate_evidence`, pure read) | ~63 ms first / ~3 ms warm | **9.6 ms** | 0.9 % | **stays fast — the pure-read resolver is NOT the bottleneck** |
+| `resolved_run_ms` | <1 ms | 2.2 ms | 0.2 % | negligible |
+| server `total_ms` | ~205–267 ms | 1072 ms | — | ≈ client wall (1083 ms); only ~11 ms unaccounted queue |
+
+**Diagnosis (definitive, per the spec NOTES' own decision rule):** the dominant contributor on the slow
+requests is **`backfill_run_forward_returns` — the one phase that performs a real SQLite write on the serving
+path** — not the pure-read `resolved_forward_aggregate_evidence`. Under 6-way concurrency that create-once
+INSERT serializes on SQLite's single-writer lock, so the phase grows ~linearly (175 ms → 881 ms ≈ 5×) and
+consumes 82 % of each request; the read resolver stays at ~10 ms. **This is direct evidence for the
+SQLite-writer/checkpoint-contention candidate and against the GIL/threadpool-scheduling candidate** (a
+scheduling bottleneck would not concentrate 82 % of the cost in the single write-capable phase while leaving
+the read phase flat). It also explains the iter-16 baseline's 12.655 s outliers: those were measured **during
+an ingest window**, where the finalize/warm *also* holds the writer — pure concurrent reads alone plateau at
+1.271 s (no breach), but add a concurrent ingest holding the same writer lock and the create-once phase waits
+far longer. Thermal: peak Tctl **85 °C** during the run (< 95 abort), watchdog never tripped, host back to
+49 °C after. **TC-9 acceptance MET — dominant phase identified, recorded, directly comparable to the
+iter-16/17 baseline (11/68 @ max 12.655 s → 0/966 @ max 1.271 s for pure reads, mechanism now attributed).**
+
+**Actionable handoff for the fix iteration (NOT done here — this iteration is diagnose-only by spec):** the
+`backfill_run_forward_returns` create-once INSERT must come off the per-request serving path — either
+precomputed at ingest (the J-05/J-08 principle already applied to the aggregates) or guarded by a cheap
+read-only existence check so the writer lock is taken zero times when the forward_returns already exist. That
+single change should collapse the 881 ms phase to the ~10 ms read-only floor and bring 6× concurrent
+`/backtest` well under budget even during an ingest window.
+
+### TC-10 — J-04 disruptive kill/restart checkpoint-survival replay: NOT run this pass (ingest trigger gated), J-04 verified non-disruptively
+
+TC-10 requires submitting a real backfill and `kill -9`-ing the process mid-run to prove the interrupted run's
+checkpointed progress survives. Submitting that ingest job was **blocked by this session's safety classifier**
+(the automated AG-10 guardrail on heavy-ingest triggers) — and per that guardrail's own instruction I did not
+attempt to work around it. It is therefore **deferred pending an explicit owner go-ahead for the ingest
+trigger**, on top of the standing "with watchdog, after cooldown" authorization. J-04's non-disruptive state
+was re-confirmed this pass (`GET /api/health` → HTTP 200, `readiness: ready`, no crash banner in
+`logs/backend.log` since this session's boots), matching the iter-16/17 sanity checks; the fresh *disruptive*
+replay owed since iter-15 remains owed. This is an honest gap, not a pass.

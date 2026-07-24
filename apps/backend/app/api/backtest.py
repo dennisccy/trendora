@@ -46,6 +46,9 @@ score/bucket/return in the read path.
 """
 from __future__ import annotations
 
+import logging
+import time
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -64,6 +67,52 @@ from app.engine.snapshot_serving import resolved_run
 
 router = APIRouter(tags=["backtest"])
 
+# ops-hardening iter-18 -- per-request timing instrumentation (observability only; never a served value,
+# TC-1/TC-2/TC-4/TC-8). `logs/backend.log` is populated by redirecting the uvicorn process's own
+# stdout/stderr (scripts/start-backend.sh); this process's ROOT logger carries NO handler and defaults to
+# WARNING (confirmed by direct inspection), so an otherwise-unconfigured `trendora.*` logger's
+# `.info(...)` calls are silently dropped -- Python's `logging.lastResort` fallback itself only emits
+# WARNING+. Explicitly setting THIS logger's own level to INFO and attaching a plain `StreamHandler`
+# (guarded against double-attachment across repeated imports) makes this module self-sufficient for that
+# without touching main.py's boot sequence or any global logging config (out of scope this iteration,
+# "Do not redo"). `propagate` is left at its default `True` so `caplog`-based tests (TC-4) still observe
+# these records via the root logger, exactly as production emits them via this handler.
+logger = logging.getLogger("trendora.backtest")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    logger.addHandler(logging.StreamHandler())
+
+
+def _log_backtest_timing(
+    is_latest: bool,
+    total_ms: float,
+    resolved_run_ms: float,
+    backfill_forward_returns_ms: float,
+    scorecard_ms: float,
+    evidence_ms: float,
+    ensure_loop_ms: Optional[float],
+) -> None:
+    """One INFO-level, key=value structured timing line per `/backtest` request: an ISO-8601 wall-clock
+    timestamp plus the elapsed-ms breakdown the iter-18 spec calls for -- run resolution, the
+    `backfill_run_forward_returns` step, `compute_run_scorecard`, and `resolved_forward_aggregate_
+    evidence`. `ensure_loop_ms` (the historical/non-`is_latest` ensure-loop's `forward_aggregates_
+    ingest_cached` calls plus its re-resolve) is present ONLY when that branch actually ran -- never a
+    fabricated 0 for the `is_latest` request path, which never reaches it. Purely an operational log
+    line for the iter-18/iter-19 latency diagnosis -- never a served/displayed value (Data Contract
+    untouched)."""
+    fields = [
+        f"ts={datetime.now(timezone.utc).isoformat()}",
+        f"is_latest={is_latest}",
+        f"total_ms={total_ms:.2f}",
+        f"resolved_run_ms={resolved_run_ms:.2f}",
+        f"backfill_forward_returns_ms={backfill_forward_returns_ms:.2f}",
+        f"scorecard_ms={scorecard_ms:.2f}",
+        f"evidence_ms={evidence_ms:.2f}",
+    ]
+    if ensure_loop_ms is not None:
+        fields.append(f"ensure_loop_ms={ensure_loop_ms:.2f}")
+    logger.info("backtest_timing %s", " ".join(fields))
+
 
 @router.get("/backtest")
 def backtest(
@@ -75,18 +124,35 @@ def backtest(
     """Serve the per-date forward-test scorecard for the resolved as-of date. `as_of` omitted = the
     latest stored run; a historical date time-travels to that date's immutable snapshot; an invalid
     date raises an explicit 4xx/503 (never a fabricated scorecard). The run's forward returns are
-    populated create-once on first view, then READ; the scorecard recomputes no score/bucket/return."""
+    populated create-once on first view, then READ; the scorecard recomputes no score/bucket/return.
+
+    ops-hardening iter-18: wrapped in per-request, phase-broken-down wall-clock timing instrumentation
+    (`_log_backtest_timing`, TC-1/TC-2/TC-4/TC-8) diagnosing the still-undiagnosed <=1.5s serving-budget
+    breaches (J-06/J-07/J-08) — observability only, the returned payload stays byte-identical (TC-6)."""
+    t_request_start = time.perf_counter()
     cfg: Config = get_config()
+
+    t0 = time.perf_counter()
     run = resolved_run(session, as_of, cfg)          # immutable snapshot (create-once) or explicit 4xx/503
+    resolved_run_ms = (time.perf_counter() - t0) * 1000.0
+
+    t0 = time.perf_counter()
     backfill_run_forward_returns(session, run, cfg)  # create-once: INSERT-only realized forward returns
+    backfill_forward_returns_ms = (time.perf_counter() - t0) * 1000.0
+
+    t0 = time.perf_counter()
     card = compute_run_scorecard(session, run, cfg)  # SINGLE canonical per-date scorecard (reads stored)
+    scorecard_ms = (time.perf_counter() - t0) * 1000.0
+
     # `is_latest` reuses the canonical "latest stored run date" (no second query/source for it).
     is_latest = run.asof_date == _latest_stored_run_date(session)
     # iter-17 (J-09/J-10) + iter-16 (J-08): the as-of-scoped forward-tested evidence aggregate, ALL
     # configured horizons resolved together in ONE call (never a per-horizon-independent read — the read
     # path can otherwise observe a mixed-dataset_version row set, see the resolver's own docstring) plus
     # the honest `evidence_status` / `evidence_generated_at` / `evidence_asof` disclosure.
+    t0 = time.perf_counter()
     evidence = resolved_forward_aggregate_evidence(session, run.asof_date, cfg)
+    evidence_ms = (time.perf_counter() - t0) * 1000.0
     # ops-hardening iter-16 (J-08): the historical (is_latest == False) carve-out keeps its pre-existing
     # lazy create-once-and-cache behavior UNCHANGED (TC-13) — ensure every configured horizon is cached
     # for this date, then re-resolve. For the LATEST view this never runs, so this request path never
@@ -100,10 +166,23 @@ def backtest(
     # followed by the SAME resolver re-reading and re-parsing those same rows a second time. Byte-
     # identical either way (still one producer, one serving read): a cold historical date still ensures
     # every horizon is cached (computing any still-missing one) and re-resolves once, exactly as before.
+    #
+    # ops-hardening iter-18: `ensure_loop_ms` times this WHOLE block (the per-horizon
+    # `forward_aggregates_ingest_cached` calls plus the re-resolve) — present in the timing log line ONLY
+    # when this branch actually runs, mirroring exactly when `forward_aggregates_ingest_cached` fires.
+    ensure_loop_ms: Optional[float] = None
     if not is_latest and evidence["evidence_status"] != "ready":
+        t0 = time.perf_counter()
         for h in cfg.walk_forward.horizons:
             forward_aggregates_ingest_cached(session, h, cfg, as_of=run.asof_date)
         evidence = resolved_forward_aggregate_evidence(session, run.asof_date, cfg)
+        ensure_loop_ms = (time.perf_counter() - t0) * 1000.0
+
+    total_ms = (time.perf_counter() - t_request_start) * 1000.0
+    _log_backtest_timing(
+        is_latest, total_ms, resolved_run_ms, backfill_forward_returns_ms, scorecard_ms, evidence_ms,
+        ensure_loop_ms,
+    )
     return {
         **card,
         "is_latest": is_latest,

@@ -823,3 +823,52 @@ reading payloads (auditor B1); add one endpoint-level test carrying an OLDER evi
 MAX scanner_runs.asof_date == 2026-07-22; advancing needs new price data, owner-owned + AG-9/AG-5-barred);
 evaluator accepts the unit+client-render+same-key-live floor for B1 code correctness. (6) OPERATOR: a fresh
 live J-04 kill/restart replay is still owed before any GOAL_ACHIEVED (TC-11 sanity is not a substitute).
+
+## Iteration 18 — goal-ops-hardening-iter-18
+
+**Date:** 2026-07-24T11:05:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** lean
+**Journey deltas:**
+- Newly passing: none (this was a DIAGNOSE-FIRST iteration by spec — no latency fix, so no journey was
+  expected to cross). J-01/J-03/J-05 re-verified passing by deterministic golden replay (3/3 PASS;
+  evaluator spot-checked J-01-verify.png Data-Manager coverage tiles + J-05-verify.png immutable 2025-05-15
+  snapshot). J-04 CARRIED passing (last_verified LEFT at iter-15; UT-J-04 SKIPPED on Chrome MCP infra wedge,
+  code surface byte-unchanged, established human-ratified precedent).
+- Advanced (evidence, not status): J-06/J-07/J-08 stay `partial` — their shared ingest-window ≤1.5s
+  `/backtest` breach (11/68, max 12.655s since iter-16) is now DEFINITIVELY DIAGNOSED but NOT remediated
+  (fix deferred to next iter by spec). TC-9 (operator, 966 requests, host-guard via start-backend.sh):
+  `backfill_forward_returns_ms` = 82.2% of each slow request (881ms under 6x concurrency vs ~175ms
+  single-threaded), pure-read `evidence_ms` flat at 9.6ms → SQLite single-writer contention on the
+  create-once INSERT, NOT GIL/threadpool. Under pure concurrent reads the budget HOLDS (0/966, max 1.271s);
+  the ingest-window overlay (the actual breach condition) was deliberately not triggered.
+- Newly failing: none. Regressed (passing→failing): none.
+- Anti-goal violations: NONE this iteration. scan-report CLEAN; coherence COHERENCE-PASS; all 10 historical
+  records stay resolved:true. AG-8 stays resolved (compute byte-unchanged; deferred-payload query reads
+  FEWER bytes). AG-10 honored (TC-9 via start-backend.sh, /proc-verified caps). TC-10 (J-04 disruptive
+  replay) NOT run — the ingest trigger it needs was blocked by the session's AG-10 safety classifier and the
+  operator did NOT work around it (fail-closed honest gap, the opposite of a violation).
+
+**Reasoning:** The diagnose-first design worked and I verified the load-bearing parts myself: read the
+perf-budgets.md iter-18 TC-9 section line by line, confirmed the raw tc9-backtest-poll.csv is real (967 lines
+= 966 requests, all 200/ready), and read the 5-file backend diff (instrumentation + a byte-identity-preserving
+query-projection cheap win + tests) — the diagnosis is direct evidence for SQLite-writer contention over the
+GIL/threadpool candidate. But no journey crosses: crediting a pass would credit a fix that did not land (the
+breaching ingest-window condition was deliberately not tested; the create-once INSERT is still on the serving
+path; owner's iter-15 option-2 keeps ≤1.5s binding unamended). Rejected REGRESSION (C.1): nothing
+passing→failing, no unresolved critical anti-goal. Rejected STALLED (C.2): unlike iter-15, the next step is
+agent-owned and well-specified (move/guard the INSERT), not a human-owned product decision. Rejected
+GOAL_ACHIEVED (C.3): three journeys partial + J-04 owes a fresh disruptive replay. Rejected ESCALATE (C.4):
+no failing journey, review PASS_WITH_NOTES (no fail-open), and the lean iteration succeeded cleanly rather
+than surfacing new cross-cutting ambiguity. Progress + tractable next step → CONTINUE.
+
+**Next-step recommendation:** FULL depth, no new features — apply the diagnosed fix (take the create-once
+backfill_run_forward_returns INSERT off the /backtest serving path: precompute at ingest OR a cheap read-only
+existence guard → collapses the 881ms phase to the ~10ms read floor). Recommend full because it touches the
+shared serving/write path with real correctness surface (byte-identity, AG-8, AG-5, create-once idempotency,
+the under-concurrency behavior that produced iter-13's REGRESSION) and plausibly closes the whole goal —
+warrants audit + closure before the two-key confirm. NB an advisory full rec was overridden to lean last
+iteration. HARD GOAL_ACHIEVED BLOCKERS (operator/owner): (1) fresh live DISRUPTIVE J-04 kill/restart replay
+(TC-10, owed since iter-15) needs owner go-ahead for the AG-10-gated ingest trigger; (2) Chrome MCP infra
+wedge (port 9224) — harmless this backend-only iteration (replay lane worked 3/3) but the fix iteration needs
+a live /backtest browser verification, so fix the MCP server before it.

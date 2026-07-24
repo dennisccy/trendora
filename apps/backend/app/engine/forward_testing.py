@@ -1231,6 +1231,11 @@ def resolved_forward_aggregate_evidence(
     stamp — collapsing by version alone would risk mixing horizon rows from two different dates into one
     served payload, the same class of bug the per-identity cutover contract above exists to prevent.
 
+    iter-18 (cheap win): the widened fallback's own candidate-selection scan now defers loading
+    `payload_json` until AFTER the winning `(asof_key, dataset_version)` pair is chosen (see the inline
+    comment at that scan below) — an implementation-only change (fewer bytes read for discarded older
+    candidates); the served evidence for a given `as_of` is unchanged (TC-6).
+
     Deferred import (not at module level): mirrors `forward_aggregates_ingest_cached`'s own established
     reason (`research.py` imports FROM this module, so a module-level import back would be circular)."""
     from app.engine.research import _dataset_version  # deferred: avoids a forward_testing<->research cycle
@@ -1283,31 +1288,70 @@ def resolved_forward_aggregate_evidence(
     # partial warm only) — widen the search to STRICTLY OLDER asof_keys (never a later one, AG-5) and
     # serve the most recent one that DOES have a complete version. See the docstring above for why
     # grouping is keyed by (asof_key, dataset_version) rather than dataset_version alone.
+    #
+    # iter-18 (cheap win, TC-5/TC-6): this candidate-selection scan reads ONLY the identifying columns
+    # (asof_key, horizon, dataset_version, created_at) — never `payload_json`. Completeness depends
+    # solely on WHICH horizons a (asof_key, dataset_version) pair has, never on its payload content, so
+    # every OLDER candidate this scan considers except the eventual winner would otherwise have its
+    # payload materialized and discarded for nothing (today ~819 KB across 25 rows, growing ~164 KB per
+    # distinct as-of ever viewed — the iter-17 audit). Once the winning `(asof_key, dataset_version)`
+    # pair is picked below, exactly ONE targeted follow-up query selects `payload_json` filtered to that
+    # pair alone, before `_serve(...)` runs — same query intent, same winner, byte-identical served
+    # evidence (TC-6). Safe from a read-your-own-scan race: both queries run inside the SAME request
+    # session's already-open read transaction (this function issues no `commit()`), and under this app's
+    # WAL journal mode a reader's snapshot is fixed for the life of that transaction regardless of any
+    # concurrent writer elsewhere.
     older_rows = session.exec(
         select(
             ForwardAggregateCache.asof_key, ForwardAggregateCache.horizon,
-            ForwardAggregateCache.dataset_version, ForwardAggregateCache.payload_json,
-            ForwardAggregateCache.created_at,
+            ForwardAggregateCache.dataset_version, ForwardAggregateCache.created_at,
         ).where(ForwardAggregateCache.asof_key < asof_key)
     ).all()
 
     by_key: dict[str, list] = defaultdict(list)
-    for row_key, row_horizon, row_version, payload_json, created_at in older_rows:
-        by_key[row_key].append((row_horizon, row_version, payload_json, created_at))
+    for row_key, row_horizon, row_version, created_at in older_rows:
+        by_key[row_key].append((row_horizon, row_version, created_at))
+
+    def _complete_version_identities(rows) -> dict[str, dict[int, datetime]]:
+        """Identifying-columns-only sibling of `_complete_versions` above (no `payload_json`) — used
+        ONLY by the widened-fallback candidate scan, which must pick a winning identity before it is
+        worth reading any payload at all."""
+        by_version: dict[str, dict[int, datetime]] = defaultdict(dict)
+        for row_horizon, row_version, created_at in rows:
+            by_version[row_version][row_horizon] = created_at
+        return {
+            version: horizon_map
+            for version, horizon_map in by_version.items()
+            if set(horizon_map) >= configured_horizons
+        }
 
     complete_by_key = {
         row_key: versions
         for row_key, rows in by_key.items()
-        if (versions := _complete_versions(rows))
+        if (versions := _complete_version_identities(rows))
     }
 
     if complete_by_key:
         best_key = max(complete_by_key)  # ISO-8601 strings sort chronologically -- the closest older date
         versions_at_best_key = complete_by_key[best_key]
         best_version = max(
-            versions_at_best_key, key=lambda v: max(ca for _p, ca in versions_at_best_key[v].values())
+            versions_at_best_key, key=lambda v: max(versions_at_best_key[v].values())
         )
-        return _serve(versions_at_best_key[best_version], "refreshing", best_key)
+        # the ONE targeted follow-up: payload_json for the winning (asof_key, dataset_version) pair only.
+        winner_rows = session.exec(
+            select(
+                ForwardAggregateCache.horizon, ForwardAggregateCache.dataset_version,
+                ForwardAggregateCache.payload_json, ForwardAggregateCache.created_at,
+            ).where(
+                ForwardAggregateCache.asof_key == best_key,
+                ForwardAggregateCache.dataset_version == best_version,
+            )
+        ).all()
+        winner_horizon_map = {
+            row_horizon: (payload_json, created_at)
+            for row_horizon, _row_version, payload_json, created_at in winner_rows
+        }
+        return _serve(winner_horizon_map, "refreshing", best_key)
 
     return {
         "evidence_status": "not_yet_computed", "evidence_generated_at": None,

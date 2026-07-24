@@ -35,6 +35,7 @@ exercise this path (the identity resolved never changes, only the dataset stamp 
 from __future__ import annotations
 
 import json
+import logging
 from datetime import date, datetime, timezone
 
 import pytest
@@ -462,6 +463,94 @@ def test_evidence_fallback_never_reads_a_row_dated_after_the_requested_as_of(evi
 
 
 # ======================================================================================================
+# iter-18 (cheap win, TC-5/TC-6) — the widened fallback's candidate-selection scan defers `payload_json`
+# to a single winner-only follow-up query. SQL-inspected via the SAME `before_cursor_execute` technique
+# `test_completeness_query_is_filtered_by_asof_key` (TC-18) and
+# `test_evidence_fallback_never_reads_a_row_dated_after_the_requested_as_of` (iter-17 TC-5) already use.
+# ======================================================================================================
+def test_widened_fallback_defers_payload_json_to_a_single_winner_only_query(evidence_engine):
+    """iter-18 TC-5/TC-6: with SEVERAL older `(asof_key, dataset_version)` candidates and exactly ONE
+    complete, the widened fallback's initial candidate-selection scan (the `<`-filtered query) never
+    names `payload_json`; exactly ONE follow-up query, filtered to the winning `(asof_key,
+    dataset_version)` pair, selects it. Served evidence is byte-identical to the pre-iter-18 single-query
+    shape (TC-6, a regression guard mirroring `test_evidence_crosses_asof_key_boundary_when_newer_key_
+    has_zero_rows`'s own assertions) — same fixture pattern as that test, extended with two further
+    INCOMPLETE older candidates so "several ... exactly one complete" is genuinely exercised."""
+    engine, complete_asof = evidence_engine  # 2025-01-10 -- becomes the one COMPLETE older candidate
+    cfg = load_config()
+    with Session(engine) as session:
+        for h in HORIZONS:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=complete_asof)
+        session.commit()
+        complete_rows = {
+            row.horizon: (row.payload_json, row.created_at)
+            for row in session.exec(
+                select(ForwardAggregateCache).where(ForwardAggregateCache.asof_key == complete_asof.isoformat())
+            ).all()
+        }
+        assert set(complete_rows) == set(HORIZONS)
+
+        # two further OLDER candidates, each genuinely INCOMPLETE (2-of-5 horizons only) -- "several"
+        # candidates get scanned, but neither can ever win, so their payload is never needed.
+        for i, partial_asof in enumerate((date(2025, 1, 2), date(2025, 1, 5))):
+            prun = _add_run(session, partial_asof, "Risk-on")
+            _add_result(session, prun.id, f"PP{i}")
+            _add_fr_every_horizon(session, prun.id, partial_asof, f"PP{i}", ret=0.01)
+            session.commit()
+            for h in HORIZONS[:2]:
+                forward_aggregates_ingest_cached(session, h, cfg, as_of=partial_asof)
+            session.commit()
+
+        # the requested identity: a genuinely later run, zero forward-aggregate rows of its own -- so
+        # the widened fallback runs.
+        requested_asof = date(2025, 1, 13)
+        req_run = _add_run(session, requested_asof, "Risk-off")
+        _add_result(session, req_run.id, "REQ")
+        _add_fr_every_horizon(session, req_run.id, requested_asof, "REQ", ret=0.05)
+        session.commit()
+
+        captured: list[str] = []
+
+        def _capture(conn, cursor, statement, parameters, context, executemany):
+            captured.append(statement)
+
+        event.listen(engine, "before_cursor_execute", _capture)
+        try:
+            evidence = resolved_forward_aggregate_evidence(session, requested_asof, cfg)
+        finally:
+            event.remove(engine, "before_cursor_execute", _capture)
+
+    # TC-6: byte-identical served evidence (never mixed, never re-derived).
+    assert evidence["evidence_status"] == "refreshing"
+    assert evidence["evidence_asof"] == complete_asof.isoformat()
+    assert set(evidence["evidence_by_horizon"]) == set(HORIZONS)
+    for h in HORIZONS:
+        assert evidence["evidence_by_horizon"][h] == json.loads(complete_rows[h][0]), (
+            f"horizon {h} did not come from the winning candidate's own stored rows"
+        )
+
+    # TC-5: the query-shape assertion — the widened candidate scan never selects payload_json; exactly
+    # one exact-match follow-up query (asof_key AND dataset_version, never a `<` range) does.
+    cache_selects = [
+        stmt for stmt in captured
+        if "forward_aggregate_cache" in stmt.lower() and stmt.strip().lower().startswith("select")
+    ]
+    widened_scan_selects = [stmt for stmt in cache_selects if "<" in stmt]
+    assert widened_scan_selects, "expected the widened fallback's candidate-selection scan to run"
+    assert all("payload_json" not in stmt.lower() for stmt in widened_scan_selects), (
+        f"the widened candidate-selection scan must not select payload_json: {widened_scan_selects}"
+    )
+    # `dataset_version = ?` (a comparison, not merely a selected column) is what distinguishes the
+    # winner-only query from the pre-existing same-key query at the top of the function, which ALSO
+    # selects `payload_json` + `dataset_version` as columns but never filters ON `dataset_version`.
+    winner_selects = [stmt for stmt in cache_selects if "payload_json" in stmt.lower() and "dataset_version = ?" in stmt.lower()]
+    assert len(winner_selects) == 1, (
+        f"expected exactly one winner-only payload_json follow-up query; got {len(winner_selects)}: {winner_selects}"
+    )
+    assert "<" not in winner_selects[0], "the winner-only follow-up must be an exact-match filter, not a range scan"
+
+
+# ======================================================================================================
 # Request-serving entry points (app.api.backtest.backtest, app.mcp.tools.query_backtest) — called
 # directly as plain functions (no TestClient/`loaded_engine` app boot) to prove the WIRING: the
 # `is_latest` branch reaches ONLY the read-only resolver, never `forward_aggregates_ingest_cached` (and
@@ -512,9 +601,13 @@ def test_backtest_route_is_latest_never_reaches_ingest_or_compute(endpoint_engin
     assert set(first) == set(HORIZONS)
 
 
-def test_backtest_route_is_latest_not_yet_computed_is_honest_200(endpoint_engine, monkeypatch):
-    """TC-6/TC-8 (endpoint layer): a never-warmed store still answers (no exception, no fabricated
-    evidence) with the honest empty state — and never calls the ingest/compute function."""
+def test_backtest_route_is_latest_not_yet_computed_is_honest_200(endpoint_engine, monkeypatch, caplog):
+    """TC-6/TC-8 (endpoint layer, iter-16 numbering): a never-warmed store still answers (no exception,
+    no fabricated evidence) with the honest empty state — and never calls the ingest/compute function.
+
+    iter-18 TC-8 (added to this SAME test, its own separate numbering): instrumentation must never turn
+    this honest-empty-state path into a 500 or silently skip logging on it — a timing log line is still
+    emitted for the request."""
     import app.api.backtest as backtest_module
 
     engine, asof = endpoint_engine
@@ -523,6 +616,7 @@ def test_backtest_route_is_latest_not_yet_computed_is_honest_200(endpoint_engine
         raise AssertionError("the is_latest read path must never call the ingest/compute function")
 
     monkeypatch.setattr(backtest_module, "forward_aggregates_ingest_cached", _boom)
+    caplog.set_level(logging.INFO, logger="trendora.backtest")
     with Session(engine) as session:
         result = backtest_module.backtest(as_of=None, session=session)
 
@@ -531,6 +625,14 @@ def test_backtest_route_is_latest_not_yet_computed_is_honest_200(endpoint_engine
     assert result["evidence_by_horizon"] == {}
     assert result["evidence_generated_at"] is None
     assert result["evidence_asof"] is None
+
+    # iter-18 TC-8: the honest empty state still emits a timing log line (never silently skipped).
+    timing_records = [
+        r for r in caplog.records if r.name == "trendora.backtest" and "backtest_timing" in r.getMessage()
+    ]
+    assert len(timing_records) == 1, (
+        f"expected a timing log line even for the not_yet_computed empty state; got {len(timing_records)}"
+    )
 
 
 def test_query_backtest_mcp_tool_is_latest_never_reaches_ingest_or_compute(endpoint_engine, monkeypatch):
@@ -606,6 +708,48 @@ def test_backtest_route_and_mcp_tool_serve_evidence_asof_identically(endpoint_en
     assert mcp_result["evidence_status"] == "ready"
     assert api_result["evidence_asof"] == asof.isoformat()
     assert mcp_result["evidence_asof"] == asof.isoformat()
+    assert api_result["evidence_asof"] == mcp_result["evidence_asof"]
+
+
+def test_backtest_route_and_mcp_tool_serve_older_evidence_asof_across_boundary(endpoint_engine):
+    """iter-18 TC-7: the ONE missing endpoint-level test for the iter-17 widened cross-`asof_key`
+    fallback — an OLDER `evidence_asof` survives end-to-end through BOTH `GET /api/backtest`'s route
+    function and the MCP `query_backtest` tool (today's cross-boundary coverage is resolver-level only —
+    every existing test exercising this shape calls `resolved_forward_aggregate_evidence` directly).
+    Mirrors `test_evidence_crosses_asof_key_boundary_when_newer_key_has_zero_rows`'s fixture shape,
+    calling the endpoint functions the way `test_backtest_route_and_mcp_tool_serve_evidence_asof_
+    identically` (directly above) does."""
+    import app.api.backtest as backtest_module
+    import app.mcp.tools as tools_module
+
+    engine, older_asof = endpoint_engine  # 2025-01-10, already has a DailyPrice bar for "AAA"
+    cfg = load_config()
+    with Session(engine) as session:
+        for h in HORIZONS:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=older_asof)
+        session.commit()
+
+        # a genuinely LATER run — the LATEST as-of identity itself, with zero forward-aggregate rows of
+        # its own (the common single-latest-date-backfill shape the iter-17 fix targets).
+        newer_asof = date(2025, 1, 13)
+        run2 = _add_run(session, newer_asof, "Risk-off")
+        _add_result(session, run2.id, "BBB")
+        session.add(DailyPrice(
+            symbol="BBB", date=newer_asof, open=100.0, high=101.0, low=99.0, close=100.0, volume=1.0,
+        ))
+        session.commit()
+
+    with Session(engine) as session:
+        api_result = backtest_module.backtest(as_of=None, session=session)
+    with Session(engine) as session:
+        mcp_result = tools_module.query_backtest(session, asof=None)
+
+    assert api_result["is_latest"] is True
+    assert mcp_result["is_latest"] is True
+    assert api_result["evidence_status"] == "refreshing"
+    assert mcp_result["evidence_status"] == "refreshing"
+    assert api_result["evidence_asof"] == older_asof.isoformat()
+    assert mcp_result["evidence_asof"] == older_asof.isoformat()
     assert api_result["evidence_asof"] == mcp_result["evidence_asof"]
 
 

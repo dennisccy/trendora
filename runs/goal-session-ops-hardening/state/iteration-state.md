@@ -1,27 +1,37 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 17 · **Date:** 2026-07-24 · **Verdict:** CONTINUE
+**After iteration:** 18 · **Date:** 2026-07-24 · **Verdict:** CONTINUE
 
 ## Journeys
 
-4 passing (J-01 J-03 J-05 replayed; **J-04 CARRIED — UT-J-04 SKIPPED, not re-verified live since iter-14**) · 3 partial (J-06 J-07 J-08) — 7 total
+4 passing (J-01 J-03 J-04 J-05) · 3 partial (J-06 J-07 J-08) — 7 total. J-04 passing is CARRIED
+(last_verified iter-15; disruptive replay OWED). J-06/J-07/J-08 share ONE blocker (below).
 
 ## Active blockers
 
-- **/backtest ≤1.5s serving-budget (dev → operator → owner): the one thing between J-06/J-07/J-08 and passing.** 11/68 breaches, max 12.655s, all in the ingest window on a stored-row read — UNDIAGNOSED (thermal + single-txn ruled out; SQLite-writer vs GIL/threadpool indistinguishable, `logs/backend.log` has zero per-request timestamps). Next: **dev** adds per-request timing instrumentation → **operator** re-runs TC-10 (AG-10-class) → bounded fix, or **owner** amends the budget (logged, never silent). `reports/perf-budgets.md` iter-17 section.
-- **Fresh live J-04 kill/restart replay (operator)** — required before any GOAL_ACHIEVED; iter-17 did only TC-11 steady-state sanity (health 200/ready, no crash banner). J-04 code surface byte-unchanged.
-- Non-blocking cheap wins (dev): project metadata columns before reading payloads in the widened fallback query (audit B1); one endpoint-level test carrying an OLDER `evidence_asof` (audit T1).
+- `/backtest` ≤1.5s budget breach in the ingest window (J-06/J-07/J-08) — now DIAGNOSED, owner=dev: the
+  create-once `backfill_run_forward_returns` SQLite INSERT on the serving path (`apps/backend/app/api/
+  backtest.py` ~L81 / `mcp/tools.py`) serializes on the single-writer lock = 82.2% of each slow request
+  (TC-9, perf-budgets.md iter-18). FIX (agent-tractable, next iter): move it to ingest OR guard with a cheap
+  read-only existence check → collapses 881ms to the ~10ms read floor. NOT yet applied (diagnose-only by spec).
+- Fresh live DISRUPTIVE J-04 kill/restart replay (TC-10, owed since iter-15) — owner=human: needs go-ahead
+  for the ingest trigger the AG-10 safety classifier blocks. Hard GOAL_ACHIEVED precondition.
+- Chrome MCP browser infra wedged (port 9224) — owner=human: harmless this backend-only iter (replay lane
+  worked 3/3), but the fix iter needs a live `/backtest` browser check.
 
 ## Last 2 verdicts
 
-- iter 17: CONTINUE — B1 cross-asof_key fix + 2 first-ever live states (TC-09/TC-07) landed & verified; journeys held partial by latency that is undiagnosed (agent instrumentation), NOT a proven hard cost → not STALLED.
-- iter 16: CONTINUE — J-08 precompute-before-serve redesign landed `partial` on 3 agent-owned gaps.
+- iter 18: CONTINUE — diagnose-first lean iter PINNED the latency mechanism (TC-9, 966 reqs); no fix by
+  design, so J-06/J-07/J-08 stay partial; next step (apply the fix) is agent-owned. scan CLEAN, coherence PASS.
+- iter 17: CONTINUE — B1 cross-asof_key fallback closed in code; budget breach narrowed not pinned.
 
 ## Do not redo
 
-- **B1 cross-asof_key fallback** (`forward_testing.py` resolver) — DONE + correct, 15 unit tests, AG-5 strictly-older SQL-verified, AG-3 byte-identical. Never add a compute branch to the read path; never revert cutover pruning to per-horizon deletion.
-- **`compute_forward_aggregates` body** — byte-unchanged since iter-14 (AG-8 resolved). Not reopened. The new widened query is bounded by distinct-as-of count, not the deep basis — not an AG-8 violation.
-- **`evidence_asof`** served identically by /api/backtest + MCP + its blueprint.md Data Contract row; F1 fix (`page.tsx:258-261` `asofDate={evidence_asof ?? asof_date}`) — keep.
-- **Live not_yet_computed (TC-09) + refreshing banner w/ evidence_asof (TC-07)** — captured & verified; don't re-capture.
-- **TC-8 live cross-boundary capture** — unproducible on this seed (max date 2026-07-22); evaluator accepted the unit + client-render floor. Do NOT chase it as a blocker (needs an owner data cycle).
-- **Out of bounds:** `main.py`, `app/api/health.py`, `app/engine/readiness.py`, `warmup.py`, `scripts/*`. No full pytest; `loaded_engine` ~80min — cite, don't run. Heavy passes: `scripts/start-backend.sh` only, `taskset -c 0-3,8-11`, BLAS/OMP=4 (AG-10). Carried unrelated: `test_db.py::test_create_all_produces_expected_tables`.
+- AG-8 resolved since iter-14: `compute_forward_aggregates` bounded/streamed, byte-unchanged — do NOT reopen.
+- Instrumentation + deferred-`payload_json` cheap win + TC-7 endpoint test are BUILT (iter-18, 28/28 green,
+  TC-6 byte-identical) — the fix iter consumes the timing data, doesn't re-add it.
+- TC-8 live cross-boundary capture unproducible on this seed (max dates == 2026-07-22) — settled, not a target.
+- Do NOT add a compute branch to the read path; keep one producer / one resolver (coherence contract).
+- Out of bounds: `main.py`, `health.py`, `readiness.py`, `warmup.py`, `scripts/*`. Heavy passes via
+  `scripts/start-backend.sh` only (taskset 0-3,8-11, BLAS/OMP=4, AG-10); no full pytest, `loaded_engine` ~80min cite-don't-run.
+- `test_db.py::test_create_all_produces_expected_tables` failure is pre-existing/unrelated — carried, not new.

@@ -66,86 +66,28 @@ measurement taken after host-guard settings changed.
 boundaries on BOTH sides of the insertion point, and treat "a long-standing test still passes" as
 suspicious when the diff touched its file.
 
-## iter-9 — 2026-07-22T19:05:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A journey can fail its browser lane and have the defect FIXED inside the same iteration, which
-leaves every downstream artifact (raw `.llm.md`, merged results, regression-replay-results) frozen at the
-pre-fix verdict while the newest evidence sits in an operator note nobody's lane owns. J-04 step 6 hit
-exactly this: `UT-10-result.png` shows the real pre-fix "0 snapshots · 0 trading days", the F1
-`_checkpoint_run_record` fix landed hours later, and the post-fix proof (run 114 frozen at 59 snapshots /
-64-of-84 dates vs. the all-zero control run 113 in the same `GET /api/data` response) exists only in
-`runs/goal-ops-hardening-iter-9/pump-j04-crash-recovery-evidence.md`. Neither `failing` (cites a build
-that no longer exists) nor `passing` (no rendered-surface evidence) is honest — `partial` is. When a fix
-lands after its own verification lane has run, the fix does not close the journey; it schedules a
-re-verification.
+## iter-9 — 2026-07-22T19:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration where an audit/fix round lands product code AFTER the browser-qa step, and
 any evaluation weighing operator/API evidence against a stale lane verdict.
 
-## iter-9 — 2026-07-22T19:05:00Z (second entry)
-
-**Verdict:** CONTINUE
-**Lesson:** iter-8's "the margin is comfortable" reading was doubly unsafe, and only iter-9's audit (P1)
-caught why: `VmPeak` in `/proc/<pid>/status` is a kernel-maintained monotone high-water mark, so a finer
-sampling cadence CANNOT raise it — re-subsampling the 4,347-row trace at 1 Hz and at 10 s yields the
-identical 4,738,948 KB. The 43.6% → 24.7% margin narrowing is therefore real growth in peak demand, not a
-measurement artifact, and the benign-sounding cadence explanation had to be struck from
-`reports/perf-budgets.md`. Never let a plausible measurement-artifact story stand unverified next to a
-number that is trending the wrong way.
+## iter-9 — 2026-07-22T19:05:00Z (second entry)  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration recording VmPeak/VmSize/RSS headroom against `server.memory_cap_mb`, and any
 future J-05/AG-8 re-measurement as the price basis deepens.
 
-## iter-10 — 2026-07-22T20:55:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A crash journey can be scored without trusting anyone's narration of the crash: the persisted run
-row proves it by itself. `data_provider_runs` id 119 stopped at `dates_done 158 / dates_total 504` (mid-flight by
-construction) and its `finished_at` lands 1.3 s AFTER the successor's `=== start-backend.sh: launching ... ===`
-banner in `logs/backend.log`, which means the dead process wrote nothing on the way out and the new one's orphan
-sweep finalized the row — with no `Shutting down`/`Finished server process [pid]` line anywhere before that
-banner (the same log demonstrably records clean shutdowns for other pids). Two related traps this iteration hit:
-the first crash rehearsal (run 118) missed because the job self-completed 38 s before the kill — use a range long
-enough that the completion buffer exceeds poll-to-kill latency — and the run-summary identity for an INTERRUPTED
-run is `snapshots_created + already_snapshotted + error_other = dates_done`, not `= dates_total` (TC-2 as written
-assumes a completed run).
+## iter-10 — 2026-07-22T20:55:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration verifying crash/restart, orphan-sweep or checkpoint behaviour; any spec writing a
 run-summary arithmetic assertion that must also hold for partial runs.
 
-## iter-11 — 2026-07-22T21:10:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A browser lane that only reads `performance.getEntriesByType('resource')` cannot tell a
-15 ms success from a 15 ms **HTTP 500** — iter-11's lane called `/api/research/event-study` "already
-succeeded" and blamed the page's "Backend unavailable" render on ambient host load, while
-`logs/backend.log:27660` shows that exact call returning 500 (`RuntimeError: can't start new thread`
-after a MemoryError). Always cross-read `logs/backend.log` for the measurement window before accepting
-an "environmental, not code" explanation, and rule ambient load in/out with `logs/hwmon/hwmon.csv`
-(MemAvailable was 12–20 GB — nothing ambient can consume a process's own `ulimit -v` cap).
+## iter-11 — 2026-07-22T21:10:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose verdict rests on browser-measured latency or on an anomaly
 explained away as host contention; also any perf sweep, since the same log read reveals whether the
 product's own ingest was running during the measurement.
 
-## iter-11 — 2026-07-22T21:10:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** The developer pass writes `reports/perf-budgets.md` *before* the browser lane produces the
-numbers, so in a lean pipeline a "measurement iteration" can finish with its measurements living only
-in a QA evidence `.txt` and never reaching the artifact the journey's Acceptance names as the single
-source (verified by mtime: file 20:24Z, sweep 20:38–20:52Z). Check the artifact's timestamp against
-the lane's timestamps before scoring any "recorded in the budgets table" step.
+## iter-11 — 2026-07-22T21:10:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose DoD says "record X in `reports/perf-budgets.md`" while X is
 produced by browser-qa rather than by the developer.
 
-## iter-12 — 2026-07-23T02:00:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** Closing a journey's EVIDENCE gap is not the same as the journey passing — the evidence can be the
-adverse finding. J-06's G1/G2 measurement work was completed correctly and in full, yet the G2 control
-reading it produced (`/api/indexes?full=true` at 2.1–2.3 s vs a committed ≤1.5 s budget, on a verifiably idle
-host) is exactly the shortfall that keeps J-06 out of `passing`. The audit recommended `passing` because the
-work was done; the honest score is `partial` because J-06's own step-2 assertion ("every measurement within
-budget") fails. Score on the contract, not on the fact that a measurement happened — and when a real number
-contradicts a "may pass" prose recommendation, the number wins.
+## iter-12 — 2026-07-23T02:00:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose target is "measure-and-record" work against committed budgets
 (`reports/perf-budgets.md`), and any evaluator tempted to accept a downstream agent's "may be scored passing"
 when the recorded measurement breaches the acceptance metric.
@@ -237,3 +179,19 @@ an agent instrumentation pass first.
 **Applies to:** any iter where a page/endpoint misses a committed `reports/perf-budgets.md` budget and the
 mechanism is not yet pinned — check whether the diagnosis is blocked by missing telemetry (agent work)
 before treating the residual as an owner budget-amendment decision.
+
+## iter-18 — 2026-07-24T11:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The undiagnosed `/backtest` latency budget breach (chased since iter-11 through
+narrow-by-elimination) turned out to be a create-once SQLite INSERT (`backfill_run_forward_returns`) hiding on
+a nominally READ endpoint's serving path — 82.2% of each slow request under concurrency, serializing on
+SQLite's single-writer lock, while the pure-read resolver stayed flat at ~10ms. Two non-obvious traps it
+exposes: (a) a "read" endpoint can carry a lazy create-once WRITE that only contends under load, so wall-clock
+measurement alone (iters 11-17) could not attribute it — one iteration of cheap per-request phase timing did
+what four of narrowing could not; (b) pure 6× concurrent reads did NOT reproduce the breach (0/966), because
+the writer-lock contention only bites when a concurrent INGEST holds the same lock — so a load test that omits
+the ingest overlay will falsely read "budget holds."
+**Applies to:** any iter touching `apps/backend/app/api/backtest.py` / `mcp/tools.py` serving path or the
+`resolved_forward_aggregate_evidence` resolver; more generally, any "read" endpoint that lazily
+creates-once-on-first-view — instrument phases and test under a concurrent-ingest overlay, not pure reads.

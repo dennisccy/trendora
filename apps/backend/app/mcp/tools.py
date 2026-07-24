@@ -19,7 +19,9 @@ read-path *create-once* snapshot + forward-return population the matching endpoi
 from __future__ import annotations
 
 import json
-from datetime import date as date_cls
+import logging
+import time
+from datetime import date as date_cls, datetime, timezone
 from typing import Optional
 
 from sqlalchemy import func
@@ -189,6 +191,45 @@ def get_market_phase(
 # ==================================================================================================
 # Backtest — mirror /api/backtest (per-date forward-test scorecard + as-of-scoped evidence aggregate).
 # ==================================================================================================
+# ops-hardening iter-18 -- per-request timing instrumentation mirroring app.api.backtest's own
+# (TC-1/TC-2/TC-3/TC-4/TC-8, observability only, never a served value). This process's ROOT logger
+# carries NO handler and defaults to WARNING (confirmed by direct inspection), so an otherwise-
+# unconfigured `trendora.*` logger's `.info(...)` calls are silently dropped -- explicitly setting THIS
+# logger's own level to INFO and attaching a plain `StreamHandler` (guarded against double-attachment)
+# makes this module self-sufficient for that. `propagate` stays default `True` so `caplog`-based tests
+# still observe these records via the root logger, exactly as production emits them via this handler.
+logger = logging.getLogger("trendora.mcp_backtest")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    logger.addHandler(logging.StreamHandler())
+
+
+def _log_query_backtest_timing(
+    is_latest: bool,
+    total_ms: float,
+    resolved_run_ms: float,
+    backfill_forward_returns_ms: float,
+    scorecard_ms: float,
+    evidence_ms: float,
+    ensure_loop_ms: Optional[float],
+) -> None:
+    """Mirrors `app.api.backtest._log_backtest_timing` field-for-field (TC-3: same field names) — one
+    INFO-level, key=value structured timing line per `query_backtest` call. `ensure_loop_ms` is present
+    only when the historical/non-`is_latest` ensure-loop branch ran."""
+    fields = [
+        f"ts={datetime.now(timezone.utc).isoformat()}",
+        f"is_latest={is_latest}",
+        f"total_ms={total_ms:.2f}",
+        f"resolved_run_ms={resolved_run_ms:.2f}",
+        f"backfill_forward_returns_ms={backfill_forward_returns_ms:.2f}",
+        f"scorecard_ms={scorecard_ms:.2f}",
+        f"evidence_ms={evidence_ms:.2f}",
+    ]
+    if ensure_loop_ms is not None:
+        fields.append(f"ensure_loop_ms={ensure_loop_ms:.2f}")
+    logger.info("query_backtest_timing %s", " ".join(fields))
+
+
 def query_backtest(session: Session, asof: Optional[str] = None) -> dict:
     """`GET /api/backtest` — the per-date forward-test scorecard (cohort return + excess vs SPY/QQQ/
     sector + the control cohorts, each with sample size `n`) plus the as-of-scoped `evidence_by_horizon`
@@ -206,21 +247,47 @@ def query_backtest(session: Session, asof: Optional[str] = None) -> dict:
     fallback (the new `evidence_asof` field discloses which as-of's evidence is actually served) and its
     B5 gate — the historical ensure-loop below runs ONLY when the resolver's first read is not already
     `"ready"`, never unconditionally, avoiding a redundant per-horizon cache-hit read+deserialize
-    immediately followed by the same resolver re-reading those same rows."""
+    immediately followed by the same resolver re-reading those same rows.
+
+    ops-hardening iter-18: wrapped in per-request, phase-broken-down wall-clock timing instrumentation
+    (`_log_query_backtest_timing`) mirroring `app.api.backtest.backtest`'s own — observability only, the
+    returned payload stays byte-identical (TC-6)."""
+    t_request_start = time.perf_counter()
     cfg = get_config()
+
+    t0 = time.perf_counter()
     run = resolved_run(session, asof, cfg)
+    resolved_run_ms = (time.perf_counter() - t0) * 1000.0
+
+    t0 = time.perf_counter()
     backfill_run_forward_returns(session, run, cfg)  # create-once realized forward returns (as the endpoint does)
+    backfill_forward_returns_ms = (time.perf_counter() - t0) * 1000.0
+
+    t0 = time.perf_counter()
     card = compute_run_scorecard(session, run, cfg)
+    scorecard_ms = (time.perf_counter() - t0) * 1000.0
+
     is_latest = run.asof_date == _latest_stored_run_date(session)
     # ops-hardening iter-5 (J-06) + iter-16 (J-08) + iter-17 (J-08/B1): served from the SAME read-only
     # resolver `GET /api/backtest` now uses (this function's own docstring says it "mirrors the endpoint
     # exactly" — kept true for the compute-vs-serve split AND its iter-17 widened fallback; byte-identical
     # output, `compute_forward_aggregates` itself is unchanged).
+    t0 = time.perf_counter()
     evidence = resolved_forward_aggregate_evidence(session, run.asof_date, cfg)
+    evidence_ms = (time.perf_counter() - t0) * 1000.0
+    ensure_loop_ms: Optional[float] = None
     if not is_latest and evidence["evidence_status"] != "ready":
+        t0 = time.perf_counter()
         for h in cfg.walk_forward.horizons:
             forward_aggregates_ingest_cached(session, h, cfg, as_of=run.asof_date)
         evidence = resolved_forward_aggregate_evidence(session, run.asof_date, cfg)
+        ensure_loop_ms = (time.perf_counter() - t0) * 1000.0
+
+    total_ms = (time.perf_counter() - t_request_start) * 1000.0
+    _log_query_backtest_timing(
+        is_latest, total_ms, resolved_run_ms, backfill_forward_returns_ms, scorecard_ms, evidence_ms,
+        ensure_loop_ms,
+    )
     return {
         **card,
         "is_latest": is_latest,
