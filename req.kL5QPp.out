@@ -1,0 +1,26 @@
+coherence-auditor complete for iteration 20.
+
+Report: runs/goal-session-ops-hardening/iter-20/coherence.md
+**Verdict:** COHERENCE-PASS
+
+DATA CONTRACT — the forward-returns/regime row is unviolated (verified directly, not on faith):
+ - forward_testing.py diffstat 110 insertions / 0 DELETIONS. The new
+   ensure_historical_forward_aggregates_dispatched (:1235) + worker
+   _run_historical_forward_aggregates_dispatch (:1205) are pure ORCHESTRATION; the worker's only
+   compute call is the pre-existing forward_aggregates_ingest_cached, still the sole caller of the
+   byte-unchanged compute_forward_aggregates.
+ - Both api/backtest.py:186 + mcp/tools.py:291 still build the served payload from the same
+   resolved_forward_aggregate_evidence read; the new dispatch call (backtest.py:211/tools.py:299)
+   is FIRE-AND-FORGET (return value never consumed, evidence never reassigned after).
+ - The only frontend change (backtest/page.tsx) adds NO new fetch — branches existing copy on the
+   already-fetched backtest.is_latest (:246,:257). No new displayed value; ensure_loop_ms repurposed
+   in place (same log field, internal timing, not a served value).
+
+INFORMATION ARCHITECTURE — no sidebar/nav/router/layout file in the diff (scoped git diff --stat
+empty), no new route, no blueprint.reapproval-requested. All work inside /backtest's registered home.
+
+ADVISORY (out of scope, not scored): mcp/tools.py:38 still imports forward_aggregates_ingest_cached
+but its only call site in query_backtest was replaced by the dispatch call -> now DEAD import. Lint
+nit for the reviewer/next-iteration cleanup, not a coherence violation (no second path to the value).
+
+No hard-fail in either part; nothing blocks the goal.

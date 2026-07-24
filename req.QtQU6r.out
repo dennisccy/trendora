@@ -1,0 +1,20 @@
+ux-regression-reviewer complete for iteration 20.
+
+Report: reports/phase-goal-ops-hardening-iter-20-ux-regression.md
+**Verdict:** UX-REGRESSION-PASS
+
+- No new capability (confirmed across spec/plan/impl-summary/handoff) — a latency fix + copy
+  correction on the existing /backtest historical-view capability.
+- Discoverability verified LIVE (opened UT-05-refreshing-banner.png + UT-02-historical-empty-state.png):
+  corrected banner/empty-state copy renders exactly as claimed, reachable via the unchanged 1-click
+  Backtest sidebar link + the pre-existing as-of picker.
+- No regression: git diff confirms only apps/frontend/app/backtest/page.tsx touched, only 2 elements
+  (RefreshingEvidenceBanner + not_yet_computed EmptyState), both owned by this feature's own
+  iter-16->17->20 lineage. Sidebar/HealthBadge/Dashboard/Data Manager untouched. J-01/J-03/J-05
+  replay clean; J-04 SKIP is a carried pre-existing infra gap.
+- Full UI/backend parity (the MCP query_backtest mirror honestly disclosed as tool-only). Visual
+  consistency confirmed (zero className changes; banner reuses the same amber/warn Card treatment).
+
+Two non-blocking items carried (NOT UX flags): test_api_backtest.py's updated test unrun this
+session (~80-min fixture, out of scope); the transient 3-6.3 s contention residual during a
+background compute is a performance-budget question for the evaluator.

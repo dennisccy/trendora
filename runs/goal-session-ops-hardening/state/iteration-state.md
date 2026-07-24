@@ -1,26 +1,40 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 19 · **Date:** 2026-07-24 · **Verdict:** CONTINUE
+**After iteration:** 20 · **Date:** 2026-07-24 · **Verdict:** STALLED
 
 ## Journeys
 
-4 passing (J-01 J-03 J-05 golden-replayed this iter; J-04 CARRIED, last_verified iter-15, disruptive replay OWED) · 3 partial (J-06 J-07 J-08) — 7 total. The forward_returns request-path blocker that held the three partial since iter-11 is now FIXED; two NEW/residual gaps below keep them partial.
+4 passing (J-01 J-03 J-04 J-05) · 3 partial (J-06 J-07 J-08) — 7 total. iter-20 closed the last
+agent-tractable latency blocker but NO journey crossed to passing — remaining path is owner-owned.
 
 ## Active blockers
 
-- **`ensure_loop_ms` cold-first-view stall on `/backtest` (J-06/J-08), owner=dev:** the FIRST view of a historical as-of sits 9.6-54s on an empty NO-affordance skeleton, then renders real values (audit F1; UT-04-historical-wait-check.png). A SEPARATE subsystem from iter-19's fix (`backfill_forward_returns_ms` stayed 12-80ms, write_taken=False on those reqs). FIX (agent-tractable): add an honest progress affordance + take the cold ensure_loop scan off the request path (the compute-at-ingest/serve-from-storage pattern already applied to the forward path).
-- **TC-7 concurrent-INGEST overlay UNMEASURED (J-06/J-07), owner=human:** the ≤1.5s budget is proven only under pure reads; the actual historical breach condition (concurrent ingest, 11/68 @ 12.655s) needs owner go-ahead for the AG-10-blocked ingest trigger. Mechanism strongly predicts it holds — but verify live, don't extrapolate.
-- **Fresh live DISRUPTIVE J-04 kill/restart replay, owner=human:** owed since iter-15 (same ingest-trigger gate); hard GOAL_ACHIEVED precondition. TC-8 non-disruptive sanity is not a substitute.
+- **OWNER-owned (the halt is for the owner — pick a direction, then `--resume` at full):**
+  (1) authorize the AG-10-gated ingest for **TC-13** — prove `/backtest` ≤1.5 s under the
+  concurrent-INGEST overlay (J-08's own step-1-2 scenario; only pure-read proof exists).
+  (2) authorize the AG-10-gated ingest for **TC-14** — disruptive J-04 kill/restart replay (owed
+  since iter-15; hard GOAL_ACHIEVED precondition; non-disruptive health check is NOT a substitute).
+  (3) decide how ≤1.5 s / ≤0.1 s treat the **transient in-process contention** (3.0–6.3 s `/backtest`,
+  1.60 s health during the bounded ~30 s background compute; `perf-budgets.md` "Iteration 20") —
+  off-process/precompute are spec-rejected, so this is accept-and-log / amend / rescope, not agent work.
+- Agent-tractable but closes NO journey alone: oldest-date (2005) ~1.3–1.9 s from `scorecard_ms +
+  resolved_run_ms` (`apps/backend/app/api/backtest.py:162-177`, pre-existing, out of iter-20 scope).
 
 ## Last 2 verdicts
 
-- iter 19: CONTINUE — un-elapsed-horizon short-circuit FIXED the create-once forward_returns storm (TC-6 877→13.9ms, 63×, 0/4793 breaches, evaluator-recomputed CSV; byte-identity AG-3 proven), but ensure_loop_ms cold path + unmeasured TC-7 keep J-06/J-07/J-08 partial.
-- iter 18: CONTINUE — diagnose-first: pinned the breach to backfill_forward_returns_ms SQLite-writer contention (82.2%); no fix by spec.
+- iter 20: STALLED — historical ensure-loop moved off-thread (9.6–54 s → 0.082 s, live-verified) but
+  NO journey crossed to passing; every remaining path to close J-06/J-07/J-08 is owner-owned (C.2).
+- iter 19: CONTINUE — create-once INSERT storm fixed; the ensure_loop cold path was still agent-tractable.
 
 ## Do not redo
 
-- The forward_returns request-path latency fix — DONE (un-elapsed-horizon short-circuit in `backfill_run_forward_returns`; attempts 1-2 skip-commit + column-projection were INERT — do NOT retry them).
-- `compute_forward_aggregates` body / compute-vs-serve split / resolver cross-`asof_key` fallback — untouched, byte-unchanged; do NOT reopen (iter-14/16/17). Keep ONE producer/ONE resolver (coherence contract).
-- J-08 step-4 zero-aggregate-compute + step-5 empty state — PROVEN (TC-1..TC-5); residual is the ensure_loop cold path, not aggregate serving.
-- Out of bounds: `main.py`, `health.py`, `readiness.py`, `warmup.py`, `scripts/*`. Heavy passes via `scripts/start-backend.sh` only (taskset 0-3,8-11, BLAS/OMP=4, AG-10); no full pytest; `loaded_engine` ~80min cite-don't-run.
-- Carried non-blocking: B3 autoflush IntegrityError hazard in `_insert_run_forward_returns` (own iter, risky on iter-13 cluster); `test_db.py::test_create_all_produces_expected_tables` pre-existing failure — carried, not new.
+- Historical `/backtest` cold recompute is OFF the request thread — `ensure_historical_forward_
+  aggregates_dispatched` (single-flight background daemon) in `forward_testing.py`, mirrored in
+  `mcp/tools.py`. BOTH cold paths off-thread; J-08's literal "never a request-path recompute" met.
+- `compute_forward_aggregates` + `resolved_forward_aggregate_evidence` byte-unchanged (ONE
+  producer/resolver, coherence) — do NOT touch. Out of bounds: `main.py` `health.py` `readiness.py`
+  `warmup.py` `scripts/*`. Frontend refreshing/empty-state copy corrected + live-verified — do not re-audit.
+- REJECTED, no re-propose without owner sanction: precompute every historical date (unbounded); remove
+  historical lazy create-once (time-machine regression); off-process/precompute contention fix.
+- J-01/J-03/J-05 pass by golden replay; J-04 carried (owes disruptive TC-14). Heavy passes via
+  `start-backend.sh` only (AG-10); `loaded_engine`/`test_data_manager.py` cite-don't-run (owed off-box).

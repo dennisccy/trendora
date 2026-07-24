@@ -1,0 +1,9 @@
+readme-maintainer complete for iteration 19 — correct NO-OP.
+
+iter-19 was a backend-only /backtest+query_backtest latency fix (877->13.9 ms under concurrency,
+byte-identical response, zero frontend/UI/command changes — confirmed by the closure auditor's
+"Backend-Only Claim Guard: does not trip"). .claude/project-template.md remains the unfilled
+generic placeholder (no How-to-run update possible/needed); scripts/dev.sh + start-backend/frontend
+still use the documented 8255/3255 ports. No text in README.md's AUTO:capabilities or
+AUTO:how-to-run blocks is stale as a result of this iteration -> made NO edits (correct no-op per
+the skill's idempotency rule, not an oversight).

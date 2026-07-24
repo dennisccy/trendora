@@ -1,0 +1,31 @@
+phase-closure-auditor complete for iteration 20.
+
+Report: reports/phase-goal-ops-hardening-iter-20-closure-verdict.md
+**Verdict:** CLOSURE-PASS
+
+Pipeline gates: Review PASS_WITH_NOTES, QA PASS, Audit PASS_WITH_GAPS — all meet the bar.
+All 6 UI-visibility artifacts exist, substantial (45-379 lines), non-vague (exact data-testid
+selectors, verbatim before/after copy, exact timings/screenshot paths). Bonus ux-regression.md
+(UX-REGRESSION-PASS) + regression-replay-results.md (3/3 PASS) checked.
+
+Cross-reference: clean. All 6 UI artifacts + ux-regression converge on the same facts INCLUDING
+the same honest residual (3.0-6.3 s contention / 1.60 s health spike) sourced consistently from
+perf-budgets.md. No backend-only-claim-guard trip (the one user-facing change is confirmed wired
+into the live page via independent screenshot re-verification; MCP channel transparently labeled
+non-browser).
+
+INDEPENDENTLY RE-VERIFIED the QA-vs-perf-budgets discrepancy — confirmed real: qa.md:87 says "1
+with >100 ms" while qa.md:150 says "15/15 <=100 ms" (direct self-contradiction in the same doc);
+perf-budgets.md:3368-3371 (honest record) shows 4-of-16 over budget, max 1.60 s. DISPOSITION:
+NON-BLOCKING — it sits entirely inside the QA report (gated only for PASS-verdict-and-existence,
+not internal self-consistency), was already caught by the audit as T2 (reporting accuracy, not a
+code defect), and NONE of the 6 UI-visibility artifacts repeat the flawed number (all cite the
+true perf-budgets figures). Recommend a QA doc fix.
+
+Also independently checked UT-J-04 skip: no J-04.json golden script exists (only J-01/03/05/06),
+structurally corroborating a genuine long-standing carried gap (4+ iters), not iter-20-specific;
+only 1 of 15 browser tests, not a blanket skip.
+
+Non-blocking notes: QA line-150 self-contradiction (doc fix), UT-J-04 circular skip reason,
+T1 two DoD-named regression files unrun (tracked), TC-13/TC-14 owner-gated, coherence "pending"
+(outside this gate). No blocking issues.

@@ -23,12 +23,24 @@ ops-hardening iter-16 (J-08): for the LATEST view (`is_latest == True`) this end
 forward-aggregate compute on the request — `evidence_by_horizon` (plus `evidence_status` /
 `evidence_generated_at`) comes ONLY from `resolved_forward_aggregate_evidence`, a pure reader that is
 structurally incapable of calling `compute_forward_aggregates`. A HISTORICAL (`is_latest == False`)
-`?as_of=` request keeps its pre-existing lazy create-once-and-cache behavior UNCHANGED (an explicit,
-logged interpretation call — see the iter-16 dev handoff): this endpoint resolves first, and only when
-that read is not already `"ready"` (audit B5 — never unconditionally) does it ensure every configured
-horizon is cached for that date (computing any still-missing one via `forward_aggregates_ingest_cached`,
-exactly as before iter-16) and re-resolve, so both branches still share ONE code path for building the
-response's evidence fields.
+`?as_of=` request keeps its pre-existing lazy create-once-and-cache behavior — this endpoint resolves
+first, and only when that read is not already `"ready"` (audit B5 — never unconditionally) does it ensure
+every configured horizon gets cached for that date (computing any still-missing one), so both branches
+still share ONE code path for building the response's evidence fields. iter-20 changed WHO/WHEN performs
+that compute (see immediately below) — never the gate itself, never the resolver's own read logic.
+
+ops-hardening iter-20 (J-06/J-07/J-08): the historical branch's compute moved OFF the request thread. It
+no longer calls `forward_aggregates_ingest_cached` in a loop itself; instead it calls
+`ensure_historical_forward_aggregates_dispatched`, which is a single-flight-guarded trigger for a
+BACKGROUND daemon thread (its own DB session) that does the same per-horizon
+`forward_aggregates_ingest_cached` loop off-thread. The request thread never waits on it — this endpoint
+still returns the SAME pre-dispatch `evidence` read from `resolved_forward_aggregate_evidence` above (the
+honest interim state: `"refreshing"` or `"not_yet_computed"`), so a first-ever view of a not-yet-warmed
+historical date now renders within budget instead of blocking up to ~54s (live UT-04 evidence). A LATER
+request for the SAME date, once the background compute lands, serves `"ready"` — byte-identical to what
+the old synchronous path produced. The create-once/cache substance is unchanged (still lazy, still
+computed exactly once per identity); only the timing of WHEN the compute runs relative to the request
+changed. See `docs/handoffs/goal-ops-hardening-iter-20-dev.md` for the full write-up.
 
 ops-hardening iter-17 (audit B1): the resolver's OWN fallback now crosses `asof_key` boundaries — when
 the resolved as-of has never had a complete forward-aggregate version of its own (the common shape right
@@ -59,6 +71,7 @@ from app.db import get_session
 from app.engine.forward_testing import (
     backfill_run_forward_returns,
     compute_run_scorecard,
+    ensure_historical_forward_aggregates_dispatched,
     forward_aggregates_ingest_cached,
     resolved_forward_aggregate_evidence,
 )
@@ -96,15 +109,22 @@ def _log_backtest_timing(
     """One INFO-level, key=value structured timing line per `/backtest` request: an ISO-8601 wall-clock
     timestamp plus the elapsed-ms breakdown the iter-18 spec calls for -- run resolution, the
     `backfill_run_forward_returns` step, `compute_run_scorecard`, and `resolved_forward_aggregate_
-    evidence`. `ensure_loop_ms` (the historical/non-`is_latest` ensure-loop's `forward_aggregates_
-    ingest_cached` calls plus its re-resolve) is present ONLY when that branch actually ran -- never a
-    fabricated 0 for the `is_latest` request path, which never reaches it. `write_taken` (iter-19,
-    J-06/J-07/J-08) records whether `backfill_run_forward_returns`'s create-once write was actually
-    committed this request (`True`, the genuinely-missing case) or skipped entirely because every row
-    already existed (`False`, the new zero-write guard's common warm-path outcome) -- appended LAST so
-    the pre-existing field positions/regex this line's own consumers already rely on are undisturbed.
-    Purely an operational log line for the iter-18/iter-19 latency diagnosis -- never a served/displayed
-    value (Data Contract untouched)."""
+    evidence`. `ensure_loop_ms` is present ONLY when the historical/non-`is_latest` branch actually ran --
+    never a fabricated 0 for the `is_latest` request path, which never reaches it.
+
+    ops-hardening iter-20 (J-06/J-07/J-08): `ensure_loop_ms` is REPURPOSED (field name kept unchanged so
+    every existing consumer/regex of this log line -- `test_backtest_timing.py` included -- keeps matching
+    verbatim) from timing a synchronous per-horizon compute-and-wait loop to timing the sub-millisecond
+    dispatch-DECISION cost only (`ensure_historical_forward_aggregates_dispatched`'s lock-check-and-maybe-
+    spawn-a-thread call) -- it is NEVER again a multi-second compute-wait duration, because the request
+    thread no longer waits on the compute at all (TC-2).
+
+    `write_taken` (iter-19, J-06/J-07/J-08) records whether `backfill_run_forward_returns`'s create-once
+    write was actually committed this request (`True`, the genuinely-missing case) or skipped entirely
+    because every row already existed (`False`, the new zero-write guard's common warm-path outcome) --
+    appended LAST so the pre-existing field positions/regex this line's own consumers already rely on are
+    undisturbed. Purely an operational log line for the iter-18/iter-19/iter-20 latency diagnosis -- never
+    a served/displayed value (Data Contract untouched)."""
     fields = [
         f"ts={datetime.now(timezone.utc).isoformat()}",
         f"is_latest={is_latest}",
@@ -166,28 +186,29 @@ def backtest(
     evidence = resolved_forward_aggregate_evidence(session, run.asof_date, cfg)
     evidence_ms = (time.perf_counter() - t0) * 1000.0
     # ops-hardening iter-16 (J-08): the historical (is_latest == False) carve-out keeps its pre-existing
-    # lazy create-once-and-cache behavior UNCHANGED (TC-13) — ensure every configured horizon is cached
-    # for this date, then re-resolve. For the LATEST view this never runs, so this request path never
-    # reaches `forward_aggregates_ingest_cached` — let alone `compute_forward_aggregates` — under any
-    # circumstance (J-08's zero-compute-on-request guarantee).
+    # lazy create-once-and-cache behavior (TC-13). For the LATEST view this branch never runs, so this
+    # request path never reaches `ensure_historical_forward_aggregates_dispatched` — let alone
+    # `compute_forward_aggregates` — under any circumstance (J-08's zero-compute-on-request guarantee).
     #
     # iter-17 (audit B5): gated on the resolver's OWN first read rather than unconditional — on an
     # already-warmed historical date (the common repeat-view case for the Backtest/Time-Machine
-    # workspace) the resolver above already found `evidence_status == "ready"`, so the ensure loop below
-    # is skipped entirely, avoiding a redundant per-horizon cache-hit read+deserialize immediately
-    # followed by the SAME resolver re-reading and re-parsing those same rows a second time. Byte-
-    # identical either way (still one producer, one serving read): a cold historical date still ensures
-    # every horizon is cached (computing any still-missing one) and re-resolves once, exactly as before.
+    # workspace) the resolver above already found `evidence_status == "ready"`, so the dispatch below is
+    # skipped entirely — no lock touched, no thread spawned, nothing to do.
     #
-    # ops-hardening iter-18: `ensure_loop_ms` times this WHOLE block (the per-horizon
-    # `forward_aggregates_ingest_cached` calls plus the re-resolve) — present in the timing log line ONLY
-    # when this branch actually runs, mirroring exactly when `forward_aggregates_ingest_cached` fires.
+    # ops-hardening iter-20 (J-06/J-07/J-08): this branch NO LONGER computes/waits on the request thread.
+    # It triggers `ensure_historical_forward_aggregates_dispatched` — a single-flight-guarded BACKGROUND
+    # dispatch (own DB session; a no-op if a dispatch for this identity is already in flight) — and does
+    # NOT re-resolve: `evidence` stays the PRE-dispatch read above (the honest interim state: `"refreshing"`
+    # or `"not_yet_computed"`), served immediately. A LATER request for this SAME date, once the background
+    # compute lands, will find the resolver's own read already `"ready"` and skip this branch entirely.
+    #
+    # ops-hardening iter-18: `ensure_loop_ms` times this block — present in the timing log line ONLY when
+    # this branch actually runs. iter-20 repurposed its MEANING (see `_log_backtest_timing`'s docstring):
+    # now the dispatch-DECISION cost only (sub-millisecond, TC-2), never a compute-wait duration.
     ensure_loop_ms: Optional[float] = None
     if not is_latest and evidence["evidence_status"] != "ready":
         t0 = time.perf_counter()
-        for h in cfg.walk_forward.horizons:
-            forward_aggregates_ingest_cached(session, h, cfg, as_of=run.asof_date)
-        evidence = resolved_forward_aggregate_evidence(session, run.asof_date, cfg)
+        ensure_historical_forward_aggregates_dispatched(session, run.asof_date, cfg)
         ensure_loop_ms = (time.perf_counter() - t0) * 1000.0
 
     total_ms = (time.perf_counter() - t_request_start) * 1000.0

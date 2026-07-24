@@ -280,3 +280,9 @@ carve-out as also licensing the historical view to block its own triggering requ
 the current 9.6-54s stall as within contract (only the missing loading affordance would need fixing) and
 might reject this iteration's serving-path change as broader than required.
 **Reversible:** yes
+
+## iter-20 — goal-evaluator
+
+**Ambiguity:** The transient in-process contention during the ~30s background compute (3.0-6.3s `/backtest`, 1.60s `/api/health`, 4/16 samples over budget) LITERALLY breaches J-06 step-2 ("assert every measurement within budget") and J-07 step-2 ("every poll within its existing budget"). But J-07's TITLE promise ("never take the service DOWN") is met (no wedge, 16/16 readiness ready), and goal.md never says whether ≤1.5s / ≤0.1s govern reads taken DURING a heavy background-compute window or only steady-state reads.
+**We chose:** kept J-06/J-07 `partial` — treated the transient spikes as real recorded budget breaches, NOT laundered into a pass (iter-12/15/16 human-ratified precedent), AND treated their resolution as OWNER-owned (the only in-scope fix is a budget-acceptance decision; off-process/precompute are spec-rejected), which drives STALLED rather than CONTINUE. A human who reads J-07's step-2 clause as satisfied-in-spirit (service stayed up, just slower) and ≤1.5s as governing steady-state (non-background-window) reads could instead score J-07 (and, reading J-06's budget the same way, J-06) `passing` today — leaving only J-08's owner-gated TC-13 and J-04's owner-gated TC-14 as GOAL_ACHIEVED blockers (still a halt, but with 6 passing / 1 partial). Not verdict-determinative between STALLED variants (both halt owner-side), but it governs the recorded journey statuses and what "accept the budget" would unlock next.
+**Reversible:** yes

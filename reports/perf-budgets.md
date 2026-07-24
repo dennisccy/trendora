@@ -3331,3 +3331,45 @@ resolved at the mechanism level, byte-identity preserved (developer's fixture te
 `evidence_status: ready`).** This is the number iter-15's STALLED halt and iters 16-18's diagnosis chain were
 converging on — closed by measuring, not guessing: three fix attempts, each corrected by a live re-measurement
 (commit → existence-read → the actual un-elapsed-horizon re-attempt loop).
+
+---
+
+## Iteration 20 — historical-as-of cold-recompute moved OFF the request thread (operator, live)
+
+iter-19 uncovered a SECOND /backtest cold path: a historical `?as_of=<D>` first view synchronously computed
+per-horizon forward aggregates ON the request thread (`ensure_loop_ms` 9.3-54 s live in iter-19 UT-04).
+iter-20 dispatches that compute to a single-flight-guarded BACKGROUND thread
+(`ensure_historical_forward_aggregates_dispatched`, keyed on `(asof_key, dataset_version)`), so the request
+returns immediately serving last-good storage + an honest `refreshing` marker — never a cold recompute on the
+request path (J-08). Backend restarted via `scripts/start-backend.sh` (host-guard verified); measured live.
+
+**Cold historical first view `GET /api/backtest?as_of=2026-07-09` (was 9.6-54 s, ensure_loop_ms 9288-54281 ms):**
+
+| metric | pre-fix (iter-19 UT-04) | iter-20 |
+|---|---|---|
+| first-response wall time | 9.6-54 s (blocked) | **0.082 s** |
+| `ensure_loop_ms` (request-path) | 9288 / 54281 / 54084 ms | **1.67 ms** (dispatch decision only) |
+| interim `evidence_status` | empty skeleton, no affordance | **`refreshing`** (serves last-good 2025-05-30 while computing) |
+| background compute → `ready` | n/a (was synchronous) | ~30 s later `as_of=2026-07-09` serves **`ready`** |
+| `GET /api/health` during compute | — | **200 throughout** (J-07 no-wedge preserved) |
+
+Peak Tctl 79 °C during the background compute (< 95 abort).
+
+**Honest residual (for the reviewer/evaluator to weigh):** while the ~30 s background compute runs, a few
+concurrently-issued requests spiked to **3.0-6.3 s** (t=10 s 6.32 s, t=20 s 3.40 s, t=30 s 3.08 s) — resource
+contention between request-serving and the heavy `compute_forward_aggregates` running in-process, NOT a
+request-path recompute (the request itself no longer computes; `ensure_loop_ms` stays ~2 ms). So iter-20
+eliminates the 54 s BLOCK and the request-path cold recompute (J-08's literal requirement), and health never
+wedges (J-07) — but the ≤1.5 s budget is still transiently breached DURING a background compute window by
+contention. Fully removing those spikes would need the compute off-process or precomputed at ingest (the
+decomposer rejected precomputing all ~180 historical dates as unbounded ingest cost). Recorded as an honest
+partial: the request-path recompute is gone; transient contention during the bounded background window remains.
+
+**Health-latency during a background compute (closing the reviewer's MINOR gap — J-07 evidence).** Triggered a
+second cold compute (`as_of=2026-07-08`, trigger request 0.065 s) and sampled `GET /api/health` throughout:
+16 samples, **all `readiness: ready`, zero failures/wedges** — latency mostly 0.10-0.28 s but transiently
+spiking to **max 1.60 s** (0.64/0.90/1.01/1.60 s on 4 of 16 samples) under the same in-process contention.
+So J-07's core promise — "heavy aggregates never take the service DOWN" — HOLDS (no outage, no wedge, readiness
+never drops); but health latency, like `/backtest` latency, transiently degrades (~1.6 s peak) during the
+bounded ~30 s background-compute window. Same residual, same root (in-process compute contention), same honest
+verdict: no service-down (J-07 no-wedge met), transient latency degradation not yet eliminated.

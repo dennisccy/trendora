@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -755,11 +756,36 @@ def test_backtest_route_and_mcp_tool_serve_older_evidence_asof_across_boundary(e
     assert api_result["evidence_asof"] == mcp_result["evidence_asof"]
 
 
+def _poll_until_ready(call, timeout: float = 5.0, interval: float = 0.01) -> dict:
+    """ops-hardening iter-20: `call()` (a zero-arg callable re-invoking the route/tool) is polled, bounded,
+    until its `evidence_status` reaches `"ready"`. The historical branch's compute is now DISPATCHED to a
+    background thread rather than awaited on the request thread, so the first call after a dispatch
+    returns an honest interim state — this is what a real page's "reload after a moment" does, and mirrors
+    this test suite's own bounded-wait convention (e.g. `test_forward_testing_concurrency.py`'s
+    `BOUNDED_TIMEOUT_S`). Raises via assertion (never hangs) if `timeout` is exceeded — a genuine
+    regression, not a slow pass, on these small in-memory fixtures."""
+    deadline = time.monotonic() + timeout
+    result = call()
+    while result["evidence_status"] != "ready":
+        assert time.monotonic() < deadline, (
+            f"evidence never reached 'ready' within {timeout}s (last evidence_status="
+            f"{result['evidence_status']!r}) — treat as a hang/regression, not a slow pass"
+        )
+        time.sleep(interval)
+        result = call()
+    return result
+
+
 def test_historical_asof_keeps_pre_iter16_create_once_and_cache_behavior(endpoint_engine, monkeypatch):
-    """TC-13: a historical (`is_latest == False`) `?as_of=` request still computes-once-and-caches on
-    first view (UNCHANGED, the explicit carve-out) — a SECOND, older run with no forward-aggregate warm
+    """TC-10/TC-13: a historical (`is_latest == False`) `?as_of=` request still computes-once-and-caches
+    (the explicit carve-out's SUBSTANCE, unchanged) — a SECOND, older run with no forward-aggregate warm
     at all is requested (is_latest is False since a later run exists): a real compute happens once per
-    configured horizon on the FIRST call and NOT AT ALL on the second (cached) call."""
+    configured horizon IN TOTAL, and never again on a later (cached) view.
+
+    ops-hardening iter-20: the compute is now DISPATCHED to a background thread rather than run
+    synchronously on the request thread, so the FIRST call returns an honest INTERIM state immediately
+    (never blocking) — this test waits (bounded) for that dispatched compute to land before asserting the
+    SAME compute-count/byte-identity guarantees this test has always encoded (TC-10)."""
     import app.api.backtest as backtest_module
     import app.engine.forward_testing as ft_module
 
@@ -784,19 +810,31 @@ def test_historical_asof_keeps_pre_iter16_create_once_and_cache_behavior(endpoin
         return real(*a, **kw)
 
     monkeypatch.setattr(ft_module, "compute_forward_aggregates", _counting)
-    with Session(engine) as session:
-        first = backtest_module.backtest(as_of=older_asof.isoformat(), session=session)
-    first_calls = call_count["n"]
-    with Session(engine) as session:
-        second = backtest_module.backtest(as_of=older_asof.isoformat(), session=session)
 
+    def _call() -> dict:
+        with Session(engine) as session:
+            return backtest_module.backtest(as_of=older_asof.isoformat(), session=session)
+
+    first = _call()
     assert first["is_latest"] is False
+    # iter-20: the compute is dispatched, never awaited — nothing has EVER been computed anywhere in this
+    # fixture yet, so the honest PRE-dispatch read is "not_yet_computed" (never "ready" on this first call).
+    assert first["evidence_status"] == "not_yet_computed", (
+        "the first view must return immediately with the honest interim state, never block for the "
+        "dispatched background compute"
+    )
+
+    ready = _poll_until_ready(_call)
+    first_calls = call_count["n"]
+    assert first_calls == len(HORIZONS), "expected one real compute per configured horizon, dispatched once"
+    assert ready["is_latest"] is False
+    assert ready["evidence_status"] == "ready"
+    assert ready["evidence_asof"] == older_asof.isoformat()
+
+    second = _call()
     assert second["is_latest"] is False
-    assert first_calls == len(HORIZONS), "expected one real compute per configured horizon on first view"
-    assert call_count["n"] == first_calls, "the second (cached) view must trigger zero MORE computes"
-    assert first["evidence_status"] == "ready"
-    assert first["evidence_asof"] == older_asof.isoformat()
-    assert second["evidence_by_horizon"] == first["evidence_by_horizon"]
+    assert call_count["n"] == first_calls, "the cached (ready) view must trigger zero MORE computes"
+    assert second["evidence_by_horizon"] == ready["evidence_by_horizon"]
 
 
 def test_historical_asof_still_computes_once_even_when_older_fallback_evidence_exists(
@@ -804,11 +842,16 @@ def test_historical_asof_still_computes_once_even_when_older_fallback_evidence_e
 ):
     """iter-17 TC-6 (regression guard, mirrors `test_historical_asof_keeps_pre_iter16_create_once_and_
     cache_behavior` above): a historical (`is_latest == False`) `?as_of=` request still computes-once-
-    and-caches ITS OWN evidence on first view, and must NEVER be short-circuited by the iter-17 widened
+    and-caches ITS OWN evidence, and must NEVER be permanently short-circuited by the iter-17 widened
     fallback finding an UNRELATED older `asof_key`'s complete evidence first. `backtest.py`'s audit-B5
     gate is `evidence_status != "ready"` — which `"refreshing"` also satisfies — deliberately NOT
-    `== "not_yet_computed"`, which would wrongly skip the ensure-loop and serve the fallback's stale,
-    wrong-date evidence instead of computing this date's own."""
+    `== "not_yet_computed"`, which would wrongly skip the dispatch and serve the fallback's stale,
+    wrong-date evidence forever instead of ever computing this date's own.
+
+    ops-hardening iter-20: the FIRST call returns the honest PRE-dispatch read (the widened fallback's
+    `"refreshing"` at `fallback_asof`) immediately, while the SAME call's dispatch computes this date's
+    OWN evidence in the background — this test waits (bounded) for that to land, then re-confirms the SAME
+    "never permanently short-circuited, never re-computed" guarantees TC-6/TC-10 have always encoded."""
     import app.api.backtest as backtest_module
     import app.engine.forward_testing as ft_module
 
@@ -830,7 +873,7 @@ def test_historical_asof_still_computes_once_even_when_older_fallback_evidence_e
     # the requested historical date: strictly AFTER fallback_asof (so the widened fallback lands on it)
     # and strictly BEFORE the fixture's own latest date (so is_latest stays False); its own
     # forward-aggregate cache is EMPTY, so the resolver's FIRST read must land on "refreshing" via the
-    # widened fallback to fallback_asof, never "ready", before the ensure-loop below ever runs.
+    # widened fallback to fallback_asof, never "ready", before this date's own dispatched compute lands.
     requested_asof = date(2024, 6, 1)
     with Session(engine) as session:
         req_run = _add_run(session, requested_asof, "Risk-off")
@@ -848,22 +891,36 @@ def test_historical_asof_still_computes_once_even_when_older_fallback_evidence_e
         return real(*a, **kw)
 
     monkeypatch.setattr(ft_module, "compute_forward_aggregates", _counting)
-    with Session(engine) as session:
-        first = backtest_module.backtest(as_of=requested_asof.isoformat(), session=session)
-    first_calls = call_count["n"]
-    with Session(engine) as session:
-        second = backtest_module.backtest(as_of=requested_asof.isoformat(), session=session)
 
+    def _call() -> dict:
+        with Session(engine) as session:
+            return backtest_module.backtest(as_of=requested_asof.isoformat(), session=session)
+
+    first = _call()
     assert first["is_latest"] is False
-    assert first_calls == len(HORIZONS), "expected one real compute per configured horizon on first view"
-    assert call_count["n"] == first_calls, "the second (cached) view must trigger zero MORE computes"
-    assert first["evidence_status"] == "ready"
-    assert first["evidence_asof"] == requested_asof.isoformat(), (
-        "the historical view must serve ITS OWN freshly computed evidence, never the fallback's older date"
+    assert first["evidence_status"] == "refreshing", (
+        "the first read must serve the widened cross-asof_key fallback honestly, before this date's own "
+        "dispatched compute lands"
     )
+    assert first["evidence_asof"] == fallback_asof.isoformat(), (
+        "must not be short-circuited by == 'not_yet_computed' — the != 'ready' gate must still dispatch "
+        "this date's own compute even though the first read already found 'refreshing'"
+    )
+
+    ready = _poll_until_ready(_call)
+    first_calls = call_count["n"]
+    assert first_calls == len(HORIZONS), "expected one real compute per configured horizon, dispatched once"
+    assert ready["evidence_status"] == "ready"
+    assert ready["evidence_asof"] == requested_asof.isoformat(), (
+        "the historical view must eventually serve ITS OWN freshly computed evidence, never stay stuck on "
+        "the fallback's older date"
+    )
+
+    second = _call()
+    assert call_count["n"] == first_calls, "the cached (ready) view must trigger zero MORE computes"
     assert second["evidence_status"] == "ready"
     assert second["evidence_asof"] == requested_asof.isoformat()
-    assert second["evidence_by_horizon"] == first["evidence_by_horizon"]
+    assert second["evidence_by_horizon"] == ready["evidence_by_horizon"]
 
 
 # ======================================================================================================

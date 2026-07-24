@@ -1,0 +1,17 @@
+ui-test-designer complete for iteration 20.
+
+Reports: reports/phase-goal-ops-hardening-iter-20-ui-test-plan.md (11 cases UT-01..UT-11),
+         reports/phase-goal-ops-hardening-iter-20-what-to-click.md (7-step ~5-min guide)
+
+Framed for the /backtest historical-first-view UX: (1) navigate to a NEVER-VIEWED historical
+as-of date -> page responds PROMPTLY with an honest refreshing/computing affordance (not an empty
+hang, not a multi-second block); (2) after ~30 s background compute, reload -> real ready evidence
+byte-identical; (3) latest (default) /backtest view unchanged. Grounded in exact frontend source
+(copy strings, data-testid, button labels) + the perf-budgets.md "Iteration 20" evidence
+(0.082 s response, ~30 s completion, 3.0-6.3 s contention residual honestly noted, page never hangs
++ health stays up).
+
+IMPORTANT CATCH: the frontend reads the `asof` query param (NOT the backend's `as_of`) — flagged to
+avoid a mix-up in the browser step. Cold-date steps are self-discovering (calendar year dropdown +
+colored/disabled day cells) rather than hardcoding a date that goes stale after first view. No
+ingest/backfill steps (AG-10); GET /backtest?asof= is a safe read. No files edited.

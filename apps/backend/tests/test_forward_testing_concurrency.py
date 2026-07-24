@@ -679,3 +679,268 @@ def test_iter19_concurrent_missing_run_backtest_calls_no_duplicate_rows_and_roll
         "expected the IntegrityError-tolerant rollback path to be exercised by at least one of the 5 "
         "concurrent callers racing to backfill the SAME genuinely-missing run"
     )
+
+
+# ======================================================================================================
+# ops-hardening iter-20 (J-06/J-07/J-08) — the NEW outer single-flight dispatch guard that takes the
+# historical (`is_latest == False`) carve-out's compute OFF the request thread entirely
+# (`forward_testing.py`'s `ensure_historical_forward_aggregates_dispatched` /
+# `_run_historical_forward_aggregates_dispatch`, `_HIST_DISPATCH_LOCK` / `_HIST_DISPATCH_INFLIGHT`). A
+# DIFFERENT guard from every group above (those all exercise the INNER per-horizon lock
+# `forward_aggregates_ingest_cached` itself owns — unchanged by this iteration): this one decides whether
+# the REQUEST THREAD spawns a background dispatch AT ALL, so the request thread never calls `event.wait()`
+# on the inner lock in the first place.
+# ======================================================================================================
+def _seed_historical_run(session: Session, asof: date, ticker: str = "AAA") -> ScannerRun:
+    """A minimal historical `ScannerRun` + one `ScannerResult` + its entry-day `DailyPrice` bar — enough
+    for `resolved_run`'s `latest_data_date` check and for the historical dispatch to have something to
+    compute (an all-NA horizon set is a legitimate, honest result; these tests assert compute-COUNT and
+    dispatch-behavior, not non-empty content, mirroring `test_forward_testing_serving_split.py`'s own
+    `endpoint_engine`-based historical tests)."""
+    run = ScannerRun(
+        asof_date=asof, created_at=datetime.now(timezone.utc), provider="seed", benchmark="SPY",
+        regime_score=50.0, regime_label="Risk-on", regime_components_json="[]",
+        new_high_low_json="{}", candidate_counts_json="{}",
+    )
+    session.add(run)
+    session.flush()
+    session.add(ScannerResult(
+        run_id=run.id, ticker=ticker, name=ticker, sector="Technology", leadership_score=50.0,
+        leadership_bucket="A", entry_quality_score=50.0, entry_quality_bucket="B", risk_score=50.0,
+        risk_bucket="C", setup_status="Actionable", rank=1, record_json="{}", is_vcp=False,
+        is_pullback_to_rising_dma=False, is_flat_base_breakout=False,
+    ))
+    session.add(DailyPrice(
+        symbol=ticker, date=asof, open=100.0, high=101.0, low=99.0, close=100.0, volume=1.0,
+    ))
+    return run
+
+
+# Sized like this file's OWN `write_contention_engine` calibration (TC2_N_ROWS, module docstring): large
+# enough IN TOTAL that a SINGLE uncontended `compute_forward_aggregates` call at this horizon clears
+# >=1.0s wall-clock, so TC-3's "never blocks the request thread" claim is a REAL, measurable discriminator
+# between the OLD synchronous ensure-loop (every one of the 5 concurrent requests would take >=1s: the
+# owner computing, the other 4 waiting on the existing inner per-horizon lock) and the NEW dispatch (every
+# request returns near-instantly regardless).
+#
+# Spread across `_TC20_FILLER_RUNS` SEPARATE runs (never attached to the ONE run actually requested) --
+# `compute_forward_aggregates`'s cost scales with the TOTAL row count across the whole expanding window,
+# but `compute_run_scorecard` / `backfill_run_forward_returns` (called on EVERY /backtest request
+# regardless of this iteration's dispatch mechanism -- unrelated, unchanged code) are each scoped to ONE
+# run's OWN rows. Attaching all the volume to the requested run itself (an earlier draft of this fixture)
+# made THOSE two calls slow too, confounding the measurement: the request would be slow via a totally
+# different, already-existing, out-of-scope code path (a real, reproducible finding, but not what TC-3
+# tests) rather than via the historical ensure-loop this iteration actually changes. Spreading the volume
+# across OTHER, older runs keeps the requested run's own per-request cost negligible while still making
+# `compute_forward_aggregates`'s expanding-window aggregate genuinely slow. `record_json` is NOT padded
+# (unlike `memory_pressure_db`/`write_contention_engine`, which pad it for a DIFFERENT concern -- real
+# per-row memory footprint): `compute_forward_aggregates`'s own `ScannerResult` read is column-projected
+# and never selects `record_json`, so the slow part (proven by `write_contention_engine`'s own
+# measurement) is the CPU-bound Python-side grouping over N rows, not disk I/O for a column never read.
+_TC20_FILLER_RUNS = 10
+_TC20_ROWS_PER_FILLER_RUN = 10_000  # 10 * 10,000 = 100,000 total, matching write_contention_engine's own N
+
+
+def test_iter20_concurrent_first_touch_historical_requests_dispatch_exactly_once(tmp_path):
+    """TC-3 (mandatory concurrency test, spec DoD): N=5 concurrent `GET /api/backtest` calls for the SAME
+    never-before-warmed historical `as_of` invoke `compute_forward_aggregates` EXACTLY `len(horizons)`
+    times IN TOTAL (never `5 * len(horizons)` — the old per-request synchronous ensure-loop's bug this
+    iteration fixes — never zero), and every one of the 5 calls returns FAST: the request thread never
+    waits on the dispatched compute (proven by each call's own wall-clock against a fixture sized so the
+    compute itself provably takes >=1s -- not just proven by the aggregate call-count)."""
+    import app.api.backtest as backtest_module
+    import app.engine.forward_testing as forward_testing_module
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'tc20_dispatch_once.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+    asof = date(2024, 3, 1)
+    latest_asof = date(2025, 1, 10)  # strictly LATER -> `asof` resolves is_latest=False
+    heavy_horizon = cfg.walk_forward.horizons[0]
+    with Session(engine) as session:
+        _seed_historical_run(session, asof)
+        # A strictly LATER run (bare -- no ScannerResult, no DailyPrice of its own) purely so `asof` above
+        # is NOT the latest stored date (`_latest_stored_run_date` = max(ScannerRun.asof_date) only;
+        # "AAA"'s own entry-day bar at `asof` already satisfies `latest_data_date`'s "a bar exists at all"
+        # check). Deliberately NO post-`asof` DailyPrice bar anywhere: that keeps `observable_days == 0`
+        # for `asof`'s own `backfill_run_forward_returns` create-once step, so it stays a cheap no-op for
+        # every symbol -- isolating this test from the SEPARATE, already-flagged, out-of-scope
+        # `_insert_run_forward_returns` concurrent-autoflush race (iter-19 dev handoff's Known Issues;
+        # iter-19's own TC-4 sidesteps the identical hazard by pre-seeding its "other" symbols instead).
+        session.add(ScannerRun(
+            asof_date=latest_asof, created_at=datetime.now(timezone.utc), provider="seed", benchmark="SPY",
+            regime_score=50.0, regime_label="Risk-on", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        ))
+        session.flush()
+
+        # `_TC20_FILLER_RUNS` SEPARATE, older runs (all strictly < `asof`, so all fall inside its expanding
+        # window) each carrying `_TC20_ROWS_PER_FILLER_RUN` rows at `heavy_horizon` -- see the module note
+        # above for why this volume lives on OTHER runs, never on the one actually requested.
+        filler_run_ids: list[int] = []
+        for f in range(_TC20_FILLER_RUNS):
+            filler_run = ScannerRun(
+                asof_date=date(2020, 1, 1) + timedelta(days=f), created_at=datetime.now(timezone.utc),
+                provider="seed", benchmark="SPY", regime_score=50.0, regime_label="Risk-on",
+                regime_components_json="[]", new_high_low_json="{}", candidate_counts_json="{}",
+            )
+            session.add(filler_run)
+            session.flush()
+            filler_run_ids.append(filler_run.id)
+        session.commit()
+
+        result_rows = [
+            dict(
+                run_id=filler_run_ids[i // _TC20_ROWS_PER_FILLER_RUN], ticker=f"SYM{i:06d}", name=f"SYM{i:06d}",
+                sector="Technology", leadership_score=50.0, leadership_bucket="A", entry_quality_score=0.0,
+                entry_quality_bucket="E", risk_score=0.0, risk_bucket="E", setup_status="Actionable",
+                rank=(i % 500) + 1, record_json="{}", is_vcp=False,
+                is_pullback_to_rising_dma=False, is_flat_base_breakout=False,
+            )
+            for i in range(_TC20_FILLER_RUNS * _TC20_ROWS_PER_FILLER_RUN)
+        ]
+        session.execute(insert(ScannerResult.__table__), result_rows)
+        fr_rows = [
+            dict(
+                run_id=filler_run_ids[i // _TC20_ROWS_PER_FILLER_RUN], symbol=f"SYM{i:06d}", horizon=heavy_horizon,
+                asof_date=date(2020, 1, 1) + timedelta(days=i // _TC20_ROWS_PER_FILLER_RUN),
+                entry_close=100.0, measured_date=date(2020, 1, 1) + timedelta(days=i // _TC20_ROWS_PER_FILLER_RUN),
+                realized_return=0.01, max_drawdown=-0.02,
+            )
+            for i in range(_TC20_FILLER_RUNS * _TC20_ROWS_PER_FILLER_RUN)
+        ]
+        session.execute(insert(ForwardReturn.__table__), fr_rows)
+        session.commit()
+
+    # Calibration check (not the test's own claim): confirm THIS fixture actually makes a single
+    # uncontended compute genuinely slow on this host -- if it does not, the "fast response" assertion
+    # below would pass VACUOUSLY (true under both the old and new code) rather than as a real proof. Calls
+    # the PURE `compute_forward_aggregates` directly (never the persisting `forward_aggregates_ingest_
+    # cached` wrapper), so this has NO side effect on `ForwardAggregateCache` -- the concurrency test below
+    # still observes a genuine never-before-warmed MISS, exactly as a real first-ever page view would.
+    with Session(engine) as session:
+        t0 = time.monotonic()
+        compute_forward_aggregates(session, heavy_horizon, cfg, as_of=asof)
+        calibration_elapsed = time.monotonic() - t0
+    assert calibration_elapsed >= 1.0, (
+        f"fixture too small for this host to prove non-blocking dispatch — a single uncontended "
+        f"compute_forward_aggregates call took only {calibration_elapsed:.3f}s (need >= 1.0s); "
+        f"bump _TC20_ROWS_PER_FILLER_RUN"
+    )
+
+    call_count = {"n": 0}
+    real = forward_testing_module.compute_forward_aggregates
+
+    def _counting(*args, **kwargs):
+        call_count["n"] += 1
+        return real(*args, **kwargs)
+
+    def _caller():
+        with Session(engine) as session:
+            t0 = time.monotonic()
+            result = backtest_module.backtest(as_of=asof.isoformat(), session=session)
+            elapsed = time.monotonic() - t0
+            return result, elapsed
+
+    n_callers = 5
+    forward_testing_module.compute_forward_aggregates = _counting
+    try:
+        with ThreadPoolExecutor(max_workers=n_callers) as pool:
+            futures = [pool.submit(_caller) for _ in range(n_callers)]
+            outcomes = [f.result() for f in as_completed(futures, timeout=BOUNDED_TIMEOUT_S)]
+
+        assert len(outcomes) == n_callers, "not every concurrent caller completed — treat as a hang"
+        results = [r for r, _elapsed in outcomes]
+        elapsed_times = [elapsed for _r, elapsed in outcomes]
+        assert all(r["is_latest"] is False for r in results)
+        # the "never blocking" half: every one of the 5 requests returned fast — well under the >=1.0s the
+        # calibration above just proved the compute itself genuinely costs, so none of them waited on it
+        # (the OLD synchronous ensure-loop would have made every one of them take >=1.0s: the owner
+        # computing, the other 4 waiting on the existing inner per-horizon lock).
+        assert max(elapsed_times) < 0.5, (
+            f"expected every concurrent request to return fast (never waiting on the >={calibration_elapsed:.2f}s "
+            f"dispatched compute); slowest was {max(elapsed_times):.3f}s"
+        )
+
+        # Bounded poll for the single dispatched background compute to land, re-triggering a (harmless,
+        # single-flight-guarded) dispatch on each iteration that is not yet ready — see the TC-7 test
+        # below for why this is safe and cannot mask a real duplicate-compute bug.
+        deadline = time.monotonic() + BOUNDED_TIMEOUT_S
+        with Session(engine) as session:
+            final = backtest_module.backtest(as_of=asof.isoformat(), session=session)
+        while final["evidence_status"] != "ready":
+            assert time.monotonic() < deadline, (
+                f"evidence never reached 'ready' within {BOUNDED_TIMEOUT_S}s "
+                f"(last evidence_status={final['evidence_status']!r}) — treat as a hang/regression"
+            )
+            time.sleep(0.02)
+            with Session(engine) as session:
+                final = backtest_module.backtest(as_of=asof.isoformat(), session=session)
+    finally:
+        forward_testing_module.compute_forward_aggregates = real
+
+    assert final["evidence_asof"] == asof.isoformat()
+    assert call_count["n"] == len(cfg.walk_forward.horizons), (
+        f"expected compute_forward_aggregates to run exactly once per configured horizon "
+        f"({len(cfg.walk_forward.horizons)}) across all {n_callers} concurrent first-touch requests; "
+        f"it ran {call_count['n']} times — the outer dispatch guard did not de-duplicate correctly"
+    )
+
+
+def test_iter20_historical_dispatch_owner_failure_releases_guard_and_allows_redispatch(tmp_path):
+    """TC-7 (spec DoD): when the dispatched background compute's OWNER raises before completing (a forced
+    failure, mirroring `test_forward_aggregates_ingest_cached_waiter_does_not_deadlock_when_owner_raises`
+    above), the outer guard is released (never a permanent wedge) so a SUBSEQUENT dispatch for the SAME
+    identity can run, and this date eventually reaches `"ready"` — never a stuck `"not_yet_computed"`."""
+    import app.engine.forward_testing as forward_testing_module
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'tc20_owner_raises.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+    asof = date(2023, 2, 1)
+    with Session(engine) as session:
+        _seed_historical_run(session, asof)
+        session.commit()
+
+    real_ingest_cached = forward_testing_module.forward_aggregates_ingest_cached
+    call_count = {"n": 0}
+
+    def _boom_once_then_real(*args, **kwargs):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            raise RuntimeError("forced dispatch-owner failure (TC-7 probe)")
+        return real_ingest_cached(*args, **kwargs)
+
+    forward_testing_module.forward_aggregates_ingest_cached = _boom_once_then_real
+    evidence = None
+    try:
+        with Session(engine) as session:
+            forward_testing_module.ensure_historical_forward_aggregates_dispatched(session, asof, cfg)
+
+        # Poll: read the evidence, and re-trigger a dispatch whenever it is not yet ready. A re-trigger is
+        # a harmless no-op while a dispatch is still in flight (the outer guard's own single-flight
+        # contract, unchanged) and a genuine re-dispatch the instant the guard clears — so this loop
+        # cannot falsely pass on scheduling luck: it converges to "ready" iff the guard was actually
+        # released after the forced failure, and times out (a real regression -- a permanent wedge) iff
+        # it was not.
+        deadline = time.monotonic() + BOUNDED_TIMEOUT_S
+        while evidence is None or evidence["evidence_status"] != "ready":
+            last_status = evidence["evidence_status"] if evidence is not None else None
+            assert time.monotonic() < deadline, (
+                f"never reached 'ready' within {BOUNDED_TIMEOUT_S}s after the forced owner failure -- "
+                f"treat as a permanent wedge (last evidence_status={last_status!r})"
+            )
+            time.sleep(0.02)
+            with Session(engine) as session:
+                evidence = forward_testing_module.resolved_forward_aggregate_evidence(session, asof, cfg)
+                if evidence["evidence_status"] != "ready":
+                    forward_testing_module.ensure_historical_forward_aggregates_dispatched(session, asof, cfg)
+    finally:
+        forward_testing_module.forward_aggregates_ingest_cached = real_ingest_cached
+
+    assert evidence["evidence_status"] == "ready"
+    assert evidence["evidence_asof"] == asof.isoformat()
+    assert call_count["n"] >= 2, (
+        "expected the forced first failure (call 1) AND at least one successful re-dispatch afterward -- "
+        f"got {call_count['n']} total calls"
+    )

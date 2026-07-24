@@ -1,0 +1,16 @@
+demo-narrator complete for iteration 20.
+
+Demo script: reports/phase-goal-ops-hardening-iter-20-demo.json (8 steps, all highlights, <=8-cap)
+Steps 1-6: same whole-product tour as iter-17/18/19 (home, Data Manager J-01, Backtest Latest
+view + scorecard + leadership + ready evidence J-08). Steps 7-8 are [NEW]:
+ 7. goto /backtest?asof=2006-02-01 — a historical date verified NEVER referenced anywhere in the
+    repo (reports/tests/fixtures/prior demos), so genuinely cold. Expect the as-of badge
+    "Viewing as-of 2006-02-01 (historical)" (state-independent, renders regardless of
+    evidence_status) — reliably proves the historical view loaded FAST without gambling on which
+    cold branch appears.
+ 8. click "in the background" — confirmed this exact phrase appears in BOTH cold-view components
+    (RefreshingEvidenceBanner historical copy + historical EmptyState), so the expect is robust to
+    either outcome, failing only gracefully (soft note) if the date was already warmed.
+Both new steps within restraint: goto/click only, no /data backfill trigger (AG-10), no wait/poll,
+exactly one historical goto. Verified copy strings against backtest/page.tsx + lib/dates.ts.
+Showcase step — no gating verdict.

@@ -34,6 +34,7 @@ benchmark symbols) comes from config — no walk-forward literal lives here (ant
 from __future__ import annotations
 
 import json
+import logging
 import random
 import threading
 from calendar import monthrange
@@ -58,6 +59,11 @@ from app.models import (
     ScannerResult,
     ScannerRun,
 )
+
+# ops-hardening iter-20 (J-06/J-07/J-08) -- the historical background-dispatch worker's own non-fatal
+# exception log (mirrors `warmup.py`'s established "trendora.<module>" + `logger.exception(...)` convention
+# for a daemon-thread worker body; see `_run_historical_forward_aggregates_dispatch` below).
+logger = logging.getLogger("trendora.forward_testing")
 
 # The honest caveat carried on every payload (anti-goal: Honest limitations surfaced). iter-18: the
 # basis now spans ~30 years (1996 -> present, per-name real listing depth) over the broadened
@@ -1165,6 +1171,110 @@ def forward_aggregates_ingest_cached(
             with _FORWARD_AGG_LOCK:
                 _FORWARD_AGG_INFLIGHT.pop(key, None)
             event.set()
+
+
+# ops-hardening iter-20 (J-06/J-07/J-08) -- the OUTER single-flight dispatch guard that takes the
+# historical (`is_latest == False`) carve-out's own compute OFF the request thread entirely. Root cause
+# (see the iter-20 dev handoff): `GET /api/backtest` / MCP `query_backtest` used to call
+# `forward_aggregates_ingest_cached` SYNCHRONOUSLY, in a loop over every configured horizon, on the
+# request thread itself, whenever a historical as-of's evidence was not already `"ready"` -- live UT-04
+# evidence showed this stalling the request 9.6-54s (a bounded 45s single-flight WAIT on the existing
+# per-horizon lock above, plus a redundant compute on timeout, under concurrency).
+#
+# This guard sits ONE LEVEL ABOVE that existing per-horizon lock (`_FORWARD_AGG_LOCK` /
+# `_FORWARD_AGG_INFLIGHT`, unchanged above -- it still protects `forward_aggregates_ingest_cached`'s own
+# MISS path exactly as before, including against a concurrent INGEST warm racing this dispatch for the
+# same key). Its job is narrower: decide whether a BACKGROUND dispatch is already in flight for this
+# `(asof_key, dataset_version)` identity BEFORE the request thread ever touches the per-horizon lock at
+# all -- so the request thread never calls `event.wait()`, never computes, never blocks. Keyed on the
+# SAME `(asof_key, dataset_version)` identity `resolved_forward_aggregate_evidence` already resolves by
+# (the iter-16 lesson: "enumerate the ways the identity can move, not just the ways the value can go
+# stale" -- never a new axis).
+#
+# A key is inserted by whichever request thread wins the race to dispatch (holding `_HIST_DISPATCH_LOCK`
+# only for the tiny check-and-insert -- sub-millisecond, TC-2) and removed by the BACKGROUND thread itself
+# in a `finally`, on success AND on an owner exception (TC-7) -- so a later request for the same identity
+# can always re-dispatch; this guard is structurally incapable of a permanent wedge. Unlike
+# `_FORWARD_AGG_INFLIGHT` above, no `threading.Event`/waiter is needed here: the request thread that finds
+# a key already in flight simply does nothing and returns (the already-running dispatch will land on its
+# own; the NEXT request for this identity re-reads `resolved_forward_aggregate_evidence` and sees it).
+_HIST_DISPATCH_LOCK = threading.Lock()
+_HIST_DISPATCH_INFLIGHT: set[tuple[str, str]] = set()  # {(asof_key, dataset_version)} dispatched right now
+
+
+def _run_historical_forward_aggregates_dispatch(
+    engine: Engine, as_of: date_cls, cfg: Config, key: tuple[str, str],
+) -> None:
+    """The background worker body -- runs in its OWN daemon thread, opens its OWN `Session(engine)`
+    (mirrors `data_manager.start_data_job` / `warmup.start_warmup`'s established thread-plus-own-session
+    idiom: a daemon thread that owns its own DB session rather than sharing the request's). Computes every
+    configured horizon for `as_of` via the UNCHANGED `forward_aggregates_ingest_cached` -- this function
+    decides ONLY *when* to call it, never *how*: the per-horizon single-flight lock, the cutover-pruning
+    completeness contract, and the persistence are all reused verbatim (no second producer), so a
+    concurrent ingest warm for the SAME identity still de-dups correctly against this dispatch too.
+
+    Any exception is CAUGHT + logged (mirrors `warmup._run_warmup`'s own non-fatal convention) -- never
+    left to crash silently or to propagate to the request thread that triggered the dispatch (TC-7): that
+    thread has already returned its response long before this runs. The outer guard's slot is released in
+    a `finally` on success AND on failure, so a subsequent request for the SAME identity can always
+    re-dispatch and eventually reach `"ready"` -- never a permanent wedge."""
+    try:
+        with Session(engine) as session:
+            for h in cfg.walk_forward.horizons:
+                forward_aggregates_ingest_cached(session, h, cfg, as_of=as_of)
+    except Exception:
+        logger.exception(
+            "historical forward-aggregate background dispatch failed (non-fatal, will re-dispatch on the "
+            "next request for this identity, key=%s)", key,
+        )
+    finally:
+        with _HIST_DISPATCH_LOCK:
+            _HIST_DISPATCH_INFLIGHT.discard(key)
+
+
+def ensure_historical_forward_aggregates_dispatched(
+    session: Session, as_of: date_cls, config: Optional[Config] = None,
+) -> None:
+    """ops-hardening iter-20 (J-06/J-07/J-08) -- the request-triggered, single-flight-guarded BACKGROUND
+    dispatch for the historical (`is_latest == False`) carve-out's own compute. `GET /api/backtest` / MCP
+    `query_backtest` (identical call in both) call this ONLY when the resolver's own first read already
+    found this identity is not `"ready"` (the SAME `!= "ready"` gate as before iter-20 -- unchanged).
+
+    Uses the CALLING session ONLY to read the CURRENT `dataset_version` (a cheap read within the
+    already-open request transaction, no write) to decide the dispatch key. If a background compute is
+    already in flight for this EXACT `(asof_key, dataset_version)` identity, this is a sub-millisecond
+    no-op (TC-2) -- the already-running dispatch will reach `"ready"` on its own. Otherwise it spawns a NEW
+    daemon thread with its OWN `Session` bound to the SAME engine the calling session is bound to
+    (`session.get_bind()` -- so a caller passing a private test engine or the process-global engine both
+    dispatch against the SAME database the resolver will later re-read; mirrors `data_manager.py`'s own
+    `session.get_bind()` idiom) and returns IMMEDIATELY. The request thread never calls
+    `compute_forward_aggregates`, never waits on the per-horizon lock, never blocks (J-08's literal "never
+    a request-path recompute").
+
+    This function itself never computes, never re-resolves, and never returns the dispatched result -- the
+    caller already read `resolved_forward_aggregate_evidence` before calling this (and returns THAT read,
+    the honest interim state -- `"refreshing"` or `"not_yet_computed"`) and will see the completed evidence
+    only on a LATER request, once the background thread's own commit lands (TC-1/TC-3/TC-4)."""
+    from app.engine.research import _dataset_version  # deferred: avoids a forward_testing<->research cycle
+
+    cfg = config or get_config()
+    version = _dataset_version(session)
+    asof_key = as_of.isoformat()
+    key = (asof_key, version)
+
+    with _HIST_DISPATCH_LOCK:
+        if key in _HIST_DISPATCH_INFLIGHT:
+            return  # a dispatch for this EXACT identity is already running -- no-op, never a duplicate
+        _HIST_DISPATCH_INFLIGHT.add(key)
+
+    engine = session.get_bind()
+    thread = threading.Thread(
+        target=_run_historical_forward_aggregates_dispatch,
+        args=(engine, as_of, cfg, key),
+        daemon=True,
+        name=f"backtest-hist-dispatch-{asof_key}",
+    )
+    thread.start()
 
 
 def _utc_isoformat(value: datetime) -> str:

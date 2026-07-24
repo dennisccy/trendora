@@ -1,0 +1,105 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-20",
+  "base_url": "http://localhost:3255",
+  "iteration": 20,
+  "default_timeout_ms": 10000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the home dashboard",
+      "narration": "We start on Trendora's home dashboard — the daily market snapshot at a glance.",
+      "point_out": "The Market Regime score and label, and the Market Phase & Severity read, right at the top of the page.",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Market Regime" }
+    },
+    {
+      "n": 2,
+      "title": "Check the dataset's health",
+      "narration": "The Data Manager page shows exactly what's stored and whether anything still needs catching up.",
+      "point_out": "Price history range, universe and symbol counts, and any remaining backfill gaps — all read straight from the stored data, never guessed.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Dataset coverage" }
+    },
+    {
+      "n": 3,
+      "title": "Open Backtest for the latest date",
+      "narration": "Backtest lets you time-machine to a past scan date and read its forward-test scorecard — today's (Latest) view stays exactly as fast and unaffected as always.",
+      "point_out": "The badge names exactly which date you're viewing, with a standing note about survivorship bias always shown alongside the numbers — and the page settles in almost instantly.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/backtest" },
+      "expect": { "text": "Candidate Counts" }
+    },
+    {
+      "n": 4,
+      "title": "Read today's scorecard",
+      "narration": "The Forward-test scorecard reports how the top-ranked stocks from a given date actually performed afterward.",
+      "point_out": "For this very latest date, every horizon honestly reads a dash — nothing has happened yet to measure, so nothing is invented to fill the gap.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "Forward-test scorecard" } },
+      "expect": { "text": "Forward-test scorecard" }
+    },
+    {
+      "n": 5,
+      "title": "See the day's ranked leaders",
+      "narration": "Leadership cohorts name the top sectors, themes, and individual stocks the scan singled out for this date.",
+      "point_out": "Top Sectors, Top Themes, and the Ranked cohort table all show real rankings and scores; their forward-return columns stay an honest dash until enough time has passed to measure one.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "Leadership cohorts" } },
+      "expect": { "text": "Ranked cohort" }
+    },
+    {
+      "n": 6,
+      "title": "See the accumulated evidence",
+      "narration": "At the very bottom sits the forward-tested evidence — the track record pooled from every trading day scanned so far, not just today.",
+      "point_out": "Real accumulated numbers going back through the whole history, plus a guarantee behind the scenes: this section always shows either the freshest complete evidence or a clearly-labeled slightly older set — never a blank message.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "Forward-tested evidence" } },
+      "expect": { "text": "Snapshots contributing" }
+    },
+    {
+      "n": 7,
+      "title": "Time-travel to a date nobody's looked at yet",
+      "narration": "Opening an older backtest date that's never been viewed before used to freeze the tab for anywhere from several seconds to almost a minute with nothing on screen — it now responds right away.",
+      "point_out": "The page settles almost instantly and clearly names the historical date you're now viewing — never a blank, frozen tab.",
+      "journey": "J-08",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/backtest?asof=2006-02-01" },
+      "expect": { "text": "Viewing as-of 2006-02-01 (historical)" }
+    },
+    {
+      "n": 8,
+      "title": "An honest note instead of a blank wait",
+      "narration": "Since this date's own numbers haven't been worked out before, the page says so plainly right away instead of leaving the screen blank or pretending the numbers are already in.",
+      "point_out": "A calm message explains that viewing this page itself started the calculation in the background, and that reloading shortly will show the finished numbers — no numbers are ever invented in the meantime.",
+      "journey": "J-08",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "text": "in the background" } },
+      "expect": { "text": "in the background" }
+    }
+  ]
+}

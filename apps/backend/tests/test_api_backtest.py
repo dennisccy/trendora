@@ -11,6 +11,8 @@ backfill, so every stored run already has its forward returns (the create-once p
 """
 from __future__ import annotations
 
+import time
+
 import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
@@ -239,11 +241,29 @@ def test_backtest_evidence_is_as_of_scoped_expanding_window(loaded_engine):
     """J-09 expanding window at the API level: the evidence is scoped to snapshots dated <= the resolved
     as-of date. At the OLDEST date only that one run contributes (n_runs == 1); at the latest (default)
     every run contributes and the sample is strictly larger — n is non-decreasing toward latest and no
-    run dated > D leaks in (every contributing as-of date <= the cutoff)."""
+    run dated > D leaks in (every contributing as-of date <= the cutoff).
+
+    ops-hardening iter-20: the oldest date's own evidence was never precomputed at ingest (only the LATEST
+    date is warmed by the fixture, mirroring the real ingest finalize hook — see `loaded_engine`'s own
+    docstring) and this historical view's compute now runs OFF the request thread, dispatched in the
+    background rather than awaited synchronously. The first request therefore returns an honest interim
+    state immediately; this test polls (bounded) for that dispatched compute to land before asserting the
+    SAME expanding-window/no-lookahead guarantees it has always encoded (TC-11, AG-5)."""
     h = str(load_config().walk_forward.default_horizon)
     with TestClient(main.app) as client:
         oldest = _oldest_date(client)
-        at_oldest = client.get(f"/api/backtest?as_of={oldest}").json()["evidence_by_horizon"][h]
+
+        deadline = time.monotonic() + 10.0
+        payload = client.get(f"/api/backtest?as_of={oldest}").json()
+        while payload["evidence_status"] != "ready":
+            assert time.monotonic() < deadline, (
+                f"the oldest date's own dispatched evidence never reached 'ready' within 10s "
+                f"(last evidence_status={payload['evidence_status']!r})"
+            )
+            time.sleep(0.05)
+            payload = client.get(f"/api/backtest?as_of={oldest}").json()
+        at_oldest = payload["evidence_by_horizon"][h]
+
         at_latest = client.get("/api/backtest").json()["evidence_by_horizon"][h]
     assert at_oldest["n_runs"] == 1                    # only the oldest snapshot is <= the oldest date
     assert at_latest["n_runs"] > at_oldest["n_runs"]   # the window expands toward latest

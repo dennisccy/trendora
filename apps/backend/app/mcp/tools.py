@@ -34,6 +34,7 @@ from app.engine.forward_testing import (
     backfill_run_forward_returns,
     benchmark_symbols,
     compute_run_scorecard,
+    ensure_historical_forward_aggregates_dispatched,
     forward_aggregates_ingest_cached,
     resolved_forward_aggregate_evidence,
 )
@@ -244,19 +245,24 @@ def query_backtest(session: Session, asof: Optional[str] = None) -> dict:
     score / bucket / return.
 
     ops-hardening iter-16 (J-08): mirrors the endpoint's own compute-vs-serve split exactly — for the
-    LATEST view this tool never reaches `forward_aggregates_ingest_cached` (let alone
+    LATEST view this tool never reaches `ensure_historical_forward_aggregates_dispatched` (let alone
     `compute_forward_aggregates`); a historical `asof` keeps the pre-existing lazy create-once-and-cache
-    carve-out (TC-13), unchanged.
+    carve-out (TC-13).
 
     ops-hardening iter-17 (audit B1/B5): mirrors the endpoint's widened cross-`asof_key` last-good
     fallback (the new `evidence_asof` field discloses which as-of's evidence is actually served) and its
-    B5 gate — the historical ensure-loop below runs ONLY when the resolver's first read is not already
-    `"ready"`, never unconditionally, avoiding a redundant per-horizon cache-hit read+deserialize
-    immediately followed by the same resolver re-reading those same rows.
+    B5 gate — the historical dispatch below runs ONLY when the resolver's first read is not already
+    `"ready"`, never unconditionally.
 
     ops-hardening iter-18: wrapped in per-request, phase-broken-down wall-clock timing instrumentation
     (`_log_query_backtest_timing`) mirroring `app.api.backtest.backtest`'s own — observability only, the
-    returned payload stays byte-identical (TC-6)."""
+    returned payload stays byte-identical (TC-6).
+
+    ops-hardening iter-20 (J-06/J-07/J-08): mirrors the endpoint's own change identically — the historical
+    branch no longer computes/waits on the request thread. It triggers
+    `ensure_historical_forward_aggregates_dispatched` (single-flight-guarded BACKGROUND dispatch, own DB
+    session) and does NOT re-resolve: `evidence` stays the PRE-dispatch read (the honest interim state),
+    served immediately, byte-identical to the HTTP endpoint's own behavior for the same inputs (TC-6)."""
     t_request_start = time.perf_counter()
     cfg = get_config()
 
@@ -284,12 +290,13 @@ def query_backtest(session: Session, asof: Optional[str] = None) -> dict:
     t0 = time.perf_counter()
     evidence = resolved_forward_aggregate_evidence(session, run.asof_date, cfg)
     evidence_ms = (time.perf_counter() - t0) * 1000.0
+    # ops-hardening iter-20 (J-06/J-07/J-08): mirrors `app.api.backtest.backtest`'s own change exactly —
+    # triggers the single-flight-guarded BACKGROUND dispatch (a no-op if already in flight or already
+    # `"ready"`) and does NOT re-resolve; `evidence` stays the PRE-dispatch read (the honest interim state).
     ensure_loop_ms: Optional[float] = None
     if not is_latest and evidence["evidence_status"] != "ready":
         t0 = time.perf_counter()
-        for h in cfg.walk_forward.horizons:
-            forward_aggregates_ingest_cached(session, h, cfg, as_of=run.asof_date)
-        evidence = resolved_forward_aggregate_evidence(session, run.asof_date, cfg)
+        ensure_historical_forward_aggregates_dispatched(session, run.asof_date, cfg)
         ensure_loop_ms = (time.perf_counter() - t0) * 1000.0
 
     total_ms = (time.perf_counter() - t_request_start) * 1000.0

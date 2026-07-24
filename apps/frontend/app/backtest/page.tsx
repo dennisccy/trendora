@@ -231,12 +231,22 @@ function BacktestResults({
           ops-hardening iter-16 (J-08): the evidence panel never blocks on a cold recompute — the served
           `evidence_status` (computed server-side, never derived here) honestly discloses whether this is
           the current version (`ready`, unchanged from before), a labeled last-good prior version while a
-          newer one warms (`refreshing`), or a never-warmed store (`not_yet_computed`). */}
+          newer one warms (`refreshing`), or a never-warmed store (`not_yet_computed`).
+          ops-hardening iter-20 (J-06/J-07/J-08, TC-8/TC-9): a HISTORICAL view (`is_latest === false`) of
+          either state below now ALSO means viewing this page itself just triggered a background compute
+          for this date (the new request-triggered dispatch) — distinct from the LATEST view's pre-existing
+          triggers (a version-bump ingest, or a true fresh-install where only backfilling/fetching starts
+          one). `backtest.is_latest` (already fetched, no new field) picks the copy that is actually true
+          for the cause the reader is looking at. */}
       {backtest.evidence_status === "not_yet_computed" ? (
         <EmptyState
           icon={FlaskConical}
           title="Backtest evidence not yet computed"
-          description="No forward-tested evidence exists yet for this date. Backfilling or fetching data that covers it will compute this evidence — no numbers are fabricated in the meantime."
+          description={
+            backtest.is_latest
+              ? "No forward-tested evidence exists yet for this date. Backfilling or fetching data that covers it will compute this evidence — no numbers are fabricated in the meantime."
+              : "No forward-tested evidence exists yet for this date. Viewing this page has started computing it in the background — reload shortly to see it. No numbers are fabricated in the meantime."
+          }
         />
       ) : evidence ? (
         <>
@@ -244,6 +254,7 @@ function BacktestResults({
             <RefreshingEvidenceBanner
               generatedAt={backtest.evidence_generated_at}
               evidenceAsof={backtest.evidence_asof}
+              isLatest={backtest.is_latest}
             />
           ) : null}
           {/* iter-17 audit fix (J-08/AG-3): this section's OWN copy states a factual window claim —
@@ -268,23 +279,32 @@ function BacktestResults({
 // --- Refreshing-evidence disclosure (ops-hardening iter-16, J-08; evidenceAsof added iter-17, J-08 audit
 // B1): a small, calm, factual banner shown ABOVE the still-fully-populated evidence section while the
 // newer dataset version's evidence is not yet complete. The copy states ONLY what the resolver actually
-// knows (the stamp changed; the new version is incomplete; WHICH as-of's evidence this is; and when it
-// was generated) — it must never assert that a warm is currently in flight (a stamp bump from any new
-// ScannerRun/ForwardReturn row leaves this state standing with no warm running) nor promise an automatic
+// knows (WHICH as-of's evidence this is, and when it was generated) — it must never promise an automatic
 // update (this page refetches only on mount / an as-of change / a readiness transition — there is no
 // poll; see the effect deps in BacktestPage). `evidenceAsof` (iter-17) discloses WHICH as-of's evidence is
 // being shown — equal to the page's own resolved date when the resolver served an older *version* of this
-// SAME date, or a genuinely OLDER date when the fallback crossed an as-of boundary (the common shape
-// right after a new latest trading day lands and its ingest warm has not finished, audit B1). Borrows the
-// Card + Loader2 warn-toned LOOK already established by WarmingState/SurvivorshipBanner on this same page
-// — but this is a DISTINCT, request-scoped disclosure (the served evidence's own status) and must NOT
-// wire to useReadiness() (that hook is the boot-time warm-up concept, unrelated to this per-request state).
+// SAME date, or a genuinely OLDER date when the fallback crossed an as-of boundary. Borrows the Card +
+// Loader2 warn-toned LOOK already established by WarmingState/SurvivorshipBanner on this same page — but
+// this is a DISTINCT, request-scoped disclosure (the served evidence's own status) and must NOT wire to
+// useReadiness() (that hook is the boot-time warm-up concept, unrelated to this per-request state).
+//
+// ops-hardening iter-20 (J-06/J-07/J-08, TC-8): `isLatest` (already-fetched `backtest.is_latest`, no new
+// field) picks between TWO genuinely different causes this SAME `"refreshing"` status now covers:
+//   - LATEST view (unchanged since iter-16/17): the cause is ALWAYS a dataset change elsewhere (a new
+//     ingest bumped the version stamp) — the LATEST branch never dispatches anything itself, so "reload
+//     after the next ingest finishes" stays literally true.
+//   - HISTORICAL view (new this iteration): viewing THIS page is what triggered (or re-triggered) this
+//     date's own background compute — no ingest is necessarily involved at all, and "the dataset has
+//     changed" would often be false here (the identity may simply have never been computed before this
+//     view). The copy for this branch names the ACTUAL cause instead.
 function RefreshingEvidenceBanner({
   generatedAt,
   evidenceAsof,
+  isLatest,
 }: {
   generatedAt: string | null;
   evidenceAsof: string | null;
+  isLatest: boolean;
 }) {
   return (
     <Card
@@ -295,12 +315,16 @@ function RefreshingEvidenceBanner({
       <div className="space-y-1">
         <p className="font-medium text-warn">Refreshing — showing the last complete evidence</p>
         <p className="text-text-muted">
-          The dataset has changed since this evidence was generated, and the newer version is not
-          complete yet. The forward-tested evidence below is the last complete version — evidence as of{" "}
+          {isLatest
+            ? "The dataset has changed since this evidence was generated, and the newer version is not complete yet."
+            : "This date's own evidence is being computed in the background (started by viewing this page) and is not complete yet."}{" "}
+          The forward-tested evidence below is the last complete version — evidence as of{" "}
           <span className="num">{formatIsoDate(evidenceAsof)}</span>, generated{" "}
           <span className="num">{formatIsoDateTime(generatedAt)}</span> — no partial or fabricated
-          figures are shown in the meantime. Reload this page after the next ingest finishes to pick up
-          the new version.
+          figures are shown in the meantime.{" "}
+          {isLatest
+            ? "Reload this page after the next ingest finishes to pick up the new version."
+            : "Reload this page shortly to pick up this date's own evidence once the background compute finishes."}
         </p>
       </div>
     </Card>
