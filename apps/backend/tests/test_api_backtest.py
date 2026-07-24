@@ -184,12 +184,13 @@ def test_backtest_does_not_reserve_regime_or_stock_values(loaded_engine):
     """The endpoint serves the per-date scorecard + the as-of-scoped evidence aggregate ONLY — it does
     not re-serve regime/sector/theme/stock values (those stay single-sourced on their own endpoints).
     The payload's top-level keys are exactly the scorecard contract plus `evidence_by_horizon` (iter-17)
-    plus `evidence_status` / `evidence_generated_at` (iter-16, J-08)."""
+    plus `evidence_status` / `evidence_generated_at` (iter-16, J-08) plus `evidence_asof` (iter-17,
+    audit B1)."""
     with TestClient(main.app) as client:
         data = client.get("/api/backtest").json()
     assert set(data) == {
         "asof_date", "is_latest", "min_sample", "horizons", "survivorship_bias",
-        "scorecard", "evidence_by_horizon", "evidence_status", "evidence_generated_at",
+        "scorecard", "evidence_by_horizon", "evidence_status", "evidence_generated_at", "evidence_asof",
     }
 
 

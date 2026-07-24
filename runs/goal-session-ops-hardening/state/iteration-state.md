@@ -1,29 +1,27 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 16 · **Date:** 2026-07-23 · **Verdict:** CONTINUE
+**After iteration:** 17 · **Date:** 2026-07-24 · **Verdict:** CONTINUE
 
 ## Journeys
 
-4 passing (J-01 J-03 J-05 replayed; **J-04 CARRIED — UT-J-04 SKIPPED, not re-verified since iter-14**) · 3 partial (J-06 J-07 J-08) — 7 total
+4 passing (J-01 J-03 J-05 replayed; **J-04 CARRIED — UT-J-04 SKIPPED, not re-verified live since iter-14**) · 3 partial (J-06 J-07 J-08) — 7 total
 
 ## Active blockers
 
-- **B1 (dev) — the one thing between J-08 and passing.** `resolved_forward_aggregate_evidence` resolves all 3 states inside ONE `asof_key` (`apps/backend/app/engine/forward_testing.py:1209`) while the default view resolves to the latest run (`app/api/backtest.py:70`) — so the *common single-latest-date* ingest serves `not_yet_computed` (empty evidence) instead of the labeled last-good J-08 step 2 promises. **Evaluator RULED the fallback must cross as-of boundaries** (label the served as-of; reserve the empty state for fresh-install). Zero unit or live coverage today.
-- **Browser evidence (dev):** `not_yet_computed` never rendered (UT-03 SKIPPED) — use a DISPOSABLE copy of `trendora.db`, never the working one. The corrected refreshing banner (`apps/frontend/app/backtest/page.tsx:270-276`) is un-screenshotted; the only artifact shows the false pre-fix copy.
-- **Latency (dev):** 11/68 live polls breach the committed ≤1.5s `/backtest` budget (max 12.655s), all inside the ingest window on a *stored-row read* → writer/reader contention, not compute (`reports/perf-budgets.md:2827-2831`). Owner may instead amend the budget — logged, never silent.
-- **Human/operator:** live J-04 kill/restart replay (required before any GOAL_ACHIEVED); one `loaded_engine` test (T1); a fresh `demo.sh --session-live` run (iter-14's predates J-08's `[NEW]` steps).
-- Non-blocking: B3 `evidence_generated_at` serialized naive vs its "ISO 8601 UTC" contract; B2 sticky `refreshing` (no self-heal); B5 historical branch deserializes every payload twice.
+- **/backtest ≤1.5s serving-budget (dev → operator → owner): the one thing between J-06/J-07/J-08 and passing.** 11/68 breaches, max 12.655s, all in the ingest window on a stored-row read — UNDIAGNOSED (thermal + single-txn ruled out; SQLite-writer vs GIL/threadpool indistinguishable, `logs/backend.log` has zero per-request timestamps). Next: **dev** adds per-request timing instrumentation → **operator** re-runs TC-10 (AG-10-class) → bounded fix, or **owner** amends the budget (logged, never silent). `reports/perf-budgets.md` iter-17 section.
+- **Fresh live J-04 kill/restart replay (operator)** — required before any GOAL_ACHIEVED; iter-17 did only TC-11 steady-state sanity (health 200/ready, no crash banner). J-04 code surface byte-unchanged.
+- Non-blocking cheap wins (dev): project metadata columns before reading payloads in the widened fallback query (audit B1); one endpoint-level test carrying an OLDER `evidence_asof` (audit T1).
 
 ## Last 2 verdicts
 
-- iter 16: CONTINUE — J-08's architecture is real and verified (cold recompute gone: 178.74s → 12.655s worst read; 68/68 HTTP 200, exactly 2 generations, never mixed), but B1 + the budget breach + missing browser evidence keep J-08 `partial`, so J-06/J-07 stay `partial` too.
-- iter 15: STALLED — single-flight fix correct but the 178.74s cold MISS was a hard cost; all unblock paths owner-owned. Owner answered with J-08 (redesign), **not** a budget amendment — ≤1.5s still binds as written.
+- iter 17: CONTINUE — B1 cross-asof_key fix + 2 first-ever live states (TC-09/TC-07) landed & verified; journeys held partial by latency that is undiagnosed (agent instrumentation), NOT a proven hard cost → not STALLED.
+- iter 16: CONTINUE — J-08 precompute-before-serve redesign landed `partial` on 3 agent-owned gaps.
 
 ## Do not redo
 
-- **The compute-vs-serve split** — `forward_aggregates_ingest_cached` is the SOLE caller of `compute_forward_aggregates`; `resolved_forward_aggregate_evidence` has no compute branch. Extend, don't re-architect.
-- **`compute_forward_aggregates` body** — byte-unchanged since iter-14 (AG-8 resolved). Not reopened.
-- **Completeness-gated cutover pruning** (`forward_testing.py:1126-1155`) — closes the confirmed-live mixed-`dataset_version` bug; never revert to per-horizon deletion. iter-15's single-flight guard survives it (TC-17).
-- **J-06's other clauses** (10 idle-host page budgets, ≤5s boot, on-load audit for non-`/backtest` pages) — settled iter-9/11/13.
-- **Out of bounds:** `main.py`, `app/api/health.py`, `app/engine/readiness.py`, `warmup.py`, `scripts/*`, `scripts/automation/*`. No full pytest suite; `loaded_engine` ~80 min — cite, don't run. Heavy passes: `scripts/start-backend.sh` only, `taskset -c 0-3,8-11`, BLAS/OMP=4 (AG-10).
-- Carried unrelated: `test_db.py::test_create_all_produces_expected_tables` (pre-existing).
+- **B1 cross-asof_key fallback** (`forward_testing.py` resolver) — DONE + correct, 15 unit tests, AG-5 strictly-older SQL-verified, AG-3 byte-identical. Never add a compute branch to the read path; never revert cutover pruning to per-horizon deletion.
+- **`compute_forward_aggregates` body** — byte-unchanged since iter-14 (AG-8 resolved). Not reopened. The new widened query is bounded by distinct-as-of count, not the deep basis — not an AG-8 violation.
+- **`evidence_asof`** served identically by /api/backtest + MCP + its blueprint.md Data Contract row; F1 fix (`page.tsx:258-261` `asofDate={evidence_asof ?? asof_date}`) — keep.
+- **Live not_yet_computed (TC-09) + refreshing banner w/ evidence_asof (TC-07)** — captured & verified; don't re-capture.
+- **TC-8 live cross-boundary capture** — unproducible on this seed (max date 2026-07-22); evaluator accepted the unit + client-render floor. Do NOT chase it as a blocker (needs an owner data cycle).
+- **Out of bounds:** `main.py`, `app/api/health.py`, `app/engine/readiness.py`, `warmup.py`, `scripts/*`. No full pytest; `loaded_engine` ~80min — cite, don't run. Heavy passes: `scripts/start-backend.sh` only, `taskset -c 0-3,8-11`, BLAS/OMP=4 (AG-10). Carried unrelated: `test_db.py::test_create_all_produces_expected_tables`.

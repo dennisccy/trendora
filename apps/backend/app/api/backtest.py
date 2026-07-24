@@ -20,14 +20,24 @@ Backtest) under the single global as-of control; it recomputes no return/score/b
 `forward_returns` exactly as System Health did — now filtered to <= D.
 
 ops-hardening iter-16 (J-08): for the LATEST view (`is_latest == True`) this endpoint NEVER triggers a
-forward-aggregate compute on the request — `evidence_by_horizon` (plus the new `evidence_status` /
+forward-aggregate compute on the request — `evidence_by_horizon` (plus `evidence_status` /
 `evidence_generated_at`) comes ONLY from `resolved_forward_aggregate_evidence`, a pure reader that is
 structurally incapable of calling `compute_forward_aggregates`. A HISTORICAL (`is_latest == False`)
 `?as_of=` request keeps its pre-existing lazy create-once-and-cache behavior UNCHANGED (an explicit,
-logged interpretation call — see the iter-16 dev handoff): this endpoint first ensures every configured
+logged interpretation call — see the iter-16 dev handoff): this endpoint resolves first, and only when
+that read is not already `"ready"` (audit B5 — never unconditionally) does it ensure every configured
 horizon is cached for that date (computing any still-missing one via `forward_aggregates_ingest_cached`,
-exactly as before iter-16), then reads the result back through the SAME resolver, so both branches share
-one code path for building the response's evidence fields.
+exactly as before iter-16) and re-resolve, so both branches still share ONE code path for building the
+response's evidence fields.
+
+ops-hardening iter-17 (audit B1): the resolver's OWN fallback now crosses `asof_key` boundaries — when
+the resolved as-of has never had a complete forward-aggregate version of its own (the common shape right
+after a new latest trading day lands and its ingest-finalize warm has not yet completed), it serves the
+most recent OLDER as-of's complete evidence, labeled `"refreshing"` with the NEW `evidence_asof` field
+disclosing WHICH as-of's evidence is actually being shown (never mixed with a newer, incomplete version —
+AG-5 preserved: the fallback never serves a row dated after the request). `evidence_asof` equals the
+resolved `asof_date` itself when `evidence_status == "ready"`, an older date when `"refreshing"` crosses
+an as-of boundary, and `null` when `"not_yet_computed"`.
 
 It serves the per-date SCORECARD + the as-of-scoped evidence aggregate. Regime / sector / theme / stock
 values stay single-sourced on their own endpoints (`/api/dashboard`, `/api/sectors`, `/api/themes`,
@@ -72,23 +82,33 @@ def backtest(
     card = compute_run_scorecard(session, run, cfg)  # SINGLE canonical per-date scorecard (reads stored)
     # `is_latest` reuses the canonical "latest stored run date" (no second query/source for it).
     is_latest = run.asof_date == _latest_stored_run_date(session)
-    # ops-hardening iter-16 (J-08): the historical (is_latest == False) carve-out keeps its pre-existing
-    # lazy create-once-and-cache behavior UNCHANGED (TC-13) — ensure every configured horizon is cached
-    # for this date (a no-op for an already-warmed date). For the LATEST view this loop never runs, so
-    # this request path never reaches `forward_aggregates_ingest_cached` — let alone
-    # `compute_forward_aggregates` — under any circumstance (J-08's zero-compute-on-request guarantee).
-    if not is_latest:
-        for h in cfg.walk_forward.horizons:
-            forward_aggregates_ingest_cached(session, h, cfg, as_of=run.asof_date)
     # iter-17 (J-09/J-10) + iter-16 (J-08): the as-of-scoped forward-tested evidence aggregate, ALL
     # configured horizons resolved together in ONE call (never a per-horizon-independent read — the read
     # path can otherwise observe a mixed-dataset_version row set, see the resolver's own docstring) plus
-    # the honest `evidence_status` / `evidence_generated_at` disclosure.
+    # the honest `evidence_status` / `evidence_generated_at` / `evidence_asof` disclosure.
     evidence = resolved_forward_aggregate_evidence(session, run.asof_date, cfg)
+    # ops-hardening iter-16 (J-08): the historical (is_latest == False) carve-out keeps its pre-existing
+    # lazy create-once-and-cache behavior UNCHANGED (TC-13) — ensure every configured horizon is cached
+    # for this date, then re-resolve. For the LATEST view this never runs, so this request path never
+    # reaches `forward_aggregates_ingest_cached` — let alone `compute_forward_aggregates` — under any
+    # circumstance (J-08's zero-compute-on-request guarantee).
+    #
+    # iter-17 (audit B5): gated on the resolver's OWN first read rather than unconditional — on an
+    # already-warmed historical date (the common repeat-view case for the Backtest/Time-Machine
+    # workspace) the resolver above already found `evidence_status == "ready"`, so the ensure loop below
+    # is skipped entirely, avoiding a redundant per-horizon cache-hit read+deserialize immediately
+    # followed by the SAME resolver re-reading and re-parsing those same rows a second time. Byte-
+    # identical either way (still one producer, one serving read): a cold historical date still ensures
+    # every horizon is cached (computing any still-missing one) and re-resolves once, exactly as before.
+    if not is_latest and evidence["evidence_status"] != "ready":
+        for h in cfg.walk_forward.horizons:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=run.asof_date)
+        evidence = resolved_forward_aggregate_evidence(session, run.asof_date, cfg)
     return {
         **card,
         "is_latest": is_latest,
         "evidence_by_horizon": evidence["evidence_by_horizon"],
         "evidence_status": evidence["evidence_status"],
         "evidence_generated_at": evidence["evidence_generated_at"],
+        "evidence_asof": evidence["evidence_asof"],
     }

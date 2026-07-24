@@ -340,3 +340,23 @@ untouched (the spec's OUT OF SCOPE binds them). The call is not verdict-determin
 precondition for any future GOAL_ACHIEVED. A human who requires fresh evidence for every
 required-still-passing journey every iteration would score J-04 `unknown` today.
 **Reversible:** yes
+
+## iter-17 — goal-evaluator
+
+**Ambiguity:** The DoD names TC-8 (a LIVE browser capture of the cross-`asof_key` refreshing case, where
+the served `evidence_asof` is OLDER than the requested date) as a required bullet, and its
+document-and-defer escape is worded for TC-9 only, not TC-8. But that live state is unproducible on the
+committed seed: MAX(daily_prices.date) == MAX(scanner_runs.asof_date) == 2026-07-22 (auditor-verified
+read-only), so no ingest can advance the asof_key without fabricating price data (AG-9/AG-5-barred; an
+owner-owned data-cycle action). The auditor explicitly routed to the evaluator whether resolver-level unit
+tests plus the audit's client-side cross-boundary render are a sufficient evidence floor for the B1 fix.
+**We chose:** ACCEPTED that floor for B1's CODE CORRECTNESS — 15 unit tests (incl. TC-1 cross-boundary,
+TC-4 tie-break, TC-5 strictly-older SQL, TC-6 historical carve-out) + the auditor's Playwright client-side
+render of the exact cross-boundary payload (AUDIT-A1, banner + "≤older-date" window label + n_runs all
+bound to the older served as-of) + the same-key refreshing live banner (TC-07). Therefore TC-8's missing
+live capture is NOT treated as a standalone blocker, and the next iteration should NOT keep chasing it.
+J-08 nonetheless stays `partial` — held by the SEPARATE, un-remediated ≤1.5s serving-budget breaches (step
+2), not by TC-8 — so this call is not verdict-determinative this iteration; it governs what the next
+iteration targets. A human who requires a genuine end-to-end live cross-boundary capture before crediting
+B1 would keep J-08 partial specifically on TC-8 and route it to an owner data-cycle action.
+**Reversible:** yes

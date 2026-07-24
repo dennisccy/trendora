@@ -1160,38 +1160,76 @@ def forward_aggregates_ingest_cached(
             event.set()
 
 
+def _utc_isoformat(value: datetime) -> str:
+    """iter-17 (audit B3): `evidence_generated_at` is contracted as an ISO-8601 UTC datetime but was
+    serialized via a naive `.isoformat()` (no `Z`/offset) because SQLite reads a stored timestamp back
+    without tzinfo even though it is always WRITTEN as `datetime.now(timezone.utc)`. Attaching
+    `timezone.utc` to an already-naive value (never converting a genuinely tz-aware one) restores the
+    missing designator without touching how any OTHER timestamp in this codebase is stored or
+    serialized — scoped to this one young field, per the audit's own explicit narrowing (fixing the
+    naive-UTC convention everywhere would be a cross-cutting change, not a surgical one)."""
+    return (value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)).isoformat()
+
+
 def resolved_forward_aggregate_evidence(
     session: Session, as_of: date_cls, config: Optional[Config] = None,
 ) -> dict:
-    """The READ-ONLY serving path (ops-hardening iter-16, J-08) — the ONLY code `GET /api/backtest` and
-    the MCP `query_backtest` tool call for their `is_latest == True` view. Structurally incapable of
-    calling `compute_forward_aggregates` under ANY circumstance, including a would-be lock-wait timeout:
-    there is no compute-fallback branch here at all (that fallback stays on `forward_aggregates_ingest_
-    cached` only, scoped to the producer-vs-producer ingest race, never reachable from a request).
+    """The READ-ONLY serving path (ops-hardening iter-16, J-08; widened iter-17, audit B1) — the ONLY
+    code `GET /api/backtest` and the MCP `query_backtest` tool call for their `is_latest == True` view.
+    Structurally incapable of calling `compute_forward_aggregates` under ANY circumstance, including a
+    would-be lock-wait timeout: there is no compute-fallback branch here at all (that fallback stays on
+    `forward_aggregates_ingest_cached` only, scoped to the producer-vs-producer ingest race, never
+    reachable from a request).
 
     Resolves, for `as_of`, the latest `dataset_version` whose stored rows cover EVERY horizon in
     `config.walk_forward.horizons` ("complete") for this `asof_key` — never a per-horizon-independent
     read (the bug this closes: a naive "latest row per horizon, ignoring version" read can already serve
     a MIXED-version payload today — confirmed live, the non-latest `asof_key='2026-07-17'` is split
-    across two `dataset_version` stamps across its 5 rows). Returns
-    `{"evidence_status", "evidence_generated_at", "evidence_by_horizon"}`:
+    across two `dataset_version` stamps across its 5 rows). Returns `{"evidence_status",
+    "evidence_generated_at", "evidence_by_horizon", "evidence_asof"}`:
 
       - `"ready"` — the complete version found IS the current global `_dataset_version` stamp; serves
         it, keyed by horizon (int), byte-identical to a fresh `compute_forward_aggregates` call.
-      - `"refreshing"` — the current stamp's row set is not yet complete (an ingest warm is mid-flight),
-        but a PRIOR complete version's full row set survives (the iter-16 cutover-pruning contract keeps
-        it until the new version's own set lands) — serves that older version's rows, ALL from the SAME
-        version (never mixed with the incomplete new one), labeled with that version's OWN
-        `created_at` (the max across its horizon rows).
-      - `"not_yet_computed"` — no complete version has EVER existed for this `asof_key`:
-        `evidence_by_horizon = {}`, `evidence_generated_at = None`. Still HTTP 200 at the caller (an
-        honest empty state) — never a synchronous compute, never 500/503.
+        `evidence_asof` equals `as_of` itself.
+      - `"refreshing"` — the current stamp's row set for the resolved identity is not yet complete, but
+        a last-good complete version survives at or before `as_of` — serves that version's rows, ALL
+        from the SAME version (never mixed), labeled with that version's OWN `created_at` (the max
+        across its horizon rows). Two sub-cases, both legitimate:
+          (a) SAME `asof_key`, a PRIOR `dataset_version` (the iter-16 cutover-pruning contract keeps a
+              complete prior version's rows until the new version's own set lands) — `evidence_asof`
+              equals `as_of` (the served evidence genuinely IS for this date, just from an older compute
+              of it).
+          (b) iter-17 (audit B1): THIS `asof_key` has NEVER had a complete version of its own (0 rows,
+              or an in-flight partial warm only) — widen the search to STRICTLY OLDER `asof_key`s (never
+              a later one — AG-5 no-lookahead) and serve the most recent one that DOES have a complete
+              version; `evidence_asof` is that OLDER date. This is the common single-latest-date
+              backfill shape: a brand-new latest `ScannerRun` lands with zero forward-aggregate rows
+              while its ingest-finalize warm is still running (or has not yet started), and before this
+              fix the resolver fell straight through to `not_yet_computed` for the WHOLE warm window
+              instead of serving yesterday's still-good evidence (verified live by the iter-16 audit: a
+              throwaway probe showed `asof=2025-01-10 status='ready'` flip straight to
+              `asof=2025-01-13 status='not_yet_computed'` the moment the new latest run committed, with
+              zero unit or live test coverage of this shape until this iteration's TC-1/TC-4/TC-8).
+      - `"not_yet_computed"` — NO `asof_key` at or before `as_of` has EVER had a complete version (the
+        true fresh-install shape): `evidence_by_horizon = {}`, `evidence_generated_at = None`,
+        `evidence_asof = None`. Still HTTP 200 at the caller (an honest empty state) — never a
+        synchronous compute, never 500/503.
 
-    The completeness-lookup query is filtered by `asof_key` ALONE (never an unfiltered scan of the whole
-    `forward_aggregate_cache` table — AG-8 spirit, TC-18): it touches only the handful of rows already
-    belonging to this ONE identity, regardless of how many other historical `asof_key`s the table has
-    accumulated over the session. The result set is inherently small (at most ~2 `dataset_version`s'
-    worth of rows per identity under the cutover contract above), so a plain `.all()` needs no streaming.
+    The completeness-lookup query for THIS `asof_key` is filtered by `asof_key` ALONE (never an
+    unfiltered scan of the whole `forward_aggregate_cache` table — AG-8 spirit, TC-18): it touches only
+    the handful of rows already belonging to this ONE identity. The result set is inherently small (at
+    most ~2 `dataset_version`s' worth of rows per identity under the cutover contract above), so a plain
+    `.all()` needs no streaming.
+
+    The iter-17 widened fallback below runs ONLY when that first, cheap, single-identity query comes up
+    with no complete version at all — its own query is filtered to `asof_key < :requested` (a real
+    filter, never `>=` — AG-5, and never the WHOLE table: this table is bounded by the count of as-of
+    identities ever selected across the app's lifetime, never `daily_prices` scale, consistent with
+    AG-8). Its rows are grouped by the PAIR `(asof_key, dataset_version)`, never `dataset_version`
+    alone: the version stamp is a GLOBAL fingerprint shared across every as-of identity (any new
+    `ScannerRun`/`ForwardReturn` bumps it, everywhere), so two DIFFERENT dates can carry the IDENTICAL
+    stamp — collapsing by version alone would risk mixing horizon rows from two different dates into one
+    served payload, the same class of bug the per-identity cutover contract above exists to prevent.
 
     Deferred import (not at module level): mirrors `forward_aggregates_ingest_cached`'s own established
     reason (`research.py` imports FROM this module, so a module-level import back would be circular)."""
@@ -1201,45 +1239,80 @@ def resolved_forward_aggregate_evidence(
     configured_horizons = set(cfg.walk_forward.horizons)
     asof_key = as_of.isoformat()
 
+    def _complete_versions(rows) -> dict[str, dict[int, tuple[str, datetime]]]:
+        by_version: dict[str, dict[int, tuple[str, datetime]]] = defaultdict(dict)
+        for row_horizon, row_version, payload_json, created_at in rows:
+            by_version[row_version][row_horizon] = (payload_json, created_at)
+        return {
+            version: horizon_map
+            for version, horizon_map in by_version.items()
+            if set(horizon_map) >= configured_horizons
+        }
+
+    def _serve(horizon_map: dict[int, tuple[str, datetime]], status: str, evidence_asof: Optional[str]) -> dict:
+        evidence_by_horizon = {h: json.loads(horizon_map[h][0]) for h in sorted(horizon_map)}
+        generated_at = max(created_at for _payload_json, created_at in horizon_map.values())
+        return {
+            "evidence_status": status,
+            "evidence_generated_at": _utc_isoformat(generated_at),
+            "evidence_by_horizon": evidence_by_horizon,
+            "evidence_asof": evidence_asof,
+        }
+
     # asof_key-filtered read (TC-18) — bounded to this one identity's rows, never the whole table.
-    rows = session.exec(
+    same_key_rows = session.exec(
         select(
             ForwardAggregateCache.horizon, ForwardAggregateCache.dataset_version,
             ForwardAggregateCache.payload_json, ForwardAggregateCache.created_at,
         ).where(ForwardAggregateCache.asof_key == asof_key)
     ).all()
-
-    by_version: dict[str, dict[int, tuple[str, datetime]]] = defaultdict(dict)
-    for row_horizon, row_version, payload_json, created_at in rows:
-        by_version[row_version][row_horizon] = (payload_json, created_at)
-
-    complete = {
-        version: horizon_map
-        for version, horizon_map in by_version.items()
-        if set(horizon_map) >= configured_horizons
-    }
-
-    def _serve(version: str, status: str) -> dict:
-        horizon_map = complete[version]
-        evidence_by_horizon = {h: json.loads(horizon_map[h][0]) for h in sorted(horizon_map)}
-        generated_at = max(created_at for _payload_json, created_at in horizon_map.values())
-        return {
-            "evidence_status": status,
-            "evidence_generated_at": generated_at.isoformat(),
-            "evidence_by_horizon": evidence_by_horizon,
-        }
+    complete = _complete_versions(same_key_rows)
 
     current_version = _dataset_version(session)
     if current_version in complete:
-        return _serve(current_version, "ready")
+        return _serve(complete[current_version], "ready", asof_key)
 
     if complete:
         # a PRIOR complete version survives the cutover (never mixed with the incomplete current one) —
-        # the "latest" surviving prior version, tie-broken by its own newest row's created_at.
+        # the "latest" surviving prior version, tie-broken by its own newest row's created_at. Still
+        # THIS asof_key's own evidence (an older compute of the SAME date), so evidence_asof is unchanged.
         stale_version = max(complete, key=lambda v: max(ca for _p, ca in complete[v].values()))
-        return _serve(stale_version, "refreshing")
+        return _serve(complete[stale_version], "refreshing", asof_key)
 
-    return {"evidence_status": "not_yet_computed", "evidence_generated_at": None, "evidence_by_horizon": {}}
+    # iter-17 (audit B1): THIS asof_key has never had a complete version of its own (0 rows, or a
+    # partial warm only) — widen the search to STRICTLY OLDER asof_keys (never a later one, AG-5) and
+    # serve the most recent one that DOES have a complete version. See the docstring above for why
+    # grouping is keyed by (asof_key, dataset_version) rather than dataset_version alone.
+    older_rows = session.exec(
+        select(
+            ForwardAggregateCache.asof_key, ForwardAggregateCache.horizon,
+            ForwardAggregateCache.dataset_version, ForwardAggregateCache.payload_json,
+            ForwardAggregateCache.created_at,
+        ).where(ForwardAggregateCache.asof_key < asof_key)
+    ).all()
+
+    by_key: dict[str, list] = defaultdict(list)
+    for row_key, row_horizon, row_version, payload_json, created_at in older_rows:
+        by_key[row_key].append((row_horizon, row_version, payload_json, created_at))
+
+    complete_by_key = {
+        row_key: versions
+        for row_key, rows in by_key.items()
+        if (versions := _complete_versions(rows))
+    }
+
+    if complete_by_key:
+        best_key = max(complete_by_key)  # ISO-8601 strings sort chronologically -- the closest older date
+        versions_at_best_key = complete_by_key[best_key]
+        best_version = max(
+            versions_at_best_key, key=lambda v: max(ca for _p, ca in versions_at_best_key[v].values())
+        )
+        return _serve(versions_at_best_key[best_version], "refreshing", best_key)
+
+    return {
+        "evidence_status": "not_yet_computed", "evidence_generated_at": None,
+        "evidence_by_horizon": {}, "evidence_asof": None,
+    }
 
 
 # --------------------------------------------------------------------------------------------------

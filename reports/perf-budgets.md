@@ -2848,3 +2848,307 @@ same contention class the standing audits already flagged, not a recompute regre
 interpretation is the operator's own**, explicitly flagged by them as theirs to record honestly rather than
 for this pass to adopt uncritically — transcribed here for the evaluator's use, not endorsed or rejected by
 this developer pass.
+
+---
+
+## iter-17 — `/backtest` latency root-cause investigation (2026-07-24): narrowed, not pinned; no fresh TC-10 measurement this pass
+
+**Scope of this section.** This is the root-cause investigation the iter-17 spec asks for (item 4), using
+ONLY evidence already on file (iter-16's `tc16-backtest-poll.csv`, `logs/backend.log`,
+`logs/hwmon/hwmon.csv`) plus source-code inspection — **not** a fresh deep-basis measurement. TC-10 (a
+NEW 68-poll pass re-measuring latency after this iteration's changes, mirroring TC-16's protocol exactly)
+is AG-10-class, operator-supervised, and was **not run this session**: the backend/frontend are not
+running (`curl :8255/api/health` / `:3255/` both refused, confirmed at investigation time — no service was
+started or stopped to check this), and this session cannot start them. See the dev handoff for the exact
+operator hand-off. The section below is a root-cause narrowing exercise on the EXISTING iter-16 evidence,
+plus one independent, low-risk efficiency fix (B5) applied regardless of what the latency investigation
+concludes.
+
+### Precise timing of the two worst breaches (recomputed from `tc16-backtest-poll.csv`, cross-checked against this file's own iter-16 segmentation above)
+
+| Breach | Poll start (epoch → UTC) | Duration | Offset from job start (`1784840097` = 20:54:57 UTC) | Ends at offset |
+|---|---|---|---|---|
+| Max (12.655 s) | `1784840137` → 20:55:37 UTC | 12.654708 s | **+40 s** | +52.65 s |
+| 2nd-worst (11.408 s) | `1784840121` → 20:55:21 UTC | 11.408275 s | **+24 s** | +35.41 s |
+
+Both of the two worst breaches land in the **first ~53 seconds** of the ~380 s single-date-backfill job
+(`79519a1db9334042b536763323bdcf3a`, 2025-05-22) — early, not late. `_run_job`'s own staging order runs
+the main per-date backfill/scan stage (creating the new `ScannerRun`/`ScannerResult`/`ForwardReturn` rows
+for 2025-05-22) BEFORE the finalize hook (`_refresh_ingest_aggregates`, which drives
+`_persist_per_date_coverage_snapshots` and the forward-aggregate warm) ever starts. Absent a per-stage
+timestamp, this window most likely falls inside the main scan/persist stage rather than the finalize
+hook's later loops — but this cannot be confirmed from available telemetry (see the log-granularity
+limitation below), only inferred from the job's own documented stage order.
+
+### What is RULED OUT (direct evidence, not inference)
+
+- **Thermal/hardware throttling.** Already established by the iter-16 section above (`hwmon.csv` idle
+  43-46 °C pre-boot, in-window peak exactly 83 °C, never near the 95 °C abort threshold) — re-affirmed
+  here; no new evidence contradicts it. The two worst breaches occur inside a window `hwmon.csv` shows was
+  thermally unremarkable.
+- **A single, continuously-held write transaction spanning the whole finalize hook.** Traced every commit
+  boundary in the two functions the spec names: `_upsert_coverage_snapshot`
+  (`data_manager.py:1021-1024`) commits immediately after every per-date coverage-snapshot upsert (inside
+  `_persist_per_date_coverage_snapshots`'s loop, `data_manager.py:3085-3104`, one commit per date, not one
+  commit for the whole loop); `forward_aggregates_ingest_cached`'s cache-miss path
+  (`forward_testing.py`, ~1149-1153) commits once per horizon. Writes inside the finalize hook are
+  therefore FREQUENT and individually brief, never accumulated into one long-held write lock — this rules
+  out the simplest version of "one giant transaction blocks a reader for 12 seconds."
+- **A stale, silently-timing-out request.** All 68/68 polls in the iter-16 CSV returned HTTP 200; the
+  observed max (12.655 s) sits comfortably under the 30 s `busy_timeout_ms` (`config.yaml:106-108`) —
+  consistent with something that resolves (a lock wait, a scheduling delay, I/O contention), never a hang
+  or a `SQLITE_BUSY` error surfacing to a client.
+
+### What could NOT be ruled in or out (the honest limit of available telemetry)
+
+`logs/backend.log` carries **zero timestamped lines of any kind** — confirmed by direct grep
+(`grep -cE '^[0-9]{4}-[0-9]{2}-[0-9]{2}' logs/backend.log` → 0; `grep -c '^\['` → 0). Uvicorn's default
+access-log format here is `INFO:     <client> - "<method> <path> HTTP/1.1" <status>` with no per-line
+clock time, and no request-timing middleware exists in `app/main.py` (checked directly — no
+`process_time`/`X-Process-Time`/timing decorator). This is the SAME limitation iter-16's own TC-16 section
+already flagged for the 1.54 s boot figure ("the uvicorn access log carries no per-request timestamps, so
+this pass has no data point that reproduces or contradicts it") — it applies with equal force here: there
+is no way, from this log alone, to align a specific HTTP request line with a specific wall-clock second,
+so the exact SQLite-level mechanism behind the 11.4 s/12.655 s waits cannot be pinned down from it.
+Job-level stage timing (`JobProgress.record_stage`, `data_manager.py:1989-2024`) is **not persisted** to
+`data_provider_runs` (`models.py:105-134` has no `stages_json`/timing column) — it lived only in the
+in-memory `JobProgress` object the operator's live polls saw transiently in `GET /api/data/jobs/{id}`'s
+JSON body, which uvicorn's access log never records (confirmed directly, matching this file's own iter-16
+note on `aggregates_refreshed`'s content). That per-stage breakdown for THIS specific job is gone; it is
+not recoverable from the DB or any log now.
+
+Two mechanisms remain equally plausible given what IS confirmed, and this investigation cannot
+distinguish between them with the evidence and tooling available this session:
+
+1. **SQLite writer/checkpoint contention**, even with frequent brief commits — either genuine
+   momentary lock queueing between the ingest's many small writes and a competing writer (e.g.
+   `/backtest`'s own `backfill_run_forward_returns` create-once insert, which does write and commit when
+   it inserts new rows for a just-advanced date), or I/O bandwidth consumed by a WAL auto-checkpoint
+   (`mmap_size_bytes: 0`, so every read is a real `read()` syscall competing with the writer's I/O).
+2. **GIL/threadpool scheduling contention** — confirmed architecturally possible, not just
+   speculative: the ingest job runs via `threading.Thread(...).start()` in the SAME process
+   (`data_manager.py:4258-4265`, `4281-4288`), and `/backtest`'s route function is a plain sync `def`
+   (`app/api/backtest.py`), which FastAPI/Starlette dispatches through its own request threadpool — both
+   share ONE GIL. Heavy, sequential, per-date Python-level compute (JSON-serializing sizeable coverage/
+   market-phase/forward-aggregate payloads, statistics over thousands of rows) in the ingest thread would
+   compete for GIL time with the request thread, independent of any SQLite-level lock, and would produce
+   the same bounded (never-hanging, never-erroring) multi-second signature observed.
+
+Neither `logs/backend.log` (no per-request timestamps) nor `logs/hwmon/hwmon.csv` (thermal telemetry
+only) carries the granularity to confirm or exclude either one. Distinguishing them would need live
+instrumentation this session does not have: a response-timing middleware, SQLite's own
+`sqlite3_trace_v2`/busy-handler counters, or a thread/GIL profiler run DURING a live ingest window.
+
+### Decision: no code change to the ingest/read write pattern this iteration
+
+Per this iteration's own NOTES ("if the latency investigation concludes the residual is a hard,
+unavoidable contention cost..., that is a legitimate outcome to report — do not force a fix that isn't
+there"), and per iter-15's standing lesson that a small-fixture reproduction does not extrapolate to the
+deep-basis cost: no change was made to `_refresh_ingest_aggregates`'s or `_persist_per_date_coverage_
+snapshots`'s commit cadence, and `backfill_run_forward_returns`'s incidental write was left as-is. Two
+reasons, both concrete: (1) this investigation could not conclusively identify a SINGLE mechanism to
+target, so any change would be aimed at a hypothesis, not a confirmed cause; (2) this session has no way
+to live-validate a mitigation against the deep basis (TC-10 is operator-only), so an unverified change to
+this heavily safety-netted ingest path (per-date `MemoryError` isolation, non-fatal continuation) would
+ship unproven, trading a disclosed, bounded, non-erroring latency cost for an unverified correctness risk.
+**Recorded here as the disclosed, currently-unavoidable-to-fix-blind residual**, mirroring iter-15's
+STALLED cold-MISS precedent. Recommendation for whoever runs the next TC-10 pass: add a one-line
+response-timing log (or capture `py-spy`/similar during the ingest window) so a future pass can attribute
+the wait to one of the two mechanisms above directly, instead of repeating this correlation-only analysis.
+
+### B5 cheap win — applied independently of the latency finding above
+
+`GET /api/backtest` and MCP `query_backtest`'s historical (`is_latest == False`) branch previously called
+`forward_aggregates_ingest_cached` unconditionally for every configured horizon (each a cache-hit
+read+`json.loads`, discarded), THEN called `resolved_forward_aggregate_evidence` which re-read and
+re-parsed the SAME rows a second time — on every repeat view of an already-warmed historical date, not
+only the first. Fixed by gating the ensure-loop on the resolver's own first read
+(`evidence["evidence_status"] != "ready"`): an already-warmed date now short-circuits straight to the
+single resolver read (0 wasted `forward_aggregates_ingest_cached` calls); a cold date still ensures every
+horizon is cached (computing any missing one) and re-resolves once, byte-identical to before. Verified by
+the existing `test_historical_asof_keeps_pre_iter16_create_once_and_cache_behavior` (unchanged assertions,
+still green) plus the new `test_historical_asof_still_computes_once_even_when_older_fallback_evidence_
+exists` regression guard (`apps/backend/tests/test_forward_testing_serving_split.py`). This is a
+request-count reduction on an ALREADY-warmed historical view, not a fix for the ingest-window latency
+breaches above (those occur on the LATEST view, which never ran this loop before or after B5).
+
+### TC-10 — deep-basis re-measurement: PENDING, operator-supervised (not run this session)
+
+Mirrors iter-16's TC-16 protocol exactly (cooled host, 1 Hz `hwmon` sampler live, thermal watchdog armed,
+`taskset -c 0-3,8-11`, `OMP_NUM_THREADS=OPENBLAS_NUM_THREADS=MKL_NUM_THREADS=NUMEXPR_NUM_THREADS=4`, a
+single-date backfill as the warm-trigger job, 68-ish `curl`-timed polls of `/backtest` at ~5 s intervals
+spanning before/during/after the job). Compare directly against this file's own iter-16 baseline (11/68
+breaches, max 12.655 s) once run. Not performed this session: this iteration made no code change capable
+of affecting `/backtest` latency in either direction (the B1 fallback and B5 change the SERVING branch
+taken and read count, not the write pattern implicated above), so the iter-16 baseline remains the
+best-known figure until the next live pass. See the dev handoff for the exact operator run instructions.
+
+---
+
+## TC-8 / TC-9 / TC-10 / TC-11 — operator hand-off RESULTS (iter-17, 2026-07-24)
+
+**This section resolves the dev handoff's "Operator Hand-off" placeholder**
+(`docs/handoffs/goal-ops-hardening-iter-17-dev.md`) for the four items that pass could not run itself
+(services were down; TC-9/TC-10 are operator-only regardless). The operator ran what was runnable and
+reported console output/figures with PIDs, ports, and timestamps, per this file's own standing
+verbatim-transcription-with-attribution practice. Everything below is transcribed from that report with
+attribution; a follow-up developer pass (this one) independently re-checked every claim that was still
+checkable at transcription time — read-only DB queries, live endpoint reads, `/proc` process introspection,
+and `logs/backend.log`/`logs/hwmon/hwmon.csv` cross-reads — **without** re-running any timed measurement and
+**without** starting, stopping, or restarting any of the four services that were live at transcription time
+(backend :8255 pid 1079840, frontend :3255, throwaway backend :18255, throwaway frontend :13255). Recomputed
+values are marked explicitly, and — per this file's standing practice — a discrepancy this pass found is
+disclosed, not silently resolved.
+
+**Boot preconditions, operator-reported:** 2026-07-24 (BST), host idle 45 °C at measurement start, 1 Hz
+`hwmon` sampler live, thermal watchdog armed, no trip.
+
+**Cross-checked (this pass):** `logs/hwmon/hwmon.csv`'s row closest to the main backend's own boot timestamp
+(epoch `1784853699` = `2026-07-24T00:41:39Z`, matching `logs/backend.log`'s `Started server process
+[1079840]` banner) reads `tctl_c=45` — an exact match to "45 °C." `logs/hwmon/watchdog.log`'s last entry is
+`watchdog armed` at `2026-07-23T20:40:41+01:00`, with no `sentinel gone` or trip line after it — confirms the
+watchdog was continuously armed through this entire pass, and no trip fired. **One thing the operator's
+summary did not mention, disclosed here:** the sampler recorded a real, non-idle thermal spike later in the
+same window — `tctl_c` 84-90 °C sustained for ~40 s (epoch `1784854130`-`1784854170` = `00:48:50`-`00:49:30`
+UTC, peak **90 °C** at `1784854147` = `00:49:07` UTC), correlating with `load1` climbing to ~2.3-2.6 in the
+same rows. This is warmer than iter-16's own comparable in-window peak (83 °C, recorded above, under an
+actual ~380 s ingest job) despite this pass involving no ingest — see the TC-9 process-identity finding
+below for the likely proximate cause. It stayed under the 95 °C abort threshold this file's iter-14/15/16
+sections use, and the watchdog log confirms no trip; flagged for completeness, not as a failure.
+
+### TC-8 — as-of-advancing `refreshing` case: NOT REACHABLE on this DB (operator finding, cross-checked)
+
+Operator, verbatim (paraphrase-free): `max(daily_prices.date)` = `2026-07-22` and `max(scanner_runs.asof_date)`
+= `2026-07-22` — the price basis ends at the latest snapshotted date, so there is no future trading day to
+backfill that would advance the as-of; `/api/data/availability` confirms zero unsnapshotted candidates after
+the latest. The live as-of-advancing case cannot be produced without fabricating price data. As a substitute,
+`GET /api/backtest?as_of=2026-07-17` (the live DB's naturally-incomplete key, previously 5 rows split across
+two `dataset_version`s: `r1193-f2522006`/`r1272-f2674831`) returned `is_latest: false`,
+`evidence_status: "ready"`, `evidence_asof: "2026-07-17"`, `evidence_generated_at: 2026-07-24T00:44:13` — the
+historical create-once carve-out HEALED the mixed-version key rather than exercising the cross-`asof_key`
+fallback. B1's fix therefore rests on the 5 new unit tests for live evidence this iteration; TC-8 was not
+exercised live.
+
+**Recomputed/cross-checked (this pass), read-only, via the committed `apps/backend/data/trendora.db`:**
+
+| Claim | Recheck | Match? |
+|---|---|---|
+| `MAX(daily_prices.date)` = `2026-07-22` | `2026-07-22` (direct read-only query) | exact |
+| `MAX(scanner_runs.asof_date)` = `2026-07-22` | `2026-07-22` (direct read-only query) | exact |
+| `/api/data/availability` has zero unsnapshotted cells after the latest date | 5,383 cells total, last cell `2026-07-22` (`snapshot_exists: true`), 0 cells with `date > 2026-07-22` | exact |
+| `/api/backtest?as_of=2026-07-17` serves `is_latest: false`, `evidence_status: "ready"`, `evidence_asof: "2026-07-17"` | Re-requested live against :8255 (pid 1079840, the same process the operator used): identical fields, plus `evidence_generated_at: 2026-07-24T00:44:13.188442+00:00` — the SAME microsecond-precision timestamp, roughly 20 minutes after the operator's original request, confirming this is a cache re-serve, not a fresh recompute | exact |
+
+**One detail could not be independently re-checked, disclosed rather than dropped:** the operator's claimed
+PRE-heal state ("5 rows split across dataset_versions `r1193-f2522006`/`r1272-f2674831`") no longer exists to
+inspect — the operator's own request already healed it. The CURRENT state (`forward_aggregate_cache` rows
+for `asof_key='2026-07-17'`: exactly 5, horizons 1/5/10/20/60, all under ONE `dataset_version`
+(`r1861-f3944105`), `created_at` timestamps `00:43:19`-`00:44:13` on 2026-07-24) is consistent with a heal
+having occurred, and the `evidence_generated_at` match above confirms the served value is exactly this
+healed row, not a coincidence — but the specific pre-heal version strings cited are inherently unverifiable
+now and are transcribed as reported, not independently confirmed.
+
+**Verdict: NOT REACHABLE, as the operator states plainly. No fabricated pass.** Consistent with this file's
+standing practice (e.g., TC-16's `not_yet_computed` row above: "NOT EXERCISED this pass").
+
+### TC-9 — `not_yet_computed` empty state on a disposable DB copy: CLOSED on the DB-level contract, with one process-identity finding disclosed
+
+Operator, verbatim (paraphrase-free): the dev handoff's empty-DB recipe hung in application startup (killed
+after ~2 min); instead, copied the real DB to `/tmp/trendora-tc9-throwaway.db`, deleted only
+`forward_aggregate_cache` (2→0 rows, `scanner_runs` untouched), booted a throwaway backend on **:18255**
+(`TRENDORA_CONFIG=/tmp/trendora-tc9-config.yaml`, "healthy in ~10 s") and a throwaway frontend on **:13255**
+(`NEXT_PUBLIC_API_URL=http://localhost:18255`). `GET /api/backtest` → `evidence_status: "not_yet_computed"`,
+`evidence_asof: null`, `evidence_generated_at: null`, `evidence_by_horizon: {}`, `asof_date: "2026-07-01"`,
+`is_latest: true`, HTTP 200 in **1.358 s** (first call). Three repeats: **1.612 / 1.894 / 1.879 s** —
+marginally over the 1.5 s budget, attributed to the throwaway pair running alongside the main pair.
+**`forward_aggregate_cache` stayed 0 rows after all 4 requests** — zero computation on a cold cache.
+`http://127.0.0.1:13255/backtest` renders 200 in **1.314 s**. Both throwaway services left running for the
+browser lane; the main pair unaffected.
+
+**Recomputed/cross-checked (this pass):**
+
+| Claim | Recheck | Match? |
+|---|---|---|
+| `forward_aggregate_cache` = 0 rows in `/tmp/trendora-tc9-throwaway.db` | Direct read-only query against that exact file: **0** | exact |
+| `scanner_runs` untouched | **90** rows present (non-zero, populated — consistent with "untouched," though no pre-deletion baseline count was recorded to diff against) | consistent |
+| Both throwaway services still running | `:18255` LISTEN (uvicorn), `:13255` LISTEN (next-server), confirmed via `ss -tlnp` | confirmed alive |
+| Main pair unaffected | `:8255`/`:3255` both confirmed listening under their original PIDs (backend **1079840**, matching the operator's own cited PID exactly) | confirmed |
+
+**Finding this pass discloses, not in the operator's report: the throwaway backend now listening on :18255 is
+not the process `logs/backend.log` shows being launched, and does not carry this iteration's host-guard
+memory protection.** `logs/backend.log`'s only banner for port 18255 (`launching at 2026-07-24T00:44:47Z`,
+i.e. via `scripts/start-backend.sh` exactly as instructed) reports `Started server process [1089510]` and
+`boot: latest-snapshot ready in 121.8s (over the 30.0s readiness budget) — serving anyway` — **121.8 s to
+ready, not "~10 s"** — then several requests, all HTTP 200. That process, pid **1089510**, **no longer
+exists** (`ps -p 1089510` → no such process; `/proc/1089510` absent, confirmed at transcription time). The
+process actually answering :18255 right now is pid **1101499** (started `2026-07-24T00:48:12Z`, per
+`/proc`'s recorded start time), invoked as `python .venv/bin/uvicorn main:app --host 127.0.0.1 --port 18255
+...` — **`--host 127.0.0.1`, not the `--host 0.0.0.0` `scripts/start-backend.sh` always uses** — with **no
+entry at all in `logs/backend.log`** (the script's own logfile redirect is the only way a launch gets
+recorded there). Checked directly via `/proc/1101499/limits` and `/proc/1101499/environ`: `Max address
+space` = **unlimited** (the main backend's is `6,442,450,944` bytes = 6144 MB, i.e. `server.memory_cap_mb`'s
+`ulimit -v` as applied by the script) and **no `MALLOC_ARENA_MAX`** is set (the main backend has
+`MALLOC_ARENA_MAX=2`). CPU affinity (`0-3,8-11`) and `OMP_NUM_THREADS`/`OPENBLAS_NUM_THREADS=4` ARE present
+in its environment (inherited from the shell it was started from), so part of the host-guard posture carried
+over — but the two protections the launch SCRIPT itself applies, the `ulimit -v` memory ceiling and
+`MALLOC_ARENA_MAX`, are absent on the process currently attached to this DB copy. The 90 °C thermal spike
+noted above (`00:48:50`-`00:49:30` UTC) lands within about a minute of this process's start (`00:48:12` UTC),
+consistent with an uncapped warm-up pass against the 561 MB DB copy being the likely proximate cause, though
+this pass cannot prove causation from the evidence available.
+
+This means: (1) the DB-level result — `forward_aggregate_cache` stayed at 0 rows — is a fact about the file
+itself and holds regardless of which process is attached, independently confirmed above; (2) the exact
+**1.358 / 1.612 / 1.894 / 1.879 s** timings and the **1.314 s** frontend render are operator-reported only —
+`logs/backend.log` carries no per-request timestamps (the same limitation this file's TC-16 section already
+documented for its own "1.54 s" boot figure) and, for whichever of these requests landed after ~00:48 UTC,
+would in any case have hit the untracked pid-1101499 process, not the logged pid-1089510 one — so these
+figures cannot be independently re-derived or attributed to a specific, spec-compliant process from available
+evidence, and are transcribed as reported, not verified; (3) the currently-live :18255 process was not
+launched per this iteration's own TC-9 protocol (`scripts/start-backend.sh`) and is currently running this
+session's largest loaded DB copy (561 MB) without the `memory_cap_mb` ceiling that protects every OTHER
+process in this project against the exact OOM/hard-reset failure mode this file's own Items A/G/H exist to
+bound — **flagged for the operator to address (restart it properly via the script, or tear it down now that
+the DB-level TC-9 evidence is already captured) before this pair is used for anything beyond the browser-lane
+screenshot the operator already has.**
+
+**Verdict: the empty-state contract itself (zero rows, zero compute, HTTP 200, correct field shape) is CLOSED
+and strongly evidenced — the strongest claim in this pass, and independently reproducible from the DB file
+alone.** The specific timing figures and the currently-running process's compliance with this iteration's
+own launch protocol are not both true at the same time as reported; see above. No overall TC-9 verdict beyond
+the empty-state contract is rendered here — the process-identity finding is for the evaluator/operator to
+weigh, per this file's standing practice of disclosing rather than resolving unilaterally.
+
+### TC-10 — deep-basis latency re-measurement: still not run, confirmed by explicit reasoning (not an oversight)
+
+Operator, verbatim: not run this turn; this iteration made no latency code change (the root-cause turn
+deliberately declined to guess between SQLite lock contention and GIL scheduling without better telemetry),
+so a re-measurement would only re-measure iter-16's baseline.
+
+This matches — and is not additional to — this file's own "PENDING, operator-supervised (not run this
+session)" TC-10 section above, written by the developer pass before the operator's turn. The operator's
+confirmation closes the open question of whether TC-10 was simply forgotten: it was a deliberate decision,
+consistent with this iteration's own recorded root-cause finding (no code change touches the ingest/read
+write pattern this session) and with the phase spec's own instruction not to force a measurement that would
+not test anything new. The iter-16 baseline (11/68 breaches, max 12.655 s) remains the best-known figure.
+**This is unresolved, not passed** — TC-10 is explicitly listed as OPERATOR-performed, AG-10-class, and
+remains outstanding for whenever a future iteration's change plausibly moves this number.
+
+### TC-11 — non-disruptive J-04 sanity: PASS, independently reproduced
+
+Operator, verbatim: `GET /api/health` on :8255 → HTTP 200, `readiness: "ready"`, `preflight.verdict:
+"DEGRADED"` (the long-standing live-vs-seed drift, unrelated to this iteration); `logs/backend.log`'s recent
+tail shows 3 normal launch banners and no crash banner since.
+
+**Recomputed/cross-checked (this pass):** re-polled `GET /api/health` on :8255 directly — identical result:
+HTTP 200, `readiness: "ready"`, `preflight.verdict: "DEGRADED"`, same drift reason (adjustment-seam drift
+across the full symbol list, unrelated to this iteration). `logs/backend.log`'s last 3 launch banners
+(`22:48:17Z` pid 779734, `00:41:40Z` pid 1079840 — the current main backend, `00:44:47Z` pid 1089510) each
+show a clean `Started server process` → `Application startup complete` → `Uvicorn running` sequence with no
+crash/traceback immediately following. **One caveat found by this pass, not a contradiction of the operator's
+claim:** the file does contain `MemoryError`/`Traceback` lines (a real historical incident), but every one of
+them predates this session's launches by roughly a day and a half (last one found well before this session's
+banners begin) — consistent with "no crash banner since [this session's boots]," which is what TC-11 asks
+for; not a new finding against the claim.
+
+**Verdict: PASS, confirmed independently** — this is the one item in this pass this developer session could
+re-run itself (a plain, idempotent `GET /api/health`) without touching any service state, and it reproduces
+exactly.

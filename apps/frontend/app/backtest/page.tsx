@@ -236,31 +236,56 @@ function BacktestResults({
         <EmptyState
           icon={FlaskConical}
           title="Backtest evidence not yet computed"
-          description="Backtest evidence not yet computed — run an ingest to populate the forward-tested evidence for this date. No numbers are fabricated in the meantime."
+          description="No forward-tested evidence exists yet for this date. Backfilling or fetching data that covers it will compute this evidence — no numbers are fabricated in the meantime."
         />
       ) : evidence ? (
         <>
           {backtest.evidence_status === "refreshing" ? (
-            <RefreshingEvidenceBanner generatedAt={backtest.evidence_generated_at} />
+            <RefreshingEvidenceBanner
+              generatedAt={backtest.evidence_generated_at}
+              evidenceAsof={backtest.evidence_asof}
+            />
           ) : null}
-          <EvidenceAggregateSection evidence={evidence} asofDate={backtest.asof_date} />
+          {/* iter-17 audit fix (J-08/AG-3): this section's OWN copy states a factual window claim —
+              "expanding window ≤ <date>", "every snapshot dated on or before <date>", "Snapshots
+              contributing (≤ <date>): n" — so it must be labeled with the as-of the served numbers
+              were actually computed for, NOT the page's requested as-of. They are the SAME value in
+              every state except the one this iteration introduced (`refreshing` after the fallback
+              crossed an as-of boundary), where the served aggregate's window ends at the OLDER
+              `evidence_asof`; labeling it with the page's newer `asof_date` would assert a window and
+              an n that the payload does not contain, directly contradicting the banner above it. The
+              `?? asof_date` keeps the pre-iter-17 value for any response without the field. */}
+          <EvidenceAggregateSection
+            evidence={evidence}
+            asofDate={backtest.evidence_asof ?? backtest.asof_date}
+          />
         </>
       ) : null}
     </div>
   );
 }
 
-// --- Refreshing-evidence disclosure (ops-hardening iter-16, J-08): a small, calm, factual banner shown
-// ABOVE the still-fully-populated evidence section while the newer dataset version's evidence is not yet
-// complete. The copy states ONLY what the resolver actually knows (the stamp changed; the new version is
-// incomplete; this is the last complete version and when it was generated) — it must never assert that a
-// warm is currently in flight (a stamp bump from any new ScannerRun/ForwardReturn row leaves this state
-// standing with no warm running) nor promise an automatic update (this page refetches only on mount / an
-// as-of change / a readiness transition — there is no poll; see the effect deps in BacktestPage). Borrows the
+// --- Refreshing-evidence disclosure (ops-hardening iter-16, J-08; evidenceAsof added iter-17, J-08 audit
+// B1): a small, calm, factual banner shown ABOVE the still-fully-populated evidence section while the
+// newer dataset version's evidence is not yet complete. The copy states ONLY what the resolver actually
+// knows (the stamp changed; the new version is incomplete; WHICH as-of's evidence this is; and when it
+// was generated) — it must never assert that a warm is currently in flight (a stamp bump from any new
+// ScannerRun/ForwardReturn row leaves this state standing with no warm running) nor promise an automatic
+// update (this page refetches only on mount / an as-of change / a readiness transition — there is no
+// poll; see the effect deps in BacktestPage). `evidenceAsof` (iter-17) discloses WHICH as-of's evidence is
+// being shown — equal to the page's own resolved date when the resolver served an older *version* of this
+// SAME date, or a genuinely OLDER date when the fallback crossed an as-of boundary (the common shape
+// right after a new latest trading day lands and its ingest warm has not finished, audit B1). Borrows the
 // Card + Loader2 warn-toned LOOK already established by WarmingState/SurvivorshipBanner on this same page
 // — but this is a DISTINCT, request-scoped disclosure (the served evidence's own status) and must NOT
 // wire to useReadiness() (that hook is the boot-time warm-up concept, unrelated to this per-request state).
-function RefreshingEvidenceBanner({ generatedAt }: { generatedAt: string | null }) {
+function RefreshingEvidenceBanner({
+  generatedAt,
+  evidenceAsof,
+}: {
+  generatedAt: string | null;
+  evidenceAsof: string | null;
+}) {
   return (
     <Card
       className="flex items-start gap-3 border-warn bg-surface p-4 text-sm"
@@ -271,7 +296,8 @@ function RefreshingEvidenceBanner({ generatedAt }: { generatedAt: string | null 
         <p className="font-medium text-warn">Refreshing — showing the last complete evidence</p>
         <p className="text-text-muted">
           The dataset has changed since this evidence was generated, and the newer version is not
-          complete yet. The forward-tested evidence below is the last complete version, generated{" "}
+          complete yet. The forward-tested evidence below is the last complete version — evidence as of{" "}
+          <span className="num">{formatIsoDate(evidenceAsof)}</span>, generated{" "}
           <span className="num">{formatIsoDateTime(generatedAt)}</span> — no partial or fabricated
           figures are shown in the meantime. Reload this page after the next ingest finishes to pick up
           the new version.

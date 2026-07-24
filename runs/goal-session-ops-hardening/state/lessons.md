@@ -222,3 +222,18 @@ needed a manual reload). Status-disclosure copy is a testable assertion about sy
 **Applies to:** any iteration adding user-facing status/progress/explanatory copy — verify each sentence
 against the code that would have to be true for it, the same way a displayed number is verified against
 the engine (AG-3's discipline, applied to prose).
+
+## iter-17 — 2026-07-24T07:44:45Z
+
+**Verdict:** CONTINUE
+**Lesson:** Do NOT STALL on a latency-budget breach until it is DIAGNOSED. iter-15 correctly STALLED
+because the cost was a KNOWN cold full-basis compute and only the product-direction response was
+owner-owned. iter-17's residual (11/68 stored-row-read breaches, max 12.655s) looks similar but is
+categorically different: it is UNDIAGNOSED (narrowed to SQLite-writer-contention vs GIL/threadpool but
+indistinguishable because `logs/backend.log` carries zero per-request timestamps). Missing instrumentation
+is agent-fixable, so the unblock path is agent-owned → CONTINUE, not STALLED. The routing test is "is the
+cost proven, or merely unmeasured?" — a proven hard cost routes to the owner; an unmeasured one routes to
+an agent instrumentation pass first.
+**Applies to:** any iter where a page/endpoint misses a committed `reports/perf-budgets.md` budget and the
+mechanism is not yet pinned — check whether the diagnosis is blocked by missing telemetry (agent work)
+before treating the residual as an owner budget-amendment decision.

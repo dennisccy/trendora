@@ -1096,6 +1096,12 @@ export interface BacktestResponse {
   // The served version's generation timestamp (ISO 8601 UTC datetime); null only when
   // evidence_status === "not_yet_computed".
   evidence_generated_at: string | null;
+  // ops-hardening iter-17 (J-08, audit B1): the as-of (ISO 8601 date) whose stored complete
+  // forward-aggregate version is actually being served — equal to `asof_date` when
+  // evidence_status === "ready", an OLDER date when "refreshing" crosses an as-of boundary (the
+  // common shape right after a new latest trading day lands and its ingest warm has not finished),
+  // and null only when evidence_status === "not_yet_computed".
+  evidence_asof: string | null;
 }
 
 /** Canonical per-date forward-test scorecard source: GET /api/backtest?as_of=. Throws on non-200 so

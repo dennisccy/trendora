@@ -1,0 +1,34 @@
+{
+  "phase": "goal-ops-hardening-iter-17",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-07-24T07:30:30.705421Z",
+  "started_at": "2026-07-23T23:41:20.568149Z",
+  "cli": "claude",
+  "blockers": [
+    "TC-8 (as-of-advancing refreshing case) is NOT REACHABLE on the current DB -- max(daily_prices.date) and max(scanner_runs.asof_date) are both 2026-07-22 (re-verified read-only), so the live as-of-advancing shape cannot be produced without fabricating price data. B1's fix has no live TC-8 exercise this iteration; it rests on 5 new unit tests only. An honest data-availability limit, not a code defect -- see reports/perf-budgets.md's new TC-8 section.",
+    "TC-9's DB-level contract is CLOSED (forward_aggregate_cache re-confirmed 0 rows after the operator's 4 requests, read-only) but the throwaway backend now listening on :18255 (pid 1101499) was NOT launched via scripts/start-backend.sh -- it is missing the memory_cap_mb ulimit -v cap (unlimited vs the required 6144 MB) and MALLOC_ARENA_MAX, and has no entry in logs/backend.log. The properly-launched process (pid 1089510, banner-logged, 121.8s to ready) no longer exists. Operator action needed: restart the throwaway backend properly via the script, or tear it down now that the DB-level evidence is captured. See reports/perf-budgets.md's new TC-9 section for the full finding.",
+    "TC-10 (deep-basis latency re-measurement) remains NOT RUN -- confirmed by the operator as a deliberate decision (no code change this iteration touches the ingest/read write pattern the iter-16 baseline measured), not an oversight. Still OPERATOR-performed, AG-10-class, outstanding for a future iteration.",
+    "/backtest latency root cause (item 4) narrowed but not conclusively pinned to one mechanism -- logs/backend.log has no per-request timestamps; no code change applied, see reports/perf-budgets.md."
+  ],
+  "changed_files": [
+    "apps/backend/app/engine/forward_testing.py",
+    "apps/backend/app/api/backtest.py",
+    "apps/backend/app/mcp/tools.py",
+    "apps/backend/tests/test_forward_testing_serving_split.py",
+    "apps/backend/tests/test_api_backtest.py",
+    "apps/frontend/app/backtest/page.tsx",
+    "apps/frontend/lib/api.ts",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-17-dev.md",
+    "docs/handoffs/goal-ops-hardening-iter-17-frontend.md",
+    "reports/phase-goal-ops-hardening-iter-17-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "browser_checks_note": "Operator ad hoc pass (2026-07-24), not the formal browser-qa-agent lane. TC-9 covered live: http://127.0.0.1:13255/backtest (throwaway frontend against the disposable-DB throwaway backend) rendered the not_yet_computed EmptyState, HTTP 200 in an operator-reported 1.314s; the backing forward_aggregate_cache table independently re-confirmed at 0 rows read-only. TC-8's refreshing-banner screenshot was NOT captured -- the as-of-advancing shape is not reachable on this DB (re-verified: max(daily_prices.date)=max(scanner_runs.asof_date)=2026-07-22, no future trading day to backfill). A formal browser-qa-agent pass may still want to independently confirm/screenshot both states once TC-8 becomes reachable on a future data cycle.",
+  "notes": [
+    "TC-8/TC-9/TC-10/TC-11 operator pass (2026-07-24), transcribed with attribution and independently cross-checked in reports/perf-budgets.md's new 'TC-8 / TC-9 / TC-10 / TC-11 -- operator hand-off RESULTS' section. TC-8: NOT REACHABLE (max(daily_prices.date)=max(scanner_runs.asof_date)=2026-07-22 on the live DB, re-verified read-only -- no future trading day exists to backfill without fabricating data; B1 rests on its 5 unit tests only, no live exercise this iteration). TC-9: CLOSED on the DB-level contract (forward_aggregate_cache re-confirmed 0 rows after the operator's 4 requests, read-only) -- but this pass found the throwaway backend now serving :18255 (pid 1101499) was not launched via scripts/start-backend.sh, is missing the memory_cap_mb ulimit -v cap and MALLOC_ARENA_MAX, and isn't in logs/backend.log; the properly-launched process (pid 1089510, 121.8s to ready) no longer exists. Operator-reported TC-9 timings (1.358/1.612/1.894/1.879s; 1.314s frontend render) could not be independently attributed to either process (no per-request timestamps anywhere in this stack) and are transcribed as reported, not verified. A real 84-90C thermal spike (no trip, under the 95C threshold) landed near the untracked process's start, disclosed but not proven causal. TC-10: confirmed still not run, a deliberate decision (no code change this iteration touches the measured write pattern) -- remains operator-performed, AG-10-class, outstanding. TC-11: PASS, independently reproduced (re-polled GET /api/health directly: identical result -- HTTP 200, readiness ready, preflight DEGRADED, unrelated pre-existing drift)."
+  ],
+  "next_action": "reviewer: review the B1 cross-asof_key fix, evidence_asof field, and B3/B5 changes against TC-1..TC-7 plus the transcribed operator results above. Separately, operator should restart the non-compliant :18255 throwaway backend (pid 1101499, missing memory_cap_mb/MALLOC_ARENA_MAX) via scripts/start-backend.sh or tear it down -- do not leave it running unprotected."
+}

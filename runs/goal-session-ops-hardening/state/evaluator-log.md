@@ -765,3 +765,61 @@ amendment, never a silent loosening. Framework-maintainer note: `J-01-verify.png
 are BYTE-IDENTICAL (md5 `7d8f6681…`) and both show only the `/data` page-top landing frame — the replay
 lane's PASS rests on its scripted DOM expects, but two of three replay screenshots are not independently
 informative. Carried unrelated: `test_db.py::test_create_all_produces_expected_tables`.
+
+## Iteration 17 — goal-ops-hardening-iter-17
+
+**Date:** 2026-07-24T07:44:45Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: none
+- Advanced (evidence, not status): **J-08 stays `partial`** — iter-16's audit-B1 gap is CLOSED in code
+  (resolved_forward_aggregate_evidence crosses asof_key boundaries, strictly-older/AG-5-safe, groups by
+  (asof_key,dataset_version) pair, tie-break most-recent-older-complete; new evidence_asof served
+  identically by GET /api/backtest + MCP query_backtest). TWO first-ever live states captured:
+  not_yet_computed (TC-09, throwaway DB 0-rows, 0 rows after 4 requests = zero request-path compute) and
+  the corrected refreshing banner w/ evidence_asof (TC-07). Auditor found+fixed F1 (window labels bound to
+  requested not served as-of; AUDIT-A1). 15 unit tests re-run green by reviewer+QA+auditor independently.
+- Re-verified passing: J-01, J-03, J-05 (deterministic golden replay UT-J-01/03/05 PASS; spot-checked
+  J-05-verify.png = immutable stored snapshot 2025-05-15). **J-04 CARRIED, NOT re-verified** — UT-J-04
+  SKIPPED (kill/restart blocked + binding OUT OF SCOPE); TC-11 steady-state sanity only (health 200/ready,
+  no crash banner); last_verified deliberately left at iter-15.
+- Newly failing: none. Regressed (passing→failing): none.
+- Anti-goal violations: **NONE unresolved.** scan-report CLEAN; coherence COHERENCE-PASS. AG-8 stays
+  resolved (compute byte-unchanged; the new widened fallback query is bounded by distinct-as-of count,
+  ~650KB/25 rows today, NOT the deep basis — auditor explicitly not a violation). One NEW minor+resolved
+  entry logged: an operator AG-10 process lapse (raw uvicorn on throwaway :18255, disclosed + corrected via
+  start-backend.sh, auditor /proc-verified capped; NO launch script modified → no code-level regression).
+
+**Reasoning:** The load-bearing B1 fix is real and I verified it at every reachable level — 15 unit tests
+(TC-1 cross-boundary, TC-4 tie-break, TC-5 strictly-older SQL, TC-6 historical carve-out) re-run green by
+three independent gates; AG-3 byte-identity + AG-5 no-lookahead hold; coherence confirms one producer/one
+resolver. I opened the two first-ever live captures myself (TC-09 not_yet_computed empty state with the
+reworded no-"run an ingest" copy; TC-07 refreshing banner reading "evidence as of 2026-07-22" over
+fully-populated numbers) and the auditor's AUDIT-A1 cross-boundary client render (banner + "≤ 2026-07-21"
+window label + n_runs all bound to the older served as-of — the F1 fix). But no journey crossed to passing:
+J-06/J-07/J-08 stay partial on the un-remediated ≤1.5s serving-budget breaches (11/68, max 12.655s), which
+this iteration NARROWED (thermal + single-long-transaction ruled out) but did not PIN (two contention
+mechanisms indistinguishable — logs/backend.log has zero per-request timestamps), and TC-10 was not
+re-measured. Rejected REGRESSION: no passing→failing; no unresolved critical anti-goal; the browser-QA
+OVERALL=FAIL is UT-01 only, traced to an operator dev-server build collision — I confirmed the implicated
+readiness/health/preflight/data-page files are NOT in the 8-file iter-diff and /backtest renders fully in
+three captures. Rejected STALLED (iter-15's verdict on this same surface): iter-15 halted because the cost
+was KNOWN (cold full-basis compute) and only the product response was owner-owned; here the cost is
+UNKNOWN (undiagnosed contention) and the next step — add per-request timing instrumentation, then diagnose
+— is agent-owned, so not every unblock path is human-owned. Rejected GOAL_ACHIEVED: three journeys partial
++ J-04 without fresh live evidence. Rejected ESCALATE: already full, review PASS (no fail-open), no journey
+failed twice. Progress made + tractable work remains → CONTINUE.
+
+**Next-step recommendation:** FULL depth, no new features. (1) AGENT (unblocking step): add per-request
+timing instrumentation to the /backtest serving path — the diagnosis is blocked ONLY by missing wall-clock
+timestamps. (2) OPERATOR (AG-10-class): re-run the deep-basis 68-poll TC-10 WITH the instrumentation, to
+distinguish SQLite writer/checkpoint contention vs GIL/threadpool scheduling, recorded in perf-budgets.md.
+(3) AGENT-then-OWNER-fork: apply a bounded mitigation if the contention is fixable (→ J-06/J-08 pass), else
+route the ≤1.5s budget-amendment to the owner (iter-15 option-3 precedent; the fork fires only AFTER the
+agent diagnosis). (4) AGENT cheap wins: project metadata columns in the widened fallback query before
+reading payloads (auditor B1); add one endpoint-level test carrying an OLDER evidence_asof (auditor T1).
+(5) TC-8 cross-boundary LIVE capture is NOT a blocker — unproducible on this seed (MAX daily_prices.date ==
+MAX scanner_runs.asof_date == 2026-07-22; advancing needs new price data, owner-owned + AG-9/AG-5-barred);
+evaluator accepts the unit+client-render+same-key-live floor for B1 code correctness. (6) OPERATOR: a fresh
+live J-04 kill/restart replay is still owed before any GOAL_ACHIEVED (TC-11 sanity is not a substitute).

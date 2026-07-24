@@ -24,6 +24,13 @@ This file proves:
 All fixtures here are small, hand-built SQLite engines (a handful of rows) — never the ~80-minute
 `loaded_engine` seed+warm fixture (out of scope for this session; see docs/handoffs/goal-ops-hardening-
 iter-16-dev.md).
+
+iter-17 (audit B1) widens the resolver's fallback ACROSS `asof_key` boundaries: when the REQUESTED
+identity has never had a complete version of its own, the resolver now searches strictly OLDER
+identities and serves the most recent complete one, disclosing WHICH as-of via the new `evidence_asof`
+field. The new tests below (iter-17 TC-1/2/4/5/6) all use an AS-OF-ADVANCING new `ScannerRun` — a
+genuinely later date — never a historical gap date, per iter-16's own lesson that a gap date cannot
+exercise this path (the identity resolved never changes, only the dataset stamp does).
 """
 from __future__ import annotations
 
@@ -118,6 +125,7 @@ def test_evidence_not_yet_computed_before_any_warm(evidence_engine, monkeypatch)
 
     assert evidence == {
         "evidence_status": "not_yet_computed", "evidence_generated_at": None, "evidence_by_horizon": {},
+        "evidence_asof": None,
     }
     assert call_count["n"] == 0
 
@@ -154,6 +162,9 @@ def test_evidence_ready_after_full_warm_is_byte_identical_and_zero_compute(evide
         assert evidence["evidence_status"] == "ready"
         assert evidence["evidence_generated_at"] is not None
         assert evidence["evidence_by_horizon"] == direct
+        # ops-hardening iter-17 (J-08, Data Contract): evidence_asof equals the requested as-of itself
+        # when the served version IS the current stamp.
+        assert evidence["evidence_asof"] == asof.isoformat()
 
 
 def test_evidence_refreshing_serves_prior_complete_version_never_mixed(evidence_engine):
@@ -205,8 +216,16 @@ def test_evidence_refreshing_serves_prior_complete_version_never_mixed(evidence_
         assert evidence["evidence_by_horizon"][h] == json.loads(v1_rows[h][0]), (
             f"horizon {h} did not come from V1 — a response mixed two dataset_versions"
         )
-    expected_generated_at = max(created_at for _payload, created_at in v1_rows.values()).isoformat()
+    # ops-hardening iter-17 (audit B3): evidence_generated_at now carries an explicit UTC designator —
+    # attach it to the SAME raw (naive) created_at before formatting, mirroring the production fix, so
+    # this expectation does not regress to the pre-B3 naive string.
+    expected_generated_at = max(
+        created_at for _payload, created_at in v1_rows.values()
+    ).replace(tzinfo=timezone.utc).isoformat()
     assert evidence["evidence_generated_at"] == expected_generated_at
+    # ops-hardening iter-17 (J-08, Data Contract): a SAME-asof_key stale version is still THIS date's own
+    # evidence (an older compute of it, not a different date) — evidence_asof is unchanged from `asof`.
+    assert evidence["evidence_asof"] == asof.isoformat()
 
 
 def test_evidence_cutover_prunes_old_version_once_new_version_completes(evidence_engine):
@@ -288,6 +307,161 @@ def test_completeness_query_is_filtered_by_asof_key(evidence_engine):
 
 
 # ======================================================================================================
+# iter-17 (audit B1, the load-bearing fix) — the cross-`asof_key` last-good fallback. All three tests
+# below use an AS-OF-ADVANCING new `ScannerRun` (a genuinely LATER date), never a historical gap date:
+# iter-16's own lesson is that a gap-date live/unit test structurally cannot exercise this path, because
+# the identity being resolved never changes — only the dataset stamp does.
+# ======================================================================================================
+def test_evidence_crosses_asof_key_boundary_when_newer_key_has_zero_rows(evidence_engine):
+    """iter-17 TC-1: an older `asof_key` (2025-01-10) has a COMPLETE version; a NEWER `asof_key`
+    (2025-01-13, a genuinely later `ScannerRun`) has ZERO forward-aggregate rows of any version — the
+    common single-latest-date-backfill shape, where the newest trading day lands before its
+    ingest-finalize warm has run. Resolving at the NEWER date must serve the older date's complete
+    evidence, labeled `refreshing` with `evidence_asof` set to the OLDER date — never `not_yet_computed`."""
+    engine, older_asof = evidence_engine  # 2025-01-10
+    cfg = load_config()
+    with Session(engine) as session:
+        for h in HORIZONS:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=older_asof)
+        session.commit()
+        older_rows = {
+            row.horizon: (row.payload_json, row.created_at)
+            for row in session.exec(
+                select(ForwardAggregateCache).where(ForwardAggregateCache.asof_key == older_asof.isoformat())
+            ).all()
+        }
+        assert set(older_rows) == set(HORIZONS)
+
+        # a genuinely LATER run — the as-of identity itself advances, not just the dataset stamp.
+        newer_asof = date(2025, 1, 13)
+        run2 = _add_run(session, newer_asof, "Risk-off")
+        _add_result(session, run2.id, "BBB")
+        _add_fr_every_horizon(session, run2.id, newer_asof, "BBB", ret=0.10)
+        session.commit()
+
+        # sanity: the newer identity has ZERO ForwardAggregateCache rows of any version.
+        assert session.exec(
+            select(ForwardAggregateCache).where(ForwardAggregateCache.asof_key == newer_asof.isoformat())
+        ).all() == []
+
+        evidence = resolved_forward_aggregate_evidence(session, newer_asof, cfg)
+
+    assert evidence["evidence_status"] == "refreshing"
+    assert evidence["evidence_asof"] == older_asof.isoformat()
+    assert set(evidence["evidence_by_horizon"]) == set(HORIZONS)
+    for h in HORIZONS:
+        assert evidence["evidence_by_horizon"][h] == json.loads(older_rows[h][0]), (
+            f"horizon {h} did not come from the older asof_key's own stored rows"
+        )
+
+
+def test_evidence_crosses_asof_key_boundary_picks_more_recent_of_two_older_complete_keys(evidence_engine):
+    """iter-17 TC-4: with TWO older, independently-complete `asof_key`s (2025-01-08 and 2025-01-10) and
+    the requested `asof_key` (2025-01-13) itself carrying zero rows, the served `evidence_asof` is the
+    MORE RECENT of the two (2025-01-10) — never the older one (2025-01-08), and never a response mixing
+    rows from both dates."""
+    engine, asof_1_10 = evidence_engine  # 2025-01-10
+    cfg = load_config()
+    with Session(engine) as session:
+        for h in HORIZONS:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=asof_1_10)
+        session.commit()
+        rows_1_10 = {
+            row.horizon: (row.payload_json, row.created_at)
+            for row in session.exec(
+                select(ForwardAggregateCache).where(ForwardAggregateCache.asof_key == asof_1_10.isoformat())
+            ).all()
+        }
+
+        # a SECOND, independent older identity (2025-01-08, strictly before 2025-01-10) with its OWN
+        # complete row set, from a different cohort so its aggregate genuinely differs from 2025-01-10's.
+        asof_1_08 = date(2025, 1, 8)
+        run_08 = _add_run(session, asof_1_08, "Risk-on")
+        _add_result(session, run_08.id, "CCC")
+        _add_fr_every_horizon(session, run_08.id, asof_1_08, "CCC", ret=0.02)
+        session.commit()
+        for h in HORIZONS:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=asof_1_08)
+        session.commit()
+
+        # the requested identity: a genuinely later run, zero forward-aggregate rows of its own.
+        newer_asof = date(2025, 1, 13)
+        run_newer = _add_run(session, newer_asof, "Risk-off")
+        _add_result(session, run_newer.id, "DDD")
+        _add_fr_every_horizon(session, run_newer.id, newer_asof, "DDD", ret=0.10)
+        session.commit()
+
+        evidence = resolved_forward_aggregate_evidence(session, newer_asof, cfg)
+
+    assert evidence["evidence_status"] == "refreshing"
+    assert evidence["evidence_asof"] == asof_1_10.isoformat(), "must serve the MORE RECENT older key"
+    for h in HORIZONS:
+        assert evidence["evidence_by_horizon"][h] == json.loads(rows_1_10[h][0]), (
+            f"horizon {h} leaked a row from the OTHER older asof_key (2025-01-08) — versions mixed across dates"
+        )
+
+
+def test_evidence_fallback_never_reads_a_row_dated_after_the_requested_as_of(evidence_engine):
+    """iter-17 TC-5 (AG-5 no-lookahead): once the fallback crosses to older `asof_key`s, it never reads
+    or serves a row dated AFTER the requested as-of — verified via the same `before_cursor_execute`
+    SQL-inspection technique `test_completeness_query_is_filtered_by_asof_key` (TC-18) already uses.
+    Seeded with a LATER-dated, fully-complete identity that must never be selected for an earlier
+    request; the outcome assertion (`evidence_asof` resolving to the OLDER date, never the future one) is
+    the strongest proof — if the future row had been read and let into the tie-break, it would win
+    (its `asof_key` string sorts higher), so a wrong `evidence_asof` would itself expose a lookahead bug."""
+    engine, older_asof = evidence_engine  # 2025-01-10
+    cfg = load_config()
+    with Session(engine) as session:
+        for h in HORIZONS:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=older_asof)
+        session.commit()
+
+        # a LATER-dated, fully complete identity that must NEVER be read for the earlier request below.
+        future_asof = date(2025, 6, 1)
+        run_future = _add_run(session, future_asof, "Risk-off")
+        _add_result(session, run_future.id, "EEE")
+        _add_fr_every_horizon(session, run_future.id, future_asof, "EEE", ret=0.20)
+        session.commit()
+        for h in HORIZONS:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=future_asof)
+        session.commit()
+
+        # the actual request: a genuinely new latest run, strictly BETWEEN older_asof and future_asof,
+        # with zero forward-aggregate rows of its own — must fall back to older_asof, never future_asof.
+        requested_asof = date(2025, 2, 1)
+        run_req = _add_run(session, requested_asof, "Risk-on")
+        _add_result(session, run_req.id, "FFF")
+        _add_fr_every_horizon(session, run_req.id, requested_asof, "FFF", ret=0.03)
+        session.commit()
+
+        captured: list[str] = []
+
+        def _capture(conn, cursor, statement, parameters, context, executemany):
+            captured.append(statement)
+
+        event.listen(engine, "before_cursor_execute", _capture)
+        try:
+            evidence = resolved_forward_aggregate_evidence(session, requested_asof, cfg)
+        finally:
+            event.remove(engine, "before_cursor_execute", _capture)
+
+    assert evidence["evidence_status"] == "refreshing"
+    assert evidence["evidence_asof"] == older_asof.isoformat(), "must serve the older key, never the future one"
+
+    cache_selects = [
+        stmt for stmt in captured
+        if "forward_aggregate_cache" in stmt.lower() and stmt.strip().lower().startswith("select")
+    ]
+    assert cache_selects, "expected at least one SELECT against forward_aggregate_cache"
+    assert not any(">" in stmt for stmt in cache_selects), (
+        f"a forward_aggregate_cache query used a >/>= comparison — possible lookahead: {cache_selects}"
+    )
+    assert any("<" in stmt for stmt in cache_selects), (
+        "expected the widened fallback's completeness query to filter with asof_key < :requested"
+    )
+
+
+# ======================================================================================================
 # Request-serving entry points (app.api.backtest.backtest, app.mcp.tools.query_backtest) — called
 # directly as plain functions (no TestClient/`loaded_engine` app boot) to prove the WIRING: the
 # `is_latest` branch reaches ONLY the read-only resolver, never `forward_aggregates_ingest_cached` (and
@@ -332,6 +506,7 @@ def test_backtest_route_is_latest_never_reaches_ingest_or_compute(endpoint_engin
     assert all(r["is_latest"] is True for r in responses)
     assert all(r["evidence_status"] == "ready" for r in responses)
     assert all(r["evidence_generated_at"] for r in responses)
+    assert all(r["evidence_asof"] == asof.isoformat() for r in responses)
     first = responses[0]["evidence_by_horizon"]
     assert all(r["evidence_by_horizon"] == first for r in responses[1:])
     assert set(first) == set(HORIZONS)
@@ -355,6 +530,7 @@ def test_backtest_route_is_latest_not_yet_computed_is_honest_200(endpoint_engine
     assert result["evidence_status"] == "not_yet_computed"
     assert result["evidence_by_horizon"] == {}
     assert result["evidence_generated_at"] is None
+    assert result["evidence_asof"] is None
 
 
 def test_query_backtest_mcp_tool_is_latest_never_reaches_ingest_or_compute(endpoint_engine, monkeypatch):
@@ -381,6 +557,7 @@ def test_query_backtest_mcp_tool_is_latest_never_reaches_ingest_or_compute(endpo
 
     assert all(r["is_latest"] is True for r in responses)
     assert all(r["evidence_status"] == "ready" for r in responses)
+    assert all(r["evidence_asof"] == asof.isoformat() for r in responses)
     first = responses[0]["evidence_by_horizon"]
     assert all(r["evidence_by_horizon"] == first for r in responses[1:])
 
@@ -403,6 +580,33 @@ def test_query_backtest_mcp_tool_not_yet_computed_mirrors_endpoint(endpoint_engi
     assert result["evidence_status"] == "not_yet_computed"
     assert result["evidence_by_horizon"] == {}
     assert result["evidence_generated_at"] is None
+    assert result["evidence_asof"] is None
+
+
+def test_backtest_route_and_mcp_tool_serve_evidence_asof_identically(endpoint_engine):
+    """iter-17 TC-2: given the SAME fixture, `GET /api/backtest`'s route function and the MCP
+    `query_backtest` tool both surface `evidence_asof` — identically to each other, and equal to the
+    resolved as-of date when the served version is the current (`ready`) stamp."""
+    import app.api.backtest as backtest_module
+    import app.mcp.tools as tools_module
+
+    engine, asof = endpoint_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        for h in HORIZONS:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=asof)
+        session.commit()
+
+    with Session(engine) as session:
+        api_result = backtest_module.backtest(as_of=None, session=session)
+    with Session(engine) as session:
+        mcp_result = tools_module.query_backtest(session, asof=None)
+
+    assert api_result["evidence_status"] == "ready"
+    assert mcp_result["evidence_status"] == "ready"
+    assert api_result["evidence_asof"] == asof.isoformat()
+    assert mcp_result["evidence_asof"] == asof.isoformat()
+    assert api_result["evidence_asof"] == mcp_result["evidence_asof"]
 
 
 def test_historical_asof_keeps_pre_iter16_create_once_and_cache_behavior(endpoint_engine, monkeypatch):
@@ -445,4 +649,72 @@ def test_historical_asof_keeps_pre_iter16_create_once_and_cache_behavior(endpoin
     assert first_calls == len(HORIZONS), "expected one real compute per configured horizon on first view"
     assert call_count["n"] == first_calls, "the second (cached) view must trigger zero MORE computes"
     assert first["evidence_status"] == "ready"
+    assert first["evidence_asof"] == older_asof.isoformat()
+    assert second["evidence_by_horizon"] == first["evidence_by_horizon"]
+
+
+def test_historical_asof_still_computes_once_even_when_older_fallback_evidence_exists(
+    endpoint_engine, monkeypatch
+):
+    """iter-17 TC-6 (regression guard, mirrors `test_historical_asof_keeps_pre_iter16_create_once_and_
+    cache_behavior` above): a historical (`is_latest == False`) `?as_of=` request still computes-once-
+    and-caches ITS OWN evidence on first view, and must NEVER be short-circuited by the iter-17 widened
+    fallback finding an UNRELATED older `asof_key`'s complete evidence first. `backtest.py`'s audit-B5
+    gate is `evidence_status != "ready"` — which `"refreshing"` also satisfies — deliberately NOT
+    `== "not_yet_computed"`, which would wrongly skip the ensure-loop and serve the fallback's stale,
+    wrong-date evidence instead of computing this date's own."""
+    import app.api.backtest as backtest_module
+    import app.engine.forward_testing as ft_module
+
+    engine, _latest_asof = endpoint_engine
+    cfg = load_config()
+
+    # an OLDER, fully-warmed complete identity the iter-17 widened fallback WOULD find first for any
+    # request whose own asof_key has zero forward-aggregate rows.
+    fallback_asof = date(2024, 1, 5)
+    with Session(engine) as session:
+        fallback_run = _add_run(session, fallback_asof, "Risk-on")
+        _add_result(session, fallback_run.id, "GGG")
+        _add_fr_every_horizon(session, fallback_run.id, fallback_asof, "GGG")
+        session.commit()
+        for h in HORIZONS:
+            forward_aggregates_ingest_cached(session, h, cfg, as_of=fallback_asof)
+        session.commit()
+
+    # the requested historical date: strictly AFTER fallback_asof (so the widened fallback lands on it)
+    # and strictly BEFORE the fixture's own latest date (so is_latest stays False); its own
+    # forward-aggregate cache is EMPTY, so the resolver's FIRST read must land on "refreshing" via the
+    # widened fallback to fallback_asof, never "ready", before the ensure-loop below ever runs.
+    requested_asof = date(2024, 6, 1)
+    with Session(engine) as session:
+        req_run = _add_run(session, requested_asof, "Risk-off")
+        _add_result(session, req_run.id, "HHH")
+        session.add(DailyPrice(
+            symbol="HHH", date=requested_asof, open=50.0, high=51.0, low=49.0, close=50.0, volume=1.0,
+        ))
+        session.commit()
+
+    call_count = {"n": 0}
+    real = ft_module.compute_forward_aggregates
+
+    def _counting(*a, **kw):
+        call_count["n"] += 1
+        return real(*a, **kw)
+
+    monkeypatch.setattr(ft_module, "compute_forward_aggregates", _counting)
+    with Session(engine) as session:
+        first = backtest_module.backtest(as_of=requested_asof.isoformat(), session=session)
+    first_calls = call_count["n"]
+    with Session(engine) as session:
+        second = backtest_module.backtest(as_of=requested_asof.isoformat(), session=session)
+
+    assert first["is_latest"] is False
+    assert first_calls == len(HORIZONS), "expected one real compute per configured horizon on first view"
+    assert call_count["n"] == first_calls, "the second (cached) view must trigger zero MORE computes"
+    assert first["evidence_status"] == "ready"
+    assert first["evidence_asof"] == requested_asof.isoformat(), (
+        "the historical view must serve ITS OWN freshly computed evidence, never the fallback's older date"
+    )
+    assert second["evidence_status"] == "ready"
+    assert second["evidence_asof"] == requested_asof.isoformat()
     assert second["evidence_by_horizon"] == first["evidence_by_horizon"]
