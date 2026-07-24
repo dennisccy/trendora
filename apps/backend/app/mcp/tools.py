@@ -212,10 +212,14 @@ def _log_query_backtest_timing(
     scorecard_ms: float,
     evidence_ms: float,
     ensure_loop_ms: Optional[float],
+    write_taken: bool,
 ) -> None:
     """Mirrors `app.api.backtest._log_backtest_timing` field-for-field (TC-3: same field names) — one
     INFO-level, key=value structured timing line per `query_backtest` call. `ensure_loop_ms` is present
-    only when the historical/non-`is_latest` ensure-loop branch ran."""
+    only when the historical/non-`is_latest` ensure-loop branch ran. `write_taken` (iter-19, J-06/J-07/
+    J-08) mirrors the API route's own field: whether `backfill_run_forward_returns`'s create-once write
+    was committed (`True`) or skipped because every row already existed (`False`) -- appended LAST so
+    existing field positions are undisturbed."""
     fields = [
         f"ts={datetime.now(timezone.utc).isoformat()}",
         f"is_latest={is_latest}",
@@ -227,6 +231,7 @@ def _log_query_backtest_timing(
     ]
     if ensure_loop_ms is not None:
         fields.append(f"ensure_loop_ms={ensure_loop_ms:.2f}")
+    fields.append(f"write_taken={write_taken}")
     logger.info("query_backtest_timing %s", " ".join(fields))
 
 
@@ -260,8 +265,12 @@ def query_backtest(session: Session, asof: Optional[str] = None) -> dict:
     resolved_run_ms = (time.perf_counter() - t0) * 1000.0
 
     t0 = time.perf_counter()
-    backfill_run_forward_returns(session, run, cfg)  # create-once realized forward returns (as the endpoint does)
+    # create-once realized forward returns (as the endpoint does). ops-hardening iter-19: the return
+    # value is captured ONLY to read `rows_inserted` for the timing log's `write_taken` field below --
+    # the call itself is unchanged (same function, same arguments, unconditional).
+    backfill_result = backfill_run_forward_returns(session, run, cfg)
     backfill_forward_returns_ms = (time.perf_counter() - t0) * 1000.0
+    write_taken = backfill_result["rows_inserted"] > 0
 
     t0 = time.perf_counter()
     card = compute_run_scorecard(session, run, cfg)
@@ -286,7 +295,7 @@ def query_backtest(session: Session, asof: Optional[str] = None) -> dict:
     total_ms = (time.perf_counter() - t_request_start) * 1000.0
     _log_query_backtest_timing(
         is_latest, total_ms, resolved_run_ms, backfill_forward_returns_ms, scorecard_ms, evidence_ms,
-        ensure_loop_ms,
+        ensure_loop_ms, write_taken,
     )
     return {
         **card,

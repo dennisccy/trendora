@@ -1,0 +1,21 @@
+iteration-summarizer complete for iteration 18 (lean).
+
+Files written:
+ - reports/phase-goal-ops-hardening-iter-18-iteration-summary.md (Verdict: CONTINUE;
+   iteration type goal-lean; direction signal: holding — no journey crossed status but real
+   agent-owned diagnostic progress, so not a stall)
+ - runs/goal-session-ops-hardening/state/project-story.md (re-threaded through iter-18)
+
+Honest framing carried in: J-01/J-03/J-05 passing (golden replay 3/3), J-04 carried
+(disruptive verify still iter-15), J-06/J-07/J-08 partial (diagnosed, not fixed). The key
+win — the operator TC-9 966-request re-measurement pinned the shared latency blocker to
+SQLite single-writer contention on the create-once backfill_run_forward_returns INSERT
+(82.2% of each slow request under 6x concurrency; read resolver flat at 9.6 ms). Plus the
+byte-identical deferred-payload_json cheap win + a new cross-asof_key endpoint test; 28/28
+scoped tests green. Negatives all recorded: no latency fix landed (by spec — diagnose-only);
+TC-10 disruptive J-04 replay owed + blocked by the AG-10 safety classifier's ingest gate;
+Chrome MCP port-9224 wedge -> browser-qa SKIPPED (backend-only, zero frontend diff, golden
+lane 3/3). Next step: iter-19 full-depth fix — move/guard the create-once INSERT off the
+serving path. 10 assumption-ledger entries carried forward.
+
+Showcase step — no gating verdict.

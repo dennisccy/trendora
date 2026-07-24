@@ -1,0 +1,15 @@
+qa (MODE 1, test-plan generation) complete for iteration 19.
+
+Test plan: reports/qa/goal-ops-hardening-iter-19-test-plan.md — 10 test cases from the spec:
+ TC-1..TC-5 (developer unit/integration): zero-write on fully-backfilled run via /api/backtest
+   (SQL-inspected); same via MCP query_backtest byte-identical; never-backfilled run still
+   inserts idempotently + second call zero-writes; concurrent race-safety (5 concurrent) for
+   genuinely-missing forward_returns; payload byte-identity across all horizons with/without
+   as_of.
+ TC-6..TC-10 (operator/regression): TC-6 pure-concurrency re-measurement (6 pollers, deep
+   basis, host-guard) asserting backfill_forward_returns_ms phase collapse; TC-7 ingest-overlay
+   re-measurement (CONTINGENT on owner ingest go-ahead); TC-8 non-disruptive health check;
+   TC-9 required-still-passing regression (J-01/J-03/J-05 golden replay); TC-10 live
+   single-request byte-identity (+ bonus browser shot if Chrome MCP recovers).
+All map to the spec DoD checkboxes. Chrome MCP browser verification explicitly non-blocking
+(port-9224 wedge carried).

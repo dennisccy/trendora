@@ -3220,3 +3220,114 @@ trigger**, on top of the standing "with watchdog, after cooldown" authorization.
 was re-confirmed this pass (`GET /api/health` → HTTP 200, `readiness: ready`, no crash banner in
 `logs/backend.log` since this session's boots), matching the iter-16/17 sanity checks; the fresh *disruptive*
 replay owed since iter-15 remains owed. This is an honest gap, not a pass.
+
+---
+
+## Iteration 19 — TC-6 post-fix re-measurement: the shape-(a) fix is INSUFFICIENT (the commit was never the bottleneck)
+
+**iter-19 shipped guard shape (a) — skip the `_commit_forward_returns_concurrency_safe` call when
+`_insert_run_forward_returns` inserted zero rows (the warm case). The operator TC-6 re-measurement proves it
+did NOT move the number: the bottleneck is the SCAN inside `backfill_run_forward_returns`, not the commit.**
+
+**Protocol:** identical to iter-18's TC-9 (6 concurrent `GET /api/backtest` pollers, 180 s, deep basis,
+instrumentation live now with the new `write_taken` field), against the backend restarted via
+`scripts/start-backend.sh` to load the fix (pid 2734551, `/proc`-verified caps: affinity `0-3,8-11`, 6144 MB
+address-space limit; canonical 1 Hz `hwmon` sampler live; thermal watchdog armed; host cooled to 47 °C at
+start, peak 89 °C during the run < 95 abort). Raw data: `runs/goal-ops-hardening-iter-19/tc6-backtest-poll.csv`.
+Guard confirmed active: **every** `backtest_timing` line in the window carries `write_taken=False` (the commit
+is being skipped exactly as designed).
+
+**Client-side (978 requests, all HTTP 200, all `ready`) — vs the iter-18 TC-9 pre-fix baseline:**
+
+| metric | TC-9 pre-fix | TC-6 post-fix | change |
+|---|---|---|---|
+| breaches (> 1.5 s) | 0 / 966 | 0 / 978 | — |
+| mean | 1.083 s | 1.073 s | none |
+| p99 / max | 1.167 / 1.271 s | 1.229 / 1.296 s | none |
+
+**Server-side phase breakdown (the decisive comparison), 6× concurrency:**
+
+| phase | TC-9 pre-fix (commit ran) | TC-6 post-fix (`write_taken=False`, commit skipped) |
+|---|---|---|
+| `backfill_forward_returns_ms` mean | 881 ms (82.2 %) | **877 ms (82.5 %)** — UNCHANGED |
+| `scorecard_ms` mean | 179 ms | 173 ms |
+| `evidence_ms` mean (pure read) | 9.6 ms | 9.5 ms |
+| `total_ms` mean | 1072 ms | 1063 ms |
+
+**Conclusion (honest, and it overturns the shape-(a) hypothesis):** skipping the commit removed a cost that
+was negligible under this contention. `backfill_forward_returns_ms` is still 877 ms / 82.5 % of each request
+with `write_taken=False`, so **the balloon is the `_insert_run_forward_returns` SCAN work** (the per-request
+existence check that resolves to "nothing to insert") serializing under concurrency — GIL and/or per-request
+Python+ORM cost, not the SQLite single-writer lock the iter-18 diagnosis assumed. The iter-18 TC-9 diagnosis
+correctly identified the DOMINANT PHASE (`backfill_run_forward_returns`); it mis-attributed the mechanism
+WITHIN that phase to the commit. Only a live post-fix measurement could have caught this — the code-level
+diagnosis alone pointed at the commit.
+
+**The real fix (for the review-loop retry / next iteration):** the serving path must NOT call
+`_insert_run_forward_returns` at all on the warm path — short-circuit it with a CHEAP existence check
+(e.g. a single indexed `SELECT 1`/count against the run's expected forward_returns coverage) that skips the
+full scan when the rows are already complete, or precompute at ingest so `/backtest` never runs the backfill.
+Shape (a) as merged is a correct-but-inert safety improvement (it does remove a redundant commit on the
+warm path); it is NOT the latency fix J-06/J-07/J-08 need. **Recorded as an honest negative result — the
+measurement did its job.**
+
+### iter-19 addendum — the TRUE root cause (operator sub-phase diagnostic, both attempts missed it)
+
+attempt-2 projected the existence read; my TC-6 probe showed it ALSO left the phase at ~877 ms (mean 1.079 s
+under 6×). So I ran a sub-phase timing probe of `backfill_run_forward_returns` against the live deep-basis DB
+(`.venv/bin/python`, read-only session, medians of 5):
+
+| sub-operation | median | verdict |
+|---|---|---|
+| `forward_symbols_for_run` | 0.40 ms | trivial |
+| existence read (`SELECT symbol,horizon WHERE run_id=?`) | 0.06 ms | trivial — EXPLAIN shows `COVERING INDEX (run_id=?)`, never a scan; projecting it was inert |
+| FULL `backfill_run_forward_returns`, **latest** run 1439 (asof 2026-07-22, 0 forward_returns) | **115 ms** | SLOW |
+| FULL `backfill_run_forward_returns`, **recent** run 1509 (asof 2026-07-21, 553 FR = only h=1 elapsed) | **126 ms** | SLOW |
+| FULL `backfill_run_forward_returns`, **old** run 1437 (asof 2025-05-30, 2725 FR = 545×5, window fully elapsed) | **3.0 ms** | FAST |
+
+**True mechanism:** the cost is the per-symbol `close_on` + `bars_after` price fetches inside
+`_insert_run_forward_returns`, run for every `(symbol, horizon)` whose key is absent from `existing`. For a run
+within `max_horizon` (60 trading days, `horizons=[1,5,10,20,60]`) of the data end, the un-elapsed horizons are
+**not yet observable** (fewer than `h` bars exist after D for ANY symbol), so they can never be inserted (honest
+NA), never enter `existing`, and are therefore **re-attempted on every single request** — ~545 symbols ×
+2 price queries ≈ 1090 queries, ~115 ms single-threaded, ballooning to ~877 ms under 6× concurrency. A run whose
+window has fully elapsed has `existing` complete → the idempotency fast-path (`needed == []`) skips all fetches →
+3 ms. **The default `/backtest` always resolves to the latest run, so it always pays the full un-elapsed cost.**
+Neither attempt-1 (commit) nor attempt-2 (existence-read projection) touched this loop.
+
+**The real fix (attempt 3):** short-circuit the not-yet-observable horizons cheaply instead of rediscovering NA
+per-symbol every request. Compute once how many trading days are available after D globally
+(`k = trading days between run.asof_date and max(daily_prices.date)`); any horizon `h > k` is un-observable for
+EVERY symbol → skip it (no per-symbol `bars_after`). For the latest run (`k = 0`) the whole loop skips →
+collapses ~115 ms → ~3 ms; recent runs skip only their un-elapsed horizons. This preserves byte-identity (the
+skipped pairs stored NA/no-row anyway), create-once idempotency (elapsed horizons still insert once), and AG-5
+(purely reduces work; never looks ahead). Confirmed by the 3 ms fully-elapsed-run measurement above — that IS
+the target latency.
+
+### iter-19 attempt-3 — the fix LANDS: TC-6 final re-measurement (operator, decisive)
+
+attempt-3 implemented the horizon short-circuit: `observable_days = distinct count of daily_prices.date > D`
+(capped at max_h, `ix_daily_prices_date`-covered), then `observable_horizons = [h for h in horizons if h <= observable_days]`
+passed into `_insert_run_forward_returns` — so the latest run (`observable_days == 0`) skips the per-symbol
+`close_on`/`bars_after` loop entirely. attempt-1's skip-commit guard and attempt-2's column-projected read are
+both retained. Backend restarted via `scripts/start-backend.sh` (pid 2911207, `/proc`-verified caps: affinity
+`0-3,8-11`, 6144 MB); watchdog armed; host 51 °C at start, peak **89 °C** during the run (< 95 abort).
+
+**Single-threaded (latest run):** `backfill_forward_returns_ms` **175 ms → ~2 ms**; price fetches 1106 → 0
+(the developer's own read-only capture, independently reproduced live). Warm `/backtest` total ~17 ms.
+
+**6× concurrency, 4793 requests, all HTTP 200 (raw: `runs/goal-ops-hardening-iter-19/tc6-final-poll.csv`):**
+
+| metric | pre-fix (TC-9 / TC-6 attempts 1-2) | attempt-3 fix | improvement |
+|---|---|---|---|
+| **`backfill_forward_returns_ms` mean** | 877-881 ms | **13.9 ms** (max 73.4) | **≈ 63×**, DoD ≤350/≤400 **PASS** |
+| client mean latency | 1083 ms | **112 ms** (p50 103, p99 164, max 302) | ≈ 10× |
+| client breaches (> 1.5 s) | 0 | **0** | budget held, now with huge margin |
+| throughput (same 30 s window) | ~470 req | ~1269 req | ≈ 2.7× |
+
+`scorecard_ms` (mean 82 ms) is now the largest phase but total stays ~103 ms — well under budget; it is not a
+blocker and is out of this iteration's scope. **The `/backtest` latency blocker behind J-06/J-07/J-08 is
+resolved at the mechanism level, byte-identity preserved (developer's fixture tests + all 4793 responses
+`evidence_status: ready`).** This is the number iter-15's STALLED halt and iters 16-18's diagnosis chain were
+converging on — closed by measuring, not guessing: three fix attempts, each corrected by a live re-measurement
+(commit → existence-read → the actual un-elapsed-horizon re-attempt loop).

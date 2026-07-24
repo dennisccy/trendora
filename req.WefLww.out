@@ -1,0 +1,18 @@
+ux-regression-reviewer complete for iteration 19.
+
+Report: reports/phase-goal-ops-hardening-iter-19-ux-regression.md
+**Verdict:** UX-REGRESSION-PASS
+
+- No new capability -> no discoverability gap (backend-only, empty apps/frontend/ diff).
+  /backtest's 1-click sidebar entry unchanged (verified sidebar.tsx:37); live curls: backend
+  /api/health 200 in 92 ms, frontend /backtest + / 200.
+- No regression attributable to this diff: zero frontend files touched; the api/backtest.py +
+  mcp/tools.py diffs are log-field-only (returned dict byte-identical), corroborated by TC-5,
+  the reviewer's 37-test rerun, and QA UT-03 (byte-identical DOM diff). J-01/J-03/J-05
+  golden-replayed 3/3 PASS; J-04 skip is the owner-gated carry since iter-15, not a new gap.
+- UI/backend parity intentional/correct (pure perf fix; the operator-only write_taken log field
+  correctly kept out of the served payload).
+- ADVISORY (explicitly NOT this iteration's regression, flagged for evaluator/backlog):
+  browser-QA UT-04's historical-date FIRST load stalls 9.6-54 s on an empty skeleton, traced to
+  the DISTINCT pre-existing ensure_loop_ms field (not iter-19's backfill_forward_returns_ms,
+  which stayed small). A real UX gap (no loading affordance) on the same page, pre-existing.

@@ -91,15 +91,20 @@ def _log_backtest_timing(
     scorecard_ms: float,
     evidence_ms: float,
     ensure_loop_ms: Optional[float],
+    write_taken: bool,
 ) -> None:
     """One INFO-level, key=value structured timing line per `/backtest` request: an ISO-8601 wall-clock
     timestamp plus the elapsed-ms breakdown the iter-18 spec calls for -- run resolution, the
     `backfill_run_forward_returns` step, `compute_run_scorecard`, and `resolved_forward_aggregate_
     evidence`. `ensure_loop_ms` (the historical/non-`is_latest` ensure-loop's `forward_aggregates_
     ingest_cached` calls plus its re-resolve) is present ONLY when that branch actually ran -- never a
-    fabricated 0 for the `is_latest` request path, which never reaches it. Purely an operational log
-    line for the iter-18/iter-19 latency diagnosis -- never a served/displayed value (Data Contract
-    untouched)."""
+    fabricated 0 for the `is_latest` request path, which never reaches it. `write_taken` (iter-19,
+    J-06/J-07/J-08) records whether `backfill_run_forward_returns`'s create-once write was actually
+    committed this request (`True`, the genuinely-missing case) or skipped entirely because every row
+    already existed (`False`, the new zero-write guard's common warm-path outcome) -- appended LAST so
+    the pre-existing field positions/regex this line's own consumers already rely on are undisturbed.
+    Purely an operational log line for the iter-18/iter-19 latency diagnosis -- never a served/displayed
+    value (Data Contract untouched)."""
     fields = [
         f"ts={datetime.now(timezone.utc).isoformat()}",
         f"is_latest={is_latest}",
@@ -111,6 +116,7 @@ def _log_backtest_timing(
     ]
     if ensure_loop_ms is not None:
         fields.append(f"ensure_loop_ms={ensure_loop_ms:.2f}")
+    fields.append(f"write_taken={write_taken}")
     logger.info("backtest_timing %s", " ".join(fields))
 
 
@@ -137,8 +143,14 @@ def backtest(
     resolved_run_ms = (time.perf_counter() - t0) * 1000.0
 
     t0 = time.perf_counter()
-    backfill_run_forward_returns(session, run, cfg)  # create-once: INSERT-only realized forward returns
+    # create-once: INSERT-only realized forward returns. ops-hardening iter-19: the return value is
+    # captured ONLY to read `rows_inserted` (already computed by the function's own idempotency check,
+    # no new query) for the timing log's `write_taken` field below -- the call itself is unchanged:
+    # same function, same arguments, unconditional, no caller-side guard (single-producer discipline;
+    # the skip-vs-take decision lives entirely inside `backfill_run_forward_returns`).
+    backfill_result = backfill_run_forward_returns(session, run, cfg)
     backfill_forward_returns_ms = (time.perf_counter() - t0) * 1000.0
+    write_taken = backfill_result["rows_inserted"] > 0
 
     t0 = time.perf_counter()
     card = compute_run_scorecard(session, run, cfg)  # SINGLE canonical per-date scorecard (reads stored)
@@ -181,7 +193,7 @@ def backtest(
     total_ms = (time.perf_counter() - t_request_start) * 1000.0
     _log_backtest_timing(
         is_latest, total_ms, resolved_run_ms, backfill_forward_returns_ms, scorecard_ms, evidence_ms,
-        ensure_loop_ms,
+        ensure_loop_ms, write_taken,
     )
     return {
         **card,

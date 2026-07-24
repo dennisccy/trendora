@@ -50,7 +50,14 @@ from app.config import Config, get_config
 from app.engine.prices import bars_after, bars_asof, close_on, latest_data_date
 from app.engine.scanner import run_scan
 from app.engine.setups import ALL_STATUSES
-from app.models import EventStudyCache, ForwardAggregateCache, ForwardReturn, ScannerResult, ScannerRun
+from app.models import (
+    DailyPrice,
+    EventStudyCache,
+    ForwardAggregateCache,
+    ForwardReturn,
+    ScannerResult,
+    ScannerRun,
+)
 
 # The honest caveat carried on every payload (anti-goal: Honest limitations surfaced). iter-18: the
 # basis now spans ~30 years (1996 -> present, per-name real listing depth) over the broadened
@@ -1370,7 +1377,53 @@ def backfill_run_forward_returns(
     forward-return formula). INSERT-only + idempotent — a 2nd call inserts 0 rows and it never UPDATEs
     a `scanner_runs` / `scanner_results` / `*_scores` row (anti-goal: Snapshots immutable). Frozen-seed-
     only. This is the "first view computes once" path the No-recompute-in-the-read-path anti-goal
-    explicitly permits; for a run the iter-6 boot backfill already covered it inserts nothing."""
+    explicitly permits; for a run the iter-6 boot backfill already covered it inserts nothing.
+
+    ops-hardening iter-19 (J-06/J-07/J-08, the shared `/backtest` latency blocker) — THREE cooperating
+    changes make the WARM request (a run whose forward returns are already fully backfilled — the common
+    shape, since the ingest finalize path `data_manager.py` `_persist` backfills every run at creation)
+    do negligible work:
+      1. UN-ELAPSED HORIZONS ARE SHORT-CIRCUITED GLOBALLY — the change that actually collapses the phase
+         (attempts 1-2 left it at ~877ms). A horizon h is only realizable once at least h trading days
+         exist AFTER the run's as-of date D. The DEFAULT `/backtest` resolves to the LATEST run
+         (asof == the data end, 0 elapsed days), so its longer horizons can NEVER produce a row for ANY
+         symbol — yet the prior code still re-attempted a `close_on`+`bars_after` price-fetch PAIR per
+         (symbol, un-elapsed-horizon) on EVERY request (~545 symbols × 2 queries ≈ 1090 wasted queries,
+         ~115ms single / ~877ms of the request under 6× concurrency — the actual 82% cost the reviewer
+         pinned live). We now count ONCE, before the per-symbol loop, how many post-D trading days are
+         observable (`observable_days` = distinct `daily_prices.date > D`, bounded to max(horizons) via
+         the `ix_daily_prices_date` covering index — this IS the module's trading calendar, the same
+         calendar `walk_forward_asof_dates` reads off the benchmark; counting distinct DATES is
+         benchmark-symbol-agnostic, so it equals SPY's post-D bar count wherever SPY defines the calendar
+         yet is still correct on a seed/fixture that never populated SPY) and pass only
+         `[h for h in horizons if h <= observable_days]` into `_insert_run_forward_returns`. For the
+         latest run `observable_days == 0` → no horizons → every symbol's `needed` list is empty → the
+         per-symbol loop short-circuits with ZERO price fetches, collapsing the phase to the ~3ms an
+         already-elapsed run pays. Byte-identical by construction (AG-3): h > observable_days means fewer
+         than h post-D bars exist on the shared calendar for every symbol, so `forward_return`'s
+         `len(post_bars) < horizon` NA gate already stored nothing for that (symbol, h) — pre-filtering
+         matches the per-symbol NA gate exactly, every horizon, with/without `as_of`. No-lookahead
+         preserved (AG-5): only already-stored bars with date > D are counted, never a future/synthesized
+         bar. Bounded to ≤ max(horizons) index rows, no whole-table scan (AG-8).
+      2. The idempotency existence read is COLUMN-PROJECTED (`select(ForwardReturn.symbol, .horizon)`),
+         never a full-row `select(ForwardReturn)` materialization — retained (a correct ~0.06ms
+         covering-index read), but it was NOT the latency driver: attempts 1-2 stayed at ~877ms because
+         the real cost was the per-symbol fetches that change 1 eliminates, not this read.
+      3. `_commit_forward_returns_concurrency_safe` (and its `session.commit()`) is skipped when
+         `_insert_run_forward_returns` stages nothing (`inserted == 0`) — so a warm request acquires no
+         SQLite write lock. Retained; correct but never the bottleneck on its own.
+    The genuinely-missing ELAPSED case (`inserted > 0` — a horizon that IS observable but not yet stored)
+    is UNCHANGED: it still inserts synchronously and commits — idempotent, INSERT-only, race-tolerant via
+    the unchanged `_commit_forward_returns_concurrency_safe`. Proven zero-write by SQL-inspection
+    (TC-1/TC-2), completeness-preserving under a partial backfill
+    (`test_iter19_partial_backfill_run_is_detected_incomplete_and_completed`), horizon short-circuit
+    correct + byte-identical to the unfiltered path by
+    `test_iter19_latest_run_unelapsed_horizons_short_circuit_no_price_fetches`,
+    `test_iter19_partially_elapsed_run_processes_only_elapsed_horizons_byte_identical`, and
+    `test_iter19_fully_elapsed_run_processes_all_horizons_unaffected`; byte-identical served payload
+    (TC-5, `test_forward_testing_serving_split.py`), and race-safe under concurrent genuinely-missing
+    callers (TC-4, `test_forward_testing_concurrency.py`) — see the iter-19 dev handoff for the live TC-6
+    re-measurement."""
     cfg = config or get_config()
     wf = cfg.walk_forward
     horizons = wf.horizons
@@ -1378,12 +1431,57 @@ def backfill_run_forward_returns(
     # J-93: this run's OWN resolved membership ∪ benchmarks (its stored ScannerResult tickers — single
     # source), not the global universe list. A name absent from the run's snapshot stores no return (n=0).
     symbols = forward_symbols_for_run(session, run, cfg)
+    # iter-19 (J-06/J-07/J-08, the PROVEN TC-6 latency fix): before the per-symbol loop, count ONCE how
+    # many trading days are actually OBSERVABLE after this run's as-of date D. A horizon h can only ever
+    # produce a row when >= h post-D bars exist; the per-symbol loop below otherwise pays a wasted
+    # `close_on`+`bars_after` fetch pair for every (symbol, un-elapsed-horizon) even though `forward_return`'s
+    # NA gate will store nothing (~545 symbols x 2 queries on the default latest-run `/backtest`). We measure
+    # the module's trading calendar as the distinct `daily_prices.date > D` count, bounded to max_h through
+    # the `ix_daily_prices_date` covering index (<=0.5ms even at the 30y basis floor; 0 rows / instant for the
+    # latest run) — a whole-calendar count, not a per-symbol scan (AG-8), reading only already-stored bars
+    # with date > D (no lookahead, AG-5). Counting distinct DATES (not one benchmark symbol's bars) equals
+    # SPY's post-D bar count wherever SPY defines the calendar but is ALSO correct on a seed/fixture that
+    # never populated SPY. Filtering out every horizon h > observable_days is byte-identical to the
+    # per-symbol NA gate (h > observable_days => < h post-D bars for EVERY symbol => forward_return None),
+    # so for the latest run observable_horizons is empty, every `needed` list is empty, and the per-symbol
+    # loop short-circuits with ZERO price fetches — collapsing the ~115ms (877ms under 6x concurrency) phase
+    # to the ~3ms floor an already-elapsed run pays.
+    observable_days = len(
+        session.exec(
+            select(DailyPrice.date)
+            .where(DailyPrice.date > run.asof_date)
+            .distinct()
+            .order_by(DailyPrice.date)
+            .limit(max_h)
+        ).all()
+    )
+    observable_horizons = [h for h in horizons if h <= observable_days]
+    # iter-19 (retained micro-optimization, NOT the latency driver): COLUMN-PROJECT the idempotency key set
+    # instead of materializing every full `ForwardReturn` ORM row for the run. Attempt-2 introduced this to
+    # avoid hydrating one full ORM object per stored (symbol, horizon) just to read three key columns; it is
+    # a correct ~0.06ms covering-index read, but the reviewer's live EXPLAIN/re-measurement showed it did
+    # NOT move the phase (attempts 1-2 stayed at ~877ms) — the real cost was the per-symbol price fetches for
+    # un-elapsed horizons, now eliminated by the observable_horizons short-circuit above. Kept because it is
+    # strictly cheaper and correct. The projected `(symbol, horizon)` Row values are the EXACT same plain
+    # `(str, int)` tuples ORM attribute access returns, so `existing` is byte-identical to the prior set and
+    # the create-once/idempotent completeness semantics are UNCHANGED (`_insert_run_forward_returns` still
+    # detects and fills any genuinely-missing ELAPSED key at the (symbol, horizon) grain). `run_id` is
+    # constant (= run.id) for this run-filtered read. Bounded to ONE run's own rows (symbols x horizons;
+    # deeper history adds runs, not rows-per-run), never a whole-table load (AG-8). Mirrors the module's own
+    # `_streamed_existing_keys` projection idiom.
     existing = {
-        (fr.run_id, fr.symbol, fr.horizon)
-        for fr in session.exec(select(ForwardReturn).where(ForwardReturn.run_id == run.id)).all()
+        (run.id, symbol, horizon)
+        for symbol, horizon in session.exec(
+            select(ForwardReturn.symbol, ForwardReturn.horizon).where(ForwardReturn.run_id == run.id)
+        ).all()
     }
-    inserted = _insert_run_forward_returns(session, run, symbols, horizons, max_h, existing)
-    _commit_forward_returns_concurrency_safe(session)  # iter-28 (J-41): tolerate a concurrent INSERT race
+    # Pass ONLY the elapsed/observable horizons: an un-elapsed horizon (h > observable_days) can produce no
+    # row for any symbol, so skipping it here is byte-identical to the per-symbol NA gate but avoids the
+    # per-symbol price fetches it would otherwise trigger. max_h (the full-set max) stays as the bars_after
+    # limit — only reached when a symbol genuinely needs an elapsed horizon, and identical to before.
+    inserted = _insert_run_forward_returns(session, run, symbols, observable_horizons, max_h, existing)
+    if inserted:
+        _commit_forward_returns_concurrency_safe(session)  # iter-28 (J-41): tolerate a concurrent INSERT race
     return {"run_id": run.id, "asof_date": run.asof_date.isoformat(), "rows_inserted": inserted}
 
 

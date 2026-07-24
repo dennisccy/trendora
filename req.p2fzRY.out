@@ -1,0 +1,22 @@
+coherence-auditor complete for iteration 19.
+
+Report: runs/goal-session-ops-hardening/iter-19/coherence.md
+**Verdict:** COHERENCE-PASS
+
+Independently re-verified all three hard-fail conditions:
+ 1. No duplicate computation — backfill_run_forward_returns (forward_testing.py:1372) remains the
+    sole function; the fix is a pure control-flow short-circuit inside it. compute_forward_aggregates
+    has ZERO hits in the diff (grepped) — the compute-vs-serve split untouched. No new def/class/
+    @router anywhere in the 3 production files.
+ 2. No non-canonical serving — both callers (api/backtest.py:151, mcp/tools.py:271) call the same
+    function with the same args unconditionally; the only change captures the pre-existing
+    rows_inserted return field to compute a write_taken boolean. Read both full return statements —
+    response dict BYTE-IDENTICAL; write_taken/backfill_result never enter it. write_taken lives only
+    in the backtest_timing log lines -> not a Data Contract value (same carve-out as ensure_loop_ms
+    in iter-18).
+ 3. No new feature/nav — zero apps/frontend/ in the diff (git status/diff --stat + ui-surface-map:
+    0 new pages/routes, no nav change). /backtest keeps its canonical home.
+
+Also confirmed data_manager.py (ingest site) zero diff; perf-budgets.md is a pure append; new test
+functions match the diff docstrings — no stray production code hidden in test changes. No blocking
+violations, no advisory notes.

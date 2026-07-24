@@ -1,0 +1,11 @@
+demo-narrator complete for iteration 19 (backend-only).
+
+Demo script: reports/phase-goal-ops-hardening-iter-19-demo.json (mode record, 6 steps <=8-cap)
+Tour reuses the same 3 working surfaces as iter-17/18 (home, Data Manager, /backtest incl.
+evidence section). new:false on every step (fix invisible server-side). verified:true where
+this iteration's PASS evidence supports it (/data -> UT-J-01 PASS; /backtest open + scorecard
++ leadership + evidence -> UT-01/UT-02 PASS). journey tags minimal (J-01 on Data Manager, J-08
+on evidence) — left empty on load-speed steps since J-06/J-07 can't be proven by a static shot.
+goto/click only, no /data Start click (AG-10), no wait/poll. Deliberately dropped a historical
+/backtest?asof=2025-05-30 step to avoid the unrelated ensure_loop_ms cold-start stall in the
+demo. Showcase step — no gating verdict.

@@ -195,3 +195,9 @@ the ingest overlay will falsely read "budget holds."
 **Applies to:** any iter touching `apps/backend/app/api/backtest.py` / `mcp/tools.py` serving path or the
 `resolved_forward_aggregate_evidence` resolver; more generally, any "read" endpoint that lazily
 creates-once-on-first-view — instrument phases and test under a concurrent-ingest overlay, not pure reads.
+
+## iter-19 — 2026-07-24T16:10:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** "THE one shared latency blocker" framing was incomplete: fixing the create-once forward_returns INSERT on `/backtest` (backfill_forward_returns_ms, 877->13.9ms) left a SEPARATE cold-recompute subsystem on the SAME page (`ensure_loop_ms`, historical first-view, 9.6-54s no-affordance skeleton) untouched — same page, same user-visible latency class, different code path. A same-symptom latency/UX gap can hide in a different subsystem than the one you instrumented and fixed; a per-phase timing breakdown that only covers the phase you suspected will not surface it — the browser first-view walk (UT-04) did.
+**Applies to:** any iter closing a "single root-cause" latency/perf journey on a page that has more than one on-load compute path — verify the OTHER first-touch paths (cold historical as-of, empty-store, first-of-day) with a live browser walk, not just the instrumented phase.

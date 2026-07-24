@@ -1,0 +1,16 @@
+ui-test-designer complete for iteration 19.
+
+Reports: reports/phase-goal-ops-hardening-iter-19-ui-test-plan.md (6 cases),
+         reports/phase-goal-ops-hardening-iter-19-what-to-click.md (7 pure-click steps, <=10)
+
+Framed as a REGRESSION + performance-corroboration plan for the existing /backtest page (NOT
+new-feature tests; backend-only iteration), grounded in real measured numbers (112 ms vs
+1083 ms client mean, 13.9 ms vs 877-881 ms backend phase) and exact page copy read from the
+actual frontend source (button labels, headings, badge strings). Cases: UT-01 smoke, UT-02
+happy-path/perf, UT-03/04 regression (byte-identity + historical-date-unaffected), UT-05
+deep-link guard, UT-06 ux/discoverability. Curl/log-tail steps marked optional/citation-only,
+kept out of the mandatory human browser path.
+
+Both files flag: the Chrome MCP port-9224 wedge + its fallback (functional TC-6/TC-9/TC-10,
+already recorded), and AG-10 — no step triggers a backfill/ingest. Not an N/A stub (the
+user-visible-changes report is substantive per the pump note's directive). No files edited.

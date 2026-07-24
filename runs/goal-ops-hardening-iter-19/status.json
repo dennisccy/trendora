@@ -1,0 +1,25 @@
+{
+  "phase": "goal-ops-hardening-iter-19",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "attempt": 3,
+  "updated_at": "2026-07-24T14:53:48.276898Z",
+  "started_at": "2026-07-24T10:58:21.469886Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/forward_testing.py",
+    "apps/backend/app/api/backtest.py",
+    "apps/backend/app/mcp/tools.py",
+    "apps/backend/tests/test_forward_testing_serving_split.py",
+    "apps/backend/tests/test_forward_testing_concurrency.py",
+    "docs/handoffs/goal-ops-hardening-iter-19-dev.md",
+    "reports/phase-goal-ops-hardening-iter-19-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "fix_mode": true,
+  "review_report": "reports/reviews/goal-ops-hardening-iter-19-review.md",
+  "fix_summary": "attempt 3 (LAST): PROVEN root-cause fix \u2014 short-circuit un-elapsed horizons GLOBALLY before the per-symbol loop in backfill_run_forward_returns. observable_days = distinct daily_prices.date > run.asof_date (COVERING INDEX ix_daily_prices_date, LIMIT max_h, <=0.5ms; benchmark-symbol-agnostic so it holds where SPY defines the calendar AND on fixtures that never seed SPY); pass only [h for h in horizons if h <= observable_days] into _insert_run_forward_returns. Attempt-1 skip-commit + attempt-2 column-projection RETAINED. Live read-only deep-basis proof (latest run 1439, asof==data end): price fetches 1106 -> 0, phase 113.6ms -> 1.6ms single-threaded. Scoped tests: serving_split 25 passed (22+3 new), concurrency 7 passed. Deviation from reviewer's literal bars_after(SPY) accessor documented in handoff (fixtures never seed SPY; distinct-date count is a byte-identity-safe upper bound, equal to SPY in prod).",
+  "next_action": "OPERATOR: restart backend via scripts/start-backend.sh to load the horizon short-circuit (live :8255 pid 2796615 still runs attempt-2 code), then re-run TC-6 (6x concurrent /backtest, pure reads, host-guard-confined) \u2014 expect backfill_forward_returns_ms mean <=350ms / max <=400ms (from 881/999) since the eliminated ~1106 per-request price fetches were the 82% share; record a new dated reports/perf-budgets.md section. Then TC-8 (health), TC-10 (live before/after byte-diff). Then re-review/QA."
+}

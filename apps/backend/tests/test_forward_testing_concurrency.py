@@ -53,6 +53,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import insert
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.config import load_config
@@ -536,3 +537,145 @@ def test_forward_aggregates_ingest_cached_waiter_does_not_deadlock_when_owner_ra
         with Session(engine) as session:
             direct = real(session, HORIZON, cfg, as_of=as_of)
         assert waiter_result["payload"] == direct, "waiter's fallback payload was not byte-identical"
+
+
+# ======================================================================================================
+# ops-hardening iter-19 (J-06/J-07/J-08) TC-4 — concurrency-race safety for `backfill_run_forward_
+# returns`'s NEW zero-write guard (forward_testing.py ~line 1365, added this iteration). This is a
+# DISTINCT fixture/mechanism from every test group above: those all exercise `compute_forward_aggregates`
+# / `forward_aggregates_ingest_cached` (the `forward_aggregate_cache` table). The test below exercises
+# `backfill_run_forward_returns` (the SEPARATE, append-only `forward_returns` table), reached only via
+# `GET /api/backtest`'s create-once population step (~line 140) — a different function, a different
+# table, a different request-path mechanism entirely.
+# ======================================================================================================
+def test_iter19_concurrent_missing_run_backtest_calls_no_duplicate_rows_and_rollback_path_exercised(
+    tmp_path,
+):
+    """iter-19 TC-4 (mandatory concurrency test, spec DoD): 5 concurrent `GET /api/backtest` calls for
+    the SAME as-of whose forward returns are genuinely missing at request time. A `threading.Barrier`
+    forces all 5 threads to finish their OWN pre-insert idempotency read (the `existing` SELECT inside
+    `backfill_run_forward_returns`, immediately before it calls `_insert_run_forward_returns`) before ANY
+    of them proceeds to stage or flush a single write — guaranteeing every caller's `existing` read saw
+    the SAME empty state for the one genuinely-missing symbol, so all N stage the SAME rows and race at
+    commit time, deterministically reproducing the concurrent-INSERT race
+    `_commit_forward_returns_concurrency_safe` exists to absorb (iter-28, J-41) rather than leaving it to
+    scheduling luck. The fixture pre-seeds every OTHER symbol this run would process (the benchmark ETFs
+    `forward_symbols_for_run` always appends) as ALREADY complete, so `_insert_run_forward_returns`'s
+    per-symbol loop `continue`s past every one of them without a further read — isolating the race to the
+    ONE genuinely-missing scored ticker and to the explicit final commit this iteration's guard gates,
+    rather than an unrelated mid-loop SQLAlchemy autoflush (see the dev handoff's Known Issues for that
+    separate, pre-existing finding, out of scope here).
+
+    Asserts: (a) all 5 calls complete with no unhandled exception, (b) `forward_returns` ends with no
+    duplicate `(run_id, symbol, horizon)` key, and (c) the pre-existing `IntegrityError`-tolerant rollback
+    path is ACTUALLY exercised at least once (call-count instrumented — proven by assertion, not merely
+    reachable in theory)."""
+    import app.api.backtest as backtest_module
+    import app.engine.forward_testing as forward_testing_module
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'tc4_missing_run.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+    horizons = cfg.walk_forward.horizons
+    max_h = max(horizons)
+    asof = date(2025, 3, 1)
+    with Session(engine) as session:
+        run = ScannerRun(
+            asof_date=asof, created_at=datetime.now(timezone.utc), provider="seed", benchmark="SPY",
+            regime_score=50.0, regime_label="Risk-on", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        )
+        session.add(run)
+        session.flush()
+        run_id = run.id
+        session.add(ScannerResult(
+            run_id=run_id, ticker="AAA", name="AAA", sector="Technology", leadership_score=50.0,
+            leadership_bucket="A", entry_quality_score=50.0, entry_quality_bucket="B", risk_score=50.0,
+            risk_bucket="C", setup_status="Actionable", rank=1, record_json="{}", is_vcp=False,
+            is_pullback_to_rising_dma=False, is_flat_base_breakout=False,
+        ))
+        session.add(DailyPrice(
+            symbol="AAA", date=asof, open=100.0, high=101.0, low=99.0, close=100.0, volume=1.0,
+        ))
+        for i in range(1, max_h + 1):
+            session.add(DailyPrice(
+                symbol="AAA", date=asof + timedelta(days=i), open=100.0, high=101.0, low=99.0,
+                close=100.0 + i, volume=1.0,
+            ))
+        session.flush()
+        # Pre-seed every OTHER symbol this run's own `forward_symbols_for_run` would process (the
+        # benchmark ETFs) as already fully backfilled -- see the docstring above for why.
+        other_symbols = [
+            s for s in forward_testing_module.forward_symbols_for_run(session, run, cfg) if s != "AAA"
+        ]
+        for sym in other_symbols:
+            for h in horizons:
+                session.add(ForwardReturn(
+                    run_id=run_id, symbol=sym, horizon=h, asof_date=asof, entry_close=100.0,
+                    measured_date=asof, realized_return=0.0,
+                ))
+        session.commit()
+
+    n_callers = 5
+    barrier = threading.Barrier(n_callers)
+    real_insert = forward_testing_module._insert_run_forward_returns
+    real_commit_safe = forward_testing_module._commit_forward_returns_concurrency_safe
+    rollback_count = {"n": 0}
+
+    def _synced_insert(*args, **kwargs):
+        """Blocks every caller at a barrier BEFORE staging/flushing a single write (all 5 have already
+        completed their OWN pre-insert `existing` read, taken by the unpatched caller just before this),
+        then calls the real idempotency-check-and-insert step -- guaranteeing every caller saw the SAME
+        empty state for the missing symbol and all N stage the SAME rows, so the race lands at the
+        explicit commit below rather than resolving silently via natural scheduling."""
+        barrier.wait(timeout=BOUNDED_TIMEOUT_S)
+        return real_insert(*args, **kwargs)
+
+    def _instrumented_commit(session):
+        """Byte-for-byte the real `_commit_forward_returns_concurrency_safe` body, with a counter added
+        so the IntegrityError-tolerant branch's use is PROVEN, not merely reachable in theory."""
+        try:
+            session.commit()
+        except IntegrityError:
+            rollback_count["n"] += 1
+            session.rollback()
+
+    def _caller(as_of_str: str) -> dict:
+        with Session(engine) as thread_session:
+            return backtest_module.backtest(as_of=as_of_str, session=thread_session)
+
+    forward_testing_module._insert_run_forward_returns = _synced_insert
+    forward_testing_module._commit_forward_returns_concurrency_safe = _instrumented_commit
+    try:
+        with ThreadPoolExecutor(max_workers=n_callers) as pool:
+            futures = [pool.submit(_caller, asof.isoformat()) for _ in range(n_callers)]
+            results = []
+            errors = []
+            for future in as_completed(futures, timeout=BOUNDED_TIMEOUT_S):
+                try:
+                    results.append(future.result())
+                except Exception as exc:  # noqa: BLE001 -- captured for the assertion below, never swallowed
+                    errors.append(exc)
+    finally:
+        forward_testing_module._insert_run_forward_returns = real_insert
+        forward_testing_module._commit_forward_returns_concurrency_safe = real_commit_safe
+
+    assert len(results) + len(errors) == n_callers, "not every caller completed -- treat as a hang"
+    assert not errors, f"expected every caller to complete without an unhandled exception; got {errors}"
+    assert all(r["is_latest"] is True for r in results)
+
+    with Session(engine) as session:
+        fr_rows = session.exec(
+            select(ForwardReturn).where(ForwardReturn.run_id == run_id, ForwardReturn.symbol == "AAA")
+        ).all()
+    keys = [(fr.run_id, fr.symbol, fr.horizon) for fr in fr_rows]
+    assert len(keys) == len(set(keys)), f"duplicate (run_id, symbol, horizon) key(s) found: {keys}"
+    assert len(fr_rows) == len(horizons), (
+        f"expected exactly one row per configured horizon for the one genuinely-missing scored ticker; "
+        f"got {len(fr_rows)}"
+    )
+
+    assert rollback_count["n"] >= 1, (
+        "expected the IntegrityError-tolerant rollback path to be exercised by at least one of the 5 "
+        "concurrent callers racing to backfill the SAME genuinely-missing run"
+    )
