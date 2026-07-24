@@ -1003,3 +1003,15 @@
 {"agent":"goal-evaluator","status":"ok","wait_seconds":5,"run_seconds":882,"rc":"0","ts":"2026-07-24T15:12:40Z","session_id":"ops-hardening","iter":19,"event":"dispatch_wait","cli":"claude"}
 {"agent":"goal-evaluator","exit_status":0,"duration_seconds":887,"retries":0,"ts":"2026-07-24T15:12:40Z","session_id":"ops-hardening","iter":19,"event":"agent_invocation_end","cli":"claude"}
 {"iter_name":"goal-ops-hardening-iter-19","verdict":"CONTINUE","next_depth":"full","journey_deltas":{"newly_passing":3,"newly_failing":0,"regressed":0,"anti_goal_violations":9},"ts":"2026-07-24T15:12:40Z","session_id":"ops-hardening","iter":19,"event":"iter_end","cli":"claude"}
+{"branch":"goal/ops-hardening","commit_sha":"94ed462416d4b41d42b9056f2339bdb1a526e9f1","success":true,"error":"","verdict":"CONTINUE","ts":"2026-07-24T15:12:45Z","session_id":"ops-hardening","iter":19,"event":"iter_push","cli":"claude"}
+{"agent":"iteration-summarizer","ts":"2026-07-24T15:12:45Z","session_id":"ops-hardening","iter":19,"event":"agent_invocation_start","cli":"claude"}
+{"iter_name":"goal-ops-hardening-iter-20","prior_verdict":"CONTINUE","prior_depth":"full","snapshot_sha":"2a29547ef71c918973ce52c408eaa6e19a5c6494","ts":"2026-07-24T15:12:45Z","session_id":"ops-hardening","iter":20,"event":"iter_start","cli":"claude"}
+{"agent":"goal-decomposer","ts":"2026-07-24T15:12:45Z","session_id":"ops-hardening","iter":20,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"goal-decomposer","status":"ok","wait_seconds":8,"run_seconds":1315,"rc":"0","ts":"2026-07-24T15:34:48Z","session_id":"ops-hardening","iter":20,"event":"dispatch_wait","cli":"claude"}
+{"agent":"goal-decomposer","exit_status":0,"duration_seconds":1323,"retries":0,"ts":"2026-07-24T15:34:48Z","session_id":"ops-hardening","iter":20,"event":"agent_invocation_end","cli":"claude"}
+{"depth":"full","target_journeys":"J-06, J-07, J-08","ts":"2026-07-24T15:34:49Z","session_id":"ops-hardening","iter":20,"event":"iter_dispatch","cli":"claude"}
+{"agent":"iteration-summarizer","status":"ok","wait_seconds":8,"run_seconds":1952,"rc":"0","ts":"2026-07-24T15:45:25Z","session_id":"ops-hardening","iter":19,"event":"dispatch_wait","cli":"claude"}
+{"agent":"iteration-summarizer","exit_status":0,"duration_seconds":1960,"retries":0,"ts":"2026-07-24T15:45:25Z","session_id":"ops-hardening","iter":19,"event":"agent_invocation_end","cli":"claude"}
+{"agent":"readme-maintainer","ts":"2026-07-24T15:45:25Z","session_id":"ops-hardening","iter":19,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"readme-maintainer","status":"ok","wait_seconds":10,"run_seconds":230,"rc":"0","ts":"2026-07-24T15:49:25Z","session_id":"ops-hardening","iter":19,"event":"dispatch_wait","cli":"claude"}
+{"agent":"readme-maintainer","exit_status":0,"duration_seconds":240,"retries":0,"ts":"2026-07-24T15:49:25Z","session_id":"ops-hardening","iter":19,"event":"agent_invocation_end","cli":"claude"}

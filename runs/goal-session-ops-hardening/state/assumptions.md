@@ -252,3 +252,31 @@ requires fresh browser evidence for every required-still-passing journey every i
 **Ambiguity:** J-08's title + step 2 read broadly — "Backtest evidence serves from storage only — never a cold recompute on request", "never a skeleton waiting on a fresh compute". The iter-16 decomposer (assumptions.md, human-un-vetoed) scoped the "never compute on request" guarantee to `is_latest == true` requests, keeping the historical (`is_latest == false`) path's existing lazy create-once-and-cache behavior as a documented sibling-cache carve-out. UT-04's 9.6-54s `ensure_loop_ms` stall is on exactly that historical (2025-05-30, is_latest==false) path — so under the iter-16 scoping the COMPUTE itself is arguably sanctioned (the goal's own "Cannot be precomputed (user-parameterized)" list allows a create-once cold arbitrary as_of snapshot).
 **We chose:** kept J-08 `partial` rather than score it `passing` on the is_latest carve-out. Basis: even if the historical cold compute is sanctioned, the honest-status clause shared across J-06/J-07/J-08 ("never a frozen or blank frame") is independently failed by a 9.6-54s empty skeleton with NO loading affordance; and this session's human-ratified precedent (iter-12/15/16) does not launder a latency/UX shortfall into a green check. Not verdict-determinative (J-06/J-07 partial keep GOAL_ACHIEVED off the table regardless), but it governs J-08's status and the next-iteration target. A human who reads J-08 strictly through the iter-16 is_latest scoping AND treats the missing affordance as an out-of-J-08 concern (a J-06 page-budget item the spec's OUT OF SCOPE excludes) could score J-08 `passing` today, with the ensure_loop_ms stall tracked solely under J-06.
 **Reversible:** yes
+
+## iter-20 — goal-decomposer
+
+**Ambiguity:** goal.md J-08's title/step-2 ("never a cold recompute on request", "never a skeleton waiting
+on a fresh compute") reads unqualified, but the iter-16 decomposer's own logged assumption scoped the
+"never compute on request" guarantee to `is_latest == true` only, leaving the historical (`is_latest ==
+false`) view's pre-existing lazy create-once-and-cache behavior EXPLICITLY unchanged — matching every
+sibling ingest-time cache's own "cannot be precomputed (user-parameterized)" carve-out in goal.md's
+Improvement direction. UT-04 (iter-19 browser-QA) now shows that carve-out, as currently implemented (a
+SYNCHRONOUS compute on the request thread, codified by
+`test_historical_asof_keeps_pre_iter16_create_once_and_cache_behavior` and its iter-17 sibling), can block
+a historical first-view for 9.6-54s behind an empty, no-affordance skeleton. goal.md does not say whether
+the historical carve-out may still block the very request that triggers it, or whether "never a request-path
+recompute" implicitly forbids that too.
+**We chose:** kept the carve-out's SUBSTANCE — historical evidence stays lazily create-once-and-cached,
+triggered by a view, never precomputed at ingest for the full historical date range (rejected as unbounded,
+see the iter-20 spec BACKGROUND) — but require the compute to run OFF the requesting thread (a background
+dispatch, single-flight-guarded so at most one runs per `(asof_key, dataset_version)`), so the triggering
+request itself never blocks past the committed budget. This synthesizes goal.md's literal "never a skeleton
+waiting on a fresh compute" with the sibling-cache lazy-create-once precedent, rather than either removing
+historical lazy compute entirely (a real time-machine capability regression no journey step asks for) or
+precomputing every historical date at ingest (unbounded, rejected). This changes the two existing tests that
+codified same-call synchronous completion (TC-13 and its iter-17 regression-guard sibling); the iter-20 spec
+requires them updated to assert the new contract, not weakened or deleted. A human who reads the sibling-cache
+carve-out as also licensing the historical view to block its own triggering request indefinitely would treat
+the current 9.6-54s stall as within contract (only the missing loading affordance would need fixing) and
+might reject this iteration's serving-path change as broader than required.
+**Reversible:** yes
