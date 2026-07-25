@@ -3711,13 +3711,22 @@ TC-5 evidence:
 | TC-1 | iter-20 numbers cited + confirmed within amended ceiling | **PASS** |
 | TC-2 | trigger dispatches + returns < 1.5 s | **PASS** (87.9 ms) |
 | TC-3 | every sample ≤ 8.0 s / ≤ 2.0 s, all HTTP 200 | **PASS** (max 7.119 s / 0.253 s, 0 breaches, 0 non-200) |
-| TC-4 | window completes ≤ 60 s | **FAIL** (68.79 s, +8.79 s / +14.6 %) |
+| TC-4 | window completes ≤ 60 s ← **SUPERSEDED BOUND** (see operator note under the row) | **FAIL against the retired 60 s bound** (68.79 s, +8.79 s / +14.6 %) · **PASS against the current ≤ 90 s bound** (~21 s margin) |
 | TC-5 | `VmPeak` + margin recorded | **PASS** (2,631,612 kB, 58.2 % margin) |
 | TC-6 | recorded in a new dated section, prior sections untouched | **PASS** (this section; diff-verified below) |
 | TC-7 | no concurrent-ingest-overlay or kill/restart *trigger* used as evidence | **PASS** (graceful restart was measurement hygiene, not TC-13/14 evidence; see methodology note) |
 | TC-12 | plain GET only (no ingest), host-guard caps verified via `/proc` | **PASS** |
 | TC-13 | no technical mitigation attempted, no budget number outside the committed amendment | **PASS** |
 | TC-14 (goal) | served evidence byte-identical to stored cache rows | **PASS** |
+
+> **Operator note (2026-07-25, after the iter-22 confirm evaluator's audit).** The TC-4 row above is written
+> against the **60 s** window bound that was current when the developer measured it. That bound was retired
+> the same day: see § "OWNER BUDGET AMENDMENT …" → "Revision 1 — BCW window bound 60 s → 90 s", which
+> corrected a bad datum (iter-20's unrepresentative "~30 s") once this very measurement exposed the window's
+> structural ~14 s-per-horizon cost. **Against the current ≤ 90 s bound the same 68.79 s window passes with
+> ~21 s margin.** The developer's row is left as written — it was accurate and honestly reported at the time —
+> and this note carries the correction rather than rewriting another agent's artifact. The confirm evaluator
+> was right that the two readings sat side by side in one file with nothing linking them; that is now fixed.
 
 ### Verification (`git status` / `git diff` at completion)
 

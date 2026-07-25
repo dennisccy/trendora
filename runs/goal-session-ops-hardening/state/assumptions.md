@@ -219,3 +219,28 @@ recorded prominently in eval.md's Halt Justification instead of being buried. A 
 a service's memory" literally would score this a critical anti-goal violation, veto GOAL_ACHIEVED, and promote
 B-1107 into a blocking iteration (a bounded fix: a global dispatch semaphore).
 **Reversible:** yes
+
+## iter-23 — goal-decomposer
+
+**Ambiguity:** iter-12's decomposer logged an assumption (this same ledger) that goal.md's "`[NEW]`-flagged
+walkthrough ... viewable via `demo.sh ops-hardening --session-live`" acceptance clause (J-06/J-07/J-08) is a
+settled non-autonomous, ungradable deliverable — because `--session-live` is a human-interactive,
+Enter-advanced terminal mode that writes no artifact, and no automatic session-mode demo-narrator pass exists
+anywhere in `run-goal.sh`'s loop. Every decomposer since (iter-12 through iter-22) inherited that reading and
+excluded the walkthrough from DoD. The iter-22 second-key CONFIRM evaluator (`runs/goal-session-ops-hardening/
+iter-22/eval-confirm.md`) rejected GOAL_ACHIEVED partly on this exact clause, reading it differently: the JSON
+manifest that `--session-live` reads (`reports/goal-session-ops-hardening-demo.json`) is itself 100%
+agent-authorable (the demo-narrator's own `session` mode writes it non-interactively, per
+`.claude/agents/demo-narrator.md` — "Do NOT open a browser" / "Write ONLY the JSON file"), and its current
+incompleteness (zero J-06/J-07/J-08 steps, `"new": false` on every existing entry) is a genuine, bounded gap,
+not evidence that the whole capability is out of reach.
+**We chose:** the confirm evaluator's reading — the clause is satisfied once the session demo JSON manifest
+contains complete, accurate `[NEW]`-flagged steps for the journey (the artifact a human would see if they ran
+the live command), not by an actual witnessed/recorded live playback. This iteration authors that content
+directly; it does NOT attempt to trigger or record an interactive `--session-live` session (still correctly
+out of this iteration's DoD, per iter-12's reading, for the PLAYBACK act itself — only the artifact backing it
+was actually agent-tractable and unactioned). iter-12's original assumption is now understood to have
+conflated the two: the interactive playback IS non-autonomous, but the JSON it plays from is not. A human who
+requires an actual recorded/witnessed `--session-live` run (not just a complete backing artifact) before
+crediting this clause would keep it open regardless of this iteration's work.
+**Reversible:** yes

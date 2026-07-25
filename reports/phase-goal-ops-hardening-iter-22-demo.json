@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-22",
+  "base_url": "http://localhost:3255",
+  "iteration": 22,
+  "default_timeout_ms": 15000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open Trendora",
+      "narration": "Trendora opens on the Dashboard, its home for today's market status and stock rankings.",
+      "point_out": "A status banner near the top says plainly whether today's data is fully fresh, rather than staying quiet about it.",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "DEGRADED" }
+    },
+    {
+      "n": 2,
+      "title": "Browse the stock rankings",
+      "narration": "The Stocks page lists ranked tickers with real, evidence-checked scores. This round, the team confirmed pages like this one load quickly, pulling only the data they actually need.",
+      "point_out": "The list appears fully populated right away — confirmed this round to hold up even during heavier background work elsewhere in the app.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/stocks" },
+      "expect": { "text": "TRV" }
+    },
+    {
+      "n": 3,
+      "title": "Open the evidence ledger",
+      "narration": "The Evidence page is Trendora's certified-claims ledger, where a pattern only counts as proven once it has survived independent testing.",
+      "point_out": "Nothing here gets called confident without real evidence behind it.",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/evidence" },
+      "expect": { "text": "certified-claims ledger" }
+    },
+    {
+      "n": 4,
+      "title": "Open the Data Manager",
+      "narration": "Behind the scenes, an operator uses the Data Manager to backfill historical data and watch ingest jobs run.",
+      "point_out": "The coverage panel shows exactly what's already stored before anything new is requested.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Data Manager" }
+    },
+    {
+      "n": 5,
+      "title": "Request a small backfill",
+      "narration": "Let's ask for just two days of data.",
+      "point_out": "The start date is set to 2026-05-02.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "testid": "job-start-date" }, "text": "2026-05-02" }
+    },
+    {
+      "n": 6,
+      "title": "Set the end date",
+      "narration": "One day later closes out the range.",
+      "point_out": "The end date is set to 2026-05-03.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "testid": "job-end-date" }, "text": "2026-05-03" }
+    },
+    {
+      "n": 7,
+      "title": "Submit the request",
+      "narration": "Clicking Start sends the request.",
+      "point_out": "The job is accepted immediately.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "click", "target": { "role": "button", "name": "Start" } }
+    },
+    {
+      "n": 8,
+      "title": "See the honest zero-work result",
+      "narration": "Those two days turn out to be already fully covered, mostly non-trading days, so Trendora says so plainly instead of pretending to do work.",
+      "point_out": "The result explains there are no new snapshots, rather than staying silent or claiming success with no explanation.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "no new snapshots" }
+    },
+    {
+      "n": 9,
+      "title": "Request a much wider backfill",
+      "narration": "Now let's ask for something bigger: over a year of history in a single request.",
+      "point_out": "The start date is set to 2025-06-01.",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "testid": "job-start-date" }, "text": "2025-06-01" }
+    },
+    {
+      "n": 10,
+      "title": "Set the wide end date",
+      "narration": "The range stretches all the way to 2026-07-17.",
+      "point_out": "The end date is set to 2026-07-17.",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "testid": "job-end-date" }, "text": "2026-07-17" }
+    },
+    {
+      "n": 11,
+      "title": "Submit the wide request",
+      "narration": "Clicking Start sends the whole range in one go.",
+      "point_out": "There's no prompt to split it into smaller pieces.",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "click", "target": { "role": "button", "name": "Start" } }
+    },
+    {
+      "n": 12,
+      "title": "See the full range accepted",
+      "narration": "Trendora accepts the entire request and reports exactly how much ground it covers.",
+      "point_out": "412 calendar days, accepted in a single request, with no artificial per-run limit.",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "412 calendar days" }
+    },
+    {
+      "n": 13,
+      "title": "Revisit a stored day",
+      "narration": "Let's open one specific day that was already scanned a while back.",
+      "point_out": "It's labeled an immutable snapshot: stored exactly as scanned, never recalculated for today.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/scanner-runs/1436" },
+      "expect": { "text": "as of 2025-05-15" }
+    },
+    {
+      "n": 14,
+      "title": "Check the backtest evidence",
+      "narration": "The Backtest page never runs a fresh calculation while you wait — it only ever shows evidence that was already prepared in advance.",
+      "point_out": "The evidence shown is always a specific, dated version — current, or a clearly labeled still-good version, but never a live guess.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/backtest" },
+      "expect": { "text": "Forward-tested evidence" }
+    },
+    {
+      "n": 15,
+      "title": "Confirm the app stays healthy under heavy background work",
+      "narration": "This round, the team also confirmed something reassuring: even while a slow calculation runs in the background, Trendora keeps answering normally the whole time — nothing freezes, nothing goes down.",
+      "point_out": "The status badge stays green and 'Ready' — measured this round to hold steady for the entire background-calculation window, with every page and the health check answering throughout.",
+      "journey": "J-07",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "provider: seed" }
+    }
+  ]
+}
