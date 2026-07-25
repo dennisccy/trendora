@@ -195,3 +195,18 @@ screenshot mtimes proves the serving state machine from the DB without trusting 
 **Applies to:** any iteration verifying `/backtest` evidence states (`refreshing` / `not_yet_computed` /
 `ready`), and any evaluator receiving screenshots whose md5s repeat across iterations — hash the evidence
 directory before crediting a status change.
+
+## iter-22 — 2026-07-25T08:55:00Z
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** A measured "window duration" reported by a polling lane can be the POLLER's elapsed time, not the
+window's. The browser-qa lane reported its BCW as "28.06 s (well inside the bound)"; the
+`forward_aggregate_cache` commit rows for that same `(asof_key, dataset_version)` show 07:31:59.453 ->
+07:32:56.164 (56.71 s first-to-last commit, ~14 s/horizon), so with the usual ~13 s trigger->first-commit lead
+the real window was ~69.8 s — inside the amended 90 s bound but NOT inside the 60 s one it was cited against.
+Re-derive any window/elapsed claim from the source-of-truth timestamps (DB rows, server logs), never from the
+measuring script's own clock start. Corollary from the same iteration: a handoff's "I grepped the log for X and
+found none" is checkable in seconds and was FALSE here — `logs/backend.log:76796-76808` contains both the exact
+string the developer said they searched for and a real `MemoryError`.
+**Applies to:** any iteration whose acceptance rests on a timed window, poll series, or "no errors in the log"
+claim — especially perf/latency measurement passes and any goal-closing evaluation.

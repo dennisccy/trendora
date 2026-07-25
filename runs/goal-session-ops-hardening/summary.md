@@ -1,11 +1,11 @@
 # Goal Session Summary — ops-hardening
 
 **Final verdict:** STALLED
-**Total iterations:** 21
-**Wall time (seconds):** 38123
+**Total iterations:** 22
+**Wall time (seconds):** 6547
 **Quota pauses:** 0
 **Started:** 2026-07-19T13:57:02.848410Z
-**Finished:** 2026-07-24T18:51:59.751456Z
+**Finished:** 2026-07-25T02:53:03.908740Z
 
 ## Branch
 
@@ -19,25 +19,25 @@ This session pushed iteration commits to `goal/ops-hardening`. Open a PR with:
 
 | Journey | Status | Last passing iter |
 |---|---|---|
-| J-01 | passing | goal-ops-hardening-iter-20 |
-| J-03 | passing | goal-ops-hardening-iter-20 |
-| J-04 | passing | goal-ops-hardening-iter-15 |
-| J-05 | passing | goal-ops-hardening-iter-20 |
+| J-01 | passing | goal-ops-hardening-iter-21 |
+| J-03 | passing | goal-ops-hardening-iter-21 |
+| J-04 | passing | goal-ops-hardening-iter-21 |
+| J-05 | passing | goal-ops-hardening-iter-21 |
 | J-06 | partial | - |
 | J-07 | partial | - |
-| J-08 | partial | - |
+| J-08 | passing | goal-ops-hardening-iter-21 |
 
 ## Anti-goal violations
 
 - [critical] AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders. (iter goal-ops-hardening-iter-1)
 - [critical] AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders. (iter goal-ops-hardening-iter-2)
-- [minor] AG-3 (dimension): displayed numbers must be correct — a fetch that lands new bars silently blanks the DEFAULT /data coverage panel to false all-zeros. (iter goal-ops-hardening-iter-2)
-- [critical] AG-8 — Resilience to data-shape and data-scale change: widening the data basis (deeper history) must never crash an existing page or exhaust a service's memory; the UI degrades gracefully (contained error boundary, honest '—'/NA placeholder, never a blank/frozen frame); unbounded whole-table ORM loads forbidden on the deep basis. (iter goal-ops-hardening-iter-7)
-- [minor] AG-10 — Host resource ceiling (hardware protection): heavy compute MUST be launched only via the project launch scripts (scripts/dev.sh / scripts/start-backend.sh), and those scripts MUST apply the host caps declared in project-extensions/host-guard/host-guard.env whenever that file is present. (iter goal-ops-hardening-iter-8)
-- [critical] AG-8 (distinct dimension) — Resilience to data-shape and data-scale change: unbounded whole-table ORM loads are forbidden on the deep basis and an existing page must never exhaust the service's memory. The forward_aggregates_cached -> compute_forward_aggregates -> large ScannerResult path raises MemoryError on the grown live dev DB. (iter goal-ops-hardening-iter-9)
-- [minor] AG-10 - Host resource ceiling: heavy compute - backfills, full-universe rebuilds, measurement passes, load drills, TEST-SUITE BURSTS - MUST be launched only via the project launch scripts and those scripts MUST apply the host-guard caps. (iter goal-ops-hardening-iter-10)
-- [critical] AG-8 (iter-9 forward_aggregates_cached dimension) — observed-severity ESCALATION: the unbounded forward_testing.py:826 ScannerResult load, under concurrent load, wedged the ENTIRE backend into a full ~12-minute availability outage requiring an operator hard-restart — no longer merely a silent internal abort. (iter goal-ops-hardening-iter-13)
-- [minor] AG-10 — Host resource ceiling: heavy compute MUST be launched only via the project launch scripts, which apply the host-guard caps; never bypass them. (iter goal-ops-hardening-iter-17)
+- [minor] AG-3 (dimension): displayed numbers must be correct — a fetch that landed zero rows must not present as a success. (iter goal-ops-hardening-iter-2)
+- [critical] AG-8 — Resilience to data-shape and data-scale change: widening the data basis must never crash an existing page or exhaust a service's memory; unbounded whole-table ORM loads are forbidden on the deep basis. (iter goal-ops-hardening-iter-7)
+- [minor] AG-10 — Host resource ceiling (hardware protection): heavy compute MUST be launched only via the project launch scripts, which must apply the declared host caps. (iter goal-ops-hardening-iter-8)
+- [critical] AG-8 (distinct dimension) — Resilience to data-shape and data-scale change: unbounded whole-table ORM materialization on the forward-aggregate warm path. (iter goal-ops-hardening-iter-9)
+- [minor] AG-10 — Host resource ceiling: heavy compute (backfills, full-universe rebuilds, measurement passes) MUST be launched only via the project launch scripts. (iter goal-ops-hardening-iter-10)
+- [critical] AG-8 (iter-9 forward_aggregates dimension) — observed-severity escalation: the unbounded load wedged the service on the deep basis. (iter goal-ops-hardening-iter-13)
+- [minor] AG-10 — Host resource ceiling: heavy compute MUST be launched only via the project launch scripts (operator process lapse: raw uvicorn on a throwaway port; disclosed and corrected via start-backend.sh, no launch script modified). (iter goal-ops-hardening-iter-17)
 
 ## Telemetry
 
@@ -242,15 +242,28 @@ See `runs/goal-session-ops-hardening/telemetry.jsonl` for the structured event l
       engine:showcase-join        14.7m
       pump-wait                  9.0m
       overlap saved             36.6m  (parallel steps)
-  session: 21 completed iteration(s), mean wall 251.8m
-      total goal-decomposer            337.0m
-      total goal-evaluator             303.4m
-      total iteration-summarizer       217.3m
-      total browser-qa-agent           137.9m
-      total coherence-auditor          105.2m
-      total developer                   90.0m
+  goal-ops-hardening-iter-21  depth=lean  verdict=STALLED  wall=109.0m
+      browser-qa-agent            36.0m  calls=1
+      goal-decomposer             19.5m  calls=1
+      goal-evaluator              18.8m  calls=1
+      developer                    9.1m  calls=1
+      iteration-summarizer         8.8m  calls=1
+      reviewer                     4.1m  calls=1
+      coherence-auditor            3.8m  calls=1
+      engine:lean-pipeline        49.6m
+      engine:showcase-join         0.0m
+      (resume-skipped: coherence-auditor)
+      pump-wait                  4.2m
+      overlap saved             40.7m  (parallel steps)
+  session: 22 completed iteration(s), mean wall 245.3m
+      total goal-decomposer            356.5m
+      total goal-evaluator             322.1m
+      total iteration-summarizer       226.1m
+      total browser-qa-agent           173.9m
+      total coherence-auditor          109.0m
+      total developer                   99.0m
       total readme-maintainer           54.4m
-      total reviewer                    21.0m
+      total reviewer                    25.1m
       total AWAITING_PUMP paused gaps: 9.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED, DECOMPOSER_FAILED, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED, DECOMPOSER_FAILED, STALLED, STALLED
 ```

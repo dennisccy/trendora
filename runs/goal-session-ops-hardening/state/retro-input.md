@@ -8,8 +8,8 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 
 - **Terminal status:** STALLED
 - **Final verdict:** STALLED
-- **Iterations used:** 21
-- **Halted at (UTC):** 2026-07-24T18:51:59.751456Z
+- **Iterations used:** 22
+- **Halted at (UTC):** 2026-07-25T02:53:03.908740Z
 
 ## Verdict sequence
 
@@ -37,6 +37,7 @@ iter 17: CONTINUE
 iter 18: CONTINUE
 iter 19: CONTINUE
 iter 20: STALLED
+iter 21: STALLED
 ```
 
 ## Agent economics
@@ -46,23 +47,23 @@ Source: analyze_telemetry.py --json telemetry.jsonl (claude_usage events)
 | Agent | Invocations | Wall (s) | In tokens | Out tokens | Est. cost (USD) |
 |---|---|---|---|---|---|
 | auditor | 15 | 11400 | 2926 | 622416 | 0.0000 |
-| browser-qa-agent | 16 | 36093 | 20206 | 1233662 | 0.0000 |
-| coherence-auditor | 15 | 2947 | 538 | 191770 | 0.0000 |
-| demo-narrator | 15 | 5784 | 1692 | 474796 | 0.0000 |
-| developer | 22 | 40816 | 5808 | 1674694 | 0.0000 |
-| goal-decomposer | 18 | 14095 | 26145 | 978387 | 0.0000 |
-| goal-evaluator | 16 | 11171 | 6517 | 702910 | 0.0000 |
-| iteration-summarizer | 16 | 5386 | 2503 | 525232 | 0.0000 |
+| browser-qa-agent | 17 | 37994 | 20416 | 1290524 | 0.0000 |
+| coherence-auditor | 16 | 3138 | 572 | 205040 | 0.0000 |
+| demo-narrator | 16 | 6453 | 1718 | 533503 | 0.0000 |
+| developer | 23 | 41308 | 5856 | 1712669 | 0.0000 |
+| goal-decomposer | 19 | 15200 | 26205 | 1022811 | 0.0000 |
+| goal-evaluator | 17 | 12243 | 6631 | 777145 | 0.0000 |
+| iteration-summarizer | 17 | 5884 | 2523 | 580397 | 0.0000 |
 | orchestrator | 15 | 4978 | 15263 | 387349 | 0.0000 |
 | phase-closure-auditor | 13 | 3112 | 280 | 240926 | 0.0000 |
 | qa | 33 | 7054 | 4329 | 264826 | 0.0000 |
 | readme-maintainer | 13 | 2339 | 244 | 208951 | 0.0000 |
 | retro-analyst | 3 | 94 | 111 | 6406 | 0.0000 |
-| reviewer | 22 | 10382 | 9526 | 543437 | 0.0000 |
+| reviewer | 23 | 10590 | 9550 | 554785 | 0.0000 |
 | ui-impact-analyst | 14 | 4498 | 530 | 304300 | 0.0000 |
 | ui-test-designer | 14 | 7392 | 726 | 513961 | 0.0000 |
 | ux-regression-reviewer | 13 | 4278 | 12244 | 293620 | 0.0000 |
-| TOTAL | 273 | 171820 | 109588 | 9167643 | 0.0000 |
+| TOTAL | 281 | 177957 | 110124 | 9519629 | 0.0000 |
 
 Per-step wall breakdown (analyze_telemetry.py --wall):
 
@@ -263,17 +264,30 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       engine:showcase-join        14.7m
       pump-wait                  9.0m
       overlap saved             36.6m  (parallel steps)
-  session: 21 completed iteration(s), mean wall 251.8m
-      total goal-decomposer            337.0m
-      total goal-evaluator             303.4m
-      total iteration-summarizer       217.3m
-      total browser-qa-agent           137.9m
-      total coherence-auditor          105.2m
-      total developer                   90.0m
+  goal-ops-hardening-iter-21  depth=lean  verdict=STALLED  wall=109.0m
+      browser-qa-agent            36.0m  calls=1
+      goal-decomposer             19.5m  calls=1
+      goal-evaluator              18.8m  calls=1
+      developer                    9.1m  calls=1
+      iteration-summarizer         8.8m  calls=1
+      reviewer                     4.1m  calls=1
+      coherence-auditor            3.8m  calls=1
+      engine:lean-pipeline        49.6m
+      engine:showcase-join         0.0m
+      (resume-skipped: coherence-auditor)
+      pump-wait                  4.2m
+      overlap saved             40.7m  (parallel steps)
+  session: 22 completed iteration(s), mean wall 245.3m
+      total goal-decomposer            356.5m
+      total goal-evaluator             322.1m
+      total iteration-summarizer       226.1m
+      total browser-qa-agent           173.9m
+      total coherence-auditor          109.0m
+      total developer                   99.0m
       total readme-maintainer           54.4m
-      total reviewer                    21.0m
+      total reviewer                    25.1m
       total AWAITING_PUMP paused gaps: 9.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED, DECOMPOSER_FAILED, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED, DECOMPOSER_FAILED, STALLED, STALLED
 ```
 
 ## Friction counters
@@ -287,26 +301,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-exposes: (a) a "read" endpoint can carry a lazy create-once WRITE that only contends under load, so wall-clock
-measurement alone (iters 11-17) could not attribute it — one iteration of cheap per-request phase timing did
-what four of narrowing could not; (b) pure 6× concurrent reads did NOT reproduce the breach (0/966), because
-the writer-lock contention only bites when a concurrent INGEST holds the same lock — so a load test that omits
-the ingest overlay will falsely read "budget holds."
-**Applies to:** any iter touching `apps/backend/app/api/backtest.py` / `mcp/tools.py` serving path or the
-`resolved_forward_aggregate_evidence` resolver; more generally, any "read" endpoint that lazily
-creates-once-on-first-view — instrument phases and test under a concurrent-ingest overlay, not pure reads.
-
-## iter-19 — 2026-07-24T16:10:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** "THE one shared latency blocker" framing was incomplete: fixing the create-once forward_returns INSERT on `/backtest` (backfill_forward_returns_ms, 877->13.9ms) left a SEPARATE cold-recompute subsystem on the SAME page (`ensure_loop_ms`, historical first-view, 9.6-54s no-affordance skeleton) untouched — same page, same user-visible latency class, different code path. A same-symptom latency/UX gap can hide in a different subsystem than the one you instrumented and fixed; a per-phase timing breakdown that only covers the phase you suspected will not surface it — the browser first-view walk (UT-04) did.
-**Applies to:** any iter closing a "single root-cause" latency/perf journey on a page that has more than one on-load compute path — verify the OTHER first-touch paths (cold historical as-of, empty-store, first-of-day) with a live browser walk, not just the instrumented phase.
-
-## iter-20 — 2026-07-24T19:30:00Z
-
 **Verdict:** STALLED
 **Lesson:** Moving a synchronous request-path compute to an in-process BACKGROUND thread eliminates the request-path BLOCK (9.6-54s -> 0.082s) but does NOT eliminate latency impact — the CPU-bound compute now contends for the GIL, transiently pushing OTHER concurrent traffic (and `/api/health`) over budget for the bounded compute window (3.0-6.3s `/backtest`, 1.60s health here). "Off the request thread" is not "no latency cost"; measure the CONCURRENT-traffic budget during the background window, not just the triggering request. Meta-lesson: an iteration can be a complete, correct success at its stated target yet move NO journey to passing — when the agent-tractable chain is exhausted and the journey stays blocked on owner-gated proofs + a spec-rejected-to-fix residual, STALLED is the honest verdict even after real progress (do not reflexively CONTINUE just because work landed).
 **Applies to:** any iter that moves a heavy compute to an in-process thread/daemon (verify concurrent-window budgets, not just the trigger); any evaluator facing "target fully achieved but no journey crossed" (weigh C.2 human-owned-blocker before defaulting to CONTINUE).
+
+## iter-21 — 2026-07-25T03:25:00Z
+
+**Verdict:** STALLED
+**Lesson:** A journey's acceptance state can be structurally UNPHOTOGRAPHABLE by the default capture:
+`/backtest`'s `RefreshingEvidenceBanner` renders at the page BOTTOM (`page.tsx:241-274`, after
+AsOfScanSummary/Scorecard/ReturnAttribution/LeadershipLists), so every viewport screenshot of the
+`ready -> refreshing -> ready` cycle looked identical — `UT-J-08-01` and `-04` came back byte-identical to each
+other (md5 `67e7793a…`) and to iter-17's `TC-07-backtest-page.png` and iter-20's
+`TC-12-historical-view-loaded.png`. Two takeaways: (a) browser-QA must use a full-page or element-scoped
+capture for any state that renders below the fold, and (b) when screenshots are uninformative, this codebase
+offers a *stronger* substitute — the `dataset_version` stamp is literally `(scanner_runs count,
+forward_returns count)`, so cross-referencing the stamp bump, `forward_aggregate_cache.created_at`, and the
+screenshot mtimes proves the serving state machine from the DB without trusting any prose.
+**Applies to:** any iteration verifying `/backtest` evidence states (`refreshing` / `not_yet_computed` /
+`ready`), and any evaluator receiving screenshots whose md5s repeat across iterations — hash the evidence
+directory before crediting a status change.
 ```
 
 ## Halt context
@@ -317,6 +331,6 @@ session.json halt-relevant fields:
 {
   "status": "STALLED",
   "last_verdict": "STALLED",
-  "parked_wip_sha": "4b33ccf7"
+  "parked_wip_sha": "b951de40"
 }
 ```

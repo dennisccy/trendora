@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "journey": "J-08",
+  "name": "Backtest evidence serves from storage only — never a cold recompute on request",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-08", "action": {"type": "goto", "url": "/backtest"}, "expect": {"text": "Forward-tested evidence"}}
+  ]
+}

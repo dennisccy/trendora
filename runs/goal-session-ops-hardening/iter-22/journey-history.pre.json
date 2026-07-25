@@ -1,0 +1,147 @@
+{
+  "journeys": {
+    "J-01": {
+      "id": "J-01",
+      "name": "Backfill honors the requested range and explains zero-work",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-21",
+      "last_passing_iter": "goal-ops-hardening-iter-21",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-21-evidence/J-01-verify.png",
+      "spec_hash": "06b26eaaf82dcdb532465e5c287f1177681a6c8697e4f96cfadddb4fc60b29ad",
+      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-01 PASS (regression-replay-results 3/3; merged ui-test-results agrees, no reconciliation footer). EVALUATOR SPOT-CHECK: opened J-01-verify.png = /data Data Manager landing with live coverage tiles (price history 1996-01-02 -> 2026-07-22, universe 540, candidate universe 122) - confirms recorded status. spec_hash re-confirmed == current goal.md (goal_gate hash-journeys exact match; journeys-changed.md absent -> no goal-edit drift). ZERO product diff this iteration (iter-diff.md = '(no changes)'), so no code path could have moved."
+    },
+    "J-03": {
+      "id": "J-03",
+      "name": "No per-run range cap",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-21",
+      "last_passing_iter": "goal-ops-hardening-iter-21",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-21-evidence/J-03-verify.png",
+      "spec_hash": "5457740bbb0cea982e9b1241f19ca50836ff584bbb960a5a088f7168d820c271",
+      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-03 PASS. spec_hash re-confirmed == current goal.md. ZERO product diff this iteration. NB the iter-16 framework note NO LONGER applies this iteration: J-01/J-03/J-05-verify.png now carry three DISTINCT md5s (10dd23b2 / 0fc13098 / 7e21bde5) - evaluator-hashed - so the three replay frames are independently informative again."
+    },
+    "J-04": {
+      "id": "J-04",
+      "name": "Non-blocking boot with visible status",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-21",
+      "last_passing_iter": "goal-ops-hardening-iter-21",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "runs/goal-ops-hardening-iter-21/operator-tc13-tc14-evidence.md#TC-14",
+      "spec_hash": "4074a9c952a9a143dc543efef3c8d3e0a1e33a848ab250ec90c7c2f568dbcff8",
+      "note": "passing -> passing. last_verified ADVANCES from iter-15 to iter-21 (first advance since iter-15) on TC-14, the owner-authorized disruptive replay iter-20 called a hard GOAL_ACHIEVED precondition: Part A kill -9 -> start-backend.sh restart -> ok/ready in ~25s; Part B wide backfill checkpointed to dates_done 1366/2904, kill -9 mid-run, restart shows status 'interrupted' with the checkpoint preserved. EVALUATOR-CORROBORATED INDEPENDENTLY: re-read data_provider_runs id 164 from the DB (read-only) = status 'interrupted', dates_done 1366/2904, finished_at stamped - not taken from prose. CAVEAT (assumptions.md iter-21): this is operator API/DB evidence, NOT a browser capture - UT-J-04 SKIPPED again (disruptive steps scope-gated OUT by the iter-21 spec). J-04's UI-PRESENTATION steps (3 crashed/unreachable banner, 4 logfile inspection, 6 run-history rendering of the interrupted job) still rest on the iter-14/15 live captures over a byte-unchanged surface (zero product diff). No browser-infra.json token -> REL-14 pending_infra does not fire."
+    },
+    "J-05": {
+      "id": "J-05",
+      "name": "Aggregates are precomputed at ingest, never on the fly",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-21",
+      "last_passing_iter": "goal-ops-hardening-iter-21",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-21-evidence/J-05-verify.png",
+      "spec_hash": "63dd5bf0983454e48338557d0f2b1e5ce9726d7aa247c20174ac9323f637564b",
+      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-05 PASS. EVALUATOR SPOT-CHECK: opened J-05-verify.png = Scanner Run page, 'Immutable snapshot - as of 2025-05-15 / Stored exactly as scanned; never recomputed for today. Scanned 2026-07-22 23:24:51 - provider seed' - the literal serve-from-storage claim, confirms recorded status. Additionally corroborated live this iteration: run 167's aggregates_refreshed list (evaluator-read from data_provider_runs) = [latest_snapshot, coverage, membership_timeline, market_phase, forward_aggregates, research_hot_keys, drawdown_expectations] - aggregates refreshed BY the ingest finalize hook, not on a request."
+    },
+    "J-06": {
+      "id": "J-06",
+      "name": "Pages load only what they need",
+      "status": "partial",
+      "last_verified_iter": "goal-ops-hardening-iter-20",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/perf-budgets.md (section 'Iteration 20', line 3358)",
+      "spec_hash": "a9654dc139add9c161b5d7e59a431f78bd94fdf0f26b15c4fe2c83a1007db045",
+      "note": "partial -> partial, UNCHANGED and deliberately NOT targeted this iteration (iter-21 spec, target-selection Rule 6: do not pick a human-blocked journey). Step 2's 'assert every measurement is within budget' still fails: 3.0-6.3s /backtest (t=10/20/30s) vs the committed <=1.5s budget, during the bounded ~30s historical background-compute window. Not re-measured in iter-21; last_verified deliberately LEFT at iter-20. SOLE blocker is the owner's still-open 3-way budget-treatment fork (accept-and-log an amendment / sanction an off-process redesign / rescope <=1.5s to steady-state reads). TC-13 does NOT close it (it measures the LATEST view under an ingest overlay, a different window - operator's own words: 'separate from and not contradicted by TC-13')."
+    },
+    "J-07": {
+      "id": "J-07",
+      "name": "Heavy aggregates never take the service down",
+      "status": "partial",
+      "last_verified_iter": "goal-ops-hardening-iter-20",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-ops-hardening-iter-14",
+      "last_evidence_path": "reports/perf-budgets.md (section 'Iteration 20', line 3368 'Health-latency during a background compute')",
+      "spec_hash": "1c7c67c3d6cd933820eeac29de54a7442c33e19d3ede0e6353fc044b929bf991",
+      "note": "partial -> partial, UNCHANGED. TITLE promise ('never take the service DOWN') remains MET - no wedge, readiness never drops, all polls HTTP 200. Step 2's budget clause remains UNMET: 4 of 16 /api/health samples over the committed <=0.1s budget (0.64/0.90/1.01/1.60s) during a background compute. EVALUATOR NOTE on why no cheap re-measurement closes this: perf-budgets.md:553 records /api/health at ~98.6% of its <=0.1s budget AT REST (0.090-0.099s across every prior measurement) - there is essentially zero headroom for ANY concurrent load, so no bounded pacing of a background thread can plausibly hold <=0.1s while a heavy compute shares the process. The budget NUMBER is what must move, and that is the owner's call. iter-21 TC-13 adds fresh evidence for step 1's /backtest half ONLY (6 concurrent pollers through a real ingest finalize warm that refreshed forward_aggregates, run 163: 0/4096 breaches, max 429ms - evaluator-retallied from the raw CSV); TC-13 polled NO health samples (CSV fields: epoch,worker,http_code,time_total_s,evidence_status,evidence_asof), so step 2 is untouched. Step 3 (VmPeak margin) was also not re-recorded for the TC-13 pass. last_verified deliberately LEFT at iter-20."
+    },
+    "J-08": {
+      "id": "J-08",
+      "name": "Backtest evidence serves from storage only — never a cold recompute on request",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-21",
+      "last_passing_iter": "goal-ops-hardening-iter-21",
+      "first_seen_iter": "goal-ops-hardening-iter-16",
+      "last_evidence_path": "reports/phase-goal-ops-hardening-iter-21-ui-test-results.md#UT-J-08",
+      "spec_hash": "8a159d44a2eaf98e595f4e358a9db965b3e9e9d46ec8189768802bee577add21",
+      "note": "partial -> PASSING (first pass since first_seen at iter-16). Steps 1-3 executed live this iteration (UT-J-08, real single-day backfill of 2025-05-27 via the /data form) and INDEPENDENTLY RE-DERIVED BY THE EVALUATOR FROM THE DB rather than accepted from prose: the dataset_version stamp is (scanner_runs count, forward_returns count), so run 167's commit of 1 run + 2725 forward returns bumped r1864-f3951805 -> r1865-f3954530 at 01:58:01.125359Z; the first NEW forward_aggregate_cache row for asof 2026-07-22 was not written until 01:59:26.747706Z; UT-J-08-03-refreshing.png was captured 01:59:21.06Z - INSIDE that gap, so the resolver could ONLY have served the prior COMPLETE version with status 'refreshing' (structurally forced, not asserted). Post-warm evidence_generated_at 2026-07-25T02:00:31.176595 == max(created_at) of the new complete 5-horizon r1865 version, to the microsecond; exactly ONE dataset_version exists per asof_key (no mixed-version payload). Step 2/3 budget clause: TC-13, 0/4096 breaches, max 429ms under a concurrent ingest overlay - evaluator-retallied from tc13-backtest-poll.csv (4096 rows, all HTTP 200/ready). Step 4: 25/25 test_forward_testing_serving_split.py green incl. the 4 is_latest-never-computes tests (with the iteration's own disclosed caveat that those monkeypatches no longer trap the post-iter-20 dispatch path). Step 5: iter-17 TC-09 never-warmed empty state carried on a ZERO-diff code path. EVIDENCE CAVEAT (assumptions.md iter-21): this iteration's four screenshots are viewport captures that do NOT depict the refreshing/ready acceptance states - RefreshingEvidenceBanner renders at page BOTTOM (page.tsx:241-274, after AsOfScanSummary/Scorecard/ReturnAttribution/LeadershipLists); UT-J-08-01 and -04 are byte-identical (md5 67e7793a...), and also byte-identical to iter-17 TC-07-backtest-page.png and iter-20 TC-12-historical-view-loaded.png. The banner's RENDERING is carried from iter-20 UT-05-refreshing-banner.png (evaluator opened it: banner visible, correct copy, AG-5 older-complete 2005-07-01 fallback for a 2005-07-15 request, full evidence panel populated below it) on a byte-unchanged build. Historical-window latency residual is tracked under J-06/J-07, not J-08 (iter-20 evaluator's assignment, unchanged)."
+    }
+  },
+  "anti_goal_violations": [
+    {
+      "iter": "goal-ops-hardening-iter-1",
+      "anti_goal": "AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders.",
+      "severity": "critical",
+      "evidence": "iter-1 eval.md",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-2",
+      "anti_goal": "AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders.",
+      "severity": "critical",
+      "evidence": "iter-2 eval.md",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-2",
+      "anti_goal": "AG-3 (dimension): displayed numbers must be correct — a fetch that landed zero rows must not present as a success.",
+      "severity": "minor",
+      "evidence": "iter-2 eval.md",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-7",
+      "anti_goal": "AG-8 — Resilience to data-shape and data-scale change: widening the data basis must never crash an existing page or exhaust a service's memory; unbounded whole-table ORM loads are forbidden on the deep basis.",
+      "severity": "critical",
+      "evidence": "iter-7 eval.md",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-8",
+      "anti_goal": "AG-10 — Host resource ceiling (hardware protection): heavy compute MUST be launched only via the project launch scripts, which must apply the declared host caps.",
+      "severity": "minor",
+      "evidence": "iter-8 eval.md",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-9",
+      "anti_goal": "AG-8 (distinct dimension) — Resilience to data-shape and data-scale change: unbounded whole-table ORM materialization on the forward-aggregate warm path.",
+      "severity": "critical",
+      "evidence": "iter-9 eval.md; resolved by iter-14's bounded/streamed compute_forward_aggregates rewrite",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-10",
+      "anti_goal": "AG-10 — Host resource ceiling: heavy compute (backfills, full-universe rebuilds, measurement passes) MUST be launched only via the project launch scripts.",
+      "severity": "minor",
+      "evidence": "iter-10 eval.md",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-13",
+      "anti_goal": "AG-8 (iter-9 forward_aggregates dimension) — observed-severity escalation: the unbounded load wedged the service on the deep basis.",
+      "severity": "critical",
+      "evidence": "iter-13 eval.md; resolved by iter-14 (61.8% memory margin, 250/250 health 200)",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-17",
+      "anti_goal": "AG-10 — Host resource ceiling: heavy compute MUST be launched only via the project launch scripts (operator process lapse: raw uvicorn on a throwaway port; disclosed and corrected via start-backend.sh, no launch script modified).",
+      "severity": "minor",
+      "evidence": "iter-17 eval.md",
+      "resolved": true
+    }
+  ],
+  "updated_at": "2026-07-25T03:25:00Z"
+}

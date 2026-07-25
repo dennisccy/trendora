@@ -1,40 +1,39 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 21 · **Date:** 2026-07-25 · **Verdict:** STALLED
+**After iteration:** 22 · **Date:** 2026-07-25 · **Verdict:** GOAL_ACHIEVED
 
 ## Journeys
 
-**5 passing (J-01 J-03 J-04 J-05 J-08)** · 2 partial (J-06 J-07) — 7 total. J-08 CROSSED (TC-13 closed its
-one blocker + a live small-single-day ready→refreshing→ready); J-04 freshly re-verified by TC-14.
+7 passing (J-01 J-03 J-04 J-05 J-06 J-07 J-08) · 0 partial · 0 failing · 0 unknown — 7 total.
+J-06 + J-07 crossed this iteration; all 7 verified in iter-22 (replay 3/3 + LLM lane 4/4).
 
 ## Active blockers
 
-- **ONE owner decision, the ONLY thing between here and GOAL_ACHIEVED.** J-06 + J-07 step 2 fail on latency
-  alone during the bounded ~30 s HISTORICAL background-compute window: 3.0–6.3 s `/backtest`
-  (budget ≤1.5 s), 4/16 `/api/health` samples over ≤0.1 s, max 1.60 s (`reports/perf-budgets.md`
-  "Iteration 20", lines 3358 + 3368). Availability is NOT at issue — no wedge; readiness never drops.
-  Owner picks: (1) accept-and-log a dated `perf-budgets.md` amendment for reads during a background-compute
-  window → next evaluator scores J-06/J-07 passing; (2) sanction an off-process/precompute redesign
-  (previously rejected as unbounded); (3) rescope ≤1.5 s/≤0.1 s to steady-state reads.
-- **No agent-side fourth option** (verified, not inherited): `/api/health` already uses ~98.6% of its ≤0.1 s
-  budget AT REST (`perf-budgets.md:553`) — no bounded pacing creates that headroom. Do NOT plan a mitigation
-  iteration; the budget NUMBER must move, and that is owner-owned.
+- **None blocking.** Owner-owned optional: promote backlog card **B-1107** (global cap on concurrent
+  historical background computes) — `docs/improvement-backlog.md` Track 11. At N=5 concurrent BCWs the
+  process reached its `ulimit -v` cap and one compute raised a contained `MemoryError`
+  (`logs/backend.log:76796-76808`); service stayed 32/32 HTTP 200 / `readiness: ready`. Scored a residual
+  risk, not an AG-8 violation (`state/assumptions.md` iter-22 records the reading that would re-open it).
+- Documentation debt (non-blocking, lean-sized): 3 corrections owed in `reports/perf-budgets.md` — see
+  `runs/goal-session-ops-hardening/iter-22/eval.md` § Next-Step item 1.
 
 ## Last 2 verdicts
 
-- iter 21: STALLED — J-08 + J-04 closed on TC-13/TC-14; sole remaining blocker human-owned (C.2 before C.5).
-- iter 20: STALLED — historical ensure-loop moved off-thread (9.6–54 s → 0.082 s) but no journey crossed.
+- iter 22: GOAL_ACHIEVED — owner's BCW budget amendment (+ same-day 90 s revision) in
+  `reports/perf-budgets.md` closed J-06/J-07's only blocker; two independent live BCWs inside the amended
+  ceilings, VmPeak margin 58.2 %, all numbers re-derived by the evaluator from the raw CSV + DB.
+- iter 21: STALLED — J-08/J-04 closed, but J-06/J-07's budget breach was a human-owned decision.
 
 ## Do not redo
 
-- **TC-13 + TC-14 DONE and PASS** (2026-07-25, owner-authorized, DB-corroborated) — never re-run. TC-13:
-  0/4096 breaches, max 429 ms. TC-14: run 164 `interrupted`, `dates_done 1366/2904` survived `kill -9`.
-- **J-08 is PASSING** — all 5 steps evidenced; do not re-open its serving split, resolver, or empty state.
-  `compute_forward_aggregates`, `resolved_forward_aggregate_evidence`, `ensure_historical_forward_
-  aggregates_dispatched` byte-unchanged, ONE producer/resolver. Out of bounds: `main.py`, `health.py`,
-  `readiness.py`, `warmup.py`, `scripts/*`; frontend evidence-state copy live-verified.
-- Do NOT remove the `forward_aggregates_ingest_cached` imports (`backtest.py:75`, `mcp/tools.py:38`) — live
-  `monkeypatch.setattr(raising=True)` targets for 4 tests; retarget those first.
-- REJECTED, no re-propose without owner sanction: precompute every historical date (unbounded); remove
-  historical lazy create-once (time-machine regression); off-process contention fix.
-- `/backtest` banner is BELOW the fold — full-page capture. Heavy passes via `start-backend.sh` (AG-10).
+- **The budget amendment is settled owner policy** (`reports/perf-budgets.md` § "OWNER BUDGET AMENDMENT" +
+  "Revision 1"): never edit, re-litigate, or "fix" the transient BCW contention in code.
+- **TC-13 (concurrent-ingest overlay) and TC-14 (disruptive J-04 kill/restart)** are DONE and PASS, dated
+  2026-07-25 — evidence in `runs/goal-ops-hardening-iter-21/` + `perf-budgets.md`; never re-run.
+- `compute_forward_aggregates`, `resolved_forward_aggregate_evidence`,
+  `ensure_historical_forward_aggregates_dispatched`, J-08's serving split/empty state — byte-unchanged and
+  verified; do not reopen.
+- Retarget `test_forward_testing_serving_split.py`'s four `is_latest` monkeypatches BEFORE anyone removes the
+  imports at `backtest.py:75` / `mcp/tools.py:38` — they are load-bearing `raising=True` targets.
+- `/backtest` evidence-state captures must be full-page or element-scoped (banner renders below the fold);
+  iter-22's three J-08 captures already satisfy this.

@@ -180,3 +180,42 @@ record and eval.md both state plainly that this is API/DB evidence, and that J-0
 captures over a byte-unchanged surface. A human who requires fresh browser evidence for every
 required-still-passing journey would leave `last_verified` at iter-15, or score J-04 `unknown`.
 **Reversible:** yes
+
+## iter-22 — goal-evaluator
+
+**Ambiguity:** `docs/goal.md` J-06's Acceptance declares that budgets live only in `reports/perf-budgets.md`,
+but says nothing about when that file may be amended. The owner's BCW amendment (ceilings 8.0 s / 2.0 s) predates
+this iteration, yet its window-duration bound was raised 60 s -> 90 s ("Revision 1", same day) AFTER this
+iteration's fresh measurement recorded a 68.79 s window and the developer honestly reported it as a breach — the
+shape of goalpost-moving. Under the un-amended steady-state budget, 4 of the 29 samples breach <=1.5 s, so
+J-06/J-07 pass only if the amended table (including Revision 1) is the binding contract.
+**We chose:** treated the amendment INCLUDING Revision 1 as the owner's committed contract and scored J-06/J-07
+`passing`. Basis checked on the merits, not asserted: the revision's diff touches ONLY the window-duration bound
+(three occurrences) plus its own dated narrative — no ceiling, no steady-state budget, no ingest-overlay carve-out,
+and no "what does NOT relax" clause was weakened; the superseded number is preserved as dated history; and the
+structural rationale is independently corroborated by a SECOND, differently-triggered BCW the same day whose DB
+commit timestamps show the same ~14 s/horizon cadence and a ~69.8 s window, confirming that iter-20's "~30 s"
+figure behind the original 60 s bound was unrepresentative. iter-21's own next-step named this exact act
+("accept-and-log a dated perf-budgets.md amendment") as the owner's to make. A human who treats any
+post-measurement bound revision as illegitimate would keep J-06/J-07 `partial` and require the owner to
+re-confirm 90 s knowing that BOTH windows measured that day exceed 60 s.
+**Reversible:** yes
+
+## iter-22 — goal-evaluator
+
+**Ambiguity:** AG-8 forbids "exhaust[ing] a service's memory", and J-06 step 2 says "assert EVERY measurement is
+within budget". The developer's accidental 5-concurrent-BCW probe (a reachable UI pattern: viewing 5 uncomputed
+historical as-of dates) drove `VmPeak` to 32 kB under the `ulimit -v` cap, produced a real `MemoryError`
+(`logs/backend.log:76796-76808`), and recorded `/backtest` reads up to 10.096 s — above the 8.0 s BCW ceiling.
+goal.md does not say whether a multi-BCW scenario is inside any journey's scope, and the owner's amendment says
+it covers "exactly one BCW".
+**We chose:** scored those samples as OUT of contract rather than as a J-06 budget breach, and scored the
+`MemoryError` as NOT an AG-8 violation — because AG-8 targets data-basis widening plus unbounded whole-table
+loads with a crash/wedge outcome, the failure here was contained and honest exactly as AG-8's own degradation
+clause and J-07 step 4's isolation convention require (non-fatal logged abort, 32/32 polls HTTP 200 with truthful
+readiness over 179 s, no blank error page, no wedge, no restart requirement), zero product code changed this
+iteration, and the owner had already reviewed this episode and chose to backlog it (card B-1107). The finding is
+recorded prominently in eval.md's Halt Justification instead of being buried. A human who reads AG-8's "exhaust
+a service's memory" literally would score this a critical anti-goal violation, veto GOAL_ACHIEVED, and promote
+B-1107 into a blocking iteration (a bounded fix: a global dispatch semaphore).
+**Reversible:** yes

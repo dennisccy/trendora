@@ -1,0 +1,29 @@
+{
+  "phase": "goal-ops-hardening-iter-22",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-07-25T07:03:53.619694Z",
+  "started_at": "2026-07-25T07:03:53.619694Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-22-dev.md",
+    "runs/goal-ops-hardening-iter-22/bcw-measure.csv",
+    "runs/goal-ops-hardening-iter-22/drain-monitor.csv",
+    "runs/goal-ops-hardening-iter-22/drain-status.log"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "browser_checks_note": "Zero-code iteration per spec. J-06/J-07 have no dedicated UI flow this iteration -- their canonical evidence artifact is reports/perf-budgets.md, not a browser journey. Required-still-passing J-01/J-03/J-05/J-08 golden-replay + J-04 LLM browser-qa lane are the reviewer/browser-qa pipeline stage's own tooling, not developer scope for a zero-diff iteration.",
+  "notes": [
+    "Zero product source files changed -- confirmed via git status/git diff on apps/backend and apps/frontend, both empty at completion.",
+    "Independently re-verified (read-only, TC-1) the OWNER BUDGET AMENDMENT's citation of iter-20's numbers against the original Iteration 20 section: confirmed accurate, no discrepancy (6.32/3.40/3.08s backtest, max 1.60s health, ~30s window, all within the amended 8.0s/2.0s/60s ceilings).",
+    "Ran ONE fresh iter-22-dated BCW re-trigger (GET /api/backtest?as_of=2026-07-21, a plain read, no backfill fallback needed) and polled both endpoints ~1/s for 60s: TC-2/TC-3/TC-5/TC-14 all PASS (trigger 87.9ms, max sample latency 7.119s backtest / 0.253s health, 0 breaches of the amended ceilings, 28/28 HTTP 200, VmPeak flat at 2,631,612kB = 58.2% margin under the 6144MB cap, served evidence byte-identical to stored cache rows). TC-4 (window <=60s) FAILED: precise cross-timestamp measurement (server backtest_timing log + forward_aggregate_cache.created_at) shows the window actually took 68.79s, 8.79s/14.6% over the amended 60s bound. Reported plainly, not rounded away, per the spec's own iter-20-meta-lesson instruction.",
+    "Honest disclosure: an earlier discovery-phase probing mistake (checking 5 candidate dates in a loop, not realizing each independently dispatches a background compute since single-flight is per-key not global) produced an incidental 5-concurrent-BCW episode, monitored for 180s+ (no crash, no wedge, but VmPeak plateaued within 32kB of the exact ulimit -v cap). This was NOT used as the official citation -- resolved via a graceful SIGTERM + scripts/start-backend.sh restart (measurement hygiene, explicitly NOT a kill-9/TC-13/TC-14 re-run) to obtain a clean single-BCW environment for the official measurement. Full account in the dev handoff's 'Investigation' section and reports/perf-budgets.md's 'Incidental finding' subsection.",
+    "Ran tests/test_forward_testing_serving_split.py (host-guard-confined) as a live regression sanity check adjacent to this iteration's live exercise of the backtest route: 25 passed, 0 failed, 3.55s -- matches iter-20/iter-21's own count, no drift.",
+    "AG-9/AG-10 verified: every request was a plain GET or read-only DB query (no ingest job submitted); the backend serving the official measurement (PID 807942, post-restart) was launched via scripts/start-backend.sh only, host-guard caps re-verified live via /proc (affinity 0-3,8-11, ulimit -v 6144MB, MALLOC_ARENA_MAX=2, OMP/OPENBLAS=4).",
+    "Did not attempt any technical mitigation for the transient contention or the TC-4 window breach -- out of scope per the spec; the discrepancy is recorded for the evaluator/next-decomposer to weigh."
+  ],
+  "next_action": "review"
+}

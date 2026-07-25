@@ -956,3 +956,61 @@ element-scoped browser captures for /backtest's evidence states; J-07 step 3 VmP
 demo.sh --session-live walkthrough (owner); test_api_backtest.py TC-11 + test_data_manager.py off-box.
 Framework note: iter-20's TC-12-historical-view-loaded.png is mislabeled (it shows the LATEST view) — not
 load-bearing for any current status.
+
+## Iteration 22 — goal-ops-hardening-iter-22
+
+**Date:** 2026-07-25T08:55:00Z
+**Verdict:** GOAL_ACHIEVED
+**Depth dispatched:** lean
+**Journey deltas:**
+- **Newly passing: J-06 and J-07** (`partial` -> `passing`; J-06 partial since first_seen at iter-0, J-07 since
+  iter-14). The sole blocker both carried since iter-11 — transient background-compute-window (BCW) latency vs
+  the steady-state <=1.5s/<=0.1s budgets — was resolved by the OWNER through the mechanism goal.md J-06's own
+  Acceptance designates: `reports/perf-budgets.md` § "OWNER BUDGET AMENDMENT" (present in the pre-iteration
+  snapshot 583e3188) + its same-day "Revision 1" (window bound 60s -> 90s).
+- Re-verified passing with FRESH evidence: J-01, J-03, J-05 (deterministic golden replay 3/3 PASS; evaluator
+  spot-checked J-01-verify.png = /data landing + coverage tiles), **J-04** (`last_verified` advances iter-21 ->
+  iter-22 on the first live browser capture of its non-disruptive steps since iter-15), **J-08** (`passing` ->
+  `passing`, now with the three FULL-PAGE captures iter-21 said were owed).
+- Newly failing: none. Regressed (passing->failing): none. Unknown: none.
+- Anti-goal violations: **NONE.** scan-report CLEAN; iter-diff = 1 markdown file (backlog card B-1107); my own
+  `git diff` vs snapshot = 3 markdown files + 3 harness-bookkeeping, ZERO under apps/. coherence COHERENCE-PASS;
+  all 9 historical records stay resolved:true (0 unresolved). AG-9 evaluator-verified in the DB (runs 162-172 all
+  provider "seed"). AG-10 verified live (start-backend.sh launcher banner in the log at 06:52:09Z, /proc caps on
+  PID 807942, graceful SIGTERM not kill -9). All 7 spec_hashes match goal_gate hash-journeys; no goal-edit drift.
+
+**Reasoning:** I re-derived every load-bearing number rather than inherit it. Re-tallied `bcw-measure.csv`
+(29 rows: 29/29 HTTP 200, /backtest max 7.1191s <= the amended 8.0s BCW ceiling, /api/health max 0.2530s <= 2.0s,
+readiness `ready` throughout, VmPeak flat 2,631,612 kB = 58.2% margin — J-07 step 3 closed); re-queried the DB
+and confirmed the window from the source of truth (five `forward_aggregate_cache` commits for
+(2026-07-21, r1865-f3954530) at 06:53:36.523790 -> 06:54:32.266617, 13.7-14.3s apart, trigger 06:53:23.474051 =>
+68.79s <= 90s); cross-checked a DISPLAYED number (on-screen "Snapshots contributing to 2026-07-20: 1863" ==
+DB COUNT(scanner_runs <= 2026-07-20)); and opened five screenshots including both full-page /backtest states.
+Rejected REGRESSION (C.1): nothing passing->failing, no unresolved critical anti-goal. Rejected STALLED (C.2):
+the human-owned blocker that drove the iter-20/21 halts is DONE — the owner's amendment is committed, dated and
+scoped, and its ceilings/no-relax clauses predate this iteration (I diffed it: Revision 1 touches ONLY the
+window-duration bound). Rejected ESCALATE (C.4): review PASS, no fail-open, no journey failed twice. Rejected
+CONTINUE (C.5): the only remaining work I can identify is documentation correction plus owner-owned items —
+manufacturing an iteration for that would be the "vague criteria -> infinite loop" anti-pattern. THREE THINGS I
+STATE PLAINLY RATHER THAN ROUND AWAY: (1) the pass DEPENDS on the amendment incl. Revision 1 — 4 of 29 samples
+breach the un-amended <=1.5s — but Revision 1's structural rationale is independently corroborated (the day's
+SECOND, browser-qa-triggered BCW shows the same ~14s/horizon cadence); (2) the browser-qa's "28.06s window" is
+its POLLER's elapsed time, not the window — the DB shows that window's horizons committing 07:31:59.453 ->
+07:32:56.164, so the real window was ~69.8s (inside 90s, NOT inside the superseded 60s); (3) the developer's
+self-inflicted 5-way concurrent probe produced a REAL MemoryError (logs/backend.log:76796-76808) that the dev
+handoff and perf-budgets § "Incidental finding" both deny ("no exception/traceback logged") — the product
+handled it exactly as J-07 step 4 requires (honest non-fatal abort, 32/32 polls 200/ready over 179s, no wedge,
+no restart requirement), so it strengthens J-07 rather than violating AG-8, but the artifact must be corrected.
+
+**Next-step recommendation:** HALT — goal achieved (first key; the deterministic gates + second fresh-context
+confirm are next). Follow-ups, none blocking: (1) correct three inaccuracies in `reports/perf-budgets.md` —
+the false "no exception/traceback logged", the unreported 10.096s /backtest max during the 5-way episode, and
+the browser-qa "28.06s window" (real: ~69.8s); (2) OWNER: promote backlog card B-1107 (global dispatch cap) if
+AG-8's "exhaust a service's memory" is read literally — that is the ONE item that would re-open the goal, and
+the fix is bounded; (3) carried non-blocking: fresh `demo.sh ops-hardening --session-live` walkthrough (J-06/J-07's
+walkthrough bullet still rests on the iter-14 run), retarget `test_forward_testing_serving_split.py`'s four
+`is_latest` monkeypatches BEFORE removing the imports at backtest.py:75 / mcp/tools.py:38, run
+`test_api_backtest.py` TC-11 + `test_data_manager.py` heavy fixtures off the constrained box; (4) framework note:
+the browser-qa report cites `runs/goal-ops-hardening-iter-22/operator-tc13-tc14-evidence.md`, which does not
+exist — the file is under `runs/goal-ops-hardening-iter-21/`. If the loop re-opens, LEAN suffices (all
+identified work is zero-product-diff).
