@@ -85,6 +85,66 @@
       "section": "highlights",
       "action": { "type": "click", "target": { "text": "Job progress" } },
       "expect": { "text": "forward aggregates" }
+    },
+    {
+      "n": 8,
+      "title": "Every page is checked against a committed budget",
+      "narration": "Trendora doesn't just feel fast — every page's loading time is measured and checked against a budget committed in the project's own performance-budgets report, the same report that backs the backend's five-second boot promise.",
+      "point_out": "This stock detail page — scores, risk detail, and all — loads well inside its own committed budget.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/stocks/AAPL" },
+      "expect": { "text": "Leadership" }
+    },
+    {
+      "n": 9,
+      "title": "Heavy number-crunching never slows down the rest of the app",
+      "narration": "When Trendora computes a big batch of forward-looking evidence in the background, the rest of the app keeps answering normally the whole time — measured, not just claimed.",
+      "point_out": "Across a measured 68.79 s background computation window, Backtest's slowest reply was 7.1191 s and the health check's slowest was 0.2530 s — both inside budget — while memory peaked with 58.2 % headroom still free.",
+      "journey": "J-07",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/backtest" },
+      "expect": { "text": "expanding window" }
+    },
+    {
+      "n": 10,
+      "title": "Backtest evidence, served instantly from storage",
+      "narration": "At the latest date, Backtest doesn't calculate anything on the spot — it simply displays evidence that was already computed and stored ahead of time.",
+      "point_out": "The full forward-tested evidence panel renders immediately, with no refreshing banner and no waiting.",
+      "journey": "J-08",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/backtest" },
+      "expect": { "text": "expanding window" }
+    },
+    {
+      "n": 11,
+      "title": "An older date, served honestly while a new one warms up",
+      "narration": "Ask Backtest for a date whose own evidence hasn't finished computing yet, and it never leaves you staring at a blank spinner — it instantly shows the last complete version it has, clearly labeled, while the new one finishes in the background.",
+      "point_out": "A visible \"Refreshing — showing the last complete evidence\" banner disclosed exactly which older date was being shown and when it was generated, while the page still rendered full evidence in well under a second — never a blank wait.",
+      "journey": "J-08",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/backtest?asof=2026-07-20" },
+      "expect": { "text": "expanding window" }
+    },
+    {
+      "n": 12,
+      "title": "The banner disappears the moment the new evidence is ready",
+      "narration": "Once the background computation finishes, reloading the same date now shows its own freshly stored evidence — banner gone, nothing recomputed on the spot, just a normal read from storage.",
+      "point_out": "The refreshing banner is gone and this date's own forward-tested evidence now renders directly, exactly like the always-ready latest view.",
+      "journey": "J-08",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/backtest?asof=2026-07-20" },
+      "expect": { "text": "expanding window" }
     }
   ]
 }

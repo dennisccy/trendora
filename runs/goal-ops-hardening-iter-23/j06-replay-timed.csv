@@ -1,0 +1,12 @@
+n,url,timeout_ms_budget,elapsed_ms,verdict,detail
+1,/,8000,1349.33,PASS,
+2,/stocks,8000,2098.6,PASS,
+3,/stocks/AAPL,8000,1783.58,PASS,
+4,/sectors,8000,1071.85,PASS,
+5,/themes,8000,1021.62,PASS,
+6,/data,8000,1273.38,PASS,
+7,/evidence,8000,1096.49,PASS,
+8,/scanner-runs,8000,1573.93,PASS,
+9,/backtest,8000,1359.52,PASS,
+10,/watchlist,8000,1018.42,PASS,
+11,/research/event-study,8000,1007.11,PASS,

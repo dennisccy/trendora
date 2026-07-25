@@ -4,78 +4,78 @@
       "id": "J-01",
       "name": "Backfill honors the requested range and explains zero-work",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-22",
-      "last_passing_iter": "goal-ops-hardening-iter-22",
+      "last_verified_iter": "goal-ops-hardening-iter-23",
+      "last_passing_iter": "goal-ops-hardening-iter-23",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-22-evidence/J-01-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-23-evidence/J-01-verify.png",
       "spec_hash": "06b26eaaf82dcdb532465e5c287f1177681a6c8697e4f96cfadddb4fc60b29ad",
-      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-01 PASS (regression-replay-results 3/3; merged ui-test-results agrees, no reconciliation footer). EVALUATOR SPOT-CHECK: opened J-01-verify.png = /data Data Manager landing (Ready badge, provider seed, price history 1996-01-02 -> 2026-07-22, universe 540, candidate universe 122). Independently corroborated in the DB: the replay submitted data_provider_runs 170/171/172 at 07:16-07:17 UTC, all provider 'seed', status 'ok', over already-snapshotted dates (zero-work outcome, dataset_version stamp unchanged at r1865-f3954530). ZERO product diff this iteration (only 3 markdown files changed). NB the J-01 frame is the same deterministic /data page-top landing frame as previous runs - the replay's PASS rests on its scripted DOM expects, not on the frame's content."
+      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-01 PASS (regression-replay-results 4/4; merged ui-test-results agrees, no reconciliation footer). EVALUATOR SPOT-CHECK: opened J-01-verify.png = /data Data Manager landing (Ready badge, provider seed, price history 1996-01-02 -> 2026-07-22, universe 540, candidate universe 122). ZERO product diff this iteration (git diff HEAD -- apps/ empty, tracked and untracked), so no serving path could have moved. FRAMEWORK NOTE (recurrence of the iter-16 observation): J-01/J-03/J-04-verify.png are BYTE-IDENTICAL to each other (md5 7d8f6681) and to iter-22's J-01-verify.png, because all three scripts END on /data (J-01 step 6, J-03 step 5, J-04 step 2) and the frame is the deterministic /data page-top. The gate is the scripted DOM expects, which ARE distinct per journey (evaluator read the scripts: J-01 expects '2 non-trading' + 'no new snapshots'; J-03 '412 calendar days'; J-04 'provider: seed' + 'Run history')."
     },
     "J-03": {
       "id": "J-03",
       "name": "No per-run range cap",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-22",
-      "last_passing_iter": "goal-ops-hardening-iter-22",
+      "last_verified_iter": "goal-ops-hardening-iter-23",
+      "last_passing_iter": "goal-ops-hardening-iter-23",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-22-evidence/J-03-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-23-evidence/J-03-verify.png",
       "spec_hash": "5457740bbb0cea982e9b1241f19ca50836ff584bbb960a5a088f7168d820c271",
-      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-03 PASS. spec_hash re-confirmed == current goal.md (goal_gate hash-journeys exact match; journeys-changed.md absent). All 8 iter-22 evidence frames carry DISTINCT md5s and none matches an iter-21 frame (evaluator-hashed) - fresh captures, no stale-copy concern. ZERO product diff."
+      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-03 PASS; its own expect ('412 calendar days') is distinct from J-01's and J-04's, so the shared page-top frame does not weaken the assertion. spec_hash re-confirmed == current goal.md (goal_gate hash-journeys exact match; journeys-changed.md absent). ZERO product diff."
     },
     "J-04": {
       "id": "J-04",
       "name": "Non-blocking boot with visible status",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-22",
-      "last_passing_iter": "goal-ops-hardening-iter-22",
+      "last_verified_iter": "goal-ops-hardening-iter-23",
+      "last_passing_iter": "goal-ops-hardening-iter-23",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-22-evidence/J-04-no-crash-banner.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-23-evidence/J-04-verify.png",
       "spec_hash": "4074a9c952a9a143dc543efef3c8d3e0a1e33a848ab250ec90c7c2f568dbcff8",
-      "note": "passing -> passing. last_verified advances iter-21 -> iter-22 on FRESH LIVE BROWSER evidence for the non-disruptive steps (first browser capture for J-04 since iter-15): UT-J-04 PASS. EVALUATOR OPENED both captures - J-04-no-crash-banner.png (Dashboard fully rendered, readiness badge 'Ready', 'provider: seed', seed 2026-07-22 / 591 symbols, no 'Backend unavailable' anywhere) and J-04-data-page-top.png (Data Manager coverage tiles; on-screen 'snapshot dates 1865' == DB scanner_runs count 1865). Logfile inspection: evaluator independently read logs/backend.log - clean 'Shutting down' / 'Application shutdown complete' for PID 766624 followed by the start-backend.sh launcher banner at 06:52:09Z and 'Started server process [807942]' -> 'Application startup complete' (graceful SIGTERM restart, not a crash). The DISRUPTIVE kill/restart + checkpoint-survival steps were scope-gated out again this pass and are carried on iter-21's owner-authorized TC-14 (data_provider_runs id 164: status 'interrupted', dates_done 1366/2904 - evaluator-verified from the DB in iter-21). Run-history rendering is described by browser-qa (9 persisted runs with per-date exclusion counts) but sits BELOW the fold of the -data-page-top capture; corroborated by the DB rows 162-172 and by J-01's replay. No browser-infra.json token -> REL-14 pending_infra does not fire."
+      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-04 PASS (expects 'provider: seed' on / and 'Run history' on /data). A REAL non-blocking-boot exercise happened live this iteration outside the replay: the developer found the backend DOWN at dispatch start (no crash traceback in logs/backend.log - an abrupt stop), restarted it via scripts/start-backend.sh ONLY, and polled to readiness 'ready' / warmup 89/89; every subsequent capture's top bar reads 'Ready | provider: seed | seed 2026-07-22 | 591 symbols' (evaluator opened four of them). The DISRUPTIVE kill/restart + checkpoint-survival steps remain carried on iter-21's owner-authorized TC-14 (data_provider_runs id 164: status 'interrupted', dates_done 1366/2904, evaluator-verified in the DB at iter-21) and iter-22's live browser captures; scope-gated out again this pass. No browser-infra.json token -> REL-14 pending_infra does not fire."
     },
     "J-05": {
       "id": "J-05",
       "name": "Aggregates are precomputed at ingest, never on the fly",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-22",
-      "last_passing_iter": "goal-ops-hardening-iter-22",
+      "last_verified_iter": "goal-ops-hardening-iter-23",
+      "last_passing_iter": "goal-ops-hardening-iter-23",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-22-evidence/J-05-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-23-evidence/J-05-verify.png",
       "spec_hash": "63dd5bf0983454e48338557d0f2b1e5ce9726d7aa247c20174ac9323f637564b",
-      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-05 PASS. ZERO product diff, so no compute path could have moved; compute_forward_aggregates / resolved_forward_aggregate_evidence / ensure_historical_forward_aggregates_dispatched are byte-unchanged since iter-20 (coherence-auditor confirmed, evaluator confirmed via git diff vs snapshot 583e3188 = 3 markdown files only)."
+      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-05 PASS. EVALUATOR SPOT-CHECK: opened J-05-verify.png = /scanner-runs/1436 'Immutable snapshot - as of 2025-05-15 / Stored exactly as scanned; never recomputed for today. Scanned 2026-07-22 23:24:51 - provider seed - benchmark SPY', Market Regime as of 2025-05-15 = 70.76 - a stored read, not a recompute. ZERO product diff, so compute_forward_aggregates / resolved_forward_aggregate_evidence / ensure_historical_forward_aggregates_dispatched stay byte-unchanged since iter-20."
     },
     "J-06": {
       "id": "J-06",
       "name": "Pages load only what they need",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-22",
-      "last_passing_iter": "goal-ops-hardening-iter-22",
+      "last_verified_iter": "goal-ops-hardening-iter-23",
+      "last_passing_iter": "goal-ops-hardening-iter-23",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/perf-budgets.md (section 'Iteration 22', TC-2/TC-3) + runs/goal-ops-hardening-iter-22/bcw-measure.csv",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-23-evidence/J-06-backtest-fullpage.png",
       "spec_hash": "a9654dc139add9c161b5d7e59a431f78bd94fdf0f26b15c4fe2c83a1007db045",
-      "note": "partial -> PASSING (first pass; partial since first_seen). The SOLE blocker since iter-11 - the transient background-compute-window (BCW) latency against the steady-state <=1.5s / <=0.1s budgets - was resolved by the OWNER via reports/perf-budgets.md 'OWNER BUDGET AMENDMENT' (present in the pre-iteration snapshot 583e3188) plus its same-day 'Revision 1' (window bound 60s -> 90s). goal.md J-06's own Acceptance declares that budgets live ONLY in that file, so the amendment IS the contract. EVALUATOR RE-DERIVED THE NUMBERS: re-tallied bcw-measure.csv (29 rows) = 29/29 HTTP 200, /backtest max 7.1191s (<= 8.0s BCW ceiling), /api/health max 0.2530s (<= 2.0s), evidence_status honest 'refreshing' throughout, trigger request 87.9ms; and re-queried the DB - the five forward_aggregate_cache rows for (2026-07-21, r1865-f3954530) commit 06:53:36.523790 -> 06:54:32.266617 (13.7-14.3s apart), trigger 06:53:23.474051 => window 68.79s, inside the amended 90s. UT-J-06 PASS: all 11 J-06 pages rendered real content, no blank/frozen/error frame (evaluator opened the home and /data captures). Steps 1/3 (11-page TTI+on-load sweep, code-level no-unbounded-scan audit) rest on the recorded sweeps of iters 6/11/12/14 over a byte-unchanged serving path - the established reading of prior evaluators, who held J-06 partial on the budget clause ALONE. CAVEATS RECORDED (assumptions.md iter-22): (a) under the un-amended steady-state budget 4 of 29 samples breach <=1.5s, so this pass depends on the owner's amendment incl. Revision 1; (b) the self-inflicted 5-concurrent-BCW episode reached 10.096s /backtest (drain-monitor.csv) - outside every budget row and every journey step's scenario, scored as out-of-contract, not as within budget; (c) the walkthrough acceptance bullet still rests on the iter-14 demo.sh --session-live run (owner-owned, settled since iter-12)."
+      "note": "passing -> passing. TWO GAPS THE ITER-22 CONFIRM EVALUATOR CITED ARE NOW CLOSED, both evaluator-verified. (1) WALKTHROUGH: reports/goal-session-ops-hardening-demo.json - the file demo.sh --session-live actually reads (evaluator confirmed demo-phase.sh:78 sets DEMO_JSON_OUT to reports/goal-session-<sid>-demo.json, and demo_runner.py:1076/1094 treats session-live as a live browser mode) - now carries step n=8 for J-06 with new:true / verified:true, where iter-22 had ZERO. Diff is purely additive (60 insertions, 0 deletions; existing 7 steps byte-unchanged). (2) GOLDEN-SCRIPT INTEGRITY: J-06.json's undisclosed default_timeout_ms 8000->18000 loosening is REVERTED to 8000 (git diff HEAD = that one line). EVALUATOR INDEPENDENTLY CORROBORATED the revert's basis rather than accepting the handoff: queried forward_aggregate_cache directly - the only BCW anywhere near the edit is the 2026-07-20 window committing 07:31:59.453 -> 07:32:56.164 UTC, and NO row exists between 07:32:56 and 09:27:55, so nothing overlapped; and logs/backend.log:77525/77533 show J-06's own /backtest step at 07:41:21.653184Z and 07:41:21.948696Z at total_ms=30.64 and 44.65 - zero contention. Replay re-passes at the restored 8000 ms with the slowest step 2098.60 ms = 26% of budget (j06-replay-timed.csv, 11/11 PASS). LLM lane independently drove all 11 pages live: every expect-text present verbatim, incl. the two re-verified values ($304.89 on /stocks/AAPL, 'Setup & Pattern event study'), no blank/frozen/error frame. Budget contract unchanged: the owner's BCW amendment (incl. Revision 1) still carries the pass; evaluator re-derived its maxima from the raw runs/goal-ops-hardening-iter-22/bcw-measure.csv (29 rows: 29/29 HTTP 200, /backtest max 7.1191 s <= 8.0 s, /api/health max 0.2530 s <= 2.0 s, VmPeak flat 2,631,612 kB, readiness 'ready' throughout)."
     },
     "J-07": {
       "id": "J-07",
       "name": "Heavy aggregates never take the service down",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-22",
-      "last_passing_iter": "goal-ops-hardening-iter-22",
+      "last_verified_iter": "goal-ops-hardening-iter-23",
+      "last_passing_iter": "goal-ops-hardening-iter-23",
       "first_seen_iter": "goal-ops-hardening-iter-14",
-      "last_evidence_path": "reports/perf-budgets.md (section 'Iteration 22', TC-3/TC-5) + runs/goal-ops-hardening-iter-22/bcw-measure.csv",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-23-evidence/J-08-refreshing-2026-07-08-viewport.png",
       "spec_hash": "1c7c67c3d6cd933820eeac29de54a7442c33e19d3ede0e6353fc044b929bf991",
-      "note": "partial -> PASSING (first pass since first_seen at iter-14). TITLE promise was always met; the budget clause of step 2 is now met against the OWNER-AMENDED BCW table (<=2.0s /api/health during a BCW): 28/28 health polls HTTP 200 with readiness 'ready', max 0.2530s (evaluator re-tallied bcw-measure.csv). STEP 3 CLOSED THIS ITERATION (carried gap since iter-21): VmPeak flat 2,631,612 kB, margin 3,659,844 kB ~= 3574 MB (58.2% headroom) under the 6144 MB server.memory_cap_mb. SECOND INDEPENDENT BCW by browser-qa on a different date (2026-07-20): 11/11 HTTP 200 both endpoints, worst /backtest 7.551s, worst /api/health 0.411s - evaluator confirmed the window's reality in the DB (5 horizons commit 07:31:59.453 -> 07:32:56.164). STEP 4 (isolation convention) gains its first ORGANIC live evidence, which iter-11's TC-6 explicitly lacked: under the developer's self-inflicted 5-way concurrent probe the process hit its ulimit -v cap and one background compute raised MemoryError (logs/backend.log:76796-76808) and aborted honestly ('non-fatal, will re-dispatch on the next request for this identity') while the SAME process served 32/32 /backtest + 32/32 /api/health HTTP 200 with readiness 'ready' across 179s (drain-monitor.csv, evaluator-tallied) - no wedge, no deadlock, no restart requirement (the restart the developer performed was elective measurement hygiene, a graceful SIGTERM). RESIDUAL RISK RECORDED, NOT SCORED AS A VIOLATION: single-flight is per-(asof_key, dataset_version), so N uncomputed historical views dispatch N computes; at N=5 VmPeak plateaued 32 kB under the cap. Owner-reviewed and backlogged as B-1107; see assumptions.md iter-22 for the AG-8 reading that would re-open it."
+      "note": "passing -> passing. WALKTHROUGH GAP CLOSED: demo manifest step n=9 (new:true/verified:true) narrates the crash-free warm + healthy /api/health sequence; evaluator verified its four cited figures against the RAW source (bcw-measure.csv max bt_latency_s = 7.1191 exactly, max hp_latency_s = 0.253, vmpeak flat 2,631,612 kB, 29/29 HTTP 200 / readiness 'ready') and against perf-budgets.md:3630/3647/3666 - one measurement, not a second. FRESH LIVE CORROBORATION this iteration on a real 26.80 s BCW (asof 2026-07-08 horizons 20 and 60), which the evaluator confirmed in the DB: commits at 09:27:55.910616 and 09:28:08.836658 UTC, exactly matching the QA timeline. Throughout: HTTP 200, readiness 'ready' (visible in the top bar of the capture the evaluator opened), VmPeak flat 4,974,536 kB before AND after = zero growth, 20.9% headroom under the 6144 MB server.memory_cap_mb ulimit -v cap (/proc-verified: Max address space 6442450944, Cpus_allowed_list 0-3,8-11, MALLOC_ARENA_MAX=2, OMP/OPENBLAS=4 - AG-10 intact). SCOPE LIMITS DISCLOSED BY THE QA AGENT AND ACCEPTED: this iteration has NO dense per-second sample series inside its own 26.80 s window (the poller launched after the window closed), and step 4 (induced memory-pressure abort) was not re-triggered - both still rest on iter-22's 29-sample measurement and its organic MemoryError episode (logs/backend.log:76796-76808, 32/32 polls 200/ready over 179 s, no wedge). Product code byte-unchanged since iter-22, so the earlier measurement still binds. Residual risk unchanged: single-flight is per-(asof_key, dataset_version), so N uncomputed historical views dispatch N computes - owner-reviewed, backlogged as B-1107, reading recorded in assumptions.md iter-22."
     },
     "J-08": {
       "id": "J-08",
       "name": "Backtest evidence serves from storage only — never a cold recompute on request",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-22",
-      "last_passing_iter": "goal-ops-hardening-iter-22",
+      "last_verified_iter": "goal-ops-hardening-iter-23",
+      "last_passing_iter": "goal-ops-hardening-iter-23",
       "first_seen_iter": "goal-ops-hardening-iter-16",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-22-evidence/J-08-refreshing-2026-07-20.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-23-evidence/J-08-ready-after-warm-2026-07-08.png",
       "spec_hash": "8a159d44a2eaf98e595f4e358a9db965b3e9e9d46ec8189768802bee577add21",
-      "note": "passing -> passing, now with the FULL-PAGE captures iter-21 said were owed (that iteration's viewport frames could not depict the below-the-fold RefreshingEvidenceBanner). EVALUATOR OPENED BOTH: J-08-refreshing-2026-07-20.png shows the banner ('This date's own evidence is being computed in the background (started by viewing this page)... the last complete version - evidence as of 2026-07-17, generated 2026-07-24 00:44:13 - no partial or fabricated figures are shown in the meantime') ABOVE a fully populated evidence panel labelled 'expanding window <= 2026-07-17' - never a blank/frozen skeleton; J-08-ready-after-warm-2026-07-20.png shows the banner gone and 'expanding window <= 2026-07-20' with 'Snapshots contributing: 1863'. AG-3 CROSS-CHECK BY THE EVALUATOR: DB COUNT(scanner_runs WHERE asof_date <= '2026-07-20') = 1863 (exact match); the refreshing view's 1858 is the stored 2026-07-17 payload as generated on 2026-07-24 (before iter-21's wide backfill added historical dates), honestly labelled with its generation timestamp - a stored read, not a recompute. Trigger request itself returned ~88ms client-side (browser-qa) / 87.9ms with ensure_loop_ms 2.00ms (developer) - no request-path compute. AG-5 preserved: the fallback serves a strictly-OLDER complete version."
+      "note": "passing -> passing. WALKTHROUGH GAP CLOSED: demo steps n=10/11/12 (all new:true/verified:true) narrate baseline-latest-ready -> refreshing -> fresh-serve-after-warm, where iter-22 had ZERO J-08 steps. FRESH FULL CYCLE CAPTURED LIVE this iteration on asof 2026-07-08 (3/5 horizons at the current dataset_version, genuinely incomplete): first load 168.97 ms / 569.95 ms server-side (ensure_loop_ms 2.98 / 2.25 - no request-path compute) served the last COMPLETE version as 'Refreshing - showing the last complete evidence ... evidence as of 2026-07-08, generated 2026-07-24 16:54:54' over a fully populated panel; 26.80 s later the reload shows this date's own evidence with the word 'Refreshing' absent (evaluator grep-confirmed 0 occurrences in the after-warm DOM capture) and opened the full-page screenshot. EVALUATOR RESOLVED AN APPARENT AG-3 DISCREPANCY ON THE MERITS: no forward_aggregate_cache row for asof 2026-07-08 carries created_at 2026-07-24 16:54:54 TODAY, which looks like a fabricated timestamp until you read forward_testing.py:1135-1156 - the iter-16 cutover contract deletes the prior dataset_version's rows for an asof_key at the exact moment the current version becomes complete. The served older-generation payload was therefore real and complete when served, and was legitimately pruned by the 09:28:08 horizon-60 write. That is also positive proof of the 'never mixes versions' Correctness clause and of AG-5 (the fallback is same-key/older-generation, never a newer as-of). Post-warm 20d/60d correctly render NA n=0 - those windows have not elapsed against the seed max 2026-07-22. Steps 4 (call-count instrumentation) and 5 (fresh-install empty state) remain code/fixture-level, carried from iter-16/17/20 on byte-unchanged code."
     }
   },
   "anti_goal_violations": [
@@ -143,5 +143,5 @@
       "resolved": true
     }
   ],
-  "updated_at": "2026-07-25T08:55:00Z"
+  "updated_at": "2026-07-25T11:05:00Z"
 }

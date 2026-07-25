@@ -2,7 +2,7 @@
   "schema_version": 1,
   "journey": "J-06",
   "name": "Pages load only what they need",
-  "default_timeout_ms": 18000,
+  "default_timeout_ms": 8000,
   "steps": [
     {"n": 1, "journey": "J-06", "action": {"type": "goto", "url": "/"}, "expect": {"text": "DEGRADED"}},
     {"n": 2, "journey": "J-06", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "TRV"}},

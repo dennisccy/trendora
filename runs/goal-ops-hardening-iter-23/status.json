@@ -1,0 +1,31 @@
+{
+  "phase": "goal-ops-hardening-iter-23",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-07-25T09:02:31Z",
+  "started_at": "2026-07-25T08:47:15Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "reports/goal-session-ops-hardening-demo.json",
+    "runs/goal-session-ops-hardening/journey-scripts/J-06.json",
+    "docs/handoffs/goal-ops-hardening-iter-23-dev.md",
+    "reports/phase-goal-ops-hardening-iter-23-regression-replay-results.md",
+    "reports/qa/goal-ops-hardening-iter-23-evidence/J-06-verify.png",
+    "runs/goal-ops-hardening-iter-23/j06-replay-timed.py",
+    "runs/goal-ops-hardening-iter-23/j06-replay-timed.csv",
+    "runs/goal-ops-hardening-iter-23/demo-steps-live-check.py"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "browser_checks_note": "Zero-code iteration -- no application test suite applies. Ran the official deterministic replay harness (demo_runner.py --mode verify) against the corrected J-06.json: PASS, 0 failed. A separate throwaway script re-drove the same 11 steps (importing demo_runner.py's own action/expect helpers read-only) to capture per-step elapsed time for TC-8: 11/11 PASS, slowest step 2098.60ms (26% of the 8000ms budget). A second throwaway script live-verified all 4 distinct new demo-JSON goto+expect pairs against the running app: 5/5 OK.",
+  "notes": [
+    "Investigated J-06.json's undisclosed default_timeout_ms 8000->18000 edit (iter-22, 08:41 local, per eval-confirm.md). Cross-referenced logs/backend.log against every forward_aggregate_cache row created 2026-07-25 (28 rows, all accounted for): the only BCW overlapping the iter-22 QA window (08:17-08:44 local) was the browser-qa agent's own UT-J-08 trigger for asof=2026-07-20, which closed at 08:32:56 local -- 8+ minutes before the edit. logs/backend.log shows J-06's own /backtest step responding in 30-45ms at the exact edit minute (07:41:21 UTC = 08:41:21 local), zero contention. No legitimate BCW overlap substantiated -- reverted default_timeout_ms to 8000 per the spec's own instruction for this outcome.",
+    "Re-verified both changed J-06.json assertion values against the live app: /stocks/AAPL '$304.89' (the 50-DMA invalidation level, read via GET /api/stocks/AAPL) and /research/event-study step 11 'Setup & Pattern event study' (read via direct HTML fetch, apps/frontend/app/research/_labs.tsx:3681). Both current and correct -- kept unchanged.",
+    "Ran the corrected J-06.json through demo_runner.py --mode verify: PASS, 0 failed, evidence at reports/qa/goal-ops-hardening-iter-23-evidence/J-06-verify.png. Per-step timing instrument (separate script, harness itself untouched): all 11 steps PASS, slowest step 2 (/stocks) at 2098.60ms of an 8000ms budget.",
+    "Appended 5 new [NEW]-flagged, verified steps (n=8-12) to reports/goal-session-ops-hardening-demo.json for J-06/J-07/J-08, additive-only -- existing 7 steps confirmed byte-identical to committed HEAD. Highlights count capped at exactly 8 (6 existing + 2 new). J-07's step cites reports/perf-budgets.md Iteration 22 figures verbatim (68.79s, 7.1191s, 0.2530s, 58.2%) -- confirmed the '28.06s window' phrasing does not appear anywhere in the file. J-08's 3 steps narrate the version-bump/refreshing/fresh-serve sequence grounded in the exact verified banner copy from apps/frontend/app/backtest/page.tsx.",
+    "Zero product source files changed -- confirmed via git status/git diff on apps/backend and apps/frontend, both empty at completion.",
+    "Backend was found not running at dispatch start (contrary to the coordinator's note); no crash trace in logs/backend.log. Restarted via scripts/start-backend.sh only, confirmed readiness ready + host-guard caps intact before any measurement."
+  ],
+  "next_action": "review"
+}

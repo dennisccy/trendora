@@ -1014,3 +1014,67 @@ walkthrough bullet still rests on the iter-14 run), retarget `test_forward_testi
 the browser-qa report cites `runs/goal-ops-hardening-iter-22/operator-tc13-tc14-evidence.md`, which does not
 exist — the file is under `runs/goal-ops-hardening-iter-21/`. If the loop re-opens, LEAN suffices (all
 identified work is zero-product-diff).
+
+## Iteration 23 — goal-ops-hardening-iter-23
+
+**Date:** 2026-07-25T11:05:00Z
+**Verdict:** GOAL_ACHIEVED
+**Depth dispatched:** lean
+**Journey deltas:**
+- Newly passing: none — all 7 were already `passing`. All 7 RE-VERIFIED with this-iteration evidence, so
+  `last_verified_iter` advances iter-22 -> iter-23 for every journey (J-01/J-03/J-04/J-05 by deterministic
+  replay 4/4; J-06/J-07/J-08 by the LLM lane, 3/3).
+- **Two iter-22 CONFIRM-reject findings CLOSED** (the whole point of this iteration): (a) the session demo
+  manifest `reports/goal-session-ops-hardening-demo.json` — the file `demo.sh --session-live` actually reads
+  (`demo-phase.sh:78`, `demo_runner.py:1076/1094`) — now carries 5 `[NEW]`-flagged, `verified: true` steps for
+  J-06 (n=8), J-07 (n=9) and J-08 (n=10/11/12) where it carried ZERO; the diff is purely additive (60
+  insertions, 0 deletions; existing 7 steps byte-unchanged; 8/8 `highlights` at the cap). (b) `J-06.json`'s
+  undisclosed `default_timeout_ms` 8000->18000 loosening REVERTED to 8000; the replay re-passes with its
+  slowest step at 2098.60 ms = 26 % of budget. Finding (c) (perf-budgets TC-4 self-contradiction) was already
+  fixed by the operator — verified at `perf-budgets.md:3714`.
+- Newly failing: none. Regressed (passing->failing): none. Unknown: none.
+- Anti-goal violations: **NONE.** scan-report CLEAN; iter-diff "(no changes)"; my own `git diff HEAD --
+  apps/` and `git status --porcelain -- apps/` both EMPTY (tracked and untracked); coherence COHERENCE-PASS;
+  all 9 historical records stay `resolved: true` (0 unresolved). All 7 `spec_hash`es match
+  `goal_gate hash-journeys`; no `journeys-changed.md`.
+
+**Reasoning:** I re-derived every load-bearing fact rather than inherit it. (1) The J-06 timeout revert: I
+queried `forward_aggregate_cache` myself — the only BCW near the undisclosed 08:41-local edit is the
+2026-07-20 window committing 07:31:59.453030 -> 07:32:56.164427 UTC, and NO row exists between 07:32:56 and
+09:27:55; `logs/backend.log:77525/77533` then show J-06's own `/backtest` step at 07:41:21.653184Z /
+07:41:21.948696Z at `total_ms=30.64` / `44.65`. There was never a basis for 18000 ms. (2) The J-07 demo
+figures: I re-tallied `bcw-measure.csv` (29 rows, 29/29 HTTP 200, `bt` max **7.1191** exactly, `hp` max
+**0.253**, VmPeak flat 2,631,612 kB, readiness `ready` throughout). (3) This iteration's own BCW is real —
+asof 2026-07-08 horizons 20/60 commit at 09:27:55.910616 and 09:28:08.836658 UTC, matching the QA timeline to
+the microsecond. (4) **An apparent AG-3 discrepancy I resolved on the merits:** the refreshing banner read
+"evidence as of 2026-07-08, generated 2026-07-24 16:54:54" and NO such row exists in the DB today — which
+looks like a fabricated timestamp until you read `forward_testing.py:1135-1156`, where the iter-16 cutover
+contract deletes the prior `dataset_version`'s rows for an `asof_key` the moment the current version becomes
+complete. The served payload was real and complete when served, then legitimately pruned — which is also
+affirmative proof of J-08's "never mixes versions" clause and of AG-5. Rejected REGRESSION (C.1): nothing
+passing->failing, zero `apps/` diff, no unresolved anti-goal; the one script change is a TIGHTENING. Rejected
+STALLED (C.2): no blocker exists — the owner-owned budget decision that drove the iter-20/21 halts is settled
+and committed, and both findings this iteration owned were agent-tractable and are closed. Rejected ESCALATE
+(C.4): review PASS_WITH_NOTES with browser results present (no fail-open), no journey failed twice. Rejected
+CONTINUE (C.5): the only identifiable work is one cosmetic decimal trim, one framework screenshot-capture
+improvement, and owner-optional items — manufacturing an iteration for those is the "vague criteria ->
+infinite loop" anti-pattern. THREE THINGS I STATE PLAINLY: (i) demo step n=9 cites "7.1191 s"/"0.2530 s" vs
+perf-budgets' "7.119 s"/"0.253 s" — the reviewer's MINOR; the spec's OWN background specified those
+4-decimal figures and they are EXACT against `bcw-measure.csv`, so it is a precision nit, not a second
+source; (ii) J-07's evidence this iteration is thinner than iter-22's (no dense per-second series inside its
+own 26.80 s window; step 4 not re-triggered) — accepted because the code is byte-identical and I re-derived
+iter-22's numbers; (iii) during the BCW two auxiliary panels degraded to honest placeholders ("Scan summary
+unavailable…", "Stock data unavailable"), pre-existing product code at `backtest/page.tsx:335-345` and
+exactly AG-8's required shape — first recorded in this session's evidence, not a breach.
+
+**Next-step recommendation:** HALT — goal achieved (first key); deterministic gates + second fresh-context
+CONFIRM run next. Nothing blocking. Non-blocking, LEAN if the loop re-opens: (1) trim n=9's "7.1191 s"/
+"0.2530 s" to 3 decimals; (2) framework — capture replay evidence at the ASSERTING step or element-scoped,
+so `J-01/J-03/J-04-verify.png` stop being one byte-identical image (md5 `7d8f6681`, recurring since iter-16;
+cause verified: all three scripts end on `/data`, and the real gate is their distinct DOM expects);
+(3) OWNER optional — backlog card B-1107 (global dispatch cap), the one item that re-opens the goal if AG-8's
+"exhaust a service's memory" is read literally; (4) carried — retarget
+`test_forward_testing_serving_split.py`'s four `is_latest` monkeypatches BEFORE removing the dangling imports
+at `backtest.py:75` / `mcp/tools.py:38`, and run `test_api_backtest.py` TC-11 + `test_data_manager.py` heavy
+fixtures off the constrained box; (5) the backend was found DOWN at this dispatch's start with no crash
+traceback — unexplained stop, worth a look, not journey-affecting.
