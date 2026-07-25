@@ -276,3 +276,50 @@ contradicts a "may pass" prose recommendation, the number wins.
 (`reports/perf-budgets.md`), and any evaluator tempted to accept a downstream agent's "may be scored passing"
 when the recorded measurement breaches the acceptance metric.
 
+
+<!-- condense.sh 2026-07-25T01:03:55Z: moved 3 entries (keep-iters=5) -->
+
+## iter-13 — 2026-07-23T04:39:47Z
+
+**Verdict:** REGRESSION
+**Lesson:** A carried, byte-unchanged critical anti-goal can REGRESS in observed severity without any
+code change: AG-8 (`forward_testing.py:826` unbounded ScannerResult load) was "degraded-but-alive,
+mitigation holds, smaller than iter-7" for iters 9/11/12 — then at iter-13, under heavier concurrent
+load (4 replay backfills + a diagnostic read on one browser-qa turn), it wedged the entire backend into
+a ~12-min futex deadlock needing an operator hard-restart, i.e. back to the original iter-7 full-outage
+severity. The "blast-radius-smaller-than-the-acknowledged-incident" argument that justifies deferring a
+critical anti-goal is only valid until a heavier load profile falsifies it; an evaluator must re-test
+that premise every iteration against fresh load evidence, not carry it forward. When it flips, C.1's
+literal "unresolved critical anti-goal → REGRESSION" is the right call even though prior iters deferred.
+**Applies to:** any iter carrying an UNRESOLVED critical anti-goal on a "smaller blast radius than the
+acknowledged incident" rationale — especially memory/availability bugs whose severity is load-dependent;
+re-read logs/backend.log + the audit + closure for a worse-than-before manifestation before re-deferring.
+
+## iter-14 — 2026-07-23T14:25:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Bounding the READS (column-projected `yield_per` streaming) closed the AG-8 memory-exhaustion/
+crash dimension with a wide 61.8% margin, but the SAME rewrite surfaced a NEW concurrent-load latency: a
+`/backtest` cache-MISS took 211.8s during a concurrent forward-aggregate warm (audit F1 hypothesis — a
+streamed cursor holds a longer read-lock window under concurrent writes than the old fetch-and-release
+`.all()` did). A memory fix and a lock-contention fix are different problems; proving the former (flat
+VmPeak, health 200) does not prove the latter, and only a browser pass under the EXACT concurrent trigger
+exposed it — neither TC-4 (concurrent-on-fixture, no cap) nor TC-5 (sequential-on-deep-basis) reproduces it.
+**Applies to:** any iter that replaces a `.all()` fetch-and-release with a streamed/`yield_per` read on a
+hot path shared by concurrent ingest writers — measure latency under concurrent load on the deep basis, not
+just peak memory.
+
+## iter-15 — 2026-07-23T18:00:00Z
+
+**Verdict:** STALLED
+**Lesson:** A small-fixture concurrency ratio does not extrapolate to a deep-basis cost. The 60k-row
+fixture's 9.91x same-key stacking ratio predicted the single-flight de-dup would "fully account for" the
+211.8s finding; the live deep-basis pass showed stacking was only ~15.6% and the dominant ~84% is ONE
+cold full-basis `compute_forward_aggregates` pass (178.74s) a wrapper-scoped fix cannot touch. When a
+targeted fix's own live evidence contradicts its root-cause extrapolation, the root-cause conclusion is
+the thing to trust the LIVE number over — and the investigation *reaching* "this is a hard architectural
+cost" is itself the terminal deliverable that hands the decision to the owner, not a bug to re-attempt.
+**Applies to:** any iteration proposing a wrapper/cache/concurrency fix validated on a synthetic fixture
+before a deep-basis pass; any "the fix fully accounts for X" claim not yet reconciled against a live
+full-scale measurement; future decomposers tempted to loop CONTINUE on an owner-owned direction decision.
+

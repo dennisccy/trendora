@@ -902,3 +902,57 @@ a live /backtest browser verification, so fix the MCP server before it.
 **Reasoning:** I verified the load-bearing fix myself rather than accept the pump note — read perf-budgets.md "Iteration 20" line by line (0.082s first-response, ensure_loop_ms ~2ms, 16/16 health ready) and opened UT-02/UT-03/UT-05, which confirm the honest interim states render and never a frozen/blank skeleton. The fix is real and complete for its target. But NO journey crossed to passing, so the CONTINUE "≥1 newly passing" trigger does not fire. The decisive remaining blocker for each target journey is human-owned: J-08 needs the ≤1.5s budget proven under its OWN ingest-overlay scenario (TC-13, AG-10-gated); J-07 needs the health-latency budget met, breached only by transient in-process contention whose sole in-scope fix is an owner budget decision (off-process/precompute spec-rejected) plus the owner-gated TC-14 disruptive replay; J-06 needs the same owner budget decision (its one agent-tractable residual — the oldest-date scorecard, a separate pre-existing out-of-scope subsystem — closes no journey alone). Rejected REGRESSION (C.1): nothing passing->failing, no unresolved anti-goal. Rejected GOAL_ACHIEVED (C.3): three journeys partial + J-04 owes a fresh disruptive replay. Rejected ESCALATE (C.4): already full, review PASS_WITH_NOTES (not fail-open), no journey failed twice. Rejected CONTINUE: the agent-tractable latency chain (iters 16-19) is now COMPLETE — both cold paths off-thread — and every path to a `passing` is owner-owned. Decision tree C.2 (every unblock path human-owned) → STALLED, same class as iter-15's halt, now with a far smaller residual and J-08's literal clause met. I did NOT launder the transient budget breach green (iter-12/15/16 precedent) and did NOT pick STALLED to escalate (there is genuinely no agent step to a pass).
 
 **Next-step recommendation:** HALT for an owner decision. Owner picks from: (1) authorize the AG-10-gated ingest for TC-13 (prove the ≤1.5s budget under the concurrent-ingest overlay — J-08's own step-1-2 scenario, the original 11/68 @ 12.655s condition; only pure-read proof exists); (2) authorize the AG-10-gated ingest for TC-14 (disruptive J-04 kill/restart replay, owed since iter-15, hard GOAL_ACHIEVED precondition); (3) decide the transient-contention budget treatment (accept-and-log a perf-budgets.md amendment → evaluator can then score J-06/J-07 passing / sanction an off-process redesign / rescope ≤1.5s to steady-state reads). Then `--resume` at FULL depth. Optional agent-tractable but closes no journey alone: reduce the oldest-date scorecard_ms + resolved_run_ms (backtest.py:162-177, out of iter-20 scope). Carried before closure (audit T1): run test_api_backtest.py's TC-11 + test_data_manager.py off the constrained box.
+
+## Iteration 21 — goal-ops-hardening-iter-21
+
+**Date:** 2026-07-25T03:25:00Z
+**Verdict:** STALLED
+**Depth dispatched:** lean
+**Journey deltas:**
+- **Newly passing: J-08** (`partial` -> `passing`, first pass since first_seen at iter-16) — the owner's
+  direction-1 authorization delivered TC-13 (the ONE blocker iter-20 named for J-08) and this iteration added
+  the literal small-single-day `ready -> refreshing -> ready` run.
+- **J-04 freshly evidenced** — `last_verified` advances iter-15 -> iter-21 (first advance in 6 iterations) on
+  TC-14, the disruptive kill/restart + checkpoint replay iter-20 called a hard GOAL_ACHIEVED precondition.
+  Caveat: operator API/DB evidence, not a browser capture; UT-J-04 SKIPPED again (scope-gated).
+- Re-verified passing: J-01, J-03, J-05 (deterministic golden replay 3/3 PASS; evaluator spot-checked
+  J-01-verify.png = Data Manager coverage tiles and J-05-verify.png = immutable 2025-05-15 snapshot; the three
+  replay frames now carry three DISTINCT md5s, so the iter-16 byte-identity note no longer applies).
+- **Unchanged and still blocking: J-06 & J-07 stay `partial`** — the transient in-process contention during the
+  bounded ~30s HISTORICAL background-compute window (3.0-6.3s /backtest vs <=1.5s; 4/16 /api/health samples
+  over <=0.1s, max 1.60s). Not re-measured; last_verified deliberately LEFT at iter-20. TC-13 does not touch it.
+- Newly failing: none. Regressed (passing->failing): none.
+- Anti-goal violations: **NONE.** iter-diff = "(no changes)"; scan-report CLEAN; coherence COHERENCE-PASS; all 9
+  historical records stay resolved:true. AG-9 evaluator-verified in the DB (runs 163/164/167 all provider
+  "seed"). AG-10 held (zero diff => no launcher could be weakened; operator /proc-verified caps, peak 89C < 95).
+
+**Reasoning:** I did not accept the browser-QA narrative — its four screenshots are viewport frames that cannot
+show the acceptance state (`RefreshingEvidenceBanner` renders at page BOTTOM, page.tsx:241-274), two are
+byte-identical to each other AND to iter-17/iter-20 captures. So I re-derived J-08's state machine from the
+database: the dataset_version stamp is (scanner_runs count, forward_returns count) = r1865-f3954530 (live
+counts 1865/3,954,530 confirm it); run 167 bumped it at 01:58:01.125359Z; the first NEW forward_aggregate_cache
+row for asof 2026-07-22 landed 01:59:26.747706Z; the refreshing capture is stamped 01:59:21.06Z — INSIDE that
+gap, so serving the prior complete version as `refreshing` is structurally forced, not asserted. Post-warm
+evidence_generated_at 02:00:31.176595 == max(created_at) of the new complete 5-horizon version to the
+microsecond, and exactly one dataset_version exists per asof_key (no mixed payload). I re-tallied
+tc13-backtest-poll.csv myself: 4096 rows, 0 breaches, max 0.4288s, all 200/ready. Rejected REGRESSION (C.1):
+nothing passing->failing, zero diff, no unresolved anti-goal. Rejected GOAL_ACHIEVED (C.3): J-06/J-07 partial
+on unamended budget breaches; I declined the "satisfied-in-spirit" reading iter-20 logged as the alternative —
+laundering a recorded breach is the owner's act, not mine (iter-12/15/16/20 precedent). Rejected ESCALATE
+(C.4): review PASS, no fail-open, no journey failed twice. Rejected CONTINUE (C.5): progress WAS made, but C.2
+precedes it and fires — and I established the no-agent-path claim on the merits rather than inheriting it:
+/api/health already consumes ~98.6% of its <=0.1s budget AT REST (perf-budgets.md:553), so no bounded pacing of
+a background thread can create the needed headroom; the budget NUMBER must move, which is owner-owned.
+
+**Next-step recommendation:** HALT for one owner decision, then `--resume` at FULL depth (goal-closing
+iteration: audit + closure before the two-key confirm; full is mandatory anyway if option 2 is chosen).
+Owner picks: (1) accept-and-log a dated perf-budgets.md amendment for reads during a bounded background-compute
+window -> the next evaluator can score J-06/J-07 passing and **GOAL_ACHIEVED is one iteration away, 5 of 7
+already passing**; (2) sanction an off-process/precompute redesign (both previously rejected as unbounded);
+(3) rescope <=1.5s/<=0.1s to steady-state reads as a recorded contract change. Non-blocking carries: retarget
+test_forward_testing_serving_split.py's four is_latest monkeypatches (they no longer trap the post-iter-20
+dispatch path) BEFORE anyone removes the dead imports at backtest.py:75 / mcp/tools.py:38; use full-page or
+element-scoped browser captures for /backtest's evidence states; J-07 step 3 VmPeak not re-recorded for TC-13;
+demo.sh --session-live walkthrough (owner); test_api_backtest.py TC-11 + test_data_manager.py off-box.
+Framework note: iter-20's TC-12-historical-view-loaded.png is mislabeled (it shows the LATEST view) — not
+load-bearing for any current status.

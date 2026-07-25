@@ -8,8 +8,8 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 
 - **Terminal status:** STALLED
 - **Final verdict:** STALLED
-- **Iterations used:** 16
-- **Halted at (UTC):** 2026-07-23T17:04:03.364465Z
+- **Iterations used:** 21
+- **Halted at (UTC):** 2026-07-24T18:51:59.751456Z
 
 ## Verdict sequence
 
@@ -32,6 +32,11 @@ iter 12: CONTINUE
 iter 13: REGRESSION
 iter 14: CONTINUE
 iter 15: STALLED
+iter 16: CONTINUE
+iter 17: CONTINUE
+iter 18: CONTINUE
+iter 19: CONTINUE
+iter 20: STALLED
 ```
 
 ## Agent economics
@@ -40,24 +45,24 @@ Source: analyze_telemetry.py --json telemetry.jsonl (claude_usage events)
 
 | Agent | Invocations | Wall (s) | In tokens | Out tokens | Est. cost (USD) |
 |---|---|---|---|---|---|
-| auditor | 14 | 10398 | 2827 | 557981 | 0.0000 |
-| browser-qa-agent | 14 | 32280 | 9170 | 1017528 | 0.0000 |
-| coherence-auditor | 14 | 2561 | 474 | 161102 | 0.0000 |
-| demo-narrator | 14 | 5322 | 1654 | 434994 | 0.0000 |
-| developer | 20 | 39099 | 5660 | 1563089 | 0.0000 |
-| goal-decomposer | 16 | 11843 | 25967 | 818468 | 0.0000 |
-| goal-evaluator | 15 | 10519 | 1491 | 661636 | 0.0000 |
-| iteration-summarizer | 15 | 4848 | 2487 | 469995 | 0.0000 |
-| orchestrator | 13 | 3963 | 12296 | 293462 | 0.0000 |
-| phase-closure-auditor | 12 | 2872 | 250 | 220962 | 0.0000 |
-| qa | 29 | 6143 | 3692 | 237983 | 0.0000 |
-| readme-maintainer | 12 | 1868 | 224 | 163543 | 0.0000 |
-| retro-analyst | 2 | 67 | 71 | 4697 | 0.0000 |
-| reviewer | 20 | 9406 | 9452 | 468830 | 0.0000 |
-| ui-impact-analyst | 12 | 3580 | 418 | 242344 | 0.0000 |
-| ui-test-designer | 12 | 6174 | 638 | 444598 | 0.0000 |
-| ux-regression-reviewer | 12 | 3768 | 12168 | 257822 | 0.0000 |
-| TOTAL | 246 | 154709 | 88939 | 8019034 | 0.0000 |
+| auditor | 15 | 11400 | 2926 | 622416 | 0.0000 |
+| browser-qa-agent | 16 | 36093 | 20206 | 1233662 | 0.0000 |
+| coherence-auditor | 15 | 2947 | 538 | 191770 | 0.0000 |
+| demo-narrator | 15 | 5784 | 1692 | 474796 | 0.0000 |
+| developer | 22 | 40816 | 5808 | 1674694 | 0.0000 |
+| goal-decomposer | 18 | 14095 | 26145 | 978387 | 0.0000 |
+| goal-evaluator | 16 | 11171 | 6517 | 702910 | 0.0000 |
+| iteration-summarizer | 16 | 5386 | 2503 | 525232 | 0.0000 |
+| orchestrator | 15 | 4978 | 15263 | 387349 | 0.0000 |
+| phase-closure-auditor | 13 | 3112 | 280 | 240926 | 0.0000 |
+| qa | 33 | 7054 | 4329 | 264826 | 0.0000 |
+| readme-maintainer | 13 | 2339 | 244 | 208951 | 0.0000 |
+| retro-analyst | 3 | 94 | 111 | 6406 | 0.0000 |
+| reviewer | 22 | 10382 | 9526 | 543437 | 0.0000 |
+| ui-impact-analyst | 14 | 4498 | 530 | 304300 | 0.0000 |
+| ui-test-designer | 14 | 7392 | 726 | 513961 | 0.0000 |
+| ux-regression-reviewer | 13 | 4278 | 12244 | 293620 | 0.0000 |
+| TOTAL | 273 | 171820 | 109588 | 9167643 | 0.0000 |
 
 Per-step wall breakdown (analyze_telemetry.py --wall):
 
@@ -208,17 +213,67 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       engine:showcase-join         5.7m
       pump-wait                  2.9m
       overlap saved             27.4m  (parallel steps)
-  session: 16 completed iteration(s), mean wall 245.2m
-      total goal-decomposer            219.1m
-      total goal-evaluator             212.9m
-      total iteration-summarizer       163.3m
-      total browser-qa-agent           117.3m
-      total coherence-auditor           58.8m
-      total developer                   54.7m
-      total readme-maintainer           41.1m
-      total reviewer                     8.5m
+  goal-ops-hardening-iter-16  depth=full  verdict=CONTINUE  wall=212.6m
+      goal-decomposer             21.8m  calls=1
+      goal-evaluator              12.3m  calls=1
+      coherence-auditor            7.3m  calls=1
+      engine:full-pipeline       171.2m
+      engine:showcase-join         0.0m
+      pump-wait                  3.1m
+      unattributed (glue)        0.0m
+  goal-ops-hardening-iter-17  depth=full  verdict=CONTINUE  wall=517.3m
+      iteration-summarizer        18.8m  calls=1
+      goal-decomposer             18.8m  calls=1
+      goal-evaluator              15.9m  calls=1  failures=1
+      readme-maintainer            8.8m  calls=1
+      coherence-auditor            4.5m  calls=1  failures=1
+      engine:full-pipeline       469.2m
+      engine:showcase-join         8.9m
+      pump-wait                  1.5m
+      overlap saved             27.5m  (parallel steps)
+  goal-ops-hardening-iter-18  depth=?  verdict=?  wall=?  (incomplete/interrupted attempt)
+      goal-decomposer             13.2m  calls=1  failures=1
+  goal-ops-hardening-iter-18  depth=lean  verdict=CONTINUE  wall=119.8m
+      developer                   35.2m  calls=1
+      goal-evaluator              30.9m  calls=1
+      coherence-auditor           25.6m  calls=1
+      browser-qa-agent            20.6m  calls=1
+      goal-decomposer             15.4m  calls=1
+      reviewer                    12.6m  calls=1
+      engine:lean-pipeline        73.5m
+      engine:showcase-join         0.0m
+      (resume-skipped: coherence-auditor)
+      pump-wait                 32.4m
+      overlap saved             94.0m  (parallel steps)
+  goal-ops-hardening-iter-19  depth=full  verdict=CONTINUE  wall=296.2m
+      goal-decomposer             26.7m  calls=1
+      goal-evaluator              14.8m  calls=1
+      coherence-auditor            4.1m  calls=1
+      engine:full-pipeline       235.4m
+      engine:showcase-join        15.1m
+      pump-wait                 23.0m
+      unattributed (glue)        0.0m
+  goal-ops-hardening-iter-20  depth=full  verdict=STALLED  wall=219.2m
+      iteration-summarizer        35.1m  calls=2
+      goal-decomposer             22.1m  calls=1
+      goal-evaluator              16.6m  calls=1
+      coherence-auditor            4.8m  calls=1
+      readme-maintainer            4.5m  calls=2
+      engine:full-pipeline       158.0m
+      engine:showcase-join        14.7m
+      pump-wait                  9.0m
+      overlap saved             36.6m  (parallel steps)
+  session: 21 completed iteration(s), mean wall 251.8m
+      total goal-decomposer            337.0m
+      total goal-evaluator             303.4m
+      total iteration-summarizer       217.3m
+      total browser-qa-agent           137.9m
+      total coherence-auditor          105.2m
+      total developer                   90.0m
+      total readme-maintainer           54.4m
+      total reviewer                    21.0m
       total AWAITING_PUMP paused gaps: 9.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED, DECOMPOSER_FAILED, STALLED
 ```
 
 ## Friction counters
@@ -232,26 +287,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-`.all()` did). A memory fix and a lock-contention fix are different problems; proving the former (flat
-VmPeak, health 200) does not prove the latter, and only a browser pass under the EXACT concurrent trigger
-exposed it — neither TC-4 (concurrent-on-fixture, no cap) nor TC-5 (sequential-on-deep-basis) reproduces it.
-**Applies to:** any iter that replaces a `.all()` fetch-and-release with a streamed/`yield_per` read on a
-hot path shared by concurrent ingest writers — measure latency under concurrent load on the deep basis, not
-just peak memory.
+exposes: (a) a "read" endpoint can carry a lazy create-once WRITE that only contends under load, so wall-clock
+measurement alone (iters 11-17) could not attribute it — one iteration of cheap per-request phase timing did
+what four of narrowing could not; (b) pure 6× concurrent reads did NOT reproduce the breach (0/966), because
+the writer-lock contention only bites when a concurrent INGEST holds the same lock — so a load test that omits
+the ingest overlay will falsely read "budget holds."
+**Applies to:** any iter touching `apps/backend/app/api/backtest.py` / `mcp/tools.py` serving path or the
+`resolved_forward_aggregate_evidence` resolver; more generally, any "read" endpoint that lazily
+creates-once-on-first-view — instrument phases and test under a concurrent-ingest overlay, not pure reads.
 
-## iter-15 — 2026-07-23T18:00:00Z
+## iter-19 — 2026-07-24T16:10:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** "THE one shared latency blocker" framing was incomplete: fixing the create-once forward_returns INSERT on `/backtest` (backfill_forward_returns_ms, 877->13.9ms) left a SEPARATE cold-recompute subsystem on the SAME page (`ensure_loop_ms`, historical first-view, 9.6-54s no-affordance skeleton) untouched — same page, same user-visible latency class, different code path. A same-symptom latency/UX gap can hide in a different subsystem than the one you instrumented and fixed; a per-phase timing breakdown that only covers the phase you suspected will not surface it — the browser first-view walk (UT-04) did.
+**Applies to:** any iter closing a "single root-cause" latency/perf journey on a page that has more than one on-load compute path — verify the OTHER first-touch paths (cold historical as-of, empty-store, first-of-day) with a live browser walk, not just the instrumented phase.
+
+## iter-20 — 2026-07-24T19:30:00Z
 
 **Verdict:** STALLED
-**Lesson:** A small-fixture concurrency ratio does not extrapolate to a deep-basis cost. The 60k-row
-fixture's 9.91x same-key stacking ratio predicted the single-flight de-dup would "fully account for" the
-211.8s finding; the live deep-basis pass showed stacking was only ~15.6% and the dominant ~84% is ONE
-cold full-basis `compute_forward_aggregates` pass (178.74s) a wrapper-scoped fix cannot touch. When a
-targeted fix's own live evidence contradicts its root-cause extrapolation, the root-cause conclusion is
-the thing to trust the LIVE number over — and the investigation *reaching* "this is a hard architectural
-cost" is itself the terminal deliverable that hands the decision to the owner, not a bug to re-attempt.
-**Applies to:** any iteration proposing a wrapper/cache/concurrency fix validated on a synthetic fixture
-before a deep-basis pass; any "the fix fully accounts for X" claim not yet reconciled against a live
-full-scale measurement; future decomposers tempted to loop CONTINUE on an owner-owned direction decision.
+**Lesson:** Moving a synchronous request-path compute to an in-process BACKGROUND thread eliminates the request-path BLOCK (9.6-54s -> 0.082s) but does NOT eliminate latency impact — the CPU-bound compute now contends for the GIL, transiently pushing OTHER concurrent traffic (and `/api/health`) over budget for the bounded compute window (3.0-6.3s `/backtest`, 1.60s health here). "Off the request thread" is not "no latency cost"; measure the CONCURRENT-traffic budget during the background window, not just the triggering request. Meta-lesson: an iteration can be a complete, correct success at its stated target yet move NO journey to passing — when the agent-tractable chain is exhausted and the journey stays blocked on owner-gated proofs + a spec-rejected-to-fix residual, STALLED is the honest verdict even after real progress (do not reflexively CONTINUE just because work landed).
+**Applies to:** any iter that moves a heavy compute to an in-process thread/daemon (verify concurrent-window budgets, not just the trigger); any evaluator facing "target fully achieved but no journey crossed" (weigh C.2 human-owned-blocker before defaulting to CONTINUE).
 ```
 
 ## Halt context
@@ -262,6 +317,6 @@ session.json halt-relevant fields:
 {
   "status": "STALLED",
   "last_verdict": "STALLED",
-  "parked_wip_sha": "2d8f9400"
+  "parked_wip_sha": "4b33ccf7"
 }
 ```

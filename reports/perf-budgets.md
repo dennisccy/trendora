@@ -3373,3 +3373,54 @@ So J-07's core promise — "heavy aggregates never take the service DOWN" — HO
 never drops); but health latency, like `/backtest` latency, transiently degrades (~1.6 s peak) during the
 bounded ~30 s background-compute window. Same residual, same root (in-process compute contention), same honest
 verdict: no service-down (J-07 no-wedge met), transient latency degradation not yet eliminated.
+
+---
+
+## Post-STALL owner-authorized measurements — TC-13 + TC-14 (2026-07-25, operator, direction 1)
+
+The iter-20 STALL handed the owner one decision; the owner chose **direction 1 — authorize the AG-10-gated
+ingest** so these two proofs could run. Both executed under the full host-guard ritual (backend via
+`scripts/start-backend.sh`, `/proc`-verified caps affinity `0-3,8-11` + 6144 MB; canonical 1 Hz `hwmon`
+sampler live; thermal watchdog re-armed; host cooled to 46 °C at start). AG-9 confirmed: every ingest ran with
+`provider: "seed"` (committed local fixture), never a live network fetch — the `source:"yahoo"` in the POST
+echo is only a default label. The full-universe `rebuild` kind was classifier-blocked (correctly — the
+heaviest op); bounded `backfill` kinds were permitted and sufficed.
+
+### TC-13 — `/backtest` ≤1.5 s budget under a CONCURRENT INGEST overlay (the original breach condition)
+
+**Protocol:** 6 concurrent `GET /api/backtest` pollers, and 15 s in, a real backfill overlay
+(`{"kind":"backfill","start":"2026-06-01","end":"2026-07-22"}`, run id 163, which finalized and
+**refreshed `forward_aggregates`** — a genuine warm ran during the poll). Raw:
+`runs/goal-ops-hardening-iter-21/tc13-backtest-poll.csv`.
+
+| metric | iter-16 baseline (ingest window) | TC-13 (post iter-19+20 fix, ingest window) |
+|---|---|---|
+| breaches (> 1.5 s) | **11 / 68** | **0 / 4096** |
+| max latency | **12,655 ms** | **429 ms** |
+| mean / p50 / p90 / p99 | — | 185 / 185 / 233 / 387 ms |
+| http / evidence_status | — | all 200, all `ready` |
+
+Peak Tctl **89 °C** during the overlay (< 95 abort); watchdog never tripped. **This is the proof the iter-15
+STALL and the whole iters 11–20 latency arc were missing:** with the create-once INSERT off the read path
+(iter-19) and the historical compute off the request thread (iter-20), `/backtest` no longer contends on the
+ingest's SQLite writer lock, so the budget holds — with a ~30× max-latency margin — under the exact
+concurrent-ingest condition that produced the historical 12.655 s worst case. **J-08's ingest-overlay budget
+clause is met.**
+
+### TC-14 — disruptive J-04 kill/restart checkpoint-survival replay (owed since iter-15)
+
+**Part A (crash recovery):** `kill -9` of the live backend (no clean shutdown), then restart via
+`scripts/start-backend.sh`. Health recovered `ok/initializing` → `ok/ready` in ~25 s — the honest non-blocking
+boot sequence J-04 requires, no reload, no wedge.
+
+**Part B (checkpoint survival):** submitted a wide backfill (`2015-01-01 … 2026-07-22`, run id 164), let it
+checkpoint to **`dates_done 1366 / 2904` (`status: running`, `finished_at: null`)**, then `kill -9` the backend
+mid-run. After restart, the same run 164 reads **`status: interrupted`, `dates_done: 1366 / 2904`,
+`finished_at` stamped by recovery** — the checkpointed progress **survived the hard crash** (non-zero, not
+reset to creation defaults) and the run is honestly marked *interrupted* (not a fabricated "done", not stuck
+"running"), while `GET /api/health` returns 200 `ready`. **J-04's disruptive kill/restart + checkpoint-survival
+contract is freshly proven** (last live-verified iter-15).
+
+**Net:** both owner-gated blockers from the iter-20 STALL are cleared. The remaining item for a GOAL_ACHIEVED
+verdict is the J-07 transient-contention residual during the historical background-compute window (a bounded,
+no-wedge latency degradation) — an owner budget-amendment call, separate from these two now-passing proofs.

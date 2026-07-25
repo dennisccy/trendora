@@ -1,28 +1,28 @@
 # Goal Session Summary — ops-hardening
 
-**Final verdict:** ABORTED
-**Total iterations:** 18
-**Wall time (seconds):** 44603
+**Final verdict:** STALLED
+**Total iterations:** 21
+**Wall time (seconds):** 38123
 **Quota pauses:** 0
 **Started:** 2026-07-19T13:57:02.848410Z
-**Finished:** 2026-07-24T08:04:15.099887Z
+**Finished:** 2026-07-24T18:51:59.751456Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/ops-hardening`. Open a PR with:
 
     gh pr create --base main --head goal/ops-hardening \
-      --title "feat: ops-hardening — ABORTED" \
+      --title "feat: ops-hardening — STALLED" \
       --body-file runs/goal-session-ops-hardening/summary.md
 
 ## Final journey state
 
 | Journey | Status | Last passing iter |
 |---|---|---|
-| J-01 | passing | goal-ops-hardening-iter-17 |
-| J-03 | passing | goal-ops-hardening-iter-17 |
+| J-01 | passing | goal-ops-hardening-iter-20 |
+| J-03 | passing | goal-ops-hardening-iter-20 |
 | J-04 | passing | goal-ops-hardening-iter-15 |
-| J-05 | passing | goal-ops-hardening-iter-17 |
+| J-05 | passing | goal-ops-hardening-iter-20 |
 | J-06 | partial | - |
 | J-07 | partial | - |
 | J-08 | partial | - |
@@ -212,15 +212,45 @@ See `runs/goal-session-ops-hardening/telemetry.jsonl` for the structured event l
       overlap saved             27.5m  (parallel steps)
   goal-ops-hardening-iter-18  depth=?  verdict=?  wall=?  (incomplete/interrupted attempt)
       goal-decomposer             13.2m  calls=1  failures=1
-  session: 18 completed iteration(s), mean wall 258.5m
-      total goal-decomposer            272.8m
-      total goal-evaluator             241.1m
-      total iteration-summarizer       182.1m
-      total browser-qa-agent           117.3m
-      total coherence-auditor           70.6m
-      total developer                   54.7m
-      total readme-maintainer           49.9m
-      total reviewer                     8.5m
+  goal-ops-hardening-iter-18  depth=lean  verdict=CONTINUE  wall=119.8m
+      developer                   35.2m  calls=1
+      goal-evaluator              30.9m  calls=1
+      coherence-auditor           25.6m  calls=1
+      browser-qa-agent            20.6m  calls=1
+      goal-decomposer             15.4m  calls=1
+      reviewer                    12.6m  calls=1
+      engine:lean-pipeline        73.5m
+      engine:showcase-join         0.0m
+      (resume-skipped: coherence-auditor)
+      pump-wait                 32.4m
+      overlap saved             94.0m  (parallel steps)
+  goal-ops-hardening-iter-19  depth=full  verdict=CONTINUE  wall=296.2m
+      goal-decomposer             26.7m  calls=1
+      goal-evaluator              14.8m  calls=1
+      coherence-auditor            4.1m  calls=1
+      engine:full-pipeline       235.4m
+      engine:showcase-join        15.1m
+      pump-wait                 23.0m
+      unattributed (glue)        0.0m
+  goal-ops-hardening-iter-20  depth=full  verdict=STALLED  wall=219.2m
+      iteration-summarizer        35.1m  calls=2
+      goal-decomposer             22.1m  calls=1
+      goal-evaluator              16.6m  calls=1
+      coherence-auditor            4.8m  calls=1
+      readme-maintainer            4.5m  calls=2
+      engine:full-pipeline       158.0m
+      engine:showcase-join        14.7m
+      pump-wait                  9.0m
+      overlap saved             36.6m  (parallel steps)
+  session: 21 completed iteration(s), mean wall 251.8m
+      total goal-decomposer            337.0m
+      total goal-evaluator             303.4m
+      total iteration-summarizer       217.3m
+      total browser-qa-agent           137.9m
+      total coherence-auditor          105.2m
+      total developer                   90.0m
+      total readme-maintainer           54.4m
+      total reviewer                    21.0m
       total AWAITING_PUMP paused gaps: 9.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED, DECOMPOSER_FAILED
+      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED, DECOMPOSER_FAILED, STALLED
 ```

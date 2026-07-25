@@ -1,0 +1,24 @@
+{
+  "phase": "goal-ops-hardening-iter-21",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-07-25T01:31:19.424646Z",
+  "started_at": "2026-07-25T01:31:19.424646Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "docs/handoffs/goal-ops-hardening-iter-21-dev.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "browser_checks_note": "Zero-code iteration per spec. TC-1/TC-2 (fresh iter-21-dated /backtest ready->refreshing->ready state-machine capture) are explicitly browser-qa-agent's own Chrome-MCP pass against the existing, unchanged RefreshingEvidenceBanner and ready-state display -- not developer scope this iteration.",
+  "notes": [
+    "Zero product source files changed -- confirmed via git status/git diff on apps/backend and apps/frontend, both empty at completion.",
+    "Independently re-verified (read-only) the iter-20 coherence-auditor's dangling-import advisory on apps/backend/app/mcp/tools.py:38: confirmed the identical unused-import shape also exists at apps/backend/app/api/backtest.py:75, and both are load-bearing monkeypatch.setattr(<module>, \"forward_aggregates_ingest_cached\", _boom) targets (pytest default raising=True) in four tests in test_forward_testing_serving_split.py -- removing either import would break all four with AttributeError, not a safe no-op. Traced the deeper mechanism one level further than the spec's own text: post iter-20's dispatch refactor, the real historical-compute call now happens via app.engine.forward_testing's own module-local reference (inside _run_historical_forward_aggregates_dispatch), so these four monkeypatches no longer intercept that call path -- a genuine, non-blocking test-hardening gap for a future iteration, not applied here. Full restatement in the dev handoff per TC-6/TC-9.",
+    "Ran the one relevant targeted test file (tests/test_forward_testing_serving_split.py, host-guard-confined taskset/thread-cap invocation) as a read-only behavioral confirmation: 25 passed, 0 failed, including all four monkeypatch-dependent tests by name.",
+    "Cited reports/perf-budgets.md §\"Post-STALL owner-authorized measurements -- TC-13 + TC-14\" and runs/goal-ops-hardening-iter-21/operator-tc13-tc14-evidence.md by exact path in the dev handoff (TC-9); did not re-run either measurement (out of scope, already fresh/owner-authorized 2026-07-25).",
+    "Did not independently start/stop backend/frontend services this iteration -- TC-14 Part A already supplies fresher kill-9/restart evidence today than a redundant cycle would, and zero code changed so no startup-regression risk exists; reasoning documented in the dev handoff's 'Required-still-passing journeys' section.",
+    "J-06/J-07 remain explicitly flagged as blocked solely on the owner's still-open transient-contention budget-treatment decision (TC-10) -- not silently dropped, not re-attempted via a previously-rejected fix."
+  ],
+  "next_action": "review"
+}

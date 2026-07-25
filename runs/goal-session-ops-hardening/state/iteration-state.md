@@ -1,40 +1,40 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 20 · **Date:** 2026-07-24 · **Verdict:** STALLED
+**After iteration:** 21 · **Date:** 2026-07-25 · **Verdict:** STALLED
 
 ## Journeys
 
-4 passing (J-01 J-03 J-04 J-05) · 3 partial (J-06 J-07 J-08) — 7 total. iter-20 closed the last
-agent-tractable latency blocker but NO journey crossed to passing — remaining path is owner-owned.
+**5 passing (J-01 J-03 J-04 J-05 J-08)** · 2 partial (J-06 J-07) — 7 total. J-08 CROSSED (TC-13 closed its
+one blocker + a live small-single-day ready→refreshing→ready); J-04 freshly re-verified by TC-14.
 
 ## Active blockers
 
-- **OWNER-owned (the halt is for the owner — pick a direction, then `--resume` at full):**
-  (1) authorize the AG-10-gated ingest for **TC-13** — prove `/backtest` ≤1.5 s under the
-  concurrent-INGEST overlay (J-08's own step-1-2 scenario; only pure-read proof exists).
-  (2) authorize the AG-10-gated ingest for **TC-14** — disruptive J-04 kill/restart replay (owed
-  since iter-15; hard GOAL_ACHIEVED precondition; non-disruptive health check is NOT a substitute).
-  (3) decide how ≤1.5 s / ≤0.1 s treat the **transient in-process contention** (3.0–6.3 s `/backtest`,
-  1.60 s health during the bounded ~30 s background compute; `perf-budgets.md` "Iteration 20") —
-  off-process/precompute are spec-rejected, so this is accept-and-log / amend / rescope, not agent work.
-- Agent-tractable but closes NO journey alone: oldest-date (2005) ~1.3–1.9 s from `scorecard_ms +
-  resolved_run_ms` (`apps/backend/app/api/backtest.py:162-177`, pre-existing, out of iter-20 scope).
+- **ONE owner decision, the ONLY thing between here and GOAL_ACHIEVED.** J-06 + J-07 step 2 fail on latency
+  alone during the bounded ~30 s HISTORICAL background-compute window: 3.0–6.3 s `/backtest`
+  (budget ≤1.5 s), 4/16 `/api/health` samples over ≤0.1 s, max 1.60 s (`reports/perf-budgets.md`
+  "Iteration 20", lines 3358 + 3368). Availability is NOT at issue — no wedge; readiness never drops.
+  Owner picks: (1) accept-and-log a dated `perf-budgets.md` amendment for reads during a background-compute
+  window → next evaluator scores J-06/J-07 passing; (2) sanction an off-process/precompute redesign
+  (previously rejected as unbounded); (3) rescope ≤1.5 s/≤0.1 s to steady-state reads.
+- **No agent-side fourth option** (verified, not inherited): `/api/health` already uses ~98.6% of its ≤0.1 s
+  budget AT REST (`perf-budgets.md:553`) — no bounded pacing creates that headroom. Do NOT plan a mitigation
+  iteration; the budget NUMBER must move, and that is owner-owned.
 
 ## Last 2 verdicts
 
-- iter 20: STALLED — historical ensure-loop moved off-thread (9.6–54 s → 0.082 s, live-verified) but
-  NO journey crossed to passing; every remaining path to close J-06/J-07/J-08 is owner-owned (C.2).
-- iter 19: CONTINUE — create-once INSERT storm fixed; the ensure_loop cold path was still agent-tractable.
+- iter 21: STALLED — J-08 + J-04 closed on TC-13/TC-14; sole remaining blocker human-owned (C.2 before C.5).
+- iter 20: STALLED — historical ensure-loop moved off-thread (9.6–54 s → 0.082 s) but no journey crossed.
 
 ## Do not redo
 
-- Historical `/backtest` cold recompute is OFF the request thread — `ensure_historical_forward_
-  aggregates_dispatched` (single-flight background daemon) in `forward_testing.py`, mirrored in
-  `mcp/tools.py`. BOTH cold paths off-thread; J-08's literal "never a request-path recompute" met.
-- `compute_forward_aggregates` + `resolved_forward_aggregate_evidence` byte-unchanged (ONE
-  producer/resolver, coherence) — do NOT touch. Out of bounds: `main.py` `health.py` `readiness.py`
-  `warmup.py` `scripts/*`. Frontend refreshing/empty-state copy corrected + live-verified — do not re-audit.
+- **TC-13 + TC-14 DONE and PASS** (2026-07-25, owner-authorized, DB-corroborated) — never re-run. TC-13:
+  0/4096 breaches, max 429 ms. TC-14: run 164 `interrupted`, `dates_done 1366/2904` survived `kill -9`.
+- **J-08 is PASSING** — all 5 steps evidenced; do not re-open its serving split, resolver, or empty state.
+  `compute_forward_aggregates`, `resolved_forward_aggregate_evidence`, `ensure_historical_forward_
+  aggregates_dispatched` byte-unchanged, ONE producer/resolver. Out of bounds: `main.py`, `health.py`,
+  `readiness.py`, `warmup.py`, `scripts/*`; frontend evidence-state copy live-verified.
+- Do NOT remove the `forward_aggregates_ingest_cached` imports (`backtest.py:75`, `mcp/tools.py:38`) — live
+  `monkeypatch.setattr(raising=True)` targets for 4 tests; retarget those first.
 - REJECTED, no re-propose without owner sanction: precompute every historical date (unbounded); remove
-  historical lazy create-once (time-machine regression); off-process/precompute contention fix.
-- J-01/J-03/J-05 pass by golden replay; J-04 carried (owes disruptive TC-14). Heavy passes via
-  `start-backend.sh` only (AG-10); `loaded_engine`/`test_data_manager.py` cite-don't-run (owed off-box).
+  historical lazy create-once (time-machine regression); off-process contention fix.
+- `/backtest` banner is BELOW the fold — full-page capture. Heavy passes via `start-backend.sh` (AG-10).
