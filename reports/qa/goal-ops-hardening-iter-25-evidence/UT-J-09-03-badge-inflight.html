@@ -1,0 +1,5 @@
+Badge: <div class="inline-flex items-center gap-1.5 rounded-md border px-2 py-0.5 text-xs font-medium transition-colors border-pos bg-surface-2 text-pos" data-testid="readiness-badge" data-state="ready"><span class="h-2 w-2 rounded-full bg-pos" aria-hidden="true"></span>Ready</div>
+
+Background-compute indicator (same poll, shown alongside Ready -- never hiding it): <div class="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium transition-colors border-accent bg-surface-2 text-accent num gap-1.5" data-testid="background-compute-indicator"><span class="h-2 w-2 animate-pulse rounded-full bg-accent" aria-hidden="true"></span>background compute running (1)</div>
+
+Captured on /backtest?asof=2026-07-14 while a real dispatched background-compute window was active (confirmed via direct GET /api/health cross-check: active=[{asof_key:"2026-07-14", dataset_version:"r1865-f3954530", horizons_total:5, ...}]).

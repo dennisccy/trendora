@@ -110,16 +110,36 @@ def test_health_carries_additive_background_compute_field(loaded_engine, tmp_pat
     assert isinstance(bg["recent_outcomes"], list)
 
 
+def _background_compute_identity(status: dict) -> dict:
+    """Reduce a `background_compute` payload to the parts two back-to-back LIVE reads of the SAME
+    process-lifetime registry can be compared on without flaking (audit T1 fix): `elapsed_ms` on each
+    active entry is computed fresh at READ TIME from its own `started_at`, so it can legitimately grow
+    between two reads of a genuinely in-flight window -- it is excluded here. `recent_outcomes` is
+    reduced to its ordering/length (the identifying `(asof_key, dataset_version)` sequence), since a
+    window completing between the two reads would append a new entry -- a real state change, not a
+    flake, but also not what this test is pinning."""
+    return {
+        "active": [{k: v for k, v in entry.items() if k != "elapsed_ms"} for entry in status["active"]],
+        "recent_outcomes_order": [(o["asof_key"], o["dataset_version"]) for o in status["recent_outcomes"]],
+        "recent_outcomes_count": len(status["recent_outcomes"]),
+    }
+
+
 def test_health_background_compute_is_single_source(loaded_engine, tmp_path, monkeypatch):
-    """The served `background_compute` field equals a DIRECT `compute_readiness` call's own composed
-    value for the same session/config -- re-displayed verbatim, never re-derived by the endpoint."""
+    """The served `background_compute` field matches a DIRECT `compute_readiness` call's own composed
+    value for the same session/config -- re-displayed verbatim, never re-derived by the endpoint.
+    Compared on identity/shape (active-window keys/count, recent_outcomes ordering/length) excluding the
+    read-time-volatile `elapsed_ms` field, rather than raw equality of two live reads (closes audit T1 --
+    a false-alarm risk whenever an earlier test in the same whole-file run left a real background
+    compute in flight)."""
     monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
     cfg = load_config()
     with TestClient(main.app) as client:
         served = client.get("/api/health").json()["background_compute"]
     with Session(loaded_engine) as session:
         direct = readiness.compute_readiness(session, config=cfg)["background_compute"]
-    assert served == direct
+    assert len(served["active"]) == len(direct["active"])
+    assert _background_compute_identity(served) == _background_compute_identity(direct)
 
 
 def test_health_background_compute_degrades_honestly_when_readiness_fails(loaded_engine, monkeypatch):

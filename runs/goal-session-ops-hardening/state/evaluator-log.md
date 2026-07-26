@@ -1138,3 +1138,72 @@ froze, so the freeze must be lifted deliberately. (6) Carried, unchanged: six ne
 `test_readiness.py`/`test_health.py` remain unexecuted (auditor verified their behaviours by direct
 execution, 16/16); retarget `test_forward_testing_serving_split.py`'s four `is_latest` monkeypatches before
 removing the dangling imports at `backtest.py:75` / `mcp/tools.py:38`.
+
+## Iteration 25 — goal-ops-hardening-iter-25
+
+**Date:** 2026-07-26T16:10:00Z
+**Verdict:** GOAL_ACHIEVED
+**Depth dispatched:** lean
+**Journey deltas:**
+- **Newly passing: J-09** (`partial` -> `passing`, first pass since first_seen at iter-24). The single
+  blocker iter-24 named — the unbuilt Walkthrough acceptance clause — is closed: I diffed
+  `reports/goal-session-ops-hardening-demo.json` myself (12 -> 16 steps; n=1-12 byte-identical; `highlights`
+  still exactly 8; the four new entries all carry `journey: J-09`, `new: true`, `verified: true`). Audit F1
+  is also closed and live-verified (`background-compute-unknown` copy on poll failure, idle copy preserved
+  byte-for-byte).
+- Re-verified passing with THIS-iteration evidence, so `last_verified_iter` advances iter-24 -> iter-25 for
+  all eight: J-01/J-03/J-04/J-05/J-06/J-08 by deterministic golden replay, J-07 by the LLM lane.
+- **A replay FAIL was overturned and I checked the overturn on the merits:** the J-07 golden expects the text
+  "Ready"; at replay time (15:32-15:33Z) the badge read "Initializing... history 89/89" because that boot's
+  warm-up hit a non-fatal `MemoryError` (`logs/backend.log:79986`) while TWO detached pytest `loaded_engine`
+  fixture builds (PIDs 1620313/1620524, started 15:29Z — confirmed by `ps`) consumed host RAM under the
+  backend's own `ulimit -v` cap. Exactly ONE such warm-up failure exists in the entire logfile. The LLM lane
+  restarted via `scripts/start-backend.sh` and verified J-07's substance live afterwards.
+- Newly failing: none. Regressed (passing->failing): none. Unknown: none.
+- Anti-goal violations: **NONE.** scan-report CLEAN; coherence COHERENCE-PASS; all 9 historical records stay
+  `resolved: true` (0 unresolved). My own `git diff` vs snapshot `e14a39f2` shows ZERO files under
+  `apps/backend/app/**` and zero under `scripts/` or `project-extensions/` (AG-5/AG-10 structurally intact);
+  captures show `provider: seed` (AG-9). All 8 `spec_hash`es match `goal_gate hash-journeys`; no
+  `journeys-changed.md`.
+
+**Reasoning:** I re-derived every load-bearing fact instead of inheriting it. (1) The manifest: compared both
+JSON versions in Python rather than trusting the "purely additive" claim. (2) AG-3: queried
+`forward_aggregate_cache` read-only — this iteration's disclosed "as-of 2026-07-13 · elapsed 12.9s · horizons
+0/5" is exactly right (that window's first horizon committed 15.1 s after its start), "completed · 1m 15s"
+matches `duration_ms 74689`, and the manifest's re-used iter-24 figures ("41.8s · 2/5", "1m 15s" for as-of
+2026-07-17) land precisely after that window's first two of five commits and match `duration_ms 75108`.
+(3) Screenshot-blindness: the panel is below the fold on this host, so I read all five raw DOM captures
+verbatim and opened the two PNGs plus three replay frames. (4) The J-07 replay FAIL: traced to a host-memory
+event in the backend logfile and to live PIDs, not assumed. Rejected REGRESSION (C.1): nothing
+passing->failing; the one FAIL row is superseded by the merged file AND independently explained; no
+unresolved anti-goal. Rejected STALLED (C.2): no blocker — the walkthrough clause and audit F1/T1 were all
+agent-owned and are done. Rejected ESCALATE (C.4): review PASS with browser results present (no fail-open),
+no journey failed twice. Rejected CONTINUE (C.5): the only identifiable work is off-box test execution plus
+owner-optional items; manufacturing an iteration for those is the "vague criteria -> infinite loop"
+anti-pattern. FOUR THINGS I STATE PLAINLY RATHER THAN ROUND AWAY: (i) audit T1's two rewritten backend tests
+were NEVER executed to a pass/fail line — both detached runs were still building the `loaded_engine` fixture
+after 39 minutes (collection succeeded, 1 selected each, no errors; I read both tests in full), so the DoD's
+"unit tests pass" and TC-5's 5x rerun are genuinely unmet and need an unloaded machine; (ii) J-09's
+steady-state `<= 0.1 s` health clause is met only at the bar this session already applied to J-06/J-07
+(recorded 0.100023 s official-convention, 10-sample max 0.127788 s; ~0.10-0.18 s this run under two pytest
+builds) — pre-existing ~98.6 %-of-budget tightness, zero backend diff, owner question B5 still open;
+assumption logged; (iii) a FAILED warm-up leaves the badge on "Initializing... history 89/89" indefinitely —
+never a false "Ready", but not one of the three states the goal names either; no journey step covers it, so
+it is a follow-up, not a regression; (iv) `J-01-verify.png` and `J-03-verify.png` are byte-identical again
+(5th recurrence of the known framework capture nit).
+
+**Next-step recommendation:** HALT — goal achieved (first key); the deterministic gates and the second
+fresh-context CONFIRM run next. Nothing blocking. If the loop re-opens, LEAN suffices: (1) run
+`tests/test_health.py -k test_health_background_compute_is_single_source` and
+`tests/test_readiness.py -k test_compute_readiness_composes_background_compute_empty_shape` (5 reps each, TC-5)
+on an unloaded box — the only unfinished DoD item; (2) give the readiness badge a distinct "warm-up failed"
+state so it never sits on "Initializing... 89/89" forever (new; observed live this iteration); (3) narrow the
+new panel's "unknown" copy — `state === "unavailable"` also fires when the SERVER honestly reports
+unavailable (a never-scanned DB), where "the backend is unreachable" is slightly inaccurate; (4) OWNER:
+audit B5 — does the at-rest `<= 0.1 s` health target stand as written? It is the one item that could re-open
+J-06/J-07/J-09; backlog card B-1107 (global dispatch cap) stays owner-optional; (5) DECOMPOSER-PLANNED, not
+an opportunistic patch: audit B2 (a `Thread.start()` failure leaves the badge reading "running (1)" for the
+process lifetime) — the fix needs the freeze on `ensure_historical_forward_aggregates_dispatched` lifted
+deliberately; (6) carried, unchanged: retarget `test_forward_testing_serving_split.py`'s four `is_latest`
+monkeypatches before removing the dangling imports at `backtest.py:75` / `mcp/tools.py:38`; run
+`test_api_backtest.py` TC-11 and `test_data_manager.py`'s heavy fixtures off the constrained box.

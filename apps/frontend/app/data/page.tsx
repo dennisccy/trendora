@@ -30,6 +30,7 @@ import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
 import { TermInfo } from "@/components/ui/term-info";
 import { cn } from "@/lib/utils";
+import { resolveBackgroundComputePanelBranch } from "@/lib/background-compute-panel-branch";
 import { formatIsoDate, formatIsoDateTime, isValidIsoDate, ISO_DATE_PLACEHOLDER } from "@/lib/dates";
 import {
   MEMBERSHIP_TIMELINE_PAGE_SIZE,
@@ -3589,7 +3590,8 @@ function LastOutcomeSummary({ outcome }: { outcome: BackgroundComputeOutcome }) 
 }
 
 function BackgroundComputePanel() {
-  const { backgroundCompute } = useReadiness();
+  const { backgroundCompute, state } = useReadiness();
+  const branch = resolveBackgroundComputePanelBranch(state, backgroundCompute);
   const active = backgroundCompute?.active ?? [];
   const recentOutcomes = backgroundCompute?.recent_outcomes ?? [];
 
@@ -3599,16 +3601,25 @@ function BackgroundComputePanel() {
         Background compute
       </PanelTitle>
       <div className="space-y-3 p-4">
-        {active.length === 0 && recentOutcomes.length === 0 ? (
-          <p className="text-sm text-text-muted" data-testid="background-compute-idle">
-            No background compute running. Last outcome: none yet.
+        {branch.kind === "unknown" ? (
+          // ops-hardening iter-25 (J-09, audit F1 fix): the readiness poll itself failed / the backend
+          // is unreachable -- the background-compute state is genuinely unknown, never the idle sentence
+          // below (that would falsely claim "nothing running" about a state we haven't observed).
+          <p className="text-sm text-text-muted" data-testid="background-compute-unknown">
+            Background-compute state unknown — the backend is unreachable.
           </p>
         ) : (
           <>
-            {active.length === 0 ? (
-              <p className="text-sm text-text-muted" data-testid="background-compute-idle">
-                No background compute running.
-              </p>
+            {branch.kind === "idle" ? (
+              !branch.showLastOutcome ? (
+                <p className="text-sm text-text-muted" data-testid="background-compute-idle">
+                  No background compute running. Last outcome: none yet.
+                </p>
+              ) : (
+                <p className="text-sm text-text-muted" data-testid="background-compute-idle">
+                  No background compute running.
+                </p>
+              )
             ) : (
               <ul className="space-y-2">
                 {active.map((entry) => (
@@ -3616,7 +3627,7 @@ function BackgroundComputePanel() {
                 ))}
               </ul>
             )}
-            {recentOutcomes.length > 0 ? (
+            {branch.showLastOutcome ? (
               <div>
                 <p className="mb-1 text-xs font-medium uppercase tracking-wide text-text-faint">
                   Last outcome
@@ -3624,11 +3635,11 @@ function BackgroundComputePanel() {
                 <LastOutcomeSummary outcome={recentOutcomes[0]} />
               </div>
             ) : null}
+            <p className="text-xs text-text-faint">
+              Since the last backend restart — this history is process-lifetime only, never persisted.
+            </p>
           </>
         )}
-        <p className="text-xs text-text-faint">
-          Since the last backend restart — this history is process-lifetime only, never persisted.
-        </p>
       </div>
     </Card>
   );

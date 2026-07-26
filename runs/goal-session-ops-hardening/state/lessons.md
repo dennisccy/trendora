@@ -221,3 +221,29 @@ cross-checked against the live API and the SQLite rows; that chain proved AG-3 t
 screenshot would have.
 **Applies to:** any future iteration whose acceptance state renders below the fold on this host, and any
 evaluator weighing "no screenshot" against the absolute no-screenshot rail.
+
+## iter-25 — 2026-07-26T16:10:00Z
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** Two detached `pytest` runs building the `loaded_engine` fixture starved the `ulimit -v`-capped
+backend during its boot warm-up: `_run_warmup` -> `backfill_forward_returns` raised a non-fatal `MemoryError`
+(`logs/backend.log:79986`, the only such line in the whole logfile), readiness stayed permanently
+`initializing` with the badge on "Initializing... history 89/89", and the deterministic replay lane then
+FAILED J-07 purely because its golden step expects the text "Ready". The product was fine — the failure was
+host memory contention created by our own test harness. Two consequences worth carrying: never leave heavy
+pytest fixture builds running while a lane needs a healthy backend, and treat a replay FAIL whose expect is a
+readiness word as an environment question first (check `logs/backend.log` + `ps`) before treating it as a
+product regression.
+**Applies to:** any iteration whose lanes run alongside detached pytest/heavy jobs; any golden script whose
+`expect` is a readiness/badge string; any change to `warmup.py` / `readiness.py` badge states.
+
+## iter-25 — 2026-07-26T16:10:01Z
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** The iter-24 lesson ("enumerate EVERY Acceptance bullet, especially the walkthrough/demo-manifest
+one") worked exactly as intended: iter-25's spec mapped the clause into IN SCOPE, the developer wrote the four
+manifest steps, and the journey closed in one lean pass with no product-code risk. A journey blocked ONLY by an
+unwritten artifact is the cheapest kind of blocker — spec it explicitly instead of carrying it as a "non-blocking
+follow-up" across iterations.
+**Applies to:** any goal-proposer auto-appended journey (it inherits the session's standard Acceptance bullets
+verbatim, including the `demo.sh --session-live` walkthrough clause).

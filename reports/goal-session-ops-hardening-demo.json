@@ -145,6 +145,54 @@
       "section": "highlights",
       "action": { "type": "goto", "url": "/backtest?asof=2026-07-20" },
       "expect": { "text": "expanding window" }
+    },
+    {
+      "n": 13,
+      "title": "The backend discloses its own background work — starting from a quiet baseline",
+      "narration": "Trendora's top bar doesn't just say the backend is healthy — it also discloses whenever the backend is quietly computing something big in the background. Right now, at rest, it simply reads \"Ready\": no extra badge, because nothing is running.",
+      "point_out": "The badge shows only the plain \"Ready\" pill — no background-compute indicator, because there is nothing to disclose right now.",
+      "journey": "J-09",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Ready" }
+    },
+    {
+      "n": 14,
+      "title": "A background compute window, disclosed live",
+      "narration": "Asking Backtest for an older date whose evidence hasn't finished computing starts a background compute — and the top bar says so immediately, right alongside the Ready pill.",
+      "point_out": "The badge read \"background compute running (1)\" next to \"Ready\" — never a bare Ready hiding real background work, and never a misleading \"initializing\" or \"unavailable\".",
+      "journey": "J-09",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/backtest?asof=2026-07-17" },
+      "expect": { "text": "expanding window" }
+    },
+    {
+      "n": 15,
+      "title": "The Data Manager panel shows the same window in flight",
+      "narration": "Back on Data Manager, the Background compute panel names exactly what's running: which date, how long it's been going, and how many of its steps are done.",
+      "point_out": "The panel named the exact window: as-of 2026-07-17, elapsed 41.8 seconds, 2 of 5 horizons done, on dataset r1865-f3954530 — a real, observed measurement, never a fabricated percentage or estimated finish time.",
+      "journey": "J-09",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Background compute" }
+    },
+    {
+      "n": 16,
+      "title": "Honest afterward — and honest about its own memory",
+      "narration": "Once the background compute finishes, the panel moves it into a last-outcome line with its real measured duration. And because this history lives only in the backend's own memory, a restart makes it say so plainly.",
+      "point_out": "The panel then read \"No background compute running.\", with a last outcome of completed, as-of 2026-07-17, in 1m 15s; after an actual backend restart it correctly reset to \"No background compute running. Last outcome: none yet\" — honest that this history is process-lifetime only, never persisted across a restart.",
+      "journey": "J-09",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Background compute" }
     }
   ]
 }

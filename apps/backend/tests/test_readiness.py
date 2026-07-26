@@ -289,9 +289,25 @@ def test_compute_readiness_shape_unchanged_by_preflight_addition(loaded_engine):
 # registry's OWN bookkeeping (started_at/horizons_done/ring cap/failure path) is covered in
 # test_forward_testing_concurrency.py, the producer module's own test file.
 # ==================================================================================================
+def _background_compute_identity(status: dict) -> dict:
+    """Reduce a `background_compute` payload to the parts two back-to-back LIVE reads of the SAME
+    process-lifetime registry can be compared on without flaking (audit T1 fix): `elapsed_ms` on each
+    active entry is computed fresh at READ TIME from its own `started_at`, so it can legitimately grow
+    between two reads of a genuinely in-flight window -- it is excluded here. `recent_outcomes` is
+    reduced to its ordering/length (the identifying `(asof_key, dataset_version)` sequence)."""
+    return {
+        "active": [{k: v for k, v in entry.items() if k != "elapsed_ms"} for entry in status["active"]],
+        "recent_outcomes_order": [(o["asof_key"], o["dataset_version"]) for o in status["recent_outcomes"]],
+        "recent_outcomes_count": len(status["recent_outcomes"]),
+    }
+
+
 def test_compute_readiness_composes_background_compute_empty_shape(loaded_engine):
     """A process that has never dispatched a historical background compute reports the honest empty
-    shape -- never omitted, never fabricated non-empty."""
+    shape -- never omitted, never fabricated non-empty. Compares two back-to-back live reads of the SAME
+    registry on identity/shape rather than raw equality, excluding the read-time-volatile `elapsed_ms`
+    field (closes audit T1 -- a false-alarm risk on any whole-file run where a background thread left by
+    an earlier test may still be in flight between the two reads below)."""
     import app.engine.forward_testing as forward_testing_module
 
     cfg = load_config()
@@ -301,9 +317,11 @@ def test_compute_readiness_composes_background_compute_empty_shape(loaded_engine
         # compute_readiness composes it VERBATIM regardless of what it currently holds.
         direct = forward_testing_module.get_background_compute_status()
         result = compute_readiness(session, config=cfg)
-    assert result["background_compute"] == direct
-    assert isinstance(result["background_compute"]["active"], list)
-    assert isinstance(result["background_compute"]["recent_outcomes"], list)
+    composed = result["background_compute"]
+    assert isinstance(composed["active"], list)
+    assert isinstance(composed["recent_outcomes"], list)
+    assert len(composed["active"]) == len(direct["active"])
+    assert _background_compute_identity(composed) == _background_compute_identity(direct)
 
 
 def test_compute_readiness_composes_background_compute_active_entry(loaded_engine, monkeypatch):
