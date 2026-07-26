@@ -1,0 +1,158 @@
+{
+  "journeys": {
+    "J-01": {
+      "id": "J-01",
+      "name": "Backfill honors the requested range and explains zero-work",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-25",
+      "last_passing_iter": "goal-ops-hardening-iter-25",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-25-evidence/J-01-verify.png",
+      "spec_hash": "06b26eaaf82dcdb532465e5c287f1177681a6c8697e4f96cfadddb4fc60b29ad",
+      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-01 PASS (reports/phase-goal-ops-hardening-iter-25-regression-replay-results.md; merged ui-test-results.md agrees). FRAMEWORK NOTE (5th recurrence): J-01-verify.png and J-03-verify.png are byte-identical (md5 c6d7c1c3) because both scripts end on the same page-top frame; the real gate is each script's distinct DOM expects, which the replay lane asserted. This iteration's product diff touches no backfill/run-history path (evaluator ran git diff vs snapshot e14a39f2: only two backend TEST files, apps/frontend/app/data/page.tsx and two new apps/frontend/lib files)."
+    },
+    "J-03": {
+      "id": "J-03",
+      "name": "No per-run range cap",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-25",
+      "last_passing_iter": "goal-ops-hardening-iter-25",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-25-evidence/J-03-verify.png",
+      "spec_hash": "5457740bbb0cea982e9b1241f19ca50836ff584bbb960a5a088f7168d820c271",
+      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-03 PASS; its own expect ('412 calendar days') is distinct from J-01's, so the shared page-top frame does not weaken the assertion. spec_hash re-confirmed identical to goal_gate hash-journeys; no journeys-changed.md this iteration."
+    },
+    "J-04": {
+      "id": "J-04",
+      "name": "Non-blocking boot with visible status",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-25",
+      "last_passing_iter": "goal-ops-hardening-iter-25",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-25-evidence/J-04-verify.png",
+      "spec_hash": "4074a9c952a9a143dc543efef3c8d3e0a1e33a848ab250ec90c7c2f568dbcff8",
+      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-04 PASS. ADDITIONAL FRESH LIVE EVIDENCE this iteration: the browser-QA lane killed the backend with kill -TERM while /data was mounted and captured the explicit unreachable presentation - UT-J-09-07-poll-failure-viewport.png (evaluator opened it): red 'Backend unavailable' pill plus the NO-GO banner 'do not rely on today's board / Backend is unavailable - the preflight check could not run', visibly distinct from the initializing state; restarts went through scripts/start-backend.sh (logfile banners at 15:38:53Z / 15:39:36Z / 15:40:23Z / 15:49:55Z / 15:52:32Z). DISCLOSED, NOT LAUNDERED: during the replay window (15:32-15:33Z) the badge read the amber 'Initializing... history 89/89' rather than 'Ready' because that boot's warm-up hit a non-fatal MemoryError (logs/backend.log:79986, _run_warmup -> backfill_forward_returns) while TWO detached pytest loaded_engine fixture builds (PIDs 1620313/1620524, started 15:29Z, evaluator confirmed via ps) were consuming host RAM under the backend's own ulimit -v cap. The service kept serving (pages rendered real data, all polls 200) and never claimed Ready - honest per J-04's acceptance - but a permanently-'Initializing' presentation after a FAILED warm-up is an honesty gap no journey step covers; recorded as a non-blocking follow-up, not scored as a regression (zero backend product diff this iteration)."
+    },
+    "J-05": {
+      "id": "J-05",
+      "name": "Aggregates are precomputed at ingest, never on the fly",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-25",
+      "last_passing_iter": "goal-ops-hardening-iter-25",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-25-evidence/J-05-verify.png",
+      "spec_hash": "63dd5bf0983454e48338557d0f2b1e5ce9726d7aa247c20174ac9323f637564b",
+      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-05 PASS (J-05-verify.png, md5 9b701521, distinct from every other frame this run). compute_forward_aggregates / resolved_forward_aggregate_evidence / forward_testing.py / readiness.py are byte-unchanged this iteration - evaluator confirmed by running git diff against snapshot e14a39f2 (no apps/backend/app/** file appears at all)."
+    },
+    "J-06": {
+      "id": "J-06",
+      "name": "Pages load only what they need",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-25",
+      "last_passing_iter": "goal-ops-hardening-iter-25",
+      "first_seen_iter": "goal-ops-hardening-iter-0",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-25-evidence/J-06-verify.png",
+      "spec_hash": "a9654dc139add9c161b5d7e59a431f78bd94fdf0f26b15c4fe2c83a1007db045",
+      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-06 PASS at the iter-23-restored 8000 ms timeout; evaluator spot-checked J-06-verify.png (md5 32471d23): /research/event-study renders fully with its horizon controls, the last of the script's 11 page loads. The owner's BCW budget amendment still binds and was not re-litigated. Carried, unchanged and owner-owned: audit B5 - whether the at-rest GET /api/health <= 0.1 s target stands as written, given the endpoint has sat at ~98.6 % of budget since iter-16 (this iteration's browser-QA observed ~0.10-0.18 s across 3 steady-state reads on a box running two pytest fixture builds)."
+    },
+    "J-07": {
+      "id": "J-07",
+      "name": "Heavy aggregates never take the service down",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-25",
+      "last_passing_iter": "goal-ops-hardening-iter-25",
+      "first_seen_iter": "goal-ops-hardening-iter-14",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-25-evidence/UT-J-07-health-poll.log",
+      "spec_hash": "1c7c67c3d6cd933820eeac29de54a7442c33e19d3ede0e6353fc044b929bf991",
+      "note": "passing -> passing (required-still-passing). THE DETERMINISTIC REPLAY LANE RETURNED FAIL FOR J-07 AND IT WAS OVERTURNED - evaluator verified the overturn on the merits rather than accepting the footer. The golden script's step 02 expects the text 'Ready' on '/'; at replay time (15:32-15:33Z) the badge read 'Initializing... history 89/89' because that boot's warm-up had just hit a non-fatal MemoryError under host RAM pressure from two concurrent detached pytest fixture builds (logs/backend.log:79986; ps confirmed PIDs 1620313/1620524 started 15:29Z; the log contains exactly ONE 'background warm-up failed' line in its entire history). The LLM lane then restarted via scripts/start-backend.sh, got a clean warm-up (89/89, ready) and verified J-07's substance live: TWO real back-to-back background-compute windows (2026-07-14 then 2026-07-13, horizons_total 5 each) in ONE long-lived process (PID 1662743), 12/12 HTTP 200 during a 12-second once-per-second poll inside the second window (UT-J-07-health-poll.log, latencies 0.126-1.719 s, inside the owner-amended <= 2.0 s BCW ceiling), window completed cleanly (duration_ms 74689) and readiness stayed 'ready'. EVALUATOR CROSS-CHECK IN THE DB: those two windows' forward_aggregate_cache rows for r1865-f3954530 commit 15:44:08.625745 -> 15:45:07.875765 (2026-07-14) and 15:45:41.944155 -> 15:46:41.452151 (2026-07-13) UTC - a ~14.8 s/horizon cadence consistent with the disclosed durations, and the second window starts after the first finishes (single-flight intact). Steps 3-4 (VmPeak, induced memory-pressure abort) carried on iter-22's measurement over byte-unchanged compute code, per this iteration's binding 'Do not redo'."
+    },
+    "J-08": {
+      "id": "J-08",
+      "name": "Backtest evidence serves from storage only — never a cold recompute on request",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-25",
+      "last_passing_iter": "goal-ops-hardening-iter-25",
+      "first_seen_iter": "goal-ops-hardening-iter-16",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-25-evidence/J-08-verify.png",
+      "spec_hash": "8a159d44a2eaf98e595f4e358a9db965b3e9e9d46ec8189768802bee577add21",
+      "note": "passing -> passing (required-still-passing). Deterministic golden replay UT-J-08 PASS; evaluator opened J-08-verify.png (md5 b0a5c9b7): /backtest renders fully populated at 'Viewing as-of 2026-07-22 (latest)', never a skeleton. CORROBORATED AGAIN BY THE J-09 WALKTHROUGH: both /backtest?asof=2026-07-14 and ?asof=2026-07-13 returned immediately while their compute went to the background thread (browser-QA confirmed each date was uncached beforehand by a direct read-only SQLite query of forward_aggregate_cache), which is J-08's own contract exercised twice. The serving split and the ready/refreshing/not_yet_computed machine are byte-unchanged (zero apps/backend/app/** diff)."
+    },
+    "J-09": {
+      "id": "J-09",
+      "name": "The backend discloses its own background-compute activity",
+      "status": "passing",
+      "last_verified_iter": "goal-ops-hardening-iter-25",
+      "last_passing_iter": "goal-ops-hardening-iter-25",
+      "first_seen_iter": "goal-ops-hardening-iter-24",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-25-evidence/UT-J-09-04-data-panel-inflight.html",
+      "spec_hash": "40d29150860c17a467851359d82af4524204a0cc874c7c3eb568255977363a61",
+      "note": "partial -> PASSING. The single blocker iter-24 named - the unbuilt Walkthrough acceptance clause - is closed, and the evaluator verified the artifact itself rather than the prose: reports/goal-session-ops-hardening-demo.json (the file demo.sh --session-live reads, established iter-23) now holds 16 steps; I diffed it against HEAD in python and confirmed steps n=1-12 are byte-identical, the highlights section is still exactly 8 (cap undisturbed), and the four new n=13-16 entries all carry journey 'J-09', new true, verified true. AG-3 RE-DERIVED FROM THE DATABASE for both this iteration's live evidence and the manifest's iter-24-sourced figures: (a) UT-J-09-04-data-panel-inflight.html discloses 'as-of 2026-07-13 | elapsed 12.9s | horizons 0/5 | dataset r1865-f3954530' and that window's first forward_aggregate_cache commit is 15.1 s after its start, so 0/5 at 12.9 s is exactly right; (b) UT-J-09-05 discloses 'completed | as-of 2026-07-13 | 1m 15s' against duration_ms 74689; (c) manifest n=15's '41.8 s, 2/5' for as-of 2026-07-17 lands at 12:56:30.6 UTC, after exactly the first two of that window's five commits (12:56:02.744937 / 12:56:18.412623), and n=16's '1m 15s' matches duration_ms 75108. Steps 1-6 all verified live this iteration: UT-J-09-01-steady-ready.png (full-page, green 'Ready', no indicator); UT-J-09-03-badge-inflight.html ('background compute running (1)' rendered BESIDE 'Ready' in the same DOM read); UT-J-09-04 (panel in flight); UT-J-09-05 (idle + last outcome); UT-J-09-06-idle-none-yet-post-restart.html ('Last outcome: none yet.' after a real restart). Audit F1 CLOSED and verified live: UT-J-09-07-poll-failure-unknown.html shows data-testid='background-compute-unknown' ('Background-compute state unknown - the backend is unreachable.') with idlePresent false while the badge reads 'Backend unavailable'; evaluator read the new pure resolver (apps/frontend/lib/background-compute-panel-branch.ts) and the page.tsx hunk and confirmed the genuine-idle copy is preserved byte-for-byte. OPEN AND STATED PLAINLY, NOT LAUNDERED: (i) the Acceptance's steady-state 'GET /api/health within the UNCHANGED <= 0.1 s budget, re-measured and recorded' - the recorded iter-24 measurement is official-convention 0.100023 s with a 10-sample max of 0.127788 s, and this iteration's 3 steady reads were ~0.10-0.18 s on a box running two pytest fixture builds; scored met at the SAME bar this session already applied to J-06/J-07 (pre-existing ~98.6 %-of-budget tightness since iter-16; this iteration's diff contains ZERO backend product code, so it provably adds no work) and routed to the owner as audit B5 - assumption logged; (ii) audit T1's two rewritten backend tests were NEVER executed to a pass/fail line - both detached pytest runs were still building the loaded_engine fixture after 39 minutes when this evaluation closed (pytest collection succeeded, 1 selected each, no errors; evaluator read both rewritten tests in full); (iii) audit B2 (a Thread.start() failure would leave the badge reading 'running (1)' for the process lifetime) remains deferred by design."
+    }
+  },
+  "anti_goal_violations": [
+    {
+      "iter": "goal-ops-hardening-iter-1",
+      "anti_goal": "AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders.",
+      "severity": "critical",
+      "evidence": "iter-1 eval.md",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-2",
+      "anti_goal": "AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders.",
+      "severity": "critical",
+      "evidence": "iter-2 eval.md",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-2",
+      "anti_goal": "AG-3 (dimension): displayed numbers must be correct — a fetch that landed zero rows must not present as a success.",
+      "severity": "minor",
+      "evidence": "iter-2 eval.md",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-7",
+      "anti_goal": "AG-8 — Resilience to data-shape and data-scale change: widening the data basis must never crash an existing page or exhaust a service's memory; unbounded whole-table ORM loads are forbidden on the deep basis.",
+      "severity": "critical",
+      "evidence": "iter-7 eval.md",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-8",
+      "anti_goal": "AG-10 — Host resource ceiling (hardware protection): heavy compute MUST be launched only via the project launch scripts, which must apply the declared host caps.",
+      "severity": "minor",
+      "evidence": "iter-8 eval.md",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-9",
+      "anti_goal": "AG-8 (distinct dimension) — Resilience to data-shape and data-scale change: unbounded whole-table ORM materialization on the forward-aggregate warm path.",
+      "severity": "critical",
+      "evidence": "iter-9 eval.md; resolved by iter-14's bounded/streamed compute_forward_aggregates rewrite",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-10",
+      "anti_goal": "AG-10 — Host resource ceiling: heavy compute (backfills, full-universe rebuilds, measurement passes) MUST be launched only via the project launch scripts.",
+      "severity": "minor",
+      "evidence": "iter-10 eval.md",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-13",
+      "anti_goal": "AG-8 (iter-9 forward_aggregates dimension) — observed-severity escalation: the unbounded load wedged the service on the deep basis.",
+      "severity": "critical",
+      "evidence": "iter-13 eval.md; resolved by iter-14 (61.8% memory margin, 250/250 health 200)",
+      "resolved": true
+    },
+    {
+      "iter": "goal-ops-hardening-iter-17",
+      "anti_goal": "AG-10 — Host resource ceiling: heavy compute MUST be launched only via the project launch scripts (operator process lapse: raw uvicorn on a throwaway port; disclosed and corrected via start-backend.sh, no launch script modified).",
+      "severity": "minor",
+      "evidence": "iter-17 eval.md",
+      "resolved": true
+    }
+  ],
+  "updated_at": "2026-07-26T16:10:00Z"
+}

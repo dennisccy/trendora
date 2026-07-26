@@ -1207,3 +1207,74 @@ process lifetime) — the fix needs the freeze on `ensure_historical_forward_agg
 deliberately; (6) carried, unchanged: retarget `test_forward_testing_serving_split.py`'s four `is_latest`
 monkeypatches before removing the dangling imports at `backtest.py:75` / `mcp/tools.py:38`; run
 `test_api_backtest.py` TC-11 and `test_data_manager.py`'s heavy fixtures off the constrained box.
+
+## Iteration 26 — goal-ops-hardening-iter-26
+
+**Date:** 2026-07-26T18:48:05Z
+**Verdict:** ESCALATE
+**Depth dispatched:** lean
+**Journey deltas:**
+- Newly passing: none — all 8 were already `passing`, and all 8 were RE-VERIFIED with this-iteration
+  evidence, so `last_verified_iter` advances iter-25 -> iter-26 for every journey (J-01/J-03/J-04/J-05/
+  J-06/J-07/J-08 by deterministic golden replay 7/7 PASS, zero FAIL rows; J-09 by the LLM lane).
+- **Both iter-25 CONFIRM-REJECT gaps CLOSED** (the whole point of this iteration): (a) `reports/perf-budgets.md`
+  now carries a new dated quiet-host `/api/health` section with an explicit Holds? column — all 4 statistics
+  hold (official 0.092222 s, min 0.087875 s, mean 0.092081 s, max 0.094309 s; 11 raw readings, 11/11 HTTP 200)
+  — plus the plain "this is the CURRENT BINDING figure, superseding iter-24" sentence TC-2 required; the diff
+  is append-only (`@@ -3797,3 +3797,73 @@`, 70 insertions / 0 deletions, OWNER BUDGET AMENDMENT byte-unchanged).
+  (b) J-09 step 4's failure branch now has citable evidence: a backend round-trip test asserting a crafted
+  `failed` outcome is served verbatim, plus a frontend pure-function test I re-ran myself.
+- Newly failing: none. Regressed (passing->failing): none. Unknown: none.
+- **Anti-goal violations: TWO NEW, both `minor`, both `resolved: false`** — AG-8 (an unhandled
+  `sqlite3.IntegrityError` escaped as "Exception in ASGI application" on `GET /api/backtest`) and AG-3 (the
+  `/data` coverage panel showing PRICE HISTORY "— → —" / UNIVERSE 0 for a 4.9 GB populated database). Neither
+  was introduced by this diff (zero `apps/backend/app/**` change); both are pre-existing paths exercised for
+  the first time by this iteration's own QA. The 9 historical records stay `resolved: true`. scan-report CLEAN;
+  coherence COHERENCE-PASS; all 8 `spec_hash`es match `goal_gate hash-journeys`; no `journeys-changed.md`.
+
+**Reasoning:** I verified the gap closure on the merits — re-ran the frontend test (`npx tsx
+lib/background-compute-last-outcome.test.ts` -> "2 passed"), proved the new backend test is not vacuous by
+reading `readiness.py:252-255` (module-attribute lookup at call time, so the monkeypatch really binds),
+confirmed the budgets section is append-only and that its window sits inside a real `start-backend.sh` boot at
+18:11:43Z, and cross-checked the panel DOM against the same-moment `/api/health` payload (1623 ms -> "1.6s",
+as-of 1999-11-02). Then I checked the browser-QA narrative against `logs/backend.log` and it did not hold: its
+step 2 says the `/backtest` requests "returned immediately", while the log shows `total_ms` 16665.46 /
+21949.24 / 23160.46 (`resolved_run_ms` 16423-23032 = a create-once `run_scan` on the request path), and
+`logs/backend.log:81004` records an UNHANDLED `sqlite3.IntegrityError` ("UNIQUE constraint failed:
+forward_returns.run_id, forward_returns.symbol, forward_returns.horizon") escaping to uvicorn from
+`api/backtest.py:171` -> `backfill_run_forward_returns:1667` -> `_insert_run_forward_returns:390` — the first
+such failure in the entire 81k-line logfile. Pulling that thread in the database (read-only) explained a second
+thing I had noticed in the screenshots: `scanner_runs` 1866/1867 were created at 18:31:49.015 / 18:32:01.919 by
+those two `/backtest` navigations, bumping the dataset version, while `coverage_snapshot` still holds only the
+old key (newest `computed_at` 18:25:37.748) — so `/api/data` fell back to `_coverage_not_yet_computed_payload`
+(`data_manager.py:908`) and `/data` displayed an empty dataset in this iteration's OWN
+UT-J-09-01-data-page-top-badge.png (18:33Z), eight minutes after J-07-verify.png (18:25Z) showed
+1996-01-02 -> 2026-07-22 / universe 540. Rejected REGRESSION (C.1): nothing went passing->failing, and I
+classified both findings `minor` rather than critical on stated grounds — the service was never taken down
+(every later request in the log answers 200 through a clean shutdown), no whole-table load occurred, and the
+zero-coverage payload is a deliberate documented sentinel that self-heals at the next boot warm-up
+(`warmup.py:122`) or ingest — while recording that the "UI degrades gracefully" half of AG-8 is UNVERIFIED
+because nobody captured the browser at that moment. Rejected STALLED (C.2): every unblock path is
+agent-tractable. Rejected GOAL_ACHIEVED (C.3): two anti-goal findings are unresolved, and certifying closure
+over a server-side 500 and a screen reporting an empty database would be exactly the "met by interpretation"
+pattern the iter-22 and iter-25 confirm runs rejected. Chose ESCALATE (C.4) over CONTINUE (C.5): this LEAN
+iteration surfaced a cross-cutting issue — backend request path + `/data` presentation + an anti-goal
+classification I could not settle from the artifacts — and the fix must lift the deliberate freeze on
+`forward_testing`, so the next round needs the full pipeline (audit + ux-regression + closure), which
+ESCALATE enforces mechanically.
+
+**Next-step recommendation:** FULL depth, no new features. (1) Capture what a person actually sees when
+`/backtest` is opened twice at once on a never-scanned historical date — full page, not viewport; a calm
+contained error closes the AG-8 question, a blank error page is a real break. (2) Make the forward-returns
+write idempotent/serialized so two concurrent requests for the same date cannot 500 — this touches
+`forward_testing.backfill_run_forward_returns`, frozen since iter-24, so the planner must lift that freeze
+deliberately. (3) Make `/data` honest after a time-machine visit: either refresh the stored coverage row when
+a run is created outside ingest, or label the sentinel state "coverage not yet computed for this dataset
+version" instead of rendering zeros. Non-blocking carries: correct the browser-QA "returned immediately"
+sentence; fix the new perf-budgets section's `19:14:25Z` label (the readings are 18:14Z — local time written
+as UTC); re-exercise J-09 steps 2 and 3 on a date that HAS a snapshot but incomplete aggregates (this run's
+never-scanned dates made step 2 fail its own "returns immediately" wording and finished too fast for an
+in-flight capture); `J-01-verify.png` == `J-03-verify.png` again (6th recurrence). OWNER, optional and
+unchanged: backlog card B-1107, and whether the cold historical `/backtest` load (16-23 s measured today,
+sanctioned by goal.md's "cannot be precomputed" list) should get its own written budget or move off the
+request path.

@@ -3797,3 +3797,73 @@ against a REAL background-compute window before handoff (TC-1/TC-2/TC-3/TC-5 sha
 
 Backend was stopped (`pkill`, confirmed no process remained on the measurement port) before handoff — no
 server process left running.
+
+## Iteration 26 — J-09 confirm-gap 1: quiet-host `GET /api/health` re-measurement, unambiguous verdict (2026-07-26, developer)
+
+Per goal-ops-hardening-iter-26 (closing the first of the two iter-25 GOAL_ACHIEVED second-key CONFIRM
+REJECT gaps). iter-24's own re-measurement (immediately above) recorded 3 of 4 statistics OVER the
+unamended `<= 0.1 s` steady-state budget (mean 0.103597 s, max 0.127788 s vs. official 0.100023 s — only
+the min, 0.093422 s, held), while a clean same-build QA read (0.094604 s) was never reconciled against it
+in this file. The confirm evaluator named this ambiguity as gap 1, calling one honest quiet-host
+re-measurement "cheap to close either way" — this section is that re-measurement.
+
+**Method:** backend started via the sanctioned `scripts/start-backend.sh` (host-guard verified — the log
+line `host-guard: cpu_list=0-3,8-11 blas_threads=4` confirmed in `logs/backend.log`, caps enforced by the
+script's own HOST-GUARD block, unchanged), default port 8255 (no override), warmed to `readiness: "ready"`
+(`warmup.status: "ok"`, `done/total 89/89`) before measuring. Confirmed QUIET immediately before
+measuring, per this iteration's own sequencing rule (never overlap with a `loaded_engine` pytest build):
+this iteration's combined TC-3/TC-4 backend pytest run (see the dev handoff) had already fully exited
+(`ps aux` showed zero `pytest` processes anywhere on the host) roughly 3 minutes before this reading;
+`uptime` reported `load average: 0.63, 1.04, 1.27` at 2026-07-26T19:14:25Z; the CPU-top process list held
+only this session's own editor/browser/`claude` processes and the host's own long-running
+`hwmon-log.sh` background logger — no concurrent pytest, backfill, or another project's test job was
+observed running on the host at measurement time. One warm-up hit (discarded) + one official
+`measure-perf.sh`-convention single timed sample (`curl -s -o /dev/null -w "%{time_total} %{http_code}"`),
+plus a 10-sample spaced-poll series (0.5 s apart, same convention as iter-24) — all 11 raw readings below,
+none rounded.
+
+**TC-1 — all 11 raw readings (2026-07-26T18:14:25Z–18:14:42Z, backend port 8255):**
+
+| # | sample | latency (s) | http_code |
+|---|--------|---|---|
+| 1 | official single sample | 0.092222 | 200 |
+| 2 | spaced-poll #1 | 0.092024 | 200 |
+| 3 | spaced-poll #2 | 0.092498 | 200 |
+| 4 | spaced-poll #3 | 0.092000 | 200 |
+| 5 | spaced-poll #4 | 0.094059 | 200 |
+| 6 | spaced-poll #5 | 0.090923 | 200 |
+| 7 | spaced-poll #6 | 0.094309 | 200 |
+| 8 | spaced-poll #7 | 0.091710 | 200 |
+| 9 | spaced-poll #8 | 0.092343 | 200 |
+| 10 | spaced-poll #9 | 0.087875 | 200 |
+| 11 | spaced-poll #10 | 0.093066 | 200 |
+
+| statistic | value | budget | Holds? |
+|---|---|---|---|
+| Official-convention single sample | 0.092222 s | ≤ 0.1 s | **yes** |
+| 10-sample spaced-poll min | 0.087875 s | ≤ 0.1 s | **yes** |
+| 10-sample spaced-poll mean | 0.092081 s | ≤ 0.1 s | **yes** |
+| 10-sample spaced-poll max | 0.094309 s | ≤ 0.1 s | **yes** |
+
+All 4 statistics hold cleanly this pass — no statistic within even 5 ms of the 0.1 s line (the closest,
+max 0.094309 s, still carries ~5.7 ms of headroom), the opposite pattern from iter-24's read where 3 of 4
+statistics sat over budget.
+
+**TC-2 — which reading is now binding:** this iteration's quiet-host reading (all 4 statistics holding,
+recorded above) is now the CURRENT BINDING figure for J-09's Acceptance `<= 0.1 s` steady-state
+health-budget clause — **superseding iter-24's mixed read for scoring purposes**. iter-24's own entry
+(immediately above this one) is left byte-unchanged, per this file's append-only convention, but its
+reading is no longer the one the clause is scored against. The `background_compute` field composition
+under test has not changed between the two passes (still zero new DB query, per iter-24's own entry), so
+the difference between the two readings is host-noise variance on an endpoint already documented since
+iter-16 as running near its ceiling (~98.6 % of budget at rest), not a regression introduced by either
+iteration. The two-iteration pattern — one pass over budget, one pass cleanly under, on an unchanged code
+path — confirms this endpoint sits close enough to its budget line that ordinary host noise alone can flip
+the pass/fail verdict; that is disclosed plainly here rather than papered over (per this iteration's own
+instruction not to round a breach into a pass — symmetrically, not to round a clean pass into a phantom
+breach either). **J-09's Acceptance health-budget clause is scored HOLDS as of this binding reading.**
+
+Both backend and frontend were later restarted a second time (same session, to verify clean dual-service
+boot with no port conflicts per the developer pre-handoff checklist) and then stopped again — `ps aux`
+confirmed no `uvicorn`/`next dev`/`next-server` process remained on ports 8255/3255 before handoff. See
+the dev handoff (`docs/handoffs/goal-ops-hardening-iter-26-dev.md`) for the full verification log.

@@ -31,6 +31,7 @@ import { Select } from "@/components/ui/select";
 import { TermInfo } from "@/components/ui/term-info";
 import { cn } from "@/lib/utils";
 import { resolveBackgroundComputePanelBranch } from "@/lib/background-compute-panel-branch";
+import { resolveLastOutcomeSummary } from "@/lib/background-compute-last-outcome";
 import { formatIsoDate, formatIsoDateTime, isValidIsoDate, ISO_DATE_PLACEHOLDER } from "@/lib/dates";
 import {
   MEMBERSHIP_TIMELINE_PAGE_SIZE,
@@ -3576,15 +3577,15 @@ function BackgroundComputeRow({ entry }: { entry: BackgroundComputeActive }) {
 }
 
 function LastOutcomeSummary({ outcome }: { outcome: BackgroundComputeOutcome }) {
-  const failed = outcome.outcome === "failed";
+  const { reasonText, badgeVariant } = resolveLastOutcomeSummary(outcome);
   return (
     <div className="flex flex-wrap items-center gap-3" data-testid="background-compute-last-outcome">
-      <Badge variant={failed ? "danger" : "ok"} className="capitalize">
+      <Badge variant={badgeVariant} className="capitalize">
         {outcome.outcome}
       </Badge>
       <span className="num text-xs text-text-muted">as-of {outcome.asof_key}</span>
       <span className="num text-xs text-text-muted">{fmtDuration(outcome.duration_ms / 1000)}</span>
-      {failed ? <span className="text-xs text-neg">{outcome.reason}</span> : null}
+      {reasonText ? <span className="text-xs text-neg">{reasonText}</span> : null}
     </div>
   );
 }

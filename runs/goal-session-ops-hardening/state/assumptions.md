@@ -287,3 +287,26 @@ Acceptance clause as requiring an actual witnessed live failure capture would ke
 open regardless of this iteration's test additions, and would need to authorize a bounded, safe live-trigger
 mechanism (or accept B-1107's existing incidental evidence) before crediting it.
 **Reversible:** yes
+
+## iter-26 — goal-evaluator
+
+**Ambiguity:** AG-8 (critical) forbids the deep basis "crash[ing] an existing page" and requires the UI to
+degrade gracefully, "never a blank application-error page". This iteration's own evidence contains an
+unhandled `sqlite3.IntegrityError` escaping as "ERROR: Exception in ASGI application" on `GET /api/backtest`
+(`logs/backend.log:81004`), but nobody captured the browser at that moment, so what the user saw is unknown.
+`docs/goal.md` does not say whether a server-side 500 on a request path is itself the violation, or only a
+500 that reaches the user as a blank page. AG-3 (critical) is similarly open for the all-zero `/data`
+coverage panel: the code calls it an honest "not yet computed" sentinel, yet the screen renders it as
+ordinary figures (PRICE HISTORY "— → —", UNIVERSE 0) for a fully populated database.
+**We chose:** recorded BOTH as anti-goal findings, `resolved: false`, but scored them `minor` rather than
+`critical` — so the verdict is ESCALATE, not a REGRESSION halt. Grounds stated rather than assumed: the
+service was never taken down (every request after the error in the logfile answers 200, through a clean
+shutdown), no unbounded whole-table load occurred, the diff contains zero `apps/backend/app/**` product
+code so nothing here was introduced this iteration, the zero-coverage payload is a deliberate documented
+path (`data_manager.py:908`) that self-heals at the next boot warm-up or ingest, and no journey step covers
+either scenario. I did not launder them: both are in `journey-history.json`, in eval.md's anti-goal table,
+and they are the next iteration's first two work items. A human who reads AG-8's "never crash an existing
+page" as satisfied only by a captured, contained UI error — or who reads AG-3 literally about the zeros —
+would score one or both critical, which under decision tree C.1 means a REGRESSION halt for human review
+instead of another agent iteration.
+**Reversible:** yes

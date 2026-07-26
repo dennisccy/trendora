@@ -247,3 +247,19 @@ unwritten artifact is the cheapest kind of blocker — spec it explicitly instea
 follow-up" across iterations.
 **Applies to:** any goal-proposer auto-appended journey (it inherits the session's standard Acceptance bullets
 verbatim, including the `demo.sh --session-live` walkthrough clause).
+
+## iter-26 — 2026-07-26T18:48:05Z
+
+**Verdict:** ESCALATE
+**Lesson:** A "regression-only" browser pass can silently exercise a *heavier* code path than the journey
+intends and leave the product in a worse state than it found it. This lane triggered background compute by
+opening `/backtest` on two NEVER-SCANNED dates (2001-04-17, 1999-11-02) instead of dates that merely lack
+forward aggregates: that ran a create-once `run_scan` on the request path (16.7-23.2 s, vs the ~40 ms the
+intended trigger costs), produced the logfile's first-ever unhandled `IntegrityError` -> "Exception in ASGI
+application" from `api/backtest.py:171`, and bumped `scanner_runs` to 1867 so `coverage_snapshot`'s key went
+stale and `/data` began reporting an empty dataset for a 4.9 GB database. None of it appears in
+`ui-test-results.md`; all of it is in `logs/backend.log` and the DB.
+**Applies to:** any iteration whose QA triggers a background-compute window or time-machines to a historical
+as-of date — pick a date that ALREADY has a snapshot, and always diff `logs/backend.log` (ASGI errors,
+`backtest_timing total_ms`) plus `scanner_runs`/`coverage_snapshot` after a browser lane runs, before scoring
+its narrative as evidence.
