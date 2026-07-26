@@ -827,3 +827,112 @@ accept option (3), score both passing, and reach GOAL_ACHIEVED — which is exac
 owner rather than the evaluator deciding it silently.
 **Reversible:** yes
 
+
+<!-- condense.sh 2026-07-26T10:36:51Z: moved 5 entries (keep-iters=5) -->
+
+## iter-16 — goal-decomposer
+
+**Ambiguity:** J-08 step 4 reads literally as "GET /api/backtest and the MCP query_backtest tool perform
+zero aggregate computation on ANY request" — unqualified by is_latest/historical. But every other
+ingest-time cache in this session (EventStudyCache/MarketPhaseCache/IndexSeriesCache/CoverageSnapshot)
+keeps an explicit "cannot be precomputed (user-parameterized)" carve-out for a non-default/historical
+parameterization, which lazily computes-once-and-caches on first view — and `/backtest`'s own historical
+as-of viewing ("time machine", J-14/17/18) is pre-existing, goal.md's Non-Goals bar "not a rewrite," and
+the ingest finalize warm only ever targets the current latest run's date (never a swept set of historical
+dates). Reading step 4 fully literally (zero compute for EVERY as-of, including historical) would mean a
+historical `?as_of=` view almost always renders "not yet computed" instead of real evidence, since the
+GLOBAL `dataset_version` stamp invalidates a historical row on virtually every subsequent backfill — a
+real regression to existing time-machine capability that none of J-08's 5 steps actually exercise (all 5
+describe the default/latest view only).
+**We chose:** scoped the "never compute on request" guarantee (and its call-count-zero proof) to requests
+where the resolved run is the current latest (`is_latest == true`) — matching exactly what the ingest
+finalize warm targets and every one of J-08's 5 steps' own scenario (none names a historical as-of). A
+historical (`is_latest == false`) request keeps its existing, unchanged lazy create-once-and-cache
+behavior — the same carve-out every sibling cache already documents. This is scoped, not silently
+expanded: IN SCOPE/OUT OF SCOPE/TESTING REQUIREMENTS in the iter-16 spec all say so explicitly (TC-13) so
+the evaluator can check the historical path was not silently broken. A human who reads step 4 fully
+literally would require historical as-of viewing to also degrade to "not yet computed" whenever its
+dataset-version stamp is stale, and might score this iteration's historical-path carve-out a gap rather
+than a correct scope boundary.
+**Reversible:** yes
+
+## iter-16 — goal-evaluator
+
+**Ambiguity:** goal.md J-08 step 2 says the refresh window serves the last complete stored version
+"labeled with that version's served as-of"; step 5 defines `not_yet_computed` as "a store where no warm
+has ever completed for any version (fresh-install shape, a test fixture)". The implementation resolves all
+three states strictly within ONE `asof_key`, so an ingest that ADVANCES the latest date (audit B1, the
+"common single-latest-date backfill" per `data_manager.py:3172`) yields `not_yet_computed` on a store that
+is full of complete versions. goal.md never states whether the fallback must cross as-of boundaries, and
+the iteration spec's own IN SCOPE bullet 2 + TC-6 encode the per-`asof_key` scoping — so the
+implementation is spec-conformant while arguably not goal-conformant. The auditor graded it GAP and
+explicitly routed the call to me.
+**We chose:** ruled that the fallback MUST cross as-of boundaries, and therefore kept J-08 `partial` (and
+with it J-06/J-07) rather than scoring the iteration's own spec as sufficient. Reasons: "labeled with that
+version's served as-of" is meaningless unless the served as-of can differ from the current one; step 5
+reserves the empty state for the fresh-install shape, which B1's flow is not; and the resulting UX shows
+an empty evidence section plus copy telling the user to "run an ingest" they are already running (audit
+F2). Treated this as reading the goal text (mine to do) rather than a product-direction decision (the
+owner's), because the fix is bounded and agent-owned — which is also why the verdict is CONTINUE rather
+than iter-15's STALLED. A human who reads J-08's per-`asof_key` scoping as the intended contract (the
+iteration spec's own reading) would score B1 an acceptable documented gap and could score J-08 `passing`,
+subject to the separate latency and browser-evidence gaps.
+**Reversible:** yes
+
+## iter-16 — goal-evaluator
+
+**Ambiguity:** J-04 is in this iteration's Required-still-passing set but has no golden replay script, so
+it rode the LLM browser-qa lane — which SKIPPED it, because its steps need a backend kill/restart and
+service actions were blocked this session. The methodology's screenshot rail says no fresh evidence means
+no fresh pass, but its stable-journey rule also lets unchanged journeys carry over, and `unknown` in the
+history schema means "not tested this iteration; carry over previous status".
+**We chose:** carried J-04 as `passing` rather than dropping it to `unknown`, but deliberately did NOT
+advance its `last_verified_iter` (left at iter-15) and did not re-stamp its `spec_hash` — so the record
+shows plainly that this iteration produced no evidence for it. Basis: iter-13's identical, human-ratified
+precedent; a live end-to-end pass at iter-14; and the audit's own `git status` confirmation that
+`main.py`, `app/api/health.py`, `app/engine/readiness.py`, `app/engine/warmup.py` and `scripts/` are
+untouched (the spec's OUT OF SCOPE binds them). The call is not verdict-determinative (three journeys are
+`partial`, so GOAL_ACHIEVED was never on the table), and my next-step makes a live J-04 replay a hard
+precondition for any future GOAL_ACHIEVED. A human who requires fresh evidence for every
+required-still-passing journey every iteration would score J-04 `unknown` today.
+**Reversible:** yes
+
+## iter-17 — goal-evaluator
+
+**Ambiguity:** The DoD names TC-8 (a LIVE browser capture of the cross-`asof_key` refreshing case, where
+the served `evidence_asof` is OLDER than the requested date) as a required bullet, and its
+document-and-defer escape is worded for TC-9 only, not TC-8. But that live state is unproducible on the
+committed seed: MAX(daily_prices.date) == MAX(scanner_runs.asof_date) == 2026-07-22 (auditor-verified
+read-only), so no ingest can advance the asof_key without fabricating price data (AG-9/AG-5-barred; an
+owner-owned data-cycle action). The auditor explicitly routed to the evaluator whether resolver-level unit
+tests plus the audit's client-side cross-boundary render are a sufficient evidence floor for the B1 fix.
+**We chose:** ACCEPTED that floor for B1's CODE CORRECTNESS — 15 unit tests (incl. TC-1 cross-boundary,
+TC-4 tie-break, TC-5 strictly-older SQL, TC-6 historical carve-out) + the auditor's Playwright client-side
+render of the exact cross-boundary payload (AUDIT-A1, banner + "≤older-date" window label + n_runs all
+bound to the older served as-of) + the same-key refreshing live banner (TC-07). Therefore TC-8's missing
+live capture is NOT treated as a standalone blocker, and the next iteration should NOT keep chasing it.
+J-08 nonetheless stays `partial` — held by the SEPARATE, un-remediated ≤1.5s serving-budget breaches (step
+2), not by TC-8 — so this call is not verdict-determinative this iteration; it governs what the next
+iteration targets. A human who requires a genuine end-to-end live cross-boundary capture before crediting
+B1 would keep J-08 partial specifically on TC-8 and route it to an owner data-cycle action.
+**Reversible:** yes
+
+## iter-18 — goal-evaluator
+
+**Ambiguity:** J-04 is in the Required-still-passing set but has no golden script, so it rides the LLM
+browser-qa lane — which SKIPPED it this iteration because Chrome MCP is wedged (port 9224 never ready). There
+is NO `browser-infra.json` token, so the methodology's REL-14 `pending_infra` carve-out (score `partial`,
+set `pending_infra: true`) does not mechanically fire; the dispatch/pump note nonetheless said "treat per your
+pending-infra methodology." The screenshot rail ("no fresh screenshot → no fresh pass") and the
+stable-journey carry-over rule (unchanged surface carries prior status) point in opposite directions.
+**We chose:** carried J-04 `passing` (last_verified deliberately LEFT at iter-15), NOT `partial`+pending_infra
+and NOT `unknown`. Basis: J-04's entire code surface (main.py, health.py, readiness.py, warmup.py) is
+coherence-confirmed OUT of this iteration's 5-file backend diff; a live end-to-end pass exists at iter-14;
+this is the identical, human-ratified carry-over iter-16 and iter-17 made; and it is NOT verdict-determinative
+(J-06/J-07/J-08 partial keep GOAL_ACHIEVED off the table regardless). A fresh live DISRUPTIVE kill/restart
+replay remains a HARD precondition for any future GOAL_ACHIEVED, flagged in the next-step. A human who
+requires fresh browser evidence for every required-still-passing journey every iteration — or who reads the
+"treat per pending-infra" note as mandating `partial`+pending_infra even without the token — would score J-04
+`partial` this iteration instead.
+**Reversible:** yes
+

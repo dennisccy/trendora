@@ -238,9 +238,28 @@ def compute_readiness(
             "Run a backfill or rebuild on Data Manager to produce it."
         )
 
+    # ops-hardening iter-24 (J-09): compose the historical background-dispatch registry's own disclosure
+    # accessor into this SAME return dict, mirroring how `warmup`'s separate-module state is already
+    # composed above -- no new pattern, no DB read added (a pure in-memory registry read). Deferred import
+    # (this module has never imported `forward_testing` before; keeping it local here, rather than at
+    # module level, mirrors `forward_testing.py`'s own established deferred-import convention for its
+    # cross-module `app.engine.research._dataset_version` dependency -- avoid introducing any import-order
+    # coupling between the two engine modules for the sake of one read-only accessor call).
+    #
+    # Scoped try/except (mirrors this function's OWN db_ok guard above): a broken in-memory read here must
+    # degrade ONLY this one field to its honest empty shape -- never blank the rest of the readiness
+    # payload (`state`/`warmup` stay correct even if this accessor were to raise).
+    from app.engine import forward_testing
+
+    try:
+        background_compute = forward_testing.get_background_compute_status()
+    except Exception:  # pragma: no cover - a broken in-memory read must never blank readiness
+        background_compute = {"active": [], "recent_outcomes": []}
+
     return {
         "state": state,
         "detail": detail,
+        "background_compute": background_compute,
         "warmup": {
             "done": done,
             "total": total,

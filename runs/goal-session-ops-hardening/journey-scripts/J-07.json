@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "journey": "J-07",
+  "name": "Heavy aggregates never take the service down",
+  "default_timeout_ms": 10000,
+  "steps": [
+    {"n": 1, "journey": "J-07", "action": {"type": "goto", "url": "/backtest"}, "expect": {"text": "Time-machine"}},
+    {"n": 2, "journey": "J-07", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Ready"}},
+    {"n": 3, "journey": "J-07", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "Data Manager"}}
+  ]
+}

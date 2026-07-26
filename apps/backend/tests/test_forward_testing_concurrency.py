@@ -944,3 +944,183 @@ def test_iter20_historical_dispatch_owner_failure_releases_guard_and_allows_redi
         "expected the forced first failure (call 1) AND at least one successful re-dispatch afterward -- "
         f"got {call_count['n']} total calls"
     )
+
+
+# ======================================================================================================
+# ops-hardening iter-24 (J-09) -- disclosure of the SAME iter-20 dispatch registry above: per-identity
+# `started_at`/`horizons_done`/`horizons_total` bookkeeping, the bounded newest-first `recent_outcomes`
+# ring (config-capped), `get_background_compute_status()`'s shapes, and the failure-releases-guard-and-
+# redispatches contract additionally recording an honest `outcome: "failed"` entry. A NEW, purely additive
+# read surface over `_HIST_DISPATCH_LOCK`/`_HIST_DISPATCH_INFLIGHT`/`_HIST_RECENT_OUTCOMES` -- every test
+# above this banner (the iter-20 keying/dispatch-decision contract) is unaffected by any test below.
+# ======================================================================================================
+def test_get_background_compute_status_shape_is_always_active_and_recent_outcomes_lists():
+    """`get_background_compute_status()` always returns exactly `{"active": [...], "recent_outcomes":
+    [...]}` -- both plain lists, regardless of what the process-lifetime registry currently holds (this
+    module-global registry may carry state left behind by an earlier test in this same process; this pins
+    the SHAPE, not "nothing has ever dispatched")."""
+    import app.engine.forward_testing as forward_testing_module
+
+    status = forward_testing_module.get_background_compute_status()
+    assert set(status) == {"active", "recent_outcomes"}
+    assert isinstance(status["active"], list)
+    assert isinstance(status["recent_outcomes"], list)
+
+
+def test_ensure_dispatch_records_started_at_and_live_horizons_progress(tmp_path, monkeypatch):
+    """TC-2/TC-3 (spec DoD): dispatching a historical as-of records exactly one `active` entry with
+    `horizons_total == len(cfg.walk_forward.horizons)`, `horizons_done` starting at 0 and staying
+    `0 <= horizons_done < horizons_total` while the FIRST configured horizon is still in flight, and a
+    `started_at` matching the dispatch's own recorded start (within 1s). On completion the identity is
+    released from `active` and appears FIRST in `recent_outcomes` with `outcome == "completed"`,
+    `duration_ms >= 0`, and a null `reason`."""
+    import app.engine.forward_testing as forward_testing_module
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'progress.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+    asof = date(2021, 5, 1)
+    n_horizons = len(cfg.walk_forward.horizons)
+    assert n_horizons >= 2, "need >= 2 configured horizons to observe live in-between progress"
+
+    first_horizon_started = threading.Event()
+    proceed = threading.Event()
+    call_count = {"n": 0}
+
+    def _fake_ingest(session, h, cfg_, *, as_of):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            first_horizon_started.set()
+            proceed.wait(timeout=BOUNDED_TIMEOUT_S)
+
+    monkeypatch.setattr(forward_testing_module, "forward_aggregates_ingest_cached", _fake_ingest)
+
+    before_dispatch = datetime.now(timezone.utc)
+    with Session(engine) as session:
+        forward_testing_module.ensure_historical_forward_aggregates_dispatched(session, asof, cfg)
+    assert first_horizon_started.wait(timeout=BOUNDED_TIMEOUT_S), "dispatch never started"
+
+    status = forward_testing_module.get_background_compute_status()
+    matching = [e for e in status["active"] if e["asof_key"] == asof.isoformat()]
+    assert len(matching) == 1, f"expected exactly one active entry for this identity; got {status['active']}"
+    entry = matching[0]
+    assert entry["horizons_total"] == n_horizons
+    assert 0 <= entry["horizons_done"] < entry["horizons_total"]
+    started_at = datetime.fromisoformat(entry["started_at"])
+    assert abs((started_at - before_dispatch).total_seconds()) < 1.0
+    assert entry["elapsed_ms"] >= 0
+
+    proceed.set()  # let the (fake) first horizon finish; the remaining configured horizons are no-ops
+    deadline = time.monotonic() + BOUNDED_TIMEOUT_S
+    while any(e["asof_key"] == asof.isoformat() for e in forward_testing_module.get_background_compute_status()["active"]):
+        assert time.monotonic() < deadline, "dispatch never completed -- treat as a hang"
+        time.sleep(0.02)
+
+    final_status = forward_testing_module.get_background_compute_status()
+    assert not any(e["asof_key"] == asof.isoformat() for e in final_status["active"])
+    outcome = final_status["recent_outcomes"][0]
+    assert outcome["asof_key"] == asof.isoformat()
+    assert outcome["outcome"] == "completed"
+    assert outcome["reason"] is None
+    assert outcome["duration_ms"] >= 0
+    assert call_count["n"] == n_horizons
+
+
+def test_recent_outcomes_ring_capped_and_newest_first(tmp_path, monkeypatch):
+    """TC-9 (spec DoD): once more than `startup.background_compute_history_size` dispatches have
+    completed, `recent_outcomes` never exceeds that cap, and the newest completed dispatch is always
+    first."""
+    import app.engine.forward_testing as forward_testing_module
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'ring.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+    cap = cfg.startup.background_compute_history_size
+
+    # Isolate this test from whatever the process-lifetime ring already holds (an established pattern in
+    # this file -- e.g. the save/restore of `compute_forward_aggregates`/`forward_aggregates_ingest_cached`
+    # above); `monkeypatch` restores the original list object on teardown.
+    monkeypatch.setattr(forward_testing_module, "_HIST_RECENT_OUTCOMES", [])
+    monkeypatch.setattr(forward_testing_module, "forward_aggregates_ingest_cached", lambda *a, **k: None)
+
+    n_dispatches = cap + 3
+    for i in range(n_dispatches):
+        asof_key = f"2020-01-{i + 1:02d}"
+        key = (asof_key, "ring-test-v1")
+        with forward_testing_module._HIST_DISPATCH_LOCK:
+            forward_testing_module._HIST_DISPATCH_INFLIGHT[key] = {
+                "started_at": datetime.now(timezone.utc), "horizons_done": 0,
+                "horizons_total": len(cfg.walk_forward.horizons),
+            }
+        forward_testing_module._run_historical_forward_aggregates_dispatch(
+            engine, date.fromisoformat(asof_key), cfg, key
+        )
+
+    status = forward_testing_module.get_background_compute_status()
+    assert len(status["recent_outcomes"]) == cap, (
+        f"expected the ring capped at {cap} after {n_dispatches} completions; got "
+        f"{len(status['recent_outcomes'])}"
+    )
+    assert status["recent_outcomes"][0]["asof_key"] == f"2020-01-{n_dispatches:02d}", (
+        "expected the MOST RECENTLY completed dispatch first (newest-first)"
+    )
+    assert status["recent_outcomes"][-1]["asof_key"] == f"2020-01-{n_dispatches - cap + 1:02d}", (
+        "expected only the cap's-worth of most recent entries retained (oldest beyond the cap dropped)"
+    )
+    assert all(o["outcome"] == "completed" for o in status["recent_outcomes"])
+    assert status["active"] == []
+
+
+def test_historical_dispatch_failure_records_failed_outcome_and_releases_guard_for_redispatch(tmp_path, monkeypatch):
+    """Error-case contract (spec DoD, mirrors the existing TC-7 owner-failure test above): a test-injected
+    exception inside ONE horizon's compute is caught, recorded as `outcome: "failed"` with a non-null
+    `reason`, releases the `active` slot (never a permanent wedge), and a SUBSEQUENT dispatch for the SAME
+    identity runs again and eventually records `outcome: "completed"`."""
+    import app.engine.forward_testing as forward_testing_module
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'failure.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+    asof = date(2022, 8, 1)
+
+    call_count = {"n": 0}
+
+    def _fail_once_then_succeed(session, h, cfg_, *, as_of):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            raise RuntimeError("forced horizon-compute failure (iter-24 J-09 probe)")
+
+    monkeypatch.setattr(forward_testing_module, "forward_aggregates_ingest_cached", _fail_once_then_succeed)
+
+    with Session(engine) as session:
+        forward_testing_module.ensure_historical_forward_aggregates_dispatched(session, asof, cfg)
+
+    # Bounded poll: re-trigger a dispatch whenever the identity is not currently active (a harmless no-op
+    # while one is genuinely in flight; a real re-dispatch the instant the guard clears) -- mirrors the
+    # existing TC-7 test's own convergence-polling idiom above.
+    deadline = time.monotonic() + BOUNDED_TIMEOUT_S
+    while True:
+        status = forward_testing_module.get_background_compute_status()
+        active_match = [e for e in status["active"] if e["asof_key"] == asof.isoformat()]
+        outcomes_for_key = [o for o in status["recent_outcomes"] if o["asof_key"] == asof.isoformat()]
+        if not active_match and any(o["outcome"] == "completed" for o in outcomes_for_key):
+            break
+        assert time.monotonic() < deadline, (
+            f"never converged to a completed re-dispatch within {BOUNDED_TIMEOUT_S}s -- treat as a "
+            f"permanent wedge (last status={status})"
+        )
+        time.sleep(0.02)
+        if not active_match:
+            with Session(engine) as session:
+                forward_testing_module.ensure_historical_forward_aggregates_dispatched(session, asof, cfg)
+
+    final_outcomes = [
+        o for o in forward_testing_module.get_background_compute_status()["recent_outcomes"]
+        if o["asof_key"] == asof.isoformat()
+    ]
+    failed = [o for o in final_outcomes if o["outcome"] == "failed"]
+    completed = [o for o in final_outcomes if o["outcome"] == "completed"]
+    assert failed, f"expected at least one recorded failed outcome for this identity; got {final_outcomes}"
+    assert failed[0]["reason"], "a failed outcome must carry a non-null/non-empty reason string"
+    assert completed, "expected the re-dispatch to eventually record a completed outcome (no permanent wedge)"
+    assert call_count["n"] >= 2, "expected the forced first failure AND at least one successful re-dispatch"

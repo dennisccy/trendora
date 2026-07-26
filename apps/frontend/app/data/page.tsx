@@ -24,6 +24,7 @@ import { AvailabilityHeatmap } from "@/components/availability-heatmap";
 import { EmptyState } from "@/components/empty-state";
 import { IndexVendorPanel } from "@/components/index-vendor-panel";
 import { PageHeading } from "@/components/page-heading";
+import { useReadiness } from "@/components/readiness-provider";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Select } from "@/components/ui/select";
@@ -51,6 +52,8 @@ import {
   retryDataJob,
   startDataJob,
   type AvailabilityResponse,
+  type BackgroundComputeActive,
+  type BackgroundComputeOutcome,
   type DataCapacity,
   type DataJob,
   type DataJobKind,
@@ -605,6 +608,10 @@ export default function DataManagerPage() {
             }}
           />
           <RunHistoryPanel runs={state.data.runs} />
+          {/* ops-hardening iter-24 (J-09): the historical background-compute dispatch disclosure --
+              in-flight windows (as-of, elapsed, horizons done/total) + the most recent completed/failed
+              outcome. Reads the SAME shared readiness poll (useReadiness()) -- no second fetch. */}
+          <BackgroundComputePanel />
         </>
       ) : null}
     </div>
@@ -3536,6 +3543,93 @@ function RunHistoryPanel({ runs }: { runs: DataRun[] }) {
           ))}
         </tbody>
       </table>
+    </Card>
+  );
+}
+
+// ==================================================================================================
+// ops-hardening iter-24 (J-09) -- disclosure of the in-process historical background-compute dispatch
+// (app.engine.forward_testing's iter-20 single-flight dispatch, made visible instead of reconstructed
+// from raw DB timestamps). Read-only: no new user action, no second fetch -- reads the SAME shared
+// readiness poll (useReadiness()) the global HealthBadge indicator also reads.
+// ==================================================================================================
+function BackgroundComputeRow({ entry }: { entry: BackgroundComputeActive }) {
+  return (
+    <li
+      className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-surface-2 p-3"
+      data-testid="background-compute-active-row"
+    >
+      <Badge variant="accent" className="num gap-1.5" data-testid="background-compute-asof">
+        <span className="h-2 w-2 animate-pulse rounded-full bg-accent" aria-hidden />
+        as-of {entry.asof_key}
+      </Badge>
+      <span className="num text-xs text-text-muted" data-testid="background-compute-elapsed">
+        elapsed {fmtDuration(entry.elapsed_ms / 1000)}
+      </span>
+      <span className="num text-xs text-text-muted" data-testid="background-compute-horizons">
+        horizons {entry.horizons_done}/{entry.horizons_total}
+      </span>
+      <span className="num text-xs text-text-faint">dataset {entry.dataset_version}</span>
+    </li>
+  );
+}
+
+function LastOutcomeSummary({ outcome }: { outcome: BackgroundComputeOutcome }) {
+  const failed = outcome.outcome === "failed";
+  return (
+    <div className="flex flex-wrap items-center gap-3" data-testid="background-compute-last-outcome">
+      <Badge variant={failed ? "danger" : "ok"} className="capitalize">
+        {outcome.outcome}
+      </Badge>
+      <span className="num text-xs text-text-muted">as-of {outcome.asof_key}</span>
+      <span className="num text-xs text-text-muted">{fmtDuration(outcome.duration_ms / 1000)}</span>
+      {failed ? <span className="text-xs text-neg">{outcome.reason}</span> : null}
+    </div>
+  );
+}
+
+function BackgroundComputePanel() {
+  const { backgroundCompute } = useReadiness();
+  const active = backgroundCompute?.active ?? [];
+  const recentOutcomes = backgroundCompute?.recent_outcomes ?? [];
+
+  return (
+    <Card className="p-0" data-testid="background-compute-panel">
+      <PanelTitle hint="The in-process historical forward-aggregate compute a /backtest (or MCP query_backtest) request starts in the background when a historical as-of's evidence is not yet ready. Read-only disclosure — no fabricated finish-time estimate or completion percentage, only real observed horizon counts and elapsed time.">
+        Background compute
+      </PanelTitle>
+      <div className="space-y-3 p-4">
+        {active.length === 0 && recentOutcomes.length === 0 ? (
+          <p className="text-sm text-text-muted" data-testid="background-compute-idle">
+            No background compute running. Last outcome: none yet.
+          </p>
+        ) : (
+          <>
+            {active.length === 0 ? (
+              <p className="text-sm text-text-muted" data-testid="background-compute-idle">
+                No background compute running.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {active.map((entry) => (
+                  <BackgroundComputeRow key={`${entry.asof_key}:${entry.dataset_version}`} entry={entry} />
+                ))}
+              </ul>
+            )}
+            {recentOutcomes.length > 0 ? (
+              <div>
+                <p className="mb-1 text-xs font-medium uppercase tracking-wide text-text-faint">
+                  Last outcome
+                </p>
+                <LastOutcomeSummary outcome={recentOutcomes[0]} />
+              </div>
+            ) : null}
+          </>
+        )}
+        <p className="text-xs text-text-faint">
+          Since the last backend restart — this history is process-lifetime only, never persisted.
+        </p>
+      </div>
     </Card>
   );
 }

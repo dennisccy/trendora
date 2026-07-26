@@ -21,6 +21,13 @@ the sibling `detail` string from `compute_readiness`'s own return (`null` except
 `awaiting_snapshot` state). Previously `compute_readiness`'s dict was discarded down to just
 `readiness["state"]`, so this value was computed correctly but never reached the frontend; this is the
 wiring fix. `readiness` itself stays the SAME bare string it always was (byte-identical contract).
+
+ops-hardening iter-24 (J-09) additively extends this SAME endpoint with the `background_compute` field —
+`compute_readiness`'s own composed `app.engine.forward_testing.get_background_compute_status()` output
+(`{active, recent_outcomes}`), disclosing the in-process historical background-compute dispatch iter-20
+introduced (previously visible only by reconstructing it from raw DB timestamps). Degrades to
+`{"active": [], "recent_outcomes": []}` on any compute error — the SAME degrade-on-error convention as
+`readiness`/`preflight` above, never a blank/fabricated field.
 """
 from __future__ import annotations
 
@@ -59,6 +66,7 @@ def health(session: Session = Depends(get_session)) -> dict:
             "state": "unavailable",
             "detail": None,
             "warmup": {"done": 0, "total": 0, "status": "pending", "message": "history 0/0"},
+            "background_compute": {"active": [], "recent_outcomes": []},
         }
 
     # iter-33 (J-20): the single daily preflight verdict (GO/DEGRADED/NO-GO + reasons). A compute error
@@ -94,6 +102,11 @@ def health(session: Session = Depends(get_session)) -> dict:
         # same endpoint -- `compute_readiness` already produced this; it was just never served before.
         "readiness_detail": readiness.get("detail"),
         "warmup": readiness["warmup"],
+        # ops-hardening iter-24 (J-09): the historical background-dispatch registry's disclosure --
+        # `compute_readiness` already composed this (degrading to the honest empty shape on its own
+        # compute error); `.get(...)` with the SAME empty-shape fallback covers the (currently
+        # unreachable, but defensive) case of an older cached/degraded readiness dict predating this key.
+        "background_compute": readiness.get("background_compute", {"active": [], "recent_outcomes": []}),
         # the config-derived poll cadences the frontend badge derives its interval from (no client-side
         # poll literal — anti-goal: No magic numbers). `poll_interval_seconds` is the fast cadence used
         # while warming (so the flip to Ready shows within a poll of completion); `poll_idle_interval_

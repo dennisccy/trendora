@@ -520,15 +520,23 @@ class StartupCfg(BaseModel):
         completion — NOT a slow 30 s cycle). MUST be `> 0`.
       - `health_poll_idle_interval_seconds` — the slower cadence the badge MAY back off to once Ready
         (a healthy backend needs no fast poll). MUST be `>= health_poll_interval_seconds`.
+      - `background_compute_history_size` (ops-hardening iter-24, J-09) — how many completed/failed
+        historical background-compute outcomes (`app.engine.forward_testing.get_background_compute_
+        status()`'s `recent_outcomes` ring) are retained, newest-first, before the oldest is dropped.
+        Defaults to `5` (present so a config fixture predating this field still loads unchanged — the
+        established `extra="allow"`/back-compat-default convention this class already uses). MUST be
+        `>= 1`.
 
-    Boot-validated: the budget + both poll intervals MUST be `> 0`, the batch size `>= 1`, and the idle
-    interval `>= the active interval`. An invalid block raises `ConfigError`, never a silent default."""
+    Boot-validated: the budget + both poll intervals MUST be `> 0`, the batch size `>= 1`, the idle
+    interval `>= the active interval`, and `background_compute_history_size >= 1`. An invalid block
+    raises `ConfigError`, never a silent default."""
 
     model_config = ConfigDict(extra="allow")
     readiness_budget_seconds: float
     warmup_batch_size: int
     health_poll_interval_seconds: float
     health_poll_idle_interval_seconds: float
+    background_compute_history_size: int = 5
 
     @model_validator(mode="after")
     def _validate(self) -> "StartupCfg":
@@ -546,6 +554,8 @@ class StartupCfg(BaseModel):
             raise ValueError(
                 "startup.health_poll_idle_interval_seconds must be >= health_poll_interval_seconds"
             )
+        if self.background_compute_history_size < 1:
+            raise ValueError("startup.background_compute_history_size must be >= 1")
         return self
 
 

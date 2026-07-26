@@ -1078,3 +1078,63 @@ cause verified: all three scripts end on `/data`, and the real gate is their dis
 at `backtest.py:75` / `mcp/tools.py:38`, and run `test_api_backtest.py` TC-11 + `test_data_manager.py` heavy
 fixtures off the constrained box; (5) the backend was found DOWN at this dispatch's start with no crash
 traceback — unexplained stop, worth a look, not journey-affecting.
+
+## Iteration 24 — goal-ops-hardening-iter-24
+
+**Date:** 2026-07-26T13:52:22Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- **New journey J-09 "The backend discloses its own background-compute activity"** (goal-proposer
+  auto-extension after iter-23's GOAL_ACHIEVED) enters at `partial`, first_seen iter-24. Its six steps are
+  verified with strong evidence; one Acceptance clause is unbuilt (see below).
+- Re-verified passing with THIS-iteration evidence, so `last_verified_iter` advances iter-23 -> iter-24 for
+  all seven: J-01/J-03/J-04/J-05/J-06/J-08 by deterministic golden replay (6/6 PASS, replay file written
+  2026-07-26 13:46), J-07 by the LLM lane (UT-J-07: a real second background window, 20/20 HTTP 200).
+- Newly failing: none. Regressed (passing->failing): none. Unknown: none.
+- Anti-goal violations: **NONE.** scan-report CLEAN; coherence COHERENCE-PASS; all 9 historical records stay
+  `resolved: true` (0 unresolved). `scripts/` and `project-extensions/` untouched (AG-10 intact); every
+  capture shows `provider: seed` (AG-9); the new field issues zero DB queries (AG-8). All 7 prior
+  `spec_hash`es match `goal_gate hash-journeys`; no `journeys-changed.md`.
+
+**Reasoning:** J-09 is real and I checked its load-bearing parts myself instead of inheriting them. I opened
+UT-02-badge-active.png (the badge "background compute running (1)" beside a green "Ready", over a fully
+rendered historical Backtest page), and because scrolled screenshots come back blank on this host I read the
+three raw DOM captures verbatim (013-eval.html: "as-of 2026-07-17 | elapsed 41.8s | horizons 2/5";
+015-eval.html: "Last outcome | completed | as-of 2026-07-17 | 1m 15s"; 040-navigate.html after a restart:
+"Last outcome: none yet."). I then re-derived AG-3 from the database rather than trusting the audit: the five
+`forward_aggregate_cache` rows for (2026-07-17, r1865-f3954530) commit 12:56:02.744937 -> 12:57:03.884239 UTC,
+the disclosed `finished_at` is 1.68 ms after the last one, `duration_ms` 75108 matches `started_at` exactly,
+and "2/5 done at 41.8 s" lands precisely after the first two commits — the counters are observation, not
+estimate. But I did NOT score the journey `passing`: J-09's Acceptance ends with the Walkthrough clause, and
+`reports/goal-session-ops-hardening-demo.json` (the file `--session-live` actually reads, established at
+iter-23) is byte-unchanged from iter-23 with ZERO J-09 steps — I listed all 12. The iteration spec never
+mapped that clause into IN SCOPE or DoD, and `run-goal.sh` has no automatic session-demo pass, so it cannot
+self-close. This is the exact clause the iter-22 second-key CONFIRM rejected GOAL_ACHIEVED on; crediting it
+now would launder a missing deliverable and very likely burn a confirm cycle. Two further gaps support the
+`partial`: audit F1 (on a failed poll the panel asserts "No background compute running" for a state it does
+not know — readiness-provider.tsx:87 + data/page.tsx:3593/3603, both read by me) and the TC-7 budget clause
+(developer's 10-sample max 0.127788 s vs the unchanged <= 0.1 s; QA's independent series max 0.094604 s).
+Rejected REGRESSION (C.1): nothing passing->failing, no unresolved anti-goal; the latency excursion is the
+pre-existing ~98.6%-of-budget tightness documented since iter-16 and this diff provably adds zero DB work, so
+it is not a J-06/J-07 regression (assumption logged). Rejected STALLED (C.2): the decisive blocker is
+agent-owned and bounded — authoring the demo-manifest steps is exactly the work iter-23 did for three
+journeys in one lean pass. Rejected GOAL_ACHIEVED (C.3): J-09 is `partial`. Rejected ESCALATE (C.4): already
+full, review PASS_WITH_NOTES with browser results present (no fail-open), no journey failed twice. Progress
+was made (a whole new capability landed, correctness provable from the payload alone) and tractable work
+remains -> CONTINUE.
+
+**Next-step recommendation:** LEAN depth, no new features. (1) AGENT, the one item blocking closure: add the
+`[NEW]`-flagged J-09 steps to `reports/goal-session-ops-hardening-demo.json`, mirroring iter-23's J-06/J-07/
+J-08 work — accurate, live-checked `expect`s, purely additive. (2) AGENT: give `BackgroundComputePanel` a
+distinct "backend unreachable — background-compute state unknown" copy for `backgroundCompute === null`
+(audit F1). (3) AGENT: make the two new single-source tests compare on identity/shape, excluding `elapsed_ms`
+(audit T1), before anyone attempts a whole-file run. (4) OWNER, non-blocking: decide whether the at-rest
+`<= 0.1 s` health target stands as written, given two runs on the same build disagreed (0.127788 s vs
+0.094604 s worst sample) — audit B5; backlog card B-1107 stays optional. (5) DECOMPOSER-PLANNED, not an
+opportunistic patch: audit B2 — a `Thread.start()` failure leaves the badge reading "running (1)" for the
+process lifetime; the fix touches `ensure_historical_forward_aggregates_dispatched`, which this iteration
+froze, so the freeze must be lifted deliberately. (6) Carried, unchanged: six new tests in
+`test_readiness.py`/`test_health.py` remain unexecuted (auditor verified their behaviours by direct
+execution, 16/16); retarget `test_forward_testing_serving_split.py`'s four `is_latest` monkeypatches before
+removing the dangling imports at `backtest.py:75` / `mcp/tools.py:38`.

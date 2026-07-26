@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "journey": "J-09",
+  "name": "Disclose in-flight background-compute activity (badge + /data panel)",
+  "default_timeout_ms": 10000,
+  "steps": [
+    {"n": 1, "journey": "J-09", "action": {"type": "goto", "url": "/backtest"}, "expect": {"text": "Time-machine"}},
+    {"n": 2, "journey": "J-09", "action": {"type": "click", "target": {"role": "button", "name": "Previous available date"}}, "expect": {"text": "(historical)"}},
+    {"n": 3, "journey": "J-09", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "Background compute"}},
+    {"n": 4, "journey": "J-09", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "process-lifetime only, never persisted"}}
+  ]
+}

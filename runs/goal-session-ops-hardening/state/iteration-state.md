@@ -1,40 +1,40 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 23 · **Date:** 2026-07-25 · **Verdict:** GOAL_ACHIEVED
+**After iteration:** 24 · **Date:** 2026-07-26 · **Verdict:** CONTINUE
 
 ## Journeys
 
-7 passing (J-01 J-03 J-04 J-05 J-06 J-07 J-08) · 0 partial · 0 failing · 0 unknown — 7 total.
-All 7 re-verified at iter-23 (replay 4/4 + LLM lane 3/3); all 7 `spec_hash`es match current `docs/goal.md`.
+7 passing (J-01 J-03 J-04 J-05 J-06 J-07 J-08) · 1 partial (J-09, NEW this iter, steps 1-6 verified live)
+· 0 failing · 0 unknown — 8 total. All 7 old journeys re-verified at iter-24 (replay 6/6 + LLM lane J-07);
+all 8 `spec_hash`es match current `docs/goal.md`.
 
 ## Active blockers
 
-- **None.** The owner budget decision behind the iter-20/21 halts is settled and committed. Both
-  agent-tractable iter-22 CONFIRM-reject findings are closed; the third was fixed by the operator
-  (`reports/perf-budgets.md:3714`).
-- Non-blocking: trim demo step n=9's "7.1191 s"/"0.2530 s" to 3 decimals
-  (`reports/goal-session-ops-hardening-demo.json:105`, reviewer MINOR — exact vs the raw `bcw-measure.csv`,
-  only the rendering differs). Owner-optional: backlog card **B-1107** (global cap on concurrent background
-  computes) — re-opens the goal only under a literal AG-8 reading (`state/assumptions.md` iter-22).
+- **J-09 walkthrough clause UNBUILT (agent-owned; the one item blocking closure):**
+  `reports/goal-session-ops-hardening-demo.json` still holds iter-23's 12 steps and ZERO J-09 steps; the
+  iter-24 spec never mapped that Acceptance bullet into DoD and `run-goal.sh` has no auto session-demo pass.
+- Audit F1 (agent): on a failed health poll the `/data` panel prints "No background compute running…" for a
+  state it does not know — `readiness-provider.tsx:87` + `app/data/page.tsx:3593,3603`.
+- Audit T1 (agent): two new single-source tests compare two reads of live registry state
+  (`test_health.py:113`, `test_readiness.py:292`) — false-alarm risk on any whole-file run.
+- OWNER, non-blocking: at-rest `/api/health` `<= 0.1 s` — two runs on the SAME build disagree (max
+  0.127788 s vs 0.094604 s); this diff adds zero DB work (audit B5). B-1107 stays owner-optional.
 
 ## Last 2 verdicts
 
-- iter 23: GOAL_ACHIEVED — the session demo manifest `--session-live` reads now carries 5 `[NEW]`/verified
-  J-06/J-07/J-08 steps (was zero); `J-06.json`'s undisclosed timeout reverted 18000→8000 on a DB+log basis
-  the evaluator re-derived; zero `apps/` diff, scan CLEAN, coherence PASS.
-- iter 22: GOAL_ACHIEVED (first key) — REJECTED by the second-key CONFIRM on the three findings iter-23 closed.
+- iter 24: CONTINUE — J-09 built and correct (badge + `/data` panel; AG-3 re-derived from the DB to 1.68 ms)
+  but `partial` on its unbuilt walkthrough clause plus audit F1; scan CLEAN, coherence PASS, no AG violation.
+- iter 23: GOAL_ACHIEVED — closed the two iter-22 CONFIRM-reject findings (demo steps for J-06/J-07/J-08;
+  `J-06.json` timeout reverted 18000→8000); zero `apps/` diff.
 
 ## Do not redo
 
-- **The budget amendment is settled owner policy** (`reports/perf-budgets.md` § "OWNER BUDGET AMENDMENT" +
-  "Revision 1"): never edit, re-litigate, or "fix" the transient BCW contention in code.
-- **TC-13 (concurrent-ingest overlay) and TC-14 (disruptive J-04 kill/restart)** are DONE and PASS, dated
-  2026-07-25 (`runs/goal-ops-hardening-iter-21/` + `perf-budgets.md`); never re-run.
-- **`J-06.json`'s `default_timeout_ms` = 8000 is investigated and cited** — no BCW overlap exists
-  (no `forward_aggregate_cache` row 07:32:56–09:27:55 UTC; `logs/backend.log:77525/77533` = 30–45 ms).
-- **Demo steps n=1–7 stay byte-unchanged**; `highlights` is at its 8-step cap — new steps must be `full_tour`.
-- `compute_forward_aggregates`, `resolved_forward_aggregate_evidence`,
-  `ensure_historical_forward_aggregates_dispatched`, J-08's serving split/empty state — byte-unchanged; do
-  not reopen. The cutover-pruning contract (`forward_testing.py:1135-1156`) is load-bearing evidence.
-- Retarget `test_forward_testing_serving_split.py`'s four `is_latest` monkeypatches BEFORE removing the
-  imports at `backtest.py:75` / `mcp/tools.py:38`; `/backtest` captures stay full-page/element-scoped.
+- **Budget amendment = settled owner policy** (`perf-budgets.md` § "OWNER BUDGET AMENDMENT" + "Revision 1"):
+  never edit or re-litigate it, and never "fix" the transient BCW contention in code.
+- **TC-13 and TC-14 are DONE/PASS, dated 2026-07-25** — never re-run. `J-06.json`'s `default_timeout_ms`
+  = 8000 is investigated and cited. Demo steps n=1-12 stay byte-unchanged (`highlights` at its 8-step cap).
+- `compute_forward_aggregates`, `resolved_forward_aggregate_evidence`, J-08's serving split/empty-state
+  machine — byte-unchanged; cutover pruning (`forward_testing.py:1135-1156`) is load-bearing evidence.
+- `ensure_historical_forward_aggregates_dispatched`'s keying/single-flight stays frozen EXCEPT one planned
+  carve-out: audit B2 (pop the in-flight slot if `Thread.start()` raises) needs the freeze lifted on purpose.
+- J-09's disclosure is verified single-producer/single-endpoint — never add a second poll or endpoint.

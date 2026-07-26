@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-24",
+  "base_url": "http://localhost:3255",
+  "iteration": 24,
+  "default_timeout_ms": 10000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the dashboard",
+      "narration": "Trendora opens straight to its main dashboard. The top-right corner always shows whether the system is ready.",
+      "point_out": "The green status pill next to the data provider details in the top-right corner.",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "provider: seed" }
+    },
+    {
+      "n": 2,
+      "title": "Open the Backtest page",
+      "narration": "Move to the Backtest page, where you can review evidence for the latest date, or step back to any earlier date.",
+      "point_out": "A small \"Latest\" badge appears next to the calendar icon in the top-right corner.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Backtest" } },
+      "expect": { "text": "Latest" }
+    },
+    {
+      "n": 3,
+      "title": "Step back to an earlier date",
+      "narration": "Clicking the left arrow moves the view to an earlier date. If that date's evidence hasn't been prepared yet, Trendora quietly starts preparing it in the background instead of making you wait.",
+      "point_out": "The badge switches to an amber \"(historical)\" label for the date you picked.",
+      "journey": "J-09",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "testid": "asof-step-prev" } },
+      "expect": { "text": "historical" }
+    },
+    {
+      "n": 4,
+      "title": "Open Data Manager",
+      "narration": "Data Manager holds every operational detail about the data pipeline in one place.",
+      "point_out": "Dataset coverage details load right at the top of the page.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Data Manager" } },
+      "expect": { "text": "Dataset coverage" }
+    },
+    {
+      "n": 5,
+      "title": "See the new background-compute panel",
+      "narration": "Scroll to the very bottom of Data Manager and a new panel appears. It honestly shows whether anything is computing right now, and what happened the last time something did, without ever guessing or estimating.",
+      "point_out": "A line at the bottom always states this history resets whenever the backend restarts, so an empty panel is never mistaken for nothing having happened.",
+      "journey": "J-09",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "click", "target": { "testid": "background-compute-panel" } },
+      "expect": { "text": "Since the last backend restart" }
+    }
+  ]
+}

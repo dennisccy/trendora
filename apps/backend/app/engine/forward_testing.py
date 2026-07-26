@@ -1198,8 +1198,19 @@ def forward_aggregates_ingest_cached(
 # `_FORWARD_AGG_INFLIGHT` above, no `threading.Event`/waiter is needed here: the request thread that finds
 # a key already in flight simply does nothing and returns (the already-running dispatch will land on its
 # own; the NEXT request for this identity re-reads `resolved_forward_aggregate_evidence` and sees it).
+#
+# ops-hardening iter-24 (J-09): this SAME guard now additionally carries, per in-flight identity, its
+# `started_at` (set at dispatch time) and live `horizons_done`/`horizons_total` counters (incremented as
+# `_run_historical_forward_aggregates_dispatch` completes each configured horizon below) -- so the value
+# has been in flight since iter-20, made disclosed rather than reconstructed from DB timestamps. The value
+# is a dict now (was a bare set) but the membership check/insert/discard call sites below are otherwise
+# unchanged, and `_HIST_RECENT_OUTCOMES` (also new) is a bounded, newest-first ring of completed/failed
+# dispatch outcomes, capped at `cfg.startup.background_compute_history_size` (never a hardcoded literal).
+# Both structures are read ONLY by the new `get_background_compute_status()` accessor below -- no new
+# lock: both are still guarded by this SAME `_HIST_DISPATCH_LOCK`.
 _HIST_DISPATCH_LOCK = threading.Lock()
-_HIST_DISPATCH_INFLIGHT: set[tuple[str, str]] = set()  # {(asof_key, dataset_version)} dispatched right now
+_HIST_DISPATCH_INFLIGHT: dict[tuple[str, str], dict] = {}  # {(asof_key, dataset_version): {started_at, horizons_done, horizons_total}}
+_HIST_RECENT_OUTCOMES: list[dict] = []  # newest-first, capped at startup.background_compute_history_size
 
 
 def _run_historical_forward_aggregates_dispatch(
@@ -1217,19 +1228,50 @@ def _run_historical_forward_aggregates_dispatch(
     left to crash silently or to propagate to the request thread that triggered the dispatch (TC-7): that
     thread has already returned its response long before this runs. The outer guard's slot is released in
     a `finally` on success AND on failure, so a subsequent request for the SAME identity can always
-    re-dispatch and eventually reach `"ready"` -- never a permanent wedge."""
+    re-dispatch and eventually reach `"ready"` -- never a permanent wedge.
+
+    ops-hardening iter-24 (J-09): additionally increments the guard's own `horizons_done` counter after
+    EACH configured horizon completes (so a live reader sees real progress, never a fabricated estimate),
+    and in the SAME `finally` block appends exactly one newest-first outcome record -- `{asof_key,
+    dataset_version, outcome, started_at, finished_at, duration_ms, reason}` -- to the bounded
+    `_HIST_RECENT_OUTCOMES` ring (capped at `cfg.startup.background_compute_history_size`). `reason` is
+    the caught exception's message when the dispatch failed, else `None`. This is purely additive
+    bookkeeping around the UNCHANGED compute/persist call above -- it changes no computed value."""
+    outcome = "completed"
+    reason: Optional[str] = None
     try:
         with Session(engine) as session:
             for h in cfg.walk_forward.horizons:
                 forward_aggregates_ingest_cached(session, h, cfg, as_of=as_of)
-    except Exception:
+                with _HIST_DISPATCH_LOCK:
+                    slot = _HIST_DISPATCH_INFLIGHT.get(key)
+                    if slot is not None:
+                        slot["horizons_done"] += 1
+    except Exception as exc:
+        outcome = "failed"
+        reason = str(exc)
         logger.exception(
             "historical forward-aggregate background dispatch failed (non-fatal, will re-dispatch on the "
             "next request for this identity, key=%s)", key,
         )
     finally:
         with _HIST_DISPATCH_LOCK:
-            _HIST_DISPATCH_INFLIGHT.discard(key)
+            slot = _HIST_DISPATCH_INFLIGHT.pop(key, None)
+            started_at = slot["started_at"] if slot is not None else datetime.now(timezone.utc)
+            finished_at = datetime.now(timezone.utc)
+            duration_ms = max(int((finished_at - started_at).total_seconds() * 1000), 0)
+            asof_key, dataset_version = key
+            _HIST_RECENT_OUTCOMES.insert(0, {
+                "asof_key": asof_key,
+                "dataset_version": dataset_version,
+                "outcome": outcome,
+                "started_at": _utc_isoformat(started_at),
+                "finished_at": _utc_isoformat(finished_at),
+                "duration_ms": duration_ms,
+                "reason": reason,
+            })
+            cap = cfg.startup.background_compute_history_size
+            del _HIST_RECENT_OUTCOMES[cap:]
 
 
 def ensure_historical_forward_aggregates_dispatched(
@@ -1265,7 +1307,14 @@ def ensure_historical_forward_aggregates_dispatched(
     with _HIST_DISPATCH_LOCK:
         if key in _HIST_DISPATCH_INFLIGHT:
             return  # a dispatch for this EXACT identity is already running -- no-op, never a duplicate
-        _HIST_DISPATCH_INFLIGHT.add(key)
+        # ops-hardening iter-24 (J-09): record the disclosure fields at the EXACT moment the dispatch is
+        # accepted -- `started_at` is the dispatch's own recorded start (never re-derived at read time),
+        # `horizons_done` starts at 0, `horizons_total` is the configured horizon count (never a literal).
+        _HIST_DISPATCH_INFLIGHT[key] = {
+            "started_at": datetime.now(timezone.utc),
+            "horizons_done": 0,
+            "horizons_total": len(cfg.walk_forward.horizons),
+        }
 
     engine = session.get_bind()
     thread = threading.Thread(
@@ -1275,6 +1324,32 @@ def ensure_historical_forward_aggregates_dispatched(
         name=f"backtest-hist-dispatch-{asof_key}",
     )
     thread.start()
+
+
+def get_background_compute_status() -> dict:
+    """ops-hardening iter-24 (J-09) -- the SINGLE read-only accessor for the historical dispatch
+    registry's disclosure fields: every currently in-flight `(asof_key, dataset_version)` window (with
+    `elapsed_ms` computed AT READ TIME from its recorded `started_at` -- never a fabricated estimate) plus
+    the bounded, newest-first `recent_outcomes` ring. Reuses the SAME `_HIST_DISPATCH_LOCK` that already
+    guards `_HIST_DISPATCH_INFLIGHT`/`_HIST_RECENT_OUTCOMES` for this tiny read -- no new lock semantics.
+    Never computes/recomputes evidence and issues no query: a pure in-memory snapshot of state this same
+    module's dispatch functions already maintain (composed into `app.engine.readiness.compute_readiness`
+    and served on `GET /api/health`'s new `background_compute` field)."""
+    now = datetime.now(timezone.utc)
+    with _HIST_DISPATCH_LOCK:
+        active = [
+            {
+                "asof_key": asof_key,
+                "dataset_version": dataset_version,
+                "started_at": _utc_isoformat(entry["started_at"]),
+                "elapsed_ms": max(int((now - entry["started_at"]).total_seconds() * 1000), 0),
+                "horizons_done": entry["horizons_done"],
+                "horizons_total": entry["horizons_total"],
+            }
+            for (asof_key, dataset_version), entry in _HIST_DISPATCH_INFLIGHT.items()
+        ]
+        recent_outcomes = list(_HIST_RECENT_OUTCOMES)
+    return {"active": active, "recent_outcomes": recent_outcomes}
 
 
 def _utc_isoformat(value: datetime) -> str:

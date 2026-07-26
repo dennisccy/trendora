@@ -1,0 +1,7 @@
+{
+  "extended": true,
+  "n_new_journeys": 1,
+  "n_proposals": 3,
+  "dry": false,
+  "summary": "Promoted J-09 (the backend discloses its own background-compute activity on the canonical GET /api/health + badge + /data, one producer/one endpoint, no schema change) closing the one partially-uncovered Vision claim: 'the UI tells the truth about the backend's own state ... and about data jobs (progress, ...)' is journeyed for boot phase/crash (J-04) and ingest jobs (J-01) but NOT for the request-triggered background-compute window, whose in-process registry no endpoint reads and whose caught MemoryError failure is invisible in the UI; all 6 Key Capabilities remain covered by J-01/J-03/J-04/J-05/J-06. The 3 fresh triad-screen survivors (downside_vol/atr_pct/hv h60 d10) are all rejected as high-beta cells failing the low-drawdown leg (worst 3 drawdowns of 50 screened, -0.218..-0.236), ad-hoc/non-pre-registered, two already rejected in the mcp-loop backlog (hv a closed referee FAIL), and barred anyway by this cycle's no-Evidence-Claim Loop mechanics. B-1107 (bound concurrent background computes) ranked #2 by this survey but is NOT promoted: owner-deferred 2026-07-25, owner-governed registry."
+}

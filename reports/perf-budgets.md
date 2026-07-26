@@ -3738,3 +3738,62 @@ $ git diff --stat -- apps/backend apps/frontend
 $ git ls-files apps/backend/data/trendora.db
 (no output -- DB is untracked, never committed)
 ```
+
+## Iteration 24 — J-09 background-compute disclosure: `GET /api/health` re-measurement (2026-07-26, developer)
+
+Per goal-ops-hardening-iter-24 (disclose the iter-20 historical background-compute dispatch via the SAME
+`/api/health` payload + a new `/data` panel). This iteration adds exactly ONE additive top-level field to
+`GET /api/health`, `background_compute`, composed from a NEW in-memory-only accessor
+(`app.engine.forward_testing.get_background_compute_status()`) — **zero new DB query, zero new table
+read**: the accessor only reads the existing `_HIST_DISPATCH_INFLIGHT`/`_HIST_RECENT_OUTCOMES` in-process
+registries under the SAME `_HIST_DISPATCH_LOCK` that already guarded `_HIST_DISPATCH_INFLIGHT` since
+iter-20. So the steady-state `≤ 0.1 s` budget (unamended — see the OWNER BUDGET AMENDMENT above, which is
+not re-litigated here) is expected to hold essentially unchanged.
+
+**Method:** backend started via the sanctioned `scripts/start-backend.sh` (host-guard verified: caps
+enforced by the script's own HOST-GUARD block, unchanged), port 8391 (`CHAIN_BACKEND_PORT` override),
+warmed to `readiness: "ready"` (`warmup.status: "ok"`, `done/total 89/89`) before measuring — this is the
+STEADY-STATE case TC-7 names (no background compute in flight, no concurrent ingest). One warm hit
+(discarded) + one official `scripts/measure-perf.sh`-convention single timed sample, plus a 10-sample
+spaced-poll series (0.5 s apart, mirroring TC-7's own "existing repeated-poll harness" framing) for a
+max/mean read.
+
+| metric | value | budget |
+|---|---|---|
+| Official-convention single warm sample | **0.100023 s** | ≤ 0.1 s |
+| 10-sample spaced-poll series (0.5 s apart) | min 0.093422 s / mean 0.103597 s / **max 0.127788 s** | ≤ 0.1 s |
+
+**Honest read:** this endpoint has been documented as tight since iter-16 ("`GET /api/health` already
+consumes ~98.6 % of its ≤ 0.1 s budget at rest" — see the OWNER BUDGET AMENDMENT § "Why no engineering fix
+was taken instead" above) and prior iterations have plainly recorded single samples on both sides of the
+line (e.g. 0.106417 s, 0.098615 s, 0.089872 s, 0.226994 s across the mechanical-pass entries earlier in
+this file) — normal host-noise variance on an endpoint with near-zero headroom, not a per-iteration
+regression. This iteration adds no DB work, so it does not widen that pre-existing tightness; the
+occasional single-sample excursion above 0.1 s (max 0.127788 s across 10 spaced polls) is consistent with
+that same documented ~98 % ceiling, not a new finding attributable to `background_compute`. No budget
+amendment is requested or made here — `≤ 0.1 s` stands as the unamended steady-state target (per the
+binding "Do not redo" — the BCW-amended `≤ 2.0 s` ceiling from the OWNER BUDGET AMENDMENT above is
+unaffected and unchanged, and continues to apply only during an actual background-compute window, never at
+steady state).
+
+**Live end-to-end confirmation (real dispatches, same boot, not mocked):** to sanity-check the new field
+against a REAL background-compute window before handoff (TC-1/TC-2/TC-3/TC-5 shapes), two historical
+`GET /api/backtest` requests were issued for as-of dates absent from this dataset_version's cache
+(`r1865-f3954530`):
+
+- `as_of=2005-03-01`: request returned `evidence_status: "not_yet_computed"` in **1.358 s** (never blocked
+  on the dispatch); `GET /api/health` moments later showed `background_compute.recent_outcomes[0]` =
+  `{outcome: "completed", started_at: "...11:12:14...", finished_at: "...11:12:20...", duration_ms: 5817,
+  reason: null}`; a follow-up `GET /api/backtest?as_of=2005-03-01` then read `evidence_status: "ready"`.
+- `as_of=2005-03-02`: trigger request returned in **0.071 s**; polling `GET /api/health` every ~0.3 s
+  during the window captured LIVE progress —
+  `{asof_key: "2005-03-02", elapsed_ms: 108, horizons_done: 0, horizons_total: 5}` →
+  `{elapsed_ms: 544, horizons_done: 1}` → `{elapsed_ms: 982, horizons_done: 2}` →
+  `{elapsed_ms: 1434, horizons_done: 4}` → `active: []` (completed) — proving `horizons_done` climbs
+  monotonically from 0 toward `horizons_total` and the identity is released on completion.
+  `recent_outcomes[0]` then showed this SAME identity (`outcome: "completed"`, `duration_ms: 1666`),
+  ahead of the `2005-03-01` entry from the prior dispatch — newest-first confirmed live, not just in a
+  unit fixture.
+
+Backend was stopped (`pkill`, confirmed no process remained on the measurement port) before handoff — no
+server process left running.

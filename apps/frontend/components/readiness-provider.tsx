@@ -2,7 +2,13 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 
-import { fetchHealth, type PreflightStatus, type ReadinessState, type WarmupProgress } from "@/lib/api";
+import {
+  fetchHealth,
+  type BackgroundComputeStatus,
+  type PreflightStatus,
+  type ReadinessState,
+  type WarmupProgress,
+} from "@/lib/api";
 
 /**
  * Global backend readiness state (iter-28, J-40). A single client context, mounted in the app shell, that
@@ -17,6 +23,10 @@ import { fetchHealth, type PreflightStatus, type ReadinessState, type WarmupProg
  *
  * iter-33 (J-20): the SAME poll also carries the daily preflight verdict (`preflight`) — the layout-level
  * `PreflightBanner`'s ONLY read path (no second fetch, no per-page recompute).
+ *
+ * ops-hardening iter-24 (J-09): the SAME poll also carries `background_compute` — the historical
+ * background-dispatch disclosure (`HealthBadge`'s conditional indicator + `/data`'s
+ * `BackgroundComputePanel` are its ONLY readers; no second fetch, no client-side derivation).
  */
 export interface ReadinessContextValue {
   /** The honest backend readiness state, or null before the first poll resolves. */
@@ -26,6 +36,9 @@ export interface ReadinessContextValue {
   /** The single GO/DEGRADED/NO-GO preflight verdict, or null before the first poll resolves / on a
    *  failed poll (the backend is unreachable — the banner renders its own honest NO-GO in that case). */
   preflight: PreflightStatus | null;
+  /** The historical background-compute dispatch disclosure, or null before the first poll resolves / on
+   *  a failed poll (readers render their own honest empty/idle state in that case — never fabricated). */
+  backgroundCompute: BackgroundComputeStatus | null;
   /** True until the first poll has resolved (so callers can show a neutral "checking" state). */
   loading: boolean;
 }
@@ -41,6 +54,7 @@ export function ReadinessProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<ReadinessState | null>(null);
   const [warmup, setWarmup] = useState<WarmupProgress | null>(null);
   const [preflight, setPreflight] = useState<PreflightStatus | null>(null);
+  const [backgroundCompute, setBackgroundCompute] = useState<BackgroundComputeStatus | null>(null);
   const [loading, setLoading] = useState(true);
   // the config-derived cadences (seconds) from the latest payload; refs so the polling loop reads the
   // freshest value without re-subscribing.
@@ -59,6 +73,7 @@ export function ReadinessProvider({ children }: { children: React.ReactNode }) {
         setState(data.readiness);
         setWarmup(data.warmup);
         setPreflight(data.preflight);
+        setBackgroundCompute(data.background_compute);
         // adopt the config-derived poll cadences (seconds → ms); never a client-side literal.
         activeMs.current = Math.max(250, Math.round(data.poll_interval_seconds * 1000));
         idleMs.current = Math.max(activeMs.current, Math.round(data.poll_idle_interval_seconds * 1000));
@@ -69,6 +84,7 @@ export function ReadinessProvider({ children }: { children: React.ReactNode }) {
         setState("unavailable"); // honest — never a fabricated ok
         setWarmup(null);
         setPreflight(null); // honest — the banner renders its own NO-GO for a null preflight, never blank
+        setBackgroundCompute(null); // honest — readers render their own empty/idle state, never fabricated
         nextDelay = activeMs.current; // keep retrying at the active cadence until the backend answers
       } finally {
         if (active) {
@@ -86,8 +102,8 @@ export function ReadinessProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<ReadinessContextValue>(
-    () => ({ state, warmup, preflight, loading }),
-    [state, warmup, preflight, loading],
+    () => ({ state, warmup, preflight, backgroundCompute, loading }),
+    [state, warmup, preflight, backgroundCompute, loading],
   );
 
   return <ReadinessContext.Provider value={value}>{children}</ReadinessContext.Provider>;

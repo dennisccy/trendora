@@ -150,6 +150,40 @@ export interface PreflightStatus {
   reference: string | null;
 }
 
+// --- background compute disclosure (ops-hardening iter-24, J-09) --------------------------
+/** One currently in-flight historical background-compute window (the iter-20 dispatch, made visible).
+ *  `elapsed_ms` is computed server-side AT READ TIME from the dispatch's own recorded `started_at` --
+ *  never derived client-side (single source, never a fabricated estimate). */
+export interface BackgroundComputeActive {
+  asof_key: string;
+  dataset_version: string;
+  started_at: string;
+  elapsed_ms: number;
+  horizons_done: number;
+  horizons_total: number;
+}
+
+/** One completed/failed historical background-compute dispatch outcome (newest-first; the ring is
+ *  bounded by the backend's `startup.background_compute_history_size`). `reason` is non-null ONLY when
+ *  `outcome === "failed"`. */
+export interface BackgroundComputeOutcome {
+  asof_key: string;
+  dataset_version: string;
+  outcome: "completed" | "failed";
+  started_at: string;
+  finished_at: string;
+  duration_ms: number;
+  reason: string | null;
+}
+
+/** The honest disclosure of the in-process historical background-compute dispatch (iter-20's
+ *  `_HIST_DISPATCH_INFLIGHT`, previously invisible except by reconstructing it from raw DB timestamps).
+ *  Read-only, process-lifetime state -- `active`/`recent_outcomes` both clear on a backend restart. */
+export interface BackgroundComputeStatus {
+  active: BackgroundComputeActive[];
+  recent_outcomes: BackgroundComputeOutcome[];
+}
+
 export interface HealthStatus {
   status: string;
   db_ok: boolean;
@@ -169,6 +203,8 @@ export interface HealthStatus {
   poll_idle_interval_seconds: number;
   // iter-33 (J-20): the single daily preflight verdict (additive).
   preflight: PreflightStatus;
+  // ops-hardening iter-24 (J-09): the historical background-compute dispatch disclosure (additive).
+  background_compute: BackgroundComputeStatus;
 }
 
 /** Fetch backend health + readiness. Throws on network error or non-200 so callers can render an

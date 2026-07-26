@@ -376,6 +376,31 @@ def test_research_read_batch_size_loads_from_real_config():
     assert cfg.research.read_batch_size >= 1
 
 
+# ==================================================================================================
+# ops-hardening iter-24 (J-09) — startup.background_compute_history_size (the recent_outcomes ring cap
+# for the historical background-dispatch disclosure). Validated >= 1; defaults to 5 when the key is
+# absent (MINIMAL_VALID's own `startup` block predates this field, so its continued loading below also
+# proves the default keeps every pre-iter-24 config fixture valid unchanged).
+# ==================================================================================================
+def test_background_compute_history_size_defaults_to_five_when_omitted(tmp_path):
+    """MINIMAL_VALID's `startup` block does not carry this key — it must default to 5, never raise."""
+    cfg = load_config(_write(tmp_path, MINIMAL_VALID))
+    assert cfg.startup.background_compute_history_size == 5
+
+
+def test_background_compute_history_size_below_one_raises(tmp_path):
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["startup"]["background_compute_history_size"] = 0
+    with pytest.raises(ConfigError):
+        load_config(_write(tmp_path, data))
+
+
+def test_background_compute_history_size_loads_from_real_config():
+    cfg = load_config()
+    assert isinstance(cfg.startup.background_compute_history_size, int)
+    assert cfg.startup.background_compute_history_size >= 1
+
+
 # --- J-58: etfs.industry catalog + stock_industries membership validation -------------------
 def test_industry_catalog_loads_with_name_and_description(tmp_path):
     """The new etfs.industry catalog (ticker -> {name, description}) loads and exposes typed access."""

@@ -88,6 +88,57 @@ def test_health_preflight_is_single_source(loaded_engine, tmp_path, monkeypatch)
 
 
 # ==================================================================================================
+# ops-hardening iter-24 (J-09) -- the additive `background_compute` field: the historical background-
+# dispatch registry's disclosure, composed by compute_readiness and re-served here verbatim.
+# ==================================================================================================
+def test_health_carries_additive_background_compute_field(loaded_engine, tmp_path, monkeypatch):
+    """TC-1 shape check: `background_compute` is ADDITIVE -- every existing key stays present, and the
+    new field carries exactly the `{active, recent_outcomes}` shape `get_background_compute_status()`
+    produces (never a second/divergent read path)."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    with TestClient(main.app) as client:
+        body = client.get("/api/health").json()
+    existing_keys = {
+        "status", "db_ok", "provider", "last_run_date", "seed_latest_date", "symbol_count",
+        "readiness", "readiness_detail", "warmup", "poll_interval_seconds", "poll_idle_interval_seconds",
+        "preflight",
+    }
+    assert existing_keys <= set(body)  # every pre-iter-24 key is still present, unchanged
+    bg = body["background_compute"]
+    assert set(bg) == {"active", "recent_outcomes"}
+    assert isinstance(bg["active"], list)
+    assert isinstance(bg["recent_outcomes"], list)
+
+
+def test_health_background_compute_is_single_source(loaded_engine, tmp_path, monkeypatch):
+    """The served `background_compute` field equals a DIRECT `compute_readiness` call's own composed
+    value for the same session/config -- re-displayed verbatim, never re-derived by the endpoint."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    cfg = load_config()
+    with TestClient(main.app) as client:
+        served = client.get("/api/health").json()["background_compute"]
+    with Session(loaded_engine) as session:
+        direct = readiness.compute_readiness(session, config=cfg)["background_compute"]
+    assert served == direct
+
+
+def test_health_background_compute_degrades_honestly_when_readiness_fails(loaded_engine, monkeypatch):
+    """A total `compute_readiness` failure degrades the WHOLE readiness payload to `unavailable` (the
+    pre-existing convention) -- `background_compute` still serves the honest empty shape, never omitted
+    and never left dangling on a partially-constructed fallback dict."""
+    import app.api.health as health_module
+
+    def _boom(session, engine=None, config=None):
+        raise RuntimeError("simulated readiness failure")
+
+    monkeypatch.setattr(health_module, "compute_readiness", _boom)
+    with TestClient(main.app) as client:
+        body = client.get("/api/health").json()
+    assert body["readiness"] == "unavailable"
+    assert body["background_compute"] == {"active": [], "recent_outcomes": []}
+
+
+# ==================================================================================================
 # iter-24 fast-platform item G — cheap readiness probe (memoized cadence dates + one grouped query)
 # ==================================================================================================
 def test_readiness_memoizes_cadence_dates_across_repeated_calls(loaded_engine, monkeypatch):

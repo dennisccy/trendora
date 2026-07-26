@@ -20,7 +20,7 @@ type Detail =
  *  re-renders for, without a second polling loop. Re-checks of `state`/`warmup` themselves happen via the
  *  readiness provider's own config-derived poll. */
 export function HealthBadge() {
-  const { state, warmup, loading } = useReadiness();
+  const { state, warmup, backgroundCompute, loading } = useReadiness();
   const [detail, setDetail] = useState<Detail>({ kind: "loading" });
 
   // The context detail (provider / seed date / symbol count / the `awaiting_snapshot` recovery-pointer
@@ -94,9 +94,21 @@ export function HealthBadge() {
     );
   }
 
+  // ops-hardening iter-24 (J-09): the historical background-compute disclosure -- one additional inline
+  // element, present alongside the pill in ANY readiness state whenever a window is in flight, absent
+  // entirely when none is (never replaces/hides the pill above). Reads the SAME shared readiness poll
+  // (`useReadiness()`) -- no second fetch.
+  const activeComputeCount = backgroundCompute?.active.length ?? 0;
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       {pill}
+      {activeComputeCount > 0 ? (
+        <Badge variant="accent" className="num gap-1.5" data-testid="background-compute-indicator">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-accent" aria-hidden />
+          background compute running ({activeComputeCount})
+        </Badge>
+      ) : null}
       {detail.kind === "ok" ? (
         <>
           <Badge variant="accent">provider: {detail.data.provider}</Badge>

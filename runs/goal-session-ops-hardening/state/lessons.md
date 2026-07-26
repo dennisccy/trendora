@@ -107,62 +107,23 @@ just peak memory.
 before a deep-basis pass; any "the fix fully accounts for X" claim not yet reconciled against a live
 full-scale measurement; future decomposers tempted to loop CONTINUE on an owner-owned direction decision.
 
-## iter-16 — 2026-07-23T23:20:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** Removing a request-path compute silently changes what the page shows when the *identity*
-moves, not just when the version moves. `resolved_forward_aggregate_evidence` resolves all three serving
-states inside ONE `asof_key` (`forward_testing.py:1209`), while the default `/backtest` view resolves to
-`max(ScannerRun.asof_date)` (`backtest.py:70`) — so the common single-latest-date ingest advances the
-as-of into a key with no rows and the page shows an EMPTY evidence section, where the old code would have
-blocked and eventually served real numbers. Neither the operator's live pass nor browser QA could catch it
-because both backfilled *historical gap* dates (2025-05-22 / 2025-05-20), which leave the latest as-of
-fixed — the only shape either lane ever exercised.
+## iter-16 — 2026-07-23T23:20:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration adding a cache/precompute layer keyed on a derived identity (`asof_key`,
 `dataset_version`, tenant, run id) — enumerate the ways the *identity* can move, not just the ways the
 *value* can go stale, and make sure the live test exercises the identity-advancing shape, not only the
 convenient one.
 
-## iter-16 — 2026-07-23T23:22:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** Four gates (review, QA, browser-QA UT-02/UT-09, ux-regression) all checked the new refreshing
-banner for tone, colour token, position and heading, and all passed it — while it asserted two things that
-were factually false ("a newer dataset version is still being warmed"; "this updates automatically"). No
-lane's checklist contained "is the sentence true?", and the second claim is false in *every* case (the
-page's only fetch effect depends on `[asOf, readiness]`, which never changes — browser QA's own UT-04
-needed a manual reload). Status-disclosure copy is a testable assertion about system state, not styling.
+## iter-16 — 2026-07-23T23:22:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration adding user-facing status/progress/explanatory copy — verify each sentence
 against the code that would have to be true for it, the same way a displayed number is verified against
 the engine (AG-3's discipline, applied to prose).
 
-## iter-17 — 2026-07-24T07:44:45Z
-
-**Verdict:** CONTINUE
-**Lesson:** Do NOT STALL on a latency-budget breach until it is DIAGNOSED. iter-15 correctly STALLED
-because the cost was a KNOWN cold full-basis compute and only the product-direction response was
-owner-owned. iter-17's residual (11/68 stored-row-read breaches, max 12.655s) looks similar but is
-categorically different: it is UNDIAGNOSED (narrowed to SQLite-writer-contention vs GIL/threadpool but
-indistinguishable because `logs/backend.log` carries zero per-request timestamps). Missing instrumentation
-is agent-fixable, so the unblock path is agent-owned → CONTINUE, not STALLED. The routing test is "is the
-cost proven, or merely unmeasured?" — a proven hard cost routes to the owner; an unmeasured one routes to
-an agent instrumentation pass first.
+## iter-17 — 2026-07-24T07:44:45Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iter where a page/endpoint misses a committed `reports/perf-budgets.md` budget and the
 mechanism is not yet pinned — check whether the diagnosis is blocked by missing telemetry (agent work)
 before treating the residual as an owner budget-amendment decision.
 
-## iter-18 — 2026-07-24T11:05:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** The undiagnosed `/backtest` latency budget breach (chased since iter-11 through
-narrow-by-elimination) turned out to be a create-once SQLite INSERT (`backfill_run_forward_returns`) hiding on
-a nominally READ endpoint's serving path — 82.2% of each slow request under concurrency, serializing on
-SQLite's single-writer lock, while the pure-read resolver stayed flat at ~10ms. Two non-obvious traps it
-exposes: (a) a "read" endpoint can carry a lazy create-once WRITE that only contends under load, so wall-clock
-measurement alone (iters 11-17) could not attribute it — one iteration of cheap per-request phase timing did
-what four of narrowing could not; (b) pure 6× concurrent reads did NOT reproduce the breach (0/966), because
-the writer-lock contention only bites when a concurrent INGEST holds the same lock — so a load test that omits
-the ingest overlay will falsely read "budget holds."
+## iter-18 — 2026-07-24T11:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iter touching `apps/backend/app/api/backtest.py` / `mcp/tools.py` serving path or the
 `resolved_forward_aggregate_evidence` resolver; more generally, any "read" endpoint that lazily
 creates-once-on-first-view — instrument phases and test under a concurrent-ingest overlay, not pure reads.
@@ -234,3 +195,29 @@ followed BACKGROUND; the reviewer flagged TC-2. Resolve these by going to the ra
 side between two spec clauses.
 **Applies to:** any iteration whose DoD requires "verbatim" citation of a figure that exists at two
 precisions (raw CSV vs rounded report); decomposers should name ONE canonical rendering.
+
+## iter-24 — 2026-07-26T13:52:22Z
+
+**Verdict:** CONTINUE
+**Lesson:** A goal-proposer auto-appended journey (J-09) inherited this session's standard Acceptance
+clauses verbatim — including the `demo.sh --session-live` walkthrough clause — but the iteration spec's
+IN SCOPE / DEFINITION OF DONE never mapped that clause to any task, so the journey shipped fully working and
+still could not be scored `passing`. Nothing in `run-goal.sh` writes
+`reports/goal-session-ops-hardening-demo.json`, so a walkthrough clause is only ever closed by an explicit
+task — the same gap that made the iter-22 second-key CONFIRM reject GOAL_ACHIEVED, now repeated one journey
+later.
+**Applies to:** any iteration targeting a journey whose Acceptance block was auto-appended between the
+`<!-- AUTO:journeys -->` markers, and any decomposer writing a DoD — enumerate EVERY Acceptance bullet,
+especially the walkthrough/demo-manifest one, before declaring scope.
+
+## iter-24 — 2026-07-26T13:52:22Z (second)
+
+**Verdict:** CONTINUE
+**Lesson:** On this host Chrome MCP returns a solid-colour blank frame for ANY scrolled screenshot (verified
+by the browser-QA agent across pages, scroll methods, `fullpage`, element selectors and CSS zoom), so the
+new `/data` panel — the last panel on a ~24,800px page — is unphotographable. The workable substitute is the
+auto-saved raw DOM capture (`~/.cache/superpowers/browser/<date>/session-*/NNN-*.html`) read verbatim and
+cross-checked against the live API and the SQLite rows; that chain proved AG-3 to 1.68 ms, stronger than any
+screenshot would have.
+**Applies to:** any future iteration whose acceptance state renders below the fold on this host, and any
+evaluator weighing "no screenshot" against the absolute no-screenshot rail.

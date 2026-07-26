@@ -267,18 +267,83 @@ def test_preflight_servability_reuses_compute_readiness_verbatim(loaded_engine, 
 
 def test_compute_readiness_shape_unchanged_by_preflight_addition(loaded_engine):
     """`compute_preflight` is ADDITIVE — `compute_readiness`'s own return shape is untouched BY IT (J-40
-    not regressed): exactly `{"state", "detail", "warmup"}` (ops-hardening iter-4's B3 fix adds the
-    `detail` sibling alongside `state`/`warmup`), `warmup` exactly
-    `{"done","total","status","message"}`. This warmed, fully-caught-up fixture never produces the new
-    `awaiting_snapshot` state, so `detail` is null here (see the dedicated B3 fixture-matrix below for the
-    non-null case)."""
+    not regressed): exactly `{"state", "detail", "warmup", "background_compute"}` (ops-hardening iter-4's
+    B3 fix added the `detail` sibling alongside `state`/`warmup`; ops-hardening iter-24, J-09, additively
+    added `background_compute`), `warmup` exactly `{"done","total","status","message"}`. This warmed,
+    fully-caught-up fixture never produces the new `awaiting_snapshot` state, so `detail` is null here (see
+    the dedicated B3 fixture-matrix below for the non-null case)."""
     cfg = load_config()
     with Session(loaded_engine) as session:
         result = compute_readiness(session, config=cfg)
-    assert set(result) == {"state", "detail", "warmup"}
+    assert set(result) == {"state", "detail", "warmup", "background_compute"}
     assert result["state"] in {"ready", "initializing", "unavailable", "awaiting_snapshot"}
     assert result["detail"] is None
     assert set(result["warmup"]) == {"done", "total", "status", "message"}
+    assert set(result["background_compute"]) == {"active", "recent_outcomes"}
+
+
+# ==================================================================================================
+# ops-hardening iter-24 (J-09) — compute_readiness composes app.engine.forward_testing.
+# get_background_compute_status()'s output into its own return dict as the new `background_compute`
+# sibling key. These tests pin the composition itself (empty/active shapes, degrade-on-error); the
+# registry's OWN bookkeeping (started_at/horizons_done/ring cap/failure path) is covered in
+# test_forward_testing_concurrency.py, the producer module's own test file.
+# ==================================================================================================
+def test_compute_readiness_composes_background_compute_empty_shape(loaded_engine):
+    """A process that has never dispatched a historical background compute reports the honest empty
+    shape -- never omitted, never fabricated non-empty."""
+    import app.engine.forward_testing as forward_testing_module
+
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        # A previous test in this same process could have left dispatch state behind (the registry is a
+        # process-lifetime global, by design -- J-09 step 6). Reading the SAME accessor directly proves
+        # compute_readiness composes it VERBATIM regardless of what it currently holds.
+        direct = forward_testing_module.get_background_compute_status()
+        result = compute_readiness(session, config=cfg)
+    assert result["background_compute"] == direct
+    assert isinstance(result["background_compute"]["active"], list)
+    assert isinstance(result["background_compute"]["recent_outcomes"], list)
+
+
+def test_compute_readiness_composes_background_compute_active_entry(loaded_engine, monkeypatch):
+    """A crafted non-empty `get_background_compute_status()` return is composed VERBATIM (read-only,
+    single source -- no re-derivation) into `compute_readiness`'s own `background_compute` key."""
+    import app.engine.forward_testing as forward_testing_module
+
+    crafted = {
+        "active": [{
+            "asof_key": "2026-01-05", "dataset_version": "r1-f2", "started_at": "2026-01-05T00:00:00+00:00",
+            "elapsed_ms": 1234, "horizons_done": 1, "horizons_total": 5,
+        }],
+        "recent_outcomes": [{
+            "asof_key": "2026-01-04", "dataset_version": "r1-f2", "outcome": "completed",
+            "started_at": "2026-01-04T00:00:00+00:00", "finished_at": "2026-01-04T00:00:05+00:00",
+            "duration_ms": 5000, "reason": None,
+        }],
+    }
+    monkeypatch.setattr(forward_testing_module, "get_background_compute_status", lambda: crafted)
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        result = compute_readiness(session, config=cfg)
+    assert result["background_compute"] == crafted
+
+
+def test_compute_readiness_background_compute_degrades_honestly_on_error(loaded_engine, monkeypatch):
+    """A broken registry read degrades ONLY `background_compute` to the honest empty shape -- it must
+    never blank/raise the surrounding `state`/`warmup` (mirrors this module's own db_ok degrade
+    convention)."""
+    import app.engine.forward_testing as forward_testing_module
+
+    def _boom():
+        raise RuntimeError("simulated registry read failure")
+
+    monkeypatch.setattr(forward_testing_module, "get_background_compute_status", _boom)
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        result = compute_readiness(session, config=cfg)  # must not raise
+    assert result["background_compute"] == {"active": [], "recent_outcomes": []}
+    assert result["state"] in {"ready", "initializing", "unavailable", "awaiting_snapshot"}
 
 
 # ==================================================================================================
