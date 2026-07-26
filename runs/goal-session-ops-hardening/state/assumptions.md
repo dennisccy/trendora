@@ -265,3 +265,25 @@ background window, `duration_ms 74689`, cross-checked against `forward_aggregate
 A human who requires every required-still-passing journey to pass its deterministic replay on the first
 attempt, in-lane, would re-run the replay on a quiet box before crediting J-07.
 **Reversible:** yes
+
+## iter-26 — goal-decomposer
+
+**Ambiguity:** the iter-25 GOAL_ACHIEVED second-key CONFIRM rejected J-09 step 4's "shows a failed background
+compute with the recorded reason — never a silent failure" clause for having "no citable evidence" — every
+captured panel to date renders only `completed`. `docs/goal.md` does not say whether that clause requires an
+actual WITNESSED live capture of a genuinely triggered failure, or whether a deterministic code-level
+round-trip (backend served-payload test + a frontend rendering unit test) is sufficient citable evidence. The
+only known way to trigger a *genuine* failure on this host reproduces the unsafe 5-concurrent-BCW
+memory-pressure pattern already tracked as owner-optional backlog card B-1107 (iter-22's incidental finding:
+VmPeak plateaued 32 kB under the `ulimit -v` cap).
+**We chose:** scoped this iteration to close the gap with (a) a new backend test that monkeypatches
+`get_background_compute_status()` to return a crafted `failed` outcome and asserts `GET /api/health` serves it
+verbatim, and (b) a new frontend pure-function unit test proving the panel's rendering logic shows the
+`reason` string and a `danger` badge for a `failed` outcome — never re-triggering the actual unsafe failure
+pattern. This mirrors the session's own established precedent (the branch-resolver `.test.ts` file was
+accepted as adequate UI-behavior evidence for J-09's unknown/idle/active branches in iter-24/25) and is
+bounded, safe, and fully agent-tractable without touching any byte-frozen module. A human who reads the
+Acceptance clause as requiring an actual witnessed live failure capture would keep this specific sub-clause
+open regardless of this iteration's test additions, and would need to authorize a bounded, safe live-trigger
+mechanism (or accept B-1107's existing incidental evidence) before crediting it.
+**Reversible:** yes
