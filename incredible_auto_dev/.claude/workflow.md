@@ -14,7 +14,7 @@ Plan → Test Plan → Dev+Review loop → QA loop → Audit loop → Finalize
 
 | Stage | Script | Agent | Output |
 |-------|--------|-------|--------|
-| 1. Plan | `run-phase.sh` (internal) | orchestrator | `runs/<phase>/plan.md` (reads `docs/goal.md` + `docs/architecture/` + `.claude/architecture/` + prior handoffs first) |
+| 1. Plan | `run-phase.sh` (internal) | orchestrator | `runs/<phase>/plan.md` (reads `docs/goal.md` + prior handoffs + `docs/architecture/` if present — created by update-docs.sh after the first finalized phase) |
 | 2. Test Plan | `generate-test-plan.sh` | qa (mode: generate) | `reports/qa/<phase>-test-plan.md` — dispatch skipped (loudly logged) when the spec already lists its own tests (`## Test`-titled section or ≥3 `TC-` lines) and `CHAIN_SKIP_TESTPLAN_IF_PRESENT=true` (default `false`; TOKEN-3) |
 | 3. Dev + Review | `dev-phase.sh` + `review-phase.sh` | developer, reviewer | `docs/handoffs/<phase>-dev.md`, `reports/phase-{N}-implementation-summary.md` |
 | 4. UI Impact Analysis | `ui-impact-phase.sh` | ui-impact-analyst | `reports/phase-{N}-user-visible-changes.md`, `reports/phase-{N}-ui-surface-map.md` |
@@ -66,8 +66,8 @@ Agents ONLY communicate through filesystem artifacts. No free-form messages betw
 | UX regression report | `reports/phase-{N}-ux-regression.md` | ux-regression-reviewer | phase-closure-auditor |
 | Closure verdict | `reports/phase-{N}-closure-verdict.md` | phase-closure-auditor | finalize-phase.sh |
 | Project goal | `docs/goal.md` | Human | orchestrator, developer, reviewer, qa |
-| Project architecture | `docs/architecture/*.md` | update-docs.sh | orchestrator, developer |
-| Framework architecture | `.claude/architecture/*.md` | update-docs.sh | All agents (reference) |
+| Project architecture | `docs/architecture/*.md` (if present; created after the first finalized phase — absence is normal early on) | update-docs.sh | orchestrator, developer |
+| Framework architecture | `.claude/architecture/*.md` | update-docs.sh | Framework maintainers (reference) |
 
 ---
 
@@ -237,13 +237,12 @@ The `Frontend Present:` line is machine-read by `qa-phase.sh` to decide whether 
 
 ## Model Tier Rationale
 
-| Tier | Model | Used for |
-|------|-------|----------|
-| strong | claude-opus-5 | Judgment: goal evaluation/decomposition, skeptical audit, confirms |
-| standard | claude-sonnet-5 | Solid tasks: code review, test plan generation |
-| light | claude-haiku-4-5 | Routine workflow: QA execution, git/GitHub operations |
-
-Model assignments: each agent picks a tier (`model_tier`) in `agents/<name>/agent.yaml`; the tier resolves to a concrete model in `config/model-tiers.yaml`. Edit those, then re-render with `python3 scripts/automation/sync-cli-assets.py --cli claude` and commit the regenerated `.claude/agents/*.md`.
+Each agent picks a tier (`model_tier`) in `agents/<name>/agent.yaml`; the tier resolves
+to a concrete model in `config/model-tiers.yaml` — the ONLY place model ids live. The
+prose tier table (which model, which class of work, why) is maintained once, in
+`.claude/model-orchestration.md` §1, kept current per maintenance-protocol §6. After
+editing tiers: re-render with `python3 scripts/automation/sync-cli-assets.py --cli claude`
+and commit the regenerated `.claude/agents/*.md`.
 
 ---
 

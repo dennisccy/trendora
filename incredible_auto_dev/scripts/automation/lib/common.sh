@@ -549,8 +549,6 @@ $(review_diff_hint "${_snap:-HEAD~1}")
 (Also \`git status\` for uncommitted changes. If the snapshot SHA is empty, diff against HEAD~1.)
 UI surface map (read if it exists): reports/phase-${_name}-ui-surface-map.md
 
-Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
-
 Write your verdict to: $_out
 The verdict line MUST appear first and start exactly with:
 **Verdict:** COHERENCE-PASS
@@ -863,6 +861,13 @@ escalate_model_on() {
     echo "[escalation] retry runs on the strong tier: $_m"
     if declare -F record_telemetry_event >/dev/null 2>&1; then
       record_telemetry_event "model_escalation" "$(jq -cn --arg m "$_m" '{model:$m, escalated:true}' 2>/dev/null || printf '{"model":"%s","escalated":true}' "$_m")" || true
+    fi
+  else
+    # CTX-13: fail LOUD — a silent no-op here means the fix-mode retry runs on
+    # the default tier while everyone believes it escalated.
+    echo "[escalation] WARNING: strong-tier model resolution FAILED — retry continues on the agent's default tier (check config/model-tiers.yaml and scripts/automation/lib/agent_permissions.py)" >&2
+    if declare -F record_telemetry_event >/dev/null 2>&1; then
+      record_telemetry_event "model_escalation" '{"escalated":false,"reason":"tier-resolution-failed"}' || true
     fi
   fi
   return 0

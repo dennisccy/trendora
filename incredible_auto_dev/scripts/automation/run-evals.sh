@@ -174,7 +174,7 @@ fi
 
 # ── 2c. Standalone unit-test scripts (API-free by design) ────────────────────
 _log "2c. tests/automation unit tests"
-for _t in tests/automation/test-quota-retry.sh tests/automation/test-goal-inline-tail.sh tests/automation/test-install-gate.sh tests/automation/test-goal-checkpoints.sh tests/automation/test-goal-async-tail.sh tests/automation/test-intent-checkpoint.sh tests/automation/test-doc-drift.sh tests/automation/test-github-preflight.sh tests/automation/test-tmp-cleanup.sh tests/automation/test-goal-retro.sh tests/automation/test-benchmark-runner.sh tests/automation/test-goal-parallel-bqa.sh tests/automation/test-project-template-slice.sh tests/automation/test-phase-telemetry.sh tests/automation/test-testplan-skip.sh tests/automation/test-summary-dedupe.sh tests/automation/test-depth-cadence.sh tests/automation/test-audit-rerun-cap.sh tests/automation/test-review-packet.sh tests/automation/test-replay-lane.sh tests/automation/test-replay-lane-full.sh tests/automation/test-browser-infra-makeup.sh tests/automation/test-doctor.sh tests/automation/test-engine-lock.sh tests/automation/test-pump-liveness.sh tests/automation/test-goal-iteration-state.sh; do
+for _t in tests/automation/test-escalation-warn.sh tests/automation/test-quota-retry.sh tests/automation/test-goal-inline-tail.sh tests/automation/test-install-gate.sh tests/automation/test-goal-checkpoints.sh tests/automation/test-goal-async-tail.sh tests/automation/test-intent-checkpoint.sh tests/automation/test-doc-drift.sh tests/automation/test-github-preflight.sh tests/automation/test-tmp-cleanup.sh tests/automation/test-goal-retro.sh tests/automation/test-benchmark-runner.sh tests/automation/test-goal-parallel-bqa.sh tests/automation/test-project-template-slice.sh tests/automation/test-phase-telemetry.sh tests/automation/test-testplan-skip.sh tests/automation/test-summary-dedupe.sh tests/automation/test-depth-cadence.sh tests/automation/test-audit-rerun-cap.sh tests/automation/test-review-packet.sh tests/automation/test-replay-lane.sh tests/automation/test-replay-lane-full.sh tests/automation/test-browser-infra-makeup.sh tests/automation/test-doctor.sh tests/automation/test-engine-lock.sh tests/automation/test-pump-liveness.sh tests/automation/test-goal-iteration-state.sh tests/automation/test-plain-language.sh; do
   if bash "$_t" >/dev/null 2>&1; then
     _pass "unit: $_t"
   else
@@ -437,6 +437,37 @@ if [[ "$out" == *"missing or invalid verdict"* ]]; then
   _pass "hook: malformed review surfaces schema warning"
 else
   _fail "hook: malformed review did not surface warning (got: $out)"
+fi
+
+# CTX-1: stdin mode — the live Claude PostToolUse protocol (same fixtures as JSON)
+out=$(printf '{"tool_input":{"file_path":"%s"}}' "$tmpdir/reports/reviews/eval-good-review.md" \
+  | bash .claude/hooks/post-write-artifact-quality.sh 2>&1)
+if [[ -z "$out" ]]; then
+  _pass "hook: stdin-mode well-formed review is silent"
+else
+  _fail "hook: stdin-mode well-formed review produced output: $out"
+fi
+out=$(printf '{"tool_input":{"file_path":"%s"}}' "$tmpdir/reports/reviews/eval-bad-review.md" \
+  | bash .claude/hooks/post-write-artifact-quality.sh 2>&1 || true)
+if [[ "$out" == *"missing or invalid verdict"* ]]; then
+  _pass "hook: stdin-mode malformed review surfaces schema warning"
+else
+  _fail "hook: stdin-mode malformed review did not surface warning (got: $out)"
+fi
+_lint_bad=$(mktemp /tmp/eval-lint-bad-XXXX.py); echo "def broken(:" > "$_lint_bad"
+out=$(printf '{"tool_input":{"file_path":"%s"}}' "$_lint_bad" \
+  | bash .claude/hooks/post-edit-lint.sh 2>&1 || true)
+if [[ "$out" == *"syntax error"* ]]; then
+  _pass "hook: stdin-mode post-edit-lint warns on a broken .py file"
+else
+  _fail "hook: stdin-mode post-edit-lint missed a broken .py file (got: $out)"
+fi
+rm -f "$_lint_bad"
+if out=$(printf 'not json at all' | bash .claude/hooks/post-write-artifact-quality.sh 2>&1) \
+   && [[ -z "$out" ]]; then
+  _pass "hook: stdin-mode garbage input is silent rc=0"
+else
+  _fail "hook: stdin-mode garbage input misbehaved (rc=$? out: $out)"
 fi
 rm -rf "$tmpdir"
 

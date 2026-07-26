@@ -85,6 +85,7 @@ source "$SCRIPT_DIR/lib/common.sh"
 source "$SCRIPT_DIR/lib/telemetry.sh"
 source "$SCRIPT_DIR/lib/goal-gates.sh"
 source "$SCRIPT_DIR/lib/engine-lock.sh"
+source "$SCRIPT_DIR/lib/plain-language.sh"
 
 # ── Host-guard self-wrap (hardware protection — goal.md AG-10) ─────────────
 # Two instant hardware resets (2026-07-20 19:17, 2026-07-21 10:33) under
@@ -332,8 +333,6 @@ Agent instructions: .claude/agents/iteration-summarizer.md  <-- read this first
 Template: templates/iteration-summary.md  <-- exact section structure your output must follow
 (CLAUDE.md is already in your system prompt -- do not Read it again.)
 
-Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
-
 Read every relevant input listed in your agent instructions. Files that don't
 exist should be silently skipped. Use what is present. The dispatch wrapper
 has pre-trimmed evaluator-log.md below — use the inline content.
@@ -396,8 +395,6 @@ Retro input (your ONLY input file): $retro_input
 Output path (the retro report): $retro_report
 Agent instructions: .claude/agents/retro-analyst.md  <-- read this first
 (CLAUDE.md is already in your system prompt -- do not Read it again.)
-
-Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
 
 Read the retro input file and NOTHING else. Draft at most 5 candidate
 framework-improvement items per your agent instructions — proposals only,
@@ -465,8 +462,6 @@ Capabilities inputs (read what exists, silently skip what doesn't):
 - reports/phase-${iter_name}-iteration-summary.md
 (CLAUDE.md is already in your system prompt -- do not Read it again.)
 
-Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
-
 Refresh README.md so it reflects the CURRENT project and includes a 'How to run'
 section. Edit ONLY the marker-delimited AUTO blocks described in your skill;
 never delete human-written prose outside them. Ground every install/run/test
@@ -507,8 +502,6 @@ Session id: $sid
 Output path: $delivered_md
 Agent instructions: .claude/agents/iteration-summarizer.md  <-- read this first; specifically the 'Delivered wrap' section
 (CLAUDE.md is already in your system prompt -- do not Read it again.)
-
-Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
 
 This is the one-time GOAL_ACHIEVED delivered wrap. Read:
 - runs/goal-session-${sid}/state/journey-history.json (all currently passing journeys)
@@ -699,13 +692,13 @@ validate_goal_file() {
 
   if ! grep -q "^## Must-have user journeys" "$GOAL_FILE"; then
     echo "Error: $GOAL_FILE is missing the '## Must-have user journeys' section." >&2
-    echo "  See templates/project-goal.md for the format. See .claude/anti-patterns.md #18." >&2
+    echo "  See templates/project-goal.md for the format. See .claude/anti-patterns/18-goal-journeys-anti-goals.md." >&2
     exit 1
   fi
 
   if ! grep -q "^## Anti-goals" "$GOAL_FILE"; then
     echo "Error: $GOAL_FILE is missing the '## Anti-goals' section." >&2
-    echo "  See templates/project-goal.md for the format. See .claude/anti-patterns.md #18." >&2
+    echo "  See templates/project-goal.md for the format. See .claude/anti-patterns/18-goal-journeys-anti-goals.md." >&2
     exit 1
   fi
 
@@ -727,7 +720,7 @@ non_placeholder = [ln for ln in items if 'TODO' not in ln and 'placeholder' not 
 if not non_placeholder:
     print("Error: Anti-goals section has no concrete entries (only placeholders or empty bullets).",
           file=sys.stderr)
-    print("  See .claude/anti-patterns.md #18 for examples.", file=sys.stderr)
+    print("  See .claude/anti-patterns/18-goal-journeys-anti-goals.md for examples.", file=sys.stderr)
     sys.exit(1)
 PY
 }
@@ -796,6 +789,7 @@ PY
   echo "Resume:  ./scripts/automation/run-goal.sh --resume --session-id $SESSION_ID"
   echo "Skip this check:  export CHAIN_SKIP_GITHUB_PREFLIGHT=true   (exotic credential setups)"
   echo "Run without pushing:  add --no-push-per-iter"
+  explain_goal_status "AWAITING_GITHUB_AUTH" "$SESSION_ID" "$REPO_ROOT"
   echo "════════════════════════════════════════════════════════════════════"
   exit 0
 }
@@ -828,6 +822,7 @@ PY
   echo ""
   echo "Free disk space (or: ./scripts/automation/tmp-doctor.sh --aggressive), then resume:"
   echo "  ./scripts/automation/run-goal.sh --resume --session-id $SESSION_ID"
+  explain_goal_status "AWAITING_DISK" "$SESSION_ID" "$REPO_ROOT"
   echo "════════════════════════════════════════════════════════════════════"
   exit 0
 }
@@ -921,6 +916,7 @@ PY
   echo ""
   echo "Fix the host-guard issue (project-extensions/host-guard/README.md), then resume:"
   echo "  ./scripts/automation/run-goal.sh --resume --session-id $SESSION_ID"
+  explain_goal_status "AWAITING_HOST_GUARD" "$SESSION_ID" "$REPO_ROOT"
   echo "════════════════════════════════════════════════════════════════════"
   exit 0
 }
@@ -1555,6 +1551,7 @@ on_abort() {
   echo "[run-goal] Aborted by user signal. Writing summary." >&2
   _join_showcase_tail --kill 2>/dev/null || true
   write_session_summary "ABORTED" "$CURRENT_ITER"
+  explain_goal_status "ABORTED" "$SESSION_ID" "$REPO_ROOT" >&2
   exit 130
 }
 trap on_abort INT TERM
@@ -1598,6 +1595,7 @@ while true; do
     echo "[run-goal] BUDGET_EXHAUSTED — reached max-iter cap of $MAX_ITER."
     record_telemetry_event "halt" '{"reason":"BUDGET_EXHAUSTED","detected_at_step":"pre_decomposer"}'
     write_session_summary "BUDGET_EXHAUSTED" "$CURRENT_ITER"
+    explain_goal_status "BUDGET_EXHAUSTED" "$SESSION_ID" "$REPO_ROOT"
     exit 0
   fi
 
@@ -1605,6 +1603,7 @@ while true; do
     echo "[run-goal] STALLED — last $STALL_WINDOW iterations made no journey progress."
     record_telemetry_event "halt" '{"reason":"STALLED","detected_at_step":"pre_decomposer"}'
     write_session_summary "STALLED" "$CURRENT_ITER"
+    explain_goal_status "STALLED" "$SESSION_ID" "$REPO_ROOT"
     exit 0
   fi
 
@@ -1616,6 +1615,7 @@ while true; do
     echo "[run-goal]   Free space (or run ./scripts/automation/tmp-doctor.sh --aggressive), then: /goal-resume $SESSION_ID"
     record_telemetry_event "halt" '{"reason":"AWAITING_DISK","detected_at_step":"pre_decomposer"}'
     write_session_summary "AWAITING_DISK" "$CURRENT_ITER"
+    explain_goal_status "AWAITING_DISK" "$SESSION_ID" "$REPO_ROOT"
     exit 0
   fi
 
@@ -1669,6 +1669,7 @@ PY
     echo ""
     echo "Resume:  ./scripts/automation/run-goal.sh --resume --session-id $SESSION_ID"
     echo "Skip the review next time:  add --auto-approve-blueprint"
+    explain_goal_status "AWAITING_BLUEPRINT_APPROVAL" "$SESSION_ID" "$REPO_ROOT"
     echo "════════════════════════════════════════════════════════════════════"
     exit 0
   fi
@@ -1733,6 +1734,7 @@ PY
     echo ""
     echo "Resume:  ./scripts/automation/run-goal.sh --resume --session-id $SESSION_ID"
     echo "(The checkpoint fires once per session; resuming acknowledges it.)"
+    explain_goal_status "AWAITING_INTENT_REVIEW" "$SESSION_ID" "$REPO_ROOT"
     echo "════════════════════════════════════════════════════════════════════"
     exit 0
   fi
@@ -1914,8 +1916,6 @@ $( [[ -n "${CHAIN_BQA_MAKEUP_JOURNEYS:-}" ]] && echo "Pending-infra make-up targ
 
 $( [[ $CURRENT_ITER -gt 0 && -f "$GOAL_SESSION_DIR_LOCAL/iter-$((CURRENT_ITER-1))/eval.md" ]] && echo "Last iteration eval: $GOAL_SESSION_DIR_LOCAL/iter-$((CURRENT_ITER-1))/eval.md")
 
-Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
-
 Write the iteration spec to: docs/phases/${ITER_NAME}.md
 $( if [[ "$DECOMPOSER_MODE" == "baseline" ]]; then echo "BASELINE also: draft the coherence blueprint to $BLUEPRINT_FILE per your agent instructions (Information Architecture + Data Contract, ~one screen, from docs/goal.md's Product Shape + Must-have journeys + Key Capabilities). The blueprint is auto-approved by default and the loop proceeds; pass --require-blueprint-approval to pause for human review after baseline."; else echo "Also keep $BLUEPRINT_FILE current per your agent instructions: register any new displayed value in the Data Contract and place new pages under an existing Information-Architecture home (additive edits only). For a nav-skeleton change, make the edit AND write a one-line reason to $BLUEPRINT_REAPPROVAL."; fi )
 
@@ -1939,6 +1939,7 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
     echo "[run-goal]   Resume after re-opening the pump session:  /goal-resume $SESSION_ID" >&2
     record_telemetry_event "halt" '{"reason":"AWAITING_PUMP","detected_at_step":"decomposer"}'
     write_session_summary "AWAITING_PUMP" "$CURRENT_ITER"
+    explain_goal_status "AWAITING_PUMP" "$SESSION_ID" "$REPO_ROOT" >&2
     exit 0
   fi
 
@@ -1946,12 +1947,14 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
     echo "[run-goal] goal-decomposer failed with exit $_decomp_rc — aborting." >&2
     record_telemetry_event "halt" '{"reason":"DECOMPOSER_FAILED","detected_at_step":"decomposer"}'
     write_session_summary "ABORTED" "$CURRENT_ITER"
+    explain_goal_status "ABORTED" "$SESSION_ID" "$REPO_ROOT" >&2
     exit "$_decomp_rc"
   fi
 
   if [[ ! -f "$ITER_SPEC_PATH" ]]; then
     echo "[run-goal] goal-decomposer did not write spec at $ITER_SPEC_PATH — aborting." >&2
     write_session_summary "ABORTED" "$CURRENT_ITER"
+    explain_goal_status "ABORTED" "$SESSION_ID" "$REPO_ROOT" >&2
     exit 1
   fi
 
@@ -1985,6 +1988,7 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
       fi
       record_telemetry_event "halt" '{"reason":"GATE_BLOCKED_POST_DECOMPOSE","detected_at_step":"post_decomposer"}'
       write_session_summary "GATE_BLOCKED" "$CURRENT_ITER"
+      explain_goal_status "GATE_BLOCKED" "$SESSION_ID" "$REPO_ROOT" >&2
       exit 0
     fi
   fi
@@ -2087,6 +2091,7 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
     echo "[run-goal]   (or: ./scripts/automation/run-goal.sh --resume --session-id $SESSION_ID --interactive)" >&2
     record_telemetry_event "halt" '{"reason":"AWAITING_PUMP","detected_at_step":"executor"}'
     write_session_summary "AWAITING_PUMP" "$CURRENT_ITER"
+    explain_goal_status "AWAITING_PUMP" "$SESSION_ID" "$REPO_ROOT" >&2
     exit 0
   fi
 
@@ -2121,6 +2126,7 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
       echo "[run-goal] Interactive pump/dispatch unavailable during coherence audit — pausing (resume re-runs iteration $CURRENT_ITER)." >&2
       record_telemetry_event "halt" '{"reason":"AWAITING_PUMP","detected_at_step":"coherence_auditor"}'
       write_session_summary "AWAITING_PUMP" "$CURRENT_ITER"
+      explain_goal_status "AWAITING_PUMP" "$SESSION_ID" "$REPO_ROOT" >&2
       exit 0
     fi
     fi  # end of the coherence resume-skip guard
@@ -2235,8 +2241,6 @@ Recent assumption entries (pre-trimmed):
 $ASSUMPTIONS_TAIL
 \`\`\`
 
-Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly.
-
 Write your verdict to: $EVAL_OUTPUT
 
 The verdict line MUST appear at the top of $EVAL_OUTPUT and start exactly with:
@@ -2261,12 +2265,14 @@ STOP." || _eval_rc=$?
     echo "[run-goal] Interactive pump/dispatch unavailable during evaluation — pausing (resume re-runs iteration $CURRENT_ITER)." >&2
     record_telemetry_event "halt" '{"reason":"AWAITING_PUMP","detected_at_step":"goal_evaluator"}'
     write_session_summary "AWAITING_PUMP" "$CURRENT_ITER"
+    explain_goal_status "AWAITING_PUMP" "$SESSION_ID" "$REPO_ROOT" >&2
     exit 0
   fi
 
   if [[ ! -f "$EVAL_OUTPUT" ]]; then
     echo "[run-goal] goal-evaluator did not write $EVAL_OUTPUT — treating as ABORTED." >&2
     write_session_summary "ABORTED" "$CURRENT_ITER"
+    explain_goal_status "ABORTED" "$SESSION_ID" "$REPO_ROOT" >&2
     exit 1
   fi
   fi  # end .evaluated reuse guard
@@ -2296,6 +2302,7 @@ STOP." || _eval_rc=$?
   VERDICT="$(goal_gate_filter_verdict "$_raw_verdict" "$ITER_DIR" "$EVAL_OUTPUT" "$JOURNEY_HISTORY" "$COHERENCE_OUTPUT" "$_coherence_expected" "$REPO_ROOT/reports/phase-${ITER_NAME}-ui-test-results.md" "$GOAL_SESSION_DIR_LOCAL" "$GOAL_SLICE_PATH")"
   if [[ "$VERDICT" != "$_raw_verdict" ]]; then
     echo "[run-goal] Verdict gate: evaluator said '$_raw_verdict' → final verdict '$VERDICT'."
+    echo "[run-goal]   (A safety rule overrode the evaluator's claim — the stricter verdict wins.)"
     record_telemetry_event "deterministic_gate" "$(jq -cn --arg r "$_raw_verdict" --arg f "$VERDICT" '{raw:$r, final:$f}' 2>/dev/null || printf '{"raw":"%s","final":"%s"}' "$_raw_verdict" "$VERDICT")"
   fi
 
@@ -2383,6 +2390,7 @@ except Exception as e:
   fi
 
   echo "[run-goal] Verdict: $VERDICT (next depth: $NEXT_DEPTH)"
+  explain_goal_verdict "$VERDICT" "$NEXT_DEPTH"
 
   # 4b. Push per iter (if enabled). Direct git only — no model invocation.
   # Eligibility: CONTINUE / ESCALATE / GOAL_ACHIEVED. REGRESSION / STALLED
@@ -2530,7 +2538,7 @@ requirements into each journey's Acceptance). If nothing new survives, leave the
 Then write $GOAL_SESSION_DIR_LOCAL/state/proposer-result.json with keys extended, n_new_journeys,
 n_proposals, dry.
 
-Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly. Do NOT write product code or start services." || _prop_rc=$?
+Do NOT write product code or start services." || _prop_rc=$?
         record_agent_invocation_end "goal-proposer" "$_prop_start" "$_prop_rc"
         # 3. continue the loop iff the proposer extended the goal with new buildable journey(s).
         _prop_extended=$(python3 -c "import json,sys; print('yes' if json.load(open('$_state_dir/proposer-result.json')).get('extended') else 'no')" 2>/dev/null || echo "no")
@@ -2547,6 +2555,7 @@ Apply the TOKEN AND QUESTIONING POLICY from .claude/core.md strictly. Do NOT wri
       # delivered.html and surface a prominent link to it. Non-blocking.
       _render_final_delivered "$SESSION_ID"
       write_session_summary "GOAL_ACHIEVED" "$((CURRENT_ITER+1))"
+      explain_goal_status "GOAL_ACHIEVED" "$SESSION_ID" "$REPO_ROOT"
       if [[ "$AUTO_RELEASE" == "true" ]]; then
         # Direct gh pr create from $PUSH_BRANCH — every iter commit is already
         # there from the per-iter push, so we only need to open the PR. We
@@ -2598,12 +2607,14 @@ PY
       record_telemetry_event "halt" '{"reason":"REGRESSION_HALT","detected_at_step":"post_evaluator"}'
       write_session_summary "REGRESSION_HALT" "$((CURRENT_ITER+1))"
       echo "[run-goal] REGRESSION_HALT — review $EVAL_OUTPUT, fix the regression, then resume with --acknowledge-regression." >&2
+      explain_goal_status "REGRESSION_HALT" "$SESSION_ID" "$REPO_ROOT" >&2
       exit 1
       ;;
     STALLED)
       record_telemetry_event "halt" '{"reason":"STALLED","detected_at_step":"post_evaluator"}'
       write_session_summary "STALLED" "$((CURRENT_ITER+1))"
       echo "[run-goal] STALLED per evaluator. Edit goal.md and resume with --resume." >&2
+      explain_goal_status "STALLED" "$SESSION_ID" "$REPO_ROOT" >&2
       exit 0
       ;;
     CONTINUE|ESCALATE)
@@ -2616,6 +2627,7 @@ PY
       echo "[run-goal] ABORT_MALFORMED — two consecutive malformed evaluator verdicts. Inspect $ITER_DIR/eval.md, fix the cause (or run with CHAIN_GOAL_GATES=false to bypass), then --resume." >&2
       record_telemetry_event "halt" '{"reason":"ABORT_MALFORMED","detected_at_step":"verdict_gate"}'
       write_session_summary "ABORTED" "$CURRENT_ITER"
+      explain_goal_status "ABORT_MALFORMED" "$SESSION_ID" "$REPO_ROOT" >&2
       exit 1
       ;;
     *)

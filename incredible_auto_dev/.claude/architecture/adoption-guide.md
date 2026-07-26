@@ -62,7 +62,7 @@ Every phase spec must have:
 - A numbered DEFINITION OF DONE checklist
 - Specific, testable acceptance criteria
 
-See `.claude/anti-patterns.md` (pattern 1) for why vague acceptance criteria cause problems.
+See `.claude/anti-patterns/01-vague-acceptance-criteria.md` for why vague acceptance criteria cause problems.
 
 ## Step 5: Run the Pipeline
 
@@ -182,12 +182,12 @@ your-project/
     core.md                          # Universal rules
     workflow.md                      # Pipeline definition
     project-template.md              # Project config (you fill this in)
-    anti-patterns.md                 # Failure modes
-    agents/                          # 14 agent definitions (12 phase + 2 goal)
-    skills/                          # 13 skills
+    anti-patterns/                   # Failure modes (README index + per-entry files)
+    agents/                          # agent definitions (rendered from agents/<name>/)
+    skills/                          # 16 skills
     hooks/                           # 5 hooks
     architecture/                    # Framework architecture docs (incl. goal-mode.md)
-  scripts/automation/                # 18 automation scripts (incl. run-goal.sh, goal-iter-lean.sh)
+  scripts/automation/                # automation scripts (incl. run-goal.sh, goal-iter-lean.sh)
     lib/                             # quota-retry.sh, common.sh, telemetry.sh
   config/                            # model-tiers.yaml, security policy
   templates/                         # 15 artifact templates
