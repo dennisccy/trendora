@@ -310,3 +310,25 @@ page" as satisfied only by a captured, contained UI error — or who reads AG-3 
 would score one or both critical, which under decision tree C.1 means a REGRESSION halt for human review
 instead of another agent iteration.
 **Reversible:** yes
+
+## iter-27 — goal-decomposer
+
+**Ambiguity:** the iter-26 evaluator's AG-3 finding (a populated DB's `/data` coverage panel rendering
+"— → —" / UNIVERSE 0 after a request-path historical `/backtest` view bumps `dataset_version`) and its
+next-step recommendation offer two remedies: "(a) refresh the stored coverage figures when a run is created
+this way, or (b) label the sentinel state ... instead of rendering zeros." `docs/goal.md`'s compute-at-ingest
+principle ("boot and request paths serve stored values and never stream the full `daily_prices` table into
+RAM") does not resolve which remedy is compliant, since option (a) — a live recompute triggered from the
+request path — is exactly the whole-table-scan risk the Coverage payload's own iter-2/iter-3 redesign
+eliminated (`_compute_coverage_uncached`'s prefill is the documented OOM/hang source).
+**We chose:** option (b) — a stale-row fallback + honest `coverage_status` label, never a request-path
+recompute. When the default view's exact-match `CoverageSnapshot` lookup misses (because a request-path
+`ScannerRun` bumped the global `_membership_dataset_version` stamp), serve the most recent row that DOES
+exist for the same `asof_key` under an older `dataset_version`, labeled `"stale"`, rather than falling to the
+all-zero `not_yet_computed` sentinel or triggering a fresh `_compute_coverage_uncached` call. This keeps the
+compute-at-ingest guarantee absolute (zero new DB writes/compute on the request path) while closing the
+misleading-zeros defect. A human who reads goal.md's "zero silent zero-work jobs" / "displayed numbers are
+correct" language as requiring the FIGURES to always reflect the CURRENT dataset version (not a labeled-stale
+prior one) would instead require option (a) — an ingest-triggered refresh whenever a request-path run is
+created outside ingest — accepting the request-path compute-timing exception that would introduce.
+**Reversible:** yes
