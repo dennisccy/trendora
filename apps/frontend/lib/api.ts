@@ -2335,6 +2335,17 @@ export interface DataCoverage {
   // ABSENT from the latest scanner snapshot's scored set (the operator-facing "rebuild to include the new
   // members" signal). Read-only descriptive derivation; absent_count 0 → the UI shows NO banner.
   absent_from_latest_snapshot: AbsentFromLatestSnapshot;
+  // ops-hardening iter-27 (AG-3): honest disclosure of WHICH persisted row this payload reflects.
+  // "current" -- the exact-match row for today's dataset version (unchanged rendering). "stale" -- a
+  // real, previously-computed row for this SAME as-of survives under an OLDER dataset version (e.g. a
+  // request-path historical /backtest create-once view bumped the global stamp without an ingest
+  // running) -- the figures above are that older row's, never fabricated/zeroed. "not_yet_computed" --
+  // genuinely no row exists for any version (the pre-existing all-zero sentinel, byte-unchanged).
+  coverage_status: "current" | "stale" | "not_yet_computed";
+  // Non-null ONLY when coverage_status === "stale": the older dataset_version the figures above reflect.
+  stale_dataset_version: string | null;
+  // Non-null ONLY when coverage_status === "stale": that row's own computed_at (ISO-8601 UTC).
+  stale_computed_at: string | null;
 }
 
 /** J-94 — the per-date coverage diagnostic. For the resolved as-of: the admitted count + the excluded-

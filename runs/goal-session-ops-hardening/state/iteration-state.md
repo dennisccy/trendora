@@ -1,40 +1,40 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 26 · **Date:** 2026-07-26 · **Verdict:** ESCALATE
+**After iteration:** 27 · **Date:** 2026-07-27 · **Verdict:** CONTINUE
 
 ## Journeys
 
-8 passing (J-01 J-03 J-04 J-05 J-06 J-07 J-08 J-09) · 0 failing · 0 unknown — 8 total; all re-verified this iteration (replay 7/7 + LLM lane J-09).
+4 passing (J-01 J-03 J-04 J-09) · 1 partial (J-06) · 3 unknown (J-05 J-07 J-08) — 8 total
 
 ## Active blockers
 
-- **dev** — an unhandled `sqlite3.IntegrityError` escapes as HTTP 500 from `GET /api/backtest` when two
-  concurrent requests hit the same never-scanned historical as-of: `apps/backend/app/api/backtest.py:171`
-  -> `apps/backend/app/engine/forward_testing.py:1667` -> `:390` (`logs/backend.log:81004`). The fix needs
-  the freeze on `backfill_run_forward_returns` lifted on purpose. No capture exists of what the user sees
-  when it happens, so AG-8's "degrades gracefully" half is unverified.
-- **dev** — `/data` shows an empty dataset (PRICE HISTORY "— → —", UNIVERSE 0) for a populated DB after a
-  time-machine visit creates a run outside ingest: `apps/backend/app/engine/data_manager.py:908`; evidence
-  `reports/qa/goal-ops-hardening-iter-26-evidence/UT-J-09-01-data-page-top-badge.png`.
+- **dev — browser-QA evidence missing for J-05/J-07/J-08.** The agent was killed mid-run by an account
+  usage limit; `...-iter-27-ui-test-results.md` holds only the 5-row replay lane — no UT-02 (stale
+  coverage) or UT-06 (concurrent `/backtest` race) row; closure = CLOSURE-FAIL. UT-06 needs a
+  never-scanned date: 2011-03-10 and 2015-09-09 are consumed.
+- **dev — the J-06 golden is self-defeating.** `journey-scripts/J-06.json` step 1 expects the incidental
+  string "DEGRADED", from `config.yaml:1152` -> `runs/goal-session-mcp-loop/state/drift-report.json`
+  (another session's file, which J-01's own replay rewrites). Product healthy: the banner reads "GO".
+- **dev — new AG-8 finding, unresolved.** Unhandled `MemoryError` 500s on `GET /api/evidence`
+  (`logs/backend.log:81850`, `:81932`) + ingest finalize (`data_manager.py:3361`); cause is the unbounded
+  `ret_by_run_symbol` dict at `research.py:215`. Untouched by iter-27; no browser captured at failure.
+- **owner, non-blocking** — historical `/backtest` took 738-1442 s in iter-27's logs vs the 16-23 s the
+  open cold-load budget question was framed around. Card B-1107 (dispatch cap) stays optional.
 
 ## Last 2 verdicts
 
-- iter 26: ESCALATE — both iter-25 confirm gaps closed and all 8 journeys re-verified, but the lane's own
-  run exposed a server 500 plus a wrong-looking Data Manager screen; cross-cutting, so next round is full.
-- iter 25: GOAL_ACHIEVED — J-09's walkthrough manifest + audit F1 closed; the second-key CONFIRM then
-  REJECTED it on the ≤0.1 s budget evidence and the untested failure branch (both now closed by iter-26).
+- iter 27: CONTINUE — both iter-26 anti-goal findings CLOSED in code and verified, but the browser lane was
+  quota-killed before testing the 3 target journeys; one new minor AG-8 finding opened.
+- iter 26: ESCALATE — a lean pass surfaced two unresolved anti-goal findings needing the full pipeline.
 
 ## Do not redo
 
-- The `≤ 0.1 s` steady-state `/api/health` re-measurement — DONE and binding: `reports/perf-budgets.md`
-  "Iteration 26 — J-09 confirm-gap 1" (all 4 statistics hold; supersedes iter-24). Append-only; never edit
-  prior sections, the OWNER BUDGET AMENDMENT, Revision 1, TC-13 or TC-14.
-- J-09 failure-branch coverage — DONE: `test_health_background_compute_serves_failed_outcome_verbatim`
-  (`apps/backend/tests/test_health.py`) + `apps/frontend/lib/background-compute-last-outcome.{ts,test.ts}`
-  (evaluator re-ran it: 2 passed). Never trigger a live memory-pressure failure to re-prove it.
-- `reports/goal-session-ops-hardening-demo.json` J-09 steps n=13-16 — written and verified (iter-25).
-- Byte-frozen unless the planner lifts it ON PURPOSE for the blocker above: `app.engine.forward_testing`,
-  `compute_readiness`, `compute_forward_aggregates`, `resolved_forward_aggregate_evidence`, J-08's serving split.
-- Never launch a second concurrent pytest (the 30-year `loaded_engine` fixture costs 1h+ and starved the
-  backend in iter-25). QA must trigger background compute on a date that ALREADY has a snapshot — never a
-  never-scanned one: that is what caused both blockers above.
+- **iter-26 AG-8 (concurrent `/backtest` 500) FIXED + verified** — `_insert_run_forward_returns` tolerates
+  the mid-loop duplicate-key collision narrowly; live races answered 200. Audit B1 fixed too.
+- **iter-26 AG-3 (all-zero coverage panel) FIXED + verified** — `coverage_from_storage` serves a labeled
+  stale prior row; the three new fields shipped and typed. TC-10 done (`perf-budgets.md` 19:14 -> 18:14Z).
+- **Byte-frozen** — `compute_forward_aggregates`, `resolved_forward_aggregate_evidence`,
+  `ensure_historical_forward_aggregates_dispatched`, J-08's serving split, the demo JSON, the OWNER BUDGET
+  AMENDMENT. Audit B2 (`_backfill` rollback residual) needs its own iteration.
+- **Never** re-trigger a live memory-pressure background-compute failure (proven by test); never run the
+  full pytest suite or two concurrent pytest invocations on this host.

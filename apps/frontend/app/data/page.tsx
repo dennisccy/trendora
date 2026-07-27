@@ -756,6 +756,14 @@ function CoveragePanel({ data }: { data: DataOverviewResponse }) {
       <PanelTitle hint="Descriptive metadata read from the dataset — not a recomputed score or return. Each figure is shown with its plain-language definition.">
         Dataset coverage
       </PanelTitle>
+      {c.coverage_status === "stale" ? (
+        <p
+          className="border-b border-border bg-surface-2 px-4 py-2 text-xs text-text-muted"
+          data-testid="coverage-stale-notice"
+        >
+          Coverage as of a prior scan (version {c.stale_dataset_version}) — refreshes on the next data job
+        </p>
+      ) : null}
       <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
         <DefinedMetric
           label="Price history"

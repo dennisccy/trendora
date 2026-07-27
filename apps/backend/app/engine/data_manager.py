@@ -1092,6 +1092,25 @@ def _scanner_run_exists(session: Session, asof: date_cls) -> bool:
     ).first() is not None
 
 
+def _tag_coverage_status(
+    payload: dict,
+    status: str,
+    *,
+    stale_dataset_version: Optional[str] = None,
+    stale_computed_at: Optional[str] = None,
+) -> dict:
+    """ops-hardening iter-27 (AG-3) — stamp the additive `coverage_status`/`stale_dataset_version`/
+    `stale_computed_at` sibling fields onto an already-resolved coverage payload (never a second
+    derivation of any coverage figure — every caller below passes through a payload some OTHER path
+    already computed/persisted verbatim). `stale_dataset_version`/`stale_computed_at` are non-null ONLY
+    when `status == "stale"`. Mutates and returns `payload` in place (each caller's `payload` is a fresh
+    dict — `json.loads(...)` or a freshly-computed literal — never a shared/cached object)."""
+    payload["coverage_status"] = status
+    payload["stale_dataset_version"] = stale_dataset_version
+    payload["stale_computed_at"] = stale_computed_at
+    return payload
+
+
 def coverage_from_storage(session: Session, cfg: Config, *, as_of: Optional[date_cls] = None) -> dict:
     """`GET /api/data`'s coverage block, served from the persisted `CoverageSnapshot` row for the resolved
     `(asof_key, dataset_version)` key — REPLACES the former request-path call to `compute_coverage`/
@@ -1109,6 +1128,19 @@ def coverage_from_storage(session: Session, cfg: Config, *, as_of: Optional[date
     This is an AG-3 correctness guarantee (displayed numbers MUST match the engine's computation) that
     overrides the AG-8 no-request-compute preference for this rare, deliberate, one-time-per-date path.
 
+    ops-hardening iter-27 (AG-3 ESCALATE fix): `_membership_dataset_version` is a GLOBAL stamp bumped by
+    ANY new `ScannerRun` row — including one created by a request-path historical `/backtest` create-once
+    view for a date decades in the past. When that bump makes the exact-match lookup above miss, a real,
+    previously-computed row for this SAME `asof_key` can still exist under the now-OLDER stamp (it
+    survives only because no ingest ran since — `_upsert_coverage_snapshot` reclaims every non-current-
+    stamp row at the end of every ingest). One bounded, INDEXED lookup by `asof_key` alone (never a
+    `daily_prices`/`scanner_runs` scan) tried AFTER both paths above miss serves that row's figures
+    labeled `coverage_status: "stale"` — honest, non-zero prior-scan figures — instead of falling through
+    to the all-zero 'not yet computed' sentinel for a database that plainly has real coverage on file.
+    Every returned payload now carries `coverage_status` ("current" / "stale" / "not_yet_computed") plus
+    `stale_dataset_version`/`stale_computed_at` (non-null only for "stale") — additive fields, the
+    pre-existing payload shape is otherwise unchanged.
+
     The common default (`as_of=None`) visit and a genuinely dataless as-of (no `ScannerRun`, e.g. pre-first-
     ingest) still take the honest zero-query 'not yet computed' sentinel — NEVER a live whole-table compute,
     never a blank/500 response (AG-8)."""
@@ -1123,12 +1155,27 @@ def coverage_from_storage(session: Session, cfg: Config, *, as_of: Optional[date
             )
         ).first()
         if row is not None:
-            return json.loads(row.payload_json)
+            return _tag_coverage_status(json.loads(row.payload_json), "current")
         # no persisted row: heal an explicit switcher selection of a real already-ingested historical date
         # (see docstring) — real coverage, self-healed to storage — rather than a false empty-DB sentinel.
         if as_of is not None and _scanner_run_exists(session, resolved_asof):
-            return refresh_coverage_snapshot_for(session, cfg, resolved_asof)
-    return _coverage_not_yet_computed_payload(cfg)
+            return _tag_coverage_status(refresh_coverage_snapshot_for(session, cfg, resolved_asof), "current")
+        # iter-27: the exact-match key missed (current stamp) — check for a real row under an OLDER stamp
+        # for this SAME asof_key before conceding to the all-zero sentinel (see docstring above).
+        stale_row = session.exec(
+            select(CoverageSnapshot)
+            .where(CoverageSnapshot.asof_key == asof_key)
+            .order_by(CoverageSnapshot.computed_at.desc())
+            .limit(1)
+        ).first()
+        if stale_row is not None:
+            return _tag_coverage_status(
+                json.loads(stale_row.payload_json),
+                "stale",
+                stale_dataset_version=stale_row.dataset_version,
+                stale_computed_at=stale_row.computed_at.isoformat(),
+            )
+    return _tag_coverage_status(_coverage_not_yet_computed_payload(cfg), "not_yet_computed")
 
 
 def compute_availability(session: Session, config: Optional[Config] = None) -> dict:

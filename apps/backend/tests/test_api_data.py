@@ -121,7 +121,13 @@ def test_get_data_overview_serves_coverage_from_storage_zero_prefill_calls(data_
     monkeypatch.setattr(data_manager, "prefilled_bar_cache", _boom)
     with Session(data_api_engine) as session:
         payload = data_overview(session=session)
-    assert payload["coverage"] == expected
+    cov = payload["coverage"]
+    # iter-27 (TC-8 regression guard): `coverage_from_storage` now additively stamps coverage_status/
+    # stale_* on top of the byte-identical base payload — assert the stamp, then strip before comparing.
+    assert cov["coverage_status"] == "current"
+    assert cov["stale_dataset_version"] is None and cov["stale_computed_at"] is None
+    served_base = {k: v for k, v in cov.items() if k not in ("coverage_status", "stale_dataset_version", "stale_computed_at")}
+    assert served_base == expected
 
 
 def test_get_data_overview_zero_coverage_rows_serves_honest_sentinel_never_500(tmp_path, monkeypatch):

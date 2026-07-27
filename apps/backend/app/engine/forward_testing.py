@@ -363,6 +363,24 @@ def walk_forward_asof_dates(session: Session, config: Optional[Config] = None) -
 # --------------------------------------------------------------------------------------------------
 # Backfill — persist the cadence snapshots, then INSERT realized forward returns (idempotent)
 # --------------------------------------------------------------------------------------------------
+# ops-hardening iter-27 (AG-3/AG-8 ESCALATE fix) -- the DBAPI's own UNIQUE-constraint message for the
+# targeted collision this mid-loop guard tolerates (SQLite reports the constrained COLUMN list, not the
+# constraint name `uq_forward_returns_run_symbol_horizon` — verified directly: see the module-level test
+# in `test_forward_testing_concurrency.py`). Matching on this exact column list keeps the catch narrow: an
+# `IntegrityError` from any OTHER constraint (a different table, a NOT NULL violation, a foreign key) does
+# NOT match and still propagates unchanged (TC-4).
+_FORWARD_RETURN_DUPLICATE_KEY_MARKER = (
+    "UNIQUE constraint failed: forward_returns.run_id, forward_returns.symbol, forward_returns.horizon"
+)
+
+
+def _is_forward_return_duplicate_key_collision(exc: IntegrityError) -> bool:
+    """True only for the ONE collision `_insert_run_forward_returns`'s mid-loop guard tolerates: a
+    concurrent writer already committed the exact same `(run_id, symbol, horizon)` key. Never a blanket
+    `except IntegrityError` — any other constraint violation returns False here and is left to propagate."""
+    return _FORWARD_RETURN_DUPLICATE_KEY_MARKER in str(exc.orig)
+
+
 def _insert_run_forward_returns(
     session: Session,
     run: ScannerRun,
@@ -379,55 +397,99 @@ def _insert_run_forward_returns(
     ONE forward-return formula (no second math path). Only keys absent from `existing` are inserted
     (idempotent), and `existing` is updated in place. INSERT-only — it never UPDATEs/overwrites a
     snapshot row. A (symbol, horizon) with fewer than `horizon` post-D bars contributes nothing
-    (NA, n=0) — never a fabricated 0% (anti-goal: No fabricated data)."""
+    (NA, n=0) — never a fabricated 0% (anti-goal: No fabricated data).
+
+    ops-hardening iter-27 (AG-3/AG-8 ESCALATE fix): tolerates a concurrent writer's collision on the SAME
+    `(run_id, symbol, horizon)` key surfacing MID-LOOP, not only at the final commit
+    `_commit_forward_returns_concurrency_safe` already guards. SQLAlchemy's default autoflush means one
+    symbol's still-pending `session.add(...)` is actually flushed by the NEXT symbol's `close_on`/
+    `bars_after` READ — so when a concurrent sibling call (e.g. two racing `/backtest` requests for the
+    same never-scanned historical as-of) already committed that exact key, the `IntegrityError` fires at
+    that READ, not at an INSERT statement (matches the traceback this fix closes:
+    `_insert_run_forward_returns:390` was the `close_on(...)` call). On that TARGETED collision, roll
+    back — the concurrent writer's row is byte-identical for this frozen-seed data, the SAME tolerant-
+    duplicate reasoning `_commit_forward_returns_concurrency_safe` already applies at the final commit —
+    discard the bookkeeping for EVERY row this call staged (so `existing`/the returned count stay
+    truthful, never a fabricated insert count), and continue with the remaining symbols. Any OTHER
+    `IntegrityError` still propagates unchanged (TC-4; never a blanket catch).
+
+    iter-27 audit (B1 fix): `session.rollback()` discards the WHOLE open transaction, not just the
+    colliding symbol — this function never commits (its callers do), so every row staged by an EARLIER
+    symbol of this same call was flushed-but-uncommitted and is discarded too. `staged_keys` therefore
+    accumulates every key staged since entry and is undone in full on a tolerated collision; resetting
+    it per symbol left `existing`/`inserted` claiming rows the rollback had already destroyed (the
+    `rows_inserted` this returns reaches the user as `/data`'s "N forward returns inserted"). The
+    discarded rows are genuinely deferred, not lost: the next call rebuilds `existing` from the DB and
+    re-INSERTs whatever is missing, per this module's established idempotent-retry contract."""
     inserted = 0
+    # Every key staged since entry. `session.rollback()` is transaction-wide and this function never
+    # commits, so ALL of these — not just the current symbol's — are destroyed by a tolerated rollback.
+    staged_keys: list[tuple] = []
     for symbol in symbols:
         # Idempotency fast-path: if every horizon for this (run, symbol) is already persisted, skip the
         # price fetches entirely — so a warm re-run does no redundant bar materialization.
         needed = [h for h in horizons if (run.id, symbol, h) not in existing]
         if not needed:
             continue
-        entry_close = close_on(session, symbol, run.asof_date)  # close ON D (date <= D)
-        if entry_close is None:
-            continue
-        post_bars = bars_after(session, symbol, run.asof_date, limit=max_h)  # date > D, bounded
-        if not post_bars:
-            continue  # no post-snapshot bar -> nothing to measure (n=0)
-        for horizon in needed:
-            realized = forward_return(post_bars, entry_close, horizon)
-            if realized is None:
-                continue  # fewer than `horizon` post-bars -> NA, no fabricated row
-            # iter-14 (J-29): the SAME post_bars/entry_close/horizon already in hand, no extra query —
-            # excursions share forward_return's NA gate, so they are non-None whenever realized is.
-            excursions = forward_excursions(post_bars, entry_close, horizon)
-            # iter-27 (J-86): the max-drawdown over the SAME first-`horizon` post-bars window, computed
-            # once here beside mae/mfe via the pure helper that shares the EXACT NA gate — so a row's
-            # max_drawdown is non-None iff realized_return is (never a fabricated 0 for a short window).
-            mdd = max_drawdown(post_bars, entry_close, horizon)
-            # iter-41 (J-25): the two "dry spell" columns over the SAME post_bars/entry_close/horizon
-            # already in hand — zero extra bar reads. underwater_days shares the EXACT NA gate as
-            # max_drawdown (non-None iff realized is); time_to_recover_days is additionally None when the
-            # close never reclaims the entry level within the window (never a fabricated sentinel).
-            uw_days = underwater_days(post_bars, entry_close, horizon)
-            ttr_days = time_to_recover_days(post_bars, entry_close, horizon)
-            session.add(
-                ForwardReturn(
-                    run_id=run.id,
-                    symbol=symbol,
-                    horizon=horizon,
-                    asof_date=run.asof_date,
-                    entry_close=entry_close,
-                    measured_date=post_bars[horizon - 1].date,
-                    realized_return=realized,
-                    mae=excursions["mae"] if excursions else None,
-                    mfe=excursions["mfe"] if excursions else None,
-                    max_drawdown=mdd,
-                    underwater_days=uw_days,
-                    time_to_recover_days=ttr_days,
+        try:
+            entry_close = close_on(session, symbol, run.asof_date)  # close ON D (date <= D)
+            if entry_close is None:
+                continue
+            post_bars = bars_after(session, symbol, run.asof_date, limit=max_h)  # date > D, bounded
+            if not post_bars:
+                continue  # no post-snapshot bar -> nothing to measure (n=0)
+            for horizon in needed:
+                realized = forward_return(post_bars, entry_close, horizon)
+                if realized is None:
+                    continue  # fewer than `horizon` post-bars -> NA, no fabricated row
+                # iter-14 (J-29): the SAME post_bars/entry_close/horizon already in hand, no extra query —
+                # excursions share forward_return's NA gate, so they are non-None whenever realized is.
+                excursions = forward_excursions(post_bars, entry_close, horizon)
+                # iter-27 (J-86): the max-drawdown over the SAME first-`horizon` post-bars window, computed
+                # once here beside mae/mfe via the pure helper that shares the EXACT NA gate — so a row's
+                # max_drawdown is non-None iff realized_return is (never a fabricated 0 for a short window).
+                mdd = max_drawdown(post_bars, entry_close, horizon)
+                # iter-41 (J-25): the two "dry spell" columns over the SAME post_bars/entry_close/horizon
+                # already in hand — zero extra bar reads. underwater_days shares the EXACT NA gate as
+                # max_drawdown (non-None iff realized is); time_to_recover_days is additionally None when the
+                # close never reclaims the entry level within the window (never a fabricated sentinel).
+                uw_days = underwater_days(post_bars, entry_close, horizon)
+                ttr_days = time_to_recover_days(post_bars, entry_close, horizon)
+                session.add(
+                    ForwardReturn(
+                        run_id=run.id,
+                        symbol=symbol,
+                        horizon=horizon,
+                        asof_date=run.asof_date,
+                        entry_close=entry_close,
+                        measured_date=post_bars[horizon - 1].date,
+                        realized_return=realized,
+                        mae=excursions["mae"] if excursions else None,
+                        mfe=excursions["mfe"] if excursions else None,
+                        max_drawdown=mdd,
+                        underwater_days=uw_days,
+                        time_to_recover_days=ttr_days,
+                    )
                 )
-            )
-            existing.add((run.id, symbol, horizon))
-            inserted += 1
+                key = (run.id, symbol, horizon)
+                existing.add(key)
+                staged_keys.append(key)
+                inserted += 1
+        except IntegrityError as exc:
+            session.rollback()
+            if not _is_forward_return_duplicate_key_collision(exc):
+                raise
+            # A concurrent writer already committed this exact key. `session.rollback()` above discarded
+            # the WHOLE open transaction — every row this call staged, not only the colliding symbol's —
+            # so undo the optimistic `existing`/`inserted` bookkeeping for ALL of them, keeping both
+            # truthful (iter-27 audit B1), then continue with the remaining symbols (never an unhandled
+            # exception reaching the caller). The discarded keys are absent from `existing` again, so a
+            # later symbol/call re-INSERTs them if they are still genuinely missing (idempotent retry).
+            for key in staged_keys:
+                existing.discard(key)
+            inserted -= len(staged_keys)
+            staged_keys = []
+            continue
     return inserted
 
 

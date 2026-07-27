@@ -1,31 +1,32 @@
 # Goal Session Summary — ops-hardening
 
-**Final verdict:** STALLED
-**Total iterations:** 22
-**Wall time (seconds):** 6547
+**Final verdict:** AWAITING_PUMP
+**Total iterations:** 27
+**Wall time (seconds):** 103737
 **Quota pauses:** 0
 **Started:** 2026-07-19T13:57:02.848410Z
-**Finished:** 2026-07-25T02:53:03.908740Z
+**Finished:** 2026-07-27T15:25:49.777501Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/ops-hardening`. Open a PR with:
 
     gh pr create --base main --head goal/ops-hardening \
-      --title "feat: ops-hardening — STALLED" \
+      --title "feat: ops-hardening — AWAITING_PUMP" \
       --body-file runs/goal-session-ops-hardening/summary.md
 
 ## Final journey state
 
 | Journey | Status | Last passing iter |
 |---|---|---|
-| J-01 | passing | goal-ops-hardening-iter-21 |
-| J-03 | passing | goal-ops-hardening-iter-21 |
-| J-04 | passing | goal-ops-hardening-iter-21 |
-| J-05 | passing | goal-ops-hardening-iter-21 |
-| J-06 | partial | - |
-| J-07 | partial | - |
-| J-08 | passing | goal-ops-hardening-iter-21 |
+| J-01 | passing | goal-ops-hardening-iter-26 |
+| J-03 | passing | goal-ops-hardening-iter-26 |
+| J-04 | passing | goal-ops-hardening-iter-26 |
+| J-05 | passing | goal-ops-hardening-iter-26 |
+| J-06 | passing | goal-ops-hardening-iter-26 |
+| J-07 | passing | goal-ops-hardening-iter-26 |
+| J-08 | passing | goal-ops-hardening-iter-26 |
+| J-09 | passing | goal-ops-hardening-iter-26 |
 
 ## Anti-goal violations
 
@@ -38,6 +39,8 @@ This session pushed iteration commits to `goal/ops-hardening`. Open a PR with:
 - [minor] AG-10 — Host resource ceiling: heavy compute (backfills, full-universe rebuilds, measurement passes) MUST be launched only via the project launch scripts. (iter goal-ops-hardening-iter-10)
 - [critical] AG-8 (iter-9 forward_aggregates dimension) — observed-severity escalation: the unbounded load wedged the service on the deep basis. (iter goal-ops-hardening-iter-13)
 - [minor] AG-10 — Host resource ceiling: heavy compute MUST be launched only via the project launch scripts (operator process lapse: raw uvicorn on a throwaway port; disclosed and corrected via start-backend.sh, no launch script modified). (iter goal-ops-hardening-iter-17)
+- [minor] AG-8 — Resilience to data-shape and data-scale change: widening the data basis (deeper history) must never crash an existing page; the UI degrades gracefully, never a blank application-error page. (iter goal-ops-hardening-iter-26)
+- [minor] AG-3: A journey passes ONLY if the displayed numbers are correct — they match the engine's computation for the same as-of date — not merely that the page renders. (iter goal-ops-hardening-iter-26)
 
 ## Telemetry
 
@@ -255,15 +258,85 @@ See `runs/goal-session-ops-hardening/telemetry.jsonl` for the structured event l
       (resume-skipped: coherence-auditor)
       pump-wait                  4.2m
       overlap saved             40.7m  (parallel steps)
-  session: 22 completed iteration(s), mean wall 245.3m
-      total goal-decomposer            356.5m
-      total goal-evaluator             322.1m
-      total iteration-summarizer       226.1m
-      total browser-qa-agent           173.9m
-      total coherence-auditor          109.0m
-      total developer                   99.0m
-      total readme-maintainer           54.4m
-      total reviewer                    25.1m
+  goal-ops-hardening-iter-22  depth=lean  verdict=CONTINUE  wall=109.0m
+      browser-qa-agent            28.8m  calls=1
+      developer                   27.2m  calls=1
+      goal-evaluator              17.3m  calls=1
+      goal-decomposer             15.3m  calls=1
+      reviewer                    10.9m  calls=1
+      coherence-auditor            5.0m  calls=1
+      engine:lean-pipeline        67.3m
+      engine:showcase-join         0.0m
+      (resume-skipped: coherence-auditor)
+      pump-wait                 12.0m
+      overlap saved             62.8m  (parallel steps)
+  goal-ops-hardening-iter-23  depth=lean  verdict=GOAL_ACHIEVED  wall=138.3m
+      browser-qa-agent            24.3m  calls=1
+      developer                   22.1m  calls=1
+      iteration-summarizer        18.1m  calls=2
+      goal-decomposer             18.1m  calls=1
+      goal-evaluator              16.3m  calls=1
+      reviewer                     8.4m  calls=1
+      coherence-auditor            5.8m  calls=1
+      readme-maintainer            3.5m  calls=1
+      engine:lean-pipeline        55.3m
+      engine:showcase-join        13.3m
+      (resume-skipped: coherence-auditor)
+      pump-wait                  6.4m
+      overlap saved             46.9m  (parallel steps)
+  goal-ops-hardening-iter-24  depth=?  verdict=?  wall=?  (incomplete/interrupted attempt)
+  goal-ops-hardening-iter-24  depth=full  verdict=CONTINUE  wall=202.9m
+      goal-evaluator              14.3m  calls=1
+      goal-decomposer              8.9m  calls=1
+      coherence-auditor            2.8m  calls=1
+      engine:full-pipeline       176.8m
+      engine:showcase-join         0.0m
+      pump-wait                  1.9m
+      unattributed (glue)        0.0m
+  goal-ops-hardening-iter-25  depth=lean  verdict=CONTINUE  wall=140.7m
+      developer                   79.4m  calls=1
+      browser-qa-agent            27.5m  calls=1
+      goal-evaluator              13.4m  calls=1
+      goal-decomposer              6.1m  calls=1
+      iteration-summarizer         6.1m  calls=1
+      reviewer                     4.8m  calls=1
+      coherence-auditor            2.6m  calls=1
+      readme-maintainer            1.8m  calls=1
+      engine:lean-pipeline       113.0m
+      engine:showcase-join         1.9m
+      (resume-skipped: coherence-auditor)
+      pump-wait                  2.1m
+      overlap saved            116.0m  (parallel steps)
+  goal-ops-hardening-iter-26  depth=lean  verdict=ESCALATE  wall=155.3m
+      developer                   99.8m  calls=1
+      goal-evaluator              19.0m  calls=1
+      browser-qa-agent            11.3m  calls=1
+      goal-decomposer              9.6m  calls=1
+      iteration-summarizer         5.5m  calls=1
+      reviewer                     3.5m  calls=1
+      coherence-auditor            2.2m  calls=1
+      readme-maintainer            1.5m  calls=1
+      engine:lean-pipeline       115.5m
+      engine:showcase-join        11.2m
+      (resume-skipped: coherence-auditor)
+      pump-wait                 11.4m
+      overlap saved            123.7m  (parallel steps)
+  goal-ops-hardening-iter-27  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      goal-decomposer             12.5m  calls=1
+      iteration-summarizer         4.7m  calls=1
+      readme-maintainer            1.2m  calls=1
+      engine:full-pipeline      1204.1m
+      engine:showcase-join        13.2m
+      pump-wait                 12.9m
+  session: 27 completed iteration(s), mean wall 227.5m
+      total goal-decomposer            427.0m
+      total goal-evaluator             402.5m
+      total developer                  327.5m
+      total browser-qa-agent           265.9m
+      total iteration-summarizer       260.5m
+      total coherence-auditor          127.3m
+      total readme-maintainer           62.4m
+      total reviewer                    52.6m
       total AWAITING_PUMP paused gaps: 9.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED, DECOMPOSER_FAILED, STALLED, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED, DECOMPOSER_FAILED, STALLED, STALLED, AWAITING_PUMP
 ```

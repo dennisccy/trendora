@@ -386,3 +386,35 @@ the ingest overlay will falsely read "budget holds."
 `resolved_forward_aggregate_evidence` resolver; more generally, any "read" endpoint that lazily
 creates-once-on-first-view — instrument phases and test under a concurrent-ingest overlay, not pure reads.
 
+
+<!-- condense.sh 2026-07-27T15:27:07Z: moved 3 entries (keep-iters=5) -->
+
+## iter-19 — 2026-07-24T16:10:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** "THE one shared latency blocker" framing was incomplete: fixing the create-once forward_returns INSERT on `/backtest` (backfill_forward_returns_ms, 877->13.9ms) left a SEPARATE cold-recompute subsystem on the SAME page (`ensure_loop_ms`, historical first-view, 9.6-54s no-affordance skeleton) untouched — same page, same user-visible latency class, different code path. A same-symptom latency/UX gap can hide in a different subsystem than the one you instrumented and fixed; a per-phase timing breakdown that only covers the phase you suspected will not surface it — the browser first-view walk (UT-04) did.
+**Applies to:** any iter closing a "single root-cause" latency/perf journey on a page that has more than one on-load compute path — verify the OTHER first-touch paths (cold historical as-of, empty-store, first-of-day) with a live browser walk, not just the instrumented phase.
+
+## iter-20 — 2026-07-24T19:30:00Z
+
+**Verdict:** STALLED
+**Lesson:** Moving a synchronous request-path compute to an in-process BACKGROUND thread eliminates the request-path BLOCK (9.6-54s -> 0.082s) but does NOT eliminate latency impact — the CPU-bound compute now contends for the GIL, transiently pushing OTHER concurrent traffic (and `/api/health`) over budget for the bounded compute window (3.0-6.3s `/backtest`, 1.60s health here). "Off the request thread" is not "no latency cost"; measure the CONCURRENT-traffic budget during the background window, not just the triggering request. Meta-lesson: an iteration can be a complete, correct success at its stated target yet move NO journey to passing — when the agent-tractable chain is exhausted and the journey stays blocked on owner-gated proofs + a spec-rejected-to-fix residual, STALLED is the honest verdict even after real progress (do not reflexively CONTINUE just because work landed).
+**Applies to:** any iter that moves a heavy compute to an in-process thread/daemon (verify concurrent-window budgets, not just the trigger); any evaluator facing "target fully achieved but no journey crossed" (weigh C.2 human-owned-blocker before defaulting to CONTINUE).
+
+## iter-21 — 2026-07-25T03:25:00Z
+
+**Verdict:** STALLED
+**Lesson:** A journey's acceptance state can be structurally UNPHOTOGRAPHABLE by the default capture:
+`/backtest`'s `RefreshingEvidenceBanner` renders at the page BOTTOM (`page.tsx:241-274`, after
+AsOfScanSummary/Scorecard/ReturnAttribution/LeadershipLists), so every viewport screenshot of the
+`ready -> refreshing -> ready` cycle looked identical — `UT-J-08-01` and `-04` came back byte-identical to each
+other (md5 `67e7793a…`) and to iter-17's `TC-07-backtest-page.png` and iter-20's
+`TC-12-historical-view-loaded.png`. Two takeaways: (a) browser-QA must use a full-page or element-scoped
+capture for any state that renders below the fold, and (b) when screenshots are uninformative, this codebase
+offers a *stronger* substitute — the `dataset_version` stamp is literally `(scanner_runs count,
+forward_returns count)`, so cross-referencing the stamp bump, `forward_aggregate_cache.created_at`, and the
+screenshot mtimes proves the serving state machine from the DB without trusting any prose.
+**Applies to:** any iteration verifying `/backtest` evidence states (`refreshing` / `not_yet_computed` /
+`ready`), and any evaluator receiving screenshots whose md5s repeat across iterations — hash the evidence
+directory before crediting a status change.
+

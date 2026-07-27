@@ -3814,7 +3814,7 @@ script's own HOST-GUARD block, unchanged), default port 8255 (no override), warm
 measuring, per this iteration's own sequencing rule (never overlap with a `loaded_engine` pytest build):
 this iteration's combined TC-3/TC-4 backend pytest run (see the dev handoff) had already fully exited
 (`ps aux` showed zero `pytest` processes anywhere on the host) roughly 3 minutes before this reading;
-`uptime` reported `load average: 0.63, 1.04, 1.27` at 2026-07-26T19:14:25Z; the CPU-top process list held
+`uptime` reported `load average: 0.63, 1.04, 1.27` at 2026-07-26T18:14:25Z; the CPU-top process list held
 only this session's own editor/browser/`claude` processes and the host's own long-running
 `hwmon-log.sh` background logger — no concurrent pytest, backfill, or another project's test job was
 observed running on the host at measurement time. One warm-up hit (discarded) + one official

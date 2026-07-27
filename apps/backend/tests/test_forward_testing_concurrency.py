@@ -682,6 +682,195 @@ def test_iter19_concurrent_missing_run_backtest_calls_no_duplicate_rows_and_roll
 
 
 # ======================================================================================================
+# ops-hardening iter-27 (AG-3/AG-8 ESCALATE fix) — closes the mid-loop autoflush race the test above's OWN
+# docstring explicitly carved out as "a separate, pre-existing finding, out of scope here": SQLAlchemy's
+# default autoflush means one symbol's still-pending `session.add(...)` is actually flushed by the NEXT
+# symbol's `close_on`/`bars_after` READ, so a concurrent writer's already-committed duplicate key raises
+# `IntegrityError` there (`_insert_run_forward_returns:390`, a `close_on(...)` read — the exact traceback
+# shape the iter-26 evaluator's ESCALATE verdict cited), not at an INSERT statement or the final commit.
+# ======================================================================================================
+def test_iter27_insert_run_forward_returns_tolerates_mid_loop_autoflush_collision(tmp_path):
+    """iter-27 TC-3 — a competing `ForwardReturn` row for symbol A's key is committed via a SEPARATE
+    session/connection AFTER this call's own `existing` snapshot was taken (so `needed` still includes
+    it, simulating "a concurrent writer already inserted this key" landing between the idempotency check
+    and this call's own flush). `_insert_run_forward_returns` stages A's now-duplicate row, then symbol
+    B's `close_on` read autoflushes it — the collision this fix catches. Asserts: no exception propagates,
+    exactly ONE row survives for A's key (the concurrent writer's — ours was rolled back), B's own row is
+    genuinely deferred (not silently dropped forever — the next call's fresh `existing` re-read would find
+    it missing and retry it, per the module's established idempotent-retry design), and a THIRD symbol C
+    (processed AFTER the collision point) still gets its own row inserted — proving the loop truly
+    continues rather than aborting the whole call."""
+    import app.engine.forward_testing as forward_testing_module
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'iter27_mid_loop_race.db'}")
+    create_db_and_tables(engine)
+    asof = date(2025, 3, 1)
+    post_date = asof + timedelta(days=1)
+    with Session(engine) as session:
+        run = ScannerRun(
+            asof_date=asof, created_at=datetime.now(timezone.utc), provider="seed", benchmark="SPY",
+            regime_score=50.0, regime_label="Risk-on", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        )
+        session.add(run)
+        session.flush()
+        run_id = run.id
+        for symbol in ("AAA", "BBB", "CCC"):
+            session.add(DailyPrice(
+                symbol=symbol, date=asof, open=100.0, high=101.0, low=99.0, close=100.0, volume=1.0,
+            ))
+            session.add(DailyPrice(
+                symbol=symbol, date=post_date, open=100.0, high=101.0, low=99.0, close=105.0, volume=1.0,
+            ))
+        session.commit()
+
+    # Simulate "a concurrent writer already inserted this key" — committed via a SEPARATE session/
+    # connection BEFORE this call's own per-symbol loop reaches symbol A, but AFTER the `existing` set
+    # this call is about to use was decided (the caller passes a deliberately stale, empty `existing`
+    # below — exactly what the real race looks like: two callers' OWN idempotency reads both saw the key
+    # as missing before either one wrote). `realized_return` is a distinctive sentinel (0.4242, NOT the
+    # 0.05 this call's own natural computation would produce from the seeded bars) so the assertion below
+    # unambiguously proves the SURVIVING row is the staged one, never a silently re-derived duplicate.
+    with Session(engine) as staging_session:
+        staging_session.add(ForwardReturn(
+            run_id=run_id, symbol="AAA", horizon=1, asof_date=asof, entry_close=100.0,
+            measured_date=post_date, realized_return=0.4242,
+        ))
+        staging_session.commit()
+
+    with Session(engine) as session:
+        run = session.exec(select(ScannerRun).where(ScannerRun.id == run_id)).one()
+        existing: set = set()  # deliberately stale — does NOT yet know about the just-staged AAA row
+        inserted = forward_testing_module._insert_run_forward_returns(
+            session, run, ["AAA", "BBB", "CCC"], horizons=[1], max_h=1, existing=existing,
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        rows = session.exec(select(ForwardReturn).where(ForwardReturn.run_id == run_id)).all()
+    by_symbol = {r.symbol: r for r in rows}
+
+    assert len(rows) == len({(r.run_id, r.symbol, r.horizon) for r in rows}), "no duplicate key survived"
+    assert "AAA" in by_symbol  # the concurrent writer's row — exactly one, ours was rolled back
+    assert by_symbol["AAA"].realized_return == 0.4242  # the STAGED writer's row, not a re-derived duplicate
+    assert "BBB" not in by_symbol, (
+        "B's own insert is deferred (not lost) by design — the next call's fresh `existing` read would "
+        "find it genuinely missing and retry it, per this module's established idempotent-retry contract"
+    )
+    assert "CCC" in by_symbol  # processed AFTER the collision point — proves the loop kept going
+    assert inserted == 1  # C only: A's optimistic +1 was undone on rollback, B never got a chance to add
+
+
+def test_iter27_insert_run_forward_returns_propagates_unrelated_integrity_error(tmp_path):
+    """iter-27 TC-4 — the new mid-loop guard's catch is narrow: an `IntegrityError` that does NOT match
+    the targeted `(run_id, symbol, horizon)` UNIQUE-constraint message (a totally different constraint)
+    still propagates unchanged. Faking `close_on` itself (rather than staging a real second constraint) is
+    the simplest deterministic way to prove the narrow match — never a blanket `except IntegrityError`."""
+    import app.engine.forward_testing as forward_testing_module
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'iter27_unrelated_integrity_error.db'}")
+    create_db_and_tables(engine)
+    asof = date(2025, 3, 1)
+    with Session(engine) as session:
+        run = ScannerRun(
+            asof_date=asof, created_at=datetime.now(timezone.utc), provider="seed", benchmark="SPY",
+            regime_score=50.0, regime_label="Risk-on", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        )
+        session.add(run)
+        session.commit()
+        run_id = run.id
+
+    def _boom_close_on(*_args, **_kwargs):
+        raise IntegrityError("stmt", {}, Exception("NOT NULL constraint failed: some_other_table.col"))
+
+    real_close_on = forward_testing_module.close_on
+    forward_testing_module.close_on = _boom_close_on
+    try:
+        with Session(engine) as session:
+            run = session.exec(select(ScannerRun).where(ScannerRun.id == run_id)).one()
+            with pytest.raises(IntegrityError, match="NOT NULL constraint failed"):
+                forward_testing_module._insert_run_forward_returns(
+                    session, run, ["AAA"], horizons=[1], max_h=1, existing=set(),
+                )
+    finally:
+        forward_testing_module.close_on = real_close_on
+
+
+def test_iter27_audit_returned_count_is_truthful_when_collision_follows_earlier_flushed_symbols(tmp_path):
+    """iter-27 AUDIT (finding B1) — the collision fires at a LATER symbol, so earlier symbols' rows have
+    already been autoflushed into the same OPEN transaction when the guard calls `session.rollback()`.
+    Because `_insert_run_forward_returns` never commits (its callers do), that rollback destroys those
+    earlier rows too — so the guard must undo the bookkeeping for EVERY key this call staged, not just
+    the colliding symbol's. Asserts the returned `rows_inserted` equals the number of rows this call
+    ACTUALLY persisted (the value that reaches the user as `/data`'s "N forward returns inserted"), and
+    that `existing` never retains a key whose row the rollback destroyed.
+
+    The original iter-27 guard only undid the CURRENT symbol's keys, so this case returned 2 while
+    persisting 0 — a fabricated insert count (anti-goal: No fabricated data)."""
+    import app.engine.forward_testing as forward_testing_module
+
+    engine = make_engine(f"sqlite:///{tmp_path / 'iter27_audit_late_collision.db'}")
+    create_db_and_tables(engine)
+    asof = date(2025, 3, 1)
+    post_date = asof + timedelta(days=1)
+    symbols = ["AAA", "BBB", "CCC", "DDD"]
+    with Session(engine) as session:
+        run = ScannerRun(
+            asof_date=asof, created_at=datetime.now(timezone.utc), provider="seed", benchmark="SPY",
+            regime_score=50.0, regime_label="Risk-on", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        )
+        session.add(run)
+        session.flush()
+        run_id = run.id
+        for symbol in symbols:
+            session.add(DailyPrice(
+                symbol=symbol, date=asof, open=100.0, high=101.0, low=99.0, close=100.0, volume=1.0,
+            ))
+            session.add(DailyPrice(
+                symbol=symbol, date=post_date, open=100.0, high=101.0, low=99.0, close=105.0, volume=1.0,
+            ))
+        session.commit()
+
+    # A concurrent writer committed ONLY the THIRD symbol's key, so AAA's and BBB's rows are already
+    # flushed-but-uncommitted when CCC's staged duplicate collides at DDD's `close_on` autoflush.
+    with Session(engine) as staging_session:
+        staging_session.add(ForwardReturn(
+            run_id=run_id, symbol="CCC", horizon=1, asof_date=asof, entry_close=100.0,
+            measured_date=post_date, realized_return=0.4242,
+        ))
+        staging_session.commit()
+
+    with Session(engine) as session:
+        run = session.exec(select(ScannerRun).where(ScannerRun.id == run_id)).one()
+        existing: set = set()
+        inserted = forward_testing_module._insert_run_forward_returns(
+            session, run, symbols, horizons=[1], max_h=1, existing=existing,
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        rows = session.exec(select(ForwardReturn).where(ForwardReturn.run_id == run_id)).all()
+    surviving = {r.symbol for r in rows}
+    # Everything except the staged concurrent row is what THIS call genuinely contributed.
+    contributed = surviving - {"CCC"}
+
+    assert inserted == len(contributed), (
+        f"returned rows_inserted={inserted} but this call actually persisted {len(contributed)} "
+        f"row(s) {sorted(contributed)} — a fabricated insert count reaches /data's job summary"
+    )
+    # `existing` must not claim a key whose row the transaction-wide rollback destroyed.
+    for key in existing:
+        assert key[1] in surviving, f"existing retains {key} but no such row survives in the DB"
+    assert by_key_unique(rows), "no duplicate (run_id, symbol, horizon) key survived"
+
+
+def by_key_unique(rows) -> bool:
+    return len(rows) == len({(r.run_id, r.symbol, r.horizon) for r in rows})
+
+
+# ======================================================================================================
 # ops-hardening iter-20 (J-06/J-07/J-08) — the NEW outer single-flight dispatch guard that takes the
 # historical (`is_latest == False`) carve-out's compute OFF the request thread entirely
 # (`forward_testing.py`'s `ensure_historical_forward_aggregates_dispatched` /

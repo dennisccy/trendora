@@ -1278,3 +1278,85 @@ in-flight capture); `J-01-verify.png` == `J-03-verify.png` again (6th recurrence
 unchanged: backlog card B-1107, and whether the cold historical `/backtest` load (16-23 s measured today,
 sanctioned by goal.md's "cannot be precomputed" list) should get its own written budget or move off the
 request path.
+
+## Iteration 27 — goal-ops-hardening-iter-27
+
+**Date:** 2026-07-27T17:30:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: none. Re-verified passing with THIS-iteration evidence, so `last_verified_iter` advances
+  iter-26 -> iter-27 for four: J-01, J-03, J-04, J-09 (deterministic golden replay, 4/4 PASS; I opened
+  J-01-verify.png and J-09-verify.png myself).
+- **Newly `unknown`: J-05, J-07, J-08** — this iteration's three TARGET journeys. The browser-QA agent was
+  killed mid-run by an account usage limit before writing any row for them, and no `.llm.md` variant exists.
+  The merged `ui-test-results.md` contains ONLY the 5-row deterministic replay lane; the ui-test-plan's own
+  UT-02 (stale disclosure) and UT-06 (concurrent race) have no row, no screenshot and no DOM check. Their
+  serving code CHANGED this iteration, so the iter-26 pass does not transfer. The phase-closure-auditor
+  returned CLOSURE-FAIL on exactly this (DoD bullet 1); the auditor (T2) and the ux-regression reviewer each
+  reached the same conclusion independently. This is an UNRUN check, not a failed one.
+- **Newly `partial`: J-06** — the iteration's only FAIL row, and it is not a product regression. Detail below.
+- Regressed (passing->failing): none.
+- Anti-goal violations: **BOTH iter-26 findings CLOSED (now `resolved: true`); ONE NEW `minor`, unresolved.**
+  New: two unhandled `MemoryError`s escaped to uvicorn on `GET /api/evidence` inside this iteration's own QA
+  window (`logs/backend.log:81850`, `:81932`, both after the boot marker at `:81466`), plus the same failure
+  in the background ingest-finalize path (`data_manager.py:3361`). scan-report CLEAN; coherence
+  COHERENCE-PASS; all 8 `spec_hash`es match `goal_gate hash-journeys`; no `journeys-changed.md`.
+
+**Reasoning:** I re-derived every load-bearing fact rather than inherit it. (1) **The J-06 FAIL is a stale
+golden assertion, proven three ways:** I opened `J-06-verify.png` and the home page is fully rendered and
+healthy (Market Regime 61.86, Market Phase 32.68, the cross-view chart) with the banner reading "GO — today's
+board is current." and badges "Ready" / "provider: seed"; I read `J-06.json` and step n=1 is
+`{goto "/", expect text "DEGRADED"}` — an incidental capture-time string, while steps 2-11 carry J-06's real
+subject (`/stocks` "TRV", `/stocks/AAPL` "$304.89", `/sectors` "HACK", ...); and I read `config.yaml:1152`,
+which points `readiness.drift.report_path` at ANOTHER session's file,
+`runs/goal-session-mcp-loop/state/drift-report.json`, which is `{"status":"clean","affected":[]}` in the
+working tree (git-modified away from HEAD's "drift", and re-written again today at 16:53) — a clean artifact
+yields GO, so "DEGRADED" could not appear. I scored J-06 `partial` rather than `passing` because the replay
+stopped at step 01, so its own per-page assertions never ran. (2) **The two iter-26 findings are genuinely
+closed.** For AG-8 I re-derived the live proof from raw log lines: a genuine never-scanned-date pair on
+`as_of=2015-09-09` (write_taken True/False) both answered 200, and the only IntegrityError in the 82,099-line
+file is still iter-26's at `:81004`, which precedes both of this window's boot markers. For AG-3 I opened the
+developer's `coverage-stale-panel.png` (cropped to the panel) and the all-zero sentinel is gone: real figures
+under the calm label "Coverage as of a prior scan (version r1868-…) — refreshes on the next data job". I also
+confirmed TC-10 myself — exactly one line changed in `perf-budgets.md` (19:14:25Z -> 18:14:25Z). (3) **I
+corrected the audit's own attribution of the new MemoryErrors.** The auditor put both on `/api/evidence`; the
+traceback ending just BEFORE the first ASGI header is actually a background thread via
+`data_manager.py:3361 _refresh_ingest_aggregates`, and the two genuine ASGI ones (`:81850`, `:81932`) are both
+`api/evidence.py:34 get_evidence` -> ... -> `research.py:215`. I then read `research.py:207-217` directly: the
+row read IS `yield_per`-bounded, but `ret_by_run_symbol` accumulates an unbounded in-RAM dict over the whole
+`forward_returns` scan — an unbounded whole-table materialization in substance, on a request path, on the deep
+basis. Absent from this diff. Rejected REGRESSION (C.1): nothing went passing->failing (the only FAIL row is
+an assertion the product passes by being healthier than the recording), and I classified the new AG-8 finding
+`minor` on stated grounds — service never taken down (`/api/health` answered 200 between the two failures and
+`/api/backtest` answered 200 right after), zero product code in this diff, host under this pipeline's own
+200-test pytest against a `ulimit -v` cap, every unblock path agent-tractable. Rejected STALLED (C.2): no
+human-owned blocker — the quota kill is transient (browser-QA ran normally last iteration) and all three work
+items are agent work. Rejected GOAL_ACHIEVED (C.3): three Must-have journeys are `unknown`, one is `partial`,
+one anti-goal finding is unresolved, and closure is CLOSURE-FAIL. Rejected ESCALATE (C.4): already full depth,
+review PASS, no fail-open, no journey failed twice. **THREE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:**
+(i) the developer's own evidence for both fixes is real, specific and I opened it — but it is
+self-verification, and I refused to let it stand in for the DoD's browser-QA pass, because that is exactly the
+substitution the iter-22 and iter-25 confirm runs rejected; (ii) QA's report is unreliable in two places the
+audit caught and I re-verified — the ASGI count went 13 -> 15, not "unchanged", and QA's TC-01 re-used
+`2011-03-10`, a date the developer had already scanned, so it reproduced no race (`resolved_run_ms` 1.16 /
+13.47, both `write_taken=False`); (iii) nobody captured a browser on `/evidence` during either MemoryError,
+and uvicorn logged no 500 access line either, so what the user actually saw is genuinely UNKNOWN — that half
+of AG-8 is unverified for the third iteration running.
+
+**Next-step recommendation:** FULL depth, no new features. (1) THE ONE BLOCKING ITEM: re-run browser-QA for
+J-05, J-07 and J-08 — UT-02 (the /data prior-scan coverage disclosure), UT-06 (the concurrent `/backtest`
+race, full-page capture, on a date not yet consumed — 2011-03-10 and 2015-09-09 are both used now), plus the
+regression cases UT-03/UT-04/UT-07/UT-08. (2) Fix the J-06 golden, not the product: drop the incidental
+"DEGRADED" expect from step 1 and move `readiness.drift.report_path` (`config.yaml:1152`) out of
+`runs/goal-session-mcp-loop/`, so one session's data job cannot flip another's assertion; otherwise this FAIL
+recurs every iteration and reads as a regression. (3) DECOMPOSER-PLANNED, not an opportunistic patch: bound
+`research.py:215`'s `ret_by_run_symbol` accumulation and give `/api/evidence` an honest degraded response —
+this is the new AG-8 finding and it also breaks the ingest finalize path. (4) OWNER, non-blocking: audit B5's
+12-24 minute historical `/backtest` latencies (`:81685`, `:81766`, `:82013`) are 60-100x the 16-23 s figure
+the open cold-`/backtest` budget question was framed around; B-1107 stays optional. (5) Carried, unchanged:
+audit B2 (`_backfill`'s cross-call rollback residual — needs SAVEPOINT or per-run commits, its own iteration);
+`test_forward_testing_serving_split.py`'s four `is_latest` monkeypatches before removing the dangling imports
+at `backtest.py:75` / `mcp/tools.py:38`; the blueprint's iter-27 rows still read "TARGETED this iteration, not
+yet built" (reviewer NOTE, documentation only). (6) Framework nit, 7th recurrence:
+`J-01/J-03/J-04-verify.png` are byte-identical (md5 `1fcaec8a`).

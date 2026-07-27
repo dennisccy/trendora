@@ -2238,6 +2238,17 @@ def test_fetch_kind_run_never_carries_aggregates_refreshed(tmp_path):
 # extra compute. Stale coverage_snapshot rows under a superseded dataset_version must be reclaimed in one
 # bounded SQL DELETE, across every asof_key, not just the one being written (B2).
 # ==================================================================================================
+_COVERAGE_STATUS_KEYS = ("coverage_status", "stale_dataset_version", "stale_computed_at")
+
+
+def _strip_coverage_status(served: dict) -> dict:
+    """iter-27 (AG-3, TC-8 regression guard) — `coverage_from_storage` now additively stamps
+    `coverage_status`/`stale_dataset_version`/`stale_computed_at` onto the payload; every pre-existing
+    byte-equality assertion against a raw `_compute_coverage_uncached`/`refresh_coverage_snapshot_for`
+    result (neither of which carries these fields) strips them first via this one shared helper."""
+    return {k: v for k, v in served.items() if k not in _COVERAGE_STATUS_KEYS}
+
+
 def test_fetch_that_lands_new_bar_refreshes_coverage_snapshot(tmp_path):
     """TC-1/TC-6 (B1) — given a committed DB with a current-stamp coverage_snapshot row already persisted,
     when a `fetch` job lands >= 1 new bar (changing `_membership_dataset_version`) and completes, the
@@ -2285,7 +2296,11 @@ def test_fetch_that_lands_new_bar_refreshes_coverage_snapshot(tmp_path):
         fresh = data_manager._compute_coverage_uncached(session, cfg, as_of=None)
         assert stored == fresh  # TC-6: byte-identical to an independent fresh compute
         served = data_manager.coverage_from_storage(session, cfg, as_of=None)  # GET /api/data's default read
-        assert served == fresh
+        # iter-27 (TC-8 regression guard): `coverage_from_storage` now additively stamps coverage_status/
+        # stale_* on top of the byte-identical base payload — strip them before the byte-equality compare.
+        assert served["coverage_status"] == "current"
+        assert served["stale_dataset_version"] is None and served["stale_computed_at"] is None
+        assert _strip_coverage_status(served) == fresh
 
 
 def test_zero_work_fetch_skips_coverage_recompute_and_row_write(tmp_path, monkeypatch):
@@ -2483,7 +2498,8 @@ def test_finalize_hook_persists_per_date_coverage_for_historical_switcher_date(t
         # the historical date is served from storage, byte-identical to a fresh compute-at-d_old...
         cov_old = data_manager.coverage_from_storage(session, cfg, as_of=d_old)
         fresh_old = data_manager._compute_coverage_uncached(session, cfg, as_of=d_old)
-        assert cov_old == fresh_old
+        assert cov_old["coverage_status"] == "current"  # iter-27: a real persisted row, not a stale/sentinel
+        assert _strip_coverage_status(cov_old) == fresh_old
         assert cov_old["symbol_count"] == 1  # REAL coverage (the sentinel would be 0) — the regression
         assert cov_old["universe_asof"] == d_old.isoformat()
         # ...and the current/latest stamp is still served correctly too (two distinct rows now exist)
@@ -2506,7 +2522,8 @@ def test_coverage_from_storage_self_heals_explicit_legacy_historical_asof(two_sn
         # (1) explicit historical as-of WITH a real ScannerRun, no row -> REAL coverage + self-heal to storage
         cov = data_manager.coverage_from_storage(session, cfg, as_of=d_old)
         fresh = data_manager._compute_coverage_uncached(session, cfg, as_of=d_old)
-        assert cov == fresh
+        assert cov["coverage_status"] == "current"  # iter-27: freshly self-healed under the current stamp
+        assert _strip_coverage_status(cov) == fresh
         assert cov["symbol_count"] == 1 and cov["universe_asof"] == d_old.isoformat()  # not the 0 sentinel
         healed = session.exec(
             select(CoverageSnapshot).where(CoverageSnapshot.asof_key == d_old.isoformat())
@@ -2515,6 +2532,89 @@ def test_coverage_from_storage_self_heals_explicit_legacy_historical_asof(two_sn
         # (2) an explicit as-of to a DATALESS date (no ScannerRun) still serves the honest sentinel
         sentinel = data_manager.coverage_from_storage(session, cfg, as_of=date(2024, 6, 1))
         assert sentinel["symbol_count"] == 0 and sentinel["universe_asof"] is None
+        assert sentinel["coverage_status"] == "not_yet_computed"  # iter-27: genuinely dataless, not stale
+
+
+def test_coverage_from_storage_serves_stale_prior_snapshot_when_default_view_stamp_advances_outside_ingest(
+    tmp_path,
+):
+    """iter-27 (AG-3 ESCALATE fix, TC-5) — reproduces the EXACT root cause the iter-26 evaluator's
+    ESCALATE verdict cited: `_membership_dataset_version` is a GLOBAL stamp bumped by ANY new `ScannerRun`
+    row, including one for a date decades in the past that never changes which date is "latest". Here: (1)
+    a `CoverageSnapshot` row is persisted for the latest date under the CURRENT stamp V1 (a normal ingest);
+    (2) a SECOND `ScannerRun`, for an EARLIER date, is added directly (no ingest finalize hook — modeling a
+    request-path historical `/backtest` create-once view), which bumps `_membership_dataset_version` to V2
+    (`max(scanner_runs.id)`/`count(scanner_runs)` both change) while leaving `_resolve_coverage_asof(None)`
+    resolved to the SAME latest date (unaffected — it tracks `max(ScannerRun.asof_date)`, and the new run
+    is OLDER). The default view's exact-match lookup (latest_key, V2) now misses even though the REAL V1
+    row for that exact `asof_key` still sits in the table (no ingest ran to reclaim it, per
+    `_upsert_coverage_snapshot`'s own "only ingest deletes old-version rows" contract) -- this is the
+    fallback: serve that row's real, non-zero figures labeled `coverage_status: "stale"` with
+    `stale_dataset_version` naming V1, rather than the false all-zero 'not yet computed' sentinel."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'stale_fallback.db'}")
+    create_db_and_tables(engine)
+    d_latest = date(2024, 3, 4)
+    d_old = date(2024, 1, 2)  # earlier than d_latest -- never becomes the resolved "latest" date
+    with Session(engine) as session:
+        session.add(DailyPrice(
+            symbol="SPY", date=d_latest, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0,
+        ))
+        session.commit()
+        run = ScannerRun(
+            asof_date=d_latest, created_at=datetime(2024, 3, 4), provider="seed", benchmark="SPY",
+            regime_score=50.0, regime_label="Choppy", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        )
+        session.add(run)
+        session.commit()
+        session.refresh(run)
+        session.add(ScannerResult(
+            run_id=run.id, ticker="AAA", name="AAA Corp", leadership_score=1.0, leadership_bucket="Leader",
+            entry_quality_score=1.0, entry_quality_bucket="Good", risk_score=1.0, risk_bucket="Low",
+            setup_status="Actionable", rank=1, record_json="{}",
+        ))
+        session.commit()
+
+    cfg = load_config()
+    with Session(engine) as session:
+        v1 = data_manager._membership_dataset_version(session, cfg)
+        real_payload = data_manager.refresh_coverage_snapshot(session, cfg)  # persists under V1
+    assert real_payload["symbol_count"] == 1 and real_payload["universe_asof"] == d_latest.isoformat()
+
+    # A request-path historical create-once view for an OLDER date -- a brand-new ScannerRun row, but NO
+    # ingest finalize hook (mirrors resolved_run's create-once path; never touches coverage_snapshot).
+    with Session(engine) as session:
+        session.add(DailyPrice(
+            symbol="AAA", date=d_old, open=2.0, high=2.0, low=2.0, close=2.0, volume=1.0,
+        ))
+        session.add(ScannerRun(
+            asof_date=d_old, created_at=datetime(2024, 1, 2), provider="seed", benchmark="SPY",
+            regime_score=40.0, regime_label="Risk-off", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        ))
+        session.commit()
+
+    with Session(engine) as session:
+        v2 = data_manager._membership_dataset_version(session, cfg)
+        assert v2 != v1  # the stamp advanced from the new (older-date) ScannerRun alone
+        resolved = data_manager._resolve_coverage_asof(session, None, cfg)
+        assert resolved == d_latest  # "latest" is UNCHANGED -- the new run is for an EARLIER date
+        # the exact-match (asof_key=d_latest, dataset_version=v2) row does not exist -- only v1's does
+        assert session.exec(
+            select(CoverageSnapshot).where(
+                CoverageSnapshot.asof_key == d_latest.isoformat(),
+                CoverageSnapshot.dataset_version == v2,
+            )
+        ).first() is None
+
+        served = data_manager.coverage_from_storage(session, cfg, as_of=None)  # the default view
+
+    assert served["coverage_status"] == "stale"
+    assert served["stale_dataset_version"] == v1
+    assert served["stale_computed_at"] is not None
+    # the REAL prior figures -- never the all-zero sentinel for a database that plainly has coverage on file
+    assert served["symbol_count"] == 1 and served["universe_asof"] == d_latest.isoformat()
+    assert _strip_coverage_status(served) == real_payload
 
 
 # ==================================================================================================

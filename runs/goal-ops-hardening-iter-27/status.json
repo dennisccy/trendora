@@ -1,0 +1,22 @@
+{
+  "phase": "goal-ops-hardening-iter-27",
+  "status": "blocked",
+  "current_step": "closure_failed",
+  "updated_at": "2026-07-27T16:07:33.159175Z",
+  "started_at": "2026-07-26T19:21:43.988120Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/forward_testing.py",
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/tests/test_forward_testing_concurrency.py",
+    "apps/backend/tests/test_data_manager.py",
+    "apps/backend/tests/test_api_data.py",
+    "apps/frontend/app/data/page.tsx",
+    "apps/frontend/lib/api.ts",
+    "reports/perf-budgets.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "next_action": "review"
+}
