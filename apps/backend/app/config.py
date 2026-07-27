@@ -2283,7 +2283,7 @@ class RegistryCfg(BaseModel):
     enforce: bool = False
 
 
-_DEFAULT_DRIFT_REPORT_PATH = "runs/goal-session-mcp-loop/state/drift-report.json"
+_DEFAULT_DRIFT_REPORT_PATH = "runs/goal-session-ops-hardening/state/drift-report.json"
 
 
 class DriftCfg(BaseModel):

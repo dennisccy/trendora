@@ -5,9 +5,9 @@
   "default_timeout_ms": 30000,
   "steps": [
     {"n": 1, "journey": "J-05", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "Data Manager"}},
-    {"n": 2, "journey": "J-05", "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2025-05-15"}},
-    {"n": 3, "journey": "J-05", "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2025-05-15"}},
+    {"n": 2, "journey": "J-05", "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2018-02-15"}},
+    {"n": 3, "journey": "J-05", "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2018-02-15"}},
     {"n": 4, "journey": "J-05", "action": {"type": "click", "target": {"role": "button", "name": "Start"}}},
-    {"n": 5, "journey": "J-05", "action": {"type": "goto", "url": "/scanner-runs/1436"}, "expect": {"text": "as of 2025-05-15"}}
+    {"n": 5, "journey": "J-05", "action": {"type": "goto", "url": "/scanner-runs/1872"}, "expect": {"text": "as of 2018-02-15"}}
   ]
 }

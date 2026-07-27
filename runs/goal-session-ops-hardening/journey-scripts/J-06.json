@@ -4,7 +4,7 @@
   "name": "Pages load only what they need",
   "default_timeout_ms": 8000,
   "steps": [
-    {"n": 1, "journey": "J-06", "action": {"type": "goto", "url": "/"}, "expect": {"text": "DEGRADED"}},
+    {"n": 1, "journey": "J-06", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Market Regime"}},
     {"n": 2, "journey": "J-06", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "TRV"}},
     {"n": 3, "journey": "J-06", "action": {"type": "goto", "url": "/stocks/AAPL"}, "expect": {"text": "$304.89"}},
     {"n": 4, "journey": "J-06", "action": {"type": "goto", "url": "/sectors"}, "expect": {"text": "HACK"}},

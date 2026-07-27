@@ -139,42 +139,15 @@ creates-once-on-first-view — instrument phases and test under a concurrent-ing
 `ready`), and any evaluator receiving screenshots whose md5s repeat across iterations — hash the evidence
 directory before crediting a status change.
 
-## iter-22 — 2026-07-25T08:55:00Z
-
-**Verdict:** GOAL_ACHIEVED
-**Lesson:** A measured "window duration" reported by a polling lane can be the POLLER's elapsed time, not the
-window's. The browser-qa lane reported its BCW as "28.06 s (well inside the bound)"; the
-`forward_aggregate_cache` commit rows for that same `(asof_key, dataset_version)` show 07:31:59.453 ->
-07:32:56.164 (56.71 s first-to-last commit, ~14 s/horizon), so with the usual ~13 s trigger->first-commit lead
-the real window was ~69.8 s — inside the amended 90 s bound but NOT inside the 60 s one it was cited against.
-Re-derive any window/elapsed claim from the source-of-truth timestamps (DB rows, server logs), never from the
-measuring script's own clock start. Corollary from the same iteration: a handoff's "I grepped the log for X and
-found none" is checkable in seconds and was FALSE here — `logs/backend.log:76796-76808` contains both the exact
-string the developer said they searched for and a real `MemoryError`.
+## iter-22 — 2026-07-25T08:55:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose acceptance rests on a timed window, poll series, or "no errors in the log"
 claim — especially perf/latency measurement passes and any goal-closing evaluation.
 
-## iter-23 — 2026-07-25T11:05:00Z
-
-**Verdict:** GOAL_ACHIEVED
-**Lesson:** A served `evidence_generated_at` can legitimately have NO surviving row in
-`forward_aggregate_cache` — the iter-16 cutover contract (`apps/backend/app/engine/forward_testing.py:1135-1156`)
-deletes the prior `dataset_version`'s rows for an `asof_key` the instant the current version becomes complete.
-An evaluator who checks the refreshing banner's timestamp against the DB *after* the warm finishes will find
-nothing and can wrongly conclude the number was fabricated (I nearly did). Check the pruning contract before
-calling an AG-3 violation; the absence is actually positive evidence for the "never mixes versions" clause.
+## iter-23 — 2026-07-25T11:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration or evaluation that verifies `/backtest` refreshing/last-good evidence against
 `forward_aggregate_cache`, or that audits AG-3 on a `generated_at`/`evidence_asof` label.
 
-## iter-23 — 2026-07-25T11:05:00Z (second)
-
-**Verdict:** GOAL_ACHIEVED
-**Lesson:** A spec can contradict itself and produce a "violation" that is really the developer obeying the
-other half: iter-23's BACKGROUND (line 114) instructed the exact 4-decimal figures "7.1191 s / 0.2530 s"
-while its own TC-2 demanded figures "verbatim in `perf-budgets.md`" (which prints 3 decimals). The developer
-followed BACKGROUND; the reviewer flagged TC-2. Resolve these by going to the raw source
-(`runs/goal-ops-hardening-iter-22/bcw-measure.csv` — max `bt_latency_s` is 7.1191 exactly), not by picking a
-side between two spec clauses.
+## iter-23 — 2026-07-25T11:05:00Z (second)  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose DoD requires "verbatim" citation of a figure that exists at two
 precisions (raw CSV vs rounded report); decomposers should name ONE canonical rendering.
 
@@ -273,3 +246,31 @@ transaction, and check whether the test exercises a non-first element.
 **Applies to:** any change to `apps/backend/app/engine/forward_testing.py` (`_insert_run_forward_returns`,
 `_backfill` — audit B2's cross-call residual is the same bug one level up); any new `except IntegrityError`
 / rollback-and-continue pattern anywhere in the engine.
+
+## iter-28 — 2026-07-27T20:45:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A config default pointing at ANOTHER goal session's folder
+(`data_quality.drift.report_path` -> `runs/goal-session-mcp-loop/state/drift-report.json`) silently
+poisoned this session's J-06 golden for two iterations: a closed session's artifact flipped the preflight
+verdict, and the journey read as a product regression when nothing was wrong. Two rules came out of it —
+per-session diagnostic artifacts belong under the session's OWN `state/` dir (the ledger-family paths that
+goal.md deliberately roots at project level are the exception), and a golden `expect` must assert stable
+content (a card heading), never a status/verdict string. Separately: a lean spec called
+`test_readiness.py -k drift` "fixture-free" and it silently pulled the 30-year `loaded_engine` fixture,
+costing 1h37m — verify that claim by reading the fixtures, not by the selector's name.
+**Applies to:** any iteration that adds a `_DEFAULT_*_PATH` constant or a `config.yaml` path, writes or
+repairs a journey-script `expect`, or budgets a "small" backend pytest selector.
+
+## iter-28 — 2026-07-27T21:20:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A QA agent's account of a concurrency test can be wrong about WHICH requests it observed while
+still being right about the outcome. Here the report described "two concurrent requests" on 2018-03-15, but
+`logs/backend.log`'s `backtest_timing` lines show four overlapping requests in two pairs, and the pair the
+report timed (273435.90 / 273479.83 ms) carried `write_taken=False` on both — an EARLIER pair
+(206104.88 `write_taken=True`) wrote `scanner_runs` 1873 at 19:01:47. Read `write_taken` plus the row's
+`created_at` before crediting or doubting a create-once race claim; the row count in the database is the
+real verdict, not the narrative's request count.
+**Applies to:** any iteration whose QA claims a concurrent-request or create-once result; any change to
+`forward_testing._insert_run_forward_returns` / `data_manager._scanner_run_exists`.

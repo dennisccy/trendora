@@ -418,3 +418,45 @@ screenshot mtimes proves the serving state machine from the DB without trusting 
 `ready`), and any evaluator receiving screenshots whose md5s repeat across iterations — hash the evidence
 directory before crediting a status change.
 
+
+<!-- condense.sh 2026-07-27T20:07:50Z: moved 3 entries (keep-iters=5) -->
+
+## iter-22 — 2026-07-25T08:55:00Z
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** A measured "window duration" reported by a polling lane can be the POLLER's elapsed time, not the
+window's. The browser-qa lane reported its BCW as "28.06 s (well inside the bound)"; the
+`forward_aggregate_cache` commit rows for that same `(asof_key, dataset_version)` show 07:31:59.453 ->
+07:32:56.164 (56.71 s first-to-last commit, ~14 s/horizon), so with the usual ~13 s trigger->first-commit lead
+the real window was ~69.8 s — inside the amended 90 s bound but NOT inside the 60 s one it was cited against.
+Re-derive any window/elapsed claim from the source-of-truth timestamps (DB rows, server logs), never from the
+measuring script's own clock start. Corollary from the same iteration: a handoff's "I grepped the log for X and
+found none" is checkable in seconds and was FALSE here — `logs/backend.log:76796-76808` contains both the exact
+string the developer said they searched for and a real `MemoryError`.
+**Applies to:** any iteration whose acceptance rests on a timed window, poll series, or "no errors in the log"
+claim — especially perf/latency measurement passes and any goal-closing evaluation.
+
+## iter-23 — 2026-07-25T11:05:00Z
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** A served `evidence_generated_at` can legitimately have NO surviving row in
+`forward_aggregate_cache` — the iter-16 cutover contract (`apps/backend/app/engine/forward_testing.py:1135-1156`)
+deletes the prior `dataset_version`'s rows for an `asof_key` the instant the current version becomes complete.
+An evaluator who checks the refreshing banner's timestamp against the DB *after* the warm finishes will find
+nothing and can wrongly conclude the number was fabricated (I nearly did). Check the pruning contract before
+calling an AG-3 violation; the absence is actually positive evidence for the "never mixes versions" clause.
+**Applies to:** any iteration or evaluation that verifies `/backtest` refreshing/last-good evidence against
+`forward_aggregate_cache`, or that audits AG-3 on a `generated_at`/`evidence_asof` label.
+
+## iter-23 — 2026-07-25T11:05:00Z (second)
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** A spec can contradict itself and produce a "violation" that is really the developer obeying the
+other half: iter-23's BACKGROUND (line 114) instructed the exact 4-decimal figures "7.1191 s / 0.2530 s"
+while its own TC-2 demanded figures "verbatim in `perf-budgets.md`" (which prints 3 decimals). The developer
+followed BACKGROUND; the reviewer flagged TC-2. Resolve these by going to the raw source
+(`runs/goal-ops-hardening-iter-22/bcw-measure.csv` — max `bt_latency_s` is 7.1191 exactly), not by picking a
+side between two spec clauses.
+**Applies to:** any iteration whose DoD requires "verbatim" citation of a figure that exists at two
+precisions (raw CSV vs rounded report); decomposers should name ONE canonical rendering.
+

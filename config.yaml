@@ -1149,7 +1149,7 @@ data_quality:
   drift:
     enabled: true
     overlap_days: 20                                          # bounded per-symbol compare window (anti-goal #8 — never the whole history)
-    report_path: runs/goal-session-mcp-loop/state/drift-report.json
+    report_path: runs/goal-session-ops-hardening/state/drift-report.json
 
 # ----------------------------------------------------------------------------------------
 # Analyst-loop triad scan (app.engine.triad_scan / scan_product_triad). Tunables for the

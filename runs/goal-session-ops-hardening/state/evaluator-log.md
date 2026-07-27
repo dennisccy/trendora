@@ -1360,3 +1360,155 @@ audit B2 (`_backfill`'s cross-call rollback residual — needs SAVEPOINT or per-
 at `backtest.py:75` / `mcp/tools.py:38`; the blueprint's iter-27 rows still read "TARGETED this iteration, not
 yet built" (reviewer NOTE, documentation only). (6) Framework nit, 7th recurrence:
 `J-01/J-03/J-04-verify.png` are byte-identical (md5 `1fcaec8a`).
+
+## Iteration 28 — goal-ops-hardening-iter-28
+
+**Date:** 2026-07-27T20:45:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** lean
+**Journey deltas:**
+- **Newly passing: J-05, J-07, J-08** (`unknown` -> `passing`) and **J-06** (`partial` -> `passing`).
+  The iter-27 evidence gap — its browser-QA lane was killed mid-run by an account usage limit — is
+  closed by a completed re-run of the SAME plan against the UNCHANGED iter-27 build; merged file
+  `reports/phase-goal-ops-hardening-iter-28-ui-test-results.md` shows 8/9 PASS, 1 SKIP (UT-04, P3).
+- Re-verified passing with THIS-iteration evidence, so `last_verified_iter` advances iter-27 -> iter-28
+  for J-01/J-03/J-04/J-09 (deterministic golden replay 4/4 PASS, zero FAIL rows, zero overturns).
+- Newly failing: none. Regressed (passing->failing): none. Unknown: none. All 8 journeys now pass.
+- Anti-goal violations: **no new finding; ONE carried, unresolved, minor** — iter-27's AG-8
+  (`research.py:215`'s unbounded `ret_by_run_symbol`), deliberately out of scope per the iter spec.
+  The 11 historical records stay `resolved: true`. scan-report CLEAN; coherence COHERENCE-PASS; all 8
+  `spec_hash`es match `goal_gate hash-journeys`; no `journeys-changed.md`; no `browser-infra.json`.
+
+**Reasoning:** I re-derived every load-bearing fact read-only instead of inheriting it. (1) The DB
+confirms J-05 and J-08 exactly: `scanner_runs` 1872 = 2018-02-15 / 'Risk-on' / 75.13 / created
+18:48:35.232536, which is precisely what `J-05-scanner-run-2018-02-15.png` renders; `data_provider_runs`
+190 (18:48:26 -> 18:55:08, ok, snapshots_created 1) lists `aggregates_refreshed` = [latest_snapshot,
+coverage, membership_timeline, market_phase, forward_aggregates, research_hot_keys,
+drawdown_expectations], covering every aggregate J-05's acceptance names; and despite TWO concurrent
+`/api/backtest` requests on the never-scanned 2018-03-15 there is EXACTLY ONE row (1873, 'Risk-on',
+74.82) — matching the 74.82 rendered in `UT-06-backtest-2018-03-15.png`, a fully drawn page, not an
+error page. That capture is the concurrent-race browser evidence the iter-26 AND iter-27 evaluators each
+recorded as missing. (2) I verified the log claim myself: the last MemoryError/ASGI line is 82063, the
+boot banner is 82115, and the file ends at 83431 — so zero errors across the whole QA window (two boots,
+a 6m41s backfill, a 273 s deep-history scan, an `/evidence` load). (3) The coverage state machine
+cross-checks: `coverage_snapshot` holds one row, now `r1873-…` computed 19:21:36 by job 191, while the
+stale panel captured at 19:07Z is labelled `r1872-…` — exactly the version lineage the fix predicts, with
+REAL figures (1996-01-02 -> 2026-07-22, universe 540), never the all-zero sentinel. (4) For J-06 I opened
+the capture: the Dashboard renders `Market Regime` 61.86 under a `GO — today's board is current.` banner,
+so the retired `DEGRADED` expect provably could not hold and the new one holds regardless of preflight.
+Rejected REGRESSION (C.1): nothing went passing->failing, and the single open finding stays `minor` on the
+iter-26/27 grounds plus new counter-evidence (no occurrence this window). Rejected STALLED (C.2): no
+human-owned blocker; the remaining fix is agent work. Rejected GOAL_ACHIEVED (C.3): one anti-goal record
+is unresolved, and I verified the defect is REAL and growing rather than stale — `research.py:207-217`
+still accumulates `ret_by_run_symbol` over a basis I measured at 3,964,725 `forward_returns` rows /
+803,042 distinct (run_id, symbol) pairs, which is the literal "unbounded whole-table load on the deep
+basis" AG-8 forbids; certifying closure over it would repeat exactly the substitution the iter-22 and
+iter-25 second-key CONFIRM runs rejected. Rejected ESCALATE (C.4): nothing new was surfaced — the
+remaining item was already named and planned by iter-27 — so the tree lands on CONTINUE; the full-depth
+need is carried in the depth recommendation instead. **FOUR THINGS I STATE PLAINLY RATHER THAN ROUND
+AWAY:** (i) `UT-J-06`'s PASS row comes from the LLM lane's live 11-step reproduction, NOT from the
+deterministic replay lane (which ran only the four required-still-passing journeys), so TC-9's substance
+is met but its literal mechanism is still unexercised; (ii) J-07's steps 3-4 (VmPeak re-record, induced
+memory-pressure abort) and J-08's steps 2/3/5 (refreshing marker, post-warm serve, never-warmed empty
+state) were NOT re-run — I accepted them on carried evidence only after confirming from `git show 9928cdec`
+that iter-27's hunks touch `_insert_run_forward_returns` and `coverage_from_storage` alone, leaving the
+`/api/backtest` read path and `compute_forward_aggregates` untouched; (iii) `UT-07`'s screenshot is
+byte-identical to `UT-06`'s (md5 75c7cbe0) — self-disclosed with a stated reason, but it means UT-07 has
+no independent visual capture; (iv) DoD sub-case TC-4/UT-04 was SKIPPED as environmentally unreachable,
+so one DoD checkbox is genuinely unmet.
+
+**Next-step recommendation:** FULL depth. THE ONE BLOCKING ITEM: bound `research.py:215`'s
+`ret_by_run_symbol` accumulation and give `GET /api/evidence` an honest degraded response — it is the
+only unresolved anti-goal finding and it also breaks the ingest finalize path (`data_manager.py:3361`).
+Full depth is right because that change lands a user-visible degraded state on the Evidence page, which is
+goal.md's own written trigger ("full when an iteration first lands user-visible UI changes"), and because
+it needs the audit + ux-regression + closure lanes. Ride-alongs: (2) run the FIXED `J-06.json` through the
+deterministic replay lane once so TC-9's literal mechanism is exercised; (3) correct the record that
+`test_readiness.py -k drift` is fixture-free — it pulled the 30-year `loaded_engine` fixture and cost
+1h37m; (4) UT-04 needs a genuinely fresh-install DB fixture or an explicit written waiver. Carried,
+unchanged: audit B2 (`_backfill`'s cross-call rollback residual); retarget
+`test_forward_testing_serving_split.py`'s four `is_latest` monkeypatches before removing the dangling
+imports at `backtest.py:75` / `mcp/tools.py:38`. OWNER, non-blocking: the 12-24 minute historical
+`/backtest` first-touch latency (this run measured 273 s for a concurrent pair on 2018-03-15) still has no
+written budget; backlog card B-1107 stays optional. Framework nit, 8th recurrence: `J-01-verify.png` and
+`J-04-verify.png` are byte-identical (md5 b8deb050) — J-03 was distinct this time.
+
+## Iteration 28 — goal-ops-hardening-iter-28 (re-dispatched evaluation)
+
+**Date:** 2026-07-27T21:20:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** lean
+**Note on this entry:** the evaluate step for iteration 28 was dispatched a second time (the first run ended
+before the engine recorded it; its `eval.md` was cleared by the re-dispatch prep and its `iteration-state.md`
+was never written). I re-derived the whole evaluation from the artifacts rather than inheriting the entry
+above it, and reached the same verdict. Both entries stand; this one is the completed evaluation.
+
+**Journey deltas:**
+- **Newly passing: J-05, J-07, J-08** (`unknown` -> `passing`) and **J-06** (`partial` -> `passing`).
+  Iter-27's evidence gap — its browser-QA lane was killed mid-run by an account usage limit — is closed by a
+  completed re-run of the SAME plan against the UNCHANGED iter-27 build. Merged file
+  `reports/phase-goal-ops-hardening-iter-28-ui-test-results.md`: 8/9 PASS, 1 SKIP (UT-04, P3).
+- Re-verified passing with THIS-iteration evidence, so `last_verified_iter` advances iter-27 -> iter-28 for
+  J-01/J-03/J-04/J-09 (deterministic golden replay 4/4 PASS, zero FAIL rows, zero overturns).
+- Newly failing: none. Regressed (passing->failing): none. Unknown: none. All 8 journeys now pass.
+- Anti-goal violations: **no new finding; ONE carried, unresolved, minor** — iter-27's AG-8
+  (`research.py:207-217`'s unbounded `ret_by_run_symbol`), deliberately out of scope per the iter spec. The
+  11 other records stay `resolved: true`. scan-report CLEAN; coherence COHERENCE-PASS; all 8 `spec_hash`es
+  match `goal_gate hash-journeys`; no `journeys-changed.md`; no `browser-infra.json`.
+
+**Reasoning:** I re-derived every load-bearing fact read-only instead of inheriting it. (1) The database
+confirms J-05 and J-08 exactly: `scanner_runs` 1872 = 2018-02-15 / 'Risk-on' / 75.13 / created
+18:48:35.232536, which is precisely what `J-05-scanner-run-2018-02-15.png` renders; `data_provider_runs` 190
+(18:48:26 -> 18:55:08, ok, snapshots_created 1, forward_returns_inserted 2190) lists `aggregates_refreshed` =
+[latest_snapshot, coverage, membership_timeline, market_phase, forward_aggregates, research_hot_keys,
+drawdown_expectations], covering every aggregate J-05's acceptance names; and for the never-scanned
+2018-03-15 there is EXACTLY ONE row (1873, 'Risk-on', 74.82, created 19:01:47.200761), with `max(id)` =
+`count` = 1873 — matching the 74.82 rendered in `UT-06-backtest-2018-03-15.png`, a fully drawn page, not an
+error page. That capture is the concurrent-race browser evidence the iter-26 AND iter-27 evaluators each
+recorded as missing. (2) I verified the log claim myself: the last MemoryError lines are 82012 / 82063 and
+the last ASGI-exception lines are 81850 / 81932, all BEFORE this iteration's first boot banner at 82101;
+across the window's boots at 82115 and 82797 through the file's end at 83431 there are zero of either, zero
+non-200 responses of ANY kind, and 134/134 `GET /api/health` -> 200. (3) The coverage state machine
+cross-checks: `coverage_snapshot` now holds one row, `r1873-…` computed 19:21:36 by job 191, while the stale
+panel captured at 19:07 UTC is labelled `r1872-…` — exactly the version lineage the iter-27 fix predicts,
+with REAL figures (1996-01-02 -> 2026-07-22, universe 540), never the all-zero sentinel. (4) For J-06 I
+opened the capture: the Dashboard renders `Market Regime` 61.86 under a `GO — today's board is current.`
+banner, so the retired `DEGRADED` expect provably could not hold and the new one holds regardless of
+preflight. Rejected REGRESSION (C.1): nothing went passing->failing, and the single open finding stays
+`minor` on the iter-26/27 grounds plus new counter-evidence (no occurrence this window, including a live
+`/evidence` load). Rejected STALLED (C.2): no human-owned blocker; the remaining fix is agent work. Rejected
+GOAL_ACHIEVED (C.3): one anti-goal record is unresolved and I confirmed the defect is REAL and sitting on a
+deep basis — `research.py:207-217` still accumulates `ret_by_run_symbol` over a `forward_returns` table this
+run's own `/data` panel reports at 3,964,725 rows — so certifying closure would repeat exactly the
+substitution the iter-22 and iter-25 second-key CONFIRM runs rejected. Rejected ESCALATE (C.4): nothing new
+was surfaced — the remaining item was already named and planned by iter-27 — so the tree lands on CONTINUE;
+the full-depth need is carried in the depth recommendation instead. **FIVE THINGS I STATE PLAINLY RATHER
+THAN ROUND AWAY:** (i) the QA narrative under-reports the race — the log shows FOUR overlapping requests on
+2018-03-15 in two pairs, and the pair the report timed (273435.90 / 273479.83 ms) had `write_taken=False` on
+BOTH, while an earlier pair (206104.88 `write_taken=True` / 207248.38) actually wrote run 1873; the claim
+gets stronger, not weaker, but the report's account of it is inaccurate; (ii) `UT-J-06`'s PASS comes from
+the LLM lane's live 11-step reproduction, NOT from the deterministic replay lane, so TC-9's substance is met
+but its literal mechanism is still unexercised; (iii) J-07's steps 3-4 and J-08's steps 2/3/5 were NOT
+re-run — I accepted them on carried evidence only after confirming from `git show 9928cdec` that iter-27's
+hunks touch `_scanner_run_exists` / `coverage_from_storage` and `walk_forward_asof_dates` /
+`_insert_run_forward_returns` alone, leaving `compute_forward_aggregates` and the `/api/backtest` read path
+untouched; (iv) DoD sub-case TC-4/UT-04 was SKIPPED as environmentally unreachable, so one DoD checkbox is
+genuinely unmet; (v) `UT-07`'s screenshot is byte-identical to `UT-06`'s (md5 75c7cbe0) — self-disclosed
+with a stated reason, but UT-07 has no independent visual capture.
+
+**Next-step recommendation:** FULL depth. THE ONE BLOCKING ITEM: bound `research.py:215`'s
+`ret_by_run_symbol` accumulation and give `GET /api/evidence` an honest degraded response — it is the only
+unresolved anti-goal finding and it also breaks the ingest finalize path (`data_manager.py:3361`). Full
+depth is right because that change lands a user-visible degraded state on the Evidence page, which is
+goal.md's own written trigger ("full when an iteration first lands user-visible UI changes"), and because it
+needs the audit + ux-regression + closure lanes. Ride-alongs: (2) run the FIXED `J-06.json` through the
+deterministic replay lane once so TC-9's literal mechanism is exercised; (3) correct the record that
+`test_readiness.py -k drift` is fixture-free — it pulled the 30-year `loaded_engine` fixture and cost
+1h37m; (4) UT-04 needs a genuinely fresh-install DB fixture or an explicit written waiver; (5) have QA
+report the ACTUAL request count and each request's `write_taken` when it claims a concurrency result.
+Carried, unchanged: audit B2 (`_backfill`'s cross-call rollback residual); retarget
+`test_forward_testing_serving_split.py`'s four `is_latest` monkeypatches before removing the dangling
+imports at `backtest.py:75` / `mcp/tools.py:38`. OWNER, non-blocking: the historical `/backtest` first-touch
+latency (this run measured 206 s and 273 s on 2018-03-15, down from iter-27's 738-1442 s but still large)
+has no written budget; backlog card B-1107 stays optional. Framework nit, 8th recurrence:
+`J-01-verify.png` and `J-04-verify.png` are byte-identical (md5 b8deb050) — J-03 was distinct this time.

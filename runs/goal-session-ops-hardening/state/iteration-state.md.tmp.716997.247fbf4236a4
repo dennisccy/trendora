@@ -1,0 +1,43 @@
+# Iteration State — ops-hardening
+
+**After iteration:** 28 · **Date:** 2026-07-27 · **Verdict:** CONTINUE
+
+## Journeys
+
+8 passing (J-01 J-03 J-04 J-05 J-06 J-07 J-08 J-09) · 0 failing · 0 unknown — 8 total
+(all 8 carry iter-28 evidence: 4 by golden replay, 4 by the completed browser-QA re-run)
+
+## Active blockers
+
+- **dev — ONE unresolved anti-goal finding (AG-8, minor). This is the only thing left before closure.**
+  `apps/backend/app/engine/research.py:207-217` accumulates `ret_by_run_symbol`, an in-RAM dict over the
+  whole horizon-filtered `forward_returns` scan (basis measured 2026-07-27: 3,964,725 rows / 803,042
+  distinct pairs). It 500'd `GET /api/evidence` twice at iter-27 and also aborts the ingest finalize path
+  (`data_manager.py:3361`). Fix = bound the accumulation + an honest degraded response. Run at **FULL**
+  depth: the degraded state is user-visible, which is goal.md's own full-depth trigger.
+- **owner, non-blocking** — a concurrent historical `/backtest` pair took 273 s each in iter-28 (12-24 min
+  in iter-27 logs) with no written budget. Card B-1107 (dispatch cap) stays optional.
+
+## Last 2 verdicts
+
+- iter 28: CONTINUE — the evidence gap closed (J-05/J-07/J-08 unknown→passing, J-06 partial→passing); the
+  carried AG-8 finding is still unresolved, so closure is blocked by one item, not by any journey.
+- iter 27: CONTINUE — browser-QA quota-killed; J-05/J-07/J-08 left `unknown`, J-06 `partial` on a stale
+  golden assertion; the AG-8 `research.py` finding opened.
+
+## Do not redo
+
+- **Drift-report relocation DONE + verified** — `config.yaml:1152` and `apps/backend/app/config.py:2286`
+  point at `runs/goal-session-ops-hardening/state/drift-report.json` (git rename, 100% similarity). Do NOT
+  move the four ledger-family `_DEFAULT_*_PATH` constants (`config.py:2215-2286`).
+- **J-06 golden FIXED** — step 1 expects `Market Regime`. Still owed: one run of the fixed script through
+  the deterministic replay lane (iter-28's PASS came from the LLM lane's live 11-step reproduction).
+- **iter-27's two fixes CLOSED and now browser-verified** — the concurrent `/backtest` duplicate-key fix
+  (`_insert_run_forward_returns`) and the stale-coverage label (`coverage_from_storage`). Do not re-open.
+- **Byte-frozen** — `compute_forward_aggregates`, J-08's serving split, the demo JSON (16 steps, every
+  journey represented), the OWNER BUDGET AMENDMENT. Audit B2 (`_backfill` rollback residual) needs its own
+  iteration.
+- **`test_readiness.py -k drift` is NOT fixture-free** — it pulls the 30-year `loaded_engine` fixture
+  (1h37m at iter-28). Never run the full suite or two concurrent pytest invocations on this host.
+- **Consumed as-of dates** (never reuse for a fresh background-compute window): 2011-03-10, 2015-09-09,
+  2018-02-15, 2018-03-15, 2025-05-15, 2026-05-02..29. UT-04 needs a fresh-install DB — not reproducible here.
