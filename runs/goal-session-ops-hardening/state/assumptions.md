@@ -261,3 +261,27 @@ reason GOAL_ACHIEVED is off the table this iteration, and it is the next iterati
 A human who reads the clause as covering every warm/serving path would score J-07 `partial` today and hold
 it there until `research.py:215` is bounded.
 **Reversible:** yes
+
+## iter-29 — goal-decomposer
+
+**Ambiguity:** AG-8 requires the UI to "degrade gracefully (contained error boundary, honest '—'/NA
+placeholder, never a blank application-error page)" when a data-basis-widening compute fails.
+`docs/goal.md` does not say whether reusing the Evidence page's EXISTING silent-omission behavior (its
+`DrawdownExpectationsPanel` already "renders NOTHING when `expectations` is absent/null" for a claim whose
+cohort is legitimately unresolvable/out-of-scope) already satisfies "honest NA placeholder" for a NEW,
+distinct failure cause (a caught per-claim compute exception), or whether that new cause must be visually
+distinguishable from the pre-existing non-applicable case.
+**We chose:** to make it distinguishable — this iteration's spec adds one new optional field
+(`expectations_status: "unavailable"`) and a small, calm inline note on the affected claim's card,
+rather than silently reusing the existing "render nothing" path for a new cause. Grounds: this session's
+own established precedent for every prior "why is this value not what you'd expect" case always names the
+new state explicitly instead of collapsing it into an existing one (Coverage's `coverage_status: "stale"`,
+iter-27; Backtest's `evidence_status: "refreshing"`, iter-16) rather than reusing the pre-existing "not yet
+computed"/absent-key convention; and AG-3's "displayed numbers are correct... not merely that the page
+renders" spirit favors disclosure over silence when the reason is a defect rather than a design choice. I
+did not launder the alternative: it is recorded here, and the developer/reviewer could reasonably choose
+the cheaper "reuse the silent-omission" path instead if a human disagrees. A human who reads AG-8's
+"honest NA placeholder" as already satisfied by the pre-existing silent-return-null behavior would drop
+the new `expectations_status` field and this iteration's frontend bullet entirely, closing the finding
+with a backend-only change (bound the accumulator + catch-and-continue, no new UI state).
+**Reversible:** yes
