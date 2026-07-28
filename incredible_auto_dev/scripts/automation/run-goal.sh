@@ -65,10 +65,10 @@
 #   AWAITING_GITHUB_AUTH - preflight found no GitHub push access; fix auth, then --resume
 #   AWAITING_DISK    - free disk under the hard floor even after automatic aggressive cleanup;
 #                      free space or run scripts/automation/tmp-doctor.sh --aggressive, then --resume
-#   AWAITING_HOST_GUARD - host-guard preflight failed (hwmon sampler dead and unstartable,
-#                      CPU-affinity wrap absent, or a launcher lost its HOST-GUARD cap block);
-#                      fix per the printed reason (project-extensions/host-guard/README.md),
-#                      then --resume
+#   AWAITING_HOST_GUARD - host-guard preflight/gate failed (hwmon sampler dead and unstartable,
+#                      CPU-affinity wrap absent, a launcher lost its HOST-GUARD cap block, or the
+#                      interactive pump session is unconfined); fix per the printed reason
+#                      (project-extensions/host-guard/README.md), then --resume
 #
 # Quota exhaustion is NOT a halt: claude_with_quota_retry transparently sleeps
 # until the quota resets and resumes.
@@ -87,14 +87,16 @@ source "$SCRIPT_DIR/lib/goal-gates.sh"
 source "$SCRIPT_DIR/lib/engine-lock.sh"
 source "$SCRIPT_DIR/lib/plain-language.sh"
 
-# ── Host-guard self-wrap (hardware protection — goal.md AG-10) ─────────────
-# Two instant hardware resets (2026-07-20 19:17, 2026-07-21 10:33) under
-# all-core vectorized ingest bursts: when the project declares host caps
-# (project-extensions/host-guard/host-guard.env), re-exec the ENTIRE engine
-# tree under an SMT-aware CPU-affinity mask (taskset — hard, inherited,
-# instantaneous) plus, when a user manager is reachable, a systemd user scope
-# adding CPUQuota/MemoryHigh/TasksMax as averaging/aggregate backstops. Sits
-# BEFORE extract_cli_arg so "$@" is still the original argv. HOST_GUARD_WRAPPED
+# ── Host-guard self-wrap (hardware protection) ─────────────────────────────
+# Origin: a mini-PC host hard-reset instantly (no OOM, no thermal log, no
+# panic) under goal-mode's bursty all-core load — a power/VRM transient trip.
+# When the project declares host caps (project-extensions/host-guard/
+# host-guard.env), re-exec the ENTIRE engine tree under an SMT-aware
+# CPU-affinity mask (taskset — hard, inherited, instantaneous) plus, when a
+# user manager is reachable, a systemd user scope adding AllowedCPUs (cgroup
+# cpuset — inherited by every descendant, cannot be widened from inside) and
+# CPUQuota/MemoryHigh/TasksMax as averaging/aggregate backstops. Sits BEFORE
+# extract_cli_arg so "$@" is still the original argv. HOST_GUARD_WRAPPED
 # guards recursion — deliberately NOT CHAIN_-prefixed so the REL-2 ambient
 # snapshot above stays clean. Absent/disabled env file ⇒ no-op (the framework
 # stays project-neutral). Details: project-extensions/host-guard/README.md.
@@ -105,14 +107,39 @@ if [[ -z "${HOST_GUARD_WRAPPED:-}" && -f "$_HOST_GUARD_ENV_FILE" ]] \
   source "$_HOST_GUARD_ENV_FILE"
   if [[ "${HOST_GUARD_ENABLED:-0}" == "1" && -n "${HOST_GUARD_CPU_LIST:-}" ]]; then
     export HOST_GUARD_WRAPPED=1
-    if systemd-run --user --scope --quiet -p CPUQuota=10% true 2>/dev/null; then
-      exec systemd-run --user --scope --quiet --collect \
+    # Capture the interactive CLI session root (the pump) BEFORE the re-exec
+    # below reparents us: walk the ppid chain for the outermost process whose
+    # cmdline matches HOST_GUARD_CLI_PATTERN. The iteration gate verifies —
+    # and, if needed, confines in place via host-guard-adopt.sh — this pid.
+    if [[ -z "${HOST_GUARD_PUMP_ROOT_PID:-}" ]]; then
+      _hg_p="$PPID" _hg_root=""
+      while [[ "$_hg_p" =~ ^[0-9]+$ ]] && (( _hg_p > 1 )); do
+        if tr '\0' ' ' < "/proc/$_hg_p/cmdline" 2>/dev/null \
+             | grep -qE "${HOST_GUARD_CLI_PATTERN:-claude|codex}"; then
+          _hg_root="$_hg_p"
+        fi
+        _hg_p="$(awk '/^PPid:/{print $2}' "/proc/$_hg_p/status" 2>/dev/null || true)"
+      done
+      if [[ -n "$_hg_root" ]]; then export HOST_GUARD_PUMP_ROOT_PID="$_hg_root"; fi
+    fi
+    _HG_PROPS=( -p "CPUQuota=${HOST_GUARD_CPUQUOTA:-800%}"
+                -p "MemoryHigh=${HOST_GUARD_MEMORY_HIGH:-18G}"
+                -p "TasksMax=${HOST_GUARD_TASKS_MAX:-2048}" )
+    # --expand-environment=no: systemd ExecStart otherwise $-expands argv.
+    if systemd-run --user --scope --quiet --expand-environment=no -p "AllowedCPUs=$HOST_GUARD_CPU_LIST" true 2>/dev/null; then
+      # Full confinement: cpuset + quota backstops (AllowedCPUs probe passed).
+      exec systemd-run --user --scope --quiet --collect --expand-environment=no \
         --unit "chain-goal-hostguard-$$" \
-        -p "CPUQuota=${HOST_GUARD_CPUQUOTA:-800%}" \
-        -p "MemoryHigh=${HOST_GUARD_MEMORY_HIGH:-18G}" \
-        -p "TasksMax=${HOST_GUARD_TASKS_MAX:-2048}" \
+        -p "AllowedCPUs=$HOST_GUARD_CPU_LIST" "${_HG_PROPS[@]}" \
+        taskset -c "$HOST_GUARD_CPU_LIST" "$SCRIPT_DIR/run-goal.sh" "$@"
+    elif systemd-run --user --scope --quiet --expand-environment=no -p CPUQuota=10% true 2>/dev/null; then
+      # cpuset controller not delegated: scope backstops + taskset mask only.
+      exec systemd-run --user --scope --quiet --collect --expand-environment=no \
+        --unit "chain-goal-hostguard-$$" \
+        "${_HG_PROPS[@]}" \
         taskset -c "$HOST_GUARD_CPU_LIST" "$SCRIPT_DIR/run-goal.sh" "$@"
     else
+      # No user manager at all (headless SSH etc.): affinity mask still applies.
       exec taskset -c "$HOST_GUARD_CPU_LIST" "$SCRIPT_DIR/run-goal.sh" "$@"
     fi
   fi
@@ -433,7 +460,14 @@ _run_readme_maintainer() {
     _snap="$(cat "$GOAL_SESSION_DIR_LOCAL/iter-${CURRENT_ITER}/snapshot-sha" 2>/dev/null || echo "")"
     if [[ -n "$_snap" ]]; then
       _changed="$( { git -C "$REPO_ROOT" diff --name-only "$_snap" 2>/dev/null; git -C "$REPO_ROOT" status --porcelain 2>/dev/null | awk '{print $NF}'; } | sort -u )" || _changed="__git_error__"
-      if [[ -n "$_changed" && "$_changed" != "__git_error__" ]]; then
+      if [[ "$_changed" == "__git_error__" ]]; then
+        : # git error → run the agent (fail-safe, unchanged behavior)
+      elif [[ -z "$_changed" ]]; then
+        # SPEED-14: a zero-change iteration used to fall through this guard and
+        # dispatch anyway — the empty set is the STRONGEST reason to skip.
+        echo "[run-goal] readme-maintainer: skipped — iteration changed no files at all. Set CHAIN_README_EVERY_ITER=true to disable this gate."
+        return 0
+      else
         local _visible
         _visible="$(printf '%s\n' "$_changed" | grep -Ev '^(tests?/|runs/|reports/|docs/handoffs/|docs/phases/)' || true)"
         if [[ -z "$_visible" ]]; then
@@ -562,16 +596,46 @@ _SHOWCASE_ITER=""
 
 _run_showcase_steps() {
   local iter_name="$1" depth="$2"
+  # Guarded: test harnesses extract this function without sourcing common.sh.
+  if declare -F iter_budget_check >/dev/null 2>&1; then
+    iter_budget_check "showcase-tail"
+  fi
+  # SPEED-15 trim ladder (opt-in via CHAIN_ITER_BUDGET_MODE=trim): over-budget
+  # iterations defer the demo recording and README refresh — the summarizer
+  # stays (the human's reading surface), and nothing gate-relevant lives here.
+  local _budget_trim=""
+  if declare -F iter_budget_trim_active >/dev/null 2>&1 && iter_budget_trim_active; then
+    _budget_trim=1
+    echo "[run-goal] iter-budget trim: over budget — deferring demo recording + README refresh this iteration (summarizer still runs)."
+  fi
   # Demo first (lean depth only — full depth records inside run-phase.sh).
   # demo-phase.sh boots its own services idempotently; _join_showcase_tail
   # clears them so the next iteration's browser-qa never reuses a server tree
   # that is still serving iteration N's code.
-  if [[ "$depth" == "lean" ]]; then
-    bash "$SCRIPT_DIR/demo-phase.sh" "$iter_name" \
-      || echo "[run-goal] demo-phase.sh exited non-zero — continuing (showcase, non-gating)"
+  if [[ "$depth" == "lean" && -z "$_budget_trim" ]]; then
+    # SPEED-14: with an empty product diff the app is byte-identical to the
+    # last recorded walkthrough — reuse it instead of re-recording (~5-7 min).
+    local _demo_skip=""
+    if [[ "${CHAIN_ZERO_CHANGE_SKIPS:-true}" == "true" ]] \
+       && declare -F goal_product_diff_empty >/dev/null 2>&1 \
+       && goal_product_diff_empty "$(cat "$GOAL_SESSION_DIR_LOCAL/iter-${CURRENT_ITER}/snapshot-sha" 2>/dev/null || echo "")" "$REPO_ROOT"; then
+      local _prior_demo
+      _prior_demo="$(ls -1t "$REPO_ROOT"/reports/phase-goal-"$SESSION_ID"-iter-*-demo-results.md 2>/dev/null | grep -v -- "-${iter_name}-demo-results" | head -1 || true)"
+      if [[ -n "$_prior_demo" ]]; then
+        echo "[run-goal] demo record skipped — zero-change iteration; walkthrough reused from $(basename "$_prior_demo") (set CHAIN_ZERO_CHANGE_SKIPS=false to always re-record)."
+        record_telemetry_event "step_skipped" "$(jq -cn --arg n "$iter_name" '{step:"demo-narrator", iter_name:$n, reason:"zero-change"}' 2>/dev/null || printf '{"step":"demo-narrator","reason":"zero-change"}')"
+        _demo_skip=1
+      fi
+    fi
+    if [[ -z "$_demo_skip" ]]; then
+      bash "$SCRIPT_DIR/demo-phase.sh" "$iter_name" \
+        || echo "[run-goal] demo-phase.sh exited non-zero — continuing (showcase, non-gating)"
+    fi
   fi
   _run_iteration_summarizer "$iter_name"
-  _run_readme_maintainer "$iter_name"
+  if [[ -z "$_budget_trim" ]]; then
+    _run_readme_maintainer "$iter_name"
+  fi
   _render_iter_html "$iter_name"
   _render_session_index_html
 }
@@ -579,7 +643,9 @@ _run_showcase_steps() {
 _fork_showcase_tail() {
   local iter_name="$1" depth="$2"
   _SHOWCASE_ITER="$CURRENT_ITER"
-  ( _run_showcase_steps "$iter_name" "$depth" ) &
+  # SPEED-12: showcase dispatches ride the low-priority lane so the next
+  # iteration's spine work (lane 5) is always picked up first by the pump.
+  ( export CHAIN_DISPATCH_LANE=9; _run_showcase_steps "$iter_name" "$depth" ) &
   _SHOWCASE_PID=$!
   echo "[run-goal] Showcase tail (demo → summary → README → renders) running in the background (pid $_SHOWCASE_PID); the loop proceeds."
 }
@@ -827,14 +893,16 @@ PY
   exit 0
 }
 
-# ── Host-guard preflight (hardware protection — goal.md AG-10) ─────────────
-# This host hard-reset twice (2026-07-20/21) under all-core vectorized ingest
-# bursts — see project-extensions/host-guard/README.md. When the project
-# declares host caps, the engine must not run unprotected: verify the affinity
-# wrap (top of this script) took effect and the 1 Hz hwmon forensics sampler is
-# alive — auto-starting the sampler first (self-heal, like the disk guard's
-# sweep), pausing (AWAITING_HOST_GUARD, resumable) only when self-heal fails.
-# Absent or disabled host-guard.env ⇒ no-op (framework stays project-neutral).
+# ── Host-guard preflight + iteration gate (hardware protection) ────────────
+# Origin: a mini-PC host hard-reset repeatedly under goal-mode load with
+# NOTHING in the journal — instant power/VRM transient trips, invisible to
+# sysstat's 10-minute cadence. When the project declares host caps
+# (project-extensions/host-guard/host-guard.env), the engine must not run
+# unprotected: verify the affinity wrap (top of this script) took effect and
+# the 1 Hz hwmon forensics sampler is alive — auto-starting the sampler first
+# (self-heal, like the disk guard's sweep), pausing (AWAITING_HOST_GUARD,
+# resumable) only when self-heal fails. Absent or disabled host-guard.env ⇒
+# no-op (framework stays project-neutral).
 _host_guard_mask_width() { # "0-3,8-11" → 8; 0 when unparseable
   local list="${1:-}" n=0 part a b
   [[ -n "$list" ]] || { echo 0; return 0; }
@@ -850,23 +918,61 @@ _host_guard_mask_width() { # "0-3,8-11" → 8; 0 when unparseable
   done
   echo "$n"
 }
+_host_guard_sampler_path() { # project-local copy wins; framework copy is the default
+  local proj="$REPO_ROOT/project-extensions/host-guard/hwmon-log.sh"
+  if [[ -f "$proj" ]]; then printf '%s' "$proj"; else printf '%s' "$SCRIPT_DIR/host-guard/hwmon-log.sh"; fi
+}
+_host_guard_latest_tctl() { # newest Tctl (°C) from the sampler csv; empty if missing/stale
+  local csv="$REPO_ROOT/logs/hwmon/hwmon.csv" mtime line t
+  [[ -f "$csv" ]] || return 0
+  mtime=$(stat -c %Y "$csv" 2>/dev/null || echo 0)
+  (( EPOCHSECONDS - mtime <= 15 )) || return 0
+  line=$(tail -n 1 "$csv" 2>/dev/null || true)
+  t="${line#*,}"; t="${t%%,*}"
+  [[ "$t" =~ ^[0-9]+$ ]] && printf '%s' "$t"
+  return 0
+}
+_host_guard_pause() { # $1 reason, $2 detected_at_step — pause AWAITING_HOST_GUARD (resumable) and exit
+  local reason="$1" step="${2:-preflight}"
+  echo "[run-goal] Host-guard check failed — pausing (AWAITING_HOST_GUARD)."
+  echo "[run-goal]   reason: $reason"
+  python3 - <<PY
+import json, datetime
+d = json.load(open("$SESSION_JSON"))
+d["status"] = "AWAITING_HOST_GUARD"
+d["updated_at"] = datetime.datetime.now(datetime.UTC).isoformat().replace('+00:00','Z')
+import os as _os, tempfile as _tf
+_fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
+with _os.fdopen(_fd, "w") as _f:
+    json.dump(d, _f, indent=2)
+    _f.write("\n")
+_os.replace(_tmp, "$SESSION_JSON")
+PY
+  record_telemetry_event "halt" "$(printf '{"reason":"AWAITING_HOST_GUARD","detected_at_step":"%s"}' "$step")"
+  echo ""
+  echo "Fix the host-guard issue (project-extensions/host-guard/README.md), then resume:"
+  echo "  ./scripts/automation/run-goal.sh --resume --session-id $SESSION_ID"
+  explain_goal_status "AWAITING_HOST_GUARD" "$SESSION_ID" "$REPO_ROOT"
+  echo "════════════════════════════════════════════════════════════════════"
+  exit 0
+}
 preflight_host_guard() {
   local hg_env="$REPO_ROOT/project-extensions/host-guard/host-guard.env"
   [[ -f "$hg_env" ]] || return 0
   # shellcheck disable=SC1090
   source "$hg_env"
   [[ "${HOST_GUARD_ENABLED:-0}" == "1" ]] || return 0
-  local sampler="$REPO_ROOT/project-extensions/host-guard/hwmon-log.sh"
-  local fail_reason=""
+  local sampler fail_reason=""
+  sampler="$(_host_guard_sampler_path)"
 
   # 1. Forensics sampler alive + csv fresh (self-heal: try to start it first).
   if [[ -f "$sampler" ]]; then
-    if ! bash "$sampler" status >/dev/null 2>&1; then
+    if ! HOST_GUARD_ROOT="$REPO_ROOT" bash "$sampler" status >/dev/null 2>&1; then
       echo "[run-goal] host-guard: hwmon sampler not running — auto-starting."
-      bash "$sampler" start || true
+      HOST_GUARD_ROOT="$REPO_ROOT" bash "$sampler" start || true
       sleep 2
-      bash "$sampler" status >/dev/null 2>&1 \
-        || fail_reason="hwmon sampler failed to start (try: bash project-extensions/host-guard/hwmon-log.sh start)"
+      HOST_GUARD_ROOT="$REPO_ROOT" bash "$sampler" status >/dev/null 2>&1 \
+        || fail_reason="hwmon sampler failed to start (try: bash $sampler start)"
     fi
   else
     fail_reason="sampler script missing: $sampler"
@@ -885,40 +991,103 @@ preflight_host_guard() {
     fi
   fi
 
-  # 3. Launcher cap blocks (AG-10) — enforced only once the launcher caps have
-  # landed (goal.md binding note); until then HOST_GUARD_REQUIRE_MARKERS=0.
-  if [[ -z "$fail_reason" && "${HOST_GUARD_REQUIRE_MARKERS:-0}" == "1" ]]; then
+  # 3. Launcher cap blocks — project-declared list (HOST_GUARD_MARKER_FILES,
+  # space-separated repo-relative paths); enforced only once the project's
+  # launcher caps have landed (HOST_GUARD_REQUIRE_MARKERS=1).
+  if [[ -z "$fail_reason" && "${HOST_GUARD_REQUIRE_MARKERS:-0}" == "1" && -n "${HOST_GUARD_MARKER_FILES:-}" ]]; then
     local lsc
-    for lsc in "$REPO_ROOT/scripts/dev.sh" "$REPO_ROOT/scripts/start-backend.sh"; do
-      if [[ -f "$lsc" ]] && ! grep -q "HOST-GUARD" "$lsc"; then
-        fail_reason="launcher $(basename "$lsc") lost its HOST-GUARD cap block (AG-10 regression)"
+    for lsc in ${HOST_GUARD_MARKER_FILES}; do
+      if [[ -f "$REPO_ROOT/$lsc" ]] && ! grep -q "HOST-GUARD" "$REPO_ROOT/$lsc"; then
+        fail_reason="launcher $lsc lost its HOST-GUARD cap block (host-guard regression)"
         break
       fi
     done
   fi
 
   [[ -n "$fail_reason" ]] || return 0
-  echo "[run-goal] Host-guard preflight failed — pausing (AWAITING_HOST_GUARD)."
-  echo "[run-goal]   reason: $fail_reason"
-  python3 - <<PY
-import json, datetime
-d = json.load(open("$SESSION_JSON"))
-d["status"] = "AWAITING_HOST_GUARD"
-d["updated_at"] = datetime.datetime.now(datetime.UTC).isoformat().replace('+00:00','Z')
-import os as _os, tempfile as _tf
-_fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
-with _os.fdopen(_fd, "w") as _f:
-    json.dump(d, _f, indent=2)
-    _f.write("\n")
-_os.replace(_tmp, "$SESSION_JSON")
-PY
-  record_telemetry_event "halt" '{"reason":"AWAITING_HOST_GUARD","detected_at_step":"preflight"}'
-  echo ""
-  echo "Fix the host-guard issue (project-extensions/host-guard/README.md), then resume:"
-  echo "  ./scripts/automation/run-goal.sh --resume --session-id $SESSION_ID"
-  explain_goal_status "AWAITING_HOST_GUARD" "$SESSION_ID" "$REPO_ROOT"
-  echo "════════════════════════════════════════════════════════════════════"
-  exit 0
+  _host_guard_pause "$fail_reason" "preflight"
+}
+host_guard_iteration_gate() {
+  # Top-of-loop, never mid-iteration. (a) thermal cooldown: when the hwmon csv
+  # is fresh and Tctl ≥ HOST_GUARD_TCTL_PAUSE, wait until ≤ _RESUME (bounded by
+  # _MAX_WAIT — then proceed loudly; the gate is defense-in-depth, not a halt).
+  # (b) interactive pump confinement: the systemd/taskset self-wrap cannot
+  # confine agents dispatched INSIDE the foreground CLI session, so when
+  # HOST_GUARD_REQUIRE_PUMP_CONFINED=1 verify the pump process's own cpuset and
+  # pause (resumable) if it is wider than the declared mask.
+  local hg_env="$REPO_ROOT/project-extensions/host-guard/host-guard.env"
+  [[ -f "$hg_env" ]] || return 0
+  # shellcheck disable=SC1090
+  source "$hg_env"
+  [[ "${HOST_GUARD_ENABLED:-0}" == "1" ]] || return 0
+
+  local pause_c="${HOST_GUARD_TCTL_PAUSE:-90}" resume_c="${HOST_GUARD_TCTL_RESUME:-80}"
+  local poll="${HOST_GUARD_TCTL_POLL:-15}" max_wait="${HOST_GUARD_TCTL_MAX_WAIT:-1800}"
+  local waited=0 tctl
+  while :; do
+    tctl="$(_host_guard_latest_tctl)"
+    [[ "$tctl" =~ ^[0-9]+$ ]] || break   # no fresh telemetry → nothing to gate on
+    if (( waited == 0 )); then
+      if (( tctl < pause_c )); then break; fi
+      echo "[run-goal] host-guard: Tctl ${tctl}°C ≥ ${pause_c}°C — cooling down before the next iteration (resumes < ${resume_c}°C)."
+      record_telemetry_event "host_guard_cooldown" "$(printf '{"tctl_c":%s}' "$tctl")"
+    else
+      if (( tctl <= resume_c )); then
+        echo "[run-goal] host-guard: cooled to ${tctl}°C after ${waited}s — continuing."
+        break
+      fi
+      if (( waited >= max_wait )); then
+        echo "[run-goal] host-guard: still ${tctl}°C after ${waited}s (max ${max_wait}s) — continuing anyway; check cooling."
+        break
+      fi
+    fi
+    sleep "$poll"; waited=$(( waited + poll ))
+  done
+
+  if [[ "${HOST_GUARD_REQUIRE_PUMP_CONFINED:-0}" == "1" && "${AGENT_BACKEND:-}" == "interactive" ]]; then
+    local hb="${CHAIN_DISPATCH_DIR:-$GOAL_SESSION_DIR_LOCAL/dispatch}/.pump-alive"
+    local pump_pid="" hb_age=999999 target="" width allowed_list allowed_n
+    if [[ -f "$hb" ]]; then
+      hb_age=$(( EPOCHSECONDS - $(stat -c %Y "$hb" 2>/dev/null || echo 0) ))
+      pump_pid=$(sed -n 's/^pid=\([0-9][0-9]*\)$/\1/p' "$hb" 2>/dev/null | head -n 1)
+    fi
+    # Verification handle: the CLI session root captured at engine launch wins
+    # (it outlives short-lived heartbeat writers); else the live heartbeat pid.
+    if [[ -n "${HOST_GUARD_PUMP_ROOT_PID:-}" && -r "/proc/${HOST_GUARD_PUMP_ROOT_PID}/status" ]]; then
+      target="$HOST_GUARD_PUMP_ROOT_PID"
+    elif [[ -n "$pump_pid" && "$hb_age" -le "${HOST_GUARD_PUMP_HB_FRESH:-180}" && -r "/proc/$pump_pid/status" ]]; then
+      target="$pump_pid"
+    fi
+    if [[ -n "$target" ]]; then
+      width=$(_host_guard_mask_width "${HOST_GUARD_CPU_LIST:-}")
+      allowed_list=$(awk -F'\t' '/^Cpus_allowed_list/{print $2}' "/proc/$target/status" 2>/dev/null)
+      allowed_n=$(_host_guard_mask_width "$allowed_list")
+      if (( width > 0 && allowed_n > width )); then
+        # Self-heal first: confine the RUNNING session in place — scope
+        # adoption for memory/task/quota ceilings + taskset for the hard CPU
+        # mask. No relaunch required; the host-guard-exec.sh wrapper remains
+        # the belt-and-braces option (adds BLAS env caps from birth).
+        # HOST_GUARD_ADOPT=0 skips the self-heal and pauses immediately.
+        if [[ "${HOST_GUARD_ADOPT:-1}" == "1" ]]; then
+          echo "[run-goal] host-guard: pump (pid $target) unconfined (Cpus_allowed_list=$allowed_list) — auto-confining in place."
+          HOST_GUARD_ROOT="$REPO_ROOT" bash "$SCRIPT_DIR/host-guard-adopt.sh" --cli-root-of "$target" || true
+          allowed_list=$(awk -F'\t' '/^Cpus_allowed_list/{print $2}' "/proc/$target/status" 2>/dev/null)
+          allowed_n=$(_host_guard_mask_width "$allowed_list")
+        fi
+        if (( allowed_n > width )); then
+          write_session_summary "AWAITING_HOST_GUARD" "$CURRENT_ITER"
+          _host_guard_pause "interactive pump (pid $target) is unconfined (Cpus_allowed_list=$allowed_list = $allowed_n CPUs > mask width $width) and in-place auto-confinement did not take — relaunch the pump CLI via scripts/automation/host-guard-exec.sh (e.g. 'scripts/automation/host-guard-exec.sh claude'), or set HOST_GUARD_REQUIRE_PUMP_CONFINED=0" "iteration_gate"
+        fi
+        record_telemetry_event "host_guard_adopt" "$(printf '{"pid":%s,"cpus":"%s"}' "$target" "$allowed_list")"
+        echo "[run-goal] host-guard: pump (pid $target) confined to $allowed_list."
+      fi
+    elif [[ "$hb_age" -le "${HOST_GUARD_PUMP_HB_FRESH:-180}" ]]; then
+      # A live pump we cannot even identify (no pid= line in the heartbeat AND
+      # no CLI root captured at launch): loud pause, never a silent bypass.
+      _host_guard_pause "cannot verify pump confinement: no usable pump pid ($hb has no pid= line and no CLI root was captured at engine launch) — re-enable the pump ident or set HOST_GUARD_REQUIRE_PUMP_CONFINED=0" "iteration_gate"
+    fi
+  fi
+  return 0
 }
 
 # ── Preflight doctor (REL-2) ──────────────────────────────────────────────
@@ -1375,7 +1544,9 @@ record_telemetry_event "session_start" "$(jq -cn --arg m "$RUN_MODE" --argjson m
 
 # ── Halt detection helpers ────────────────────────────────────────────────
 SESSION_START_EPOCH=$(date +%s)
-QUOTA_PAUSE_COUNT_FILE="$GOAL_SESSION_DIR_LOCAL/.quota-pause-count"
+# Exported so child pipelines (run-phase.sh, goal-iter-lean.sh) and the sourced
+# quota-retry.sh can bump it from their own shells (SPEED-13).
+export QUOTA_PAUSE_COUNT_FILE="$GOAL_SESSION_DIR_LOCAL/.quota-pause-count"
 [[ -f "$QUOTA_PAUSE_COUNT_FILE" ]] || echo "0" > "$QUOTA_PAUSE_COUNT_FILE"
 
 journey_history_hash() {
@@ -1580,8 +1751,9 @@ chain_tmp_janitor
 # (AWAITING_DISK) only when the tmp root's filesystem is still critically low.
 preflight_disk_space
 
-# Host-guard preflight (AG-10): forensics sampler + affinity confinement. The
-# 2026-07-20/21 hard-reset incidents make unprotected engine runs unacceptable.
+# Host-guard preflight: forensics sampler + affinity confinement. Repeated
+# instant hardware resets under goal-mode load make unprotected engine runs
+# unacceptable on hosts that declare caps; no-op everywhere else.
 preflight_host_guard
 
 # Verify we can push to GitHub before the loop starts (once; fresh + resume).
@@ -1618,6 +1790,12 @@ while true; do
     explain_goal_status "AWAITING_DISK" "$SESSION_ID" "$REPO_ROOT"
     exit 0
   fi
+
+  # 1d. Host-guard gate — top of the loop, never mid-iteration: thermal
+  # cooldown (wait out heat-soak between iterations) + interactive pump
+  # confinement (the self-wrap cannot cover agents inside the foreground CLI).
+  # No-op unless the project declares host caps.
+  host_guard_iteration_gate
 
   # 1b. Blueprint approval gate (coherence). Pauses at the TOP of the loop —
   # never mid-iteration — so the blueprint is never re-drafted out from under the
@@ -1783,6 +1961,10 @@ PY
   PRIOR_DEPTH=$(python3 -c "import json; print(json.load(open('$SESSION_JSON')).get('next_depth') or 'lean')")
 
   record_telemetry_event "iter_start" "$(jq -cn --arg n "$ITER_NAME" --arg pv "$PRIOR_VERDICT" --arg pd "$PRIOR_DEPTH" --arg ss "$(cat "$ITER_DIR/snapshot-sha" 2>/dev/null || echo "")" '{iter_name:$n, prior_verdict:$pv, prior_depth:$pd, snapshot_sha:$ss}' 2>/dev/null || printf '{"iter_name":"%s"}' "$ITER_NAME")"
+  # SPEED-15: wall-clock budget clock starts here; exported so the lean/full
+  # executor child processes measure from the same origin.
+  export CHAIN_ITER_START_EPOCH="$(date +%s)"
+  iter_budget_init "$CHAIN_ITER_START_EPOCH"
 
   # Mark experiment-knob-active iterations so the --tripwire window knows which
   # iterations to judge (opt-in speed experiments, .claude/model-orchestration.md).
@@ -1865,7 +2047,7 @@ except Exception: print(0)" 2>/dev/null || echo 0)"
   # The guarded section below is not re-indented; it ends at the matching `fi`
   # after the spec-existence check.
   if step_done_valid decomposer --dir "$ITER_DIR" "$ITER_SPEC_PATH" \
-     && grep -qiE '(\*\*)?Depth:(\*\*)?[[:space:]]*(lean|full)' "$ITER_SPEC_PATH"; then
+     && grep -qiE '(\*\*)?Depth:(\*\*)?[[:space:]]*(lean|full|evidence)' "$ITER_SPEC_PATH"; then
     echo "[run-goal] Resume: goal-decomposer already completed for iteration $CURRENT_ITER (checkpoint + spec verified) — skipping."
     record_telemetry_event "step_skipped" "$(jq -cn --arg n "$ITER_NAME" '{step:"goal-decomposer", iter_name:$n, reason:"checkpoint"}' 2>/dev/null || printf '{"step":"goal-decomposer"}')"
   else
@@ -1881,7 +2063,7 @@ Iteration index: $CURRENT_ITER
 Iter name: $ITER_NAME
 Prior verdict: $PRIOR_VERDICT
 Prior depth: $PRIOR_DEPTH
-Consecutive lean iterations dispatched: $LEAN_STREAK (hardening cadence: ${CHAIN_HARDENING_CADENCE:-4}; 0 = disabled)
+Consecutive lean iterations dispatched: $LEAN_STREAK (hardening cadence: ${CHAIN_HARDENING_CADENCE:-6}; 0 = disabled)
 
 Project template: .claude/project-template.md
 Project goal (SLICED — vision + anti-goals + failing/target journeys verbatim; stable passing journeys digested to one line): $GOAL_SLICE_PATH
@@ -1921,7 +2103,7 @@ $( if [[ "$DECOMPOSER_MODE" == "baseline" ]]; then echo "BASELINE also: draft th
 
 The spec MUST include a 'Goal Mode Metadata' section with at minimum:
   - Mode: $DECOMPOSER_MODE
-  - Depth: lean | full
+  - Depth: lean | full | evidence
   - Target journeys: <comma-separated journey IDs>
 
 Do NOT write code or implement anything. The iteration spec and any blueprint edits are planning documents, not code. STOP after writing them." || _decomp_rc=$?
@@ -2002,22 +2184,86 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
               | sed -E 's/.*Depth:[[:space:]]*//; s/[[:space:]]+$//' \
               | tr '[:upper:]' '[:lower:]') || true
   fi
-  if [[ "$DEPTH" != "lean" && "$DEPTH" != "full" ]]; then
-    echo "[run-goal] Could not parse Depth (expected 'lean' or 'full') from $ITER_SPEC_PATH. Defaulting to lean." >&2
+  # SPEED-9: 'evidence' is a first-class depth (capture + evaluate only). The
+  # knob maps it back to lean when the micro-path is disabled.
+  if [[ "$DEPTH" == "evidence" && "${CHAIN_EVIDENCE_MICRO_PATH:-true}" != "true" ]]; then
+    echo "[run-goal] Depth 'evidence' requested but CHAIN_EVIDENCE_MICRO_PATH=false — dispatching as lean." >&2
     DEPTH="lean"
+  fi
+  if [[ "$DEPTH" != "lean" && "$DEPTH" != "full" && "$DEPTH" != "evidence" ]]; then
+    echo "[run-goal] Could not parse Depth (expected 'lean', 'full', or 'evidence') from $ITER_SPEC_PATH. Defaulting to lean." >&2
+    DEPTH="lean"
+  fi
+
+  # SPEED-10 full-trigger allowlist: full depth costs ~90-120 min over lean and
+  # in practice ran on unjustified iterations (a video re-record got a 3h full
+  # pass). A full dispatch must now be JUSTIFIED by one of: prior ESCALATE/
+  # REGRESSION verdict, a prior-iteration coherence FAIL, a machine-parseable
+  # 'Full trigger:' line in the spec (the rubric's numbered trigger), or the
+  # hardening cadence being due anyway. Otherwise demote to lean (the evidence
+  # backstop below may demote further). CHAIN_DEPTH_ALLOWLIST=false disables.
+  if [[ "$DEPTH" == "full" && "${CHAIN_DEPTH_ALLOWLIST:-true}" == "true" ]]; then
+    _full_reason=""
+    _prev_coh_file="$GOAL_SESSION_DIR_LOCAL/iter-$((CURRENT_ITER - 1))/coherence.md"
+    if [[ "${PRIOR_VERDICT:-}" == "ESCALATE" || "${PRIOR_VERDICT:-}" == "REGRESSION" ]]; then
+      _full_reason="prior-verdict-${PRIOR_VERDICT}"
+    elif grep -qE '^\*\*Verdict:\*\* COHERENCE-FAIL' "$_prev_coh_file" 2>/dev/null; then
+      _full_reason="prior-coherence-fail"
+    elif grep -qiE '^[[:space:]]*-?[[:space:]]*(\*\*)?Full trigger:' "$ITER_SPEC_PATH"; then
+      _full_reason="spec-full-trigger"
+    elif goal_cadence_forces_full "$LEAN_STREAK" "$CURRENT_ITER"; then
+      _full_reason="cadence-due"
+    fi
+    if [[ -z "$_full_reason" ]]; then
+      echo "[run-goal] Depth allowlist: the spec asked for a FULL pass but named no trigger (no 'Full trigger:' line, prior verdict was ${PRIOR_VERDICT:-none}, no prior coherence FAIL, cadence not due) — running LEAN instead. Set CHAIN_DEPTH_ALLOWLIST=false to disable this check."
+      record_telemetry_event "depth_demoted" "$(jq -cn --arg pv "${PRIOR_VERDICT:-}" '{from:"full", to:"lean", reason:"no-full-trigger", prior_verdict:$pv}' 2>/dev/null || printf '{"from":"full","to":"lean"}')"
+      DEPTH="lean"
+    fi
   fi
 
   # SPEED-4 hardening-cadence backstop: a K-long lean streak forces a full
   # hardening pass even when the spec says lean. The spec text stays as
   # written; dispatch + telemetry carry the effective depth.
   if [[ "$DEPTH" == "lean" ]] && goal_cadence_forces_full "$LEAN_STREAK" "$CURRENT_ITER"; then
-    echo "[run-goal] Hardening cadence: $LEAN_STREAK consecutive lean iterations — overriding spec depth lean → full (CHAIN_HARDENING_CADENCE=${CHAIN_HARDENING_CADENCE:-4}; 0 disables)."
+    echo "[run-goal] Hardening cadence: $LEAN_STREAK consecutive lean iterations — overriding spec depth lean → full (CHAIN_HARDENING_CADENCE=${CHAIN_HARDENING_CADENCE:-6}; 0 disables)."
     DEPTH="full"
-    record_telemetry_event "depth_cadence_override" "$(jq -cn --arg s "$LEAN_STREAK" --arg k "${CHAIN_HARDENING_CADENCE:-4}" '{lean_streak:$s, cadence:$k}' 2>/dev/null || printf '{"lean_streak":"%s"}' "$LEAN_STREAK")"
+    record_telemetry_event "depth_cadence_override" "$(jq -cn --arg s "$LEAN_STREAK" --arg k "${CHAIN_HARDENING_CADENCE:-6}" '{lean_streak:$s, cadence:$k}' 2>/dev/null || printf '{"lean_streak":"%s"}' "$LEAN_STREAK")"
   fi
 
   TARGET_JOURNEYS=$(grep -m1 -E '^[[:space:]]*-?[[:space:]]*\*\*Target journeys:\*\*' "$ITER_SPEC_PATH" \
                       | sed -E 's/.*\*\*Target journeys:\*\*[[:space:]]*//' || echo "")
+
+  # SPEED-9 evidence backstop: a lean dispatch whose Target journeys are ALL
+  # already recorded passing (and none pending-infra) has no build work — the
+  # deliverable can only be evidence. Demote lean → evidence so developer and
+  # reviewer are not dispatched against a no-op. Never touches full.
+  if [[ "$DEPTH" == "lean" && "${CHAIN_EVIDENCE_MICRO_PATH:-true}" == "true" && -n "$TARGET_JOURNEYS" ]] \
+     && { [[ "${PRIOR_VERDICT:-}" == "CONTINUE" || "${PRIOR_VERDICT:-}" == "ESCALATE" ]]; } \
+     && python3 - "$JOURNEY_HISTORY" "$TARGET_JOURNEYS" <<'PYEOF'
+import json, re, sys
+try:
+    hist = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(1)
+journeys = hist.get("journeys") or {}
+ids = re.findall(r"J-\d+", sys.argv[2])
+if not ids:
+    sys.exit(1)
+for jid in ids:
+    j = journeys.get(jid)
+    if not isinstance(j, dict):
+        sys.exit(1)
+    if j.get("status") not in ("passing", "already_passing"):
+        sys.exit(1)
+    if j.get("pending_infra"):
+        sys.exit(1)
+sys.exit(0)
+PYEOF
+  then
+    echo "[run-goal] Evidence backstop: every target journey (${TARGET_JOURNEYS}) is already recorded passing — demoting depth lean → evidence (set CHAIN_EVIDENCE_MICRO_PATH=false to disable)."
+    DEPTH="evidence"
+    record_telemetry_event "depth_evidence_override" "$(jq -cn --arg tj "$TARGET_JOURNEYS" '{from:"lean", to:"evidence", target_journeys:$tj}' 2>/dev/null || printf '{"from":"lean","to":"evidence"}')"
+  fi
 
   echo "[run-goal] Iter spec depth: $DEPTH"
   echo "[run-goal] Target journeys: ${TARGET_JOURNEYS:-(none parsed)}"
@@ -2048,6 +2294,13 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
   chain_tmp_rotate "$ITER_NAME"
   echo "[run-goal] Tmp cleanup: cleared ${_prev_tmp:-(none)} — iteration tmp dir: ${CHAIN_TMPDIR:-(disabled)}"
 
+  # SPEED-12: dispatch-channel janitor — clear provably-dead-pump claims and
+  # aged orphaned .started markers at the iteration boundary (they used to
+  # survive until engine restart and make unclaimed waits unbounded).
+  if [[ "${CHAIN_AGENT_BACKEND:-}" == "interactive" ]] && declare -F dispatch_channel_janitor >/dev/null 2>&1; then
+    dispatch_channel_janitor
+  fi
+
   # 3. Dispatch. Reset the per-iteration exit code first: _exec_rc is a plain
   # shell var, so a stale 70 from a prior iteration would otherwise survive into
   # this one (the `:-0` default only fills an UNSET var) and mis-fire the
@@ -2068,6 +2321,15 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
       bash "$SCRIPT_DIR/goal-iter-lean.sh" "$ITER_NAME" || _exec_rc=$?
       _engine_step_done
     fi
+  elif [[ "$DEPTH" == "evidence" ]]; then
+    # SPEED-9 micro-path: capture + evaluate only. goal-iter-lean.sh skips
+    # developer/reviewer, runs browser-qa on the Target journeys, and records
+    # the walkthrough BEFORE returning so the evaluator can actually see it.
+    echo "[run-goal] Dispatching EVIDENCE micro-path via goal-iter-lean.sh (capture + evaluate; no developer/reviewer) ..."
+    printf 'evidence' > "$ITER_DIR/depth-dispatched"
+    _engine_step_begin "evidence-pipeline"
+    CHAIN_LEAN_EVIDENCE_ONLY=true bash "$SCRIPT_DIR/goal-iter-lean.sh" "$ITER_NAME" || _exec_rc=$?
+    _engine_step_done
   else
     echo "[run-goal] Dispatching LEAN pipeline via goal-iter-lean.sh ..."
     printf 'lean' > "$ITER_DIR/depth-dispatched"
@@ -2102,13 +2364,25 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
   # consolidation CONTINUE. An auditor crash is non-blocking (stubbed PASS) so a
   # safety-net agent can never wedge the session.
   COHERENCE_OUTPUT="$ITER_DIR/coherence.md"
+  iter_budget_check "coherence-auditor"
   if [[ $CURRENT_ITER -gt 0 && -f "$BLUEPRINT_FILE" ]]; then
     _coh_dispatched=""
     _coh_stubbed=""
+    _snapshot_sha="$(cat "$ITER_DIR/snapshot-sha" 2>/dev/null || echo "")"
+    # SPEED-14: zero-change fast path — an empty product diff cannot introduce
+    # IA/data-contract drift, so the audit holds by construction. Deterministic
+    # PASS with distinct text (goal_gate.py must NOT read it as a crash stub —
+    # this verdict stays valid for GOAL_ACHIEVED certification). Only when no
+    # genuine audit output exists yet (a lean-fork audit takes precedence).
+    if [[ "${CHAIN_ZERO_CHANGE_SKIPS:-true}" == "true" && ! -f "$COHERENCE_OUTPUT" ]] \
+       && goal_product_diff_empty "$_snapshot_sha" "$REPO_ROOT"; then
+      echo "[run-goal] Step 2b: coherence-auditor skipped — zero-change iteration (empty product diff); deterministic PASS."
+      printf '**Verdict:** COHERENCE-PASS\n\n(Zero-change iteration: the product diff since the iteration snapshot is empty — nothing to audit. Deterministic pass without dispatch; set CHAIN_ZERO_CHANGE_SKIPS=false to always dispatch.)\n' > "$COHERENCE_OUTPUT"
+      record_telemetry_event "step_skipped" "$(jq -cn --arg n "$ITER_NAME" '{step:"coherence-auditor", iter_name:$n, reason:"zero-change"}' 2>/dev/null || printf '{"step":"coherence-auditor","reason":"zero-change"}')"
     # Resume-skip: a prior attempt's audit is reusable only when its checkpoint,
     # the verdict line, AND the tree state all verify (a drifted tree means the
     # audited diff is no longer this iteration's diff).
-    if step_done_valid coherence --verify-tree --dir "$ITER_DIR" "$COHERENCE_OUTPUT" \
+    elif step_done_valid coherence --verify-tree --dir "$ITER_DIR" "$COHERENCE_OUTPUT" \
        && grep -qE '^\*\*Verdict:\*\* COHERENCE-(PASS|WARN|FAIL)' "$COHERENCE_OUTPUT"; then
       echo "[run-goal] Resume: coherence audit already completed for iteration $CURRENT_ITER (checkpoint + tree verified) — reusing $COHERENCE_OUTPUT."
       record_telemetry_event "step_skipped" "$(jq -cn --arg n "$ITER_NAME" '{step:"coherence-auditor", iter_name:$n, reason:"checkpoint"}' 2>/dev/null || printf '{"step":"coherence-auditor"}')"
@@ -2116,7 +2390,6 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
     step_invalidate_from coherence "$ITER_DIR"
     _coh_dispatched=1
     echo "[run-goal] Step 2b: coherence-auditor"
-    _snapshot_sha="$(cat "$ITER_DIR/snapshot-sha" 2>/dev/null || echo "")"
     _coh_rc=0
     dispatch_coherence_audit "$SESSION_ID" "$CURRENT_ITER" "$ITER_NAME" \
       "$BLUEPRINT_FILE" "$ITER_SPEC_PATH" "$COHERENCE_OUTPUT" "$_snapshot_sha" || _coh_rc=$?
@@ -2174,6 +2447,7 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
   fi
 
   # 4. Goal evaluator
+  iter_budget_check "goal-evaluator"
   echo "[run-goal] Step 3: goal-evaluator"
   EVAL_OUTPUT="$ITER_DIR/eval.md"
   # Pre-trim — evaluator spec asks for "last 5 entries"; 300 lines covers it.
@@ -2190,6 +2464,20 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
     _eval_rc=0
   else
   cd "$REPO_ROOT"
+  # SPEED-9: deterministic evidence-context lines. The newest demo recording in
+  # this session stays valid evidence for journeys whose product code is
+  # unchanged since it was made (methodology A.6); the diff status lets the
+  # evaluator apply that rule without re-deriving git state.
+  _prior_demo_dir="$(ls -1dt "$REPO_ROOT"/reports/demo/goal-"$SESSION_ID"-iter-* 2>/dev/null | head -1 || true)"
+  _prior_demo_line="(none recorded yet this session)"
+  if [[ -n "$_prior_demo_dir" ]]; then
+    _prior_demo_line="${_prior_demo_dir#"$REPO_ROOT"/}/ (results: reports/phase-$(basename "$_prior_demo_dir")-demo-results.md)"
+  fi
+  _pdiff_status="non-empty"
+  if declare -F goal_product_diff_empty >/dev/null 2>&1 \
+     && goal_product_diff_empty "$(cat "$ITER_DIR/snapshot-sha" 2>/dev/null || echo "")" "$REPO_ROOT"; then
+    _pdiff_status="EMPTY"
+  fi
   record_agent_invocation_start "goal-evaluator"   # bare call: must NOT be $(...) or the CHAIN_CURRENT_AGENT export is lost to a subshell
   _eval_start=$CHAIN_AGENT_START_EPOCH
   _eval_rc=0
@@ -2218,6 +2506,8 @@ Iteration artifacts (read what exists):
   Browser-infra token: $ITER_DIR/browser-infra.json  <-- if present: its listed journeys hit a browser INFRA failure (services/Chrome), not a product defect. With no fresh screenshot, score them partial with gap 'pending-infra' and set pending_infra: true in journey-history (methodology A.3); attempts >= 2 in the token = treat the browser infrastructure as a human-owned blocker (STALLED-class)
   Coherence audit: $COHERENCE_OUTPUT  <-- COHERENCE-FAIL vetoes GOAL_ACHIEVED and drives a consolidation CONTINUE
   Goal-edit drift note: $ITER_DIR/journeys-changed.md  <-- if present, each listed journey's prior pass is VOID until re-verified against the CURRENT goal text (your step 3)
+  Prior walkthrough recording (methodology A.6 evidence durability — stays valid for journeys whose product code is unchanged since it was recorded): $_prior_demo_line
+  Product diff this iteration (deterministic; bookkeeping excluded): $_pdiff_status
 
 Journey state (inline digest — your methodology's section A table starts here):
 \`\`\`
@@ -2250,7 +2540,7 @@ The verdict line MUST appear at the top of $EVAL_OUTPUT and start exactly with:
   or **Verdict:** REGRESSION
   or **Verdict:** STALLED
 
-Also include a 'Depth Recommendation For Next Iteration:' line: lean or full.
+Also include a 'Depth Recommendation For Next Iteration:' line: lean, full, or evidence (evidence = every remaining gap is a capture/recording task on already-working features).
 
 Then update $JOURNEY_HISTORY (full atomic write), OVERWRITE $ITER_STATE_FILE (templates/iteration-state.md shape, ≤40 lines), and append an entry to $EVALUATOR_LOG.
 STOP." || _eval_rc=$?
@@ -2281,7 +2571,7 @@ STOP." || _eval_rc=$?
   # VERDICT for the fallthrough handling, not kill the engine via pipefail)
   VERDICT=$(grep -m1 -E '^\*\*Verdict:\*\*' "$EVAL_OUTPUT" | sed -E 's/^\*\*Verdict:\*\*[[:space:]]*//' | awk '{print $1}') || true
   NEXT_DEPTH=$(grep -m1 -E 'Depth Recommendation For Next Iteration:' "$EVAL_OUTPUT" | sed -E 's/.*Iteration:\*?\*?[[:space:]]*//' | awk '{print $1}' | tr '[:upper:]' '[:lower:]') || true
-  [[ "$NEXT_DEPTH" != "lean" && "$NEXT_DEPTH" != "full" ]] && NEXT_DEPTH="lean"
+  [[ "$NEXT_DEPTH" != "lean" && "$NEXT_DEPTH" != "full" && "$NEXT_DEPTH" != "evidence" ]] && NEXT_DEPTH="lean"
 
   # Mark this iteration's evaluation as complete (with the parsed verdict) so a
   # crash between here and the current_iter advance can resume without a second

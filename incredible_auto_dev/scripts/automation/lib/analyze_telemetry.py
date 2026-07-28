@@ -261,13 +261,15 @@ def _new_iter_record(iter_name: str, ts: float | None) -> dict[str, Any]:
         "depth": None,
         "complete": False,
         "agents": {},          # name → {seconds, calls, retries, failures}
-        "engine_steps": {},    # name → seconds (engine_step events — RETRO-1 glue attribution)
+        "engine_steps": {},    # step → seconds (non-agent engine work; NOT in agent totals —
+                               # the sub-pipeline steps CONTAIN agent invocations)
         "skipped_steps": [],
         "pump_wait_seconds": 0,
         "quota_sleep_seconds": 0,
         "review_verdicts": [], # [{verdict, attempt}]
         "knob_active": False,  # iter_config event seen (experiment running)
         "journey_deltas": {},
+        "budget_event": None,  # first iter_budget event (SPEED-15), if any
     }
 
 
@@ -302,21 +304,35 @@ def build_wall_report(paths: list[str]) -> dict[str, dict[str, Any]]:
                 a = event.get("agent") or "unattributed"
                 row = cur["agents"].setdefault(
                     a, {"seconds": 0, "calls": 0, "retries": 0, "failures": 0})
-                row["seconds"] += int(event.get("duration_seconds") or 0)
+                # SPEED-13: prefer active_seconds (duration minus quota sleeps)
+                # when the event carries it; quota sleep is reported separately
+                # via quota_pause_end so nothing is lost.
+                secs = event.get("active_seconds")
+                if secs is None:
+                    secs = event.get("duration_seconds")
+                row["seconds"] += int(secs or 0)
                 row["calls"] += 1
                 row["retries"] += int(event.get("retries") or 0)
                 if int(event.get("exit_status") or 0) != 0:
                     row["failures"] += 1
-            elif kind == "engine_step" and cur is not None:
-                nm = event.get("step") or "?"
-                cur["engine_steps"][nm] = (cur["engine_steps"].get(nm, 0)
-                                           + int(event.get("duration_seconds") or 0))
             elif kind == "step_skipped" and cur is not None:
                 cur["skipped_steps"].append(event.get("step") or "?")
             elif kind == "dispatch_wait" and cur is not None:
                 cur["pump_wait_seconds"] += int(event.get("wait_seconds") or 0)
             elif kind == "quota_pause_end" and cur is not None:
                 cur["quota_sleep_seconds"] += int(event.get("sleep_seconds") or 0)
+            elif kind == "engine_step" and cur is not None:
+                step = event.get("step") or "?"
+                cur["engine_steps"][step] = (
+                    cur["engine_steps"].get(step, 0)
+                    + int(event.get("duration_seconds") or 0))
+            elif kind == "iter_budget" and cur is not None:
+                if cur.get("budget_event") is None:
+                    cur["budget_event"] = {
+                        "budget": int(event.get("budget") or 0),
+                        "elapsed": int(event.get("elapsed") or 0),
+                        "mode": event.get("mode") or "warn",
+                        "at_step": event.get("at_step") or "?"}
             elif kind == "review_verdict" and cur is not None:
                 cur["review_verdicts"].append({
                     "verdict": event.get("verdict") or "?",
@@ -389,28 +405,27 @@ def render_wall_text(report: dict[str, dict[str, Any]],
                     extra += f"  retries={row['retries']}"
                 out.append(f"      {a:<24s} {_fmt_m(row['seconds']):>8s}  "
                            f"calls={row['calls']}{extra}")
-            # Engine-side steps (RETRO-1): the sub-pipeline dispatch / showcase
-            # join that previously all landed in "unattributed (glue)". These
-            # wrap the goal-level wall spans that are NOT agent-attributed at
-            # this telemetry scope, so they count toward the attributed total.
-            engine_total = 0
-            for nm, secs in sorted(rec.get("engine_steps", {}).items(),
-                                   key=lambda kv: -kv[1]):
-                engine_total += secs
-                label = f"engine:{nm}"
-                out.append(f"      {label:<24s} {_fmt_m(secs):>8s}")
+            for step, secs in sorted(rec.get("engine_steps", {}).items(),
+                                     key=lambda kv: -kv[1]):
+                out.append(f"      [engine] {step:<15s} {_fmt_m(secs):>8s}  (contains agent time above)")
             if rec["skipped_steps"]:
                 out.append(f"      (resume-skipped: {', '.join(rec['skipped_steps'])})")
             if rec["pump_wait_seconds"]:
                 out.append(f"      pump-wait              {_fmt_m(rec['pump_wait_seconds']):>8s}")
             if rec["quota_sleep_seconds"]:
                 out.append(f"      quota-pauses           {_fmt_m(rec['quota_sleep_seconds']):>8s}")
+            be = rec.get("budget_event")
+            if be:
+                out.append(f"      OVER BUDGET at {be['at_step']}: {be['elapsed']}s > {be['budget']}s (mode={be['mode']})")
             if wall is not None:
-                attributed = agent_total + engine_total
-                if attributed > wall:
-                    out.append(f"      overlap saved          {_fmt_m(attributed - wall):>8s}  (parallel steps)")
+                # SPEED-13: agent rows are active time (quota sleeps excluded),
+                # so the residual must exclude the quota-pause seconds too or
+                # every pause would be misread as glue.
+                accounted = agent_total + rec["quota_sleep_seconds"]
+                if accounted > wall:
+                    out.append(f"      overlap saved          {_fmt_m(accounted - wall):>8s}  (parallel steps)")
                 else:
-                    out.append(f"      unattributed (glue)    {_fmt_m(wall - attributed):>8s}")
+                    out.append(f"      unattributed (glue)    {_fmt_m(wall - accounted):>8s}  (wall − agents(active) − quota)")
         completed = [i for i in s["iterations"] if i["complete"] and i["wall_seconds"]]
         if completed and iter_filter is None:
             mean = sum(i["wall_seconds"] for i in completed) / len(completed)
@@ -547,14 +562,17 @@ _WALL_FIXTURE = [
      "ts": "2026-07-01T10:08:00Z"},
     {"event": "agent_invocation_end", "session_id": "w-1", "agent": "goal-decomposer",
      "exit_status": 0, "duration_seconds": 480, "retries": 0, "ts": "2026-07-01T10:08:00Z"},
+    # SPEED-13: developer hit a quota pause — duration keeps wall meaning,
+    # active_seconds excludes the sleep, quota_pause_end reports it separately.
+    {"event": "quota_pause_end", "session_id": "w-1", "agent": "developer",
+     "sleep_seconds": 600, "ts": "2026-07-01T10:40:00Z"},
     {"event": "agent_invocation_end", "session_id": "w-1", "agent": "developer",
-     "exit_status": 0, "duration_seconds": 2400, "retries": 0, "ts": "2026-07-01T10:48:00Z"},
+     "exit_status": 0, "duration_seconds": 2400, "quota_sleep_seconds": 600,
+     "active_seconds": 1800, "retries": 0, "ts": "2026-07-01T10:48:00Z"},
+    {"event": "engine_step", "session_id": "w-1", "step": "lean-pipeline",
+     "duration_seconds": 3000, "ts": "2026-07-01T10:48:00Z"},
     {"event": "step_skipped", "session_id": "w-1", "step": "reviewer",
      "iter_name": "goal-w-iter-1", "ts": "2026-07-01T10:48:01Z"},
-    {"event": "engine_step", "session_id": "w-1", "step": "lean-pipeline",
-     "duration_seconds": 900, "ts": "2026-07-01T11:03:00Z"},
-    {"event": "engine_step", "session_id": "w-1", "step": "showcase-join",
-     "duration_seconds": 60, "ts": "2026-07-01T11:04:00Z"},
     {"event": "dispatch_wait", "session_id": "w-1", "agent": "browser-qa-agent",
      "wait_seconds": 120, "run_seconds": 1100, "status": "ok", "ts": "2026-07-01T11:10:00Z"},
     {"event": "agent_invocation_end", "session_id": "w-1", "agent": "browser-qa-agent",
@@ -646,17 +664,21 @@ def _self_test() -> int:
         if it1["wall_seconds"] != 5160:  # 10:00:00 → 11:26:00
             print(f"FAIL: iter-1 wall {it1['wall_seconds']} != 5160", file=sys.stderr)
             return 1
-        if it1["agents"]["developer"]["seconds"] != 2400:
-            print("FAIL: developer seconds attribution", file=sys.stderr)
+        # SPEED-13: active_seconds (1800) preferred over duration_seconds (2400)
+        if it1["agents"]["developer"]["seconds"] != 1800:
+            print("FAIL: developer active-seconds attribution", file=sys.stderr)
+            return 1
+        if it1["quota_sleep_seconds"] != 600:
+            print("FAIL: quota_pause_end attribution", file=sys.stderr)
+            return 1
+        if it1["engine_steps"].get("lean-pipeline") != 3000:
+            print(f"FAIL: engine_steps {it1['engine_steps']}", file=sys.stderr)
             return 1
         if it1["skipped_steps"] != ["reviewer"]:
             print(f"FAIL: skipped steps {it1['skipped_steps']}", file=sys.stderr)
             return 1
         if it1["pump_wait_seconds"] != 120:
             print("FAIL: pump wait attribution", file=sys.stderr)
-            return 1
-        if it1["engine_steps"] != {"lean-pipeline": 900, "showcase-join": 60}:
-            print(f"FAIL: engine step attribution: {it1['engine_steps']}", file=sys.stderr)
             return 1
         if it1["depth"] != "lean" or it1["verdict"] != "CONTINUE" or not it1["complete"]:
             print("FAIL: iter-1 metadata", file=sys.stderr)
@@ -667,18 +689,10 @@ def _self_test() -> int:
         text = render_wall_text(report)
         for needle in ("goal-w-iter-1", "developer", "resume-skipped: reviewer",
                        "pump-wait", "incomplete/interrupted",
-                       "engine:lean-pipeline", "engine:showcase-join"):
+                       "[engine] lean-pipeline", "quota-pauses"):
             if needle not in text:
                 print(f"FAIL: wall render missing '{needle}'", file=sys.stderr)
                 return 1
-        # Glue math: engine-step seconds must move OUT of the residual. iter-1
-        # wall=5160, agents=480+2400+1220+240+900=5240 > wall → without engine
-        # steps this already reads "overlap saved"; assert the attributed total
-        # includes the 960 engine seconds (overlap line grows accordingly).
-        it1_block = text.split("goal-w-iter-2")[0]
-        if "overlap saved" not in it1_block:
-            print("FAIL: iter-1 should show overlap line with engine steps counted", file=sys.stderr)
-            return 1
         only2 = render_wall_text(report, iter_filter=2)
         if "goal-w-iter-2" not in only2 or "goal-w-iter-1" in only2:
             print("FAIL: --iter filter", file=sys.stderr)

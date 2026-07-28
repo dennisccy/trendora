@@ -35,6 +35,9 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/common.sh"
+# SPEED-15: wall-clock budget clock — measure from the engine's iteration start
+# (exported CHAIN_ITER_START_EPOCH), not this child process's start.
+if declare -F iter_budget_init >/dev/null 2>&1; then iter_budget_init; fi
 source "$SCRIPT_DIR/lib/telemetry.sh"
 # Deterministic regression-replay lane — ONE implementation shared with the
 # FULL pipeline's browser-qa step (browser-qa-phase.sh). The tag keeps this
@@ -545,13 +548,17 @@ _bqa_tripwire_active() {
   return 0
 }
 
-# Knob: CHAIN_LEAN_PARALLEL_BROWSER_QA=off|replay|full, default off (G4).
+# Knob: CHAIN_LEAN_PARALLEL_BROWSER_QA=off|replay|full, default replay
+# (SPEED-11 flipped off→replay: the fork shipped default-off per G4 in SPEED-2,
+# was benchmarked, and carries its own tripwire — 2-of-3 attempt-1 review FAILs
+# disable it for the session. The replay lane is model-free python, safe on
+# both backends; rollback = CHAIN_LEAN_PARALLEL_BROWSER_QA=off).
 # "full" (SPEED-3: fork the whole section, LLM lane included) is HEADLESS-ONLY:
 # on the interactive backend, killing the engine-side waiter would strand the
 # pump's subagent against a request nobody reads (stale req/res files are only
 # cleaned at engine start) — that cancellation gap is EXP-4's, so interactive
 # demotes full → replay with a logged warning. Unrecognized values fall to off.
-_BQA_REQUESTED="${CHAIN_LEAN_PARALLEL_BROWSER_QA:-off}"
+_BQA_REQUESTED="${CHAIN_LEAN_PARALLEL_BROWSER_QA:-replay}"
 _BQA_MODE="off"
 _BQA_OFF_REASON=""
 case "$_BQA_REQUESTED" in
@@ -578,6 +585,11 @@ if [[ "$_BQA_MODE" == "replay" || "$_BQA_MODE" == "full" ]]; then
     echo "[goal-iter-lean] jq unavailable — the SPEED-2 tripwire cannot be evaluated, so the parallel browser-qa fork stays off." >&2
     _BQA_MODE="off"; _BQA_OFF_REASON="no-jq"
   fi
+fi
+# SPEED-9 evidence micro-path: no review loop runs, so there is nothing for a
+# browser-qa fork to overlap — the section runs inline.
+if [[ "${CHAIN_LEAN_EVIDENCE_ONLY:-false}" == "true" && "$_BQA_MODE" != "off" ]]; then
+  _BQA_MODE="off"; _BQA_OFF_REASON="evidence-mode"
 fi
 # Name the knob state every iteration (mirrors run-goal.sh's iter_config event).
 record_telemetry_event "iter_config" "$(jq -cn --arg k "CHAIN_LEAN_PARALLEL_BROWSER_QA" --arg v "$_BQA_MODE" --arg req "$_BQA_REQUESTED" --arg r "$_BQA_OFF_REASON" '{key:$k, value:$v, requested:$req, reason:$r}' 2>/dev/null || printf '{"key":"CHAIN_LEAN_PARALLEL_BROWSER_QA","value":"%s"}' "$_BQA_MODE")"
@@ -854,7 +866,16 @@ The report MUST start with a line matching exactly:
 # aborts the iteration as before (set -e semantics, now with the code preserved).
 # Resume-skip: handoff on disk + the tree exactly where this iteration last
 # left it → the ~41-min build is already done, don't redo it.
-if step_done_valid developer --verify-tree --dir "$ITER_DIR" "$DEV_HANDOFF"; then
+if [[ "${CHAIN_LEAN_EVIDENCE_ONLY:-false}" == "true" ]]; then
+  # SPEED-9 evidence micro-path: the spec's only deliverable is visual evidence
+  # for already-working journeys — no build work. Stub the dev handoff so the
+  # evaluator's input set stays complete; re-runs are idempotent (no checkpoint).
+  echo "[goal-iter-lean] EVIDENCE mode: skipping developer (no code changes planned)."
+  if [[ ! -s "$DEV_HANDOFF" ]]; then
+    printf '# Dev Handoff — %s\n\nEvidence-only iteration: no code changes were planned or made.\nThe pipeline captured fresh visual evidence for the Target journeys instead;\nsee the browser test results and this iteration'"'"'s demo recording.\n' "$ITER_NAME" > "$DEV_HANDOFF"
+  fi
+  _step_skipped_event "developer"
+elif step_done_valid developer --verify-tree --dir "$ITER_DIR" "$DEV_HANDOFF"; then
   _step_skipped_event "developer"
 else
   step_invalidate_from developer "$ITER_DIR"
@@ -867,8 +888,9 @@ fi
 
 # TOKEN-7 build 1: the round-1 review packet. Ordering is load-bearing — this
 # sits BEFORE both fork spawn points below (same stale-write discipline as the
-# forks' own kill-then-invalidate rule).
-_build_review_packet_or_degrade
+# forks' own kill-then-invalidate rule). Evidence mode has no reviewer, so no
+# packet is built (SPEED-9).
+[[ "${CHAIN_LEAN_EVIDENCE_ONLY:-false}" == "true" ]] || _build_review_packet_or_degrade
 
 # ── SPEED-2 fork: service boot + deterministic replay ∥ review ────────────
 # Forked HERE — right after the developer step settles — because review and
@@ -950,7 +972,16 @@ fi
 # Resume-skip: the marker alone is never trusted — the report must live-parse
 # to a verdict (a FAIL report still routes into the fix branch below, exactly
 # as a freshly written FAIL would).
-if { step_done_valid review-1 --dir "$ITER_DIR" "$REVIEW_REPORT" \
+if [[ "${CHAIN_LEAN_EVIDENCE_ONLY:-false}" == "true" ]]; then
+  # SPEED-9 evidence micro-path: nothing was built, so there is nothing to
+  # review. The stub's PASS verdict line keeps every parser downstream honest
+  # about the shape while the body states no review occurred.
+  echo "[goal-iter-lean] EVIDENCE mode: skipping reviewer (no code changes to review)."
+  if [[ ! -s "$REVIEW_REPORT" ]]; then
+    printf '**Verdict:** PASS\n\nEvidence-only iteration: no code changes were made, so developer and reviewer were not dispatched. Nothing to review.\n' > "$REVIEW_REPORT"
+  fi
+  _step_skipped_event "reviewer"
+elif { step_done_valid review-1 --dir "$ITER_DIR" "$REVIEW_REPORT" \
      || step_done_valid review-2 --dir "$ITER_DIR" "$REVIEW_REPORT"; } && _review_parses; then
   _step_skipped_event "reviewer"
 else
@@ -1036,6 +1067,13 @@ if [[ "${CHAIN_LEAN_PARALLEL_COHERENCE:-true}" == "true" && -n "$ITER_DIR" \
   if step_done_valid coherence --verify-tree --dir "$ITER_DIR" "$COHERENCE_OUTPUT_LEAN" \
      && grep -qE '^\*\*Verdict:\*\* COHERENCE-(PASS|WARN|FAIL)' "$COHERENCE_OUTPUT_LEAN"; then
     _step_skipped_event "coherence-auditor"
+  elif [[ "${CHAIN_ZERO_CHANGE_SKIPS:-true}" == "true" ]] \
+       && { declare -F goal_product_diff_empty >/dev/null 2>&1 || source "$SCRIPT_DIR/lib/goal-gates.sh" 2>/dev/null; } \
+       && goal_product_diff_empty "$(cat "$ITER_DIR/snapshot-sha" 2>/dev/null || echo "")" "$REPO_ROOT"; then
+    # SPEED-14: empty product diff after the dev/review loop — nothing to
+    # audit, so don't burn a fork. run-goal.sh's sequential coherence step
+    # records the deterministic zero-change PASS for this case.
+    echo "[goal-iter-lean] coherence fork skipped — zero-change iteration (empty product diff); the engine records a deterministic PASS."
   else
     step_invalidate_from coherence "$ITER_DIR"
     rm -f "$_COH_RC_FILE"
@@ -1061,6 +1099,7 @@ if [[ "${CHAIN_LEAN_PARALLEL_COHERENCE:-true}" == "true" && -n "$ITER_DIR" \
   fi
 fi
 
+if declare -F iter_budget_check >/dev/null 2>&1; then iter_budget_check "browser-qa"; fi
 # ── Step 3: Browser QA ────────────────────────────────────────────────────
 # Determine if frontend work is implied. Lean iterations always test journeys,
 # so we always try to start the frontend; if it fails we mark all SKIPPED and
@@ -1131,6 +1170,17 @@ fi
 # never read demo artifacts, so its input set is unchanged. demo-phase.sh
 # boots its own services idempotently, so it no longer depends on this
 # script's still-warm ports.
+#
+# SPEED-9 exception — EVIDENCE mode records the walkthrough HERE, before the
+# evaluator reads. In plain lean the post-eval showcase ordering made a spec
+# whose deliverable was "record the walkthrough" structurally unpassable (the
+# desk-session iter-12 ESCALATE); the evidence micro-path exists for exactly
+# that deliverable, so the recording must precede evaluation.
+if [[ "${CHAIN_LEAN_EVIDENCE_ONLY:-false}" == "true" ]]; then
+  echo "[goal-iter-lean] EVIDENCE mode: recording the walkthrough BEFORE evaluation..."
+  bash "$SCRIPT_DIR/demo-phase.sh" "$ITER_NAME" \
+    || echo "[goal-iter-lean] demo-phase.sh exited non-zero — continuing (the evaluator scores from whatever evidence exists)."
+fi
 
 echo "[goal-iter-lean] Done. Iteration artifacts:"
 echo "  Dev handoff:   $DEV_HANDOFF"

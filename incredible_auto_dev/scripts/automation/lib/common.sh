@@ -878,6 +878,47 @@ escalate_model_off() {
   return 0
 }
 
+# ── Wall-clock iteration budget (SPEED-15, warn-first) ────────────────────────
+# CHAIN_ITER_TIME_BUDGET_SECONDS (default 0 = off; suggested operator value
+# 5400) + CHAIN_ITER_BUDGET_MODE (warn|trim, default warn). Checks run at step
+# boundaries ONLY — never mid-agent. warn: the first exceeded check logs loudly
+# and emits one iter_budget telemetry event per process. trim (opt-in): callers
+# may ALSO consult iter_budget_exceeded to skip showcase-class steps; the trim
+# ladder never touches developer/reviewer/evaluator/gates/confirm. The start
+# epoch crosses the engine→executor process boundary via CHAIN_ITER_START_EPOCH.
+
+iter_budget_init() {  # $1 = iteration start epoch (falls back to the exported one, then now)
+  _ITER_BUDGET_T0="${1:-${CHAIN_ITER_START_EPOCH:-$(date +%s)}}"
+  [[ "$_ITER_BUDGET_T0" =~ ^[0-9]+$ ]] || _ITER_BUDGET_T0="$(date +%s)"
+  _ITER_BUDGET_WARNED=""
+}
+
+iter_budget_exceeded() {
+  local budget="${CHAIN_ITER_TIME_BUDGET_SECONDS:-0}"
+  [[ "$budget" =~ ^[0-9]+$ && "$budget" -gt 0 && -n "${_ITER_BUDGET_T0:-}" ]] || return 1
+  (( $(date +%s) - _ITER_BUDGET_T0 > budget ))
+}
+
+iter_budget_check() {  # $1 = step label. Always returns 0 (a signal, never a gate).
+  iter_budget_exceeded || return 0
+  local elapsed=$(( $(date +%s) - ${_ITER_BUDGET_T0:-$(date +%s)} ))
+  if [[ -z "${_ITER_BUDGET_WARNED:-}" ]]; then
+    _ITER_BUDGET_WARNED=1
+    echo "[iter-budget] This iteration has run ${elapsed}s — over the ${CHAIN_ITER_TIME_BUDGET_SECONDS:-0}s budget (checked at: ${1:-?}; mode: ${CHAIN_ITER_BUDGET_MODE:-warn})." >&2
+    if declare -F record_telemetry_event >/dev/null 2>&1; then
+      record_telemetry_event "iter_budget" "$(printf '{"budget":%d,"elapsed":%d,"mode":"%s","at_step":"%s"}' \
+        "${CHAIN_ITER_TIME_BUDGET_SECONDS:-0}" "$elapsed" "${CHAIN_ITER_BUDGET_MODE:-warn}" "${1:-?}")" || true
+    fi
+  fi
+  return 0
+}
+
+# trim-mode consult: true only when the operator opted into trim AND the budget
+# is exceeded. Callers use it to skip showcase-class steps with a loud log.
+iter_budget_trim_active() {
+  [[ "${CHAIN_ITER_BUDGET_MODE:-warn}" == "trim" ]] && iter_budget_exceeded
+}
+
 # ── Hardening cadence (SPEED-4) ───────────────────────────────────────────────
 # The sharpened depth rubric makes lean the default; the cadence guarantees a
 # periodic full hardening pass so audit coverage cannot silently vanish on a
@@ -887,15 +928,18 @@ escalate_model_off() {
 # re-entry cannot double-count.
 
 # goal_lean_streak <session_dir> <current_iter>
-# Echoes the count of consecutive trailing `lean` dispatches over
-# iter-(N-1)..iter-1. A missing file or any non-lean value breaks the streak.
+# Echoes the count of consecutive trailing non-full dispatches over
+# iter-(N-1)..iter-1. A missing file or a `full` value breaks the streak.
 # iter-0 (baseline) is never counted — the loop floor is iter-1.
+# SPEED-9: `evidence` dispatches continue the streak like `lean` — they run no
+# audit either, so the hardening cadence must keep counting toward its next
+# full pass rather than resetting on an evidence hop.
 goal_lean_streak() {
   local session_dir="$1" current_iter="$2"
   local streak=0 i v
   for (( i = current_iter - 1; i >= 1; i-- )); do
     v="$(cat "$session_dir/iter-$i/depth-dispatched" 2>/dev/null || true)"
-    [[ "$v" == "lean" ]] || break
+    [[ "$v" == "lean" || "$v" == "evidence" ]] || break
     streak=$((streak + 1))
   done
   echo "$streak"
@@ -904,12 +948,15 @@ goal_lean_streak() {
 # goal_cadence_forces_full <streak> <current_iter>
 # True iff the hardening cadence demands a full pass now: K>0 AND
 # current_iter>K (never fires in a session's opening window, where iter-0 is
-# the baseline) AND streak>=K. K = CHAIN_HARDENING_CADENCE, default 4, 0
-# disables the cadence entirely.
+# the baseline) AND streak>=K. K = CHAIN_HARDENING_CADENCE, default 6, 0
+# disables the cadence entirely. (SPEED-10 raised the default 4→6: with the
+# full-trigger allowlist keeping the ESCALATE/REGRESSION/structural paths
+# always-full, the cadence is a periodic audit backstop, not the primary
+# trigger — at K=4 it materially drove the 4-of-6-full waste.)
 goal_cadence_forces_full() {
   local streak="$1" current_iter="$2"
-  local k="${CHAIN_HARDENING_CADENCE:-4}"
-  [[ "$k" =~ ^[0-9]+$ ]] || k=4
+  local k="${CHAIN_HARDENING_CADENCE:-6}"
+  [[ "$k" =~ ^[0-9]+$ ]] || k=6
   (( k > 0 && current_iter > k && streak >= k ))
 }
 

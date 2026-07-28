@@ -1,7 +1,7 @@
 ---
 description: Run Goal Mode until the goal is achieved or an existing rule halts/pauses it, inside this Claude Code session (interactive dispatch — bills to your interactive plan allowance).
 argument-hint: "[session-id] [extra run-goal.sh flags]"
-allowed-tools: Bash(./scripts/automation/run-goal.sh:*), Bash(scripts/automation/goal-await-dispatch.sh:*), Bash(jq:*), Bash(cat:*), Bash(ls:*), Read, Task, Write
+allowed-tools: Bash(./scripts/automation/run-goal.sh:*), Bash(scripts/automation/goal-await-dispatch.sh:*), Bash(scripts/automation/host-guard-adopt.sh:*), Bash(jq:*), Bash(cat:*), Bash(ls:*), Bash(taskset:*), Read, Task, Write
 ---
 You are the **pump** for goal mode. Run the EXISTING goal-mode engine until the
 goal is achieved, blocked, halted, or paused by its existing rules. Do NOT add
@@ -12,10 +12,19 @@ First read `.claude/skills/goal-interactive-dispatch.md` and follow it exactly.
 1. **Session id:** parse `$ARGUMENTS`. The first token is the session id; if there
    is no first token, generate one like `interactive-<YYYY-MM-DD>-<short>` and
    tell the user what you chose. Any remaining tokens are passthrough flags.
-2. **Launch the engine** in the background (Bash with run_in_background) and
+2. **Host-guard confinement** (only when `project-extensions/host-guard/host-guard.env`
+   exists with `HOST_GUARD_ENABLED=1`): run
+   `scripts/automation/host-guard-adopt.sh --cli-root-of $$` — it confines THIS
+   already-running CLI session (and everything it will spawn) to the declared
+   caps, in place; instant and idempotent when already confined. No special
+   launch command is required. Only if it prints `FAILED`, tell the user to
+   relaunch via `scripts/automation/host-guard-exec.sh claude` (the from-birth
+   wrapper) — the engine's iteration gate re-verifies each iteration and would
+   pause (AWAITING_HOST_GUARD, resumable) on an unconfinable pump.
+3. **Launch the engine** in the background (Bash with run_in_background) and
    capture its PID:
    `./scripts/automation/run-goal.sh --session-id <sid> --interactive <passthrough flags>`
-3. **Run the pump loop** from the skill: await requests with
+4. **Run the pump loop** from the skill: await requests with
    `scripts/automation/goal-await-dispatch.sh` (foreground, `--max-wait 500`),
    dispatch each returned request as a subagent (`subagent_type` = the request's
    `agent`, `prompt` passed verbatim; pass the request's `model` as the Agent
@@ -29,7 +38,7 @@ First read `.claude/skills/goal-interactive-dispatch.md` and follow it exactly.
    pauses, and in the final status block. The full chain narrative is in the
    timestamped `runs/goal-session-<sid>/engine.log` (tell the user to `tail -f`
    it); you do not read it.
-4. **On exit**, read `runs/goal-session-<sid>/session.json` and report the final
+5. **On exit**, read `runs/goal-session-<sid>/session.json` and report the final
    `status` and the next step.
 
 This runs the work as interactive subagents in THIS session (billed to your

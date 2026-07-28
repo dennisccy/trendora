@@ -3,7 +3,7 @@
 One file per numbered entry, split from the former monolith (CTX-12) so a reader loads
 only what matches the situation: scan this index, open the matching `<NN>-<slug>.md`,
 nothing else. Numbering is FROZEN forever — files keep their original `## <N>. <title>`
-headings; the next new entry takes the next free number (26) as `<NN>-<slug>.md` plus a
+headings; the next new entry takes the next free number (27) as `<NN>-<slug>.md` plus a
 row here (maintenance protocol §2).
 
 | # | Entry | Applies when | Rule (one line) |
@@ -31,5 +31,6 @@ row here (maintenance protocol §2).
 | 21 | [21-shared-tmp-accumulation.md](21-shared-tmp-accumulation.md) | temp files | Per-run TMPDIR isolation via chain-tmp.sh; never raw shared /tmp |
 | 22 | [22-scanner-flags-own-output.md](22-scanner-flags-own-output.md) | scan scoping | Scan the product; exclude the pipeline's own bookkeeping paths |
 | 23 | [23-prompt-argv-execve.md](23-prompt-argv-execve.md) | passing prompts to child processes | Prompt-sized content goes via stdin or file, never argv/env |
-| 24 | [24-styled-verdict-cells-unparsed.md](24-styled-verdict-cells-unparsed.md) | parsing verdicts out of agent markdown | Normalize emphasis and annotations; absence-of-verdict is never PASS |
-| 25 | [25-plan-line-suppresses-lane.md](25-plan-line-suppresses-lane.md) | gating a verification lane | Gate lanes on engine-parsed facts, not model-written plan prose |
+| 24 | [24-evidence-chasing-iterations.md](24-evidence-chasing-iterations.md) | evaluator/decomposer evidence demands | Evidence expires with change, not time; capture gaps ride the make-up lane or Depth: evidence — never an iteration goal |
+| 25 | [25-styled-verdict-cells-unparsed.md](25-styled-verdict-cells-unparsed.md) | parsing verdicts out of agent markdown | Normalize emphasis and annotations; absence-of-verdict is never PASS |
+| 26 | [26-plan-line-suppresses-lane.md](26-plan-line-suppresses-lane.md) | gating a verification lane | Gate lanes on engine-parsed facts, not model-written plan prose |

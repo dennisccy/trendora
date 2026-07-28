@@ -1,4 +1,4 @@
-## 25. A plan metadata line can silently suppress an entire verification lane
+## 26. A plan metadata line can silently suppress an entire verification lane
 
 **Applies to:** goal mode; any pipeline step whose execution is gated on a model-written metadata line rather than on the work the spec demands.
 
