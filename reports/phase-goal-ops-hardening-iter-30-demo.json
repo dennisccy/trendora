@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-30",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Evidence page",
+      "narration": "This iteration refactored the forward aggregate calculator to use bounded memory. Let's verify the Evidence page still loads with all its claim cards intact.",
+      "point_out": "The page shows 7 claim cards, each with its title and badge fully rendered.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/evidence"
+      },
+      "expect": {
+        "text": "Evidence"
+      }
+    },
+    {
+      "n": 2,
+      "title": "Scroll to the drawdown expectations table",
+      "narration": "The backend now chunks its accumulators, so the historical data tables should load without memory pressure.",
+      "point_out": "The first card's 'Historical drawdown & dry-spell expectations' table shows real figures like phases, max drawdown depth, and time to recover.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "heading",
+          "name": "Historical drawdown & dry-spell expectations"
+        }
+      },
+      "expect": {
+        "text": "Phase"
+      }
+    },
+    {
+      "n": 3,
+      "title": "Verify the Backtest page",
+      "narration": "The core backtest computation is unchanged; its caller now uses bounded accumulation.",
+      "point_out": "The page displays the dataset coverage panel with real metrics (price history range, universe size, trading days).",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/backtest"
+      },
+      "expect": {
+        "text": "Dataset coverage"
+      }
+    },
+    {
+      "n": 4,
+      "title": "Open Factor Lab to spot-check research surface",
+      "narration": "Factor Lab shares a similar join pattern that this iteration fixed in a sibling function. Let's confirm it loads.",
+      "point_out": "The page shows the Factor Lab heading and the factors table renders with real Rank-IC values.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {
+        "type": "goto",
+        "url": "/research/factor-lab"
+      },
+      "expect": {
+        "text": "Research"
+      }
+    }
+  ]
+}

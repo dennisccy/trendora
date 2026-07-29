@@ -1,0 +1,20 @@
+{
+  "phase": "goal-ops-hardening-iter-30",
+  "status": "blocked",
+  "current_step": "closure_failed",
+  "updated_at": "2026-07-29T02:45:19.384681Z",
+  "started_at": "2026-07-29T00:42:43.934563Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/forward_testing.py",
+    "apps/backend/app/config.py",
+    "config.yaml",
+    "apps/backend/tests/test_forward_testing_aggregates_streaming.py",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-30-dev.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "goal_evaluator"
+}

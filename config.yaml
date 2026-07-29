@@ -799,6 +799,14 @@ walk_forward:
   # smaller floor).
   underwater_horizons: [1, 5, 10, 20, 60]
   streak_min_n: 10
+  # ops-hardening iter-30 (AG-8, J-07) — the RUN-COUNT width of compute_forward_aggregates's OWN
+  # join-accumulator chunk (forward_testing.py). A DIFFERENT knob from research.read_batch_size (a ROWS
+  # count for yield_per) and research.factor_join_run_chunk (a different function's own run-chunk knob) —
+  # iter-29's binding lesson: reusing another function's knob as a run width can produce exactly one
+  # chunk and 0% peak reduction on the live basis. Peak live accumulator = this x symbols-per-run (~417
+  # measured), so 100 runs/chunk holds ~42K pairs instead of the full ~770K-803K per horizon (1,813-1,872
+  # distinct runs/horizon measured live, 2026-07-29). Must stay well below the live run count. Boot-validated >= 1.
+  forward_agg_run_chunk: 100
 
 # ----------------------------------------------------------------------------------------
 # iter-18 (J-10 performance) — GET /api/stocks/{ticker}/bars presentation bounding on the deep

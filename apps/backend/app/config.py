@@ -743,7 +743,17 @@ class WalkForwardCfg(BaseModel):
       - `streak_min_n` — the loss-streak honesty floor: a phase's longest-losing-streak cell needs at least
         this many WALK-FORWARD-CADENCE dates (not raw per-observation n, which `min_sample` already floors)
         before it is shown as a real value rather than "insufficient (n=…)". Distinct from `min_sample`
-        because cadence dates are far fewer than per-observation rows."""
+        because cadence dates are far fewer than per-observation rows.
+
+    ops-hardening iter-30 (AG-8, J-07) ADDITIVE key, consumed by `app.engine.forward_testing.compute_
+    forward_aggregates`:
+      - `forward_agg_run_chunk` — the RUN-COUNT width of `compute_forward_aggregates`'s own join-accumulator
+        chunk (its OWN dedicated knob — never `research.read_batch_size`, a ROWS knob for `yield_per`, and
+        never `research.factor_join_run_chunk`, a DIFFERENT function's own run-chunk knob; iter-29's binding
+        lesson on unit/ownership mismatch is exactly the failure mode this separate key avoids). Peak live
+        accumulator = this x symbols-per-run (~417 on the live basis), so it must stay well below the live
+        distinct-run count per horizon (1,813-1,872 today) to bind at all. Defaulted so a config predating it
+        (and the inline test fixtures) still loads unchanged; boot-validated `>= 1`."""
 
     model_config = ConfigDict(extra="allow")
     history_years: int
@@ -755,6 +765,7 @@ class WalkForwardCfg(BaseModel):
     attribution: AttributionCfg
     underwater_horizons: list[int] = Field(min_length=1)
     streak_min_n: int
+    forward_agg_run_chunk: int = 100
 
     @model_validator(mode="after")
     def _validate(self) -> "WalkForwardCfg":
@@ -773,6 +784,8 @@ class WalkForwardCfg(BaseModel):
             raise ValueError("walk_forward.underwater_horizons must all be positive")
         if self.streak_min_n <= 0:
             raise ValueError("walk_forward.streak_min_n must be positive")
+        if self.forward_agg_run_chunk < 1:
+            raise ValueError("walk_forward.forward_agg_run_chunk must be >= 1")
         return self
 
 

@@ -14,14 +14,28 @@ rewritten function still uses. Any divergence between the real function's output
 therefore only come from the two rewritten read steps, never from a second aggregation formula — this is
 the "capture the original's output ... or keep a reference implementation in the test" fixture-backed
 equality proof the iter-14 plan calls for (TC-1/TC-2).
+
+ops-hardening iter-30 (AG-8, J-07) ADDITIVE section (bottom of this file): streaming the two source
+queries was not enough on its own — the JOIN ACCUMULATOR built from those streamed rows
+(`ret_by_run_symbol`/`mdd_by_run_symbol`, exactly what `_reference_compute_forward_aggregates` above still
+builds via one un-sliced `.all()`) still held every distinct (run_id, symbol) pair of the FULL
+horizon-partition at once (770K-803K measured live per horizon) — the confirmed live `MemoryError` site
+this iteration bounds via `_forward_agg_slice_map` + `walk_forward.forward_agg_run_chunk`-sized run
+slices. Because `_reference_compute_forward_aggregates` never chunks, it doubles as the byte-identity
+oracle for the run-chunking dimension too (reused, not re-pinned a second time) — the new tests below
+compare the SAME real `compute_forward_aggregates` against this SAME reference, just varying
+`forward_agg_run_chunk` instead of `research.read_batch_size`.
 """
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+import sqlite3
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 from sqlmodel import Session, select
 
+import app.engine.forward_testing as forward_testing_module
 from app.config import load_config
 from app.db import create_db_and_tables, make_engine
 from app.engine.forward_testing import (
@@ -39,6 +53,9 @@ from app.engine.forward_testing import (
 )
 from app.engine.setups import ALL_STATUSES
 from app.models import ForwardReturn, ScannerResult, ScannerRun
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+REAL_DB = REPO_ROOT / "apps/backend/data/trendora.db"
 
 # --------------------------------------------------------------------------------------------------
 # Pinned pre-rewrite reference implementation (the two `.all()` reads this iteration replaces)
@@ -301,3 +318,251 @@ def test_compute_forward_aggregates_zero_fr_run_excluded_from_runs_with_fr(multi
         reference_payload = _reference_compute_forward_aggregates(session, 20, cfg, as_of=None)
     assert "2025-06-15" not in new_payload["asof_dates"]
     assert new_payload == reference_payload
+
+
+# ====================================================================================================
+# ops-hardening iter-30 (AG-8, J-07) — `compute_forward_aggregates`'s OWN join-accumulator chunking.
+#
+# iter-14 above bounded the two SOURCE queries (streamed `.all()` -> `yield_per`); iter-30 bounds the
+# CONTAINER those streamed rows land in (`ret_by_run_symbol`/`mdd_by_run_symbol`, still built as one
+# un-sliced accumulator by `_reference_compute_forward_aggregates` above), which iter-29's audit found
+# still held every distinct (run_id, symbol) pair of the FULL horizon-partition at once — the confirmed
+# live `MemoryError` site (`forward_testing.py:965`). `_forward_agg_slice_map` + `walk_forward.
+# forward_agg_run_chunk` (its OWN dedicated RUN-count knob — never `research.read_batch_size`, a ROWS
+# knob, or `research.factor_join_run_chunk`, a different function's own knob) replace it with bounded,
+# per-run-id-slice accumulation. `_reference_compute_forward_aggregates` never chunks by run, so it is
+# reused (not re-pinned) as the byte-identity oracle for this dimension too.
+# ====================================================================================================
+def _cfg_run_chunk(run_chunk: int):
+    """The real config with `walk_forward.forward_agg_run_chunk` overridden (chunk-width probe) — mirrors
+    the row-batch `cfg.model_copy(update={"research": ...})` override pattern used above, for this
+    iteration's own dedicated run-count knob."""
+    cfg = load_config()
+    wf = cfg.walk_forward.model_copy(update={"forward_agg_run_chunk": run_chunk})
+    return cfg.model_copy(update={"walk_forward": wf})
+
+
+def test_forward_agg_run_chunk_accumulator_is_bounded(multi_run_engine, monkeypatch):
+    """TC-1: `compute_forward_aggregates`'s join accumulator (`_forward_agg_slice_map`'s return value,
+    observed via monkeypatch) never holds more entries than ONE bounded chunk at any point — never one
+    entry per distinct (run_id, symbol) pair across the whole 4-run (excluding the zero-FR 5th run)
+    fixture (8 stocks + 4 benchmarks = 12 symbols/run)."""
+    cfg = _cfg_run_chunk(1)  # 4 runs at width 1 -> 4 slices, one run id each
+    observed_sizes: list[int] = []
+    real_slice_map = forward_testing_module._forward_agg_slice_map
+
+    def _wrapped(session, horizon, slice_run_ids, batch):
+        result = real_slice_map(session, horizon, slice_run_ids, batch)
+        observed_sizes.append(len(result))
+        return result
+
+    monkeypatch.setattr(forward_testing_module, "_forward_agg_slice_map", _wrapped)
+    with Session(multi_run_engine) as session:
+        agg = compute_forward_aggregates(session, 20, cfg)
+
+    total_pairs = 4 * (len(_STOCKS) + len(_BENCHMARKS))  # 4 runs x 12 symbols = 48, if ever unbounded
+    assert agg["n_runs"] == 4, "sanity: the zero-FR 5th run must stay excluded"
+    assert len(observed_sizes) == 4, f"expected 4 chunks (4 run ids at width 1), got {len(observed_sizes)}"
+    assert max(observed_sizes) == len(_STOCKS) + len(_BENCHMARKS), (
+        f"a single run's own slice must hold exactly its own symbol count, got {observed_sizes}"
+    )
+    assert max(observed_sizes) < total_pairs, (
+        "the live accumulator must never hold the WHOLE fixture's pairs at once"
+    )
+
+
+@pytest.mark.parametrize("run_chunk", [1, 2, 4, 100])
+@pytest.mark.parametrize("as_of", [None, HISTORICAL_AS_OF])
+def test_compute_forward_aggregates_chunked_equals_reference_across_run_chunk_widths(
+    multi_run_engine, run_chunk, as_of
+):
+    """TC-2: for EVERY configured horizon, the chunked `compute_forward_aggregates` stays byte-identical
+    to the pinned (never-chunks-by-run) reference at run-chunk widths that produce 1 chunk (100, >= the
+    4-run fixture), an even split (2), and maximum fragmentation (1, one run per chunk) — with and
+    without `as_of`."""
+    cfg = _cfg_run_chunk(run_chunk)
+    with Session(multi_run_engine) as session:
+        for horizon in HORIZONS:
+            new_payload = compute_forward_aggregates(session, horizon, cfg, as_of=as_of)
+            reference_payload = _reference_compute_forward_aggregates(session, horizon, cfg, as_of=as_of)
+            assert new_payload == reference_payload, (
+                f"chunked != reference at run_chunk={run_chunk} horizon={horizon} as_of={as_of}"
+            )
+
+
+def test_forward_agg_run_chunk_boundary_never_splits_a_run(multi_run_engine):
+    """Error case: a chunk boundary adjacent to (or isolating) every run must not double-count or drop
+    that run's contribution — proved directly (not just via the full-dict equality above) by pinning a
+    specific by-regime count/mean at maximum fragmentation (run_chunk=1) against the SAME figures at zero
+    fragmentation (run_chunk=100, one chunk): r0/r3 are Risk-off, r1/r2 are Risk-on (2 runs each), so
+    Risk-on's `n` must be exactly 2 runs' worth of stock observations at both widths, never doubled or
+    dropped by isolating each run into its own chunk."""
+    horizon = 20
+    with Session(multi_run_engine) as session:
+        fragmented = compute_forward_aggregates(session, horizon, _cfg_run_chunk(1))
+        single_chunk = compute_forward_aggregates(session, horizon, _cfg_run_chunk(100))
+    frag_regime = {r["regime"]: r for r in fragmented["by_regime"]}
+    single_regime = {r["regime"]: r for r in single_chunk["by_regime"]}
+    for label in ("Risk-on", "Risk-off"):
+        assert frag_regime[label]["n"] == single_regime[label]["n"] == 2 * len(_STOCKS)
+        assert frag_regime[label]["mean_return"] == pytest.approx(single_regime[label]["mean_return"])
+
+
+@pytest.fixture()
+def sparse_chunk_engine(tmp_path):
+    """A run (r_sparse) that DOES carry a forward return (so it legitimately enters `runs_with_fr` and its
+    chunk IS processed) but whose OWN scored ticker has NO matching forward return at all — an
+    ALL-EXCLUDED chunk (zero qualifying `stock_obs` rows) when isolated at `forward_agg_run_chunk=1`, the
+    error case a run-chunked merge must survive without crashing or fabricating a value."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'sparse_chunk.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        run = ScannerRun(
+            asof_date=date(2025, 8, 1), created_at=_utc(), provider="seed", benchmark="SPY",
+            regime_score=50.0, regime_label="Risk-on", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        )
+        session.add(run)
+        session.flush()
+        # scored, but NEVER given a ForwardReturn at any horizon -> always excluded, never fabricated
+        session.add(ScannerResult(
+            run_id=run.id, ticker="NOFR", name="NOFR", sector="Technology",
+            leadership_score=50.0, leadership_bucket="A", entry_quality_score=0.0, entry_quality_bucket="E",
+            risk_score=0.0, risk_bucket="E", setup_status="Actionable", rank=1, record_json="{}",
+        ))
+        # the ONLY forward return this run carries is a benchmark's -> the run legitimately enters
+        # runs_with_fr / the SPY benchmark list, even though its own chunk yields zero stock_obs rows.
+        session.add(ForwardReturn(
+            run_id=run.id, symbol="SPY", horizon=20, asof_date=date(2025, 8, 1),
+            entry_close=100.0, measured_date=date(2025, 9, 1), realized_return=0.07, max_drawdown=-0.03,
+        ))
+        session.commit()
+    return engine
+
+
+def test_forward_agg_all_excluded_chunk_does_not_crash_the_merge(sparse_chunk_engine):
+    """Error case: an all-excluded chunk (zero qualifying `stock_obs` observations) must not crash the
+    merge, and must never fabricate a value for the excluded ticker — it simply contributes nothing, while
+    the run still legitimately counts via its own benchmark return."""
+    cfg = _cfg_run_chunk(1)  # isolates the sparse run into its own (all-excluded) chunk
+    with Session(sparse_chunk_engine) as session:
+        agg = compute_forward_aggregates(session, 20, cfg)
+    assert agg["n_runs"] == 1, "the run still legitimately enters runs_with_fr via its SPY return"
+    assert agg["overall"]["n"] == 0, "NOFR has no forward return anywhere -> zero stock observations"
+    assert agg["excess"]["vs_spy"]["benchmark_n"] == 1
+    assert agg["excess"]["vs_spy"]["benchmark_mean"] == pytest.approx(0.07)
+    tickers = {
+        row["ticker"]
+        for row in agg["attribution"]["per_stock"]["contributors"] + agg["attribution"]["per_stock"]["detractors"]
+    }
+    assert "NOFR" not in tickers
+
+
+# ----------------------------------------------------------------------------------------------------
+# TC-3 — the SHIPPED `walk_forward.forward_agg_run_chunk` must actually chunk on the live basis
+# (iter-29's binding lesson: a knob that degenerates to one chunk on the real basis binds nothing).
+# ----------------------------------------------------------------------------------------------------
+# The live basis measured during the iter-30 audit (direct read of the committed `trendora.db`,
+# 2026-07-29): 1,813-1,872 distinct scanner runs per horizon. A run-chunk width at/above the run count
+# degenerates to a single chunk, so the shipped width must stay well below it with room for years of
+# further daily-cadence growth; 500 is the loosest ceiling that still forces real chunking on today's
+# basis (>=3 chunks) and would have caught a shipped value re-using `research.read_batch_size` (2000).
+_MAX_MEANINGFUL_RUN_CHUNK = 500
+
+
+def test_shipped_forward_agg_run_chunk_actually_binds_on_the_live_basis():
+    """The SHIPPED `walk_forward.forward_agg_run_chunk` must be small enough to produce real chunking
+    against a multi-year daily-cadence basis — the regression guard for iter-29's binding lesson (a width
+    reused from another function's own knob, or otherwise too close to the live run count, means one
+    chunk and zero peak reduction, while every unit proof still passes because it typically overrides the
+    knob to a small fixture-sized value)."""
+    width = load_config().walk_forward.forward_agg_run_chunk
+    assert 1 <= width <= _MAX_MEANINGFUL_RUN_CHUNK, (
+        f"walk_forward.forward_agg_run_chunk={width} cannot bound the join accumulator on the live basis "
+        f"(1,813-1,872 distinct runs/horizon): it must be <= {_MAX_MEANINGFUL_RUN_CHUNK}"
+    )
+
+
+def test_forward_aggregates_chunks_at_the_shipped_config(tmp_path, monkeypatch):
+    """The accumulator is chunk-bounded under the SHIPPED config — no override. Builds a fixture with
+    (shipped width + 3) runs so real chunking is REQUIRED, then asserts `compute_forward_aggregates` made
+    >= 2 slice reads and no single slice ever held the whole fixture's (run_id, symbol) pairs."""
+    cfg = load_config()  # the REAL config.yaml — deliberately NOT overridden
+    width = cfg.walk_forward.forward_agg_run_chunk
+    horizon = cfg.walk_forward.horizons[0]
+    n_runs, tickers = width + 3, ("AA", "BB")
+    engine = make_engine(f"sqlite:///{tmp_path / 'shipped_chunk.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        for i in range(n_runs):
+            run = ScannerRun(
+                asof_date=date(2025, 1, 1) + timedelta(days=i), created_at=_utc(),
+                provider="seed", benchmark="SPY", regime_score=50.0, regime_label="Risk-on",
+                regime_components_json="[]", new_high_low_json="{}", candidate_counts_json="{}",
+            )
+            session.add(run)
+            session.flush()
+            for j, base in enumerate(tickers):
+                ticker = f"{base}{i}"
+                session.add(ScannerResult(
+                    run_id=run.id, ticker=ticker, name=ticker, sector="Technology",
+                    leadership_score=50.0, leadership_bucket="A", entry_quality_score=0.0,
+                    entry_quality_bucket="E", risk_score=0.0, risk_bucket="E",
+                    setup_status="Actionable", rank=j + 1, record_json="{}",
+                ))
+                session.add(ForwardReturn(
+                    run_id=run.id, symbol=ticker, horizon=horizon, asof_date=run.asof_date,
+                    entry_close=100.0, measured_date=date(2025, 12, 31),
+                    realized_return=0.01 * (i + 1) + 0.001 * j, max_drawdown=-0.02,
+                ))
+        session.commit()
+
+    observed_sizes: list[int] = []
+    real_slice_map = forward_testing_module._forward_agg_slice_map
+
+    def _wrapped(session, h, slice_run_ids, batch):
+        result = real_slice_map(session, h, slice_run_ids, batch)
+        observed_sizes.append(len(result))
+        return result
+
+    monkeypatch.setattr(forward_testing_module, "_forward_agg_slice_map", _wrapped)
+    with Session(engine) as session:
+        agg = compute_forward_aggregates(session, horizon, cfg)
+
+    total_pairs = n_runs * len(tickers)
+    assert agg["overall"]["n"] == total_pairs, "sanity: every fixture pair must surface as an observation"
+    assert len(observed_sizes) >= 2, (
+        f"the SHIPPED config produced {len(observed_sizes)} chunk(s) over {n_runs} runs — the accumulator "
+        f"bound is inert at the real configuration (width={width})"
+    )
+    assert max(observed_sizes) <= width * len(tickers), "a slice exceeded its configured run-chunk width"
+    assert max(observed_sizes) < total_pairs, (
+        "the live accumulator must never hold the WHOLE fixture's pairs at once under the shipped config"
+    )
+
+
+def test_shipped_forward_agg_run_chunk_binds_against_the_real_committed_seed():
+    """TC-3 (literal): against the LIVE committed seed DB's ACTUAL distinct-run count for a representative
+    horizon (never a fixture-sized width) — read-only, no ORM/engine machinery, a single indexed
+    COUNT(DISTINCT run_id) query — the shipped chunk width produces more than one chunk. Skips when the
+    committed seed DB is absent (matches `test_start_backend_script.py`'s established `REAL_DB`
+    convention)."""
+    if not REAL_DB.exists():
+        pytest.skip(f"real committed seed DB not found at {REAL_DB} — nothing to measure against")
+    cfg = load_config()
+    width = cfg.walk_forward.forward_agg_run_chunk
+    horizon = cfg.walk_forward.default_horizon
+    conn = sqlite3.connect(f"file:{REAL_DB}?mode=ro", uri=True)
+    try:
+        cur = conn.execute(
+            "SELECT COUNT(DISTINCT run_id) FROM forward_returns WHERE horizon = ?", (horizon,)
+        )
+        (live_run_count,) = cur.fetchone()
+    finally:
+        conn.close()
+    assert live_run_count > 0, "sanity: the committed seed must carry forward returns at the default horizon"
+    n_chunks = (live_run_count + width - 1) // width
+    assert n_chunks > 1, (
+        f"walk_forward.forward_agg_run_chunk={width} against the LIVE seed's {live_run_count} distinct "
+        f"runs at horizon={horizon} produces only {n_chunks} chunk(s) — the bound is inert on the real basis"
+    )

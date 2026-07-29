@@ -302,3 +302,33 @@ same run's merged `ui-test-results.md` also OVERWROTE the earlier one that carri
 **Applies to:** any iteration where a golden script is rewritten or a merged results file is regenerated —
 the evaluator must diff the golden against its prior version and treat a REMOVED assertion as a status
 signal, not housekeeping; QA reports that regenerate a merged file should preserve prior FAIL rows.
+
+## iter-30 — 2026-07-29T03:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The canonical merged results file silently reported "PASS 6/6" while the authoritative
+browser-QA report said "FAIL 3/5" — `merge_ui_test_results.py`'s `_ROW_RE` matches only `UT-`-prefixed
+test ids, browser-qa emitted `TC-01..TC-07`, so all its rows were dropped AND its FAIL headline was
+discarded (the fallback never fires when the *other* input file's rows parse). Never accept the merged
+`ui-test-results.md` headline without opening the sibling `.llm.md`; and never treat an agent's prose
+claim that it "executed X and it passed" as evidence — the auditor's TC-07 replay claim this iteration
+left no artifact in `reports/`, `runs/`, the repo or TMPDIR.
+**Applies to:** every evaluation that reads a merged `ui-test-results.md`; any iteration whose browser-QA
+lane emits non-`UT-` test ids; any verdict that would rest on an audit-or-dev self-report rather than an
+openable file.
+
+## iter-30 — 2026-07-29T03:05:00Z (second entry)
+
+**Verdict:** CONTINUE
+**Lesson:** A memory bound can be real, measured, byte-identical — and still leave the crash in place,
+because it bounded the containers NEXT TO the failing allocation rather than the allocation itself. Here
+`ret_by_run_symbol`/`mdd_by_run_symbol` were chunked (-16.4% traced peak, -21.6% RSS) but `stock_obs`
+(`forward_testing.py:988`) — the literal frame of the production `MemoryError` — was left unbounded
+because bounding it required re-pinning `_attribution_slices`'s frozen test-asserted signature. The same
+shape repeats one module over: `research.py`'s `_all_factor_observations_by_horizon` bounded its
+accumulator at iter-29 and still crashes at `pools[h].append` because the RETURN VALUE is unbounded by
+design. When scoping a memory fix, name the exact frame from the traceback and require the plan to bound
+THAT — an "unbounded by design return shape" is not out of scope, it is the bug.
+**Applies to:** any iteration bounding memory in `forward_testing.py` / `research.py`; any plan whose
+IN SCOPE lists containers to bound — check each one against the failing traceback frame before accepting
+"partial scope, disclosed".

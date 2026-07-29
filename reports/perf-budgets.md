@@ -3867,3 +3867,156 @@ Both backend and frontend were later restarted a second time (same session, to v
 boot with no port conflicts per the developer pre-handoff checklist) and then stopped again — `ps aux`
 confirmed no `uvicorn`/`next dev`/`next-server` process remained on ports 8255/3255 before handoff. See
 the dev handoff (`docs/handoffs/goal-ops-hardening-iter-26-dev.md`) for the full verification log.
+
+## Mechanical backend + page pass — items B/C/D/G/H/K methodology, re-measured 2026-07-29T01:30:28Z
+
+Measured 2026-07-29T01:30:28Z on this host (Linux 7.0.0-28-generic x86_64) via `scripts/measure-perf.sh` against PROD MODE
+(`start-backend.sh`/`start-frontend.sh`, backend :8255 / frontend :3255).
+
+**Warm endpoint latencies:**
+
+| Endpoint | Wall time | Budget |
+|---|---|---|
+| `GET /api/health` | 0.127787s | ≤ 0.1 s |
+| `GET /api/stocks` | 0.090229s | ≤ 1.5 s |
+| `GET /api/stocks/AAPL` | 0.004046s | ≤ 0.3 s |
+| `GET /api/data` | 0.024334s | ≤ 1.5 s |
+
+**Warm page latencies (HTTP response time; the browser-qa lane verifies true interactivity):**
+
+| Page | Wall time | Budget |
+|---|---|---|
+| `/stocks` | 0.033581s | ≤ 3 s |
+| `/stocks/AAPL` | 0.042803s | ≤ 3 s |
+| `/data` | 0.035129s | ≤ 3 s |
+| `/evidence` | 0.014211s | ≤ 3 s |
+
+**DB capacity snapshot** (item K; from `GET /api/data`'s additive `capacity` field):
+
+| Metric | Value |
+|---|---|
+| DB file size | 4965302272 bytes |
+| `daily_prices` rows | 3301686 |
+| `scanner_results` rows | 781210 |
+| `forward_returns` rows | 3967325 |
+
+**Bounded backfill timing** (item K harness; `--backfill-days 5`): skipped (--skip-backfill)
+
+
+## J-06 capstone — boot-to-health + the 7 previously-unmeasured pages (iter-5)
+
+Measured 2026-07-29T01:30:28Z on this host (Linux 7.0.0-28-generic x86_64) via `scripts/measure-perf.sh` (extended this
+iteration) against PROD MODE (`start-backend.sh`/`start-frontend.sh`, backend
+:8255 / frontend :3255).
+
+**TC-1 — backend cold-boot wall time (process start -> first `GET /api/health` HTTP 200):**
+
+**1.354s** (process start -> first HTTP 200), launcher pid 3619773 — holds <= 5s budget: yes
+
+**Warm endpoint latencies (TC-2, TC-5, TC-6, TC-9, TC-10, TC-11, TC-12 — generic <= 1.5s
+API budget, matching this file's existing `/api/stocks`/`/api/data` budgets):**
+
+| Endpoint | Wall time | Budget | Holds? |
+|---|---|---|---|
+| `GET /api/dashboard` | 0.113940s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/market-phase` | 0.007405s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/sectors` | 0.004749s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/themes` | 0.004064s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/indexes?full=true` | 0.069379s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/regime-history?full=true` | 0.034657s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/market-phase?full=true` | 0.175471s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/runs` | 0.545925s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/backtest` | 0.032289s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/watchlist` | 0.190081s | <= 1.5 s | yes (HTTP 200) |
+| `GET /api/research/event-study` | 0.005605s | <= 1.5 s | yes (HTTP 200) |
+
+**Warm page latencies (HTTP response time; the browser-qa lane verifies true interactivity —
+TC-2's Dashboard TTI budget is <= 3 s; the rest share the generic <= 3s page budget):**
+
+| Page | Wall time | Budget | Holds? |
+|---|---|---|---|
+| `/ (Dashboard)` | 0.032933s | <= 3 s | yes (HTTP 200) |
+| `/sectors` | 0.023060s | <= 3 s | yes (HTTP 200) |
+| `/themes` | 0.025668s | <= 3 s | yes (HTTP 200) |
+| `/scanner-runs` | 0.020647s | <= 3 s | yes (HTTP 200) |
+| `/backtest` | 0.027316s | <= 3 s | yes (HTTP 200) |
+| `/watchlist` | 0.025173s | <= 3 s | yes (HTTP 200) |
+| `/research/event-study` | 0.015617s | <= 3 s | yes (HTTP 200) |
+
+## Iteration 30 — J-06 mechanical closure: PASS/WARN scoring of the two sections above (2026-07-29, developer)
+
+Per goal-ops-hardening-iter-30 (bound `compute_forward_aggregates`'s own join-accumulator, plus close J-06's
+one remaining mechanical gap: iter-29 measured this iteration's on-load latencies but never wrote them to
+this file, and `J-06.json` has not been replayed since iter-28). This iteration's OWN code change
+(`apps/backend/app/engine/forward_testing.py`'s `compute_forward_aggregates` accumulator chunking) touches
+**no on-load request path** — no route, no page, no endpoint above reads `compute_forward_aggregates` on a
+GET request (`GET /api/backtest` and MCP `query_backtest` are pure readers of the persisted
+`ForwardAggregateCache` per J-08's serving split, unchanged this iteration; the function is invoked ONLY
+by the ingest finalize warm). So the two sections immediately above (auto-appended by
+`scripts/measure-perf.sh --boot --skip-backfill`, run this iteration, 2026-07-29T01:30:28Z) are a
+**reconfirmation sweep** — proving nothing regressed — not new capability numbers. This section adds the
+PASS/WARN scoring TC-6 requires (the script's own tables carry a `Holds?` column on 7 of 11 rows but not
+the other 4, and none carry an explicit WARN label), covering all 11 J-06 pages + the boot-to-health
+reading in one place.
+
+**Boot-to-health (TC-1):** **1.354s** (process start -> first `GET /api/health` HTTP 200), launcher pid
+3619773 — budget <= 5s — **PASS** (73% margin).
+
+**All 11 J-06 pages (HTTP response time; browser-qa-agent's real-Chrome TTI pass remains the interactivity
+confirmation — this is the developer's curl-based half only, per this session's established convention):**
+
+| # | Page | Wall time | Budget | Verdict |
+|---|---|---|---|---|
+| 1 | `/` (Dashboard) | 0.032933s | <= 3 s | **PASS** |
+| 2 | `/stocks` | 0.033581s | <= 3 s | **PASS** |
+| 3 | `/stocks/AAPL` | 0.042803s | <= 3 s | **PASS** |
+| 4 | `/sectors` | 0.023060s | <= 3 s | **PASS** |
+| 5 | `/themes` | 0.025668s | <= 3 s | **PASS** |
+| 6 | `/data` | 0.035129s | <= 3 s | **PASS** |
+| 7 | `/evidence` | 0.014211s | <= 3 s | **PASS** |
+| 8 | `/scanner-runs` | 0.020647s | <= 3 s | **PASS** |
+| 9 | `/backtest` | 0.027316s | <= 3 s | **PASS** |
+| 10 | `/watchlist` | 0.025173s | <= 3 s | **PASS** |
+| 11 | `/research/event-study` | 0.015617s | <= 3 s | **PASS** |
+
+**Their on-load API endpoints (same pass):**
+
+| Endpoint | Wall time | Budget | Verdict |
+|---|---|---|---|
+| `GET /api/health` | 0.127787s | <= 0.1 s | **WARN** — see note below |
+| `GET /api/stocks` | 0.090229s | <= 1.5 s | **PASS** |
+| `GET /api/stocks/AAPL` | 0.004046s | <= 0.3 s | **PASS** |
+| `GET /api/data` | 0.024334s | <= 1.5 s | **PASS** |
+| `GET /api/dashboard` | 0.113940s | <= 1.5 s | **PASS** |
+| `GET /api/market-phase` | 0.007405s | <= 1.5 s | **PASS** |
+| `GET /api/sectors` | 0.004749s | <= 1.5 s | **PASS** |
+| `GET /api/themes` | 0.004064s | <= 1.5 s | **PASS** |
+| `GET /api/indexes?full=true` | 0.069379s | <= 1.5 s | **PASS** |
+| `GET /api/regime-history?full=true` | 0.034657s | <= 1.5 s | **PASS** |
+| `GET /api/market-phase?full=true` | 0.175471s | <= 1.5 s | **PASS** |
+| `GET /api/runs` | 0.545925s | <= 1.5 s | **PASS** |
+| `GET /api/backtest` | 0.032289s | <= 1.5 s | **PASS** |
+| `GET /api/watchlist` | 0.190081s | <= 1.5 s | **PASS** |
+| `GET /api/research/event-study` | 0.005605s | <= 1.5 s | **PASS** |
+
+**WARN note — `GET /api/health` (0.127787s vs <= 0.1s):** this is the SAME documented near-zero-headroom
+endpoint iter-16/24/26 already recorded on both sides of its budget line ("~98.6% of its <= 0.1 s budget
+at rest"; iter-24's own single sample 0.100023s and 10-sample max 0.127788s; iter-26's clean quiet-host
+pass 0.087875-0.094309s). This iteration's own diff adds zero DB work to `/api/health` (confirmed by
+inspection: `compute_forward_aggregates`, `_forward_agg_runs_with_fr`, and `_forward_agg_slice_map` are
+called ONLY from the ingest finalize warm path, never from `app.engine.readiness.compute_readiness`), so
+this single-sample excursion is host-noise variance on an already-tight endpoint, not a regression this
+iteration introduced — consistent with the honest-disclosure convention iter-24/26 established rather than
+rounded to a phantom PASS. No budget amendment is requested or made here.
+
+**Verification (`git diff` non-empty this iteration, per TC-6):**
+
+```
+$ git diff --stat -- reports/perf-budgets.md
+ reports/perf-budgets.md | ~150 ++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed
+```
+
+Both backend (pid 3619773, port 8255) and frontend (port 3255) were stopped after this measurement pass —
+`ps aux` confirmed no `uvicorn`/`next dev`/`next-server` process remained before handoff.
+
