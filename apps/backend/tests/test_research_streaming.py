@@ -518,21 +518,29 @@ def test_all_factor_observations_by_horizon_matches_per_factor_per_horizon(prune
     """For EVERY catalog factor and EVERY config horizon, the all-horizons shared pool's non-null subset at
     horizon h (with `max_drawdown` dropped — it rides additively) equals `_factor_observations(factor, h)`
     row-for-row on the discriminating reorder fixture (multi-horizon FRs, a non-subject symbol with FRs, a
-    factor-NULL column). Proves the one-sweep all-horizons read is byte-identical per (factor, horizon)."""
+    factor-NULL column). Proves the one-sweep all-horizons read is byte-identical per (factor, horizon).
+    iter-31: `_all_factor_observations_by_horizon` now returns the compact `(core_records, pools)` shape (a
+    return-value memory-representation redesign) — `core_records[core_idx]` is `(run_id, ticker, values)`
+    with `values` a TUPLE positioned by `factors` order (never a dict keyed by factor.key)."""
     cfg = load_config()
     factors = list(cfg.research.factor_lab.factors)
     horizons = list(cfg.walk_forward.horizons)
+    factor_index = {f.key: i for i, f in enumerate(factors)}
     with Session(prune_engine) as session:
-        pools = _all_factor_observations_by_horizon(session, factors, horizons, as_of, cfg=cfg)
+        core_records, pools = _all_factor_observations_by_horizon(session, factors, horizons, as_of, cfg=cfg)
         for factor in factors:
+            idx = factor_index[factor.key]
             for h in horizons:
-                subset = [
-                    {"run_id": o["run_id"], "ticker": o["ticker"],
-                     "factor": float(o["values"][factor.key]), "return": o["return"],
-                     "max_drawdown": o["max_drawdown"], "regime": None}
-                    for o in pools[h]
-                    if o["values"][factor.key] is not None
-                ]
+                subset = []
+                for core_idx, ret, mdd in pools[h]:
+                    run_id, ticker, values = core_records[core_idx]
+                    factor_value = values[idx]
+                    if factor_value is None:
+                        continue
+                    subset.append({
+                        "run_id": run_id, "ticker": ticker, "factor": float(factor_value),
+                        "return": ret, "max_drawdown": mdd, "regime": None,
+                    })
                 per = _factor_observations(session, factor, h, as_of, cfg=cfg)
                 # compare on the shared keys (the all-horizons pool carries no per-obs regime label, which
                 # compute_factor_lab_all does not use); assert the factor/return/max_drawdown identity.

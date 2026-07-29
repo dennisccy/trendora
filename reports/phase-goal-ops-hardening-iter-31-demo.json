@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-31",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Navigate to the homepage",
+      "narration": "We start by visiting the homepage. The backend is ready with all its data-loading work complete.",
+      "point_out": "The top bar shows the status badge and the dataset's as-of date.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "GO" }
+    },
+    {
+      "n": 2,
+      "title": "Open the Evidence page",
+      "narration": "The Evidence page shows drawdown expectations for backtest claims. This page was fixed in an earlier iteration and stays reliable.",
+      "point_out": "The evidence page loads real numbers for certified claims, no blank spaces where figures should be.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Evidence" } },
+      "expect": { "text": "certified-claims" }
+    },
+    {
+      "n": 3,
+      "title": "Check the backtest data page",
+      "narration": "The Data Manager panel shows the coverage of historical data. Background compute is organized and bounded now.",
+      "point_out": "The dataset panel shows the full range of available data with coverage counts, all computed at ingest time.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Data Manager" } },
+      "expect": { "text": "Dataset" }
+    },
+    {
+      "n": 4,
+      "title": "Visit Factor Lab to verify the crash is fixed",
+      "narration": "Factor Lab shows every factor in the catalog with its rank correlations at every horizon. This page crashed with out-of-memory errors until now.",
+      "point_out": "The decile table loads with real rank-IC values for all factors across all horizons — no crash, no error boundary.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/factor-lab" },
+      "expect": { "text": "decile" }
+    },
+    {
+      "n": 5,
+      "title": "Confirm the backend health is stable",
+      "narration": "The status badge at the top right confirms the backend readiness and background compute activity. A single-flight guard prevents duplicate work under concurrent load.",
+      "point_out": "The readiness badge shows 'Ready' and any background work is disclosed honestly.",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Ready" }
+    },
+    {
+      "n": 6,
+      "title": "Check a backtest result",
+      "narration": "The backtest page loads saved results efficiently. Heavy aggregates stay bounded and never risk taking the service down.",
+      "point_out": "The backtest result displays real numerics from the saved computation, not a recalculated value.",
+      "journey": "J-07",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/backtest" },
+      "expect": { "text": "Backtest" }
+    }
+  ]
+}

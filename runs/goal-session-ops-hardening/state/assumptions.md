@@ -344,3 +344,40 @@ exactly. Because the gap is a pure capture task, it rides the next iteration as 
 as an iteration goal. A human who accepts a careful auditor's execution report as equivalent to its
 artifact would score J-06 `passing` today and carry only the real-browser TTI sweep as a chore.
 **Reversible:** yes
+
+## iter-31 — goal-evaluator
+
+**Ambiguity:** J-06's Acceptance says "every later iteration touching the data path re-asserts them
+[the budgets] alongside fresh numbers". This iteration restructured `apps/backend/app/engine/research.py` —
+a read path serving `/research/factor-lab`, which is one of the 11 pages J-06 step 1 enumerates ("one
+`/research` lab") — and `reports/perf-budgets.md` is unmodified (I verified: `git status --porcelain --
+reports/perf-budgets.md` is empty). But the change is a pure memory-representation fix with a
+contractually byte-identical payload, and J-06's golden script actually visits `/research/event-study`, a
+DIFFERENT lab. `docs/goal.md` does not say whether a backend-only memory fix on ONE lab page's read path,
+with no change to any served value, counts as "touching the data path" for the re-assert clause.
+**We chose:** counted it as touching the data path, so the missing perf-budgets re-assert is recorded as an
+unmet part of J-06 — consistent with the iter-29 evaluator's logged reading of the same clause (which
+iter-30's developer then complied with by adding an "Iteration 30" section). I did not make it the deciding
+factor: J-06 would be `partial` regardless, because the real-browser 11-page TTI sweep (step 1's
+interactivity half) has never been run and is the journey's primary open gap. A human who reads the clause
+as scoped to changes that can move a measured number would treat a byte-identical memory refactor as exempt
+and drop this from J-06's gap list, leaving only the TTI sweep.
+**Reversible:** yes
+
+## iter-31 — goal-evaluator
+
+**Ambiguity:** the anti-goal record iter-29/a was written as "/research/factor-lab returns HTTP 500 from a
+live MemoryError on EVERY visit" under AG-8's general text. This iteration fixed that symptom (verified: 0
+MemoryError after boot line 132546, 23 requests all 200, a real rendered page), but the audit measured the
+fix as a 2.63x constant-factor reduction rather than an asymptotic bound, so the same crash class returns at
+~2.5-3x today's data scale. `docs/goal.md` does not say whether an AG-8 record closes when its observed
+crash stops, or only when the unbounded growth term is removed.
+**We chose:** marked iter-29/a `resolved: true` — the recorded symptom is gone and I proved it first-hand —
+and opened a SEPARATE new record (iter-31/e, minor, unresolved) carrying the audit's measured residual
+(769 MB vs 2,025 MB projected at the live basis; all 5 horizons still resident). Grounds: keeping a fixed
+crash permanently "open" makes the ledger unreadable, while folding the residual into a resolved record
+would hide it — splitting them keeps both facts checkable, and the count of unresolved AG-8 findings is
+unchanged at four either way, so GOAL_ACHIEVED is not moved one step closer by this bookkeeping. A human who
+reads AG-8's "unbounded whole-table ORM loads are forbidden on the deep basis" as unmet until the
+`horizons x observations` term is removed would keep iter-29/a open and add no new record.
+**Reversible:** yes

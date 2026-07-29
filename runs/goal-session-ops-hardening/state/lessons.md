@@ -332,3 +332,31 @@ THAT — an "unbounded by design return shape" is not out of scope, it is the bu
 **Applies to:** any iteration bounding memory in `forward_testing.py` / `research.py`; any plan whose
 IN SCOPE lists containers to bound — check each one against the failing traceback frame before accepting
 "partial scope, disclosed".
+
+## iter-31 — 2026-07-29T07:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** `scripts/start-frontend.sh:28` execs `npx next dev` — the project's own "prod mode" frontend
+launcher (named as such by J-06 step 1 in `docs/goal.md`) has always run Next.js in DEVELOPMENT mode, and
+`ps aux` confirms `next dev -p 3255` served every screenshot in this run. That makes J-06's one remaining
+step — a real-browser time-to-interactive sweep — unmeasurable as specified: dev mode compiles routes on
+demand, so any TTI it produces is a compile time, not a page-load time. It also explains the red Next.js
+"1 error" dev-overlay pill that appears in browser-QA captures and that the QA report keeps describing as
+"zero console errors". Nobody caught this in 31 iterations because the sweep was deferred every time.
+**Applies to:** any iteration that measures page-load/TTI performance, writes to `reports/perf-budgets.md`,
+touches `scripts/start-frontend.sh`, or reads a browser-QA "zero console errors" claim from a screenshot
+carrying a dev-overlay error pill.
+
+## iter-31 — 2026-07-29T07:05:00Z (second entry)
+
+**Verdict:** CONTINUE
+**Lesson:** A memory "bound" can be a constant-factor win wearing a bound's clothes. The shipped fix
+re-encoded `_all_factor_observations_by_horizon`'s return value (dedup'd `core_records` + compact per-horizon
+tuples) and genuinely stopped the live crash — but it still holds all 5 horizons' pools resident at once, so
+the audit measured 769 MB vs 2,025 MB: a 2.63x reduction, with the `horizons x observations` term intact.
+The related trap: the shipped TC-6 "proves the bound" test was only a range check on a config integer and
+would have stayed green after a full revert of the redesign; the auditor had to write the test that actually
+deep-sizes the returned structure. Ask of any memory-bound claim: which term did it remove, and would the
+test fail if the fix were reverted?
+**Applies to:** any iteration claiming to bound an accumulator, pool, or return value; any DoD item worded
+"proven by a dedicated unit test".

@@ -900,6 +900,19 @@ research:
   # pagination is a pure client-side view transform; this is the SINGLE source of the 30-rows/page
   # constant (served in the lab payload so the frontend reads it — no `30` literal in research.py).
   regime_phase_factor_page_size: 30
+  # ops-hardening iter-31 (AG-8, J-06/J-07) — per-horizon observation-count SOFT CEILING for the
+  # all-factors Factor-Lab view's RETURN VALUE (`_all_factor_observations_by_horizon`'s `pools[h]` —
+  # `research.py:583`'s fill site, the live MemoryError frame iter-29/iter-30 both deferred). A DIFFERENT
+  # unit from `factor_join_run_chunk` (a run-count accumulator width) and `read_batch_size` (a row-count
+  # yield_per probe) — never reuse either here (the iter-29 unit-confusion lesson). Measured live basis
+  # (2026-07-29, apps/backend/data/trendora.db, ~4.97 GB): per-horizon forward_returns/pool sizes range
+  # 771,629 (h=60) to 804,372 (h=1) across the 5 configured horizons (781,965 scanner_results total,
+  # 781,417 with a realized return at >=1 horizon). The REAL memory fix is the compact per-observation
+  # encoding (a dedup'd core-record table + small per-horizon tuples, replacing 5x parallel Python
+  # dict-lists) — this ceiling is an AG-8 disclosure net: set with ~2.5x headroom above today's live max so
+  # normal operation never trips it, but a future data-scale widening logs a WARNING (never raises, never
+  # truncates a payload) instead of silently repeating this crash at a larger scale. Boot-validated >= 1.
+  factor_pool_max_observations: 2000000
   factor_lab:
     deciles: 10
     factors:

@@ -1,0 +1,25 @@
+{
+  "phase": "goal-ops-hardening-iter-31",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-07-29T05:39:56.264212Z",
+  "started_at": "2026-07-29T03:16:05.217389Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/research.py",
+    "apps/backend/app/config.py",
+    "config.yaml",
+    "apps/backend/tests/test_factor_lab_all.py",
+    "apps/backend/tests/test_research_streaming.py",
+    "docs/handoffs/goal-ops-hardening-iter-31-dev.md",
+    "reports/phase-goal-ops-hardening-iter-31-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "fix_round": 1,
+  "review_issues_fixed": [
+    "CRITICAL apps/backend/app/engine/research.py:3059 \u2014 single-flight bounded wait was 45.0s, far shorter than the measured ~2-5 min cold-MISS compute; now derived as 300s (measured worst) x3 = 900s, plus a warning log on the fall-through path, a shipped-value-vs-measurement lock test, and a slow real-time dedup test that runs past the old 45s ceiling (RED-verified: at 45.0s it observes 2 computes)"
+  ],
+  "next_action": "reviewer"
+}

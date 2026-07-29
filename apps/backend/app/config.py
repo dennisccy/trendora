@@ -1354,6 +1354,20 @@ class ResearchCfg(BaseModel):
     # CALC_FILE) or the component. Defaulted so a config predating it (and the inline test fixtures) still
     # loads; boot-validated `>= 1`.
     regime_phase_factor_page_size: int = 30
+    # ops-hardening iter-31 (AG-8, J-06/J-07) — the per-horizon observation-count SOFT CEILING for the
+    # all-factors Factor-Lab view's RETURN VALUE (`_all_factor_observations_by_horizon`'s `pools[h]`,
+    # `research.py:583`'s fill site — the live `MemoryError` frame iter-29/iter-30 both deferred). This is a
+    # DIFFERENT axis from `factor_join_run_chunk` (a RUN-COUNT accumulator chunk width) and `read_batch_size`
+    # (a ROW-count `yield_per` probe) — reusing either unit here would repeat the iter-29 unit-confusion
+    # lesson ("reusing another knob's unit is exactly how a prior bound went inert"). The REAL memory fix is
+    # the compact per-observation encoding (a dedup'd `core_records` table + small per-horizon tuples,
+    # replacing 5x parallel Python dict-lists that each duplicated run_id/ticker/values inline) — this field
+    # is the AG-8 disclosure net layered on top: if a future data-scale widening ever pushes a horizon's pool
+    # past this ceiling, `_all_factor_observations_by_horizon` logs a WARNING (never raises, never truncates
+    # — truncation would break the byte-identity contract) so the NEXT scale jump is an observable log line
+    # in `logs/backend.log`, not another opaque crash. Boot-validated `>= 1`; defaulted so a config (and the
+    # inline test fixtures) predating it still loads.
+    factor_pool_max_observations: int = 2_000_000
     downtrend_opportunity: "DowntrendOpportunityCfg" = Field(
         default_factory=lambda: _default_downtrend_opportunity()
     )
@@ -1374,6 +1388,8 @@ class ResearchCfg(BaseModel):
             raise ValueError("research.factor_join_run_chunk must be >= 1")
         if self.regime_phase_factor_page_size < 1:
             raise ValueError("research.regime_phase_factor_page_size must be >= 1")
+        if self.factor_pool_max_observations < 1:
+            raise ValueError("research.factor_pool_max_observations must be >= 1")
         return self
 
 

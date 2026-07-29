@@ -1702,3 +1702,111 @@ load-bearing on two journeys: `GET /api/health` measured 0.127787s vs its <=0.1s
 0.094-2.431s under compute — until that line is amended or rescoped, J-06 step 2's "every measurement is
 within budget" and J-07 step 2's "within its existing budget" can never both read true. (7) Framework nit,
 10th recurrence: `J-01/J-03/J-04-verify.png` are byte-identical (md5 `fb5f582b`).
+
+## Iteration 31 — goal-ops-hardening-iter-31
+
+**Date:** 2026-07-29T07:05:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. Regressed (passing -> failing): none. Unknown: none.
+- Re-verified `passing` with THIS-iteration evidence, so `last_verified_iter` advances iter-30 -> iter-31 for
+  six: J-01, J-03, J-04, J-05, J-08, J-09 (deterministic golden replay 6/6 PASS, zero FAIL rows, zero
+  reconciliation overturns; I opened J-01-verify.png and J-08-verify.png as the two spot-checks).
+- **J-06 and J-07 stay `partial`** — the iteration's two TARGET journeys. J-06 closed its longest-standing
+  gap; J-07's own acceptance clause is still contradicted by code this iteration deliberately froze. J-06's
+  `evidence_makeup` is CLEARED (a fresh distinct capture landed); J-07's STAYS true (its capture is
+  byte-identical to J-03/J-04 and shows the wrong part of the page).
+- Anti-goal violations: **iter-29/a (the Factor Lab crash) is CLOSED, `resolved: true` — the session's oldest
+  open critical-class finding.** THREE carried findings stay `resolved: false`, all `minor` (iter-29/b
+  `warmup.py:194`, iter-29/c `stock_obs` at `forward_testing.py:988`, iter-29/d `prices.py:141`), each with an
+  ITER-31 UPDATE. **ONE NEW, minor, `resolved: false`** (iter-31/e): the fix is a 2.63x constant-factor
+  reduction, not a bound. scan-report CLEAN; coherence COHERENCE-PASS; all 8 `spec_hash`es match
+  `goal_gate hash-journeys`; no `journeys-changed.md`; no `browser-infra.json`.
+
+**Reasoning:** I re-derived every load-bearing fact read-only instead of inheriting it. (1) **The iteration's
+one target genuinely worked and I proved the negative myself.** Counting from THIS run's own boot banner
+(`logs/backend.log:132546`, `Started server process [194211]` at :132543 — browser-qa cited the line number
+explicitly, which is the evidence-quality rule iter-30 demanded and the first run in this session to comply),
+`tail -n +132546 | grep -c MemoryError` = **0**, and the file's LAST MemoryError anywhere is `:132302`, the
+pre-fix `pools[h].append` frame from an earlier process. In that same window there are **23**
+`GET /api/research/factor-lab?all=true` lines, ALL `200 OK`. I OPENED
+`TC-1-factor-lab-all-factors.png` (md5 `9002cdee`, distinct from every prior capture): all 11 catalog factors
+render with real rank-IC (+0.10 / +0.09 / -0.07), real N (771129 / 765882 / 769840) and real FWD/MDD figures
+across every one of the 5 horizons, each carrying its calm "Not yet proven" chip — no "Backend unavailable"
+box. The dev handoff's two independent cold-MISS runs (separate restarts, cache cleared each) returned
+byte-identical 117,289-byte bodies, so this is deterministic, not one lucky run. (2) **But it is headroom,
+not a bound, and I did not round that away.** The audit measured the shipped encoding at 769 MB projected vs
+2,025 MB pre-fix at the live basis (781,417 core records / 3,971,375 pool rows), cross-checked by an
+independent tracemalloc simulation — a 2.63x constant-factor win with all five horizons' pools still resident
+simultaneously, so the same crash class returns at ~2.5-3x today's scale. The spec's own IN SCOPE sentence
+asked for peak memory that "no longer scales with holding all 5 configured horizons' full pools
+simultaneously"; that stronger sentence is not literally met. Recorded as its own NEW open finding rather
+than buried inside the resolved record. (3) **J-06's oldest gap closed; a different one now holds it.** The
+`J-06.json` deterministic-replay artifact — which the iter-30 evaluator searched for across `reports/`,
+`runs/`, the repo and TMPDIR and could not find — now genuinely exists at
+`reports/phase-goal-ops-hardening-iter-31-j06-ridealong-replay-results.md` (UT-J-06 PASS, 11/11 steps' expects
+held), with a real distinct capture `J-06-verify.png` (md5 `4f22d09e`) showing the golden's 11th step,
+`/research/event-study`, fully rendered. It stays `partial` because (i) the real-browser 11-page
+time-to-interactive sweep was again NOT run — browser-qa says so verbatim; (ii) `reports/perf-budgets.md` is
+UNMODIFIED (`git status --porcelain` empty) although this iteration restructured `research.py`, which J-06's
+acceptance says must be re-asserted with fresh numbers; (iii) step 3's dev-handoff on-load audit for the 11
+pages was not written; (iv) the demo's one `[NEW]` step is the Factor Lab fix, not the budgets-vs-live-loads
+walkthrough the acceptance names. (4) **J-07 stays `partial` on its own words.** Browser-qa states verbatim
+that steps 1/2/4 (the full warm, the once-per-second health poll, the induced-pressure abort) were not run;
+step 3's VmPeak-in-perf-budgets has never been done; and the acceptance clause "no unbounded whole-table ORM
+materialization remains on the warm or serving path" is still contradicted inside J-07's OWN named canonical
+producer, because `stock_obs` (`forward_testing.py:988`) was byte-FROZEN by this iteration's spec (zero diff,
+confirmed). Rejected REGRESSION (C.1): nothing moved `passing` -> `failing`; all six required journeys
+replayed PASS; and I classified the open AG-8 findings `minor` on grounds I verified rather than inherited —
+zero MemoryError this window, a fully rendered page with real numerics, no fabricated value, and the AG-8
+disclosure net now actually fires (the auditor found B1, where the ceiling check sat AFTER the sweep and so
+could never fire in the one scenario `config.yaml` promises it covers, and fixed it with a RED-verified
+test). This follows the iter-26/27/28/29/30 precedent, which was not vetoed. Rejected STALLED (C.2): no
+human-owned blocker — bounding `stock_obs`, the launcher decision, the TTI sweep, the perf-budgets write and
+the stray 404 are all agent work; the one owner-owned item (the <=0.1s `/api/health` budget) is non-blocking.
+Rejected GOAL_ACHIEVED (C.3): two Must-have journeys are `partial` and four anti-goal findings are unresolved.
+Rejected ESCALATE (C.4): the review verdict is PASS, no journey has FAILED twice, and this was already a full
+iteration, so ESCALATE's own remedy buys nothing — the full-depth need is carried in the depth recommendation.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the frontend is served by `next dev`** —
+`scripts/start-frontend.sh:28` execs `npx next dev` and `ps aux` confirms `next dev -p 3255` served every
+screenshot this run; J-06 step 1 names that exact script as its "prod mode" launcher, so the one remaining
+piece of J-06 (a time-to-interactive sweep) would, run today, measure Next.js dev-mode on-demand compilation
+rather than production TTI — unflagged for 31 iterations; (ii) the QA report claims "zero console errors"
+while its OWN capture carries a red Next.js "1 error" pill — I saw it before reading the audit, the auditor
+independently found the same (F1) and could not reproduce it, and I found a plausible cause in the log: two
+`GET /research/factor-lab?all=true` requests with NO `/api` prefix, both 404, so DoD item 1's "zero console
+errors" is not cleanly ticked; (iii) the QA report wrote PASS before two of its own blocking checks had run
+(audit T2 — TC-8 and TC-9 marked "PENDING / deferred" with an *expectation* substituted for evidence; the
+replays did run afterwards and did pass, and I opened both artifacts); (iv) `J-03-verify.png`,
+`J-04-verify.png` and `J-07-verify.png` are byte-identical (md5 `eff8f9ad`), the 11th recurrence, this time
+AFTER the spec explicitly instructed browser-qa to check for it — and J-07's frame shows the TOP of `/data`,
+not the "drawdown expectations" panel its replay actually asserted; (v) the merged `ui-test-results.md`
+(PASS 9/9) does NOT disagree with its `.llm.md` source this run — I compared them — because browser-qa used
+`UT-` ids; the `merge_ui_test_results.py` `_ROW_RE` bug that laundered a P1 FAIL at iter-30 is still unfixed
+and still must be fixed before any achievement run.
+
+**Next-step recommendation:** FULL depth. (1) THE FIRST BLOCKING ITEM, deferred three times: bound
+`stock_obs` (`forward_testing.py:988`) — the last unbounded accumulator inside `compute_forward_aggregates`,
+J-07's own named canonical producer. This deliberately means re-pinning `_attribution_slices`'s frozen,
+test-asserted `(stock_obs, cfg)` signature and every test that asserts it; the planner must lift that freeze
+on purpose, not by accident. Record the warm's VmPeak and its margin under `server.memory_cap_mb` in
+`reports/perf-budgets.md` (J-07 step 3, never done). (2) SECOND, and newly surfaced: decide what
+`scripts/start-frontend.sh` should run. Either make it `next build` + `next start`, or amend `docs/goal.md`
+to say J-06's numbers are dev-mode numbers. Until this is settled J-06 cannot honestly close, because its one
+remaining step is a page-speed measurement through that script. (3) THEN run J-06's real-browser 11-page TTI
+sweep and write the numbers into `reports/perf-budgets.md` — that file went untouched this iteration despite
+a data-path change, which J-06's acceptance forbids. (4) Fix the stray `GET /research/factor-lab?all=true`
+(no `/api` prefix) 404 that puts an error badge on an otherwise clean page. (5) FRAMEWORK, outside the
+journey loop: widen `merge_ui_test_results.py`'s `_ROW_RE` to `(?:UT|TC)-` in BOTH copies and make any input
+file's headline FAIL survive the merge; and make browser-qa verify per-journey screenshot distinctness, since
+telling it to in the spec did not work (11th recurrence). (6) Carried, unchanged: `warmup.py:194` and
+`prices.py:141`; what the badge should say after a permanently failed warm-up; iter-29/d's unsettled question
+about run 201's "coverage refreshed" disclosure; audit B2 (`_backfill`'s cross-call rollback residual);
+`test_no_magic_numbers.py` red on `indicators.py` / `forward_testing.py`; UT-04's fresh-install DB fixture or
+a written waiver; `test_forward_testing_serving_split.py`'s four `is_latest` monkeypatches. (7) OWNER,
+non-blocking and load-bearing on two journeys: `GET /api/health` at 0.127787s vs its <=0.1s budget — until
+amended or rescoped, J-06 step 2 and J-07 step 2 can never both read true. Also new, recorded against J-07's
+availability lens (audit B4): a non-owner caller of the new single-flight guard blocks an anyio worker thread
+for up to 900s, so a genuinely wedged owner could hold the default threadpool for 15 minutes — bounded, not a
+regression, but worth watching.

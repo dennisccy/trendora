@@ -36,6 +36,8 @@ THREE non-negotiable disciplines (each unit-proved):
 from __future__ import annotations
 
 import json
+import logging
+import threading
 from collections import defaultdict
 from datetime import date as date_cls
 from datetime import datetime, timezone
@@ -61,6 +63,12 @@ from app.engine.forward_testing import (
 )
 from app.engine.setups import ALL_STATUSES
 from app.models import DailyPrice, EventStudyCache, ForwardReturn, ScannerResult, ScannerRun
+
+# ops-hardening iter-31 (AG-8) — the all-factors Factor-Lab return-value pool-bound WARNING (never raised,
+# never truncates a payload — see `_all_factor_observations_by_horizon`) and the `factor_lab_all_cached`
+# single-flight guard's failure-path fallback both log through this, mirroring the established
+# "trendora.<module>" convention (`data_manager.py`, `forward_testing.py`, `evidence.py`).
+logger = logging.getLogger("trendora.research")
 
 # The honest "descriptive, not predictive / universe-relative" caveat carried on every Factor-Lab
 # payload alongside the (reused, single-source) survivorship-bias label (anti-goals: Research lab is
@@ -502,27 +510,49 @@ def _all_fr_slice_map(
 def _all_factor_observations_by_horizon(
     session: Session, factors: list, horizons: list[int], as_of: Optional[date_cls] = None,
     *, cfg: Optional[Config] = None,
-) -> dict[int, list[dict]]:
+) -> tuple[list[tuple[int, str, tuple]], dict[int, list[tuple[int, float, Optional[float]]]]]:
     """The read-only SHARED per-observation pools for the all-factors view across EVERY horizon in
     `horizons` (J-109), built from ONE run-chunked sweep: per slice of run ids, one `ForwardReturn` SELECT
     covering all horizons (`horizon IN horizons`, column-projected to run_id/symbol/realized_return/
     max_drawdown) and one `ScannerResult` stream. Every ScannerResult row is still visited EXACTLY ONCE
     across the whole call (the slices partition the run-id space), so the per-result `record_json` parse
-    count is unchanged. Returns `{horizon: [observations]}` where each observation is
-    `{run_id, ticker, return, max_drawdown, values: {factor_key: float|None}}` (every catalog factor's
-    stored value read VERBATIM — typed column or `record_json` component `raw`; recomputes NO factor and NO
-    return). The `values` dict is read once per ScannerResult and SHARED across that result's per-horizon
-    observations (the factor value is horizon-independent).
+    count is unchanged.
 
-    BYTE-IDENTITY keystone: `{horizon: pools}[h]` is byte-identical (row-for-row, same `(run_id, id)` order)
-    to `_all_factor_observations(factors, h, as_of)` would have produced for a single horizon — and so each
-    factor's non-null subset of `pools[h]` EQUALS `_factor_observations(factor, h, as_of)` row-for-row, the
-    property `compute_factor_lab_all` relies on for per-(factor,horizon,decile) byte-identity. A NULL in one
-    factor does NOT drop the observation (unlike `_combination_observations`): the pool keeps
-    `values[key] = None`, so each factor filters to ITS OWN non-null subset. An observation is kept for
-    horizon h ONLY when a realized return exists at h (the SAME n=0 exclusion as `_factor_observations`); a
-    ScannerResult whose run has FRs at some other horizon but not at h simply contributes nothing to
-    `pools[h]` (the per-horizon `fr is None` gate), exactly as the single-horizon builder dropped it.
+    ops-hardening iter-31 (AG-8, J-06/J-07) — RETURN-VALUE memory bound. iter-29 fix-2 (below) bounded the
+    JOIN ACCUMULATOR (`fr_by_h`) but left this function's OWN return shape unbounded "by design": the OLD
+    `{horizon: [{run_id, ticker, return, max_drawdown, values} for every observation]}` held FIVE parallel
+    Python lists of 5-key dicts, each dict INLINING its own copy of `run_id`/`ticker` on top of the
+    (already-shared) `values` reference — duplicating run_id+ticker once per horizon a result touches
+    (typically all 5) plus the per-dict container overhead. That duplication is `research.py:583`'s
+    `pools[h].append` fill site — the live `MemoryError` frame both iter-29 and iter-30 reproduced and
+    deferred (771,629-804,372 observations PER horizon on the live basis — `config.yaml`'s
+    `research.factor_pool_max_observations` comment).
+
+    Returns `(core_records, pools)` — a genuine memory-representation redesign, not a smaller constant:
+      - `core_records`: ONE entry per ScannerResult with a realized return at >= 1 horizon —
+        `(run_id, ticker, values)`, where `values` is a TUPLE (not a dict) of every catalog factor's stored
+        value, ORDERED to match `factors` (so `values[i]` is `factors[i]`'s value — `compute_factor_lab_all`
+        looks it up by a precomputed index, never by string key). `ticker` is INTERNED against a local cache
+        scoped to this call, so the (far smaller) set of distinct ticker strings is held ONCE rather than
+        once per horizon-observation.
+      - `pools[h]`: a list of SMALL `(core_idx, realized_return, max_drawdown)` tuples — the genuinely
+        per-horizon-specific data (a result's realized return / drawdown differ by horizon; its identity and
+        factor values do not) — replacing the old per-horizon 5-key dict. `core_idx` indexes `core_records`.
+      Neither the run-id chunking below nor the "ONE shared read serves every factor at every horizon"
+      property changes: `core_records` is built lazily on the FIRST horizon a result has an FR at (same
+      trigger the old `values` dict used), so this remains ONE pass over `ScannerResult`, never a per-horizon
+      re-read (`test_all_factors_fires_one_shared_pool_read_not_n`).
+
+    BYTE-IDENTITY keystone (same data, compacted container): for factor `f` at its precomputed index `idx`
+    and horizon `h`, `[(core_records[i][0], core_records[i][1], core_records[i][2][idx], ret, mdd)
+    for (i, ret, mdd) in pools[h] if core_records[i][2][idx] is not None]` reproduces EXACTLY the rows
+    `_all_factor_observations(f, h, as_of)` would have produced — same values, same `(run_id, id)` traversal
+    order — the property `compute_factor_lab_all` relies on for per-(factor,horizon,decile) byte-identity. A
+    NULL in one factor does NOT drop the observation (unlike `_combination_observations`): `values[idx]`
+    stays `None` for that factor's own filter. An observation is kept for horizon h ONLY when a realized
+    return exists at h (the SAME n=0 exclusion as `_factor_observations`); a ScannerResult whose run has FRs
+    at some other horizon but not at h simply contributes nothing to `pools[h]` (the per-horizon `fr is None`
+    gate), exactly as the single-horizon builder dropped it.
 
     `as_of` (J-32) scopes ALL horizons' pools to snapshots with `ScannerRun.asof_date <= as_of` (the SAME
     single membership filter); `as_of=None` adds NO clause -> byte-identical all-history.
@@ -553,16 +583,24 @@ def _all_factor_observations_by_horizon(
     `UNIQUE (run_id, symbol, horizon)`. No-lookahead is preserved because the `as_of` cutoff moved UP into
     `_runs_with_fr`, upstream of every derived structure.
 
-    NOT bounded here (deliberate, same call the single-factor builder makes): the returned `pools` are this
-    function's return shape — `compute_factor_lab_all` needs each horizon's pool whole to derive its
-    deciles. Only the accumulator's peak is bounded."""
+    iter-31 AG-8 disclosure net (NOT the memory fix itself — see above): if any horizon's `pools[h]` ever
+    exceeds `research.factor_pool_max_observations` (a soft ceiling, set with headroom above today's live
+    max per `config.yaml`'s comment), this logs a WARNING and keeps going — NEVER raises, NEVER truncates
+    (truncation would break the byte-identity contract this function exists to preserve). The check runs
+    PER RUN-CHUNK inside the sweep, once per horizon (iter-31 audit): a widening large enough to exhaust
+    memory raises inside that loop, so an after-the-loop check could never fire on the very crash this net
+    exists to pre-announce."""
     parsed_by_key = {f.key: parse_factor_source(f.source) for f in factors}
     research_cfg = (cfg or get_config()).research
     batch = research_cfg.read_batch_size          # ROW count — the `yield_per` size of each stream
     run_chunk = research_cfg.factor_join_run_chunk  # RUN count — the accumulator's slice width
+    pool_cap = research_cfg.factor_pool_max_observations  # AG-8 disclosure ceiling — never truncates
 
     runs_with_fr = _runs_with_fr(session, horizons, as_of)
-    pools: dict[int, list[dict]] = {h: [] for h in horizons}
+    core_records: list[tuple[int, str, tuple]] = []
+    pools: dict[int, list[tuple[int, float, Optional[float]]]] = {h: [] for h in horizons}
+    ticker_intern: dict[str, str] = {}  # dedupes repeated ticker strings across the whole sweep (iter-31)
+    warned_horizons: set[int] = set()  # one WARNING per horizon — never a per-chunk log storm (iter-31 audit)
     for start in range(0, len(runs_with_fr), run_chunk):
         slice_run_ids = runs_with_fr[start:start + run_chunk]
         fr_by_h = _all_fr_slice_map(session, horizons, slice_run_ids, batch)
@@ -572,21 +610,39 @@ def _all_factor_observations_by_horizon(
             .order_by(ScannerResult.run_id, ScannerResult.id)
         )
         for res in session.exec(res_stmt).yield_per(batch):
-            values: Optional[dict] = None  # parsed lazily on the first horizon that has an FR for this result
+            core_idx: Optional[int] = None  # assigned lazily on the first horizon that has an FR
             for h in horizons:
                 fr = fr_by_h[h].get((res.run_id, res.ticker))
                 if fr is None:
                     continue  # no realized return at this horizon (n=0) — same exclusion as per-factor
-                if values is None:
-                    values = {key: _extract_factor_value(res, parsed) for key, parsed in parsed_by_key.items()}
+                if core_idx is None:
+                    values = tuple(_extract_factor_value(res, parsed) for parsed in parsed_by_key.values())
+                    ticker = ticker_intern.setdefault(res.ticker, res.ticker)
+                    core_idx = len(core_records)
+                    core_records.append((res.run_id, ticker, values))
                 realized, max_drawdown = fr
-                pools[h].append({
-                    "run_id": res.run_id, "ticker": res.ticker, "return": realized,
-                    "max_drawdown": max_drawdown, "values": values,
-                })
+                pools[h].append((core_idx, realized, max_drawdown))
         # `fr_by_h` is rebound (not accumulated into) on the next iteration — this slice's maps are eligible
-        # for GC before the next chunk's query even starts (the bounded-memory guarantee).
-    return pools
+        # for GC before the next chunk's query even starts (the bounded-memory guarantee, unchanged iter-29).
+        #
+        # iter-31 AUDIT FIX: the ceiling is checked HERE, per run-chunk, NOT after the sweep. The scenario
+        # `config.yaml`'s comment promises to pre-announce ("a future data-scale widening logs a WARNING
+        # instead of silently repeating this crash at a larger scale") is precisely the one in which the
+        # build never reaches its own end: a widening big enough to exhaust memory raises MemoryError
+        # INSIDE this loop, so an after-the-loop check could never fire on the very crash it disclaims.
+        # Per-chunk costs O(len(runs)/run_chunk) length reads (a handful on the live basis) and lands the
+        # line in `logs/backend.log` while the build is still running. Still never raises, never truncates.
+        for h, pool in pools.items():
+            if len(pool) > pool_cap and h not in warned_horizons:
+                warned_horizons.add(h)
+                logger.warning(
+                    "research.factor_pool_max_observations exceeded: horizon=%s observations=%d cap=%d — a "
+                    "data-scale widening past the documented live basis (config.yaml comment); the payload "
+                    "is still computed and served correctly, this is AG-8 disclosure only, never a "
+                    "truncation",
+                    h, len(pool), pool_cap,
+                )
+    return core_records, pools
 
 
 def compute_factor_lab_all(
@@ -621,10 +677,14 @@ def compute_factor_lab_all(
     horizons = list(wf.horizons)
     default_h = wf.default_horizon
 
-    pools = _all_factor_observations_by_horizon(session, factors, horizons, as_of, cfg=cfg)
+    core_records, pools = _all_factor_observations_by_horizon(session, factors, horizons, as_of, cfg=cfg)
+    # position of each factor inside `core_records[i][2]`'s values tuple — built from the SAME `factors`
+    # list (in the SAME order) `_all_factor_observations_by_horizon` used to build that tuple (iter-31).
+    factor_index = {f.key: i for i, f in enumerate(factors)}
 
     factors_table: list[dict] = []
     for factor in factors:
+        idx = factor_index[factor.key]
         by_horizon: list[dict] = []
         dh_rank_ic: dict = {"value": None, "n": 0}
         dh_risk_adjusted: Optional[float] = None
@@ -632,16 +692,19 @@ def compute_factor_lab_all(
         for h in horizons:
             # ITS non-null subset at horizon h, in the pool's order (== `_factor_observations(factor, h)`
             # order), so the rank-IC pearson summation order — and thus the byte value — matches
-            # compute_factor_lab(factor, h) exactly. The paired drawdown rides along verbatim.
-            obs = [
-                {
-                    "run_id": o["run_id"], "ticker": o["ticker"],
-                    "factor": float(o["values"][factor.key]), "return": o["return"],
-                    "max_drawdown": o["max_drawdown"],
-                }
-                for o in pools[h]
-                if o["values"][factor.key] is not None
-            ]
+            # compute_factor_lab(factor, h) exactly. The paired drawdown rides along verbatim. `core_records`
+            # holds the (run_id, ticker, values) identity SHARED across every horizon a result touches — only
+            # `ret`/`max_drawdown` are genuinely per-horizon (iter-31 compact-encoding return-value bound).
+            obs = []
+            for core_idx, ret, max_drawdown in pools[h]:
+                factor_value = core_records[core_idx][2][idx]
+                if factor_value is None:
+                    continue
+                run_id, ticker, _values = core_records[core_idx]
+                obs.append({
+                    "run_id": run_id, "ticker": ticker,
+                    "factor": float(factor_value), "return": ret, "max_drawdown": max_drawdown,
+                })
             # ascending by stored factor value; SAME deterministic tie-break compute_factor_lab uses.
             ordered = sorted(obs, key=lambda o: (o["factor"], o["ticker"], o["run_id"]))
             deciles = _deciles(ordered, fl.deciles, wf.min_sample)
@@ -2989,6 +3052,38 @@ _ALL_FACTORS_VIEW = "factors_table"
 # shape. The view is horizon-independent now, so the cache `horizon` slot is pinned to `default_horizon`.
 _ALL_FACTORS_SCHEMA_TOKEN = "allh-mdd-v1"
 
+# ops-hardening iter-31 (audit finding B5, AG-8) — single-flight de-dup guarding `factor_lab_all_cached`'s
+# cache-MISS path, mirroring `data_manager.compute_coverage`'s established per-key-lock + in-flight-event
+# idiom (never a new concurrency abstraction) with `forward_testing.forward_aggregates_ingest_cached`'s
+# bounded-wait failure-path convention (iter-15, UT-04). Root cause: the audit observed a concurrent
+# duplicate `compute_factor_lab_all` invocation for the SAME `(asof_key, dataset_version+token, horizon)`
+# identity complete while another was already in flight and about to write the same row — no lock, unlike
+# every sibling all-horizons cache (`forward_aggregates_ingest_cached`, `compute_coverage`) — wasting exactly
+# the memory headroom the return-value bound above exists to create. The FIRST caller for a key computes
+# below; every OTHER concurrent caller for that SAME key waits (bounded), then re-reads the now-persisted
+# row with its OWN session — never a second producer. A waiter whose bounded wait elapses (the owner raised,
+# or a genuine wedge) falls through and computes independently rather than hanging — never a deadlock, never
+# a raise of its own.
+_FACTOR_LAB_ALL_LOCK = threading.Lock()
+# per-key in-flight events: (asof_key, dataset_version+token, horizon) -> Event, set when the owner finishes
+# (success or failure) so any waiter wakes. Always removed by the owner in a `finally`.
+_FACTOR_LAB_ALL_INFLIGHT: dict[tuple, threading.Event] = {}
+# Bounded wait for a NON-owner caller. It must be sized against THIS call's OWN compute duration — the
+# first cut of this guard copied `forward_testing._FORWARD_AGG_WAIT_TIMEOUT_S` (45s, tuned for that
+# module's much faster aggregate compute) and was rejected in review for exactly that reason: one full
+# cold-MISS `compute_factor_lab_all` on the live deep basis, under the mandatory host-guard CPU caps
+# (AG-10 — a permanent physical constraint of this host, never removable), was measured at ~2-4 min and
+# ~4-5 min across two independent backend restarts (2026-07-29, iter-31 dev handoff) => worst observed
+# ~300s. A 45s ceiling would therefore ALWAYS elapse mid-compute, sending every waiter off to start its
+# own duplicate compute — precisely the audit-B5 waste this guard exists to close. The owner ALWAYS sets
+# the event in its `finally` (success OR raise), so this ceiling is only ever reached by a genuinely
+# wedged owner: sizing it generously costs a healthy request nothing, while sizing it below the real
+# compute duration silently disables the de-dup. Integer seconds (`Event.wait` accepts an int) so the
+# derivation stays literal-free under the no-magic-numbers engine rule.
+_FACTOR_LAB_ALL_MEASURED_COLD_MISS_S = 300  # worst observed live cold-MISS compute (2026-07-29 measurement)
+_FACTOR_LAB_ALL_WAIT_SAFETY_FACTOR = 3      # headroom for a slower/more loaded host than the measured one
+_FACTOR_LAB_ALL_WAIT_TIMEOUT_S = _FACTOR_LAB_ALL_MEASURED_COLD_MISS_S * _FACTOR_LAB_ALL_WAIT_SAFETY_FACTOR
+
 
 def factor_lab_all_cached(
     session: Session, config: Optional[Config] = None, *, as_of: Optional[date_cls] = None,
@@ -3003,48 +3098,90 @@ def factor_lab_all_cached(
     MISS, compute it ONCE via `compute_factor_lab_all`, persist under the current stamp, prune any stale rows
     for this identity, and return it. BYTE-IDENTICAL to a fresh compute; the cache REFRESHES after any
     dataset change via the dataset-version key. `as_of` is folded into the `asof_key` slot (a pure
-    observation-set FILTER)."""
+    observation-set FILTER).
+
+    iter-31 (audit B5, AG-8): a MISS now goes through the module-level single-flight guard above, keyed on
+    the SAME `(asof_key, version, horizon)` tuple used for the cache row itself — concurrent same-key MISSes
+    share ONE `compute_factor_lab_all` invocation instead of racing duplicate computes onto the same row."""
     cfg = config or get_config()
     version = f"{_dataset_version(session)}-{_ALL_FACTORS_SCHEMA_TOKEN}"
     asof_key = _cache_asof_key(as_of)
     horizon = cfg.walk_forward.default_horizon  # the horizon-independent view pins the cache horizon slot
 
-    hit = session.exec(
-        select(EventStudyCache).where(
-            EventStudyCache.subject == _ALL_FACTORS_SUBJECT,
-            EventStudyCache.view == _ALL_FACTORS_VIEW,
-            EventStudyCache.asof_key == asof_key,
-            EventStudyCache.dataset_version == version,
-            EventStudyCache.horizon == horizon,
-        )
-    ).first()
+    def _cached_row() -> Optional[dict]:
+        row = session.exec(
+            select(EventStudyCache).where(
+                EventStudyCache.subject == _ALL_FACTORS_SUBJECT,
+                EventStudyCache.view == _ALL_FACTORS_VIEW,
+                EventStudyCache.asof_key == asof_key,
+                EventStudyCache.dataset_version == version,
+                EventStudyCache.horizon == horizon,
+            )
+        ).first()
+        return json.loads(row.payload_json) if row is not None else None
+
+    hit = _cached_row()
     if hit is not None:
-        return json.loads(hit.payload_json)
+        return hit
 
-    payload = compute_factor_lab_all(session, cfg, as_of=as_of)
+    # single-flight: only the FIRST caller for this key computes; concurrent same-key callers wait.
+    key = (asof_key, version, horizon)
+    with _FACTOR_LAB_ALL_LOCK:
+        event = _FACTOR_LAB_ALL_INFLIGHT.get(key)
+        is_owner = event is None
+        if is_owner:
+            event = threading.Event()
+            _FACTOR_LAB_ALL_INFLIGHT[key] = event
 
-    stale = session.exec(
-        select(EventStudyCache).where(
-            EventStudyCache.subject == _ALL_FACTORS_SUBJECT,
-            EventStudyCache.view == _ALL_FACTORS_VIEW,
-            EventStudyCache.asof_key == asof_key,
-            EventStudyCache.horizon == horizon,
-            EventStudyCache.dataset_version != version,
+    if not is_owner:
+        event.wait(timeout=_FACTOR_LAB_ALL_WAIT_TIMEOUT_S)
+        hit = _cached_row()
+        if hit is not None:
+            return hit
+        # the owner failed (its `finally` already released the slot) or a genuine wedge exceeded the
+        # bounded wait without persisting — fall through and compute independently rather than blocking
+        # indefinitely. Still byte-identical (the SAME sole producer); at worst a rare redundant compute.
+        # The wait ceiling is sized well above the measured real compute (above), so reaching it is an
+        # abnormal event: log it, so a duplicate compute can never happen SILENTLY (audit B5 was found by
+        # observing one, and this is the only path that can still start one).
+        logger.warning(
+            "factor_lab_all single-flight wait elapsed or owner failed for key=%s after %ss — computing "
+            "independently (duplicate compute possible)", key, _FACTOR_LAB_ALL_WAIT_TIMEOUT_S,
         )
-    ).all()
-    for row in stale:
-        session.delete(row)
 
-    session.add(EventStudyCache(
-        subject=_ALL_FACTORS_SUBJECT, view=_ALL_FACTORS_VIEW, asof_key=asof_key, dataset_version=version,
-        horizon=horizon, payload_json=json.dumps(payload),
-        created_at=datetime.now(timezone.utc),
-    ))
+    # MISS (owner path, or the rare fallback above) — compute once and persist.
     try:
-        session.commit()
-    except Exception:  # best-effort cache; a concurrent writer raced us — the payload is byte-identical
-        session.rollback()
-    return payload
+        payload = compute_factor_lab_all(session, cfg, as_of=as_of)
+
+        stale = session.exec(
+            select(EventStudyCache).where(
+                EventStudyCache.subject == _ALL_FACTORS_SUBJECT,
+                EventStudyCache.view == _ALL_FACTORS_VIEW,
+                EventStudyCache.asof_key == asof_key,
+                EventStudyCache.horizon == horizon,
+                EventStudyCache.dataset_version != version,
+            )
+        ).all()
+        for row in stale:
+            session.delete(row)
+
+        session.add(EventStudyCache(
+            subject=_ALL_FACTORS_SUBJECT, view=_ALL_FACTORS_VIEW, asof_key=asof_key, dataset_version=version,
+            horizon=horizon, payload_json=json.dumps(payload),
+            created_at=datetime.now(timezone.utc),
+        ))
+        try:
+            session.commit()
+        except Exception:  # best-effort cache; a concurrent writer raced us — the payload is byte-identical
+            session.rollback()
+        return payload
+    finally:
+        # release the in-flight slot + wake any waiter whether we succeeded or raised — a waiter then either
+        # finds the persisted payload or falls through and computes independently — never a hang.
+        if is_owner:
+            with _FACTOR_LAB_ALL_LOCK:
+                _FACTOR_LAB_ALL_INFLIGHT.pop(key, None)
+            event.set()
 
 
 def regime_setup_pattern_cached(
