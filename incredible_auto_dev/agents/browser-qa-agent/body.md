@@ -73,6 +73,18 @@ SKIPPED: Frontend not running or Chrome MCP unavailable. ALL tests skipped.
 
 Use `mcp__plugin_superpowers-chrome_chrome__use_browser` for all browser interactions.
 
+**The browser identity is pinned — do not change it.** The profile and CDP port come
+from the environment (`CHROME_WS_PROFILE` / `CHROME_WS_PORT`) so the host-safety guard
+can find and confine the browser's CPU usage. Therefore:
+- NEVER call `set_profile`, and never pass a profile name or port to any action.
+  A browser on a profile nobody expects runs unconfined, and on a capped host an
+  unconfined browser can hard-reset the machine mid-run.
+- NEVER switch the browser to headed mode (`show_browser`, or a headed
+  `browser_mode`). Headless is deliberate here; screenshots work the same.
+- If Chrome will not start on the pinned profile, record the affected tests as
+  SKIPPED with the exact error text. Do NOT retry on a different profile —
+  a SKIPPED test is honest, a hidden second browser is not.
+
 Key operations:
 - Navigate: `{action: "navigate", url: "http://localhost:3000/path"}`
 - Click: `{action: "click", element: "button text or CSS selector"}`
@@ -127,7 +139,7 @@ The script MUST be valid for the runner (`scripts/automation/lib/demo_runner.py`
 {
   "schema_version": 1,
   "journey": "J-07",
-  "name": "<journey name from goal.md>",
+  "name": "<journey name from the goal file named in your dispatch prompt>",
   "default_timeout_ms": 8000,
   "steps": [
     {"n": 1, "journey": "J-07", "action": {"type": "goto", "url": "/login"}, "expect": {"text": "Sign in"}},

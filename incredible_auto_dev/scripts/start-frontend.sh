@@ -25,4 +25,42 @@ cd "$REPO_ROOT/apps/frontend"
 export NEXT_PUBLIC_API_URL="${NEXT_PUBLIC_API_URL:-http://localhost:${BACKEND_PORT}}"
 export NEXT_PUBLIC_API_PORT="${BACKEND_PORT}"
 
-exec npx next dev -p "$FRONTEND_PORT"
+# ==== build-if-stale, then serve PRODUCTION mode (ops-hardening iter-33) ============================
+# Previously this script execed `npx next dev` unconditionally, despite every other doc calling it
+# "prod mode" (measure-perf.sh's own header, goal.md's J-06 step-1 text) — two consecutive evaluators
+# (iter-31, iter-32) named this the top blocking item, since a browser TTI sweep against `next dev`
+# measures on-demand per-route compilation, not real production page-load time. `next.config.mjs`
+# already wires `NEXT_DIST_DIR` -> `distDir` (default ".next"), so a verification build can target a
+# scratch directory instead of clobbering a live `.next`.
+DIST_DIR="${NEXT_DIST_DIR:-.next}"
+BUILD_ID_FILE="$DIST_DIR/BUILD_ID"
+
+_build_is_stale_or_missing() {
+  # Missing entirely (never built, or a `next dev`-mode `.next` with no BUILD_ID at all) -> stale.
+  # A bare directory-existence check would wrongly treat a dev-mode `.next` as a current prod build.
+  if [[ ! -f "$BUILD_ID_FILE" ]]; then
+    return 0
+  fi
+  # Otherwise stale iff any real source file (excluding node_modules/ and the dist dir itself) is
+  # newer than the build marker — covers apps/frontend's tracked sources plus package.json/
+  # package-lock.json, since none of those live under the excluded paths.
+  local newer
+  newer=$(find . \
+    \( -path "./node_modules" -o -path "./$DIST_DIR" \) -prune -o \
+    -type f -newer "$BUILD_ID_FILE" -print -quit)
+  [[ -n "$newer" ]]
+}
+
+if _build_is_stale_or_missing; then
+  echo "[start-frontend.sh] '$DIST_DIR' build missing or stale relative to sources — running 'next build'..." >&2
+  if ! npx next build; then
+    echo "[start-frontend.sh] next build FAILED (see output above) — refusing to fall back to" \
+         "'next dev' or serve a stale build." >&2
+    exit 1
+  fi
+else
+  echo "[start-frontend.sh] existing '$DIST_DIR' build is current relative to sources — skipping rebuild." >&2
+fi
+# ==== end build-if-stale =============================================================================
+
+exec npx next start -p "$FRONTEND_PORT"

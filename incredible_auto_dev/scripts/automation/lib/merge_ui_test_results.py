@@ -18,7 +18,14 @@ FAIL that the LLM later re-confirmed as PASS would wrongly keep the file at FAIL
 
 Usage:
   merge_ui_test_results.py <out.md> <in1.md> [<in2.md> ...]
+  merge_ui_test_results.py void <results.md> <J-XX> [<J-YY> ...]
   merge_ui_test_results.py self-test
+
+The `void` subcommand (SPEED-22 mass-false-FAIL breaker) rewrites the listed
+journeys' FAIL rows to SKIP with a "voided" note, recomputes the headline
+verdict from the surviving rows, and appends a dated loud footer — used when
+2 green canary re-checks prove a majority-FAIL replay run was selector/
+environment drift rather than real regressions.
 """
 from __future__ import annotations
 
@@ -33,7 +40,11 @@ from pathlib import Path
 # iters 9/12).
 _VERDICT_RE = re.compile(r"\*\*Browser QA Verdict:\*\*\s*[*_`~\s]*([A-Z_]+)")
 # A results-table data row: | UT-xx | name | type | prio | expected | actual | VERDICT | evidence |
-_ROW_RE = re.compile(r"^\|\s*(UT-[^|]+?)\s*\|(.*)\|\s*$")
+# ops-hardening iter-33: also match `TC-`-prefixed ids — four consecutive evaluators flagged that a
+# QA input file whose rows are ALL `TC-`-prefixed (e.g. a smoke-test report for a launcher/tooling
+# fix) previously failed to parse as rows at all, silently falling back to `compute_overall`'s
+# file-level-verdict path and risking a laundered PASS over a real headline FAIL.
+_ROW_RE = re.compile(r"^\|\s*((?:UT|TC)-[^|]+?)\s*\|(.*)\|\s*$")
 
 
 def _norm_verdict_cell(c: str) -> str:
@@ -165,9 +176,81 @@ def merge(texts: "list[str]") -> str:
     return "\n".join(out) + "\n"
 
 
+_VOID_NOTE = ("voided: suspected selector/environment drift — mass replay FAIL "
+              "overturned by green canary re-checks")
+
+
+def void_text(text: str, journeys: "list[str]") -> "tuple[str, list[str]]":
+    """Pure transform for the `void` subcommand: rewrite the listed journeys'
+    FAIL rows to SKIP + the voided note, recompute the headline from the
+    surviving rows, append a dated footer. Returns (new_text, voided_ids)."""
+    want = {f"UT-{j}" for j in journeys} | set(journeys)
+    voided: list[str] = []
+    out_lines: list[str] = []
+    for line in text.splitlines():
+        m = _ROW_RE.match(line.strip())
+        if m:
+            tid = m.group(1).strip()
+            # Split on UNESCAPED pipes only — the replay renderer escapes '|'
+            # inside cells as '\|'; a bare split would shift every later cell.
+            cells = [c.strip() for c in re.split(r"(?<!\\)\|", m.group(2))]
+            is_sep = cells and all(set(c) <= {"-", ":"} for c in cells if c)
+            if tid in want and not is_sep and any(c.upper() == "FAIL" for c in cells):
+                new_cells = []
+                for idx, c in enumerate(cells):
+                    if c.upper() == "FAIL":
+                        new_cells.append("SKIP")
+                    elif idx == _C_ACTUAL:
+                        new_cells.append(_VOID_NOTE)
+                    else:
+                        new_cells.append(c)
+                out_lines.append("| " + tid + " | " + " | ".join(new_cells) + " |")
+                voided.append(tid)
+                continue
+        out_lines.append(line)
+    if not voided:
+        return text, []
+    new_text = "\n".join(out_lines)
+    rows = parse_rows(new_text)
+    overall = compute_overall(rows)
+    new_text = _VERDICT_RE.sub(f"**Browser QA Verdict:** {overall}", new_text, count=1)
+    ids = " ".join(sorted({t.replace('UT-', '', 1) for t in voided}))
+    new_text += (
+        f"\n\n---\n\n_VOIDED ({_today()}): the FAIL rows for {ids} above were VOIDED "
+        "(SPEED-22 mass-false-FAIL breaker) — a majority of the replay set failed at "
+        "once and the canary journeys re-checked GREEN via the LLM lane, so the "
+        "failures are suspected golden-script/selector drift, not product "
+        "regressions. These journeys keep their prior recorded status; their golden "
+        "scripts are queued for regeneration (state/goldens-regen-pending) and are "
+        "re-derived from the next verified demo recording._\n"
+    )
+    return new_text, sorted({t.replace("UT-", "", 1) for t in voided})
+
+
+def cmd_void(path: str, journeys: "list[str]") -> int:
+    p = Path(path)
+    try:
+        text = p.read_text(encoding="utf-8")
+    except OSError as exc:
+        sys.stderr.write(f"[merge_ui_test_results] void: unreadable {path}: {exc}\n")
+        return 2
+    new_text, voided = void_text(text, journeys)
+    if not voided:
+        print("[merge_ui_test_results] void: no matching FAIL rows — file unchanged")
+        return 0
+    p.write_text(new_text, encoding="utf-8")
+    print(f"[merge_ui_test_results] voided FAIL rows for: {' '.join(voided)}")
+    return 0
+
+
 def main(argv: "list[str]") -> int:
     if argv and argv[0] in ("self-test", "--self-test"):
         return _self_test()
+    if argv and argv[0] == "void":
+        if len(argv) < 3:
+            sys.stderr.write("usage: merge_ui_test_results.py void <results.md> <J-XX> [...]\n")
+            return 2
+        return cmd_void(argv[1], argv[2:])
     if len(argv) < 2:
         sys.stderr.write("usage: merge_ui_test_results.py <out.md> <in1.md> [<in2.md> ...]\n")
         return 2
@@ -273,12 +356,90 @@ def _self_test() -> int:
         rows = parse_rows(ann)
         assert [r["verdict"] for r in rows] == ["PASS", "FAIL", "PASS"], rows
 
+    def t_tc_prefixed_fail_survives():
+        # ops-hardening iter-33 (TC-10) — a QA input file whose ONLY rows use `TC-`-prefixed ids (e.g. a
+        # launcher/tooling smoke-test report, as opposed to the usual `UT-` journey ids) and a headline
+        # FAIL must have that FAIL survive the merge, not get silently laundered into a PASS/SKIPPED
+        # because `_ROW_RE` failed to parse any row and `compute_overall` fell back to the file's own
+        # headline verdict. RED against the pre-iter-33 `UT-`-only regex (every row here is unparsed,
+        # `parse_rows` returns []); GREEN after the `(?:UT|TC)-` widen.
+        tc_only = (
+            "**Browser QA Verdict:** FAIL\n\n## Results Table\n"
+            "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |\n"
+            "|---|---|---|---|---|---|---|---|\n"
+            "| TC-1 | Stale build rebuilds | smoke | P1 | e | build ran, next start bound to port | PASS | a.png |\n"
+            "| TC-3 | Broken source fails clean | smoke | P1 | e | stale next dev process left running | FAIL | b.png |\n")
+        rows = parse_rows(tc_only)
+        assert [r["test_id"] for r in rows] == ["TC-1", "TC-3"], rows
+        assert rows[1]["verdict"] == "FAIL", rows[1]
+        md = merge([tc_only])
+        assert file_top_verdict(md) == "FAIL", (
+            f"expected the TC-3 FAIL to survive the merge, got headline {file_top_verdict(md)!r}"
+        )
+        assert "## Failed Tests" in md and "TC-3" in md
+
+    mass = (
+        "**Browser QA Verdict:** FAIL\n\n## Results Table\n"
+        "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |\n"
+        "|---|---|---|---|---|---|---|---|\n"
+        "| UT-J-01 | login | regression | P1 | e | ok | PASS | a.png |\n"
+        "| UT-J-02 | browse | regression | P1 | e | step 2 failed | FAIL | b.png |\n"
+        "| UT-J-03 | export | regression | P1 | e | step 1 failed | FAIL | c.png |\n"
+        "| UT-J-04 | filter | regression | P1 | e | step 4 failed | FAIL | d.png |\n")
+
+    def t_void_rewrites_and_recomputes():
+        # Void ALL the FAILs → SKIP rows with the note, headline flips to PASS
+        # (the surviving PASS row wins), dated footer appended exactly once.
+        new, voided = void_text(mass, ["J-02", "J-03", "J-04"])
+        assert voided == ["J-02", "J-03", "J-04"], voided
+        rows = {r["test_id"]: r["verdict"] for r in parse_rows(new)}
+        assert rows == {"UT-J-01": "PASS", "UT-J-02": "SKIP", "UT-J-03": "SKIP", "UT-J-04": "SKIP"}, rows
+        assert file_top_verdict(new) == "PASS", file_top_verdict(new)
+        assert new.count("_VOIDED (") == 1 and "voided: suspected selector" in new
+        assert new.count("**Browser QA Verdict:**") == 1
+
+    def t_void_keeps_unlisted_fail():
+        # An un-listed FAIL survives and keeps the headline at FAIL.
+        new, voided = void_text(mass, ["J-02"])
+        assert voided == ["J-02"], voided
+        rows = {r["test_id"]: r["verdict"] for r in parse_rows(new)}
+        assert rows["UT-J-03"] == "FAIL" and rows["UT-J-02"] == "SKIP", rows
+        assert file_top_verdict(new) == "FAIL", file_top_verdict(new)
+
+    def t_void_no_match_is_noop():
+        new, voided = void_text(mass, ["J-99"])
+        assert voided == [] and new == mass
+
+    def t_void_respects_escaped_pipes():
+        # The replay renderer escapes '|' in cells; void must not split on it.
+        esc = (
+            "**Browser QA Verdict:** FAIL\n\n## Results Table\n"
+            "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |\n"
+            "|---|---|---|---|---|---|---|---|\n"
+            "| UT-J-07 | Filter \\| sort table | regression | P1 | e | step 2 failed | FAIL | b.png |\n")
+        new, voided = void_text(esc, ["J-07"])
+        assert voided == ["J-07"], voided
+        row = [l for l in new.splitlines() if l.startswith("| UT-J-07")][0]
+        # verdict flipped, the note landed in the Actual cell, the escaped
+        # pipe survived, and the column count is unchanged
+        assert "| SKIP |" in row and _VOID_NOTE in row and "\\|" in row, row
+        assert len(re.split(r"(?<!\\)\|", row)) == len(re.split(r"(?<!\\)\|",
+            "| UT-J-07 | Filter \\| sort table | regression | P1 | e | step 2 failed | FAIL | b.png |")), row
+
+    # Self-counting list (local form) rather than a hardcoded total — upstream's void
+    # tests and the local verdict-normalization tests both live here, so a literal
+    # count goes stale on the next pull.
     checks = [("parse_rows", t_parse),
               ("later_wins_override", t_later_wins),
               ("real_fail_survives", t_real_fail_survives),
               ("skipped_only", t_skipped_only),
               ("bold_verdicts", t_bold_verdicts),
-              ("annotated_verdicts", t_annotated_verdicts)]
+              ("annotated_verdicts", t_annotated_verdicts),
+              ("tc_prefixed_fail_survives", t_tc_prefixed_fail_survives),
+              ("void_rewrites_and_recomputes", t_void_rewrites_and_recomputes),
+              ("void_keeps_unlisted_fail", t_void_keeps_unlisted_fail),
+              ("void_no_match_is_noop", t_void_no_match_is_noop),
+              ("void_respects_escaped_pipes", t_void_respects_escaped_pipes)]
     for name, fn in checks:
         check(name, fn)
 

@@ -10,8 +10,10 @@
 #
 # Runs against PROD MODE ONLY (scripts/start-backend.sh / scripts/start-frontend.sh — this script does
 # NOT start them; bring them up first, UNLESS you pass --boot, see below). `next dev`'s per-route
-# compile is not product latency, so this script refuses to measure against a `next dev` frontend (no
-# reliable way to detect that from here, so it just documents the requirement — see the header + --help).
+# compile is not product latency, so measuring against it would be measuring the wrong thing. As of
+# ops-hardening iter-33, `scripts/start-frontend.sh` itself guarantees prod mode (it build-if-stales
+# then execs `next start`, never `next dev`), so bringing the frontend up via that script is sufficient
+# — there is no longer an undetectable dev-mode risk this script needs to separately guard against.
 #
 # iter-5 (J-06 capstone) additions:
 #   --boot   TC-1: measure backend cold-boot wall time (process start -> first GET /api/health HTTP

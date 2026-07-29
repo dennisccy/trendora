@@ -1,4 +1,4 @@
-## 25. Markdown-styled verdict cells vanish from the machine parser and launder FAIL into PASS
+## 27. Markdown-styled verdict cells vanish from the machine parser and launder FAIL into PASS
 
 **Applies to:** any parser that extracts machine verdicts (PASS/FAIL/SKIP) from agent-written markdown, and any gate that consumes the parsed result.
 
