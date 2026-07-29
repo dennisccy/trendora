@@ -29,8 +29,11 @@ compare the SAME real `compute_forward_aggregates` against this SAME reference, 
 from __future__ import annotations
 
 import sqlite3
+import tracemalloc
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from statistics import mean
 
 import pytest
 from sqlmodel import Session, select
@@ -44,10 +47,14 @@ from app.engine.forward_testing import (
     PULLBACK_LABELS,
     SURVIVORSHIP_BIAS_LABEL,
     VCP_LABELS,
-    _attribution_slices,
+    _accumulate_group,
+    _AttributionAccumulator,
     _control_groups,
+    _distribution,
+    _GroupAcc,
     _group_means,
     _mean_or_none,
+    _rank_band_label,
     benchmark_symbols,
     compute_forward_aggregates,
 )
@@ -56,6 +63,50 @@ from app.models import ForwardReturn, ScannerResult, ScannerRun
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 REAL_DB = REPO_ROOT / "apps/backend/data/trendora.db"
+
+
+# --------------------------------------------------------------------------------------------------
+# Pinned PRE-iter-32 attribution implementation (audit iter-32).
+#
+# `_attribution_slices` was restructured this iteration to read an `_AttributionAccumulator` instead of a
+# full `stock_obs` list, and `_per_stock_attribution` was folded into that class. If the reference below
+# simply called the NEW `_attribution_slices` (as the developer's first version did), the byte-identity
+# oracle would compare the new implementation against ITSELF for the `attribution` key -- one of the ten
+# top-level keys TC-2 requires -- and could never detect an attribution behavior change. These two
+# functions are the verbatim pre-iter-32 bodies (`git show HEAD:...forward_testing.py`), so the oracle
+# stays an INDEPENDENT reference for every key. `_group_means`/`_distribution`/`_rank_band_label` are
+# imported from the module because this iteration left them byte-unchanged.
+# --------------------------------------------------------------------------------------------------
+def _reference_per_stock_attribution(stock_obs: list[dict], top_k: int) -> dict:
+    returns_by_ticker: dict[str, list[float]] = defaultdict(list)
+    sector_by_ticker: dict[str, object] = {}
+    for obs in stock_obs:
+        returns_by_ticker[obs["ticker"]].append(obs["return"])
+        sector_by_ticker.setdefault(obs["ticker"], obs.get("sector"))
+    rows = [
+        {"ticker": ticker, "mean_return": mean(rets), "n": len(rets), "sector": sector_by_ticker[ticker]}
+        for ticker, rets in returns_by_ticker.items()
+    ]
+    contributors = sorted(rows, key=lambda r: (-r["mean_return"], r["ticker"]))[:top_k]
+    detractors = sorted(rows, key=lambda r: (r["mean_return"], r["ticker"]))[:top_k]
+    return {"contributors": contributors, "detractors": detractors}
+
+
+def _reference_attribution_slices(stock_obs: list[dict], cfg) -> dict:
+    attribution = cfg.walk_forward.attribution
+    sector_order = list(cfg.etfs.sector.values())
+    band_order = [band.label for band in attribution.rank_bands]
+    banded_obs = [
+        {**obs, "rank_band": _rank_band_label(obs.get("rank"), attribution.rank_bands)}
+        for obs in stock_obs
+    ]
+    return {
+        "per_stock": _reference_per_stock_attribution(stock_obs, attribution.top_contributors_k),
+        "by_sector": _group_means(stock_obs, "sector", "sector", sector_order, pad=False),
+        "by_rank_band": _group_means(banded_obs, "rank_band", "rank_band", band_order, pad=True),
+        "distribution": _distribution([obs["return"] for obs in stock_obs]),
+    }
+
 
 # --------------------------------------------------------------------------------------------------
 # Pinned pre-rewrite reference implementation (the two `.all()` reads this iteration replaces)
@@ -167,7 +218,11 @@ def _reference_compute_forward_aggregates(session: Session, horizon: int, config
         "by_flat_base_breakout": by_flat_base_breakout,
         "excess": excess,
         "control_group": _control_groups(horizon, stock_obs, ret_by_run_symbol, runs_with_fr, cfg),
-        "attribution": _attribution_slices(stock_obs, cfg),
+        # ops-hardening iter-32: `_attribution_slices`'s frozen `(stock_obs, cfg)` signature was lifted ON
+        # PURPOSE for the real function's restructuring (TC-3). AUDIT iter-32: this reference calls the
+        # PINNED pre-iter-32 attribution body above rather than the new `_attribution_slices` -- otherwise
+        # this key would be compared against itself and TC-2 would cover only 9 of its 10 keys.
+        "attribution": _reference_attribution_slices(stock_obs, cfg),
     }
 
 
@@ -565,4 +620,112 @@ def test_shipped_forward_agg_run_chunk_binds_against_the_real_committed_seed():
     assert n_chunks > 1, (
         f"walk_forward.forward_agg_run_chunk={width} against the LIVE seed's {live_run_count} distinct "
         f"runs at horizon={horizon} produces only {n_chunks} chunk(s) — the bound is inert on the real basis"
+    )
+
+
+# ====================================================================================================
+# ops-hardening iter-32 (AG-8, J-07) — `stock_obs`, the LAST unbounded accumulator in this function's own
+# family, is gone: `_group_means`/`_group_mdd`/`_control_groups`'s per-group/per-run consumers and
+# `_attribution_slices`'s `per_stock`/`by_sector`/`by_rank_band` are now driven by state built
+# INCREMENTALLY inside the per-chunk loop, bounded by the number of distinct groups/runs/tickers rather
+# than by the observation count. This section proves the bound (TC-1) — a test that fails if the
+# restructuring were reverted to the old full-`stock_obs` design.
+#
+# This test feeds synthetic observations DIRECTLY into the same accumulation primitives
+# `compute_forward_aggregates` uses internally (`_GroupAcc`/`_accumulate_group`/`_AttributionAccumulator`),
+# bypassing the DB/ORM read path entirely -- a dev-pass measurement discovered that going through the real
+# `compute_forward_aggregates(session, ...)` call confounds this iteration's accumulators with `run_rows`
+# (`session.exec(select(ScannerRun)...).all()`, one ORM object per RUN, unchanged since iter-14 and
+# EXPLICITLY documented there as "bounded, small... not one of the named unbounded offenders this
+# iteration fixes" -- verified separately: tripling run count alone roughly triples `run_rows`'s own
+# tracemalloc peak, which would make a whole-function measurement fail for a reason THIS iteration never
+# claimed to fix). Isolating the accumulation step targets exactly what TC-1 asks about; the live
+# full-deep-basis warm (TC-4/TC-5, see the dev handoff) is the end-to-end proof that the real function
+# does not crash at the actual ~800K-observation live scale.
+# ====================================================================================================
+def _accumulate_synthetic_observations(n_obs: int, rank_bands, *, retain_distribution: bool = True):
+    """Feeds `n_obs` synthetic observations through the SAME per-observation accumulation primitives
+    `compute_forward_aggregates` calls inside its per-chunk loop, at a FIXED small cardinality (3 tickers,
+    1 sector, 1 bucket, 1 setup, 2 regimes) -- returns the resulting accumulators (never a per-observation
+    list).
+
+    `retain_distribution=False` drops each observation's realized return immediately after it has been
+    accumulated, so the measured state is EXACTLY the quantity TC-1 names -- "peak size attributable to
+    the by-group/per-stock accumulation paths" -- with the spec's ONE disclosed still-O(N) exception
+    (`_AttributionAccumulator.returns`, the bare-float list the exact median/dispersion needs) excluded by
+    construction. Nothing else reads that list, so clearing it changes no accumulated group/ticker state
+    (audit iter-32)."""
+    bucket_accs: dict = defaultdict(_GroupAcc)
+    setup_accs: dict = defaultdict(_GroupAcc)
+    regime_accs: dict = defaultdict(_GroupAcc)
+    attribution_acc = _AttributionAccumulator(rank_bands)
+    tickers = ("AAA", "BBB", "CCC")
+    for i in range(n_obs):
+        realized, mdd = 0.001 * (i + 1), -0.01
+        obs = {"ticker": tickers[i % 3], "return": realized, "max_drawdown": mdd, "sector": "Technology", "rank": 1}
+        _accumulate_group(bucket_accs, "A", realized, mdd)
+        _accumulate_group(setup_accs, "Actionable", realized, mdd)
+        _accumulate_group(regime_accs, "Risk-on" if i % 2 == 0 else "Risk-off", realized, mdd)
+        attribution_acc.add(obs)
+        if not retain_distribution:
+            attribution_acc.returns.clear()
+    return bucket_accs, setup_accs, regime_accs, attribution_acc
+
+
+def test_accumulator_peak_size_does_not_scale_with_observation_count_at_fixed_cardinality():
+    """TC-1: at a FIXED small group/ticker cardinality (3 tickers, 1 sector, 1 bucket, 1 setup, 2 regimes),
+    quintupling the observation count (40 -> 200) must not come CLOSE to quintupling the tracemalloc-
+    measured peak of the by-group/per-stock accumulation paths -- calibrated against a dev-pass
+    measurement of the OLD full-`stock_obs`-list design under the SAME 5x delta (peak ratio ~5.6x, close
+    to proportional, as expected for a genuine per-observation list): the new design's ratio measures
+    ~2.0-2.8x across several (n_small, n_large) pairs at this delta (the ONE disclosed exception,
+    `_AttributionAccumulator.returns`'s bare-float `distribution` list, does still grow linearly, so the
+    ratio is not 1.0x -- only proportional-to-old growth would be a regression). The 4.0x threshold below
+    sits with margin above the new design's observed range and with margin below the old design's, so this
+    test fails if the restructuring were reverted.
+
+    AUDIT iter-32 -- second assertion added. The first assertion's metric INCLUDES the spec's disclosed
+    still-O(N) `distribution` list, so it is scale-dependent by construction: measured on the SHIPPED
+    (correct) code it is 2.00x at 40->200 but 4.70x at 5,000->25,000 and 4.77x at 20,000->100,000, i.e. it
+    converges on fully-proportional growth as the surviving linear term stops being diluted by fixed
+    overhead. It therefore discriminates against the old design only at the small n it was calibrated at.
+    The second assertion below measures what TC-1 actually names -- the by-group/per-stock accumulation
+    paths alone -- at a 5x delta two orders of magnitude larger, where the shipped design measures 1.29x
+    (25.5 kB -> 27.8 kB; the residual growth is `_ExactMeanAcc`'s DISTINCT-denominator partials, bounded by
+    the exponent range of IEEE-754 doubles, never by n) against ~5.1x for the reverted full-`stock_obs`
+    design. That assertion is scale-robust: it holds at 20,000->100,000 too (1.09x)."""
+    rank_bands = load_config().walk_forward.attribution.rank_bands
+    n_small, n_large = 40, 200
+
+    def _peak(n: int, *, retain_distribution: bool = True) -> int:
+        # warm up (import/dict-resize caches)
+        _accumulate_synthetic_observations(n, rank_bands, retain_distribution=retain_distribution)
+        tracemalloc.start()
+        try:
+            _accumulate_synthetic_observations(n, rank_bands, retain_distribution=retain_distribution)
+            _, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        return peak
+
+    peak_small, peak_large = _peak(n_small), _peak(n_large)
+
+    assert peak_large < peak_small * 4.0, (
+        f"peak memory grew from {peak_small} to {peak_large} bytes when observation count went from "
+        f"{n_small} to {n_large} (5x) at a fixed 3-ticker/1-sector/1-bucket/1-setup/2-regime cardinality — "
+        f"the by-group/per-stock accumulation paths must not scale proportionally with observation count "
+        f"(TC-1)"
+    )
+
+    # TC-1 as the spec words it: the by-group/per-stock accumulation paths ALONE (the disclosed bare-float
+    # `distribution` list excluded), at a delta where a per-observation retention would be unmistakable.
+    iso_small, iso_large = 5_000, 25_000
+    iso_peak_small = _peak(iso_small, retain_distribution=False)
+    iso_peak_large = _peak(iso_large, retain_distribution=False)
+
+    assert iso_peak_large < iso_peak_small * 2.0, (
+        f"by-group/per-stock accumulation state grew from {iso_peak_small} to {iso_peak_large} bytes when "
+        f"observation count went from {iso_small} to {iso_large} (5x) at FIXED group/ticker cardinality — "
+        f"these paths must be bounded by the number of DISTINCT groups/tickers, never by the observation "
+        f"count (TC-1; shipped design measures ~1.3x here, the reverted full-`stock_obs` design ~5.1x)"
     )

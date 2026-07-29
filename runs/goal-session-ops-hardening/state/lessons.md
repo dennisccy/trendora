@@ -360,3 +360,31 @@ deep-sizes the returned structure. Ask of any memory-bound claim: which term did
 test fail if the fix were reverted?
 **Applies to:** any iteration claiming to bound an accumulator, pool, or return value; any DoD item worded
 "proven by a dedicated unit test".
+
+## iter-32 — 2026-07-29T09:45:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** When a refactor lifts a function's signature, the byte-identity "reference oracle" that is
+supposed to pin the OLD behavior gets updated too — and then both sides of the comparison run the NEW
+code. That is exactly what shipped here: `_reference_compute_forward_aggregates` called the new
+`_attribution_slices`, so for 1 of its 10 compared keys it was self-comparing. A mutation probe (swap
+`contributors`/`detractors`) passed 47/47 before the auditor restored the verbatim pre-change bodies as
+`_reference_*` helpers, and fails 39 after. An oracle that is edited to compile against new code has
+stopped being an oracle; pin the old body from `git show HEAD:<file>` instead.
+**Applies to:** any iteration that changes a signature which a byte-identity / golden-output test also
+calls — especially `apps/backend/app/engine/forward_testing.py` and
+`apps/backend/tests/test_forward_testing_aggregates_streaming.py`.
+
+## iter-32 — 2026-07-29T09:45:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Two evidence artifacts in this session are quietly brittle for the same reason — they assert
+values that legitimately move. The rewritten `runs/goal-session-ops-hardening/journey-scripts/J-07.json`
+now asserts the literal `n=8869` on `/backtest`; that sample size changes the moment history deepens, so
+the next backfill turns J-07's golden into a FAIL for a non-defect reason. Separately, a memory test that
+measures a WHOLE function cannot isolate the term under test: the developer's first TC-1 failed against
+correct code because tripling run count alone grew a pre-existing `run_rows` materialization ~2.96x,
+which was nearly the entire signal.
+**Applies to:** any iteration writing or rewriting a golden journey script (prefer structural/label
+assertions over computed figures, or record the figure's provenance), and any iteration asserting a
+memory bound (measure the named term in isolation, not the whole call).

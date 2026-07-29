@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-32",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Navigate to the homepage",
+      "narration": "We start by visiting the homepage. The backend has completed its data-loading work and the readiness badge is stable.",
+      "point_out": "The top bar shows the status badge with the dataset's as-of date.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "GO" }
+    },
+    {
+      "n": 2,
+      "title": "Check the Data Manager panel",
+      "narration": "The Data Manager shows the full historical coverage. Aggregates are precomputed at ingest time, never on the fly.",
+      "point_out": "The dataset panel displays the complete range of available data with all coverage counts computed upfront.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Data Manager" } },
+      "expect": { "text": "Dataset" }
+    },
+    {
+      "n": 3,
+      "title": "View the Evidence page",
+      "narration": "The Evidence page loads certified claims with their drawdown expectations. Heavy aggregates are structured to never exhaust memory.",
+      "point_out": "Real numerics appear for all certified claims in the evidence cards — no blanks, no error boundaries.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Evidence" } },
+      "expect": { "text": "certified-claims" }
+    },
+    {
+      "n": 4,
+      "title": "Open the backtest page",
+      "narration": "The backtest page serves saved forward-test results without recalculating them. The underlying aggregates are now bounded, preventing memory escalation.",
+      "point_out": "The backtest renders real figures from storage, showing the current market regime and candidate counts.",
+      "journey": "J-07",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/backtest" },
+      "expect": { "text": "Backtest" }
+    },
+    {
+      "n": 5,
+      "title": "Verify backend readiness remains stable",
+      "narration": "The status badge at the top confirms the backend is ready. The service stays responsive even under concurrent requests.",
+      "point_out": "The readiness indicator shows 'Ready' and any background activity is disclosed honestly in the status panel.",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Ready" }
+    }
+  ]
+}

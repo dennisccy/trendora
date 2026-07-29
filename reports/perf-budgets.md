@@ -4020,3 +4020,79 @@ $ git diff --stat -- reports/perf-budgets.md
 Both backend (pid 3619773, port 8255) and frontend (port 3255) were stopped after this measurement pass —
 `ps aux` confirmed no `uvicorn`/`next dev`/`next-server` process remained before handoff.
 
+## Iteration 32 — live full-deep-basis forward-aggregate warm (J-07 step 3, `stock_obs` bound), 2026-07-29 (developer)
+
+`compute_forward_aggregates`'s `stock_obs` accumulator — the last unbounded one in its own function
+family — was restructured this iteration into bounded per-group/per-run/per-ticker accumulators (see
+`docs/handoffs/goal-ops-hardening-iter-32-dev.md`). This section is the live measurement of that
+restructuring at the ACTUAL committed-seed scale (never done across the prior 31 iterations per the
+phase spec).
+
+**Methodology.** Started `scripts/start-backend.sh` (prod mode, host-guard caps applied) against the
+live deep-basis DB (`apps/backend/data/trendora.db`, ~4.97 GB; 1,879 distinct scanner-run dates,
+`dataset_version=r1879-f3971375`). Boot banner at `logs/backend.log:133070` (`Started server process
+[719044]`, `2026-07-29T08:20Z`). Waited for the boot warm-up to fully stabilize (`VmPeak`/`VmHWM`
+unchanged across 30 consecutive 3 s polls, `readiness: "ready"`, `warmup.status: "ok"`) before
+triggering the measured compute, so the recorded peak is attributable to the forward-aggregate warm
+alone, not boot warm-up. `GET /api/backtest?as_of=<date>` on a historical date NOT YET present in
+`forward_aggregate_cache` under the current `dataset_version` (confirmed by a read-only query first —
+only `2026-07-20`/`21`/`22` were cached under `r1879-f3971375`) triggers
+`ensure_historical_forward_aggregates_dispatched`, which computes all 5 configured
+`walk_forward.horizons` for that date via `forward_aggregates_ingest_cached` -> `compute_forward_
+aggregates` in a background daemon thread of the SAME process — no cache-row deletion or DB mutation was
+needed. Run TWICE, against two independent historical dates (`2026-07-20`, then `2026-07-17`) on the
+SAME live process, for reproducibility (mirrors iter-31's two-independent-trial convention).
+
+### TC-4 — zero MemoryError, `GET /api/health` HTTP 200 throughout
+
+| Trial | as_of | Started | Finished (all 5 horizons) | Duration | Poll count | HTTP 200 rate |
+|---|---|---|---|---|---|---|
+| 1 | `2026-07-20` | `07:22:57.238322Z` | `07:23:55.050947Z` | 57.81 s | 34 (~1 Hz) | 34/34 (100%) |
+| 2 | `2026-07-17` | `07:25:10.348827Z` | `07:26:09.255139Z` | 58.91 s | 43 (~1 Hz) | 43/43 (100%) |
+
+Both trials' `background_compute.recent_outcomes` entries read `"outcome": "completed"`, `"reason":
+null`. `grep -c MemoryError logs/backend.log` from the boot-banner line (133070) forward, checked after
+BOTH trials: **0**. Both trials' `GET /api/backtest?as_of=<date>` re-read after completion showed
+`evidence_status: "ready"` with `evidence_by_horizon` carrying all 5 horizon keys (`"1"`, `"5"`, `"10"`,
+`"20"`, `"60"`) and a fresh `evidence_generated_at` matching the trial's own finish timestamp — the
+warm genuinely computed and persisted, not a silent no-op.
+
+### TC-5 — `VmPeak` / memory margin
+
+`VmPeak` (PID 719044, `/proc/719044/status`) was sampled at every poll of BOTH trials plus the
+pre-trigger stabilized baseline: **flat at 2,691,600 kB for the ENTIRE measurement window — pre-trigger
+baseline, both 5-horizon warms, and post-completion, all identical. Zero incremental growth attributable
+to the forward-aggregate warm at either trial**, across all 30 + 34 + 43 = 107 samples taken.
+
+| | Value |
+|---|---|
+| `server.memory_cap_mb` (config.yaml, `ulimit -v` enforced by `scripts/start-backend.sh`) | 6144 MB = 6,291,456 kB |
+| `VmPeak` observed (pre-trigger baseline, both live 5-horizon warms, and post-completion — identical) | 2,691,600 kB |
+| `VmPeak` in MB | 2,691,600 / 1024 ≈ **2,628.5 MB** ≈ 2.567 GiB |
+| Margin | **3,599,856 kB ≈ 3,515.5 MB (57.2 % headroom, 42.8 % utilized)** |
+| `VmHWM` (informational, resident high-water mark) | 2,330,016 kB (also unchanged across both trials) |
+
+Closes J-07 step 3 — the first live full-deep-basis forward-aggregate warm measurement across all 5
+configured horizons in this session's 32 iterations. The zero-growth result is consistent with the
+restructuring's design intent: every per-group/per-run/per-ticker accumulator (`_ExactMeanAcc`/
+`_GroupAcc`/`_AttributionAccumulator`/`_ControlGroupBuilder`) is bounded by DISTINCT group/run/ticker
+cardinality (proven directly at synthetic scale by the new `test_accumulator_peak_size_does_not_scale_
+with_observation_count_at_fixed_cardinality` unit test, TC-1) rather than by the ~800K-observation
+horizon-partition size the old `stock_obs` list scaled with — the live warm no longer pushes the
+process's virtual-memory footprint past what boot warm-up had already established.
+
+### Verification — restart hygiene
+
+Backend stopped (`kill -TERM` on the full process group, both a stray pre-existing PID 627291 on the
+port from an earlier session AND this run's PID 719044 were found and killed), confirmed port 8255 free
+(`lsof -ti :8255` empty), then restarted via `scripts/start-backend.sh` again — reached `GET /api/health`
+HTTP 200 within 2 poll attempts, no port conflict. Stopped again cleanly before finishing this handoff —
+`ps aux`/`lsof` confirmed no `uvicorn` process remained on port 8255.
+
+### Per-TC verdict (facts only — scoring the journey is the evaluator's call)
+
+| TC | Requirement | Result |
+|---|---|---|
+| TC-4 | zero `MemoryError` from boot banner forward; `GET /api/health` HTTP 200 at every ~1 Hz poll throughout | **PASS** (0 MemoryError; 34/34 + 43/43 = 77/77 polls HTTP 200) |
+| TC-5 | `VmPeak` + margin recorded vs `server.memory_cap_mb` | **PASS** (2,691,600 kB, 57.2 % margin) |
+

@@ -1193,11 +1193,16 @@ def test_attribution_rank_band_with_no_members_is_padded(aggregates_engine):
 
 def test_attribution_empty_observations_are_all_na():
     """Honesty: empty observations -> every slice NA with n=0 (no fabricated 0%). by_rank_band stays
-    padded (every config band present at n=0); by_sector (non-padded) is empty."""
-    from app.engine.forward_testing import _attribution_slices
+    padded (every config band present at n=0); by_sector (non-padded) is empty.
+
+    ops-hardening iter-32: `_attribution_slices`'s frozen `(stock_obs, cfg)` signature was lifted ON
+    PURPOSE (ops-hardening iter-32, TC-3) to `(acc: _AttributionAccumulator, cfg)` — an empty accumulator
+    (zero `.add()` calls) is the new contract's equivalent of the old empty `stock_obs` list."""
+    from app.engine.forward_testing import _AttributionAccumulator, _attribution_slices
 
     cfg = load_config()
-    attr = _attribution_slices([], cfg)
+    acc = _AttributionAccumulator.from_observations([], cfg.walk_forward.attribution.rank_bands)
+    attr = _attribution_slices(acc, cfg)
     assert attr["per_stock"]["contributors"] == [] and attr["per_stock"]["detractors"] == []
     assert attr["distribution"] == {
         "mean_return": None, "median": None, "pct_positive": None, "dispersion": None, "n": 0
@@ -1212,11 +1217,14 @@ def test_attribution_empty_observations_are_all_na():
 def test_attribution_single_observation_dispersion_is_null():
     """A single-observation slice has no defined standard deviation -> dispersion null (no spurious 0
     stdev); mean / median equal the single value and the hit-rate is 1.0."""
-    from app.engine.forward_testing import _attribution_slices
+    from app.engine.forward_testing import _AttributionAccumulator, _attribution_slices
 
-    dist = _attribution_slices(
-        [{"ticker": "AAA", "return": 0.05, "sector": "Technology", "rank": 1}], load_config()
-    )["distribution"]
+    cfg = load_config()
+    acc = _AttributionAccumulator.from_observations(
+        [{"ticker": "AAA", "return": 0.05, "sector": "Technology", "rank": 1}],
+        cfg.walk_forward.attribution.rank_bands,
+    )
+    dist = _attribution_slices(acc, cfg)["distribution"]
     assert dist["n"] == 1
     assert dist["mean_return"] == pytest.approx(0.05) and dist["median"] == pytest.approx(0.05)
     assert dist["pct_positive"] == pytest.approx(1.0)
@@ -1225,18 +1233,26 @@ def test_attribution_single_observation_dispersion_is_null():
 
 def test_attribution_is_pure_over_passed_observations_no_new_query():
     """Read-only / no new query (the critical anti-goal, structural proof): `_attribution_slices` is a
-    pure function of the ALREADY-BUILT `stock_obs` + cfg — it takes NO Session, so it can issue no
-    forward_returns / price-bar query. The same observation list that feeds the aggregate feeds the
-    slices: no second formula, no second data source."""
+    pure function of an ALREADY-BUILT `_AttributionAccumulator` + cfg — it takes NO Session, so it can
+    issue no forward_returns / price-bar query. The same observations that feed the aggregate feed the
+    slices: no second formula, no second data source.
+
+    ops-hardening iter-32: the previously frozen `(stock_obs, cfg)` signature is lifted ON PURPOSE (TC-3)
+    so `compute_forward_aggregates` can hand in incrementally-built, bounded state (TC-1) instead of a
+    full per-observation list — `_AttributionAccumulator.from_observations` reconstructs the old
+    convenience for small, already-materialized lists like this test's."""
     import inspect
 
-    from app.engine.forward_testing import _attribution_slices
+    from app.engine.forward_testing import _AttributionAccumulator, _attribution_slices
 
-    assert set(inspect.signature(_attribution_slices).parameters) == {"stock_obs", "cfg"}
-    attr = _attribution_slices(
-        [{"ticker": "AAA", "return": 0.10, "sector": "Technology", "rank": 1}], load_config()
+    assert set(inspect.signature(_attribution_slices).parameters) == {"acc", "cfg"}
+    cfg = load_config()
+    acc = _AttributionAccumulator.from_observations(
+        [{"ticker": "AAA", "return": 0.10, "sector": "Technology", "rank": 1}],
+        cfg.walk_forward.attribution.rank_bands,
     )
-    assert attr["distribution"]["n"] == 1  # produced from a hand list with no DB access at all
+    attr = _attribution_slices(acc, cfg)
+    assert attr["distribution"]["n"] == 1  # produced from a hand-built accumulator with no DB access at all
 
 
 def test_stored_scores_identical_with_and_without_forward_returns(backfilled_engine):

@@ -404,3 +404,49 @@ O(N) removal everywhere, including `distribution`, would need to accept an appro
 median/stdev algorithm instead — a correctness trade-off (AG-3) this session has never made and that I did
 not propose.
 **Reversible:** yes
+
+## iter-32 — goal-evaluator
+
+**Ambiguity:** J-07's single named blocker — `stock_obs`, the unbounded accumulator inside its own
+canonical producer — is closed this iteration on evidence I re-derived first-hand (981 MB -> 170 MB at
+the live 771,129-observation basis, SHA-256-identical payload, zero MemoryError from every boot banner,
+VmPeak 57.2% margin), and its steps 1 and 3 are now genuinely done, step 3 for the first time in 32
+iterations. But two of its own four steps remain unasserted: step 2's "within its existing budget" half
+(77/77 polls returned HTTP 200, but no latency was recorded, and the written <=0.1s budget was measured
+at 0.127787s at rest at iter-30), and step 4 entirely (the induced-memory-pressure abort drill, declared
+OUT OF SCOPE by this iteration's own spec on the grounds that incidental live evidence from iter-29/30's
+real crashes already shows the process keeps serving). `docs/goal.md` does not say whether a journey
+whose headline promise is now strongly proven passes while two of its enumerated steps have never been
+executed.
+**We chose:** scored J-07 `partial`, not `passing`. Grounds stated rather than assumed: the two steps are
+literal, checkable and unexecuted; step 4's own text is repeated verbatim inside the Acceptance block
+("a memory-pressure abort never leaves the process wedged (step 4)"), so it is not merely a procedural
+step; and this session has twice had a GOAL_ACHIEVED rejected at the second-key CONFIRM for accepting a
+substitute artifact. I separately did NOT let the two capture-class gaps (the missing `[NEW]` walkthrough
+steps, the scroll-position-0 screenshot) count against it — methodology A.7 names both as capture defects,
+so they carry `evidence_makeup: true` instead. I also record the cost of this call honestly: this is the
+fourth consecutive iteration with no journey status change, and if the next iteration records the health
+latency and runs the drill, J-07 closes. A human who reads J-07 by its headline promise — the service
+demonstrably never went down, through two full live 5-horizon warms — would score it `passing` today and
+carry step 2's latency line and step 4's drill as non-blocking chores.
+**Reversible:** yes
+
+## iter-32 — goal-evaluator
+
+**Ambiguity:** the developer disclosed, unprompted, that `run_rows = session.exec(select(ScannerRun)
+.where(...)).all()` (`forward_testing.py:1195`) is still a fully materialized ORM list on
+`compute_forward_aggregates`'s warm and serving path — 1,879 objects on the live basis, growing with run
+count — and measured it himself at ~2.96x peak growth when run count tripled. AG-8 forbids "unbounded
+whole-table ORM loads ... on the deep basis", but iter-14 accepted this same list as "bounded, small" and
+the code comment at `:1192` still says so; J-07's acceptance clause names `forward_returns` /
+`scanner_results`, not `scanner_runs`. `docs/goal.md` does not say whether a run-count-proportional ORM
+materialization that is small today counts as an AG-8 violation.
+**We chose:** recorded it as a new finding (iter-32/f, `minor`, unresolved) but labelled it in the ledger
+text as a WATCH ITEM and wrote explicitly that it must NOT become the next iteration's goal. Grounds:
+leaving a first-hand-measured, growth-proportional ORM load on the exact path AG-8 names unrecorded would
+be the kind of silent omission this session's own iter-30 lesson warns about ("a crash can MOVE rather
+than vanish"), while scoring it as blocking would move the goalposts on a pre-existing, explicitly
+accepted, untouched line and would reward the developer's honesty with a new gate. Recording it without
+blocking on it keeps both facts checkable. A human who reads AG-8 literally would score it as a real open
+violation on par with `prices.py:141`; a human who trusts iter-14's acceptance would not record it at all.
+**Reversible:** yes

@@ -40,6 +40,7 @@ import threading
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date as date_cls, datetime, timedelta, timezone
+from fractions import Fraction
 from statistics import mean, median, stdev
 from typing import Optional, Union
 
@@ -593,6 +594,108 @@ def _mean_or_none(values: list[float]) -> Optional[float]:
     return mean(values) if values else None
 
 
+# --------------------------------------------------------------------------------------------------
+# ops-hardening iter-32 (AG-8, J-07) -- bounded per-group/per-ticker accumulators.
+#
+# `compute_forward_aggregates` used to grow ONE ~9-field dict per (run_id, ticker) observation
+# (`stock_obs`) across the WHOLE horizon-partition (770K-800K live) purely so `_group_means`/`_group_mdd`/
+# `_control_groups`/`_attribution_slices` could each re-derive their own group buckets from it at the very
+# end. `_ExactMeanAcc` below is the one piece that makes eliminating that list possible without changing
+# a single output value: it reproduces `statistics.mean`'s OWN algorithm (group floats by their EXACT
+# `as_integer_ratio()` denominator, sum the per-denominator numerators, convert the final exact Fraction
+# to float once) incrementally, one value at a time. Fraction addition is exact and therefore associative
+# and commutative -- the resulting mean is bit-for-bit identical to `statistics.mean(values)` regardless
+# of what order the values were added in, so a per-group running accumulator can replace a per-group LIST
+# of that group's returns with no behavior change (TC-2), while its own memory footprint is bounded by
+# the number of DISTINCT denominators IEEE-754 doubles can produce (at most a few thousand), never by how
+# many values were added (TC-1) -- unlike a per-group list of bare floats, which would still be a
+# constant-factor win "wearing a bound's clothes" (the iter-31 lesson), this genuinely stops scaling
+# with N.
+# --------------------------------------------------------------------------------------------------
+class _ExactMeanAcc:
+    """Streaming exact mean matching `statistics.mean`'s own exact-Fraction algorithm bit-for-bit,
+    without ever holding the added values themselves."""
+
+    __slots__ = ("_partials", "_count")
+
+    def __init__(self) -> None:
+        self._partials: dict[int, int] = {}
+        self._count = 0
+
+    def add(self, value: float) -> None:
+        numerator, denominator = value.as_integer_ratio()
+        self._partials[denominator] = self._partials.get(denominator, 0) + numerator
+        self._count += 1
+
+    @property
+    def n(self) -> int:
+        return self._count
+
+    def mean(self) -> Optional[float]:
+        if self._count == 0:
+            return None
+        total = sum(Fraction(numerator, denominator) for denominator, numerator in self._partials.items())
+        return float(total / self._count)
+
+
+class _GroupAcc:
+    """One group value's accumulated state: the group's return mean/n (`_group_means`'s `buckets`) paired
+    with its max-drawdown mean over ONLY the members that have a stored drawdown (`_group_mdd`'s NA-
+    intersection rule) -- the bounded, per-group-value replacement for both functions' per-group LISTS."""
+
+    __slots__ = ("returns", "mdds")
+
+    def __init__(self) -> None:
+        self.returns = _ExactMeanAcc()
+        self.mdds = _ExactMeanAcc()
+
+    def add(self, return_value: float, mdd_value: Optional[float]) -> None:
+        self.returns.add(return_value)
+        if mdd_value is not None:
+            self.mdds.add(mdd_value)
+
+
+def _accumulate_group(accs: dict, value, return_value: float, mdd_value: Optional[float]) -> None:
+    """`_group_means`'s own `if value is not None: buckets[value].append(...)` gate, applied to a
+    pre-aggregated `dict[value, _GroupAcc]` instead of a per-value list of raw observations."""
+    if value is not None:
+        accs[value].add(return_value, mdd_value)
+
+
+def _group_means_from_accs(accs: dict, label_key: str, order, pad: bool) -> list[dict]:
+    """`_group_means`'s exact row/order/pad contract (same ordering: `order` first -- padded to n=0/mean
+    None when `pad` and a value is missing -- then any extra observed values in sorted order), sourced
+    from PRE-AGGREGATED `dict[value, _GroupAcc]` state instead of a raw observation list. Byte-identical
+    output to `_group_means(observations, group_attr, label_key, order, pad)` for the same underlying
+    observations, since both ultimately derive `mean_return`/`mean_max_drawdown`/`n` from the SAME
+    per-group return/drawdown multisets (`_ExactMeanAcc.mean()`'s order-independence is what makes this
+    safe, TC-2)."""
+
+    def _row(value, acc: Optional[_GroupAcc]) -> dict:
+        if acc is None:
+            return {label_key: value, "mean_return": None, "mean_max_drawdown": None, "n": 0}
+        return {
+            label_key: value,
+            "mean_return": acc.returns.mean(),
+            "mean_max_drawdown": acc.mdds.mean(),
+            "n": acc.returns.n,
+        }
+
+    rows: list[dict] = []
+    emitted: set = set()
+    for value in order:
+        if value in accs:
+            rows.append(_row(value, accs[value]))
+            emitted.add(value)
+        elif pad:
+            rows.append(_row(value, None))
+            emitted.add(value)
+    for value in sorted(accs):
+        if value not in emitted:
+            rows.append(_row(value, accs[value]))
+    return rows
+
+
 def _group_mdd(observations: list[dict], group_attr: str) -> dict[str, list[float]]:
     """`group value -> [stored max_drawdown over the group's observations that HAVE one]` (iter-27, J-86).
     A group's mean-MDD is the mean over only the observations whose stored `max_drawdown` is non-None
@@ -646,6 +749,44 @@ def _group_means(observations: list[dict], group_attr: str, label_key: str, orde
     return rows
 
 
+def _control_group_run_contribution(
+    run_id: int,
+    run_obs: list[dict],
+    rng: random.Random,
+    cg,
+    etf_by_sector: dict[str, str],
+    ret_by_run_symbol: dict,
+) -> tuple[list[float], list[float], list[float]]:
+    """ONE run's contribution to the three per-run control-group cohorts (top-ranked / random same-sector
+    / sector-ETF) -- the per-run body `_control_groups` below walks in ascending run-id order over its
+    full `stock_obs` list. Factored out (ops-hardening iter-32) so `_ControlGroupBuilder` can drive the
+    IDENTICAL per-run logic, consuming the SAME shared `rng` instance one run at a time as each run's
+    complete observation set becomes available inside `compute_forward_aggregates`'s chunked loop, instead
+    of requiring the whole horizon's `stock_obs` materialized first. `rng` is mutated (advances its
+    stream) -- callers must share ONE instance across every run, in ascending run-id order, for the draw
+    sequence (and therefore every cohort's `mean_return`/`n`) to match `_control_groups`'s own sequence
+    (AG-5, TC-6)."""
+    top_sectors = sorted(
+        {o["sector"] for o in run_obs if o["rank"] is not None and o["rank"] <= cg.top_n and o["sector"]}
+    )
+    by_sector: dict[str, list[dict]] = defaultdict(list)
+    for o in run_obs:
+        if o["sector"]:
+            by_sector[o["sector"]].append(o)
+    top_returns = [o["return"] for o in run_obs if o["rank"] is not None and o["rank"] <= cg.top_n]
+    random_returns: list[float] = []
+    sector_etf_returns: list[float] = []
+    for sector in top_sectors:
+        pool = sorted(by_sector.get(sector, []), key=lambda o: o["ticker"])
+        if pool:
+            sample = rng.sample(pool, min(cg.peers_per_sector, len(pool)))
+            random_returns.extend(o["return"] for o in sample)
+        etf_ret = ret_by_run_symbol.get((run_id, etf_by_sector.get(sector)))
+        if etf_ret is not None:
+            sector_etf_returns.append(etf_ret)
+    return top_returns, random_returns, sector_etf_returns
+
+
 def _control_groups(
     horizon: int,
     stock_obs: list[dict],
@@ -656,7 +797,11 @@ def _control_groups(
     """The control-group cohorts at `horizon` (J-10): the top-ranked cohort vs a random same-sector
     cohort vs SPY / QQQ / sector-ETF — each numeric, labelled, with n. The random same-sector cohort is
     drawn with a deterministic RNG re-seeded from `control_group.seed` (reproducible across calls and
-    restarts), sampling `peers_per_sector` stocks per sector that the top-ranked cohort occupies."""
+    restarts), sampling `peers_per_sector` stocks per sector that the top-ranked cohort occupies. Kept as
+    the full-`stock_obs`-at-once implementation (byte-unchanged behavior; the per-run body lives in
+    `_control_group_run_contribution` above) -- `compute_run_scorecard`'s own small per-run `stock_obs`
+    and the byte-identity reference oracle both call this UNCHANGED signature (TC-7); `compute_forward_
+    aggregates` uses the incremental `_ControlGroupBuilder` counterpart instead (TC-1)."""
     cg = cfg.walk_forward.control_group
     bm = benchmark_symbols(cfg)
     etf_by_sector = _sector_etf_by_name(cfg)
@@ -671,25 +816,12 @@ def _control_groups(
     sector_etf_returns: list[float] = []
     # deterministic iteration order (sorted runs, sorted sectors, sorted pools) so RNG draws reproduce
     for run_id in sorted(obs_by_run):
-        run_obs = obs_by_run[run_id]
-        top_sectors = sorted(
-            {o["sector"] for o in run_obs if o["rank"] is not None and o["rank"] <= cg.top_n and o["sector"]}
+        run_top, run_random, run_sector_etf = _control_group_run_contribution(
+            run_id, obs_by_run[run_id], rng, cg, etf_by_sector, ret_by_run_symbol
         )
-        by_sector: dict[str, list[dict]] = defaultdict(list)
-        for o in run_obs:
-            if o["sector"]:
-                by_sector[o["sector"]].append(o)
-        for o in run_obs:
-            if o["rank"] is not None and o["rank"] <= cg.top_n:
-                top_returns.append(o["return"])
-        for sector in top_sectors:
-            pool = sorted(by_sector.get(sector, []), key=lambda o: o["ticker"])
-            if pool:
-                sample = rng.sample(pool, min(cg.peers_per_sector, len(pool)))
-                random_returns.extend(o["return"] for o in sample)
-            etf_ret = ret_by_run_symbol.get((run_id, etf_by_sector.get(sector)))
-            if etf_ret is not None:
-                sector_etf_returns.append(etf_ret)
+        top_returns.extend(run_top)
+        random_returns.extend(run_random)
+        sector_etf_returns.extend(run_sector_etf)
 
     spy_returns = [ret_by_run_symbol[(r, bm["spy"])] for r in runs_with_fr if (r, bm["spy"]) in ret_by_run_symbol]
     qqq_returns = [ret_by_run_symbol[(r, bm["qqq"])] for r in runs_with_fr if (r, bm["qqq"]) in ret_by_run_symbol]
@@ -704,6 +836,52 @@ def _control_groups(
         {"key": "sector_etf", "label": "Sector ETF (same sectors)",
          "mean_return": _mean_or_none(sector_etf_returns), "n": len(sector_etf_returns)},
     ]
+
+
+class _ControlGroupBuilder:
+    """Incremental counterpart to `_control_groups`, for `compute_forward_aggregates`'s chunked loop
+    (ops-hardening iter-32, TC-1/TC-6): the SAME per-run contribution (`_control_group_run_contribution`),
+    fed one run at a time via `consume_run` as each run's COMPLETE observation set becomes available
+    (chunk boundaries never split a run, iter-30), in the SAME ascending run-id order `_control_groups`
+    itself walks -- so the shared `rng`'s draw sequence, and therefore every cohort's `mean_return`/`n`,
+    is identical to calling `_control_groups` on the full `stock_obs` list at once (TC-6), while this
+    builder never holds more than the three running `_ExactMeanAcc` totals (bounded, never one entry per
+    observation)."""
+
+    def __init__(self, cfg: Config) -> None:
+        self._cg = cfg.walk_forward.control_group
+        self._etf_by_sector = _sector_etf_by_name(cfg)
+        self._rng = random.Random(self._cg.seed)  # ONE shared instance, advanced run-by-run
+        self._top_returns = _ExactMeanAcc()
+        self._random_returns = _ExactMeanAcc()
+        self._sector_etf_returns = _ExactMeanAcc()
+
+    def consume_run(self, run_id: int, run_obs: list[dict], bm_returns: dict) -> None:
+        """`run_obs` must be run `run_id`'s COMPLETE observation set (never a partial slice) -- callers
+        rely on chunk boundaries never splitting a run (iter-30) to guarantee this."""
+        top, rand, sector_etf = _control_group_run_contribution(
+            run_id, run_obs, self._rng, self._cg, self._etf_by_sector, bm_returns
+        )
+        for value in top:
+            self._top_returns.add(value)
+        for value in rand:
+            self._random_returns.add(value)
+        for value in sector_etf:
+            self._sector_etf_returns.add(value)
+
+    def finalize(self, bm: dict, runs_with_fr: list[int], bm_returns: dict) -> list[dict]:
+        spy_returns = [bm_returns[(r, bm["spy"])] for r in runs_with_fr if (r, bm["spy"]) in bm_returns]
+        qqq_returns = [bm_returns[(r, bm["qqq"])] for r in runs_with_fr if (r, bm["qqq"]) in bm_returns]
+        return [
+            {"key": "top_ranked", "label": f"Top-ranked cohort (rank ≤ {self._cg.top_n})",
+             "mean_return": self._top_returns.mean(), "n": self._top_returns.n},
+            {"key": "random_same_sector", "label": "Random same-sector peers",
+             "mean_return": self._random_returns.mean(), "n": self._random_returns.n},
+            {"key": "spy", "label": bm["spy"], "mean_return": _mean_or_none(spy_returns), "n": len(spy_returns)},
+            {"key": "qqq", "label": bm["qqq"], "mean_return": _mean_or_none(qqq_returns), "n": len(qqq_returns)},
+            {"key": "sector_etf", "label": "Sector ETF (same sectors)",
+             "mean_return": self._sector_etf_returns.mean(), "n": self._sector_etf_returns.n},
+        ]
 
 
 # --------------------------------------------------------------------------------------------------
@@ -721,22 +899,59 @@ def _rank_band_label(rank: Optional[int], rank_bands) -> Optional[str]:
     return None
 
 
-def _per_stock_attribution(stock_obs: list[dict], top_k: int) -> dict:
-    """Per-stock contributors / detractors: each ticker's mean realized return + n + STORED sector over
-    the SAME observations (no recomputed return), the highest `top_k` means as contributors and the
-    lowest `top_k` as detractors (deterministic ticker tie-break). Empty observations -> empty lists."""
-    returns_by_ticker: dict[str, list[float]] = defaultdict(list)
-    sector_by_ticker: dict[str, Optional[str]] = {}
-    for obs in stock_obs:
-        returns_by_ticker[obs["ticker"]].append(obs["return"])
-        sector_by_ticker.setdefault(obs["ticker"], obs.get("sector"))
-    rows = [
-        {"ticker": ticker, "mean_return": mean(rets), "n": len(rets), "sector": sector_by_ticker[ticker]}
-        for ticker, rets in returns_by_ticker.items()
-    ]
-    contributors = sorted(rows, key=lambda r: (-r["mean_return"], r["ticker"]))[:top_k]
-    detractors = sorted(rows, key=lambda r: (r["mean_return"], r["ticker"]))[:top_k]
-    return {"contributors": contributors, "detractors": detractors}
+class _AttributionAccumulator:
+    """Bounded incremental state for `_attribution_slices`'s three group-shaped panels (`per_stock`/
+    `by_sector`/`by_rank_band`) plus the ONE disclosed bare-float exception (`distribution`) -- built one
+    observation at a time via `add`, either from `compute_forward_aggregates`'s chunked loop (never
+    holding the whole horizon's `stock_obs`) or from a small hand-built list via `from_observations`
+    (`compute_run_scorecard`'s own already-small per-run `stock_obs`, and this module's direct-call unit
+    tests). `per_stock`/`by_sector`/`by_rank_band` are bounded by the number of DISTINCT tickers/sectors/
+    rank-bands, never by the observation count (TC-1); `distribution`'s exact median/stdev has no O(1)
+    streaming equivalent, so its bare-`float` return list (never a full observation dict) is the ONE
+    still-O(N) exception the spec discloses.
+
+    `_attribution_slices` below reads this state read-only -- it holds no Session and issues no query,
+    preserving the anti-goal "Attribution is read-only" this module's tests pin structurally."""
+
+    __slots__ = ("_rank_bands", "_per_ticker_returns", "_per_ticker_sector", "by_sector", "by_rank_band", "returns")
+
+    def __init__(self, rank_bands) -> None:
+        self._rank_bands = rank_bands
+        self._per_ticker_returns: dict[str, _ExactMeanAcc] = {}
+        self._per_ticker_sector: dict[str, Optional[str]] = {}
+        self.by_sector: dict[str, _GroupAcc] = defaultdict(_GroupAcc)
+        self.by_rank_band: dict[str, _GroupAcc] = defaultdict(_GroupAcc)
+        self.returns: list[float] = []  # the disclosed bare-float exception (exact median/dispersion)
+
+    @classmethod
+    def from_observations(cls, observations, rank_bands) -> "_AttributionAccumulator":
+        acc = cls(rank_bands)
+        for obs in observations:
+            acc.add(obs)
+        return acc
+
+    def add(self, obs: dict) -> None:
+        ticker, return_value = obs["ticker"], obs["return"]
+        sector, rank, mdd = obs.get("sector"), obs.get("rank"), obs.get("max_drawdown")
+        self.returns.append(return_value)
+        if ticker not in self._per_ticker_returns:
+            self._per_ticker_returns[ticker] = _ExactMeanAcc()
+            self._per_ticker_sector[ticker] = sector  # first occurrence wins (mirrors setdefault)
+        self._per_ticker_returns[ticker].add(return_value)
+        _accumulate_group(self.by_sector, sector, return_value, mdd)
+        _accumulate_group(self.by_rank_band, _rank_band_label(rank, self._rank_bands), return_value, mdd)
+
+    def per_stock(self, top_k: int) -> dict:
+        """`_per_stock_attribution`'s exact contract: each ticker's mean realized return + n + STORED
+        sector, highest `top_k` means as contributors and lowest `top_k` as detractors (deterministic
+        ticker tie-break)."""
+        rows = [
+            {"ticker": ticker, "mean_return": acc.mean(), "n": acc.n, "sector": self._per_ticker_sector[ticker]}
+            for ticker, acc in self._per_ticker_returns.items()
+        ]
+        contributors = sorted(rows, key=lambda r: (-r["mean_return"], r["ticker"]))[:top_k]
+        detractors = sorted(rows, key=lambda r: (r["mean_return"], r["ticker"]))[:top_k]
+        return {"contributors": contributors, "detractors": detractors}
 
 
 def _distribution(returns: list[float]) -> dict:
@@ -756,31 +971,34 @@ def _distribution(returns: list[float]) -> dict:
     }
 
 
-def _attribution_slices(stock_obs: list[dict], cfg: Config) -> dict:
-    """The four READ-ONLY return-attribution slices (J-19), derived ENTIRELY from the ALREADY-BUILT
-    per-observation `stock_obs` (stored realized returns joined to stored `scanner_results`, read
-    verbatim) + config. It recomputes NO return and takes NO Session, so it can issue no second
-    forward_returns / price-bar query — this IS the anti-goal "Attribution is read-only": the slices
-    are pure groupings of the SAME observations the aggregate / scorecard already measured (no second
-    formula, no second data source; consistency with the aggregate mean is unit-asserted).
+def _attribution_slices(acc: _AttributionAccumulator, cfg: Config) -> dict:
+    """The four READ-ONLY return-attribution slices (J-19), derived ENTIRELY from an ALREADY-BUILT
+    `_AttributionAccumulator` (stored realized returns joined to stored `scanner_results`, read verbatim,
+    incrementally accumulated -- never a second query) + config. It recomputes NO return and takes NO
+    Session, so it can issue no second forward_returns / price-bar query — this IS the anti-goal
+    "Attribution is read-only": the slices are pure groupings of the SAME observations the aggregate /
+    scorecard already measured (no second formula, no second data source; consistency with the aggregate
+    mean is unit-asserted).
 
       - per_stock     contributors (highest mean) / detractors (lowest mean), each `top_contributors_k`
       - by_sector     mean realized return + n per STORED sector (config sector-name order; non-padded)
       - by_rank_band  mean realized return + n per config rank band (every band padded to n=0)
       - distribution  mean / median / % positive (hit rate) / dispersion (stdev) of the same returns
-    """
+
+    ops-hardening iter-32: this signature was previously the frozen, test-pinned `(stock_obs: list[dict],
+    cfg)` -- lifted ON PURPOSE so the caller can hand in incrementally-built, bounded state instead of a
+    full per-observation list (the last unbounded accumulator inside `compute_forward_aggregates`, TC-1).
+    `_AttributionAccumulator.from_observations(...)` reconstructs the old convenience for callers that
+    still have (or want) a small, already-materialized observation list (`compute_run_scorecard`'s own
+    per-run `stock_obs`, and this module's direct-call unit tests)."""
     attribution = cfg.walk_forward.attribution
     sector_order = list(cfg.etfs.sector.values())  # config sector NAMES (never a literal sector list)
     band_order = [band.label for band in attribution.rank_bands]
-    banded_obs = [
-        {**obs, "rank_band": _rank_band_label(obs.get("rank"), attribution.rank_bands)}
-        for obs in stock_obs
-    ]
     return {
-        "per_stock": _per_stock_attribution(stock_obs, attribution.top_contributors_k),
-        "by_sector": _group_means(stock_obs, "sector", "sector", sector_order, pad=False),
-        "by_rank_band": _group_means(banded_obs, "rank_band", "rank_band", band_order, pad=True),
-        "distribution": _distribution([obs["return"] for obs in stock_obs]),
+        "per_stock": acc.per_stock(attribution.top_contributors_k),
+        "by_sector": _group_means_from_accs(acc.by_sector, "sector", sector_order, pad=False),
+        "by_rank_band": _group_means_from_accs(acc.by_rank_band, "rank_band", band_order, pad=True),
+        "distribution": _distribution(acc.returns),
     }
 
 
@@ -936,20 +1154,28 @@ def compute_forward_aggregates(
     inspection: neither ever looks up a regular stock ticker in it), then discards the slice map before the
     next chunk — the two named join dicts never again hold the full horizon-partition at once.
 
-    `stock_obs` itself is still assembled to full size by the end of the loop: `_attribution_slices`
-    (below) is a frozen, test-pinned `(stock_obs, cfg)` read-only contract
-    (`test_attribution_is_pure_over_passed_observations_no_new_query`) that several other tests also call
-    directly with hand-built observation lists, so it still needs one materialized list — but it never again
-    CO-EXISTS with a full-size join accumulator, only with the current chunk's small one. `_group_means`,
-    `_group_mdd`, `_control_groups`, `_attribution_slices`, and the VCP/pullback/breakout groupings are all
-    UNCHANGED (same signatures, same bodies) — this fix is confined to HOW the containers they consume are
-    assembled. Byte-identical to the prior whole-partition accumulation for the same inputs (proven by a
-    fixture-backed equality test): the chunks partition `runs_with_fr` into non-overlapping, exhaustive
-    ranges, so the UNION of every chunk's `stock_obs` contribution and `bm_returns` entries exactly equals
-    what the old single-pass accumulation produced (mean/median/stdev are order-independent — CPython's
-    `statistics` module sums via exact `Fraction` arithmetic — and `_control_groups`' RNG draws are
-    order-independent too: its per-sector sample pool is re-sorted by ticker before every `rng.sample`
-    call, so it depends only on ascending run-id processing order, never on `stock_obs`'s own list order)."""
+    ops-hardening iter-32 (AG-8, J-07 finding): `stock_obs` — the ~9-field-dict-per-observation list this
+    docstring used to describe as "still assembled to full size by the end of the loop" — is GONE. Every
+    consumer that only ever needed a group/run/ticker-level statistic (`by_bucket`/`by_setup`/`by_regime`/
+    `by_vcp`/`by_pullback_to_rising_dma`/`by_flat_base_breakout` via `_group_means_from_accs`, the
+    `overall` mean/mean-drawdown via `_ExactMeanAcc`, `_ControlGroupBuilder`'s per-run RNG cohorts, and
+    `_attribution_slices`'s `_AttributionAccumulator`) is now fed incrementally, ONE observation at a
+    time, inside THIS SAME per-chunk loop — bounded by the number of distinct groups/runs/tickers, never
+    by the observation count (770K-800K live per horizon, the confirmed live `MemoryError` frame,
+    `stock_obs.append` at this line in every ops-hardening iteration through iter-31). The one disclosed
+    exception is `_attribution_slices`'s `distribution` slice (exact median/dispersion): its bare-`float`
+    return list has no O(1) streaming equivalent, so it alone still scales with N (a smaller constant than
+    the old 9-field dict, but the SAME order — TC-1 accepts only this one). `_ExactMeanAcc`'s streaming
+    mean reproduces `statistics.mean`'s own exact-Fraction algorithm, which is associative/commutative and
+    therefore ORDER-INDEPENDENT — the same property this docstring already relied on for `_control_groups`'
+    RNG-order-independence pre-iter-32 — so every mean stays byte-identical to the old full-list
+    computation regardless of chunk width (TC-2). `_group_means`/`_group_mdd`/`_control_groups` themselves
+    are UNCHANGED (same signatures, same bodies — used by `compute_run_scorecard`'s own small per-run
+    `stock_obs` and the byte-identity reference oracle, TC-7); `_attribution_slices`'s frozen `(stock_obs,
+    cfg)` signature is the ONE authorized exception, lifted to `(acc: _AttributionAccumulator, cfg)` (TC-3).
+    `_ControlGroupBuilder` shares ONE `rng` instance across every run in the SAME ascending run-id order
+    `_control_groups` itself walks (chunk boundaries never split a run, iter-30), so its draw sequence —
+    and therefore every cohort's `mean_return`/`n` — is identical to the old full-list call (TC-6)."""
     cfg = config or get_config()
     wf = cfg.walk_forward
     bm = benchmark_symbols(cfg)
@@ -979,9 +1205,21 @@ def compute_forward_aggregates(
     benchmark_symbol_set = {bm["spy"], bm["qqq"], *bm["sector_etfs"]}
     bm_returns: dict[tuple[int, str], float] = {}
 
-    # Per-stock observations: each stored result joined to its stored realized return at this horizon.
-    # The bucket / setup / sector / rank / regime are READ from the snapshot — never recomputed here.
-    stock_obs: list[dict] = []
+    # ops-hardening iter-32 (AG-8, J-07): bounded per-group/per-run/per-ticker accumulators — sized by
+    # DISTINCT group/run/ticker count, never by the observation count (TC-1) — replacing the old full
+    # `stock_obs: list[dict]`. Every one is fed incrementally inside THIS SAME per-chunk loop iter-30
+    # already established for `bm_returns`/`_forward_agg_slice_map`.
+    overall_returns = _ExactMeanAcc()
+    overall_mdds = _ExactMeanAcc()
+    bucket_accs: dict = defaultdict(_GroupAcc)
+    setup_accs: dict = defaultdict(_GroupAcc)
+    regime_accs: dict = defaultdict(_GroupAcc)
+    vcp_accs: dict = defaultdict(_GroupAcc)
+    pullback_accs: dict = defaultdict(_GroupAcc)
+    flat_base_accs: dict = defaultdict(_GroupAcc)
+    attribution_acc = _AttributionAccumulator(cfg.walk_forward.attribution.rank_bands)
+    control_group_builder = _ControlGroupBuilder(cfg)
+
     for start in range(0, len(runs_with_fr), run_chunk):
         slice_run_ids = runs_with_fr[start:start + run_chunk]
         slice_map = _forward_agg_slice_map(session, horizon, slice_run_ids, batch)
@@ -991,13 +1229,18 @@ def compute_forward_aggregates(
 
         # iter-14: column-projected to the 8 fields actually read below and consumed via `yield_per(batch)`
         # (the largest table, `record_json` blobs excluded from the projection entirely). Ordered by
-        # `ScannerResult.id` within this slice. `stock_obs` is built with the SAME `if fr is None: continue`
-        # NA gate as before.
+        # `ScannerResult.id` within this slice. Observations are accumulated with the SAME
+        # `if fr is None: continue` NA gate as before.
         res_stmt = select(
             ScannerResult.run_id, ScannerResult.ticker, ScannerResult.leadership_bucket,
             ScannerResult.setup_status, ScannerResult.sector, ScannerResult.rank,
             ScannerResult.is_vcp, ScannerResult.is_pullback_to_rising_dma, ScannerResult.is_flat_base_breakout,
         ).where(ScannerResult.run_id.in_(slice_run_ids)).order_by(ScannerResult.id)
+        # THIS CHUNK's observations only, grouped by run id — bounded to (chunk width x symbols-per-run),
+        # the SAME bound `_forward_agg_slice_map` already established (iter-30). Feeds
+        # `_ControlGroupBuilder`'s per-run RNG sampling below, then is discarded before the next chunk —
+        # it never holds more than one chunk's observations at a time (TC-1).
+        chunk_obs_by_run: dict[int, list[dict]] = defaultdict(list)
         for (
             res_run_id, ticker, leadership_bucket, setup_status, sector, rank,
             is_vcp, is_pullback_to_rising_dma, is_flat_base_breakout,
@@ -1006,7 +1249,7 @@ def compute_forward_aggregates(
             if fr is None:
                 continue  # this stock has no realized return at this horizon in this run (n=0 contribution)
             realized, max_drawdown = fr
-            stock_obs.append({
+            obs = {
                 "run_id": res_run_id,
                 "ticker": ticker,
                 "return": realized,
@@ -1023,16 +1266,32 @@ def compute_forward_aggregates(
                 # stored new-pattern flags (verbatim — never re-detected here), iter-9
                 "is_pullback_to_rising_dma": is_pullback_to_rising_dma,
                 "is_flat_base_breakout": is_flat_base_breakout,
-            })
-        # `slice_map` is rebound (not accumulated into) on the next iteration — this slice's dict is
-        # eligible for GC before the next chunk's query even starts (the bounded-memory guarantee, TC-1).
+            }
+            overall_returns.add(realized)
+            if max_drawdown is not None:
+                overall_mdds.add(max_drawdown)
+            _accumulate_group(bucket_accs, obs["bucket"], realized, max_drawdown)
+            _accumulate_group(setup_accs, obs["setup"], realized, max_drawdown)
+            _accumulate_group(regime_accs, obs["regime"], realized, max_drawdown)
+            _accumulate_group(vcp_accs, obs["is_vcp"], realized, max_drawdown)
+            _accumulate_group(pullback_accs, obs["is_pullback_to_rising_dma"], realized, max_drawdown)
+            _accumulate_group(flat_base_accs, obs["is_flat_base_breakout"], realized, max_drawdown)
+            attribution_acc.add(obs)
+            chunk_obs_by_run[res_run_id].append(obs)
 
-    stock_returns = [o["return"] for o in stock_obs]
-    overall_mean = _mean_or_none(stock_returns)
+        # Control-group RNG sampling for every run THIS CHUNK carries, in ascending run-id order — a run's
+        # observations never split across chunks (iter-30), so each run is contributed exactly once, in
+        # the SAME order `_control_groups` itself would walk the full `stock_obs` list (TC-6).
+        for run_id in sorted(chunk_obs_by_run):
+            control_group_builder.consume_run(run_id, chunk_obs_by_run[run_id], bm_returns)
+        # `slice_map`/`chunk_obs_by_run` are rebound (not accumulated into) on the next iteration — both
+        # are eligible for GC before the next chunk's query even starts (the bounded-memory guarantee, TC-1).
+
+    overall_mean = overall_returns.mean()
     # iter-27 (J-86): the overall mean max-drawdown over only observations with a stored drawdown (the same
     # NA discipline the return aggregate uses) — read-only over the SAME stored values, recomputes nothing.
-    overall_mdds = [o["max_drawdown"] for o in stock_obs if o["max_drawdown"] is not None]
-    overall_mean_mdd = _mean_or_none(overall_mdds)
+    overall_mean_mdd = overall_mdds.mean()
+    n_observations = overall_returns.n
     spy_returns = [bm_returns[(r, bm["spy"])] for r in runs_with_fr if (r, bm["spy"]) in bm_returns]
     qqq_returns = [bm_returns[(r, bm["qqq"])] for r in runs_with_fr if (r, bm["qqq"]) in bm_returns]
     spy_mean = _mean_or_none(spy_returns)
@@ -1044,7 +1303,7 @@ def compute_forward_aggregates(
             "mean_excess": (overall_mean - spy_mean) if (overall_mean is not None and spy_mean is not None) else None,
             "stock_mean": overall_mean,
             "benchmark_mean": spy_mean,
-            "n": len(stock_returns),
+            "n": n_observations,
             "benchmark_n": len(spy_returns),
         },
         "vs_qqq": {
@@ -1052,7 +1311,7 @@ def compute_forward_aggregates(
             "mean_excess": (overall_mean - qqq_mean) if (overall_mean is not None and qqq_mean is not None) else None,
             "stock_mean": overall_mean,
             "benchmark_mean": qqq_mean,
-            "n": len(stock_returns),
+            "n": n_observations,
             "benchmark_n": len(qqq_returns),
         },
     }
@@ -1066,7 +1325,7 @@ def compute_forward_aggregates(
     by_vcp = [
         {"vcp": VCP_LABELS[row["vcp"]], "mean_return": row["mean_return"],
          "mean_max_drawdown": row["mean_max_drawdown"], "n": row["n"]}
-        for row in _group_means(stock_obs, "is_vcp", "vcp", [True, False], pad=True)
+        for row in _group_means_from_accs(vcp_accs, "vcp", [True, False], pad=True)
     ]
     # by_<name> (iter-9, J-28): the SAME stored-mirror grouping as by_vcp for the two new detected
     # patterns — read the persisted `is_<name>` flag verbatim (never re-detected), both cohorts always
@@ -1075,12 +1334,12 @@ def compute_forward_aggregates(
     by_pullback_to_rising_dma = [
         {"pullback_to_rising_dma": PULLBACK_LABELS[row["pullback_to_rising_dma"]], "mean_return": row["mean_return"],
          "mean_max_drawdown": row["mean_max_drawdown"], "n": row["n"]}
-        for row in _group_means(stock_obs, "is_pullback_to_rising_dma", "pullback_to_rising_dma", [True, False], pad=True)
+        for row in _group_means_from_accs(pullback_accs, "pullback_to_rising_dma", [True, False], pad=True)
     ]
     by_flat_base_breakout = [
         {"flat_base_breakout": FLAT_BASE_LABELS[row["flat_base_breakout"]], "mean_return": row["mean_return"],
          "mean_max_drawdown": row["mean_max_drawdown"], "n": row["n"]}
-        for row in _group_means(stock_obs, "is_flat_base_breakout", "flat_base_breakout", [True, False], pad=True)
+        for row in _group_means_from_accs(flat_base_accs, "flat_base_breakout", [True, False], pad=True)
     ]
 
     return {
@@ -1091,21 +1350,22 @@ def compute_forward_aggregates(
         "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
         "n_runs": len(runs_with_fr),
         "asof_dates": asof_dates,
-        "overall": {"mean_return": overall_mean, "mean_max_drawdown": overall_mean_mdd, "n": len(stock_returns)},
-        "by_bucket": _group_means(stock_obs, "bucket", "bucket", BUCKET_ORDER, pad=True),
-        "by_setup": _group_means(stock_obs, "setup", "setup", ALL_STATUSES, pad=False),
-        "by_regime": _group_means(stock_obs, "regime", "regime", cfg.regime.labels, pad=False),
+        "overall": {"mean_return": overall_mean, "mean_max_drawdown": overall_mean_mdd, "n": n_observations},
+        "by_bucket": _group_means_from_accs(bucket_accs, "bucket", BUCKET_ORDER, pad=True),
+        "by_setup": _group_means_from_accs(setup_accs, "setup", ALL_STATUSES, pad=False),
+        "by_regime": _group_means_from_accs(regime_accs, "regime", cfg.regime.labels, pad=False),
         "by_vcp": by_vcp,
         "by_pullback_to_rising_dma": by_pullback_to_rising_dma,
         "by_flat_base_breakout": by_flat_base_breakout,
         "excess": excess,
         # iter-30: `bm_returns` is the bounded, benchmark-symbol-only subset of the old full `ret_by_run_
-        # symbol` — `_control_groups` only ever looks up SPY/QQQ/sector-ETF keys in it (confirmed above),
-        # so this is byte-identical to passing the old unbounded dict.
-        "control_group": _control_groups(horizon, stock_obs, bm_returns, runs_with_fr, cfg),
-        # J-19: the four read-only attribution slices for this horizon, derived from the SAME stock_obs
-        # (no recomputed return). distribution.mean_return == overall.mean_return (asserted in tests).
-        "attribution": _attribution_slices(stock_obs, cfg),
+        # symbol` — `_control_groups`/`_ControlGroupBuilder` only ever look up SPY/QQQ/sector-ETF keys in
+        # it (confirmed above), so this is byte-identical to passing the old unbounded dict.
+        "control_group": control_group_builder.finalize(bm, runs_with_fr, bm_returns),
+        # J-19: the four read-only attribution slices for this horizon, derived from the SAME incrementally
+        # accumulated observations (no recomputed return). distribution.mean_return == overall.mean_return
+        # (asserted in tests).
+        "attribution": _attribution_slices(attribution_acc, cfg),
     }
 
 
@@ -1860,7 +2120,13 @@ def compute_run_scorecard(session: Session, run: ScannerRun, config: Optional[Co
             "control_group": cohorts,
             # J-19: the four read-only attribution slices over THIS horizon's observed set (the full
             # stock_obs, not just the rank<=top_n cohort) — derived from the same stored observations.
-            "attribution": _attribution_slices(stock_obs, cfg),
+            # ops-hardening iter-32: `_attribution_slices`'s frozen `(stock_obs, cfg)` signature was lifted
+            # ON PURPOSE for `compute_forward_aggregates`'s restructuring (TC-3) — `stock_obs` here is
+            # this function's OWN separate, already-small per-run list (unchanged above, TC-7), just
+            # wrapped via the new contract's convenience constructor.
+            "attribution": _attribution_slices(
+                _AttributionAccumulator.from_observations(stock_obs, cfg.walk_forward.attribution.rank_bands), cfg
+            ),
             # J-21: the read-only leadership-return projection (sector ETF / theme members / cohort
             # symbol) over the SAME stored `ret_by_symbol` — no recomputed return, no second query.
             # iter-27 (J-86): paired with the stored max_drawdown projection (the SAME builder the

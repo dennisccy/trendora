@@ -1,6 +1,6 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 31 · **Date:** 2026-07-29 · **Verdict:** CONTINUE
+**After iteration:** 32 · **Date:** 2026-07-29 · **Verdict:** CONTINUE
 
 ## Journeys
 
@@ -8,33 +8,33 @@
 
 ## Active blockers
 
-- **dev, FIRST (deferred 3x):** `stock_obs` at `forward_testing.py:988` is still an unbounded in-memory list
-  inside `compute_forward_aggregates` — J-07's own named producer, so J-07's acceptance clause stays
-  contradicted. Bounding it means deliberately re-pinning `_attribution_slices`'s frozen, test-asserted
-  `(stock_obs, cfg)` signature. Also record the warm's VmPeak + margin in `perf-budgets.md` (J-07 step 3).
-- **dev, SECOND (new, blocks J-06's last step):** `scripts/start-frontend.sh:28` execs `npx next dev` — the
-  script J-06 step 1 names as its "prod mode" launcher. Dev mode compiles on demand, so the 11-page
-  time-to-interactive sweep yields no real numbers until this is a built server (or the goal is amended);
-  then run the sweep and write the numbers into `perf-budgets.md`, untouched this iteration.
-- **dev, carried:** a stray `GET /research/factor-lab?all=true` (no `/api` prefix) 404s and puts a red
-  "1 error" badge on an otherwise clean Factor Lab page; `warmup.py:194` boot warm-up; `prices.py:141`
-  whole-table `daily_prices` prefill; decide what the badge says after a permanently failed warm-up.
-- **framework:** `merge_ui_test_results.py` `_ROW_RE` matches only `UT-` and can drop a FAIL headline (fix
-  before any achievement run); J-03/J-04/J-07 shared one screenshot again (11th recurrence).
-- **human/owner, non-blocking:** `GET /api/health` 0.127787s vs its ≤0.1s budget — until amended or rescoped,
-  J-06 step 2 and J-07 step 2 can never both read true. No agent fix exists.
+- **dev, FIRST — J-06, settle the launcher BEFORE measuring:** `start-frontend.sh:28` execs `npx next dev`,
+  the script J-06 step 1 calls "prod mode", so a TTI sweep measures dev compilation. Make it `next build`+
+  `next start` or amend goal.md; THEN sweep 11 pages → `perf-budgets.md` + step 3's on-load audit = J-06 done.
+- **dev, SECOND — J-07's last two steps:** record `GET /api/health` LATENCY (not just its 200 rate) through a
+  live warm and say if it is in budget; run step 4's induced-pressure drill (tight cap, throwaway process —
+  warm aborts honestly while the SAME process keeps serving); deferred since iter-14.
+- **dev, carried AG-8 findings, all minor, none firing today:** `warmup.py:194` (+ the unmade badge decision
+  after a permanently failed warm-up); `prices.py:141`, now load-bearing since it sits on the ingest-finalize
+  path J-07 step 1 calls "the warm"; iter-31/e Factor-Lab residual.
+- **framework/human, 4th flag:** `merge_ui_test_results.py` `_ROW_RE` matches only `UT-` and can drop a
+  headline FAIL — did not misfire this run (verified), but fix before any achievement run. `J-07.json` now
+  asserts the literal `n=8869`, which will break on the next backfill.
+- **owner, non-blocking:** `GET /api/health` 0.127787s vs its ≤0.1s budget — until amended, rescoped, or an
+  honest WARN, J-06/J-07 step 2 cannot both read true. Ride-alongs: no `[NEW]` demo step; J-07 shot cropped.
 
 ## Last 2 verdicts
 
-- iter 31: CONTINUE — Factor Lab crash fixed (0 MemoryError after boot 132546, 23 requests all 200), but
-  J-06/J-07 stay partial and 4 AG-8 findings are open.
-- iter 30: CONTINUE — the forward-aggregate warm ran clean, but its fix was headroom not a bound.
+- iter 32: CONTINUE — `stock_obs` bounded for real (981→170 MB live, byte-identical payload, zero
+  MemoryError); AG-8 finding iter-29/c CLOSED; J-07 still partial on its own steps 2 and 4.
+- iter 31: CONTINUE — Factor Lab crash fixed, but the fix was a 2.63x constant factor, not a bound.
 
 ## Do not redo
 
-- **Factor Lab all-factors crash is FIXED** (`research.py` compact `(core_records, pools)` encoding +
-  `factor_lab_all_cached` single-flight guard). Residual scale limit = record iter-31/e, not a re-fix.
-- **`J-06.json` replay artifact gap CLOSED** — `...iter-31-j06-ridealong-replay-results.md` (UT-J-06 PASS).
-- **`_factor_observations`/`_runs_with_fr`/`_fr_slice_map` byte-frozen** — iter-29's AG-8 fix is untouched.
-- **`perf-budgets.md`'s "Iteration 30" section exists** — extend it, do not rewrite it.
+- **`stock_obs` is bounded** — `stock_obs.append` gone from `compute_forward_aggregates`; the one left
+  (`forward_testing.py:2097`) is `compute_run_scorecard`'s own, spec-sanctioned. Do not reopen.
+- **J-07 step 3 DONE** — VmPeak 2,691,600 kB / 57.2% margin, `reports/perf-budgets.md:4023-4098`; extend it.
+- **Byte-identity proven at live scale** (SHA-256, 771,129 obs) and its oracle repaired — do not re-verify.
+- **Factor Lab crash stays FIXED**; its stray unprefixed `?all=true` 404 has no call site in `apps/frontend`.
+- **`run_rows` (`forward_testing.py:1195`) is a WATCH ITEM (iter-32/f), not a blocker** — leave it.
 - **AG-10 host-guard caps intact** — `scripts/` and `project-extensions/` zero diff; never weaken.

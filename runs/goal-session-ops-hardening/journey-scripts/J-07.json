@@ -4,7 +4,7 @@
   "name": "Heavy aggregates never take the service down",
   "default_timeout_ms": 8000,
   "steps": [
-    {"n": 1, "journey": "J-07", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "-7.48%"}},
-    {"n": 2, "journey": "J-07", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "drawdown expectations"}}
+    {"n": 1, "journey": "J-07", "action": {"type": "goto", "url": "/backtest"}, "expect": {"text": "Forward-tested evidence"}},
+    {"n": 2, "journey": "J-07", "action": {"type": "goto", "url": "/backtest"}, "expect": {"text": "n=8869"}}
   ]
 }
