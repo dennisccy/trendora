@@ -13,6 +13,7 @@ goal-mode session ran:
 | Jul 25 13:09 | hwmon.csv.1 row 13:09:21 — Tctl 78 °C, PPT 24 W, 17.5 G avail | 13:09:41 | goal sessions active; benign readings at T-0 |
 | Jul 27 20:46 | hwmon.csv row 20:46:28 — Tctl 74 °C, PPT 34 W, 19.4 G avail | 20:46:48 | tapeology goal-desk iter-8 live (project had NO host-guard) |
 | Jul 28 01:07 | hwmon.csv row 01:07:52 — Tctl 88 °C, PPT 29 W, 15.2 G avail, psi_mem 0.00 | 01:08:33 | BOTH engines mid-iteration (trendora iter-29 strong-tier full-rerun); unconfined interactive pumps |
+| Jul 29 14:02 | tapeology hwmon.csv row 14:02:45 — Tctl 73-76 °C, PPT 18-32 W, 14.7 G avail, load 1.5 | 14:03:25 | BOTH engines mid-iteration under the NEW per-session caps (trendora iter-33 goal-evaluator; tapeology iter-19 browser-qa, 66 min in) — see "Why #6 happened anyway" |
 
 No OOM-killer events, no thermal warnings, no panic (`kernel.panic=0` — a panic would
 *hang*, never reboot), no watchdog armed (`RuntimeWatchdogUSec=0`), pstore empty.
@@ -37,6 +38,40 @@ CLI in place via `host-guard-adopt.sh`, no special launch needed;
 `host-guard-exec.sh` remains the optional from-birth wrapper), a thermal
 iteration gate waits out heat-soak between iterations, and CPU boost is
 disabled host-wide (hardware ladder item 1 — see below for revert).
+
+### Why #6 happened anyway (2026-07-29) — and what changed
+
+Reset #6 struck with **every per-session control working as designed**. Three
+holes, all of the same shape — *nothing could see more than one scope at a time*:
+
+1. **The complementary masks were the bug, not the fix.** trendora held
+   `0-3,8-11` and tapeology `4-7,12-15`. Each session's preflight, iteration
+   gate, and doctor row were green. Their union is all 16 CPUs — every physical
+   core available to a single burst, exactly the condition the mask was supposed
+   to prevent. The 2026-07-28 entry below (and the framework docs) *recommended*
+   this arrangement; that advice was wrong. Memory had the same shape: 14G + 14G
+   declared against 27.3G installed, neither project ever wrong on its own.
+2. **The QA browser could escape confinement.** Chrome-MCP reconnects to and
+   adopts browsers it did not spawn, and its detached Chrome outlives it
+   (reparented to init, out of reach of any descendant walk). A browser born
+   before confinement kept an all-CPU mask indefinitely — and ran headed, paying
+   for GPU compositing and a full raster pool. tapeology iter-19 was 66 minutes
+   into browser-qa at T-0.
+3. **The guard's own hardware premise had lapsed.** CPU boost was disabled live
+   on 2026-07-28 as hardware ladder item 1, but `/etc/tmpfiles.d/cpufreq-boost.conf`
+   was never actually installed, so the 2026-07-29 reboot silently re-enabled it.
+   Nothing checked. The box ran all of 2026-07-29 with the mitigation off.
+
+Fixed 2026-07-29 (framework, Stage E below): a **machine-global budget** in
+`~/.config/iad/host-guard-host.env` that every session's mask must be a subset of
+and every live session's union must fit inside, backed by a registry of live
+guarded contexts (junior session pauses, senior continues); **both projects moved
+onto the shared mask `0-3,8-11`** with `MemoryHigh` 10G each; a **browser
+confinement pass** run before every QA dispatch and on both exits of
+`host-guard-adopt.sh`; **engine-mode QA forced headless**; and a **boost check**
+in preflight, the iteration gate, and a new `doctor.sh --only cpu-boost` row.
+Framework docs: `incredible_auto_dev/docs/host-guard.md`; failure-mode entry:
+`.claude/anti-patterns/26-per-scope-caps-no-machine-aggregate.md`.
 
 Contract: `docs/goal.md` **AG-10** + the "Host-guard cap enforcement" binding note.
 
@@ -102,7 +137,8 @@ NVMe 39 °C, DIMMs 40-42 °C.
 | A | **GREEN** | 2026-07-21 ~21:35 | `measure-perf.sh` warm passes, budgets green |
 | B | **GREEN** | 2026-07-21 ~21:35 | 14.5 min back-to-back 2024 backfills: 116 snapshots + 310k fwd returns, maxTctl 88 °C (<95 abort), PPT ≤56 W, VmPeak 5.47 G of 6.29 G cap, health ≤3 s, **no reset**. NOTE: the sampler csv was recreated 22:04, so those rows now live only in that session's transcript, not `hwmon.csv`. |
 | C | **IN PROGRESS** | 2026-07-21 22:47→ | supervised `/goal-step` (ops-hardening iter-8). Pump session pinned to `0-3,8-11` (children inherit), BLAS/OMP/MKL=4, 1 Hz sampler live, auto-kill watchdog armed at the abort criteria below. Owner explicitly authorized the live TC-1/TC-2 heavy-ingest measurement at 22:5x. Session peak so far: Tctl 88 °C / PPT 56 W / DIMM 48 °C / NVMe 43 °C. |
-| D | **LANDED** | 2026-07-28 | After resets #3–#5: host-guard upstreamed to the framework (engine self-wrap now cpuset `AllowedCPUs` + taskset; preflight generic via `HOST_GUARD_MARKER_FILES`); pump confinement enforced AND self-healing (`HOST_GUARD_REQUIRE_PUMP_CONFINED=1`; in-place adoption via `host-guard-adopt.sh`, `host-guard-exec.sh` as optional from-birth wrapper); thermal iteration gate; tapeology guarded with complementary mask `4-7,12-15`; `MemoryHigh` 18G→14G per project (two engines fit in 27 G); CPU boost disabled host-wide + persisted (hardware ladder item 1). NOTE: cpuset is NOT delegated to user units on this host (`cpu memory pids` only) — `taskset` is the effective CPU mask everywhere; scope adoption still applies the memory/task/quota ceilings. Evidence: 17/17 sandboxed guard tests, 137/137 offline evals. NEXT: supervised Stage-B-shape re-verify under the new caps, then resume both sessions and run the 7-day zero-unclean-shutdown soak. |
+| D | **LANDED** | 2026-07-28 | After resets #3–#5: host-guard upstreamed to the framework (engine self-wrap now cpuset `AllowedCPUs` + taskset; preflight generic via `HOST_GUARD_MARKER_FILES`); pump confinement enforced AND self-healing (`HOST_GUARD_REQUIRE_PUMP_CONFINED=1`; in-place adoption via `host-guard-adopt.sh`, `host-guard-exec.sh` as optional from-birth wrapper); thermal iteration gate; tapeology guarded with complementary mask `4-7,12-15`; `MemoryHigh` 18G→14G per project (two engines fit in 27 G); CPU boost disabled host-wide + persisted (hardware ladder item 1). NOTE: cpuset is NOT delegated to user units on this host (`cpu memory pids` only) — `taskset` is the effective CPU mask everywhere; scope adoption still applies the memory/task/quota ceilings. Evidence: 17/17 sandboxed guard tests, 137/137 offline evals. NEXT: supervised Stage-B-shape re-verify under the new caps, then resume both sessions and run the 7-day zero-unclean-shutdown soak. **SUPERSEDED in part by Stage E: the complementary-mask advice in this row caused reset #6.** |
+| E | **LANDED (framework)** | 2026-07-29 | After reset #6 (both projects confined, still unbounded together): machine-global aggregate budget (`~/.config/iad/host-guard-host.env`: `HOST_GUARD_GLOBAL_CPU_LIST="0-3,8-11"`, `_MEMORY_BUDGET="22G"`, `REQUIRE_BOOST_OFF=1`) enforced at preflight + every iteration gate against a live-session registry (`lib/host-guard-registry.sh`; register-before-verify, junior pauses on a total order, pid/starttime/boot-id staleness); both projects now share mask `0-3,8-11` with `MemoryHigh` 10G; QA-browser confinement pass (`host-guard/browser-confine.sh`) before every browser dispatch and on BOTH exits of `host-guard-adopt.sh`; engine-mode QA forced headless; boost verified read-only + two new doctor rows (`host-guard`, `cpu-boost`) + `mcp-affinity`. Evidence: 63/63 + 61/61 new sandboxed guard tests, full offline eval suite green. **OWNER ACTION OUTSTANDING: re-apply and PERSIST boost-off (the hardware ladder item that lapsed) — see "Boost persistence" in the framework docs; until then the engine pauses AWAITING_HOST_GUARD by design.** NEXT: subtree-pull both projects, supervised concurrent `/goal-step`, then the 7-day zero-unclean-shutdown soak. |
 
 ## Verification ladder (run before widening anything; user present, work saved)
 
