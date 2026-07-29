@@ -450,3 +450,24 @@ accepted, untouched line and would reward the developer's honesty with a new gat
 blocking on it keeps both facts checkable. A human who reads AG-8 literally would score it as a real open
 violation on par with `prices.py:141`; a human who trusts iter-14's acceptance would not record it at all.
 **Reversible:** yes
+
+## iter-33 — goal-decomposer
+
+**Ambiguity:** J-06 step 1 requires a real-browser time-to-interactive sweep "with a warm backend in
+prod mode (`scripts/start-backend.sh` / `scripts/start-frontend.sh` — never `dev.sh`)". Two consecutive
+evaluators (iter-31, iter-32) found `scripts/start-frontend.sh:28` execs `npx next dev` and has done so
+for the whole session, so the sweep this step requires would measure Next.js dev-mode on-demand
+compilation, not production TTI. `docs/goal.md` offers two remedies without picking one: fix the
+launcher, or amend the goal text to accept dev-mode numbers.
+**We chose:** fix `scripts/start-frontend.sh` to genuinely run production mode (`next build` +
+`next start`), not amend `docs/goal.md`. Grounds: J-06's own step-1 text already NAMES this exact script
+"prod mode" and explicitly excludes `dev.sh` — the goal's own wording already asserts the fact the
+current script contradicts, so the more goal-faithful reading is that the script is buggy, not that the
+goal's wording is wrong. `scripts/measure-perf.sh`'s own header independently calls the same script
+"PROD MODE ONLY" and documents refusing to trust `next dev` timings — a second, independent piece of
+project-authored intent pointing the same way. This is squarely agent-executable (a shell-script edit),
+not owner-blocked. A human who reads the goal text as merely aspirational, or who weighs the one-time
+cost of fixing 32 iterations' worth of curl-based (not real-browser) measurement conventions as not
+worth reopening, would instead amend `docs/goal.md` to accept dev-mode TTI numbers and skip the launcher
+fix.
+**Reversible:** yes

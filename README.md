@@ -78,12 +78,6 @@ git subtree push --prefix incredible_auto_dev auto_dev main
 <!-- AUTO:how-to-run -->
 ## How to run
 
-<!-- TODO: .claude/project-template.md is still the unfilled generic template (Stack / Test commands /
-     Service start commands / Services are all placeholders) — the commands below are maintained
-     directly against this repo's own scripts and configs (scripts/dev.sh, scripts/start-backend.sh,
-     scripts/start-frontend.sh, apps/backend/requirements.txt, apps/frontend/package.json) pending that
-     file being filled in for this project. -->
-
 ### Prerequisites
 
 - Python 3.12
